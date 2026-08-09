@@ -1,8 +1,12 @@
 // Analytics Recovery section (#698): renders the #697 return-to-baseline
 // contract for active/completed recovery blocks. Verifies hero count,
-// weighted Load/Volume rows, reps-only rows, added-during-recovery
+// weighted Load/Total work rows, reps-only rows, added-during-recovery
 // separation, week selection, >100% visibility, unavailable/error states,
 // history collapse, and accessible labels.
+//
+// #758: exercise details are collapsed by default behind an "Exercise details"
+// disclosure and filterable by week and status, so most row-level assertions
+// expand the panel first via `expandDetails`.
 
 import React from 'react';
 import render, { act } from 'react-test-renderer';
@@ -129,6 +133,48 @@ function hasText(root, needle) {
   return findAllText(root).some(s => s.includes(needle));
 }
 
+function byLabel(root, label) {
+  return root.findAll(inst => inst.props.accessibilityLabel === label)[0];
+}
+
+// Details are collapsed by default (#758); every row-level assertion opens them.
+function expandDetails(root) {
+  const toggle = byLabel(root, 'Expand exercise details');
+  expect(toggle).toBeDefined();
+  act(() => { toggle.props.onPress(); });
+}
+
+function selectFilter(root, label) {
+  const chip = root.findAll(
+    inst => typeof inst.props.accessibilityLabel === 'string'
+      && inst.props.accessibilityLabel.startsWith(`${label}, `)
+      && typeof inst.props.onPress === 'function'
+  )[0];
+  expect(chip).toBeDefined();
+  act(() => { chip.props.onPress(); });
+  return chip;
+}
+
+// Accessible labels of the collapsed exercise rows — scoped so a status-filter
+// chip carrying the same words cannot satisfy a row-level assertion.
+function rowLabels(root) {
+  return root
+    .findAll(inst =>
+      typeof inst.props.accessibilityLabel === 'string'
+      && inst.props.accessible === true
+      // Chips are pressable and role-tagged; an exercise row is neither.
+      && !inst.props.accessibilityRole
+      && !inst.props.onPress)
+    .map(inst => inst.props.accessibilityLabel);
+}
+
+// Completed-block history is collapsed by default (#758).
+function expandHistory(root) {
+  const toggle = byLabel(root, 'Expand recovery history');
+  expect(toggle).toBeDefined();
+  act(() => { toggle.props.onPress(); });
+}
+
 describe('AnalyticsRecoverySection — visibility', () => {
   test('renders nothing when there is no active or completed recovery block', () => {
     const component = setup({ blocks: [], weeks: [], notes: [] });
@@ -148,25 +194,29 @@ describe('AnalyticsRecoverySection — active block evidence', () => {
     expect(hasText(root, 'baseline exercises met')).toBe(true);
   });
 
-  test('weighted rows show independent Load and Volume; reps-only rows show only their applicable metric', () => {
+  test('weighted rows show independent Load and Total work; reps-only rows show only their applicable metric', () => {
     const b = block();
     const w = week(1, 'note-w1');
     const n = note('note-w1', BASELINE_TEXT);
     const component = setup({ blocks: [b], weeks: [w], notes: [n] });
     const root = component.root;
+    expandDetails(root);
 
     expect(hasText(root, 'Load')).toBe(true);
-    expect(hasText(root, 'Volume')).toBe(true);
+    expect(hasText(root, 'Total work')).toBe(true);
     expect(hasText(root, 'Reps')).toBe(true);
+    // "Volume" was never explained on this surface and is gone (#758).
+    expect(hasText(root, 'Volume')).toBe(false);
   });
 
   test('values above 100% baseline remain numerically visible even though the meter fill is capped', () => {
     const b = block();
     const w = week(1, 'note-w1');
-    // Bench comes back well above baseline load and volume (200/135 = 148%).
+    // Bench comes back well above baseline load and total work (200/135 = 148%).
     const n = note('note-w1', '-Bench\n- 200 5,5,5\n-Pull-up\n- 8,8,8');
     const component = setup({ blocks: [b], weeks: [w], notes: [n] });
     const root = component.root;
+    expandDetails(root);
 
     expect(hasText(root, '148%')).toBe(true);
   });
@@ -177,8 +227,9 @@ describe('AnalyticsRecoverySection — active block evidence', () => {
     const n = note('note-w1', '-Bench\n- 135 5,5,5');
     const component = setup({ blocks: [b], weeks: [w], notes: [n] });
     const root = component.root;
+    expandDetails(root);
 
-    expect(hasText(root, 'Not reintroduced')).toBe(true);
+    expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not reintroduced'))).toBe(true);
     expect(hasText(root, 'Baseline:')).toBe(true);
   });
 
@@ -188,8 +239,9 @@ describe('AnalyticsRecoverySection — active block evidence', () => {
     const n = note('note-w1', `${BASELINE_TEXT}\n-Foam Roll\n- 10,10`);
     const component = setup({ blocks: [b], weeks: [w], notes: [n] });
     const root = component.root;
+    expandDetails(root);
 
-    expect(hasText(root, 'Added during recovery')).toBe(true);
+    expect(rowLabels(root).some(l => l.startsWith('Foam Roll, Added during recovery'))).toBe(true);
     expect(hasText(root, 'Foam Roll')).toBe(true);
   });
 
@@ -201,13 +253,12 @@ describe('AnalyticsRecoverySection — active block evidence', () => {
     const n2 = note('note-w2', '-Bench\n- 200 5,5,5\n-Pull-up\n- 8,8,8');
     const component = setup({ blocks: [b], weeks: [w1, w2], notes: [n1, n2] });
     const root = component.root;
+    expandDetails(root);
 
     // Defaults to the latest (current) week, which is the >100% week.
     expect(hasText(root, '148%')).toBe(true);
 
-    const week1Chip = root.findAll(
-      inst => inst.props.accessibilityLabel === 'Week 1'
-    )[0];
+    const week1Chip = byLabel(root, 'Week 1');
     act(() => {
       week1Chip.props.onPress();
     });
@@ -257,22 +308,21 @@ describe('AnalyticsRecoverySection — completed-block history', () => {
     });
   }
 
-  test('history defaults expanded, is collapsible, and keeps a meaningful collapsed summary', () => {
+  test('history defaults collapsed with a meaningful summary, and expands on demand', () => {
     const completed = completedBlock('rb-old', '2026-04-01T00:00:00Z', 'Old Routine');
     const component = setup({ blocks: [completed], weeks: [], notes: [] });
     const root = component.root;
 
+    // Collapsed by default (#758), but never silent: the count and the latest
+    // block are stated without a tap.
     expect(hasText(root, '1 completed block')).toBe(true);
+    expect(hasText(root, 'Latest:')).toBe(true);
     expect(hasText(root, 'Old Routine')).toBe(true);
 
-    const collapseToggle = root.findAll(
-      inst => inst.props.accessibilityLabel === 'Collapse recovery history'
-    )[0];
-    act(() => {
-      collapseToggle.props.onPress();
-    });
+    expandHistory(root);
 
-    expect(hasText(root, 'Latest:')).toBe(true);
+    expect(byLabel(root, 'Collapse recovery history')).toBeDefined();
+    expect(hasText(root, 'Latest:')).toBe(false);
   });
 
   test('selecting a completed block from history switches the focused evidence', () => {
@@ -286,6 +336,7 @@ describe('AnalyticsRecoverySection — completed-block history', () => {
     const root = component.root;
 
     expect(hasText(root, 'Current Routine')).toBe(true);
+    expandHistory(root);
 
     const historyRow = root.findAll(
       inst => typeof inst.props.accessibilityLabel === 'string' &&
@@ -310,11 +361,12 @@ describe('AnalyticsRecoverySection — every exercise class/state (mocked compar
 
     const component = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] });
     const root = component.root;
+    expandDetails(root);
 
     expect(hasText(root, 'Plank')).toBe(true);
     expect(hasText(root, 'Time')).toBe(true);
     expect(hasText(root, 'Load')).toBe(false);
-    expect(hasText(root, 'Volume')).toBe(false);
+    expect(hasText(root, 'Total work')).toBe(false);
     expect(hasText(root, 'Reps')).toBe(false);
     expect(hasText(root, '1:30')).toBe(true); // formatDuration(90)
   });
@@ -329,9 +381,13 @@ describe('AnalyticsRecoverySection — every exercise class/state (mocked compar
 
     const component = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] });
     const root = component.root;
+    expandDetails(root);
 
-    expect(hasText(root, 'Rebuilding')).toBe(true);
-    expect(hasText(root, 'Baseline met')).toBe(false);
+    // Scoped to the row: the status-filter chips name every state, so a
+    // whole-tree text search can no longer tell them apart.
+    const labels = rowLabels(root);
+    expect(labels.some(l => l.startsWith('Bench, Rebuilding'))).toBe(true);
+    expect(labels.some(l => l.includes('Baseline met'))).toBe(false);
     expect(hasText(root, '49%')).toBe(true);
   });
 
@@ -348,9 +404,13 @@ describe('AnalyticsRecoverySection — every exercise class/state (mocked compar
 
     const component = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] });
     const root = component.root;
+    expandDetails(root);
 
     expect(hasText(root, 'Not comparable')).toBe(true);
     expect(hasText(root, 'Logged as a different kind of exercise than the baseline.')).toBe(true);
+    // Not comparable has no filter chip of its own, so `All` must still show it
+    // and the summary line must count it.
+    expect(hasText(root, '1 not comparable')).toBe(true);
   });
 
   test('an empty-but-supported baseline snapshot is reported without a hero or exercise rows', () => {
@@ -373,6 +433,7 @@ describe('AnalyticsRecoverySection — accessible labels expose the underlying e
     const n = note('note-w1', BASELINE_TEXT);
     const component = setup({ blocks: [b], weeks: [w], notes: [n] });
     const root = component.root;
+    expandDetails(root);
 
     const benchRow = root.findAll(
       inst => typeof inst.props.accessibilityLabel === 'string' && inst.props.accessibilityLabel.startsWith('Bench, Baseline met')
@@ -380,7 +441,7 @@ describe('AnalyticsRecoverySection — accessible labels expose the underlying e
     expect(benchRow).toBeDefined();
     expect(benchRow.props.accessibilityLabel).toContain('Load 100%');
     expect(benchRow.props.accessibilityLabel).toContain('135 lb of 135 lb baseline');
-    expect(benchRow.props.accessibilityLabel).toContain('Volume 100%');
+    expect(benchRow.props.accessibilityLabel).toContain('Total work 100%');
   });
 
   test('a not-reintroduced row announces its baseline reference values', () => {
@@ -389,6 +450,7 @@ describe('AnalyticsRecoverySection — accessible labels expose the underlying e
     const n = note('note-w1', '-Bench\n- 135 5,5,5');
     const component = setup({ blocks: [b], weeks: [w], notes: [n] });
     const root = component.root;
+    expandDetails(root);
 
     const pullUpRow = root.findAll(
       inst => typeof inst.props.accessibilityLabel === 'string' && inst.props.accessibilityLabel.startsWith('Pull-up, Not reintroduced')
@@ -403,6 +465,7 @@ describe('AnalyticsRecoverySection — accessible labels expose the underlying e
     const n = note('note-w1', `${BASELINE_TEXT}\n-Foam Roll\n- 10,10`);
     const component = setup({ blocks: [b], weeks: [w], notes: [n] });
     const root = component.root;
+    expandDetails(root);
 
     const addedRow = root.findAll(
       inst => typeof inst.props.accessibilityLabel === 'string' && inst.props.accessibilityLabel.startsWith('Foam Roll, Added during recovery')
@@ -455,6 +518,7 @@ describe('AnalyticsRecoverySection — completed-block evidence uses that block\
       ],
     });
     const root = component.root;
+    expandHistory(root);
 
     const historyRow = root.findAll(
       inst => typeof inst.props.accessibilityLabel === 'string' &&
@@ -479,6 +543,8 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     return block({ id, baseline_note_title: title, completed_at: completedAt });
   }
 
+  // Every assertion in this block reads the completed-block week index, which
+  // lives inside the history panel — collapsed by default since #758.
   function setupWithNavigate(props, onNavigate) {
     let component;
     act(() => {
@@ -486,6 +552,7 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
         <AnalyticsRecoverySection onNavigate={onNavigate} {...props} />
       );
     });
+    expandHistory(component.root);
     return component;
   }
 
@@ -779,6 +846,184 @@ describe('AnalyticsRecoverySection — authoritative Recovery state (#716)', () 
   });
 });
 
+// ── #758: collapsed-by-default details, week/status filters, metric wording ──
+
+describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)', () => {
+  // Bench comes back at baseline load but two thirds of the baseline total work
+  // (rebuilding), Pull-up is fully back (baseline met), Foam Roll is new work.
+  const MIXED_TEXT = '-Bench\n- 135 5,5\n-Pull-up\n- 8,8,8\n-Foam Roll\n- 10,10';
+
+  function setupMixed() {
+    return setup({
+      blocks: [block()],
+      weeks: [week(1, 'note-w1')],
+      notes: [note('note-w1', MIXED_TEXT)],
+    }).root;
+  }
+
+  test('the section opens on the summary alone — no exercise rows until details are expanded', () => {
+    const root = setupMixed();
+
+    expect(hasText(root, '1 of 2')).toBe(true);
+    expect(hasText(root, 'baseline exercises met')).toBe(true);
+    expect(hasText(root, 'Exercise details')).toBe(true);
+    expect(hasText(root, '3 exercises')).toBe(true);
+
+    // The diagnostic panel this issue is about is not on screen yet.
+    expect(rowLabels(root).some(l => l.startsWith('Bench,'))).toBe(false);
+    expect(hasText(root, 'Load')).toBe(false);
+    expect(hasText(root, 'Total work')).toBe(false);
+    expect(byLabel(root, 'Expand exercise details')).toBeDefined();
+  });
+
+  test('details expand and collapse again on demand', () => {
+    const root = setupMixed();
+
+    expandDetails(root);
+    expect(rowLabels(root).some(l => l.startsWith('Bench, Rebuilding'))).toBe(true);
+
+    const collapse = byLabel(root, 'Collapse exercise details');
+    expect(collapse.props.accessibilityState).toEqual({ expanded: true });
+    act(() => { collapse.props.onPress(); });
+
+    expect(rowLabels(root).some(l => l.startsWith('Bench,'))).toBe(false);
+    expect(byLabel(root, 'Expand exercise details').props.accessibilityState).toEqual({ expanded: false });
+  });
+
+  test('the summary is week-aware, names only the states that occurred, and never invents a score', () => {
+    const root = setupMixed();
+
+    expect(hasText(root, 'Week 1 · 1 rebuilding · 1 added during recovery')).toBe(true);
+    // States with nothing in them are not listed as zeroes.
+    expect(hasText(root, '0 not reintroduced')).toBe(false);
+    expect(hasText(root, '0 not comparable')).toBe(false);
+    // The primary summary is a count of baseline exercises met. No composite
+    // recovery percentage exists anywhere in the collapsed state.
+    expect(findAllText(root).some(s => s.includes('%'))).toBe(false);
+    expect(byLabel(root, 'Week 1, 1 of 2 baseline exercises met')).toBeDefined();
+  });
+
+  test('the week filter re-derives the summary, not just the rows', () => {
+    const root = setup({
+      blocks: [block()],
+      weeks: [week(1, 'note-w1'), week(2, 'note-w2')],
+      notes: [note('note-w1', BASELINE_TEXT), note('note-w2', MIXED_TEXT)],
+    }).root;
+
+    // Latest week first.
+    expect(hasText(root, '1 of 2')).toBe(true);
+    expect(hasText(root, 'Week 2 · 1 rebuilding · 1 added during recovery')).toBe(true);
+
+    act(() => { byLabel(root, 'Week 1').props.onPress(); });
+
+    expect(hasText(root, '2 of 2')).toBe(true);
+    expect(hasText(root, 'Week 1')).toBe(true);
+    expect(hasText(root, '1 rebuilding')).toBe(false);
+  });
+
+  test('status chips carry their week-scoped counts and the selected state', () => {
+    const root = setupMixed();
+    expandDetails(root);
+
+    expect(hasText(root, 'All 3')).toBe(true);
+    expect(hasText(root, 'Rebuilding 1')).toBe(true);
+    expect(hasText(root, 'Baseline met 1')).toBe(true);
+    expect(hasText(root, 'Not reintroduced 0')).toBe(true);
+    expect(hasText(root, 'Added during recovery 1')).toBe(true);
+
+    expect(byLabel(root, 'All, 3').props.accessibilityState).toEqual({ selected: true });
+    const rebuilding = selectFilter(root, 'Rebuilding');
+    expect(rebuilding.props.accessibilityState).toEqual({ selected: true });
+    expect(byLabel(root, 'All, 3').props.accessibilityState).toEqual({ selected: false });
+  });
+
+  test('each status filter narrows the rows to exactly that state', () => {
+    const root = setupMixed();
+    expandDetails(root);
+
+    selectFilter(root, 'Rebuilding');
+    let labels = rowLabels(root);
+    expect(labels.some(l => l.startsWith('Bench, Rebuilding'))).toBe(true);
+    expect(labels.some(l => l.startsWith('Pull-up'))).toBe(false);
+    expect(labels.some(l => l.startsWith('Foam Roll'))).toBe(false);
+
+    selectFilter(root, 'Baseline met');
+    labels = rowLabels(root);
+    expect(labels.some(l => l.startsWith('Pull-up, Baseline met'))).toBe(true);
+    expect(labels.some(l => l.startsWith('Bench'))).toBe(false);
+    expect(labels.some(l => l.startsWith('Foam Roll'))).toBe(false);
+
+    selectFilter(root, 'Added during recovery');
+    labels = rowLabels(root);
+    expect(labels.some(l => l.startsWith('Foam Roll, Added during recovery'))).toBe(true);
+    expect(labels.some(l => l.startsWith('Bench'))).toBe(false);
+    expect(labels.some(l => l.startsWith('Pull-up'))).toBe(false);
+
+    selectFilter(root, 'All');
+    labels = rowLabels(root);
+    expect(labels.some(l => l.startsWith('Bench, Rebuilding'))).toBe(true);
+    expect(labels.some(l => l.startsWith('Pull-up, Baseline met'))).toBe(true);
+    expect(labels.some(l => l.startsWith('Foam Roll, Added during recovery'))).toBe(true);
+  });
+
+  test('a filter with nothing in it says so instead of rendering an empty panel', () => {
+    const root = setupMixed();
+    expandDetails(root);
+
+    selectFilter(root, 'Not reintroduced');
+    expect(hasText(root, 'No exercises match this filter.')).toBe(true);
+    expect(rowLabels(root).some(l => l.startsWith('Bench'))).toBe(false);
+  });
+
+  test('the not-reintroduced filter selects exactly the baseline work that never came back', () => {
+    const root = setup({
+      blocks: [block()],
+      weeks: [week(1, 'note-w1')],
+      notes: [note('note-w1', '-Bench\n- 135 5,5,5')],
+    }).root;
+    expandDetails(root);
+
+    selectFilter(root, 'Not reintroduced');
+    const labels = rowLabels(root);
+    expect(labels.some(l => l.startsWith('Pull-up, Not reintroduced'))).toBe(true);
+    expect(labels.some(l => l.startsWith('Bench'))).toBe(false);
+  });
+
+  test('the weighted dimensions are explained where they are shown', () => {
+    const root = setupMixed();
+    expandDetails(root);
+
+    expect(hasText(root, 'Load is the heaviest completed working set that week')).toBe(true);
+    expect(hasText(root, 'not an all-time max or an estimated 1RM')).toBe(true);
+    expect(hasText(root, 'Total work is load × reps added up across every completed working set that week.')).toBe(true);
+  });
+
+  test('a week with no weighted work carries no weighted explanation', () => {
+    const repsOnly = block({ baseline: captureRecoveryBaselineFromText('-Pull-up\n- 8,8,8') });
+    const root = setup({
+      blocks: [repsOnly],
+      weeks: [week(1, 'note-w1')],
+      notes: [note('note-w1', '-Pull-up\n- 8,8,8')],
+    }).root;
+    expandDetails(root);
+
+    expect(hasText(root, 'Reps')).toBe(true);
+    expect(hasText(root, 'heaviest completed working set')).toBe(false);
+    expect(hasText(root, 'Total work')).toBe(false);
+  });
+
+  test('a week whose note is unreadable states that above the disclosure, with no details to expand', () => {
+    const root = setup({
+      blocks: [block()],
+      weeks: [week(1, 'ghost-note-id')],
+      notes: [],
+    }).root;
+
+    expect(hasText(root, 'no longer available')).toBe(true);
+    expect(byLabel(root, 'Expand exercise details')).toBeUndefined();
+  });
+});
+
 describe('AnalyticsRecoverySection — inclusion preference (#728)', () => {
   const { RECOVERY_INCLUSION_LABEL } = require('../components/RecoveryInclusionToggle');
   let mockSetInclude;
@@ -787,6 +1032,8 @@ describe('AnalyticsRecoverySection — inclusion preference (#728)', () => {
     return block({ id, completed_at: '2026-06-01T00:00:00Z', include_in_normal_analytics: include });
   }
 
+  // The inclusion switches live on the completed-block rows inside the history
+  // panel, which is collapsed by default since #758.
   function setupInclusion(props = {}) {
     let component;
     act(() => {
@@ -794,6 +1041,8 @@ describe('AnalyticsRecoverySection — inclusion preference (#728)', () => {
         <AnalyticsRecoverySection blocks={[]} weeks={[]} notes={[]} {...props} />
       );
     });
+    const toggle = byLabel(component.root, 'Expand recovery history');
+    if (toggle) act(() => { toggle.props.onPress(); });
     return component;
   }
 
