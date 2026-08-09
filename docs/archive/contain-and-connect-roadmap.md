@@ -1,5 +1,9 @@
 # Kilo Contain and Connect Roadmap
 
+**Status: Complete.** This roadmap was executed through to completion. All named deliverables have shipped and the roadmap is retained here as historical reference. The product-cohesion pass is complete as of issue #767.
+
+---
+
 Status: active product-cohesion roadmap; Phases 1 and 2 are complete.
 
 Source of truth: the approved audit on GitHub issue `#714`, specifically the

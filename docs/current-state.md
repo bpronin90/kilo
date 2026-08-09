@@ -41,10 +41,12 @@ intended for Play closed testing is built.
 
 Roadmap status:
 
-- The active product-cohesion pass is tracked in
-  `docs/contain-and-connect-roadmap.md`. It implements the approved "Contain
-  and Connect" direction from issue #714 without changing the five-tab shell
-  or tab-bar behavior.
+- The Contain and Connect product-cohesion pass is complete as of issue #767.
+  The approved "Contain and Connect" direction from issue #714 has been fully
+  implemented without changing the five-tab shell or tab-bar behavior. The
+  roadmap document is retained as historical reference at
+  `docs/archive/contain-and-connect-roadmap.md`.
+- Kilo currently has no active product-cohesion roadmap.
 - MVP4.0 through MVP4.5 are complete roadmap passes. Their roadmap documents
   are archived under `docs/archive/`.
 - The MVP-Refine pass (`docs/archive/mvp-refine-roadmap.md`) ran after MVP4.5
