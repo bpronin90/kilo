@@ -807,6 +807,22 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     expect(onNavigate).toHaveBeenNthCalledWith(2, 'Analytics', 'strength');
   });
 
+  test('the 1K hero total stays the compact-summary size, not the Analytics owner scale (#763)', () => {
+    // Regression guard: oneKHeroValue must set its own 32/800 rather than
+    // spreading HeroMetric.hero (48/900, the Analytics owner size). Sharing
+    // that token would make Home's "compact summary" hierarchy claim false.
+    const card = component.root.findByProps({ testID: 'home-one-k-link' }).parent;
+    const heroValueNodes = card.findAll(n => n.type === 'Text' && flatStyle(n).fontSize === 32);
+    expect(heroValueNodes.length).toBeGreaterThan(0);
+    for (const node of heroValueNodes) {
+      const style = flatStyle(node);
+      expect(style.fontWeight).toBe('800');
+    }
+    // Nothing in the 1K card renders at the Analytics hero scale.
+    const analyticsScaleNodes = card.findAll(n => n.type === 'Text' && flatStyle(n).fontSize === 48);
+    expect(analyticsScaleNodes).toHaveLength(0);
+  });
+
   test('neither strength destination nests a press owner', () => {
     // The chevron is presentational; each section header row is the single
     // press owner, so there is no nested responder.

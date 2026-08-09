@@ -458,17 +458,17 @@ compact-vs-owner distinction.
 |---|---|---|---|
 | Card padding | `24` | | `1118` |
 | Card borderRadius | `24` | | `1118` |
-| Hero total value | fontSize | `32` | `1134` |
-| | fontWeight | `800` | `1134` |
-| | color | `colors.accent` | `713` |
-| Hero unit | fontSize | `16` | `1138` |
-| | color | `colors.textMuted` | `1138` |
-| Progress bar | height | `8` | `1148` |
-| | background | `colors.divider` | `1148` |
-| | fill | `colors.accent` | `1156` |
-| | borderRadius | `4` | `1148` |
-| | marginBottom | `16` | `1148` |
-| Breakdown value | fontSize | `16` | `1177` |
+| Hero total value | fontSize | `32` (explicit override, not `HeroMetric.hero`) | `1137` |
+| | fontWeight | `800` (explicit override) | `1137` |
+| | color | `colors.text` (lerped toward `colors.success` as progress nears 1000, `713`) | `1137` |
+| Hero unit | fontSize | `16` | `1142` |
+| | color | `colors.textMuted` | `1142` |
+| Progress bar | height | `8` | `1151` |
+| | background | `colors.divider` | `1151` |
+| | fill | `colors.accent` | `1159` |
+| | borderRadius | `4` | `1151` |
+| | marginBottom | `16` | `1151` |
+| Breakdown value | fontSize | `16` | `1180` |
 | | fontWeight | `700` | `1177` |
 | | color | `colors.text` | `1177` |
 | Breakdown label | fontSize | `11`, uppercase | `1182` |
@@ -835,12 +835,12 @@ family.
 
 | Property | Home | Analytics | Status |
 |---|---|---|---|
-| Total fontSize | `32` | `48` | intentional (compact summary vs owner hero) |
-| Total fontWeight | `800` | `900` | intentional |
+| Total fontSize | `32` (explicit override) | `48` (`HeroMetric.hero`) | intentional (compact summary vs owner hero) |
+| Total fontWeight | `800` (explicit override) | `900` (`HeroMetric.hero`) | intentional — Home does **not** spread `HeroMetric.hero` (that token is 48/900, Analytics' size); it sets its own 32/800 so the compact hierarchy is real, not accidental (#763 review) |
 | Card padding | `24` | `24` | normalized |
 | Progress bar background | `colors.divider` | `colors.divider` | normalized (#763; was `cardBorder` on Home) |
 | Progress bar borderRadius | `4` | `4` | normalized (#763; was `6` on Home) |
-| Unit suffix | `marginLeft: 4`, no leading space | `marginLeft: 4`, no leading space | normalized (#763; Home used a leading space) |
+| Unit suffix | literal leading space (`" {unit}"`) | `marginLeft: 4` on a nested `Text` | unchanged — both are a `Text` nested inside the value `Text`, where RN native treats the child as an inline attributed run, not a Yoga box, so `marginLeft` does not reliably create spacing (#763 review); Home uses a literal space to guarantee "1000 lb" renders correctly on iOS/Android |
 | Breakdown value fontWeight | `700` | `700` | normalized (#763; was `800` on Home) |
 | Breakdown value fontSize | `16` | `18` | intentional (scales with hero size) |
 | Breakdown label | `11`, uppercase | `11`, uppercase | normalized (#763; Home was `12`, sentence case) |

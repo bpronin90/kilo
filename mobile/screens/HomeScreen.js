@@ -712,7 +712,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
             </Pressable>
             <Text style={[styles.oneKHeroValue, { color: lerpColor(colors.accent, colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000)) }]}>
               {dashboardData.oneK?.total ? `${displayWeight(dashboardData.oneK.total, unit).toFixed(0)}` : '—'}
-              <Text style={styles.oneKHeroUnit}>{unit}</Text>
+              <Text style={styles.oneKHeroUnit}> {unit}</Text>
             </Text>
             <View style={styles.progressBarLarge}>
               <View
@@ -1131,15 +1131,18 @@ const createStyles = (colors) => StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  // Explicit compact-summary override (#763 review) — HeroMetric.hero is
+  // 48/900, the Analytics owner size. Home's total stays visually secondary
+  // to the Weekly hero above it, so it does not spread HeroMetric.hero here.
   oneKHeroValue: {
-    ...HeroMetric.hero,
+    fontSize: 32,
+    fontWeight: '800',
     color: colors.text,
   },
   oneKHeroUnit: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.textMuted,
-    marginLeft: 4,
   },
   // Track color, radius, and vertical rhythm match the Analytics 1K progress
   // bar (#763) — the bar reads as the same control on both surfaces even
