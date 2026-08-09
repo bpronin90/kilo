@@ -529,6 +529,41 @@ Source: `mobile/screens/AnalyticsScreen.js`
 | Big 3 / info collapse | icon | `MaterialIcons` `expand-more`/`expand-less`, `14-16`, `textMuted` | `119-124`, `79-84` |
 | "How is this calculated?" | toggle | collapsible, default collapsed | `68-99` |
 
+### Recovery Section (`AnalyticsRecoverySection.js`)
+
+Progressive disclosure (#758): the section answers "how close am I to my normal
+training?" before it shows any evidence. Reading order inside the block card is
+**summary → week filter → details disclosure**, and both disclosures start
+collapsed.
+
+| Element | Property | Value |
+|---|---|---|
+| Hero count | style | `HeroMetric.statPrimary`, `colors.accent` — `X of Y`, never a composite score |
+| Hero caption | fontSize / weight | `13` / `600`, uppercase, `letterSpacing: 0.5`, `textMuted` |
+| Summary line | fontSize | `13`, `textMuted` — `Week N · <non-zero states>` |
+| Week + status chips | shared `chip` styles | radius `14`, 1px `cardBorder`, `subtleBg`, `minHeight: 44`; selected = `accent` fill / `onAccent` text |
+| Details header | title / count | `13` / `700` `text`; collapsed count `12` / `600` `textMuted` |
+| Details collapse | icon | `MaterialIcons` `expand-more`/`expand-less`, `18`, `textMuted` (app-wide convention) |
+| Metric legend | fontSize / lineHeight | `12` / `17`, `textMuted` |
+| Completed-block history | default | collapsed, summary header states the count and the latest block |
+
+Wording is part of the contract, not decoration:
+
+- The hero is the count of baseline exercises met. No composite recovery score
+  exists on this surface.
+- `Total work` replaces `Volume`, and the legend defines it as load × reps
+  across completed working sets.
+- `Load` is defined as the heaviest completed working set that week — explicitly
+  not an all-time max or an estimated 1RM.
+- Status filters are `All`, `Rebuilding`, `Baseline met`, `Not reintroduced`,
+  and `Added during recovery`, each carrying its week-scoped count.
+  `Not comparable` has no chip and is never hidden: it stays in `All` and is
+  counted in the summary line.
+- A week whose linked note is missing or unreadable states that **above** the
+  disclosure, which is not rendered at all — a collapsed panel is never the
+  reason evidence is absent. Loading, stale, retry, and unverified copy is
+  unchanged and still comes from the recovery state contract.
+
 ### Progressive Overload Table (`AnalyticsScreen.js`)
 
 | Element | Property | Value | Line |

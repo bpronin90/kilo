@@ -29,12 +29,38 @@ import {
 } from '../lib/data/recoveryAnalytics';
 import { RecoveryInclusionToggle } from './RecoveryInclusionToggle';
 
+// "Total work" replaces the unexplained "Volume" (#758): the number is a sum of
+// load × reps, and the label now says so rather than borrowing a training term
+// the app never defines.
 const METRIC_LABELS = Object.freeze({
   top_load: 'Load',
-  volume: 'Volume',
+  volume: 'Total work',
   total_reps: 'Reps',
   total_seconds: 'Time',
 });
+
+// Shown with the details, so the two weighted dimensions are never read as an
+// all-time max or an estimated 1RM (#758). Both describe exactly what #697
+// computes: the heaviest completed working set, and load × reps summed over the
+// completed working sets of that week.
+const METRIC_EXPLANATIONS = Object.freeze({
+  top_load: 'Load is the heaviest completed working set that week — not an all-time max or an estimated 1RM.',
+  volume: 'Total work is load × reps added up across every completed working set that week.',
+});
+
+const STATUS_FILTER_ALL = 'all';
+
+// Status filters over the selected week's rows (#758). `Not comparable` has no
+// chip of its own — it is an unusual defect, not a training state a lifter
+// filters for — but it is never hidden either: it stays in `All`, and the
+// summary line counts it.
+const STATUS_FILTERS = Object.freeze([
+  { id: STATUS_FILTER_ALL, label: 'All' },
+  { id: RECOVERY_COMPARISON_STATES.REBUILDING, label: 'Rebuilding' },
+  { id: RECOVERY_COMPARISON_STATES.BASELINE_MET, label: 'Baseline met' },
+  { id: RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED, label: 'Not reintroduced' },
+  { id: RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY, label: 'Added during recovery' },
+]);
 
 const STATE_META = Object.freeze({
   [RECOVERY_COMPARISON_STATES.BASELINE_MET]: { label: 'Baseline met', dot: 'success' },
@@ -46,7 +72,7 @@ const STATE_META = Object.freeze({
 
 const UNAVAILABLE_REASON_TEXT = Object.freeze({
   exercise_class_changed: 'Logged as a different kind of exercise than the baseline.',
-  no_comparable_metric: "This week's entry has no usable Load, Volume, Reps, or Time value.",
+  no_comparable_metric: "This week's entry has no usable Load, Total work, Reps, or Time value.",
   baseline_value_unusable: 'The frozen baseline value for this exercise is unusable.',
 });
 
@@ -245,7 +271,10 @@ function ExerciseRow({ row, unit }) {
   );
 }
 
-function WeekEvidence({ week, unit }) {
+// A week whose linked note is gone or unreadable says so above the details
+// disclosure, never inside it: a collapsed panel must not be the reason a lifter
+// cannot see that this week has no readable evidence at all (#758).
+function WeekUnavailableNotice({ week }) {
   const styles = useThemedStyles(createStyles);
   if (!week) return null;
 
@@ -263,12 +292,77 @@ function WeekEvidence({ week, unit }) {
       </Text>
     );
   }
+  return null;
+}
 
-  const baselineRows = week.exercises || [];
-  const addedRows = week.added || [];
+// Rows the selected status filter admits. `All` keeps #697's two groups exactly
+// as they were; a baseline status narrows to matching baseline rows only; the
+// added filter shows only the recovery-only work.
+function _filterRows(week, filter) {
+  const baselineRows = week?.exercises || [];
+  const addedRows = week?.added || [];
+  if (filter === STATUS_FILTER_ALL) return { baselineRows, addedRows };
+  if (filter === RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY) return { baselineRows: [], addedRows };
+  return { baselineRows: baselineRows.filter(row => row.state === filter), addedRows: [] };
+}
+
+function _filterCount(week, filter) {
+  const { baselineRows, addedRows } = _filterRows(week, filter);
+  return baselineRows.length + addedRows.length;
+}
+
+// Only the dimensions actually on screen are explained. A week of reps-only and
+// timed work has nothing to disambiguate, so it gets no legend — and neither
+// does a not-comparable row, which prints its reason instead of any metric.
+function MetricLegend({ rows }) {
+  const styles = useThemedStyles(createStyles);
+  const shown = new Set();
+  for (const row of rows) {
+    if (row.state === RECOVERY_COMPARISON_STATES.NOT_COMPARABLE) continue;
+    for (const metric of row.metrics || []) shown.add(metric.metric);
+  }
+  const lines = ['top_load', 'volume'].filter(m => shown.has(m)).map(m => METRIC_EXPLANATIONS[m]);
+  if (lines.length === 0) return null;
+
+  return (
+    <View style={styles.legend}>
+      {lines.map(line => <Text key={line} style={styles.legendText}>{line}</Text>)}
+    </View>
+  );
+}
+
+function StatusFilterRow({ week, selected, onSelect }) {
+  const styles = useThemedStyles(createStyles);
+  return (
+    <View style={styles.chipRow}>
+      {STATUS_FILTERS.map(({ id, label }) => {
+        const count = _filterCount(week, id);
+        const isSelected = id === selected;
+        return (
+          <Pressable
+            key={id}
+            onPress={() => onSelect(id)}
+            style={[styles.chip, isSelected ? styles.chipSelected : null]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isSelected }}
+            accessibilityLabel={`${label}, ${count}`}
+          >
+            <Text style={[styles.chipText, isSelected ? styles.chipTextSelected : null]}>
+              {`${label} ${count}`}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function WeekEvidence({ week, unit, filter }) {
+  const styles = useThemedStyles(createStyles);
+  const { baselineRows, addedRows } = _filterRows(week, filter);
 
   if (baselineRows.length === 0 && addedRows.length === 0) {
-    return <Text style={styles.unavailablePanelText}>No exercise evidence for this week.</Text>;
+    return <Text style={styles.unavailablePanelText}>No exercises match this filter.</Text>;
   }
 
   return (
@@ -290,10 +384,37 @@ function WeekEvidence({ week, unit }) {
   );
 }
 
+// The one-line week-aware summary under the hero count. It states the week the
+// count belongs to and the remaining states in plain words, dropping any state
+// with nothing in it — a lifter reading "Week 3 · 2 rebuilding" should not also
+// have to read three zeroes. `Baseline met` is deliberately absent: it is the
+// hero, and repeating it here would read as a second, different number.
+function _summaryLine(weekLabel, summary) {
+  if (!weekLabel) return null;
+  const parts = [weekLabel];
+  const add = (count, noun) => { if (count > 0) parts.push(`${count} ${noun}`); };
+  add(summary?.rebuilding, 'rebuilding');
+  add(summary?.not_reintroduced, 'not reintroduced');
+  add(summary?.not_comparable, 'not comparable');
+  add(summary?.added_during_recovery, 'added during recovery');
+  return parts.join(' · ');
+}
+
+// Every piece of state below — selected week, disclosure, status filter — is a
+// view onto ONE block, so the caller mounts this keyed by `block.id`. Reusing
+// the instance across a history switch would carry the previous block's filter
+// and open disclosure onto a block that never had them, and a filter that
+// matched there can match nothing here, so a block with real evidence would
+// open on "No exercises match this filter" instead of its summary.
 function BlockEvidence({ block, weeks, notes, unit }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const [selectedWeekId, setSelectedWeekId] = useState(null);
+  // Details start collapsed (#758). The question this surface answers — how
+  // close am I to my normal training — is answered by the summary above; the
+  // per-exercise diagnostic panel is the follow-up, not the opening statement.
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
+  const [statusFilter, setStatusFilter] = useState(STATUS_FILTER_ALL);
 
   const comparison = useMemo(
     () => deriveRecoveryComparison({ block, weeks, notes }),
@@ -307,6 +428,12 @@ function BlockEvidence({ block, weeks, notes, unit }) {
 
   const totalBaselineExercises = selectedWeek ? (selectedWeek.exercises || []).length : 0;
   const metCount = selectedWeek ? (selectedWeek.summary?.baseline_met || 0) : 0;
+  const totalRows = totalBaselineExercises + (selectedWeek ? (selectedWeek.added || []).length : 0);
+  const weekLabel = selectedWeek ? `Week ${selectedWeek.week_number}` : null;
+  const summaryLine = _summaryLine(weekLabel, selectedWeek?.summary);
+  const heroLabel = `${weekLabel ? `${weekLabel}, ` : ''}${metCount} of ${totalBaselineExercises} baseline exercises met`;
+  const visible = _filterRows(selectedWeek, statusFilter);
+  const visibleRows = [...visible.baselineRows, ...visible.addedRows];
 
   return (
     <Card style={styles.card}>
@@ -339,28 +466,31 @@ function BlockEvidence({ block, weeks, notes, unit }) {
       {(comparison.status === RECOVERY_COMPARISON_STATUS.OK || comparison.status === RECOVERY_COMPARISON_STATUS.BASELINE_EMPTY) && (
         <>
           {selectedWeek && totalBaselineExercises > 0 && (
-            <View style={styles.heroBlock} accessible accessibilityLabel={`${metCount} of ${totalBaselineExercises} baseline exercises met`}>
-              <Text style={[HeroMetric.statPrimary, { color: colors.accent }]}>
-                {`${metCount} of ${totalBaselineExercises}`}
-              </Text>
-              <Text style={styles.heroCaption}>baseline exercises met</Text>
+            <View style={styles.summaryBlock}>
+              <View style={styles.heroBlock} accessible accessibilityLabel={heroLabel}>
+                <Text style={[HeroMetric.statPrimary, { color: colors.accent }]}>
+                  {`${metCount} of ${totalBaselineExercises}`}
+                </Text>
+                <Text style={styles.heroCaption}>baseline exercises met</Text>
+              </View>
+              {!!summaryLine && <Text style={styles.summaryLine}>{summaryLine}</Text>}
             </View>
           )}
 
           {weekResults.length > 1 && (
-            <View style={styles.weekChipRow}>
+            <View style={styles.chipRow}>
               {weekResults.map((w) => {
                 const selected = selectedWeek && w.week_id === selectedWeek.week_id;
                 return (
                   <Pressable
                     key={w.week_id}
                     onPress={() => setSelectedWeekId(w.week_id)}
-                    style={[styles.weekChip, selected ? styles.weekChipSelected : null]}
+                    style={[styles.chip, selected ? styles.chipSelected : null]}
                     accessibilityRole="button"
                     accessibilityState={{ selected }}
                     accessibilityLabel={`Week ${w.week_number}${w.completed_at ? ', completed' : ''}`}
                   >
-                    <Text style={[styles.weekChipText, selected ? styles.weekChipTextSelected : null]}>
+                    <Text style={[styles.chipText, selected ? styles.chipTextSelected : null]}>
                       {`Week ${w.week_number}`}
                     </Text>
                   </Pressable>
@@ -369,7 +499,46 @@ function BlockEvidence({ block, weeks, notes, unit }) {
             </View>
           )}
 
-          <WeekEvidence week={selectedWeek} unit={unit} />
+          <WeekUnavailableNotice week={selectedWeek} />
+
+          {selectedWeek?.status === RECOVERY_WEEK_STATUS.OK && totalRows === 0 && (
+            <Text style={styles.unavailablePanelText}>No exercise evidence for this week.</Text>
+          )}
+
+          {selectedWeek?.status === RECOVERY_WEEK_STATUS.OK && totalRows > 0 && (
+            <View style={styles.detailsPanel}>
+              <Pressable
+                onPress={() => setDetailsExpanded(expanded => !expanded)}
+                style={styles.detailsHeader}
+                accessibilityRole="button"
+                accessibilityLabel={detailsExpanded ? 'Collapse exercise details' : 'Expand exercise details'}
+                accessibilityState={{ expanded: detailsExpanded }}
+              >
+                <View style={styles.detailsHeaderContent}>
+                  <Text style={styles.detailsHeaderTitle}>Exercise details</Text>
+                  {!detailsExpanded && (
+                    <Text style={styles.detailsHeaderCount}>
+                      {`${totalRows} exercise${totalRows === 1 ? '' : 's'}`}
+                    </Text>
+                  )}
+                </View>
+                <MaterialIcons
+                  name={detailsExpanded ? 'expand-less' : 'expand-more'}
+                  size={18}
+                  color={colors.textMuted}
+                  accessible={false}
+                />
+              </Pressable>
+
+              {detailsExpanded && (
+                <View style={styles.detailsBody}>
+                  <StatusFilterRow week={selectedWeek} selected={statusFilter} onSelect={setStatusFilter} />
+                  <MetricLegend rows={visibleRows} />
+                  <WeekEvidence week={selectedWeek} unit={unit} filter={statusFilter} />
+                </View>
+              )}
+            </View>
+          )}
         </>
       )}
     </Card>
@@ -399,7 +568,10 @@ export function AnalyticsRecoverySection({
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const unit = useWeightUnit();
-  const [historyCollapsed, setHistoryCollapsed] = useState(false);
+  // Completed-block history starts collapsed for the same reason the details do
+  // (#758): its collapsed header already states how many blocks there are and
+  // names the latest, which is the whole answer for most visits.
+  const [historyCollapsed, setHistoryCollapsed] = useState(true);
   const [focusedBlockId, setFocusedBlockId] = useState(null);
   const { setIncludeInNormalAnalytics } = useRecoveryBlockLifecycle();
   const [inclusionBusyBlockId, setInclusionBusyBlockId] = useState(null);
@@ -532,7 +704,7 @@ export function AnalyticsRecoverySection({
         </Pressable>
       )}
 
-      <BlockEvidence block={focusedBlock} weeks={weeks} notes={notes} unit={unit} />
+      <BlockEvidence key={focusedBlock.id} block={focusedBlock} weeks={weeks} notes={notes} unit={unit} />
 
       {completedBlocks.length > 0 && (
         <View style={styles.historyPanel}>
@@ -679,6 +851,9 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 14,
     color: colors.textMuted,
   },
+  summaryBlock: {
+    gap: 4,
+  },
   heroBlock: {
     alignItems: 'flex-start',
     gap: 2,
@@ -690,12 +865,18 @@ const createStyles = (colors) => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  weekChipRow: {
+  summaryLine: {
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  // One chip system for both the week filter and the status filter, so the two
+  // rows read as the same control rather than two conventions.
+  chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
-  weekChip: {
+  chip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 14,
@@ -705,17 +886,55 @@ const createStyles = (colors) => StyleSheet.create({
     minHeight: 44,
     justifyContent: 'center',
   },
-  weekChipSelected: {
+  chipSelected: {
     backgroundColor: colors.accent,
     borderColor: colors.accent,
   },
-  weekChipText: {
+  chipText: {
     fontSize: 12,
     fontWeight: '700',
     color: colors.textMuted,
   },
-  weekChipTextSelected: {
+  chipTextSelected: {
     color: colors.onAccent,
+  },
+  detailsPanel: {
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+  },
+  detailsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    minHeight: 44,
+    paddingTop: 12,
+  },
+  detailsHeaderContent: {
+    flex: 1,
+  },
+  detailsHeaderTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  detailsHeaderCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  detailsBody: {
+    gap: 12,
+    paddingTop: 12,
+  },
+  legend: {
+    gap: 4,
+  },
+  legendText: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.textMuted,
   },
   evidenceGroup: {
     gap: 16,
