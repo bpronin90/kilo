@@ -378,6 +378,76 @@ describe('WeightScreen edit and delete correction flows', () => {
     expect(mockOnSaveWeight).toHaveBeenCalledTimes(1);
   });
 
+  // Feedback follow-up on #764 (finding 1, P1): WeightScreen stays mounted
+  // under `display: none` across tab switches, so the new-entry date state
+  // seeded at mount can go stale past local midnight. A default (never
+  // explicitly picked) weigh-in must call onSaveWeight with undefined so
+  // App.saveWeight recomputes localToday at submission time, rather than
+  // threading the possibly-stale date captured earlier — this preserves the
+  // "default-today" semantics the issue's own acceptance criteria require.
+  test('an untouched new-entry save calls onSaveWeight with no explicit date, even though the compact date row shows a value', async () => {
+    const mockOnSaveWeight = jest.fn(() => Promise.resolve(true));
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={mockOnSaveWeight} errorMessage="" saving={false} />
+      );
+    });
+    const root = component.root;
+
+    const inputs = root.findAll(n => n.type === 'TextInput');
+    render.act(() => {
+      inputs[0].props.onChangeText('190');
+    });
+
+    // The compact "Date · <value>" row is present (showing today's date) but
+    // never tapped — the user never explicitly picked a date.
+    const saveBtn = findPressableByText(root, 'Save weigh-in');
+    await render.act(async () => {
+      saveBtn.props.onPress();
+    });
+
+    expect(mockOnSaveWeight).toHaveBeenCalledWith(undefined);
+  });
+
+  // Companion case: once the user reveals the row and explicitly picks a
+  // historical date, that choice must still be threaded through as before.
+  test('an explicitly picked new-entry date is still passed to onSaveWeight', async () => {
+    const mockOnSaveWeight = jest.fn(() => Promise.resolve(true));
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={mockOnSaveWeight} errorMessage="" saving={false} />
+      );
+    });
+    const root = component.root;
+
+    render.act(() => {
+      root.findAll(n => n.type === 'TextInput')[0].props.onChangeText('190');
+    });
+
+    const toggle = root.findAllByProps({ testID: 'weight-new-date-toggle' })
+      .find(t => typeof t.props.onPress === 'function');
+    render.act(() => { toggle.props.onPress(); });
+    const dateBtn = root.findByProps({ accessibilityLabel: 'Weigh-in date' });
+    render.act(() => {
+      dateBtn.props.onPress();
+    });
+    const picker = root.findByProps({ testID: 'mock-datetimepicker' });
+    render.act(() => {
+      picker.props.onChange({}, new Date(2026, 4, 25));
+    });
+
+    const saveBtn = findPressableByText(root, 'Save weigh-in');
+    await render.act(async () => {
+      saveBtn.props.onPress();
+    });
+
+    expect(mockOnSaveWeight).toHaveBeenCalledWith('2026-05-25');
+  });
+
   test('edit submit shows validation error and does not call update for invalid weight', async () => {
     let component;
     render.act(() => {

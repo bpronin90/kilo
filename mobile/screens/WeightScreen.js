@@ -165,6 +165,13 @@ export function WeightScreen({
   const [editingId, setEditingId] = useState(null);
   const [localError, setLocalError] = useState('');
   const [newEntryDate, setNewEntryDate] = useState(localDateToday);
+  // Tracks whether the user explicitly picked a date for the new-entry form
+  // (#764 feedback). WeightScreen stays mounted under `display: none` across
+  // tab switches, so `newEntryDate` can silently go stale past local midnight.
+  // Only pass an explicit date to onSaveWeight when the user actually chose
+  // one; otherwise pass undefined so App.saveWeight recomputes localToday at
+  // submission time, preserving the original default-today semantics.
+  const [newEntryDateTouched, setNewEntryDateTouched] = useState(false);
   const [editDate, setEditDate] = useState('');
   // Reveal state for the compact "Date · <value>" secondary row (#764). Each
   // context (new entry vs. edit) collapses independently, and both close on
@@ -392,9 +399,10 @@ export function WeightScreen({
           setLocalError('Could not update weight entry. Please try again.');
         }
       } else {
-        const ok = await onSaveWeight(newEntryDate);
+        const ok = await onSaveWeight(newEntryDateTouched ? newEntryDate : undefined);
         if (ok) {
           setNewEntryDate(localDateToday());
+          setNewEntryDateTouched(false);
           setNewDateFieldOpen(false);
         }
       }
@@ -482,7 +490,10 @@ export function WeightScreen({
               <>
                 <DateEntryField
                   value={newEntryDate}
-                  onChangeDate={setNewEntryDate}
+                  onChangeDate={(d) => {
+                    setNewEntryDate(d);
+                    setNewEntryDateTouched(true);
+                  }}
                   a11yLabel="Weigh-in date"
                 />
                 <Pressable

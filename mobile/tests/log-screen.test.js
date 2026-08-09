@@ -695,6 +695,123 @@ describe('handleDoneOther flushes trailing edits when Done races an in-flight au
     expect(update).toHaveBeenLastCalledWith('n2', expect.objectContaining({ raw_text: 'B' }));
     expect(latest.hook.editingNoteId).not.toBe(null);
   });
+
+  // Feedback follow-up on #764 (finding 2, P2): deloadEditDate is seeded from
+  // the note's existing saved_at when the editor opens, so a title-/text-only
+  // edit that never touches the compact date row must NOT fall into the
+  // date-handling save branch and re-stamp saved_at to noon — that would
+  // desync the note's saved_at from its linked history record's completed_at.
+  test('a text-only deload edit leaves saved_at untouched when the date row was never opened', async () => {
+    const { DELOAD_NOTE_PREFIX } = require('../lib/LogScreenHelpers');
+    const originalSavedAt = '2026-01-01T09:47:00.000Z';
+    const note = {
+      id: 'd2',
+      title: `${DELOAD_NOTE_PREFIX}2026-01-01`,
+      raw_text: 'body',
+      saved_at: originalSavedAt,
+    };
+    const histRecord = {
+      id: 'h2', note_id: 'd2', deload_session_ordinal: 1, completed_at: originalSavedAt,
+    };
+
+    const update = jest.fn().mockResolvedValue({ id: 'd2', title: note.title, raw_text: 'body edited', saved_at: originalSavedAt });
+    const updateDeload = jest.fn().mockResolvedValue(true);
+
+    let latest = null;
+    function Harness({ notes, deloadHistory }) {
+      const hook = useLogOtherRoutineEditor({
+        notes,
+        currentId: 'other',
+        currentNote: { id: 'other' },
+        deloadHistory,
+        update,
+        add: jest.fn(),
+        remove: jest.fn(),
+        selectCurrent: jest.fn(),
+        updateDeload,
+        deleteDeloadNote: jest.fn(),
+        autosaveCurrentTimerRef: { current: null },
+        handleSave: jest.fn(),
+        currentEditorMode: 'read',
+        hasUnsavedCurrent: false,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+      });
+      latest = { hook };
+      return null;
+    }
+
+    render.act(() => { harnessRenderer = render.create(<Harness notes={[note]} deloadHistory={[histRecord]} />); });
+
+    render.act(() => { latest.hook.handleOpenOtherNote(note); });
+    // Text-only edit; the compact "Date · <value>" row is never opened and
+    // setDeloadEditDate is never called.
+    render.act(() => { latest.hook.setEditingText('body edited'); });
+
+    let savePromise;
+    render.act(() => { savePromise = latest.hook.handleSaveOtherNote(); });
+    await render.act(async () => { await savePromise; });
+
+    expect(update).toHaveBeenCalled();
+    const patch = update.mock.calls[0][1];
+    expect(patch).not.toHaveProperty('saved_at');
+    expect(updateDeload).not.toHaveBeenCalled();
+  });
+
+  // Companion case: once the user explicitly opens the row and picks a new
+  // date, the existing linked-record save semantics still apply.
+  test('an explicitly changed deload date still updates saved_at and the linked record', async () => {
+    const { DELOAD_NOTE_PREFIX } = require('../lib/LogScreenHelpers');
+    const originalSavedAt = '2026-01-01T12:00:00.000Z';
+    const note = {
+      id: 'd3',
+      title: `${DELOAD_NOTE_PREFIX}2026-01-01`,
+      raw_text: 'body',
+      saved_at: originalSavedAt,
+    };
+    const histRecord = {
+      id: 'h3', note_id: 'd3', deload_session_ordinal: 1, completed_at: originalSavedAt,
+    };
+
+    const update = jest.fn().mockResolvedValue({ id: 'd3', title: note.title, raw_text: 'body', saved_at: '2026-02-02T12:00:00.000Z' });
+    const updateDeload = jest.fn().mockResolvedValue(true);
+
+    let latest = null;
+    function Harness({ notes, deloadHistory }) {
+      const hook = useLogOtherRoutineEditor({
+        notes,
+        currentId: 'other',
+        currentNote: { id: 'other' },
+        deloadHistory,
+        update,
+        add: jest.fn(),
+        remove: jest.fn(),
+        selectCurrent: jest.fn(),
+        updateDeload,
+        deleteDeloadNote: jest.fn(),
+        autosaveCurrentTimerRef: { current: null },
+        handleSave: jest.fn(),
+        currentEditorMode: 'read',
+        hasUnsavedCurrent: false,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+      });
+      latest = { hook };
+      return null;
+    }
+
+    render.act(() => { harnessRenderer = render.create(<Harness notes={[note]} deloadHistory={[histRecord]} />); });
+
+    render.act(() => { latest.hook.handleOpenOtherNote(note); });
+    // Explicit user change via the exported (wrapped) setDeloadEditDate.
+    render.act(() => { latest.hook.setDeloadEditDate('2026-02-02'); });
+
+    let savePromise;
+    render.act(() => { savePromise = latest.hook.handleSaveOtherNote(); });
+    await render.act(async () => { await savePromise; });
+
+    const patch = update.mock.calls[0][1];
+    expect(patch.saved_at).toBe('2026-02-02T12:00:00.000Z');
+    expect(updateDeload).toHaveBeenCalledWith('h3', expect.objectContaining({ completed_at: '2026-02-02T12:00:00.000Z' }));
+  });
 });
 
 // ── Web edit path: explicit non-double-tap edit control (#314) ───────────────
