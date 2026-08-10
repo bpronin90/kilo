@@ -1,6 +1,7 @@
 import React from 'react';
 import render from 'react-test-renderer';
 import { LogScreen } from '../screens/LogScreen';
+import { LogPreviousRoutines } from '../components/LogPreviousRoutines';
 import { LogEmptyState } from '../components/LogEmptyState';
 import { MoreScreen } from '../screens/MoreScreen';
 import * as useEntries from '../hooks/useEntries';
@@ -1033,6 +1034,21 @@ const buttonByText = (root, text) => {
   }
   return null;
 };
+
+// More Routines' disclosure state lives in LogScreen now (#775), so a
+// standalone render of the list has to supply it. This harness stands in for
+// that owner in the component-level tests below; the screen-level tests drive
+// the real one.
+function ControlledPreviousRoutines(props) {
+  const [expanded, setExpanded] = React.useState(!!props.expanded);
+  return (
+    <LogPreviousRoutines
+      {...props}
+      expanded={expanded}
+      onToggleExpanded={() => setExpanded(e => !e)}
+    />
+  );
+}
 
 function ControlledLogScreen(props) {
   const [text, setText] = React.useState(props.initialText || 'Monday\n+Lifting\n-Bench\n135 5,5,5');
@@ -3069,7 +3085,6 @@ describe('LogActiveRoutineCard: header collapses, body edits (separate handlers)
 // multi-width visual checks require manual verification.
 describe('Routine-card header/action containment (#710, #711)', () => {
   const { LogActiveRoutineCard } = require('../components/LogActiveRoutineCard');
-  const { LogPreviousRoutines } = require('../components/LogPreviousRoutines');
 
   const LONG_TITLE = 'Return (ease the back) rehab';
 
@@ -3161,7 +3176,7 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     let component;
     render.act(() => {
       component = render.create(
-        <LogPreviousRoutines
+        <ControlledPreviousRoutines
           otherNotes={[note]}
           handleViewOtherNote={jest.fn()}
           viewingNoteId="r1"
@@ -3223,7 +3238,7 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     let routinesComponent;
     render.act(() => {
       routinesComponent = render.create(
-        <LogPreviousRoutines
+        <ControlledPreviousRoutines
           otherNotes={[]}
           handleViewOtherNote={jest.fn()}
           viewingNoteId={null}
@@ -3251,14 +3266,14 @@ describe('Routine-card header/action containment (#710, #711)', () => {
 
   test('LogPreviousRoutines: a collapsed More Routines list renders only the disclosure toggle and a New Note affordance (#756)', () => {
     const notes = [
-      { id: 'r1', title: 'Routine One', raw_text: 'MONDAY\n-Squat 3x5\n', updated_at: '2026-01-01T00:00:00.000Z' },
-      { id: 'r2', title: 'Routine Two', raw_text: 'MONDAY\n-Bench 3x5\n', updated_at: '2026-01-02T00:00:00.000Z' },
+      { id: 'r1', title: 'Routine One', raw_text: 'MONDAY\n-Squat 3x5\n', saved_at: '2026-01-01T00:00:00.000Z' },
+      { id: 'r2', title: 'Routine Two', raw_text: 'MONDAY\n-Bench 3x5\n', saved_at: '2026-01-02T00:00:00.000Z' },
     ];
     const handleCreateRoutine = jest.fn();
     let component;
     render.act(() => {
       component = render.create(
-        <LogPreviousRoutines
+        <ControlledPreviousRoutines
           otherNotes={notes}
           handleViewOtherNote={jest.fn()}
           viewingNoteId={null}
@@ -3326,7 +3341,6 @@ describe('Routine-card header/action containment (#710, #711)', () => {
 // changing what they do.
 describe('Log action hierarchy (#711)', () => {
   const { LogActiveRoutineCard } = require('../components/LogActiveRoutineCard');
-  const { LogPreviousRoutines } = require('../components/LogPreviousRoutines');
 
   const renderActiveCard = (overrides = {}) => {
     const props = {
@@ -3459,7 +3473,7 @@ describe('Log action hierarchy (#711)', () => {
         ...overrides,
       };
       let component;
-      render.act(() => { component = render.create(<LogPreviousRoutines {...props} />); });
+      render.act(() => { component = render.create(<ControlledPreviousRoutines {...props} />); });
       const root = component.root;
       // Routine management is collapsed by default (#724); open it so the card
       // and its expanded-body controls are mounted.
@@ -3512,7 +3526,6 @@ describe('Log action hierarchy (#711)', () => {
 // actions call straight through to the same handlers (`handleCreateRoutine`,
 // `handleSwitchCurrent`) that already own confirmation/eligibility.
 describe('LogPreviousRoutines: compact New Note and set-current actions (#756)', () => {
-  const { LogPreviousRoutines } = require('../components/LogPreviousRoutines');
 
   const notes = [
     { id: 'r1', title: 'Routine One', updated_at: '2026-01-01T00:00:00.000Z' },
@@ -3535,7 +3548,7 @@ describe('LogPreviousRoutines: compact New Note and set-current actions (#756)',
   const renderList = (overrides = {}) => {
     const props = { ...baseProps, handleSwitchCurrent: jest.fn(), handleCreateRoutine: jest.fn(), ...overrides };
     let component;
-    render.act(() => { component = render.create(<LogPreviousRoutines {...props} />); });
+    render.act(() => { component = render.create(<ControlledPreviousRoutines {...props} />); });
     return { root: component.root, props };
   };
 
@@ -3627,14 +3640,13 @@ describe('LogPreviousRoutines: compact New Note and set-current actions (#756)',
 // killing double-tap-to-edit on saved routines. This pins the restored 300ms
 // double-tap that opens the routine in the editor.
 describe('LogPreviousRoutines: double-tap viewed routine opens editor', () => {
-  const { LogPreviousRoutines } = require('../components/LogPreviousRoutines');
 
   test('two quick taps on the viewed body call handleEditViewedNote; one tap does not', () => {
     const handleEditViewedNote = jest.fn();
     let component;
     render.act(() => {
       component = render.create(
-        <LogPreviousRoutines
+        <ControlledPreviousRoutines
           otherNotes={[{ id: 'r1', title: 'Routine 1', raw_text: 'x' }]}
           handleViewOtherNote={jest.fn()}
           viewingNoteId="r1"
@@ -3663,14 +3675,13 @@ describe('LogPreviousRoutines: double-tap viewed routine opens editor', () => {
 });
 
 describe('LogPreviousRoutines: Week A/B control on an expanded non-current routine (#687)', () => {
-  const { LogPreviousRoutines } = require('../components/LogPreviousRoutines');
 
   test('an expanded non-current A/B routine shows a Week toggle with an accessible label and role', () => {
     const handleToggleViewingWeek = jest.fn();
     let component;
     render.act(() => {
       component = render.create(
-        <LogPreviousRoutines
+        <ControlledPreviousRoutines
           otherNotes={[{ id: 'r1', title: 'Routine 1', raw_text: 'MONDAY\n-Squat 3x5\n---\nMONDAY\n-Deadlift 3x5\n' }]}
           handleViewOtherNote={jest.fn()}
           viewingNoteId="r1"
@@ -3703,7 +3714,7 @@ describe('LogPreviousRoutines: Week A/B control on an expanded non-current routi
     let component;
     render.act(() => {
       component = render.create(
-        <LogPreviousRoutines
+        <ControlledPreviousRoutines
           otherNotes={[{ id: 'r1', title: 'Routine 1', raw_text: 'MONDAY\n-Squat 3x5\n' }]}
           handleViewOtherNote={jest.fn()}
           viewingNoteId="r1"
@@ -3735,7 +3746,6 @@ describe('LogPreviousRoutines: Week A/B control on an expanded non-current routi
 // measure Yoga layout, so these pin the render/props contract; the multi-width
 // and light/dark visual checks in the acceptance criteria require manual review.
 describe('LogPreviousRoutines: collapsed routine management (#724)', () => {
-  const { LogPreviousRoutines } = require('../components/LogPreviousRoutines');
 
   const baseProps = {
     handleViewOtherNote: jest.fn(),
@@ -3753,7 +3763,7 @@ describe('LogPreviousRoutines: collapsed routine management (#724)', () => {
 
   const renderList = (overrides = {}) => {
     let component;
-    render.act(() => { component = render.create(<LogPreviousRoutines {...baseProps} {...overrides} />); });
+    render.act(() => { component = render.create(<ControlledPreviousRoutines {...baseProps} {...overrides} />); });
     return component.root;
   };
 
@@ -3791,11 +3801,11 @@ describe('LogPreviousRoutines: collapsed routine management (#724)', () => {
     expect(latestValue(root)).toBe('Only One');
   });
 
-  test('many routines: the latest summary names the most recently updated one regardless of list order', () => {
+  test('many routines: the latest summary names the most recently created one regardless of list order', () => {
     const root = renderList({ otherNotes: [
-      { id: 'r1', title: 'Older', updated_at: '2026-01-01T00:00:00.000Z' },
-      { id: 'r2', title: 'Newest', updated_at: '2026-03-01T00:00:00.000Z' },
-      { id: 'r3', title: 'Middle', updated_at: '2026-02-01T00:00:00.000Z' },
+      { id: 'r1', title: 'Older', saved_at: '2026-01-01T00:00:00.000Z' },
+      { id: 'r2', title: 'Newest', saved_at: '2026-03-01T00:00:00.000Z' },
+      { id: 'r3', title: 'Middle', saved_at: '2026-02-01T00:00:00.000Z' },
     ] });
     expect(countText(root)).toEqual(['3 routines']);
     expect(latestValue(root)).toBe('Newest');
@@ -3835,7 +3845,6 @@ describe('LogPreviousRoutines: collapsed routine management (#724)', () => {
 });
 
 describe('LogPreviousRoutines: relocated Start recovery block entry point (#724)', () => {
-  const { LogPreviousRoutines } = require('../components/LogPreviousRoutines');
 
   const baseProps = {
     otherNotes: [{ id: 'r1', title: 'Routine 1', updated_at: '2026-01-01T00:00:00.000Z' }],
@@ -3854,7 +3863,7 @@ describe('LogPreviousRoutines: relocated Start recovery block entry point (#724)
 
   const renderList = (overrides = {}) => {
     let component;
-    render.act(() => { component = render.create(<LogPreviousRoutines {...baseProps} {...overrides} />); });
+    render.act(() => { component = render.create(<ControlledPreviousRoutines {...baseProps} {...overrides} />); });
     return component.root;
   };
 
@@ -8961,5 +8970,506 @@ describe('Log retry does not flash the empty state (#737 review)', () => {
 
     expect(hasBanner(component)).toBe(false);
     expect(emptyStates(component)).toBe(1);
+  });
+});
+
+// ── R2b: one date with one meaning, and disclosures that survive (#775) ───────
+
+describe('More Routines: the row date is the routine\'s creation day (#775)', () => {
+  const baseProps = {
+    handleViewOtherNote: jest.fn(),
+    viewingNoteId: null,
+    viewingNote: null,
+    viewingNoteDayGroups: [],
+    viewingHasABWeeks: false,
+    viewingEffectiveWeek: null,
+    handleToggleViewingWeek: jest.fn(),
+    handleSwitchCurrent: jest.fn(),
+    handleEditViewedNote: jest.fn(),
+    handleDeleteRoutine: jest.fn(),
+    handleCreateRoutine: jest.fn(),
+  };
+
+  const renderList = (overrides = {}) => {
+    let component;
+    render.act(() => {
+      component = render.create(<ControlledPreviousRoutines {...baseProps} {...overrides} />);
+    });
+    return component.root;
+  };
+
+  // The row header's own accessible name — never the disclosure's.
+  const rowLabels = (root) => root.findAll(
+    n => typeof n.type === 'string'
+      && n.props
+      && typeof n.props.accessibilityLabel === 'string'
+      && /^(Expand|Collapse) /.test(n.props.accessibilityLabel)
+      && !/routine management$/.test(n.props.accessibilityLabel)
+  ).map(n => n.props.accessibilityLabel);
+
+  const subLines = (root) => root.findAll(
+    n => n.type === 'Text' && typeof n.props.children === 'string' && /^(Week [AB] · )?Created /.test(n.props.children)
+  ).map(n => n.props.children);
+
+  const expectedDate = (iso) => new Date(
+    Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10))
+  ).toLocaleDateString();
+
+  test('the date comes from saved_at, and an edit-stamped updated_at is never read', () => {
+    // The exact regression: `updated_at` is the sync conflict cursor, so an
+    // edit, a Week A/B tap, a sync, or a restored backup rewrites it. Only
+    // saved_at answers "when did I make this routine?".
+    const root = renderList({ otherNotes: [{
+      id: 'wn_2025-11-02_1', title: 'Push', saved_at: '2026-01-05T00:00:00.000Z',
+      updated_at: '2026-08-09T00:00:00.000Z',
+    }] });
+    expandRoutineManagement(root);
+
+    expect(subLines(root)).toEqual([`Created ${expectedDate('2026-01-05')}`]);
+    expect(rowLabels(root)).toEqual([`Expand Push, Created ${expectedDate('2026-01-05')}`]);
+  });
+
+  test('with no saved_at the creation day encoded in the note id stands in', () => {
+    const root = renderList({ otherNotes: [{
+      id: 'wn_2025-11-02_1762000000000', title: 'Legacy', updated_at: '2026-08-09T00:00:00.000Z',
+    }] });
+    expandRoutineManagement(root);
+
+    expect(subLines(root)).toEqual([`Created ${expectedDate('2025-11-02')}`]);
+    expect(rowLabels(root)).toEqual([`Expand Legacy, Created ${expectedDate('2025-11-02')}`]);
+  });
+
+  test('with neither, no date is shown or announced — the title still identifies the row', () => {
+    const root = renderList({ otherNotes: [{
+      id: 'imported-1', title: 'Imported', updated_at: '2026-08-09T00:00:00.000Z',
+    }] });
+    expandRoutineManagement(root);
+
+    expect(subLines(root)).toEqual([]);
+    expect(rowLabels(root)).toEqual(['Expand Imported']);
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Imported').length).toBeGreaterThan(0);
+  });
+
+  test('the viewed row keeps its Week A/B prefix in front of the creation date', () => {
+    const note = { id: 'r1', title: 'AB', raw_text: 'MONDAY\n-Squat\n---\nMONDAY\n-Bench\n', saved_at: '2026-01-05T00:00:00.000Z' };
+    const root = renderList({
+      otherNotes: [note],
+      viewingNoteId: 'r1',
+      viewingNote: note,
+      viewingHasABWeeks: true,
+      viewingEffectiveWeek: 'B',
+    });
+    expandRoutineManagement(root);
+
+    expect(subLines(root)).toEqual([`Week B · Created ${expectedDate('2026-01-05')}`]);
+    expect(rowLabels(root)).toEqual([`Collapse AB, Week B · Created ${expectedDate('2026-01-05')}`]);
+  });
+
+  test('list and Latest: agree — newest created first, undated last in notebook order', () => {
+    const otherNotes = [
+      { id: 'a', title: 'Undated First', updated_at: '2026-08-09T00:00:00.000Z' },
+      { id: 'b', title: 'Oldest', saved_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-08-10T00:00:00.000Z' },
+      { id: 'wn_2026-05-05_1', title: 'Id Dated' },
+      { id: 'c', title: 'Undated Second' },
+      { id: 'd', title: 'Newest', saved_at: '2026-07-01T00:00:00.000Z', updated_at: '2026-01-02T00:00:00.000Z' },
+    ];
+    const collapsed = renderList({ otherNotes });
+    const latest = collapsed.findAll(
+      n => n.type === 'Text' && Array.isArray(n.props.children) && n.props.children[0] === 'Latest: '
+    )[0];
+    expect(latest.props.children[1].props.children).toBe('Newest');
+
+    const root = renderList({ otherNotes });
+    expandRoutineManagement(root);
+    expect(rowLabels(root).map(l => l.replace(/^Expand /, '').split(',')[0])).toEqual([
+      'Newest', 'Id Dated', 'Oldest', 'Undated First', 'Undated Second',
+    ]);
+  });
+});
+
+describe('Recovery weeks read their own notes (#775)', () => {
+  const { LogRecoverySection } = require('../components/LogRecoverySection');
+  const { buildDayGroups } = require('../screens/log/logScreenHelpers');
+  const { parseWorkoutNote: parse } = require('../lib/parser');
+
+  const BLOCK = {
+    id: 'rb775', baseline_note_id: 'baseline', baseline_note_title: 'Push Day',
+    started_at: '2026-05-01T00:00:00.000Z', completed_at: null, deleted_at: null,
+  };
+  const week = (overrides = {}) => ({
+    id: 'rw1', block_id: 'rb775', note_id: 'weeknote', week_number: 1,
+    completed_at: null, deleted_at: null, ...overrides,
+  });
+  const WEEK_NOTE = { id: 'weeknote', title: 'Recovery Week Note', raw_text: 'Monday\n+Lifting\n-Overhead Press\n65 5,5,5' };
+
+  const renderSection = (props = {}) => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <LogRecoverySection blocks={[BLOCK]} weeks={[week()]} notes={[WEEK_NOTE]} {...props} />
+      );
+    });
+    return component.root;
+  };
+
+  const rowMain = (root, label) => root.findAll(n => n.props && n.props.accessibilityLabel === label)[0];
+  const hasExercise = (root, name) => root.findAll(
+    n => n.type === 'Text' && String(n.props.children ?? '').includes(name)
+  ).length > 0;
+
+  test('a tapped week renders its note inline, in the row the user tapped', () => {
+    const onViewNote = jest.fn();
+    const root = renderSection({ onViewNote });
+
+    const row = rowMain(root, 'View Recovery Week Note, Recovery Week 1');
+    expect(typeof row.props.onPress).toBe('function');
+    expect(hasExercise(root, 'Overhead Press')).toBe(false);
+    render.act(() => { row.props.onPress(); });
+    expect(onViewNote).toHaveBeenCalledWith(WEEK_NOTE);
+
+    // The owner echoes the selection back through the shared viewer state.
+    const viewing = renderSection({
+      viewingNoteId: 'weeknote',
+      viewingNote: WEEK_NOTE,
+      viewingNoteDayGroups: buildDayGroups(parse(WEEK_NOTE.raw_text).sections),
+    });
+    expect(hasExercise(viewing, 'Overhead Press')).toBe(true);
+  });
+
+  // #775 review: `viewingNoteDayGroups` is the SELECTED half of an A/B note, so
+  // an inline viewer without the Week switch strands the other week — a
+  // regression against the More Routines handoff this replaced.
+  test('an A/B recovery-week note keeps its Week switch inline, with the pill contract it has in More Routines', () => {
+    const AB_NOTE = {
+      id: 'weeknote', title: 'AB Week',
+      raw_text: 'Monday\n+Lifting\n-Overhead Press\n65 5,5,5\n---\nTuesday\n+Lifting\n-Chin Up\n0 5,5,5',
+    };
+    const onToggleViewingWeek = jest.fn();
+    const viewingWeek = (week) => renderSection({
+      notes: [AB_NOTE],
+      viewingNoteId: 'weeknote',
+      viewingNote: AB_NOTE,
+      viewingHasABWeeks: true,
+      viewingEffectiveWeek: week,
+      viewingNoteDayGroups: buildDayGroups(
+        parse(week === 'B' ? AB_NOTE.raw_text.split('\n---\n')[1] : AB_NOTE.raw_text.split('\n---\n')[0]).sections
+      ),
+      onToggleViewingWeek,
+    });
+
+    const onA = viewingWeek('A');
+    expect(hasExercise(onA, 'Overhead Press')).toBe(true);
+    expect(hasExercise(onA, 'Chin Up')).toBe(false);
+    const pill = onA.findAll(
+      n => n.props && n.props.accessibilityLabel === 'Switch to Week B' && typeof n.props.onPress === 'function'
+    )[0];
+    expect(pill).toBeTruthy();
+    expect(pill.props.accessibilityRole).toBe('button');
+    expect(pill.props.accessibilityState).toEqual({ selected: false });
+    render.act(() => { pill.props.onPress(); });
+    expect(onToggleViewingWeek).toHaveBeenCalledTimes(1);
+
+    // The owner flips the selection; the other half is now readable here.
+    const onB = viewingWeek('B');
+    expect(hasExercise(onB, 'Chin Up')).toBe(true);
+    expect(hasExercise(onB, 'Overhead Press')).toBe(false);
+    const back = onB.findAll(
+      n => n.props && n.props.accessibilityLabel === 'Switch to Week A' && typeof n.props.onPress === 'function'
+    )[0];
+    expect(back).toBeTruthy();
+    expect(back.props.accessibilityState).toEqual({ selected: true });
+  });
+
+  test('a single-week recovery note shows no Week switch', () => {
+    const root = renderSection({
+      viewingNoteId: 'weeknote',
+      viewingNote: WEEK_NOTE,
+      viewingNoteDayGroups: buildDayGroups(parse(WEEK_NOTE.raw_text).sections),
+    });
+    expect(root.findAll(
+      n => n.props && /^Switch to Week [AB]$/.test(n.props.accessibilityLabel || '')
+    ).length).toBe(0);
+  });
+
+  test('an untitled note that exists is still named Untitled Routine and still readable', () => {
+    const untitled = { id: 'weeknote', title: '', raw_text: 'Monday\n+Lifting\n-Row\n95 5,5,5' };
+    const root = renderSection({ notes: [untitled] });
+
+    const row = rowMain(root, 'View Untitled Routine, Recovery Week 1');
+    expect(row).toBeTruthy();
+    expect(row.props.accessibilityRole).toBe('button');
+    expect(typeof row.props.onPress).toBe('function');
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Note unavailable').length).toBe(0);
+  });
+
+  for (const [shape, weekOverrides, notes] of [
+    ['a note_id naming a note that is gone', { note_id: 'gone' }, []],
+    ['a null note_id', { note_id: null }, [WEEK_NOTE]],
+  ]) {
+    test(`${shape}: the row says Note unavailable and offers no read action`, () => {
+      const onViewNote = jest.fn();
+      const onUnlinkWeek = jest.fn();
+      const root = renderSection({ weeks: [week(weekOverrides)], notes, onViewNote, onUnlinkWeek });
+
+      const row = rowMain(root, 'Recovery Week 1, note unavailable');
+      expect(row).toBeTruthy();
+      expect(row.props.onPress).toBeUndefined();
+      expect(row.props.accessibilityRole).toBeUndefined();
+      expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Note unavailable').length).toBe(1);
+      // 'Untitled Routine' stays reserved for notes that exist.
+      expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Untitled Routine').length).toBe(0);
+      // Nothing is repaired, rewritten, or unlinked just by rendering the row.
+      expect(onViewNote).not.toHaveBeenCalled();
+      expect(onUnlinkWeek).not.toHaveBeenCalled();
+    });
+
+    test(`${shape}: Unlink survives and its confirmation claims nothing about a missing note`, async () => {
+      const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+      const onUnlinkWeek = jest.fn().mockResolvedValue({ ok: true });
+      const root = renderSection({ weeks: [week(weekOverrides)], notes, onUnlinkWeek });
+
+      const unlink = root.findAll(
+        n => n.props && n.props.accessibilityLabel === 'Unlink Week 1' && typeof n.props.onPress === 'function'
+      )[0];
+      expect(unlink).toBeTruthy();
+      render.act(() => { unlink.props.onPress(); });
+
+      const [title, message, buttons] = alertSpy.mock.calls[0];
+      expect(title).toBe('Unlink Week 1?');
+      expect(message).toBe('Week 1 will be removed from this recovery block.');
+      expect(message).not.toContain('Untitled Routine');
+      expect(message).not.toContain('stays editable');
+
+      await render.act(async () => { await buttons.find(b => b.text === 'Unlink').onPress(); });
+      expect(onUnlinkWeek).toHaveBeenCalledWith({ blockId: 'rb775', weekId: 'rw1' });
+      alertSpy.mockRestore();
+    });
+  }
+
+  test('a linked note that exists keeps the full unlink confirmation', () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const root = renderSection({ onUnlinkWeek: jest.fn() });
+    const unlink = root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'Unlink Week 1' && typeof n.props.onPress === 'function'
+    )[0];
+    render.act(() => { unlink.props.onPress(); });
+
+    expect(alertSpy.mock.calls[0][1]).toBe(
+      '"Recovery Week Note" will be removed from this recovery block. The note itself is kept and stays editable.'
+    );
+    alertSpy.mockRestore();
+  });
+});
+
+describe('Log disclosures and Recovery reads at the screen level (#775)', () => {
+  const CURRENT = {
+    id: 'note1', title: 'Routine A',
+    raw_text: 'Monday\n+Lifting\n-Overhead Press\n95 5,5,5',
+    saved_at: '2026-06-01T12:00:00.000Z',
+  };
+  const OTHER = {
+    id: 'r1', title: 'Routine B',
+    raw_text: 'Tuesday\n+Lifting\n-Squat\n225 5,5,5',
+    saved_at: '2026-05-01T12:00:00.000Z',
+  };
+  const DELOAD = {
+    id: 'd1', title: 'Deload · Week 1',
+    raw_text: 'Monday\n+Lifting\n-Chin Up\n0 5,5,5',
+    saved_at: '2026-04-01T12:00:00.000Z',
+  };
+  const BLOCK = {
+    id: 'rb775s', baseline_note_id: 'note1', baseline_note_title: 'Routine A',
+    started_at: '2026-05-01T00:00:00.000Z', completed_at: null, deleted_at: null,
+  };
+
+  const setup = ({ weekNoteId = null, deloadMode = true } = {}) => {
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [CURRENT, OTHER, DELOAD], currentId: 'note1', currentNote: CURRENT,
+      deloadNotes: [DELOAD], loading: false, error: null,
+      refresh: jest.fn(), selectCurrent: jest.fn(),
+      update: jest.fn().mockResolvedValue({}), add: jest.fn(), remove: jest.fn(),
+    });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: [], toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({
+      note: { raw_text: 'Monday\n+Lifting\n-Bench\n95 5,5,5', saved_at: '2026-07-01T00:00:00.000Z' },
+      loading: false, save: jest.fn(), clear: jest.fn(),
+    });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: deloadMode });
+    const weeks = weekNoteId
+      ? [{ id: 'rw1', block_id: BLOCK.id, note_id: weekNoteId, week_number: 1, completed_at: null, deleted_at: null }]
+      : [];
+    useEntries.useRecoveryBlockState.mockReturnValue({
+      activeBlock: weekNoteId ? BLOCK : null,
+      blocks: weekNoteId ? [BLOCK] : [],
+      weeks,
+      recoveryWeekNumberByNoteId: weekNoteId ? { [weekNoteId]: 1 } : {},
+      refresh: jest.fn(), pendingRecovery: [], recoveryPendingError: null,
+      ready: true, loading: false, refreshing: false, stale: false, error: null,
+      mutationsAllowed: true,
+    });
+    useEntries.useStartRecoveryBlock.mockReturnValue({ startBlock: jest.fn() });
+  };
+
+  const mount = (props = {}) => {
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen {...props} />); });
+    return component;
+  };
+
+  const hasText = (component, needle) => component.root.findAll(
+    n => n.type === 'Text'
+      && String(Array.isArray(n.props.children) ? n.props.children.join('') : n.props.children ?? '').includes(needle)
+  ).length > 0;
+
+  const switchTo = (component, tab) => {
+    const toggle = pressableAround(component.root, t => t === tab);
+    render.act(() => { toggle.props.onPress(); });
+  };
+
+  const routineToggle = (component) => component.root.findAll(
+    n => n.props
+      && /^(Expand|Collapse) routine management$/.test(n.props.accessibilityLabel || '')
+      && typeof n.props.onPress === 'function'
+  )[0];
+  const routineExpanded = (component) => routineToggle(component).props.accessibilityState.expanded;
+  const toggleRoutineManagement = (component) => {
+    const toggle = routineToggle(component);
+    render.act(() => { toggle.props.onPress(); });
+  };
+
+  const deloadToggle = (component) => component.root.findAll(
+    n => n.props
+      && /^(Expand|Collapse) deload week$/.test(n.props.accessibilityLabel || '')
+      && typeof n.props.onPress === 'function'
+  )[0];
+  const deloadExpanded = (component) => deloadToggle(component).props.accessibilityState.expanded;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setup();
+  });
+
+  test('tapping a Recovery week renders that note in the Recovery card, leaving More Routines alone', () => {
+    setup({ weekNoteId: 'r1' });
+    const component = mount();
+    expect(routineExpanded(component)).toBe(false);
+    expect(hasText(component, 'Squat')).toBe(false);
+
+    const row = component.root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'View Routine B, Recovery Week 1' && typeof n.props.onPress === 'function'
+    )[0];
+    render.act(() => { row.props.onPress(); });
+
+    expect(hasText(component, 'Squat')).toBe(true);
+    // The read happened where the tap did: the routine-management disclosure
+    // neither opened nor changed state.
+    expect(routineExpanded(component)).toBe(false);
+  });
+
+  test('an A/B recovery week can be read week by week without leaving the Recovery card', () => {
+    // The whole note is never rendered at once — the viewer projects one half —
+    // so the inline read is only complete if its Week switch works here (#775
+    // review).
+    const AB = {
+      id: 'ab1', title: 'AB Routine',
+      raw_text: 'Monday\n+Lifting\n-Squat\n225 5,5,5\n---\nTuesday\n+Lifting\n-Chin Up\n0 5,5,5',
+      saved_at: '2026-05-02T12:00:00.000Z',
+    };
+    setup({ weekNoteId: 'ab1' });
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [CURRENT, AB, DELOAD], currentId: 'note1', currentNote: CURRENT,
+      deloadNotes: [DELOAD], loading: false, error: null,
+      refresh: jest.fn(), selectCurrent: jest.fn(),
+      update: jest.fn().mockResolvedValue({ ...AB, activeWeek: 'B' }), add: jest.fn(), remove: jest.fn(),
+    });
+    const component = mount();
+
+    const row = component.root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'View AB Routine, Recovery Week 1' && typeof n.props.onPress === 'function'
+    )[0];
+    render.act(() => { row.props.onPress(); });
+    expect(hasText(component, 'Squat')).toBe(true);
+    expect(hasText(component, 'Chin Up')).toBe(false);
+
+    const pill = component.root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'Switch to Week B' && typeof n.props.onPress === 'function'
+    )[0];
+    expect(pill).toBeTruthy();
+    render.act(() => { pill.props.onPress(); });
+
+    expect(hasText(component, 'Chin Up')).toBe(true);
+    expect(hasText(component, 'Squat')).toBe(false);
+    // Still read in place: the routine-management disclosure never opened.
+    expect(routineExpanded(component)).toBe(false);
+  });
+
+  test('a recovery week linked to the CURRENT routine is readable too, not an inert press', () => {
+    setup({ weekNoteId: 'note1' });
+    const component = mount();
+    // The active card renders the editor's text, not this note's body.
+    expect(hasText(component, 'Overhead Press')).toBe(false);
+
+    const row = component.root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'View Routine A, Recovery Week 1' && typeof n.props.onPress === 'function'
+    )[0];
+    expect(row).toBeTruthy();
+    render.act(() => { row.props.onPress(); });
+
+    expect(hasText(component, 'Overhead Press')).toBe(true);
+    expect(routineExpanded(component)).toBe(false);
+  });
+
+  test('More Routines keeps its disclosure state across Routine→Deload→Routine', () => {
+    const component = mount();
+    toggleRoutineManagement(component);
+    expect(routineExpanded(component)).toBe(true);
+
+    switchTo(component, 'Deload');
+    switchTo(component, 'Routine');
+    expect(routineExpanded(component)).toBe(true);
+
+    toggleRoutineManagement(component);
+    switchTo(component, 'Deload');
+    switchTo(component, 'Routine');
+    expect(routineExpanded(component)).toBe(false);
+  });
+
+  test('a consumed reveal is not replayed by the remount a view switch causes', () => {
+    const component = mount({ navNoteId: 'r1', navNoteKey: 1 });
+    // The handoff opened the disclosure for its target…
+    expect(routineExpanded(component)).toBe(true);
+    // …the user closed it again…
+    toggleRoutineManagement(component);
+    expect(routineExpanded(component)).toBe(false);
+
+    // …and the Routine↔Deload remount must not re-apply the same spent request.
+    switchTo(component, 'Deload');
+    switchTo(component, 'Routine');
+    expect(routineExpanded(component)).toBe(false);
+  });
+
+  test('the Deload Week card keeps its disclosure state across Deload→Routine→Deload', () => {
+    const component = mount();
+    switchTo(component, 'Deload');
+    expect(deloadExpanded(component)).toBe(true);
+
+    render.act(() => { deloadToggle(component).props.onPress(); });
+    expect(deloadExpanded(component)).toBe(false);
+
+    switchTo(component, 'Routine');
+    switchTo(component, 'Deload');
+    expect(deloadExpanded(component)).toBe(false);
+  });
+
+  test('a deload-note handoff does not reveal More Routines, which owns none of its notes', () => {
+    const component = mount({ navNoteId: 'd1', navNoteKey: 1 });
+    // The intent switched the screen to the view that owns the note.
+    expect(hasText(component, 'More Routines')).toBe(false);
+
+    switchTo(component, 'Routine');
+    expect(routineExpanded(component)).toBe(false);
   });
 });

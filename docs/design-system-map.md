@@ -720,15 +720,28 @@ Consequences to preserve:
   Both quick actions call straight through to the same handlers
   (`handleCreateRoutine`, `handleSwitchCurrent`) the expanded-body controls
   already used, so every existing confirmation and safeguard is unchanged. An
-  external request to
-  reveal a non-current routine (typed navigation #718, or a
-  Recovery-history tap from Analytics or an active-lifecycle tap) auto-expands
-  the disclosure via a monotonic
-  reveal nonce keyed on the REQUEST, not on `viewingNoteId` — so a repeat request
-  for the already-selected note (a later #718 key, or a re-tap of a hidden
-  Recovery note) reopens it, while an unchanged nonce respects a user's collapse.
-  Recovery-note taps are set-only, so re-tapping a hidden note shows it rather
-  than toggling the selection off.
+  external request to reveal a non-current routine — a typed navigation intent
+  (#718) naming a non-current, non-deload routine, and nothing else since #775 —
+  auto-expands the disclosure via a monotonic reveal nonce keyed on the REQUEST,
+  not on `viewingNoteId`, so a repeat request for the already-selected note
+  reopens it while an unchanged nonce respects a user's collapse. A Recovery tap
+  reveals nothing: it reads its note in the Recovery card instead (see below).
+- **The disclosure state is owned by `LogScreen`, not by the sections (#775).**
+  Routine and Deload are mutually exclusive branches, so `LogPreviousRoutines`
+  and `LogDeloadSection` unmount on every view switch; `expanded`,
+  `deloadCollapsed`, and the consumed-reveal marker therefore live in
+  `LogScreen` and arrive as props. A user's collapse choice survives
+  Routine↔Deload↔Routine, and a consumed reveal request is never replayed by the
+  remount.
+- **A routine row's date is its creation day (#775).** The sub-line and the
+  row's `accessibilityLabel` read `Created <date>` from `saved_at`, falling back
+  to the creation day encoded in the note id (`wn_YYYY-MM-DD_…`) and then to no
+  date at all. `updated_at` is never displayed: it is the sync conflict cursor
+  (`docs/backend-schema.md`), so editing, tapping `Week A/B`, syncing, or
+  restoring a backup all moved it. The expanded list and the collapsed `Latest:`
+  summary sort by that same displayed field, newest first, undated last in
+  notebook order, so the summary always names the routine the list shows first.
+  The viewed row keeps its `Week <X> · ` prefix in front of the date.
 - The active card's strip renders `Skip week` **or** `Remove skip`, never both.
   There is no opacity-dimmed disabled variant.
 - The `Double-tap to edit` hint is retired in both the active card and the
@@ -742,6 +755,20 @@ Consequences to preserve:
   `{ mode: 'routine', note: null }` so the modal's own baseline/Week 1 pickers
   choose the subject; `startRecoveryBlock` rechecks the authoritative
   precondition at confirm.
+- **A Recovery week row reads its own note (#775).** Tapping a live week renders
+  that note inline in the Recovery card, off the same
+  `viewingNoteId`/`viewingNote`/`viewingNoteDayGroups` state the routine and
+  deload viewers use; More Routines is not revealed and does not change state,
+  and a week linked to the *current* routine is readable like any other rather
+  than being an inert press. Because that viewer state projects one half of an
+  A/B note, the inline read also carries the non-current card's `Week A/B` pill
+  in its existing treatment and with the same role, label, and `selected` state
+  — otherwise an A/B recovery week's other week would be unreachable here. A week whose `note_id` is null, or names a note
+  absent from the notebook, shows `Note unavailable` in place of a title,
+  announces `Recovery Week N, note unavailable`, and carries no `onPress` and no
+  `accessibilityRole="button"` — the row and its `Unlink` remain, and that
+  unlink confirmation drops both the quoted title and the "note itself is kept"
+  clause. `Untitled Routine` is reserved for notes that exist.
 - `LogRecoverySection` renders only when Recovery affects the current workout
   (active/pending/terminal-error/stale). Completed history and its inclusion
   controls live in Analytics (#727-729), so completed-only users see no Recovery
