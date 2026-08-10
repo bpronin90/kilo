@@ -936,7 +936,10 @@ The real native app path now has a modular React Native shell:
   same backup carries as a live note, and rejects the whole payload before any
   write when it does not, so a restore cannot create a recovery week with no
   session behind it; tombstoned recovery weeks keep their looser shape, since no
-  reader resolves a removed membership's note.
+  reader resolves a removed membership's note. Import also rejects a payload
+  whose workout notes claim the same id twice, which would otherwise collapse to
+  one record on write while the payload claims two — and would resolve to
+  different surviving rows on the local and cloud paths.
   The export action now shows a blocking "export is unencrypted" confirmation
   before sharing; local export and native share failures preserve their
   underlying error message and log the full exception for device diagnostics.

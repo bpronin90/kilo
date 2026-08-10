@@ -916,6 +916,23 @@ describe('recovery data: malformed payloads write nothing', () => {
       const target = b.recovery_block_weeks[0].note_id;
       b.workout_notes.find((n) => n.id === target).deleted_at = '2026-07-05T08:00:00.000Z';
     }],
+    // The back door into the check above. Two rows claiming one note id resolve
+    // differently per mode — the local path writes the array verbatim and
+    // readers keep the LIVE row, while the cloud dirty queue is keyed by id and
+    // keeps the LAST row — so a live note followed by a tombstone would satisfy
+    // the live-note check on the device and still reach the account as a deleted
+    // note under a live membership. There is no such thing as a legitimate
+    // duplicate: raw note storage and the sync merge are both keyed by id.
+    ['a workout note id claimed by both a live row and a tombstone', (b) => {
+      const target = b.recovery_block_weeks[0].note_id;
+      b.workout_notes.push({
+        ...b.workout_notes.find((n) => n.id === target),
+        deleted_at: '2026-07-05T08:00:00.000Z',
+      });
+    }],
+    ['a duplicate workout note id', (b) => {
+      b.workout_notes.push({ ...b.workout_notes[0] });
+    }],
     // The cloud column is nullable (`week_number is null or week_number > 0`),
     // but the local domain has no such tolerance: orderedLiveWeeks subtracts
     // ordinals numerically and nextWeekNumber derives from the highest one, so a

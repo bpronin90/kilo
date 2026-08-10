@@ -990,7 +990,7 @@ keeping the last verified boundary instead of reverting to unfiltered.
   active and completed blocks, frozen baseline snapshots, week order, membership
   completion, the analytics preference, and tombstones; the export emits only
   allowlisted fields, so a stray local field cannot reach the shared artifact
-- covers thirty-one malformed recovery payloads, asserting each is rejected with
+- covers thirty-three malformed recovery payloads, asserting each is rejected with
   local storage, the unrelated collections, and both recovery dirty queues
   byte-identical afterwards — the "no partial writes" property, not merely
   "rejected". Per-record cases: a membership referencing a block the payload does
@@ -1003,8 +1003,13 @@ keeping the last verified boundary instead of reverting to unfiltered.
   the same week ordinal. Five note-reference cases (#776) pin the rule that a
   LIVE membership must name a workout note the same payload carries as a live
   note: a note that is absent outright, a null, missing, or empty `note_id`, and
-  a note the payload carries only as a tombstone. Eleven timestamp cases pin the
-  strict ISO instant rule,
+  a note the payload carries only as a tombstone. Two duplicate-note-id cases
+  close the back door into that check, since two rows claiming one id resolve to
+  different effective rows per mode — the local path writes the array verbatim
+  and readers keep the live row, the cloud dirty queue is keyed by id and keeps
+  the last — so a live note followed by a tombstone would otherwise pass on the
+  device and still reach the account as a deleted note under a live membership.
+  Eleven timestamp cases pin the strict ISO instant rule,
   including the ones `Date.parse` accepts (`"1"`, `"01/02/03"`, `"2026"`,
   `"March 5, 2026"`, a date with no time, a time with no offset) and the ones it
   silently normalizes into a different day (`"2026-02-30T00:00:00Z"`,

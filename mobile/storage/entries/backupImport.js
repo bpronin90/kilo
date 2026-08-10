@@ -690,11 +690,25 @@ function validateBackup(payload) {
       return { ok: false, error: 'Invalid backup: workout_notes must be an array' };
     if (payload.workout_notes.length > MAX_IMPORT_ARRAY_LENGTH)
       return { ok: false, error: `Invalid backup: workout_notes too large (${payload.workout_notes.length}; limit ${MAX_IMPORT_ARRAY_LENGTH})` };
+    const workoutNoteIds = new Set();
     for (const n of payload.workout_notes) {
       if (!n || typeof n !== 'object' || Array.isArray(n))
         return { ok: false, error: 'Invalid backup: workout note is not an object' };
       if (typeof n.id !== 'string')
         return { ok: false, error: 'Invalid backup: workout note missing id' };
+      // Same rule the two recovery collections already enforce, and needed here
+      // for the same reason plus one more. Two rows claiming one id collapse to
+      // a single record on write while the payload claims two, so the restore
+      // silently loses one — and WHICH one it loses differs by mode: the local
+      // path writes the array verbatim and readers keep the live row, while the
+      // cloud path's dirty queue is keyed by id and keeps the LAST row. A live
+      // note followed by a tombstone therefore resolves both ways at once, which
+      // would let a membership pass the live-note check below and still reach an
+      // account whose note is deleted — the dangling link this validation exists
+      // to prevent, reintroduced through the back door.
+      if (workoutNoteIds.has(n.id))
+        return { ok: false, error: `Invalid backup: duplicate workout note id ${n.id}` };
+      workoutNoteIds.add(n.id);
       if (typeof n.title !== 'string')
         return { ok: false, error: 'Invalid backup: workout note missing title' };
       if (typeof n.raw_text !== 'string')
