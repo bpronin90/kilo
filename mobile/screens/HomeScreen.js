@@ -1147,12 +1147,11 @@ const createStyles = (colors) => StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  // Explicit compact-summary override (#763 review) — HeroMetric.hero is
-  // 48/900, the Analytics owner size. Home's total stays visually secondary
-  // to the Weekly hero above it, so it does not spread HeroMetric.hero here.
+  // Restored to the accepted pre-regression scale (#771): the #763 compact-
+  // summary override read as a visual demotion of the 1K total, so this
+  // spreads HeroMetric.hero (48/900) the same as the Analytics owner card.
   oneKHeroValue: {
-    fontSize: 32,
-    fontWeight: '800',
+    ...HeroMetric.hero,
     color: colors.text,
   },
   oneKHeroUnit: {
@@ -1161,9 +1160,8 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.textMuted,
   },
   // Track color, radius, and vertical rhythm match the Analytics 1K progress
-  // bar (#763) — the bar reads as the same control on both surfaces even
-  // though Home's hero value stays smaller (compact-summary role, see
-  // design-system-map.md).
+  // bar (#763) — the bar reads as the same control on both surfaces, and since
+  // #771 so does the hero value itself (see design-system-map.md).
   progressBarLarge: {
     height: 8,
     backgroundColor: colors.divider,
