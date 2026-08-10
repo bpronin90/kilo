@@ -91,8 +91,9 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   // by the layout that resolves it, never by guessing a position.
   const sectionOffsets = useRef({});
   // Progressive Overload's offset is derived from two boxes rather than read
-  // off one; see handleProgressiveOverloadHeaderLayout.
-  const overloadHeaderHeight = useRef(0);
+  // off one; see handleProgressiveOverloadHeaderLayout. Both start null so an
+  // unmeasured box is never mistaken for a measured zero.
+  const overloadHeaderHeight = useRef(null);
   const overloadListY = useRef(null);
   const pendingSection = useRef(section);
   const hasScrolled = useRef(false);
@@ -173,8 +174,11 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   // HEIGHT is still true, and the list beneath it is an ordinary child with an
   // ordinary offset — so the destination is the list's top minus the header's
   // height, which parks the pinned header at the top of the viewport with the
-  // first exercise row directly beneath it. Both measurements are needed, so
-  // whichever arrives second is the one that resolves a pending request.
+  // first exercise row directly beneath it. Both measurements are needed and
+  // either can arrive first, so whichever completes the pair is the one that
+  // resolves a pending request. Acting on the list alone would scroll a header
+  // height too far and then be unable to correct itself: the pending request is
+  // already spent by the time the real height shows up.
   function handleProgressiveOverloadHeaderLayout(e) {
     overloadHeaderHeight.current = e.nativeEvent.layout.height;
     resolveOverloadOffset();
@@ -186,7 +190,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   }
 
   function resolveOverloadOffset() {
-    if (overloadListY.current == null) return;
+    if (overloadListY.current == null || overloadHeaderHeight.current == null) return;
     recordSectionOffset(
       'progressive-overload',
       Math.max(0, overloadListY.current - overloadHeaderHeight.current)

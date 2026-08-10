@@ -792,6 +792,20 @@ describe('AnalyticsScreen daily-loop handoffs (#717)', () => {
     expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ y: OVERLOAD_TARGET_Y }));
   });
 
+  // Layout order between two sibling boxes is not guaranteed. Landing on the
+  // list alone would overshoot by the header's height and could never be
+  // corrected: the pending request is spent, so the pinned header would sit
+  // over the first rows for the rest of the visit.
+  test('the list measuring first does not spend the request before the header height is known', () => {
+    const { component, scrollTo } = setupTargeting({ section: 'progressive-overload', sectionNonce: 1 });
+    fireLayoutFor(component.root, 'overload-list-anchor', { x: 0, y: OVERLOAD_LIST_Y, width: 343, height: 800 });
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    fireLayoutFor(component.root, 'sticky-header', { x: 0, y: 0, width: 343, height: OVERLOAD_HEADER_HEIGHT });
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ y: OVERLOAD_TARGET_Y }));
+  });
+
   test('a recovery request scrolls to the Recovery section', () => {
     const { component, scrollTo } = setupTargeting({
       section: 'recovery',
