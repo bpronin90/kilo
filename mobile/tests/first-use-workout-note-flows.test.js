@@ -22,8 +22,7 @@ import {
   FIRST_USE_UNKNOWN,
   FIRST_USE_S0,
   FIRST_USE_S1,
-  FIRST_USE_S2,
-  FIRST_USE_S3,
+  FIRST_USE_ESTABLISHED,
   deriveFirstUseState,
   pickAdoptableRoutine,
   selectRoutineNotes,
@@ -251,18 +250,18 @@ describe('first-use state derivation (#745 Part 3 §1)', () => {
     })).toBe(FIRST_USE_S1);
   });
 
-  test('S2 is exactly one session, S3 is two or more', () => {
+  test('any session count of 1 or more is the terminal ESTABLISHED state — nothing distinguishes further', () => {
     const withCurrent = { ...base, notes: [{ id: 'a', title: 'A' }], currentId: 'a' };
-    expect(deriveFirstUseState({ ...withCurrent, activeSessionCount: 1 })).toBe(FIRST_USE_S2);
-    expect(deriveFirstUseState({ ...withCurrent, activeSessionCount: 2 })).toBe(FIRST_USE_S3);
-    expect(deriveFirstUseState({ ...withCurrent, activeSessionCount: 9 })).toBe(FIRST_USE_S3);
+    expect(deriveFirstUseState({ ...withCurrent, activeSessionCount: 1 })).toBe(FIRST_USE_ESTABLISHED);
+    expect(deriveFirstUseState({ ...withCurrent, activeSessionCount: 2 })).toBe(FIRST_USE_ESTABLISHED);
+    expect(deriveFirstUseState({ ...withCurrent, activeSessionCount: 9 })).toBe(FIRST_USE_ESTABLISHED);
   });
 
   test('the state degrades backwards when data is deleted — it is a pure function of data, not a stored flag', () => {
     const populated = {
       ...base, notes: [{ id: 'a', title: 'A' }], currentId: 'a', activeSessionCount: 5,
     };
-    expect(deriveFirstUseState(populated)).toBe(FIRST_USE_S3);
+    expect(deriveFirstUseState(populated)).toBe(FIRST_USE_ESTABLISHED);
     expect(deriveFirstUseState({ ...populated, notes: [], currentId: null, activeSessionCount: 0 })).toBe(FIRST_USE_S0);
   });
 

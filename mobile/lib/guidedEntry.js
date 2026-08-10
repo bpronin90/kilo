@@ -14,8 +14,11 @@ import { DELOAD_NOTE_PREFIX } from './LogScreenHelpers';
 export const FIRST_USE_UNKNOWN = 'unknown';
 export const FIRST_USE_S0 = 's0';
 export const FIRST_USE_S1 = 's1';
-export const FIRST_USE_S2 = 's2';
-export const FIRST_USE_S3 = 's3';
+// The terminal state once a current routine has at least one logged session.
+// The S2/S3 split that used to distinguish "exactly one session" from "two or
+// more" existed only to power the S2 first-use card, deleted by #786/R6b-3;
+// nothing distinguishes them any more, so they collapse into one state.
+export const FIRST_USE_ESTABLISHED = 'established';
 
 // Deload records are not routines. Every predicate below counts routines only,
 // so generating a deload never advances or regresses the teaching state.
@@ -39,9 +42,7 @@ export function deriveFirstUseState({
   if (routineNotes.length === 0) return FIRST_USE_S0;
   if (!currentId) return FIRST_USE_S1;
   const sessions = Number.isFinite(activeSessionCount) ? activeSessionCount : 0;
-  if (sessions === 0) return FIRST_USE_S1;
-  if (sessions === 1) return FIRST_USE_S2;
-  return FIRST_USE_S3;
+  return sessions === 0 ? FIRST_USE_S1 : FIRST_USE_ESTABLISHED;
 }
 
 // The routine the S1 card offers to adopt: the most recently saved routine that
