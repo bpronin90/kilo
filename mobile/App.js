@@ -83,16 +83,36 @@ export function emitMeasurement(name, properties = {}) {
 
 // Map the free-form Analytics navigation section to the sanitizer's bounded
 // analytics_viewed variant list. Home and Weight both pass a section today
-// (#717): the weight-trend handoffs request 'weight' and the Exercise Progress
-// and 1K Progress headers request 'strength', while a plain tab press passes
-// none and resolves to 'overview'. Anything else is 'other'.
+// (#717): the weight-trend handoffs request 'weight', the 1K Progress header
+// requests 'strength', Exercise Progress requests 'progressive-overload',
+// Recovery requests 'recovery', and `Full history and insights` requests
+// 'overview' (#770). A plain tab press passes none and also resolves to
+// 'overview' — it lands on whatever Analytics was already showing, which for a
+// first visit is the top of the tab.
+//
+// The variant list is `overview | strength | weight | other` and lives in the
+// sanitizer, which this issue does not touch. 'progressive-overload' is the
+// per-lift strength progression table, so it reports as 'strength' and keeps
+// the Exercise Progress signal continuous across the retarget. 'recovery' has
+// no variant of its own and is honestly reported as 'other' rather than
+// borrowed onto a section it is not.
 export function analyticsSectionVariant(section) {
   if (section === 'strength' || section === 'weight') return section;
-  if (section == null) return 'overview';
+  if (section === 'progressive-overload') return 'strength';
+  if (section === 'overview' || section == null) return 'overview';
   return 'other';
 }
 
-const ANALYTICS_SECTION_IDS = new Set(['weight', 'strength']);
+// The bounded Analytics destination vocabulary (#717, extended in #770). Every
+// id here is a place AnalyticsScreen knows how to land on; anything else is
+// rejected by normalizeNavTarget below and ignored.
+const ANALYTICS_SECTION_IDS = new Set([
+  'overview',
+  'weight',
+  'strength',
+  'progressive-overload',
+  'recovery',
+]);
 
 // The single typed intent that reaches Cloud Sync (#737). Cloud Sync is a panel
 // inside More > Account, so the destination sub-view is `account` and the panel
@@ -106,7 +126,7 @@ export const CLOUD_SYNC_NAV_TARGET = { kind: 'subview', view: 'account', anchor:
 // and the shell mints the monotonic `key` itself, so an identical intent stays
 // re-consumable. The target vocabulary is:
 //
-//   { kind: 'section', id: 'weight' | 'strength' }   → Analytics
+//   { kind: 'section', id: <ANALYTICS_SECTION_IDS> } → Analytics
 //   { kind: 'note',    noteId: string }              → Log
 //   { kind: 'subview', view: string, anchor?: string } → More
 //
@@ -453,9 +473,10 @@ function AppShell() {
     emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.TAB_VIEWED, { tab });
     if (tab === 'Analytics') {
       // The NORMALIZED section, not the raw request: an ignored/malformed
-      // target leaves Analytics on its default landing view, so 'overview' is
-      // what the user actually saw. analyticsSectionVariant keeps its own
-      // 'other' branch for direct callers and the sanitizer allow-list.
+      // target is treated exactly like a plain tab press, which leaves
+      // Analytics on the view it was already showing, so 'overview' is the
+      // honest report of an unsectioned visit. analyticsSectionVariant keeps
+      // its own 'other' branch for direct callers and the sanitizer allow-list.
       emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.ANALYTICS_VIEWED, {
         section: analyticsSectionVariant(sectionTarget ? sectionTarget.id : null),
       });

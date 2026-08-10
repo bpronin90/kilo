@@ -1032,14 +1032,24 @@ actions, a compact `1k Club Progress` card whose header opens the Analytics
 strength section, and a line-chart view
 of the 7-day rolling-average weight trend
 followed by a labeled `See weight trends` action that opens the Analytics weight
-section. Alongside the "Full history and insights" CTA, which still opens
-Analytics at its default landing view with no section argument, Home→Analytics
-navigation now also includes that weight-trends action (weight section), the
-`Exercise Progress` band, and the `1K Progress` card (both strength section). Analytics section targeting is delivered as a `section`
-plus a monotonic `sectionNonce`, so repeating the same handoff re-targets the
-section rather than being swallowed as an unchanged prop; the nonce advances
-only for explicit Analytics section requests, so unrelated tab navigation does
-not disturb the always-mounted memoized Analytics tree.
+section. Every explicit Home control now names its own Analytics destination:
+the weight-trends action opens `weight`, the `1K Progress` card opens
+`strength` (where the 1K detail lives), the `Exercise Progress` band opens
+`progressive-overload` (the table that itemizes the counts printed under that
+header), the `Recovery` summary opens `recovery`, and `Full history and
+insights` opens `overview`, the top of the tab. The bounded section vocabulary
+is therefore `overview | weight | strength | progressive-overload | recovery`;
+an ordinary Analytics tab press still passes no section and deliberately
+preserves whatever the user was last reading. Analytics section targeting is
+delivered as a `section` plus a monotonic `sectionNonce`, so repeating the same
+handoff re-targets the section rather than being swallowed as an unchanged
+prop; the nonce advances only for explicit Analytics section requests, so
+unrelated tab navigation does not disturb the always-mounted memoized Analytics
+tree. Each destination scrolls only once its own layout is known, so a handoff
+issued before Analytics has ever been shown stays pending instead of guessing;
+Progressive Overload is measured from the list beneath its sticky header rather
+than the header itself, because a sticky child reports a position relative to
+its sticky wrapper rather than a content offset.
 That section handoff is now one case of a general typed navigation-intent
 contract carried by the shell: `{ tab, target, key }`, where `target` is
 `{ kind: 'section', id }` for Analytics, `{ kind: 'note', noteId }` for Log, or

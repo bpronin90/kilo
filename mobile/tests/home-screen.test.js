@@ -507,9 +507,21 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     expect(onNavigate).toHaveBeenCalledWith('Weight');
   });
 
-  test('the strength summary goes to the Analytics strength section', () => {
+  // #770: the band's own counts are the per-exercise classification, which is
+  // itemized in Progressive Overload — `strength` landed short of the label.
+  test('the Exercise Progress band goes to the Analytics Progressive Overload section', () => {
     render.act(() => { byTestID(component.root, 'home-strength-summary-link').props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Analytics', 'progressive-overload');
+  });
+
+  test('the 1K card still goes to the Analytics strength section, where the 1K detail lives', () => {
+    render.act(() => { byTestID(component.root, 'home-one-k-link').props.onPress(); });
     expect(onNavigate).toHaveBeenCalledWith('Analytics', 'strength');
+  });
+
+  test('the full-insights link opens Analytics at the top rather than resuming it', () => {
+    render.act(() => { byTestID(component.root, 'home-insights-link').props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Analytics', 'overview');
   });
 
   test('the weight sparkline goes to the Analytics weight section', () => {
@@ -517,12 +529,21 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     expect(onNavigate).toHaveBeenCalledWith('Analytics', 'weight');
   });
 
-  test('repeating a handoff issues it again', () => {
-    const link = byTestID(component.root, 'home-weight-trend-link');
-    render.act(() => { link.props.onPress(); });
-    render.act(() => { link.props.onPress(); });
-    expect(onNavigate).toHaveBeenCalledTimes(2);
-    expect(onNavigate).toHaveBeenNthCalledWith(2, 'Analytics', 'weight');
+  test('repeating any Analytics handoff issues it again with the same target', () => {
+    for (const [testID, expected] of [
+      ['home-weight-trend-link', 'weight'],
+      ['home-strength-summary-link', 'progressive-overload'],
+      ['home-insights-link', 'overview'],
+      ['home-one-k-link', 'strength'],
+    ]) {
+      onNavigate.mockClear();
+      const link = byTestID(component.root, testID);
+      render.act(() => { link.props.onPress(); });
+      render.act(() => { link.props.onPress(); });
+      expect(onNavigate).toHaveBeenCalledTimes(2);
+      expect(onNavigate).toHaveBeenNthCalledWith(1, 'Analytics', expected);
+      expect(onNavigate).toHaveBeenNthCalledWith(2, 'Analytics', expected);
+    }
   });
 
   test('each handoff exposes a button role and an accessible label', () => {
@@ -531,11 +552,25 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
       'home-weight-action',
       'home-strength-summary-link',
       'home-weight-trend-link',
+      'home-insights-link',
     ]) {
       const node = byTestID(component.root, testID);
       expect(node.props.accessibilityRole).toBe('button');
       expect(typeof node.props.accessibilityLabel).toBe('string');
       expect(node.props.accessibilityLabel.length).toBeGreaterThan(0);
+    }
+  });
+
+  // #770: a hint that names a destination the press does not reach is worse
+  // than no hint, so each one is pinned to the section its control targets.
+  test('each Analytics hint names the section its control actually opens', () => {
+    for (const [testID, hint] of [
+      ['home-weight-trend-link', 'Opens the weight section of the Analytics tab'],
+      ['home-strength-summary-link', 'Opens the Progressive Overload section of the Analytics tab'],
+      ['home-one-k-link', 'Opens the strength section of the Analytics tab'],
+      ['home-insights-link', 'Opens the Analytics tab at the top'],
+    ]) {
+      expect(byTestID(component.root, testID).props.accessibilityHint).toBe(hint);
     }
   });
 
@@ -859,7 +894,7 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     expect(flatStyle(weightAction).flex).toBe(1);
   });
 
-  test('the existing full-insights link still reaches Analytics with no section', () => {
+  test('the full-insights link still carries its own copy and now targets the overview', () => {
     const matches = component.root.findAll(n => {
       if (n.type !== 'Text') return false;
       const flat = Array.isArray(n.props.children) ? n.props.children.join('') : String(n.props.children ?? '');
@@ -869,7 +904,9 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     let node = matches[0].parent;
     while (node && typeof node.props?.onPress !== 'function') node = node.parent;
     render.act(() => { node.props.onPress(); });
-    expect(onNavigate).toHaveBeenCalledWith('Analytics');
+    // #770: "full history and insights" promises the whole tab from the top,
+    // which an unsectioned press cannot deliver once Analytics has been scrolled.
+    expect(onNavigate).toHaveBeenCalledWith('Analytics', 'overview');
   });
 });
 
@@ -1465,7 +1502,7 @@ describe('Home recovery summary (#757)', () => {
     expect(hasText(component, 'Not counted in your normal analytics.')).toBe(false);
   });
 
-  test('the summary routes to the Analytics tab, where Recovery detail lives', async () => {
+  test('the summary routes to the Analytics Recovery section, and says so', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     const onNavigate = jest.fn();
     const component = await mount({ onNavigate });
@@ -1473,8 +1510,13 @@ describe('Home recovery summary (#757)', () => {
     const link = component.root.findByProps({ testID: 'home-recovery-link' });
     expect(link.props.accessibilityRole).toBe('button');
     expect(link.props.accessibilityLabel).toBe('Recovery');
+    expect(link.props.accessibilityHint).toBe('Opens the Recovery section of the Analytics tab');
+    // #770: an unsectioned press inherited whatever position Analytics was last
+    // left at, so a control labeled `Recovery` could land anywhere but Recovery.
     render.act(() => { link.props.onPress(); });
-    expect(onNavigate).toHaveBeenCalledWith('Analytics');
+    render.act(() => { link.props.onPress(); });
+    expect(onNavigate).toHaveBeenNthCalledWith(1, 'Analytics', 'recovery');
+    expect(onNavigate).toHaveBeenNthCalledWith(2, 'Analytics', 'recovery');
   });
 
   test('a completed block is not an active one, and Home says nothing at all', async () => {

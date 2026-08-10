@@ -220,10 +220,11 @@ function HomeSkeleton() {
 //                                     is, and only one of those means "no
 //                                     recovery".
 //
-// The handoff is `onNavigate('Analytics')` — the Analytics tab, where the
-// Recovery section lives. Section-level targeting exists for `weight` and
-// `strength` only, and its vocabulary is owned by App.js/AnalyticsScreen.js,
-// both outside this issue's scope.
+// The handoff is `onNavigate('Analytics', 'recovery')` — the Recovery section
+// itself, not just the tab that contains it (#770). A control whose label reads
+// `Recovery` has to land on Recovery; leaving it unsectioned made it inherit
+// whatever position Analytics was last left at, which could be any other
+// section entirely.
 export function HomeRecoverySummary({ summary, onNavigate }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -263,12 +264,12 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
           <>
             <Pressable
               testID="home-recovery-link"
-              onPress={() => onNavigate('Analytics')}
+              onPress={() => onNavigate('Analytics', 'recovery')}
               style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart]}
               hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
               accessibilityRole="button"
               accessibilityLabel="Recovery"
-              accessibilityHint="Opens the Analytics tab, where the Recovery details live"
+              accessibilityHint="Opens the Recovery section of the Analytics tab"
             >
               <Text style={[styles.recoveryLabel, styles.sectionHeaderLabel]}>Recovery</Text>
               <View style={styles.sectionHeaderChevron}>
@@ -583,21 +584,25 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
               </Pressable>
             </View>
 
-            {/* Classification band — strength-summary handoff to Analytics
-                strength (#717). Only the header row is the press target: the
-                counts beneath are data, not a control, so making the whole band
+            {/* Classification band — handoff to Analytics' Progressive Overload
+                table (#717, retargeted in #770). The counts under this header
+                ARE the per-exercise progressing/steady/regressing classification,
+                and that table is where they are itemized, so `strength` (the 1K
+                block, higher up the tab) was landing short of what the label
+                promises. Only the header row is the press target: the counts
+                beneath are data, not a control, so making the whole band
                 tappable was too much clickable area. The affordance is the plain
                 chevron already used by `Full history and insights` on this same
                 screen — no fill, no border. */}
             <View style={styles.classifSection}>
               <Pressable
                 testID="home-strength-summary-link"
-                onPress={() => onNavigate('Analytics', 'strength')}
+                onPress={() => onNavigate('Analytics', 'progressive-overload')}
                 style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart]}
                 hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
                 accessibilityRole="button"
                 accessibilityLabel="Exercise Progress"
-                accessibilityHint="Opens the strength section of the Analytics tab"
+                accessibilityHint="Opens the Progressive Overload section of the Analytics tab"
               >
                 <Text style={[styles.classifSectionLabel, styles.sectionHeaderLabel]}>Exercise Progress</Text>
                 <View style={styles.sectionHeaderChevron}>
@@ -619,9 +624,20 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
               </View>
             </View>
 
-            {/* #7 quiet CTA */}
+            {/* #7 quiet CTA. Targets `overview` rather than a bare tab press
+                (#770): "full history and insights" promises the whole tab from
+                the top, and an unsectioned press would instead resume the last
+                Analytics scroll position — which for a returning user is
+                whatever single section they were reading last. */}
             <View style={styles.heroFooter}>
-              <Pressable onPress={() => onNavigate('Analytics')} style={styles.insightsLink}>
+              <Pressable
+                testID="home-insights-link"
+                onPress={() => onNavigate('Analytics', 'overview')}
+                style={styles.insightsLink}
+                accessibilityRole="button"
+                accessibilityLabel="Full history and insights"
+                accessibilityHint="Opens the Analytics tab at the top"
+              >
                 <Text style={styles.insightsLinkText}>Full history and insights</Text>
                 <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
               </Pressable>

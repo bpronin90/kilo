@@ -360,19 +360,34 @@ describe('Android Back handler ownership across tab switches (#527)', () => {
     expect(lastAnalyticsRender().section).toBe('strength');
   });
 
+  // #770: every destination Home's explicit controls name, forwarded verbatim
+  // and from whatever section Analytics was last sent to.
+  test('every bounded section id is forwarded, including from another section', () => {
+    const ids = ['overview', 'weight', 'strength', 'progressive-overload', 'recovery'];
+    for (const from of ids) {
+      for (const to of ids) {
+        renderer.act(() => { capturedTabPress('Analytics', from); });
+        renderer.act(() => { capturedTabPress('Analytics', to); });
+        expect(lastAnalyticsRender().section).toBe(to);
+      }
+    }
+  });
+
   test('repeating the same section handoff re-issues it as a distinct request', () => {
-    renderer.act(() => { capturedTabPress('Analytics', 'weight'); });
-    const first = lastAnalyticsRender();
+    for (const id of ['weight', 'strength', 'progressive-overload', 'recovery', 'overview']) {
+      renderer.act(() => { capturedTabPress('Analytics', id); });
+      const first = lastAnalyticsRender();
 
-    // Leave Analytics and come back to the same section, the way a user repeating
-    // the Home sparkline or Weight "See full trends" handoff would.
-    renderer.act(() => { capturedTabPress('Home'); });
-    renderer.act(() => { capturedTabPress('Analytics', 'weight'); });
-    const second = lastAnalyticsRender();
+      // Leave Analytics and come back to the same section, the way a user repeating
+      // the Home sparkline or Weight "See full trends" handoff would.
+      renderer.act(() => { capturedTabPress('Home'); });
+      renderer.act(() => { capturedTabPress('Analytics', id); });
+      const second = lastAnalyticsRender();
 
-    expect(second.section).toBe('weight');
-    // Same section value, so only the nonce can prove the second request landed.
-    expect(second.sectionNonce).not.toBe(first.sectionNonce);
+      expect(second.section).toBe(id);
+      // Same section value, so only the nonce can prove the second request landed.
+      expect(second.sectionNonce).not.toBe(first.sectionNonce);
+    }
   });
 
   test('unrelated tab navigation does not disturb the memoized Analytics tree', () => {
@@ -548,10 +563,13 @@ describe('normalizeNavTarget: the typed navigation-intent contract (#718)', () =
   });
 
   test('section targets are accepted only on Analytics and only for known ids', () => {
-    expect(normalizeNavTarget('Analytics', { kind: 'section', id: 'weight' }))
-      .toEqual({ kind: 'section', id: 'weight' });
-    expect(normalizeNavTarget('Analytics', { kind: 'section', id: 'strength' }))
-      .toEqual({ kind: 'section', id: 'strength' });
+    // The bounded vocabulary, extended by #770 with the three destinations
+    // Home's explicit controls promise: the tab top, the Progressive Overload
+    // table, and Recovery.
+    for (const id of ['overview', 'weight', 'strength', 'progressive-overload', 'recovery']) {
+      expect(normalizeNavTarget('Analytics', { kind: 'section', id }))
+        .toEqual({ kind: 'section', id });
+    }
     expect(normalizeNavTarget('Analytics', { kind: 'section', id: 'mystery' })).toBe(null);
     expect(normalizeNavTarget('Analytics', { kind: 'section' })).toBe(null);
     expect(normalizeNavTarget('Log', { kind: 'section', id: 'weight' })).toBe(null);
@@ -559,8 +577,9 @@ describe('normalizeNavTarget: the typed navigation-intent contract (#718)', () =
   });
 
   test('the legacy bare Analytics section string normalizes into a section target', () => {
-    expect(normalizeNavTarget('Analytics', 'weight')).toEqual({ kind: 'section', id: 'weight' });
-    expect(normalizeNavTarget('Analytics', 'strength')).toEqual({ kind: 'section', id: 'strength' });
+    for (const id of ['overview', 'weight', 'strength', 'progressive-overload', 'recovery']) {
+      expect(normalizeNavTarget('Analytics', id)).toEqual({ kind: 'section', id });
+    }
     expect(normalizeNavTarget('Analytics', 'mystery')).toBe(null);
     expect(normalizeNavTarget('Analytics', '')).toBe(null);
     // The bare form is an Analytics-only legacy affordance; it means nothing elsewhere.
