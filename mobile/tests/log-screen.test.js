@@ -9476,6 +9476,69 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
     // Still collapsed: reading the notice never required opening it.
     expect(trigger(root).props.accessibilityState).toEqual({ expanded: false });
   });
+
+  // #792 review (P2): this component stays mounted for a block's whole
+  // lifetime, and completing a block only makes it render no active card — it
+  // does not unmount. A boolean `expanded` would survive that gap and hand the
+  // NEXT block a disclosure that is already open, exposing Unlink, block
+  // completion, and the inclusion switch by default. The state is keyed by
+  // block id so any block change reads as collapsed.
+  test('a new active block starts collapsed even if the previous one was left expanded', () => {
+    const NEXT_BLOCK = {
+      ...BLOCK, id: 'rb789next', baseline_note_title: 'Upper/Lower',
+      started_at: '2026-09-01T00:00:00.000Z',
+    };
+    const nextWeek = { ...week(), id: 'rw1next', block_id: NEXT_BLOCK.id, week_number: 1 };
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <LogRecoverySection
+          blocks={[BLOCK]} weeks={[week()]} notes={[WEEK_NOTE]}
+          onUnlinkWeek={jest.fn()} onCompleteBlock={jest.fn()}
+        />
+      );
+    });
+    const root = component.root;
+
+    render.act(() => { trigger(root).props.onPress(); });
+    expect(trigger(root).props.accessibilityState).toEqual({ expanded: true });
+    expect(byLabel(root, 'Unlink Week 3')).toBeTruthy();
+
+    // The block is completed: the same mounted component now has no active
+    // card at all. Then a second block is started without leaving the tab.
+    render.act(() => {
+      component.update(
+        <LogRecoverySection
+          blocks={[{ ...BLOCK, completed_at: '2026-08-01T00:00:00.000Z' }]} weeks={[week()]} notes={[WEEK_NOTE]}
+          onUnlinkWeek={jest.fn()} onCompleteBlock={jest.fn()}
+        />
+      );
+    });
+    expect(component.toJSON()).toBeNull();
+
+    render.act(() => {
+      component.update(
+        <LogRecoverySection
+          blocks={[{ ...BLOCK, completed_at: '2026-08-01T00:00:00.000Z' }, NEXT_BLOCK]}
+          weeks={[nextWeek]} notes={[WEEK_NOTE]}
+          onUnlinkWeek={jest.fn()} onCompleteBlock={jest.fn()}
+        />
+      );
+    });
+
+    // The new block owns its own disclosure state, and it is closed.
+    expect(allText(root)).toContain('Week 1 in progress');
+    expect(trigger(root).props.accessibilityLabel).toBe('Manage recovery block: Upper/Lower');
+    expect(trigger(root).props.accessibilityState).toEqual({ expanded: false });
+    expect(byLabel(root, 'Unlink Week 1')).toBeUndefined();
+    expect(byLabel(root, 'Complete recovery block')).toBeUndefined();
+    expect(inclusionSwitch(root)).toBeUndefined();
+
+    // And it still opens normally, now scoped to the new block.
+    render.act(() => { trigger(root).props.onPress(); });
+    expect(byLabel(root, 'Unlink Week 1')).toBeTruthy();
+  });
 });
 
 describe('Log disclosures and Recovery reads at the screen level (#775)', () => {

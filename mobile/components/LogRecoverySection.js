@@ -109,7 +109,16 @@ export function LogRecoverySection({
   // confirm copy, and the trigger itself is NEVER disabled — a locked user must
   // still be able to open it and see WHY each control inside is unavailable
   // (#780 corrected blocked-mutation contract).
-  const [manageExpanded, setManageExpanded] = useState(false);
+  //
+  // Stored as the block id it was opened FOR, not as a boolean. This component
+  // stays mounted across a block's whole lifetime, and completing a block only
+  // makes it render no active card — it does not unmount. A boolean would
+  // survive that gap, so a user who expanded the disclosure, completed the
+  // block, and started another one without leaving the Routine tab would meet
+  // the new block with Unlink, block completion, and the inclusion switch
+  // already exposed. Keying by id collapses on any block change with no effect
+  // and no stale-state window.
+  const [manageExpandedBlockId, setManageExpandedBlockId] = useState(null);
 
   const activeBlock = findActiveBlock(blocks);
   // Two distinct states. A PENDING operation locks conflicting actions, because a
@@ -187,6 +196,9 @@ export function LogRecoverySection({
   // guarantee at most one non-completed week per block, so `currentWeek` is
   // always either the open week or the just-completed one — never a list to
   // scan, and never ambiguous between the two headline states.
+  // Derived, never stored: a disclosure opened for a different block reads as
+  // collapsed for this one.
+  const manageExpanded = !!activeBlock && manageExpandedBlockId === activeBlock.id;
   const headline = currentWeek
     ? (currentWeek.completed_at
       ? `Week ${currentWeek.week_number} complete — add the next week`
@@ -458,7 +470,7 @@ export function LogRecoverySection({
                 open it; each control inside keeps exactly the per-control
                 gating it had when it lived in the flat action row. */}
             <Pressable
-              onPress={() => setManageExpanded(v => !v)}
+              onPress={() => setManageExpandedBlockId(id => (id === activeBlock.id ? null : activeBlock.id))}
               style={styles.disclosureTrigger}
               accessibilityRole="button"
               accessibilityLabel={`Manage recovery block: ${activeBlock.baseline_note_title || 'Untitled Routine'}`}
