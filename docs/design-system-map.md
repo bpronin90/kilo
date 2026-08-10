@@ -463,7 +463,7 @@ and the quiet handoff chevron, not a shrunken total.
 | Card borderRadius | `24` | | `1134` |
 | Hero total value | fontSize | `48` (`HeroMetric.hero`) | `1153` |
 | | fontWeight | `900` (`HeroMetric.hero`) | `1153` |
-| | color | `colors.text` (lerped toward `colors.success` as progress nears 1000, `729`) | `1153` |
+| | color | `colors.accent` lerped toward `colors.success` as progress nears 1000 (inline override, always applied — `oneKHeroValue`'s own `colors.text` is never seen, `729`) | `1153` |
 | Hero unit | fontSize | `16` | `1157` |
 | | color | `colors.textMuted` | `1157` |
 | Progress bar | height | `8` | `1165` |
