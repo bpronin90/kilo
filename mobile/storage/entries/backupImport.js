@@ -515,7 +515,9 @@ function validateRecoveryBlocks(blocks) {
   return { ok: true, blockIds: ids };
 }
 
-function validateRecoveryWeeks(weeks, blockIds) {
+// `liveNoteIds` is the set of workout-note ids the SAME payload carries as live
+// (non-tombstoned) notes — see the note-reference check below.
+function validateRecoveryWeeks(weeks, blockIds, liveNoteIds) {
   if (!Array.isArray(weeks))
     return { ok: false, error: 'Invalid backup: recovery_block_weeks must be an array' };
   if (weeks.length > MAX_IMPORT_ARRAY_LENGTH)
@@ -538,8 +540,31 @@ function validateRecoveryWeeks(weeks, blockIds) {
     // rejected by the database and the restore wedges.
     if (!blockIds.has(week.block_id))
       return { ok: false, error: `Invalid backup: recovery week ${week.id} references unknown recovery block ${week.block_id}` };
-    if (week.note_id != null && typeof week.note_id !== 'string')
+    // The note reference, checked against the payload for the same reason
+    // `block_id` is (issue #776). A live membership IS the link between a
+    // recovery block and a workout note: `loadRecoveryBlockWeeks` joins on
+    // `note_id`, the Recovery read and the return-to-baseline comparison have
+    // nothing to show without the note, and kilo.recovery_block_weeks holds a
+    // real FK to kilo.workout_notes — so in cloud mode a dangling reference is
+    // rejected by the database and wedges the restore after it has written.
+    //
+    // A TOMBSTONED membership keeps the older, looser shape. Its note reference
+    // is history, not a link: readers filter it out before ever resolving
+    // `note_id`, replace-by-omission mints tombstones from prior local rows that
+    // may name notes this backup no longer carries, and demanding a live target
+    // for a deleted membership would reject the honest backup of anyone who has
+    // ever removed a week and then deleted its note.
+    if (week.deleted_at == null) {
+      if (typeof week.note_id !== 'string' || week.note_id.length === 0)
+        return { ok: false, error: `Invalid backup: recovery week ${week.id} missing note_id` };
+      if (!liveNoteIds.has(week.note_id))
+        return {
+          ok: false,
+          error: `Invalid backup: recovery week ${week.id} references workout note ${week.note_id}, which this backup does not carry as a live note`,
+        };
+    } else if (week.note_id != null && typeof week.note_id !== 'string') {
       return { ok: false, error: `Invalid backup: recovery week ${week.id} note_id must be a string` };
+    }
     // Every membership must HAVE an ordinal, not merely have a valid one if it
     // happens to carry it. The cloud column is nullable and its check constraint
     // is written `week_number is null or week_number > 0`, but the local domain
@@ -577,11 +602,11 @@ function validateRecoveryWeeks(weeks, blockIds) {
 // is exactly the live set in the payload — there is no surviving local live row
 // for an imported one to collide with.
 //
-// Each predicate mirrors its index, including the null handling: a unique index
-// treats NULLs as distinct, so live rows with no `note_id` do not collide with
-// each other and are skipped. Ordinals need no such skip — validateRecoveryWeeks
-// has already rejected a membership without one, which is stricter than the
-// nullable cloud column because the local ordering logic cannot tolerate a null.
+// Each predicate mirrors its index, minus the null handling those indexes allow
+// for: a unique index treats NULLs as distinct, but validateRecoveryWeeks has
+// already rejected a LIVE membership missing either its note reference or its
+// ordinal — stricter than the nullable cloud columns, because neither the
+// Recovery read nor the local ordering logic can tolerate a null.
 //
 // O(blocks + weeks) via two keyed indexes; no nested scan.
 function validateRecoveryInvariants(blocks, weeks) {
@@ -606,16 +631,14 @@ function validateRecoveryInvariants(blocks, weeks) {
     // recovery_block_weeks_one_live_note_idx: one live membership per workout
     // note, across ALL blocks. A note in two blocks makes every later
     // return-to-baseline comparison ambiguous about which recovery it belongs to.
-    if (week.note_id != null) {
-      const prior = noteOwner.get(week.note_id);
-      if (prior !== undefined) {
-        return {
-          ok: false,
-          error: `Invalid backup: workout note ${week.note_id} has two live recovery memberships (${prior}, ${week.id})`,
-        };
-      }
-      noteOwner.set(week.note_id, week.id);
+    const prior = noteOwner.get(week.note_id);
+    if (prior !== undefined) {
+      return {
+        ok: false,
+        error: `Invalid backup: workout note ${week.note_id} has two live recovery memberships (${prior}, ${week.id})`,
+      };
     }
+    noteOwner.set(week.note_id, week.id);
 
     // recovery_block_weeks_live_ordinal_idx: week ordinals are unique within a
     // block among live memberships, which is what makes week order total.
@@ -656,22 +679,45 @@ function validateBackup(payload) {
   const weightCheck = validateWeightEntries(payload.weight_entries);
   if (!weightCheck.ok) return weightCheck;
 
+  // Collected while the notes are validated, so the recovery pass below can
+  // resolve every live membership's `note_id` without a second scan. Stays empty
+  // for a version that carries no notes — which is also a version that carries
+  // no recovery data, so nothing ever resolves against an empty set.
+  const liveWorkoutNoteIds = new Set();
+
   if (NOTEBOOK_VERSIONS.has(payload.version)) {
     if (!Array.isArray(payload.workout_notes))
       return { ok: false, error: 'Invalid backup: workout_notes must be an array' };
     if (payload.workout_notes.length > MAX_IMPORT_ARRAY_LENGTH)
       return { ok: false, error: `Invalid backup: workout_notes too large (${payload.workout_notes.length}; limit ${MAX_IMPORT_ARRAY_LENGTH})` };
+    const workoutNoteIds = new Set();
     for (const n of payload.workout_notes) {
       if (!n || typeof n !== 'object' || Array.isArray(n))
         return { ok: false, error: 'Invalid backup: workout note is not an object' };
       if (typeof n.id !== 'string')
         return { ok: false, error: 'Invalid backup: workout note missing id' };
+      // Same rule the two recovery collections already enforce, and needed here
+      // for the same reason plus one more. Two rows claiming one id collapse to
+      // a single record on write while the payload claims two, so the restore
+      // silently loses one — and WHICH one it loses differs by mode: the local
+      // path writes the array verbatim and readers keep the live row, while the
+      // cloud path's dirty queue is keyed by id and keeps the LAST row. A live
+      // note followed by a tombstone therefore resolves both ways at once, which
+      // would let a membership pass the live-note check below and still reach an
+      // account whose note is deleted — the dangling link this validation exists
+      // to prevent, reintroduced through the back door.
+      if (workoutNoteIds.has(n.id))
+        return { ok: false, error: `Invalid backup: duplicate workout note id ${n.id}` };
+      workoutNoteIds.add(n.id);
       if (typeof n.title !== 'string')
         return { ok: false, error: 'Invalid backup: workout note missing title' };
       if (typeof n.raw_text !== 'string')
         return { ok: false, error: 'Invalid backup: workout note missing raw_text' };
       if (n.raw_text.length > MAX_IMPORT_RAW_TEXT_LENGTH)
         return { ok: false, error: `Invalid backup: workout note raw_text too large (${n.raw_text.length}; limit ${MAX_IMPORT_RAW_TEXT_LENGTH})` };
+      // A tombstoned note is not a link target: readers filter it out, so a
+      // membership pointing at one is dangling the moment it is restored.
+      if (n.deleted_at == null && n.id.length > 0) liveWorkoutNoteIds.add(n.id);
     }
     if (payload.current_workout_id !== null && typeof payload.current_workout_id !== 'string')
       return { ok: false, error: 'Invalid backup: current_workout_id must be a string or null' };
@@ -696,6 +742,8 @@ function validateBackup(payload) {
 
   // Blocks are validated first so the membership pass can resolve every
   // `block_id` against them — the same dependency order the restore itself uses.
+  // The notes were validated further up for the same reason, which is why a
+  // membership's `note_id` can be resolved here too.
   //
   // The two keys stand or fall TOGETHER. Either the payload carries both — an
   // exporting device always emits both, as empty lists when the feature was
@@ -724,7 +772,11 @@ function validateBackup(payload) {
     if (hasBlocks) {
       const blockCheck = validateRecoveryBlocks(payload.recovery_blocks);
       if (!blockCheck.ok) return blockCheck;
-      const weekCheck = validateRecoveryWeeks(payload.recovery_block_weeks, blockCheck.blockIds);
+      const weekCheck = validateRecoveryWeeks(
+        payload.recovery_block_weeks,
+        blockCheck.blockIds,
+        liveWorkoutNoteIds,
+      );
       if (!weekCheck.ok) return weekCheck;
       // Last, because it is the only check that needs both collections whole.
       const invariantCheck = validateRecoveryInvariants(
