@@ -17,8 +17,9 @@ export const FIRST_USE_S1 = 's1';
 // The terminal state once a current routine has at least one logged session.
 // The S2/S3 split that used to distinguish "exactly one session" from "two or
 // more" existed only to power the S2 first-use card, deleted by #786/R6b-3;
-// nothing distinguishes them any more, so they collapse into one state.
-export const FIRST_USE_ESTABLISHED = 'established';
+// nothing distinguishes them any more, so they collapse into one state. Not
+// exported: no caller needs to name it, only to know it isn't FIRST_USE_S1.
+const FIRST_USE_ESTABLISHED = 'established';
 
 // Deload records are not routines. Every predicate below counts routines only,
 // so generating a deload never advances or regresses the teaching state.

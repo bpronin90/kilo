@@ -22,7 +22,6 @@ import {
   FIRST_USE_UNKNOWN,
   FIRST_USE_S0,
   FIRST_USE_S1,
-  FIRST_USE_ESTABLISHED,
   deriveFirstUseState,
   pickAdoptableRoutine,
   selectRoutineNotes,
@@ -250,18 +249,23 @@ describe('first-use state derivation (#745 Part 3 §1)', () => {
     })).toBe(FIRST_USE_S1);
   });
 
-  test('any session count of 1 or more is the terminal ESTABLISHED state — nothing distinguishes further', () => {
+  test('any session count of 1 or more leaves S1 for the same terminal state — nothing distinguishes further', () => {
     const withCurrent = { ...base, notes: [{ id: 'a', title: 'A' }], currentId: 'a' };
-    expect(deriveFirstUseState({ ...withCurrent, activeSessionCount: 1 })).toBe(FIRST_USE_ESTABLISHED);
-    expect(deriveFirstUseState({ ...withCurrent, activeSessionCount: 2 })).toBe(FIRST_USE_ESTABLISHED);
-    expect(deriveFirstUseState({ ...withCurrent, activeSessionCount: 9 })).toBe(FIRST_USE_ESTABLISHED);
+    const oneSession = deriveFirstUseState({ ...withCurrent, activeSessionCount: 1 });
+    const manySessions = deriveFirstUseState({ ...withCurrent, activeSessionCount: 9 });
+    expect(oneSession).not.toBe(FIRST_USE_S1);
+    expect(oneSession).not.toBe(FIRST_USE_S0);
+    expect(oneSession).not.toBe(FIRST_USE_UNKNOWN);
+    // 1 session and 9 sessions collapse to the same state — nothing left reads
+    // the old S2/S3 distinction.
+    expect(manySessions).toBe(oneSession);
   });
 
   test('the state degrades backwards when data is deleted — it is a pure function of data, not a stored flag', () => {
     const populated = {
       ...base, notes: [{ id: 'a', title: 'A' }], currentId: 'a', activeSessionCount: 5,
     };
-    expect(deriveFirstUseState(populated)).toBe(FIRST_USE_ESTABLISHED);
+    expect(deriveFirstUseState(populated)).not.toBe(FIRST_USE_S1);
     expect(deriveFirstUseState({ ...populated, notes: [], currentId: null, activeSessionCount: 0 })).toBe(FIRST_USE_S0);
   });
 
