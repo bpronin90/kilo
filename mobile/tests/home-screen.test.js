@@ -1364,7 +1364,7 @@ describe('Home local read failures (#737 review)', () => {
   });
 });
 
-// ── Home recovery summary and the compact inclusion help (#757) ───────────────
+// ── Home recovery summary and the compact inclusion help (#757, #779, #782) ───
 //
 // Two halves of one question: what Home is allowed to SAY about recovery, and
 // how much of that explanation has to sit on screen permanently.
@@ -1373,7 +1373,15 @@ describe('Home local read failures (#737 review)', () => {
 // nothing means "no recovery block is active", and an unread snapshot is empty
 // for exactly the same reason a recovery-free account is — so silence is only
 // permitted once a read has actually verified it.
-describe('Home recovery summary (#757)', () => {
+//
+// #782 replaced the old week/baseline-title/inclusion three-line block with the
+// approved return-to-baseline summary (#779): line 1 is the hero count or a
+// fallback status, line 2 merges nonzero category counts with the inclusion
+// clause, line 3 is the existing stale message. Fixtures below are real notes
+// run through the same `deriveRecoveryComparison`/`captureRecoveryBaselineFromText`
+// Analytics uses, not hand-built comparison objects, so the wording under test
+// is provably what the authoritative engine would produce.
+describe('Home recovery summary (#757, #779, #782)', () => {
   const React = require('react');
   const render = require('react-test-renderer');
   const { HomeScreen } = require('../screens/HomeScreen');
@@ -1388,21 +1396,38 @@ describe('Home recovery summary (#757)', () => {
   const NOTE = {
     id: 'n1',
     title: 'Routine A',
-    raw_text: 'Monday\n+Lifting\n-Bench\n135 5,5,5',
+    raw_text: 'Monday\n+Lifting\n-Bench\n135 5,5,5\n-Squat\n185 5,5,5',
     saved_at: '2026-06-01T12:00:00.000Z',
   };
-  const WEEK_NOTE = {
-    id: 'nr1',
-    title: 'Recovery Week 1',
-    raw_text: 'Monday\n+Lifting\n-Bench\n45 5',
-    saved_at: '2026-06-08T12:00:00.000Z',
-  };
+  const baseline = captureRecoveryBaselineFromText(NOTE.raw_text);
+
+  // Bench met, Squat short (rebuilding) — the default "partial" week, and also
+  // the fixture for a lift that regressed after a prior week met it (#779: a
+  // previously-met exercise that drops again is `rebuilding` a second time,
+  // never a new state).
+  const PARTIAL_TEXT = 'Monday\n+Lifting\n-Bench\n135 5,5,5\n-Squat\n135 5,5,5';
+  // Both baseline exercises met.
+  const FULL_TEXT = NOTE.raw_text;
+  // Both met, plus a lift with no baseline counterpart.
+  const ADDED_TEXT = 'Monday\n+Lifting\n-Bench\n135 5,5,5\n-Squat\n185 5,5,5\n-Curl\n30 10,10';
+  // Squat never logged this week at all (not_reintroduced).
+  const SKIPPED_TEXT = 'Monday\n+Lifting\n-Bench\n135 5,5,5';
+  // Squat logged in a different comparable family than the baseline
+  // (not_comparable, `exercise_class_changed`).
+  const CLASS_CHANGED_TEXT = 'Monday\n+Lifting\n-Bench\n135 5,5,5\n-Squat\nBW 5,5,5';
+  // A set row with no exercise to hang it on: a Tier-A parser rejection, the
+  // same fixture `recovery-analytics.test.js` uses for `note_unreadable`.
+  const UNREADABLE_TEXT = '-135 5';
+
+  const weekNote = (id, raw_text, over = {}) => ({
+    id, title: `Recovery ${id}`, raw_text, saved_at: '2026-06-08T12:00:00.000Z', ...over,
+  });
 
   const block = (over = {}) => ({
     id: 'rb1',
     baseline_note_id: NOTE.id,
     baseline_note_title: 'Routine A',
-    baseline: { version: 1, exercises: [] },
+    baseline,
     include_in_normal_analytics: false,
     started_at: '2026-06-08T12:00:00.000Z',
     completed_at: null,
@@ -1413,7 +1438,7 @@ describe('Home recovery summary (#757)', () => {
   const week = (over = {}) => ({
     id: 'rw1',
     block_id: 'rb1',
-    note_id: WEEK_NOTE.id,
+    note_id: 'nr1',
     week_number: 1,
     completed_at: null,
     updated_at: '2026-06-08T12:00:00.000Z',
@@ -1430,10 +1455,14 @@ describe('Home recovery summary (#757)', () => {
     return null;
   };
 
+  // Default notes give the default block()+week() a normal, partial-comparison
+  // rendering ("Week 1 — 1 of 2 baseline exercises met · 1 rebuilding"), so
+  // tests about navigation/loading/stale/retry — not the copy itself — can
+  // mount with no override and still get a real, non-empty summary.
   const props = (over = {}) => ({
     weightEntries: [],
     workoutNote: NOTE,
-    notes: [NOTE, WEEK_NOTE],
+    notes: [NOTE, weekNote('nr1', PARTIAL_TEXT)],
     successMessage: '',
     onNavigate: jest.fn(),
     loading: false,
@@ -1475,31 +1504,141 @@ describe('Home recovery summary (#757)', () => {
     hooks._resetRecoveryAnalyticsFilterCache();
   });
 
-  test('an active block gives Home a compact summary with the current week and its context', async () => {
+  test('an active block gives Home the current week’s baseline count and category breakdown', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     const component = await mount();
 
     expect(has(component, 'home-recovery-summary')).toBe(true);
-    expect(hasText(component, 'Week 1 in progress')).toBe(true);
-    expect(hasText(component, 'Baselined from Routine A')).toBe(true);
+    expect(hasText(component, 'Week 1 — 1 of 2 baseline exercises met')).toBe(true);
+    expect(hasText(component, '1 rebuilding')).toBe(true);
     // The inclusion state is context, not decoration: Home's own classification
     // counts and 1K total are derived from a population this preference decides.
     expect(hasText(component, 'Not counted in your normal analytics.')).toBe(true);
   });
 
-  test('the summary follows the block’s own week and inclusion state', async () => {
+  test('a fully recovered week omits the breakdown line, and inclusion says nothing when it is on', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({
       blocks: [block({ include_in_normal_analytics: true })],
+      weeks: [week()],
+    }));
+    const component = await mount({ notes: [NOTE, weekNote('nr1', FULL_TEXT)] });
+
+    expect(hasText(component, 'Week 1 — 2 of 2 baseline exercises met')).toBe(true);
+    // Silence-by-default (#779): included is never announced, only deviation is.
+    expect(hasText(component, 'Counted in your normal analytics.')).toBe(false);
+    expect(hasText(component, 'Not counted in your normal analytics.')).toBe(false);
+    expect(hasText(component, 'rebuilding')).toBe(false);
+
+    // Line 2 is genuinely omitted, not rendered empty: exactly one content Text
+    // (the hero line) plus the "Recovery" header.
+    const card = component.root.findByProps({ testID: 'home-recovery-summary' });
+    expect(card.findAll(n => n.type === 'Text').length).toBe(2);
+  });
+
+  test('a lift that regresses after being met renders as rebuilding, not a new state', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block()],
       weeks: [
-        week(),
-        week({ id: 'rw2', note_id: 'nr2', week_number: 2, completed_at: '2026-06-22T12:00:00.000Z' }),
+        week({ note_id: 'nr1' }),
+        week({ id: 'rw2', note_id: 'nr2', week_number: 2 }),
       ],
+    }));
+    const component = await mount({
+      notes: [NOTE, weekNote('nr1', FULL_TEXT), weekNote('nr2', PARTIAL_TEXT)],
+    });
+
+    // The latest live week is what Home reports; #779 rules out a distinct
+    // "regressing" state, so a met lift that drops again is just rebuilding.
+    expect(hasText(component, 'Week 2 — 1 of 2 baseline exercises met')).toBe(true);
+    expect(hasText(component, '1 rebuilding')).toBe(true);
+  });
+
+  test('an exercise added during recovery is counted but never folds into the baseline denominator', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
+    const component = await mount({ notes: [NOTE, weekNote('nr1', ADDED_TEXT)] });
+
+    expect(hasText(component, 'Week 1 — 2 of 2 baseline exercises met')).toBe(true);
+    expect(hasText(component, '1 added during recovery')).toBe(true);
+  });
+
+  test('a baseline exercise never reintroduced this week is counted, not silently dropped', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
+    const component = await mount({ notes: [NOTE, weekNote('nr1', SKIPPED_TEXT)] });
+
+    expect(hasText(component, 'Week 1 — 1 of 2 baseline exercises met')).toBe(true);
+    expect(hasText(component, '1 not reintroduced')).toBe(true);
+  });
+
+  test('exclusion and a not-comparable exercise both surface on the merged second line, in order', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block({ include_in_normal_analytics: false })],
+      weeks: [week()],
+    }));
+    const component = await mount({ notes: [NOTE, weekNote('nr1', CLASS_CHANGED_TEXT)] });
+
+    expect(hasText(component, 'Week 1 — 1 of 2 baseline exercises met')).toBe(true);
+    // rebuilding, not_reintroduced, not_comparable, added_during_recovery, then
+    // the inclusion clause last — exactly the order the contract specifies.
+    expect(hasText(component, '1 not comparable · Not counted in your normal analytics.')).toBe(true);
+  });
+
+  test('a missing current-week note folds the week identity into line 1, and never renders 0 of 0', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block()],
+      weeks: [week({ note_id: 'nr-missing' })],
+    }));
+    const component = await mount({ notes: [NOTE] });
+
+    expect(hasText(component, "Week 1 — This week's note is no longer available.")).toBe(true);
+    expect(hasText(component, '0 of 0')).toBe(false);
+  });
+
+  test('an unreadable current-week note folds the week identity into line 1', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
+    const component = await mount({ notes: [NOTE, weekNote('nr1', UNREADABLE_TEXT)] });
+
+    expect(hasText(component, "Week 1 — This week's note couldn't be read.")).toBe(true);
+    expect(hasText(component, '0 of 0')).toBe(false);
+  });
+
+  test('an unavailable baseline reports the fallback rather than a broken count', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block({ baseline: null })],
+      weeks: [week()],
     }));
     const component = await mount();
 
-    expect(hasText(component, 'Week 2 complete')).toBe(true);
-    expect(hasText(component, 'Counted in your normal analytics.')).toBe(true);
-    expect(hasText(component, 'Not counted in your normal analytics.')).toBe(false);
+    expect(hasText(component, "Baseline data for this block isn't available.")).toBe(true);
+  });
+
+  test('an unsupported baseline version reports the same fallback as unavailable', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block({ baseline: { version: 999, exercises: [] } })],
+      weeks: [week()],
+    }));
+    const component = await mount();
+
+    expect(hasText(component, "Baseline data for this block isn't available.")).toBe(true);
+  });
+
+  test('an empty captured baseline shows its own fallback and still surfaces added-during-recovery work', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block({ baseline: { version: 1, exercises: [] } })],
+      weeks: [week()],
+    }));
+    const component = await mount({ notes: [NOTE, weekNote('nr1', ADDED_TEXT)] });
+
+    expect(hasText(component, 'No baseline exercises were captured for this block.')).toBe(true);
+    // Every completed exercise has no baseline row to match, so all three
+    // (Bench, Squat, Curl) fall into `added`.
+    expect(hasText(component, '3 added during recovery')).toBe(true);
+  });
+
+  test('no weeks logged yet shows the baseline-captured fallback', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [] }));
+    const component = await mount();
+
+    expect(hasText(component, 'Baseline captured. No week logged yet.')).toBe(true);
   });
 
   test('the summary routes to the Analytics Recovery section, and says so', async () => {
@@ -1549,7 +1688,7 @@ describe('Home recovery summary (#757)', () => {
 
     expect(has(component, 'home-recovery-summary')).toBe(true);
     expect(hasText(component, hooks.RECOVERY_UNVERIFIED_MESSAGE)).toBe(true);
-    expect(hasText(component, 'Week 1 in progress')).toBe(false);
+    expect(hasText(component, 'baseline exercises met')).toBe(false);
   });
 
   test('the unknown state offers exactly the control its message names', async () => {
@@ -1570,21 +1709,21 @@ describe('Home recovery summary (#757)', () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     await render.act(async () => { retry.props.onPress(); });
 
-    expect(hasText(component, 'Week 1 in progress')).toBe(true);
+    expect(hasText(component, 'Week 1 — 1 of 2 baseline exercises met')).toBe(true);
     expect(hasText(component, hooks.RECOVERY_UNVERIFIED_MESSAGE)).toBe(false);
   });
 
   test('a failed refresh keeps the last verified summary and says why it may be behind', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     const component = await mount();
-    expect(hasText(component, 'Week 1 in progress')).toBe(true);
+    expect(hasText(component, 'Week 1 — 1 of 2 baseline exercises met')).toBe(true);
 
     AsyncStorage.getItem.mockImplementation(storageWith({ fail: [BLOCKS_KEY, WEEKS_KEY] }));
     await render.act(async () => { await hooks.refreshRecoveryState(); });
 
     // Stale, not blank and not terminal: last-known-good stays on screen under
     // the reason the newest read did not land.
-    expect(hasText(component, 'Week 1 in progress')).toBe(true);
+    expect(hasText(component, 'Week 1 — 1 of 2 baseline exercises met')).toBe(true);
     expect(hasText(component, hooks.RECOVERY_STALE_MESSAGE)).toBe(true);
     expect(has(component, 'home-recovery-retry')).toBe(true);
   });
@@ -1605,6 +1744,30 @@ describe('Home recovery summary (#757)', () => {
     expect(has(component, 'home-recovery-retry')).toBe(true);
   });
 
+  test('excluded, stale, and a missing current-week note stay within the three-content-line budget', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block({ include_in_normal_analytics: false })],
+      weeks: [week({ note_id: 'nr-missing' })],
+    }));
+    const component = await mount({ notes: [NOTE] });
+    expect(hasText(component, "Week 1 — This week's note is no longer available.")).toBe(true);
+
+    AsyncStorage.getItem.mockImplementation(storageWith({ fail: [BLOCKS_KEY, WEEKS_KEY] }));
+    await render.act(async () => { await hooks.refreshRecoveryState(); });
+
+    expect(hasText(component, "Week 1 — This week's note is no longer available.")).toBe(true);
+    expect(hasText(component, 'Not counted in your normal analytics.')).toBe(true);
+    expect(hasText(component, hooks.RECOVERY_STALE_MESSAGE)).toBe(true);
+
+    // Header + at most 3 content lines, always (#779): line 1, the merged
+    // line 2, and the stale message as line 3 — never a 4th line, and the
+    // retry control is structural chrome, not a content line.
+    const card = component.root.findByProps({ testID: 'home-recovery-summary' });
+    const allTexts = card.findAll(n => n.type === 'Text');
+    const contentCount = allTexts.length - 1 /* "Recovery" header */ - 1 /* "Retry recovery" */;
+    expect(contentCount).toBe(3);
+  });
+
   test('a still-unresolved read reports loading, and offers no retry for a read that has not failed', async () => {
     let releaseRecoveryRead;
     const gate = new Promise(resolve => { releaseRecoveryRead = resolve; });
@@ -1620,7 +1783,7 @@ describe('Home recovery summary (#757)', () => {
     expect(has(component, 'home-recovery-retry')).toBe(false);
 
     await render.act(async () => { releaseRecoveryRead(); await gate; });
-    expect(hasText(component, 'Week 1 in progress')).toBe(true);
+    expect(hasText(component, 'Week 1 — 1 of 2 baseline exercises met')).toBe(true);
     expect(hasText(component, hooks.RECOVERY_LOADING_MESSAGE)).toBe(false);
   });
 
