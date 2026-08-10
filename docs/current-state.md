@@ -932,6 +932,11 @@ The real native app path now has a modular React Native shell:
   text, restores the full multi-note model plus weight goal, fatigue multiplier,
   and deload history on v2/v3 import, and still accepts older v1
   backups to restore weight history without wiping the newer workout-note state.
+  A v4 import also checks that every live recovery week names a workout note the
+  same backup carries as a live note, and rejects the whole payload before any
+  write when it does not, so a restore cannot create a recovery week with no
+  session behind it; tombstoned recovery weeks keep their looser shape, since no
+  reader resolves a removed membership's note.
   The export action now shows a blocking "export is unencrypted" confirmation
   before sharing; local export and native share failures preserve their
   underlying error message and log the full exception for device diagnostics.

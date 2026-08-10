@@ -593,8 +593,28 @@ describe('cloud-mode replace: preserved invariants', () => {
 // replaced away. v4 closes that; these pin both the round trip and the two
 // things a restore must NOT do — write on malformed input, or delete on silence.
 
+// The workout notes a recovery membership links to. A live membership always
+// names a real note — the block is created FROM a note and each week is logged
+// as one — so a seed that skipped them would be describing a device state the
+// app cannot produce, and #776's validation rejects it as the dangling link it is.
+async function seedWorkoutNotes(ids) {
+  const adapter = Storage.getStorageAdapter();
+  const existing = new Set((await Storage.loadWorkoutNotes()).map((n) => n.id));
+  for (const id of ids) {
+    if (existing.has(id)) continue;
+    // eslint-disable-next-line no-await-in-loop
+    await adapter.saveWorkoutNoteItem({
+      id,
+      title: `Routine ${id}`,
+      raw_text: 'Squat 100x5',
+      saved_at: '2026-07-01T08:00:00.000Z',
+    });
+  }
+}
+
 // A block with a real frozen baseline, plus the two week memberships under it.
 async function seedRecoveryData() {
+  await seedWorkoutNotes(['wn-keep', 'wn-week-1', 'wn-week-2']);
   const block = await Storage.createRecoveryBlock({
     baselineNoteId: 'wn-keep',
     baselineNoteTitle: 'Routine A',
@@ -651,6 +671,7 @@ describe('recovery data in the backup format', () => {
   // history is never a conflict. A validator that read tombstoned and completed
   // records as live would reject every long-time user's real backup.
   it('accepts history: a completed block beside a new active one, and a freed note and ordinal', async () => {
+    await seedWorkoutNotes(['wn-keep', 'wn-week-1']);
     const first = await Storage.createRecoveryBlock({
       baselineNoteId: 'wn-keep',
       baselineNoteText: '-Squat\n- 100 5,5',
@@ -676,6 +697,80 @@ describe('recovery data in the backup format', () => {
     expect(result).toEqual({ ok: true, mode: IMPORT_MODES.LOCAL, queued: 0 });
     expect((await Storage.loadRecoveryBlocks()).length).toBe(2);
     expect((await Storage.loadRecoveryBlockWeeks()).map((w) => w.id)).toEqual([reused.id]);
+  });
+
+  // The tombstone side of #776's note-reference rule. A removed membership's
+  // `note_id` is history, not a link — no reader ever resolves it — and the two
+  // shapes below are ones an honest device really produces: a user who deletes a
+  // recovery week and later deletes the note, and replace-by-omission minting a
+  // tombstone from a prior local row whose note this backup no longer carries.
+  // Demanding a live target for those would reject their real backup.
+  it('accepts a tombstoned membership whose note is deleted or absent from the payload', async () => {
+    const { w2 } = await seedRecoveryData();
+    await Storage.deleteRecoveryWeek(w2.id);
+
+    const backup = await Storage.exportBackup();
+    // The tombstoned membership's note is now itself a tombstone in the payload…
+    backup.workout_notes.find((n) => n.id === 'wn-week-2').deleted_at = '2026-07-05T08:00:00.000Z';
+    // …and a second tombstoned membership names a note the payload never carried.
+    backup.recovery_block_weeks.push({
+      ...backup.recovery_block_weeks.find((w) => w.id === w2.id),
+      id: 'rw-historic',
+      note_id: 'wn-long-gone',
+      week_number: 97,
+    });
+    // Including the shape a pre-#776 device could still hold: no note reference.
+    backup.recovery_block_weeks.push({
+      ...backup.recovery_block_weeks.find((w) => w.id === w2.id),
+      id: 'rw-historic-unlinked',
+      note_id: null,
+      week_number: 98,
+    });
+
+    const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+
+    expect(result.ok).toBe(true);
+    const raw = await Storage.loadRecoveryBlockWeeksRaw();
+    expect(raw.map((w) => w.id).sort()).toContain('rw-historic');
+    // The live set is untouched by any of it.
+    expect((await Storage.loadRecoveryBlockWeeks()).map((w) => w.note_id)).toEqual(['wn-week-1']);
+  });
+
+  // The rejection names the offending membership so a user can act on it, and
+  // carries nothing beyond the two record ids — no note title, no session text.
+  it('names the offending membership and its note, and nothing else, when the link is dangling', async () => {
+    const { w1 } = await seedRecoveryData();
+    const backup = await Storage.exportBackup();
+    backup.recovery_block_weeks.find((w) => w.id === w1.id).note_id = 'wn-does-not-exist';
+
+    const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain(w1.id);
+    expect(result.error).toContain('wn-does-not-exist');
+    expect(result.error).not.toContain('Routine');
+    expect(result.error).not.toContain('Squat');
+  });
+
+  // The cloud path's equivalent is in the malformed-payload suite below, which
+  // runs every case through cloudImport. This is the local half of "both restore
+  // paths enforce the same contract": on a device with no account nothing pushes,
+  // so an accepted dangling link would simply persist forever.
+  it('rejects a dangling link in local mode too, leaving storage byte-identical', async () => {
+    await seedRecoveryData();
+    const blocksBefore = await Storage.loadRecoveryBlocksRaw();
+    const weeksBefore = await Storage.loadRecoveryBlockWeeksRaw();
+    const notesBefore = await Storage.loadWorkoutNotesRaw();
+
+    const backup = await Storage.exportBackup();
+    backup.recovery_block_weeks[0].note_id = 'wn-does-not-exist';
+
+    const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+
+    expect(result.ok).toBe(false);
+    expect(await Storage.loadRecoveryBlocksRaw()).toEqual(blocksBefore);
+    expect(await Storage.loadRecoveryBlockWeeksRaw()).toEqual(weeksBefore);
+    expect(await Storage.loadWorkoutNotesRaw()).toEqual(notesBefore);
   });
 
   // The other half of the strict timestamp rule. There are exactly two producers
@@ -782,13 +877,44 @@ describe('recovery data: malformed payloads write nothing', () => {
         deleted_at: null,
       });
     }],
+    // `wn-dropped` is a real live note in the payload with no membership of its
+    // own, so this payload fails ONLY the ordinal invariant — the note-reference
+    // check below would otherwise reject it first and the invariant would go
+    // untested.
     ['two live memberships claiming the same week ordinal', (b) => {
       b.recovery_block_weeks.push({
         ...b.recovery_block_weeks[0],
         id: 'rw-duplicate-ordinal',
-        note_id: 'wn-some-other-note',
+        note_id: 'wn-dropped',
         deleted_at: null,
       });
+    }],
+    // ── recovery-week note references (issue #776) ──────────────────────────
+    //
+    // A live membership IS the block-to-note link. Before this validation a
+    // backup could name a note the payload did not carry, and the restore wrote
+    // a membership with nothing on the other end: the Recovery read has no week
+    // to show, the return-to-baseline comparison has no session to compare, and
+    // in cloud mode kilo.recovery_block_weeks' foreign key rejects the row
+    // mid-push, after local storage was already replaced.
+    ['a live membership naming a workout note the payload does not carry', (b) => {
+      b.recovery_block_weeks[0].note_id = 'wn-does-not-exist';
+    }],
+    ['a live membership with a null note reference', (b) => {
+      b.recovery_block_weeks[0].note_id = null;
+    }],
+    ['a live membership with no note reference at all', (b) => {
+      delete b.recovery_block_weeks[0].note_id;
+    }],
+    ['a live membership with an empty note reference', (b) => {
+      b.recovery_block_weeks[0].note_id = '';
+    }],
+    // The note is in the payload, but as a tombstone. Readers filter deleted
+    // notes out, so restoring this link produces the same dangling membership as
+    // naming a note that is absent outright.
+    ['a live membership naming a note the payload carries only as a tombstone', (b) => {
+      const target = b.recovery_block_weeks[0].note_id;
+      b.workout_notes.find((n) => n.id === target).deleted_at = '2026-07-05T08:00:00.000Z';
     }],
     // The cloud column is nullable (`week_number is null or week_number > 0`),
     // but the local domain has no such tolerance: orderedLiveWeeks subtracts
