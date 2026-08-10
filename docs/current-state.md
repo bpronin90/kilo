@@ -377,6 +377,9 @@ The real native app path now has a modular React Native shell:
   ordered linked-note weeks, and status; `Complete week` is required before
   `Add week` can attach a next new-or-existing note as the next sequential
   ordinal, and only the latest week of an active block can be `Unlink`ed
+  (a week whose linked note is missing or unset says `Note unavailable`, offers
+  no read action, and keeps its `Unlink` with a confirmation that claims nothing
+  about the absent note — nothing is repaired or rewritten automatically)
   (earlier weeks and history stay immutable and gap-free, and any linked note
   can still be deleted as an ordinary editable note). Completed week rows and
   completed-block history no longer render on Log; Analytics owns that durable
@@ -1009,9 +1012,18 @@ collapsed-by-default disclosure (#724): collapsed it shows only a routine count
 over a latest-routine summary with the shared chevron and no actions, while its
 routine cards, `+ New routine`, and the single `Start recovery block` entry
 point live only in its expanded body, and the visible `Double-tap to edit` hint
-is gone while the gesture remains. Opening a routine from elsewhere — a typed
-cross-screen navigation intent or a Recovery-history note tap — auto-expands the
-disclosure so the requested note is shown. The `Start recovery block` control is
+is gone while the gesture remains. Each row's date now reads `Created <date>`
+from the routine's creation stamp (falling back to the day encoded in its note
+id, then to no date), never the sync-maintained `updated_at`, and both the list
+and the collapsed `Latest:` summary sort by that same field — so editing a
+routine, reading a week, syncing, or restoring a backup leaves the displayed
+date unchanged. Opening a routine from elsewhere — a typed cross-screen
+navigation intent naming a non-current routine — auto-expands the disclosure so
+the requested note is shown; a Recovery week tap instead renders its note inline
+in the Recovery card, including when that week is linked to the current routine,
+and leaves this disclosure untouched. Both this disclosure and the Deload Week
+card keep their open/closed state across Routine↔Deload switches, and a consumed
+navigation request is never replayed by that switch. The `Start recovery block` control is
 present only when a block can actually be started and is absent (not just
 disabled) whenever an active block exists, the read is unverified/stale, no
 baseline is eligible, or another Recovery action is pending/busy. The Recovery

@@ -10,13 +10,49 @@
 // row and scrolling to its body; Week A/B, the full Set as current, Edit, and
 // Delete stay in that row's own expand-on-tap body) plus `Start recovery
 // block`, which remains gated behind expansion (unchanged eligibility/locking).
-import React, { useEffect, useRef, useState } from 'react';
+// The disclosure's open/closed state is owned by LogScreen (#775) — see the
+// `expanded`/`onToggleExpanded` props below.
+import React, { useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Card, Button, SectionTitle } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { localDate } from '../lib/LogScreenHelpers';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
+
+// A routine row's date has exactly one meaning: the day the routine was created
+// (#775). It used to read `updated_at`, which is the sync conflict cursor
+// (docs/backend-schema.md, "Conflict/sync columns") — every edit, every Week
+// A/B tap, every restored backup rewrote it, so the same routine showed a
+// different "date" depending on what the app had done to it last. `saved_at` is
+// stamped once at creation and never rewritten, so it is the field the row
+// displays and sorts by. `updated_at` itself is unchanged: the sync layer still
+// stamps and needs it, and only this UI stops reading it.
+//
+// Fallback order is saved_at → the creation day encoded in the note id
+// (`wn_YYYY-MM-DD_…`, makeWorkoutNoteItem) → no date at all. `updated_at` is
+// never consulted, even as a last resort: an unstable date is worse than none.
+const NOTE_ID_CREATED_DAY = /^wn_(\d{4}-\d{2}-\d{2})_/;
+function routineCreatedKey(note) {
+  if (note?.saved_at) return String(note.saved_at);
+  const match = NOTE_ID_CREATED_DAY.exec(String(note?.id || ''));
+  return match ? match[1] : null;
+}
+
+// Newest first by the same key the row displays, so `Latest:` can never name a
+// different routine than the one the expanded list shows first. Undated
+// routines sort last in their existing notebook order (Array#sort is stable).
+function sortByCreatedDesc(notes) {
+  return notes
+    .map((note, index) => ({ note, index, key: routineCreatedKey(note) }))
+    .sort((a, b) => {
+      if (a.key && b.key) return b.key.localeCompare(a.key) || a.index - b.index;
+      if (a.key) return -1;
+      if (b.key) return 1;
+      return a.index - b.index;
+    })
+    .map(entry => entry.note);
+}
 
 export function LogPreviousRoutines({
   otherNotes,
@@ -42,32 +78,18 @@ export function LogPreviousRoutines({
   // confirm.
   onStartRecoveryBlock,
   showRecoveryStart = false,
-  // A monotonic nonce LogScreen bumps on every external request to reveal a
-  // non-current routine (#724 review). Keying auto-expand on the REQUEST rather
-  // than on `viewingNoteId` is what lets a repeated request for the
-  // already-selected note reopen the disclosure — a later #718 key for the same
-  // note, or a re-tap of an already-selected but hidden Recovery-history note —
-  // while ordinary re-renders under an unchanged key respect a user collapse.
-  externalRevealKey = 0,
+  // The disclosure is CONTROLLED by LogScreen (#775). Routine and Deload are
+  // mutually exclusive branches, so this component unmounts on every view
+  // switch; local state made a user's collapse choice die with the unmount and
+  // reappear expanded (or collapsed) at random. The state — and the auto-reveal
+  // that opens it for a cross-screen note handoff — now live in LogScreen,
+  // which stays mounted across the switch.
+  expanded = false,
+  onToggleExpanded,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
-  // Collapsed by default (#724): scanning the active routine must not compete
-  // with routine/recovery management. The whole header is the disclosure.
-  const [expanded, setExpanded] = useState(false);
-  // Expand on each NEW external reveal request, so the requested note is never
-  // left unmounted behind the collapsed disclosure. The ref starts at 0 (the
-  // shell's "no request issued" sentinel) rather than the current prop, so an
-  // instance that MOUNTS already carrying a pending request — e.g. a #718 intent
-  // that switches Deload→Routine and mounts this list fresh — still expands. An
-  // unchanged nonce (ordinary re-render) never re-expands, so a later explicit
-  // user collapse stands until the next external request.
-  const prevRevealKeyRef = useRef(0);
-  useEffect(() => {
-    if (externalRevealKey === prevRevealKeyRef.current) return;
-    prevRevealKeyRef.current = externalRevealKey;
-    setExpanded(true);
-  }, [externalRevealKey]);
+  const toggleExpanded = () => onToggleExpanded?.();
   // Double-tap the viewed routine body to open it in the editor (matches main).
   const viewingNoteLastTapRef = useRef(0);
   const handleViewedNoteBodyPress = () => {
@@ -82,11 +104,10 @@ export function LogPreviousRoutines({
   };
 
   const routineCount = otherNotes.length;
-  // ISO timestamps sort lexicographically, so the max updated_at is the latest
-  // routine without parsing a Date. The list order below is left untouched.
-  const latestRoutine = routineCount > 0
-    ? otherNotes.reduce((a, b) => (String(b.updated_at || '') > String(a.updated_at || '') ? b : a))
-    : null;
+  const sortedNotes = sortByCreatedDesc(otherNotes);
+  // One ordering for both surfaces: the collapsed summary names whichever
+  // routine the expanded list puts first.
+  const latestRoutine = sortedNotes[0] ?? null;
 
   return (
     <View style={styles.previousRoutines}>
@@ -94,7 +115,7 @@ export function LogPreviousRoutines({
       <View style={styles.panel}>
         <View style={[styles.header, expanded && styles.headerBordered]}>
           <Pressable
-            onPress={() => setExpanded(e => !e)}
+            onPress={toggleExpanded}
             style={styles.headerToggle}
             accessibilityRole="button"
             accessibilityLabel={expanded ? 'Collapse routine management' : 'Expand routine management'}
@@ -133,7 +154,7 @@ export function LogPreviousRoutines({
             <MaterialIcons name="add" size={18} color={colors.accent} accessible={false} />
           </Pressable>
           <Pressable
-            onPress={() => setExpanded(e => !e)}
+            onPress={toggleExpanded}
             style={styles.headerChevronButton}
             accessibilityRole="button"
             accessibilityLabel={expanded ? 'Collapse routine management' : 'Expand routine management'}
@@ -150,17 +171,24 @@ export function LogPreviousRoutines({
 
         {expanded && (
           <View style={styles.body}>
-            {otherNotes.map(other => {
+            {sortedNotes.map(other => {
               // Same rule as LogActiveRoutineCard (#738 review): an explicit
               // accessibilityLabel replaces the label VoiceOver would otherwise derive
               // from this header's Text descendants. Two routines sharing a title are
               // permitted by the note-creation path, so the label must also carry the
               // visible date/week and recovery-week badge that distinguish them.
               const isViewedOther = viewingNoteId === other.id;
-              const otherDateLabel = other.updated_at
+              const otherCreatedKey = routineCreatedKey(other);
+              // A routine with neither a saved_at nor a dated id carries no date
+              // at all, on screen or in the label — the title still identifies
+              // it, and no unstable stand-in is invented (#775).
+              const otherCreatedText = otherCreatedKey
+                ? `Created ${localDate(otherCreatedKey).toLocaleDateString()}`
+                : null;
+              const otherDateLabel = otherCreatedText
                 ? (isViewedOther && viewingHasABWeeks
-                    ? `Week ${viewingEffectiveWeek} · ${localDate(other.updated_at).toLocaleDateString()}`
-                    : localDate(other.updated_at).toLocaleDateString())
+                    ? `Week ${viewingEffectiveWeek} · ${otherCreatedText}`
+                    : otherCreatedText)
                 : null;
               const otherRecoveryLabel = recoveryWeekNumberByNoteId[other.id] != null
                 ? `Recovery Week ${recoveryWeekNumberByNoteId[other.id]}`
@@ -191,12 +219,8 @@ export function LogPreviousRoutines({
                       >
                         {other.title || 'Untitled Routine'}
                       </Text>
-                      {other.updated_at && (
-                        <Text style={styles.otherNoteSub}>
-                          {viewingNoteId === other.id && viewingHasABWeeks
-                            ? `Week ${viewingEffectiveWeek} · ${localDate(other.updated_at).toLocaleDateString()}`
-                            : localDate(other.updated_at).toLocaleDateString()}
-                        </Text>
+                      {otherDateLabel && (
+                        <Text style={styles.otherNoteSub}>{otherDateLabel}</Text>
                       )}
                       {recoveryWeekNumberByNoteId[other.id] != null && (
                         <View

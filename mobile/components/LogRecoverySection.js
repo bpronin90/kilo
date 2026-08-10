@@ -22,10 +22,16 @@ import {
   useRecoveryBlockLifecycle,
 } from '../hooks/entries/recoveryBlockHooks';
 import { RecoveryInclusionToggle } from './RecoveryInclusionToggle';
+import { WorkoutContentRenderer } from './WorkoutContentRenderer';
 export { RECOVERY_INCLUSION_LABEL } from './RecoveryInclusionToggle';
 
-function _noteTitle(notesById, noteId) {
-  const note = notesById.get(noteId);
+// A week whose `note_id` is null, or names a note that is not in the notebook,
+// has no readable content (#775). `Untitled Routine` is reserved for notes that
+// EXIST and were left untitled — using it here claimed a note was present and
+// made a dead row look like an ordinary one.
+const RECOVERY_NOTE_UNAVAILABLE = 'Note unavailable';
+
+function _noteTitle(note) {
   return note?.title || 'Untitled Routine';
 }
 
@@ -34,6 +40,15 @@ export function LogRecoverySection({
   weeks = [],
   notes = [],
   onViewNote,
+  // The shared note viewer state (#775). Reading a recovery week's note used to
+  // hand the request off to More Routines — a different section, sometimes on a
+  // different view, that had to be revealed for the note to appear at all. The
+  // note now renders inline in the week row the user tapped, off the same
+  // `viewingNoteId`/`viewingNote`/`viewingNoteDayGroups` state LogDeloadSection
+  // already consumes, so the tap has an effect exactly where it was made.
+  viewingNoteId = null,
+  viewingNote = null,
+  viewingNoteDayGroups = [],
   onCompleteWeek,
   onOpenAddWeek,
   onCompleteBlock,
@@ -183,9 +198,15 @@ export function LogRecoverySection({
   };
 
   const handleUnlinkWeek = (week) => {
+    // No claim is made about a note that is not there: an absent note has no
+    // title to quote and cannot be "kept and stays editable" (#775). Unlinking
+    // still works — it is how a user clears a week whose note is gone.
+    const linkedNote = week.note_id ? notesById.get(week.note_id) : null;
     Alert.alert(
       `Unlink Week ${week.week_number}?`,
-      `"${_noteTitle(notesById, week.note_id)}" will be removed from this recovery block. The note itself is kept and stays editable.`,
+      linkedNote
+        ? `"${_noteTitle(linkedNote)}" will be removed from this recovery block. The note itself is kept and stays editable.`
+        : `Week ${week.week_number} will be removed from this recovery block.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -302,34 +323,61 @@ export function LogRecoverySection({
             ) : null}
 
             <View style={styles.weekList}>
-              {activeWeeks.filter(w => !w.completed_at).map(week => (
-                <View key={week.id} style={styles.weekRow}>
-                  <Pressable
-                    style={styles.weekRowMain}
-                    onPress={() => onViewNote?.(notesById.get(week.note_id))}
-                    accessibilityRole="button"
-                    accessibilityLabel={`View ${_noteTitle(notesById, week.note_id)}, Recovery Week ${week.week_number}`}
-                  >
-                    <Text style={styles.weekNumber}>Week {week.week_number}</Text>
-                    <Text style={styles.weekNoteTitle} numberOfLines={1}>
-                      {_noteTitle(notesById, week.note_id)}
-                    </Text>
-                    <Text style={styles.weekStatus}>In progress</Text>
-                  </Pressable>
-                  {week.id === latestWeekId && (
-                    <Pressable
-                      onPress={() => handleUnlinkWeek(week)}
-                      disabled={actionsLocked}
-                      style={styles.inlineButton}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Unlink Week ${week.week_number}`}
-                      accessibilityState={{ disabled: actionsLocked }}
-                    >
-                      <Text style={styles.inlineButtonText}>{busy === week.id ? 'Unlinking…' : 'Unlink'}</Text>
-                    </Pressable>
-                  )}
-                </View>
-              ))}
+              {activeWeeks.filter(w => !w.completed_at).map(week => {
+                const linkedNote = week.note_id ? notesById.get(week.note_id) : null;
+                // The row stays — the week is still one of this block's weeks
+                // and still needs its `Unlink` — but it offers no read action,
+                // because there is nothing to read. Dropping `onPress` AND
+                // `accessibilityRole="button"` is what keeps it from being an
+                // inert press for a sighted user and an announced-but-dead
+                // button for a screen-reader user (#775).
+                const rowLabel = linkedNote
+                  ? `View ${_noteTitle(linkedNote)}, Recovery Week ${week.week_number}`
+                  : `Recovery Week ${week.week_number}, note unavailable`;
+                const isViewingThisNote = !!linkedNote && viewingNoteId === week.note_id && !!viewingNote;
+                const rowProps = linkedNote
+                  ? { onPress: () => onViewNote?.(linkedNote), accessibilityRole: 'button' }
+                  : {};
+                const RowMain = linkedNote ? Pressable : View;
+                return (
+                  <View key={week.id} style={styles.weekItem}>
+                    <View style={styles.weekRow}>
+                      <RowMain
+                        style={styles.weekRowMain}
+                        accessible
+                        accessibilityLabel={rowLabel}
+                        {...rowProps}
+                      >
+                        <Text style={styles.weekNumber}>Week {week.week_number}</Text>
+                        <Text style={styles.weekNoteTitle} numberOfLines={1}>
+                          {linkedNote ? _noteTitle(linkedNote) : RECOVERY_NOTE_UNAVAILABLE}
+                        </Text>
+                        <Text style={styles.weekStatus}>In progress</Text>
+                      </RowMain>
+                      {week.id === latestWeekId && (
+                        <Pressable
+                          onPress={() => handleUnlinkWeek(week)}
+                          disabled={actionsLocked}
+                          style={styles.inlineButton}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Unlink Week ${week.week_number}`}
+                          accessibilityState={{ disabled: actionsLocked }}
+                        >
+                          <Text style={styles.inlineButtonText}>{busy === week.id ? 'Unlinking…' : 'Unlink'}</Text>
+                        </Pressable>
+                      )}
+                    </View>
+                    {isViewingThisNote && (
+                      <View style={styles.weekNoteContent}>
+                        <WorkoutContentRenderer
+                          dayGroups={viewingNoteDayGroups}
+                          emptyText="No exercises to display."
+                        />
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
             </View>
 
             <View style={styles.actionsRow}>
@@ -467,6 +515,15 @@ const createStyles = (colors) => StyleSheet.create({
   },
   weekList: {
     gap: 8,
+  },
+  // Groups one week's row with the note it renders inline when tapped (#775).
+  // Layout-only containment; both values are the list's and the row's own
+  // existing spacing, so no new Log-tab spacing decision is introduced.
+  weekItem: {
+    gap: 8,
+  },
+  weekNoteContent: {
+    paddingHorizontal: 12,
   },
   weekRow: {
     flexDirection: 'row',

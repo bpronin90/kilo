@@ -145,16 +145,35 @@ export function LogScreen({
   const [recoveryModal, setRecoveryModal] = useState(null); // { mode: 'routine'|'note', note } | null
   const [addWeekModalOpen, setAddWeekModalOpen] = useState(false);
 
+  // Both Log disclosures are owned here (#775), not by the sections that render
+  // them. Routine and Deload are mutually exclusive branches, so
+  // LogPreviousRoutines and LogDeloadSection unmount on every view switch; while
+  // the state lived in those components a user's collapse choice was discarded
+  // by the remount and the card came back in its default state.
+  const [routineManagementExpanded, setRoutineManagementExpanded] = useState(false);
+  const [deloadCardCollapsed, setDeloadCardCollapsed] = useState(false);
+
   // A monotonic nonce bumped on every EXTERNAL request to reveal a non-current
-  // routine — a typed navigation intent (#718) resolved below, or a
-  // Recovery-history/lifecycle tap. LogPreviousRoutines keys its auto-expand on
-  // this key, not on `viewingNoteId`, so a fresh request re-expands the
-  // collapsed disclosure even when it re-selects the already-selected note (a
-  // later #718 key for the same note, or a re-tap of an already-selected but
-  // hidden recovery note), while ordinary re-renders under an unchanged key
-  // still respect a user's explicit collapse (#724 review).
+  // routine — now only a typed navigation intent (#718) resolved below, since a
+  // Recovery tap reads its note in place (#775). Keying auto-expand on the
+  // REQUEST rather than on `viewingNoteId` is what lets a fresh request expand
+  // the disclosure even when it re-selects the already-selected note, while
+  // ordinary re-renders under an unchanged key still respect a user's explicit
+  // collapse (#724 review).
   const [routineRevealKey, setRoutineRevealKey] = useState(0);
   const revealRoutine = () => setRoutineRevealKey(k => k + 1);
+  // The consumed-request marker lives HERE, alongside the state it opens
+  // (#775). In LogPreviousRoutines it was reset by the very remount it had to
+  // survive, so switching Routine→Deload→Routine replayed the last consumed
+  // request and reopened a disclosure the user had closed. 0 is the "no request
+  // issued" sentinel, so a request that arrives before this screen's first
+  // render is still consumed exactly once.
+  const consumedRevealKeyRef = useRef(0);
+  useEffect(() => {
+    if (routineRevealKey === consumedRevealKeyRef.current) return;
+    consumedRevealKeyRef.current = routineRevealKey;
+    setRoutineManagementExpanded(true);
+  }, [routineRevealKey]);
 
   // Single lifecycle mutex (#696 review): null | 'week' | 'block' | 'add' |
   // 'delete-unlink' | a week id being unlinked. Every recovery-block write —
@@ -353,10 +372,12 @@ export function LogScreen({
     // "ensure this note is shown", so it must be idempotent, and it touches only
     // the viewer — never editingNoteId/editingText or any other editor state.
     otherEditor.setViewingNoteId(note.id);
-    // A non-current routine lives inside the collapsed routine-management
+    // A non-current ROUTINE lives inside the collapsed routine-management
     // disclosure (#724); bump the reveal nonce so it expands for this request
-    // even if the note was already the selected one.
-    revealRoutine();
+    // even if the note was already the selected one. A deload target renders in
+    // LogDeloadSection instead, so revealing More Routines for it would open a
+    // disclosure on the view the user is not even looking at (#775).
+    if (!isDeloadTarget) revealRoutine();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navNoteKey, navNoteId, notesLoading, notesError, notes, currentId, currentEditor.mode, otherEditor.editingNoteId, deloadEditor.deloadMode]);
 
@@ -564,15 +585,20 @@ export function LogScreen({
     return result;
   });
 
-  // A Recovery-history/lifecycle note tap is a "reveal this note" request, so it
-  // is set-only (not the toggling handleViewOtherNote): re-tapping a note that is
-  // already selected but hidden behind a collapsed disclosure must SHOW it, never
-  // toggle the selection off (#724 review). The reveal nonce then expands the
-  // disclosure for this request regardless of whether the selection changed.
+  // A Recovery week tap now reads its note INSIDE the Recovery card (#775), so
+  // this only selects the note; it no longer reveals More Routines, and it no
+  // longer refuses the current routine — a recovery week linked to the current
+  // routine used to be an inert press, because the only surface that could show
+  // it (the non-current routine list) never renders it. It stays set-only, not
+  // the toggling handleViewOtherNote, so a repeat tap still shows the note.
+  //
+  // The absent-note guard is retained defensively: LogRecoverySection no longer
+  // gives a week without a resolvable note a press target at all, so this is
+  // unreachable from the UI, but the handler must not select a null note if a
+  // future caller passes one.
   const handleViewRecoveryNote = (note) => {
-    if (!note || note.id === currentId) return;
+    if (!note) return;
     otherEditor.setViewingNoteId(note.id);
-    revealRoutine();
   };
 
   // Deleting a linked recovery-week note (any week, active or completed
@@ -783,6 +809,8 @@ export function LogScreen({
                 viewingNoteDayGroups={otherEditor.viewingNoteDayGroups}
                 handleOpenOtherNote={otherEditor.handleOpenOtherNote}
                 logSessionCount={currentEditor.logSessionCount}
+                deloadCollapsed={deloadCardCollapsed}
+                onToggleDeloadCollapsed={() => setDeloadCardCollapsed(c => !c)}
               />
             )}
 
@@ -873,6 +901,9 @@ export function LogScreen({
                 weeks={recoveryWeeks}
                 notes={notes}
                 onViewNote={handleViewRecoveryNote}
+                viewingNoteId={otherEditor.viewingNoteId}
+                viewingNote={otherEditor.viewingNote}
+                viewingNoteDayGroups={otherEditor.viewingNoteDayGroups}
                 onCompleteWeek={handleCompleteCurrentWeek}
                 onOpenAddWeek={openAddWeekModal}
                 onCompleteBlock={handleCompleteRecoveryBlock}
@@ -907,7 +938,8 @@ export function LogScreen({
                 recoveryWeekNumberByNoteId={recoveryWeekNumberByNoteId}
                 onStartRecoveryBlock={openStartRecoveryBlock}
                 showRecoveryStart={showRecoveryStartInManagement}
-                externalRevealKey={routineRevealKey}
+                expanded={routineManagementExpanded}
+                onToggleExpanded={() => setRoutineManagementExpanded(e => !e)}
               />
             )}
           </>

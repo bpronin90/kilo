@@ -30,16 +30,20 @@ export function LogDeloadSection({
   viewingNoteDayGroups,
   handleOpenOtherNote,
   logSessionCount,
+  // Controlled by LogScreen (#775), for the same reason More Routines'
+  // disclosure is: this section unmounts on every Routine↔Deload switch, so
+  // local collapse state silently reset the card the user had just collapsed.
+  deloadCollapsed = false,
+  onToggleDeloadCollapsed,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
-  const [deloadCollapsed, setDeloadCollapsed] = useState(false);
   const [expandedDeloads, setExpandedDeloads] = useState(new Set());
   const [showDeloadOrdinalPrompt, setShowDeloadOrdinalPrompt] = useState(false);
   const [deloadOrdinalInput, setDeloadOrdinalInput] = useState('');
 
   const handleDeloadCollapsedToggle = () => {
-    setDeloadCollapsed(c => !c);
+    onToggleDeloadCollapsed?.();
   };
 
   const handleToggleLegacyDeload = (id) => {
