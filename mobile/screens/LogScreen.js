@@ -28,13 +28,11 @@ import { Alert } from '../lib/platformAlert';
 import { LogEmptyState } from '../components/LogEmptyState';
 import { ScreenShell } from '../components/ScreenShell';
 import { Button, Card, ErrorBanner } from '../components/UI';
-import { GuidedRoutineSheet } from '../components/GuidedRoutineSheet';
 import { countWorkoutSessionsFromSections } from '../lib/parser';
 import {
   deriveFirstUseState,
   pickAdoptableRoutine,
   FIRST_USE_S1,
-  FIRST_USE_S2,
 } from '../lib/guidedEntry';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
@@ -236,7 +234,6 @@ export function LogScreen({
   };
 
   const [tabView, setTabView] = useState('routine'); // 'routine' | 'deload'
-  const [guidedSheetOpen, setGuidedSheetOpen] = useState(false);
 
   const editorScrollRef = useRef(null);
   const readScrollRef = useRef(null);
@@ -687,50 +684,9 @@ export function LogScreen({
     ? pickAdoptableRoutine(notes, currentId)
     : null;
 
-  // Guided entry is hidden while the read is unresolved or failed, and is
-  // unavailable in deload mode; the plain-text editor stays the fallback so the
-  // `New Routine` control is never inert.
-  const guidedEntryAvailable = !notesLoading && !notesError && effectiveTabView === 'routine';
-  const handleCreateRoutineEntry = () => {
-    if (guidedEntryAvailable) {
-      setGuidedSheetOpen(true);
-      return;
-    }
-    otherEditor.handleCreateRoutine();
-  };
-  const handleGuidedWriteAsText = (seed) => {
-    setGuidedSheetOpen(false);
-    otherEditor.handleCreateRoutine(seed);
-  };
-  // Exactly one write, `add(title, composedText)`. No other storage key is
-  // touched and the routine is NOT adopted — but the offer must still be made,
-  // so a successful guided save raises the SAME post-save adoption prompt the
-  // plain editor's `Save` raises (#745 Part 4 §A1, which is unconditioned on
-  // `currentId`). The S1 card cannot stand in for it: S1 is gated on
-  // `!currentId`, so a user who already has a current routine would otherwise
-  // be offered adoption nowhere at all.
-  const handleGuidedSave = async ({ title, text }) => {
-    try {
-      const note = await add(title, text);
-      if (!note?.id) return { ok: false, error: 'Could not save this routine. Try again.' };
-      setGuidedSheetOpen(false);
-      otherEditor.showAdoptionPromptFor(note);
-      return { ok: true };
-    } catch {
-      return { ok: false, error: 'Could not save this routine. Nothing was written — try again.' };
-    }
-  };
-
-  // The `Copy last session` control: current-routine editor only, S2/S3 only,
-  // verified read only, never in deload mode. It reads no Recovery state.
-  const showSessionAutofill =
-    !otherEditor.editingNoteId
-    && currentEditor.mode === 'edit'
-    && deloadEditor.deloadMode !== 'edit'
-    && !!currentId
-    && !notesLoading
-    && !notesError
-    && activeSessionCount >= 1;
+  // `New Routine` always opens the ordinary editor on an empty note, which
+  // shows R6b-1's tappable seed example. No guided composer to route into.
+  const handleCreateRoutineEntry = () => otherEditor.handleCreateRoutine();
 
   const activeSaveError = deloadEditor.deloadMode === 'edit'
     ? deloadEditor.saveError
@@ -875,24 +831,6 @@ export function LogScreen({
                 activeEditText={currentEditor.activeEditText}
                 recoveryWeekNumber={currentRecoveryWeekNumber}
               />
-            )}
-
-            {/* S2 — exactly one logged session. Two facts, once, inline, and
-                dismissed by progressing rather than by a stored flag: the rule
-                the format depends on, and the name of the real control that
-                turns a lift into an Analytics chart (§12: the copy uses the
-                control's actual label, `Track`). */}
-            {effectiveTabView === 'routine' && currentEditor.mode === 'read' && hasContent
-              && firstUseState === FIRST_USE_S2 && (
-              <Card style={styles.firstUseCard}>
-                <Text style={styles.firstUseTitle}>One session logged</Text>
-                <Text style={styles.firstUseBody}>
-                  Each new line under an exercise is a new session — add today's sets on their own line, below the last one.
-                </Text>
-                <Text style={styles.firstUseBody}>
-                  To chart a lift in Analytics, tap Track on that exercise above.
-                </Text>
-              </Card>
             )}
 
             {effectiveTabView === 'routine' && (
@@ -1054,18 +992,8 @@ export function LogScreen({
           adoptionBusy={otherEditor.adoptionBusy}
           onAdoptPromptedRoutine={otherEditor.handleAdoptPromptedRoutine}
           onDismissAdoptionPrompt={otherEditor.handleDismissAdoptionPrompt}
-          showSessionAutofill={showSessionAutofill}
-          // Writes into the editor DRAFT, never storage: handleCurrentTextChange
-          // owns A/B splicing and the existing debounced autosave persists it.
-          onApplySessionAutofill={currentEditor.handleCurrentTextChange}
         />
       </ScreenShell>
-      <GuidedRoutineSheet
-        visible={guidedSheetOpen && guidedEntryAvailable}
-        onClose={() => setGuidedSheetOpen(false)}
-        onWriteAsText={handleGuidedWriteAsText}
-        onSave={handleGuidedSave}
-      />
       <SessionCheckInModal
         // Gated on the toggle exactly as the Analytics one is. The hook's
         // withdrawal transition already clears the prompt when the toggle goes

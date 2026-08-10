@@ -6,7 +6,6 @@ import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
 import { formatDate } from '../lib/format';
 import { WorkoutSyntaxModal } from './WorkoutSyntaxModal';
-import { SessionAutofillSheet } from './SessionAutofillSheet';
 import { WORKOUT_SEED_EXAMPLE_TEXT } from './WorkoutSyntaxReference';
 
 // Post-save adoption prompt (#748; #745 Part 4 §A1). Lightweight, non-modal,
@@ -153,13 +152,10 @@ export function LogScreenEditorCard({
   adoptionBusy,
   onAdoptPromptedRoutine,
   onDismissAdoptionPrompt,
-  showSessionAutofill = false,
-  onApplySessionAutofill,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const [syntaxHelpVisible, setSyntaxHelpVisible] = useState(false);
-  const [autofillVisible, setAutofillVisible] = useState(false);
   // Reveal state for the compact "Date · <value>" secondary row (#764),
   // replacing the removed Settings "Edit deload dates" toggle. Collapses
   // whenever a different note is opened so it never carries a stale reveal
@@ -200,15 +196,6 @@ export function LogScreenEditorCard({
       <WorkoutSyntaxModal
         visible={syntaxHelpVisible}
         onClose={() => setSyntaxHelpVisible(false)}
-      />
-      <SessionAutofillSheet
-        visible={autofillVisible}
-        activeText={activeEditText}
-        onClose={() => setAutofillVisible(false)}
-        onApply={(nextText) => {
-          setAutofillVisible(false);
-          onApplySessionAutofill?.(nextText);
-        }}
       />
       {deloadMode === 'edit' ? (
         <Card>
@@ -347,21 +334,6 @@ export function LogScreenEditorCard({
               >
                 <Text style={styles.syntaxHelpButtonText}>Workout syntax help</Text>
               </Pressable>
-              {/* Session autofill (#745 Part 3 §3.2): a plain control, never a
-                  prompt, never a modal on open, never a nag. It appears only in
-                  the current-routine editor once the routine has a logged
-                  session, so returning users get the benefit without being
-                  taught anything. */}
-              {showSessionAutofill && (
-                <Pressable
-                  onPress={() => setAutofillVisible(true)}
-                  style={styles.syntaxHelpButton}
-                  accessibilityRole="button"
-                  accessibilityLabel="Copy last session into this routine"
-                >
-                  <Text style={styles.syntaxHelpButtonText}>Copy last session</Text>
-                </Pressable>
-              )}
             </View>
             <TextInput
               ref={editorInputRef}
