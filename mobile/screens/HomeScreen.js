@@ -5,8 +5,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, HeroMetric, LineChart, getSessionTone, Button, ErrorBanner } from '../components/UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { CLOUD_SYNC_NOTICE, useWeightGoal, useTrackedLifts, getNoteSections, useCloudSyncSummary } from '../hooks/useEntries';
-import { deriveHomeDashboardData, useHomeNormalNotes, useHomeRecoverySummary, HOME_RECOVERY_STATUS } from './home/homeDashboardData';
-import { RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from '../lib/data/recoveryAnalytics';
+import { deriveHomeDashboardData, useHomeNormalNotes, useHomeRecoverySummary, HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './home/homeDashboardData';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue, displayChartSeries } from '../lib/units';
 

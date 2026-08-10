@@ -7,7 +7,17 @@ import {
   useRecoveryAnalyticsFilter,
   useRecoveryBlockState,
 } from '../../hooks/entries/recoveryBlockHooks';
-import { deriveRecoveryComparison } from '../../lib/data/recoveryAnalytics';
+import {
+  deriveRecoveryComparison,
+  RECOVERY_COMPARISON_STATUS,
+  RECOVERY_WEEK_STATUS,
+} from '../../lib/data/recoveryAnalytics';
+
+// Re-exported so HomeScreen's active-branch copy can switch on the same
+// enums this module derives from, without HomeScreen importing a second
+// module directly (and shifting its own line numbers out from under
+// unrelated line-anchored assertions, e.g. theme-rendering.test.js).
+export { RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS };
 import { normalizeExerciseKey, countWorkoutSessionsFromSections } from '../../lib/parser';
 import {
   deriveWeightGoalAnalytics,
