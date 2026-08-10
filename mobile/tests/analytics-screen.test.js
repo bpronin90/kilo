@@ -636,7 +636,22 @@ describe('AnalyticsScreen daily-loop handoffs (#717)', () => {
   // The scroll target lives on the ScrollView ref inside ScreenShell. Under
   // react-test-renderer that instance performs no real scrolling, so stub its
   // scrollTo to make section targeting observable.
-  function setupTargeting({ section = null, sectionNonce = 0, onNavigate } = {}) {
+  // An active recovery block, so the Recovery section renders and can be
+  // targeted (#770). Home only offers its Recovery handoff while a block is
+  // running, which is exactly this state.
+  const ACTIVE_BLOCK = {
+    id: 'rb1',
+    baseline_note_id: 'note-baseline',
+    baseline_note_title: 'Push Pull Legs',
+    baseline: { exercises: [] },
+    started_at: '2026-05-01T00:00:00Z',
+    completed_at: null,
+    saved_at: '2026-05-01T00:00:00Z',
+    updated_at: '2026-05-01T00:00:00Z',
+    deleted_at: null,
+  };
+
+  function setupTargeting({ section = null, sectionNonce = 0, onNavigate, recoveryState } = {}) {
     useEntries.useFeatureToggles.mockReturnValue({
       fatigueTrackingEnabled: true,
       deloadModeEnabled: true,
@@ -647,7 +662,9 @@ describe('AnalyticsScreen daily-loop handoffs (#717)', () => {
     useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: {}, loading: false });
     useEntries.useWorkoutNotes.mockReturnValue({ notes: [], currentNote: null, loading: false, update: jest.fn() });
     useEntries.useDeloadHistory.mockReturnValue({ history: [], loading: false });
-    useEntries.useRecoveryBlockState.mockReturnValue({ blocks: [], weeks: [], loading: false });
+    useEntries.useRecoveryBlockState.mockReturnValue(
+      recoveryState ?? { blocks: [], weeks: [], loading: false }
+    );
 
     const scrollTo = jest.fn();
     let component;
@@ -714,6 +731,210 @@ describe('AnalyticsScreen daily-loop handoffs (#717)', () => {
     const { component, scrollTo } = setupTargeting({ section: null, sectionNonce: 1 });
     fireLayout(component.root, 'handleWeightLayout', 420);
     expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  // ── The three destinations added by #770 ───────────────────────────────────
+  //
+  // Each Home control below used to land somewhere its label did not promise:
+  // Exercise Progress at the broad Strength block, `Full history and insights`
+  // and `Recovery` at whatever position Analytics happened to be left at.
+
+  const RECOVERY_STATE = { blocks: [ACTIVE_BLOCK], weeks: [], loading: false };
+
+  // The anchors added by this issue are plain onLayout Views inside the screen
+  // rather than props of a child component, so they are addressed by the testID
+  // of the box they measure.
+  const fireLayoutFor = (root, testID, layout) => {
+    const handler = root.findByProps({ testID }).props.onLayout;
+    render.act(() => { handler({ nativeEvent: { layout } }); });
+  };
+
+  // Progressive Overload is measured from two boxes: the sticky header reports
+  // only its height (a sticky child is laid out inside a wrapper, so its `y` is
+  // 0 and says nothing about where the section is), and the list beneath it
+  // reports the real content offset. The destination is the difference.
+  const OVERLOAD_HEADER_HEIGHT = 133;
+  const OVERLOAD_LIST_Y = 1533;
+  const OVERLOAD_TARGET_Y = OVERLOAD_LIST_Y - OVERLOAD_HEADER_HEIGHT;
+  const fireOverloadLayout = (root, { listY = OVERLOAD_LIST_Y, headerHeight = OVERLOAD_HEADER_HEIGHT } = {}) => {
+    fireLayoutFor(root, 'sticky-header', { x: 0, y: 0, width: 343, height: headerHeight });
+    fireLayoutFor(root, 'overload-list-anchor', { x: 0, y: listY, width: 343, height: 800 });
+  };
+
+  test('an overview request goes to the top without waiting for any layout', () => {
+    // Analytics is always mounted with no section (App.js), so every handoff
+    // arrives as a prop update — including the first one of a session, before
+    // anything on the tab has reported a position.
+    const { component, scrollTo } = setupTargeting();
+    render.act(() => {
+      component.update(<AnalyticsScreen multiplier={1.07} section="overview" sectionNonce={1} />);
+    });
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ y: 0 }));
+  });
+
+  test('a progressive-overload request parks the sticky header at the top of the list', () => {
+    const { component, scrollTo } = setupTargeting({ section: 'progressive-overload', sectionNonce: 1 });
+    fireOverloadLayout(component.root);
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ y: OVERLOAD_TARGET_Y }));
+  });
+
+  // The bug this arrangement exists for: ScrollView lays a sticky child out
+  // inside a wrapper of its own, so the header's onLayout reports y: 0. Taking
+  // that at face value would send an Exercise Progress handoff to the top of
+  // Analytics — the one destination it is not.
+  test('the sticky header’s own y is never mistaken for the section position', () => {
+    const { component, scrollTo } = setupTargeting({ section: 'progressive-overload', sectionNonce: 1 });
+    fireLayoutFor(component.root, 'sticky-header', { x: 0, y: 0, width: 343, height: OVERLOAD_HEADER_HEIGHT });
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    fireLayoutFor(component.root, 'overload-list-anchor', { x: 0, y: OVERLOAD_LIST_Y, width: 343, height: 800 });
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ y: OVERLOAD_TARGET_Y }));
+  });
+
+  // Layout order between two sibling boxes is not guaranteed. Landing on the
+  // list alone would overshoot by the header's height and could never be
+  // corrected: the pending request is spent, so the pinned header would sit
+  // over the first rows for the rest of the visit.
+  test('the list measuring first does not spend the request before the header height is known', () => {
+    const { component, scrollTo } = setupTargeting({ section: 'progressive-overload', sectionNonce: 1 });
+    fireLayoutFor(component.root, 'overload-list-anchor', { x: 0, y: OVERLOAD_LIST_Y, width: 343, height: 800 });
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    fireLayoutFor(component.root, 'sticky-header', { x: 0, y: 0, width: 343, height: OVERLOAD_HEADER_HEIGHT });
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ y: OVERLOAD_TARGET_Y }));
+  });
+
+  test('a recovery request scrolls to the Recovery section', () => {
+    const { component, scrollTo } = setupTargeting({
+      section: 'recovery',
+      sectionNonce: 1,
+      recoveryState: RECOVERY_STATE,
+    });
+    fireLayoutFor(component.root, 'recovery-section-anchor', { x: 0, y: 1100, width: 343, height: 310 });
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ y: 1100 }));
+  });
+
+  test('a request that arrives before its destination is laid out stays pending, not lost', () => {
+    // Nothing to scroll to yet, and nothing may be guessed at: the request is
+    // fulfilled by the layout that finally reports where the section is.
+    const { component, scrollTo } = setupTargeting({ section: 'progressive-overload', sectionNonce: 1 });
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    // An unrelated section reporting its position must not satisfy it either.
+    fireLayout(component.root, 'handleWeightLayout', 420);
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    fireOverloadLayout(component.root);
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ y: OVERLOAD_TARGET_Y }));
+  });
+
+  test('every section is reachable from every other section, repeatedly', () => {
+    const anchors = {
+      weight: (root) => fireLayout(root, 'handleWeightLayout', 420),
+      strength: (root) => fireLayout(root, 'handleStrengthLayout', 900),
+      recovery: (root) => fireLayoutFor(root, 'recovery-section-anchor', { x: 0, y: 1100, width: 343, height: 310 }),
+      'progressive-overload': (root) => fireOverloadLayout(root),
+    };
+    const expectedY = {
+      overview: 0,
+      weight: 420,
+      strength: 900,
+      recovery: 1100,
+      'progressive-overload': OVERLOAD_TARGET_Y,
+    };
+    const ids = Object.keys(expectedY);
+
+    const { component, scrollTo } = setupTargeting({ recoveryState: RECOVERY_STATE });
+    // Every position is known up front here, which is the steady state after a
+    // first visit: each request must land immediately.
+    Object.values(anchors).forEach((fire) => fire(component.root));
+    scrollTo.mockClear();
+
+    let nonce = 0;
+    for (const from of ids) {
+      for (const to of ids) {
+        for (const section of [from, to, to]) {
+          nonce += 1;
+          render.act(() => {
+            component.update(
+              <AnalyticsScreen multiplier={1.07} section={section} sectionNonce={nonce} />
+            );
+          });
+          expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ y: expectedY[section] }));
+        }
+        // from → to → to: three requests, three scrolls. The repeat of an
+        // identical target is a request in its own right.
+        expect(scrollTo).toHaveBeenCalledTimes(3);
+        scrollTo.mockClear();
+      }
+    }
+  });
+
+  test('an ordinary tab press preserves the position, and an unknown target changes nothing', () => {
+    const { component, scrollTo } = setupTargeting({ section: 'progressive-overload', sectionNonce: 1 });
+    fireOverloadLayout(component.root);
+    scrollTo.mockClear();
+
+    // The shell normalizes a plain tab press and any malformed/unknown request
+    // to a null section, so Analytics stays exactly where the user left it.
+    for (const [section, nonce] of [[null, 2], [undefined, 3], ['', 4]]) {
+      render.act(() => {
+        component.update(
+          <AnalyticsScreen multiplier={1.07} section={section} sectionNonce={nonce} />
+        );
+      });
+    }
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    // A section id the screen has no anchor for is inert rather than a jump to
+    // an arbitrary position — it simply never resolves.
+    render.act(() => {
+      component.update(<AnalyticsScreen multiplier={1.07} section="mystery" sectionNonce={5} />);
+    });
+    fireOverloadLayout(component.root, { listY: 1600 });
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  // The Recovery anchor is a wrapper, so it must appear and disappear with the
+  // section it measures: an empty wrapper would still take a slot in the
+  // shell's 16px column gap. AnalyticsRecoverySection owns that decision; this
+  // pins the screen's copy of it against the section itself.
+  test('the Recovery anchor exists exactly when the Recovery section renders', () => {
+    const { AnalyticsRecoverySection } = require('../components/AnalyticsRecoverySection');
+    const states = [
+      { blocks: [], weeks: [], loading: false },
+      { blocks: [ACTIVE_BLOCK], weeks: [], loading: false },
+      { blocks: [{ ...ACTIVE_BLOCK, completed_at: '2026-06-01T00:00:00Z' }], weeks: [], loading: false },
+      { blocks: [{ ...ACTIVE_BLOCK, deleted_at: '2026-06-01T00:00:00Z' }], weeks: [], loading: false },
+      { blocks: [], weeks: [], loading: false, stale: true },
+      { blocks: [], weeks: [], ready: false, loading: true },
+      { blocks: [], weeks: [], ready: false, loading: false, error: 'boom' },
+    ];
+
+    for (const state of states) {
+      const { component } = setupTargeting({ recoveryState: state });
+      const anchored = component.root.findAllByProps({ testID: 'recovery-section-anchor' }).length > 0;
+
+      let section;
+      render.act(() => {
+        section = render.create(
+          <AnalyticsRecoverySection
+            blocks={state.blocks}
+            weeks={state.weeks}
+            notes={[]}
+            stateReady={state.ready ?? true}
+            stateLoading={state.loading}
+            stateStale={state.stale ?? false}
+            stateError={state.error ?? null}
+          />
+        );
+      });
+      expect(anchored).toBe(section.toJSON() !== null);
+      render.act(() => { section.unmount(); });
+    }
   });
 
   test('the no-tracked-exercises empty state offers a labeled handoff to Log', () => {

@@ -7,6 +7,7 @@ import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { deriveWeightGoalAnalytics, DEFAULT_1K_EXERCISES, normalizeLiftName, deriveCheckInHistory, deriveRoutineStatus } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries, useDeloadHistory, useFeatureToggles, useRecoveryBlockState } from '../hooks/useEntries';
 import { useRecoveryAnalyticsFilter } from '../hooks/entries/recoveryBlockHooks';
+import { isLiveRecord } from '../lib/data/recoveryBlocks';
 import {
   deriveParsedSections,
   deriveNoteExerciseNames,
@@ -27,6 +28,12 @@ import { AnalyticsFatigueCard } from '../components/AnalyticsFatigueCard';
 import { AnalyticsStrengthSection } from '../components/AnalyticsStrengthSection';
 import { CrossDayComparison, formatOverload } from '../components/AnalyticsCrossDayComparison';
 import { AnalyticsRecoverySection } from '../components/AnalyticsRecoverySection';
+
+// The one section id that needs no measurement: "the top of Analytics" (#770).
+// `Full history and insights` on Home requests it, and it is what makes that
+// control differ from a plain Analytics tab press, which deliberately preserves
+// whatever the user was last looking at.
+const OVERVIEW_SECTION = 'overview';
 
 export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate }) {
   const { colors } = useTheme();
@@ -77,8 +84,17 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   const [collapsedGroups, setCollapsedGroups] = useState(new Set());
 
   const scrollRef = useRef(null);
-  const weightSectionY = useRef(0);
-  const strengthSectionY = useRef(0);
+  // Measured top of every targetable section, keyed by the shell's bounded
+  // section id (#770). A section is only scrollable to once its own onLayout
+  // has reported where it is, so an id missing from this map means "requested
+  // destination not laid out yet" — the request stays pending and is fulfilled
+  // by the layout that resolves it, never by guessing a position.
+  const sectionOffsets = useRef({});
+  // Progressive Overload's offset is derived from two boxes rather than read
+  // off one; see handleProgressiveOverloadHeaderLayout. Both start null so an
+  // unmeasured box is never mistaken for a measured zero.
+  const overloadHeaderHeight = useRef(null);
+  const overloadListY = useRef(null);
   const pendingSection = useRef(section);
   const hasScrolled = useRef(false);
 
@@ -101,42 +117,84 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   const isNotesLoading = (loadingNotes && !notesError && notes.length === 0) || !recoveryFilter.ready;
   const isTrackedLoading = loadingTracked && Object.keys(trackedLifts).length === 0;
 
+  function scrollToOffset(y) {
+    scrollRef.current?.scrollTo({ y, animated: true });
+    hasScrolled.current = true;
+  }
+
   useEffect(() => {
     pendingSection.current = section;
     hasScrolled.current = false;
-    
-    // If we already have the layout position, scroll immediately
-    if (section === 'weight' && weightSectionY.current > 0) {
-      scrollRef.current?.scrollTo({ y: weightSectionY.current, animated: true });
-      hasScrolled.current = true;
-    } else if (section === 'strength' && strengthSectionY.current > 0) {
-      scrollRef.current?.scrollTo({ y: strengthSectionY.current, animated: true });
-      hasScrolled.current = true;
+    if (!section) return;
+
+    // The overview is the top of the tab, so its position is known without
+    // measurement and an `overview` request lands immediately. Every other
+    // destination waits for its layout.
+    if (section === OVERVIEW_SECTION) {
+      scrollToOffset(0);
+      return;
     }
+
+    const y = sectionOffsets.current[section];
+    if (y > 0) scrollToOffset(y);
     // `sectionNonce` changes on every navigation request, so repeating the same
     // handoff (weight → weight) re-targets the section instead of no-op'ing.
   }, [section, sectionNonce]);
 
+  // One measurement path for every targetable section (#770). The layout that
+  // resolves a still-pending request fulfills it; `hasScrolled` keeps a later
+  // reflow of the same section from yanking the user back after they land.
+  function recordSectionOffset(id, y) {
+    const known = sectionOffsets.current[id];
+    if (known != null && Math.abs(known - y) < 1) return;
+    sectionOffsets.current[id] = y;
+
+    if (pendingSection.current === id && !hasScrolled.current) scrollToOffset(y);
+  }
+
+  // Named per section rather than passed as one generic handler: the weight and
+  // strength anchors are props of components outside this issue's scope, so
+  // their prop names and one-argument shape stay exactly as they were.
   function handleWeightLayout(e) {
-    const y = e.nativeEvent.layout.y;
-    if (Math.abs(weightSectionY.current - y) < 1) return;
-    weightSectionY.current = y;
-    
-    if (pendingSection.current === 'weight' && !hasScrolled.current) {
-      scrollRef.current?.scrollTo({ y, animated: true });
-      hasScrolled.current = true;
-    }
+    recordSectionOffset('weight', e.nativeEvent.layout.y);
   }
 
   function handleStrengthLayout(e) {
-    const y = e.nativeEvent.layout.y;
-    if (Math.abs(strengthSectionY.current - y) < 1) return;
-    strengthSectionY.current = y;
-    
-    if (pendingSection.current === 'strength' && !hasScrolled.current) {
-      scrollRef.current?.scrollTo({ y, animated: true });
-      hasScrolled.current = true;
-    }
+    recordSectionOffset('strength', e.nativeEvent.layout.y);
+  }
+
+  function handleRecoveryLayout(e) {
+    recordSectionOffset('recovery', e.nativeEvent.layout.y);
+  }
+
+  // Progressive Overload is the one destination that cannot report its own
+  // position: its header is a sticky header, and ScrollView lays a sticky child
+  // out inside a wrapper of its own, so the header's `onLayout` reports a
+  // position relative to that wrapper (y: 0) rather than a content offset. Its
+  // HEIGHT is still true, and the list beneath it is an ordinary child with an
+  // ordinary offset — so the destination is the list's top minus the header's
+  // height, which parks the pinned header at the top of the viewport with the
+  // first exercise row directly beneath it. Both measurements are needed and
+  // either can arrive first, so whichever completes the pair is the one that
+  // resolves a pending request. Acting on the list alone would scroll a header
+  // height too far and then be unable to correct itself: the pending request is
+  // already spent by the time the real height shows up.
+  function handleProgressiveOverloadHeaderLayout(e) {
+    overloadHeaderHeight.current = e.nativeEvent.layout.height;
+    resolveOverloadOffset();
+  }
+
+  function handleProgressiveOverloadListLayout(e) {
+    overloadListY.current = e.nativeEvent.layout.y;
+    resolveOverloadOffset();
+  }
+
+  function resolveOverloadOffset() {
+    if (overloadListY.current == null || overloadHeaderHeight.current == null) return;
+    recordSectionOffset(
+      'progressive-overload',
+      Math.max(0, overloadListY.current - overloadHeaderHeight.current)
+    );
   }
 
   // null goal: Analytics renders trend data only, not goal-relative info
@@ -259,6 +317,33 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     };
   }, [analytics.oneK, unit]);
 
+  const recoverySection = (
+    <AnalyticsRecoverySection
+      key="recovery-section"
+      blocks={recoveryBlocks}
+      weeks={recoveryWeeks}
+      notes={notes}
+      stateReady={recoveryReady}
+      stateLoading={recoveryStateLoading}
+      stateRefreshing={recoveryRefreshing}
+      stateStale={recoveryStale}
+      stateError={recoveryStateError}
+      mutationsAllowed={recoveryMutationsAllowed}
+      pendingRecovery={recoveryPendingRecovery}
+      onRetry={retryRecoveryState}
+      onNavigate={onNavigate}
+    />
+  );
+
+  // Mirrors AnalyticsRecoverySection's own "nothing to say" condition (#716):
+  // it renders null only for a verified, fresh snapshot that holds no live
+  // block — an unverified or stale one always states its condition, and a live
+  // block is either active or completed, so `some(isLiveRecord)` covers both
+  // populations the section draws. Pinned against the section itself in
+  // analytics-screen.test.js so the two cannot drift apart silently.
+  const hasRecoverySection =
+    !recoveryReady || recoveryStale || recoveryBlocks.some(isLiveRecord);
+
   const screenContent = React.Children.toArray([
     // Load failures first, above every derived card (#737). Analytics is
     // entirely derived from the note and weight collections, so a failed read
@@ -318,26 +403,24 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       handleSelectExercise={handleSelectExercise}
     />,
 
-    <AnalyticsRecoverySection
-      key="recovery-section"
-      blocks={recoveryBlocks}
-      weeks={recoveryWeeks}
-      notes={notes}
-      stateReady={recoveryReady}
-      stateLoading={recoveryStateLoading}
-      stateRefreshing={recoveryRefreshing}
-      stateStale={recoveryStale}
-      stateError={recoveryStateError}
-      mutationsAllowed={recoveryMutationsAllowed}
-      pendingRecovery={recoveryPendingRecovery}
-      onRetry={retryRecoveryState}
-      onNavigate={onNavigate}
-    />,
+    // Anchor for the `recovery` handoff (#770). AnalyticsRecoverySection owns
+    // its own presentation and takes no layout prop, so the wrapper carries the
+    // anchor — and only while the section has something to render. An empty
+    // wrapper would still take a slot in the shell's 16px column gap and open a
+    // hole between the strength section and Progressive Overload, so the
+    // silent case renders exactly what it rendered before: the section alone,
+    // which resolves to nothing.
+    hasRecoverySection ? (
+      <View key="recovery-section" testID="recovery-section-anchor" onLayout={handleRecoveryLayout}>
+        {recoverySection}
+      </View>
+    ) : recoverySection,
 
     <View
       key="sticky-header"
-      style={styles.signalStickyHeader} 
+      style={styles.signalStickyHeader}
       testID="sticky-header"
+      onLayout={handleProgressiveOverloadHeaderLayout}
     >
       <SectionTitle>Progressive Overload</SectionTitle>
       <View style={styles.searchContainer}>
@@ -360,131 +443,141 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       </View>
     </View>,
 
-    (isNotesLoading || isTrackedLoading) ? (
-      <View key="loading" style={{ height: 100, justifyContent: 'center' }}>
-        <ActivityIndicator color={colors.accent} />
-      </View>
-    ) : groupedSignals.length > 0 ? (
-      <ArtisanalPanel key="po-container" style={styles.poContainer}>
-        {groupedSignals.map((group, groupIdx) => {
-          const isCollapsed = collapsedGroups.has(group.name);
-          return (
-            <View key={group.name} style={[styles.groupSection, groupIdx > 0 && styles.groupSectionBorder]}>
-              <Pressable 
-                onPress={() => toggleGroup(group.name)}
-                style={styles.groupHeader}
-              >
-                <Text style={styles.groupName}>{group.name}</Text>
-                <MaterialIcons 
-                  name={isCollapsed ? "expand-more" : "expand-less"} 
-                  size={20} 
-                  color={colors.textMuted}
-                />
-              </Pressable>
+    // Progressive Overload's measurable box (#770): the sticky header above
+    // cannot report its own content offset, so this list — an ordinary child
+    // with an ordinary one — carries the anchor. Every branch renders content,
+    // so the wrapper is never an empty box in the shell's column.
+    <View
+      key="overload-list"
+      testID="overload-list-anchor"
+      onLayout={handleProgressiveOverloadListLayout}
+    >
+      {(isNotesLoading || isTrackedLoading) ? (
+        <View key="loading" style={{ height: 100, justifyContent: 'center' }}>
+          <ActivityIndicator color={colors.accent} />
+        </View>
+      ) : groupedSignals.length > 0 ? (
+        <ArtisanalPanel key="po-container" style={styles.poContainer}>
+          {groupedSignals.map((group, groupIdx) => {
+            const isCollapsed = collapsedGroups.has(group.name);
+            return (
+              <View key={group.name} style={[styles.groupSection, groupIdx > 0 && styles.groupSectionBorder]}>
+                <Pressable 
+                  onPress={() => toggleGroup(group.name)}
+                  style={styles.groupHeader}
+                >
+                  <Text style={styles.groupName}>{group.name}</Text>
+                  <MaterialIcons 
+                    name={isCollapsed ? "expand-more" : "expand-less"} 
+                    size={20} 
+                    color={colors.textMuted}
+                  />
+                </Pressable>
               
-              {!isCollapsed && (
-                <View style={styles.exerciseList}>
-                  {group.exercises.map((sig) => {
-                    const normName = normalizeLiftName(sig.name);
-                    const dayRow = sig.isMultiDay && sig.daySignals ? sig.daySignals[sig.currentDayHeading] : null;
-                    const rowPr = dayRow ? dayRow.latest_pr : sig.latest_pr;
-                    const rowTopWeight = dayRow ? dayRow.latest_top_weight : sig.latest_top_weight;
-                    const rowTrend = dayRow?.overload_trend ?? sig.overload_trend;
-                    const rowIsBodyweight = dayRow ? dayRow.is_bodyweight : sig.is_bodyweight;
-                    const nw = analytics.nonWeightedMetrics?.[normName];
+                {!isCollapsed && (
+                  <View style={styles.exerciseList}>
+                    {group.exercises.map((sig) => {
+                      const normName = normalizeLiftName(sig.name);
+                      const dayRow = sig.isMultiDay && sig.daySignals ? sig.daySignals[sig.currentDayHeading] : null;
+                      const rowPr = dayRow ? dayRow.latest_pr : sig.latest_pr;
+                      const rowTopWeight = dayRow ? dayRow.latest_top_weight : sig.latest_top_weight;
+                      const rowTrend = dayRow?.overload_trend ?? sig.overload_trend;
+                      const rowIsBodyweight = dayRow ? dayRow.is_bodyweight : sig.is_bodyweight;
+                      const nw = analytics.nonWeightedMetrics?.[normName];
 
-                    return (
-                      <View key={normName + sig.currentDayHeading} style={[styles.signalRow, styles.signalRowBorder]}>
-                        <View style={styles.signalNameRow}>
-                          <Text style={styles.signalName}>{analytics.nameDisplayMap?.get(normName) || sig.name}</Text>
+                      return (
+                        <View key={normName + sig.currentDayHeading} style={[styles.signalRow, styles.signalRowBorder]}>
+                          <View style={styles.signalNameRow}>
+                            <Text style={styles.signalName}>{analytics.nameDisplayMap?.get(normName) || sig.name}</Text>
+                          </View>
+
+                          {nw ? (
+                            <View style={styles.signalMetricsGrid}>
+                              <View style={styles.metricCol}>
+                                <Text style={styles.signalValue}>
+                                  {nw.exercise_class === 'reps_only' 
+                                    ? (nw.avg_reps ?? '—')
+                                    : formatDuration(nw.avg_hold)}
+                                </Text>
+                                <Text style={styles.nwMetricLabel}>AVG</Text>
+                              </View>
+                              <View style={styles.metricCol}>
+                                <Text style={styles.signalValue}>
+                                  {nw.exercise_class === 'reps_only' 
+                                    ? (nw.best_set_reps ?? '—')
+                                    : formatDuration(nw.best_hold)}
+                                </Text>
+                                <Text style={styles.nwMetricLabel}>BEST</Text>
+                              </View>
+                              <View style={styles.metricCol} />
+                              <View style={styles.metricCol}>
+                                {formatOverload(nw.exercise_class === 'reps_only' ? nw.reps_arrow : nw.hold_arrow, colors)}
+                              </View>
+                            </View>
+                          ) : (
+                            <View style={styles.signalMetricsGrid}>
+                              <View style={styles.metricCol}>
+                                <Text style={styles.signalValue}>
+                                  {rowPr ? formatLiftWeightValue(Math.round(rowPr), unit) : '—'}
+                                  {rowPr ? <Text style={styles.unitSuffix}>{unit}</Text> : null}
+                                </Text>
+                              </View>
+                              <View style={styles.metricCol}>
+                                <Text style={styles.signalValue}>
+                                  {sig.kilo_max != null ? formatLiftWeightValue(sig.kilo_max, unit) : '—'}
+                                  {sig.kilo_max != null ? <Text style={styles.unitSuffix}>{unit}</Text> : null}
+                                </Text>
+                              </View>
+                              <View style={styles.metricCol}>
+                                <Text style={styles.signalValue}>
+                                  {rowTopWeight ? (rowIsBodyweight ? rowTopWeight : formatLiftWeightValue(rowTopWeight, unit)) : '—'}
+                                  {rowTopWeight ? <Text style={styles.unitSuffix}>{rowIsBodyweight ? 'reps' : unit}</Text> : null}
+                                </Text>
+                              </View>
+                              <View style={styles.metricCol}>
+                                {formatOverload(rowTrend, colors)}
+                              </View>
+                            </View>
+                          )}
+
+                          {sig.isMultiDay && (
+                            sig.daySignals
+                              ? <CrossDayComparison daySignals={sig.daySignals} currentDay={sig.currentDayHeading} otherDays={sig.otherDays} />
+                              : sig.otherDays.length > 0 && <Text style={styles.multiDaySummary}>Also on {sig.otherDays.join(', ')}</Text>
+                          )}
+
                         </View>
-
-                        {nw ? (
-                          <View style={styles.signalMetricsGrid}>
-                            <View style={styles.metricCol}>
-                              <Text style={styles.signalValue}>
-                                {nw.exercise_class === 'reps_only' 
-                                  ? (nw.avg_reps ?? '—')
-                                  : formatDuration(nw.avg_hold)}
-                              </Text>
-                              <Text style={styles.nwMetricLabel}>AVG</Text>
-                            </View>
-                            <View style={styles.metricCol}>
-                              <Text style={styles.signalValue}>
-                                {nw.exercise_class === 'reps_only' 
-                                  ? (nw.best_set_reps ?? '—')
-                                  : formatDuration(nw.best_hold)}
-                              </Text>
-                              <Text style={styles.nwMetricLabel}>BEST</Text>
-                            </View>
-                            <View style={styles.metricCol} />
-                            <View style={styles.metricCol}>
-                              {formatOverload(nw.exercise_class === 'reps_only' ? nw.reps_arrow : nw.hold_arrow, colors)}
-                            </View>
-                          </View>
-                        ) : (
-                          <View style={styles.signalMetricsGrid}>
-                            <View style={styles.metricCol}>
-                              <Text style={styles.signalValue}>
-                                {rowPr ? formatLiftWeightValue(Math.round(rowPr), unit) : '—'}
-                                {rowPr ? <Text style={styles.unitSuffix}>{unit}</Text> : null}
-                              </Text>
-                            </View>
-                            <View style={styles.metricCol}>
-                              <Text style={styles.signalValue}>
-                                {sig.kilo_max != null ? formatLiftWeightValue(sig.kilo_max, unit) : '—'}
-                                {sig.kilo_max != null ? <Text style={styles.unitSuffix}>{unit}</Text> : null}
-                              </Text>
-                            </View>
-                            <View style={styles.metricCol}>
-                              <Text style={styles.signalValue}>
-                                {rowTopWeight ? (rowIsBodyweight ? rowTopWeight : formatLiftWeightValue(rowTopWeight, unit)) : '—'}
-                                {rowTopWeight ? <Text style={styles.unitSuffix}>{rowIsBodyweight ? 'reps' : unit}</Text> : null}
-                              </Text>
-                            </View>
-                            <View style={styles.metricCol}>
-                              {formatOverload(rowTrend, colors)}
-                            </View>
-                          </View>
-                        )}
-
-                        {sig.isMultiDay && (
-                          sig.daySignals
-                            ? <CrossDayComparison daySignals={sig.daySignals} currentDay={sig.currentDayHeading} otherDays={sig.otherDays} />
-                            : sig.otherDays.length > 0 && <Text style={styles.multiDaySummary}>Also on {sig.otherDays.join(', ')}</Text>
-                        )}
-
-                      </View>
-                    );
-                  })}
-                </View>
-              )}
-            </View>
-          );
-        })}
-      </ArtisanalPanel>
-    ) : searchQuery ? (
-      <View key="empty-search" style={styles.emptySearch}>
-        <Text style={styles.emptyText}>No matches for "{searchQuery}"</Text>
-      </View>
-    ) : (
-      <View key="empty-tracked" style={styles.emptyTracked}>
-        <Text style={styles.emptyText}>
-          Tap Track on any exercise in your note to track it here.
-        </Text>
-        <Pressable
-          testID="analytics-empty-log-link"
-          onPress={() => onNavigate?.('Log')}
-          style={styles.emptyTrackedLink}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel="Go to Log"
-          accessibilityHint="Opens the Log tab so you can write a workout note"
-        >
-          <Text style={styles.emptyTrackedLinkText}>Go to Log</Text>
-        </Pressable>
-      </View>
-    )
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            );
+          })}
+        </ArtisanalPanel>
+      ) : searchQuery ? (
+        <View key="empty-search" style={styles.emptySearch}>
+          <Text style={styles.emptyText}>No matches for "{searchQuery}"</Text>
+        </View>
+      ) : (
+        <View key="empty-tracked" style={styles.emptyTracked}>
+          <Text style={styles.emptyText}>
+            Tap Track on any exercise in your note to track it here.
+          </Text>
+          <Pressable
+            testID="analytics-empty-log-link"
+            onPress={() => onNavigate?.('Log')}
+            style={styles.emptyTrackedLink}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Go to Log"
+            accessibilityHint="Opens the Log tab so you can write a workout note"
+          >
+            <Text style={styles.emptyTrackedLinkText}>Go to Log</Text>
+          </Pressable>
+        </View>
+      )}
+    </View>
   ]);
 
   const foundIndex = screenContent.findIndex(child => child?.props?.testID === 'sticky-header');

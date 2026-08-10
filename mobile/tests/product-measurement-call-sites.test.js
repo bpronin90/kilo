@@ -68,13 +68,20 @@ describe('product measurement call sites', () => {
     expect(analyticsSectionVariant('strength')).toBe('strength');
     expect(analyticsSectionVariant('weight')).toBe('weight');
     expect(analyticsSectionVariant('mystery')).toBe('other');
+    // #770's three new destinations. The variant list is unchanged: an explicit
+    // overview request reports like the unsectioned visit it replaces,
+    // Progressive Overload keeps the Exercise Progress signal on 'strength',
+    // and Recovery has no variant of its own so it reports honestly as 'other'.
+    expect(analyticsSectionVariant('overview')).toBe('overview');
+    expect(analyticsSectionVariant('progressive-overload')).toBe('strength');
+    expect(analyticsSectionVariant('recovery')).toBe('other');
   });
 
   test('mapped analytics_viewed sections survive the sanitizer', async () => {
     await setProductMeasurementConsent(true);
     // Space the emits (each is an independent async read-modify-write of the
     // buffer) the way distinct navigation events arrive at runtime.
-    for (const section of [null, 'strength', 'weight', 'mystery']) {
+    for (const section of [null, 'strength', 'weight', 'mystery', 'overview', 'progressive-overload', 'recovery']) {
       emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.ANALYTICS_VIEWED, {
         section: analyticsSectionVariant(section),
       });
@@ -85,6 +92,9 @@ describe('product measurement call sites', () => {
       'overview',
       'strength',
       'weight',
+      'other',
+      'overview',
+      'strength',
       'other',
     ]);
   });
