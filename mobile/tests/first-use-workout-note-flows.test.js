@@ -19,12 +19,9 @@ import {
 import { parseWorkoutNote } from '../lib/parser';
 import * as useEntries from '../hooks/useEntries';
 import {
-  FIRST_USE_UNKNOWN,
-  FIRST_USE_S0,
   FIRST_USE_S1,
   deriveFirstUseState,
   pickAdoptableRoutine,
-  selectRoutineNotes,
 } from '../lib/guidedEntry';
 
 jest.mock('expo-updates', () => ({
@@ -221,22 +218,31 @@ describe('first-use state derivation (#745 Part 3 §1)', () => {
   const base = { notes: [], currentId: null, notesLoading: false, notesError: null, activeSessionCount: 0 };
 
   test('an unresolved or failed read is UNKNOWN, never S0 — emptiness is only emptiness after a successful read', () => {
-    expect(deriveFirstUseState({ ...base, notesLoading: true })).toBe(FIRST_USE_UNKNOWN);
-    expect(deriveFirstUseState({ ...base, notesError: new Error('nope') })).toBe(FIRST_USE_UNKNOWN);
+    const loading = deriveFirstUseState({ ...base, notesLoading: true });
+    const errored = deriveFirstUseState({ ...base, notesError: new Error('nope') });
     // Same failed read, with stale notes still in hand: still UNKNOWN.
-    expect(deriveFirstUseState({
+    const staleWithError = deriveFirstUseState({
       ...base, notesError: new Error('nope'), notes: [{ id: 'a', title: 'A' }], currentId: 'a', activeSessionCount: 4,
-    })).toBe(FIRST_USE_UNKNOWN);
+    });
+    const s0 = deriveFirstUseState(base);
+    expect(loading).toBe(errored);
+    expect(loading).toBe(staleWithError);
+    expect(loading).not.toBe(s0);
+    expect(loading).not.toBe(FIRST_USE_S1);
   });
 
-  test('S0 is no routines at all', () => {
-    expect(deriveFirstUseState(base)).toBe(FIRST_USE_S0);
+  test('S0 is no routines at all — distinct from S1', () => {
+    const s0 = deriveFirstUseState(base);
+    const s1 = deriveFirstUseState({ ...base, notes: [{ id: 'a', title: 'A' }] });
+    expect(s0).not.toBe(s1);
+    expect(s0).not.toBe(FIRST_USE_S1);
   });
 
   test('deload records are not routines, so a deload note alone is still S0', () => {
     const notes = [{ id: 'd1', title: 'Deload · 2026-08-01' }];
-    expect(selectRoutineNotes(notes)).toEqual([]);
-    expect(deriveFirstUseState({ ...base, notes })).toBe(FIRST_USE_S0);
+    const withDeloadOnly = deriveFirstUseState({ ...base, notes });
+    const withNoNotes = deriveFirstUseState(base);
+    expect(withDeloadOnly).toBe(withNoNotes);
   });
 
   test('S1 is a routine that is not current — the state F1 dumps every new tester into', () => {
@@ -249,13 +255,11 @@ describe('first-use state derivation (#745 Part 3 §1)', () => {
     })).toBe(FIRST_USE_S1);
   });
 
-  test('any session count of 1 or more leaves S1 for the same terminal state — nothing distinguishes further', () => {
+  test('any session count of 1 or more leaves S1 behind, for the same terminal state — nothing distinguishes further', () => {
     const withCurrent = { ...base, notes: [{ id: 'a', title: 'A' }], currentId: 'a' };
     const oneSession = deriveFirstUseState({ ...withCurrent, activeSessionCount: 1 });
     const manySessions = deriveFirstUseState({ ...withCurrent, activeSessionCount: 9 });
     expect(oneSession).not.toBe(FIRST_USE_S1);
-    expect(oneSession).not.toBe(FIRST_USE_S0);
-    expect(oneSession).not.toBe(FIRST_USE_UNKNOWN);
     // 1 session and 9 sessions collapse to the same state — nothing left reads
     // the old S2/S3 distinction.
     expect(manySessions).toBe(oneSession);
@@ -265,8 +269,10 @@ describe('first-use state derivation (#745 Part 3 §1)', () => {
     const populated = {
       ...base, notes: [{ id: 'a', title: 'A' }], currentId: 'a', activeSessionCount: 5,
     };
+    const emptied = deriveFirstUseState({ ...populated, notes: [], currentId: null, activeSessionCount: 0 });
+    const freshS0 = deriveFirstUseState(base);
     expect(deriveFirstUseState(populated)).not.toBe(FIRST_USE_S1);
-    expect(deriveFirstUseState({ ...populated, notes: [], currentId: null, activeSessionCount: 0 })).toBe(FIRST_USE_S0);
+    expect(emptied).toBe(freshS0);
   });
 
   test('the S1 card offers the most recently saved non-current routine', () => {

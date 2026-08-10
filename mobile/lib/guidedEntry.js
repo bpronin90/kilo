@@ -11,19 +11,24 @@ import { DELOAD_NOTE_PREFIX } from './LogScreenHelpers';
 
 // ── First-use state machine (#745 Part 3 §1) ────────────────────────────────
 
-export const FIRST_USE_UNKNOWN = 'unknown';
-export const FIRST_USE_S0 = 's0';
+// Only FIRST_USE_S1 has a production caller (the S1 card's gate in
+// LogScreen.js); UNKNOWN/S0/ESTABLISHED are terminal values no caller outside
+// this module needs to name, only to know deriveFirstUseState didn't return
+// FIRST_USE_S1 — so they stay module-private.
+const FIRST_USE_UNKNOWN = 'unknown';
+const FIRST_USE_S0 = 's0';
 export const FIRST_USE_S1 = 's1';
 // The terminal state once a current routine has at least one logged session.
 // The S2/S3 split that used to distinguish "exactly one session" from "two or
 // more" existed only to power the S2 first-use card, deleted by #786/R6b-3;
-// nothing distinguishes them any more, so they collapse into one state. Not
-// exported: no caller needs to name it, only to know it isn't FIRST_USE_S1.
+// nothing distinguishes them any more, so they collapse into one state.
 const FIRST_USE_ESTABLISHED = 'established';
 
 // Deload records are not routines. Every predicate below counts routines only,
 // so generating a deload never advances or regresses the teaching state.
-export function selectRoutineNotes(notes) {
+// Module-private: only deriveFirstUseState and pickAdoptableRoutine call it;
+// both are exported and tested through their own public behavior.
+function selectRoutineNotes(notes) {
   return (notes || []).filter(n => !n?.title?.startsWith(DELOAD_NOTE_PREFIX));
 }
 
