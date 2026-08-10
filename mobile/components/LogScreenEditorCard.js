@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card, Button } from './UI';
@@ -7,6 +7,7 @@ import { DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
 import { formatDate } from '../lib/format';
 import { WorkoutSyntaxModal } from './WorkoutSyntaxModal';
 import { SessionAutofillSheet } from './SessionAutofillSheet';
+import { WORKOUT_SEED_EXAMPLE_TEXT } from './WorkoutSyntaxReference';
 
 // Post-save adoption prompt (#748; #745 Part 4 §A1). Lightweight, non-modal,
 // and dismissible by design — an `Alert` would interrupt a user who saved a
@@ -167,6 +168,19 @@ export function LogScreenEditorCard({
   useEffect(() => {
     setDateFieldOpen(false);
   }, [editingNoteId]);
+
+  // Empty-note seed example (#785, R6b-1). One tap inserts the constant
+  // verbatim and moves the caret to its end; any further edit clears the
+  // forced selection so normal typing/cursor behavior resumes.
+  const editorInputRef = useRef(null);
+  const [seedSelection, setSeedSelection] = useState(null);
+  const editorText = editingNoteId ? editingText : activeEditText;
+  const setEditorText = editingNoteId ? setEditingText : handleCurrentTextChange;
+  const handleInsertSeedExample = () => {
+    setEditorText(WORKOUT_SEED_EXAMPLE_TEXT);
+    setSeedSelection({ start: WORKOUT_SEED_EXAMPLE_TEXT.length, end: WORKOUT_SEED_EXAMPLE_TEXT.length });
+    editorInputRef.current?.focus();
+  };
 
   return (
     <View style={styles.editContainer}>
@@ -337,8 +351,13 @@ export function LogScreenEditorCard({
               )}
             </View>
             <TextInput
-              value={editingNoteId ? editingText : activeEditText}
-              onChangeText={editingNoteId ? setEditingText : handleCurrentTextChange}
+              ref={editorInputRef}
+              value={editorText}
+              onChangeText={(next) => {
+                setSeedSelection(null);
+                setEditorText(next);
+              }}
+              selection={seedSelection ?? undefined}
               placeholder="e.g.&#10;Monday&#10;+Lifting&#10;-Bench&#10;135 5,5,5"
               placeholderTextColor={colors.textMuted}
               multiline
@@ -347,6 +366,19 @@ export function LogScreenEditorCard({
               spellCheck={false}
               style={[styles.input, styles.editorInput]}
             />
+            {editorText.trim() === '' && (
+              <Pressable
+                onPress={handleInsertSeedExample}
+                style={styles.seedBlock}
+                accessibilityRole="button"
+                accessibilityLabel="Insert example workout note"
+              >
+                <Text style={styles.seedHint}>Tap to try this example:</Text>
+                {WORKOUT_SEED_EXAMPLE_TEXT.split('\n').map((line, idx) => (
+                  <Text key={idx} style={styles.seedLineText}>{line}</Text>
+                ))}
+              </Pressable>
+            )}
             {(editingNoteId === 'new' || (!editingNoteId && !currentId)) ? (
               <Button
                 onPress={editingNoteId ? handleSaveOtherNote : handleSave}
@@ -432,6 +464,29 @@ const createStyles = (colors) => StyleSheet.create({
   },
   saveButton: {
     marginTop: 12,
+  },
+  // Empty-note seed example (#785). A tinted block matching the syntax-help
+  // code block styling (§4: no nested Card), tappable at minHeight 44.
+  seedBlock: {
+    marginTop: 8,
+    backgroundColor: colors.inputBackground,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    padding: 10,
+    minHeight: 44,
+    justifyContent: 'center',
+    gap: 2,
+  },
+  seedHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginBottom: 4,
+  },
+  seedLineText: {
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontSize: 13,
+    color: colors.text,
   },
   editorToolRow: {
     flexDirection: 'row',

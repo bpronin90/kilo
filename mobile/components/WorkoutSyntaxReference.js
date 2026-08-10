@@ -24,6 +24,12 @@ export const WORKOUT_SYNTAX_EXAMPLE_LINES = [
 
 export const WORKOUT_SYNTAX_EXAMPLE_TEXT = WORKOUT_SYNTAX_EXAMPLE_LINES.join('\n');
 
+// Seed example for an empty workout note editor (#785, R6b-1). Deliberately a
+// separate, shorter constant from the teaching example above: this one is
+// inserted verbatim into the draft on tap, so it must stay exactly the
+// four lines the acceptance criteria specify.
+export const WORKOUT_SEED_EXAMPLE_TEXT = 'Monday\n+Lifting\n-Bench\n135 5,5,5';
+
 // Row explanations shown under "How it works". Kept as data so both
 // consumers render identical copy.
 export const WORKOUT_SYNTAX_ROW_EXPLANATIONS = [
