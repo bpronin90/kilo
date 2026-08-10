@@ -29,7 +29,7 @@ export function LogEmptyState({ onCreateRoutine }) {
       <Card style={styles.introCard}>
         <Text style={styles.title}>Write your first routine</Text>
         <Text style={styles.copy}>
-          Kilo uses a simple text format to track your progress. Name your routine and list the exercises you plan to do — you can log the actual sets any time after.
+          Kilo uses a simple text format to track your progress. Write your routine as a note — you can log the actual sets any time after.
         </Text>
         <Button
           onPress={onCreateRoutine}
