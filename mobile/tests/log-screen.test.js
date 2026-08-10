@@ -3209,6 +3209,46 @@ describe('Routine-card header/action containment (#710, #711)', () => {
       .toEqual({ top: 4, bottom: 4, left: 4, right: 4 });
   });
 
+  test('Recovery and More Routines headings share the same section-title treatment (#771)', () => {
+    const { LogRecoverySection } = require('../components/LogRecoverySection');
+    let recoveryComponent;
+    render.act(() => {
+      recoveryComponent = render.create(
+        <LogRecoverySection blocks={[]} weeks={[]} notes={[]} stateStale />
+      );
+    });
+    const recoveryTitle = findTitleText(recoveryComponent.root, 'Recovery');
+    expect(recoveryTitle).toBeTruthy();
+
+    let routinesComponent;
+    render.act(() => {
+      routinesComponent = render.create(
+        <LogPreviousRoutines
+          otherNotes={[]}
+          handleViewOtherNote={jest.fn()}
+          viewingNoteId={null}
+          viewingNote={null}
+          viewingNoteDayGroups={[]}
+          viewingHasABWeeks={false}
+          viewingEffectiveWeek={null}
+          handleToggleViewingWeek={jest.fn()}
+          handleSwitchCurrent={jest.fn()}
+          handleEditViewedNote={jest.fn()}
+          handleDeleteRoutine={jest.fn()}
+          handleCreateRoutine={jest.fn()}
+        />
+      );
+    });
+    const routinesTitle = findTitleText(routinesComponent.root, 'More Routines');
+    expect(routinesTitle).toBeTruthy();
+
+    const recoveryStyle = flatStyle(recoveryTitle);
+    const routinesStyle = flatStyle(routinesTitle);
+    for (const prop of ['fontSize', 'fontWeight', 'color', 'textTransform', 'letterSpacing']) {
+      expect(recoveryStyle[prop]).toBe(routinesStyle[prop]);
+    }
+  });
+
   test('LogPreviousRoutines: a collapsed More Routines list renders only the disclosure toggle and a New Note affordance (#756)', () => {
     const notes = [
       { id: 'r1', title: 'Routine One', raw_text: 'MONDAY\n-Squat 3x5\n', updated_at: '2026-01-01T00:00:00.000Z' },

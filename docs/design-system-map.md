@@ -447,21 +447,24 @@ targets the Analytics tab with no section id: section-level targeting exists for
 ### 1K Club Card (Home)
 
 Home is the **compact-summary** treatment (#763): the header row is the tap
-target to Analytics strength, the hero total stays visually secondary to the
-Weekly hero above it, and the breakdown is plain data (no chart, mapping, or
-explanation — those stay Analytics-owned). Progress bar, unit suffix, and
-per-lift value/label typography are normalized against the Analytics owner
-card below; only the hero size/weight stay smaller as the intentional
-compact-vs-owner distinction.
+target to Analytics strength, and the breakdown is plain data (no chart,
+mapping, or explanation — those stay Analytics-owned). Progress bar, unit
+suffix, and per-lift value/label typography are normalized against the
+Analytics owner card below. The hero total itself spreads `HeroMetric.hero`
+just like Analytics' — #763 gave it a smaller `32`/`800` override to signal
+the compact-vs-owner distinction, but that read as a visual demotion of a
+primary progress summary, so #771 restored the shared hero scale; the
+compact-summary role is now carried by scope (no chart/mapping/explanation)
+and the quiet handoff chevron, not a shrunken total.
 
 | Element | Property | Value | Line |
 |---|---|---|---|
-| Card padding | `24` | | `1118` |
-| Card borderRadius | `24` | | `1118` |
-| Hero total value | fontSize | `32` (explicit override, not `HeroMetric.hero`) | `1137` |
-| | fontWeight | `800` (explicit override) | `1137` |
-| | color | `colors.text` (lerped toward `colors.success` as progress nears 1000, `713`) | `1137` |
-| Hero unit | fontSize | `16` | `1142` |
+| Card padding | `24` | | `1134` |
+| Card borderRadius | `24` | | `1134` |
+| Hero total value | fontSize | `48` (`HeroMetric.hero`) | `1153` |
+| | fontWeight | `900` (`HeroMetric.hero`) | `1153` |
+| | color | `colors.text` (lerped toward `colors.success` as progress nears 1000, `729`) | `1153` |
+| Hero unit | fontSize | `16` | `1157` |
 | | color | `colors.textMuted` | `1142` |
 | Progress bar | height | `8` | `1151` |
 | | background | `colors.divider` | `1151` |
@@ -814,29 +817,34 @@ were out of the cleanup's scope) and still document real divergence.
 | Screen | Element | fontSize | fontWeight | color |
 |---|---|---|---|---|
 | Home | Weight value | `48` | `800` | `accent` |
-| Home | 1K total | `32` | `800` | `accent` |
+| Home | 1K total | `48` | `900` (`HeroMetric.hero`) | lerped `accent`→`success` |
 | Analytics | Weight value | `32` | `900` | `accent` |
 | Analytics | 1K total | `48` | `900` | `accent` |
 | Weight | Goal value | `24` | `900` | `accent` |
 | Weight | Trend value | `20` | `900` | `text` |
 
 Home uses `800` for bold metrics; Weight uses `900` with no shared system between
-those two screens. The Home/Analytics 1K pair is the one instance of this that
-is now an intentional, documented pattern rather than open drift — see below.
+those two screens. The Home/Analytics 1K pair shares the same `HeroMetric.hero`
+scale — see below.
 
-### 1K Card: Home vs Analytics (#763)
+### 1K Card: Home vs Analytics (#763, restored #771)
 
 Home is the compact-summary treatment; Analytics is the detail owner (chart,
-Big 3 mapping, calculation explanation, plate calculator). The hero total's
-size/weight difference is the deliberate signal of that hierarchy. Everything
-that plays the same supporting role — progress track, unit suffix, and
-per-lift breakdown typography — is normalized so the two surfaces read as one
-family.
+Big 3 mapping, calculation explanation, plate calculator). #763 gave Home's
+hero total its own smaller `32`/`800` override to signal that hierarchy, but
+that read as a visual demotion of a primary progress summary — #771 restored
+the pre-#763 scale so the total spreads `HeroMetric.hero` (`48`/`900`) exactly
+like Analytics' owner card. The header row's press target (a plain, quiet
+chevron) still marks Home as a handoff rather than the destination, so the
+compact-vs-owner distinction now lives in scope and ownership, not typographic
+scale. Everything that plays a supporting role — progress track, unit suffix,
+and per-lift breakdown typography — stays normalized so the two surfaces read
+as one family.
 
 | Property | Home | Analytics | Status |
 |---|---|---|---|
-| Total fontSize | `32` (explicit override) | `48` (`HeroMetric.hero`) | intentional (compact summary vs owner hero) |
-| Total fontWeight | `800` (explicit override) | `900` (`HeroMetric.hero`) | intentional — Home does **not** spread `HeroMetric.hero` (that token is 48/900, Analytics' size); it sets its own 32/800 so the compact hierarchy is real, not accidental (#763 review) |
+| Total fontSize | `48` (`HeroMetric.hero`) | `48` (`HeroMetric.hero`) | normalized (#771; was a `32`/`800` explicit override on Home, #763) |
+| Total fontWeight | `900` (`HeroMetric.hero`) | `900` (`HeroMetric.hero`) | normalized (#771) |
 | Card padding | `24` | `24` | normalized |
 | Progress bar background | `colors.divider` | `colors.divider` | normalized (#763; was `cardBorder` on Home) |
 | Progress bar borderRadius | `4` | `4` | normalized (#763; was `6` on Home) |
@@ -846,7 +854,7 @@ family.
 | Breakdown label | `11`, uppercase | `11`, uppercase | normalized (#763; Home was `12`, sentence case) |
 | Breakdown divider | vertical `borderLeft/Right` between items | horizontal `borderTop` above row | intentional (Home's 3-column grid vs Analytics' row-then-chart layout) |
 
-The remaining differences (hero size/weight, divider orientation) are the
+The remaining differences (breakdown fontSize, divider orientation) are the
 owner-vs-compact-summary hierarchy working as intended, not unresolved drift.
 
 ### Support Label Patterns
@@ -901,6 +909,6 @@ Home has the highest orange density — 6 distinct elements. The wordmark is fix
 | Home | none — Home does not import `SectionTitle` |
 | Analytics | "Weight Trends", "Fatigue", "Strength", "Progressive Overload" |
 | Weight | "Goal", "Trends", "Goal History", "History" |
-| Log | "More Routines" |
+| Log | "Recovery", "More Routines" |
 
-On Analytics/Weight, SectionTitles separate genuinely different content areas with many items each. Home relies on card content alone to communicate section purpose.
+On Analytics/Weight, SectionTitles separate genuinely different content areas with many items each. Home relies on card content alone to communicate section purpose. `LogRecoverySection` and `LogPreviousRoutines` both render their heading through the shared `SectionTitle` component (`UI.js`), so `Recovery` and `More Routines` already match in size, weight, color, casing, and spacing (#771) — no separate token or override exists for either.

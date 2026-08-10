@@ -60,7 +60,7 @@ jest.mock('../components/UI', () => {
   const { View, Text, Pressable } = require('react-native');
   return {
     Card: ({ children, style }) => React.createElement(View, { style }, children),
-    HeroMetric: { hero: {} },
+    HeroMetric: { hero: { fontSize: 48, fontWeight: '900', lineHeight: 52 } },
     LineChart: () => null,
     getSessionTone: () => 'neutral',
     Button: ({ title, onPress }) => React.createElement(Text, { onPress }, title),
@@ -842,20 +842,20 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     expect(onNavigate).toHaveBeenNthCalledWith(2, 'Analytics', 'strength');
   });
 
-  test('the 1K hero total stays the compact-summary size, not the Analytics owner scale (#763)', () => {
-    // Regression guard: oneKHeroValue must set its own 32/800 rather than
-    // spreading HeroMetric.hero (48/900, the Analytics owner size). Sharing
-    // that token would make Home's "compact summary" hierarchy claim false.
-    const card = component.root.findByProps({ testID: 'home-one-k-link' }).parent;
-    const heroValueNodes = card.findAll(n => n.type === 'Text' && flatStyle(n).fontSize === 32);
+  test('the 1K hero total matches the Analytics owner scale, restoring the pre-#763 treatment (#771)', () => {
+    // Regression guard: #763 gave oneKHeroValue its own 32/800 compact-summary
+    // override instead of spreading HeroMetric.hero (48/900), which read as a
+    // visual demotion of the 1K total. #771 restores the pre-regression scale.
+    const card = component.root.findByProps({ testID: 'home-one-k-link' }).parent.parent;
+    const heroValueNodes = card.findAll(n => n.type === 'Text' && flatStyle(n).fontSize === 48);
     expect(heroValueNodes.length).toBeGreaterThan(0);
     for (const node of heroValueNodes) {
       const style = flatStyle(node);
-      expect(style.fontWeight).toBe('800');
+      expect(style.fontWeight).toBe('900');
     }
-    // Nothing in the 1K card renders at the Analytics hero scale.
-    const analyticsScaleNodes = card.findAll(n => n.type === 'Text' && flatStyle(n).fontSize === 48);
-    expect(analyticsScaleNodes).toHaveLength(0);
+    // Nothing in the 1K card renders at the old compact-summary override scale.
+    const compactScaleNodes = card.findAll(n => n.type === 'Text' && flatStyle(n).fontSize === 32);
+    expect(compactScaleNodes).toHaveLength(0);
   });
 
   test('the 1K unit suffix uses a literal leading space, not marginLeft (#763)', () => {

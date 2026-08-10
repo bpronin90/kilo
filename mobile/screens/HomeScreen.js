@@ -1147,12 +1147,11 @@ const createStyles = (colors) => StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  // Explicit compact-summary override (#763 review) — HeroMetric.hero is
-  // 48/900, the Analytics owner size. Home's total stays visually secondary
-  // to the Weekly hero above it, so it does not spread HeroMetric.hero here.
+  // Restored to the accepted pre-regression scale (#771): the #763 compact-
+  // summary override read as a visual demotion of the 1K total, so this
+  // spreads HeroMetric.hero (48/900) the same as the Analytics owner card.
   oneKHeroValue: {
-    fontSize: 32,
-    fontWeight: '800',
+    ...HeroMetric.hero,
     color: colors.text,
   },
   oneKHeroUnit: {
