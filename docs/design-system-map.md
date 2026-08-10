@@ -465,20 +465,20 @@ and the quiet handoff chevron, not a shrunken total.
 | | fontWeight | `900` (`HeroMetric.hero`) | `1153` |
 | | color | `colors.text` (lerped toward `colors.success` as progress nears 1000, `729`) | `1153` |
 | Hero unit | fontSize | `16` | `1157` |
-| | color | `colors.textMuted` | `1142` |
-| Progress bar | height | `8` | `1151` |
-| | background | `colors.divider` | `1151` |
-| | fill | `colors.accent` | `1159` |
-| | borderRadius | `4` | `1151` |
-| | marginBottom | `16` | `1151` |
-| Breakdown value | fontSize | `16` | `1180` |
-| | fontWeight | `700` | `1177` |
-| | color | `colors.text` | `1177` |
-| Breakdown label | fontSize | `11`, uppercase | `1182` |
-| | fontWeight | `600` | `1182` |
-| | color | `colors.textMuted` | `1182` |
-| Breakdown dividers | borderWidth | `1` | `1170` |
-| | color | `colors.cardBorder` | `1170` |
+| | color | `colors.textMuted` | `1157` |
+| Progress bar | height | `8` | `1165` |
+| | background | `colors.divider` | `1165` |
+| | fill | `colors.accent` | `1173` |
+| | borderRadius | `4` | `1165` |
+| | marginBottom | `16` | `1165` |
+| Breakdown value | fontSize | `16` | `1194` |
+| | fontWeight | `700` | `1194` |
+| | color | `colors.text` | `1194` |
+| Breakdown label | fontSize | `11`, uppercase | `1199` |
+| | fontWeight | `600` | `1199` |
+| | color | `colors.textMuted` | `1199` |
+| Breakdown dividers | borderWidth | `1` | `1187` |
+| | color | `colors.cardBorder` | `1187` |
 
 The vertical `borderLeft/Right` breakdown dividers (vs. Analytics' single
 `borderTop` above the whole row) stay an intentional structural deviation —

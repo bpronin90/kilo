@@ -1160,9 +1160,8 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.textMuted,
   },
   // Track color, radius, and vertical rhythm match the Analytics 1K progress
-  // bar (#763) — the bar reads as the same control on both surfaces even
-  // though Home's hero value stays smaller (compact-summary role, see
-  // design-system-map.md).
+  // bar (#763) — the bar reads as the same control on both surfaces, and since
+  // #771 so does the hero value itself (see design-system-map.md).
   progressBarLarge: {
     height: 8,
     backgroundColor: colors.divider,
