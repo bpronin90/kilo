@@ -46,9 +46,17 @@ export function LogRecoverySection({
   // note now renders inline in the week row the user tapped, off the same
   // `viewingNoteId`/`viewingNote`/`viewingNoteDayGroups` state LogDeloadSection
   // already consumes, so the tap has an effect exactly where it was made.
+  //
+  // `viewingNoteDayGroups` is the SELECTED half of an A/B note, not the whole
+  // note, so the A/B state and its toggle come through too (#775 review): an
+  // A/B routine is eligible as a recovery week, and reading one here without
+  // the switch would leave its other week unreachable from this card.
   viewingNoteId = null,
   viewingNote = null,
   viewingNoteDayGroups = [],
+  viewingHasABWeeks = false,
+  viewingEffectiveWeek = null,
+  onToggleViewingWeek,
   onCompleteWeek,
   onOpenAddWeek,
   onCompleteBlock,
@@ -373,6 +381,29 @@ export function LogRecoverySection({
                           dayGroups={viewingNoteDayGroups}
                           emptyText="No exercises to display."
                         />
+                        {/* The same Week A/B control the non-current routine
+                            card carries (#711), in its existing pill form and
+                            with the exact role/label/selected state it has
+                            there — it changes which week you are READING, not a
+                            routine-lifecycle action. It is the only thing that
+                            makes the other half of an A/B recovery-week note
+                            reachable from this card. */}
+                        {viewingHasABWeeks && (
+                          <View style={styles.weekNoteActions}>
+                            <Pressable
+                              onPress={() => onToggleViewingWeek?.()}
+                              style={styles.inlineSwitchButton}
+                              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Switch to Week ${viewingEffectiveWeek === 'B' ? 'A' : 'B'}`}
+                              accessibilityState={{ selected: viewingEffectiveWeek === 'B' }}
+                            >
+                              <Text style={styles.inlineSwitchButtonText}>
+                                Week {viewingEffectiveWeek === 'B' ? 'A' : 'B'}
+                              </Text>
+                            </Pressable>
+                          </View>
+                        )}
                       </View>
                     )}
                   </View>
@@ -524,6 +555,32 @@ const createStyles = (colors) => StyleSheet.create({
   },
   weekNoteContent: {
     paddingHorizontal: 12,
+    gap: 8,
+  },
+  // Holds the Week A/B pill at its natural width, exactly as the non-current
+  // routine card's `viewActions` row does (LogPreviousRoutines.js).
+  weekNoteActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  // The relocated pill keeps the treatment authorized for it in #710/#711:
+  // same background, border, radius, 44dp floor, and shrink behavior.
+  inlineSwitchButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: colors.chipBackground,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    minHeight: 44,
+    justifyContent: 'center',
+    flexShrink: 1,
+  },
+  inlineSwitchButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.accent,
   },
   weekRow: {
     flexDirection: 'row',

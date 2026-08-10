@@ -9136,6 +9136,61 @@ describe('Recovery weeks read their own notes (#775)', () => {
     expect(hasExercise(viewing, 'Overhead Press')).toBe(true);
   });
 
+  // #775 review: `viewingNoteDayGroups` is the SELECTED half of an A/B note, so
+  // an inline viewer without the Week switch strands the other week — a
+  // regression against the More Routines handoff this replaced.
+  test('an A/B recovery-week note keeps its Week switch inline, with the pill contract it has in More Routines', () => {
+    const AB_NOTE = {
+      id: 'weeknote', title: 'AB Week',
+      raw_text: 'Monday\n+Lifting\n-Overhead Press\n65 5,5,5\n---\nTuesday\n+Lifting\n-Chin Up\n0 5,5,5',
+    };
+    const onToggleViewingWeek = jest.fn();
+    const viewingWeek = (week) => renderSection({
+      notes: [AB_NOTE],
+      viewingNoteId: 'weeknote',
+      viewingNote: AB_NOTE,
+      viewingHasABWeeks: true,
+      viewingEffectiveWeek: week,
+      viewingNoteDayGroups: buildDayGroups(
+        parse(week === 'B' ? AB_NOTE.raw_text.split('\n---\n')[1] : AB_NOTE.raw_text.split('\n---\n')[0]).sections
+      ),
+      onToggleViewingWeek,
+    });
+
+    const onA = viewingWeek('A');
+    expect(hasExercise(onA, 'Overhead Press')).toBe(true);
+    expect(hasExercise(onA, 'Chin Up')).toBe(false);
+    const pill = onA.findAll(
+      n => n.props && n.props.accessibilityLabel === 'Switch to Week B' && typeof n.props.onPress === 'function'
+    )[0];
+    expect(pill).toBeTruthy();
+    expect(pill.props.accessibilityRole).toBe('button');
+    expect(pill.props.accessibilityState).toEqual({ selected: false });
+    render.act(() => { pill.props.onPress(); });
+    expect(onToggleViewingWeek).toHaveBeenCalledTimes(1);
+
+    // The owner flips the selection; the other half is now readable here.
+    const onB = viewingWeek('B');
+    expect(hasExercise(onB, 'Chin Up')).toBe(true);
+    expect(hasExercise(onB, 'Overhead Press')).toBe(false);
+    const back = onB.findAll(
+      n => n.props && n.props.accessibilityLabel === 'Switch to Week A' && typeof n.props.onPress === 'function'
+    )[0];
+    expect(back).toBeTruthy();
+    expect(back.props.accessibilityState).toEqual({ selected: true });
+  });
+
+  test('a single-week recovery note shows no Week switch', () => {
+    const root = renderSection({
+      viewingNoteId: 'weeknote',
+      viewingNote: WEEK_NOTE,
+      viewingNoteDayGroups: buildDayGroups(parse(WEEK_NOTE.raw_text).sections),
+    });
+    expect(root.findAll(
+      n => n.props && /^Switch to Week [AB]$/.test(n.props.accessibilityLabel || '')
+    ).length).toBe(0);
+  });
+
   test('an untitled note that exists is still named Untitled Routine and still readable', () => {
     const untitled = { id: 'weeknote', title: '', raw_text: 'Monday\n+Lifting\n-Row\n95 5,5,5' };
     const root = renderSection({ notes: [untitled] });
@@ -9311,6 +9366,43 @@ describe('Log disclosures and Recovery reads at the screen level (#775)', () => 
     expect(hasText(component, 'Squat')).toBe(true);
     // The read happened where the tap did: the routine-management disclosure
     // neither opened nor changed state.
+    expect(routineExpanded(component)).toBe(false);
+  });
+
+  test('an A/B recovery week can be read week by week without leaving the Recovery card', () => {
+    // The whole note is never rendered at once — the viewer projects one half —
+    // so the inline read is only complete if its Week switch works here (#775
+    // review).
+    const AB = {
+      id: 'ab1', title: 'AB Routine',
+      raw_text: 'Monday\n+Lifting\n-Squat\n225 5,5,5\n---\nTuesday\n+Lifting\n-Chin Up\n0 5,5,5',
+      saved_at: '2026-05-02T12:00:00.000Z',
+    };
+    setup({ weekNoteId: 'ab1' });
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [CURRENT, AB, DELOAD], currentId: 'note1', currentNote: CURRENT,
+      deloadNotes: [DELOAD], loading: false, error: null,
+      refresh: jest.fn(), selectCurrent: jest.fn(),
+      update: jest.fn().mockResolvedValue({ ...AB, activeWeek: 'B' }), add: jest.fn(), remove: jest.fn(),
+    });
+    const component = mount();
+
+    const row = component.root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'View AB Routine, Recovery Week 1' && typeof n.props.onPress === 'function'
+    )[0];
+    render.act(() => { row.props.onPress(); });
+    expect(hasText(component, 'Squat')).toBe(true);
+    expect(hasText(component, 'Chin Up')).toBe(false);
+
+    const pill = component.root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'Switch to Week B' && typeof n.props.onPress === 'function'
+    )[0];
+    expect(pill).toBeTruthy();
+    render.act(() => { pill.props.onPress(); });
+
+    expect(hasText(component, 'Chin Up')).toBe(true);
+    expect(hasText(component, 'Squat')).toBe(false);
+    // Still read in place: the routine-management disclosure never opened.
     expect(routineExpanded(component)).toBe(false);
   });
 

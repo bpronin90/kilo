@@ -760,7 +760,10 @@ Consequences to preserve:
   `viewingNoteId`/`viewingNote`/`viewingNoteDayGroups` state the routine and
   deload viewers use; More Routines is not revealed and does not change state,
   and a week linked to the *current* routine is readable like any other rather
-  than being an inert press. A week whose `note_id` is null, or names a note
+  than being an inert press. Because that viewer state projects one half of an
+  A/B note, the inline read also carries the non-current card's `Week A/B` pill
+  in its existing treatment and with the same role, label, and `selected` state
+  — otherwise an A/B recovery week's other week would be unreachable here. A week whose `note_id` is null, or names a note
   absent from the notebook, shows `Note unavailable` in place of a title,
   announces `Recovery Week N, note unavailable`, and carries no `onPress` and no
   `accessibilityRole="button"` — the row and its `Unlink` remain, and that

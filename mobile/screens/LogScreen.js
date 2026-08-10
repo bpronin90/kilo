@@ -904,6 +904,9 @@ export function LogScreen({
                 viewingNoteId={otherEditor.viewingNoteId}
                 viewingNote={otherEditor.viewingNote}
                 viewingNoteDayGroups={otherEditor.viewingNoteDayGroups}
+                viewingHasABWeeks={otherEditor.viewingHasABWeeks}
+                viewingEffectiveWeek={otherEditor.viewingEffectiveWeek}
+                onToggleViewingWeek={otherEditor.handleToggleViewingWeek}
                 onCompleteWeek={handleCompleteCurrentWeek}
                 onOpenAddWeek={openAddWeekModal}
                 onCompleteBlock={handleCompleteRecoveryBlock}
