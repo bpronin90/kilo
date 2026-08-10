@@ -104,6 +104,12 @@ export function LogRecoverySection({
   const { setIncludeInNormalAnalytics } = useRecoveryBlockLifecycle();
   const [inclusionBusyBlockId, setInclusionBusyBlockId] = useState(null);
   const [inclusionError, setInclusionError] = useState(null);
+  // The `Manage recovery block` disclosure (#789), collapsed by default. It is
+  // presentation state only: nothing inside it changes handler, gating, or
+  // confirm copy, and the trigger itself is NEVER disabled — a locked user must
+  // still be able to open it and see WHY each control inside is unavailable
+  // (#780 corrected blocked-mutation contract).
+  const [manageExpanded, setManageExpanded] = useState(false);
 
   const activeBlock = findActiveBlock(blocks);
   // Two distinct states. A PENDING operation locks conflicting actions, because a
@@ -176,7 +182,16 @@ export function LogRecoverySection({
   const currentWeek = activeWeeks.length > 0 ? activeWeeks[activeWeeks.length - 1] : null;
   const canCompleteWeek = !!currentWeek && !currentWeek.completed_at;
   const canAddWeek = !!activeBlock && (!currentWeek || !!currentWeek.completed_at);
-  const latestWeekId = activeWeeks.length > 0 ? activeWeeks[activeWeeks.length - 1].id : null;
+  // The single fact that matters while logging (#789): which week you are on and
+  // whether it needs an action. `addRecoveryWeekCore`/`completeCurrentWeekCore`
+  // guarantee at most one non-completed week per block, so `currentWeek` is
+  // always either the open week or the just-completed one — never a list to
+  // scan, and never ambiguous between the two headline states.
+  const headline = currentWeek
+    ? (currentWeek.completed_at
+      ? `Week ${currentWeek.week_number} complete — add the next week`
+      : `Week ${currentWeek.week_number} in progress`)
+    : 'No recovery week yet — add a week';
 
   const runAction = async (action) => {
     setActionError(null);
@@ -318,8 +333,13 @@ export function LogRecoverySection({
         <View style={styles.activeGroup}>
           <SectionTitle>Recovery</SectionTitle>
           <Card style={styles.card}>
-            <Text style={styles.baselineLabel}>Baseline routine</Text>
-            <Text style={styles.baselineTitle}>{activeBlock.baseline_note_title || 'Untitled Routine'}</Text>
+            {/* State-derived headline first, supporting evidence second (#789).
+                The baseline is still stated in full, but as one de-emphasized
+                caption rather than the card's loudest two rows. */}
+            <Text style={styles.headline}>{headline}</Text>
+            <Text style={styles.baselineCaption}>
+              Baseline: {activeBlock.baseline_note_title || 'Untitled Routine'}
+            </Text>
 
             {stateStale ? staleBanner : null}
             {showRecoveryNotice ? pendingBanner : null}
@@ -334,8 +354,9 @@ export function LogRecoverySection({
               {activeWeeks.filter(w => !w.completed_at).map(week => {
                 const linkedNote = week.note_id ? notesById.get(week.note_id) : null;
                 // The row stays — the week is still one of this block's weeks
-                // and still needs its `Unlink` — but it offers no read action,
-                // because there is nothing to read. Dropping `onPress` AND
+                // — but it offers no read action, because there is nothing to
+                // read. Unlink no longer lives on the row (#789); dropping
+                // `onPress` AND
                 // `accessibilityRole="button"` is what keeps it from being an
                 // inert press for a sighted user and an announced-but-dead
                 // button for a screen-reader user (#775).
@@ -362,18 +383,6 @@ export function LogRecoverySection({
                         </Text>
                         <Text style={styles.weekStatus}>In progress</Text>
                       </RowMain>
-                      {week.id === latestWeekId && (
-                        <Pressable
-                          onPress={() => handleUnlinkWeek(week)}
-                          disabled={actionsLocked}
-                          style={styles.inlineButton}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Unlink Week ${week.week_number}`}
-                          accessibilityState={{ disabled: actionsLocked }}
-                        >
-                          <Text style={styles.inlineButtonText}>{busy === week.id ? 'Unlinking…' : 'Unlink'}</Text>
-                        </Pressable>
-                      )}
                     </View>
                     {isViewingThisNote && (
                       <View style={styles.weekNoteContent}>
@@ -411,6 +420,9 @@ export function LogRecoverySection({
               })}
             </View>
 
+            {/* Exactly one lifecycle action is primary and visible by default
+                (#789). `canCompleteWeek` and `canAddWeek` are mutually
+                exclusive by construction, so this row never holds two. */}
             <View style={styles.actionsRow}>
               {canCompleteWeek && (
                 <Pressable
@@ -438,41 +450,67 @@ export function LogRecoverySection({
                   <Text style={styles.actionButtonText}>Add week</Text>
                 </Pressable>
               )}
-              {currentWeek && currentWeek.completed_at && (
-                <Pressable
-                  onPress={() => handleUnlinkWeek(currentWeek)}
-                  disabled={actionsLocked}
-                  style={styles.inlineButton}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Unlink Week ${currentWeek.week_number}`}
-                  accessibilityState={{ disabled: actionsLocked }}
-                >
-                  <Text style={styles.inlineButtonText}>
-                    {busy === currentWeek.id ? 'Unlinking…' : `Unlink Week ${currentWeek.week_number}`}
-                  </Text>
-                </Pressable>
-              )}
-              <Pressable
-                onPress={handleCompleteBlock}
-                disabled={actionsLocked}
-                style={[styles.actionButton, styles.actionButtonPrimary]}
-                accessibilityRole="button"
-                accessibilityLabel="Complete recovery block"
-                accessibilityState={{ disabled: actionsLocked }}
-              >
-                <Text style={styles.actionButtonPrimaryText}>
-                  {busy === 'block' ? 'Completing…' : 'Complete recovery block'}
-                </Text>
-              </Pressable>
             </View>
 
-            <RecoveryInclusionToggle
-              block={activeBlock}
-              disabled={inclusionLocked}
-              busy={inclusionBusyBlockId === activeBlock.id}
-              error={inclusionErrorFor(activeBlock.id)}
-              onToggle={handleToggleInclusion}
-            />
+            {/* One disclosure for everything that is not needed to log today's
+                workout (#789). The trigger carries no `disabled` key in any
+                state — see `manageExpanded` above — so a locked user can always
+                open it; each control inside keeps exactly the per-control
+                gating it had when it lived in the flat action row. */}
+            <Pressable
+              onPress={() => setManageExpanded(v => !v)}
+              style={styles.disclosureTrigger}
+              accessibilityRole="button"
+              accessibilityLabel={`Manage recovery block: ${activeBlock.baseline_note_title || 'Untitled Routine'}`}
+              accessibilityState={{ expanded: manageExpanded }}
+            >
+              <Text style={styles.disclosureTriggerText}>
+                {manageExpanded ? '▾' : '▸'} Manage recovery block
+              </Text>
+            </Pressable>
+
+            {manageExpanded && (
+              <View style={styles.disclosureContent}>
+                <View style={styles.actionsRow}>
+                  {/* Always names the concrete current week, open or just
+                      completed, so Unlink is never a context-free button. */}
+                  {currentWeek && (
+                    <Pressable
+                      onPress={() => handleUnlinkWeek(currentWeek)}
+                      disabled={actionsLocked}
+                      style={styles.inlineButton}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Unlink Week ${currentWeek.week_number}`}
+                      accessibilityState={{ disabled: actionsLocked }}
+                    >
+                      <Text style={styles.inlineButtonText}>
+                        {busy === currentWeek.id ? 'Unlinking…' : `Unlink Week ${currentWeek.week_number}`}
+                      </Text>
+                    </Pressable>
+                  )}
+                  <Pressable
+                    onPress={handleCompleteBlock}
+                    disabled={actionsLocked}
+                    style={[styles.actionButton, styles.actionButtonPrimary]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Complete recovery block"
+                    accessibilityState={{ disabled: actionsLocked }}
+                  >
+                    <Text style={styles.actionButtonPrimaryText}>
+                      {busy === 'block' ? 'Completing…' : 'Complete recovery block'}
+                    </Text>
+                  </Pressable>
+                </View>
+
+                <RecoveryInclusionToggle
+                  block={activeBlock}
+                  disabled={inclusionLocked}
+                  busy={inclusionBusyBlockId === activeBlock.id}
+                  error={inclusionErrorFor(activeBlock.id)}
+                  onToggle={handleToggleInclusion}
+                />
+              </View>
+            )}
           </Card>
         </View>
       )}
@@ -491,17 +529,38 @@ const createStyles = (colors) => StyleSheet.create({
   card: {
     gap: 10,
   },
-  baselineLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    color: colors.textMuted,
-  },
-  baselineTitle: {
+  // Plain wrapping text at the weight the baseline title used to hold, so the
+  // loudest row is now the state fact rather than the routine name. No
+  // `numberOfLines`: large text wraps instead of truncating.
+  headline: {
     fontSize: 18,
     fontWeight: '800',
     color: colors.text,
+  },
+  baselineCaption: {
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  // Reuses the chip treatment already carried by `pendingRetryButton` and
+  // `inlineButton` — no new color or radius decision is introduced.
+  disclosureTrigger: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: colors.chipBackground,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  disclosureTriggerText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.accent,
+  },
+  disclosureContent: {
+    gap: 10,
   },
   pendingBanner: {
     paddingHorizontal: 12,

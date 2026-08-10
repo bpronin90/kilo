@@ -710,6 +710,8 @@ action is placed by how often it is used:
 | Secondary — occasional | `Edit routine`, `Delete routine`, viewed-card `Week A/B`, full `Set as current routine` | Non-current card's expand-on-tap body (`LogPreviousRoutines.js` `inlineActions`), inside expanded routine management |
 | Quick access — reachable without opening (#756) | Compact `New routine` icon, compact `Set as current routine` icon per collapsed row | Panel header (present collapsed or expanded) and each collapsed non-current row's header respectively (`LogPreviousRoutines.js`) |
 | Rare — once per training block | `Start recovery block` | Expanded routine-management body (`LogPreviousRoutines.js`); the Recovery section no longer hosts a start control (#724) |
+| Recovery — expected next step | `Complete week` **or** `Add week` (never both) | Active Recovery card body, visible by default (`LogRecoverySection.js`, #789) |
+| Recovery — correction or once-per-block | `Unlink Week {N}`, `Complete recovery block`, the analytics-inclusion switch | `Manage recovery block`, a collapsed-by-default disclosure inside the active Recovery card (#789) |
 
 Consequences to preserve:
 
@@ -785,9 +787,30 @@ Consequences to preserve:
   — otherwise an A/B recovery week's other week would be unreachable here. A week whose `note_id` is null, or names a note
   absent from the notebook, shows `Note unavailable` in place of a title,
   announces `Recovery Week N, note unavailable`, and carries no `onPress` and no
-  `accessibilityRole="button"` — the row and its `Unlink` remain, and that
-  unlink confirmation drops both the quoted title and the "note itself is kept"
-  clause. `Untitled Routine` is reserved for notes that exist.
+  `accessibilityRole="button"` — the row remains, its `Unlink` remains
+  (in the disclosure, see below), and that unlink confirmation drops both the
+  quoted title and the "note itself is kept" clause. `Untitled Routine` is
+  reserved for notes that exist.
+- **The active Recovery card leads with state, not with the baseline (#789).**
+  Its first line is a state-derived headline — `Week {N} in progress` or
+  `Week {N} complete — add the next week` — and the baseline follows as one
+  de-emphasized `Baseline: <routine>` caption, replacing the former
+  label+value pair. Exactly one lifecycle action is visible by default
+  (`Complete week` while the week is open, `Add week` once it completes; the
+  two are mutually exclusive by construction). Everything not needed to log
+  today's workout sits in one `Manage recovery block` disclosure, collapsed by
+  default, holding `Unlink Week {N}` (always naming the concrete current week,
+  open or just-completed — there is no row-level `Unlink`), `Complete recovery
+  block`, and the `RecoveryInclusionToggle` with its help. Stale, pending,
+  terminal, and inline-error banners stay **outside** the disclosure so they
+  are announced without expanding anything, and `Retry recovery` is never
+  disclosed. The disclosure trigger reuses the existing chip treatment, carries
+  `accessibilityRole="button"` with `accessibilityState={{ expanded }}`, and is
+  **never** disabled: under `actionsLocked` the controls inside it each keep
+  their own existing disabled gating (`actionsLocked` for the lifecycle
+  buttons, `inclusionLocked` for the switch) so a locked user can still open it
+  and see which specific control is unavailable, rather than being stranded
+  behind a container that will not open.
 - `LogRecoverySection` renders only when Recovery affects the current workout
   (active/pending/terminal-error/stale). Completed history and its inclusion
   controls live in Analytics (#727-729), so completed-only users see no Recovery
