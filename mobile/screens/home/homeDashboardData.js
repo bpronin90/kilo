@@ -7,7 +7,17 @@ import {
   useRecoveryAnalyticsFilter,
   useRecoveryBlockState,
 } from '../../hooks/entries/recoveryBlockHooks';
-import { orderedLiveWeeks } from '../../lib/data/recoveryBlocks';
+import {
+  deriveRecoveryComparison,
+  RECOVERY_COMPARISON_STATUS,
+  RECOVERY_WEEK_STATUS,
+} from '../../lib/data/recoveryAnalytics';
+
+// Re-exported so HomeScreen's active-branch copy can switch on the same
+// enums this module derives from, without HomeScreen importing a second
+// module directly (and shifting its own line numbers out from under
+// unrelated line-anchored assertions, e.g. theme-rendering.test.js).
+export { RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS };
 import { normalizeExerciseKey, countWorkoutSessionsFromSections } from '../../lib/parser';
 import {
   deriveWeightGoalAnalytics,
@@ -70,7 +80,12 @@ export const HOME_RECOVERY_STATUS = Object.freeze({
   UNVERIFIED: 'unverified',
 });
 
-export function useHomeRecoverySummary() {
+// Home's return-to-baseline content (#779/#782). Rather than inventing a
+// second vocabulary, this folds the same `deriveRecoveryComparison` result
+// Analytics already renders (`AnalyticsRecoverySection`) into the summary, for
+// the latest live week only. Home is the entry point, not a second evidence
+// surface — the per-exercise breakdown stays behind the `Recovery` handoff.
+export function useHomeRecoverySummary(notes) {
   const { activeBlock, weeks, ready, loading, stale, retryRecovery } = useRecoveryBlockState() || {};
   return useMemo(() => {
     const status = ready
@@ -91,28 +106,38 @@ export function useHomeRecoverySummary() {
             : null,
       retry: retryRecovery || null,
       active: false,
-      title: null,
+      comparisonStatus: null,
       weekNumber: null,
-      weekComplete: false,
-      weekCount: 0,
+      weekNoteStatus: null,
+      metCount: 0,
+      totalBaselineExercises: 0,
+      categoryCounts: { rebuilding: 0, not_reintroduced: 0, not_comparable: 0, added_during_recovery: 0 },
       includedInNormalAnalytics: false,
     };
     // An active block is only reported off a verified snapshot. While the read
     // is unresolved the arrays are placeholders, not evidence of either answer.
     if (!ready || !activeBlock) return base;
 
-    const live = orderedLiveWeeks(weeks, activeBlock.id);
-    const current = live.length > 0 ? live[live.length - 1] : null;
+    const comparison = deriveRecoveryComparison({ block: activeBlock, weeks, notes });
+    const comparisonWeeks = comparison.weeks || [];
+    const current = comparisonWeeks.length > 0 ? comparisonWeeks[comparisonWeeks.length - 1] : null;
     return {
       ...base,
       active: true,
-      title: activeBlock.baseline_note_title || 'Untitled Routine',
+      comparisonStatus: comparison.status,
       weekNumber: current ? current.week_number : null,
-      weekComplete: !!current?.completed_at,
-      weekCount: live.length,
+      weekNoteStatus: current ? current.status : null,
+      metCount: current?.summary?.baseline_met || 0,
+      totalBaselineExercises: current ? (current.exercises || []).length : 0,
+      categoryCounts: {
+        rebuilding: current?.summary?.rebuilding || 0,
+        not_reintroduced: current?.summary?.not_reintroduced || 0,
+        not_comparable: current?.summary?.not_comparable || 0,
+        added_during_recovery: current?.summary?.added_during_recovery || 0,
+      },
       includedInNormalAnalytics: activeBlock.include_in_normal_analytics === true,
     };
-  }, [activeBlock, weeks, ready, loading, stale, retryRecovery]);
+  }, [activeBlock, weeks, notes, ready, loading, stale, retryRecovery]);
 }
 
 // `allSections` / `noteSectionsList` are the AGGREGATED note populations and

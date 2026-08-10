@@ -348,7 +348,7 @@ different reads and only the first can say whether a block is active:
 
 | Recovery state | Home renders |
 |---|---|
-| Verified, active block | Week line + baseline + inclusion context, and the `Recovery` handoff |
+| Verified, active block | The return-to-baseline summary (#779/#782, below) and the `Recovery` handoff |
 | Verified and current, no active block | **Nothing.** Silence is a claim, and here a verified *current* read supports it |
 | Verified but stale | `RECOVERY_STALE_MESSAGE` and `Retry recovery` — over the last-known-good summary when one was cached, and on its own when none was. A stale snapshot that happened to cache no active block is still one whose newest refresh failed |
 | First read in flight | `RECOVERY_LOADING_MESSAGE`, and **no** retry — nothing has failed |
@@ -358,6 +358,25 @@ Copy for the three non-ready conditions is the recovery state contract's own
 (`hooks/entries/recoveryBlockHooks.js`), so Home, Log, and Analytics cannot
 describe the same condition differently, and `Retry recovery` is the exact
 control name that copy tells the user to tap (ui-design-rules §12).
+
+**Active-block content (#779/#782).** The active branch derives the latest
+live week through the same `deriveRecoveryComparison` engine Analytics uses
+(`AnalyticsRecoverySection`) — no second calculation, no invented percentage
+or pace. Header + at most 3 content lines, always:
+
+- **Line 1** — one line: the hero count (`Week N — X of Y baseline exercises
+  met`) or a fallback status, week identity folded in via em dash. Baseline
+  unavailable/unsupported takes precedence over a missing/unreadable note,
+  since it is a property of the block, not of any one week.
+- **Line 2** — one merged line: nonzero `rebuilding` / `not reintroduced` /
+  `not comparable` / `added during recovery` counts, then
+  `Not counted in your normal analytics.` when `include_in_normal_analytics
+  !== true` — omitted entirely when nothing applies. Inclusion is
+  silence-by-default: included says nothing.
+- **Line 3** — the existing `RECOVERY_STALE_MESSAGE`, only when stale.
+
+No `on track`, percentage, prediction, or medical claim; a lift that
+regresses after being met is `rebuilding` again, not a new state.
 
 | Element | Property | Value |
 |---|---|---|

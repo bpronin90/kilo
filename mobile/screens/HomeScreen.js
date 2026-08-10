@@ -5,7 +5,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, HeroMetric, LineChart, getSessionTone, Button, ErrorBanner } from '../components/UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { CLOUD_SYNC_NOTICE, useWeightGoal, useTrackedLifts, getNoteSections, useCloudSyncSummary } from '../hooks/useEntries';
-import { deriveHomeDashboardData, useHomeNormalNotes, useHomeRecoverySummary, HOME_RECOVERY_STATUS } from './home/homeDashboardData';
+import { deriveHomeDashboardData, useHomeNormalNotes, useHomeRecoverySummary, HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './home/homeDashboardData';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue, displayChartSeries } from '../lib/units';
 
@@ -230,7 +230,11 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   const styles = useThemedStyles(createStyles);
 
   if (!summary) return null;
-  const { status, stale, message, active, title, weekNumber, weekComplete, includedInNormalAnalytics } = summary;
+  const {
+    status, stale, message, active,
+    comparisonStatus, weekNumber, weekNoteStatus, metCount, totalBaselineExercises,
+    categoryCounts, includedInNormalAnalytics,
+  } = summary;
 
   // Verified, nothing is running, and the answer is CURRENT. This is the one
   // state where rendering nothing is true. `!stale` is load-bearing: a stale
@@ -245,15 +249,35 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   // a clean read nor a load still in flight.
   const canRetry = !!summary.retry && !!message && !isLoadingStatus;
 
-  const weekLine = weekNumber === null
-    ? 'No weeks logged yet'
-    : weekComplete
-      ? `Week ${weekNumber} complete`
-      : `Week ${weekNumber} in progress`;
-  const baselineLine = `Baselined from ${title}`;
-  const inclusionLine = includedInNormalAnalytics
-    ? 'Counted in your normal analytics.'
-    : 'Not counted in your normal analytics.';
+  // Line 1: exactly one line, always (#779 approved contract). Baseline
+  // availability is checked first because it is a property of the block, not
+  // of any one week; a missing/unreadable note is only meaningful once a
+  // week has actually been compared.
+  const line1 = comparisonStatus === RECOVERY_COMPARISON_STATUS.BASELINE_UNAVAILABLE
+    || comparisonStatus === RECOVERY_COMPARISON_STATUS.BASELINE_UNSUPPORTED
+    ? "Baseline data for this block isn't available."
+    : weekNumber === null
+      ? 'Baseline captured. No week logged yet.'
+      : weekNoteStatus === RECOVERY_WEEK_STATUS.NOTE_MISSING
+        ? `Week ${weekNumber} — This week's note is no longer available.`
+        : weekNoteStatus === RECOVERY_WEEK_STATUS.NOTE_UNREADABLE
+          ? `Week ${weekNumber} — This week's note couldn't be read.`
+          : comparisonStatus === RECOVERY_COMPARISON_STATUS.BASELINE_EMPTY
+            ? 'No baseline exercises were captured for this block.'
+            : `Week ${weekNumber} — ${metCount} of ${totalBaselineExercises} baseline exercises met`;
+
+  // Line 2: one merged line — nonzero category counts, then the
+  // inclusion-deviation clause — omitted entirely when nothing applies.
+  const categoryParts = [];
+  const addCategory = (count, noun) => { if (count > 0) categoryParts.push(`${count} ${noun}`); };
+  addCategory(categoryCounts.rebuilding, 'rebuilding');
+  addCategory(categoryCounts.not_reintroduced, 'not reintroduced');
+  addCategory(categoryCounts.not_comparable, 'not comparable');
+  addCategory(categoryCounts.added_during_recovery, 'added during recovery');
+  if (!includedInNormalAnalytics) categoryParts.push('Not counted in your normal analytics.');
+  const line2 = categoryParts.length > 0 ? categoryParts.join(' · ') : null;
+
+  const accessibleContent = `${line1}${/[.!?]$/.test(line1) ? '' : '.'}${line2 ? ` ${line2}` : ''}`;
 
   return (
     // Wrapped rather than testID'd directly: Card takes only children/style/
@@ -276,15 +300,14 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
                 <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
               </View>
             </Pressable>
-            {/* One announcement for the whole summary: three separate nodes
-                read as three unrelated fragments. */}
+            {/* One announcement for the whole summary: separate nodes read as
+                unrelated fragments. */}
             <View
               accessible
-              accessibilityLabel={`${weekLine}. ${baselineLine}. ${inclusionLine}`}
+              accessibilityLabel={accessibleContent}
             >
-              <Text style={styles.recoveryWeekLine}>{weekLine}</Text>
-              <Text style={styles.recoveryDetailLine}>{baselineLine}</Text>
-              <Text style={styles.recoveryDetailLine}>{inclusionLine}</Text>
+              <Text style={styles.recoveryWeekLine}>{line1}</Text>
+              {line2 ? <Text style={styles.recoveryDetailLine}>{line2}</Text> : null}
             </View>
           </>
         ) : (
@@ -354,7 +377,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
   // read can fail terminally while the boundary read succeeded, and holding the
   // whole dashboard on it would leave Home permanently blank over a condition
   // this card can state honestly on its own.
-  const recoverySummary = useHomeRecoverySummary();
+  const recoverySummary = useHomeRecoverySummary(notes);
 
   const noteSectionsList = useMemo(
     () => normalNotes.map(n => getNoteSections(n)),
