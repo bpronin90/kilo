@@ -44,8 +44,11 @@ The selected product direction is **Repair and Simplify**:
 - Each implementation task becomes one GitHub issue and one authoritative PR.
 - Do not create every issue merely to mirror this document. Triage a task only
   when its dependencies and product decisions are satisfied.
-- `R0`, `R1`, and the investigation half of `R2` are the only implementation or
-  investigation tasks that may begin without Recovery/guided discovery results.
+- Without Recovery/guided discovery results, implementation is limited to `R0`
+  and `R1`, and investigation is limited to the investigation half of `R2`.
+  Dependency-free discovery tasks, including `R3a` and `R4a`, may also begin;
+  implementation that consumes their outputs remains gated on an owner-approved
+  contract.
 - Route new work to Claude under the repository owner's standing direction.
 - Every issue needs one `agent:claude` label and at least one matching `area:`
   label. Model and reasoning labels are optional unless useful for execution.
@@ -631,17 +634,21 @@ implementation-ready, two feasibility amendments, and the final owner decision.
   relevant editor tests, and a changelog fragment.
 - **Scope:** a `WORKOUT_SEED_EXAMPLE_TEXT` constant equal to exactly
   `Monday\n+Lifting\n-Bench\n135 5,5,5`, rendered below the input while the note
-  is empty and inserted verbatim on tap. No new storage path; the existing
-  debounced autosave persists it. Not wired into the deload editor.
+  is empty and inserted verbatim on tap. No new storage path: existing notes
+  continue to use debounced autosave, while a new draft (`editingNoteId ===
+  'new'`) persists only through the existing explicit Save/Done path. Not wired
+  into the deload editor.
 - **Out of scope:** any change to the taught seven-line syntax example or its
   three consumers, the syntax modal, Help, or the parser.
 - **Acceptance:** one tap inserts exactly those four lines and the block
   disappears; emptying the note brings it back with no persisted flag; the
   inserted text parses cleanly with one exercise and one session entry; the
   teaching example stays byte-unchanged.
-- **Verification:** empty, emptied, and whitespace-only notes; tap then undo; tap
-  then immediate navigation away; deload editor unaffected; 320/375/448dp, large
-  text, both themes, TalkBack, and VoiceOver.
+- **Verification:** empty, emptied, and whitespace-only notes; tap then undo; for
+  a new draft, explicit Save and Done persist the inserted text and a failed save
+  keeps the draft open and editable; existing-note autosave remains covered;
+  deload editor unaffected; 320/375/448dp, large text, both themes, TalkBack,
+  and VoiceOver.
 - **Routing:** `agent:claude`; `area:ui`, `area:workouts`.
 
 ### R6b-3 — Remove the superseded guided surfaces
