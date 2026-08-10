@@ -1,14 +1,13 @@
 # Kilo Repair and Simplify Roadmap
 
-**Status: Active — Phases 1–2 complete; Phase 3 discovery active; Phase 4
-discovery complete and approved.**
+**Status: Active — Phases 1–2 and 4 complete; Phase 3 delivery active.**
 Phase 1's confirmed regressions shipped through issues #770 and #771 on
 2026-08-10. Phase 2's approved routine-context behavior shipped through issue
-#775 / PR #777 the same day. The independently ready discovery tasks R3a, R4a,
-and R6a are now triaged as issues #779, #780, and #781; R5a waits for approved
-R3a and R4a outputs. R6a completed on 2026-08-10: the owner approved a contract
-that replaces the guided sheets with a tappable example and a removal pass, and
-explicitly dropped the inline-suggestion half of the design.
+#775 / PR #777 the same day. In Phase 3, R3a's approved Home contract shipped
+through #782 / PR #783, R4a's Log contract is approved, and the next wave is
+triaged as R4b issue #789 and R5a issue #790. Phase 4 completed on 2026-08-10:
+R6b-1 shipped through #785 / PR #787, R6b-3 shipped through #786 / PR #788,
+and the owner explicitly dropped R6b-2's inline-suggestion design.
 
 Source of truth: the repository owner's cross-tab review supplied on 2026-08-09,
 with immutable GitHub records authoritative for triaged tasks and approved
@@ -368,18 +367,21 @@ issue record, the issue record wins.
 
 ---
 
-## Phase 3 — Redesign Recovery Around One Answer Per Surface [DISCOVERY ACTIVE]
+## Phase 3 — Redesign Recovery Around One Answer Per Surface [DELIVERY ACTIVE]
 
 Phase goal: replace dense Recovery presentations with a coherent cross-tab model
 that answers the user's immediate question first and progressively discloses
 supporting evidence.
 
-No Recovery implementation in this phase begins until its discovery task has an
-owner-approved written contract.
+R3a and R4a now have owner-approved written contracts. R3b shipped through
+issue #782 / PR #783. R4b implementation and R5a discovery are the current
+parallel wave; R5b remains gated on both of their approved outcomes.
 
-### R3a — Specify the Home return-to-baseline summary
+### R3a — Specify the Home return-to-baseline summary [COMPLETE]
 
 - **Issue:** [#779](https://github.com/bpronin90/kilo/issues/779)
+- **Outcome:** owner-approved Home contract recorded on #779 and implemented by
+  R3b.
 
 - **Suggested title:** `Repair and Simplify / R3a: define the Home Recovery summary`
 - **Goal:** decide the smallest honest summary of progress toward baseline.
@@ -413,7 +415,11 @@ owner-approved written contract.
 - **Routing:** `agent:claude`; `model:claude-sonnet-5`; `reasoning:high`;
   `effort:default`; `area:ui`, `area:workouts`, `area:docs`.
 
-### R3b — Implement the approved Home Recovery summary
+### R3b — Implement the approved Home Recovery summary [COMPLETE]
+
+- **Issue:** [#782](https://github.com/bpronin90/kilo/issues/782)
+- **Outcome:** shipped in [PR #783](https://github.com/bpronin90/kilo/pull/783)
+  on 2026-08-10.
 
 - **Suggested title:** `Repair and Simplify / R3b: implement return-to-baseline on Home`
 - **Goal:** replace the current confusing Home Recovery card with R3a's approved
@@ -433,9 +439,11 @@ owner-approved written contract.
   responsive/large-text, themes, TalkBack, and VoiceOver.
 - **Routing:** `agent:claude`; `area:ui`, `area:workouts`.
 
-### R4a — Specify the active Recovery experience on Log
+### R4a — Specify the active Recovery experience on Log [COMPLETE]
 
 - **Issue:** [#780](https://github.com/bpronin90/kilo/issues/780)
+- **Outcome:** owner approved the final state/action matrix, calm default
+  hierarchy, disclosure cut list, and corrected locked-state behavior on #780.
 
 - **Suggested title:** `Repair and Simplify / R4a: simplify active Recovery on Log`
 - **Goal:** determine exactly what Recovery must expose during a workout and
@@ -467,6 +475,8 @@ owner-approved written contract.
 
 ### R4b — Implement the approved Log Recovery hierarchy
 
+- **Issue:** [#789](https://github.com/bpronin90/kilo/issues/789)
+
 - **Suggested title:** `Repair and Simplify / R4b: implement calm active Recovery on Log`
 - **Goal:** implement R4a without disturbing routine, Deload, or Recovery state
   semantics.
@@ -486,8 +496,8 @@ owner-approved written contract.
 
 ### R5a — Define Analytics Recovery hierarchy and placement
 
-- **Triage status:** blocked until R3a and R4a have owner-approved outputs; no
-  issue should be created before both dependencies are satisfied.
+- **Issue:** [#790](https://github.com/bpronin90/kilo/issues/790)
+- **Triage status:** ready; R3a and R4a both have owner-approved outputs.
 
 - **Suggested title:** `Repair and Simplify / R5a: define Recovery evidence in Analytics`
 - **Goal:** make Analytics the clear evidence owner without showing every control
@@ -533,7 +543,7 @@ owner-approved written contract.
 
 ---
 
-## Phase 4 — Rebuild Guided Workouts From First Principles [DISCOVERY COMPLETE]
+## Phase 4 — Rebuild Guided Workouts From First Principles [COMPLETE]
 
 Phase goal: determine whether Kilo needs a distinct guided mode at all and, if it
 does, make it a light, comprehensible extension of the canonical logging model.
@@ -553,6 +563,11 @@ Approved decisions live in the immutable comments on issue
 [#781](https://github.com/bpronin90/kilo/issues/781): the decision log, the
 state model and low-fidelity flow, two corrections that made the R6b contracts
 implementation-ready, two feasibility amendments, and the final owner decision.
+
+Completed on 2026-08-10: R6b-1 shipped in PR #787 and R6b-3 shipped in PR #788.
+The ordinary editor now offers the approved tappable seed, and the superseded
+composer, session-autofill sheet, and S2 first-use card are gone. R6b-2 remains
+dropped by explicit owner decision.
 
 ### R6a — Conduct a multi-round guided-workout planning session [COMPLETE]
 
@@ -621,7 +636,11 @@ implementation-ready, two feasibility amendments, and the final owner decision.
   `effort:default`; `area:ui`, `area:workouts`, `area:architecture`, `area:docs`;
   `type:planning`.
 
-### R6b-1 — Add the tappable example to the workout editor
+### R6b-1 — Add the tappable example to the workout editor [COMPLETE]
+
+- **Issue:** [#785](https://github.com/bpronin90/kilo/issues/785)
+- **Outcome:** shipped in [PR #787](https://github.com/bpronin90/kilo/pull/787)
+  on 2026-08-10.
 
 - **Suggested title:** `Repair and Simplify / R6b-1: seed an empty workout note
   from a tappable example`
@@ -651,7 +670,11 @@ implementation-ready, two feasibility amendments, and the final owner decision.
   and VoiceOver.
 - **Routing:** `agent:claude`; `area:ui`, `area:workouts`.
 
-### R6b-3 — Remove the superseded guided surfaces
+### R6b-3 — Remove the superseded guided surfaces [COMPLETE]
+
+- **Issue:** [#786](https://github.com/bpronin90/kilo/issues/786)
+- **Outcome:** shipped in [PR #788](https://github.com/bpronin90/kilo/pull/788)
+  on 2026-08-10.
 
 - **Suggested title:** `Repair and Simplify / R6b-3: remove the guided routine
   and session-autofill sheets`
