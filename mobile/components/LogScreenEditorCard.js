@@ -170,10 +170,23 @@ export function LogScreenEditorCard({
   }, [editingNoteId]);
 
   // Empty-note seed example (#785, R6b-1). One tap inserts the constant
-  // verbatim and moves the caret to its end; any further edit clears the
-  // forced selection so normal typing/cursor behavior resumes.
+  // verbatim and moves the caret to its end. `seedSelection` is deliberately
+  // a one-shot forced value, not a persistent controlled selection: this card
+  // stays mounted (inside a hidden ScreenShell) across editor switches, so a
+  // selection left controlled indefinitely would carry into another note and
+  // could re-pin the caret after the user taps elsewhere but before typing.
+  // The effect below clears it the render after it's applied, and switching
+  // which note/mode is being edited clears it immediately too.
   const editorInputRef = useRef(null);
   const [seedSelection, setSeedSelection] = useState(null);
+  useEffect(() => {
+    if (!seedSelection) return undefined;
+    const timer = setTimeout(() => setSeedSelection(null), 0);
+    return () => clearTimeout(timer);
+  }, [seedSelection]);
+  useEffect(() => {
+    setSeedSelection(null);
+  }, [editingNoteId, deloadMode]);
   const editorText = editingNoteId ? editingText : activeEditText;
   const setEditorText = editingNoteId ? setEditingText : handleCurrentTextChange;
   const handleInsertSeedExample = () => {

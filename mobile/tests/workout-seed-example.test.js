@@ -5,9 +5,17 @@
 // block; emptying the note restores it. Deliberately kept separate from
 // WORKOUT_SYNTAX_EXAMPLE_TEXT (the seven-line teaching example), and never
 // wired into the deload editor.
+//
+// The forced caret `selection` is a one-shot value, not a persistent
+// controlled selection (review on #787): LogScreenEditorCard stays mounted
+// across editor switches, so a selection left controlled indefinitely could
+// carry into another note. It self-clears on the next tick, and switching
+// which note/mode is open clears it immediately regardless of the timer —
+// both are covered below with fake timers so no real timer leaks past a test.
 
 import React from 'react';
 import renderer from 'react-test-renderer';
+import { Text } from 'react-native';
 import { LogScreenEditorCard } from '../components/LogScreenEditorCard';
 import {
   WORKOUT_SEED_EXAMPLE_TEXT,
@@ -132,6 +140,9 @@ function DeloadHarness(props) {
 }
 
 describe('empty workout note seed example (#785)', () => {
+  beforeEach(() => { jest.useFakeTimers(); });
+  afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
+
   test('an initially empty current-routine editor shows the four-line seed', () => {
     let component;
     renderer.act(() => { component = renderer.create(<CurrentRoutineHarness />); });
@@ -173,6 +184,86 @@ describe('empty workout note seed example (#785)', () => {
       end: WORKOUT_SEED_EXAMPLE_TEXT.length,
     });
     expect(findSeedButton(root)).toBeNull();
+  });
+
+  test('the forced caret selection clears itself on the next tick, so it does not stay controlled', () => {
+    let component;
+    renderer.act(() => { component = renderer.create(<CurrentRoutineHarness />); });
+    const root = component.root;
+    renderer.act(() => { findSeedButton(root).props.onPress(); });
+
+    let input = root.findAll(n => n.props && n.props.multiline === true && n.props.placeholder)[0];
+    expect(input.props.selection).toEqual({
+      start: WORKOUT_SEED_EXAMPLE_TEXT.length,
+      end: WORKOUT_SEED_EXAMPLE_TEXT.length,
+    });
+
+    renderer.act(() => { jest.runAllTimers(); });
+    input = root.findAll(n => n.props && n.props.multiline === true && n.props.placeholder)[0];
+    expect(input.props.selection).toBeUndefined();
+    // The inserted text itself is untouched by the selection clearing.
+    expect(input.props.value).toBe(WORKOUT_SEED_EXAMPLE_TEXT);
+  });
+
+  test('switching which note is open clears the forced selection immediately, before the timer fires', () => {
+    // The card stays mounted across editor switches (hidden ScreenShell), so
+    // a stale forced selection must not carry from one note into another.
+    function SwitchableHarness() {
+      const [currentText, setCurrentText] = React.useState('');
+      const [otherText, setOtherText] = React.useState('');
+      const [editingNoteId, setEditingNoteId] = React.useState(null);
+      return (
+        <>
+          <LogScreenEditorCard
+            deloadMode={null}
+            isEditingDeloadNote={false}
+            editingNoteId={editingNoteId}
+            currentId="cur1"
+            activeEditText={currentText}
+            handleCurrentTextChange={setCurrentText}
+            editingText={otherText}
+            setEditingText={setOtherText}
+            workoutNoteTitle="Push Day"
+            setWorkoutNoteTitle={noop}
+            editingTitle="Backlog"
+            setEditingTitle={noop}
+            handleSave={noop}
+            isSaving={false}
+            noteIsSaving={false}
+            handleSaveOtherNote={noop}
+            handleSwitchCurrent={noop}
+            handleDeleteRoutine={noop}
+            handleDeleteDeloadNoteFromEditor={noop}
+          />
+          <Text
+            accessibilityLabel="test-switch-editor"
+            onPress={() => setEditingNoteId('other1')}
+          >
+            switch
+          </Text>
+        </>
+      );
+    }
+    let component;
+    renderer.act(() => { component = renderer.create(<SwitchableHarness />); });
+    const root = component.root;
+
+    renderer.act(() => { findSeedButton(root).props.onPress(); });
+    let input = root.findAll(n => n.props && n.props.multiline === true && n.props.placeholder)[0];
+    expect(input.props.selection).toEqual({
+      start: WORKOUT_SEED_EXAMPLE_TEXT.length,
+      end: WORKOUT_SEED_EXAMPLE_TEXT.length,
+    });
+
+    // Switch to the other-routine editor WITHOUT letting the self-clear
+    // timer run — the selection must still be gone, and the other editor
+    // (empty) must not have the seed forced onto its own caret.
+    const switchTrigger = root.findAll(n => n.props && n.props.accessibilityLabel === 'test-switch-editor')[0];
+    renderer.act(() => { switchTrigger.props.onPress(); });
+
+    input = root.findAll(n => n.props && n.props.multiline === true && n.props.placeholder)[0];
+    expect(input.props.value).toBe(''); // the other editor's own (empty) draft
+    expect(input.props.selection).toBeUndefined();
   });
 
   test('tap then undo (clearing the draft back to empty) brings the seed block back', () => {
