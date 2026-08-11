@@ -566,21 +566,39 @@ Source: `mobile/screens/AnalyticsScreen.js`
 
 ### Recovery Section (`AnalyticsRecoverySection.js`)
 
-Progressive disclosure (#758): the section answers "how close am I to my normal
-training?" before it shows any evidence. Reading order inside the block card is
-**summary → week filter → details disclosure**, and both disclosures start
-collapsed.
+Section order on the Analytics tab (R5a/R5b, #790/#793): **Weight → Recovery →
+Fatigue → Strength → Progressive Overload**. Recovery sits directly above
+Fatigue — the two are the tab's "should I be training normally right now?"
+sections — but stay visually distinct: separate `SectionTitle`s, no shared
+measure, no cross-reference. Recovery keeps `HeroMetric` + per-exercise
+meters; Fatigue keeps `SessionGauge` + its check-in card.
+
+Progressive disclosure (#758, R5b): the section answers "how close am I to my
+normal training?" before it shows any evidence. Reading order inside the block
+card is **identity caption → hero/summary → week selector → details
+disclosure → provenance**, and both disclosures start collapsed.
 
 | Element | Property | Value |
 |---|---|---|
+| Identity caption | fontSize / weight | `13` / `700`, `textMuted` — `Week N · {routine}`, or `Baseline: {routine}` before any week is logged |
 | Hero count | style | `HeroMetric.statPrimary`, `colors.accent` — `X of Y`, never a composite score |
 | Hero caption | fontSize / weight | `13` / `600`, uppercase, `letterSpacing: 0.5`, `textMuted` |
+| Hero/summary group | accessibility | `accessible` + `accessibilityLabel` + `accessibilityLiveRegion="polite"` so a week change is announced without scrolling |
 | Summary line | fontSize | `13`, `textMuted` — `Week N · <non-zero states>` |
-| Week + status chips | shared `chip` styles | radius `14`, 1px `cardBorder`, `subtleBg`, `minHeight: 44`; selected = `accent` fill / `onAccent` text |
+| Week chips | shared `chip` styles | radius `14`, 1px `cardBorder`, `subtleBg`, `minHeight: 44`; selected = `accent` fill / `onAccent` text; shown only when the focused block has more than one week |
 | Details header | title / count | `13` / `700` `text`; collapsed count `12` / `600` `textMuted` |
 | Details collapse | icon | `MaterialIcons` `expand-more`/`expand-less`, `18`, `textMuted` (app-wide convention) |
 | Metric legend | fontSize / lineHeight | `12` / `17`, `textMuted` |
+| **State group header** | fontSize / weight | `11` / `800`, uppercase, `letterSpacing: 0.5`, `textMuted`, `accessibilityRole="header"` — `{State} (N)` |
+| Provenance line | fontSize | `12`, `textMuted` — card's last line: `Started {date}` (active) or `{start} – {end}` (completed) |
 | Completed-block history | default | collapsed, summary header states the count and the latest block |
+
+**State group header** (R5b, #793) is the pattern that replaced the removed
+status-filter chip row: every exercise row is always shown, grouped under a
+counted, `accessibilityRole="header"` heading instead of hidden behind a
+filter mode. Groups render in order `Baseline met`, `Rebuilding`,
+`Not reintroduced`, `Not comparable`, `Added during recovery`, and an empty
+group renders nothing.
 
 Wording is part of the contract, not decoration:
 
@@ -590,10 +608,10 @@ Wording is part of the contract, not decoration:
   across completed working sets.
 - `Load` is defined as the heaviest completed working set that week — explicitly
   not an all-time max or an estimated 1RM.
-- Status filters are `All`, `Rebuilding`, `Baseline met`, `Not reintroduced`,
-  and `Added during recovery`, each carrying its week-scoped count.
-  `Not comparable` has no chip and is never hidden: it stays in `All` and is
-  counted in the summary line.
+- No-week, note-missing, and note-unreadable copy matches Home's R3a wording
+  exactly: `Baseline captured. No week logged yet.`; `Week N — This week's
+  note is no longer available.`; `Week N — This week's note couldn't be
+  read.`
 - A week whose linked note is missing or unreadable states that **above** the
   disclosure, which is not rendered at all — a collapsed panel is never the
   reason evidence is absent. Loading, stale, retry, and unverified copy is
