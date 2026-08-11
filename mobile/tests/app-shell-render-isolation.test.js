@@ -77,6 +77,7 @@ const renderCounts = {
 
 let capturedWeightSetters = null;
 let capturedLogSetters = null;
+let triggerDeviceDataWiped = null;
 
 jest.mock('../screens/HomeScreen', () => {
   const React = require('react');
@@ -167,6 +168,7 @@ describe('App shell keystroke isolation (#592)', () => {
     Object.keys(renderCounts).forEach((k) => { renderCounts[k] = 0; });
     capturedWeightSetters = null;
     capturedLogSetters = null;
+    triggerDeviceDataWiped = null;
 
     // Each hook's individual functions/values are created once per test (like
     // the real hook's useCallback([]) / useState internals would keep them
@@ -218,17 +220,22 @@ describe('App shell keystroke isolation (#592)', () => {
       updatePassword: jest.fn(),
       serverExport: jest.fn(),
       deleteAccount: jest.fn(),
+      wipeDeviceData: jest.fn(),
     };
-    useAuthSessionModule.useAuthSession.mockImplementation(() => ({
-      configured: false,
-      loading: false,
-      session: null,
-      user: null,
-      signedIn: false,
-      passwordRecovery: false,
-      recoveryError: '',
-      ...authFns,
-    }));
+    useAuthSessionModule.useAuthSession.mockImplementation((options = {}) => {
+      triggerDeviceDataWiped = options.onDeviceDataWiped;
+      return {
+        configured: false,
+        loading: false,
+        session: null,
+        user: null,
+        signedIn: false,
+        passwordRecovery: false,
+        recoveryError: '',
+        deviceWipeRequired: false,
+        ...authFns,
+      };
+    });
 
     renderer.act(() => {
       component = renderer.create(<App />);
@@ -252,6 +259,21 @@ describe('App shell keystroke isolation (#592)', () => {
     expect(renderCounts.Log).toBe(baseline.Log);
     expect(renderCounts.Analytics).toBe(baseline.Analytics);
     expect(renderCounts.More).toBe(baseline.More);
+  });
+
+  test('a completed device wipe remounts every mounted stateful tab', () => {
+    expect(typeof triggerDeviceDataWiped).toBe('function');
+    const baseline = { ...renderCounts };
+
+    renderer.act(() => {
+      triggerDeviceDataWiped();
+    });
+
+    expect(renderCounts.Home).toBeGreaterThan(baseline.Home);
+    expect(renderCounts.Log).toBeGreaterThan(baseline.Log);
+    expect(renderCounts.Weight).toBeGreaterThan(baseline.Weight);
+    expect(renderCounts.Analytics).toBeGreaterThan(baseline.Analytics);
+    expect(renderCounts.More).toBeGreaterThan(baseline.More);
   });
 
   test('typing a weight note only re-renders the Weight tab', () => {

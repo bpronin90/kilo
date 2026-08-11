@@ -10,7 +10,10 @@
 // preview-4: #434 added @sentry/react-native and its Expo config plugin; #484
 //   upgraded react-native-safe-area-context. Old preview-3 binaries lack the
 //   required native code and must be replaced with a fresh preview-4 build.
-const PREVIEW_RUNTIME = 'preview-4';
+// preview-5: #796 adds native encrypted-storage/CAPTCHA dependencies and disables
+//   unsigned OTA acceptance. Old preview-4 binaries must not receive bundles
+//   built for this native runtime and must be replaced with a fresh build.
+const PREVIEW_RUNTIME = 'preview-5';
 
 function appendPlugin(existingPlugins, nextPlugin) {
   const plugins = Array.isArray(existingPlugins) ? existingPlugins : [];

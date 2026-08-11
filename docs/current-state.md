@@ -97,22 +97,16 @@ For physical-device packaging:
    - For a Play Store production AAB, run
      `npm --prefix mobile run build:android:production` from the repo root
    - Install the resulting APK on the phone
-   - After a compatible Android build is installed, publish OTA-safe JS and
-     asset updates with `npm --prefix mobile run update:android:preview`
-   - Production Android OTA-safe JS and asset updates publish with
-     `npm --prefix mobile run update:android:production`, but only after a
-     compatible production AAB exists and is verified.
-   - iOS preview builds (`ios-simulator`, `ios-device`) are bound to the same
-     `preview` channel; publish iOS OTA updates with
-     `npm --prefix mobile run update:ios:preview`. Live on-device iOS delivery
-     is not yet verified end to end (deferred pending an iOS build, issue #63).
-   - The preview runtime boundary is a stable manual string (`preview-4`)
-     set in `mobile/app.config.js` when `APP_ENV=preview`. OTA updates apply
-     to any installed preview build sharing that runtime string. App version
-     bumps do not create a new OTA boundary. A new native build is required
-     only when: a native module changes, a native `app.json` field changes, or
-     `PREVIEW_RUNTIME` in `mobile/app.config.js` is deliberately bumped.
-     Production builds continue to use `runtimeVersion.policy: "appVersion"`.
+   - Remote EAS Update delivery is disabled pending end-to-end code-signing
+     provisioning. Do not run the `update:*` scripts.
+   - Preview runtime `preview-5`, Android backup disablement, the #796 native
+     dependencies, and unsigned-update rejection all require fresh Android/iOS
+     builds. Replace installed preview-4 binaries; OTA cannot retrofit native
+     configuration or update-signature enforcement.
+   - Re-enabling OTA requires an externally held signing private key, its public
+     certificate embedded in new-runtime native builds, and verification that
+     those builds reject unsigned manifests. No private signing key belongs in
+     the repository.
 
 The shipped prototype branding now uses the approved Direction 3 Kilo mark and
 wordmark treatment in the main Home header and the More screen footer instead of
@@ -1123,18 +1117,13 @@ accessible header back control, and a centered Kilo logo placed above concise
 orientation content covering what Kilo is, what each of the five tabs does,
 how workout logging syntax works, and the current terminology glossary. About
 continues to surface attribution, displayed version, copyright notice, and an
-OTA Diagnostics panel covering the EAS channel, runtime version, current
-bundle (embedded vs. applied update), update-available/pending state, and a
-manual update check that fetches available OTA updates and offers a restart
-action only after a new update is downloaded. In addition to that manual
-panel, the app shell now shows a global non-blocking "Update ready — Restart
-to apply" banner above the content area whenever a background-downloaded OTA
-update is pending, so a single launch plus one restart reaches the latest
-published update without visiting About (#426). While an update is pending,
-the About panel suppresses its own pending alert and restart button and
-defers to the global banner as the single restart affordance; the panel's
-local restart button appears only in the fallback window where a manual
-fetch has completed but the pending signal has not yet flipped (#427).
+OTA Diagnostics panel covering the runtime and current embedded bundle. Its
+legacy manual check remains visible but reports that update checks are
+unavailable in the fail-closed builds introduced by #796; no remote bundle can
+be downloaded or become pending. The existing pending-update banner and restart
+path remain inert compatibility code while Expo Updates is disabled and may be
+used again only after signed OTA delivery and replacement native builds are
+provisioned.
 
 ### Parser (`mobile/lib/parser.js`)
 
@@ -1268,9 +1257,17 @@ or real-device runtime behavior work correctly. Manual smoke testing (per
 
 ### Supabase backend (schema live, app local-only by default)
 
-Runtime persistence is local device storage via AsyncStorage in the native Expo
-app. As of `0.70.0` the backend foundation landed on `main` — the note-first
-`kilo` Supabase schema and RLS (#316), the auth/session client (#317), and the
+Runtime persistence uses an AES-256-GCM storage boundary in the native Expo app:
+health/training `kilo_` values are encrypted before reaching AsyncStorage, while
+the device key is protected by SecureStore and excluded from Android backup.
+Startup-wide and lazy migration preserve legacy plaintext unless its encrypted
+replacement is written successfully, and confirmed account/sign-out actions can
+wipe device history while the default remains to keep it. A completed wipe
+remounts the stateful app shell so hydrated health data and draft inputs are
+discarded immediately; signed-out Account also keeps an authentication-independent
+wipe action available for recovery after a storage failure. Web retains browser
+storage semantics. As of `0.70.0` the backend foundation landed on `main` — the
+note-first `kilo` Supabase schema and RLS (#316), the auth/session client (#317), and the
 storage-seam cloud adapter with local mode as the default (#318). The `kilo`
 schema has since been applied to the shared Supabase project and exposed:
 per-user RLS isolation was proven against real `auth.uid()` (first via a
@@ -1365,7 +1362,12 @@ successful export per signed-in user per 10 minutes plus an IP bucket, and
 an IP bucket. Issue #451 hardens those pre-auth buckets against caller-supplied
 forwarding values by selecting the platform-controlled rightmost value, and a
 scheduled global reaper removes expired export/delete hits independently of
-bucket cardinality. Issue #429 masks internal account export/delete 500 details
+bucket cardinality. Issue #796 makes the current export, account-delete, and
+health-delete callers fail closed when the durable check errors and redacts raw
+IP/user buckets from limiter logs. It also bounds authenticated direct writes
+with private atomic usage ledgers, database payload limits, 100,000 rows and
+256 MiB per collection, and 512 MiB aggregate storage per account. Issue #429
+masks internal account export/delete 500 details
 from client responses while preserving server-side console diagnostics. The Account
 screen now gates the configured signed-out form during
 the initial persisted-session restore probe, preventing a transient sign-in form
@@ -1378,9 +1380,12 @@ metadata receive a documented bounded best-effort cleanup (#453). Remaining
 launch-posture follow-ups are Supabase Auth
 configuration: Auth keeps platform rate limits and now uses production-owned
 Resend SMTP from a verified domain for email signup and password recovery
-(#478). The published Privacy Policy and Terms of Service documents must remain
-live, and CAPTCHA must be enabled before open signup unless a closed-beta
-release explicitly defers that still-pending gate.
+(#478). Issue #796 adds Cloudflare Turnstile UI and one-use tokens for sign-in,
+signup, and password recovery; release builds fail closed until the public site
+key and native HTTPS origin are present. The published Privacy Policy and Terms
+of Service documents must remain live, and an operator must register the
+hostnames, keep the Turnstile secret only in Supabase Auth, and enable CAPTCHA
+before releasing the new build.
 
 Issue #487 adds the staged Article 9 explicit-consent boundary for Cloud Sync.
 The client renders the approved United States/SCC/health-category disclosure
@@ -1414,24 +1419,21 @@ The Capacitor Android shell (`android/`, `capacitor.config.json`) and the
 browser prototype build pipeline have been removed (issue #213). The native Expo
 app under `mobile/` is the only device-packaging path.
 
-### Android preview OTA updates use the unsigned preview channel
+### Remote JavaScript delivery is fail-closed
 
-The native Expo app uses plain `expo-updates` for Android preview OTA delivery.
-Preview builds check the `preview` EAS Update channel on launch and can accept
-JavaScript and bundled-asset updates without reinstalling the APK. The preview
-runtime is a stable manual string (`preview-4`) defined in `mobile/app.config.js`
-and is not tied to `expo.version`; app version bumps do not force a rebuild or
-break OTA delivery. Native module, Expo SDK/native dependency, and native
-config/plugin changes advance `PREVIEW_RUNTIME` in the same PR; old preview
-binaries then require a fresh APK because an OTA cannot add native code.
-Production builds continue to use
-`runtimeVersion.policy: "appVersion"`.
+New preview and production native builds do not accept remote updates:
+`mobile/app.json` disables Expo Updates and automatic checks, while
+`mobile/eas.json` leaves every build profile unbound from an update channel.
+Preview runtime `preview-5` separates the #796 native/configuration boundary
+from preview-4. All affected Android and iOS artifacts must be rebuilt and old
+preview-4 installs replaced. Previously installed binaries retain their prior
+behavior, so publishing any further unsigned preview-4 bundle is prohibited.
 
-Signed OTA updates are not in use. `mobile/app.json` no longer configures
-`codeSigningCertificate` or `codeSigningMetadata`, `mobile/package.json` no
-longer requires `--private-key-path`, and `mobile/certs/KEYS.md` now documents
-the unsigned preview OTA workflow plus the rebuild boundary for native/config
-changes.
+OTA can return only after Expo end-to-end code signing is configured. The
+verification certificate may be embedded in source-controlled native config,
+but its private key must be generated and held outside the repository. Enabling
+the certificate requires another runtime boundary and replacement native builds;
+only then may release operations publish updates signed with that key.
 
 ### Native Expo app has standalone Android and iOS build paths
 
@@ -1477,6 +1479,14 @@ export pre-flight and a headless Chromium boot pass against the exported app;
 live Cloudflare Pages verification still requires the pushed issue branch or a
 superseding PR because that build configuration is account-side rather than
 tracked in the repository.
+
+The exported artifact now carries `mobile/public/_headers`, which Cloudflare
+Pages applies to static responses. Its CSP denies framing and plugins, keeps
+application scripts same-origin except for the exact Turnstile challenge origin,
+and allow-lists only the external Supabase/Auth, Turnstile, and Sentry origins
+used by the app; a minimal Permissions Policy disables unused browser
+capabilities. Deployment verification must inspect the live response, because
+the file does not govern any future Pages Functions response.
 
 Desktop web has the minimum local-data usability fallbacks needed before backend
 work: non-Home tab roots render an explicit web-only Home back control, while a

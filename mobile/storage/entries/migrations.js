@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureStorage as AsyncStorage } from '../secureStorage';
 import { WORKOUT_KEY, WORKOUT_NOTES_KEY, CURRENT_WORKOUT_ID_KEY } from './keys';
 import { readList, writeList } from './jsonStorage';
 import {

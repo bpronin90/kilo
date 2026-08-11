@@ -68,17 +68,157 @@ If any of these three checks fails, stop and reconcile before treating the backe
 
 ## Step 5: Auth Abuse Posture (Open Signup Gate)
 
-Open signup must not go live without passing both checks in this section. If a check cannot be completed before launch, record an explicit closed-beta deferral inline and re-evaluate before enabling open signup.
+Open signup must not go live without passing both checks in this section. If a check cannot be completed, keep public password Auth unavailable until it passes.
 
 ### CAPTCHA
 
-**Requirement:** CAPTCHA must be enabled on the signup and password-recovery flows before open signup.
+**Requirement:** CAPTCHA must be enabled on sign-in, signup, and password recovery
+before open signup. Kilo uses
+[Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/), a bot check
+that runs inside the existing web page or native WebView. The app does not need to
+move behind Cloudflare for Turnstile to work.
 
-**Dashboard location:** Authentication → Settings → Enable CAPTCHA protection
+The client integration is already implemented. An operator still has to create or
+recover the Turnstile widget, place its public values in the builds, and enable its
+secret in Supabase. Complete the following steps in order. Enabling Supabase first
+will break password Auth in every deployed client that does not yet have Turnstile.
 
-Choose HCaptcha or Cloudflare Turnstile, paste the site key and secret from your provider account. Both flows are protected once the setting is saved.
+#### 1. Choose the two origins
 
-**Frontend integration required:** Enabling the dashboard toggle alone is not sufficient. The app must also render a CAPTCHA widget on every affected auth form (sign-in, sign-up, password reset) and pass the resulting token into the Auth call, for example:
+Write down these values before opening any dashboard:
+
+- `WEB_HOSTNAME`: the hostname users open for the deployed web app, without
+  `https://`, a port, or a path. Example: `app.example.com`.
+- `NATIVE_ORIGIN`: a stable HTTPS origin that Kilo's native WebView may claim.
+  Use the web app's production origin unless there is a reason to maintain a
+  separate native hostname. Example: `https://app.example.com`.
+
+Cloudflare's hostname field receives `app.example.com`; Kilo's
+`EXPO_PUBLIC_TURNSTILE_ORIGIN` receives `https://app.example.com`. Do not use a
+changing branch-preview URL for `NATIVE_ORIGIN`. Cloudflare's
+[hostname rules](https://developers.cloudflare.com/turnstile/additional-configuration/hostname-management/)
+do not accept schemes, ports, paths, or wildcard characters. Adding a hostname
+also authorizes its subdomains.
+
+#### 2. Create or recover the Cloudflare widget
+
+1. Sign in to the [Cloudflare dashboard](https://dash.cloudflare.com/), open
+   **Turnstile**, and look for an existing Kilo widget from the earlier CAPTCHA
+   attempt.
+2. If one exists and its secret is still trusted, select it and use **Settings →
+   Hostname Management → Add Hostnames**. Otherwise select **Add widget** and name
+   it `Kilo production`.
+3. Choose the **Managed** widget mode.
+4. Add `WEB_HOSTNAME`. If `NATIVE_ORIGIN` uses a different hostname, add that
+   hostname too. For Cloudflare Pages previews, adding the stable
+   `<project>.pages.dev` hostname covers its subdomains.
+5. Save the widget and copy both generated values temporarily:
+   - **Sitekey**: public; this goes into client build configuration.
+   - **Secret key**: private; this goes only into Supabase Auth.
+
+Never paste the secret key into this repository, `mobile/.env`, EAS, Cloudflare
+Pages build variables, an issue, a PR, or chat. If the previous secret's handling
+is uncertain, rotate it in Cloudflare and use the replacement below. Cloudflare's
+[setup guide](https://developers.cloudflare.com/turnstile/get-started/) explains
+the public-sitekey/private-secret split.
+
+#### 3. Configure local and hosted client builds
+
+The two `EXPO_PUBLIC_` values below are intentionally public. Do not substitute
+the Turnstile secret for either one.
+
+For local testing, add these lines to the gitignored `mobile/.env`:
+
+```dotenv
+EXPO_PUBLIC_TURNSTILE_SITE_KEY=<Cloudflare Sitekey>
+EXPO_PUBLIC_TURNSTILE_ORIGIN=https://<stable-native-hostname>
+```
+
+For native EAS builds:
+
+1. Open [expo.dev](https://expo.dev/) → the `kilo-native` project → **Project
+   settings → Environment variables → Add variables**.
+2. Create `EXPO_PUBLIC_TURNSTILE_SITE_KEY` with the Sitekey, project scope,
+   plaintext visibility, and both the **preview** and **production** environments.
+3. Create `EXPO_PUBLIC_TURNSTILE_ORIGIN` with `NATIVE_ORIGIN`, project scope,
+   plaintext visibility, and both the **preview** and **production** environments.
+4. Confirm both names appear in each environment. The repository's EAS profiles
+   already select `preview` or `production` as appropriate.
+
+For the Cloudflare Pages web build:
+
+1. Open Cloudflare → **Workers & Pages** → the Kilo Pages project → **Settings →
+   Environment variables**.
+2. Add `EXPO_PUBLIC_TURNSTILE_SITE_KEY` with the Sitekey to both preview and
+   production build environments.
+3. The web build does not need `EXPO_PUBLIC_TURNSTILE_ORIGIN`; it uses the page's
+   current origin.
+4. Trigger a new preview/production deployment. The value is embedded at build
+   time, so changing the variable does not alter an existing deployment.
+
+These are public values because Expo embeds `EXPO_PUBLIC_` variables in the app
+bundle. See Expo's
+[environment-variable guidance](https://docs.expo.dev/eas/environment-variables/manage/)
+and Cloudflare Pages'
+[build-variable instructions](https://developers.cloudflare.com/pages/configuration/build-configuration/).
+
+#### 4. Build replacements before enabling Supabase
+
+From `mobile/`, create and install a fresh build for every release surface that
+users can access:
+
+```sh
+npm run build:android:preview
+npm run build:android:production
+npm run build:ios:device
+```
+
+Run only the platform builds Kilo currently distributes. OTA updates are disabled,
+so an old installed binary cannot receive this configuration. Do not enable
+Supabase CAPTCHA until the new web deployment is live and replacement native
+builds are ready for the intended users.
+
+#### 5. Enable the secret in Supabase
+
+1. Open the Supabase Dashboard and select the shared production project.
+2. Go to **Authentication → Settings → Bot and Abuse Protection**.
+3. Select **Cloudflare Turnstile** as the CAPTCHA provider.
+4. Paste the Cloudflare **Secret key** into the secret field.
+5. Turn on **Enable CAPTCHA protection** and save.
+
+This is the only destination for the secret. Supabase performs the server-side
+token validation; do not also create a client or EAS secret. See Supabase's
+[CAPTCHA activation guide](https://supabase.com/docs/guides/auth/auth-captcha).
+
+#### 6. Verify before opening signup
+
+Use a private browser window and a physical preview build. Test all three flows:
+
+- Sign in with email and password.
+- Create a test account with email and password.
+- Request a password-reset email.
+
+Each flow must display the security check and complete successfully. Submit a
+second request in the same screen and confirm it receives a fresh challenge rather
+than reusing the prior token. Then confirm the production web deployment and the
+replacement native build behave the same way.
+
+Stop and keep public password Auth closed if any of these occurs:
+
+- **“Security verification is unavailable in this build”**: the Sitekey is absent
+  or invalid, or a native build lacks a valid HTTPS `NATIVE_ORIGIN`. Correct the
+  build variables and build/deploy again.
+- **Cloudflare error 110200 / domain not authorized**: the current hostname is
+  missing from the widget's Hostname Management list.
+- **Supabase rejects a completed challenge**: confirm the Supabase provider is
+  Cloudflare Turnstile and the secret belongs to the same widget as the Sitekey.
+- **Only an old installed app fails**: replace it with the new native build; OTA is
+  deliberately unavailable.
+
+#### What the app already does
+
+The frontend renders a widget for every password Auth form and passes the
+one-use token into Supabase:
 
 ```js
 supabase.auth.signUp({ email, password, options: { captchaToken } })
@@ -86,11 +226,9 @@ supabase.auth.signInWithPassword({ email, password, options: { captchaToken } })
 supabase.auth.resetPasswordForEmail(email, { captchaToken })
 ```
 
-Without this app-side step, the dashboard setting blocks server-side bypass but the public auth forms will call Auth without a token and receive an error. The frontend integration work must be complete before open signup, or a closed-beta deferral must be recorded below.
-
-**Release verification:** Confirm all three flows — sign-in, sign-up, and password reset — present a CAPTCHA widget and successfully pass the token through to Supabase Auth. Attempt a direct API signup call without a CAPTCHA token; Supabase Auth must reject it with a 422.
-
-**Closed-beta deferral:** If open signup is not active and the frontend CAPTCHA integration is not yet implemented, record: `CAPTCHA: deferred — closed-beta, open signup and frontend token integration not yet live. Complete app-side integration and enable dashboard setting before opening signup.` Re-evaluate before open signup.
+The #796 client consumes each token once and asks for a new token after completion,
+expiry, or error. Release builds fail closed when the Sitekey or native origin is
+missing. Do not work around that failure by disabling CAPTCHA.
 
 ### Production SMTP
 

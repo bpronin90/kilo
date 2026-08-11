@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureStorage as AsyncStorage } from '../secureStorage';
 import {
   FATIGUE_MULTIPLIER_KEY,
   WEIGHT_DATE_EDIT_KEY,

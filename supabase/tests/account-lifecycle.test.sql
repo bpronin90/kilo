@@ -30,10 +30,16 @@ select plan(29);
 insert into auth.users (id) values (:'user_a'::uuid) on conflict do nothing;
 insert into auth.users (id) values (:'user_b'::uuid) on conflict do nothing;
 
+-- This suite tests owner isolation/account lifecycle, not consent. The fully
+-- migrated schema gates health tables, so keep its fixtures on the explicit
+-- pre-cutover mode inside this rolled-back test transaction.
+update kilo.health_sync_config set mode = 'legacy' where id = true;
+
 create or replace function pg_temp.login_as(uid uuid) returns void
 language plpgsql as $$
 begin
   perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claim.sub', uid::text, true);
   perform set_config(
     'request.jwt.claims',
     json_build_object('sub', uid::text, 'role', 'authenticated')::text,
@@ -46,7 +52,22 @@ create or replace function pg_temp.logout() returns void
 language plpgsql as $$
 begin
   perform set_config('role', 'postgres', true);
+  perform set_config('request.jwt.claim.sub', null, true);
   perform set_config('request.jwt.claims', null, true);
+end;
+$$;
+
+-- PostgreSQL requires a data-modifying CTE to be the top-level statement.
+-- Execute the mutation dynamically and expose its affected-row count to pgTAP
+-- instead of nesting DELETE ... RETURNING inside an assertion expression.
+create or replace function pg_temp.exec_row_count(statement text) returns integer
+language plpgsql as $$
+declare
+  affected integer;
+begin
+  execute statement;
+  get diagnostics affected = row_count;
+  return affected;
 end;
 $$;
 
@@ -98,54 +119,54 @@ select is((select count(*)::int from kilo.user_profile   where user_id = :'user_
 -- Deletion isolation: as user A, DELETE on user B rows affects zero rows.
 -- ---------------------------------------------------------------------------
 select is(
-  (with d as (delete from kilo.weight_entries where id = 'lc_wb' returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count($$delete from kilo.weight_entries where id = 'lc_wb'$$),
   0, 'delete: user A cannot delete user B weight_entries');
 select is(
-  (with d as (delete from kilo.workout_notes where id = 'lc_nb' returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count($$delete from kilo.workout_notes where id = 'lc_nb'$$),
   0, 'delete: user A cannot delete user B workout_notes');
 select is(
-  (with d as (delete from kilo.user_profile where user_id = :'user_b'::uuid returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count(format('delete from kilo.user_profile where user_id = %L', :'user_b')),
   0, 'delete: user A cannot delete user B user_profile');
 select is(
-  (with d as (delete from kilo.weight_goal where user_id = :'user_b'::uuid returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count(format('delete from kilo.weight_goal where user_id = %L', :'user_b')),
   0, 'delete: user A cannot delete user B weight_goal');
 select is(
-  (with d as (delete from kilo.feature_toggles where user_id = :'user_b'::uuid returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count(format('delete from kilo.feature_toggles where user_id = %L', :'user_b')),
   0, 'delete: user A cannot delete user B feature_toggles');
 select is(
-  (with d as (delete from kilo.deload_history where id = 'lc_db' returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count($$delete from kilo.deload_history where id = 'lc_db'$$),
   0, 'delete: user A cannot delete user B deload_history');
 select is(
-  (with d as (delete from kilo.fatigue_checkins where id = 'lc_fb' returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count($$delete from kilo.fatigue_checkins where id = 'lc_fb'$$),
   0, 'delete: user A cannot delete user B fatigue_checkins');
 select is(
-  (with d as (delete from kilo.archived_weight_goals where id = 'lc_agb' returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count($$delete from kilo.archived_weight_goals where id = 'lc_agb'$$),
   0, 'delete: user A cannot delete user B archived_weight_goals');
 
 -- User A can delete their own rows (simulates the account-delete flow).
 select is(
-  (with d as (delete from kilo.fatigue_checkins where user_id = :'user_a'::uuid returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count(format('delete from kilo.fatigue_checkins where user_id = %L', :'user_a')),
   1, 'delete: user A can delete own fatigue_checkins');
 select is(
-  (with d as (delete from kilo.deload_history where user_id = :'user_a'::uuid returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count(format('delete from kilo.deload_history where user_id = %L', :'user_a')),
   1, 'delete: user A can delete own deload_history');
 select is(
-  (with d as (delete from kilo.workout_notes where user_id = :'user_a'::uuid returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count(format('delete from kilo.workout_notes where user_id = %L', :'user_a')),
   1, 'delete: user A can delete own workout_notes');
 select is(
-  (with d as (delete from kilo.weight_entries where user_id = :'user_a'::uuid returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count(format('delete from kilo.weight_entries where user_id = %L', :'user_a')),
   1, 'delete: user A can delete own weight_entries');
 select is(
-  (with d as (delete from kilo.weight_goal where user_id = :'user_a'::uuid returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count(format('delete from kilo.weight_goal where user_id = %L', :'user_a')),
   1, 'delete: user A can delete own weight_goal');
 select is(
-  (with d as (delete from kilo.feature_toggles where user_id = :'user_a'::uuid returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count(format('delete from kilo.feature_toggles where user_id = %L', :'user_a')),
   1, 'delete: user A can delete own feature_toggles');
 select is(
-  (with d as (delete from kilo.archived_weight_goals where user_id = :'user_a'::uuid returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count(format('delete from kilo.archived_weight_goals where user_id = %L', :'user_a')),
   1, 'delete: user A can delete own archived_weight_goals');
 select is(
-  (with d as (delete from kilo.user_profile where user_id = :'user_a'::uuid returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count(format('delete from kilo.user_profile where user_id = %L', :'user_a')),
   1, 'delete: user A can delete own user_profile');
 
 -- Confirm user B's rows are untouched after all of the above.

@@ -13,7 +13,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, Platform } from 'react-native';
+import { getCaptchaConfig } from '../lib/captchaConfig';
 import { getSupabaseClient, getSupabaseConfig, hasSupabaseConfig } from '../lib/supabaseClient';
+import { wipeSensitiveDeviceData } from '../storage/secureStorage';
 
 const LOCAL_ONLY_RESULT = Object.freeze({
   ok: false,
@@ -99,7 +101,7 @@ function consumeRecoveryPending() {
   return Date.now() - ts <= RECOVERY_PENDING_TTL_MS;
 }
 
-export function useAuthSession() {
+export function useAuthSession({ onDeviceDataWiped } = {}) {
   const configured = hasSupabaseConfig();
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
@@ -114,7 +116,12 @@ export function useAuthSession() {
   // Readable failure from a recovery-link callback that did not establish a
   // session (expired or already-used link). Cleared by clearPasswordRecovery.
   const [recoveryError, setRecoveryError] = useState('');
+  // If a post-sign-out/account-delete wipe fails, the account may no longer be
+  // usable. Keep recovery state on this auth-independent hook surface so the
+  // signed-out Account screen can explain the condition and retry locally.
+  const [deviceWipeRequired, setDeviceWipeRequired] = useState(false);
   const mountedRef = useRef(true);
+  const usedCaptchaTokensRef = useRef(new Set());
 
   const applySession = useCallback((nextSession) => {
     if (!mountedRef.current) return;
@@ -176,41 +183,106 @@ export function useAuthSession() {
     return client || null;
   }, []);
 
-  const signInWithPassword = useCallback(async (email, password) => {
+  const claimCaptchaToken = useCallback((captchaToken) => {
+    const config = getCaptchaConfig(Platform.OS);
+    if (!config.required && !captchaToken) return { ok: true, captchaToken: null };
+    if (!config.configured) {
+      return {
+        ok: false,
+        error: 'Security verification is unavailable in this build. Please update the app or try again later.',
+      };
+    }
+    if (!captchaToken) {
+      return { ok: false, error: 'Complete the security verification before continuing.' };
+    }
+    if (usedCaptchaTokensRef.current.has(captchaToken)) {
+      return { ok: false, error: 'Security verification expired. Complete a new challenge and try again.' };
+    }
+    // CAPTCHA tokens are single-use server-side. Claim before the request so a
+    // timeout/network error cannot accidentally resend the same token.
+    usedCaptchaTokensRef.current.add(captchaToken);
+    if (usedCaptchaTokensRef.current.size > 100) {
+      usedCaptchaTokensRef.current = new Set([captchaToken]);
+    }
+    return { ok: true, captchaToken };
+  }, []);
+
+  const signInWithPassword = useCallback(async (email, password, captchaToken) => {
     const client = requireClient();
     if (!client) return LOCAL_ONLY_RESULT;
-    const { data, error } = await client.auth.signInWithPassword({ email, password });
+    const challenge = claimCaptchaToken(captchaToken);
+    if (!challenge.ok) return challenge;
+    const { data, error } = await client.auth.signInWithPassword({
+      email,
+      password,
+      ...(challenge.captchaToken ? { options: { captchaToken: challenge.captchaToken } } : {}),
+    });
     if (error) return { ok: false, error: error.message };
     return { ok: true, session: data?.session || null };
-  }, [requireClient]);
+  }, [claimCaptchaToken, requireClient]);
 
-  const signUpWithPassword = useCallback(async (email, password) => {
+  const signUpWithPassword = useCallback(async (email, password, captchaToken) => {
     const client = requireClient();
     if (!client) return LOCAL_ONLY_RESULT;
-    const { data, error } = await client.auth.signUp({ email, password });
+    const challenge = claimCaptchaToken(captchaToken);
+    if (!challenge.ok) return challenge;
+    const { data, error } = await client.auth.signUp({
+      email,
+      password,
+      ...(challenge.captchaToken ? { options: { captchaToken: challenge.captchaToken } } : {}),
+    });
     if (error) return { ok: false, error: error.message };
     return { ok: true, session: data?.session || null };
-  }, [requireClient]);
+  }, [claimCaptchaToken, requireClient]);
 
-  const signOut = useCallback(async () => {
+  const wipeDeviceData = useCallback(async () => {
+    try {
+      await wipeSensitiveDeviceData();
+    } catch {
+      if (mountedRef.current) setDeviceWipeRequired(true);
+      return { ok: false, error: 'Device data could not be wiped. Try again before sharing this device.' };
+    }
+
+    if (mountedRef.current) setDeviceWipeRequired(false);
+    // The parent remount happens only after persistence and encryption-key
+    // deletion complete. It clears every mounted domain hook, screen cache,
+    // and unsaved health-data input before this operation reports success.
+    await onDeviceDataWiped?.();
+    return { ok: true };
+  }, [onDeviceDataWiped]);
+
+  const signOut = useCallback(async (options) => {
     const client = requireClient();
     if (!client) return LOCAL_ONLY_RESULT;
     const { error } = await client.auth.signOut();
     if (error) return { ok: false, error: error.message };
     applySession(null);
+    if (options?.wipeLocalData) {
+      const wipeResult = await wipeDeviceData();
+      if (!wipeResult.ok) {
+        return { ok: false, error: 'Signed out, but device data could not be wiped. Try the wipe again before sharing this device.' };
+      }
+    }
     return { ok: true };
-  }, [requireClient, applySession]);
+  }, [requireClient, applySession, wipeDeviceData]);
 
   const resetPasswordForEmail = useCallback(async (email, options) => {
     const client = requireClient();
     if (!client) return LOCAL_ONLY_RESULT;
+    const challenge = claimCaptchaToken(options?.captchaToken);
+    if (!challenge.ok) return challenge;
     // Send the bare, allowlisted redirect URL unchanged (kilo://auth/callback
     // native, the web origin on web). No query marker is added — that would
     // risk an allowlist miss and a Site-URL fallback (see the discriminator
     // note above).
     const { error } = await client.auth.resetPasswordForEmail(
       email,
-      options?.redirectTo ? { redirectTo: options.redirectTo } : undefined,
+      (options?.redirectTo || challenge.captchaToken)
+        ? {
+            ...(options?.redirectTo ? { redirectTo: options.redirectTo } : {}),
+            ...(challenge.captchaToken ? { captchaToken: challenge.captchaToken } : {}),
+          }
+        : undefined,
     );
     if (error) return { ok: false, error: error.message };
     // Record that a recovery is in flight so a returning web callback error
@@ -218,7 +290,7 @@ export function useAuthSession() {
     // No-op on native (no localStorage).
     markRecoveryPending();
     return { ok: true };
-  }, [requireClient]);
+  }, [claimCaptchaToken, requireClient]);
 
   // Call the account-export Edge Function with the requester's JWT.
   // Returns { ok, json } on success or { ok: false, error } on failure.
@@ -245,7 +317,7 @@ export function useAuthSession() {
 
   // Call the account-delete Edge Function, then clear the local session.
   // Returns { ok: true } after successful deletion or { ok: false, error }.
-  const deleteAccount = useCallback(async () => {
+  const deleteAccount = useCallback(async (options) => {
     const client = requireClient();
     if (!client) return LOCAL_ONLY_RESULT;
     const supabaseUrl = getSupabaseConfig()?.url;
@@ -263,11 +335,17 @@ export function useAuthSession() {
       // Clear local session state — the auth user is gone server-side.
       await client.auth.signOut();
       applySession(null);
+      if (options?.wipeLocalData) {
+        const wipeResult = await wipeDeviceData();
+        if (!wipeResult.ok) {
+          return { ok: false, error: 'Account deleted, but device data could not be wiped. Try the wipe again before sharing this device.' };
+        }
+      }
       return { ok: true };
     } catch (e) {
       return { ok: false, error: e?.message || 'Account deletion failed.' };
     }
-  }, [requireClient, applySession]);
+  }, [requireClient, applySession, wipeDeviceData]);
 
   const signInWithOAuth = useCallback(async (provider, options) => {
     const client = requireClient();
@@ -413,5 +491,7 @@ export function useAuthSession() {
     updatePassword,
     serverExport,
     deleteAccount,
+    deviceWipeRequired,
+    wipeDeviceData,
   };
 }

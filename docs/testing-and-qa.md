@@ -21,26 +21,26 @@ the plain-language quick start for joining, installing, testing, and reporting
 feedback during the required 14-day window.
 Play production readiness is tracked in `docs/play-store-readiness.md`.
 
-For release-style update verification after a compatible build is installed,
-publish to the configured EAS Update channels from `mobile/`:
+Remote EAS Update delivery is disabled while signing and key custody are being
+provisioned. Build replacement native artifacts instead:
 
 ```sh
-npm --prefix mobile run update:android:preview
-npm --prefix mobile run update:ios:preview
+npm --prefix mobile run build:android:preview
 npm --prefix mobile run build:android:production
-npm --prefix mobile run update:android:production
 ```
 
-iOS preview builds (`ios-simulator`, `ios-device`) are bound to the same
-`preview` channel. Live on-device iOS delivery is not yet verified end to end
-(deferred pending an iOS build, issue #63).
+Do not run any `update:*` script while this gate is active. New builds embed
+`updates.enabled: false`, do not bind an EAS Update channel, and use preview
+runtime `preview-5`. Replace all preview-4 installs: configuration and native
+dependency changes cannot be delivered by OTA, and old binaries cannot be made
+to reject unsigned updates after installation. Live on-device iOS delivery is
+still unverified (issue #63).
 
-Use OTA publish only for JavaScript and asset changes. Any native-affecting
-change still requires a fresh Android build. Preview builds use a stable manual
-runtime string (`preview-4`) in `mobile/app.config.js`; app version bumps alone
-do not force a rebuild. Bump `PREVIEW_RUNTIME` in the same PR as any new or
-updated native module, Expo SDK/native dependency, or native config/plugin
-change; older preview binaries must then be replaced with a fresh APK.
+OTA may be re-enabled only after an operator generates the private key outside
+the repository, commits the corresponding public certificate/configuration,
+advances the runtime, and ships replacement signed-update-enforcing native
+builds. Verify those builds reject an unsigned manifest before restoring any
+publish command to the release workflow.
 
 Production Android builds use the EAS `production` profile and create a Play
 Store AAB. Before Play upload, verify that an actual production build exists in
@@ -210,7 +210,20 @@ npm --prefix mobile test
 GitHub Actions runs this same mobile Jest suite with Node 24 and a reproducible
 `npm ci` install on every pull request and every push to `main` via
 `.github/workflows/test.yml`. The required job also exports and serves the Expo
-web build as a production-style bundle smoke check.
+web build as a production-style bundle smoke check. A separate
+`database-security` job starts a fresh disposable local Supabase database,
+reapplies every migration with `supabase db reset --no-seed`, discovers every
+SQL file that declares a pgTAP plan, and runs each independently.
+Any failed command, skip, TODO, zero-test plan, parse failure, or abort fails the
+job; CI never targets the shared production project.
+
+Run the same database verification locally with Docker available:
+
+```sh
+supabase start --exclude edge-runtime,gotrue,imgproxy,kong,logflare,mailpit,postgres-meta,postgrest,realtime,storage-api,studio,supavisor,vector
+supabase db reset --local --no-seed
+node scripts/run-pgtap-suite.mjs
+```
 
 Every PR additionally requires the `review disposition accepted` status for
 its exact current head SHA. The trusted evaluator in
@@ -576,6 +589,21 @@ but the underlying leak is still worth fixing wherever it's found.
   non-weight entries, mixed weighted-plus-metadata entries, positional skip
   slots, multi-session count preservation, and session-view-visible mixed-entry
   comments after `buildSessionsFromNote()`
+
+### `mobile/tests/secure-storage.test.js`
+
+- verifies native AES-256-GCM envelopes do not expose plaintext while the device
+  key remains in the injected SecureStore boundary
+- verifies startup-wide and lazy plaintext migration, failure-safe retry,
+  authenticated tamper detection, fresh nonces, missing-platform fail-closed
+  behavior, and confirmed wipe/key rotation
+- verifies the global persistence lock and wipe-generation fence prevent
+  migration, autosave, and wipe operations from racing or repopulating data
+  after deletion
+- `auth-session.test.js` verifies failed post-sign-out/account-delete wipes
+  remain retryable without a live account; `app-shell-render-isolation.test.js`
+  verifies a completed wipe remounts every always-mounted tab so in-memory
+  domain state cannot survive or repopulate persistence
 
 ### `mobile/tests/autosave.test.js`
 
@@ -1166,6 +1194,14 @@ keeping the last verified boundary instead of reverting to unfiltered.
 - forged-header resistance remains a deployed Edge Function check because the
   SQL suite cannot observe platform forwarding-header behavior
 
+### `supabase/tests/bounded-authenticated-writes.test.sql`
+
+- verifies private quota-ledger RLS/privileges, fixed-search-path trigger
+  security, payload/field bounds, collection and aggregate account quotas, and
+  ledger cleanup on account deletion
+- uses two real database sessions to prove concurrent inserts serialize and only
+  one writer can consume the final collection slot
+
 ### Consent, migration, and purge suites
 
 - `supabase/tests/commit-safe-change-feed.test.sql` uses independent reader and
@@ -1303,10 +1339,10 @@ keeping the last verified boundary instead of reverting to unfiltered.
   existing users; each link must resolve to the published policy document and
   no `example.com` privacy/terms placeholder may remain
 - verify Supabase Auth launch configuration keeps platform rate limits active,
-  uses production-owned SMTP for email signup/password recovery, and has CAPTCHA
-  enabled for open signup, or records an explicit closed-beta deferral before
-  release; see `docs/backend-activation.md` Step 5 for dashboard locations and
-  release verification steps for CAPTCHA and SMTP
+  uses production-owned SMTP for email signup/password recovery, sets the public
+  Turnstile site key plus native HTTPS origin, and has CAPTCHA enabled for open
+  signup; see `docs/backend-activation.md` Step 5 for provider/dashboard setup
+  and tokenless/reuse verification
 - verify `account-export` and `account-delete` reject unauthenticated requests,
   include no service-role or secret key in client requests, and enforce both
   per-user and per-IP throttles before open signup
@@ -1480,3 +1516,15 @@ target (Cloudflare Pages, Netlify, Vercel static output, or equivalent). The
 selected host must serve `index.html` as the SPA fallback entrypoint. `expo
 serve` is the local stand-in for that static host during smoke verification; it
 is not a production hosting dependency.
+
+`mobile/public/_headers` is copied into the static export and is the Cloudflare
+Pages security-header contract. It applies a CSP with `frame-ancestors 'none'`,
+same-origin application scripts plus the exact Turnstile challenge origin,
+narrowly allow-listed Supabase/Auth, Turnstile, and Sentry data connections, and
+no `unsafe-eval`; it also denies unused browser capabilities through
+`Permissions-Policy`. After export, confirm `mobile/dist/_headers`
+exists. After deployment, inspect the actual entrypoint response and confirm at
+least `Content-Security-Policy`, `Permissions-Policy`,
+`X-Content-Type-Options`, and `X-Frame-Options` are present. Cloudflare `_headers`
+does not apply to Pages Functions responses, so a future Worker/Functions path
+must set the same policy in its own response code.

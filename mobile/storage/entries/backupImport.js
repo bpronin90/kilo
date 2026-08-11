@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureStorage as AsyncStorage } from '../secureStorage';
 import {
   WEIGHT_KEY,
   WEIGHT_GOAL_KEY,

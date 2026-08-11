@@ -19,7 +19,9 @@ graph TD
         NativeLib["mobile/lib/\nparser.js · data.js/data/ · format.js"]
         NativeHooks["mobile/hooks/useEntries.js"]
         NativeStorage["mobile/storage/entries.js"]
-        AS[("AsyncStorage\nkilo_local_data_owner\nkilo_weight_entries\nkilo_weight_goal\nkilo_archived_weight_goals\nkilo_fatigue_multiplier\nkilo_weigh_in_reminder\nkilo_workout_reminder\nkilo_workout_sessions\nkilo_workout_notes\nkilo_current_workout_id\nkilo_workout_note (legacy backup/import)")]
+        SecureStorage["mobile/storage/secureStorage.js\nAES-256-GCM boundary"]
+        AS[("AsyncStorage\nencrypted kilo_ values")]
+        DeviceKey[("SecureStore\ndevice-only data key")]
     end
     subgraph supabase["Supabase Project"]
         EdgeExport["account-export Edge Function"]
@@ -34,7 +36,9 @@ graph TD
     NativeScreens --> NativeLib
     NativeScreens --> NativeHooks
     NativeHooks --> NativeStorage
-    NativeStorage <--> AS
+    NativeStorage <--> SecureStorage
+    SecureStorage <--> AS
+    SecureStorage --> DeviceKey
     NativeScreens --> EdgeExport
     NativeScreens --> EdgeDelete
     NativeScreens --> EdgeHealthDelete
@@ -179,31 +183,28 @@ alert: the user was told their erasure had started and is still waiting on it.
    `kilo.complete_health_deletion_job` refuses to advance to `withdrawn` while
    any scoped row remains, so a `complete` job is itself the erasure proof.
 
-## Preview OTA Update Path
+## OTA Update Integrity Gate
 
-The native Expo app uses unsigned `expo-updates` for the preview workflow on
-both Android and iOS.
+Preview and production native builds fail closed on remote JavaScript delivery
+until end-to-end Expo Update signing is provisioned.
 
-- `mobile/app.json` keeps `updates.enabled` and the EAS project `updates.url`.
-  `mobile/app.config.js` gives preview builds a stable manual runtime string
-  (`preview-4`) so compatible installed preview builds can fetch JavaScript and
-  bundled-asset updates from the `preview` channel on launch. Production builds
-  continue to use `runtimeVersion.policy: "appVersion"`.
-- `mobile/eas.json` binds the `preview` (Android), `ios-simulator`, and
-  `ios-device` build profiles to the `preview` channel so their builds receive
-  preview-channel OTA updates. `production` is bound to the `production` channel.
-- `mobile/package.json` exposes preview and production Android build/update
-  scripts. Preview update scripts set `APP_ENV=preview`; production Android
-  updates use the default `runtimeVersion.policy: "appVersion"` path.
-- Native/config changes advance the preview runtime in the same PR and require
-  a fresh `eas build --profile preview` (Android) or `eas build --profile
-  ios-simulator|ios-device` (iOS). Native module and Expo SDK/native dependency
-  changes cannot be delivered to older installs by OTA/EAS Update alone.
-- Live on-device iOS OTA delivery has not yet been verified end to end; it is
-  deferred pending an iOS build (issue #63).
-- Signed OTA updates are intentionally not configured. There is no checked-in
-  certificate, no `codeSigningCertificate` / `codeSigningMetadata`, and no
-  `--private-key-path` requirement in the supported preview workflow.
+- `mobile/app.json` sets `updates.enabled: false` and
+  `checkAutomatically: "NEVER"`; `mobile/eas.json` does not bind any build
+  profile to an update channel. New binaries therefore run only their embedded
+  bundle and cannot download either signed or unsigned OTA updates.
+- `mobile/app.config.js` advances preview builds to the `preview-5` runtime for
+  the #796 native dependency and update-integrity boundary. Every Android and
+  iOS preview/production artifact containing these controls must be a fresh
+  native build. An OTA cannot retrofit the control into an installed binary.
+- Publishing through the legacy update scripts is unsupported while this gate
+  is active. In particular, do not publish another `preview-4` update: already
+  installed preview-4 binaries retain their embedded unsigned-update behavior
+  until they are replaced.
+- Re-enabling OTA requires a code-signing certificate embedded through
+  `updates.codeSigningCertificate` / `codeSigningMetadata`, a corresponding
+  private key held outside source control, a new runtime, and replacement native
+  builds. Only updates signed by that externally held key may then be published.
+  No signing private key is generated or stored in this repository.
 
 ## Migration History
 
@@ -241,6 +242,21 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   across shrinking writes, interrupted cleanup, and sign-out. Legacy or corrupt
   pre-HWM states receive a documented bounded 64-chunk best-effort sweep because
   SecureStore cannot enumerate unknown keys.
+- `mobile/storage/secureStorage.js` is the native health/training persistence
+  boundary. It encrypts every `kilo_` AsyncStorage value with AES-256-GCM and a
+  device key held in SecureStore, authenticates each storage key as associated
+  data, and serializes migration, read/write, and confirmed wipe operations.
+  A successful wipe advances an app-shell generation that remounts every
+  always-mounted tab, discarding hydrated domain state and unsaved health-data
+  input before success is reported. If a post-sign-out or post-account-delete
+  wipe fails, Account exposes a standalone signed-out retry that does not
+  require the deleted/revoked cloud identity. Storage mutations capture a
+  generation when queued, so an autosave waiting behind a wipe cannot recreate
+  the discarded data afterward.
+  Startup-wide plus lazy migration encrypt legacy plaintext before replacing it;
+  a failed migration leaves the recoverable plaintext in place and fails closed.
+  Web retains browser storage semantics, where client-side key storage would not
+  provide an independent security boundary.
 - `mobile/components/` holds reusable shell and UI primitives
 - `mobile/screens/MoreScreen.js` owns the More-tab routing shell. Help, About,
   Backup, Settings, and Profile sub-screens are extracted to individual files in
@@ -286,7 +302,7 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   `deriveCheckInHistory()`. `parser.js` imports the exercise catalog directly
   from `data/exerciseCatalog.js` so the barrel does not create a parser/data
   dependency cycle
-- `mobile/storage/entries.js` owns AsyncStorage reads/writes for recent-history
+- `mobile/storage/entries.js` owns local reads/writes for recent-history
   data plus the local weight-goal key (`kilo_weight_goal`), the persisted
   fatigue-multiplier key (`kilo_fatigue_multiplier`), the global tracked-lift
   key (`kilo_tracked_lifts`), the optional user-profile key
@@ -299,7 +315,8 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   no longer produced or consumed by the active app path. The legacy session
   key remains only a migration source and the old single-note key remains both
   a migration source into the notebook model and a backup-compatibility
-  fallback
+  fallback. Native reads and writes route through the encrypted storage boundary
+  above; AsyncStorage remains its serialized backing store
 - `mobile/screens/` holds one component per visible MVP surface
 - `mobile/theme/colors.js` centralizes native design tokens
 - `mobile/lib/format.js` contains a small shared timestamp formatter
@@ -570,7 +587,10 @@ Supabase Auth owns platform authentication throttles and CAPTCHA enforcement for
 signup, password recovery, verification, and token endpoints. Kilo's launch
 configuration keeps those platform limits active, uses production-owned SMTP for
 public email signup and password recovery, and enables CAPTCHA before open
-signup unless a closed-beta release explicitly records a temporary deferral.
+signup. The client renders Cloudflare Turnstile for sign-in, signup, and password
+reset, consumes each token once, and fails closed in release builds when the
+public site key (and the native HTTPS base origin) is missing. The Turnstile
+secret remains only in Supabase Auth configuration.
 The production SMTP boundary is Resend with a verified sender domain (#478);
 delivery authentication is configured outside the repository in Supabase Auth.
 
@@ -588,9 +608,17 @@ isolate; a per-bucket advisory lock makes each check-and-record atomic under
 concurrency. `account-export` limits successful exports to one per signed-in
 user per 10 minutes by default, while `account-delete` limits delete attempts to
 three per signed-in user per hour by default; both functions also reject
-repeated callers through an IP bucket. The limiter fails open if the durable
-check itself errors, so an infrastructure outage cannot lock users out of
-export or deletion.
+repeated callers through an IP bucket. Every current sensitive endpoint chooses
+the explicit fail-closed limiter policy, returning the same throttle response if
+the durable check is unavailable. Limiter error logs retain only a bounded error
+code and never the raw IP/user bucket or upstream message.
+
+Authenticated direct writes remain owner-isolated by RLS and are additionally
+bounded by private `account_storage_usage` and `collection_storage_usage`
+ledgers. Fixed-search-path triggers enforce field/row limits plus atomic
+per-collection and aggregate account quotas; authenticated clients have no
+access to the ledgers, and concurrent writes serialize on the account row rather
+than racing a count query.
 
 ## Session Check-In (Fatigue) Flow
 

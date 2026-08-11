@@ -42,6 +42,7 @@ import { reloadRecoveryBlocks } from './hooks/entries/recoveryBlockHooks';
 import { useAuthSession } from './hooks/useAuthSession';
 import { parseWeightEntry, buildSessionsFromNote } from './lib/parser';
 import { PRODUCT_MEASUREMENT_EVENTS, recordProductMeasurement } from './lib/productMeasurement';
+import { migrateSensitiveDeviceData } from './storage/secureStorage';
 import { makeWeightEntry } from './lib/data';
 import { reconcileWorkoutReminder, installForegroundHandler } from './lib/reminderScheduler';
 import { buildCloudExport, importBackup, getStorageMode, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed } from './storage/entries';
@@ -173,12 +174,44 @@ export function normalizeNavTarget(tab, targetInput) {
 export default function App() {
   return (
     <ThemeProvider>
-      <AppShell />
+      <WipeAwareAppShell />
     </ThemeProvider>
   );
 }
 
-function AppShell() {
+// A confirmed device wipe must discard more than persisted values. Every tab
+// stays mounted for navigation performance, and those trees own hydrated
+// health data plus editor input state. Advancing this key remounts the entire
+// stateful shell only after the storage/key wipe succeeds, so no deleted value
+// remains visible or can be written back by a stale mounted effect.
+function WipeAwareAppShell() {
+  const [deviceDataGeneration, setDeviceDataGeneration] = useState(0);
+  const remountResolversRef = useRef([]);
+
+  useEffect(() => {
+    const resolvers = remountResolversRef.current.splice(0);
+    resolvers.forEach((resolve) => resolve());
+  }, [deviceDataGeneration]);
+
+  useEffect(() => () => {
+    const resolvers = remountResolversRef.current.splice(0);
+    resolvers.forEach((resolve) => resolve());
+  }, []);
+
+  const handleDeviceDataWiped = useCallback(() => new Promise((resolve) => {
+    remountResolversRef.current.push(resolve);
+    setDeviceDataGeneration((generation) => generation + 1);
+  }), []);
+
+  return (
+    <AppShell
+      key={deviceDataGeneration}
+      onDeviceDataWiped={handleDeviceDataWiped}
+    />
+  );
+}
+
+function AppShell({ onDeviceDataWiped }) {
   const { mode } = useTheme();
   const styles = useThemedStyles(createStyles);
   const [activeTab, setActiveTab] = useState('Home');
@@ -253,11 +286,20 @@ function AppShell() {
     });
   }, []);
 
+  // Queue the one-time legacy plaintext migration before domain hooks below
+  // begin their own storage reads. The storage boundary serializes the full
+  // scan with reads/writes, and every read retains a lazy migration fallback.
+  useEffect(() => {
+    migrateSensitiveDeviceData().catch((e) => {
+      console.error('[App] Failed to migrate protected device data:', e);
+    });
+  }, []);
+
   const { isUpdatePending } = useUpdates();
 
   const weightHook = useWeightEntries();
   const noteHook = useWorkoutNotes();
-  const auth = useAuthSession();
+  const auth = useAuthSession({ onDeviceDataWiped });
 
   // Stable auth object for MemoMoreScreen (#592 review follow-up):
   // useAuthSession() returns a fresh object literal on every App render, so
@@ -286,6 +328,8 @@ function AppShell() {
     auth.updatePassword,
     auth.serverExport,
     auth.deleteAccount,
+    auth.deviceWipeRequired,
+    auth.wipeDeviceData,
   ]);
   const {
     ownershipPrompt,

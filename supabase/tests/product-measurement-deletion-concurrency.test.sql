@@ -48,6 +48,21 @@ create extension if not exists dblink with schema extensions;
 
 select plan(14);
 
+-- Default to the Supabase CLI disposable stack, while allowing CI/local callers
+-- to provide a separately generated database credential through PGOPTIONS GUCs.
+create or replace function pg_temp.dblink_conninfo_671() returns text
+language sql stable
+as $$
+  select format(
+    'host=%s port=%s dbname=%s user=%s password=%s',
+    coalesce(nullif(current_setting('kilo.test_db_host', true), ''), 'host.docker.internal'),
+    coalesce(nullif(current_setting('kilo.test_db_port', true), ''), '54322'),
+    current_database(),
+    coalesce(nullif(current_setting('kilo.test_db_user', true), ''), 'postgres'),
+    coalesce(nullif(current_setting('kilo.test_db_password', true), ''), 'postgres')
+  )
+$$;
+
 -- Fetching an async dblink_send_query result via dblink_get_result raises
 -- locally if the remote statement raised; capture the message instead of
 -- aborting this file, and return the successful value as text otherwise.
@@ -72,13 +87,11 @@ $$;
 -- ---------------------------------------------------------------------------
 select extensions.dblink_connect(
   'pm_a1_671',
-  'host=127.0.0.1 port=5432 dbname=' || current_database() ||
-    ' user=postgres password=postgres'
+  pg_temp.dblink_conninfo_671()
 );
 select extensions.dblink_connect(
   'pm_b1_671',
-  'host=127.0.0.1 port=5432 dbname=' || current_database() ||
-    ' user=postgres password=postgres'
+  pg_temp.dblink_conninfo_671()
 );
 
 -- Establish the binding and a first event OUTSIDE the race, committed
@@ -139,13 +152,11 @@ select extensions.dblink_disconnect('pm_b1_671');
 -- ---------------------------------------------------------------------------
 select extensions.dblink_connect(
   'pm_a2_671',
-  'host=127.0.0.1 port=5432 dbname=' || current_database() ||
-    ' user=postgres password=postgres'
+  pg_temp.dblink_conninfo_671()
 );
 select extensions.dblink_connect(
   'pm_b2_671',
-  'host=127.0.0.1 port=5432 dbname=' || current_database() ||
-    ' user=postgres password=postgres'
+  pg_temp.dblink_conninfo_671()
 );
 
 -- Establish the binding and a first event OUTSIDE the race.
@@ -206,13 +217,11 @@ select extensions.dblink_disconnect('pm_b2_671');
 -- ---------------------------------------------------------------------------
 select extensions.dblink_connect(
   'pm_c1_671',
-  'host=127.0.0.1 port=5432 dbname=' || current_database() ||
-    ' user=postgres password=postgres'
+  pg_temp.dblink_conninfo_671()
 );
 select extensions.dblink_connect(
   'pm_c2_671',
-  'host=127.0.0.1 port=5432 dbname=' || current_database() ||
-    ' user=postgres password=postgres'
+  pg_temp.dblink_conninfo_671()
 );
 
 -- No prior ingest at all: this token has never been bound to any install.
@@ -273,13 +282,11 @@ select extensions.dblink_disconnect('pm_c2_671');
 -- ---------------------------------------------------------------------------
 select extensions.dblink_connect(
   'pm_d1_671',
-  'host=127.0.0.1 port=5432 dbname=' || current_database() ||
-    ' user=postgres password=postgres'
+  pg_temp.dblink_conninfo_671()
 );
 select extensions.dblink_connect(
   'pm_d2_671',
-  'host=127.0.0.1 port=5432 dbname=' || current_database() ||
-    ' user=postgres password=postgres'
+  pg_temp.dblink_conninfo_671()
 );
 
 select extensions.dblink_exec('pm_d1_671', 'begin');

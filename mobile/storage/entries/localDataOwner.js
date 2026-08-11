@@ -18,7 +18,7 @@
 // after a purge. Sign-out must NOT clear it — local history is intentionally
 // retained on sign-out and still belongs to that user.
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureStorage as AsyncStorage } from '../secureStorage';
 
 export const LOCAL_DATA_OWNER_KEY = 'kilo_local_data_owner';
 export const OWNER_UNCLAIMED = 'unclaimed';

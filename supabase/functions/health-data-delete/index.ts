@@ -148,7 +148,7 @@ serve(async (req) => {
   // ── user mode ─────────────────────────────────────────────────────────────
 
   const ip = clientIp(req)
-  if (!await rateLimitAllowed(admin, `healthdelete:ip:${ip}`, IP_MAX, IP_WINDOW_MS)) {
+  if (!await rateLimitAllowed(admin, `healthdelete:ip:${ip}`, IP_MAX, IP_WINDOW_MS, 'deny')) {
     return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
       status: 429,
       headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '3600' },
@@ -169,7 +169,7 @@ serve(async (req) => {
     })
   }
 
-  if (!await rateLimitAllowed(admin, `healthdelete:user:${user.id}`, USER_MAX, USER_WINDOW_MS)) {
+  if (!await rateLimitAllowed(admin, `healthdelete:user:${user.id}`, USER_MAX, USER_WINDOW_MS, 'deny')) {
     return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
       status: 429,
       headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '3600' },

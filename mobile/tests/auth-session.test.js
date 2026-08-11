@@ -7,6 +7,11 @@ import { Linking } from 'react-native';
 // wires sign in / out / restore / reset / OAuth callback without a network.
 let mockAuth;
 let mockCreateClientCalls;
+const mockWipeSensitiveDeviceData = jest.fn().mockResolvedValue(undefined);
+
+jest.mock('../storage/secureStorage', () => ({
+  wipeSensitiveDeviceData: (...args) => mockWipeSensitiveDeviceData(...args),
+}));
 
 jest.mock('@supabase/supabase-js', () => ({
   createClient: (url, key, opts) => {
@@ -74,10 +79,10 @@ function makeMockAuth(overrides = {}) {
 }
 
 // Render the hook and capture its latest return value.
-function renderAuthHook() {
+function renderAuthHook(options) {
   const ref = { current: null };
   function Probe() {
-    ref.current = useAuthSession();
+    ref.current = useAuthSession(options);
     return null;
   }
   let tree;
@@ -98,6 +103,7 @@ async function flush() {
 beforeEach(() => {
   mockCreateClientCalls = [];
   mockAuth = makeMockAuth();
+  mockWipeSensitiveDeviceData.mockClear();
   resetSupabaseClientForTests();
 });
 
@@ -450,6 +456,90 @@ describe('useAuthSession', () => {
     expect(result.ok).toBe(true);
     expect(mockAuth.signOut).toHaveBeenCalled();
     expect(ref.current.signedIn).toBe(false);
+    expect(mockWipeSensitiveDeviceData).not.toHaveBeenCalled();
+  });
+
+  test('confirmed sign out wipes device data after the auth session is revoked', async () => {
+    const onDeviceDataWiped = jest.fn();
+    const { ref } = renderAuthHook({ onDeviceDataWiped });
+    await flush();
+    let result;
+    await act(async () => { result = await ref.current.signOut({ wipeLocalData: true }); });
+    expect(result.ok).toBe(true);
+    expect(mockAuth.signOut).toHaveBeenCalledTimes(1);
+    expect(mockWipeSensitiveDeviceData).toHaveBeenCalledTimes(1);
+    expect(onDeviceDataWiped).toHaveBeenCalledTimes(1);
+  });
+
+  test('failed sign-out wipe remains retryable without an auth session', async () => {
+    const onDeviceDataWiped = jest.fn();
+    mockWipeSensitiveDeviceData.mockRejectedValueOnce(new Error('storage unavailable'));
+    const { ref } = renderAuthHook({ onDeviceDataWiped });
+    await flush();
+
+    let firstResult;
+    await act(async () => { firstResult = await ref.current.signOut({ wipeLocalData: true }); });
+    expect(firstResult).toEqual({
+      ok: false,
+      error: 'Signed out, but device data could not be wiped. Try the wipe again before sharing this device.',
+    });
+    expect(ref.current.signedIn).toBe(false);
+    expect(ref.current.deviceWipeRequired).toBe(true);
+    expect(typeof ref.current.wipeDeviceData).toBe('function');
+    expect(onDeviceDataWiped).not.toHaveBeenCalled();
+
+    let retryResult;
+    await act(async () => { retryResult = await ref.current.wipeDeviceData(); });
+    expect(retryResult).toEqual({ ok: true });
+    expect(ref.current.deviceWipeRequired).toBe(false);
+    expect(onDeviceDataWiped).toHaveBeenCalledTimes(1);
+  });
+
+  test('confirmed account deletion wipes device data after server deletion', async () => {
+    const previousFetch = global.fetch;
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+    mockAuth.getSession.mockResolvedValue({
+      data: { session: { access_token: 'jwt', user: { id: 'user-1' } } },
+      error: null,
+    });
+    try {
+      const { ref } = renderAuthHook();
+      await flush();
+      let result;
+      await act(async () => { result = await ref.current.deleteAccount({ wipeLocalData: true }); });
+      expect(result.ok).toBe(true);
+      expect(mockAuth.signOut).toHaveBeenCalledTimes(1);
+      expect(mockWipeSensitiveDeviceData).toHaveBeenCalledTimes(1);
+    } finally {
+      global.fetch = previousFetch;
+    }
+  });
+
+  test('failed post-deletion wipe exposes the signed-out local retry path', async () => {
+    const previousFetch = global.fetch;
+    const onDeviceDataWiped = jest.fn();
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+    mockAuth.getSession.mockResolvedValue({
+      data: { session: { access_token: 'jwt', user: { id: 'user-1' } } },
+      error: null,
+    });
+    mockWipeSensitiveDeviceData.mockRejectedValueOnce(new Error('storage unavailable'));
+    try {
+      const { ref } = renderAuthHook({ onDeviceDataWiped });
+      await flush();
+      let result;
+      await act(async () => { result = await ref.current.deleteAccount({ wipeLocalData: true }); });
+      expect(result).toEqual({
+        ok: false,
+        error: 'Account deleted, but device data could not be wiped. Try the wipe again before sharing this device.',
+      });
+      expect(ref.current.signedIn).toBe(false);
+      expect(ref.current.deviceWipeRequired).toBe(true);
+      expect(typeof ref.current.wipeDeviceData).toBe('function');
+      expect(onDeviceDataWiped).not.toHaveBeenCalled();
+    } finally {
+      global.fetch = previousFetch;
+    }
   });
 
   test('password reset path calls supabase', async () => {
@@ -506,6 +596,104 @@ describe('useAuthSession', () => {
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/did not complete/i);
     expect(mockAuth.exchangeCodeForSession).not.toHaveBeenCalled();
+  });
+});
+
+describe('password Auth CAPTCHA', () => {
+  const oldSiteKey = process.env.EXPO_PUBLIC_TURNSTILE_SITE_KEY;
+  const oldOrigin = process.env.EXPO_PUBLIC_TURNSTILE_ORIGIN;
+
+  beforeEach(() => {
+    process.env.EXPO_PUBLIC_TURNSTILE_SITE_KEY = 'test-site-key-12345';
+    process.env.EXPO_PUBLIC_TURNSTILE_ORIGIN = 'https://kilo.example.com';
+  });
+
+  afterAll(() => {
+    if (oldSiteKey == null) delete process.env.EXPO_PUBLIC_TURNSTILE_SITE_KEY;
+    else process.env.EXPO_PUBLIC_TURNSTILE_SITE_KEY = oldSiteKey;
+    if (oldOrigin == null) delete process.env.EXPO_PUBLIC_TURNSTILE_ORIGIN;
+    else process.env.EXPO_PUBLIC_TURNSTILE_ORIGIN = oldOrigin;
+  });
+
+  test('fails closed before Supabase when a required challenge token is missing', async () => {
+    const { ref } = renderAuthHook();
+    await flush();
+    let result;
+    await act(async () => { result = await ref.current.signInWithPassword('a@b.com', 'pw'); });
+    expect(result).toEqual({ ok: false, error: expect.stringMatching(/complete the security verification/i) });
+    expect(mockAuth.signInWithPassword).not.toHaveBeenCalled();
+  });
+
+  test('passes a fresh token to Supabase and rejects reuse', async () => {
+    const { ref } = renderAuthHook();
+    await flush();
+    let first;
+    let repeated;
+    await act(async () => { first = await ref.current.signInWithPassword('a@b.com', 'pw', 'fresh-token'); });
+    await act(async () => { repeated = await ref.current.signInWithPassword('a@b.com', 'pw', 'fresh-token'); });
+    expect(first.ok).toBe(true);
+    expect(mockAuth.signInWithPassword).toHaveBeenCalledWith({
+      email: 'a@b.com',
+      password: 'pw',
+      options: { captchaToken: 'fresh-token' },
+    });
+    expect(repeated).toEqual({ ok: false, error: expect.stringMatching(/expired/i) });
+    expect(mockAuth.signInWithPassword).toHaveBeenCalledTimes(1);
+  });
+
+  test('consumes the token even when Supabase returns an error', async () => {
+    mockAuth.signUp.mockResolvedValueOnce({ data: null, error: { message: 'network rejected request' } });
+    const { ref } = renderAuthHook();
+    await flush();
+    let failed;
+    let repeated;
+    await act(async () => { failed = await ref.current.signUpWithPassword('a@b.com', 'pw', 'one-use-token'); });
+    await act(async () => { repeated = await ref.current.signUpWithPassword('a@b.com', 'pw', 'one-use-token'); });
+    expect(failed).toEqual({ ok: false, error: 'network rejected request' });
+    expect(repeated.error).toMatch(/expired/i);
+    expect(mockAuth.signUp).toHaveBeenCalledTimes(1);
+  });
+
+  test('password reset combines redirect and CAPTCHA options', async () => {
+    const { ref } = renderAuthHook();
+    await flush();
+    let result;
+    await act(async () => {
+      result = await ref.current.resetPasswordForEmail('a@b.com', {
+        redirectTo: 'kilo://auth/callback',
+        captchaToken: 'reset-token',
+      });
+    });
+    expect(result.ok).toBe(true);
+    expect(mockAuth.resetPasswordForEmail).toHaveBeenCalledWith('a@b.com', {
+      redirectTo: 'kilo://auth/callback',
+      captchaToken: 'reset-token',
+    });
+  });
+});
+
+describe('production CAPTCHA configuration', () => {
+  test('fails closed before Supabase when the release build has no public site configuration', async () => {
+    const oldDev = global.__DEV__;
+    const oldSiteKey = process.env.EXPO_PUBLIC_TURNSTILE_SITE_KEY;
+    const oldOrigin = process.env.EXPO_PUBLIC_TURNSTILE_ORIGIN;
+    global.__DEV__ = false;
+    delete process.env.EXPO_PUBLIC_TURNSTILE_SITE_KEY;
+    delete process.env.EXPO_PUBLIC_TURNSTILE_ORIGIN;
+    try {
+      const { ref } = renderAuthHook();
+      await flush();
+      let result;
+      await act(async () => { result = await ref.current.signUpWithPassword('a@b.com', 'pw', 'token'); });
+      expect(result.error).toMatch(/unavailable in this build/i);
+      expect(mockAuth.signUp).not.toHaveBeenCalled();
+    } finally {
+      global.__DEV__ = oldDev;
+      if (oldSiteKey == null) delete process.env.EXPO_PUBLIC_TURNSTILE_SITE_KEY;
+      else process.env.EXPO_PUBLIC_TURNSTILE_SITE_KEY = oldSiteKey;
+      if (oldOrigin == null) delete process.env.EXPO_PUBLIC_TURNSTILE_ORIGIN;
+      else process.env.EXPO_PUBLIC_TURNSTILE_ORIGIN = oldOrigin;
+    }
   });
 });
 

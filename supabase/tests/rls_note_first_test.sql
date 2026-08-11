@@ -26,12 +26,17 @@ select plan(47);
 insert into auth.users (id) values (:'user_a'::uuid) on conflict do nothing;
 insert into auth.users (id) values (:'user_b'::uuid) on conflict do nothing;
 
+-- Isolate the owner-RLS assertions from the later consent gate. This update is
+-- transaction-local because the whole pgTAP file rolls back.
+update kilo.health_sync_config set mode = 'legacy' where id = true;
+
 -- Helper: become an authenticated user by id.
 -- Sets role to authenticated and the JWT sub claim that auth.uid() reads.
 create or replace function pg_temp.login_as(uid uuid) returns void
 language plpgsql as $$
 begin
   perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claim.sub', uid::text, true);
   perform set_config(
     'request.jwt.claims',
     json_build_object('sub', uid::text, 'role', 'authenticated')::text,
@@ -44,7 +49,21 @@ create or replace function pg_temp.logout() returns void
 language plpgsql as $$
 begin
   perform set_config('role', 'postgres', true);
+  perform set_config('request.jwt.claim.sub', null, true);
   perform set_config('request.jwt.claims', null, true);
+end;
+$$;
+
+-- Keep mutation statements top-level inside dynamic SQL and return ROW_COUNT to
+-- pgTAP. PostgreSQL rejects a data-modifying CTE nested in an expression.
+create or replace function pg_temp.exec_row_count(statement text) returns integer
+language plpgsql as $$
+declare
+  affected integer;
+begin
+  execute statement;
+  get diagnostics affected = row_count;
+  return affected;
 end;
 $$;
 
@@ -152,56 +171,56 @@ select is(
 -- As user A: UPDATE of user B rows must affect zero rows (invisible to RLS).
 -- ---------------------------------------------------------------------------
 select is(
-  (with u as (update kilo.weight_entries set note = 'hacked' where id = 'wb' returning 1) select count(*)::int from u),
+  pg_temp.exec_row_count($$update kilo.weight_entries set note = 'hacked' where id = 'wb'$$),
   0, 'user A update of user B weight_entries affects no rows');
 select is(
-  (with u as (update kilo.workout_notes set raw_text = 'hacked' where id = 'nb' returning 1) select count(*)::int from u),
+  pg_temp.exec_row_count($$update kilo.workout_notes set raw_text = 'hacked' where id = 'nb'$$),
   0, 'user A update of user B workout_notes affects no rows');
 select is(
-  (with u as (update kilo.user_profile set display_name = 'hacked' where user_id = '22222222-2222-2222-2222-222222222222' returning 1) select count(*)::int from u),
+  pg_temp.exec_row_count($$update kilo.user_profile set display_name = 'hacked' where user_id = '22222222-2222-2222-2222-222222222222'$$),
   0, 'user A update of user B user_profile affects no rows');
 select is(
-  (with u as (update kilo.feature_toggles set deload_mode_enabled = false where user_id = '22222222-2222-2222-2222-222222222222' returning 1) select count(*)::int from u),
+  pg_temp.exec_row_count($$update kilo.feature_toggles set deload_mode_enabled = false where user_id = '22222222-2222-2222-2222-222222222222'$$),
   0, 'user A update of user B feature_toggles affects no rows');
 select is(
-  (with u as (update kilo.weight_goal set target_weight = 1 where user_id = '22222222-2222-2222-2222-222222222222' returning 1) select count(*)::int from u),
+  pg_temp.exec_row_count($$update kilo.weight_goal set target_weight = 1 where user_id = '22222222-2222-2222-2222-222222222222'$$),
   0, 'user A update of user B weight_goal affects no rows');
 select is(
-  (with u as (update kilo.deload_history set raw_text = 'hacked' where id = 'db' returning 1) select count(*)::int from u),
+  pg_temp.exec_row_count($$update kilo.deload_history set raw_text = 'hacked' where id = 'db'$$),
   0, 'user A update of user B deload_history affects no rows');
 select is(
-  (with u as (update kilo.fatigue_checkins set status = 'hacked' where id = 'fb' returning 1) select count(*)::int from u),
+  pg_temp.exec_row_count($$update kilo.fatigue_checkins set status = 'hacked' where id = 'fb'$$),
   0, 'user A update of user B fatigue_checkins affects no rows');
 select is(
-  (with u as (update kilo.archived_weight_goals set target_weight = 1 where id = 'agb' returning 1) select count(*)::int from u),
+  pg_temp.exec_row_count($$update kilo.archived_weight_goals set target_weight = 1 where id = 'agb'$$),
   0, 'user A update of user B archived_weight_goals affects no rows');
 
 -- ---------------------------------------------------------------------------
 -- As user A: DELETE of user B rows must affect zero rows.
 -- ---------------------------------------------------------------------------
 select is(
-  (with d as (delete from kilo.weight_entries where id = 'wb' returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count($$delete from kilo.weight_entries where id = 'wb'$$),
   0, 'user A delete of user B weight_entries affects no rows');
 select is(
-  (with d as (delete from kilo.workout_notes where id = 'nb' returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count($$delete from kilo.workout_notes where id = 'nb'$$),
   0, 'user A delete of user B workout_notes affects no rows');
 select is(
-  (with d as (delete from kilo.user_profile where user_id = '22222222-2222-2222-2222-222222222222' returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count($$delete from kilo.user_profile where user_id = '22222222-2222-2222-2222-222222222222'$$),
   0, 'user A delete of user B user_profile affects no rows');
 select is(
-  (with d as (delete from kilo.feature_toggles where user_id = '22222222-2222-2222-2222-222222222222' returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count($$delete from kilo.feature_toggles where user_id = '22222222-2222-2222-2222-222222222222'$$),
   0, 'user A delete of user B feature_toggles affects no rows');
 select is(
-  (with d as (delete from kilo.weight_goal where user_id = '22222222-2222-2222-2222-222222222222' returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count($$delete from kilo.weight_goal where user_id = '22222222-2222-2222-2222-222222222222'$$),
   0, 'user A delete of user B weight_goal affects no rows');
 select is(
-  (with d as (delete from kilo.deload_history where id = 'db' returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count($$delete from kilo.deload_history where id = 'db'$$),
   0, 'user A delete of user B deload_history affects no rows');
 select is(
-  (with d as (delete from kilo.fatigue_checkins where id = 'fb' returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count($$delete from kilo.fatigue_checkins where id = 'fb'$$),
   0, 'user A delete of user B fatigue_checkins affects no rows');
 select is(
-  (with d as (delete from kilo.archived_weight_goals where id = 'agb' returning 1) select count(*)::int from d),
+  pg_temp.exec_row_count($$delete from kilo.archived_weight_goals where id = 'agb'$$),
   0, 'user A delete of user B archived_weight_goals affects no rows');
 
 -- ---------------------------------------------------------------------------

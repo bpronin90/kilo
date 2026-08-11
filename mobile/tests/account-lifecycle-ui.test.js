@@ -43,6 +43,12 @@ jest.mock('expo-web-browser', () => ({
   openAuthSessionAsync: jest.fn(),
 }));
 
+jest.mock('react-native-webview', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return { WebView: (props) => React.createElement(View, props) };
+});
+
 jest.mock('../components/HelpScreen', () => ({ HelpScreen: () => null }));
 jest.mock('../components/AboutScreen', () => ({ AboutScreen: () => null }));
 jest.mock('../components/BackupScreen', () => ({ BackupScreen: () => null }));
@@ -100,6 +106,7 @@ let AccountLifecycle;
 let AccountScreen;
 let MoreScreen;
 let CloudSyncRecovery;
+let CaptchaChallenge;
 let Platform;
 let Linking;
 let WebBrowser;
@@ -186,6 +193,8 @@ function makeResolvedAuthProp(session = null, overrides = {}) {
     resetPasswordForEmail: jest.fn().mockResolvedValue({ ok: true }),
     serverExport: jest.fn().mockResolvedValue({ ok: true, json: '{}' }),
     deleteAccount: jest.fn().mockResolvedValue({ ok: true }),
+    deviceWipeRequired: false,
+    wipeDeviceData: jest.fn().mockResolvedValue({ ok: true }),
     ...overrides,
   };
 }
@@ -244,6 +253,7 @@ beforeEach(() => {
   AccountScreen = moreScreen.AccountScreen;
   MoreScreen = moreScreen.MoreScreen;
   CloudSyncRecovery = require('../screens/more/CloudSyncRecovery').CloudSyncRecovery;
+  CaptchaChallenge = require('../components/CaptchaChallenge').CaptchaChallenge;
   WebBrowser = require('expo-web-browser');
 
   resetSupabaseClientForTests();
@@ -745,6 +755,32 @@ describe('AccountScreen OAuth Flow', () => {
     expect(tree.root.findByProps({ accessibilityLabel: 'Continue with GitHub' })).toBeTruthy();
   });
 
+  test('signed-out users can retry a failed device wipe without authenticating', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    const wipeDeviceData = jest.fn().mockResolvedValue({ ok: true });
+    const { Alert } = require('../lib/platformAlert');
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    let tree;
+    try {
+      act(() => {
+        tree = renderer.create(React.createElement(AccountScreen, {
+          onBack: jest.fn(),
+          auth: makeResolvedAuthProp(null, { deviceWipeRequired: true, wipeDeviceData }),
+        }));
+      });
+
+      expect(tree.root.findByProps({ accessibilityLabel: 'Device wipe required' })).toBeTruthy();
+      const retry = tree.root.findByProps({ accessibilityLabel: 'Wipe device data while signed out' });
+      act(() => { retry.props.onPress(); });
+      const buttons = alertSpy.mock.calls[0][2];
+      const confirm = buttons.find((button) => button.text === 'Wipe Device Data');
+      await act(async () => { await confirm.onPress(); });
+      expect(wipeDeviceData).toHaveBeenCalledTimes(1);
+    } finally {
+      alertSpy.mockRestore();
+    }
+  });
+
   test('renders the Signed-In view immediately when a resolved session is passed in (#366)', () => {
     Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
 
@@ -891,6 +927,67 @@ describe('AccountScreen auth copy (#496)', () => {
 
     const status = tree.root.findByProps({ accessibilityLabel: 'Account status' });
     expect(status.props.children).toBe('Signed in.');
+  });
+});
+
+describe('AccountScreen CAPTCHA lifecycle', () => {
+  function findButtonByTitle(tree, title) {
+    return tree.root.find((node) => (
+      typeof node.type === 'string'
+      && typeof node.props.onPress === 'function'
+      && node.props.children?.props?.children === title
+    ));
+  }
+
+  test('passes a fresh token once and resets the challenge after the call', async () => {
+    const signUpWithPassword = jest.fn().mockResolvedValue({ ok: true });
+    const authProp = makeResolvedAuthProp(null, { signUpWithPassword });
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: authProp }));
+    });
+
+    let challenge = tree.root.findByType(CaptchaChallenge);
+    expect(challenge.props.resetKey).toBe(0);
+    act(() => { challenge.props.onToken('fresh-ui-token'); });
+    await act(async () => { await findButtonByTitle(tree, 'Create Account').props.onPress(); });
+
+    expect(signUpWithPassword).toHaveBeenCalledWith('', '', 'fresh-ui-token');
+    challenge = tree.root.findByType(CaptchaChallenge);
+    expect(challenge.props.resetKey).toBe(1);
+  });
+
+  test('surfaces expiry and provider errors without calling Auth', () => {
+    const signInWithPassword = jest.fn();
+    const authProp = makeResolvedAuthProp(null, { signInWithPassword });
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: authProp }));
+    });
+
+    let challenge = tree.root.findByType(CaptchaChallenge);
+    act(() => { challenge.props.onExpired(); });
+    expect(tree.root.findByProps({ accessibilityLabel: 'Account status' }).props.children).toMatch(/expired/i);
+    challenge = tree.root.findByType(CaptchaChallenge);
+    expect(challenge.props.resetKey).toBe(1);
+    act(() => { challenge.props.onError('load'); });
+    expect(tree.root.findByProps({ accessibilityLabel: 'Account status' }).props.children).toMatch(/failed to load/i);
+    act(() => { findButtonByTitle(tree, 'Retry Security Verification').props.onPress(); });
+    expect(tree.root.findByType(CaptchaChallenge).props.resetKey).toBe(2);
+    expect(signInWithPassword).not.toHaveBeenCalled();
+  });
+
+  test('resets after an Auth error so the rejected token cannot be retried', async () => {
+    const signInWithPassword = jest.fn().mockResolvedValue({ ok: false, error: 'request rejected' });
+    const authProp = makeResolvedAuthProp(null, { signInWithPassword });
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: authProp }));
+    });
+    act(() => { tree.root.findByType(CaptchaChallenge).props.onToken('rejected-token'); });
+    await act(async () => { await findButtonByTitle(tree, 'Sign In').props.onPress(); });
+    expect(tree.root.findByType(CaptchaChallenge).props.resetKey).toBe(1);
+    expect(signInWithPassword).toHaveBeenCalledTimes(1);
   });
 });
 

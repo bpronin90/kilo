@@ -29,15 +29,29 @@ select col_type_is(
   'synced rows record the writer xid as an internal bigint'
 );
 
+-- Supabase CLI defaults are used in CI. Custom disposable stacks can override
+-- any connection component with PGOPTIONS, for example
+-- `-c kilo.test_db_port=55432`, without editing this credentialed harness.
+create or replace function pg_temp.dblink_conninfo() returns text
+language sql stable
+as $$
+  select format(
+    'host=%s port=%s dbname=%s user=%s password=%s',
+    coalesce(nullif(current_setting('kilo.test_db_host', true), ''), 'host.docker.internal'),
+    coalesce(nullif(current_setting('kilo.test_db_port', true), ''), '54322'),
+    current_database(),
+    coalesce(nullif(current_setting('kilo.test_db_user', true), ''), 'postgres'),
+    coalesce(nullif(current_setting('kilo.test_db_password', true), ''), 'postgres')
+  )
+$$;
+
 select extensions.dblink_connect(
   'reader_620',
-  'host=host.docker.internal port=54322 dbname=' || current_database() ||
-    ' user=postgres password=postgres'
+  pg_temp.dblink_conninfo()
 );
 select extensions.dblink_connect(
   'writer_620',
-  'host=host.docker.internal port=54322 dbname=' || current_database() ||
-    ' user=postgres password=postgres'
+  pg_temp.dblink_conninfo()
 );
 
 -- Seed committed fixtures outside the coordinator transaction so both test
