@@ -354,7 +354,16 @@ describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b
     expect(hasText(root, '04-01-2026 – 04-29-2026')).toBe(true);
   });
 
-  test('the hero/summary group carries accessibilityLiveRegion="polite" so a week change is announced', () => {
+  // Scoped to host nodes only, matching the `groupHeaders` dedup pattern —
+  // the test renderer otherwise reports the composite and host node separately
+  // for the same element.
+  function liveRegions(root) {
+    return root.findAll(
+      inst => typeof inst.type === 'string' && inst.props.accessibilityLiveRegion === 'polite'
+    );
+  }
+
+  test('the week-status region carries a stable accessibilityLiveRegion="polite" wrapper so a week change is announced', () => {
     const b = block();
     const w1 = week(1, 'note-w1');
     const w2 = week(2, 'note-w2');
@@ -363,9 +372,36 @@ describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b
     const component = setup({ blocks: [b], weeks: [w1, w2], notes: [n1, n2] });
     const root = component.root;
 
-    const heroGroup = byLabel(root, 'Week 2, 2 of 2 baseline exercises met');
-    expect(heroGroup).toBeDefined();
-    expect(heroGroup.props.accessibilityLiveRegion).toBe('polite');
+    expect(byLabel(root, 'Week 2, 2 of 2 baseline exercises met')).toBeDefined();
+    expect(liveRegions(root).length).toBe(1);
+  });
+
+  // #794 review: gating the live region on the hero alone (present only when
+  // `totalBaselineExercises > 0`) meant selecting a week that resolves to a
+  // missing/unreadable note, or one with zero evidence, unmounted the only
+  // live region on screen — so that switch was never announced. The wrapper
+  // must persist regardless of which of those mutually exclusive outcomes the
+  // selected week lands on.
+  test('the live-region wrapper survives switching between a hero week and a missing-note week — it is never unmounted', () => {
+    const b = block();
+    const w1 = week(1, 'note-w1');
+    const w2 = week(2, 'ghost-note-id'); // no matching note supplied below
+    const n1 = note('note-w1', BASELINE_TEXT);
+    const component = setup({ blocks: [b], weeks: [w1, w2], notes: [n1] });
+    const root = component.root;
+
+    // Defaults to the latest week (2), whose note is missing — no hero
+    // renders, but the live-region wrapper still does, around the notice.
+    expect(liveRegions(root).length).toBe(1);
+    expect(hasText(root, "Week 2 — This week's note is no longer available.")).toBe(true);
+
+    act(() => { byLabel(root, 'Week 1').props.onPress(); });
+
+    // Week 1 has a hero. Still exactly one live-region wrapper — it was
+    // never unmounted and remounted across the branch switch.
+    expect(liveRegions(root).length).toBe(1);
+    expect(hasText(root, '2 of 2')).toBe(true);
+    expect(hasText(root, "note is no longer available")).toBe(false);
   });
 });
 

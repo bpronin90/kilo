@@ -438,24 +438,37 @@ function BlockEvidence({ block, weeks, notes, unit }) {
             <Text style={styles.unavailablePanelText}>Baseline captured. No week logged yet.</Text>
           )}
 
-          {showSummaryLine && (
-            <View style={styles.summaryBlock}>
-              {totalBaselineExercises > 0 && (
-                <View
-                  style={styles.heroBlock}
-                  accessible
-                  accessibilityLabel={heroLabel}
-                  accessibilityLiveRegion="polite"
-                >
-                  <Text style={[HeroMetric.statPrimary, { color: colors.accent }]}>
-                    {`${metCount} of ${totalBaselineExercises}`}
-                  </Text>
-                  <Text style={styles.heroCaption}>baseline exercises met</Text>
-                </View>
-              )}
-              {!!summaryLine && <Text style={styles.summaryLine}>{summaryLine}</Text>}
-            </View>
-          )}
+          {/* A single, never-unmounted live region (#794 review): selecting a
+              week can land on a hero, a missing/unreadable-note notice, or a
+              zero-evidence notice — mutually exclusive outcomes of the same
+              selectedWeek switch. Gating the live region on any one of them
+              (e.g. the hero alone) drops the announcement entirely whenever
+              the newly selected week resolves to a different branch. */}
+          <View style={styles.weekStatusRegion} accessibilityLiveRegion="polite">
+            {showSummaryLine && (
+              <View style={styles.summaryBlock}>
+                {totalBaselineExercises > 0 && (
+                  <View
+                    style={styles.heroBlock}
+                    accessible
+                    accessibilityLabel={heroLabel}
+                  >
+                    <Text style={[HeroMetric.statPrimary, { color: colors.accent }]}>
+                      {`${metCount} of ${totalBaselineExercises}`}
+                    </Text>
+                    <Text style={styles.heroCaption}>baseline exercises met</Text>
+                  </View>
+                )}
+                {!!summaryLine && <Text style={styles.summaryLine}>{summaryLine}</Text>}
+              </View>
+            )}
+
+            <WeekUnavailableNotice week={selectedWeek} />
+
+            {selectedWeek?.status === RECOVERY_WEEK_STATUS.OK && totalRows === 0 && (
+              <Text style={styles.unavailablePanelText}>No exercise evidence for this week.</Text>
+            )}
+          </View>
 
           {weekResults.length > 1 && (
             <View style={styles.chipRow}>
@@ -477,12 +490,6 @@ function BlockEvidence({ block, weeks, notes, unit }) {
                 );
               })}
             </View>
-          )}
-
-          <WeekUnavailableNotice week={selectedWeek} />
-
-          {selectedWeek?.status === RECOVERY_WEEK_STATUS.OK && totalRows === 0 && (
-            <Text style={styles.unavailablePanelText}>No exercise evidence for this week.</Text>
           )}
 
           {selectedWeek?.status === RECOVERY_WEEK_STATUS.OK && totalRows > 0 && (
@@ -824,6 +831,12 @@ const createStyles = (colors) => StyleSheet.create({
   unavailablePanelText: {
     fontSize: 14,
     color: colors.textMuted,
+  },
+  // Wraps whichever of {summary, unavailable notice, no-evidence text} the
+  // selected week resolves to (#794 review) — a stable node so the live
+  // region survives switching between them.
+  weekStatusRegion: {
+    gap: 12,
   },
   summaryBlock: {
     gap: 4,
