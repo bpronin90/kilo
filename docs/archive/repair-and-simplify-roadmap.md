@@ -1,14 +1,17 @@
 # Kilo Repair and Simplify Roadmap
 
-**Status: Active — Phases 1–2 and 4 complete; Phase 3 final delivery active.**
+**Status: Complete.** This roadmap was executed through to completion. Every
+named deliverable shipped or was explicitly dropped by the owner, and the final
+delivery merged through issue #793 / PR #794 on 2026-08-10. It is retained here
+as the historical delivery contract for the Repair and Simplify pass.
 Phase 1's confirmed regressions shipped through issues #770 and #771 on
 2026-08-10. Phase 2's approved routine-context behavior shipped through issue
 #775 / PR #777 the same day. In Phase 3, R3a's approved Home contract shipped
 through #782 / PR #783, R4b's approved Log hierarchy shipped through #789 / PR
-#792, and R5a's Analytics contract is approved. The final delivery task is
-triaged as R5b issue #793. Phase 4 completed on 2026-08-10: R6b-1 shipped
-through #785 / PR #787, R6b-3 shipped through #786 / PR #788, and the owner
-explicitly dropped R6b-2's inline-suggestion design.
+#792, and R5a's approved Analytics contract shipped through R5b issue #793 / PR
+#794. Phase 4 completed on 2026-08-10: R6b-1 shipped through #785 / PR #787,
+R6b-3 shipped through #786 / PR #788, and the owner explicitly dropped R6b-2's
+inline-suggestion design.
 
 Source of truth: the repository owner's cross-tab review supplied on 2026-08-09,
 with immutable GitHub records authoritative for triaged tasks and approved
@@ -368,7 +371,7 @@ issue record, the issue record wins.
 
 ---
 
-## Phase 3 — Redesign Recovery Around One Answer Per Surface [DELIVERY ACTIVE]
+## Phase 3 — Redesign Recovery Around One Answer Per Surface [COMPLETE]
 
 Phase goal: replace dense Recovery presentations with a coherent cross-tab model
 that answers the user's immediate question first and progressively discloses
@@ -376,8 +379,8 @@ supporting evidence.
 
 R3a and R4a produced owner-approved written contracts. R3b shipped through
 issue #782 / PR #783 and R4b shipped through issue #789 / PR #792. R5a's
-corrected Analytics contract is owner-approved on #790, releasing R5b as the
-phase's final delivery task under issue #793.
+corrected Analytics contract was approved on #790 and implemented by the final
+delivery task, R5b issue #793 / PR #794.
 
 ### R3a — Specify the Home return-to-baseline summary [COMPLETE]
 
@@ -527,10 +530,11 @@ phase's final delivery task under issue #793.
   multiple weeks, missing notes, added exercises, stale/error, and large data sets.
 - **Routing:** `agent:claude`; `area:ui`, `area:workouts`, `area:docs`.
 
-### R5b — Implement the approved Analytics Recovery model
+### R5b — Implement the approved Analytics Recovery model [COMPLETE]
 
 - **Issue:** [#793](https://github.com/bpronin90/kilo/issues/793)
-- **Triage status:** ready; all dependencies and owner approvals are satisfied.
+- **Outcome:** shipped in [PR #794](https://github.com/bpronin90/kilo/pull/794)
+  on 2026-08-10, completing Phase 3 and the roadmap's final delivery task.
 
 - **Suggested title:** `Repair and Simplify / R5b: implement focused Recovery Analytics`
 - **Goal:** implement R5a's evidence hierarchy and approved Recovery/Fatigue order.
@@ -758,6 +762,11 @@ This roadmap is complete when every included implementation task is merged and
 closed, or explicitly removed/deferred by a newer owner decision recorded in
 GitHub, and every discovery-gated task has either an approved implementation or
 an explicit decision not to build it.
+
+**Closeout completed 2026-08-10.** Every included implementation issue is
+merged and closed, every discovery-gated task has an approved shipped outcome,
+and R6b-2 is the sole explicitly dropped task. Issue #793 / PR #794 delivered
+the final implementation and closed the roadmap.
 
 At closeout:
 

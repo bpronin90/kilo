@@ -34,14 +34,15 @@ export function readFragments(root = defaultRoot, names = listFragmentFiles(root
 }
 
 export function nextVersion(current, fragments) {
-  const match = String(current).match(semverRe);
-  if (!match) throw new Error(`Canonical version is not x.y.z: ${current}`);
-  const [major, minor, patch] = match.slice(1).map(Number);
-  if (major !== 0) throw new Error(`Pre-1.0 release policy cannot calculate from ${current}`);
-  if (fragments.length === 0) return current;
-  return fragments.some((fragment) => fragment.bump === 'minor')
-    ? `0.${minor + 1}.0`
-    : `0.${minor}.${patch + 1}`;
+  return fragments.reduce((version, fragment) => {
+    const match = String(version).match(semverRe);
+    if (!match) throw new Error(`Canonical version is not x.y.z: ${version}`);
+    const [major, minor, patch] = match.slice(1).map(Number);
+    if (major !== 0) throw new Error(`Pre-1.0 release policy cannot calculate from ${version}`);
+    return fragment.bump === 'minor'
+      ? `0.${minor + 1}.0`
+      : `0.${minor}.${patch + 1}`;
+  }, current);
 }
 
 export function validateFragments(root = defaultRoot) {
@@ -71,17 +72,25 @@ export function prepareRelease({
 
   const packagePath = join(root, 'package.json');
   const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
-  const version = nextVersion(packageJson.version, fragments);
+  let version = packageJson.version;
+  const releases = fragments.map((fragment) => {
+    version = nextVersion(version, [fragment]);
+    return { fragment, version };
+  });
   packageJson.version = version;
   writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
   syncVersions({ root, logger });
 
-  const bullets = fragments.map((fragment) => `- Issue #${fragment.issue}: ${fragment.text}`).join('\n');
-  const entry = `## ${version} - ${date}\n\n${bullets}\n\n`;
-  writeFileSync(changelogPath, changelog.replace(/^# Changelog\n\n?/, `# Changelog\n\n${entry}`));
+  const entries = releases
+    .toReversed()
+    .map(({ fragment, version: releaseVersion }) => (
+      `## ${releaseVersion} - ${date}\n\n- Issue #${fragment.issue}: ${fragment.text}`
+    ))
+    .join('\n\n');
+  writeFileSync(changelogPath, changelog.replace(/^# Changelog\n\n?/, `# Changelog\n\n${entries}\n\n`));
 
   for (const name of fragmentNames) rmSync(join(root, '.changes', name));
-  logger.log(`Prepared ${version} from ${fragments.length} changelog fragment(s).`);
+  logger.log(`Prepared ${fragments.length} release step(s), ending at ${version}.`);
   return { changed: true, fragments, version };
 }
 

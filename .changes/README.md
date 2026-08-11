@@ -14,3 +14,8 @@ Use `patch` for fixes and small updates or `minor` for a new user-visible
 capability or meaningful behavior change. Follow-up pull requests for the same
 issue increment the sequence. Release preparation consumes only the fragments
 present when it starts; fragments merged later remain for the next release.
+
+Release preparation applies every fragment's bump separately in numeric filename
+order. Each fragment receives its own changelog version: a `patch` increments the
+patch component, while a `minor` increments the minor component and resets patch
+to zero. The final synchronized app version is the last of those release steps.

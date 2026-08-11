@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.107.1 - 2026-08-11
+
+- Issue #793: Analytics' `Recovery` section now sits above `Fatigue`, right below `Weight`, since it is the one section that is only ever relevant while a block is active or has history. Its evidence card opens with a one-line `Week N · {routine}` identity and provenance-only footer instead of the old two-line label and metadata clauses, the week selector now announces itself when you change weeks, and the per-exercise breakdown drops the status-filter row in favor of always-visible rows grouped under counted headings like `Rebuilding (2)`. No-week, missing-note, and unreadable-note copy now matches the wording on Home exactly.
+
+## 0.107.0 - 2026-08-11
+
+- Issue #789: The active Recovery card on Log now leads with the week you are actually on ("Week 3 in progress" or "Week 3 complete — add the next week") and shows a single next action. Unlinking a week, completing the block, and the analytics-inclusion setting moved into one collapsed "Manage recovery block" section, and unlinking now always names the week it will remove.
+
+## 0.106.1 - 2026-08-11
+
+- Issue #786: Removed the guided routine composer and Copy-last-session sheets, along with the one-session first-use card; New Routine now always opens the plain-text editor on an empty note, seeded by the tappable example.
+
+## 0.106.0 - 2026-08-11
+
+- Issue #785: An empty workout note editor now shows a tappable four-line example (`Monday`, `+Lifting`, `-Bench`, `135 5,5,5`); tapping it fills in that text with the cursor at the end, and the example returns whenever the note is emptied again.
+
+## 0.105.0 - 2026-08-11
+
+- Issue #782: The Home Recovery card now shows how many baseline exercises you're back to this week (`Week N — X of Y baseline exercises met`), plus rebuilding/not-reintroduced/not-comparable/added-during-recovery counts and the normal-analytics inclusion note when it applies, instead of just the week number and baseline routine title.
+
+## 0.104.4 - 2026-08-11
+
+- Issue #776: Restoring a backup now rejects a recovery week that links to a workout note the backup does not carry, instead of restoring a recovery week with no session behind it.
+
+## 0.104.3 - 2026-08-11
+
+- Issue #775: A routine's date in `More Routines` is now the day you created it, and stays put when you edit the routine, read a week, sync, or restore a backup; the list and its `Latest:` summary are ordered by that same date. Tapping a Recovery week now opens that week's note right there in the Recovery card — including when the week is your current routine — instead of sending you to `More Routines`, and a week whose note is missing says `Note unavailable` while keeping its `Unlink`. `More Routines` and the `Deload Week` card now stay open or closed as you left them when you switch between Routine and Deload.
+
+## 0.104.2 - 2026-08-11
+
+- Issue #771: Home's `1K Progress` total is back to its full-scale, polished typography instead of the smaller compact size it picked up during recent handoff work. Log's `Recovery` and `More Routines` headings continue to share the same section-title treatment.
+
+## 0.104.1 - 2026-08-11
+
+- Issue #770: Home's `Exercise Progress`, `Full history and insights`, and `Recovery` controls now open the Analytics section each one names instead of landing on a nearby section or resuming wherever Analytics was last left. Tapping Analytics in the tab bar still preserves your place.
+
 ## 0.104.0 - 2026-08-09
 
 - Issue #756: Added a routine to the Log screen without expanding routine management first, and set any listed routine as current with one tap right from its row.
