@@ -374,6 +374,22 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       isWeightLoading={isWeightLoading}
     />,
 
+    // Recovery sits above Fatigue (R5b, #793): it is the only time-boxed,
+    // situational section on the tab, and the two adjacent "should I be
+    // training normally right now?" answers read together — Fatigue's own
+    // gauge is what makes a given baseline count interpretable. Anchor for the
+    // `recovery` handoff (#770): AnalyticsRecoverySection owns its own
+    // presentation and takes no layout prop, so the wrapper carries the anchor
+    // — and only while the section has something to render. An empty wrapper
+    // would still take a slot in the shell's 16px column gap and open a hole
+    // between Weight and Fatigue, so the silent case renders exactly what it
+    // rendered before: the section alone, which resolves to nothing.
+    hasRecoverySection ? (
+      <View key="recovery-section" testID="recovery-section-anchor" onLayout={handleRecoveryLayout}>
+        {recoverySection}
+      </View>
+    ) : recoverySection,
+
     <View key="combined-section-title">
       <SectionTitle>Fatigue</SectionTitle>
     </View>,
@@ -402,19 +418,6 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       noteExerciseNames={noteExerciseNames}
       handleSelectExercise={handleSelectExercise}
     />,
-
-    // Anchor for the `recovery` handoff (#770). AnalyticsRecoverySection owns
-    // its own presentation and takes no layout prop, so the wrapper carries the
-    // anchor — and only while the section has something to render. An empty
-    // wrapper would still take a slot in the shell's 16px column gap and open a
-    // hole between the strength section and Progressive Overload, so the
-    // silent case renders exactly what it rendered before: the section alone,
-    // which resolves to nothing.
-    hasRecoverySection ? (
-      <View key="recovery-section" testID="recovery-section-anchor" onLayout={handleRecoveryLayout}>
-        {recoverySection}
-      </View>
-    ) : recoverySection,
 
     <View
       key="sticky-header"

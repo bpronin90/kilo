@@ -969,6 +969,68 @@ describe('AnalyticsScreen daily-loop handoffs (#717)', () => {
   });
 });
 
+// ── R5b section order (#793): Weight → Recovery → Fatigue → Strength → PO ────
+
+describe('AnalyticsScreen section order (R5b, #793)', () => {
+  const RECOVERY_ACTIVE_BLOCK = {
+    id: 'rb1',
+    baseline_note_id: 'note-baseline',
+    baseline_note_title: 'Push Pull Legs',
+    baseline: { exercises: [] },
+    started_at: '2026-05-01T00:00:00Z',
+    completed_at: null,
+    saved_at: '2026-05-01T00:00:00Z',
+    updated_at: '2026-05-01T00:00:00Z',
+    deleted_at: null,
+  };
+
+  test('Recovery renders above Fatigue, adjacent to it, with Weight first and Strength/Progressive Overload after', () => {
+    const component = setup({
+      hookOverrides: { recoveryBlocks: [RECOVERY_ACTIVE_BLOCK], recoveryWeeks: [] },
+    });
+    const root = component.root;
+
+    const labels = findAllText(root);
+    const indexOf = (needle) => labels.findIndex(s => s.includes(needle));
+
+    const weight = indexOf('Weight Trends');
+    const recovery = indexOf('Recovery');
+    const fatigue = indexOf('Fatigue');
+    const strength = indexOf('Strength');
+    const progressiveOverload = indexOf('Progressive Overload');
+
+    expect(weight).toBeGreaterThanOrEqual(0);
+    expect(recovery).toBeGreaterThanOrEqual(0);
+    expect(fatigue).toBeGreaterThanOrEqual(0);
+    expect(strength).toBeGreaterThanOrEqual(0);
+    expect(progressiveOverload).toBeGreaterThanOrEqual(0);
+
+    expect(weight).toBeLessThan(recovery);
+    expect(recovery).toBeLessThan(fatigue);
+    expect(fatigue).toBeLessThan(strength);
+    expect(strength).toBeLessThan(progressiveOverload);
+  });
+
+  test('with no active or completed recovery block, the order collapses to exactly what it was before Recovery existed — no hole', () => {
+    const component = setup({ hookOverrides: { recoveryBlocks: [], recoveryWeeks: [] } });
+    const root = component.root;
+
+    expect(root.findAllByProps({ testID: 'recovery-section-anchor' }).length).toBe(0);
+
+    const labels = findAllText(root);
+    const indexOf = (needle) => labels.findIndex(s => s.includes(needle));
+    const weight = indexOf('Weight Trends');
+    const fatigue = indexOf('Fatigue');
+    const strength = indexOf('Strength');
+
+    expect(weight).toBeGreaterThanOrEqual(0);
+    expect(fatigue).toBeGreaterThanOrEqual(0);
+    expect(strength).toBeGreaterThanOrEqual(0);
+    expect(weight).toBeLessThan(fatigue);
+    expect(fatigue).toBeLessThan(strength);
+  });
+});
+
 // ── Weight Trends — split 7-day / 30-day charts ───────────────────────────────
 
 describe('AnalyticsScreen Weight Trends — two rolling charts', () => {

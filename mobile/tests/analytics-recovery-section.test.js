@@ -5,8 +5,16 @@
 // history collapse, and accessible labels.
 //
 // #758: exercise details are collapsed by default behind an "Exercise details"
-// disclosure and filterable by week and status, so most row-level assertions
-// expand the panel first via `expandDetails`.
+// disclosure, so most row-level assertions expand the panel first via
+// `expandDetails`.
+//
+// #793 (R5b): Recovery moved above Fatigue on the Analytics tab (covered in
+// analytics-screen.test.js), the "Baseline routine" label/title pair and the
+// `blockMeta` line were replaced by a one-line identity caption and a
+// provenance-only last line, the status-filter chip row was removed in favor
+// of counted, `accessibilityRole="header"` state groups that always show every
+// row, and no-week/note-missing/note-unreadable copy now matches Home's R3a
+// wording exactly.
 
 import React from 'react';
 import render, { act } from 'react-test-renderer';
@@ -144,19 +152,9 @@ function expandDetails(root) {
   act(() => { toggle.props.onPress(); });
 }
 
-function selectFilter(root, label) {
-  const chip = root.findAll(
-    inst => typeof inst.props.accessibilityLabel === 'string'
-      && inst.props.accessibilityLabel.startsWith(`${label}, `)
-      && typeof inst.props.onPress === 'function'
-  )[0];
-  expect(chip).toBeDefined();
-  act(() => { chip.props.onPress(); });
-  return chip;
-}
-
-// Accessible labels of the collapsed exercise rows — scoped so a status-filter
-// chip carrying the same words cannot satisfy a row-level assertion.
+// Accessible labels of the collapsed exercise rows — scoped so a state-group
+// header (which carries `accessibilityRole="header"`) cannot satisfy a
+// row-level assertion.
 function rowLabels(root) {
   return root
     .findAll(inst =>
@@ -166,6 +164,14 @@ function rowLabels(root) {
       && !inst.props.accessibilityRole
       && !inst.props.onPress)
     .map(inst => inst.props.accessibilityLabel);
+}
+
+// The counted state-group headers rendered inside the expanded details panel
+// (#793/R5b), e.g. "Rebuilding (2)". Scoped to host nodes only — the test
+// renderer otherwise reports both the composite `Text` and its underlying host
+// node for the same element.
+function groupHeaders(root) {
+  return root.findAll(inst => typeof inst.type === 'string' && inst.props.accessibilityRole === 'header');
 }
 
 // Completed-block history is collapsed by default (#758).
@@ -275,17 +281,19 @@ describe('AnalyticsRecoverySection — unavailable and error states', () => {
     const component = setup({ blocks: [b], weeks: [w], notes: [] });
     const root = component.root;
 
-    expect(hasText(root, 'no longer available')).toBe(true);
+    expect(hasText(root, "Week 1 — This week's note is no longer available.")).toBe(true);
   });
 
-  test('a parser-rejected note surfaces the rejection, not zero work', () => {
+  test('a parser-rejected note surfaces the rejection, not zero work, using the R3a-worded notice', () => {
     const b = block();
     const w = week(1, 'note-w1');
     const n = note('note-w1', 'x'.repeat(MAX_RAW_TEXT_LENGTH + 1));
     const component = setup({ blocks: [b], weeks: [w], notes: [n] });
     const root = component.root;
 
-    expect(hasText(root, 'too large to parse')).toBe(true);
+    expect(hasText(root, "Week 1 — This week's note couldn't be read.")).toBe(true);
+    // Never silently presented as a clean, empty week.
+    expect(hasText(root, 'No exercise evidence for this week.')).toBe(false);
   });
 
   test('an unsupported baseline snapshot version is reported rather than silently ignored', () => {
@@ -296,6 +304,68 @@ describe('AnalyticsRecoverySection — unavailable and error states', () => {
     const root = component.root;
 
     expect(hasText(root, "can't read")).toBe(true);
+  });
+});
+
+describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b)', () => {
+  test('an active block with a logged week shows a one-line "Week N · routine" identity caption', () => {
+    const b = block();
+    const w = week(1, 'note-w1');
+    const n = note('note-w1', BASELINE_TEXT);
+    const component = setup({ blocks: [b], weeks: [w], notes: [n] });
+    const root = component.root;
+
+    expect(hasText(root, 'Week 1 · Push Pull Legs')).toBe(true);
+    // The old two-line "Baseline routine" label + title pair is gone.
+    expect(hasText(root, 'Baseline routine')).toBe(false);
+  });
+
+  test('an active block with no week logged yet shows "Baseline: routine" and the R3a row-1 copy, with no controls', () => {
+    const b = block();
+    const component = setup({ blocks: [b], weeks: [], notes: [] });
+    const root = component.root;
+
+    expect(hasText(root, 'Baseline: Push Pull Legs')).toBe(true);
+    expect(hasText(root, 'Baseline captured. No week logged yet.')).toBe(true);
+    expect(hasText(root, 'baseline exercises met')).toBe(false);
+    expect(byLabel(root, 'Expand exercise details')).toBeUndefined();
+  });
+
+  test('the card\'s last line is provenance only: "Started {date}" for an active block', () => {
+    const b = block({ started_at: '2026-05-01T00:00:00Z' });
+    const w = week(1, 'note-w1');
+    const n = note('note-w1', BASELINE_TEXT);
+    const component = setup({ blocks: [b], weeks: [w], notes: [n] });
+    const root = component.root;
+
+    expect(hasText(root, 'Started 05-01-2026')).toBe(true);
+    // The old combined "Active · Week N · N weeks logged · Started ..." line is gone.
+    expect(hasText(root, 'weeks logged')).toBe(false);
+  });
+
+  test('the card\'s last line is provenance only: "{start} – {end}" for a completed block', () => {
+    const b = block({
+      started_at: '2026-04-01T00:00:00Z',
+      completed_at: '2026-04-29T00:00:00Z',
+    });
+    const component = setup({ blocks: [b], weeks: [], notes: [] });
+    const root = component.root;
+
+    expect(hasText(root, '04-01-2026 – 04-29-2026')).toBe(true);
+  });
+
+  test('the hero/summary group carries accessibilityLiveRegion="polite" so a week change is announced', () => {
+    const b = block();
+    const w1 = week(1, 'note-w1');
+    const w2 = week(2, 'note-w2');
+    const n1 = note('note-w1', BASELINE_TEXT);
+    const n2 = note('note-w2', BASELINE_TEXT);
+    const component = setup({ blocks: [b], weeks: [w1, w2], notes: [n1, n2] });
+    const root = component.root;
+
+    const heroGroup = byLabel(root, 'Week 2, 2 of 2 baseline exercises met');
+    expect(heroGroup).toBeDefined();
+    expect(heroGroup.props.accessibilityLiveRegion).toBe('polite');
   });
 });
 
@@ -408,9 +478,10 @@ describe('AnalyticsRecoverySection — every exercise class/state (mocked compar
 
     expect(hasText(root, 'Not comparable')).toBe(true);
     expect(hasText(root, 'Logged as a different kind of exercise than the baseline.')).toBe(true);
-    // Not comparable has no filter chip of its own, so `All` must still show it
-    // and the summary line must count it.
+    // The summary line counts it, and it gets its own state group.
     expect(hasText(root, '1 not comparable')).toBe(true);
+    const notComparableHeader = groupHeaders(root).find(h => h.props.children === 'Not comparable (1)');
+    expect(notComparableHeader).toBeDefined();
   });
 
   test('an empty-but-supported baseline snapshot is reported without a hero or exercise rows', () => {
@@ -421,8 +492,28 @@ describe('AnalyticsRecoverySection — every exercise class/state (mocked compar
     const component = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] });
     const root = component.root;
 
-    expect(hasText(root, 'The frozen baseline recorded no comparable exercise.')).toBe(true);
+    expect(hasText(root, 'No baseline exercises were captured for this block.')).toBe(true);
     expect(hasText(root, 'baseline exercises met')).toBe(false);
+  });
+
+  test('a baseline-empty week that still carries added work reports it in the summary line and reaches Exercise details', () => {
+    const addedRow = mockRow({
+      key: 'foam-roll', name: 'Foam Roll', state: RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY, exercise_class: 'reps_based',
+      metrics: [metricRow('total_reps', 20, null, null, null)],
+    });
+    deriveRecoveryComparison.mockReturnValueOnce(
+      mockComparison({ status: RECOVERY_COMPARISON_STATUS.BASELINE_EMPTY, weeks: [mockWeek({ exercises: [], added: [addedRow] })] })
+    );
+
+    const component = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] });
+    const root = component.root;
+
+    // No hero (there is no baseline denominator), but the merged clause line
+    // still names the added work, and it is reachable via Exercise details.
+    expect(hasText(root, 'baseline exercises met')).toBe(false);
+    expect(hasText(root, 'Week 1 · 1 added during recovery')).toBe(true);
+    expandDetails(root);
+    expect(rowLabels(root).some(l => l.startsWith('Foam Roll, Added during recovery'))).toBe(true);
   });
 });
 
@@ -491,8 +582,7 @@ describe('AnalyticsRecoverySection — persisted week identity survives gaps', (
     expect(root.findAll(inst => inst.props.accessibilityLabel === 'Week 2').length).toBe(0);
     // Defaults to the latest live week, which is persisted week_number 3 — not
     // "week 2 of 2" from array position.
-    expect(hasText(root, 'Week 3')).toBe(true);
-    expect(hasText(root, '2 weeks logged')).toBe(true);
+    expect(hasText(root, 'Week 3 · Push Pull Legs')).toBe(true);
   });
 });
 
@@ -532,7 +622,7 @@ describe('AnalyticsRecoverySection — completed-block evidence uses that block\
     // week (also numbered 1, on a different note) is not pulled in.
     expect(root.findAll(inst => inst.props.accessibilityLabel === 'Week 1').length).toBeGreaterThan(0);
     expect(root.findAll(inst => inst.props.accessibilityLabel === 'Week 3').length).toBeGreaterThan(0);
-    expect(hasText(root, '2 weeks logged')).toBe(true);
+    expect(hasText(root, 'Week 3 · Old Routine')).toBe(true);
   });
 });
 
@@ -830,7 +920,7 @@ describe('AnalyticsRecoverySection — authoritative Recovery state (#716)', () 
     const rendered = texts(component);
     expect(rendered).toContain(RECOVERY_STALE_MESSAGE);
     // The block's own evidence is still rendered, not replaced by the notice.
-    expect(rendered).toContain('Push Pull Legs');
+    expect(rendered.some(t => t.includes('Push Pull Legs'))).toBe(true);
     expect(retryButton(component)).toBeTruthy();
   });
 
@@ -843,6 +933,39 @@ describe('AnalyticsRecoverySection — authoritative Recovery state (#716)', () 
   test('a verified empty snapshot still renders nothing at all', () => {
     const component = setupState({ stateReady: true });
     expect(component.toJSON()).toBeNull();
+  });
+
+  // Corrected §6 lifecycle gate (issue #790 review): `stateReady` alone gates
+  // the banner-instead-of-content branch. `stateReady && stateRefreshing` is a
+  // normal, silent background read over already-verified data and must keep
+  // rendering the full evidence card, never a banner in its place.
+  test('ready:true, refreshing:true keeps the full evidence card with no lifecycle banner', () => {
+    const b = block();
+    const w = week(1, 'note-w1');
+    const n = note('note-w1', BASELINE_TEXT);
+    const component = setupState({
+      blocks: [b], weeks: [w], notes: [n],
+      stateReady: true, stateRefreshing: true,
+    });
+
+    expect(hasText(component.root, '2 of 2')).toBe(true);
+    expect(texts(component)).not.toContain(RECOVERY_LOADING_MESSAGE);
+    expect(texts(component)).not.toContain(RECOVERY_UNVERIFIED_MESSAGE);
+    expect(texts(component)).not.toContain(RECOVERY_STALE_MESSAGE);
+  });
+
+  test('ready:false shows the lifecycle banner with no evidence card, even with blocks present', () => {
+    const b = block();
+    const w = week(1, 'note-w1');
+    const n = note('note-w1', BASELINE_TEXT);
+    const component = setupState({
+      blocks: [b], weeks: [w], notes: [n],
+      stateReady: false, stateLoading: true,
+    });
+
+    expect(texts(component)).toContain(RECOVERY_LOADING_MESSAGE);
+    expect(hasText(component.root, '2 of 2')).toBe(false);
+    expect(hasText(component.root, 'Push Pull Legs')).toBe(false);
   });
 });
 
@@ -921,61 +1044,28 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     expect(hasText(root, '1 rebuilding')).toBe(false);
   });
 
-  test('status chips carry their week-scoped counts and the selected state', () => {
+  test('rows are grouped under counted, accessibilityRole="header" state groups, in Baseline met / R3a clause / Added order', () => {
     const root = setupMixed();
     expandDetails(root);
 
-    expect(hasText(root, 'All 3')).toBe(true);
-    expect(hasText(root, 'Rebuilding 1')).toBe(true);
-    expect(hasText(root, 'Baseline met 1')).toBe(true);
-    expect(hasText(root, 'Not reintroduced 0')).toBe(true);
-    expect(hasText(root, 'Added during recovery 1')).toBe(true);
-
-    expect(byLabel(root, 'All, 3').props.accessibilityState).toEqual({ selected: true });
-    const rebuilding = selectFilter(root, 'Rebuilding');
-    expect(rebuilding.props.accessibilityState).toEqual({ selected: true });
-    expect(byLabel(root, 'All, 3').props.accessibilityState).toEqual({ selected: false });
+    const headers = groupHeaders(root).map(h => h.props.children);
+    expect(headers).toEqual(['Baseline met (1)', 'Rebuilding (1)', 'Added during recovery (1)']);
+    // A state with nothing in it renders no group at all — never a zero-count header.
+    expect(headers.some(h => h.startsWith('Not reintroduced'))).toBe(false);
+    expect(headers.some(h => h.startsWith('Not comparable'))).toBe(false);
   });
 
-  test('each status filter narrows the rows to exactly that state', () => {
+  test('every row is always visible — there is no filter that can hide one', () => {
     const root = setupMixed();
     expandDetails(root);
 
-    selectFilter(root, 'Rebuilding');
-    let labels = rowLabels(root);
-    expect(labels.some(l => l.startsWith('Bench, Rebuilding'))).toBe(true);
-    expect(labels.some(l => l.startsWith('Pull-up'))).toBe(false);
-    expect(labels.some(l => l.startsWith('Foam Roll'))).toBe(false);
-
-    selectFilter(root, 'Baseline met');
-    labels = rowLabels(root);
-    expect(labels.some(l => l.startsWith('Pull-up, Baseline met'))).toBe(true);
-    expect(labels.some(l => l.startsWith('Bench'))).toBe(false);
-    expect(labels.some(l => l.startsWith('Foam Roll'))).toBe(false);
-
-    selectFilter(root, 'Added during recovery');
-    labels = rowLabels(root);
-    expect(labels.some(l => l.startsWith('Foam Roll, Added during recovery'))).toBe(true);
-    expect(labels.some(l => l.startsWith('Bench'))).toBe(false);
-    expect(labels.some(l => l.startsWith('Pull-up'))).toBe(false);
-
-    selectFilter(root, 'All');
-    labels = rowLabels(root);
+    const labels = rowLabels(root);
     expect(labels.some(l => l.startsWith('Bench, Rebuilding'))).toBe(true);
     expect(labels.some(l => l.startsWith('Pull-up, Baseline met'))).toBe(true);
     expect(labels.some(l => l.startsWith('Foam Roll, Added during recovery'))).toBe(true);
   });
 
-  test('a filter with nothing in it says so instead of rendering an empty panel', () => {
-    const root = setupMixed();
-    expandDetails(root);
-
-    selectFilter(root, 'Not reintroduced');
-    expect(hasText(root, 'No exercises match this filter.')).toBe(true);
-    expect(rowLabels(root).some(l => l.startsWith('Bench'))).toBe(false);
-  });
-
-  test('the not-reintroduced filter selects exactly the baseline work that never came back', () => {
+  test('the not-reintroduced group holds exactly the baseline work that never came back', () => {
     const root = setup({
       blocks: [block()],
       weeks: [week(1, 'note-w1')],
@@ -983,10 +1073,11 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     }).root;
     expandDetails(root);
 
-    selectFilter(root, 'Not reintroduced');
+    const headers = groupHeaders(root).map(h => h.props.children);
+    expect(headers).toContain('Not reintroduced (1)');
     const labels = rowLabels(root);
     expect(labels.some(l => l.startsWith('Pull-up, Not reintroduced'))).toBe(true);
-    expect(labels.some(l => l.startsWith('Bench'))).toBe(false);
+    expect(labels.some(l => l.startsWith('Bench, Baseline met'))).toBe(true);
   });
 
   test('the weighted dimensions are explained where they are shown', () => {
@@ -1012,7 +1103,7 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     expect(hasText(root, 'Total work')).toBe(false);
   });
 
-  test('switching to another block opens on its own summary, not the previous block\'s disclosure and filter', () => {
+  test('switching to another block opens on its own summary, with its own disclosure collapsed again', () => {
     const active = block({ id: 'rb-active', baseline_note_title: 'Current Routine' });
     const completed = block({
       id: 'rb-old',
@@ -1023,15 +1114,12 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
       blocks: [active, completed],
       weeks: [
         week(1, 'note-active-w1', { id: 'rw-active-1', block_id: 'rb-active' }),
-        // The completed block's week has nothing rebuilding in it, so a filter
-        // carried over from the active block would show an empty panel.
         week(1, 'note-old-w1', { id: 'rw-old-1', block_id: 'rb-old' }),
       ],
       notes: [note('note-active-w1', MIXED_TEXT), note('note-old-w1', BASELINE_TEXT)],
     }).root;
 
     expandDetails(root);
-    selectFilter(root, 'Rebuilding');
     expect(rowLabels(root).some(l => l.startsWith('Bench, Rebuilding'))).toBe(true);
 
     expandHistory(root);
@@ -1045,23 +1133,19 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     expect(byLabel(root, 'Expand exercise details')).toBeDefined();
     expect(byLabel(root, 'Collapse exercise details')).toBeUndefined();
     expect(hasText(root, '2 of 2')).toBe(true);
-    expect(hasText(root, 'No exercises match this filter.')).toBe(false);
 
-    // And the filter is back to All, not the carried-over Rebuilding.
     expandDetails(root);
-    expect(byLabel(root, 'All, 2').props.accessibilityState).toEqual({ selected: true });
-    expect(byLabel(root, 'Rebuilding, 0').props.accessibilityState).toEqual({ selected: false });
     expect(rowLabels(root).some(l => l.startsWith('Bench, Baseline met'))).toBe(true);
   });
 
-  test('a week whose note is unreadable states that above the disclosure, with no details to expand', () => {
+  test('a week whose note is unreadable states the R3a-worded notice above the disclosure, with no details to expand', () => {
     const root = setup({
       blocks: [block()],
       weeks: [week(1, 'ghost-note-id')],
       notes: [],
     }).root;
 
-    expect(hasText(root, 'no longer available')).toBe(true);
+    expect(hasText(root, "Week 1 — This week's note is no longer available.")).toBe(true);
     expect(byLabel(root, 'Expand exercise details')).toBeUndefined();
   });
 });
