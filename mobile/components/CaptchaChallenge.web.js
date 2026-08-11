@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { getCaptchaConfig } from '../lib/captchaConfig';
+import { useThemedStyles } from '../theme/ThemeContext';
 
 let scriptPromise;
 
@@ -29,6 +30,7 @@ function loadTurnstile() {
 }
 
 export function CaptchaChallenge({ onToken, onExpired, onError, resetKey = 0 }) {
+  const styles = useThemedStyles(createStyles);
   const reactId = useId();
   const containerId = `kilo-turnstile-${reactId.replace(/[^A-Za-z0-9_-]/g, '')}`;
   const widgetRef = useRef(null);
@@ -77,7 +79,7 @@ export function CaptchaChallenge({ onToken, onExpired, onError, resetKey = 0 }) 
   return <View nativeID={containerId} style={styles.container} accessibilityLabel="Security verification" />;
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: { minHeight: 70, width: '100%' },
-  error: { color: '#B42318', fontSize: 14 },
+  error: { color: colors.error, fontSize: 14 },
 });

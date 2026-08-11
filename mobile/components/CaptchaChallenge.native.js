@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { getCaptchaConfig } from '../lib/captchaConfig';
+import { useThemedStyles } from '../theme/ThemeContext';
 
 function challengeHtml(siteKey) {
   // The site key is public configuration, but still validate/encode it before
@@ -29,6 +30,7 @@ function ready() {
 
 export function CaptchaChallenge({ onToken, onExpired, onError, resetKey = 0 }) {
   const config = getCaptchaConfig('native');
+  const styles = useThemedStyles(createStyles);
   const source = useMemo(() => (
     config.configured ? { html: challengeHtml(config.siteKey), baseUrl: config.origin } : null
   ), [config.configured, config.origin, config.siteKey, resetKey]);
@@ -69,8 +71,8 @@ export function CaptchaChallenge({ onToken, onExpired, onError, resetKey = 0 }) 
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: { height: 90, width: '100%' },
   webview: { backgroundColor: 'transparent' },
-  error: { color: '#B42318', fontSize: 14 },
+  error: { color: colors.error, fontSize: 14 },
 });
