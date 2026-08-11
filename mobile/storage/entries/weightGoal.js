@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureStorage as AsyncStorage } from '../secureStorage';
 import { WEIGHT_GOAL_KEY } from './keys';
 
 const ARCHIVED_WEIGHT_GOALS_KEY = 'kilo_archived_weight_goals';

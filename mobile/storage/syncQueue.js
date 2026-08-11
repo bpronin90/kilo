@@ -21,7 +21,7 @@
 // push dirty local records -> advance the per-table cursor only after a
 // successful push.
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureStorage as AsyncStorage } from './secureStorage';
 
 // AsyncStorage keys for sync bookkeeping. Kept separate from domain data so
 // clearing/inspecting sync state never touches the user's records.

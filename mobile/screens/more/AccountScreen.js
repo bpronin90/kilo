@@ -1,8 +1,10 @@
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
+import { CaptchaChallenge } from '../../components/CaptchaChallenge';
 import { ScreenShell } from '../../components/ScreenShell';
 import { Button, SectionTitle, useInputStyle } from '../../components/UI';
+import { Alert } from '../../lib/platformAlert';
 import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
 import { KILO_AUTH_REDIRECT } from '../../hooks/useAuthSession';
 import { CloudSyncRecovery } from './CloudSyncRecovery';
@@ -28,6 +30,9 @@ export function AccountScreen({ onBack, auth }) {
   const [password, setPassword] = useState('');
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaResetKey, setCaptchaResetKey] = useState(0);
+  const [captchaFailed, setCaptchaFailed] = useState(false);
 
   const run = async (fn) => {
     setBusy(true);
@@ -42,6 +47,62 @@ export function AccountScreen({ onBack, auth }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleCaptchaToken = useCallback((token) => {
+    setCaptchaToken(token);
+    setCaptchaFailed(false);
+  }, []);
+
+  const handleCaptchaExpired = useCallback(() => {
+    setCaptchaToken('');
+    setCaptchaFailed(false);
+    setCaptchaResetKey((value) => value + 1);
+    setStatus('Security verification expired. Complete the new challenge and try again.');
+  }, []);
+
+  const handleCaptchaError = useCallback(() => {
+    setCaptchaToken('');
+    setCaptchaFailed(true);
+    setStatus('Security verification failed to load. Check your connection and try again.');
+  }, []);
+
+  const retryCaptcha = useCallback(() => {
+    setCaptchaToken('');
+    setCaptchaFailed(false);
+    setStatus('');
+    setCaptchaResetKey((value) => value + 1);
+  }, []);
+
+  // A provider token is single-use. Reset immediately after every attempted
+  // Supabase password-auth call, whether the request succeeds or fails.
+  const runPasswordFlow = (fn) => run(async () => {
+    const token = captchaToken || null;
+    try {
+      return await fn(token);
+    } finally {
+      if (token) {
+        setCaptchaToken('');
+        setCaptchaResetKey((value) => value + 1);
+      }
+    }
+  });
+
+  const handleSignOutAndWipe = () => {
+    Alert.alert(
+      'Sign Out and Wipe Device Data',
+      'This signs out and permanently removes the training and health history stored on this device. The cloud copy is kept. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out & Wipe',
+          style: 'destructive',
+          onPress: () => run(() => auth.signOut({ wipeLocalData: true }).then((result) => (
+            result.ok ? { ok: true, message: 'Signed out and device data wiped.' } : result
+          ))),
+        },
+      ],
+    );
   };
 
   const handleGitHubSignIn = async () => {
@@ -68,11 +129,14 @@ export function AccountScreen({ onBack, auth }) {
   // the redirectTo split already used for GitHub sign-in above — web targets
   // its own origin (handled by App.js's web callback effect), native targets
   // the kilo:// deep link (handled by useAuthSession's native listener).
-  const handleResetPassword = () => run(async () => {
+  const handleResetPassword = () => runPasswordFlow(async (token) => {
     const redirectTo = Platform.OS === 'web'
       ? (typeof window !== 'undefined' ? window.location.origin : undefined)
       : KILO_AUTH_REDIRECT;
-    const result = await auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : undefined);
+    const result = await auth.resetPasswordForEmail(email, {
+      ...(redirectTo ? { redirectTo } : {}),
+      ...(token ? { captchaToken: token } : {}),
+    });
     return result.ok ? { ok: true, message: 'Password reset email sent if the address exists.' } : result;
   });
 
@@ -155,6 +219,12 @@ export function AccountScreen({ onBack, auth }) {
             disabled={busy}
             onPress={() => run(() => auth.signOut().then((r) => (r.ok ? { ok: true, message: 'Signed out.' } : r)))}
           />
+          <Button
+            title="Sign Out & Wipe Device Data"
+            disabled={busy}
+            onPress={handleSignOutAndWipe}
+            accessibilityLabel="Sign out and wipe device data"
+          />
           <CloudSyncRecovery
             user={auth.user}
             onConsentDismiss={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
@@ -196,6 +266,20 @@ export function AccountScreen({ onBack, auth }) {
             onChangeText={setPassword}
             accessibilityLabel="Password"
           />
+          <CaptchaChallenge
+            resetKey={captchaResetKey}
+            onToken={handleCaptchaToken}
+            onExpired={handleCaptchaExpired}
+            onError={handleCaptchaError}
+          />
+          {captchaFailed ? (
+            <Button
+              title="Retry Security Verification"
+              disabled={busy}
+              onPress={retryCaptcha}
+              accessibilityLabel="Retry security verification"
+            />
+          ) : null}
           <Button
             title="Sign In"
             loadingTitle="Working…"
@@ -206,7 +290,7 @@ export function AccountScreen({ onBack, auth }) {
             // oracle: a GitHub-only account and a wrong password produce the same
             // generic `Invalid login credentials`, and both now point at the
             // other sign-in method.
-            onPress={() => run(() => auth.signInWithPassword(email, password).then((r) => (r.ok ? { ok: true, message: 'Signed in.' } : { ...r, ok: false, error: `${r.error || 'Invalid login credentials.'} If you signed up with GitHub, use Continue with GitHub.` })))}
+            onPress={() => runPasswordFlow((token) => auth.signInWithPassword(email, password, token).then((r) => (r.ok ? { ok: true, message: 'Signed in.' } : { ...r, ok: false, error: `${r.error || 'Invalid login credentials.'} If you signed up with GitHub, use Continue with GitHub.` })))}
           />
           <Button
             title="Create Account"
@@ -217,7 +301,7 @@ export function AccountScreen({ onBack, auth }) {
             // a new address gets a confirmation email; an existing one does not,
             // and either way the user is pointed at Continue with GitHub without
             // revealing which case they are in.
-            onPress={() => run(() => auth.signUpWithPassword(email, password).then((r) => (r.ok ? { ok: true, message: 'If that address is new, check your email to confirm it. If you already signed up with GitHub, use Continue with GitHub instead.' } : r)))}
+            onPress={() => runPasswordFlow((token) => auth.signUpWithPassword(email, password, token).then((r) => (r.ok ? { ok: true, message: 'If that address is new, check your email to confirm it. If you already signed up with GitHub, use Continue with GitHub instead.' } : r)))}
           />
           <Button
             title="Reset Password"

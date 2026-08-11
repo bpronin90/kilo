@@ -68,15 +68,15 @@ If any of these three checks fails, stop and reconcile before treating the backe
 
 ## Step 5: Auth Abuse Posture (Open Signup Gate)
 
-Open signup must not go live without passing both checks in this section. If a check cannot be completed before launch, record an explicit closed-beta deferral inline and re-evaluate before enabling open signup.
+Open signup must not go live without passing both checks in this section. If a check cannot be completed, keep public password Auth unavailable until it passes.
 
 ### CAPTCHA
 
 **Requirement:** CAPTCHA must be enabled on the signup and password-recovery flows before open signup.
 
-**Dashboard location:** Authentication → Settings → Enable CAPTCHA protection
+**Dashboard location:** Authentication → Settings → Bot and Abuse Protection → Enable CAPTCHA protection
 
-Choose HCaptcha or Cloudflare Turnstile, paste the site key and secret from your provider account. Both flows are protected once the setting is saved.
+Kilo uses Cloudflare Turnstile. Register the production web hostname and the stable HTTPS base hostname used by the native WebView. Put the public site key in `EXPO_PUBLIC_TURNSTILE_SITE_KEY` for every release build and put that stable native base origin in `EXPO_PUBLIC_TURNSTILE_ORIGIN`. These values are public client configuration. Keep the provider secret out of EAS, source control, and the application bundle; paste it only into Supabase Auth before enabling the dashboard toggle.
 
 **Frontend integration required:** Enabling the dashboard toggle alone is not sufficient. The app must also render a CAPTCHA widget on every affected auth form (sign-in, sign-up, password reset) and pass the resulting token into the Auth call, for example:
 
@@ -86,11 +86,11 @@ supabase.auth.signInWithPassword({ email, password, options: { captchaToken } })
 supabase.auth.resetPasswordForEmail(email, { captchaToken })
 ```
 
-Without this app-side step, the dashboard setting blocks server-side bypass but the public auth forms will call Auth without a token and receive an error. The frontend integration work must be complete before open signup, or a closed-beta deferral must be recorded below.
+The #796 client implements this boundary for all three password flows and consumes each token once. Release builds deliberately fail closed when the site key or native origin is absent. Dashboard enablement and provider hostname registration remain operator-owned activation steps.
 
-**Release verification:** Confirm all three flows — sign-in, sign-up, and password reset — present a CAPTCHA widget and successfully pass the token through to Supabase Auth. Attempt a direct API signup call without a CAPTCHA token; Supabase Auth must reject it with a 422.
+**Release verification:** Confirm all three flows — sign-in, sign-up, and password reset — present a CAPTCHA widget on web and a physical native build and successfully pass the token through to Supabase Auth. Confirm a used token is reset before the next request. Attempt direct Auth calls without a CAPTCHA token and with a reused token; Supabase Auth must reject both. Inspect the exported bundle and tracked files to confirm the Turnstile secret is absent.
 
-**Closed-beta deferral:** If open signup is not active and the frontend CAPTCHA integration is not yet implemented, record: `CAPTCHA: deferred — closed-beta, open signup and frontend token integration not yet live. Complete app-side integration and enable dashboard setting before opening signup.` Re-evaluate before open signup.
+Do not release the new build with public password Auth enabled until this verification passes. Missing public configuration blocks those flows by design; do not work around it by disabling CAPTCHA.
 
 ### Production SMTP
 

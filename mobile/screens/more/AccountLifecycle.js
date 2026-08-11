@@ -52,21 +52,28 @@ export function AccountLifecycle({ auth }) {
 
   const handleDeleteArm = () => {
     setDeleteArmed(true);
-    setStatus('Tap "Confirm Delete Account" to permanently delete your cloud account and sign out. The training history on this device is kept.');
+    setStatus('Choose whether to keep or permanently wipe the training history on this device when deleting the cloud account.');
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = (wipeLocalData = false) => {
     Alert.alert(
       'Delete Account',
-      'This permanently deletes your cloud account and the cloud copy stored in it, and cannot be undone. The training history on this device is kept. Continue?',
+      wipeLocalData
+        ? 'This permanently deletes your cloud account, its cloud copy, and the training and health history on this device. This cannot be undone. Continue?'
+        : 'This permanently deletes your cloud account and the cloud copy stored in it, and cannot be undone. The training history on this device is kept. Continue?',
       [
         { text: 'Cancel', style: 'cancel', onPress: () => { setDeleteArmed(false); setStatus(''); } },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: () => run(async () => {
-            const result = await auth.deleteAccount();
-            if (result.ok) return { ok: true, message: 'Account deleted.' };
+            const result = await auth.deleteAccount(wipeLocalData ? { wipeLocalData: true } : undefined);
+            if (result.ok) {
+              return {
+                ok: true,
+                message: wipeLocalData ? 'Account deleted and device data wiped.' : 'Account deleted.',
+              };
+            }
             setDeleteArmed(false);
             return result;
           }),
@@ -83,7 +90,8 @@ export function AccountLifecycle({ auth }) {
         Export Account Data fetches what the server currently holds for your
         account — not what is on this device. It may differ from your local
         data if you have not recently synced. Deleting your account removes the
-        cloud copy only; the training history on this device is always kept.
+        cloud copy. By default, the training history on this device is kept;
+        the confirmed wipe option below removes it too.
       </Text>
 
       <Button
@@ -102,13 +110,22 @@ export function AccountLifecycle({ auth }) {
           accessibilityLabel="Delete account"
         />
       ) : (
-        <Button
-          title="Confirm Delete Account"
-          loadingTitle="Working…"
-          disabled={busy}
-          onPress={handleDeleteConfirm}
-          accessibilityLabel="Confirm delete account"
-        />
+        <>
+          <Button
+            title="Confirm Delete Account — Keep Device Data"
+            loadingTitle="Working…"
+            disabled={busy}
+            onPress={() => handleDeleteConfirm(false)}
+            accessibilityLabel="Confirm delete account and keep device data"
+          />
+          <Button
+            title="Confirm Delete & Wipe Device Data"
+            loadingTitle="Working…"
+            disabled={busy}
+            onPress={() => handleDeleteConfirm(true)}
+            accessibilityLabel="Confirm delete account and wipe device data"
+          />
+        </>
       )}
 
       {status ? (

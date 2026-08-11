@@ -19,7 +19,7 @@
 // the old per-user `kilo_sync_bootstrapped_<userId>` markers this module used
 // to own.
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureStorage as AsyncStorage } from './secureStorage';
 
 const LAST_SUCCESS_KEY = 'kilo_sync_last_success_at';
 

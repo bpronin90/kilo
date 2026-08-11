@@ -86,7 +86,7 @@ serve(async (req) => {
 
   // IP rate check (pre-auth, blocks hammering callers before JWT verification).
   const ip = clientIp(req)
-  if (!await rateLimitAllowed(rlAdmin, `export:ip:${ip}`, IP_MAX, IP_WINDOW_MS)) {
+  if (!await rateLimitAllowed(rlAdmin, `export:ip:${ip}`, IP_MAX, IP_WINDOW_MS, 'deny')) {
     return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
       status: 429,
       headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '600' },
@@ -121,7 +121,7 @@ serve(async (req) => {
   // failed export attempts refund the bucket so transient errors don't exhaust
   // the user's one-success-per-window allowance.
   const userKey = `export:user:${user.id}`
-  if (!await rateLimitAllowed(rlAdmin, userKey, USER_MAX, USER_WINDOW_MS)) {
+  if (!await rateLimitAllowed(rlAdmin, userKey, USER_MAX, USER_WINDOW_MS, 'deny')) {
     return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
       status: 429,
       headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '600' },

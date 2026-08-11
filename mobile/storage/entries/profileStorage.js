@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureStorage as AsyncStorage } from '../secureStorage';
 import { USER_PROFILE_KEY } from './keys';
 
 export async function loadUserProfile() {

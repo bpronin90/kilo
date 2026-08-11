@@ -1,0 +1,249 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+import { gcm } from '@noble/ciphers/aes';
+import {
+  bytesToHex,
+  bytesToUtf8,
+  hexToBytes,
+  utf8ToBytes,
+} from '@noble/ciphers/utils';
+
+const ENVELOPE_PREFIX = 'kilo.enc.v1:';
+const DEVICE_KEY_NAME = 'kilo.device-data-key.v1';
+const DEVICE_KEY_BYTES = 32;
+const NONCE_BYTES = 12;
+
+// Encryption failures are deliberately distinct from JSON/domain corruption.
+// Callers must never interpret an unreadable encrypted value as absent data.
+export class EncryptedStorageError extends Error {
+  constructor(key, cause) {
+    super(`Encrypted device data at "${key}" could not be read`);
+    this.name = 'EncryptedStorageError';
+    this.key = key;
+    if (cause !== undefined) this.cause = cause;
+  }
+}
+
+function loadSecureStore() {
+  try {
+    // eslint-disable-next-line global-require
+    return require('expo-secure-store');
+  } catch {
+    return null;
+  }
+}
+
+function loadCrypto() {
+  try {
+    // eslint-disable-next-line global-require
+    return require('expo-crypto');
+  } catch {
+    return null;
+  }
+}
+
+function secureStoreOptions(secureStore) {
+  const accessibility = secureStore?.WHEN_UNLOCKED_THIS_DEVICE_ONLY;
+  return accessibility == null ? {} : { keychainAccessible: accessibility };
+}
+
+// Factory is exported so the authenticated-encryption and migration contract
+// can be tested with deterministic native fakes. Production native storage
+// always takes the encrypted path; web keeps the browser's ordinary storage.
+export function createDeviceStorage({
+  backingStore = AsyncStorage,
+  secureStore = loadSecureStore(),
+  crypto = loadCrypto(),
+  platformOS = Platform.OS,
+  // Existing storage/domain tests intentionally keep using AsyncStorage's Jest
+  // mock. Dedicated security tests pass forceEncryption=true and exercise the
+  // exact native implementation with injected platform primitives.
+  forceEncryption = false,
+} = {}) {
+  const encryptValues = platformOS !== 'web'
+    && (forceEncryption || process.env.NODE_ENV !== 'test');
+  let keyPromise = null;
+  let operationTail = Promise.resolve();
+
+  function requireNativePrimitives() {
+    if (!secureStore?.getItemAsync || !secureStore?.setItemAsync || !secureStore?.deleteItemAsync) {
+      throw new Error('Platform secure storage is unavailable; device data persistence is disabled.');
+    }
+    if (!crypto?.getRandomBytesAsync) {
+      throw new Error('Platform cryptographic randomness is unavailable; device data persistence is disabled.');
+    }
+  }
+
+  async function deviceKey() {
+    requireNativePrimitives();
+    if (!keyPromise) {
+      keyPromise = (async () => {
+        const stored = await secureStore.getItemAsync(DEVICE_KEY_NAME);
+        if (stored != null) {
+          const parsed = hexToBytes(stored);
+          if (parsed.length !== DEVICE_KEY_BYTES) throw new Error('Stored device encryption key is invalid.');
+          return parsed;
+        }
+        const created = await crypto.getRandomBytesAsync(DEVICE_KEY_BYTES);
+        if (!(created instanceof Uint8Array) || created.length !== DEVICE_KEY_BYTES) {
+          throw new Error('Platform cryptographic randomness returned an invalid key.');
+        }
+        await secureStore.setItemAsync(
+          DEVICE_KEY_NAME,
+          bytesToHex(created),
+          secureStoreOptions(secureStore),
+        );
+        return created;
+      })().catch((error) => {
+        keyPromise = null;
+        throw error;
+      });
+    }
+    return keyPromise;
+  }
+
+  async function encrypt(key, value) {
+    const encryptionKey = await deviceKey();
+    const nonce = await crypto.getRandomBytesAsync(NONCE_BYTES);
+    if (!(nonce instanceof Uint8Array) || nonce.length !== NONCE_BYTES) {
+      throw new Error('Platform cryptographic randomness returned an invalid nonce.');
+    }
+    const ciphertext = gcm(encryptionKey, nonce, utf8ToBytes(key)).encrypt(utf8ToBytes(String(value)));
+    return `${ENVELOPE_PREFIX}${bytesToHex(nonce)}:${bytesToHex(ciphertext)}`;
+  }
+
+  async function decrypt(key, envelope) {
+    try {
+      const encoded = envelope.slice(ENVELOPE_PREFIX.length);
+      const parts = encoded.split(':');
+      if (parts.length !== 2 || parts[0].length !== NONCE_BYTES * 2 || parts[1].length < 32) {
+        throw new Error('Malformed encrypted envelope.');
+      }
+      const nonce = hexToBytes(parts[0]);
+      const ciphertext = hexToBytes(parts[1]);
+      const plaintext = gcm(await deviceKey(), nonce, utf8ToBytes(key)).decrypt(ciphertext);
+      return bytesToUtf8(plaintext);
+    } catch (error) {
+      throw new EncryptedStorageError(key, error);
+    }
+  }
+
+  // Serialize persistence operations so a lazy migration cannot overwrite a
+  // newer write, and an explicit wipe cannot race an autosave/sync write that
+  // would otherwise recreate sensitive data after the confirmation completes.
+  function withStorageLock(operation) {
+    const next = operationTail.catch(() => {}).then(operation);
+    operationTail = next;
+    return next;
+  }
+
+  async function getItemUnlocked(key) {
+    const raw = await backingStore.getItem(key);
+    if (raw == null || !encryptValues) return raw;
+    if (raw.startsWith(ENVELOPE_PREFIX)) return decrypt(key, raw);
+
+    // One-time, fail-closed plaintext migration. The original value is not
+    // removed first, so an encryption/write failure leaves the recoverable
+    // plaintext in place and propagates to the caller rather than pretending
+    // the key was empty.
+    const migrated = await encrypt(key, raw);
+    await backingStore.setItem(key, migrated);
+    return raw;
+  }
+
+  const storage = {
+    getItem(key) {
+      return withStorageLock(() => getItemUnlocked(key));
+    },
+    setItem(key, value) {
+      return withStorageLock(async () => {
+        const next = encryptValues ? await encrypt(key, value) : String(value);
+        await backingStore.setItem(key, next);
+      });
+    },
+    removeItem(key) {
+      return withStorageLock(() => backingStore.removeItem(key));
+    },
+    getAllKeys() {
+      return withStorageLock(() => backingStore.getAllKeys());
+    },
+    multiSet(pairs) {
+      return withStorageLock(async () => {
+        const encoded = [];
+        for (const [key, value] of pairs) {
+          // eslint-disable-next-line no-await-in-loop
+          encoded.push([key, encryptValues ? await encrypt(key, value) : String(value)]);
+        }
+        await backingStore.multiSet(encoded);
+      });
+    },
+    multiRemove(keys) {
+      // Removing encrypted blobs does not require the encryption key.
+      return withStorageLock(() => backingStore.multiRemove(keys));
+    },
+    clearDeviceKey() {
+      return withStorageLock(async () => {
+        if (!encryptValues) return;
+        requireNativePrimitives();
+        await secureStore.deleteItemAsync(DEVICE_KEY_NAME);
+        keyPromise = null;
+      });
+    },
+    wipeKiloData() {
+      return withStorageLock(async () => {
+        const keys = await backingStore.getAllKeys();
+        const kiloKeys = keys.filter((key) => key.startsWith('kilo_'));
+        if (kiloKeys.length > 0) await backingStore.multiRemove(kiloKeys);
+        if (encryptValues) {
+          requireNativePrimitives();
+          await secureStore.deleteItemAsync(DEVICE_KEY_NAME);
+          keyPromise = null;
+        }
+        const owner = encryptValues
+          ? await encrypt('kilo_local_data_owner', 'unclaimed')
+          : 'unclaimed';
+        await backingStore.setItem('kilo_local_data_owner', owner);
+      });
+    },
+    migrateKiloData() {
+      return withStorageLock(async () => {
+        if (!encryptValues) return { migrated: 0 };
+        const keys = await backingStore.getAllKeys();
+        const kiloKeys = keys.filter((key) => key.startsWith('kilo_'));
+        let migrated = 0;
+        for (const key of kiloKeys) {
+          // eslint-disable-next-line no-await-in-loop
+          const raw = await backingStore.getItem(key);
+          if (raw == null || raw.startsWith(ENVELOPE_PREFIX)) continue;
+          // Encrypt first and replace only after encryption succeeds. A failed
+          // migration leaves this and every not-yet-visited plaintext value
+          // recoverable for the next startup attempt.
+          // eslint-disable-next-line no-await-in-loop
+          const envelope = await encrypt(key, raw);
+          // eslint-disable-next-line no-await-in-loop
+          await backingStore.setItem(key, envelope);
+          migrated += 1;
+        }
+        return { migrated };
+      });
+    },
+  };
+
+  return storage;
+}
+
+export const secureStorage = createDeviceStorage();
+
+// Explicit destructive device-data path used only after a user confirmation.
+// Remove all Kilo values, cryptographically discard the old key, then create a
+// fresh encrypted ownership marker so the next account starts unclaimed.
+export async function wipeSensitiveDeviceData() {
+  await secureStorage.wipeKiloData();
+}
+
+export async function migrateSensitiveDeviceData() {
+  return secureStorage.migrateKiloData();
+}
+
+export const DEVICE_DATA_ENVELOPE_PREFIX = ENVELOPE_PREFIX;
+export const DEVICE_DATA_KEY_NAME = DEVICE_KEY_NAME;

@@ -19,6 +19,7 @@
     },
     "android": {
       "package": "com.benpronin.kilo",
+      "allowBackup": false,
       "blockedPermissions": [
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.READ_EXTERNAL_STORAGE",
@@ -41,9 +42,9 @@
     ],
     "updates": {
       "url": "https://u.expo.dev/60e052a9-629b-4e48-ae58-52642e951c9c",
-      "enabled": true,
+      "enabled": false,
       "fallbackToCacheTimeout": 0,
-      "checkAutomatically": "ON_LOAD"
+      "checkAutomatically": "NEVER"
     },
     "extra": {
       "eas": {

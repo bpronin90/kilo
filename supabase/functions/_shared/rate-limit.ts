@@ -21,16 +21,22 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.108.
 
 type RateLimitClient = SupabaseClient<any, any, any, any, any>
 
-// Fail-open policy: if the durable check itself errors (e.g. the throttle table
-// is briefly unreachable), admit the request rather than lock legitimate users
-// out of export/delete. This re-opens the bypass only during an infra outage,
-// which is acceptable for LOW-severity abuse throttling. The error is logged so
-// a sustained outage is visible.
+export type RateLimitFailurePolicy = 'allow' | 'deny'
+
+// The caller must choose an outage policy explicitly. Sensitive or destructive
+// endpoints should pass `deny`: an unavailable durable limiter then returns the
+// same rejection as an exhausted bucket. The policy is an argument rather than a
+// hidden default so a future endpoint cannot accidentally inherit fail-open.
+//
+// Logs deliberately contain no bucket or database message. Buckets embed raw IP
+// addresses or user UUIDs, and an upstream error may echo RPC arguments. The
+// bounded PostgREST error code is sufficient for operational aggregation.
 export async function rateLimitAllowed(
   admin: RateLimitClient,
   bucket: string,
   max: number,
   windowMs: number,
+  failurePolicy: RateLimitFailurePolicy,
 ): Promise<boolean> {
   const { data, error } = await admin.rpc('rate_limit_check', {
     p_bucket: bucket,
@@ -38,8 +44,11 @@ export async function rateLimitAllowed(
     p_window_ms: windowMs,
   })
   if (error) {
-    console.error(`rate_limit_check failed for ${bucket}: ${error.message}`)
-    return true // fail open (see note above)
+    console.error('rate_limit_check failed', {
+      failurePolicy,
+      code: typeof error.code === 'string' ? error.code : 'unknown',
+    })
+    return failurePolicy === 'allow'
   }
   return data === true
 }
@@ -53,7 +62,9 @@ export async function rateLimitRefund(
 ): Promise<void> {
   const { error } = await admin.rpc('rate_limit_refund', { p_bucket: bucket })
   if (error) {
-    console.error(`rate_limit_refund failed for ${bucket}: ${error.message}`)
+    console.error('rate_limit_refund failed', {
+      code: typeof error.code === 'string' ? error.code : 'unknown',
+    })
   }
 }
 

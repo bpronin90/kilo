@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureStorage as AsyncStorage } from '../secureStorage';
 
 // Thrown by readList when a key holds data that cannot be interpreted as the
 // documented list shape (malformed JSON or a non-array payload). It is distinct

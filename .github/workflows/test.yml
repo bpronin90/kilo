@@ -28,7 +28,7 @@ jobs:
           cache-dependency-path: mobile/package-lock.json
 
       - name: Test governance tooling
-        run: node --test scripts/review-disposition.test.mjs scripts/changelog-fragments.test.mjs
+        run: node --test scripts/review-disposition.test.mjs scripts/changelog-fragments.test.mjs scripts/run-pgtap-suite.test.mjs scripts/security-delivery.test.mjs
 
       - run: npm --prefix mobile ci
 
@@ -36,3 +36,22 @@ jobs:
 
       - name: Export and serve web smoke build
         run: npm --prefix mobile run smoke:web
+
+  database-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - uses: supabase/setup-cli@46f7f98c7f948ad727d22c1e67fab04c223a0520 # v3.0.0
+        with:
+          version: 2.109.0
+
+      - name: Start a disposable database and apply every migration
+        run: |
+          supabase start --exclude edge-runtime,gotrue,imgproxy,kong,logflare,mailpit,postgres-meta,postgrest,realtime,storage-api,studio,supavisor,vector
+          supabase db reset --local --no-seed
+
+      - name: Run every pgTAP security test without skips or aborts
+        run: node scripts/run-pgtap-suite.mjs

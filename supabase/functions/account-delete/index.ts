@@ -172,7 +172,7 @@ serve(async (req) => {
 
   // IP rate check (pre-auth, blocks hammering callers before JWT verification).
   const ip = clientIp(req)
-  if (!await rateLimitAllowed(rlAdmin, `delete:ip:${ip}`, IP_MAX, IP_WINDOW_MS)) {
+  if (!await rateLimitAllowed(rlAdmin, `delete:ip:${ip}`, IP_MAX, IP_WINDOW_MS, 'deny')) {
     return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
       status: 429,
       headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '3600' },
@@ -203,7 +203,7 @@ serve(async (req) => {
   }
 
   // Per-user rate check (post-auth).
-  if (!await rateLimitAllowed(rlAdmin, `delete:user:${user.id}`, USER_MAX, USER_WINDOW_MS)) {
+  if (!await rateLimitAllowed(rlAdmin, `delete:user:${user.id}`, USER_MAX, USER_WINDOW_MS, 'deny')) {
     return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
       status: 429,
       headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '3600' },

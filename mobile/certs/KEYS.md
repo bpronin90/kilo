@@ -1,9 +1,8 @@
-# Android Preview Testing
+# Native Build And Update Integrity
 
-The supported Android testing workflow is:
-
-1. **First install** (or after any native/config change): build and sideload a preview APK via EAS Build.
-2. **JS-only changes**: publish an OTA update to the `preview` channel — no reinstall required.
+Remote Expo Updates are disabled for preview and production until end-to-end
+code signing and external key custody are provisioned. The supported testing
+workflow is a replacement native build; do not publish an unsigned OTA update.
 
 ## When to rebuild the APK
 
@@ -12,6 +11,7 @@ A fresh `eas build --platform android --profile preview` is required when:
 - Native dependencies change (new packages with native modules, version bumps that include native changes)
 - `app.json` config changes (permissions, plugins, splash, icon, `runtimeVersion`)
 - `eas.json` build profile changes
+- adding or changing the update-signing certificate or update-integrity posture
 
 ## Build a preview APK
 
@@ -28,29 +28,37 @@ eas build --platform android --profile preview
 EAS builds the APK in the cloud and provides a download URL when complete.
 Install the resulting `.apk` on a device via `adb install` or direct file transfer.
 
-## Publish a JS-only OTA update (no reinstall needed)
+Issue #796 advances preview to runtime `preview-5`, disables Expo Updates in
+native config, removes EAS channel bindings, and adds native dependencies.
+Replace every preview-4 install with this fresh APK. Previously installed
+preview-4 binaries cannot be retrofitted to reject unsigned updates, so do not
+publish another bundle for that runtime.
 
-After the preview APK is installed on device:
+## Re-enable OTA only with code signing
 
-```sh
-npm --prefix mobile run update:android:preview
-```
+The repository does not contain a signing private key. An authorized release
+operator must complete all of these steps before OTA publication returns:
 
-Or directly:
+1. Confirm the Expo account plan supports end-to-end EAS Update code signing.
+2. Generate the key pair in a directory outside this repository. Store and back
+   up the private key in the approved external secret manager or KMS; never
+   commit it, upload it as a public build artifact, or paste it into an issue.
+3. Commit only the public verification certificate and configure
+   `updates.codeSigningCertificate` plus `updates.codeSigningMetadata`.
+4. Advance the preview/production runtime boundary and create replacement native
+   builds so the certificate is embedded in every accepting client.
+5. Prove the replacement build rejects an unsigned manifest, then publish with
+   the external private key path and verify a valid signed update is accepted.
 
-```sh
-eas update --platform android --channel preview
-```
+Until every step passes, keep `updates.enabled: false`, keep build profiles
+unbound from update channels, and ship changes only in new APK/AAB/IPA builds.
 
-The installed preview build checks for updates on launch (`checkAutomatically: ON_LOAD`) and applies any published update matching its manual preview `runtimeVersion`. `PREVIEW_RUNTIME` in `mobile/app.config.js` is independent of `version` in `app.json`; it must advance in the same PR as a native module, Expo SDK/native dependency, or native config/plugin change. A build on an older runtime must be replaced with a fresh preview APK—an OTA cannot add its missing native code.
-
-## No OTA code signing
-
-Signed OTA updates are not in use. Do not add `codeSigningCertificate`, `codeSigningMetadata`, or `--private-key-path` — unsigned `eas update` is the correct path for this account.
-
-## Manual validation flow
+## Manual validation while OTA is disabled
 
 1. Build and install a preview APK (`build:android:preview`).
-2. Make a JS-only change (e.g. update a label or color).
-3. Publish the update (`update:android:preview`).
-4. Relaunch the app on the device — the change should appear without reinstalling.
+2. Confirm the About screen reports the embedded bundle and a manual update
+   check cannot download a remote bundle.
+3. Confirm an update previously published to the old preview channel is not
+   offered to the new build.
+4. Make a JS-only test change and confirm it appears only after installing a new
+   native build, not after relaunching the old build.

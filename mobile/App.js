@@ -42,6 +42,7 @@ import { reloadRecoveryBlocks } from './hooks/entries/recoveryBlockHooks';
 import { useAuthSession } from './hooks/useAuthSession';
 import { parseWeightEntry, buildSessionsFromNote } from './lib/parser';
 import { PRODUCT_MEASUREMENT_EVENTS, recordProductMeasurement } from './lib/productMeasurement';
+import { migrateSensitiveDeviceData } from './storage/secureStorage';
 import { makeWeightEntry } from './lib/data';
 import { reconcileWorkoutReminder, installForegroundHandler } from './lib/reminderScheduler';
 import { buildCloudExport, importBackup, getStorageMode, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed } from './storage/entries';
@@ -250,6 +251,15 @@ function AppShell() {
   useEffect(() => {
     installForegroundHandler().catch((e) => {
       console.error('[App] Failed to install foreground handler:', e);
+    });
+  }, []);
+
+  // Queue the one-time legacy plaintext migration before domain hooks below
+  // begin their own storage reads. The storage boundary serializes the full
+  // scan with reads/writes, and every read retains a lazy migration fallback.
+  useEffect(() => {
+    migrateSensitiveDeviceData().catch((e) => {
+      console.error('[App] Failed to migrate protected device data:', e);
     });
   }, []);
 
