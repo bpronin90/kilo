@@ -1015,6 +1015,25 @@ const expandRoutineManagement = (root) => {
   render.act(() => { header.props.onPress(); });
 };
 
+// The active Recovery card's rarer controls are collapsed by default (#789):
+// `Unlink Week {N}`, `Complete recovery block`, and the analytics-inclusion
+// switch render only once the "Manage recovery block" disclosure is expanded.
+// Tests that drive those controls open it first. The trigger is never disabled,
+// so this works in locked states too — which is the point of the disclosure.
+const expandManageRecovery = (root) => {
+  const trigger = root.findAll(
+    n => n.props
+      && typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.startsWith('Manage recovery block')
+      && typeof n.props.onPress === 'function'
+  )[0];
+  if (!trigger) return null;
+  if (!(trigger.props.accessibilityState && trigger.props.accessibilityState.expanded)) {
+    render.act(() => { trigger.props.onPress(); });
+  }
+  return trigger;
+};
+
 // Like findPressableByText, but walks up to the nearest accessibilityRole=button
 // node instead of the nearest onPress. A disabled shared Button nulls its
 // onPress, so findPressableByText would skip past it; this still finds it and
@@ -5511,6 +5530,7 @@ describe('Recovery Block start flow', () => {
     // The active block's own card renders instead; starting a second block is
     // not offered anywhere — not even inside expanded routine management —
     // which is exactly what recoveryBlockingMessage would have refused.
+    expandManageRecovery(root);
     expect(findPressableByText(root, 'Complete recovery block')).toBeTruthy();
     expandRoutineManagement(root);
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Start recovery block').length).toBe(0);
@@ -6436,6 +6456,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
+    expandManageRecovery(root);
     render.act(() => { findPressableByText(root, 'Complete recovery block').props.onPress(); });
     expect(alertSpy).toHaveBeenCalledWith(
       'Complete recovery block?',
@@ -6461,6 +6482,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
+    expandManageRecovery(root);
     render.act(() => { findPressableByText(root, 'Complete recovery block').props.onPress(); });
     const buttons = alertSpy.mock.calls[0][2];
     await render.act(async () => { await buttons.find(b => b.text === 'Complete').onPress(); });
@@ -6477,7 +6499,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     expect(completeWeekSpy).not.toHaveBeenCalled();
   });
 
-  test('only the latest week offers Unlink; earlier weeks do not', () => {
+  test('the disclosed Unlink targets the current week only; earlier weeks have no Unlink (#789)', () => {
     const weeks = [
       { id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null },
       { id: 'rw2', block_id: 'rb1', note_id: week2Note.id, week_number: 2, completed_at: null, deleted_at: null },
@@ -6487,6 +6509,12 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
+    // Collapsed by default, Unlink is not offered at all (#789).
+    expect(root.findAll(n => n.props
+      && typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.startsWith('Unlink Week')).length).toBe(0);
+
+    expandManageRecovery(root);
     const unlinkButtons = root.findAll(n => n.props
       && typeof n.props.accessibilityLabel === 'string'
       && n.props.accessibilityLabel.startsWith('Unlink Week')
@@ -6504,6 +6532,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
+    expandManageRecovery(root);
     const unlinkBtn = root.findAll(n => n.props && n.props.accessibilityLabel === 'Unlink Week 1')[0];
     render.act(() => { unlinkBtn.props.onPress(); });
     const buttons = alertSpy.mock.calls[0][2];
@@ -6594,9 +6623,11 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     expect(root.findAll(n => n.type === 'Text' && typeof n.props.children === 'string' && n.props.children.startsWith('Completed ')).length).toBe(0);
   });
 
-  test('Unlink remains reachable as a standalone affordance when the latest week is completed and no next week exists', () => {
+  test('Unlink remains reachable, with its week context, when the latest week is completed and no next week exists', () => {
     // The completed latest-week row is hidden, but Unlink must still be
     // accessible so the user can back out before adding the next week (#729).
+    // It now lives inside `Manage recovery block` and names the concrete
+    // current week rather than floating in the action row (#789).
     const weeks = [
       { id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null },
     ];
@@ -6614,7 +6645,9 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     );
     expect(weekRows.length).toBe(0);
 
-    // A standalone Unlink affordance is still present.
+    // The Unlink affordance is still present once the disclosure is opened,
+    // and it names the week it targets.
+    expandManageRecovery(root);
     const unlinkBtn = root.findAll(n =>
       n.props && n.props.accessibilityLabel === 'Unlink Week 1' && typeof n.props.onPress === 'function'
     );
@@ -6810,7 +6843,25 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     expect(retry.props.accessibilityLabel).toBe('Retry recovery');
     // Conflicting lifecycle actions are disabled while the operation is pending.
     expect(findPressableByText(root, 'Complete week').props.disabled).toBe(true);
-    expect(findPressableByText(root, 'Complete recovery block').props.disabled).toBe(true);
+
+    // Blocked never means hidden (#789): the `Manage recovery block` trigger is
+    // NEVER disabled, so a locked user can still open it and see which specific
+    // control is unavailable — and, via the banner above, why. Disabling the
+    // trigger instead would strand Unlink, Complete recovery block, and the
+    // inclusion switch behind a container that cannot be opened.
+    const trigger = expandManageRecovery(root);
+    expect(trigger.props.disabled).toBeFalsy();
+    expect(trigger.props.accessibilityState.disabled).toBeUndefined();
+    expect(trigger.props.accessibilityState.expanded).toBe(true);
+
+    // Each control inside keeps its own per-control gating, announced on the
+    // control itself rather than on the container.
+    const unlink = root.findAll(n => n.props && n.props.accessibilityLabel === 'Unlink Week 1')[0];
+    expect(unlink.props.disabled).toBe(true);
+    expect(unlink.props.accessibilityState.disabled).toBe(true);
+    const completeBlock = findPressableByText(root, 'Complete recovery block');
+    expect(completeBlock.props.disabled).toBe(true);
+    expect(completeBlock.props.accessibilityState.disabled).toBe(true);
   });
 
   test('a terminal recovery cancellation explains itself but locks nothing and offers no retry', async () => {
@@ -6837,6 +6888,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     expect(notice).toBeTruthy();
     expect(findPressableByText(root, 'Retry recovery')).toBeNull();
     expect(findPressableByText(root, 'Complete week').props.disabled).toBe(false);
+    expandManageRecovery(root);
     expect(findPressableByText(root, 'Complete recovery block').props.disabled).toBe(false);
   });
 
@@ -6988,6 +7040,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
+    expandManageRecovery(root);
     render.act(() => { findPressableByText(root, 'Complete recovery block').props.onPress(); });
     const buttons = alertSpy.mock.calls[0][2];
     let completePromise;
@@ -7098,6 +7151,12 @@ describe('Recovery inclusion preference', () => {
   const renderScreen = async () => {
     let component;
     await render.act(async () => { component = render.create(<ControlledLogScreen />); });
+    // The inclusion control is still on Log and still the only way to set this
+    // preference while a block is active, but it is no longer in the default
+    // view: it lives inside `Manage recovery block` (#789). Every assertion in
+    // this suite is about the control's behavior, so open the disclosure once
+    // here rather than restating the interaction in each test.
+    expandManageRecovery(component.root);
     return component;
   };
 
@@ -7170,6 +7229,7 @@ describe('Recovery inclusion preference', () => {
     // Default off: the linked note is out of ordinary analytics.
     expect(seen[seen.length - 1].isNoteExcluded(weekNote.id)).toBe(true);
 
+    expandManageRecovery(component.root);
     const [control] = switchesFor(component.root);
     await render.act(async () => { await control.props.onValueChange(true); });
 
@@ -8419,9 +8479,11 @@ describe('LogRecoverySection — authoritative Recovery state (#716)', () => {
     return component;
   };
 
+  // Flattens array children too: the baseline is now an interpolated caption
+  // (`Baseline: {title}`), which renders as a children array, not one string.
   const texts = (component) =>
     component.root.findAll(n => typeof n.type === 'string' && n.props.children)
-      .map(n => n.props.children)
+      .map(n => (Array.isArray(n.props.children) ? n.props.children.join('') : n.props.children))
       .filter(c => typeof c === 'string');
 
   const retryButton = (component) =>
@@ -8463,7 +8525,7 @@ describe('LogRecoverySection — authoritative Recovery state (#716)', () => {
     });
 
     const rendered = texts(component);
-    expect(rendered).toContain('Push Day');
+    expect(rendered).toContain('Baseline: Push Day');
     expect(rendered).toContain(RECOVERY_STALE_MESSAGE);
     expect(retryButton(component)).toBeTruthy();
   });
@@ -9226,6 +9288,7 @@ describe('Recovery weeks read their own notes (#775)', () => {
       const onUnlinkWeek = jest.fn().mockResolvedValue({ ok: true });
       const root = renderSection({ weeks: [week(weekOverrides)], notes, onUnlinkWeek });
 
+      expandManageRecovery(root);
       const unlink = root.findAll(
         n => n.props && n.props.accessibilityLabel === 'Unlink Week 1' && typeof n.props.onPress === 'function'
       )[0];
@@ -9247,6 +9310,7 @@ describe('Recovery weeks read their own notes (#775)', () => {
   test('a linked note that exists keeps the full unlink confirmation', () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     const root = renderSection({ onUnlinkWeek: jest.fn() });
+    expandManageRecovery(root);
     const unlink = root.findAll(
       n => n.props && n.props.accessibilityLabel === 'Unlink Week 1' && typeof n.props.onPress === 'function'
     )[0];
@@ -9256,6 +9320,224 @@ describe('Recovery weeks read their own notes (#775)', () => {
       '"Recovery Week Note" will be removed from this recovery block. The note itself is kept and stays editable.'
     );
     alertSpy.mockRestore();
+  });
+});
+
+// -- Calm active Recovery card (#789) ---------------------------------------
+//
+// R4b changes only hierarchy: which fact the card states first, how many
+// lifecycle actions are visible at once, and which section owns each control.
+// No handler, confirm copy, gate, or calculation moves. These tests drive
+// LogRecoverySection directly so the assertions are about the card's own
+// structure rather than about LogScreen's wiring.
+describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
+  const { LogRecoverySection, RECOVERY_INCLUSION_LABEL } = require('../components/LogRecoverySection');
+  const { RECOVERY_STALE_MESSAGE } = require('../hooks/entries/recoveryBlockHooks');
+
+  const BLOCK = {
+    id: 'rb789', baseline_note_id: 'baseline', baseline_note_title: 'Push/Pull/Legs',
+    started_at: '2026-05-01T00:00:00.000Z', completed_at: null, deleted_at: null,
+  };
+  const WEEK_NOTE = {
+    id: 'weeknote', title: 'Recovery Week Note',
+    raw_text: 'Monday\n+Lifting\n-Overhead Press\n65 5,5,5',
+  };
+  const week = (overrides = {}) => ({
+    id: 'rw3', block_id: 'rb789', note_id: 'weeknote', week_number: 3,
+    completed_at: null, deleted_at: null, ...overrides,
+  });
+
+  const renderSection = (props = {}) => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <LogRecoverySection blocks={[BLOCK]} weeks={[week()]} notes={[WEEK_NOTE]} {...props} />
+      );
+    });
+    return component.root;
+  };
+
+  const allText = (root) => root.findAll(n => n.type === 'Text').map(n => {
+    const c = n.props.children;
+    return Array.isArray(c) ? c.join('') : String(c ?? '');
+  });
+  const byLabel = (root, label) => root.findAll(n => n.props && n.props.accessibilityLabel === label)[0];
+  const trigger = (root) => root.findAll(
+    n => n.props && typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.startsWith('Manage recovery block')
+      && typeof n.props.onPress === 'function'
+  )[0];
+  const inclusionSwitch = (root) => root.findAll(
+    n => n.props && typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.startsWith(RECOVERY_INCLUSION_LABEL) && n.props.onValueChange
+  )[0];
+
+  test('an open week leads with the state fact and offers exactly one lifecycle action', () => {
+    const root = renderSection({ onCompleteWeek: jest.fn(), onOpenAddWeek: jest.fn() });
+    const texts = allText(root);
+
+    // The headline is the single fact that matters while logging, and the
+    // baseline survives as one de-emphasized caption rather than two rows.
+    expect(texts).toContain('Week 3 in progress');
+    expect(texts).toContain('Baseline: Push/Pull/Legs');
+    expect(texts).not.toContain('Baseline routine');
+
+    // Exactly one lifecycle action is visible by default.
+    expect(byLabel(root, 'Complete week')).toBeTruthy();
+    expect(byLabel(root, 'Add next recovery week')).toBeUndefined();
+    expect(byLabel(root, 'Complete recovery block')).toBeUndefined();
+    expect(byLabel(root, 'Unlink Week 3')).toBeUndefined();
+    expect(inclusionSwitch(root)).toBeUndefined();
+  });
+
+  test('a just-completed week says so and swaps the one primary action to Add week', () => {
+    const root = renderSection({
+      weeks: [week({ completed_at: '2026-05-22T00:00:00.000Z' })],
+      onOpenAddWeek: jest.fn(),
+    });
+
+    expect(allText(root)).toContain('Week 3 complete — add the next week');
+    expect(byLabel(root, 'Add next recovery week')).toBeTruthy();
+    expect(byLabel(root, 'Complete week')).toBeUndefined();
+  });
+
+  test('a block whose weeks are all unlinked still states an honest headline', () => {
+    const root = renderSection({ weeks: [], onOpenAddWeek: jest.fn() });
+    expect(allText(root)).toContain('No recovery week yet — add a week');
+    expect(byLabel(root, 'Add next recovery week')).toBeTruthy();
+  });
+
+  test('Unlink has exactly one owner: the disclosure, never the week row', () => {
+    const root = renderSection({ onUnlinkWeek: jest.fn() });
+
+    // The row-level Unlink is gone outright -- not merely relocated alongside a
+    // second copy. The row itself still reads its note.
+    expect(byLabel(root, 'Unlink Week 3')).toBeUndefined();
+    expect(byLabel(root, 'View Recovery Week Note, Recovery Week 3')).toBeTruthy();
+
+    render.act(() => { trigger(root).props.onPress(); });
+    const unlinks = root.findAll(n => n.props
+      && typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.startsWith('Unlink Week')
+      && typeof n.props.onPress === 'function');
+    expect(unlinks).toHaveLength(1);
+    expect(unlinks[0].props.accessibilityLabel).toBe('Unlink Week 3');
+  });
+
+  test('the disclosure trigger announces expanded state and reveals all three rare controls', () => {
+    const root = renderSection({ onUnlinkWeek: jest.fn(), onCompleteBlock: jest.fn() });
+    const control = trigger(root);
+
+    // Named after what it discloses, including the block it belongs to.
+    expect(control.props.accessibilityLabel).toBe('Manage recovery block: Push/Pull/Legs');
+    expect(control.props.accessibilityRole).toBe('button');
+    expect(control.props.accessibilityState).toEqual({ expanded: false });
+
+    render.act(() => { control.props.onPress(); });
+    expect(trigger(root).props.accessibilityState).toEqual({ expanded: true });
+    expect(byLabel(root, 'Unlink Week 3')).toBeTruthy();
+    expect(byLabel(root, 'Complete recovery block')).toBeTruthy();
+    expect(inclusionSwitch(root)).toBeTruthy();
+
+    // And it collapses again.
+    render.act(() => { trigger(root).props.onPress(); });
+    expect(trigger(root).props.accessibilityState).toEqual({ expanded: false });
+    expect(byLabel(root, 'Complete recovery block')).toBeUndefined();
+  });
+
+  test('locked mutations disable each control individually and never the disclosure itself', () => {
+    // The corrected #780 blocked-mutation contract: disabling the trigger would
+    // strand every disclosed control behind a container that cannot be opened.
+    const root = renderSection({
+      mutationsAllowed: false,
+      onCompleteWeek: jest.fn(),
+      onUnlinkWeek: jest.fn(),
+      onCompleteBlock: jest.fn(),
+    });
+
+    const control = trigger(root);
+    expect(control.props.disabled).toBeFalsy();
+    expect(control.props.accessibilityState.disabled).toBeUndefined();
+
+    expect(byLabel(root, 'Complete week').props.accessibilityState.disabled).toBe(true);
+
+    render.act(() => { control.props.onPress(); });
+    expect(trigger(root).props.accessibilityState).toEqual({ expanded: true });
+    expect(byLabel(root, 'Unlink Week 3').props.accessibilityState.disabled).toBe(true);
+    expect(byLabel(root, 'Complete recovery block').props.accessibilityState.disabled).toBe(true);
+    expect(inclusionSwitch(root).props.accessibilityState.disabled).toBe(true);
+  });
+
+  test('banners stay outside the disclosure so they are announced without expanding anything', () => {
+    const root = renderSection({ stateStale: true, onRetryRecovery: jest.fn() });
+
+    expect(allText(root)).toContain(RECOVERY_STALE_MESSAGE);
+    expect(byLabel(root, 'Retry recovery')).toBeTruthy();
+    // Still collapsed: reading the notice never required opening it.
+    expect(trigger(root).props.accessibilityState).toEqual({ expanded: false });
+  });
+
+  // #792 review (P2): this component stays mounted for a block's whole
+  // lifetime, and completing a block only makes it render no active card — it
+  // does not unmount. A boolean `expanded` would survive that gap and hand the
+  // NEXT block a disclosure that is already open, exposing Unlink, block
+  // completion, and the inclusion switch by default. The state is keyed by
+  // block id so any block change reads as collapsed.
+  test('a new active block starts collapsed even if the previous one was left expanded', () => {
+    const NEXT_BLOCK = {
+      ...BLOCK, id: 'rb789next', baseline_note_title: 'Upper/Lower',
+      started_at: '2026-09-01T00:00:00.000Z',
+    };
+    const nextWeek = { ...week(), id: 'rw1next', block_id: NEXT_BLOCK.id, week_number: 1 };
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <LogRecoverySection
+          blocks={[BLOCK]} weeks={[week()]} notes={[WEEK_NOTE]}
+          onUnlinkWeek={jest.fn()} onCompleteBlock={jest.fn()}
+        />
+      );
+    });
+    const root = component.root;
+
+    render.act(() => { trigger(root).props.onPress(); });
+    expect(trigger(root).props.accessibilityState).toEqual({ expanded: true });
+    expect(byLabel(root, 'Unlink Week 3')).toBeTruthy();
+
+    // The block is completed: the same mounted component now has no active
+    // card at all. Then a second block is started without leaving the tab.
+    render.act(() => {
+      component.update(
+        <LogRecoverySection
+          blocks={[{ ...BLOCK, completed_at: '2026-08-01T00:00:00.000Z' }]} weeks={[week()]} notes={[WEEK_NOTE]}
+          onUnlinkWeek={jest.fn()} onCompleteBlock={jest.fn()}
+        />
+      );
+    });
+    expect(component.toJSON()).toBeNull();
+
+    render.act(() => {
+      component.update(
+        <LogRecoverySection
+          blocks={[{ ...BLOCK, completed_at: '2026-08-01T00:00:00.000Z' }, NEXT_BLOCK]}
+          weeks={[nextWeek]} notes={[WEEK_NOTE]}
+          onUnlinkWeek={jest.fn()} onCompleteBlock={jest.fn()}
+        />
+      );
+    });
+
+    // The new block owns its own disclosure state, and it is closed.
+    expect(allText(root)).toContain('Week 1 in progress');
+    expect(trigger(root).props.accessibilityLabel).toBe('Manage recovery block: Upper/Lower');
+    expect(trigger(root).props.accessibilityState).toEqual({ expanded: false });
+    expect(byLabel(root, 'Unlink Week 1')).toBeUndefined();
+    expect(byLabel(root, 'Complete recovery block')).toBeUndefined();
+    expect(inclusionSwitch(root)).toBeUndefined();
+
+    // And it still opens normally, now scoped to the new block.
+    render.act(() => { trigger(root).props.onPress(); });
+    expect(byLabel(root, 'Unlink Week 1')).toBeTruthy();
   });
 });
 
