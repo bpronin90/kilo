@@ -246,6 +246,13 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   boundary. It encrypts every `kilo_` AsyncStorage value with AES-256-GCM and a
   device key held in SecureStore, authenticates each storage key as associated
   data, and serializes migration, read/write, and confirmed wipe operations.
+  A successful wipe advances an app-shell generation that remounts every
+  always-mounted tab, discarding hydrated domain state and unsaved health-data
+  input before success is reported. If a post-sign-out or post-account-delete
+  wipe fails, Account exposes a standalone signed-out retry that does not
+  require the deleted/revoked cloud identity. Storage mutations capture a
+  generation when queued, so an autosave waiting behind a wipe cannot recreate
+  the discarded data afterward.
   Startup-wide plus lazy migration encrypt legacy plaintext before replacing it;
   a failed migration leaves the recoverable plaintext in place and fails closed.
   Web retains browser storage semantics, where client-side key storage would not

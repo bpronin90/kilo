@@ -79,10 +79,10 @@ function makeMockAuth(overrides = {}) {
 }
 
 // Render the hook and capture its latest return value.
-function renderAuthHook() {
+function renderAuthHook(options) {
   const ref = { current: null };
   function Probe() {
-    ref.current = useAuthSession();
+    ref.current = useAuthSession(options);
     return null;
   }
   let tree;
@@ -460,13 +460,39 @@ describe('useAuthSession', () => {
   });
 
   test('confirmed sign out wipes device data after the auth session is revoked', async () => {
-    const { ref } = renderAuthHook();
+    const onDeviceDataWiped = jest.fn();
+    const { ref } = renderAuthHook({ onDeviceDataWiped });
     await flush();
     let result;
     await act(async () => { result = await ref.current.signOut({ wipeLocalData: true }); });
     expect(result.ok).toBe(true);
     expect(mockAuth.signOut).toHaveBeenCalledTimes(1);
     expect(mockWipeSensitiveDeviceData).toHaveBeenCalledTimes(1);
+    expect(onDeviceDataWiped).toHaveBeenCalledTimes(1);
+  });
+
+  test('failed sign-out wipe remains retryable without an auth session', async () => {
+    const onDeviceDataWiped = jest.fn();
+    mockWipeSensitiveDeviceData.mockRejectedValueOnce(new Error('storage unavailable'));
+    const { ref } = renderAuthHook({ onDeviceDataWiped });
+    await flush();
+
+    let firstResult;
+    await act(async () => { firstResult = await ref.current.signOut({ wipeLocalData: true }); });
+    expect(firstResult).toEqual({
+      ok: false,
+      error: 'Signed out, but device data could not be wiped. Try the wipe again before sharing this device.',
+    });
+    expect(ref.current.signedIn).toBe(false);
+    expect(ref.current.deviceWipeRequired).toBe(true);
+    expect(typeof ref.current.wipeDeviceData).toBe('function');
+    expect(onDeviceDataWiped).not.toHaveBeenCalled();
+
+    let retryResult;
+    await act(async () => { retryResult = await ref.current.wipeDeviceData(); });
+    expect(retryResult).toEqual({ ok: true });
+    expect(ref.current.deviceWipeRequired).toBe(false);
+    expect(onDeviceDataWiped).toHaveBeenCalledTimes(1);
   });
 
   test('confirmed account deletion wipes device data after server deletion', async () => {
@@ -484,6 +510,33 @@ describe('useAuthSession', () => {
       expect(result.ok).toBe(true);
       expect(mockAuth.signOut).toHaveBeenCalledTimes(1);
       expect(mockWipeSensitiveDeviceData).toHaveBeenCalledTimes(1);
+    } finally {
+      global.fetch = previousFetch;
+    }
+  });
+
+  test('failed post-deletion wipe exposes the signed-out local retry path', async () => {
+    const previousFetch = global.fetch;
+    const onDeviceDataWiped = jest.fn();
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+    mockAuth.getSession.mockResolvedValue({
+      data: { session: { access_token: 'jwt', user: { id: 'user-1' } } },
+      error: null,
+    });
+    mockWipeSensitiveDeviceData.mockRejectedValueOnce(new Error('storage unavailable'));
+    try {
+      const { ref } = renderAuthHook({ onDeviceDataWiped });
+      await flush();
+      let result;
+      await act(async () => { result = await ref.current.deleteAccount({ wipeLocalData: true }); });
+      expect(result).toEqual({
+        ok: false,
+        error: 'Account deleted, but device data could not be wiped. Try the wipe again before sharing this device.',
+      });
+      expect(ref.current.signedIn).toBe(false);
+      expect(ref.current.deviceWipeRequired).toBe(true);
+      expect(typeof ref.current.wipeDeviceData).toBe('function');
+      expect(onDeviceDataWiped).not.toHaveBeenCalled();
     } finally {
       global.fetch = previousFetch;
     }

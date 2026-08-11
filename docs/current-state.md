@@ -1262,7 +1262,10 @@ health/training `kilo_` values are encrypted before reaching AsyncStorage, while
 the device key is protected by SecureStore and excluded from Android backup.
 Startup-wide and lazy migration preserve legacy plaintext unless its encrypted
 replacement is written successfully, and confirmed account/sign-out actions can
-wipe device history while the default remains to keep it. Web retains browser
+wipe device history while the default remains to keep it. A completed wipe
+remounts the stateful app shell so hydrated health data and draft inputs are
+discarded immediately; signed-out Account also keeps an authentication-independent
+wipe action available for recovery after a storage failure. Web retains browser
 storage semantics. As of `0.70.0` the backend foundation landed on `main` — the
 note-first `kilo` Supabase schema and RLS (#316), the auth/session client (#317), and the
 storage-seam cloud adapter with local mode as the default (#318). The `kilo`

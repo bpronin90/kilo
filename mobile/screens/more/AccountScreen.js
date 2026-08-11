@@ -105,6 +105,23 @@ export function AccountScreen({ onBack, auth }) {
     );
   };
 
+  const handleDeviceWipe = () => {
+    Alert.alert(
+      'Wipe Device Data',
+      'This permanently removes the training and health history stored on this device. It does not require a cloud account and cannot be undone. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Wipe Device Data',
+          style: 'destructive',
+          onPress: () => run(() => auth.wipeDeviceData().then((result) => (
+            result.ok ? { ok: true, message: 'Device data wiped.' } : result
+          ))),
+        },
+      ],
+    );
+  };
+
   const handleGitHubSignIn = async () => {
     if (Platform.OS !== 'web') return;
     setBusy(true);
@@ -202,6 +219,12 @@ export function AccountScreen({ onBack, auth }) {
             Cloud accounts are not configured in this build. The app continues to
             work fully offline with your local data.
           </Text>
+          <Button
+            title="Wipe Device Data"
+            disabled={busy}
+            onPress={handleDeviceWipe}
+            accessibilityLabel="Wipe device data without an account"
+          />
           <LegalLinks />
         </View>
       ) : auth.signedIn ? (
@@ -247,6 +270,17 @@ export function AccountScreen({ onBack, auth }) {
             on another device. Signing in by itself does not change or erase your
             local data.
           </Text>
+          {auth.deviceWipeRequired ? (
+            <Text style={styles.accountError} accessibilityLabel="Device wipe required">
+              Your account session ended, but device data could not be wiped. Retry before sharing this device.
+            </Text>
+          ) : null}
+          <Button
+            title={auth.deviceWipeRequired ? 'Retry Device Data Wipe' : 'Wipe Device Data'}
+            disabled={busy}
+            onPress={handleDeviceWipe}
+            accessibilityLabel="Wipe device data while signed out"
+          />
           <TextInput
             style={inputStyle}
             placeholder="Email"
@@ -339,6 +373,11 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.text,
     lineHeight: 22,
     marginBottom: 12,
+  },
+  accountError: {
+    fontSize: 14,
+    color: colors.error,
+    lineHeight: 20,
   },
   accountStatus: {
     fontSize: 14,

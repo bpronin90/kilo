@@ -147,4 +147,16 @@ describe('encrypted native device persistence', () => {
     await expect(storage.getItem('kilo_local_data_owner')).resolves.toBe('unclaimed');
     expect(secureValues.get(DEVICE_DATA_KEY_NAME)).not.toBe(oldKey);
   });
+
+  test('drops a stale autosave queued behind a confirmed wipe', async () => {
+    const { storage, backingStore } = makeStorage();
+    await storage.setItem('kilo_workout_notes', 'before wipe');
+
+    const wipe = storage.wipeKiloData();
+    const staleAutosave = storage.setItem('kilo_workout_notes', 'stale mounted value');
+    await Promise.all([wipe, staleAutosave]);
+
+    expect(backingStore.values.has('kilo_workout_notes')).toBe(false);
+    await expect(storage.getItem('kilo_local_data_owner')).resolves.toBe('unclaimed');
+  });
 });

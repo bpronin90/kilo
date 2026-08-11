@@ -101,7 +101,7 @@ function consumeRecoveryPending() {
   return Date.now() - ts <= RECOVERY_PENDING_TTL_MS;
 }
 
-export function useAuthSession() {
+export function useAuthSession({ onDeviceDataWiped } = {}) {
   const configured = hasSupabaseConfig();
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
@@ -116,6 +116,10 @@ export function useAuthSession() {
   // Readable failure from a recovery-link callback that did not establish a
   // session (expired or already-used link). Cleared by clearPasswordRecovery.
   const [recoveryError, setRecoveryError] = useState('');
+  // If a post-sign-out/account-delete wipe fails, the account may no longer be
+  // usable. Keep recovery state on this auth-independent hook surface so the
+  // signed-out Account screen can explain the condition and retry locally.
+  const [deviceWipeRequired, setDeviceWipeRequired] = useState(false);
   const mountedRef = useRef(true);
   const usedCaptchaTokensRef = useRef(new Set());
 
@@ -231,6 +235,22 @@ export function useAuthSession() {
     return { ok: true, session: data?.session || null };
   }, [claimCaptchaToken, requireClient]);
 
+  const wipeDeviceData = useCallback(async () => {
+    try {
+      await wipeSensitiveDeviceData();
+    } catch {
+      if (mountedRef.current) setDeviceWipeRequired(true);
+      return { ok: false, error: 'Device data could not be wiped. Try again before sharing this device.' };
+    }
+
+    if (mountedRef.current) setDeviceWipeRequired(false);
+    // The parent remount happens only after persistence and encryption-key
+    // deletion complete. It clears every mounted domain hook, screen cache,
+    // and unsaved health-data input before this operation reports success.
+    await onDeviceDataWiped?.();
+    return { ok: true };
+  }, [onDeviceDataWiped]);
+
   const signOut = useCallback(async (options) => {
     const client = requireClient();
     if (!client) return LOCAL_ONLY_RESULT;
@@ -238,14 +258,13 @@ export function useAuthSession() {
     if (error) return { ok: false, error: error.message };
     applySession(null);
     if (options?.wipeLocalData) {
-      try {
-        await wipeSensitiveDeviceData();
-      } catch {
+      const wipeResult = await wipeDeviceData();
+      if (!wipeResult.ok) {
         return { ok: false, error: 'Signed out, but device data could not be wiped. Try the wipe again before sharing this device.' };
       }
     }
     return { ok: true };
-  }, [requireClient, applySession]);
+  }, [requireClient, applySession, wipeDeviceData]);
 
   const resetPasswordForEmail = useCallback(async (email, options) => {
     const client = requireClient();
@@ -317,9 +336,8 @@ export function useAuthSession() {
       await client.auth.signOut();
       applySession(null);
       if (options?.wipeLocalData) {
-        try {
-          await wipeSensitiveDeviceData();
-        } catch {
+        const wipeResult = await wipeDeviceData();
+        if (!wipeResult.ok) {
           return { ok: false, error: 'Account deleted, but device data could not be wiped. Try the wipe again before sharing this device.' };
         }
       }
@@ -327,7 +345,7 @@ export function useAuthSession() {
     } catch (e) {
       return { ok: false, error: e?.message || 'Account deletion failed.' };
     }
-  }, [requireClient, applySession]);
+  }, [requireClient, applySession, wipeDeviceData]);
 
   const signInWithOAuth = useCallback(async (provider, options) => {
     const client = requireClient();
@@ -473,5 +491,7 @@ export function useAuthSession() {
     updatePassword,
     serverExport,
     deleteAccount,
+    deviceWipeRequired,
+    wipeDeviceData,
   };
 }

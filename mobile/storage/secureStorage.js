@@ -64,6 +64,7 @@ export function createDeviceStorage({
     && (forceEncryption || process.env.NODE_ENV !== 'test');
   let keyPromise = null;
   let operationTail = Promise.resolve();
+  let dataGeneration = 0;
 
   function requireNativePrimitives() {
     if (!secureStore?.getItemAsync || !secureStore?.setItemAsync || !secureStore?.deleteItemAsync) {
@@ -137,6 +138,18 @@ export function createDeviceStorage({
     return next;
   }
 
+  // A mutation can be scheduled while a slower wipe already owns the lock.
+  // Capture the generation at call time and discard that stale operation if a
+  // wipe advances the generation before it reaches the front of the queue.
+  // This prevents an autosave from recreating deleted health data immediately
+  // after the destructive operation completes.
+  function withMutationLock(operation, invalidatedResult) {
+    const scheduledGeneration = dataGeneration;
+    return withStorageLock(() => (
+      scheduledGeneration === dataGeneration ? operation() : invalidatedResult
+    ));
+  }
+
   async function getItemUnlocked(key) {
     const raw = await backingStore.getItem(key);
     if (raw == null || !encryptValues) return raw;
@@ -156,19 +169,19 @@ export function createDeviceStorage({
       return withStorageLock(() => getItemUnlocked(key));
     },
     setItem(key, value) {
-      return withStorageLock(async () => {
+      return withMutationLock(async () => {
         const next = encryptValues ? await encrypt(key, value) : String(value);
         await backingStore.setItem(key, next);
       });
     },
     removeItem(key) {
-      return withStorageLock(() => backingStore.removeItem(key));
+      return withMutationLock(() => backingStore.removeItem(key));
     },
     getAllKeys() {
       return withStorageLock(() => backingStore.getAllKeys());
     },
     multiSet(pairs) {
-      return withStorageLock(async () => {
+      return withMutationLock(async () => {
         const encoded = [];
         for (const [key, value] of pairs) {
           // eslint-disable-next-line no-await-in-loop
@@ -179,7 +192,7 @@ export function createDeviceStorage({
     },
     multiRemove(keys) {
       // Removing encrypted blobs does not require the encryption key.
-      return withStorageLock(() => backingStore.multiRemove(keys));
+      return withMutationLock(() => backingStore.multiRemove(keys));
     },
     clearDeviceKey() {
       return withStorageLock(async () => {
@@ -191,6 +204,7 @@ export function createDeviceStorage({
     },
     wipeKiloData() {
       return withStorageLock(async () => {
+        dataGeneration += 1;
         const keys = await backingStore.getAllKeys();
         const kiloKeys = keys.filter((key) => key.startsWith('kilo_'));
         if (kiloKeys.length > 0) await backingStore.multiRemove(kiloKeys);
@@ -206,7 +220,7 @@ export function createDeviceStorage({
       });
     },
     migrateKiloData() {
-      return withStorageLock(async () => {
+      return withMutationLock(async () => {
         if (!encryptValues) return { migrated: 0 };
         const keys = await backingStore.getAllKeys();
         const kiloKeys = keys.filter((key) => key.startsWith('kilo_'));
@@ -225,7 +239,7 @@ export function createDeviceStorage({
           migrated += 1;
         }
         return { migrated };
-      });
+      }, { migrated: 0 });
     },
   };
 

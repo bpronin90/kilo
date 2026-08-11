@@ -597,8 +597,13 @@ but the underlying leak is still worth fixing wherever it's found.
 - verifies startup-wide and lazy plaintext migration, failure-safe retry,
   authenticated tamper detection, fresh nonces, missing-platform fail-closed
   behavior, and confirmed wipe/key rotation
-- verifies the global persistence lock prevents migration, autosave, and wipe
-  operations from racing each other
+- verifies the global persistence lock and wipe-generation fence prevent
+  migration, autosave, and wipe operations from racing or repopulating data
+  after deletion
+- `auth-session.test.js` verifies failed post-sign-out/account-delete wipes
+  remain retryable without a live account; `app-shell-render-isolation.test.js`
+  verifies a completed wipe remounts every always-mounted tab so in-memory
+  domain state cannot survive or repopulate persistence
 
 ### `mobile/tests/autosave.test.js`
 
