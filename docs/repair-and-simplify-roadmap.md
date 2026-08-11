@@ -1,13 +1,14 @@
 # Kilo Repair and Simplify Roadmap
 
-**Status: Active — Phases 1–2 and 4 complete; Phase 3 delivery active.**
+**Status: Active — Phases 1–2 and 4 complete; Phase 3 final delivery active.**
 Phase 1's confirmed regressions shipped through issues #770 and #771 on
 2026-08-10. Phase 2's approved routine-context behavior shipped through issue
 #775 / PR #777 the same day. In Phase 3, R3a's approved Home contract shipped
-through #782 / PR #783, R4a's Log contract is approved, and the next wave is
-triaged as R4b issue #789 and R5a issue #790. Phase 4 completed on 2026-08-10:
-R6b-1 shipped through #785 / PR #787, R6b-3 shipped through #786 / PR #788,
-and the owner explicitly dropped R6b-2's inline-suggestion design.
+through #782 / PR #783, R4b's approved Log hierarchy shipped through #789 / PR
+#792, and R5a's Analytics contract is approved. The final delivery task is
+triaged as R5b issue #793. Phase 4 completed on 2026-08-10: R6b-1 shipped
+through #785 / PR #787, R6b-3 shipped through #786 / PR #788, and the owner
+explicitly dropped R6b-2's inline-suggestion design.
 
 Source of truth: the repository owner's cross-tab review supplied on 2026-08-09,
 with immutable GitHub records authoritative for triaged tasks and approved
@@ -373,9 +374,10 @@ Phase goal: replace dense Recovery presentations with a coherent cross-tab model
 that answers the user's immediate question first and progressively discloses
 supporting evidence.
 
-R3a and R4a now have owner-approved written contracts. R3b shipped through
-issue #782 / PR #783. R4b implementation and R5a discovery are the current
-parallel wave; R5b remains gated on both of their approved outcomes.
+R3a and R4a produced owner-approved written contracts. R3b shipped through
+issue #782 / PR #783 and R4b shipped through issue #789 / PR #792. R5a's
+corrected Analytics contract is owner-approved on #790, releasing R5b as the
+phase's final delivery task under issue #793.
 
 ### R3a — Specify the Home return-to-baseline summary [COMPLETE]
 
@@ -473,9 +475,11 @@ parallel wave; R5b remains gated on both of their approved outcomes.
 - **Routing:** `agent:claude`; `model:claude-sonnet-5`; `reasoning:high`;
   `effort:default`; `area:ui`, `area:workouts`, `area:docs`.
 
-### R4b — Implement the approved Log Recovery hierarchy
+### R4b — Implement the approved Log Recovery hierarchy [COMPLETE]
 
 - **Issue:** [#789](https://github.com/bpronin90/kilo/issues/789)
+- **Outcome:** shipped in [PR #792](https://github.com/bpronin90/kilo/pull/792)
+  on 2026-08-10.
 
 - **Suggested title:** `Repair and Simplify / R4b: implement calm active Recovery on Log`
 - **Goal:** implement R4a without disturbing routine, Deload, or Recovery state
@@ -494,10 +498,11 @@ parallel wave; R5b remains gated on both of their approved outcomes.
   themes, TalkBack, and VoiceOver.
 - **Routing:** `agent:claude`; `area:ui`, `area:workouts`.
 
-### R5a — Define Analytics Recovery hierarchy and placement
+### R5a — Define Analytics Recovery hierarchy and placement [COMPLETE]
 
 - **Issue:** [#790](https://github.com/bpronin90/kilo/issues/790)
-- **Triage status:** ready; R3a and R4a both have owner-approved outputs.
+- **Outcome:** owner-approved section order, evidence hierarchy, disclosure
+  defaults, cut list, and corrected lifecycle-state contract recorded on #790.
 
 - **Suggested title:** `Repair and Simplify / R5a: define Recovery evidence in Analytics`
 - **Goal:** make Analytics the clear evidence owner without showing every control
@@ -524,6 +529,9 @@ parallel wave; R5b remains gated on both of their approved outcomes.
 
 ### R5b — Implement the approved Analytics Recovery model
 
+- **Issue:** [#793](https://github.com/bpronin90/kilo/issues/793)
+- **Triage status:** ready; all dependencies and owner approvals are satisfied.
+
 - **Suggested title:** `Repair and Simplify / R5b: implement focused Recovery Analytics`
 - **Goal:** implement R5a's evidence hierarchy and approved Recovery/Fatigue order.
 - **Depends on:** R0, R3b, R4b, R5a, and owner approval.
@@ -539,7 +547,8 @@ parallel wave; R5b remains gated on both of their approved outcomes.
   exact; no existing history or preference becomes unreachable unintentionally.
 - **Verification:** R5a matrix; exact section navigation before/after layout;
   long history; responsive/large-text, themes, TalkBack, and VoiceOver.
-- **Routing:** `agent:claude`; `area:ui`, `area:workouts`.
+- **Routing:** `agent:claude`; `model:claude-sonnet-5`; `reasoning:high`;
+  `effort:default`; `area:ui`, `area:workouts`; `type:implementation`.
 
 ---
 
