@@ -59,6 +59,7 @@ docs/
     mvp-refine-roadmap.md ← archived MVP-Refine roadmap
     mvp-fatigue-roadmap.md ← archived Session Check-In / Fatigue roadmap
     contain-and-connect-roadmap.md ← archived Contain and Connect product-cohesion roadmap (complete as of #767)
+    repair-and-simplify-roadmap.md ← archived Repair and Simplify roadmap (complete as of #793)
     backend-roadmap.md ← archived backend / web-first distribution roadmap (executed)
     samples/           ← raw workout log files used during parser development
     browser-prototype/ ← archived frozen browser prototype (Kilo.html, src/, tests/)
@@ -355,4 +356,5 @@ npm --prefix mobile test
 | `docs/archive/mvp-refine-roadmap.md` | Archived roadmap for the MVP-Refine pass, which ran after MVP4.5. Complete and retained as a historical reference. |
 | `docs/archive/mvp-fatigue-roadmap.md` | Archived roadmap for the Session Check-In / Fatigue feature pass. Complete and retained as a historical reference. |
 | `docs/archive/contain-and-connect-roadmap.md` | Archived roadmap for the Contain and Connect product-cohesion pass. Complete and retained as historical delivery contract. |
+| `docs/archive/repair-and-simplify-roadmap.md` | Archived roadmap for the Repair and Simplify pass. Complete through issue #793 / PR #794 and retained as its historical delivery contract. |
 | `docs/archive/samples/` | Raw workout log files used as reference input during parser development. No active role in code or tests. |

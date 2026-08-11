@@ -2,7 +2,8 @@
 
 **Status: Complete.** This roadmap was executed through to completion. Every
 named deliverable shipped or was explicitly dropped by the owner, and the final
-delivery merged through issue #793 / PR #794 on 2026-08-10.
+delivery merged through issue #793 / PR #794 on 2026-08-10. It is retained here
+as the historical delivery contract for the Repair and Simplify pass.
 Phase 1's confirmed regressions shipped through issues #770 and #771 on
 2026-08-10. Phase 2's approved routine-context behavior shipped through issue
 #775 / PR #777 the same day. In Phase 3, R3a's approved Home contract shipped
