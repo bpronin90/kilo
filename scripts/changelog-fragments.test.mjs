@@ -59,13 +59,17 @@ test('validation rejects stray files that do not follow the fragment contract', 
   }
 });
 
-test('chooses the highest requested pre-1.0 bump', () => {
+test('applies every requested pre-1.0 bump in fragment order', () => {
   assert.equal(nextVersion('0.98.1', [{ bump: 'patch' }]), '0.98.2');
   assert.equal(nextVersion('0.98.1', [{ bump: 'patch' }, { bump: 'minor' }]), '0.99.0');
+  assert.equal(
+    nextVersion('0.98.1', [{ bump: 'minor' }, { bump: 'minor' }, { bump: 'patch' }]),
+    '0.100.1'
+  );
   assert.equal(nextVersion('0.98.1', []), '0.98.1');
 });
 
-test('prepares one deterministic release and synchronizes every version field', () => {
+test('prepares one deterministic release step per fragment and synchronizes to the final version', () => {
   const root = fixture();
   try {
     fragment(root, '600-2.md', 600, 'minor', 'Added a capability.');
@@ -79,7 +83,10 @@ test('prepares one deterministic release and synchronizes every version field', 
     assert.equal(JSON.parse(readFileSync(join(root, 'mobile', 'package.json'))).version, '0.99.0');
     assert.equal(JSON.parse(readFileSync(join(root, 'mobile', 'app.json'))).expo.version, '0.99.0');
     assert.equal(JSON.parse(readFileSync(join(root, 'mobile', 'package-lock.json'))).version, '0.99.0');
-    assert.match(readFileSync(join(root, 'CHANGELOG.md'), 'utf8'), /^# Changelog\n\n## 0\.99\.0 - 2026-07-17/);
+    const changelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf8');
+    assert.match(changelog, /^# Changelog\n\n## 0\.99\.0 - 2026-07-17\n\n- Issue #600: Added a capability\./);
+    assert.match(changelog, /## 0\.98\.2 - 2026-07-17\n\n- Issue #600: Fixed the first pass\./);
+    assert.ok(changelog.indexOf('## 0.99.0') < changelog.indexOf('## 0.98.2'));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
