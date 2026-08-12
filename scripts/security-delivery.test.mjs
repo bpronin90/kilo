@@ -45,6 +45,8 @@ test('static headers enforce anti-framing and narrow browser capabilities', () =
   assert.match(headers, /Permissions-Policy: .*camera=\(\).*geolocation=\(\).*microphone=\(\)/);
   assert.match(headers, /X-Content-Type-Options: nosniff/);
   assert.match(headers, /X-Frame-Options: DENY/);
+  assert.match(headers, /^\s*! Access-Control-Allow-Origin\s*$/m);
+  assert.doesNotMatch(headers, /^\s*Access-Control-Allow-Origin:/m);
 });
 
 test('CSP preserves only the required external data connections', () => {
