@@ -217,7 +217,12 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
       password,
       ...(challenge.captchaToken ? { options: { captchaToken: challenge.captchaToken } } : {}),
     });
-    if (error) return { ok: false, error: error.message };
+    if (error) {
+      // Distinguish an unconfirmed account from a generic bad-credentials
+      // error so the screen can offer the resend-confirmation action instead
+      // of a dead-end "invalid login" message (#799).
+      return { ok: false, error: error.message, unconfirmed: error.code === 'email_not_confirmed' };
+    }
     return { ok: true, session: data?.session || null };
   }, [claimCaptchaToken, requireClient]);
 
@@ -233,6 +238,24 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
     });
     if (error) return { ok: false, error: error.message };
     return { ok: true, session: data?.session || null };
+  }, [claimCaptchaToken, requireClient]);
+
+  // Resend a signup-confirmation email. Same CAPTCHA handling as the other
+  // password flows (a fresh token per request, consumed once) and the same
+  // readable-error contract: a rate-limit rejection surfaces via error.message
+  // rather than failing silently (#799).
+  const resendSignupConfirmation = useCallback(async (email, captchaToken) => {
+    const client = requireClient();
+    if (!client) return LOCAL_ONLY_RESULT;
+    const challenge = claimCaptchaToken(captchaToken);
+    if (!challenge.ok) return challenge;
+    const { error } = await client.auth.resend({
+      type: 'signup',
+      email,
+      ...(challenge.captchaToken ? { options: { captchaToken: challenge.captchaToken } } : {}),
+    });
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
   }, [claimCaptchaToken, requireClient]);
 
   const wipeDeviceData = useCallback(async () => {
@@ -484,6 +507,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
     clearPasswordRecovery,
     signInWithPassword,
     signUpWithPassword,
+    resendSignupConfirmation,
     signOut,
     resetPasswordForEmail,
     signInWithOAuth,

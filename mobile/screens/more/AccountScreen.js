@@ -33,6 +33,13 @@ export function AccountScreen({ onBack, auth }) {
   const [captchaToken, setCaptchaToken] = useState('');
   const [captchaResetKey, setCaptchaResetKey] = useState(0);
   const [captchaFailed, setCaptchaFailed] = useState(false);
+  // Persistent post-signup / unconfirmed-sign-in state (#799): set to a
+  // non-empty email address whenever the account needs confirmation before
+  // it can be used. '' means this surface is not shown. `confirmationContext`
+  // distinguishes the two entry points only for copy ('signup' says an email
+  // was just sent; 'signin' says the account is awaiting confirmation).
+  const [confirmationEmail, setConfirmationEmail] = useState('');
+  const [confirmationContext, setConfirmationContext] = useState('signup');
 
   const run = async (fn) => {
     setBusy(true);
@@ -40,7 +47,10 @@ export function AccountScreen({ onBack, auth }) {
     try {
       const result = await fn();
       if (result?.ok) {
-        setStatus(result.message || 'Done.');
+        // A caller passing an explicit empty message (the confirmation-pending
+        // transitions below) suppresses the status line entirely, since the
+        // dedicated confirmation panel already carries the message.
+        setStatus(result.message != null ? result.message : 'Done.');
       } else {
         setStatus(result?.error || 'Something went wrong.');
       }
@@ -120,6 +130,19 @@ export function AccountScreen({ onBack, auth }) {
         },
       ],
     );
+  };
+
+  const handleResendConfirmation = () => runPasswordFlow(async (token) => {
+    const result = await auth.resendSignupConfirmation(confirmationEmail, token);
+    return result.ok
+      ? { ok: true, message: `Confirmation email sent to ${confirmationEmail}. Check your inbox and spam folder.` }
+      : result;
+  });
+
+  const handleBackToSignIn = () => {
+    setConfirmationEmail('');
+    setConfirmationContext('signup');
+    setStatus('');
   };
 
   const handleGitHubSignIn = async () => {
@@ -261,6 +284,42 @@ export function AccountScreen({ onBack, auth }) {
         // (mirrors the #307 Home first-paint gate). When unconfigured, loading
         // is already false, so the local-only message above is unaffected.
         <View style={styles.accountBlock} accessibilityLabel="Account loading" />
+      ) : confirmationEmail ? (
+        <View style={styles.accountBlock}>
+          <SectionTitle>Confirm Your Email</SectionTitle>
+          <Text style={styles.accountNote} accessibilityLabel="Confirmation pending">
+            {confirmationContext === 'signup'
+              ? `We sent a confirmation email to ${confirmationEmail}. Check your inbox — and your spam folder — to finish creating your account.`
+              : `${confirmationEmail} is awaiting confirmation. Check your inbox and spam folder for the confirmation email, or resend it below.`}
+          </Text>
+          <CaptchaChallenge
+            resetKey={captchaResetKey}
+            onToken={handleCaptchaToken}
+            onExpired={handleCaptchaExpired}
+            onError={handleCaptchaError}
+          />
+          {captchaFailed ? (
+            <Button
+              title="Retry Security Verification"
+              disabled={busy}
+              onPress={retryCaptcha}
+              accessibilityLabel="Retry security verification"
+            />
+          ) : null}
+          <Button
+            title="Resend Confirmation Email"
+            loadingTitle="Working…"
+            disabled={busy}
+            onPress={handleResendConfirmation}
+            accessibilityLabel="Resend confirmation email"
+          />
+          <Button
+            title="Back to Sign In"
+            disabled={busy}
+            onPress={handleBackToSignIn}
+            accessibilityLabel="Back to Sign In"
+          />
+        </View>
       ) : (
         <View style={styles.accountBlock}>
           <SectionTitle>Sign In</SectionTitle>
@@ -323,19 +382,38 @@ export function AccountScreen({ onBack, auth }) {
             // branch on whether the address exists, so it adds no enumeration
             // oracle: a GitHub-only account and a wrong password produce the same
             // generic `Invalid login credentials`, and both now point at the
-            // other sign-in method.
-            onPress={() => runPasswordFlow((token) => auth.signInWithPassword(email, password, token).then((r) => (r.ok ? { ok: true, message: 'Signed in.' } : { ...r, ok: false, error: `${r.error || 'Invalid login credentials.'} If you signed up with GitHub, use Continue with GitHub.` })))}
+            // other sign-in method. An unconfirmed account is the one failure
+            // that gets its own surface instead (#799): it names a real,
+            // just-typed address and offers to resend the confirmation email
+            // rather than a dead-end credentials error.
+            onPress={() => runPasswordFlow((token) => auth.signInWithPassword(email, password, token).then((r) => {
+              if (r.ok) return { ok: true, message: 'Signed in.' };
+              if (r.unconfirmed) {
+                setConfirmationEmail(email);
+                setConfirmationContext('signin');
+                return { ok: true, message: '' };
+              }
+              return { ...r, ok: false, error: `${r.error || 'Invalid login credentials.'} If you signed up with GitHub, use Continue with GitHub.` };
+            }))}
           />
           <Button
             title="Create Account"
             disabled={busy}
-            // Honest, enumeration-safe signup copy (#496). Supabase returns the
-            // same 200 whether the address is new or already registered (it will
-            // not confirm existence), so this wording must be true in both cases:
-            // a new address gets a confirmation email; an existing one does not,
-            // and either way the user is pointed at Continue with GitHub without
-            // revealing which case they are in.
-            onPress={() => runPasswordFlow((token) => auth.signUpWithPassword(email, password, token).then((r) => (r.ok ? { ok: true, message: 'If that address is new, check your email to confirm it. If you already signed up with GitHub, use Continue with GitHub instead.' } : r)))}
+            // Honest, enumeration-safe signup copy (#496) is preserved: Supabase
+            // returns the same 200 whether the address is new or already
+            // registered, and this handler behaves identically either way — it
+            // always shows the confirmation-pending panel for the typed address
+            // rather than branching on existence. A signup that returns an
+            // immediate session (confirmation disabled) still just signs in.
+            onPress={() => runPasswordFlow((token) => auth.signUpWithPassword(email, password, token).then((r) => {
+              if (!r.ok) return r;
+              if (!r.session) {
+                setConfirmationEmail(email);
+                setConfirmationContext('signup');
+                return { ok: true, message: '' };
+              }
+              return { ok: true, message: 'Signed in.' };
+            }))}
           />
           <Button
             title="Reset Password"
