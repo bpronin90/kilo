@@ -1,8 +1,7 @@
 # Article 9 Explicit Consent for Cloud Health Data
 
-Status: adopted product and engineering contract. The active code and migrations
-implement this boundary; publication and operator dependencies are tracked
-separately from this specification.
+Status: archived implementation and rollout specification. The living contract
+is [Health-Data Consent](../health-data-consent.md).
 
 Decision date: 2026-07-13
 

@@ -27,7 +27,7 @@ instead of copying the same contract into several files.
 |----------|------|
 | [Backend Schema](backend-schema.md) | Supabase `kilo` schema ownership, source-of-truth, naming, RLS, and consent boundaries. |
 | [Backend Activation](backend-activation.md) | Migration deployment, API exposure, Auth-provider configuration, and operational verification. |
-| [Article 9 Explicit Consent](article-9-explicit-consent-spec.md) | Adopted health-data consent, withdrawal, evidence, and policy contract. |
+| [Health-Data Consent](health-data-consent.md) | Current consent wording, health-data boundary, enforcement, withdrawal, evidence, and re-consent contract. |
 | [Product Measurement](product-measurement.md) | Privacy and deletion constraints for optional product-measurement events. |
 
 ## Builds, Testing, and Release Readiness

@@ -121,7 +121,7 @@ release status and [Beta Tester Guide](tester-guide.md) for participant steps.
 | UI rules and current visual implementation | [UI Design Rules](ui-design-rules.md) and [Design System Map](design-system-map.md) |
 | Supabase schema policy | [Backend Schema](backend-schema.md) |
 | Supabase and Auth operations | [Backend Activation](backend-activation.md) |
-| Health-data consent | [Article 9 Explicit Consent](article-9-explicit-consent-spec.md) |
+| Health-data consent | [Health-Data Consent](health-data-consent.md) |
 | Optional product measurement | [Product Measurement](product-measurement.md) |
 | Build and device procedures | [Phone Runbook](phone-runbook.md) |
 | Release checklist | [Play Store Readiness](play-store-readiness.md) |
