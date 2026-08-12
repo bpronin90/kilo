@@ -1,19 +1,16 @@
 # UI Design Rules
 
-Status: **Adopted.** UI implementation issues and reviews reference these rules.
-Cite the relevant section in an issue's acceptance criteria; a reviewer may block
-work that violates a rule here. Keep this doc and `docs/design-system-map.md` in
-sync when a UI change intentionally changes an established pattern.
+Status: **Adopted.** This document owns durable UI behavior and composition
+rules. Keep it and `docs/design-system-map.md` in sync when an intentional UI
+change alters an established pattern.
 
 Scope: mobile app (`mobile/`). Companion reference: `docs/design-system-map.md`
 (the token/line-level audit). This doc states the *rules*; the map states the
 *current values*.
 
-These rules are drawn from the UI cleanup that ran from #383 through #413
-(tab-spacing polish, the unified Weight/Goal history panel system, collapse
-standardization, and the analytics hierarchy fixes). They describe the patterns
-that survived user verification, and the anti-patterns that caused the problems
-those issues fixed.
+These rules describe the patterns established by completed UI work and the
+anti-patterns that previously caused inconsistency. Delivery history belongs in
+the changelog and archived roadmaps.
 
 ---
 
@@ -169,25 +166,7 @@ those issues fixed.
 - **Competing hero metrics:** two accent-sized numbers fighting for attention in
   one analytics card.
 
-## 11. Issue-writing rules: ownership vs. Role
-
-These are process rules, enforced today in `AGENTS.md` / `CLAUDE.md` /
-`CODEX.md`; restated here because UI issues repeatedly got them wrong.
-
-- **Labels define ownership.** The `agent:` label (`agent:claude`,
-  `agent:codex`, `agent:gemini`) is the single source of truth for who owns a
-  task. Never state ownership in prose.
-- **The `Role` section defines the implementer's engineering stance**, not who
-  owns the work. Write it as a task-specific discipline, e.g. "Assume the role
-  of a mobile UI systems engineer" or "Assume the role of a regression-focused
-  analytics engineer."
-- Do not use `Role` to restate the agent name, model, or reasoning routing —
-  those live only in labels.
-- UI implementation issues should list exact `Allowed Files` and reference the
-  relevant sections of this doc (once adopted) and `docs/design-system-map.md`
-  for the concrete token values, rather than restating pixel values inline.
-
-## 12. Truthful UI control and prerequisite copy
+## 11. Truthful UI control and prerequisite copy
 
 Copy in empty states, help screens, and onboarding materials must be accurate to
 the shipped UI and feature state. This rule prevents misleading guidance and
@@ -224,7 +203,7 @@ different or unavailable surfaces.
   product roadmap question, not a UX-writing question. Keep empty-state and help
   copy narrowly scoped to what is actually shipped and reachable today.
 
-## 13. Appearance modes and semantic color (#689)
+## 12. Appearance modes and semantic color
 
 Kilo ships Light and Dark (indigo) appearances plus a System option. Every UI
 change must work in both palettes. Concrete values live in
@@ -271,7 +250,7 @@ change must work in both palettes. Concrete values live in
 Do not assign new UI implementation issues to `agent:gemini` until the repo
 owner states the ownership pause is lifted.
 
-## 14. Card headers carry identity; actions live in the body or an action strip (#711)
+## 13. Card headers carry identity; actions live in the body or an action strip
 
 - **A card header holds identity only:** title, subtitle, and a status badge. It
   does not host action controls. The header row itself may still be the

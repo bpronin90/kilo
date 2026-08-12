@@ -1,12 +1,17 @@
 # Architecture
 
+Status: current system contract. This document owns runtime boundaries, data
+flow, persistence, sync, and derived-data ownership. Release status belongs in
+`docs/current-state.md`; commands and coverage belong in
+`docs/testing-and-qa.md`.
+
 Kilo is a single-path native app:
 
 - `mobile/` is the active Expo/React Native app and receives all forward-looking
   architecture work.
 - The legacy browser prototype (`Kilo.html`, `src/`, `tests/`) is archived under
-  `docs/archive/browser-prototype/`. The Capacitor Android shell and vitest
-  config have been removed entirely (issue #213).
+  `docs/archive/browser-prototype/`. The Capacitor Android shell and its test
+  configuration are no longer active.
 
 ## Architecture Overview
 
@@ -206,23 +211,6 @@ until end-to-end Expo Update signing is provisioned.
   builds. Only updates signed by that externally held key may then be published.
   No signing private key is generated or stored in this repository.
 
-## Migration History
-
-The browser prototype served as the behavior reference during native migration
-(issue #35). That migration is complete: the prototype source is archived and
-the Capacitor shell has been removed. `mobile/` is the only app surface.
-
-## Target Native Runtime Shape
-
-The first native milestone does not require backend work. It does require a
-clear separation between UI and data responsibilities inside `mobile/`:
-
-- Screen and component layers render Home, Log, Weight, Analytics, and More surfaces.
-- Parser and persistence modules own entry validation, canonical save shapes,
-  local writes, and recent-history reads.
-- Screen components consume explicit module boundaries instead of directly
-  re-creating parser or storage rules inline.
-
 ## Runtime Shape
 
 The `mobile/` app is a separate runtime from the browser prototype. `mobile/index.js`
@@ -266,7 +254,7 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   screen routes to server-side account export and two-step deletion calls that
   stay behind Supabase Edge Functions rather than exposing privileged credentials
   to the client, leaving `HomeScreen.js` focused on dashboard rendering. The
-  same public-account surfaces expose placeholder privacy and terms links beside
+  same public-account surfaces expose published privacy and terms links beside
   signup, near Account export/delete actions, and in More > About Kilo. The
   Account screen also starts GitHub OAuth on web and Android; Android uses
   `expo-web-browser` with `kilo://auth/callback`, then exchanges the returned
@@ -1341,6 +1329,6 @@ plate math, reminders and reminder scheduling, screen shell, session check-in
 modal, storage adapter routing, sync recovery UI, unit display, units conversion,
 and weight screen. Run the suite with `npm --prefix mobile test`.
 
-The browser prototype's vitest suite and jsdom setup have been archived with the
-prototype source (issue #213). No browser test infrastructure remains in the
-active codebase.
+The browser prototype's tests are archived with its source. No browser-prototype
+test infrastructure remains in the active codebase. See
+`docs/testing-and-qa.md` for the current inventory and verification commands.

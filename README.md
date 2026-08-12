@@ -7,11 +7,10 @@ Kilo is a local-first fitness tracking app with optional cloud sync, built with 
 - The legacy browser prototype is archived under
   `docs/archive/browser-prototype/` for reference.
 
-Since v0.70.0 a Supabase backend exists: a `kilo` schema with RLS, an
-auth/session client, and a storage-seam cloud adapter. The app stays
-local-first — with no env config it runs entirely on AsyncStorage. Cloud mode
-activates only when `EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_ANON_KEY`
-are provided, and signed-out users stay local-only either way.
+An optional Supabase backend provides owner-scoped cloud sync, account
+lifecycle operations, and explicit health-data consent. The app stays
+local-first: without cloud configuration it runs entirely on its local storage
+path, and signed-out users remain local-only.
 
 ## Tech Stack
 

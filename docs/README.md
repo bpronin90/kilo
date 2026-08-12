@@ -1,49 +1,58 @@
 # Documentation
 
-This directory contains Kilo's current product and engineering documentation.
-Use this index to find the authoritative document for a topic. Files under
-[`archive/`](archive/) are historical delivery records and are not current
-implementation guidance.
+This directory contains Kilo's current product, engineering, privacy, operations,
+and testing documentation. Each living document owns one topic; follow its links
+instead of copying the same contract into several files.
 
 ## Start Here
 
-| Document | Purpose |
-|----------|---------|
-| [Current State](current-state.md) | Implemented product behavior, known gaps, and launch prerequisites. |
-| [Architecture](architecture.md) | Runtime boundaries, data flows, persistence, and analytics ownership. |
-| [Repo Structure](repo-structure.md) | Directory and file map for the active codebase. |
-| [Testing and QA](testing-and-qa.md) | Test commands, coverage inventory, CI gates, and manual smoke checks. |
+| Document | Owns |
+|----------|------|
+| [Current State](current-state.md) | Concise shipped-product state and externally unverified release boundaries. |
+| [Architecture](architecture.md) | Runtime boundaries, data flows, persistence, sync, and analytics ownership. |
+| [Repo Structure](repo-structure.md) | Maintainable directory-level ownership map. |
+| [Testing and QA](testing-and-qa.md) | Test commands, CI gates, coverage inventory, and manual verification. |
 
 ## Product and UI Reference
 
-| Document | Purpose |
-|----------|---------|
-| [Calculations Reference](calculations-reference.md) | Workout, weight, goal, and configuration calculations in plain language. |
-| [UI Design Rules](ui-design-rules.md) | Adopted layout, component, interaction, and copy rules. |
-| [Design System Map](design-system-map.md) | Current visual tokens, shared components, and screen-level treatments. |
+| Document | Owns |
+|----------|------|
+| [Calculations Reference](calculations-reference.md) | Workout, weight, goal, and recovery calculations in plain language. |
+| [UI Design Rules](ui-design-rules.md) | Adopted layout, component, interaction, appearance, and copy rules. |
+| [Design System Map](design-system-map.md) | Current visual tokens, shared components, and screen-level implementation map. |
 
 ## Backend, Privacy, and Data
 
-| Document | Purpose |
-|----------|---------|
-| [Backend Schema](backend-schema.md) | Ownership and source-of-truth policy for the Supabase `kilo` schema. |
-| [Backend Activation](backend-activation.md) | Migration, configuration, verification, auth, and provider runbook. |
-| [Article 9 Explicit Consent](article-9-explicit-consent-spec.md) | Health-data consent boundary and implementation contract. |
-| [Product Measurement](product-measurement.md) | Privacy constraints for optional product-measurement events. |
+| Document | Owns |
+|----------|------|
+| [Backend Schema](backend-schema.md) | Supabase `kilo` schema ownership, source-of-truth, naming, RLS, and consent boundaries. |
+| [Backend Activation](backend-activation.md) | Migration deployment, API exposure, Auth-provider configuration, and operational verification. |
+| [Article 9 Explicit Consent](article-9-explicit-consent-spec.md) | Adopted health-data consent, withdrawal, evidence, and policy contract. |
+| [Product Measurement](product-measurement.md) | Privacy and deletion constraints for optional product-measurement events. |
 
 ## Builds, Testing, and Release Readiness
 
-| Document | Purpose |
-|----------|---------|
-| [Phone Runbook](phone-runbook.md) | Expo, EAS, preview-runtime, and device setup procedures. |
-| [Play Store Readiness](play-store-readiness.md) | Closed testing, declarations, listing assets, and Android release checks. |
+| Document | Owns |
+|----------|------|
+| [Phone Runbook](phone-runbook.md) | WSL/Expo development, EAS builds, device installation, and runtime policy. |
+| [Play Store Readiness](play-store-readiness.md) | Operator-owned Play Console, closed-testing, listing, and Android release status. |
 | [Beta Tester Guide](tester-guide.md) | Non-technical installation, test, and feedback instructions. |
 
 Contributor workflow lives in the root [Contributing guide](../CONTRIBUTING.md).
 
 ## Historical Material
 
-[`archive/`](archive/) contains completed roadmaps, the original product spec,
-the retired browser prototype, and other superseded planning material. Keep
-those files for provenance, but verify current behavior in the documents above
-and in the active code before relying on an archived statement.
+[Archive Index](archive/README.md) groups completed roadmaps, superseded
+specifications, parser samples, and the retired browser prototype. Archived
+files preserve provenance but do not define current product behavior.
+
+## Maintenance Rules
+
+- Put current behavior in the one living document that owns the topic.
+- Put delivery chronology in the changelog, GitHub issue, or archive—not in
+  `current-state.md`.
+- Prefer stable directories, modules, and commands over exhaustive file lists or
+  line numbers.
+- Link to another document's contract rather than restating it.
+- Treat package manifests, migrations, tests, and active code as the final check
+  when prose and implementation disagree.
