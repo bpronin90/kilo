@@ -330,31 +330,11 @@ npm --prefix mobile test
 
 ## Docs
 
-| File | Role |
-|------|------|
-| `docs/current-state.md` | Single source of truth for MVP status: what is implemented, known gaps, and the launch prerequisite checklist. Read this first. |
-| `docs/architecture.md` | Script load order, screen routing, parser paths, persistence model, entry shapes, global state map. |
-| `docs/testing-and-qa.md` | Automated coverage inventory and the full manual smoke checklist with **[BLOCKER]** steps for launch. |
-| `docs/archive/contain-and-connect-roadmap.md` | Archived roadmap for the Contain and Connect product-cohesion pass (complete as of issue #767). |
-| `docs/archive/backend-roadmap.md` | Archived public self-serve roadmap for the web-first Supabase transition: note-first cloud schema, RLS/auth isolation, offline sync, account export/deletion, web distribution, and ordered implementation issues. |
-| `docs/backend-activation.md` | Backend activation runbook: env config, schema application, and cloud-mode verification steps. |
-| `docs/backend-schema.md` | Cloud `kilo` schema documentation and source-of-truth policy. |
-| `docs/ui-design-rules.md` | Adopted UI design rules (spacing, alignment, panels, history lists, collapse/filter, analytics hierarchy, anti-patterns). Companion to `docs/design-system-map.md`. |
-| `docs/design-system-map.md` | Cross-screen style audit: every color token, font size, spacing value, and card treatment with file paths and line numbers. Reference for manual visual refinement. |
-| `docs/calculations-reference.md` | Human-readable calculations reference covering workout analytics, weight trends, goal guidance, and user configuration. Describes current app behavior in plain language, designed to map onto future in-app help surfaces. |
-| `docs/phone-runbook.md` | Operational runbook for running the Expo app from WSL and loading it on a physical device via Expo Go. |
-| `docs/play-store-readiness.md` | Google Play production-readiness checklist covering closed testing, App content declarations, store listing assets, build requirements, and target API verification. |
-| `docs/tester-guide.md` | Tester-facing guide for installing and exercising preview builds. |
-| `docs/repo-structure.md` | This file. |
-| `docs/archive/original-spec.md` | Original product spec from early planning. Superseded by current docs. |
-| `docs/archive/mvp-roadmap.md` | Archived MVP1 roadmap. Superseded by subsequent passes. |
-| `docs/archive/mvp-v2-roadmap.md` | Archived MVP2 roadmap. Superseded by subsequent passes. |
-| `docs/archive/mvp-v3-roadmap.md` | Archived MVP3 roadmap. Superseded by subsequent passes. |
-| `docs/archive/mvp-v3.5-roadmap.md` | Archived MVP3.5 roadmap. Superseded by subsequent passes. |
-| `docs/archive/mvp-v4-roadmap.md` | Archived MVP4 roadmap. Superseded by subsequent passes. |
-| `docs/archive/mvp-v4.5-roadmap.md` | Archived MVP4.5 roadmap. Complete; retained as the cumulative reference for the app state through MVP4.5. |
-| `docs/archive/mvp-refine-roadmap.md` | Archived roadmap for the MVP-Refine pass, which ran after MVP4.5. Complete and retained as a historical reference. |
-| `docs/archive/mvp-fatigue-roadmap.md` | Archived roadmap for the Session Check-In / Fatigue feature pass. Complete and retained as a historical reference. |
-| `docs/archive/contain-and-connect-roadmap.md` | Archived roadmap for the Contain and Connect product-cohesion pass. Complete and retained as historical delivery contract. |
-| `docs/archive/repair-and-simplify-roadmap.md` | Archived roadmap for the Repair and Simplify pass. Complete through issue #793 / PR #794 and retained as its historical delivery contract. |
-| `docs/archive/samples/` | Raw workout log files used as reference input during parser development. No active role in code or tests. |
+[`docs/README.md`](README.md) is the canonical documentation index. It groups
+the current product references, backend and privacy contracts, operational
+runbooks, and tester/release guidance without duplicating that inventory here.
+
+`docs/archive/` contains completed roadmaps, superseded specifications, the
+retired browser prototype, and other historical material. Archived files
+preserve provenance; they are not authoritative descriptions of the active
+product or workflow.
