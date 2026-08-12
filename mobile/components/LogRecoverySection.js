@@ -12,6 +12,7 @@
 
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Alert } from '../lib/platformAlert';
 import { Card, SectionTitle } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
@@ -382,20 +383,33 @@ export function LogRecoverySection({
                 const RowMain = linkedNote ? Pressable : View;
                 return (
                   <View key={week.id} style={styles.weekItem}>
-                    <View style={styles.weekRow}>
-                      <RowMain
-                        style={styles.weekRowMain}
-                        accessible
-                        accessibilityLabel={rowLabel}
-                        {...rowProps}
-                      >
-                        <Text style={styles.weekNumber}>Week {week.week_number}</Text>
-                        <Text style={styles.weekNoteTitle} numberOfLines={1}>
-                          {linkedNote ? _noteTitle(linkedNote) : RECOVERY_NOTE_UNAVAILABLE}
-                        </Text>
-                        <Text style={styles.weekStatus}>In progress</Text>
-                      </RowMain>
-                    </View>
+                    {/* One borderless line, not a bordered three-line box
+                        (#804). The headline directly above already states
+                        `Week {N} in progress`, so the row's own `Week {N}`
+                        micro-label and `In progress` status were the same fact
+                        rendered twice in a competing row. What is left is the
+                        only thing the row uniquely offers: the note you can
+                        read. The accessible name is unchanged — a screen-reader
+                        user reaches this control out of context and still needs
+                        the week number and the read verb in its label. */}
+                    <RowMain
+                      style={styles.weekRow}
+                      accessible
+                      accessibilityLabel={rowLabel}
+                      {...rowProps}
+                    >
+                      <Text style={styles.weekNoteTitle} numberOfLines={1}>
+                        {linkedNote ? _noteTitle(linkedNote) : RECOVERY_NOTE_UNAVAILABLE}
+                      </Text>
+                      {linkedNote ? (
+                        <MaterialIcons
+                          name="chevron-right"
+                          size={18}
+                          color={colors.textMuted}
+                          accessible={false}
+                        />
+                      ) : null}
+                    </RowMain>
                     {isViewingThisNote && (
                       <View style={styles.weekNoteContent}>
                         <WorkoutContentRenderer
@@ -440,12 +454,12 @@ export function LogRecoverySection({
                 <Pressable
                   onPress={handleCompleteWeek}
                   disabled={actionsLocked}
-                  style={styles.actionButton}
+                  style={styles.primaryButton}
                   accessibilityRole="button"
                   accessibilityLabel="Complete week"
                   accessibilityState={{ disabled: actionsLocked }}
                 >
-                  <Text style={styles.actionButtonText}>
+                  <Text style={styles.primaryButtonText}>
                     {busy === 'week' ? 'Completing…' : 'Complete week'}
                   </Text>
                 </Pressable>
@@ -454,12 +468,12 @@ export function LogRecoverySection({
                 <Pressable
                   onPress={onOpenAddWeek}
                   disabled={actionsLocked}
-                  style={styles.actionButton}
+                  style={styles.primaryButton}
                   accessibilityRole="button"
                   accessibilityLabel="Add next recovery week"
                   accessibilityState={{ disabled: actionsLocked }}
                 >
-                  <Text style={styles.actionButtonText}>Add week</Text>
+                  <Text style={styles.primaryButtonText}>Add week</Text>
                 </Pressable>
               )}
             </View>
@@ -476,9 +490,15 @@ export function LogRecoverySection({
               accessibilityLabel={`Manage recovery block: ${activeBlock.baseline_note_title || 'Untitled Routine'}`}
               accessibilityState={{ expanded: manageExpanded }}
             >
-              <Text style={styles.disclosureTriggerText}>
-                {manageExpanded ? '▾' : '▸'} Manage recovery block
-              </Text>
+              <Text style={styles.disclosureTriggerText}>Manage recovery block</Text>
+              {/* The one sanctioned disclosure glyph (`ui-design-rules.md` §6):
+                  a `MaterialIcons` chevron, never a text arrow (#804). */}
+              <MaterialIcons
+                name={manageExpanded ? 'expand-less' : 'expand-more'}
+                size={18}
+                color={colors.textMuted}
+                accessible={false}
+              />
             </Pressable>
 
             {manageExpanded && (
@@ -500,15 +520,20 @@ export function LogRecoverySection({
                       </Text>
                     </Pressable>
                   )}
+                  {/* Demoted to the same secondary destructive chip Unlink
+                      uses (#804). An accent fill here made the rarest,
+                      irreversible action the loudest button on the card while
+                      the expected next step was a plain chip — the hierarchy
+                      inverted. The confirm, gating, and handler are unchanged. */}
                   <Pressable
                     onPress={handleCompleteBlock}
                     disabled={actionsLocked}
-                    style={[styles.actionButton, styles.actionButtonPrimary]}
+                    style={styles.inlineButton}
                     accessibilityRole="button"
                     accessibilityLabel="Complete recovery block"
                     accessibilityState={{ disabled: actionsLocked }}
                   >
-                    <Text style={styles.actionButtonPrimaryText}>
+                    <Text style={styles.inlineButtonText}>
                       {busy === 'block' ? 'Completing…' : 'Complete recovery block'}
                     </Text>
                   </Pressable>
@@ -553,18 +578,16 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 13,
     color: colors.textMuted,
   },
-  // Reuses the chip treatment already carried by `pendingRetryButton` and
-  // `inlineButton` — no new color or radius decision is introduced.
+  // A disclosure, not an action: the chip fill and border are dropped (#804) so
+  // the card's only bordered, filled control is the one primary lifecycle
+  // action. Label plus chevron, at the same 44dp floor it already had.
   disclosureTrigger: {
     alignSelf: 'flex-start',
-    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: colors.chipBackground,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
     minHeight: 44,
-    justifyContent: 'center',
   },
   disclosureTriggerText: {
     fontSize: 13,
@@ -653,47 +676,36 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '700',
     color: colors.accent,
   },
+  // Borderless single line (#804). Removing the box removes a border the card
+  // did not need; the 44dp floor the bordered three-line row used to reach
+  // incidentally is now stated explicitly, so a one-line row keeps the target.
   weekRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  weekRowMain: {
-    flex: 1,
-  },
-  weekNumber: {
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    color: colors.textMuted,
+    minHeight: 44,
   },
   weekNoteTitle: {
+    flex: 1,
     fontSize: 15,
     fontWeight: '700',
     color: colors.text,
-    marginTop: 2,
   },
-  weekStatus: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
+  // The secondary chip for the disclosed, infrequent controls. `minHeight: 44`
+  // is required, not incidental: at 12/6 padding a one-line chip fell short of
+  // the touch-target floor (#804).
   inlineButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderRadius: 10,
     backgroundColor: colors.chipBackground,
     borderWidth: 1,
     borderColor: colors.cardBorder,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   inlineButtonText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: colors.error,
   },
@@ -702,24 +714,20 @@ const createStyles = (colors) => StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
-  actionButton: {
-    paddingHorizontal: 12,
+  // The card's single primary action carries the only accent fill (#804), with
+  // `onAccent` ink — the pairing already recorded for accent surfaces in
+  // `docs/design-system-map.md`.
+  primaryButton: {
+    paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 12,
-    backgroundColor: colors.chipBackground,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-  },
-  actionButtonText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.accent,
-  },
-  actionButtonPrimary: {
     backgroundColor: colors.accent,
+    borderWidth: 1,
     borderColor: colors.accent,
+    minHeight: 44,
+    justifyContent: 'center',
   },
-  actionButtonPrimaryText: {
+  primaryButtonText: {
     fontSize: 13,
     fontWeight: '700',
     color: colors.onAccent,

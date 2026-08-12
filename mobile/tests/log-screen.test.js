@@ -9541,6 +9541,232 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
   });
 });
 
+// -- Simplified active Recovery panel (#804) --------------------------------
+//
+// R4b (#789/#792) established WHICH facts and controls the card holds. #804
+// only settles how they are presented: the week row stops restating the
+// headline's state, the one expected next action becomes the card's only
+// accent-filled control, the rare destructive one demotes to a secondary chip,
+// and the disclosure adopts the standard MaterialIcons chevron. No handler,
+// gate, confirm, or calculation moves — the assertions below therefore pin the
+// preserved behavior alongside the new hierarchy.
+describe('LogRecoverySection: simplified active Recovery panel (#804)', () => {
+  const { LogRecoverySection, RECOVERY_INCLUSION_LABEL } = require('../components/LogRecoverySection');
+  const { RECOVERY_STALE_MESSAGE } = require('../hooks/entries/recoveryBlockHooks');
+  const { LightColors } = require('../theme/colors');
+  const { buildDayGroups } = require('../screens/log/logScreenHelpers');
+  const { parseWorkoutNote: parse } = require('../lib/parser');
+
+  const BLOCK = {
+    id: 'rb804', baseline_note_id: 'baseline', baseline_note_title: 'Push/Pull/Legs',
+    started_at: '2026-05-01T00:00:00.000Z', completed_at: null, deleted_at: null,
+  };
+  const WEEK_NOTE = {
+    id: 'weeknote', title: 'Recovery Week Note',
+    raw_text: 'Monday\n+Lifting\n-Overhead Press\n65 5,5,5',
+  };
+  const week = (overrides = {}) => ({
+    id: 'rw3', block_id: 'rb804', note_id: 'weeknote', week_number: 3,
+    completed_at: null, deleted_at: null, ...overrides,
+  });
+
+  const renderSection = (props = {}) => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <LogRecoverySection blocks={[BLOCK]} weeks={[week()]} notes={[WEEK_NOTE]} {...props} />
+      );
+    });
+    return component.root;
+  };
+
+  const flat = (node) => (Array.isArray(node.props.style)
+    ? Object.assign({}, ...node.props.style.filter(Boolean))
+    : node.props.style) || {};
+  const allText = (root) => root.findAll(n => n.type === 'Text').map(n => {
+    const c = n.props.children;
+    return Array.isArray(c) ? c.join('') : String(c ?? '');
+  });
+  const byLabel = (root, label) => root.findAll(n => n.props && n.props.accessibilityLabel === label)[0];
+  const trigger = (root) => root.findAll(
+    n => n.props && typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.startsWith('Manage recovery block')
+      && typeof n.props.onPress === 'function'
+  )[0];
+  const expand = (root) => { render.act(() => { trigger(root).props.onPress(); }); };
+  const inclusionSwitch = (root) => root.findAll(
+    n => n.props && typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.startsWith(RECOVERY_INCLUSION_LABEL) && n.props.onValueChange
+  )[0];
+  const accentFilled = (root) => root.findAll(
+    n => n.props && typeof n.props.onPress === 'function'
+      && flat(n).backgroundColor === LightColors.accent
+  );
+
+  test('the week row carries the note, not a second copy of the headline state', () => {
+    const root = renderSection();
+    const texts = allText(root);
+
+    // The headline owns the state fact exactly once. The row's former `WEEK 3`
+    // micro-label and `In progress` status were that same fact competing with
+    // it, so they are gone; the note title — the only thing the row uniquely
+    // offers — stays.
+    expect(texts).toContain('Week 3 in progress');
+    expect(texts).not.toContain('In progress');
+    expect(texts).not.toContain('Week 3');
+    expect(texts).toContain('Recovery Week Note');
+  });
+
+  test('the week row still reads its note inline, with its accessible name intact', () => {
+    const onViewNote = jest.fn();
+    const root = renderSection({ onViewNote });
+
+    // A screen-reader user reaches this control out of context, so the label
+    // keeps the week number and the read verb even though the visible row no
+    // longer repeats them.
+    const row = byLabel(root, 'View Recovery Week Note, Recovery Week 3');
+    expect(row).toBeTruthy();
+    expect(row.props.accessibilityRole).toBe('button');
+    expect(flat(row).minHeight).toBeGreaterThanOrEqual(44);
+
+    render.act(() => { row.props.onPress(); });
+    expect(onViewNote).toHaveBeenCalledWith(WEEK_NOTE);
+
+    // And the owner's viewer state renders in this card, with the A/B switch.
+    const viewing = renderSection({
+      viewingNoteId: 'weeknote',
+      viewingNote: WEEK_NOTE,
+      viewingNoteDayGroups: buildDayGroups(parse(WEEK_NOTE.raw_text).sections),
+      viewingHasABWeeks: true,
+      viewingEffectiveWeek: 'A',
+      onToggleViewingWeek: jest.fn(),
+    });
+    expect(byLabel(viewing, 'Switch to Week B')).toBeTruthy();
+  });
+
+  test('a week with no readable note offers no read affordance at all', () => {
+    const root = renderSection({ weeks: [week({ note_id: null })], onViewNote: jest.fn() });
+
+    const row = byLabel(root, 'Recovery Week 3, note unavailable');
+    expect(row).toBeTruthy();
+    expect(row.props.onPress).toBeUndefined();
+    expect(row.props.accessibilityRole).toBeUndefined();
+    expect(allText(root)).toContain('Note unavailable');
+    // No chevron either: it would advertise a read that cannot happen.
+    expect(row.findAll(n => n.props && n.props.name === 'chevron-right')).toHaveLength(0);
+  });
+
+  test('the one expected next action is the card\'s only accent-filled control', () => {
+    const open = renderSection({ onCompleteWeek: jest.fn() });
+    const filled = accentFilled(open);
+    expect(filled).toHaveLength(1);
+    expect(filled[0].props.accessibilityLabel).toBe('Complete week');
+
+    // It swaps rather than multiplying once the week completes.
+    const done = renderSection({
+      weeks: [week({ completed_at: '2026-05-22T00:00:00.000Z' })],
+      onOpenAddWeek: jest.fn(),
+    });
+    const swapped = accentFilled(done);
+    expect(swapped).toHaveLength(1);
+    expect(swapped[0].props.accessibilityLabel).toBe('Add next recovery week');
+  });
+
+  test('the rare destructive controls stay secondary and keep a 44dp target', () => {
+    const root = renderSection({ onUnlinkWeek: jest.fn(), onCompleteBlock: jest.fn() });
+    expand(root);
+
+    // Completing a block is irreversible and happens once per block: an accent
+    // fill here would make it the loudest button on the card.
+    for (const label of ['Unlink Week 3', 'Complete recovery block']) {
+      const control = byLabel(root, label);
+      expect(flat(control).backgroundColor).not.toBe(LightColors.accent);
+      expect(flat(control).minHeight).toBeGreaterThanOrEqual(44);
+    }
+    // Still exactly one accent fill on the card, even with the disclosure open.
+    expect(accentFilled(root)).toHaveLength(1);
+  });
+
+  test('the disclosure uses the standard chevron, not a text arrow', () => {
+    const root = renderSection();
+    // The icon renders as a component wrapping its own glyph node, so the name
+    // is asserted as the set of disclosure glyphs present, not as a node count.
+    const chevrons = (r) => [...new Set(r.findAll(
+      n => n.props && /^expand-(more|less)$/.test(n.props.name || '')
+    ).map(n => n.props.name))];
+
+    expect(allText(root).join(' ')).not.toMatch(/[▸▾▲▼]/);
+    expect(chevrons(root)).toEqual(['expand-more']);
+    expect(flat(trigger(root)).minHeight).toBeGreaterThanOrEqual(44);
+
+    expand(root);
+    expect(chevrons(root)).toEqual(['expand-less']);
+    expect(trigger(root).props.accessibilityState).toEqual({ expanded: true });
+  });
+
+  test('a pending recovery operation still locks every action and stays readable while collapsed', () => {
+    const root = renderSection({
+      pendingRecovery: [{ id: 'op1' }],
+      onCompleteWeek: jest.fn(),
+      onUnlinkWeek: jest.fn(),
+      onCompleteBlock: jest.fn(),
+      onRetryRecovery: jest.fn(),
+    });
+
+    expect(allText(root)).toContain('A recovery change is still being applied on this device.');
+    expect(byLabel(root, 'Retry recovery')).toBeTruthy();
+    expect(byLabel(root, 'Complete week').props.accessibilityState.disabled).toBe(true);
+
+    // The disclosure itself is never disabled, and its contents stay locked.
+    expect(trigger(root).props.disabled).toBeFalsy();
+    expand(root);
+    expect(byLabel(root, 'Unlink Week 3').props.accessibilityState.disabled).toBe(true);
+    expect(byLabel(root, 'Complete recovery block').props.accessibilityState.disabled).toBe(true);
+    expect(inclusionSwitch(root).props.accessibilityState.disabled).toBe(true);
+  });
+
+  test('a terminal error explains itself, locks nothing, and offers no retry', () => {
+    const root = renderSection({
+      pendingRecovery: [],
+      pendingRecoveryError: 'That recovery change was cancelled.',
+      onCompleteWeek: jest.fn(),
+    });
+
+    expect(allText(root)).toContain('That recovery change was cancelled.');
+    expect(byLabel(root, 'Retry recovery')).toBeUndefined();
+    expect(byLabel(root, 'Complete week').props.accessibilityState.disabled).toBe(false);
+  });
+
+  test('a stale snapshot keeps its notice and last-known-good card outside the disclosure', () => {
+    const root = renderSection({ stateStale: true, onRetryRecovery: jest.fn() });
+    expect(allText(root)).toContain(RECOVERY_STALE_MESSAGE);
+    expect(allText(root)).toContain('Week 3 in progress');
+    expect(byLabel(root, 'Retry recovery')).toBeTruthy();
+    expect(trigger(root).props.accessibilityState).toEqual({ expanded: false });
+  });
+
+  test('an unverified first read renders the unknown state and its retry, and a cold load renders nothing', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <LogRecoverySection blocks={[]} weeks={[]} notes={[]} stateReady={false} stateLoading />
+      );
+    });
+    expect(component.toJSON()).toBeNull();
+
+    let failed;
+    render.act(() => {
+      failed = render.create(
+        <LogRecoverySection
+          blocks={[]} weeks={[]} notes={[]}
+          stateReady={false} stateError={new Error('read failed')} onRetryRecovery={jest.fn()}
+        />
+      );
+    });
+    expect(byLabel(failed.root, 'Retry recovery')).toBeTruthy();
+  });
+});
+
 describe('Log disclosures and Recovery reads at the screen level (#775)', () => {
   const CURRENT = {
     id: 'note1', title: 'Routine A',
