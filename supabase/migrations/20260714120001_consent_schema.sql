@@ -146,7 +146,7 @@ grant select on kilo.consent_revision to authenticated;
 grant all on kilo.consent_revision to service_role;
 
 -- Seed revision 1 / material version 1 with the exact approved copy from
--- docs/article-9-explicit-consent-spec.md. Nothing here may be reworded in
+-- docs/health-data-consent.md. Nothing here may be reworded in
 -- implementation.
 insert into kilo.consent_revision (
   catalog_revision,

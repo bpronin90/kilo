@@ -7,11 +7,10 @@ Kilo is a local-first fitness tracking app with optional cloud sync, built with 
 - The legacy browser prototype is archived under
   `docs/archive/browser-prototype/` for reference.
 
-Since v0.70.0 a Supabase backend exists: a `kilo` schema with RLS, an
-auth/session client, and a storage-seam cloud adapter. The app stays
-local-first — with no env config it runs entirely on AsyncStorage. Cloud mode
-activates only when `EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_ANON_KEY`
-are provided, and signed-out users stay local-only either way.
+An optional Supabase backend provides owner-scoped cloud sync, account
+lifecycle operations, and explicit health-data consent. The app stays
+local-first: without cloud configuration it runs entirely on its local storage
+path, and signed-out users remain local-only.
 
 ## Tech Stack
 
@@ -66,23 +65,21 @@ npm --prefix mobile test
 | `mobile/screens/` | Native screens: Home, Log, Weight, Analytics, More |
 | `mobile/tests/` | Jest test suites for parser, data, storage, and screen coverage |
 | `supabase/` | Tracked Supabase config, Edge Functions (`account-export`, `account-delete`, `health-data-delete`), and pgTAP DB tests |
-| `scripts/` | Repo maintenance/deploy scripts: `sync-version.mjs`, `deploy-kilo-functions.sh` |
-| `docs/` | Current-state, architecture, testing/QA, roadmap, and repo-structure docs |
+| `scripts/` | Repo maintenance, verification, deployment, and release tooling |
+| [`docs/`](docs/README.md) | Indexed product, engineering, operations, and testing documentation |
 | `docs/archive/browser-prototype/` | Archived legacy browser prototype (reference only) |
 
-## Key Docs For Launch Review
+## Documentation
+
+[`docs/README.md`](docs/README.md) is the canonical documentation index. Useful
+starting points are:
 
 | Doc | What it covers |
 |-----|----------------|
 | [`docs/current-state.md`](docs/current-state.md) | MVP status, known gaps, and launch prerequisites |
-| [`docs/architecture.md`](docs/architecture.md) | Script load order, parser paths, persistence model, and global state |
-| [`docs/testing-and-qa.md`](docs/testing-and-qa.md) | Automated coverage inventory and manual smoke checklist |
-| [`docs/repo-structure.md`](docs/repo-structure.md) | File map, structural verdict, and repo-orientation notes |
-| [`docs/archive/contain-and-connect-roadmap.md`](docs/archive/contain-and-connect-roadmap.md) | Archived Contain and Connect product-cohesion roadmap (complete) |
-| [`docs/tester-guide.md`](docs/tester-guide.md) | Tester-facing guide for installing and exercising preview builds |
-
-Start with `docs/current-state.md` if you need the fastest accurate snapshot of
-what is implemented and what still gates launch validation.
+| [`docs/architecture.md`](docs/architecture.md) | Runtime boundaries, data flows, persistence, and analytics ownership |
+| [`docs/testing-and-qa.md`](docs/testing-and-qa.md) | Test commands, coverage inventory, CI gates, and manual smoke checks |
+| [`docs/repo-structure.md`](docs/repo-structure.md) | Active directory and file map |
 
 ## Copyright
 
