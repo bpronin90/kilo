@@ -14,7 +14,7 @@
 //   3. The database's kilo.health_gated_tables() names the same nine tables.
 //   4. Every read and delete in this module is filtered to a single user_id.
 //
-// Run:  deno test --allow-read supabase/functions/_shared/health-data-scope.test.ts
+// Run:  deno test --no-check --no-lock --allow-read supabase/functions/_shared/health-data-scope.test.ts
 
 import { assert, assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts'
 import {
@@ -25,7 +25,7 @@ import {
 } from './health-data-scope.ts'
 
 // The nine tables that hold data concerning health, per
-// docs/article-9-explicit-consent-spec.md § "Authoritative health-data boundary",
+// docs/health-data-consent.md § "Health-Data Boundary",
 // plus the two recovery tables admitted by #694. Written out literally rather
 // than derived, so a change to the scope module can never quietly change what
 // this test considers correct.

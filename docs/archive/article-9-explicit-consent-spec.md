@@ -1,11 +1,11 @@
 # Article 9 Explicit Consent for Cloud Health Data
 
-Status: revised after review; implementation remains blocked until this artifact
-is reviewed and committed to the issue branch
+Status: archived implementation and rollout specification. The living contract
+is [Health-Data Consent](../health-data-consent.md).
 
 Decision date: 2026-07-13
 
-Policy dependency: issue #477
+Policy publication dependency: issue #477
 
 This is a product and engineering specification, not legal advice. It applies
 privacy-by-design principles to the current Kilo scope and should be revisited
@@ -456,10 +456,10 @@ from that category may upload under an older grant; Kilo's initial
 implementation may conservatively block all Cloud Sync until re-consent rather
 than build per-category authorization.
 
-## Required policy wording for issue #477
+## Policy Wording For Issue #477
 
-Once the implemented flow and backend enforcement are live, replace #477's
-temporary Article 9 paragraph with this exact text:
+Use the following Article 9 paragraph in the published policy when the deployed
+flow and backend enforcement match this contract:
 
 > **Health data — special category (Art. 9):** Body-weight entries, current and
 > archived weight goals, tracked lifts and workout notes, deload notes and
@@ -478,9 +478,10 @@ temporary Article 9 paragraph with this exact text:
 > no health entries, notes, or measurements, for six years to demonstrate
 > compliance and establish, exercise, or defend legal claims.
 
-Do not publish this paragraph before the versioned consent record, backend gate,
-withdrawal purge, and existing-user cutover are deployed. The policy must link
-to or otherwise retain its existing controller contact, data-subject rights,
+At publication and after any material implementation change, verify the
+versioned consent record, backend gate, withdrawal purge, and existing-user
+cutover are deployed. The policy must link to or otherwise retain its existing
+controller contact, data-subject rights,
 retention, recipient/transfer, and complaint information; the paragraph above
 does not replace those Article 13 disclosures.
 
@@ -525,5 +526,5 @@ does not replace those Article 13 disclosures.
 - Automated tests cover grant failure, refusal, backend denial, withdrawal,
   partial purge retry, re-grant, stale-version denial, and existing-user
   cutover.
-- Issue #477 remains blocked until implementation is deployed and the policy
-  text above can truthfully be published.
+- Policy publication work remains tracked in issue #477 and must describe the
+  behavior actually deployed at publication time.

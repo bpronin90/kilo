@@ -1,5 +1,8 @@
 # Play Store Readiness Checklist
 
+Status: repository snapshot plus operator checklist. Verify time-sensitive
+policy and every Play Console value before release.
+
 Status key: **done** | **user-action-pending** | **blocked**
 
 Package: `com.benpronin.kilo`  
@@ -91,59 +94,43 @@ The form must agree with the published privacy policy, which #469 aligned to the
 | Category | Health & Fitness | user-action-pending |
 | Contact email | Developer contact email | user-action-pending |
 
-Listing copy note: Kilo launches lb-only (decision record in
-`docs/current-state.md`, issue #435). Store descriptions should state weights
-are tracked in pounds and must not promise kg/metric support.
+Listing copy note: Kilo supports imperial and metric display preferences for
+bodyweight and rendered lift values while storing canonical values in pounds.
+Workout-note load input is still interpreted as pounds, so store copy must not
+promise kilogram workout-note syntax.
 
 ---
 
 ## Build Requirements
 
+Repository checks cannot prove EAS, Play App Signing, or Play Console state.
+Verify those systems immediately before release.
+
 | Item | Status | Notes |
 |---|---|---|
-| Production AAB via EAS | user-action-pending | `eas.json` production profile resolves to `buildType: "app-bundle"`, but EAS has no Android production build yet. Run `npm --prefix mobile run build:android:production` before Play upload. |
-| Crash/error reporting env configured before AAB build | user-action-pending | Issue #434 adds Sentry. Set `EXPO_PUBLIC_SENTRY_DSN`, `SENTRY_ORG`, `SENTRY_PROJECT`, and sensitive `SENTRY_AUTH_TOKEN` in the build environment before the Play closed-testing AAB is created. |
-| Play App Signing enrollment | user-action-pending | Must be enabled in Play Console before first release upload |
-| Target API level ≥35 | **PASS — API 35** | See verification below |
+| Production AAB via EAS | user-action-pending | Build `npm --prefix mobile run build:android:production` from the intended release head and inspect the resulting artifact. |
+| Crash/error reporting build values | user-action-pending | Set `EXPO_PUBLIC_SENTRY_DSN`, `SENTRY_ORG`, `SENTRY_PROJECT`, and the sensitive `SENTRY_AUTH_TOKEN` in the build environment. |
+| Play App Signing enrollment | user-action-pending | Confirm enrollment in Play Console before the first release upload. |
+| Target API through August 30, 2026 | done | The current Expo SDK 54 dependency resolves Android target API 35. |
+| Target API beginning August 31, 2026 | blocked | New apps and updates must target API 36 or higher; the current API 35 configuration is insufficient. |
 
-### Production Build-Path Verification
+### Target API Verification
 
-Checked on 2026-07-06 for issue #431:
+The repository currently uses Expo SDK 54 (`~54.0.33`). Its installed Android
+build tooling resolves `targetSdkVersion 35` and `compileSdkVersion 35`, with
+no override in `mobile/app.json` or `mobile/eas.json`.
 
-- `eas env:list --environment preview` and `eas env:list --environment production`
-  both show the same `EXPO_PUBLIC_SUPABASE_URL` and
-  `EXPO_PUBLIC_SUPABASE_ANON_KEY`, so preview and production resolve to the
-  same Supabase project.
-- `eas build:list --platform android --build-profile production --limit 5 --json`
-  returned `[]`.
-- `eas build:list --platform android --channel production --limit 5 --json`
-  returned `[]`.
-- `eas build:inspect --platform android --profile production --stage archive
-  --output /tmp/kilo-issue-431-production-archive --force` completed and saved
-  the project archive, verifying the production profile can resolve before a
-  remote EAS build is started.
-- `eas update:list --branch preview --limit 5 --json` shows current Android
-  `preview-3` updates, latest `Merge issue 424 tester guidance` on 2026-07-06.
-- `eas update:list --branch production --limit 5 --json` shows only one Android
-  production update, `update with latest changes` from 2026-05-18, with
-  `runtimeVersion` reported as `file:fingerprint`.
+Google Play's
+[Target API level requirements](https://support.google.com/googleplay/android-developer/answer/11926878)
+require phone and tablet apps submitted on or after August 31, 2026 to target
+Android 16 / API 36 or higher. Before a submission on or after that date:
 
-The remaining release blocker is user action: create and verify the production
-Android AAB through EAS, then upload it to Play Console after Play App Signing
-is ready.
+1. move the project to a supported Expo/native configuration that targets API
+   36 or higher;
+2. build a new production AAB;
+3. inspect the generated artifact's target SDK; and
+4. upload only after Play Console accepts the artifact without a target-level
+   warning.
 
-### Target API Level Verification
-
-**Command used:**
-```sh
-grep -r "targetSdkVersion" \
-  node_modules/expo-modules-autolinking/android/expo-gradle-plugin/expo-autolinking-plugin/src/main/kotlin/expo/modules/plugin/ExpoRootProjectPlugin.kt
-```
-
-**Output (relevant lines):**
-```
-val compileSdk = extra.setIfNotExist("compileSdkVersion") { Integer.parseInt(versionCatalogs.getVersionOrDefault("compileSdk", "35")) }
-val targetSdk  = extra.setIfNotExist("targetSdkVersion")  { Integer.parseInt(versionCatalogs.getVersionOrDefault("targetSdk",  "35")) }
-```
-
-**Result:** Expo SDK 54 (installed version `~54.0.33`, introspected `sdkVersion: 54.0.0`) defaults to `targetSdkVersion 35` and `compileSdkVersion 35` via the Expo autolinking Gradle plugin. No explicit override exists in `mobile/app.json` or `mobile/eas.json`. Google requires new apps to target API 35 — this build config **passes**.
+Do not infer the target SDK from `app.json` alone; verify the generated Android
+artifact.

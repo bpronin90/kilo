@@ -68,6 +68,7 @@ function makeMockAuth(overrides = {}) {
     }),
     signInWithPassword: jest.fn().mockResolvedValue({ data: { session: { user: { email: 'a@b.com' } } }, error: null }),
     signUp: jest.fn().mockResolvedValue({ data: { session: null }, error: null }),
+    resend: jest.fn().mockResolvedValue({ data: { user: null, session: null }, error: null }),
     signOut: jest.fn().mockResolvedValue({ error: null }),
     resetPasswordForEmail: jest.fn().mockResolvedValue({ error: null }),
     signInWithOAuth: jest.fn().mockResolvedValue({ data: { url: 'https://oauth' }, error: null }),
@@ -443,7 +444,19 @@ describe('useAuthSession', () => {
     await flush();
     let result;
     await act(async () => { result = await ref.current.signInWithPassword('a@b.com', 'pw'); });
-    expect(result).toEqual({ ok: false, error: 'bad creds' });
+    expect(result).toEqual({ ok: false, error: 'bad creds', unconfirmed: false });
+  });
+
+  test('sign in on an unconfirmed account is flagged distinctly from a generic credentials error (#799)', async () => {
+    mockAuth.signInWithPassword.mockResolvedValue({
+      data: null,
+      error: { message: 'Email not confirmed', code: 'email_not_confirmed' },
+    });
+    const { ref } = renderAuthHook();
+    await flush();
+    let result;
+    await act(async () => { result = await ref.current.signInWithPassword('a@b.com', 'pw'); });
+    expect(result).toEqual({ ok: false, error: 'Email not confirmed', unconfirmed: true });
   });
 
   test('sign out clears the session', async () => {
@@ -668,6 +681,64 @@ describe('password Auth CAPTCHA', () => {
     expect(mockAuth.resetPasswordForEmail).toHaveBeenCalledWith('a@b.com', {
       redirectTo: 'kilo://auth/callback',
       captchaToken: 'reset-token',
+    });
+  });
+
+  test('resend-confirmation fails closed before Supabase when a required challenge token is missing', async () => {
+    const { ref } = renderAuthHook();
+    await flush();
+    let result;
+    await act(async () => { result = await ref.current.resendSignupConfirmation('a@b.com'); });
+    expect(result).toEqual({ ok: false, error: expect.stringMatching(/complete the security verification/i) });
+    expect(mockAuth.resend).not.toHaveBeenCalled();
+  });
+
+  test('resend-confirmation passes a fresh token to Supabase and rejects reuse', async () => {
+    const { ref } = renderAuthHook();
+    await flush();
+    let first;
+    let repeated;
+    await act(async () => { first = await ref.current.resendSignupConfirmation('a@b.com', 'resend-token'); });
+    await act(async () => { repeated = await ref.current.resendSignupConfirmation('a@b.com', 'resend-token'); });
+    expect(first).toEqual({ ok: true });
+    expect(mockAuth.resend).toHaveBeenCalledWith({
+      type: 'signup',
+      email: 'a@b.com',
+      options: { captchaToken: 'resend-token' },
+    });
+    expect(repeated).toEqual({ ok: false, error: expect.stringMatching(/expired/i) });
+    expect(mockAuth.resend).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Signup confirmation resend (#799): resendSignupConfirmation calls Supabase's
+// signup-confirmation resend endpoint and forwards a rejection (e.g. rate
+// limit) as a readable error instead of failing silently.
+// ---------------------------------------------------------------------------
+
+describe('resendSignupConfirmation', () => {
+  test('calls supabase resend with type signup and returns ok on success', async () => {
+    const { ref } = renderAuthHook();
+    await flush();
+    let result;
+    await act(async () => { result = await ref.current.resendSignupConfirmation('a@b.com'); });
+    expect(result).toEqual({ ok: true });
+    expect(mockAuth.resend).toHaveBeenCalledWith({ type: 'signup', email: 'a@b.com' });
+  });
+
+  test('surfaces a rate-limit rejection as a readable error instead of failing silently', async () => {
+    mockAuth.resend.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'For security purposes, you can only request this after 42 seconds.' },
+    });
+    const { ref } = renderAuthHook();
+    await flush();
+    let result;
+    await act(async () => { result = await ref.current.resendSignupConfirmation('a@b.com'); });
+    expect(result).toEqual({
+      ok: false,
+      error: 'For security purposes, you can only request this after 42 seconds.',
     });
   });
 });

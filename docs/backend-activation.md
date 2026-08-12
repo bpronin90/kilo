@@ -1,74 +1,131 @@
 # Backend Activation Runbook
 
-This doc is the canonical, repeatable, operator-facing procedure for turning Kilo's Supabase backend on inside the shared `anime-streaming-tracker` project. It owns the activation procedure only: how to apply the schema, expose it, point the client at it, and verify isolation, plus how to revert and what safety invariants must never break.
+Status: current operator procedure for deploying and activating Kilo's optional
+Supabase backend in the shared production project.
 
-This activation has already been performed once against the shared project; the steps below describe the same procedure so it can be repeated (for example, against a fresh project or after a reset) with the same result.
-
-For schema structure and the naming/ownership/isolation policy, see `docs/backend-schema.md`. For phase sequencing and the broader backend contract, see `docs/archive/backend-roadmap.md`. This doc does not duplicate either; it is the runbook that switches the shipped foundation on.
+This document owns migration deployment, Data API exposure, client
+configuration, public Auth-provider setup, and operational verification. Schema
+meaning and ownership rules live in [Backend Schema](backend-schema.md);
+historical sequencing lives in the
+[archived backend roadmap](archive/backend-roadmap.md).
 
 ## Preconditions
 
-- The Phase 3 backend foundation is merged (v0.70.0+): the note-first migration, the auth/session client, and the storage-seam adapter are present in the tree.
-- You have operator access to the shared Supabase project (migration + API-settings permissions).
-- `kilo` is the only Kilo-owned schema. Kilo must **never** create, read, or write `public`, `raw`, `canonical`, `serving`, `serving_stage`, `legacy`, or `ops` — those belong to the anime-tracker app. The only cross-schema reference Kilo makes is read-only to the Supabase-managed `auth` schema.
-- You understand the isolation posture before applying anything: RLS scopes every row to its owner, `authenticated` gets RLS-scoped DML, `service_role` gets full access for future server-owned code, and `anon` is never granted.
+- You have authorized operator access to the target Supabase project.
+- The Supabase CLI and Docker are available for local migration verification.
+- The target project is positively identified before any command is run.
+- Kilo owns only the `kilo` schema. Do not modify `public`, `raw`,
+  `canonical`, `serving`, `serving_stage`, `legacy`, or `ops`.
+- Secrets remain outside source control. A service-role or secret key must never
+  enter the mobile client, a committed environment file, an issue, or a log.
 
-## Step 1: Apply The Migration
+## 1. Validate The Migration Set Locally
 
-Apply `supabase/migrations/20260615120000_note_first_schema.sql`. This creates the `kilo` schema, the seven note-first tables, their indexes, enables RLS on every table, and installs the owner-scoped policies and grants.
+The ordered files under `supabase/migrations/` are the database source of
+truth. Do not apply only the original baseline migration and do not reproduce
+later changes by hand.
 
-- **Dry-run first.** Before the real apply, prove isolation in a transaction-rollback dry run: run the migration body inside a transaction and roll it back, confirming it creates only `kilo` objects and touches nothing in the other app's schemas. The first apply against the shared project was gated on this dry run passing.
-- Apply via the Supabase migration tooling (Supabase CLI migration path or the MCP `apply_migration` tool). Do not hand-run ad-hoc SQL outside the migration file; the migration file is the source of truth for the schema.
-- Expected applied state, verified live after the first apply:
-  - 7 tables in `kilo`: `user_profile`, `feature_toggles`, `weight_entries`, `weight_goal`, `workout_notes`, `deload_history`, `fatigue_checkins`.
-  - RLS enabled on all 7 tables.
-  - 28 owner-scoped policies (select/insert/update/delete on each of the 7 tables), each restricting rows to `user_id = auth.uid()`.
-  - Grants: schema `usage` plus RLS-scoped `select/insert/update/delete` to `authenticated`; schema `usage` plus full (`all`) access to `service_role`.
-  - No grant of any kind to `anon`.
+From a disposable local Supabase stack:
 
-The migration creates objects with `create ... if not exists`, but its policy and grant statements are not guarded; treat a re-apply as needing a clean state (see Revert And Safety Notes).
+```sh
+supabase db reset --local --no-seed
+node scripts/run-pgtap-suite.mjs
+```
 
-## Step 2: Expose The `kilo` Schema
+A reset must apply the full migration chain successfully. The test runner must
+discover and pass every planned pgTAP file; skips, TODOs, parse errors, and
+zero-test plans are failures.
 
-A custom schema is not reachable through the auto-generated REST API until it is added to the project's exposed schemas. This is a project-config step, not part of the migration.
+## 2. Apply Pending Migrations
 
-- Add `kilo` to the exposed schemas via the Dashboard (API settings) or `config.toml` `[api] schemas`.
-- Leave the other app's schemas exactly as they are; only add `kilo`.
-- Exposing the schema does **not** open it to the public. Because `anon` holds no grants, an unauthenticated REST call against `kilo` is correctly rejected. After the first activation, an `anon` REST call returns `401 permission denied for schema kilo` — schema exposed, `anon` locked out by design. That response is the expected, healthy state, not a misconfiguration.
+Link the CLI to the intended project, then inspect the exact pending set before
+changing remote state:
 
-## Step 3: Set The Client Env
+```sh
+supabase migration list
+supabase db push --dry-run
+```
 
-The app reads its Supabase connection from two environment variables and stays local-only when they are unset.
+Review pending migrations by filename and SQL ownership. Every Kilo migration
+must be limited to the `kilo` schema plus deliberate read-only references to
+Supabase-managed `auth` objects. The production project is shared, so unrelated
+migration-ledger rows belonging to co-tenants are expected.
 
-- Set both in `mobile/.env` (gitignored):
-  - `EXPO_PUBLIC_SUPABASE_URL`
-  - `EXPO_PUBLIC_SUPABASE_ANON_KEY`
-- Use the project URL and the modern publishable key (the `sb_publishable_...` form) for the anon key. Never use, embed, or commit a `service_role` key on the client.
-- **Never commit secrets.** Keep these values in the gitignored `mobile/.env` only. No URL, key, or secret belongs in this doc, in source, or in version control.
-- Restart the Expo dev server after changing `mobile/.env` — env values are read at bundler start, so a running server will not pick up new values until it is restarted.
-- When either variable is unset, `getSupabaseClient()` returns null and the app runs in local-only (AsyncStorage) mode. Setting both is what opts the client into cloud mode.
+Apply the reviewed pending set through migration tooling:
 
-## Step 4: Verify
+```sh
+supabase db push
+```
 
-Confirm activation end to end before relying on it.
+Supabase records applied migrations in
+`supabase_migrations.schema_migrations`; do not bypass that ledger with ad hoc
+remote SQL. After deployment, run the repository drift check with the approved
+read-only connection:
 
-- **Authenticated user sees only their own rows.** Sign in as a test user and confirm select/insert/update/delete reach only rows where `user_id = auth.uid()`. A second test user must not see or mutate the first user's rows. This is RLS doing its job on top of the `authenticated` grants.
-- **Signed-out stays local.** With env unset, or signed out, confirm the app keeps working against local AsyncStorage and makes no cloud calls.
-- **Anon REST is denied.** An unauthenticated REST call against any `kilo` table returns `401 permission denied for schema kilo`. This proves the schema is exposed but `anon` is correctly ungranted.
+```sh
+npm run check:migrations
+```
 
-If any of these three checks fails, stop and reconcile before treating the backend as active.
+The drift check compares migration identity by name and Kilo-owned SQL. Extra
+live migrations from the co-tenant application are not Kilo drift.
 
-## Revert And Safety Notes
+## 3. Expose The `kilo` Schema
 
-- **`anon` is never granted.** No activation, re-apply, or config change may grant `anon` any access to `kilo`. Signed-out users stay local-only by design.
-- **`service_role` keys never ship to clients.** The `service_role` grant exists only for future server-owned code (account export/deletion). Its key must never appear in `mobile/.env`, the client bundle, or this repo.
-- **Before re-applying the migration:** confirm the target schema state. Object creation is `if not exists`, but the policy and grant statements are not idempotent and will error against an existing schema. For a clean re-apply, start from a project/schema without the prior `kilo` objects, or drop the existing `kilo` objects first in a controlled, isolation-checked step. Re-run the transaction-rollback dry run before any real re-apply.
-- **To deactivate the client without touching the database:** unset `EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_ANON_KEY` in `mobile/.env` and restart the Expo dev server. The app reverts to local-only mode; the cloud schema is untouched.
-- Never modify the other app's schemas as part of any activation or revert step.
+Add `kilo` to the project's exposed schemas in the Supabase API settings.
+Leave every other schema entry unchanged.
 
-## Step 5: Auth Abuse Posture (Open Signup Gate)
+Exposure and authorization are separate controls. The schema needs Data API
+exposure for the client, but `anon` receives no Kilo grants. Tables reachable
+by authenticated clients must retain RLS and owner-scoped policies.
 
-Open signup must not go live without passing both checks in this section. If a check cannot be completed, keep public password Auth unavailable until it passes.
+## 4. Configure The Client
+
+Set these public client values in the deployment environment or a gitignored
+`mobile/.env`:
+
+- `EXPO_PUBLIC_SUPABASE_URL`
+- `EXPO_PUBLIC_SUPABASE_ANON_KEY`
+
+Use the project URL and publishable client key. Never use a service-role or
+secret key. Restart the Expo bundler after changing local values.
+
+When either value is absent, the Supabase client factory returns no client and
+the app remains local-only. Configuration does not itself authorize cloud
+health-data access: the user must also sign in, resolve local-data ownership,
+and grant the active health-data consent revision.
+
+## 5. Verify Activation
+
+Before relying on the backend:
+
+1. Confirm the full repository migration set is present in the remote migration
+   ledger and `npm run check:migrations` passes.
+2. Confirm RLS is enabled on every client-reachable Kilo table.
+3. As two authenticated test users, prove each can read and mutate only their
+   own rows.
+4. Confirm an unauthenticated Data API request to `kilo` is denied.
+5. Confirm signed-out and unconfigured app sessions remain local-only.
+6. Run the relevant account, consent, sync, export, deletion, and bounded-write
+   checks for the release being activated.
+
+A schema count or table count is not an activation invariant; the migration set
+evolves. Verify migration identity, RLS/grants, and behavior instead.
+
+## Deactivation And Recovery
+
+- To disable cloud use in a client without changing stored cloud data, remove
+  the two public Supabase environment values and rebuild/restart the client.
+- Do not re-run an individual historical migration against an existing schema.
+- Do not drop the `kilo` schema as a routine rollback. Production rollback
+  requires a reviewed forward migration or an explicit disaster-recovery plan.
+- Never change another application's schemas, Auth settings, extensions, or
+  roles as part of Kilo recovery.
+
+## Public Auth And Abuse Controls
+
+Open signup must not go live until every applicable control in this section has
+been configured and verified. If a check cannot be completed, keep that public
+Auth path unavailable.
 
 ### CAPTCHA
 
@@ -256,32 +313,43 @@ Supported providers: SendGrid, Postmark, Resend, or any SMTP-capable transaction
 
 **Release verification:** Open each URL and confirm it resolves to the published document. Run `grep -r 'example.com' mobile/screens/MoreScreen.js mobile/components/AboutScreen.js` and confirm no results.
 
-### OAuth Provider (GitHub - Web Only)
+### GitHub OAuth Provider
 
-**Requirement:** GitHub OAuth must be configured in the Supabase Dashboard and GitHub developer settings before open public signup for the web distribution surface.
+**Requirement:** Configure GitHub OAuth before exposing the Continue with GitHub
+action on web or Android.
 
-> [!NOTE]
-> OAuth is currently supported on the **web build only**; native OAuth is disabled/out of scope for Phase 6.
+**GitHub setup:**
 
-**GitHub Setup (Create OAuth App):**
-- In GitHub, go to your profile Settings → Developer settings → OAuth Apps → New OAuth App.
-- Application name: `Kilo` (or `Kilo Dev` for local development).
-- Homepage URL: Your web production website URL (or `http://localhost:8081` for local web development).
-- Authorization callback URL: `https://<project-ref>.supabase.co/auth/v1/callback` (where `<project-ref>` is your Supabase project reference).
+1. In GitHub, create an OAuth App for Kilo.
+2. Set the homepage to the production web origin.
+3. Set the authorization callback to
+   `https://<project-ref>.supabase.co/auth/v1/callback`.
 
-**Dashboard Configuration:**
-- In the Supabase Dashboard, go to Authentication → Providers → GitHub.
-- Toggle "Enable GitHub provider" to active.
-- Paste the Client ID and Client Secret from your GitHub OAuth App settings.
-- Ensure the Redirect URLs under Authentication → URL Configuration include your production web URL and any local web development URL (e.g., `http://localhost:8081`).
+GitHub returns to Supabase first. Supabase then redirects the completed flow back
+to the allow-listed client URL.
 
-**Release Verification:**
-- Launch the web build and navigate to the Account screen.
-- Tap "Continue with GitHub" and confirm it redirects to the GitHub authorization page.
-- Log in and verify that the flow successfully redirects back to the web app in a signed-in state.
+**Supabase setup:**
+
+1. In Authentication → Providers → GitHub, enable the provider and enter the
+   OAuth App client ID and secret.
+2. In Authentication → URL Configuration, allow the production web origin,
+   required local web origins, and `kilo://auth/callback`.
+3. Keep the GitHub client secret in provider configuration only; never expose it
+   to the app.
+
+**Release verification:**
+
+- On web, complete Continue with GitHub and confirm the browser returns to the
+  deployed origin in a signed-in state.
+- In an installed Android development or preview build, complete the browser
+  flow and confirm `kilo://auth/callback` returns to Kilo and the PKCE code is
+  exchanged for a session.
+- Verify cancellation, provider failure, missing callback data, and session
+  exchange failure return readable errors. Expo Go cannot prove the custom
+  native callback.
 
 ## Relationship To Other Docs
 
 - `docs/backend-schema.md` owns the schema structure and the naming, source-of-truth, ownership, and isolation **policy** that schema changes must follow. Consult it for what the tables, columns, RLS, and grants mean.
-- `docs/archive/backend-roadmap.md` owns phase **sequencing** and the broader backend/auth/sync contract. Consult it for where activation fits in the overall build order.
-- This doc owns the **activation procedure** only and defers to those two for structure/policy and sequencing.
+- `docs/archive/backend-roadmap.md` preserves the completed implementation sequence. It is historical, not an operational authority.
+- This document owns the current activation and provider-configuration procedure.

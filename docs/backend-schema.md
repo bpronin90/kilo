@@ -1,6 +1,9 @@
 # Backend Schema And Source-Of-Truth Policy
 
-This doc is the canonical reference for how Kilo's cloud data is structured in Supabase, why it is structured that way, and the naming, ownership, and isolation rules every future schema change must follow. It describes the schema shipped by the note-first migration (`supabase/migrations/20260615120000_note_first_schema.sql`, issue #316) and the policy that governs additions to it.
+Status: current schema policy. The ordered files under
+`supabase/migrations/` are authoritative for exact database objects; this
+document owns the durable naming, ownership, source-of-truth, RLS, and consent
+rules that govern them.
 
 This is a policy and structure doc, not an ingestion/ETL design. Kilo stores a small, single-user, note-first dataset; it does not run a `raw/canonical/serving` pipeline, and that layering model must not be imported here.
 
@@ -24,7 +27,10 @@ Consequences:
 
 - The app tables share **one ownership boundary**. There is no reason to split them across `raw/canonical/serving` layers, and doing so would only add coordination cost with no benefit at this scale.
 - Canonical-vs-derived is expressed at **column granularity** (see Source-Of-Truth Rule), not at schema-layer granularity. One table can hold both the canonical text and its derived projections.
-- A future `kilo_ops` schema is reserved **only** for Phase 4 sync bookkeeping — cursors, dirty queues, tombstone retention — and only if that bookkeeping actually materializes as server-owned state. It is not created speculatively, and it is the one allowed exception to the single-schema rule.
+- Sync metadata that belongs in Postgres stays with Kilo-owned objects in the
+  `kilo` schema. Device-side dirty queues and cursors stay in the mobile storage
+  layer. A second Kilo schema requires a new explicit ownership decision; none
+  is reserved speculatively.
 
 Do not introduce the anime-tracker's `raw/canonical/serving/ops` layer model into Kilo.
 
@@ -41,7 +47,9 @@ Because Kilo's dataset is small and single-user, canonical-vs-derived is tracked
 ## Naming Conventions
 
 - **`*_history`** suffix for append/history tables (for example `deload_history`). The current/draft record stays on its owning singleton; completed historical records go to the `*_history` table.
-- **Explicit domain nouns** for table names (`weight_entries`, `workout_notes`, `weight_goal`, `feature_toggles`, `user_profile`, `fatigue_checkins`, `recovery_blocks`, `recovery_block_weeks`). No generic or abbreviated table names.
+- **Explicit domain nouns** for table names (for example `weight_entries`,
+  `workout_notes`, `weight_goal`, `user_health_profile`, `consent_state`, and
+  `recovery_blocks`). No generic or abbreviated table names.
 - **Singleton tables key on `user_id`** — one row per user, primary key is the user id (`user_profile`, `feature_toggles`, `weight_goal`).
 - **Multi-row tables key on `(user_id, id)`** — the local `id` is preserved as `text` so client ids survive sync (`weight_entries`, `workout_notes`, `deload_history`, `fatigue_checkins`, `recovery_blocks`, `recovery_block_weeks`).
 - **Foreign keys are owner-first and composite**, matching that primary key: `recovery_block_weeks (user_id, block_id)` references `recovery_blocks (user_id, id)`. A reference that crosses a boundary the withdrawal purge deletes is deliberately NOT a foreign key — `recovery_blocks.baseline_note_id` and `fatigue_checkins.workout_note_id` are plain `text`, because a constraint pointing at `workout_notes` from a table the purge does not cover would block the purge itself.
@@ -54,7 +62,9 @@ Isolation is enforced by RLS on top of explicit grants. A custom schema has no d
 
 - **RLS is enabled on every table.** Every operation is owner-scoped to rows where `user_id = auth.uid()`. Update policies pair `using` with `with check` so update visibility is owner-only and a row cannot be reassigned to another owner. Insert policies use `with check (user_id = auth.uid())`.
 - **`authenticated`** gets `usage` on the `kilo` schema and RLS-scoped `select/insert/update/delete` on each table. RLS narrows that DML to the signed-in owner's rows.
-- **`service_role`** gets `usage` plus full (`all`) access on each table, reserved for future server-owned code (for example account export and deletion). No public client ever receives the `service_role` key.
+- **`service_role`** is limited to server-owned operations such as account
+  export, account deletion, consent withdrawal cleanup, and monitoring. No
+  public client ever receives its key.
 - **`anon` is never granted.** Signed-out users stay local-only (AsyncStorage) and never reach these tables.
 
 This grant/RLS posture is what proves Kilo's rows are isolated inside the shared project, since the schema cannot rely on `public`'s default privileges.
@@ -63,13 +73,23 @@ This grant/RLS posture is what proves Kilo's rows are isolated inside the shared
 
 Tables holding data concerning health (Art. 9) carry a second RLS predicate on top of ownership: `kilo.health_gate_ok()`, which requires an active consent grant at the required material version. Both predicates are wrapped in a scalar subquery so the planner evaluates them once per statement.
 
-`recovery_blocks` and `recovery_block_weeks` (issue #693) are health data — a frozen baseline is a record of what the lifter could do before an injury, and a membership says which weeks they trained while recovering from one — and their policies are gated accordingly.
+`recovery_blocks` and `recovery_block_weeks` are health data: a frozen baseline
+records what the lifter could do before an injury, and a membership records
+which weeks they trained while recovering. Their policies are gated
+accordingly.
 
-Since issue #694 both tables are in the **authoritative health-data scope**, closing the gap #693 shipped with. `kilo.health_gated_tables()` (redefined in `supabase/migrations/20260728220000_recovery_health_gated_tables.sql`) and `HEALTH_DATA_SCOPE` (`supabase/functions/_shared/health-data-scope.ts`) both name nine tables, and the parity between them is enforced by the contract test in `supabase/functions/_shared/health-data-scope.test.ts`. That single change carries every surface that resolves the scope through those two lists: account export, full account deletion, the withdrawal deletion worker, the verified-zero row count that gates `deletion_pending -> withdrawn`, the operator re-enqueue's reported `table_counts`, and the integrity row counts.
+`kilo.health_gated_tables()` and `HEALTH_DATA_SCOPE` in
+`supabase/functions/_shared/health-data-scope.ts` define the same nine-table
+health-data set. Their contract test prevents export, account deletion,
+withdrawal deletion, completion checks, and monitoring from drifting onto
+different scopes.
 
 `recovery_block_weeks` is deleted **before** `recovery_blocks` (child before parent). The FK's `on delete cascade` would empty both either way, which is exactly why the order is pinned by a test: the purge must remove the rows its own statements claim to remove rather than depend on cascade behavior for a count that `kilo.complete_health_deletion_job()` later re-checks.
 
-**No consent material-version bump accompanied this.** #692/#693 added no new health *category* — recovery blocks are workout notes and training performance, already inside the granted scope and already gated by the RLS policies shipped with the tables. #694 closed an erasure/export gap for data the existing grant already covered. A genuinely new category still requires new consent copy and a re-consent.
+A genuinely new health-data category requires revised consent copy, a new
+material version, and re-consent. Adding another representation of an already
+disclosed category still requires the export/deletion scope and its parity tests
+to move in the same change.
 
 ## Operational Notes
 
@@ -77,11 +97,9 @@ Since issue #694 both tables are in the **authoritative health-data scope**, clo
 - **Exposed schemas:** `kilo` must be added to the project's exposed schemas (API settings, or `config.toml` `[api] schemas`) before the client can reach these tables over the auto-generated API. This is a project-config step, not part of a migration.
 - Client queries must always be user-scoped and index-backed; fetch changed records by table and `updated_at` cursor rather than scanning.
 
-## Relationship To `docs/archive/backend-roadmap.md`
+## Relationship To The Archived Backend Roadmap
 
-These two docs have distinct, non-overlapping authority:
-
-- **`docs/archive/backend-roadmap.md`** owns sequencing and contract intent: the phased issue series, the auth/RLS/isolation contract, the sync and self-serve obligations, and the AsyncStorage-to-cloud mapping. It describes what the backend build is delivering and in what order.
-- **`docs/backend-schema.md`** (this doc) owns the current schema structure and the naming, source-of-truth, ownership, and isolation policy that schema changes must follow.
-
-When the two appear to disagree on the shipped schema's structure or naming/ownership rules, this doc is authoritative for those rules and the roadmap is authoritative for sequencing and broader contract intent. New schema work should be consistent with both.
+`docs/archive/backend-roadmap.md` preserves the completed implementation
+sequence and original contract intent. It is historical. For current behavior,
+use the migrations and tests; for current policy, use this document; for
+deployment and provider operations, use `docs/backend-activation.md`.

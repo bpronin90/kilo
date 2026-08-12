@@ -1,6 +1,12 @@
-# Expo Go On Phone From WSL
+# Mobile Development And Build Runbook
 
-Use this when the Kilo Expo app is run from WSL and loaded in Expo Go on a phone.
+Status: current operator and developer runbook for WSL/Expo connectivity, EAS
+builds, device installation, and preview-runtime policy. Testing expectations
+live in `docs/testing-and-qa.md`; Play Console status lives in
+`docs/play-store-readiness.md`.
+
+The first section covers running Kilo from WSL in Expo Go. Later sections cover
+standalone Android and iOS artifacts.
 
 ## TL;DR
 
@@ -237,16 +243,16 @@ for this workflow. It can rewrite Expo/Jest versions and break the repo's intend
 
 ---
 
-# Standalone Android Build via EAS
+## Standalone Android Build Via EAS
 
 Use this when you need an APK that runs on a phone without the dev machine being on.
 
-## Prerequisites
+### Prerequisites
 
 - Expo account: `npx expo login`
 - EAS CLI: `npm install -g eas-cli`
 
-## One-time project linking (per account)
+### One-Time Project Linking
 
 ```bash
 cd /home/benpronin/projects/kilo/mobile
@@ -263,7 +269,7 @@ git commit -m "chore(mobile): add EAS projectId from eas build:configure"
 
 Skip this step if `extra.eas.projectId` is already present in `mobile/app.json`.
 
-## Build APK
+### Build APK
 
 ```bash
 cd /home/benpronin/projects/kilo/mobile
@@ -274,71 +280,48 @@ eas build --platform android --profile preview
 - Build runs on EAS cloud servers — the laptop does not need to stay on.
 - When the build finishes, EAS prints a download URL.
 
-## Install on phone
+### Install On Phone
 
 1. Download the `.apk` from the EAS build URL (browser or `curl`).
 2. Transfer to the phone (USB, Google Drive, email, etc.).
 3. On the phone, open the `.apk` file and tap **Install**.
    - Enable "Install from unknown sources" in Android settings if prompted.
 
-## Updating the app later
+### Updating The App Later
 
-Use one of these two paths depending on what changed.
+Remote EAS Update publication is disabled. The `update:*` scripts fail
+intentionally and must not be bypassed.
 
-### OTA-safe update: JavaScript or assets only
+Build a replacement preview artifact for every update:
 
-If the installed Android build is already compatible and the change is limited
-to JavaScript, styling, or bundled assets, publish an OTA update instead of
-rebuilding:
-
-```bash
-cd /home/benpronin/projects/kilo/mobile
-npm run update:android:preview
+```sh
+npm --prefix mobile run build:android:preview
 ```
 
-- `update:android:preview` targets the `preview` EAS Update channel.
-- After publishing, fully close and reopen the installed app to let
-  `expo-updates` fetch the new update on launch.
+Install the new APK over the existing app when package name and signing identity
+are compatible. Confirm local data survives when the release depends on
+in-place-update behavior. Native-affecting changes additionally require a
+preview-runtime bump as described below.
 
-### Rebuild required: native-affecting change
-
-If the change touches native runtime compatibility, build a new APK and install
-it over the existing app:
-
-```bash
-cd /home/benpronin/projects/kilo/mobile
-eas build --platform android --profile preview
-```
-
-- Rebuild-required cases:
-  - adding or upgrading a native module
-  - changing Android native project files
-  - changing `app.json` fields that affect native config, such as package,
-    permissions, splash, or icons
-  - manually bumping `PREVIEW_RUNTIME` in `mobile/app.config.js` (see
-    [Preview runtime policy](#preview-runtime-policy) below)
-- Download the new `.apk` from the latest EAS build URL.
-- Install it on the phone again. Android should treat this as an update as long
-  as the package name stays the same and the signing is compatible.
-- Existing local app data will usually survive an in-place update, but that
-  should still be verified when the change matters.
-
-## Checking build status
+### Checking Build Status
 
 ```bash
 eas build:list --platform android --limit 5
 ```
 
-## Notes
+### Notes
 
 - The app uses only local `AsyncStorage`; no backend or network connection is required at runtime.
 - Subsequent builds reuse the same EAS project — no re-configuration needed.
-- The `preview` profile intentionally omits OTA code-signing setup. Use a preview APK for the first install, then use `npm run update:android:preview` for JS-only changes.
-- Preview builds use a stable manual runtime string (`preview-4`) rather than tracking `expo.version`. App version bumps do not create a new OTA boundary for preview. See [Preview runtime policy](#preview-runtime-policy) for when to bump this string.
+- The `preview` profile intentionally disables remote updates. Distribute a new
+  preview APK for every change.
+- Preview builds use the manual runtime string documented in
+  [Preview Runtime Policy](#preview-runtime-policy). Read the value from
+  `mobile/app.config.js`; do not copy an older runtime string forward.
 
 ---
 
-# Production Android Release & Updates (Play Store)
+## Production Android Release And Updates
 
 Use this for the app that ships through Google Play (production channel). This
 path is separate from the preview APK flow above: production builds are `.aab`
@@ -346,7 +329,7 @@ app bundles distributed only through Play Console, and they use
 `runtimeVersion.policy: "appVersion"` instead of the stable preview runtime
 string.
 
-## Build & upload the production AAB
+### Build And Upload The Production AAB
 
 ```bash
 # from the repo root
@@ -359,47 +342,23 @@ npm --prefix mobile run build:android:production
   (Test and release → the target track → Create release). New AABs go through
   Google review before rollout.
 
-## Push an update to the production app
+### Updating Production
 
-Decision rule — pick the path by what changed:
+Remote EAS Update publication is disabled for production as well as preview.
+Every production change ships through a new AAB:
 
-| Change | Path |
-|---|---|
-| JS/styling/asset change only, **no version bump** | Production OTA update (below) |
-| App version bump (`package.json` → synced via `scripts/sync-version.mjs`) | New AAB + Play Console release |
-| Native change (module, native config, permissions, icons, Expo SDK) | New AAB + Play Console release |
+1. If the application version changes, update the canonical root version through
+   the release workflow and synchronize the mobile version fields.
+2. Run `npm --prefix mobile run build:android:production`.
+3. Upload the resulting AAB to the intended Play Console track.
+4. Complete review and rollout, then verify the installed artifact.
 
-### Production OTA update (JS/assets only, same app version)
-
-```bash
-# from the repo root
-npm --prefix mobile run update:android:production
-```
-
-- Publishes to the `production` EAS Update channel.
-- Installed apps fetch the update on next cold launch (fully close and reopen).
-- **Only reaches installs whose app version matches the version the update is
-  published against.** Production uses `runtimeVersion.policy: "appVersion"`,
-  so every app version bump is a new OTA boundary — an update published at
-  `0.88.0` never reaches phones still running the `0.87.x` AAB.
-- Requires a compatible production AAB to already be live; do not publish
-  production OTA updates before the first production AAB is uploaded and
-  verified.
-
-### New AAB release (version bump or native change)
-
-1. Bump the canonical version in root `package.json` (if applicable) and run
-   `node scripts/sync-version.mjs` so `mobile/package.json` and
-   `mobile/app.json` match.
-2. `npm --prefix mobile run build:android:production`
-3. Upload the new `.aab` in Play Console on the same track → roll out (goes
-   through Google review).
-4. After rollout, JS-only OTA updates flow again for that version via
-   `update:android:production`.
+Do not run or bypass `update:android:production`; it is intentionally wired to
+the blocked-update script.
 
 ---
 
-# Standalone iOS Build via EAS
+## Standalone iOS Build Via EAS
 
 Use this when you need an iOS build from the `mobile/` Expo app.
 
@@ -408,14 +367,14 @@ Two profiles are available:
 - `ios-simulator` — builds a `.app` bundle for the iOS Simulator; no Apple Developer account required. **macOS required to use the artifact** — the EAS remote build runs without a Mac, but running the Simulator and `xcrun simctl` requires macOS with Xcode installed. Windows and Linux contributors can trigger the build but cannot use the resulting artifact locally.
 - `ios-device` — builds an internal-distribution `.ipa` for direct real-device install; requires an Apple Developer account and device UDIDs registered in the Apple Developer portal.
 
-## Prerequisites
+### Prerequisites
 
 - Expo account: `npx expo login`
 - EAS CLI: `npm install -g eas-cli`
 - For `ios-simulator`: macOS with Xcode installed to run the Simulator locally (EAS cloud handles the build itself on any OS).
 - For `ios-device`: Apple Developer Program membership; target device UDIDs registered at [developer.apple.com/account/resources/devices](https://developer.apple.com/account/resources/devices); EAS will manage the ad hoc provisioning profile automatically.
 
-## Build for iOS Simulator
+### Build For iOS Simulator
 
 ```bash
 cd /home/benpronin/projects/kilo/mobile
@@ -433,7 +392,7 @@ xcrun simctl launch booted com.benpronin.kilo
 
 These commands require macOS with Xcode. They are not available on Windows or Linux.
 
-## Build for Real Device (internal distribution)
+### Build For Real Device (Internal Distribution)
 
 ```bash
 cd /home/benpronin/projects/kilo/mobile
@@ -446,7 +405,7 @@ eas build --platform ios --profile ios-device
 - When the build finishes, EAS prints a direct download URL for the `.ipa`.
 - **iOS 16+ Developer Mode required.** Internally distributed builds are treated as developer builds on iOS 16 and later. Before the `.ipa` will launch, go to **Settings → Privacy & Security → Developer Mode** on the device and enable it. The device will restart.
 
-## Install on iPhone or iPad
+### Install On iPhone Or iPad
 
 1. Open the finished build from the EAS build URL in a desktop browser or run:
 
@@ -467,7 +426,7 @@ Alternative install paths:
 
 If the install link fails, re-check that the device UDID was registered before the build started. If it was added afterward, create a new `ios-device` build.
 
-## Updating the app later
+### Updating The App Later
 
 When the app changes, build a new internal-distribution `.ipa` and install it on the device again:
 
@@ -481,82 +440,66 @@ eas build --platform ios --profile ios-device
 - This flow does not provide automatic OTA updates. New shipped app changes require a new build and reinstall.
 - Existing local app data will usually survive an in-place update, but that should still be verified when the change matters.
 
-## Checking build status
+### Checking Build Status
 
 ```bash
 eas build:list --platform ios --limit 5
 ```
 
-## Known blockers
+### Known Blockers
 
 - **Apple Developer account required for device builds.** The `ios-device` profile cannot produce a signed `.ipa` without valid credentials. Without an account, use `ios-simulator` only.
 - **Device UDID must be registered before building.** Internal distribution ties the provisioning profile to specific registered UDIDs. A device not registered at the time of the build cannot install that `.ipa`.
 - **iOS 16+ requires Developer Mode enabled on the device.** Internal-distribution builds will not launch until Developer Mode is turned on in Settings → Privacy & Security → Developer Mode.
 - **Simulator artifact requires macOS.** The EAS remote build itself runs on any OS, but installing and running the `.app` requires macOS with Xcode. Windows and Linux contributors cannot use the simulator artifact locally.
 - **Simulator builds cannot run on a real device.** The `.app` from `ios-simulator` is a simulator binary, not a signed device build.
-- **OTA not documented for this iOS flow.** Use a new EAS build and reinstall for now unless the repo adopts and validates an iOS OTA process separately. Preview builds share the same stable runtime string (`preview-4`), so the runtime boundary won't shift on version bumps when OTA is later enabled here.
+- **Remote updates are disabled for this iOS flow.** Use a new EAS build and
+  reinstall. Re-enabling updates requires the signed-update procedure in
+  [Preview Runtime Policy](#preview-runtime-policy).
 
 ---
 
-# Preview Runtime Policy
+## Preview Runtime Policy
 
-Preview builds use a **stable manual runtime string** (`preview-4`) instead of
-tracking `expo.version`. This means app version bumps do not create a new OTA
-compatibility boundary for the `preview` channel. After a one-time rebuild onto
-the new runtime, all subsequent JS-only preview OTA updates flow without
-rebuilding.
+Preview builds use the manual runtime string `preview-5` from
+`mobile/app.config.js`. The runtime identifies native compatibility across
+preview artifacts; it is not permission to publish an OTA update.
 
-## How it works
+Remote updates are currently fail-closed:
 
-`mobile/app.config.js` sets `runtimeVersion` dynamically:
+- `updates.enabled` is false in replacement builds.
+- No preview or production update channel is bound.
+- Every `update:*` package script exits with a blocked message.
+- A private update-signing key must not be stored in this repository.
 
-- Build/update env `APP_ENV=preview` → `runtimeVersion: "preview-4"`
-- Production builds (no `APP_ENV`) → `runtimeVersion: { policy: "appVersion" }`
+### When To Bump The Preview Runtime
 
-All three preview EAS build profiles (`preview`, `ios-simulator`, `ios-device`)
-set `APP_ENV=preview` via `eas.json`. The `update:android:preview` and
-`update:ios:preview` npm scripts also set `APP_ENV=preview` so bundled OTA
-updates carry the same runtime value as the installed build.
+Advance `PREVIEW_RUNTIME` in the same change whenever an installed preview
+would lack required native code or configuration, including:
 
-## Recovery after a runtime bump
+- adding, removing, or upgrading a native module;
+- updating Expo SDK or another native dependency;
+- changing platform permissions, schemes, icons, plugins, or native project
+  files;
+- changing security behavior embedded in the native update client.
 
-Installed preview builds on an older manual runtime (for example, `preview-3`)
-must not receive an OTA published for `preview-4`. They can lack native code
-required by the update, and an OTA cannot repair that mismatch. Build and install
-a fresh preview APK before publishing or validating JS-only updates:
+After a bump, create and distribute replacement preview artifacts. An older
+installed runtime cannot be repaired by JavaScript.
 
-```bash
-cd /home/benpronin/projects/kilo/mobile
-eas build --platform android --profile preview
-```
+Do not bump the runtime for a pure JavaScript, styling, or bundled-asset change
+that leaves native compatibility unchanged. OTA remains blocked either way, so
+those changes still ship in a replacement artifact.
 
-Install the new APK over the old build (or reinstall it). After that, all
-JS-only preview updates on the new runtime flow OTA.
+### Re-Enabling Remote Updates
 
-## JS-only preview update (normal path after migration)
+Re-enable EAS Update only through an explicit security change that:
 
-```bash
-cd /home/benpronin/projects/kilo/mobile
-npm run update:android:preview
-```
+1. creates and keeps the signing private key outside source control;
+2. embeds the matching public certificate and code-signing metadata in a new
+   runtime;
+3. ships replacement native builds with signed-update enforcement;
+4. proves those builds reject unsigned or incorrectly signed manifests; and
+5. replaces the blocked package scripts with reviewed publish commands.
 
-No rebuild required.
-
-## When to bump the preview runtime
-
-Bump `PREVIEW_RUNTIME` in `mobile/app.config.js` only when a native-affecting
-change makes existing installed preview builds incompatible:
-
-- adding or removing a native module
-- changing Android/iOS native project files
-- changing native config or an Expo config plugin (including `app.json` fields
-  such as package, permissions, splash, or icons)
-- updating the Expo SDK or any native dependency
-
-Advance the constant in the same PR (for example, `"preview-3"` →
-`"preview-4"`), then create and distribute a new preview build. Devices still
-on the old runtime must be reinstalled; an OTA cannot add their missing native
-code.
-
-Do **not** bump the preview runtime for JS-only changes, styling updates,
-dependency upgrades that are pure JS, or app version bumps.
+Until all five conditions are met, build replacement native artifacts and do
+not publish remote updates.

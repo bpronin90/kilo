@@ -33,7 +33,7 @@ export const DENIAL_CODES = Object.freeze({
   HEALTH_SYNC_PAUSED: 'HEALTH_SYNC_PAUSED',
 });
 
-// The exact approved copy from docs/article-9-explicit-consent-spec.md. It is
+// The exact approved copy from docs/health-data-consent.md. It is
 // reproduced verbatim, not paraphrased: the catalog stores the sha256 of
 // `title \n\n disclosure \n\n affirmation`, every grant records that digest as
 // evidence, and health-consent.test.js asserts this text still hashes to the value

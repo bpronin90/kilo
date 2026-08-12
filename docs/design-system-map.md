@@ -1,31 +1,23 @@
 # Design System Map
 
-Audit of every style token across all screens, organized by role. Use this to find exactly where to change any visual property.
+Status: current implementation map. Use this document to locate visual tokens,
+shared components, and established screen treatments. The active code is
+authoritative for exact values.
 
-Last updated: 2026-07-27
-Source branch: `issue/689-appearance-modes`
-
-Reconciled after the #383→#413 UI cleanup (tab-spacing polish, unified
-Weight/Goal history panel system, standardized collapse convention, analytics
-hierarchy fixes), then after the #689 appearance-mode rollout (two palettes,
-`useTheme()`/`useThemedStyles()` migration, derived semantic tokens). For the
-*rules* derived from these patterns see `docs/ui-design-rules.md`; this map
-records the *current values*.
+For the design rules derived from these patterns, see
+`docs/ui-design-rules.md`. This document records implementation; it does not own
+product history or issue chronology.
 
 `colors.<token>` below means the active palette read from `useTheme()` — there
 is no static `Colors` object any more. Every token resolves to a Light and a
 Dark value; see the Color Palette table.
 
-Line numbers below are accurate for the sections touched by that cleanup
-(tokens, ScreenShell, the history-panel system, Weight Screen, Analytics
-collapse/PO). Home and Log sections predate the cleanup and were not in scope;
-treat their line numbers as approximate. The #689 migration moved each
-stylesheet into a `createStyles(colors)` factory, shifting line numbers within
-every migrated file.
+Paths and component names are preferred over line-number references so this map
+survives ordinary code movement.
 
 ---
 
-## Appearance Modes (#689)
+## Appearance Modes
 
 Source: `mobile/theme/colors.js`, `mobile/theme/ThemeContext.js`,
 `mobile/lib/themePreference.js`
@@ -230,7 +222,7 @@ the bottom inset so existing top spacing is unchanged.
 
 ---
 
-## Shared History-Panel System (#411)
+## Shared History-Panel System
 
 The single visual system used by **Weight History**
 (`mobile/components/WeightHistoryList.js`) and **Goal History**
@@ -706,7 +698,7 @@ cell. Goal History extras: End Weight outcome coloring, Target Date column.
 
 ---
 
-## Log Screen (STYLE LOCKED)
+## Log Screen
 
 Source: `mobile/screens/LogScreen.js`, and the extracted
 `mobile/components/LogActiveRoutineCard.js`, `LogPreviousRoutines.js`, and
