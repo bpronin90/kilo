@@ -67,7 +67,10 @@ jest.mock('../components/UI', () => {
   const React = require('react');
   const { View, Text } = require('react-native');
   return {
-    Button: ({ title, accessibilityLabel, onPress }) => React.createElement(View, { accessibilityLabel, onPress }, React.createElement(Text, null, title)),
+    // Mirrors the real Button's disabled gating (components/UI.js): a disabled
+    // button's resolved onPress is null, so a tap while busy has nothing to
+    // call — this is what makes the #799 resend rate-limit test meaningful.
+    Button: ({ title, accessibilityLabel, onPress, disabled = false }) => React.createElement(View, { accessibilityLabel, onPress: disabled ? null : onPress, disabled }, React.createElement(Text, null, title)),
     SectionTitle: ({ children }) => React.createElement(View, null, React.createElement(Text, null, children)),
     // #689: the static InputStyle object became a palette factory / hook pair.
     createInputStyle: () => ({}),
@@ -123,6 +126,7 @@ function makeMockAuth(session = null) {
     signInWithPassword: jest.fn().mockResolvedValue({ data: { session }, error: null }),
     signOut: jest.fn().mockResolvedValue({ error: null }),
     signUp: jest.fn().mockResolvedValue({ data: { session: null }, error: null }),
+    resend: jest.fn().mockResolvedValue({ data: { user: null, session: null }, error: null }),
     resetPasswordForEmail: jest.fn().mockResolvedValue({ error: null }),
     signInWithOAuth: jest.fn().mockResolvedValue({ data: { url: null }, error: null }),
     exchangeCodeForSession: jest.fn().mockResolvedValue({ data: { session: { user: { email: 'oauth@test.com' } } }, error: null }),
@@ -188,7 +192,8 @@ function makeResolvedAuthProp(session = null, overrides = {}) {
     signedIn: Boolean(session),
     ...makeOAuthDelegates(),
     signInWithPassword: jest.fn().mockResolvedValue({ ok: true }),
-    signUpWithPassword: jest.fn().mockResolvedValue({ ok: true }),
+    signUpWithPassword: jest.fn().mockResolvedValue({ ok: true, session: null }),
+    resendSignupConfirmation: jest.fn().mockResolvedValue({ ok: true }),
     signOut: jest.fn().mockResolvedValue({ ok: true }),
     resetPasswordForEmail: jest.fn().mockResolvedValue({ ok: true }),
     serverExport: jest.fn().mockResolvedValue({ ok: true, json: '{}' }),
@@ -837,11 +842,12 @@ describe('AccountScreen OAuth Flow', () => {
 // via GitHub used to claim "Account created." then reject the login with a bare
 // "Invalid login credentials", pointing nowhere. Supabase deliberately will not
 // confirm whether an address exists, so the fix is in the copy, not in branching
-// on existence: the signup message is true whether or not the address was
-// already registered, and the sign-in hint is appended on EVERY failure so it
-// leaks no account-existence oracle. Both messages render in the existing
-// `accountStatus` status line — no new panels, spacing, or tokens — so the
-// ScreenShell spacing contract (ui-design-rules.md sections 1-3) is unchanged.
+// on existence: the sign-in hint is appended on EVERY failure so it leaks no
+// account-existence oracle. The generic status-line signup acknowledgement was
+// superseded by the persistent confirmation-pending panel (#799, tested below)
+// — Supabase's own enumeration-safe contract (same 200 whether the address is
+// new or already registered) is preserved because that panel behaves
+// identically either way.
 // ---------------------------------------------------------------------------
 
 describe('AccountScreen auth copy (#496)', () => {
@@ -875,8 +881,8 @@ describe('AccountScreen auth copy (#496)', () => {
     return matches[0];
   }
 
-  test('Create Account shows honest, enumeration-safe copy instead of "Account created."', async () => {
-    const signUpWithPassword = jest.fn().mockResolvedValue({ ok: true });
+  test('Create Account never claims "Account created." (enumeration-safe regardless of address existence)', async () => {
+    const signUpWithPassword = jest.fn().mockResolvedValue({ ok: true, session: null });
     const authProp = makeResolvedAuthProp(null, { signUpWithPassword });
 
     let tree;
@@ -884,14 +890,23 @@ describe('AccountScreen auth copy (#496)', () => {
       tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: authProp }));
     });
 
+    act(() => { tree.root.findByProps({ accessibilityLabel: 'Email' }).props.onChangeText('new@test.com'); });
     const button = findButtonByTitle(tree, 'Create Account');
     await act(async () => { await button.props.onPress(); });
 
-    const status = tree.root.findByProps({ accessibilityLabel: 'Account status' });
-    expect(status.props.children).toBe(
-      'If that address is new, check your email to confirm it. If you already signed up with GitHub, use Continue with GitHub instead.',
-    );
-    expect(status.props.children).not.toMatch(/Account created/);
+    expect(JSON.stringify(tree.toJSON())).not.toMatch(/Account created/);
+    // The confirmation-pending panel (#799) renders identically whether the
+    // address was new or already registered — Supabase itself does not
+    // distinguish the two, so this handler never branches on it either.
+    const panel = tree.root.findByProps({ accessibilityLabel: 'Confirmation pending' });
+    expect(panel.props.children).toMatch(/new@test\.com/);
+    // The copy must stay conditional ("if new") rather than asserting delivery
+    // (Supabase sends no email for an already-registered address, even though
+    // it returns the identical no-session response), and must keep pointing an
+    // already-registered GitHub user at Continue with GitHub instead of a dead
+    // inbox wait.
+    expect(panel.props.children).toMatch(/If new@test\.com is new/);
+    expect(panel.props.children).toMatch(/If you already signed up with GitHub, use Continue with GitHub/);
   });
 
   test('failed sign-in appends the GitHub hint on a generic Invalid login credentials failure', async () => {
@@ -927,6 +942,193 @@ describe('AccountScreen auth copy (#496)', () => {
 
     const status = tree.root.findByProps({ accessibilityLabel: 'Account status' });
     expect(status.props.children).toBe('Signed in.');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Signup confirmation UX (#799): a successful signup that requires
+// confirmation shows a persistent panel naming the address and offering a
+// resend action; attempting to sign in to an unconfirmed account routes into
+// the same panel instead of a generic credentials error.
+// ---------------------------------------------------------------------------
+
+describe('AccountScreen signup confirmation (#799)', () => {
+  let originalPlatformOS;
+
+  beforeEach(() => {
+    originalPlatformOS = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(Platform, 'OS', { value: originalPlatformOS, configurable: true });
+  });
+
+  function findButtonByTitle(tree, title) {
+    const matches = tree.root.findAll((node) => (
+      typeof node.type === 'string'
+      && typeof node.props.onPress === 'function'
+      && node.props.children
+      && node.props.children.props
+      && node.props.children.props.children === title
+    ));
+    expect(matches.length).toBe(1);
+    return matches[0];
+  }
+
+  test('a signup requiring confirmation shows a persistent panel naming the address and mentioning spam', async () => {
+    const signUpWithPassword = jest.fn().mockResolvedValue({ ok: true, session: null });
+    const authProp = makeResolvedAuthProp(null, { signUpWithPassword });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: authProp }));
+    });
+    act(() => { tree.root.findByProps({ accessibilityLabel: 'Email' }).props.onChangeText('fresh@test.com'); });
+    await act(async () => { await findButtonByTitle(tree, 'Create Account').props.onPress(); });
+
+    const panel = tree.root.findByProps({ accessibilityLabel: 'Confirmation pending' });
+    expect(panel.props.children).toMatch(/fresh@test\.com/);
+    expect(panel.props.children).toMatch(/spam/i);
+    expect(tree.root.findByProps({ accessibilityLabel: 'Resend confirmation email' })).toBeTruthy();
+    // Not a dead end: the normal Sign In form is no longer shown underneath.
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Password' }).length).toBe(0);
+  });
+
+  test('a signup that returns an immediate session (confirmation disabled) just signs in, no panel', async () => {
+    const signUpWithPassword = jest.fn().mockResolvedValue({
+      ok: true,
+      session: { user: { email: 'a@test.com' } },
+    });
+    const authProp = makeResolvedAuthProp(null, { signUpWithPassword });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: authProp }));
+    });
+    await act(async () => { await findButtonByTitle(tree, 'Create Account').props.onPress(); });
+
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Confirmation pending' }).length).toBe(0);
+    const status = tree.root.findByProps({ accessibilityLabel: 'Account status' });
+    expect(status.props.children).toBe('Signed in.');
+  });
+
+  test('the resend action sends a fresh CAPTCHA token and consumes it (single-use)', async () => {
+    const signUpWithPassword = jest.fn().mockResolvedValue({ ok: true, session: null });
+    const resendSignupConfirmation = jest.fn().mockResolvedValue({ ok: true });
+    const authProp = makeResolvedAuthProp(null, { signUpWithPassword, resendSignupConfirmation });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: authProp }));
+    });
+    act(() => { tree.root.findByProps({ accessibilityLabel: 'Email' }).props.onChangeText('fresh@test.com'); });
+    await act(async () => { await findButtonByTitle(tree, 'Create Account').props.onPress(); });
+
+    let challenge = tree.root.findByType(CaptchaChallenge);
+    expect(challenge.props.resetKey).toBe(0);
+    act(() => { challenge.props.onToken('resend-token'); });
+
+    const resendButton = tree.root.findByProps({ accessibilityLabel: 'Resend confirmation email' });
+    await act(async () => { await resendButton.props.onPress(); });
+
+    expect(resendSignupConfirmation).toHaveBeenCalledWith('fresh@test.com', 'resend-token');
+    // The token is single-use: the challenge resets after the call.
+    challenge = tree.root.findByType(CaptchaChallenge);
+    expect(challenge.props.resetKey).toBe(1);
+
+    const status = tree.root.findByProps({ accessibilityLabel: 'Account status' });
+    expect(status.props.children).toMatch(/Confirmation email sent to fresh@test\.com/);
+  });
+
+  test('a resend rejection (e.g. rate limit) surfaces a readable message instead of failing silently', async () => {
+    const signUpWithPassword = jest.fn().mockResolvedValue({ ok: true, session: null });
+    const resendSignupConfirmation = jest.fn().mockResolvedValue({
+      ok: false,
+      error: 'For security purposes, you can only request this after 42 seconds.',
+    });
+    const authProp = makeResolvedAuthProp(null, { signUpWithPassword, resendSignupConfirmation });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: authProp }));
+    });
+    act(() => { tree.root.findByProps({ accessibilityLabel: 'Email' }).props.onChangeText('fresh@test.com'); });
+    await act(async () => { await findButtonByTitle(tree, 'Create Account').props.onPress(); });
+
+    const resendButton = tree.root.findByProps({ accessibilityLabel: 'Resend confirmation email' });
+    await act(async () => { await resendButton.props.onPress(); });
+
+    const status = tree.root.findByProps({ accessibilityLabel: 'Account status' });
+    expect(status.props.children).toBe('For security purposes, you can only request this after 42 seconds.');
+  });
+
+  test('a second tap on Resend while a request is in flight does not fire a second request', async () => {
+    const signUpWithPassword = jest.fn().mockResolvedValue({ ok: true, session: null });
+    let resolveResend;
+    const resendSignupConfirmation = jest.fn(() => new Promise((resolve) => { resolveResend = resolve; }));
+    const authProp = makeResolvedAuthProp(null, { signUpWithPassword, resendSignupConfirmation });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: authProp }));
+    });
+    act(() => { tree.root.findByProps({ accessibilityLabel: 'Email' }).props.onChangeText('fresh@test.com'); });
+    await act(async () => { await findButtonByTitle(tree, 'Create Account').props.onPress(); });
+
+    act(() => { tree.root.findByProps({ accessibilityLabel: 'Resend confirmation email' }).props.onPress(); });
+    // The button disables itself (via `busy`) while the request is in flight.
+    // findByProps matches both the composite Button and its rendered host View
+    // (both carry accessibilityLabel), so query the host node directly — that
+    // is the one whose resolved onPress reflects the disabled gate and is what
+    // a real tap would actually invoke.
+    const midFlightButton = tree.root.findAll((node) => (
+      typeof node.type === 'string' && node.props.accessibilityLabel === 'Resend confirmation email'
+    ))[0];
+    expect(midFlightButton.props.disabled).toBe(true);
+    expect(midFlightButton.props.onPress).toBe(null);
+
+    await act(async () => { resolveResend({ ok: true }); });
+    expect(resendSignupConfirmation).toHaveBeenCalledTimes(1);
+  });
+
+  test('signing in to an unconfirmed account shows the awaiting-confirmation panel with resend, not a generic credentials error', async () => {
+    const signInWithPassword = jest.fn().mockResolvedValue({
+      ok: false,
+      error: 'Email not confirmed',
+      unconfirmed: true,
+    });
+    const authProp = makeResolvedAuthProp(null, { signInWithPassword });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: authProp }));
+    });
+    act(() => { tree.root.findByProps({ accessibilityLabel: 'Email' }).props.onChangeText('pending@test.com'); });
+    await act(async () => { await findButtonByTitle(tree, 'Sign In').props.onPress(); });
+
+    const panel = tree.root.findByProps({ accessibilityLabel: 'Confirmation pending' });
+    expect(panel.props.children).toMatch(/pending@test\.com/);
+    expect(panel.props.children).toMatch(/awaiting confirmation/i);
+    expect(tree.root.findByProps({ accessibilityLabel: 'Resend confirmation email' })).toBeTruthy();
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Account status' }).length).toBe(0);
+  });
+
+  test('Back to Sign In returns to the normal sign-in form', async () => {
+    const signUpWithPassword = jest.fn().mockResolvedValue({ ok: true, session: null });
+    const authProp = makeResolvedAuthProp(null, { signUpWithPassword });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: authProp }));
+    });
+    act(() => { tree.root.findByProps({ accessibilityLabel: 'Email' }).props.onChangeText('fresh@test.com'); });
+    await act(async () => { await findButtonByTitle(tree, 'Create Account').props.onPress(); });
+    expect(tree.root.findByProps({ accessibilityLabel: 'Confirmation pending' })).toBeTruthy();
+
+    act(() => { tree.root.findByProps({ accessibilityLabel: 'Back to Sign In' }).props.onPress(); });
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Confirmation pending' }).length).toBe(0);
+    expect(tree.root.findByProps({ accessibilityLabel: 'Email' })).toBeTruthy();
   });
 });
 
