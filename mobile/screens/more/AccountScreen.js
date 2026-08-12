@@ -289,7 +289,12 @@ export function AccountScreen({ onBack, auth }) {
           <SectionTitle>Confirm Your Email</SectionTitle>
           <Text style={styles.accountNote} accessibilityLabel="Confirmation pending">
             {confirmationContext === 'signup'
-              ? `We sent a confirmation email to ${confirmationEmail}. Check your inbox — and your spam folder — to finish creating your account.`
+              // Enumeration-safe (#496): Supabase returns this same no-session
+              // response whether the address is new or already registered, and
+              // sends no email in the already-registered case, so the copy must
+              // stay conditional rather than asserting delivery. The GitHub hint
+              // covers the already-registered-via-GitHub case, same as before.
+              ? `If ${confirmationEmail} is new, we've sent a confirmation email to it — check your inbox and spam folder to finish creating your account. If you already signed up with GitHub, use Continue with GitHub instead.`
               : `${confirmationEmail} is awaiting confirmation. Check your inbox and spam folder for the confirmation email, or resend it below.`}
           </Text>
           <CaptchaChallenge

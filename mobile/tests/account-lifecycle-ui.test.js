@@ -900,6 +900,13 @@ describe('AccountScreen auth copy (#496)', () => {
     // distinguish the two, so this handler never branches on it either.
     const panel = tree.root.findByProps({ accessibilityLabel: 'Confirmation pending' });
     expect(panel.props.children).toMatch(/new@test\.com/);
+    // The copy must stay conditional ("if new") rather than asserting delivery
+    // (Supabase sends no email for an already-registered address, even though
+    // it returns the identical no-session response), and must keep pointing an
+    // already-registered GitHub user at Continue with GitHub instead of a dead
+    // inbox wait.
+    expect(panel.props.children).toMatch(/If new@test\.com is new/);
+    expect(panel.props.children).toMatch(/If you already signed up with GitHub, use Continue with GitHub/);
   });
 
   test('failed sign-in appends the GitHub hint on a generic Invalid login credentials failure', async () => {
