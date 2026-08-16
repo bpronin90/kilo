@@ -351,21 +351,37 @@ Copy for the three non-ready conditions is the recovery state contract's own
 describe the same condition differently, and `Retry recovery` is the exact
 control name that copy tells the user to tap (ui-design-rules §12).
 
-**Active-block content (#779/#782).** The active branch derives the latest
-live week through the same `deriveRecoveryComparison` engine Analytics uses
-(`AnalyticsRecoverySection`) — no second calculation, no invented percentage
-or pace. Header + at most 3 content lines, always:
+**Active-block content (#779/#782, redesigned #803).** The active branch derives
+the latest live week through the same `deriveRecoveryComparison` engine
+Analytics uses (`AnalyticsRecoverySection`) — no second calculation, no invented
+percentage or pace. The facts are the ones #779 approved; #803 stopped
+presenting them as prose and made each one independently scannable. Header, then
+one analytics region (`home-recovery-analytics`, a single `accessible` node), in
+this order:
 
-- **Line 1** — one line: the hero count (`Week N — X of Y baseline exercises
-  met`) or a fallback status, week identity folded in via em dash. Baseline
+- **Week eyebrow** — `Week N`, the micro-label treatment. Omitted when no week
+  exists (`Baseline captured. No week logged yet.`): there is nothing to name,
+  and `Week 1` would be invented.
+- **Result** — the one hero figure, `X of Y` in `HeroMetric.statSecondary` /
+  `colors.accent`, with a `baseline exercises met` caption beside it. Exactly
+  one of the result or a fallback occupies this slot, never both, and a
+  fallback prints no count at all rather than `0 of 0`. Baseline
   unavailable/unsupported takes precedence over a missing/unreadable note,
   since it is a property of the block, not of any one week.
-- **Line 2** — one merged line: nonzero `rebuilding` / `not reintroduced` /
-  `not comparable` / `added during recovery` counts, then
-  `Not counted in your normal analytics.` when `include_in_normal_analytics
-  !== true` — omitted entirely when nothing applies. Inclusion is
-  silence-by-default: included says nothing.
-- **Line 3** — the existing `RECOVERY_STALE_MESSAGE`, only when stale.
+- **Category tiles** (`home-recovery-stats`) — one value-over-label tile per
+  **nonzero** `rebuilding` / `not reintroduced` / `not comparable` /
+  `added during recovery` count, in that order, wrapping rather than clipping.
+  A zero category is absent, not a `0` tile.
+- **Exclusion clause** — `Not counted in your normal analytics.` when
+  `include_in_normal_analytics !== true`. Silence-by-default: included says
+  nothing. Stated in words, never by color or icon alone.
+- **Stale message** — the existing `RECOVERY_STALE_MESSAGE`, only when stale.
+
+The region carries one composed `accessibilityLabel` assembling the same facts
+as complete sentences in reading order (`Week 1. 1 of 2 baseline exercises met.
+1 rebuilding. Not counted in your normal analytics.`), so the layout is a
+visual device only — separate value/label nodes would otherwise read as
+unrelated fragments.
 
 No `on track`, percentage, prediction, or medical claim; a lift that
 regresses after being met is `rebuilding` again, not a new state.
@@ -376,10 +392,22 @@ regresses after being met is `rebuilding` again, not a new state.
 | `Recovery` label | fontSize / fontWeight | `12` / `700` |
 | | textTransform / letterSpacing | `uppercase` / `0.5` |
 | | color | `colors.text` |
-| Week line | fontSize / fontWeight / color | `16` / `700` / `colors.text` |
+| Week eyebrow | fontSize / fontWeight / color | `11` / `700` / `colors.textMuted` |
+| | textTransform / letterSpacing | `uppercase` / `0.5` |
+| Result figure | style / color | `HeroMetric.statSecondary` (24/900) / `colors.accent` |
+| Result caption | fontSize / color | `13` / `colors.textMuted` |
+| Fallback status | fontSize / fontWeight / color | `16` / `700` / `colors.text` |
+| Tile row | flexWrap / columnGap / rowGap / marginTop | `wrap` / `20` / `8` / `10` |
+| Tile value | fontSize / fontWeight / color | `18` / `700` / `colors.text` |
+| Tile label | fontSize / fontWeight / color | `11` / `600` / `colors.textMuted` |
+| | textTransform / letterSpacing | `uppercase` / `0.5` |
 | Detail + status lines | fontSize / color | `13` / `colors.textMuted` (no fixed `lineHeight`) |
 | `Retry recovery` | minHeight | `44` (no fixed `height`) |
 | | label fontSize / fontWeight / color | `13` / `700` / `colors.accent` |
+
+No element in the card declares a fixed `height` or `lineHeight`, so every line
+grows with the user's text size; the `Recovery` handoff remains the card's only
+press target and keeps its `minHeight: 44`.
 
 The header handoff reuses the shared `sectionHeaderAction` treatment (label plus
 the plain SVG chevron) already used by `Exercise Progress` and `1K Progress`, and

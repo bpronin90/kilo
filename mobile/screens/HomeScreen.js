@@ -249,35 +249,63 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   // a clean read nor a load still in flight.
   const canRetry = !!summary.retry && !!message && !isLoadingStatus;
 
-  // Line 1: exactly one line, always (#779 approved contract). Baseline
-  // availability is checked first because it is a property of the block, not
-  // of any one week; a missing/unreadable note is only meaningful once a
-  // week has actually been compared.
-  const line1 = comparisonStatus === RECOVERY_COMPARISON_STATUS.BASELINE_UNAVAILABLE
+  // The result region (#803). Exactly one of two shapes, never both: the
+  // met/total figure when a week was genuinely compared, or a single plain-
+  // language status when it was not. Baseline availability is checked first
+  // because it is a property of the block, not of any one week; a
+  // missing/unreadable note is only meaningful once a week has actually been
+  // compared. Nothing here invents a number for an unknown: a fallback prints
+  // no count at all rather than `0 of 0`.
+  const fallbackStatus = comparisonStatus === RECOVERY_COMPARISON_STATUS.BASELINE_UNAVAILABLE
     || comparisonStatus === RECOVERY_COMPARISON_STATUS.BASELINE_UNSUPPORTED
     ? "Baseline data for this block isn't available."
     : weekNumber === null
       ? 'Baseline captured. No week logged yet.'
       : weekNoteStatus === RECOVERY_WEEK_STATUS.NOTE_MISSING
-        ? `Week ${weekNumber} — This week's note is no longer available.`
+        ? "This week's note is no longer available."
         : weekNoteStatus === RECOVERY_WEEK_STATUS.NOTE_UNREADABLE
-          ? `Week ${weekNumber} — This week's note couldn't be read.`
+          ? "This week's note couldn't be read."
           : comparisonStatus === RECOVERY_COMPARISON_STATUS.BASELINE_EMPTY
             ? 'No baseline exercises were captured for this block.'
-            : `Week ${weekNumber} — ${metCount} of ${totalBaselineExercises} baseline exercises met`;
+            : null;
 
-  // Line 2: one merged line — nonzero category counts, then the
-  // inclusion-deviation clause — omitted entirely when nothing applies.
-  const categoryParts = [];
-  const addCategory = (count, noun) => { if (count > 0) categoryParts.push(`${count} ${noun}`); };
-  addCategory(categoryCounts.rebuilding, 'rebuilding');
-  addCategory(categoryCounts.not_reintroduced, 'not reintroduced');
-  addCategory(categoryCounts.not_comparable, 'not comparable');
-  addCategory(categoryCounts.added_during_recovery, 'added during recovery');
-  if (!includedInNormalAnalytics) categoryParts.push('Not counted in your normal analytics.');
-  const line2 = categoryParts.length > 0 ? categoryParts.join(' · ') : null;
+  // Week identity is its own scannable line rather than a clause folded into a
+  // sentence — but only when a week exists. `Baseline captured. No week logged
+  // yet.` has no week to name, and printing `Week null` or inventing `Week 1`
+  // would both be false.
+  const weekLabel = weekNumber === null ? null : `Week ${weekNumber}`;
+  const heroValue = fallbackStatus === null
+    ? `${metCount} of ${totalBaselineExercises}`
+    : null;
 
-  const accessibleContent = `${line1}${/[.!?]$/.test(line1) ? '' : '.'}${line2 ? ` ${line2}` : ''}`;
+  // Supporting analytics: one tile per nonzero category, value over label, in
+  // the contract's order. A zero category is absent, not a `0` tile — the card
+  // stays compact and every tile on screen is a fact worth reading.
+  const stats = [];
+  const addStat = (count, label) => { if (count > 0) stats.push({ count, label }); };
+  addStat(categoryCounts.rebuilding, 'Rebuilding');
+  addStat(categoryCounts.not_reintroduced, 'Not reintroduced');
+  addStat(categoryCounts.not_comparable, 'Not comparable');
+  addStat(categoryCounts.added_during_recovery, 'Added during recovery');
+
+  // Inclusion stays silence-by-default: included says nothing, only the
+  // deviation is stated — and it is stated in words, never by a color or an
+  // icon a screen reader or a colorblind user would miss.
+  const exclusionNotice = includedInNormalAnalytics
+    ? null
+    : 'Not counted in your normal analytics.';
+
+  // One announcement for the whole summary, assembled in reading order. The
+  // visual hierarchy is a layout device; the spoken version has to carry the
+  // same facts as complete sentences.
+  const accessibleContent = [
+    weekLabel,
+    heroValue ? `${heroValue} baseline exercises met` : fallbackStatus,
+    ...stats.map(s => `${s.count} ${s.label.toLowerCase()}`),
+    exclusionNotice,
+  ].filter(Boolean)
+    .map(part => (/[.!?]$/.test(part) ? part : `${part}.`))
+    .join(' ');
 
   return (
     // Wrapped rather than testID'd directly: Card takes only children/style/
@@ -303,11 +331,34 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
             {/* One announcement for the whole summary: separate nodes read as
                 unrelated fragments. */}
             <View
+              testID="home-recovery-analytics"
               accessible
               accessibilityLabel={accessibleContent}
             >
-              <Text style={styles.recoveryWeekLine}>{line1}</Text>
-              {line2 ? <Text style={styles.recoveryDetailLine}>{line2}</Text> : null}
+              {weekLabel ? (
+                <Text style={styles.recoveryWeekLabel}>{weekLabel}</Text>
+              ) : null}
+              {heroValue ? (
+                <View style={styles.recoveryHero}>
+                  <Text style={[HeroMetric.statSecondary, styles.recoveryHeroValue]}>{heroValue}</Text>
+                  <Text style={styles.recoveryHeroCaption}>baseline exercises met</Text>
+                </View>
+              ) : (
+                <Text style={styles.recoveryFallbackLine}>{fallbackStatus}</Text>
+              )}
+              {stats.length > 0 ? (
+                <View testID="home-recovery-stats" style={styles.recoveryStatRow}>
+                  {stats.map(stat => (
+                    <View key={stat.label} style={styles.recoveryStat}>
+                      <Text style={styles.recoveryStatValue}>{stat.count}</Text>
+                      <Text style={styles.recoveryStatLabel}>{stat.label}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+              {exclusionNotice ? (
+                <Text style={styles.recoveryDetailLine}>{exclusionNotice}</Text>
+              ) : null}
             </View>
           </>
         ) : (
@@ -1079,10 +1130,61 @@ const createStyles = (colors) => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  recoveryWeekLine: {
+  // #803: the card is read as analytics, not as prose — a week eyebrow, one
+  // hero result, then supporting count tiles. Sizes follow the analytics
+  // hierarchy already established for cards (ui-design-rules §8): one hero,
+  // supporting values at 18/700 over an 11/600 uppercase muted label.
+  recoveryWeekLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  recoveryHero: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    flexWrap: 'wrap',
+    columnGap: 6,
+    marginTop: 2,
+  },
+  recoveryHeroValue: {
+    color: colors.accent,
+  },
+  recoveryHeroCaption: {
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  // The fallbacks are sentences, not figures: they take the hero's slot at
+  // reading weight rather than being dressed up as a metric.
+  recoveryFallbackLine: {
     fontSize: 16,
     fontWeight: '700',
     color: colors.text,
+    marginTop: 2,
+  },
+  recoveryStatRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: 20,
+    rowGap: 8,
+    marginTop: 10,
+  },
+  recoveryStat: {
+    // No fixed width: an enlarged label wraps the row instead of clipping.
+    flexShrink: 1,
+  },
+  recoveryStatValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  recoveryStatLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   recoveryDetailLine: {
     fontSize: 13,
