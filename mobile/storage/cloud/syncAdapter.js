@@ -90,9 +90,23 @@ async function clearTombstonedCurrentNote(tombstones) {
 // actually change. It is created per `runSyncPass` and discarded with it, so it
 // never outlives the exclusive cloud-operation queue that owns the pass.
 //
-// Skipping an unchanged write is not just cheaper, it is safer: the previous
-// behaviour rewrote the whole table every pass, which is the write that can lose
-// a concurrent domain edit. A pass that changes nothing now touches nothing.
+// A pass that changes nothing now writes nothing, which removes the whole-table
+// rewrite outright — the operation that could overwrite a domain write made
+// while the pass was running.
+//
+// A pass that DOES change the table still replaces it wholesale, and the cloud
+// operation queue does not serialize UI/domain writes, so `saveWeightEntry` (and
+// every other domain write) can land between the copy this pass is holding and
+// the write it is about to make. That copy is not trusted for such a write: the
+// table is re-read first and any row the domain changed in the meantime is
+// carried into the persisted list. A concurrent domain write in cloud mode is
+// stamped and dirty-queued at write time, so preferring it here is the same rule
+// syncTable already applies when it refuses to vote a pending local row against
+// its remote counterpart.
+//
+// The revalidation read happens only on a write that will actually touch
+// storage, so the steady-state pass — the one that reads the most and changes
+// the least — pays nothing for it.
 function createPassCache() {
   const entries = new Map();
   return {
@@ -103,14 +117,61 @@ function createPassCache() {
       entries.set(table, { list, serialized: JSON.stringify(list) });
       return list;
     },
-    async write(table, list, persist) {
+    async write(table, list, persist, load) {
       const serialized = JSON.stringify(list);
       const hit = entries.get(table);
-      if (!hit || hit.serialized !== serialized) await persist(list);
-      entries.set(table, { list, serialized });
-      return list;
+      if (hit && hit.serialized === serialized) {
+        entries.set(table, { list, serialized });
+        return list;
+      }
+      const next = hit ? preserveConcurrentWrites(hit.list, (await load()) || [], list) : list;
+      await persist(next);
+      entries.set(table, {
+        list: next,
+        serialized: next === list ? serialized : JSON.stringify(next),
+      });
+      return next;
     },
   };
+}
+
+// Fold rows the domain wrote to storage after this pass took its copy into the
+// list the pass is about to persist. `base` is what the pass read, `current` is
+// what storage holds now, `next` is what the pass wants to write.
+//
+// A row is "concurrent" when storage disagrees with the copy the pass started
+// from; those rows win, because they are the writes the pass never saw and would
+// otherwise erase. Everything else keeps the pass's own result, including its
+// order. A row that is in `base` but has since vanished from `current` is NOT
+// treated as a delete — that is the engine's standing rule (never infer a
+// delete), and the pass's version is kept.
+//
+// Returns `next` by identity when nothing raced, so the ordinary path allocates
+// nothing and the caller can skip re-serializing.
+function preserveConcurrentWrites(base, current, next) {
+  const baseById = new Map();
+  for (const record of base || []) {
+    if (record && record.id != null) baseById.set(record.id, JSON.stringify(record));
+  }
+  const concurrent = [];
+  for (const record of current || []) {
+    if (!record || record.id == null) continue;
+    if (baseById.get(record.id) !== JSON.stringify(record)) concurrent.push(record);
+  }
+  if (concurrent.length === 0) return next;
+
+  const positionById = new Map();
+  const merged = [];
+  for (const record of next) {
+    if (record && record.id != null) positionById.set(record.id, merged.length);
+    merged.push(record);
+  }
+  for (const record of concurrent) {
+    const at = positionById.get(record.id);
+    if (at === undefined) merged.push(record);
+    else merged[at] = record;
+  }
+  return merged;
 }
 
 // Shared by the pre-pass cleanup below and the workout_notes sync write. Pure:
@@ -142,7 +203,12 @@ async function tombstoneLocalPhantoms(cache) {
   const { list: processed, tombstoned } = tombstonePhantomNotes(list, clientId);
   if (tombstoned.length === 0) return;
 
-  await cache.write(SYNC_TABLES.WORKOUT_NOTES, processed, Storage.replaceWorkoutNotesRaw);
+  await cache.write(
+    SYNC_TABLES.WORKOUT_NOTES,
+    processed,
+    Storage.replaceWorkoutNotesRaw,
+    Storage.loadWorkoutNotesRaw
+  );
   await clearTombstonedCurrentNote(tombstoned);
   await enqueueDirtyMany(SYNC_TABLES.WORKOUT_NOTES, tombstoned);
 }
@@ -366,7 +432,8 @@ export async function cascadeDeletedBlockMemberships(cache = createPassCache()) 
   await cache.write(
     SYNC_TABLES.RECOVERY_BLOCK_WEEKS,
     next,
-    Storage.replaceRecoveryBlockWeeksRaw
+    Storage.replaceRecoveryBlockWeeksRaw,
+    Storage.loadRecoveryBlockWeeksRaw
   );
   await enqueueDirtyMany(SYNC_TABLES.RECOVERY_BLOCK_WEEKS, cascaded);
   return cascaded;
@@ -444,7 +511,12 @@ function createTableIo(
   [SYNC_TABLES.WEIGHT_ENTRIES]: {
     read: () => cache.read(SYNC_TABLES.WEIGHT_ENTRIES, Storage.loadWeightEntriesRaw),
     write: (list) =>
-      cache.write(SYNC_TABLES.WEIGHT_ENTRIES, list, Storage.replaceWeightEntriesRaw),
+      cache.write(
+        SYNC_TABLES.WEIGHT_ENTRIES,
+        list,
+        Storage.replaceWeightEntriesRaw,
+        Storage.loadWeightEntriesRaw
+      ),
   },
   [SYNC_TABLES.WORKOUT_NOTES]: {
     read: () => cache.read(SYNC_TABLES.WORKOUT_NOTES, Storage.loadWorkoutNotesRaw),
@@ -460,7 +532,8 @@ function createTableIo(
       const persisted = await cache.write(
         SYNC_TABLES.WORKOUT_NOTES,
         processed,
-        Storage.replaceWorkoutNotesRaw
+        Storage.replaceWorkoutNotesRaw,
+        Storage.loadWorkoutNotesRaw
       );
       if (tombstoned.length > 0) {
         await clearTombstonedCurrentNote(tombstoned);
@@ -475,7 +548,12 @@ function createTableIo(
   [SYNC_TABLES.ARCHIVED_WEIGHT_GOALS]: {
     read: () => cache.read(SYNC_TABLES.ARCHIVED_WEIGHT_GOALS, loadArchivedWeightGoalsRaw),
     write: (list) =>
-      cache.write(SYNC_TABLES.ARCHIVED_WEIGHT_GOALS, list, replaceArchivedWeightGoalsRaw),
+      cache.write(
+        SYNC_TABLES.ARCHIVED_WEIGHT_GOALS,
+        list,
+        replaceArchivedWeightGoalsRaw,
+        loadArchivedWeightGoalsRaw
+      ),
   },
   // Both recovery collections write the merged list back VERBATIM apart from the
   // cross-device duplicate collapse above. In particular the frozen `baseline`
@@ -490,7 +568,8 @@ function createTableIo(
       const persisted = await cache.write(
         SYNC_TABLES.RECOVERY_BLOCKS,
         resolved,
-        Storage.replaceRecoveryBlocksRaw
+        Storage.replaceRecoveryBlocksRaw,
+        Storage.loadRecoveryBlocksRaw
       );
       // Same deferral contract as the phantom-note tombstones above: syncTable
       // snapshots and clears its dirty batch around writeLocal, so a row created
@@ -508,7 +587,8 @@ function createTableIo(
       const persisted = await cache.write(
         SYNC_TABLES.RECOVERY_BLOCK_WEEKS,
         resolved,
-        Storage.replaceRecoveryBlockWeeksRaw
+        Storage.replaceRecoveryBlockWeeksRaw,
+        Storage.loadRecoveryBlockWeeksRaw
       );
       for (const record of changed) {
         deferRecoveryResolution(SYNC_TABLES.RECOVERY_BLOCK_WEEKS, record);
@@ -1316,6 +1396,19 @@ const INDEPENDENT_COLLECTION_TABLES = Object.freeze(
 // cursor/baseline or failed on its own, and only then does the first failure
 // fail the pass — the same outcome the sequential loop produced, minus the
 // tables it used to skip on the way out.
+// Collect deferred recovery resolutions into one batch per table, preserving the
+// order they were produced in. Shared by the converging rerun loop and the
+// failure drain so both queue the same way.
+function groupResolutionsByTable(resolutions) {
+  const byTable = new Map();
+  for (const { table, record } of resolutions) {
+    const batch = byTable.get(table);
+    if (batch) batch.push(record);
+    else byTable.set(table, [record]);
+  }
+  return byTable;
+}
+
 async function runIndependentPasses(tasks) {
   const settled = await Promise.allSettled(tasks.map((task) => task()));
   const failure = settled.find((outcome) => outcome.status === 'rejected');
@@ -1412,105 +1505,132 @@ async function runSyncPass({ ownedDevice = false } = {}) {
     }
   };
 
-  await tombstoneLocalPhantoms(cache);
-  results.push(
-    ...(await runIndependentPasses(
-      INDEPENDENT_COLLECTION_TABLES.map(
-        (table) => () => syncOne(table, tableIo, ownedDevice, takeUnbaselinedHint(table))
-      )
-    ))
-  );
-  for (const table of RECOVERY_SYNC_TABLES) {
-    // eslint-disable-next-line no-await-in-loop
-    await syncRecoveryTable(table);
-  }
-  if (pendingWorkoutNoteTombstones.length > 0) {
-    const tombstones = pendingWorkoutNoteTombstones.splice(0);
-    await enqueueDirtyMany(SYNC_TABLES.WORKOUT_NOTES, tombstones);
-    // No baseline hint: the pass above already recorded one for this table.
-    results.push(await syncOne(SYNC_TABLES.WORKOUT_NOTES, tableIo, ownedDevice));
-  }
-
-  // Collapsed cross-device duplicates (issue #693). The write that produced them
-  // ran inside syncTable, which snapshots and clears its dirty batch around
-  // writeLocal, so — exactly like the phantom-note tombstones above — they are
-  // enqueued here and pushed by a rerun of their own table. This is what makes a
-  // two-device duplicate converge inside ONE sync() call: the first attempt is
-  // rejected by the partial unique index, the merge that follows collapses the
-  // duplicate locally, and this rerun uploads the collapsed rows.
-  //
-  // Drained in a bounded loop because a rerun can itself pull a row that
-  // collapses. Every resolved row MUST be enqueued before its table records a
-  // baseline, or the baseline would launder a local-only change into looking
-  // synced — the invariant syncTable documents at step 6. In practice the
-  // collapse is idempotent and the first round settles it; the bound exists so a
-  // pathological case ends the pass rather than spinning, and anything still
-  // pending is carried by the dirty queue into the next one.
-  for (let round = 0; round < 3 && pendingRecoveryResolutions.length > 0; round += 1) {
-    const resolutions = pendingRecoveryResolutions.splice(0);
-    const tables = [];
-    const byTable = new Map();
-    for (const { table, record } of resolutions) {
-      if (!tables.includes(table)) tables.push(table);
-      const batch = byTable.get(table);
-      if (batch) batch.push(record);
-      else byTable.set(table, [record]);
+  // Rows a table's write DEFERRED (phantom-note tombstones, collapsed recovery
+  // duplicates) exist only in these in-memory lists until they are queued. That
+  // is fine while the pass runs to completion — it enqueues and reruns them
+  // below — but a table that COMPLETED and deferred rows has already recorded a
+  // baseline containing them, so the next pass's reconciliation finds no local
+  // difference and never rediscovers them. If the pass is about to fail for an
+  // unrelated reason, the deferred rows must reach the durable dirty queue
+  // first, or a tombstone this device minted is silently never uploaded and the
+  // phantom row lives on in the cloud.
+  const drainDeferredWrites = async () => {
+    if (pendingWorkoutNoteTombstones.length > 0) {
+      await enqueueDirtyMany(
+        SYNC_TABLES.WORKOUT_NOTES,
+        pendingWorkoutNoteTombstones.splice(0)
+      );
     }
-    for (const [table, batch] of byTable) {
+    if (pendingRecoveryResolutions.length === 0) return;
+    for (const [table, batch] of groupResolutionsByTable(
+      pendingRecoveryResolutions.splice(0)
+    )) {
       // eslint-disable-next-line no-await-in-loop
       await enqueueDirtyMany(table, batch);
     }
-    // Preserve the blocks-before-memberships dependency order on the rerun too.
+  };
+
+  try {
+    await tombstoneLocalPhantoms(cache);
+    results.push(
+      ...(await runIndependentPasses(
+        INDEPENDENT_COLLECTION_TABLES.map(
+          (table) => () => syncOne(table, tableIo, ownedDevice, takeUnbaselinedHint(table))
+        )
+      ))
+    );
     for (const table of RECOVERY_SYNC_TABLES) {
-      if (!tables.includes(table)) continue;
       // eslint-disable-next-line no-await-in-loop
       await syncRecoveryTable(table);
     }
-  }
+    if (pendingWorkoutNoteTombstones.length > 0) {
+      const tombstones = pendingWorkoutNoteTombstones.splice(0);
+      await enqueueDirtyMany(SYNC_TABLES.WORKOUT_NOTES, tombstones);
+      // No baseline hint: the pass above already recorded one for this table.
+      results.push(await syncOne(SYNC_TABLES.WORKOUT_NOTES, tableIo, ownedDevice));
+    }
 
-  // A block rerun above can recover a block pass that failed earlier in this
-  // same pass. The memberships deferred by that failure are safe to sync now —
-  // this device has seen the blocks — so run them rather than making the user
-  // wait for another pass to push rows that are already reconciled.
-  if (weeksDeferred && blocksSynced) {
-    await syncRecoveryTable(SYNC_TABLES.RECOVERY_BLOCK_WEEKS);
-  }
+    // Collapsed cross-device duplicates (issue #693). The write that produced them
+    // ran inside syncTable, which snapshots and clears its dirty batch around
+    // writeLocal, so — exactly like the phantom-note tombstones above — they are
+    // enqueued here and pushed by a rerun of their own table. This is what makes a
+    // two-device duplicate converge inside ONE sync() call: the first attempt is
+    // rejected by the partial unique index, the merge that follows collapses the
+    // duplicate locally, and this rerun uploads the collapsed rows.
+    //
+    // Drained in a bounded loop because a rerun can itself pull a row that
+    // collapses. Every resolved row MUST be enqueued before its table records a
+    // baseline, or the baseline would launder a local-only change into looking
+    // synced — the invariant syncTable documents at step 6. In practice the
+    // collapse is idempotent and the first round settles it; the bound exists so a
+    // pathological case ends the pass rather than spinning, and anything still
+    // pending is carried by the dirty queue into the next one.
+    for (let round = 0; round < 3 && pendingRecoveryResolutions.length > 0; round += 1) {
+      const byTable = groupResolutionsByTable(pendingRecoveryResolutions.splice(0));
+      const tables = [...byTable.keys()];
+      for (const [table, batch] of byTable) {
+        // eslint-disable-next-line no-await-in-loop
+        await enqueueDirtyMany(table, batch);
+      }
+      // Preserve the blocks-before-memberships dependency order on the rerun too.
+      for (const table of RECOVERY_SYNC_TABLES) {
+        if (!tables.includes(table)) continue;
+        // eslint-disable-next-line no-await-in-loop
+        await syncRecoveryTable(table);
+      }
+    }
 
-  // The tables bootstrap used to push once and abandon (issue #489). Run them
-  // after the workout-note passes above (including the phantom-tombstone rerun,
-  // which can clear the current routine) so user_health_profile uploads the
-  // settled current_workout_note_id rather than one this pass is about to drop.
-  //
-  // The six run TOGETHER (issue #806). Each owns a distinct set of local storage
-  // keys, a distinct cursor, dirty queue and baseline, and none reads a value
-  // another one writes — so there is no order among them to preserve, and the
-  // only thing serializing them bought was six round trips end to end instead of
-  // one. The orders that DO matter are unchanged: every collection pass above
-  // has already completed, so fatigue_checkins still projects the settled
-  // notebook and user_health_profile still uploads a current_workout_note_id
-  // this pass is not about to drop.
-  const singletonAware = withSingletonIds(getTransport());
-  const diffConfigs = DIFF_TABLES.map((config) =>
-    config.table === SYNC_TABLES.FATIGUE_CHECKINS
-      ? {
-          ...config,
-          // Derived from the same converged notebook the collection pass just
-          // wrote, read from the pass cache instead of decrypting and parsing
-          // every note a second time.
-          buildLocal: async () =>
-            deriveFatigueCheckinRows(
-              await cache.read(SYNC_TABLES.WORKOUT_NOTES, Storage.loadWorkoutNotesRaw)
-            ),
-        }
-      : config
-  );
-  results.push(
-    ...(await runIndependentPasses(
-      diffConfigs.map(
-        (config) => () => syncDiffTable({ ...config, transport: singletonAware })
-      )
-    ))
-  );
+    // A block rerun above can recover a block pass that failed earlier in this
+    // same pass. The memberships deferred by that failure are safe to sync now —
+    // this device has seen the blocks — so run them rather than making the user
+    // wait for another pass to push rows that are already reconciled.
+    if (weeksDeferred && blocksSynced) {
+      await syncRecoveryTable(SYNC_TABLES.RECOVERY_BLOCK_WEEKS);
+    }
+
+    // The tables bootstrap used to push once and abandon (issue #489). Run them
+    // after the workout-note passes above (including the phantom-tombstone rerun,
+    // which can clear the current routine) so user_health_profile uploads the
+    // settled current_workout_note_id rather than one this pass is about to drop.
+    //
+    // The six run TOGETHER (issue #806). Each owns a distinct set of local storage
+    // keys, a distinct cursor, dirty queue and baseline, and none reads a value
+    // another one writes — so there is no order among them to preserve, and the
+    // only thing serializing them bought was six round trips end to end instead of
+    // one. The orders that DO matter are unchanged: every collection pass above
+    // has already completed, so fatigue_checkins still projects the settled
+    // notebook and user_health_profile still uploads a current_workout_note_id
+    // this pass is not about to drop.
+    const singletonAware = withSingletonIds(getTransport());
+    const diffConfigs = DIFF_TABLES.map((config) =>
+      config.table === SYNC_TABLES.FATIGUE_CHECKINS
+        ? {
+            ...config,
+            // Derived from the same converged notebook the collection pass just
+            // wrote, read from the pass cache instead of decrypting and parsing
+            // every note a second time.
+            buildLocal: async () =>
+              deriveFatigueCheckinRows(
+                await cache.read(SYNC_TABLES.WORKOUT_NOTES, Storage.loadWorkoutNotesRaw)
+              ),
+          }
+        : config
+    );
+    results.push(
+      ...(await runIndependentPasses(
+        diffConfigs.map(
+          (config) => () => syncDiffTable({ ...config, transport: singletonAware })
+        )
+      ))
+    );
+  } catch (error) {
+    // Best effort, and deliberately not allowed to replace the failure the user
+    // needs to see: if this drain also fails the deferred rows are exactly as
+    // lost as they would have been without it, while the original error is the
+    // one that explains the failed pass.
+    await drainDeferredWrites().catch(() => {});
+    throw error;
+  }
 
   // Every unrelated table is now synced and persisted. What remains unresolved is
   // reported here, and it IS reported: swallowing it would let the UI claim

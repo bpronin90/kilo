@@ -286,7 +286,12 @@ CI). They live beside the behavioral sync coverage:
   names it and a block before its memberships; a failure in one independent
   table still fails the pass and still stops the dependent recovery collections
   from being attempted, while unrelated tables complete; overlapping `sync()`
-  calls still resolve to a single pass.
+  calls still resolve to a single pass. Two further cases cover work that exists
+  only in memory when something goes wrong: an entry saved while a pass is
+  holding its copy survives that pass's whole-table write even when the pass then
+  fails, and a note tombstone deferred by a table that succeeded still reaches
+  the dirty queue when a sibling table fails the pass. Both were verified by
+  disabling their fix and confirming the test fails.
 
 To profile a pass, drive `syncAdapter.sync()` against `createSupabaseTransport`
 with a fake Supabase client that delays each `rpc`/`upsert`/`auth` call by a

@@ -826,7 +826,17 @@ than with the pending work:
   and shared by the reconciliation, the phantom-note cleanup, the merge, and the
   derived fatigue projection. A write whose serialized form matches what the
   pass already holds is skipped outright, so a pass that changes nothing writes
-  nothing — and cannot clobber a concurrent domain edit.
+  nothing.
+- A write that DOES change the table re-reads it first and folds in any row the
+  domain changed since the pass took its copy (`preserveConcurrentWrites`). The
+  cloud-operation queue does not serialize UI/domain writes, so a
+  `saveWeightEntry` can land between the copy and the write; without the reload
+  the whole-table replace would drop it from the device until a later pass
+  rebuilt it from the dirty queue — and if that pass fails before its push, it
+  would not rebuild it at all. Concurrent rows win because a cloud-mode domain
+  write is stamped and dirty-queued, which is the same "pending local row is not
+  voted against remote" rule `syncTable` already applies. The reload happens only
+  on a write that will touch storage, so the steady-state pass pays nothing.
 - `syncTable` records its baseline from the list `writeLocal` **returned**, not
   from a re-read. Every table writer returns what it actually persisted, which
   is both cheaper and stricter: a re-read could sweep a concurrent domain write
@@ -846,7 +856,17 @@ unchanged and still strictly sequential — workout notes before `recovery_block
 uploads a `current_workout_note_id` the pass is not about to drop). Groups are
 settled with `Promise.allSettled` and the first failure is raised only after every
 member has finished, so a pass never reports a failure while its own work is still
-in flight. `transport.push` also caches the user id it validated against the exact
+in flight.
+
+A failing pass drains its deferred rows before the failure propagates. Phantom-note
+tombstones and collapsed recovery duplicates are held in memory until the pass
+enqueues them, but the table that produced them has already recorded a baseline
+containing them — so the next pass's reconciliation finds no local difference and
+would never rediscover them. Draining into the durable dirty queue on the way out
+is what stops a tombstone this device minted from being silently dropped while the
+phantom lives on in the cloud.
+
+`transport.push` also caches the user id it validated against the exact
 access token it validated, so one pass costs one `auth.getUser()` round trip
 rather than one per pushed table; RLS remains the authority that rejects a
 mismatched `user_id`.
