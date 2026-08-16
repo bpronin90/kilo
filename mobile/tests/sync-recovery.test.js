@@ -1721,3 +1721,152 @@ describe('cloud bootstrap runs under the recovery exclusion boundary', () => {
     expect(JSON.parse(await AsyncStorage.getItem(RECOVERY_OPERATION_JOURNAL_KEY))).toEqual([]);
   });
 });
+
+// ── sync pass shape (issue #806) ─────────────────────────────────────────────
+//
+// Independent tables now pull and push concurrently, so what used to be
+// guaranteed by a `for` loop has to be guaranteed on purpose. These pin the
+// three properties the loop was providing for free:
+//
+//   * the dependency chain that actually matters — a note before the recovery
+//     block whose baseline names it, a block before the memberships that link
+//     to it — still holds;
+//   * a failure in one independent table still fails the pass, and still stops
+//     the dependent recovery collections from being attempted;
+//   * two overlapping sync() calls still resolve to one pass, so no two passes
+//     can ever be inside the concurrent groups at the same time.
+describe('concurrent independent table passes keep the pass contract', () => {
+  async function seedLinkedRecoveryBlock() {
+    const adapter = Storage.getStorageAdapter();
+    await adapter.saveWeightEntry({
+      id: 'w-order',
+      weight_value: 181,
+      logged_at: '2026-08-01T08:00:00.000Z',
+      date: '2026-08-01',
+    });
+    await adapter.saveWorkoutNoteItem({
+      id: 'wn-baseline',
+      title: 'Baseline routine',
+      raw_text: 'Squat 100x5',
+      saved_at: '2026-08-01T08:00:00.000Z',
+    });
+    await Storage.replaceRecoveryBlocksRaw([
+      {
+        id: 'rb-order',
+        baseline_note_id: 'wn-baseline',
+        baseline_note_title: 'Baseline routine',
+        baseline: { volume: 1000 },
+        include_in_normal_analytics: false,
+        started_at: '2026-08-01T09:00:00.000Z',
+        completed_at: null,
+        saved_at: '2026-08-01T09:00:00.000Z',
+        deleted_at: null,
+      },
+    ]);
+    await Storage.replaceRecoveryBlockWeeksRaw([
+      {
+        id: 'rw-order',
+        block_id: 'rb-order',
+        note_id: 'wn-baseline',
+        week_number: 1,
+        completed_at: null,
+        saved_at: '2026-08-01T09:00:00.000Z',
+        deleted_at: null,
+      },
+    ]);
+  }
+
+  it('still pushes a note before its block, and a block before its memberships', async () => {
+    await seedLinkedRecoveryBlock();
+    await sync();
+
+    const order = cloud.pushes.map((p) => p.table);
+    const note = order.indexOf(SYNC_TABLES.WORKOUT_NOTES);
+    const block = order.indexOf(SYNC_TABLES.RECOVERY_BLOCKS);
+    const week = order.indexOf(SYNC_TABLES.RECOVERY_BLOCK_WEEKS);
+
+    expect(note).toBeGreaterThanOrEqual(0);
+    expect(block).toBeGreaterThan(note);
+    expect(week).toBeGreaterThan(block);
+    expect(cloud.remoteRow(SYNC_TABLES.RECOVERY_BLOCK_WEEKS, 'rw-order')).toMatchObject({
+      block_id: 'rb-order',
+    });
+  });
+
+  it('fails the pass on an independent-table failure without attempting the recovery chain', async () => {
+    await seedLinkedRecoveryBlock();
+    const realPush = cloud.transport.push;
+    cloud.transport.push = async (table, records) => {
+      if (table === SYNC_TABLES.WEIGHT_ENTRIES) throw new Error('weights offline');
+      return realPush(table, records);
+    };
+
+    await expect(sync()).rejects.toThrow('weights offline');
+
+    // Isolation, not abandonment: the tables that do not depend on the failure
+    // completed and their rows reached the cloud.
+    expect(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, 'wn-baseline')).toBeTruthy();
+    // The dependent chain was never attempted, so nothing was pushed against a
+    // half-synced parent set.
+    expect(cloud.pushedIds(SYNC_TABLES.RECOVERY_BLOCKS)).toEqual([]);
+    expect(cloud.pushedIds(SYNC_TABLES.RECOVERY_BLOCK_WEEKS)).toEqual([]);
+    // The failed table stays armed for the retry, and claims no baseline.
+    expect(await getDirtyRecords(SYNC_TABLES.WEIGHT_ENTRIES)).not.toHaveLength(0);
+    expect(await getSyncSnapshot(SYNC_TABLES.WEIGHT_ENTRIES)).toBeNull();
+
+    cloud.transport.push = realPush;
+    await sync();
+    expect(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w-order')).toMatchObject({
+      weight_value: 181,
+    });
+  });
+
+  it('lets the other settings tables finish when one of them fails', async () => {
+    await seedSyncedDevice();
+    await saveWeightGoal({ target_weight: 170, start_weight: 185, saved_at: '2026-08-02T10:00:00.000Z' });
+    await Storage.saveDeloadModeEnabled(false);
+    // A health-row change, so the gated table actually has something to push.
+    await Storage.saveFatigueMultiplier(1.25);
+
+    const realPush = cloud.transport.push;
+    cloud.transport.push = async (table, records) => {
+      if (table === SYNC_TABLES.USER_HEALTH_PROFILE) throw new Error('health push denied');
+      return realPush(table, records);
+    };
+
+    await expect(sync()).rejects.toThrow('health push denied');
+
+    // A denial on the consent-gated health row must not take ordinary settings
+    // sync down with it.
+    expect(cloud.remoteRow(SYNC_TABLES.WEIGHT_GOAL, SINGLETON_SYNC_ID)).toMatchObject({
+      target_weight: 170,
+    });
+    expect(cloud.remoteRow(SYNC_TABLES.FEATURE_TOGGLES, SINGLETON_SYNC_ID)).toMatchObject({
+      deload_mode_enabled: false,
+    });
+    expect(await getDirtyRecords(SYNC_TABLES.USER_HEALTH_PROFILE)).not.toHaveLength(0);
+  });
+
+  it('resolves two overlapping sync() calls to a single pass', async () => {
+    await seedLinkedRecoveryBlock();
+    const first = sync({ ownedDevice: true });
+    const second = sync({ ownedDevice: true });
+    expect(second).toBe(first);
+    await first;
+
+    // Exactly one push per table that had work: no pass ran twice, and no two
+    // passes were ever inside the concurrent groups together.
+    for (const table of Object.values(SYNC_TABLES)) {
+      expect(cloud.pushes.filter((p) => p.table === table).length).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('runs a differently-scoped concurrent call as a second, serialized pass', async () => {
+    await seedLinkedRecoveryBlock();
+    const owned = sync({ ownedDevice: true });
+    const firstDownload = sync({ ownedDevice: false });
+    expect(firstDownload).not.toBe(owned);
+    await expect(Promise.all([owned, firstDownload])).resolves.toBeDefined();
+    expect(cloud.remoteRow(SYNC_TABLES.RECOVERY_BLOCK_WEEKS, 'rw-order')).toBeTruthy();
+  });
+});

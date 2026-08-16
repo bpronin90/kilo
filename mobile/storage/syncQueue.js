@@ -93,6 +93,12 @@ export const DERIVED_NOTE_FIELDS = Object.freeze([
 // A stable, per-install identifier used only for deterministic LWW tie-breaks.
 // Persisted so the same device keeps the same ordering weight across restarts.
 let cachedClientId;
+// Single-flight guard. Independent table passes now run concurrently (issue
+// #806), and two of them racing an uncached read would each miss, each mint, and
+// each persist a DIFFERENT id — silently splitting one device's LWW tie-break
+// weight in two. Sharing the first in-flight resolution keeps "one id per
+// install" true regardless of who asks first.
+let clientIdPromise = null;
 
 function randomClientId() {
   // Not security-sensitive; only needs to be stable and reasonably unique so two
@@ -102,28 +108,38 @@ function randomClientId() {
 
 export async function getClientId() {
   if (cachedClientId) return cachedClientId;
-  try {
-    const existing = await AsyncStorage.getItem(CLIENT_ID_KEY);
-    if (existing) {
-      cachedClientId = existing;
+  if (!clientIdPromise) {
+    clientIdPromise = (async () => {
+      try {
+        const existing = await AsyncStorage.getItem(CLIENT_ID_KEY);
+        if (existing) {
+          cachedClientId = existing;
+          return cachedClientId;
+        }
+      } catch {
+        // fall through to mint a fresh id
+      }
+      const minted = randomClientId();
+      try {
+        await AsyncStorage.setItem(CLIENT_ID_KEY, minted);
+      } catch {
+        // If persistence fails we still return an id for this session.
+      }
+      cachedClientId = minted;
       return cachedClientId;
-    }
-  } catch {
-    // fall through to mint a fresh id
+    })();
+    clientIdPromise.then(
+      () => { clientIdPromise = null; },
+      () => { clientIdPromise = null; }
+    );
   }
-  const minted = randomClientId();
-  try {
-    await AsyncStorage.setItem(CLIENT_ID_KEY, minted);
-  } catch {
-    // If persistence fails we still return an id for this session.
-  }
-  cachedClientId = minted;
-  return cachedClientId;
+  return clientIdPromise;
 }
 
 // Test/maintenance hook: forget the cached client id so a fresh one is read.
 export function resetClientIdCacheForTests() {
   cachedClientId = undefined;
+  clientIdPromise = null;
 }
 
 // ── sync metadata stamping ─────────────────────────────────────────────────────
@@ -305,9 +321,37 @@ async function writeDirty(table, map) {
 // id so the most recent local write is what gets pushed, and re-queuing the same
 // id simply overwrites the prior snapshot (no unbounded growth, no nested scan).
 export async function enqueueDirty(table, record) {
-  if (!record || record.id == null) return;
+  return enqueueDirtyMany(table, [record]);
+}
+
+// Queue a whole batch in ONE read/serialize/write of the persisted queue
+// (issue #806).
+//
+// The queue is a single AsyncStorage value holding every pending record for the
+// table, so enqueueing record-by-record costs a full read, parse, stringify and
+// write of the ENTIRE queue per record — quadratic in the number of rows being
+// enqueued. Every bulk producer in the engine hits that: the unbaselined
+// reconciliation, the diff-table pass, `reconcileLocalWrites`, and the #538
+// rebuild reseed all enqueue an entire table one row at a time. On a real
+// account that is the dominant cost of a first sync (measured: ~190MB of JSON
+// serialized and device-encrypted for 1,200 weight entries alone).
+//
+// Batching is behaviour-preserving: the queue is keyed by id, so applying the
+// batch in order leaves exactly the map the per-record loop produced, and the
+// caller still awaits a single durable write before anything is pushed. The
+// dirty listeners fire once for the batch rather than once per record — they are
+// change notifications for the pending-count UI, so one notification per durable
+// write is the correct granularity.
+export async function enqueueDirtyMany(table, records) {
+  if (!records || records.length === 0) return;
   const map = await readDirty(table);
-  map[record.id] = record;
+  let changed = false;
+  for (const record of records) {
+    if (!record || record.id == null) continue;
+    map[record.id] = record;
+    changed = true;
+  }
+  if (!changed) return;
   await writeDirty(table, map);
   notifyDirtyListeners();
 }
@@ -661,6 +705,14 @@ async function recoverPushAcknowledgements(table, transport, cursor, pushed, res
 // cleared (true). It defaults to false so the safe first-download behaviour is
 // what every unthreaded caller gets. It only changes the missing-cursor case;
 // every other cursor outcome is identical.
+//
+// `knownUnbaselined` (issue #806) lets a caller that has ALREADY read this
+// table's snapshot in this same pass state whether one existed, instead of
+// making this function read and decrypt the whole baseline again just to test it
+// against null. `reconcileSignedOutWrites` reads exactly that value moments
+// earlier, and nothing between the two writes a snapshot for this table, so the
+// answer is the same one this read would produce. Pass `null`/omit to have the
+// read performed here as before.
 export async function syncTable({
   table,
   transport,
@@ -670,6 +722,7 @@ export async function syncTable({
   orderPush,
   reconcileUnbaselined = false,
   ownedDevice = false,
+  knownUnbaselined = null,
 }) {
   const clientId = await getClientId();
   const storedCursor = await getCursor(table);
@@ -681,7 +734,11 @@ export async function syncTable({
   // baseline, any signed-out write sitting in it would be laundered into looking
   // synced forever. This pass therefore reconciles against the SERVER's row set
   // instead, which needs no prior local state.
-  const unbaselined = reconcileUnbaselined && (await getSyncSnapshot(table)) == null;
+  const unbaselined =
+    reconcileUnbaselined &&
+    (typeof knownUnbaselined === 'boolean'
+      ? knownUnbaselined
+      : (await getSyncSnapshot(table)) == null);
 
   // 1. Pull changed rows since the last cursor.
   //
@@ -719,10 +776,7 @@ export async function syncTable({
       cursor: storedCursor,
       ownedDevice,
     });
-    for (const rec of adopted) {
-      // eslint-disable-next-line no-await-in-loop
-      await enqueueDirty(table, rec);
-    }
+    await enqueueDirtyMany(table, adopted);
     if (unresolved.length > 0) {
       unresolvedConflict = { table, reason: cursorTrust.reason, ids: unresolved };
     }
@@ -762,7 +816,13 @@ export async function syncTable({
   const contested = remote.filter((r) => !dirtyIds.has(r.id));
   const merged = mergeRecords(localList, contested, { table, recomputeDerived });
   let mergedList = Array.from(merged.values());
-  await writeLocal(mergedList);
+  // `writeLocal` may transform the list before persisting it (see
+  // syncAdapter.createTableIo, which tombstones phantom legacy notes and
+  // collapses cross-device recovery duplicates during the write), so it returns
+  // what it actually put on disk. That returned list — not `mergedList`, and not
+  // a re-read — is what step 6 records as the baseline (issue #806). The
+  // fallback keeps writers that return nothing working unchanged.
+  let persistedList = (await writeLocal(mergedList)) || mergedList;
 
   // 4. Push dirty local records (live writes and tombstones together). A delete
   //    rides this same push as a tombstone, so it always reaches the cloud
@@ -789,7 +849,7 @@ export async function syncTable({
     if (recovered.replacesLocal) applyPushAcknowledgements(merged, acknowledged);
     if (recovered.replacesLocal && acknowledged.length > 0) {
       mergedList = Array.from(merged.values());
-      await writeLocal(mergedList);
+      persistedList = (await writeLocal(mergedList)) || mergedList;
     }
   }
 
@@ -814,11 +874,15 @@ export async function syncTable({
   //    server last agreed on there is no way to tell such a write from an
   //    untouched row, so reconcileLocalWrites below diffs against this snapshot.
   //
-  //    Read the table back rather than reusing `mergedList`: writeLocal may
-  //    legitimately transform the list before persisting it (see
+  //    Record what writeLocal actually PERSISTED rather than `mergedList`:
+  //    writeLocal may legitimately transform the list before persisting it (see
   //    syncAdapter.createTableIo, which tombstones phantom legacy notes during
   //    the write), and a baseline that does not match what is actually on disk
-  //    would read as a local edit on the very next pass.
+  //    would read as a local edit on the very next pass. This used to re-read
+  //    the table instead, which is both a full extra decrypt+parse of every row
+  //    and strictly less accurate: a domain write landing between writeLocal and
+  //    the re-read would be baked into the baseline and laundered into looking
+  //    synced. The persisted list is the exact bytes this pass wrote (#806).
   //
   //    Reached only after a successful push, because the push either throws
   //    (leaving the previous baseline and the dirty queue intact for a retry) or
@@ -851,7 +915,7 @@ export async function syncTable({
   //    failure and nothing is lost.
   if (unresolvedConflict) throw new SyncReconciliationConflictError(unresolvedConflict);
 
-  await setSyncSnapshot(table, (await readLocal()) || []);
+  await setSyncSnapshot(table, persistedList);
 
   return {
     table,
@@ -904,22 +968,57 @@ function snapshotKey(table) {
   return `${SNAPSHOT_KEY_PREFIX}${table}`;
 }
 
+// The exact serialized value each table's snapshot key is believed to hold at
+// rest (issue #806). Written only from bytes this module has just read from, or
+// just written to, storage — so it is evidence, never a guess.
+//
+// It exists to skip the single most expensive redundant write in a steady-state
+// pass: re-persisting a baseline that is byte-identical to the one already on
+// disk. On a large account that is a full re-serialize and device re-encrypt of
+// every synced table on every pass, for no change at all.
+//
+// Staleness is not assumed away: a write may be skipped only against a value
+// this module has actually READ back from storage, and each read grounds exactly
+// one skip. So a snapshot key removed by something that does not route through
+// clearSyncSnapshot (a device wipe, purgeLocalData, a test clearing storage)
+// costs at most one skipped write before the next read observes the removal and
+// the baseline is written again. Both engine entry points read the snapshot on
+// every pass — syncTable for its unbaselined test, syncDiffTable for its diff —
+// so the steady-state skip stays available pass after pass.
+const snapshotAtRest = new Map();
+
 // The last state we agreed with the server on for a diff-tracked table, stored
 // as a list of sync records (live rows AND tombstones). `null` means this device
 // has never completed a sync pass for the table.
 export async function getSyncSnapshot(table) {
   try {
     const raw = await AsyncStorage.getItem(snapshotKey(table));
-    if (!raw) return null;
+    if (!raw) {
+      snapshotAtRest.delete(table);
+      return null;
+    }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : null;
+    if (!Array.isArray(parsed)) {
+      snapshotAtRest.delete(table);
+      return null;
+    }
+    snapshotAtRest.set(table, { value: raw, grounded: true });
+    return parsed;
   } catch {
+    snapshotAtRest.delete(table);
     return null;
   }
 }
 
 export async function setSyncSnapshot(table, records) {
-  await AsyncStorage.setItem(snapshotKey(table), JSON.stringify(records || []));
+  const next = JSON.stringify(records || []);
+  const known = snapshotAtRest.get(table);
+  if (known && known.grounded && known.value === next) {
+    known.grounded = false;
+    return;
+  }
+  await AsyncStorage.setItem(snapshotKey(table), next);
+  snapshotAtRest.set(table, { value: next, grounded: false });
 }
 
 // Discard the baseline entirely, as opposed to setSyncSnapshot(table, []): the
@@ -932,6 +1031,7 @@ export async function setSyncSnapshot(table, records) {
 // the diff engine treat every local record as new rather than "already
 // reconciled with an empty cloud".
 export async function clearSyncSnapshot(table) {
+  snapshotAtRest.delete(table);
   await AsyncStorage.removeItem(snapshotKey(table));
 }
 
@@ -1118,10 +1218,7 @@ export async function syncDiffTable({
     isEmptyLocal,
   });
 
-  for (const rec of dirty) {
-    // eslint-disable-next-line no-await-in-loop
-    await enqueueDirty(table, rec);
-  }
+  await enqueueDirtyMany(table, dirty);
 
   // 3. Collect everything awaiting upload BEFORE the merge: this pass's diffs
   //    plus anything left over from a previously failed push. Both are genuine
@@ -1472,9 +1569,6 @@ export async function reconcileLocalWrites({ table, readLocal }) {
     baseline,
     clientId,
   });
-  for (const record of dirty) {
-    // eslint-disable-next-line no-await-in-loop
-    await enqueueDirty(table, record);
-  }
+  await enqueueDirtyMany(table, dirty);
   return { table, reconciled: dirty.length, deferred: Boolean(deferred) };
 }

@@ -32,7 +32,10 @@ import {
   resetStampClockForTests,
 } from '../storage/syncQueue';
 import { replaceArchivedWeightGoalsRaw } from '../storage/entries/weightGoal';
-import { createSupabaseTransport } from '../storage/cloud/transport';
+import {
+  createSupabaseTransport,
+  resetValidatedUserCacheForTests,
+} from '../storage/cloud/transport';
 
 const USER_ID = '11111111-1111-1111-1111-111111111111';
 
@@ -1631,5 +1634,156 @@ describe('recovery-block bootstrap upload', () => {
     // recovery block as the only local content, which must still disqualify it.
     await Storage.replaceWorkoutNotesRaw([]);
     expect(await isLocalDataEmpty()).toBe(false);
+  });
+});
+
+// The push path binds `user_id` from the authenticated session, and
+// `auth.getUser()` is a network round trip to the auth server. A pass pushes one
+// batch per table, so re-validating an unchanged token per table was pure added
+// latency (issue #806). What must stay true: the id is never taken from the
+// client record, a NEW credential is always validated before it is used, and a
+// session that cannot be read still validates every time.
+describe('Supabase sync transport push credential handling', () => {
+  function makePushClient(session, users) {
+    const calls = { getUser: 0, getSession: 0 };
+    const upserts = [];
+    let index = 0;
+    const client = {
+      auth: {
+        async getSession() {
+          calls.getSession += 1;
+          return { data: { session: session.current }, error: null };
+        },
+        async getUser() {
+          calls.getUser += 1;
+          const id = users[Math.min(index, users.length - 1)];
+          index += 1;
+          return { data: { user: { id } }, error: null };
+        },
+      },
+      schema() {
+        return {
+          from(table) {
+            return {
+              upsert(rows) {
+                upserts.push({ table, rows });
+                const promise = Promise.resolve({ data: rows, error: null });
+                promise.select = () => promise;
+                return promise;
+              },
+            };
+          },
+        };
+      },
+    };
+    return { client, calls, upserts };
+  }
+
+  beforeEach(() => {
+    resetValidatedUserCacheForTests();
+  });
+
+  it('validates once per access token and reuses it across the pass', async () => {
+    const session = { current: { access_token: 'token-a' } };
+    const fake = makePushClient(session, [USER_ID]);
+    const transport = createSupabaseTransport(() => fake.client);
+
+    for (const table of [
+      SYNC_TABLES.WEIGHT_ENTRIES,
+      SYNC_TABLES.WORKOUT_NOTES,
+      SYNC_TABLES.ARCHIVED_WEIGHT_GOALS,
+    ]) {
+      // eslint-disable-next-line no-await-in-loop
+      await transport.push(table, [{ id: `${table}-1`, user_id: 'forged-by-client' }]);
+    }
+
+    expect(fake.calls.getUser).toBe(1);
+    // Server-bound, never taken from the record the client supplied.
+    expect(fake.upserts.every((u) => u.rows[0].user_id === USER_ID)).toBe(true);
+  });
+
+  it('re-validates as soon as the credential changes', async () => {
+    const other = '22222222-2222-2222-2222-222222222222';
+    const session = { current: { access_token: 'token-a' } };
+    const fake = makePushClient(session, [USER_ID, other]);
+    const transport = createSupabaseTransport(() => fake.client);
+
+    await transport.push(SYNC_TABLES.WEIGHT_ENTRIES, [{ id: 'w1' }]);
+    session.current = { access_token: 'token-b' };
+    await transport.push(SYNC_TABLES.WEIGHT_ENTRIES, [{ id: 'w2' }]);
+
+    expect(fake.calls.getUser).toBe(2);
+    expect(fake.upserts[0].rows[0].user_id).toBe(USER_ID);
+    expect(fake.upserts[1].rows[0].user_id).toBe(other);
+  });
+
+  it('validates every push when the session cannot be read', async () => {
+    const session = { current: null };
+    const fake = makePushClient(session, [USER_ID]);
+    const transport = createSupabaseTransport(() => fake.client);
+
+    await transport.push(SYNC_TABLES.WEIGHT_ENTRIES, [{ id: 'w1' }]);
+    await transport.push(SYNC_TABLES.WEIGHT_ENTRIES, [{ id: 'w2' }]);
+
+    expect(fake.calls.getUser).toBe(2);
+  });
+
+  it('refuses to push when no authenticated user can be resolved', async () => {
+    const session = { current: { access_token: 'token-a' } };
+    const fake = makePushClient(session, [undefined]);
+    const transport = createSupabaseTransport(() => fake.client);
+
+    await expect(
+      transport.push(SYNC_TABLES.WEIGHT_ENTRIES, [{ id: 'w1' }])
+    ).rejects.toThrow('Cloud sync requires an authenticated user.');
+    expect(fake.upserts).toHaveLength(0);
+  });
+});
+
+describe('Supabase sync transport concurrent pushes share one validation', () => {
+  it('validates once when independent tables push at the same time', async () => {
+    resetValidatedUserCacheForTests();
+    let getUserCalls = 0;
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    const client = {
+      auth: {
+        async getSession() {
+          return { data: { session: { access_token: 'token-a' } }, error: null };
+        },
+        async getUser() {
+          getUserCalls += 1;
+          await gate;
+          return { data: { user: { id: USER_ID } }, error: null };
+        },
+      },
+      schema() {
+        return {
+          from() {
+            return {
+              upsert(rows) {
+                const promise = Promise.resolve({ data: rows, error: null });
+                promise.select = () => promise;
+                return promise;
+              },
+            };
+          },
+        };
+      },
+    };
+    const transport = createSupabaseTransport(() => client);
+
+    const pushes = Promise.all([
+      transport.push(SYNC_TABLES.WEIGHT_ENTRIES, [{ id: 'w1' }]),
+      transport.push(SYNC_TABLES.WORKOUT_NOTES, [{ id: 'n1' }]),
+      transport.push(SYNC_TABLES.ARCHIVED_WEIGHT_GOALS, [{ id: 'a1' }]),
+    ]);
+    release();
+    const results = await pushes;
+
+    expect(getUserCalls).toBe(1);
+    expect(results.map((rows) => rows[0].user_id)).toEqual([USER_ID, USER_ID, USER_ID]);
   });
 });

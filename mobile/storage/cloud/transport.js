@@ -211,6 +211,69 @@ function buildUpsertRow(table, rec, userId) {
   return row;
 }
 
+// The user id the last `auth.getUser()` validated, together with the access
+// token it validated (issue #806).
+//
+// `push` needs the authenticated user id to bind `user_id` on every upsert row,
+// and `auth.getUser()` is a NETWORK call to the auth server. A sync pass pushes
+// one batch per table, so the pre-#806 code paid an extra round trip per pushed
+// table — measured at 9 of the 29 round trips in a first full upload — to
+// re-validate a token that had not changed between them.
+//
+// The cache is keyed on the access token itself, read locally from the stored
+// session, so it is only ever reused for the exact credential that was
+// validated: a refresh, a different account, or a sign-out mints a new token and
+// forces a fresh validation. Nothing here is an authorization decision — RLS
+// rejects a row whose user_id does not match the JWT the request carries, and
+// that check is unchanged and unavoidable. A client that cannot report its
+// session falls back to validating on every push.
+// Independent tables push concurrently, so a cold cache is shared through an
+// in-flight validation rather than letting each pusher start its own.
+let validatedUser = null;
+let validationInFlight = null;
+
+async function validateUserId(client, token) {
+  const { data: userData, error: userError } = await client.auth.getUser();
+  if (userError) throw userError;
+  const userId = userData?.user?.id;
+  if (!userId) throw new Error('Cloud sync requires an authenticated user.');
+  validatedUser = token ? { token, userId } : null;
+  return userId;
+}
+
+async function resolveUserId(client) {
+  let token = null;
+  if (typeof client?.auth?.getSession === 'function') {
+    const { data } = (await client.auth.getSession()) || {};
+    token = data?.session?.access_token ?? null;
+    if (token) {
+      if (validatedUser && validatedUser.token === token) return validatedUser.userId;
+      if (validationInFlight && validationInFlight.token === token) {
+        return validationInFlight.promise;
+      }
+    }
+  }
+
+  const promise = validateUserId(client, token);
+  if (token) {
+    validationInFlight = { token, promise };
+    const clear = () => {
+      if (validationInFlight && validationInFlight.promise === promise) {
+        validationInFlight = null;
+      }
+    };
+    promise.then(clear, clear);
+  }
+  return promise;
+}
+
+// Test/maintenance hook: forget the validated session so the next push
+// re-validates against the auth server.
+export function resetValidatedUserCacheForTests() {
+  validatedUser = null;
+  validationInFlight = null;
+}
+
 let injectedTransport = null;
 
 export function setCloudTransport(transport) {
@@ -297,10 +360,7 @@ export function createSupabaseTransport(getClient = getConfiguredSupabaseClient)
     async push(table, records) {
       const client = getClient();
       if (!client) throw new Error('Cloud sync requires a configured Supabase client.');
-      const { data: userData, error: userError } = await client.auth.getUser();
-      if (userError) throw userError;
-      const userId = userData?.user?.id;
-      if (!userId) throw new Error('Cloud sync requires an authenticated user.');
+      const userId = await resolveUserId(client);
       const rows = records.map((rec) => buildUpsertRow(table, rec, userId));
       const upserted = client
         .schema(SCHEMA)
