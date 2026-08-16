@@ -720,8 +720,8 @@ action is placed by how often it is used:
 | Secondary — occasional | `Edit routine`, `Delete routine`, viewed-card `Week A/B`, full `Set as current routine` | Non-current card's expand-on-tap body (`LogPreviousRoutines.js` `inlineActions`), inside expanded routine management |
 | Quick access — reachable without opening (#756) | Compact `New routine` icon, compact `Set as current routine` icon per collapsed row | Panel header (present collapsed or expanded) and each collapsed non-current row's header respectively (`LogPreviousRoutines.js`) |
 | Rare — once per training block | `Start recovery block` | Expanded routine-management body (`LogPreviousRoutines.js`); the Recovery section no longer hosts a start control (#724) |
-| Recovery — expected next step | `Complete week` **or** `Add week` (never both) | Active Recovery card body, visible by default (`LogRecoverySection.js`, #789) |
-| Recovery — correction or once-per-block | `Unlink Week {N}`, `Complete recovery block`, the analytics-inclusion switch | `Manage recovery block`, a collapsed-by-default disclosure inside the active Recovery card (#789) |
+| Recovery — expected next step | `Complete week` **or** `Add week` (never both) | Active Recovery card body, visible by default and the card's only accent-filled control (`LogRecoverySection.js`, #789/#804) |
+| Recovery — correction or once-per-block | `Unlink Week {N}`, `Complete recovery block`, the analytics-inclusion switch | `Manage recovery block`, a collapsed-by-default disclosure inside the active Recovery card; both buttons are secondary `chipBackground` chips with `error` labels (#789/#804) |
 
 Consequences to preserve:
 
@@ -796,7 +796,8 @@ Consequences to preserve:
   in its existing treatment and with the same role, label, and `selected` state
   — otherwise an A/B recovery week's other week would be unreachable here. A week whose `note_id` is null, or names a note
   absent from the notebook, shows `Note unavailable` in place of a title,
-  announces `Recovery Week N, note unavailable`, and carries no `onPress` and no
+  announces `Recovery Week N, note unavailable`, and carries no `onPress`, no
+  `chevron-right`, and no
   `accessibilityRole="button"` — the row remains, its `Unlink` remains
   (in the disclosure, see below), and that unlink confirmation drops both the
   quoted title and the "note itself is kept" clause. `Untitled Routine` is
@@ -821,6 +822,22 @@ Consequences to preserve:
   buttons, `inclusionLocked` for the switch) so a locked user can still open it
   and see which specific control is unavailable, rather than being stranded
   behind a container that will not open.
+- **The active Recovery card states each fact once and fills exactly one button
+  (#804).** The week row is a borderless single line (`minHeight: 44`) holding
+  the note title and a `chevron-right` read affordance — its former `WEEK {N}`
+  micro-label and `In progress` status restated the headline directly above it,
+  and its border was the only box inside the card. The accessible names are
+  unchanged (`View <title>, Recovery Week N` / `Recovery Week N, note
+  unavailable`), since a screen-reader user reaches the control out of context.
+  The one visible lifecycle action (`Complete week` / `Add week`) is the card's
+  only `accent` fill with `onAccent` ink; `Complete recovery block` demotes from
+  that fill to the same secondary `chipBackground` + `error` chip `Unlink Week
+  {N}` uses, so the rarest irreversible action is no longer the loudest control.
+  Both disclosed chips carry an explicit `minHeight: 44`. The `Manage recovery
+  block` trigger drops its chip fill and border — it discloses, it does not act
+  — and its glyph is the standard `MaterialIcons` `expand-more`/`expand-less`
+  chevron (18, `textMuted`) required by `ui-design-rules.md` §6, replacing the
+  `▸`/`▾` text arrows.
 - `LogRecoverySection` renders only when Recovery affects the current workout
   (active/pending/terminal-error/stale). Completed history and its inclusion
   controls live in Analytics (#727-729), so completed-only users see no Recovery
