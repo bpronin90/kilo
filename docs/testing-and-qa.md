@@ -268,6 +268,40 @@ The runner rejects skips, TODOs, zero-test plans, parse failures, and aborted
 suites. Concurrency SQL uses real separate sessions where the contract requires
 overlap.
 
+### Cloud sync cost regressions
+
+Sync latency is dominated by device-storage volume and serialized round trips,
+not by algorithmic wall time, so the guards are written as assertions on *how
+much work a pass does* rather than as timing thresholds (which are unstable in
+CI). They live beside the behavioral sync coverage:
+
+- `mobile/tests/sync-queue.test.js` — the dirty queue persists a whole batch in
+  one write and lands the same queue a record-by-record loop would; a failed
+  push leaves the entire batch armed with the cursor unmoved and no baseline
+  claimed; the baseline is recorded from what `writeLocal` persisted; an
+  unchanged baseline is not rewritten, a changed one is, and a baseline removed
+  underneath the engine is re-persisted.
+- `mobile/tests/sync-recovery.test.js` — with independent tables running
+  concurrently, a note is still pushed before the recovery block whose baseline
+  names it and a block before its memberships; a failure in one independent
+  table still fails the pass and still stops the dependent recovery collections
+  from being attempted, while unrelated tables complete; overlapping `sync()`
+  calls still resolve to a single pass. Two further cases cover work that exists
+  only in memory when something goes wrong: an entry saved while a pass is
+  holding its copy survives that pass's whole-table write even when the pass then
+  fails, and a note tombstone deferred by a table that succeeded still reaches
+  the dirty queue when a sibling table fails the pass. Both were verified by
+  disabling their fix and confirming the test fails.
+
+To profile a pass, drive `syncAdapter.sync()` against `createSupabaseTransport`
+with a fake Supabase client that delays each `rpc`/`upsert`/`auth` call by a
+chosen RTT, and wrap the AsyncStorage jest mock so every `getItem`/`setItem`
+performs the same AES-GCM envelope `secureStorage` applies on device. Count round
+trips and bytes per storage key; those are reproducible, whereas wall time is
+not. Such a harness records counts, byte sizes, table names, and timings only —
+never payload content, which would put workout text and health values into test
+output.
+
 Operational production checks are not automated test inventory:
 
 - Auth-provider, CAPTCHA, SMTP, OAuth, policy-link, and throttle verification

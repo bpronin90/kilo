@@ -807,6 +807,70 @@ intact. The pull-only restore path (`downloadAccountData`) needs no boundary of 
 own: it uploads nothing, runs only on a verified-empty device, and its follow-on
 sync already goes through the same guard.
 
+### Cloud sync pass cost
+
+A sync pass is bounded by two things, and both are shaped deliberately (#806).
+
+**Device storage.** Every synced table lives in one encrypted `kilo_` value, so
+touching a table at all costs a full decrypt + parse (or stringify + encrypt) of
+every row it holds. Three rules keep that from scaling with the account rather
+than with the pending work:
+
+- The dirty queue is written **once per batch**, never once per record.
+  `enqueueDirtyMany` is the bulk entry point used by the signed-out
+  reconciliation, the diff-table pass, and the #538 rebuild reseed;
+  `enqueueDirty` is a single-record call through it. Enqueueing row by row is
+  quadratic in the batch, because each record rewrote the whole queue.
+- `runSyncPass` holds a **pass-scoped table cache** (`createPassCache` in
+  `storage/cloud/syncAdapter.js`). Each collection table is read once per pass
+  and shared by the reconciliation, the phantom-note cleanup, the merge, and the
+  derived fatigue projection. A write whose serialized form matches what the
+  pass already holds is skipped outright, so a pass that changes nothing writes
+  nothing.
+- A write that DOES change the table re-reads it first and folds in any row the
+  domain changed since the pass took its copy (`preserveConcurrentWrites`). The
+  cloud-operation queue does not serialize UI/domain writes, so a
+  `saveWeightEntry` can land between the copy and the write; without the reload
+  the whole-table replace would drop it from the device until a later pass
+  rebuilt it from the dirty queue — and if that pass fails before its push, it
+  would not rebuild it at all. Concurrent rows win because a cloud-mode domain
+  write is stamped and dirty-queued, which is the same "pending local row is not
+  voted against remote" rule `syncTable` already applies. The reload happens only
+  on a write that will touch storage, so the steady-state pass pays nothing.
+- `syncTable` records its baseline from the list `writeLocal` **returned**, not
+  from a re-read. Every table writer returns what it actually persisted, which
+  is both cheaper and stricter: a re-read could sweep a concurrent domain write
+  into the baseline and launder it into looking synced.
+- `setSyncSnapshot` skips a byte-identical baseline rewrite, and may only do so
+  against a value `getSyncSnapshot` has actually read back — one read grounds
+  one skip, so a snapshot removed outside `clearSyncSnapshot` (a device wipe, a
+  purge) costs at most one skipped write before the next read repairs it.
+
+**Round trips.** Tables that do not depend on each other pull and push together:
+`weight_entries`, `workout_notes`, and `archived_weight_goals` as one group, then
+all six diff-tracked tables as another. The orders that carry meaning are
+unchanged and still strictly sequential — workout notes before `recovery_blocks`
+(a block names the note its frozen baseline came from), `recovery_blocks` before
+`recovery_block_weeks`, and every collection table before the diff-tracked ones
+(so `fatigue_checkins` projects a settled notebook and `user_health_profile`
+uploads a `current_workout_note_id` the pass is not about to drop). Groups are
+settled with `Promise.allSettled` and the first failure is raised only after every
+member has finished, so a pass never reports a failure while its own work is still
+in flight.
+
+A failing pass drains its deferred rows before the failure propagates. Phantom-note
+tombstones and collapsed recovery duplicates are held in memory until the pass
+enqueues them, but the table that produced them has already recorded a baseline
+containing them — so the next pass's reconciliation finds no local difference and
+would never rediscover them. Draining into the durable dirty queue on the way out
+is what stops a tombstone this device minted from being silently dropped while the
+phantom lives on in the cloud.
+
+`transport.push` also caches the user id it validated against the exact
+access token it validated, so one pass costs one `auth.getUser()` round trip
+rather than one per pushed table; RLS remains the authority that rejects a
+mismatched `user_id`.
+
 ### Authoritative Recovery read state
 
 `hooks/entries/recoveryBlockHooks.js` owns one shared, module-scoped Recovery

@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
   enqueueDirty,
+  enqueueDirtyMany,
   getClientId,
   getCursor,
   getDirtyRecords,
@@ -663,4 +664,282 @@ describe('recovery collections are ordinary, retryable collection tables', () =>
       expect(local.find((r) => r.id === 'rec-1').week_number).toBe(1);
     }
   );
+});
+
+// ── sync-pass cost (issue #806) ──────────────────────────────────────────────
+//
+// The engine paid three avoidable costs on every pass, and all three grew with
+// the size of the account rather than with the amount of work actually pending:
+//
+//   1. the persisted dirty queue was re-read, re-serialized and re-encrypted
+//      once PER RECORD enqueued, which is quadratic in the batch size;
+//   2. the local table was re-read after writeLocal purely to record the
+//      baseline, decrypting and parsing every row a second time;
+//   3. a byte-identical baseline was rewritten every pass.
+//
+// These pin the cheaper behaviour AND the safety properties it must not trade
+// away: the queue still ends up holding exactly what a per-record loop produced,
+// a failed push still leaves the whole batch armed with the cursor unmoved, and
+// the baseline still reflects what is actually on disk.
+describe('sync pass does not re-do work that has not changed', () => {
+  const dirtyKeyFor = (table) => `kilo_sync_dirty_${table}`;
+  const snapshotKeyFor = (table) => `kilo_sync_snapshot_${table}`;
+
+  function writesTo(key) {
+    return AsyncStorage.setItem.mock.calls.filter(([written]) => written === key);
+  }
+
+  function readsOf(key) {
+    return AsyncStorage.getItem.mock.calls.filter(([read]) => read === key);
+  }
+
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    resetClientIdCacheForTests();
+    resetStampClockForTests();
+  });
+
+  it('enqueues a whole batch with a single queue write', async () => {
+    const table = SYNC_TABLES.WEIGHT_ENTRIES;
+    const clientId = await getClientId();
+    const batch = Array.from({ length: 25 }, (_, i) =>
+      stampWrite({ id: `we_${i}`, weight_value: 180 + i }, clientId)
+    );
+
+    AsyncStorage.setItem.mockClear();
+    await enqueueDirtyMany(table, batch);
+
+    expect(writesTo(dirtyKeyFor(table))).toHaveLength(1);
+    expect(await getDirtyRecords(table)).toEqual(batch);
+  });
+
+  it('leaves the queue exactly as a record-by-record enqueue would', async () => {
+    const table = SYNC_TABLES.WORKOUT_NOTES;
+    const clientId = await getClientId();
+    const first = [
+      stampWrite({ id: 'wn_1', title: 'A' }, clientId),
+      stampWrite({ id: 'wn_2', title: 'B' }, clientId),
+    ];
+    // Same id re-queued with a newer snapshot, plus an unrelated new id, plus
+    // rows the queue must ignore.
+    const second = [
+      stampWrite({ id: 'wn_2', title: 'B2' }, clientId),
+      stampTombstone({ id: 'wn_3', title: 'C' }, clientId),
+      null,
+      { title: 'no id' },
+    ];
+
+    await enqueueDirtyMany(table, first);
+    await enqueueDirtyMany(table, second);
+    const batched = await getDirtyRecords(table);
+
+    await AsyncStorage.clear();
+    for (const record of [...first, ...second]) {
+      // eslint-disable-next-line no-await-in-loop
+      await enqueueDirty(table, record);
+    }
+    expect(batched).toEqual(await getDirtyRecords(table));
+    expect(batched.map((r) => r.id)).toEqual(['wn_1', 'wn_2', 'wn_3']);
+    expect(batched.find((r) => r.id === 'wn_2').title).toBe('B2');
+  });
+
+  it('keeps a whole batch armed and the cursor unmoved when its push fails', async () => {
+    const table = SYNC_TABLES.WEIGHT_ENTRIES;
+    const clientId = await getClientId();
+    const batch = Array.from({ length: 10 }, (_, i) =>
+      stampWrite({ id: `we_${i}`, weight_value: i }, clientId)
+    );
+    await enqueueDirtyMany(table, batch);
+
+    let local = batch.slice();
+    const io = {
+      table,
+      transport: {
+        async pull() {
+          return [];
+        },
+        async push() {
+          throw new Error('offline');
+        },
+      },
+      readLocal: async () => local,
+      writeLocal: async (list) => {
+        local = list;
+        return list;
+      },
+    };
+
+    await expect(syncTable(io)).rejects.toThrow('offline');
+    expect(await getDirtyRecords(table)).toEqual(batch);
+    expect(await getCursor(table)).toBeNull();
+    expect(await getSyncSnapshot(table)).toBeNull();
+  });
+
+  it('records the baseline from what writeLocal persisted, never a re-read', async () => {
+    const table = SYNC_TABLES.WORKOUT_NOTES;
+    const kept = { id: 'wn_keep', title: 'Keep', updated_at: '2026-08-01T00:00:00.000Z' };
+    const dropped = { id: 'wn_drop', title: 'Drop', updated_at: '2026-08-01T00:00:00.000Z' };
+
+    // A transforming writer (the shape syncAdapter uses for phantom-note cleanup
+    // and the recovery duplicate collapse): it persists something other than the
+    // list handed to it, and reports what it persisted.
+    let persisted = null;
+    await syncTable({
+      table,
+      transport: {
+        async pull() {
+          return [];
+        },
+        async push() {
+          return [];
+        },
+      },
+      readLocal: async () => [kept, dropped],
+      writeLocal: async (list) => {
+        persisted = list.filter((rec) => rec.id !== 'wn_drop');
+        // A domain write landing right here used to be swept into the baseline
+        // by the re-read, laundering an un-uploaded row into looking synced.
+        return persisted;
+      },
+    });
+
+    expect(persisted).toEqual([kept]);
+    expect(await getSyncSnapshot(table)).toEqual([kept]);
+  });
+
+  it('does not rewrite a baseline that has not changed', async () => {
+    const table = SYNC_TABLES.ARCHIVED_WEIGHT_GOALS;
+    const row = { id: 'ag_1', target_weight: 175, updated_at: '2026-08-01T00:00:00.000Z' };
+    let local = [row];
+    const io = {
+      table,
+      transport: {
+        async pull() {
+          return [];
+        },
+        async push() {
+          return [];
+        },
+      },
+      readLocal: async () => local,
+      writeLocal: async (list) => {
+        local = list;
+        return list;
+      },
+    };
+
+    await syncTable(io);
+    const baseline = await getSyncSnapshot(table);
+
+    AsyncStorage.setItem.mockClear();
+    await syncTable(io);
+
+    expect(writesTo(snapshotKeyFor(table))).toHaveLength(0);
+    expect(await getSyncSnapshot(table)).toEqual(baseline);
+  });
+
+  it('rewrites the baseline as soon as the table genuinely changes', async () => {
+    const table = SYNC_TABLES.ARCHIVED_WEIGHT_GOALS;
+    let remote = [];
+    let local = [{ id: 'ag_1', target_weight: 175, updated_at: '2026-08-01T00:00:00.000Z' }];
+    const io = {
+      table,
+      transport: {
+        async pull() {
+          return remote;
+        },
+        async push() {
+          return [];
+        },
+      },
+      readLocal: async () => local,
+      writeLocal: async (list) => {
+        local = list;
+        return list;
+      },
+    };
+
+    await syncTable(io);
+    remote = [{ id: 'ag_2', target_weight: 170, updated_at: '2026-08-02T00:00:00.000Z' }];
+
+    AsyncStorage.setItem.mockClear();
+    await syncTable(io);
+
+    expect(writesTo(snapshotKeyFor(table))).toHaveLength(1);
+    expect((await getSyncSnapshot(table)).map((r) => r.id).sort()).toEqual(['ag_1', 'ag_2']);
+  });
+
+  it('re-persists a baseline that was wiped underneath it', async () => {
+    // The write-skip must never turn a purge into a silently missing baseline.
+    // getSyncSnapshot re-grounds the decision on what storage actually holds.
+    const table = SYNC_TABLES.ARCHIVED_WEIGHT_GOALS;
+    const row = { id: 'ag_1', target_weight: 175, updated_at: '2026-08-01T00:00:00.000Z' };
+    let local = [row];
+    const io = {
+      table,
+      transport: {
+        async pull() {
+          return [];
+        },
+        async push() {
+          return [];
+        },
+      },
+      readLocal: async () => local,
+      writeLocal: async (list) => {
+        local = list;
+        return list;
+      },
+    };
+
+    await syncTable(io);
+    await AsyncStorage.removeItem(snapshotKeyFor(table));
+    await syncTable(io);
+
+    expect(await getSyncSnapshot(table)).toEqual([row]);
+  });
+
+  it('uses a caller-supplied baseline answer instead of reading it again', async () => {
+    const table = SYNC_TABLES.WEIGHT_ENTRIES;
+    await setCursor(table, 'xid:500');
+    const pulledCursors = [];
+    const io = {
+      table,
+      reconcileUnbaselined: true,
+      transport: {
+        async pull(_table, cursor) {
+          pulledCursors.push(cursor);
+          return [];
+        },
+        async push() {
+          return [];
+        },
+      },
+      readLocal: async () => [],
+      writeLocal: async (list) => list,
+    };
+
+    // No snapshot exists, so an unhinted pass would reconcile against a FULL
+    // pull (cursor ignored). The hint says a baseline was already read this
+    // pass, so the ordinary delta pull is used and no extra read is made.
+    AsyncStorage.getItem.mockClear();
+    await syncTable({ ...io, knownUnbaselined: false });
+    expect(pulledCursors).toEqual(['xid:500']);
+    expect(readsOf(snapshotKeyFor(table))).toHaveLength(0);
+
+    // Omitting the hint restores the read-it-yourself behaviour.
+    await AsyncStorage.removeItem(snapshotKeyFor(table));
+    pulledCursors.length = 0;
+    AsyncStorage.getItem.mockClear();
+    await syncTable(io);
+    expect(pulledCursors).toEqual([null]);
+    expect(readsOf(snapshotKeyFor(table)).length).toBeGreaterThan(0);
+  });
+
+  it('mints one client id when concurrent passes race an uncached read', async () => {
+    resetClientIdCacheForTests();
+    const ids = await Promise.all(Array.from({ length: 8 }, () => getClientId()));
+    expect(new Set(ids).size).toBe(1);
+    expect(await AsyncStorage.getItem('kilo_sync_client_id')).toBe(ids[0]);
+  });
 });
