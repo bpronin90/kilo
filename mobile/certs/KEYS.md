@@ -44,12 +44,15 @@ Publish only JavaScript or bundled-asset changes compatible with `preview-6`.
 The production command targets only the production channel/environment and is a
 separate release action; ordinary implementation does not publish it.
 
-## Manual validation while OTA is disabled
+## Validate restored preview OTA delivery
 
-1. Build and install a preview APK (`build:android:preview`).
-2. Confirm the About screen reports the embedded bundle and a manual update
-   check cannot download a remote bundle.
-3. Confirm an update previously published to the old preview channel is not
-   offered to the new build.
-4. Make a JS-only test change and confirm it appears only after installing a new
-   native build, not after relaunching the old build.
+1. Build and install one replacement `preview-6` APK with
+   `npm --prefix mobile run build:android:preview`.
+2. Make a harmless, runtime-compatible JavaScript-only test change and publish
+   it with `npm --prefix mobile run update:android:preview`.
+3. Force-close and relaunch the replacement app as needed for EAS Update to
+   download and apply the bundle. Confirm the test change appears without
+   installing another APK.
+4. Confirm an older `preview-5` install does not receive the `preview-6` bundle.
+5. Confirm the publication appears only on the `preview` channel and leaves the
+   `production` channel unchanged.
