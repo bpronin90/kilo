@@ -243,8 +243,13 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   the discarded data afterward.
   Startup-wide plus lazy migration encrypt legacy plaintext before replacing it;
   a failed migration leaves the recoverable plaintext in place and fails closed.
-  Web retains browser storage semantics, where client-side key storage would not
-  provide an independent security boundary.
+  The startup-wide scan runs its full `getAllKeys()` + per-key pass at most once
+  per device: a plaintext marker key records completion, and every later cold
+  start reads that one marker instead of re-scanning every `kilo_` key, since
+  the per-key lazy migration path already covers anything written before the
+  scan last completed and no write after it can ever reintroduce plaintext
+  (#809). Web retains browser storage semantics, where client-side key storage
+  would not provide an independent security boundary.
 - `mobile/components/` holds reusable shell and UI primitives
 - `mobile/screens/MoreScreen.js` owns the More-tab routing shell. Help, About,
   Backup, Settings, and Profile sub-screens are extracted to individual files in
@@ -272,7 +277,12 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   paths, plus lightweight listener fanout for cross-consumer refreshes and a
   separate post-sync reload fanout that re-reads storage for every mounted
   workout-note and weight-entry hook instance, plus a shared reactive
-  `useTrackedLifts()` hook consumed by both Log and Analytics
+  `useTrackedLifts()` hook consumed by both Log and Analytics. On mount,
+  `useWeightEntries`/`useWorkoutNotes` read on-device storage immediately and
+  do not wait on the initial cloud sync: `maybeSyncCloud()` still runs, but in
+  the background, so first paint reflects the local cache rather than a
+  network round trip (#809). Every later reload — a write, a broadcast, or an
+  explicit `refresh()` call — keeps the ordinary sync-then-reload sequence.
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
   modules, now exposes the note-derived analytics contract used by downstream
   native workout analytics work, and centralizes exercise alias resolution in

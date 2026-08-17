@@ -46,6 +46,7 @@ import { migrateSensitiveDeviceData } from './storage/secureStorage';
 import { makeWeightEntry } from './lib/data';
 import { reconcileWorkoutReminder, installForegroundHandler } from './lib/reminderScheduler';
 import { buildCloudExport, importBackup, getStorageMode, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed } from './storage/entries';
+import { markStartupPhase } from './storage/entries/startupTiming';
 
 const TABS = ['Home', 'Log', 'Weight', 'Analytics', 'More'];
 const ZERO_SAFE_AREA_METRICS = {
@@ -287,9 +288,13 @@ function AppShell({ onDeviceDataWiped }) {
   }, []);
 
   // Queue the one-time legacy plaintext migration before domain hooks below
-  // begin their own storage reads. The storage boundary serializes the full
-  // scan with reads/writes, and every read retains a lazy migration fallback.
+  // begin their own storage reads. The storage boundary serializes this with
+  // every read/write, but the full getAllKeys() scan itself only ever runs
+  // once per device (#809) — every later launch resolves this to a single
+  // marker check — and every read retains its own lazy migration fallback
+  // regardless.
   useEffect(() => {
+    markStartupPhase('migration:requested');
     migrateSensitiveDeviceData().catch((e) => {
       console.error('[App] Failed to migrate protected device data:', e);
     });

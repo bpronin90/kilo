@@ -4,6 +4,7 @@ import { makeWorkoutNoteItem } from '../../lib/data';
 import { reconcileWorkoutReminder } from '../../lib/reminderScheduler';
 import { maybeSyncCloud, readVia, writeVia } from './storageMode';
 import { safeNotify } from './shared';
+import { markStartupPhase } from '../../storage/entries/startupTiming';
 
 export const DELOAD_NOTE_PREFIX = 'Deload · ';
 
@@ -56,6 +57,7 @@ export function useWorkoutNotes() {
         setNotes(ns);
         setCurrentId(id);
         setError(null);
+        markStartupPhase('notes:reload:done');
       })
       .catch(e => setError(e))
       .finally(() => setLoading(false));
@@ -71,7 +73,11 @@ export function useWorkoutNotes() {
   }, [reload]);
 
   useEffect(() => {
-    refresh();
+    // Same first-paint reasoning as useWeightEntries in weightHooks.js (#809):
+    // read the on-device cache immediately and let the initial cloud sync run
+    // in the background instead of gating this read behind it.
+    reload();
+    maybeSyncCloud().then(reload).catch(e => setError(e));
     workoutNotesListeners.push(refresh);
     workoutNoteReloadListeners.push(reload);
     return () => {

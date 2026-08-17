@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as Storage from '../../storage/entries';
 import { safeNotify } from './shared';
+import { markStartupPhase } from '../../storage/entries/startupTiming';
 
 let trackedLiftsListeners = [];
 const notifyTrackedLifts = () => safeNotify(trackedLiftsListeners);
@@ -28,6 +29,7 @@ export function useTrackedLifts() {
         currentTrackedLifts = data;
         setTrackedLifts(data);
         setError(null);
+        markStartupPhase('trackedLifts:reload:done');
       })
       .catch(e => setError(e))
       .finally(() => setLoading(false));

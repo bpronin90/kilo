@@ -36,6 +36,7 @@ import {
 } from '../../lib/data/recoveryAnalyticsFilter';
 import { makeWorkoutNoteItem } from '../../lib/data';
 import { safeNotify } from './shared';
+import { markStartupPhase } from '../../storage/entries/startupTiming';
 import { SYNC_PHASE, SYNC_STATUS, subscribeSyncState } from '../../storage/syncRecovery';
 // Imported for its module-load side effect as well as nothing else: it
 // registers the mode-aware note-deletion operations into the recovery journal
@@ -183,6 +184,7 @@ function runAuthoritativeRecoveryRead() {
         pendingRecovery: pending,
         recoveryPendingError: pendingError,
       });
+      markStartupPhase('recovery:reload:done');
       // READY display status does NOT by itself mean "safe to mutate": a
       // non-zero `pending` count means this exact pass found conflicting
       // operations still unresolved, so its own outcome is not clean even

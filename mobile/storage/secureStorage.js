@@ -7,11 +7,24 @@ import {
   hexToBytes,
   utf8ToBytes,
 } from '@noble/ciphers/utils';
+import { markStartupPhase } from './entries/startupTiming';
 
 const ENVELOPE_PREFIX = 'kilo.enc.v1:';
 const DEVICE_KEY_NAME = 'kilo.device-data-key.v1';
 const DEVICE_KEY_BYTES = 32;
 const NONCE_BYTES = 12;
+// Startup migration completion marker (#809). Every ordinary getItem() already
+// lazily migrates its OWN key in place (see getItemUnlocked below), so the
+// proactive full-table scan in migrateKiloData() only earns its keep once per
+// device: it catches a legacy plaintext key that first-launch startup never
+// happens to read on its own. Once that one pass confirms every kilo_* key is
+// encrypted, no future write can ever reintroduce plaintext (setItem always
+// encrypts), so re-scanning every key on every later cold start is redundant
+// work blocking every other storage read behind it via the shared operation
+// queue. The marker is plain text on purpose: it carries no sensitive data,
+// and checking it must not itself depend on the device encryption key.
+const MIGRATION_COMPLETE_KEY = 'kilo_plaintext_migration_v1_complete';
+const MIGRATION_COMPLETE_VALUE = '1';
 
 // Encryption failures are deliberately distinct from JSON/domain corruption.
 // Callers must never interpret an unreadable encrypted value as absent data.
@@ -222,8 +235,18 @@ export function createDeviceStorage({
     migrateKiloData() {
       return withMutationLock(async () => {
         if (!encryptValues) return { migrated: 0 };
+        // Skip the full scan once a prior pass on this device already
+        // confirmed every kilo_* key is encrypted (see MIGRATION_COMPLETE_KEY
+        // above). This one extra getItem is the entire cost of every cold
+        // start after the first.
+        const alreadyMigrated = await backingStore.getItem(MIGRATION_COMPLETE_KEY);
+        if (alreadyMigrated === MIGRATION_COMPLETE_VALUE) {
+          markStartupPhase('migration:skipped');
+          return { migrated: 0 };
+        }
+        markStartupPhase('migration:scan:start');
         const keys = await backingStore.getAllKeys();
-        const kiloKeys = keys.filter((key) => key.startsWith('kilo_'));
+        const kiloKeys = keys.filter((key) => key.startsWith('kilo_') && key !== MIGRATION_COMPLETE_KEY);
         let migrated = 0;
         for (const key of kiloKeys) {
           // eslint-disable-next-line no-await-in-loop
@@ -238,6 +261,8 @@ export function createDeviceStorage({
           await backingStore.setItem(key, envelope);
           migrated += 1;
         }
+        await backingStore.setItem(MIGRATION_COMPLETE_KEY, MIGRATION_COMPLETE_VALUE);
+        markStartupPhase('migration:scan:done');
         return { migrated };
       }, { migrated: 0 });
     },
