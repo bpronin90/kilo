@@ -230,10 +230,11 @@ npm run build:android:production
 npm run build:ios:device
 ```
 
-Run only the platform builds Kilo currently distributes. OTA updates are disabled,
-so an old installed binary cannot receive this configuration. Do not enable
-Supabase CAPTCHA until the new web deployment is live and replacement native
-builds are ready for the intended users.
+Run only the platform builds Kilo currently distributes. Clients older than the
+`preview-6` update boundary cannot receive current OTA bundles; replace those
+native builds before relying on remote delivery. Do not enable Supabase CAPTCHA
+until the new web deployment is live and compatible native builds are ready for
+the intended users.
 
 #### 5. Enable the secret in Supabase
 

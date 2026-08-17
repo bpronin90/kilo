@@ -389,7 +389,7 @@ The gate catches advisories in `package-lock.json` and `mobile/package-lock.json
 
 A CI workflow (`.github/workflows/version-check.yml`) runs `node scripts/sync-version.mjs --check` on every push to `main` and on every pull request. The job fails if the mobile version surfaces (`mobile/package.json` and `app.json` `expo.version`) drift from the canonical root `package.json` version.
 
-The canonical app version lives in the root `package.json`. `mobile/package.json` (displayed version) and `app.json` `expo.version` must mirror it. Any required version change and sync must be included in the PR before final review; closeout makes no tracked edits. `PREVIEW_RUNTIME` in `mobile/app.config.js` separately marks preview native compatibility even while remote updates are disabled.
+The canonical app version lives in the root `package.json`. `mobile/package.json` (displayed version) and `app.json` `expo.version` must mirror it. Any required version change and sync must be included in the PR before final review; closeout makes no tracked edits. `PREVIEW_RUNTIME` in `mobile/app.config.js` separately marks preview native compatibility for EAS Update targeting.
 
 Run the check or fix drift locally:
 

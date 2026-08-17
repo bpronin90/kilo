@@ -10,25 +10,23 @@ const mobilePackage = JSON.parse(readFileSync(new URL('../mobile/package.json', 
 const headers = readFileSync(new URL('../mobile/public/_headers', import.meta.url), 'utf8');
 const resolveAppConfig = require('../mobile/app.config.js');
 
-test('native builds reject OTA updates and Android OS backup', () => {
-  assert.equal(app.expo.updates.enabled, false);
-  assert.equal(app.expo.updates.checkAutomatically, 'NEVER');
+test('native builds isolate OTA channels and Android OS backup stays disabled', () => {
+  assert.equal(app.expo.updates.enabled, true);
+  assert.equal(app.expo.updates.checkAutomatically, 'ON_LOAD');
   assert.equal(app.expo.android.allowBackup, false);
-  for (const profile of Object.values(eas.build)) {
-    assert.equal(profile.channel, undefined);
-  }
+  assert.equal(eas.build.production.channel, 'production');
   assert.equal(eas.build.production.environment, 'production');
   for (const name of ['preview', 'ios-simulator', 'ios-device']) {
+    assert.equal(eas.build[name].channel, 'preview');
     assert.equal(eas.build[name].environment, 'preview');
   }
-  assert.match(mobilePackage.scripts['update:blocked'], /process\.exit\(1\)/);
-  for (const name of ['update:android:preview', 'update:android:production', 'update:ios:preview']) {
-    assert.equal(mobilePackage.scripts[name], 'npm run update:blocked');
-  }
+  assert.match(mobilePackage.scripts['update:android:preview'], /--channel preview --environment preview/);
+  assert.match(mobilePackage.scripts['update:android:production'], /--channel production --environment production/);
+  assert.match(mobilePackage.scripts['update:ios:preview'], /--channel preview --environment preview/);
   const priorAppEnv = process.env.APP_ENV;
   process.env.APP_ENV = 'preview';
   try {
-    assert.equal(resolveAppConfig({ config: app.expo }).runtimeVersion, 'preview-5');
+    assert.equal(resolveAppConfig({ config: app.expo }).runtimeVersion, 'preview-6');
   } finally {
     if (priorAppEnv === undefined) delete process.env.APP_ENV;
     else process.env.APP_ENV = priorAppEnv;

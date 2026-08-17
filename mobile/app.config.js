@@ -13,7 +13,10 @@
 // preview-5: #796 adds native encrypted-storage/CAPTCHA dependencies and disables
 //   unsigned OTA acceptance. Old preview-4 binaries must not receive bundles
 //   built for this native runtime and must be replaced with a fresh build.
-const PREVIEW_RUNTIME = 'preview-5';
+// preview-6: #811 intentionally restores unsigned EAS Update delivery. The
+//   update-client security posture is native configuration, so preview-5
+//   installs remain isolated and require one replacement build.
+const PREVIEW_RUNTIME = 'preview-6';
 
 function appendPlugin(existingPlugins, nextPlugin) {
   const plugins = Array.isArray(existingPlugins) ? existingPlugins : [];

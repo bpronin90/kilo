@@ -1,8 +1,10 @@
 # Native Build And Update Integrity
 
-Remote Expo Updates are disabled for preview and production until end-to-end
-code signing and external key custody are provisioned. The supported testing
-workflow is a replacement native build; do not publish an unsigned OTA update.
+Expo Updates are enabled for preview and production (#811). Updates are unsigned
+on the current Expo plan, matching Kilo's established pre-#796 workflow. Protect
+the Expo account with strong MFA: an account compromise could otherwise publish
+replacement JavaScript outside store review. Native and security-sensitive
+changes still ship through store/native builds.
 
 ## When to rebuild the APK
 
@@ -28,30 +30,19 @@ eas build --platform android --profile preview
 EAS builds the APK in the cloud and provides a download URL when complete.
 Install the resulting `.apk` on a device via `adb install` or direct file transfer.
 
-Issue #796 advances preview to runtime `preview-5`, disables Expo Updates in
-native config, removes EAS channel bindings, and adds native dependencies.
-Replace every preview-4 install with this fresh APK. Previously installed
-preview-4 binaries cannot be retrofitted to reject unsigned updates, so do not
-publish another bundle for that runtime.
+Issue #811 advances preview to runtime `preview-6` and restores EAS Update in
+native config. Replace every preview-5 install once; later compatible JavaScript
+and bundled-asset changes may use the preview channel without another APK.
 
-## Re-enable OTA only with code signing
+## Publish a compatible preview update
 
-The repository does not contain a signing private key. An authorized release
-operator must complete all of these steps before OTA publication returns:
+```sh
+npm --prefix mobile run update:android:preview
+```
 
-1. Confirm the Expo account plan supports end-to-end EAS Update code signing.
-2. Generate the key pair in a directory outside this repository. Store and back
-   up the private key in the approved external secret manager or KMS; never
-   commit it, upload it as a public build artifact, or paste it into an issue.
-3. Commit only the public verification certificate and configure
-   `updates.codeSigningCertificate` plus `updates.codeSigningMetadata`.
-4. Advance the preview/production runtime boundary and create replacement native
-   builds so the certificate is embedded in every accepting client.
-5. Prove the replacement build rejects an unsigned manifest, then publish with
-   the external private key path and verify a valid signed update is accepted.
-
-Until every step passes, keep `updates.enabled: false`, keep build profiles
-unbound from update channels, and ship changes only in new APK/AAB/IPA builds.
+Publish only JavaScript or bundled-asset changes compatible with `preview-6`.
+The production command targets only the production channel/environment and is a
+separate release action; ordinary implementation does not publish it.
 
 ## Manual validation while OTA is disabled
 
