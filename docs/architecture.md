@@ -188,28 +188,27 @@ alert: the user was told their erasure had started and is still waiting on it.
    `kilo.complete_health_deletion_job` refuses to advance to `withdrawn` while
    any scoped row remains, so a `complete` job is itself the erasure proof.
 
-## OTA Update Integrity Gate
+## OTA Update Delivery
 
-Preview and production native builds fail closed on remote JavaScript delivery
-until end-to-end Expo Update signing is provisioned.
+Preview and production builds receive compatible JavaScript and bundled-asset
+updates through EAS Update (#811).
 
-- `mobile/app.json` sets `updates.enabled: false` and
-  `checkAutomatically: "NEVER"`; `mobile/eas.json` does not bind any build
-  profile to an update channel. New binaries therefore run only their embedded
-  bundle and cannot download either signed or unsigned OTA updates.
-- `mobile/app.config.js` advances preview builds to the `preview-5` runtime for
-  the #796 native dependency and update-integrity boundary. Every Android and
-  iOS preview/production artifact containing these controls must be a fresh
-  native build. An OTA cannot retrofit the control into an installed binary.
-- Publishing through the legacy update scripts is unsupported while this gate
-  is active. In particular, do not publish another `preview-4` update: already
-  installed preview-4 binaries retain their embedded unsigned-update behavior
-  until they are replaced.
-- Re-enabling OTA requires a code-signing certificate embedded through
-  `updates.codeSigningCertificate` / `codeSigningMetadata`, a corresponding
-  private key held outside source control, a new runtime, and replacement native
-  builds. Only updates signed by that externally held key may then be published.
-  No signing private key is generated or stored in this repository.
+- `mobile/app.json` enables launch-time checks against the project update URL.
+  The current Expo plan does not provide end-to-end code signing, so these
+  updates are unsigned. Strong MFA on the Expo account is therefore part of the
+  delivery boundary: account compromise could publish replacement JavaScript
+  outside store review. Security-sensitive and native changes ship in native
+  builds rather than OTA.
+- `mobile/eas.json` isolates preview Android/iOS builds on the `preview` channel
+  and production Android builds on `production`. Publish commands name both the
+  channel and matching EAS environment explicitly.
+- Preview uses the manual `preview-6` runtime. Production uses the app-version
+  runtime policy. Native dependencies/configuration advance the applicable
+  runtime and require replacement builds; OTA is only for runtime-compatible
+  changes.
+- The change from the disabled `preview-5` update client to `preview-6` is itself
+  native configuration and requires one replacement preview build. Older
+  `preview-5` clients remain isolated from new publications.
 
 ## Runtime Shape
 

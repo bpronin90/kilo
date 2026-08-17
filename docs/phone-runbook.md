@@ -289,10 +289,7 @@ eas build --platform android --profile preview
 
 ### Updating The App Later
 
-Remote EAS Update publication is disabled. The `update:*` scripts fail
-intentionally and must not be bypassed.
-
-Build a replacement preview artifact for every update:
+Build a replacement preview artifact after native/configuration changes:
 
 ```sh
 npm --prefix mobile run build:android:preview
@@ -302,6 +299,12 @@ Install the new APK over the existing app when package name and signing identity
 are compatible. Confirm local data survives when the release depends on
 in-place-update behavior. Native-affecting changes additionally require a
 preview-runtime bump as described below.
+
+For a compatible JavaScript or bundled-asset change, publish to preview:
+
+```sh
+npm --prefix mobile run update:android:preview
+```
 
 ### Checking Build Status
 
@@ -313,8 +316,7 @@ eas build:list --platform android --limit 5
 
 - The app uses only local `AsyncStorage`; no backend or network connection is required at runtime.
 - Subsequent builds reuse the same EAS project — no re-configuration needed.
-- The `preview` profile intentionally disables remote updates. Distribute a new
-  preview APK for every change.
+- The `preview` profile receives only the `preview` update channel.
 - Preview builds use the manual runtime string documented in
   [Preview Runtime Policy](#preview-runtime-policy). Read the value from
   `mobile/app.config.js`; do not copy an older runtime string forward.
@@ -344,8 +346,7 @@ npm --prefix mobile run build:android:production
 
 ### Updating Production
 
-Remote EAS Update publication is disabled for production as well as preview.
-Every production change ships through a new AAB:
+Native and runtime-incompatible production changes ship through a new AAB:
 
 1. If the application version changes, update the canonical root version through
    the release workflow and synchronize the mobile version fields.
@@ -353,8 +354,9 @@ Every production change ships through a new AAB:
 3. Upload the resulting AAB to the intended Play Console track.
 4. Complete review and rollout, then verify the installed artifact.
 
-Do not run or bypass `update:android:production`; it is intentionally wired to
-the blocked-update script.
+Compatible JavaScript-only production updates use
+`npm --prefix mobile run update:android:production` as an explicit release
+action after preview verification. Never use it during ordinary implementation.
 
 ---
 
@@ -453,24 +455,17 @@ eas build:list --platform ios --limit 5
 - **iOS 16+ requires Developer Mode enabled on the device.** Internal-distribution builds will not launch until Developer Mode is turned on in Settings → Privacy & Security → Developer Mode.
 - **Simulator artifact requires macOS.** The EAS remote build itself runs on any OS, but installing and running the `.app` requires macOS with Xcode. Windows and Linux contributors cannot use the simulator artifact locally.
 - **Simulator builds cannot run on a real device.** The `.app` from `ios-simulator` is a simulator binary, not a signed device build.
-- **Remote updates are disabled for this iOS flow.** Use a new EAS build and
-  reinstall. Re-enabling updates requires the signed-update procedure in
-  [Preview Runtime Policy](#preview-runtime-policy).
+- **Preview iOS builds receive only the preview channel.** Native changes still
+  require a new build and reinstall.
 
 ---
 
 ## Preview Runtime Policy
 
-Preview builds use the manual runtime string `preview-5` from
+Preview builds use the manual runtime string `preview-6` from
 `mobile/app.config.js`. The runtime identifies native compatibility across
-preview artifacts; it is not permission to publish an OTA update.
-
-Remote updates are currently fail-closed:
-
-- `updates.enabled` is false in replacement builds.
-- No preview or production update channel is bound.
-- Every `update:*` package script exits with a blocked message.
-- A private update-signing key must not be stored in this repository.
+preview artifacts. Only compatible JavaScript and bundled-asset changes may be
+published to that runtime.
 
 ### When To Bump The Preview Runtime
 
@@ -487,19 +482,9 @@ After a bump, create and distribute replacement preview artifacts. An older
 installed runtime cannot be repaired by JavaScript.
 
 Do not bump the runtime for a pure JavaScript, styling, or bundled-asset change
-that leaves native compatibility unchanged. OTA remains blocked either way, so
-those changes still ship in a replacement artifact.
+that leaves native compatibility unchanged; those changes may use OTA.
 
-### Re-Enabling Remote Updates
-
-Re-enable EAS Update only through an explicit security change that:
-
-1. creates and keeps the signing private key outside source control;
-2. embeds the matching public certificate and code-signing metadata in a new
-   runtime;
-3. ships replacement native builds with signed-update enforcement;
-4. proves those builds reject unsigned or incorrectly signed manifests; and
-5. replaces the blocked package scripts with reviewed publish commands.
-
-Until all five conditions are met, build replacement native artifacts and do
-not publish remote updates.
+Updates are unsigned on the current Expo plan. Keep strong MFA enabled on the
+Expo account, keep preview and production channels isolated, and use native
+store builds for security-sensitive changes. The dormant signed-update work from
+#466 remains historical until its paid-plan trigger is intentionally revisited.
