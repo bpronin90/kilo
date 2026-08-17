@@ -321,13 +321,21 @@ ahead of first paint, not to Cloud Sync's own latency (already fixed by #806):
 
 Cold-launch phase marks (weight/note reads, weight-goal hydration,
 tracked-lift hydration, recovery-state hydration, encrypted-storage migration,
-and `home:first-paint`) are logged via `console.log` when `__DEV__` is true,
-from `mobile/storage/entries/startupTiming.js` — never sent over the network
-or persisted, and carrying only a phase name and an elapsed-ms number. To
-reproduce a cold-launch timing run on a physical device, install a release
-build, force-stop the app, launch it, and read the `[startup] <phase>: <ms>ms`
-lines from `adb logcat` (or the Metro/dev-client console on a debug build)
-between `migration:requested` and `home:first-paint`.
+and `home:first-paint`) are logged via `console.log` — and only collected in
+memory at all — when `__DEV__` is true, from
+`mobile/storage/entries/startupTiming.js`; a release build sets `__DEV__` to
+false, so it never emits or retains them. Never sent over the network or
+persisted, and carrying only a phase name and an elapsed-ms number.
+
+To read the phase-by-phase `[startup] <phase>: <ms>ms` trace, install a
+**debug or dev-client build** (not a release build — its logging is
+compiled out), force-stop the app, launch it, and read the lines between
+`migration:requested` and `home:first-paint` from `adb logcat` or the
+Metro/dev-client console. To measure the overall wall-clock number the
+acceptance criteria ask for, install a **release build** instead, force-stop
+the app, and time from launch to the skeleton being replaced by real content
+with a stopwatch or screen recording — the phase marks are diagnostic only
+and are not required for that number.
 
 Operational production checks are not automated test inventory:
 

@@ -18,12 +18,15 @@ export function resetStartupTiming(now = Date.now()) {
 }
 
 export function markStartupPhase(name, now = Date.now()) {
+  // No-op in production, not just quiet: this is called on every reload (not
+  // only at startup), including every write/broadcast for the lifetime of the
+  // app, so an unguarded push would grow `marks` forever with objects no
+  // production consumer ever reads.
+  if (typeof __DEV__ === 'undefined' || !__DEV__) return null;
   const elapsedMs = now - startedAt;
   marks.push({ name, elapsedMs });
-  if (typeof __DEV__ !== 'undefined' && __DEV__) {
-    // eslint-disable-next-line no-console
-    console.log(`[startup] ${name}: ${elapsedMs}ms`);
-  }
+  // eslint-disable-next-line no-console
+  console.log(`[startup] ${name}: ${elapsedMs}ms`);
   return elapsedMs;
 }
 
