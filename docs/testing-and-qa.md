@@ -302,6 +302,41 @@ not. Such a harness records counts, byte sizes, table names, and timings only �
 never payload content, which would put workout text and health values into test
 output.
 
+### Home cold-launch latency (#809)
+
+The multi-second Home skeleton on cold launch traced to two blocking phases
+ahead of first paint, not to Cloud Sync's own latency (already fixed by #806):
+
+- `secureStorage.migrateKiloData()` ran its `getAllKeys()` + per-key
+  `getItem()` scan on every cold start, and every other storage read is
+  serialized behind it through the module's single operation-lock queue.
+  `mobile/tests/secure-storage.test.js` and `mobile/tests/home-startup-latency.test.js`
+  assert the scan runs at most once per device (a persisted marker short-circuits
+  every later launch to a single `getItem()`).
+- `useWeightEntries`/`useWorkoutNotes` gated their first read behind
+  `maybeSyncCloud()` — a network round trip — before ever touching local
+  storage. `mobile/tests/home-startup-latency.test.js` asserts both hooks paint
+  existing on-device data while an in-flight `maybeSyncCloud()` mock is still
+  unresolved.
+
+Cold-launch phase marks (weight/note reads, weight-goal hydration,
+tracked-lift hydration, recovery-state hydration, encrypted-storage migration,
+and `home:first-paint`) are logged via `console.log` — and only collected in
+memory at all — when `__DEV__` is true, from
+`mobile/storage/entries/startupTiming.js`; a release build sets `__DEV__` to
+false, so it never emits or retains them. Never sent over the network or
+persisted, and carrying only a phase name and an elapsed-ms number.
+
+To read the phase-by-phase `[startup] <phase>: <ms>ms` trace, install a
+**debug or dev-client build** (not a release build — its logging is
+compiled out), force-stop the app, launch it, and read the lines between
+`migration:requested` and `home:first-paint` from `adb logcat` or the
+Metro/dev-client console. To measure the overall wall-clock number the
+acceptance criteria ask for, install a **release build** instead, force-stop
+the app, and time from launch to the skeleton being replaced by real content
+with a stopwatch or screen recording — the phase marks are diagnostic only
+and are not required for that number.
+
 Operational production checks are not automated test inventory:
 
 - Auth-provider, CAPTCHA, SMTP, OAuth, policy-link, and throttle verification

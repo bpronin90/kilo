@@ -8,6 +8,7 @@ import { CLOUD_SYNC_NOTICE, useWeightGoal, useTrackedLifts, getNoteSections, use
 import { deriveHomeDashboardData, useHomeNormalNotes, useHomeRecoverySummary, HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './home/homeDashboardData';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue, displayChartSeries } from '../lib/units';
+import { markStartupPhase } from '../storage/entries/startupTiming';
 
 // The exact example the welcome card teaches (issue #517). Exported so tests
 // can round-trip it through the real parser — the copy must never drift back
@@ -464,6 +465,14 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
   // known to be correct, so painting them would show numbers that can include
   // work the user chose to exclude (#699).
   const isLoading = loading || goalLoading || trackedLiftsLoading || !recoveryBoundaryReady;
+
+  // Marks the moment the skeleton is replaced by real content (#809), so a
+  // device timing run can compare this against the encrypted-storage/reload
+  // phase marks above it without recording anything about what actually
+  // loaded.
+  useEffect(() => {
+    if (!isLoading) markStartupPhase('home:first-paint');
+  }, [isLoading]);
 
   // Whether Home holds anything real to draw, regardless of why it might not.
   // Used to keep a failed read from being dressed up as a populated dashboard:

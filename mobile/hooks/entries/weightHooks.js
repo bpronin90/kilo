@@ -8,6 +8,7 @@ import {
 import { getClientId, stampWrite, enqueueDirty, SYNC_TABLES } from '../../storage/syncQueue';
 import { maybeSyncCloud, readVia, writeVia } from './storageMode';
 import { safeNotify } from './shared';
+import { markStartupPhase } from '../../storage/entries/startupTiming';
 
 let goalListeners = [];
 const notifyGoal = () => safeNotify(goalListeners);
@@ -43,6 +44,7 @@ export function useWeightGoal() {
         if (ok) {
           setGoal(next);
           setError(null);
+          markStartupPhase('weightGoal:reload:done');
         } else {
           setError(readError || new Error('Could not read the weight goal.'));
         }
@@ -152,6 +154,7 @@ export function useWeightEntries() {
       .then((next) => {
         setEntries(next);
         setError(null);
+        markStartupPhase('weight:reload:done');
       })
       .catch(e => setError(e))
       .finally(() => setLoading(false));
@@ -167,7 +170,17 @@ export function useWeightEntries() {
   }, [reload]);
 
   useEffect(() => {
-    refresh();
+    // First paint reads on-device storage immediately instead of gating it
+    // behind maybeSyncCloud()'s network round trip (#809): reload() alone is
+    // the authoritative on-device cache and is exactly what refresh() would
+    // eventually show anyway once sync settles, so there is nothing dishonest
+    // about painting it first. The initial cloud sync (when signed in) still
+    // runs, just in the background, and its own reload() lands whatever it
+    // finds without re-opening the skeleton. Every LATER reload — a write, a
+    // broadcast, or an explicit refresh() call — keeps the ordinary
+    // sync-then-reload sequence below.
+    reload();
+    maybeSyncCloud().then(reload).catch(e => setError(e));
     weightListeners.push(refresh);
     weightReloadListeners.push(reload);
     return () => {
