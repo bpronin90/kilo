@@ -75,9 +75,16 @@ export function useWorkoutNotes() {
   useEffect(() => {
     // Same first-paint reasoning as useWeightEntries in weightHooks.js (#809):
     // read the on-device cache immediately and let the initial cloud sync run
-    // in the background instead of gating this read behind it.
+    // in the background instead of gating this read behind it. The follow-up
+    // read happens only when a pass actually ran (#813): at launch storage is
+    // still in local mode, so this used to decrypt and parse the whole notebook
+    // a second time, per mounted instance, for exactly the data it had just
+    // read. Later reloads - a write, a broadcast, an explicit refresh() - keep
+    // the ordinary sync-then-reload sequence.
     reload();
-    maybeSyncCloud().then(reload).catch(e => setError(e));
+    maybeSyncCloud()
+      .then((synced) => (synced ? reload() : undefined))
+      .catch(e => setError(e));
     workoutNotesListeners.push(refresh);
     workoutNoteReloadListeners.push(reload);
     return () => {

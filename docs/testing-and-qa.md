@@ -319,6 +319,9 @@ ahead of first paint, not to Cloud Sync's own latency (already fixed by #806):
   existing on-device data while an in-flight `maybeSyncCloud()` mock is still
   unresolved.
 
+What remained of the launch stall after #809 was the size of the notebook
+each of those reads decrypts; see the next section.
+
 Cold-launch phase marks (weight/note reads, weight-goal hydration,
 tracked-lift hydration, recovery-state hydration, encrypted-storage migration,
 and `home:first-paint`) are logged via `console.log` — and only collected in
@@ -336,6 +339,90 @@ acceptance criteria ask for, install a **release build** instead, force-stop
 the app, and time from launch to the skeleton being replaced by real content
 with a stopwatch or screen recording — the phase marks are diagnostic only
 and are not required for that number.
+
+### Persisted parser cache and sync fan-out (#813)
+
+The app-wide lag that survived #806 and #809 traced to payload, not to the
+network: the sync merge attached the parser's full output (`derived_sections`)
+to every workout note a device had ever pushed, and that field is roughly one
+hundred times the size of the note text. Every notebook read and write, every
+sync pass (notebook plus baseline), and every backup then decrypted or
+encrypted it in pure JS on the UI thread. On top of that, one write broadcast
+ran one full sync pass per mounted hook instance, and each instance read the
+notebook twice at mount even in local mode. Coverage:
+
+- `mobile/tests/derived-sections-cache.test.js` - against a fake transport that
+  reproduces the commit-safe xid window of `pull_sync_changes` (a device's own
+  pushed rows come back on the next pull), a push followed by the next pull
+  leaves the notebook, its baseline, and the dirty queue cache-free and the
+  notebook the same size; the recompute seam still runs an injected recomputer;
+  every notebook write path, the workout-notes dirty queue, backup export, and
+  backup import strip the field; a note that differs from its baseline only by
+  the cache is not a local edit in either direction; the one-time purge strips
+  all three keys, records completion, costs one marker read afterwards, leaves
+  an unreadable notebook untouched, retries after a storage failure, cannot
+  lose a domain write that lands while it runs, and a queue writer whose read
+  predates the rewrite and whose whole-map write follows it cannot restore the
+  cache (the FIFO storage lock pins that exact interleaving).
+- `mobile/tests/secure-storage.test.js` - `updateItem` transforms the decrypted
+  value under the operation lock, writes nothing when the transform declines,
+  cannot be overwritten by a write queued behind it, is discarded behind a
+  confirmed wipe, and migrates plaintext in place first.
+- `mobile/tests/sync-fanout-coalescing.test.js` - callers of `maybeSyncCloud()`
+  arriving together share one pass; callers arriving during a pass get exactly
+  one shared trailing pass; a failed pass still resolves for every sharer and
+  marks the phase failed; the mode is re-checked when a pending pass starts; a
+  pass finishing after sign-out leaves the reset phase idle (success and
+  failure paths); each entry hook reads its table once per mounted instance at
+  mount in local mode and reloads once per instance after the single shared
+  pass in cloud mode; a write broadcast with three mounted instances costs one
+  pass; and, end to end against the real adapter and the xid-faithful fake
+  transport (`mobile/tests/mocks/xidFakeCloud.js`), that single pass is the
+  one that uploads the caller's write.
+
+Every one of these was verified to fail with its fix disabled. An
+opposite-vendor (Codex) review of the diff found the queue interleaving and
+the sign-out phase race; both are covered above.
+
+**Profiling method.** Two measurements together explain the symptom, and
+neither records payload content - the fixture is synthetic (a deterministic
+12-note account with 4-day routines and 4-14 logged weeks each, 300 weight
+entries), and the harness reports counts, byte sizes, key names, and timings
+only.
+
+1. *CPU cost on the real engine.* The Node/V8 profile #806 used hides the
+   device cost of `secureStorage`: `@noble/ciphers` AES-GCM is pure JS, the
+   envelope is hex-encoded (2x), and `bytesToUtf8` runs through Expo's JS
+   `TextDecoder` polyfill (`installGlobal` replaces the engine's). Bundle the
+   exact libraries plus the app's own parser with esbuild, transpile with
+   `@react-native/babel-preset` (Hermes has no native class syntax), compile
+   with `hermesc -O`, and run under the Hermes CLI (`facebook/hermes` release
+   `hermes-cli-linux`) beside Node. On a desktop x86 core, one notebook read
+   (decrypt + parse) is 26 ms for the plain 36 KB notebook, 849 ms once four of
+   twelve notes carry the cache (1.28 MB), and 2478 ms with all twelve
+   (3.74 MB) - 1/33/86 ms in Node for the same three. A phone core is several
+   times slower again, and Android AsyncStorage caps a database at 6 MB and a
+   row at ~2 MB, so a device could only ever hold a couple of bloated notes.
+2. *Operations per user action on the real engine and hooks.* Drive
+   `cloudAdapter.sync()` and the real `useWorkoutNotes()`/`useWeightEntries()`
+   hooks (three mounted instances each, as App/Log/Weight/Analytics hold)
+   against a fake transport with the xid-window pull semantics above, wrap the
+   AsyncStorage jest mock to count operations and plaintext bytes per key, and
+   spy on `cloudAdapter.sync` to count passes. Multiplying bytes by the measured
+   Hermes ms/KB gives a modeled UI-thread cost per action.
+
+Before/after on the worst-case fixture (all twelve notes carrying the cache,
+which is what two settled passes after a first upload produced):
+
+| scenario | before | after |
+|---|---|---|
+| launch: mount 3x notes + 3x weight hooks | 18 reads, 22.3 MB decrypted (6 notebook decrypts), ~15 s modeled | 9 reads, 0.29 MB, ~0.2 s |
+| settled no-change pass | 62 reads, 7.4 MB, ~5 s | 62 reads, 0.20 MB, ~0.13 s |
+| one Log autosave, all tabs mounted | 3 passes, 33 pulls, 208 reads / 53 MB, 44 writes / 38 MB, ~52 s | 1 pass, 11 pulls, 79 reads / 0.46 MB, 30 writes / 0.23 MB, ~0.4 s |
+| notebook + baseline after two passes | 3.74 MB + 3.74 MB, 12/12 notes bloated | 37 KB + 37 KB, 0/12 |
+
+No physical-device timing was captured for this change; the modeled numbers
+are a lower bound on device cost, and the operation counts are exact.
 
 Operational production checks are not automated test inventory:
 

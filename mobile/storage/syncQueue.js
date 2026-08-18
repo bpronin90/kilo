@@ -22,6 +22,11 @@
 // successful push.
 
 import { secureStorage as AsyncStorage } from './secureStorage';
+import {
+  DERIVED_SECTIONS_FIELD,
+  stripDerivedSections,
+  stripDerivedSectionsFromList,
+} from './entries/derivedCache';
 
 // AsyncStorage keys for sync bookkeeping. Kept separate from domain data so
 // clearing/inspecting sync state never touches the user's records.
@@ -304,17 +309,36 @@ function dirtyKey(table) {
   return `${DIRTY_KEY_PREFIX}${table}`;
 }
 
+// A workout note's parser-output cache is neither a column nor user data, so
+// it never enters the queue (issue #813): every write of the workout_notes queue
+// strips it from EVERY record it persists - not only the records being added -
+// so a writer whose read predates the one-time purge cannot restore it with a
+// stale full-map write, and every read strips it so a queue written by an older
+// build is lean in memory until then. Both return their input by identity when
+// there is nothing to strip.
+function stripDirtyMap(table, map) {
+  if (table !== SYNC_TABLES.WORKOUT_NOTES || !map || typeof map !== 'object') return map;
+  let changed = false;
+  const next = {};
+  for (const [id, record] of Object.entries(map)) {
+    const stripped = stripDerivedSections(record);
+    if (stripped !== record) changed = true;
+    next[id] = stripped;
+  }
+  return changed ? next : map;
+}
+
 async function readDirty(table) {
   try {
     const raw = await AsyncStorage.getItem(dirtyKey(table));
-    return raw ? JSON.parse(raw) : {};
+    return raw ? stripDirtyMap(table, JSON.parse(raw)) : {};
   } catch {
     return {};
   }
 }
 
 async function writeDirty(table, map) {
-  await AsyncStorage.setItem(dirtyKey(table), JSON.stringify(map));
+  await AsyncStorage.setItem(dirtyKey(table), JSON.stringify(stripDirtyMap(table, map)));
 }
 
 // Queue a record id as needing push. We store the full record snapshot keyed by
@@ -1035,6 +1059,40 @@ export async function clearSyncSnapshot(table) {
   await AsyncStorage.removeItem(snapshotKey(table));
 }
 
+// One-time cleanup of the engine's own workout_notes bookkeeping (issue #813):
+// strip the parser-output cache an older build persisted into the baseline
+// snapshot and the pending-push queue. Each key is rewritten as ONE serialized
+// storage operation (secureStorage.updateItem), so a sync pass or domain write
+// cannot land between the read and the write. Payloads this build cannot parse
+// are left exactly as they are - corruption is the read paths' concern, and a
+// cleanup must never turn it into an empty table. Returns what it changed.
+export async function purgeDerivedSectionsFromWorkoutNoteSyncState() {
+  const table = SYNC_TABLES.WORKOUT_NOTES;
+  const rewriteJson = (transform) => (raw) => {
+    if (raw == null) return null;
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+    const next = transform(parsed);
+    return next === parsed ? null : JSON.stringify(next);
+  };
+  const snapshot = await AsyncStorage.updateItem(
+    snapshotKey(table),
+    rewriteJson((list) => (Array.isArray(list) ? stripDerivedSectionsFromList(list) : list))
+  );
+  // A rewritten snapshot invalidates the at-rest record used to skip identical
+  // baseline writes; the next read re-grounds it.
+  if (snapshot.changed) snapshotAtRest.delete(table);
+  const dirty = await AsyncStorage.updateItem(
+    dirtyKey(table),
+    rewriteJson((map) => (Array.isArray(map) ? map : stripDirtyMap(table, map)))
+  );
+  return { snapshot: snapshot.changed, dirty: dirty.changed };
+}
+
 // Key-order-independent structural stringify, so a jsonb column that round-trips
 // through Postgres with reordered keys is not misread as a local edit (which
 // would re-stamp the record every pass and let this device win LWW forever).
@@ -1344,12 +1402,22 @@ export async function syncDiffTable({
 // says. Two rows that differ only here hold the same user data.
 const SYNC_METADATA_FIELDS = Object.freeze(['updated_at', 'client_id']);
 
+// Device-local caches that describe neither WHEN nor WHAT: recomputable from the
+// row's own payload, never a cloud column. A row that differs from its baseline
+// only here has not been edited, so treating the difference as a local write
+// would re-stamp and re-push an unchanged note - and, because a pending local
+// row is never voted against its remote counterpart, could overwrite another
+// device's genuine edit. Ignoring the field is what lets the one-time purge in
+// entries/derivedCachePurge.js clean the notebook and its baseline separately
+// without ever making the two disagree (issue #813).
+const LOCAL_CACHE_FIELDS = Object.freeze([DERIVED_SECTIONS_FIELD]);
+
 // Structural identity of a record's user-visible content. `deleted_at` is
 // deliberately retained: live and tombstoned are different states of the row.
 function payloadFingerprint(record) {
   const payload = {};
   for (const key of Object.keys(record)) {
-    if (SYNC_METADATA_FIELDS.includes(key)) continue;
+    if (SYNC_METADATA_FIELDS.includes(key) || LOCAL_CACHE_FIELDS.includes(key)) continue;
     payload[key] = record[key];
   }
   return stableStringify(payload);

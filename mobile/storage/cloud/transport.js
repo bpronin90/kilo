@@ -378,25 +378,26 @@ export function getTransport() {
   return injectedTransport || createSupabaseTransport();
 }
 
-let recomputeDerivedFn = (raw_text) => {
-  // Require the parser submodule directly (not the barrel) so the shared
-  // MAX_RAW_TEXT_LENGTH cap is available without touching the parser barrel.
-  // eslint-disable-next-line global-require
-  const { parseWorkoutNote, MAX_RAW_TEXT_LENGTH } = require('../../lib/parser/workoutNote.js');
-  const text = raw_text || '';
-  // Enforce the same untrusted-input cap on synced remote rows so a remote-origin
-  // raw_text cannot bypass the parser bound. parseWorkoutNote also rejects
-  // oversized text and returns an empty `sections`; this explicit guard keeps the
-  // limit visible on the recompute path and skips the call entirely.
-  if (text.length > MAX_RAW_TEXT_LENGTH) {
-    return { derived_sections: [] };
-  }
-  const { sections } = parseWorkoutNote(text);
-  return { derived_sections: sections };
-};
+// The derived-field recompute seam consumed by syncQueue.resolveRecord: when a
+// workout note's local and remote copies agree on `raw_text`, the merge asks
+// this function for the derived fields to lay over the LWW winner instead of
+// trusting either side's stale cache.
+//
+// No derived field is persisted by default any more (issue #813). The previous
+// default attached the parser's full output (`derived_sections`) to the merged
+// note, and because a device's own pushed rows come back on its next pull, every
+// note it had ever uploaded ended up carrying a cache roughly one hundred times
+// the size of its text - in the notebook, in the sync baseline, in the pending
+// queue, and in every backup - for a field nothing read. Every screen re-parses
+// `raw_text` at render, so there is nothing to recompute here; the seam stays
+// injectable for tests and for any future derived column, and the parser is no
+// longer touched on the sync path at all.
+const DEFAULT_RECOMPUTE_DERIVED = null;
+let recomputeDerivedFn = DEFAULT_RECOMPUTE_DERIVED;
 
+// Passing anything but a function restores the default (no recompute).
 export function setRecomputeDerived(fn) {
-  recomputeDerivedFn = typeof fn === 'function' ? fn : recomputeDerivedFn;
+  recomputeDerivedFn = typeof fn === 'function' ? fn : DEFAULT_RECOMPUTE_DERIVED;
 }
 
 export function getRecomputeDerived() {

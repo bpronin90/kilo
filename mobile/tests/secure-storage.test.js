@@ -160,3 +160,71 @@ describe('encrypted native device persistence', () => {
     await expect(storage.getItem('kilo_local_data_owner')).resolves.toBe('unclaimed');
   });
 });
+
+// issue #813: updateItem rewrites one value as a single serialized operation.
+describe('updateItem: atomic read-transform-write under the operation lock', () => {
+  test('transforms the decrypted value and stores a fresh envelope', async () => {
+    const { storage, backingStore } = makeStorage();
+    await storage.setItem('kilo_workout_notes', '[{"id":"a","derived_sections":[1]}]');
+    const before = backingStore.values.get('kilo_workout_notes');
+
+    await expect(
+      storage.updateItem('kilo_workout_notes', (raw) => JSON.stringify(
+        JSON.parse(raw).map(({ derived_sections: _d, ...note }) => note), // eslint-disable-line no-unused-vars
+      )),
+    ).resolves.toEqual({ changed: true });
+
+    const after = backingStore.values.get('kilo_workout_notes');
+    expect(after).toMatch(/^kilo\.enc\.v1:/);
+    expect(after).not.toBe(before);
+    await expect(storage.getItem('kilo_workout_notes')).resolves.toBe('[{"id":"a"}]');
+  });
+
+  test('passes null for an absent key and writes nothing when the transform declines', async () => {
+    const { storage, backingStore } = makeStorage();
+    const seen = [];
+    await expect(storage.updateItem('kilo_workout_notes', (raw) => { seen.push(raw); return null; }))
+      .resolves.toEqual({ changed: false });
+    expect(seen).toEqual([null]);
+    expect(backingStore.values.has('kilo_workout_notes')).toBe(false);
+
+    await storage.setItem('kilo_workout_notes', 'same');
+    backingStore.setItem.mockClear();
+    await expect(storage.updateItem('kilo_workout_notes', (raw) => raw)).resolves.toEqual({ changed: false });
+    await expect(storage.updateItem('kilo_workout_notes', () => undefined)).resolves.toEqual({ changed: false });
+    expect(backingStore.setItem).not.toHaveBeenCalled();
+  });
+
+  test('a write queued while the rewrite runs cannot be overwritten by it', async () => {
+    const { storage } = makeStorage();
+    await storage.setItem('kilo_workout_notes', 'v1');
+    let release;
+    const rewrite = storage.updateItem('kilo_workout_notes', (raw) => new Promise((resolve) => {
+      release = () => resolve(`${raw}+rewritten`);
+    }));
+    // Queued behind the rewrite: it must land AFTER the rewrite's write, never
+    // between the rewrite's read and write.
+    const later = storage.setItem('kilo_workout_notes', 'v2');
+    await new Promise((resolve) => setImmediate(resolve));
+    release();
+    await Promise.all([rewrite, later]);
+    await expect(storage.getItem('kilo_workout_notes')).resolves.toBe('v2');
+  });
+
+  test('is discarded when a confirmed wipe advances the data generation first', async () => {
+    const { storage, backingStore } = makeStorage();
+    await storage.setItem('kilo_workout_notes', 'before wipe');
+    const wipe = storage.wipeKiloData();
+    const stale = storage.updateItem('kilo_workout_notes', () => 'resurrected');
+    await expect(Promise.all([wipe, stale])).resolves.toEqual([undefined, { changed: false }]);
+    expect(backingStore.values.has('kilo_workout_notes')).toBe(false);
+  });
+
+  test('migrates a plaintext value in place before handing it to the transform', async () => {
+    const { storage, backingStore } = makeStorage({ kilo_workout_notes: '[{"id":"legacy"}]' });
+    await expect(storage.updateItem('kilo_workout_notes', (raw) => raw.replace('legacy', 'kept')))
+      .resolves.toEqual({ changed: true });
+    expect(backingStore.values.get('kilo_workout_notes')).toMatch(/^kilo\.enc\.v1:/);
+    await expect(storage.getItem('kilo_workout_notes')).resolves.toBe('[{"id":"kept"}]');
+  });
+});
