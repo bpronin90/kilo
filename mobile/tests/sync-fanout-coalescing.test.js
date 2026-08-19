@@ -14,7 +14,15 @@ import TestRenderer, { act } from 'react-test-renderer';
 
 import * as Storage from '../storage/entries';
 import { WORKOUT_NOTES_KEY, WEIGHT_KEY } from '../storage/entries/keys';
-import { SYNC_PHASE, SYNC_STATUS, getSyncState, resetPhase, __resetSyncQueue } from '../storage/syncRecovery';
+import {
+  SYNC_PHASE,
+  SYNC_STATUS,
+  getSyncState,
+  loadLastSuccessfulSyncAt,
+  resetPhase,
+  runPhase,
+  __resetSyncQueue,
+} from '../storage/syncRecovery';
 import { SYNC_TABLES, resetClientIdCacheForTests, resetStampClockForTests } from '../storage/syncQueue';
 import { cloudAdapter, setCloudTransport } from '../storage/cloudAdapter';
 import { maybeSyncCloud, __resetMaybeSyncCloudForTests } from '../hooks/entries/storageMode';
@@ -182,6 +190,73 @@ describe('maybeSyncCloud coalescing (#813)', () => {
     passes[1].reject(new Error('offline'));
     await expect(failing).resolves.toBe(true);
     expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.IDLE);
+  });
+
+  // The phase is reset AND claimed again before the old pass settles, so the
+  // status is back to RUNNING and looks exactly like the old pass's own. Only a
+  // per-run ownership token can tell the two apart (issue #813 review).
+  it('a pass that finishes after sign-out and a re-sign-in cannot settle the new pass', async () => {
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    const { passes } = mockBlockingCloudAdapter();
+
+    // Pass A is in flight.
+    const passA = maybeSyncCloud();
+    await flushAsync();
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.RUNNING);
+
+    // Sign-out, while pass A is still in flight.
+    Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
+    resetPhase(SYNC_PHASE.SYNC);
+
+    // Sign back in: the independent runPhase path starts pass B.
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    const gateB = deferred();
+    const passB = runPhase(SYNC_PHASE.SYNC, () => gateB.promise);
+    await flushAsync();
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.RUNNING);
+
+    // Pass A settles now. It must publish nothing: pass B owns the phase and is
+    // still running, and a stale success here would also stamp a last-successful
+    // -sync time for a pass that has not finished.
+    passes[0].resolve({ ok: true });
+    await expect(passA).resolves.toBe(true);
+    await flushAsync();
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.RUNNING);
+    expect(getSyncState()[SYNC_PHASE.SYNC].error).toBeNull();
+    await expect(loadLastSuccessfulSyncAt()).resolves.toBeNull();
+
+    // Pass B still settles its own phase normally.
+    gateB.resolve({ ok: true });
+    await passB;
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+    await expect(loadLastSuccessfulSyncAt()).resolves.toEqual(expect.any(String));
+  });
+
+  it('a pass that FAILS after sign-out and a re-sign-in cannot fail the new pass', async () => {
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    const { passes } = mockBlockingCloudAdapter();
+
+    const passA = maybeSyncCloud();
+    await flushAsync();
+
+    Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
+    resetPhase(SYNC_PHASE.SYNC);
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+
+    const gateB = deferred();
+    const passB = runPhase(SYNC_PHASE.SYNC, () => gateB.promise);
+    await flushAsync();
+
+    passes[0].reject(new Error('offline'));
+    await expect(passA).resolves.toBe(true);
+    await flushAsync();
+    // Not FAILED: pass B is still running and has not failed.
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.RUNNING);
+    expect(getSyncState()[SYNC_PHASE.SYNC].retryable).toBe(false);
+
+    gateB.resolve({ ok: true });
+    await passB;
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
   });
 });
 

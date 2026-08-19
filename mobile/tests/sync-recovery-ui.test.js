@@ -17,9 +17,11 @@ import {
   SYNC_STATUS,
   SYNC_PHASE,
   getSyncState,
+  beginPhaseRun,
   markRunning,
   markComplete,
   markFailed,
+  phaseRunIsCurrent,
   runPhase,
   retryPhase,
   resetPhase,
@@ -118,6 +120,68 @@ describe('syncQueue state machine', () => {
     resetPhase(SYNC_PHASE.SYNC);
     expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.IDLE);
     expect(getSyncState()[SYNC_PHASE.SYNC].retryable).toBe(false);
+  });
+
+  // Phase run ownership (#813 review). A run that outlives its phase must not
+  // publish an outcome for whichever run holds the phase now.
+  describe('phase run ownership tokens', () => {
+    test('beginPhaseRun marks running and yields the current token', () => {
+      const token = beginPhaseRun(SYNC_PHASE.SYNC);
+      expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.RUNNING);
+      expect(phaseRunIsCurrent(SYNC_PHASE.SYNC, token)).toBe(true);
+      // Tokens are per phase and never match a bogus phase or a missing token.
+      expect(phaseRunIsCurrent(SYNC_PHASE.BOOTSTRAP, token)).toBe(false);
+      expect(phaseRunIsCurrent('bogus', token)).toBe(false);
+      expect(phaseRunIsCurrent(SYNC_PHASE.SYNC, null)).toBe(false);
+      expect(beginPhaseRun('bogus')).toBeNull();
+    });
+
+    test('resetPhase and a later run both stale an outstanding token', () => {
+      const first = beginPhaseRun(SYNC_PHASE.SYNC);
+      resetPhase(SYNC_PHASE.SYNC);
+      expect(phaseRunIsCurrent(SYNC_PHASE.SYNC, first)).toBe(false);
+
+      const second = beginPhaseRun(SYNC_PHASE.SYNC);
+      expect(second).not.toBe(first);
+      expect(phaseRunIsCurrent(SYNC_PHASE.SYNC, second)).toBe(true);
+    });
+
+    test('a stale token cannot settle the phase, a current one can', () => {
+      const stale = beginPhaseRun(SYNC_PHASE.SYNC);
+      resetPhase(SYNC_PHASE.SYNC);
+      const current = beginPhaseRun(SYNC_PHASE.SYNC);
+
+      markComplete(SYNC_PHASE.SYNC, { token: stale });
+      expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.RUNNING);
+      markFailed(SYNC_PHASE.SYNC, 'stale boom', { token: stale });
+      expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.RUNNING);
+
+      markComplete(SYNC_PHASE.SYNC, { token: current });
+      expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+    });
+
+    test('omitting the token keeps the unconditional transition', () => {
+      beginPhaseRun(SYNC_PHASE.BOOTSTRAP);
+      resetPhase(SYNC_PHASE.BOOTSTRAP);
+      markComplete(SYNC_PHASE.BOOTSTRAP);
+      expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.COMPLETE);
+    });
+
+    test('a settled run cannot settle again after another run claims the phase', async () => {
+      let release;
+      const gate = new Promise((resolve) => { release = resolve; });
+      const slow = runPhase(SYNC_PHASE.SYNC, () => gate);
+      // A second run claims the phase while the first is still in flight.
+      const fast = await runPhase(SYNC_PHASE.SYNC, async () => 'done');
+      expect(fast.ok).toBe(true);
+      expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+
+      release({ ok: false, error: 'late failure' });
+      // The superseded run still reports its own outcome to its caller...
+      await expect(slow).resolves.toEqual({ ok: false, error: 'late failure' });
+      // ...but does not publish it over the run that owns the phase now.
+      expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+    });
   });
 
   test('subscribeSyncState notifies on change and unsubscribe stops it', () => {

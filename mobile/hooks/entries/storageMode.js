@@ -11,7 +11,7 @@ import {
   loadWorkoutNotePresenceState as cloudLoadWorkoutNotePresenceState,
   ensureWorkoutNoteLive as cloudEnsureWorkoutNoteLive,
 } from '../../storage/cloud/cloudDomainMethods';
-import { getSyncState, markComplete, markFailed, markRunning, SYNC_PHASE, SYNC_STATUS } from '../../storage/syncRecovery';
+import { beginPhaseRun, markComplete, markFailed, SYNC_PHASE } from '../../storage/syncRecovery';
 
 // ── recovery journal ↔ storage mode wiring (#696) ────────────────────────────
 //
@@ -126,29 +126,30 @@ export async function withRecoveryReconciliation(run) {
 }
 
 // The pass outcome belongs to the phase only while the phase still describes
-// THIS pass. Sign-out (or any other switch back to local mode) resets the SYNC
-// phase to idle while a pass may still be in flight; letting that pass mark the
-// phase complete or failed afterwards would leave a signed-out device with a
-// non-idle status, and the next sign-in's automatic sync only runs from idle -
-// so a write made while signed out would sit unuploaded until something else
-// triggered a pass (issue #813 review). If the phase is no longer running, or
-// storage is no longer in cloud mode, whoever changed it owns it now.
-function passStillOwnsPhase() {
-  return (
-    getStorageMode() === STORAGE_MODES.CLOUD &&
-    getSyncState()[SYNC_PHASE.SYNC].status === SYNC_STATUS.RUNNING
-  );
-}
-
+// THIS pass, and only while this device is still in cloud mode.
+//
+// Sign-out (or any other switch back to local mode) resets the SYNC phase to
+// idle while a pass may still be in flight. Letting that pass mark the phase
+// complete or failed afterwards would leave a signed-out device with a non-idle
+// status, and the next sign-in's automatic sync only runs from idle - so a write
+// made while signed out would sit unuploaded until something else triggered a
+// pass (issue #813 review).
+//
+// Ownership is carried by the run token from `beginPhaseRun`, not by the phase's
+// status: after sign-out AND a re-sign-in, the new sign-in's own pass has set the
+// phase running again, so a status check alone would let this stale pass publish
+// its outcome - and a false last-successful-sync timestamp - over a pass that is
+// still in flight. `markComplete`/`markFailed` no-op on a stale token, so
+// whoever claimed the phase after this pass started keeps the outcome.
 async function runCloudSyncPass(adapter) {
-  markRunning(SYNC_PHASE.SYNC);
+  const token = beginPhaseRun(SYNC_PHASE.SYNC);
   try {
     await withRecoveryReconciliation(() => adapter.sync());
-    if (passStillOwnsPhase()) markComplete(SYNC_PHASE.SYNC);
+    if (isCloudMode()) markComplete(SYNC_PHASE.SYNC, { token });
   } catch (error) {
     // Offline or transient failure: keep the local cache, expose a retryable
     // phase state, and invalidate any older complete/synced display.
-    if (passStillOwnsPhase()) markFailed(SYNC_PHASE.SYNC, error);
+    if (isCloudMode()) markFailed(SYNC_PHASE.SYNC, error, { token });
   }
 }
 

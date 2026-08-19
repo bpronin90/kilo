@@ -373,16 +373,27 @@ notebook twice at mount even in local mode. Coverage:
   one shared trailing pass; a failed pass still resolves for every sharer and
   marks the phase failed; the mode is re-checked when a pending pass starts; a
   pass finishing after sign-out leaves the reset phase idle (success and
-  failure paths); each entry hook reads its table once per mounted instance at
+  failure paths); a pass finishing after sign-out **and a re-sign-in** cannot
+  settle the new sign-in's still-running pass or stamp a last-successful-sync
+  time for it (success and failure paths); each entry hook reads its table once
+  per mounted instance at
   mount in local mode and reloads once per instance after the single shared
   pass in cloud mode; a write broadcast with three mounted instances costs one
   pass; and, end to end against the real adapter and the xid-faithful fake
   transport (`mobile/tests/mocks/xidFakeCloud.js`), that single pass is the
   one that uploads the caller's write.
+- `mobile/tests/sync-recovery-ui.test.js` (`phase run ownership tokens`) -
+  `beginPhaseRun` marks the phase running and yields the current token; tokens
+  are per phase and never reused; `resetPhase` and any later run stale an
+  outstanding token; a stale token cannot settle the phase while a current one
+  can; omitting the token keeps the unconditional transition; and a superseded
+  `runPhase` run still reports its own outcome to its caller without publishing
+  it over the run that owns the phase.
 
-Every one of these was verified to fail with its fix disabled. An
-opposite-vendor (Codex) review of the diff found the queue interleaving and
-the sign-out phase race; both are covered above.
+Every one of these was verified to fail with its fix disabled. Two rounds of
+opposite-vendor (Codex) review of the diff found the queue interleaving, the
+sign-out phase race, and the run-identity gap that survived the first fix for
+it; all three are covered above.
 
 **Profiling method.** Two measurements together explain the symptom, and
 neither records payload content - the fixture is synthetic (a deterministic

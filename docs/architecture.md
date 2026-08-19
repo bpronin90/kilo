@@ -913,11 +913,20 @@ callers (#813): callers arriving before a pass starts join it, callers arriving
 while one runs are promised exactly one trailing pass, and every caller still
 gets a pass that began after its own (already durable) write. `sync()`'s
 single-flight alone could not do this, because the recovery-reconciliation
-guard around it is a strict queue. A pass applies its outcome to the SYNC
-phase only while the phase still describes it (still running, still in cloud
-mode): sign-out resets the phase mid-flight, and a late completion would
-otherwise leave a signed-out device non-idle and skip the next sign-in's
-automatic sync.
+guard around it is a strict queue.
+
+**Phase run ownership.** A sync pass can outlive the phase it started, so
+`storage/syncRecovery.js` gives every run an ownership token (`beginPhaseRun`);
+`markComplete`/`markFailed` publish nothing when the token they are handed is no
+longer the current one, and every transition - a run starting, a settle, a
+`resetPhase` - claims a fresh token. Status alone is not enough to identify a
+run: sign-out resets the SYNC phase mid-flight (a late completion there would
+leave a signed-out device non-idle and skip the next sign-in's automatic sync),
+and after a re-sign-in the new pass has set the phase running again, which looks
+identical to the stale pass's own `running`. Without the token the stale pass
+would settle the live one and stamp a last-successful-sync time for a pass that
+had not finished. `runCloudSyncPass` additionally requires cloud mode, and
+`runPhase` carries its own token the same way.
 
 ### Authoritative Recovery read state
 
