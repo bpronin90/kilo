@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.107.10 - 2026-08-19
+
+- Issue #813: Kilo is much faster again on accounts that have synced. Cloud Sync no longer stores a copy of the parsed workout structure on every note it uploads (roughly a hundred times the size of the note text, and never read), the app removes that copy from notes it already saved, saving a note runs one sync pass instead of one per open tab, and screens no longer re-read all your data a second time at launch before Cloud Sync has even started.
+
+## 0.107.9 - 2026-08-19
+
+- Issue #811: Restored EAS over-the-air delivery for compatible app updates on isolated preview and production channels.
+
+## 0.107.8 - 2026-08-19
+
+- Issue #809: Home now opens much faster after a cold launch. The one-time encrypted-storage migration no longer rescans every stored key on every app start, and Home's weight and workout data now paints from the device immediately instead of waiting on the initial background cloud sync.
+
+## 0.107.7 - 2026-08-19
+
+- Issue #806: Cloud Sync is dramatically faster. A first upload no longer rewrites the pending-changes queue once per record, which made it slow down sharply as an account grew; a sync with nothing to send now writes nothing at all instead of re-saving every table; and independent tables are fetched together rather than one after another.
+
+## 0.107.6 - 2026-08-19
+
+- Issue #804: Simplified the Log tab's active Recovery panel: the week row no longer repeats the card's headline state, the expected next action is the only highlighted button, and `Manage recovery block` uses the standard chevron.
+
+## 0.107.5 - 2026-08-19
+
+- Issue #803: Redesigned the Home Recovery card so the current week, the baseline result, and the recovery category counts can be read at a glance instead of as one dense sentence.
+
+## 0.107.4 - 2026-08-19
+
+- Issue #800: Consolidated repository documentation, corrected stale operational guidance, and archived completed specifications behind concise current contracts.
+
+## 0.107.3 - 2026-08-19
+
+- Issue #799: Signup now shows a persistent confirmation-pending message naming the sent-to address with a rate-limit-aware resend action, and signing in to an unconfirmed account offers the same resend instead of a generic credentials error.
+
+## 0.107.2 - 2026-08-19
+
+- Issue #796: Hardened authentication, local health-data protection, update delivery, database abuse controls, and web deployment security.
+
 ## 0.107.1 - 2026-08-11
 
 - Issue #793: Analytics' `Recovery` section now sits above `Fatigue`, right below `Weight`, since it is the one section that is only ever relevant while a block is active or has history. Its evidence card opens with a one-line `Week N · {routine}` identity and provenance-only footer instead of the old two-line label and metadata clauses, the week selector now announces itself when you change weeks, and the per-exercise breakdown drops the status-filter row in favor of always-visible rows grouped under counted headings like `Rebuilding (2)`. No-week, missing-note, and unreadable-note copy now matches the wording on Home exactly.
