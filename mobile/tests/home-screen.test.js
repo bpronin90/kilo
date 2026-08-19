@@ -799,15 +799,14 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     }
   });
 
-  test('the Exercise Progress header keeps its own card alignment', () => {
+  test('the Exercise Progress and 1K headers keep their own card alignment', () => {
     // The shared header style must not carry cross-axis alignment: baking
     // `flex-start` into it dragged the centered 1K header to the left edge while
-    // that card's total and breakdown stayed centered. The 1K card no longer has
-    // a header press target to check here (#820: its handoff is a footer link,
-    // centered by the card's own `alignItems: 'center'` rather than a declared
-    // `alignSelf`).
+    // that card's total and breakdown stayed centered.
     const band = flatStyle(component.root.findByProps({ testID: 'home-strength-summary-link' }));
     expect(band.alignSelf).toBe('flex-start');
+    const oneK = flatStyle(component.root.findByProps({ testID: 'home-one-k-link' }));
+    expect(oneK.alignSelf).toBe('center');
   });
 
   test('the classification columns keep horizontal separation', () => {
@@ -1550,11 +1549,10 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     expect(hasText(component, 'Rebuilding')).toBe(false);
 
     // A zero category is absent, not a `0` column: the supporting region is not
-    // rendered at all, and the card stays at label + eyebrow + hero + caption +
-    // the footer handoff.
+    // rendered at all, and the card stays at label + eyebrow + hero + caption.
     expect(has(component, 'home-recovery-stats')).toBe(false);
     const card = component.root.findByProps({ testID: 'home-recovery-summary' });
-    expect(card.findAll(n => n.type === 'Text').length).toBe(5);
+    expect(card.findAll(n => n.type === 'Text').length).toBe(4);
   });
 
   test('a lift that regresses after being met renders as rebuilding, not a new state', async () => {
@@ -1805,11 +1803,11 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     expect(hasText(component, hooks.RECOVERY_STALE_MESSAGE)).toBe(true);
 
     // The worst simultaneous case Home can reach: label, week eyebrow,
-    // fallback, stale message, the retry control, and the footer handoff. No
-    // category columns are derivable from a week whose note is gone, so nothing
-    // else can stack on top of this — the card stays Home-sized.
+    // fallback, stale message, and the retry control. No category columns are
+    // derivable from a week whose note is gone, so nothing else can stack on
+    // top of this — the card stays Home-sized.
     const card = component.root.findByProps({ testID: 'home-recovery-summary' });
-    expect(card.findAll(n => n.type === 'Text').length).toBe(6);
+    expect(card.findAll(n => n.type === 'Text').length).toBe(5);
   });
 
   test('a still-unresolved read reports loading, and offers no retry for a read that has not failed', async () => {

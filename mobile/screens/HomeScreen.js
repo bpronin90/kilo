@@ -310,9 +310,26 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
       <Card style={styles.recoveryCard}>
         {active ? (
           <>
-            {/* Header is identity only (#820) — the tap target moved to a
-                footer link below the content, same treatment as the 1K card. */}
-            <Text style={styles.recoveryLabel}>Recovery</Text>
+            {/* Header row is the handoff (#820 revert): kept consistent with
+                Exercise Progress and every Analytics card in the same family
+                rather than the one-off footer link tried earlier. The dead
+                space that pattern originally cost is solved by tightening the
+                card's own top padding and gap, not by shrinking the 44dp
+                target every Home handoff is held to. */}
+            <Pressable
+              testID="home-recovery-link"
+              onPress={() => onNavigate('Analytics', 'recovery')}
+              style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart]}
+              hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+              accessibilityRole="button"
+              accessibilityLabel="Recovery"
+              accessibilityHint="Opens the Recovery section of the Analytics tab"
+            >
+              <Text style={[styles.recoveryLabel, styles.sectionHeaderLabel]}>Recovery</Text>
+              <View style={styles.sectionHeaderChevron}>
+                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
+              </View>
+            </Pressable>
             {/* One announcement for the whole summary: separate nodes read as
                 unrelated fragments. */}
             <View
@@ -373,20 +390,6 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
             {/* Exactly the name every recovery message tells the user to tap
                 (ui-design-rules §12). */}
             <Text style={styles.recoveryActionText}>Retry recovery</Text>
-          </Pressable>
-        ) : null}
-        {active ? (
-          <Pressable
-            testID="home-recovery-link"
-            onPress={() => onNavigate('Analytics', 'recovery')}
-            style={styles.recoveryFooterLink}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Recovery"
-            accessibilityHint="Opens the Recovery section of the Analytics tab"
-          >
-            <Text style={styles.recoveryFooterLinkText}>Recovery</Text>
-            <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
           </Pressable>
         ) : null}
       </Card>
@@ -793,12 +796,25 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
 
           {/* ══ TIER 3: 1k Club Progress ══ */}
           {/* Handoff to the Analytics strength section, which is where the 1K
-              detail lives (owner scope override on #717). The header is
-              identity only (#820); the tap target sits below the total,
-              progress bar, and per-lift grid so the card leads with its own
-              number instead of a 44pt header box. */}
+              detail lives (owner scope override on #717). Header row is the
+              handoff (#820 revert), same family as Exercise Progress; the
+              dead space that pattern cost originally is solved by tightening
+              the card's own top padding and gap, not the 44dp target. */}
           <Card style={styles.oneKCard}>
-            <Text style={styles.oneKLabel}>1K Progress</Text>
+            <Pressable
+              testID="home-one-k-link"
+              onPress={() => onNavigate('Analytics', 'strength')}
+              style={[styles.sectionHeaderAction, styles.sectionHeaderActionCenter]}
+              hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+              accessibilityRole="button"
+              accessibilityLabel="1K Progress"
+              accessibilityHint="Opens the strength section of the Analytics tab"
+            >
+              <Text style={[styles.oneKLabel, styles.sectionHeaderLabel]}>1K Progress</Text>
+              <View style={styles.sectionHeaderChevron}>
+                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
+              </View>
+            </Pressable>
             <Text style={[styles.oneKHeroValue, { color: lerpColor(colors.accent, colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000)) }]}>
               {dashboardData.oneK?.total ? `${displayWeight(dashboardData.oneK.total, unit).toFixed(0)}` : '—'}
               <Text style={styles.oneKHeroUnit}> {unit}</Text>
@@ -825,18 +841,6 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
                 <Text style={styles.oneKGridLabel}>Deadlifts</Text>
               </View>
             </View>
-            <Pressable
-              testID="home-one-k-link"
-              onPress={() => onNavigate('Analytics', 'strength')}
-              style={styles.oneKFooterLink}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="1K Progress"
-              accessibilityHint="Opens the strength section of the Analytics tab"
-            >
-              <Text style={styles.oneKFooterLinkText}>1K Progress</Text>
-              <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
-            </Pressable>
           </Card>
         </>
       )}
@@ -1049,6 +1053,9 @@ const createStyles = (colors) => StyleSheet.create({
   sectionHeaderActionStart: {
     alignSelf: 'flex-start',
   },
+  sectionHeaderActionCenter: {
+    alignSelf: 'center',
+  },
   sectionHeaderLabel: {
     flexShrink: 1,
   },
@@ -1123,9 +1130,13 @@ const createStyles = (colors) => StyleSheet.create({
   // Recovery status card (#757). Same padding as the other tiers; the label
   // reuses the uppercase section treatment already used by the Exercise
   // Progress and 1K headers, so the handoff reads as one of that family.
+  // Top padding and gap trimmed from the 24/8 default (#820): the header row
+  // is still a full 44dp target, so the fix for the dead space it left above
+  // the week eyebrow is tightening the space around it, not the target itself.
   recoveryCard: {
     padding: 24,
-    gap: 8,
+    paddingTop: 14,
+    gap: 4,
   },
   recoveryLabel: {
     fontSize: 12,
@@ -1223,20 +1234,6 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '700',
     color: colors.accent,
   },
-  // Quiet footer handoff (#820), replacing the old 44pt header press target —
-  // same treatment as the 1K card's footer link.
-  recoveryFooterLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    minHeight: 44,
-    marginTop: 4,
-  },
-  recoveryFooterLinkText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textMuted,
-  },
   goalCard: {
     padding: 24,
   },
@@ -1287,8 +1284,13 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '700',
     color: colors.textMuted,
   },
+  // Top padding and gap trimmed from the 24/10 default (#820): the header
+  // row is still a full 44dp target, so the fix for the dead space it left
+  // above the hero total is tightening the space around it, not the target.
   oneKCard: {
     padding: 24,
+    paddingTop: 14,
+    gap: 6,
     alignItems: 'center',
   },
   oneKLabel: {
@@ -1312,21 +1314,6 @@ const createStyles = (colors) => StyleSheet.create({
   },
   oneKHeroUnit: {
     fontSize: 16,
-    fontWeight: '600',
-    color: colors.textMuted,
-  },
-  // Quiet footer handoff (#820), replacing the old 44pt header press target —
-  // the header is identity only now, so the card leads with its own number
-  // instead of a mostly-empty tap-target box.
-  oneKFooterLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    minHeight: 44,
-    marginTop: 4,
-  },
-  oneKFooterLinkText: {
-    fontSize: 13,
     fontWeight: '600',
     color: colors.textMuted,
   },

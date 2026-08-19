@@ -361,9 +361,12 @@ its category breakdown the same grammar the hero card's own Exercise Progress
 band uses, instead of a bespoke tile system. Identity label, then one analytics
 region (`home-recovery-analytics`, a single `accessible` node), in this order:
 
-- **`Recovery` label** — identity only (ui-design-rules.md §13); no longer a
-  press target. The handoff moved to a footer link below the card's content
-  (see below), matching the 1K card's own header/footer split.
+- **`Recovery` header** — the identity label and the `Recovery` handoff in one
+  row (ui-design-rules.md §13), same family as Exercise Progress and the 1K
+  card. A footer-link split was tried and reverted: it broke the shared
+  header-is-the-handoff pattern for one card without applying it to the
+  others. The dead space that pattern originally left above the week eyebrow
+  is solved by trimming the card's own top padding and gap instead.
 - **Week eyebrow** — `Week N`, the micro-label treatment. Omitted when no week
   exists (`Baseline captured. No week logged yet.`): there is nothing to name,
   and `Week 1` would be invented.
@@ -509,15 +512,15 @@ primary progress summary, so #771 restored the shared hero scale; the
 compact-summary role is now carried by scope (no chart/mapping/explanation),
 not a shrunken total.
 
-**Header/footer split (#820).** The card's label ("1K Progress") is identity
-only and sits above the hero value with no press handling — the old 44pt
-header tap-target box, stacked on top of the card's `24` padding, left ~78px
-of empty space before the hero number the card exists to show. The tap target
-to Analytics strength moved to a quiet footer link below the per-lift grid,
-using the same label/chevron/`minHeight: 44` treatment as the Weekly Summary
-hero's own footer links (`See weight trends`, `Full history and insights`).
-The Recovery card's `Recovery` handoff got the identical treatment for the
-same reason.
+**Header stays the handoff (#820).** The 44dp header tap-target box, stacked
+on top of the card's `24` padding, left ~78px of empty space before the hero
+number the card exists to show. A footer-link split (moving the handoff below
+the grid) was tried and reverted — it broke the header-is-the-handoff pattern
+shared with Exercise Progress and Analytics for one card without applying it
+to the others. The fix is instead a trimmed card top padding (`24` → `14`) and
+`gap` (`10` → `6`) around the still-44dp header, so the space shrinks without
+touching the touch target every Home handoff is held to. The Recovery card
+got the identical treatment for the same reason.
 
 | Element | Property | Value | Line |
 |---|---|---|---|
@@ -985,11 +988,10 @@ Big 3 mapping, calculation explanation, plate calculator). #763 gave Home's
 hero total its own smaller `32`/`800` override to signal that hierarchy, but
 that read as a visual demotion of a primary progress summary — #771 restored
 the pre-#763 scale so the total spreads `HeroMetric.hero` (`48`/`900`) exactly
-like Analytics' owner card. A footer link (a plain, quiet chevron, moved below
-the card's content in #820) still marks Home as a handoff rather than the
-destination, so the compact-vs-owner distinction lives in scope and ownership,
-not typographic scale. Everything that plays a supporting role — progress
-track, unit suffix,
+like Analytics' owner card. A plain, quiet chevron in the card's header still
+marks Home as a handoff rather than the destination, so the compact-vs-owner
+distinction lives in scope and ownership, not typographic scale. Everything
+that plays a supporting role — progress track, unit suffix,
 and per-lift breakdown typography — stays normalized so the two surfaces read
 as one family.
 
