@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.107.12 - 2026-08-19
+
+- Issue #820: Fixed the Home tab's Recovery and 1K cards: trimmed each card's top padding and spacing around its header so it no longer leaves ~78px of empty space before the card's own content, condensed the Recovery card's category breakdown to reuse the Exercise Progress band's dot/count/label styling instead of a separate tile grid, and dropped the "Not counted in your normal analytics" line from Home (it stays visible in Analytics).
+
+## 0.107.11 - 2026-08-19
+
+- Issue #818: Sped up cold launch by reading each saved value from the device once instead of once per open tab.
+
 ## 0.107.10 - 2026-08-19
 
 - Issue #813: Kilo is much faster again on accounts that have synced. Cloud Sync no longer stores a copy of the parsed workout structure on every note it uploads (roughly a hundred times the size of the note text, and never read), the app removes that copy from notes it already saved, saving a note runs one sync pass instead of one per open tab, and screens no longer re-read all your data a second time at launch before Cloud Sync has even started.
