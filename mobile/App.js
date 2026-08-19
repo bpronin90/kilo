@@ -47,6 +47,7 @@ import { makeWeightEntry } from './lib/data';
 import { reconcileWorkoutReminder, installForegroundHandler } from './lib/reminderScheduler';
 import { buildCloudExport, importBackup, getStorageMode, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed } from './storage/entries';
 import { markStartupPhase } from './storage/entries/startupTiming';
+import { purgePersistedDerivedSections } from './storage/entries/derivedCachePurge';
 
 const TABS = ['Home', 'Log', 'Weight', 'Analytics', 'More'];
 const ZERO_SAFE_AREA_METRICS = {
@@ -297,6 +298,14 @@ function AppShell({ onDeviceDataWiped }) {
     markStartupPhase('migration:requested');
     migrateSensitiveDeviceData().catch((e) => {
       console.error('[App] Failed to migrate protected device data:', e);
+    });
+    // Queued right behind it, for the same reason and with the same shape
+    // (issue #813): a one-time rewrite that strips the parser-output cache an
+    // older build persisted onto every synced workout note, which made each
+    // notebook read and write, every sync pass, and every backup carry ~100x
+    // the note text. Later launches resolve this to a single marker read.
+    purgePersistedDerivedSections().catch((e) => {
+      console.error('[App] Failed to purge persisted derived note caches:', e);
     });
   }, []);
 

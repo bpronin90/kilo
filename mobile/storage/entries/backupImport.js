@@ -7,6 +7,7 @@ import {
   CURRENT_WORKOUT_ID_KEY,
 } from './keys';
 import { readList, writeList } from './jsonStorage';
+import { stripDerivedSectionsFromList } from './derivedCache';
 import {
   loadCurrentWorkoutId,
   saveCurrentWorkoutId,
@@ -160,7 +161,10 @@ function projectFields(record, fields) {
 
 export async function exportBackup() {
   const weight_entries = await readList(WEIGHT_KEY);
-  const workout_notes = await readList(WORKOUT_NOTES_KEY);
+  // The RAW notebook (tombstones included), minus the device-local parser cache
+  // an older build may still be carrying (issue #813): it is recomputable from
+  // raw_text, never part of the backup contract, and ~100x the note text.
+  const workout_notes = stripDerivedSectionsFromList(await readList(WORKOUT_NOTES_KEY));
   const current_workout_id = await loadCurrentWorkoutId();
   const weight_goal = await loadWeightGoal();
   const fatigue_multiplier = await loadFatigueMultiplier();
@@ -1113,7 +1117,9 @@ export async function importBackup(payload, strategy = 'replace', { mode = IMPOR
       // WORKOUT_KEY (legacy sessions) is not part of the backup scope and is not touched.
       const pairs = [[WEIGHT_KEY, JSON.stringify(payload.weight_entries)]];
       if (isNotebookVersion) {
-        pairs.push([WORKOUT_NOTES_KEY, JSON.stringify(payload.workout_notes)]);
+        // A backup taken by an older build can carry the parser cache; it never
+        // re-enters storage (issue #813).
+        pairs.push([WORKOUT_NOTES_KEY, JSON.stringify(stripDerivedSectionsFromList(payload.workout_notes))]);
       }
       await AsyncStorage.multiSet(pairs);
       // Same dependency order on the local side, for the same reason a reader

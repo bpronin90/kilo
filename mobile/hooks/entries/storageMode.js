@@ -11,7 +11,7 @@ import {
   loadWorkoutNotePresenceState as cloudLoadWorkoutNotePresenceState,
   ensureWorkoutNoteLive as cloudEnsureWorkoutNoteLive,
 } from '../../storage/cloud/cloudDomainMethods';
-import { markComplete, markFailed, markRunning, SYNC_PHASE } from '../../storage/syncRecovery';
+import { beginPhaseRun, markComplete, markFailed, SYNC_PHASE } from '../../storage/syncRecovery';
 
 // ── recovery journal ↔ storage mode wiring (#696) ────────────────────────────
 //
@@ -125,19 +125,107 @@ export async function withRecoveryReconciliation(run) {
   });
 }
 
-export async function maybeSyncCloud() {
-  if (getStorageMode() !== STORAGE_MODES.CLOUD) return;
-  const adapter = getStorageAdapter();
-  if (typeof adapter.sync !== 'function') return;
-  markRunning(SYNC_PHASE.SYNC);
+// The pass outcome belongs to the phase only while the phase still describes
+// THIS pass, and only while this device is still in cloud mode.
+//
+// Sign-out (or any other switch back to local mode) resets the SYNC phase to
+// idle while a pass may still be in flight. Letting that pass mark the phase
+// complete or failed afterwards would leave a signed-out device with a non-idle
+// status, and the next sign-in's automatic sync only runs from idle - so a write
+// made while signed out would sit unuploaded until something else triggered a
+// pass (issue #813 review).
+//
+// Ownership is carried by the run token from `beginPhaseRun`, not by the phase's
+// status: after sign-out AND a re-sign-in, the new sign-in's own pass has set the
+// phase running again, so a status check alone would let this stale pass publish
+// its outcome - and a false last-successful-sync timestamp - over a pass that is
+// still in flight. `markComplete`/`markFailed` no-op on a stale token, so
+// whoever claimed the phase after this pass started keeps the outcome.
+async function runCloudSyncPass(adapter) {
+  const token = beginPhaseRun(SYNC_PHASE.SYNC);
   try {
     await withRecoveryReconciliation(() => adapter.sync());
-    markComplete(SYNC_PHASE.SYNC);
+    if (isCloudMode()) markComplete(SYNC_PHASE.SYNC, { token });
   } catch (error) {
     // Offline or transient failure: keep the local cache, expose a retryable
     // phase state, and invalidate any older complete/synced display.
-    markFailed(SYNC_PHASE.SYNC, error);
+    if (isCloudMode()) markFailed(SYNC_PHASE.SYNC, error, { token });
   }
+}
+
+// Coalescing state for maybeSyncCloud (issue #813). `inFlightSync` describes
+// the pass running (or about to run) right now; `trailingSync` is the single
+// follow-up pass promised to every caller that arrived after that pass began.
+let inFlightSync = null;
+let trailingSync = null;
+
+// Run a cloud sync pass for the caller, sharing passes between concurrent
+// callers (issue #813).
+//
+// Every write broadcast fans out to every mounted useWorkoutNotes() /
+// useWeightEntries() instance, and each instance's refresh() calls this. Those
+// calls used to run one full pass EACH: adapter.sync() is single-flight, but the
+// recovery-reconciliation guard around it is a strict queue, so the second
+// caller only reached sync() after the first pass had finished and released its
+// in-flight slot. One Log autosave with every tab mounted therefore ran three
+// complete pull/merge/push passes back to back - three times the round trips
+// and three times the full-table decrypts - for one write.
+//
+// The rule now. A caller's own writes are already durable when it calls (the
+// hooks await the write, then broadcast), so what it needs is a pass that reads
+// the dirty queue AFTER its call:
+//   * no pass pending: start one - deferred by a microtask, so every caller in
+//     the same synchronous fan-out joins it before it does any work;
+//   * a pass is pending but has NOT started: join it, for the same reason;
+//   * a pass has started: it may already have read the queue, so do not join
+//     it - but do not start another one immediately either. Such callers are
+//     promised exactly ONE trailing pass, shared with everyone else who arrives
+//     while the current pass runs.
+// So N callers arriving together cost one pass; a burst of writes during a pass
+// costs one more, not N more; and every caller still gets a pass that began
+// after its call, which is what makes its write eligible for upload in the pass
+// it awaits. Broadcasting after the write is exactly as durable as before.
+//
+// Resolves `true` when a pass ran on the caller's behalf (successfully or not -
+// a failed pass still marks the phase failed and may have merged some tables, so
+// callers reload either way) and `false` when nothing ran because storage was
+// not in cloud mode, re-checked at the moment a pass actually starts.
+export function maybeSyncCloud() {
+  if (getStorageMode() !== STORAGE_MODES.CLOUD) return Promise.resolve(false);
+  const adapter = getStorageAdapter();
+  if (typeof adapter.sync !== 'function') return Promise.resolve(false);
+
+  if (inFlightSync && !inFlightSync.started) return inFlightSync.promise;
+
+  if (!inFlightSync) {
+    const entry = { started: false, promise: null };
+    entry.promise = Promise.resolve().then(() => {
+      entry.started = true;
+      if (getStorageMode() !== STORAGE_MODES.CLOUD) return false;
+      return runCloudSyncPass(getStorageAdapter()).then(() => true);
+    });
+    inFlightSync = entry;
+    const clear = () => {
+      if (inFlightSync === entry) inFlightSync = null;
+    };
+    entry.promise.then(clear, clear);
+    return entry.promise;
+  }
+
+  if (!trailingSync) {
+    trailingSync = inFlightSync.promise.then(() => {
+      trailingSync = null;
+      return maybeSyncCloud();
+    });
+  }
+  return trailingSync;
+}
+
+// Test-only: forget any pending pass so suites that swap adapters or transports
+// between tests never inherit a promise from a previous test.
+export function __resetMaybeSyncCloudForTests() {
+  inFlightSync = null;
+  trailingSync = null;
 }
 
 export function readVia(method, localFn, ...args) {

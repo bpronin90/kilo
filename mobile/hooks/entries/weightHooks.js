@@ -176,11 +176,16 @@ export function useWeightEntries() {
     // eventually show anyway once sync settles, so there is nothing dishonest
     // about painting it first. The initial cloud sync (when signed in) still
     // runs, just in the background, and its own reload() lands whatever it
-    // finds without re-opening the skeleton. Every LATER reload — a write, a
+    // finds without re-opening the skeleton - and only when a pass actually
+    // ran (#813): at launch storage is still in local mode, so unconditionally
+    // reloading here re-read every table a second time per mounted instance
+    // for the data it had just painted. Every LATER reload — a write, a
     // broadcast, or an explicit refresh() call — keeps the ordinary
     // sync-then-reload sequence below.
     reload();
-    maybeSyncCloud().then(reload).catch(e => setError(e));
+    maybeSyncCloud()
+      .then((synced) => (synced ? reload() : undefined))
+      .catch(e => setError(e));
     weightListeners.push(refresh);
     weightReloadListeners.push(reload);
     return () => {

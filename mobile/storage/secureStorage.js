@@ -207,6 +207,25 @@ export function createDeviceStorage({
       // Removing encrypted blobs does not require the encryption key.
       return withMutationLock(() => backingStore.multiRemove(keys));
     },
+    // Rewrite one stored value as a single serialized operation (issue #813).
+    // `transform` receives the current decrypted value (`null` when the key is
+    // absent) and returns the string to store; returning the same string, or
+    // `null`/`undefined`, stores nothing. Read, transform, and write all happen
+    // under the operation lock, so no other read or write can land between the
+    // read and the write - the guarantee a getItem() followed by a setItem()
+    // cannot give, because another writer may be queued between the two. The
+    // mutation lock also discards the rewrite when a wipe advances the data
+    // generation first, exactly like setItem.
+    updateItem(key, transform) {
+      return withMutationLock(async () => {
+        const current = await getItemUnlocked(key);
+        const next = await transform(current);
+        if (next == null || next === current) return { changed: false };
+        const encoded = encryptValues ? await encrypt(key, next) : String(next);
+        await backingStore.setItem(key, encoded);
+        return { changed: true };
+      }, { changed: false });
+    },
     clearDeviceKey() {
       return withStorageLock(async () => {
         if (!encryptValues) return;

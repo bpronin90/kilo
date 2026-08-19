@@ -247,8 +247,13 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   start reads that one marker instead of re-scanning every `kilo_` key, since
   the per-key lazy migration path already covers anything written before the
   scan last completed and no write after it can ever reintroduce plaintext
-  (#809). Web retains browser storage semantics, where client-side key storage
-  would not provide an independent security boundary.
+  (#809). `updateItem(key, transform)` rewrites one value as a single serialized
+  read-transform-write, so no other storage operation can land between its
+  read and its write (#813); a writer that read earlier and writes a whole
+  value later is a separate matter, which is why every notebook and
+  workout-notes-queue write path also strips the purged field itself. Web
+  retains browser storage semantics, where client-side key storage would not
+  provide an independent security boundary.
 - `mobile/components/` holds reusable shell and UI primitives
 - `mobile/screens/MoreScreen.js` owns the More-tab routing shell. Help, About,
   Backup, Settings, and Profile sub-screens are extracted to individual files in
@@ -280,8 +285,10 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   `useWeightEntries`/`useWorkoutNotes` read on-device storage immediately and
   do not wait on the initial cloud sync: `maybeSyncCloud()` still runs, but in
   the background, so first paint reflects the local cache rather than a
-  network round trip (#809). Every later reload — a write, a broadcast, or an
-  explicit `refresh()` call — keeps the ordinary sync-then-reload sequence.
+  network round trip (#809), and the follow-up read happens only when a pass
+  actually ran (#813). Every later reload — a write, a broadcast, or an
+  explicit `refresh()` call — keeps the ordinary sync-then-reload sequence,
+  with concurrent callers sharing passes rather than each running one.
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
   modules, now exposes the note-derived analytics contract used by downstream
   native workout analytics work, and centralizes exercise alias resolution in
@@ -666,7 +673,8 @@ chip is gone; nothing in the active path produces or reads `rep_drop_off_flags`.
 | `kilo_tracked_lifts` | JSON object keyed by normalized lift name for global Track toggles |
 | `kilo_user_profile` | Optional native calorie-profile object with `height_cm`, `date_of_birth`, `sex`, `activity_level`, and `saved_at` |
 | `kilo_workout_sessions` | Legacy JSON array of native structured workout sessions, retained only as a migration source |
-| `kilo_workout_notes` | JSON array of titled native workout note documents, including persisted `tracked_exercises`, `one_k_exercises`, `exercise_classifications`, `skip_markers`, `attendance_flags`, and `session_checkins` fields; legacy entries may still carry stale `rep_drop_off_flags` |
+| `kilo_workout_notes` | JSON array of titled native workout note documents, including persisted `tracked_exercises`, `one_k_exercises`, `exercise_classifications`, `skip_markers`, `attendance_flags`, and `session_checkins` fields; legacy entries may still carry stale `rep_drop_off_flags`. Never carries parser output: a `derived_sections` field is stripped on every write and purged once from older notebooks (#813) |
+| `kilo_derived_sections_purge_v1_complete` | Marker that the one-time `derived_sections` purge (#813) has completed on this device; every later launch reads only this key. Bookkeeping, no user data |
 | `kilo_current_workout_id` | String id of the selected current native workout note |
 | `kilo_workout_deload_history` | JSON array of completed deload records (`id`, `raw_text`, `generated_at`, `completed_at`, `session_count`, optional `deload_session_ordinal`); `completed_at` drives calendar/display behavior while Analytics session counts use the furthest stored session anchor (`deload_session_ordinal` for new records, `session_count` for legacy records) |
 | `kilo_workout_deload_note` | Active in-progress deload note document; cleared on deload completion or discard |
@@ -879,6 +887,46 @@ phantom lives on in the cloud.
 access token it validated, so one pass costs one `auth.getUser()` round trip
 rather than one per pushed table; RLS remains the authority that rejects a
 mismatched `user_id`.
+
+**Payload size.** Because every table is one encrypted value, what a pass costs
+is set by what a row carries, and on a device every byte is decrypted and
+re-encrypted in pure JS on the UI thread. The notebook therefore never persists
+derived parser output (#813): the merge's recompute seam
+(`storage/cloud/transport.js`, consumed by `syncQueue.resolveRecord` when local
+and remote agree on `raw_text`) has no default recompute, every notebook read
+and write path strips a `derived_sections` field
+(`storage/entries/derivedCache.js`), every read and write of the workout-notes
+dirty queue normalizes the whole queue the same way (so a writer holding a
+stale copy cannot restore it), backup export/import do the same, and the
+sync fingerprint ignores it so a note that differs from its baseline only by
+that cache is never treated as a local edit. Older builds attached the parser's
+full output - roughly a hundred times the note text - to every note a device
+had ever pushed, because `pull_sync_changes` serves a device its own pushed rows
+on the next pull; `purgePersistedDerivedSections()` strips it once per device
+at startup, one key at a time, each as a single serialized rewrite
+(`secureStorage.updateItem`).
+
+**Fan-out.** A write broadcast reaches every mounted `useWorkoutNotes()` /
+`useWeightEntries()` instance, and each instance's `refresh()` asks for a sync.
+`maybeSyncCloud()` (`hooks/entries/storageMode.js`) shares passes between those
+callers (#813): callers arriving before a pass starts join it, callers arriving
+while one runs are promised exactly one trailing pass, and every caller still
+gets a pass that began after its own (already durable) write. `sync()`'s
+single-flight alone could not do this, because the recovery-reconciliation
+guard around it is a strict queue.
+
+**Phase run ownership.** A sync pass can outlive the phase it started, so
+`storage/syncRecovery.js` gives every run an ownership token (`beginPhaseRun`);
+`markComplete`/`markFailed` publish nothing when the token they are handed is no
+longer the current one, and every transition - a run starting, a settle, a
+`resetPhase` - claims a fresh token. Status alone is not enough to identify a
+run: sign-out resets the SYNC phase mid-flight (a late completion there would
+leave a signed-out device non-idle and skip the next sign-in's automatic sync),
+and after a re-sign-in the new pass has set the phase running again, which looks
+identical to the stale pass's own `running`. Without the token the stale pass
+would settle the live one and stamp a last-successful-sync time for a pass that
+had not finished. `runCloudSyncPass` additionally requires cloud mode, and
+`runPhase` carries its own token the same way.
 
 ### Authoritative Recovery read state
 
