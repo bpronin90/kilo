@@ -428,9 +428,10 @@ navigation press target and keeps its `minHeight: 44`.
 
 The header handoff (`home-recovery-link`) reuses the shared `sectionHeaderAction`
 treatment (label plus the plain SVG chevron) already used by `Exercise Progress`
-and `1K Progress`, and targets the Analytics tab with no section id: section-
-level targeting exists for `weight` and `strength` only, and that vocabulary is
-owned by `App.js`.
+and `1K Progress`, and targets the `recovery` section of the Analytics tab
+(`onNavigate('Analytics', 'recovery')`) — the Recovery section itself, not just
+the tab that contains it, the same section-id vocabulary `weight` and `strength`
+already use and that is owned by `App.js`.
 
 ### Weekly Summary Hero Card
 
