@@ -2726,6 +2726,20 @@ describe('recovery block sync (issue #693)', () => {
     );
   }
 
+  // Same idea as pinWeekSavedAt, for a block's `started_at`. Two blocks created
+  // in the same millisecond tie on it and fall through to the id tie-break —
+  // deterministic in production, but not what a test about "the later block
+  // survives" means to assert. Returns the updated record so callers can rely
+  // on its (now explicit) started_at instead of the pre-pin value (issue #814).
+  async function pinBlockStartedAt(id, startedAt) {
+    const list = await Storage.loadRecoveryBlocksRaw();
+    const updated = list.map((b) =>
+      b.id === id ? { ...b, started_at: startedAt, saved_at: startedAt } : b
+    );
+    await Storage.replaceRecoveryBlocksRaw(updated);
+    return updated.find((b) => b.id === id);
+  }
+
   async function seedBlockWithWeek() {
     await saveNote('wn_base');
     await saveNote('wn_week1', '-Bench\n- 95 5,5');
@@ -2848,10 +2862,15 @@ describe('recovery block sync (issue #693)', () => {
 
   it('rejects a duplicate active block and collapses it to one, identically on both devices', async () => {
     await saveNote('wn_base');
-    const first = await cloudAdapter.createRecoveryBlock({
+    let first = await cloudAdapter.createRecoveryBlock({
       baselineNoteId: 'wn_base',
       baselineNoteText: ROUTINE_TEXT,
     });
+    // Pin started_at so "the later block survives" below is deterministic:
+    // two blocks created in the same millisecond would otherwise tie on
+    // started_at and the survivor would fall through to the random id suffix
+    // (issue #814).
+    first = await pinBlockStartedAt(first.id, '2026-07-01T00:00:00.000Z');
     await cloudAdapter.sync();
     const deviceA = await captureDevice();
 
@@ -2859,10 +2878,11 @@ describe('recovery block sync (issue #693)', () => {
     // write is wrong when it is made; only the pair is.
     await cleanInstall();
     await saveNote('wn_base2');
-    const second = await cloudAdapter.createRecoveryBlock({
+    let second = await cloudAdapter.createRecoveryBlock({
       baselineNoteId: 'wn_base2',
       baselineNoteText: ROUTINE_TEXT,
     });
+    second = await pinBlockStartedAt(second.id, '2026-07-02T00:00:00.000Z');
     expect(second.started_at > first.started_at).toBe(true);
 
     // The database rejects the second live-active row. The same pass then
@@ -2909,9 +2929,13 @@ describe('recovery block sync (issue #693)', () => {
     await cloudAdapter.sync();
     const deviceB = await captureDevice();
 
-    // A links the note as week 1 and syncs.
+    // A links the note as week 1 and syncs. Pin saved_at so "keeps the
+    // earliest" below is deterministic: two memberships created in the same
+    // millisecond would otherwise tie on saved_at and the survivor would fall
+    // through to the random id suffix (issue #814).
     await restoreDevice(deviceA);
     const kept = await cloudAdapter.addRecoveryWeek({ blockId: block.id, noteId: 'wn_shared' });
+    await pinWeekSavedAt(kept.id, '2026-07-01T00:00:00.000Z');
     await cloudAdapter.sync();
     deviceA = await captureDevice();
 
@@ -2921,6 +2945,7 @@ describe('recovery block sync (issue #693)', () => {
       blockId: block.id,
       noteId: 'wn_shared',
     });
+    await pinWeekSavedAt(duplicate.id, '2026-07-02T00:00:00.000Z');
     expect(duplicate.id).not.toBe(kept.id);
 
     await expect(cloudAdapter.sync()).resolves.toBeDefined();
