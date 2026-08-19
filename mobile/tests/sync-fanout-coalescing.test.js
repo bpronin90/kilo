@@ -274,7 +274,7 @@ describe('entry hooks read on-device storage once at mount unless a pass ran (#8
 
   const readsOf = (key) => AsyncStorage.getItem.mock.calls.filter(([k]) => k === key).length;
 
-  it('useWorkoutNotes: one notebook read per instance in local mode, and no sync', async () => {
+  it('useWorkoutNotes: one shared notebook read for every mounted instance in local mode, and no sync', async () => {
     await Storage.saveWorkoutNoteItem({ id: 'n1', title: 'Push', raw_text: '-Bench\n135 5,5' });
     const { sync } = mockBlockingCloudAdapter();
     AsyncStorage.getItem.mockClear();
@@ -284,19 +284,22 @@ describe('entry hooks read on-device storage once at mount unless a pass ran (#8
 
     expect(refs.every((r) => r.loading === false)).toBe(true);
     expect(refs.every((r) => r.notes.map((n) => n.id).join() === 'n1')).toBe(true);
-    // Three mounted instances, three reads - not six.
-    expect(readsOf(WORKOUT_NOTES_KEY)).toBe(3);
+    // Three mounted instances, one read - #813 got this down from six to three
+    // (one per instance, none of them a post-sync re-read); #818 shares the one
+    // in-flight decrypt between the instances, so the notebook is now read once.
+    expect(readsOf(WORKOUT_NOTES_KEY)).toBe(1);
     expect(sync).not.toHaveBeenCalled();
     act(() => tree.unmount());
   });
 
-  it('useWeightEntries: one table read per instance in local mode', async () => {
+  it('useWeightEntries: one shared table read for every mounted instance in local mode', async () => {
     await Storage.saveWeightEntry({ id: 'w1', weight_value: 180, logged_at: '2026-08-10T12:00:00.000Z' });
     AsyncStorage.getItem.mockClear();
     const { refs, tree } = mount(useWeightEntries);
     await flushAsync();
     expect(refs.every((r) => r.entries.map((e) => e.id).join() === 'w1')).toBe(true);
-    expect(readsOf(WEIGHT_KEY)).toBe(3);
+    // One shared decrypt for all three instances (#818); see the note above.
+    expect(readsOf(WEIGHT_KEY)).toBe(1);
     act(() => tree.unmount());
   });
 
@@ -317,13 +320,15 @@ describe('entry hooks read on-device storage once at mount unless a pass ran (#8
     await flushAsync();
     // First paint from the device, while the (single) pass is still running.
     expect(refs.every((r) => r.loading === false && r.notes.length === 1)).toBe(true);
-    expect(readsOf(WORKOUT_NOTES_KEY)).toBe(3);
+    expect(readsOf(WORKOUT_NOTES_KEY)).toBe(1);
     expect(sync).toHaveBeenCalledTimes(1);
 
     passes[0].resolve({ ok: true });
     await flushAsync();
-    // The post-pass reload: once per instance.
-    expect(readsOf(WORKOUT_NOTES_KEY)).toBe(6);
+    // The post-pass reload: still once per instance, but the three concurrent
+    // reads share one decrypt (#818), so this is the second read of the key and
+    // not the sixth.
+    expect(readsOf(WORKOUT_NOTES_KEY)).toBe(2);
     expect(sync).toHaveBeenCalledTimes(1);
     act(() => tree.unmount());
   });

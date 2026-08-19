@@ -251,7 +251,18 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   read-transform-write, so no other storage operation can land between its
   read and its write (#813); a writer that read earlier and writes a whole
   value later is a separate matter, which is why every notebook and
-  workout-notes-queue write path also strips the purged field itself. Web
+  workout-notes-queue write path also strips the purged field itself.
+  `getItem()` coalesces concurrent reads of the same key onto one in-flight
+  read, so a value is decrypted once no matter how many mounted consumers ask
+  for it at the same moment (#818). A pending read is shared only with callers
+  that arrived before any operation that could change that key was enqueued:
+  `setItem`/`removeItem`/`updateItem`/`multiSet`/`multiRemove` drop the pending
+  entry for the keys they touch, and `clearDeviceKey`/`wipeKiloData` drop all
+  of them, at enqueue time rather than at execution time. Because the operation
+  queue is FIFO, a coalesced caller therefore always receives exactly the value
+  its own read would have returned from the same queue position. The one-time
+  plaintext migration deliberately does not invalidate: it re-encodes values
+  that are already there and cannot change what any key decrypts to. Web
   retains browser storage semantics, where client-side key storage would not
   provide an independent security boundary.
 - `mobile/components/` holds reusable shell and UI primitives
@@ -289,6 +300,15 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   actually ran (#813). Every later reload — a write, a broadcast, or an
   explicit `refresh()` call — keeps the ordinary sync-then-reload sequence,
   with concurrent callers sharing passes rather than each running one.
+  All five tabs mount at once (#527), so several instances of these hooks
+  hydrate from the same keys in one synchronous burst on cold start; each
+  instance still owns its own read call, but the storage boundary's read
+  coalescing above collapses them into one decrypt per key (#818). That also
+  fixes their order: React runs child effects before the parent's, so the
+  shell's own `useWeightEntries`/`useWorkoutNotes` reads — the two Home's
+  `loading` prop is gated on — used to be enqueued behind every duplicate the
+  four hidden tabs had already queued, and now land on the read a tab already
+  started.
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
   modules, now exposes the note-derived analytics contract used by downstream
   native workout analytics work, and centralizes exercise alias resolution in

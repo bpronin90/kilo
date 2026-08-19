@@ -8,7 +8,7 @@ import { CLOUD_SYNC_NOTICE, useWeightGoal, useTrackedLifts, getNoteSections, use
 import { deriveHomeDashboardData, useHomeNormalNotes, useHomeRecoverySummary, HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './home/homeDashboardData';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue, displayChartSeries } from '../lib/units';
-import { markStartupPhase } from '../storage/entries/startupTiming';
+import { markStartupPhase, markStartupStorageReads } from '../storage/entries/startupTiming';
 
 // The exact example the welcome card teaches (issue #517). Exported so tests
 // can round-trip it through the real parser — the copy must never drift back
@@ -469,9 +469,14 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
   // Marks the moment the skeleton is replaced by real content (#809), so a
   // device timing run can compare this against the encrypted-storage/reload
   // phase marks above it without recording anything about what actually
-  // loaded.
+  // loaded. The read counts alongside it (#818) report how many device reads
+  // the launch paid for and how many were served by an in-flight read of the
+  // same key — counts only, no key names and no values.
   useEffect(() => {
-    if (!isLoading) markStartupPhase('home:first-paint');
+    if (!isLoading) {
+      markStartupPhase('home:first-paint');
+      markStartupStorageReads();
+    }
   }, [isLoading]);
 
   // Whether Home holds anything real to draw, regardless of why it might not.

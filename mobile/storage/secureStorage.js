@@ -7,7 +7,7 @@ import {
   hexToBytes,
   utf8ToBytes,
 } from '@noble/ciphers/utils';
-import { markStartupPhase } from './entries/startupTiming';
+import { markStartupPhase, recordStartupStorageRead } from './entries/startupTiming';
 
 const ENVELOPE_PREFIX = 'kilo.enc.v1:';
 const DEVICE_KEY_NAME = 'kilo.device-data-key.v1';
@@ -78,6 +78,8 @@ export function createDeviceStorage({
   let keyPromise = null;
   let operationTail = Promise.resolve();
   let dataGeneration = 0;
+  // In-flight reads, keyed by storage key (#818). See coalescedRead below.
+  const pendingReads = new Map();
 
   function requireNativePrimitives() {
     if (!secureStore?.getItemAsync || !secureStore?.setItemAsync || !secureStore?.deleteItemAsync) {
@@ -163,6 +165,58 @@ export function createDeviceStorage({
     ));
   }
 
+  // A pending read may only be shared with callers that asked for the key
+  // BEFORE any operation that could change it was enqueued. Invalidating at
+  // enqueue time (not at execution time) is what makes that exact: the queue is
+  // FIFO, so a read already enqueued still runs — and still resolves the
+  // pre-mutation value, which is precisely what an uncoalesced caller would
+  // have received in the same queue position. Any caller arriving after the
+  // mutation is enqueued finds no entry and gets its own read, queued behind
+  // that mutation.
+  function invalidatePendingRead(key) {
+    pendingReads.delete(key);
+  }
+
+  function invalidateAllPendingReads() {
+    pendingReads.clear();
+  }
+
+  // Cold-start read coalescing (#818).
+  //
+  // All five tabs stay mounted (#527) and each one hydrates from the same
+  // device keys, so a cold start issued the SAME encrypted read several times
+  // over: the notebook, the weight table, the current-routine pointer and the
+  // tracked lifts were each read three times, the weight goal twice. Every one
+  // of those is a native round trip plus a full AES-GCM decrypt of the whole
+  // payload, and withStorageLock serializes them, so they do not overlap — they
+  // queue. Worse, child effects run before the parent's, so the shell's own
+  // note/weight reads (the two that gate Home's first paint) were enqueued
+  // LAST, behind every duplicate the four hidden tabs had already queued.
+  //
+  // Sharing one in-flight read per key removes the duplicate decrypt and moves
+  // the shell's reads to the front of that queue at the same time, because they
+  // land on the read a tab already started rather than on a new one behind it.
+  // The user-visible answer is unchanged: a coalesced caller gets exactly the
+  // value its own read would have returned from the same queue position.
+  function coalescedRead(key) {
+    const inFlight = pendingReads.get(key);
+    if (inFlight) {
+      recordStartupStorageRead(true);
+      return inFlight;
+    }
+    recordStartupStorageRead(false);
+    const read = withStorageLock(() => getItemUnlocked(key));
+    pendingReads.set(key, read);
+    // Only clear the entry if it is still this read's: an intervening mutation
+    // may already have dropped it, and a later caller may already have started
+    // a fresh read for the same key behind that mutation.
+    const settle = () => {
+      if (pendingReads.get(key) === read) pendingReads.delete(key);
+    };
+    read.then(settle, settle);
+    return read;
+  }
+
   async function getItemUnlocked(key) {
     const raw = await backingStore.getItem(key);
     if (raw == null || !encryptValues) return raw;
@@ -179,21 +233,24 @@ export function createDeviceStorage({
 
   const storage = {
     getItem(key) {
-      return withStorageLock(() => getItemUnlocked(key));
+      return coalescedRead(key);
     },
     setItem(key, value) {
+      invalidatePendingRead(key);
       return withMutationLock(async () => {
         const next = encryptValues ? await encrypt(key, value) : String(value);
         await backingStore.setItem(key, next);
       });
     },
     removeItem(key) {
+      invalidatePendingRead(key);
       return withMutationLock(() => backingStore.removeItem(key));
     },
     getAllKeys() {
       return withStorageLock(() => backingStore.getAllKeys());
     },
     multiSet(pairs) {
+      for (const [key] of pairs) invalidatePendingRead(key);
       return withMutationLock(async () => {
         const encoded = [];
         for (const [key, value] of pairs) {
@@ -204,6 +261,7 @@ export function createDeviceStorage({
       });
     },
     multiRemove(keys) {
+      for (const key of keys) invalidatePendingRead(key);
       // Removing encrypted blobs does not require the encryption key.
       return withMutationLock(() => backingStore.multiRemove(keys));
     },
@@ -217,6 +275,7 @@ export function createDeviceStorage({
     // mutation lock also discards the rewrite when a wipe advances the data
     // generation first, exactly like setItem.
     updateItem(key, transform) {
+      invalidatePendingRead(key);
       return withMutationLock(async () => {
         const current = await getItemUnlocked(key);
         const next = await transform(current);
@@ -227,6 +286,9 @@ export function createDeviceStorage({
       }, { changed: false });
     },
     clearDeviceKey() {
+      // Discarding the key changes what every stored envelope decrypts to (it
+      // stops decrypting at all), so no pending read may be shared across it.
+      invalidateAllPendingReads();
       return withStorageLock(async () => {
         if (!encryptValues) return;
         requireNativePrimitives();
@@ -235,6 +297,7 @@ export function createDeviceStorage({
       });
     },
     wipeKiloData() {
+      invalidateAllPendingReads();
       return withStorageLock(async () => {
         dataGeneration += 1;
         const keys = await backingStore.getAllKeys();
@@ -251,6 +314,16 @@ export function createDeviceStorage({
         await backingStore.setItem('kilo_local_data_owner', owner);
       });
     },
+    // Deliberately does NOT invalidate pending reads (#818), unlike every other
+    // mutating method above. This pass only ever re-ENCODES a value that is
+    // already there — plaintext in, the same string back out as an envelope —
+    // and getItemUnlocked returns that same string either way, so no key's
+    // decrypted value can differ across it. That matters because App queues this
+    // between the mounted tabs' hydration reads and the shell's own, so
+    // invalidating here would put the two reads that gate Home's first paint
+    // back at the end of the queue, which is the exact cost #818 removes. The
+    // marker key it writes is read through backingStore directly, never through
+    // the coalesced getItem path.
     migrateKiloData() {
       return withMutationLock(async () => {
         if (!encryptValues) return { migrated: 0 };
