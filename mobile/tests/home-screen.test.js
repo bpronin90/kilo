@@ -1582,6 +1582,35 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     expect(hasText(component, 'Added during recovery')).toBe(true);
   });
 
+  test('a category column can shrink below its content width for a long label (#820 review)', async () => {
+    // "Added during recovery" is long enough to overflow a full-width column
+    // at enlarged accessibility text — unlike the hero card's short, fixed
+    // classification labels, this column must be able to compress so the
+    // label wraps instead of clipping.
+    AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
+    const component = await mount({ notes: [NOTE, weekNote('nr1', ADDED_TEXT)] });
+
+    const flatStyle = (node) => [].concat(node.props.style ?? []).reduce(
+      (acc, s) => (s ? Object.assign(acc, s) : acc),
+      {}
+    );
+    const label = component.root.findAll(
+      n => n.type === 'Text'
+        && String(Array.isArray(n.props.children) ? n.props.children.join('') : n.props.children ?? '') === 'Added during recovery'
+    )[0];
+    expect(label).toBeTruthy();
+
+    // Walk up to the column View: the flex/shrink contract belongs to the
+    // container, not the label text node itself.
+    let column = label.parent;
+    while (column && !('flexGrow' in flatStyle(column))) column = column.parent;
+    expect(column).toBeTruthy();
+
+    const style = flatStyle(column);
+    expect(style.flexShrink).toBe(1);
+    expect(style.minWidth).toBe(0);
+  });
+
   test('a baseline exercise never reintroduced this week is counted, not silently dropped', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     const component = await mount({ notes: [NOTE, weekNote('nr1', SKIPPED_TEXT)] });
