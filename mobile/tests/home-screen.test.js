@@ -799,15 +799,15 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     }
   });
 
-  test('each section header keeps its own card alignment', () => {
+  test('the Exercise Progress header keeps its own card alignment', () => {
     // The shared header style must not carry cross-axis alignment: baking
     // `flex-start` into it dragged the centered 1K header to the left edge while
-    // that card's total and breakdown stayed centered.
+    // that card's total and breakdown stayed centered. The 1K card no longer has
+    // a header press target to check here (#820: its handoff is a footer link,
+    // centered by the card's own `alignItems: 'center'` rather than a declared
+    // `alignSelf`).
     const band = flatStyle(component.root.findByProps({ testID: 'home-strength-summary-link' }));
     expect(band.alignSelf).toBe('flex-start');
-
-    const oneK = flatStyle(component.root.findByProps({ testID: 'home-one-k-link' }));
-    expect(oneK.alignSelf).toBe('center');
   });
 
   test('the classification columns keep horizontal separation', () => {
@@ -1522,21 +1522,21 @@ describe('Home recovery summary (#757, #779, #782)', () => {
 
     expect(has(component, 'home-recovery-summary')).toBe(true);
     // Each fact is its own node, independently scannable (#803): the week
-    // eyebrow, the hero result with its caption, then the category tile.
+    // eyebrow, the hero result with its caption, then the category column.
     expect(hasText(component, 'Week 1')).toBe(true);
     expect(hasText(component, '1 of 2')).toBe(true);
     expect(hasText(component, 'baseline exercises met')).toBe(true);
     expect(hasText(component, 'Rebuilding')).toBe(true);
-    // The inclusion state is context, not decoration: Home's own classification
-    // counts and 1K total are derived from a population this preference decides.
-    expect(hasText(component, 'Not counted in your normal analytics.')).toBe(true);
+    // Inclusion state is Analytics-owned content (#820): Home no longer states
+    // it at all, in either direction.
+    expect(hasText(component, 'Not counted in your normal analytics.')).toBe(false);
     // No fact is carried by placement or color alone.
     expect(spoken(component)).toBe(
-      'Week 1. 1 of 2 baseline exercises met. 1 rebuilding. Not counted in your normal analytics.'
+      'Week 1. 1 of 2 baseline exercises met. 1 rebuilding.'
     );
   });
 
-  test('a fully recovered week omits the breakdown line, and inclusion says nothing when it is on', async () => {
+  test('a fully recovered week omits the breakdown line', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({
       blocks: [block({ include_in_normal_analytics: true })],
       weeks: [week()],
@@ -1544,16 +1544,17 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     const component = await mount({ notes: [NOTE, weekNote('nr1', FULL_TEXT)] });
 
     expect(spoken(component)).toBe('Week 1. 2 of 2 baseline exercises met.');
-    // Silence-by-default (#779): included is never announced, only deviation is.
+    // Inclusion is never announced either way (#820: dropped from Home).
     expect(hasText(component, 'Counted in your normal analytics.')).toBe(false);
     expect(hasText(component, 'Not counted in your normal analytics.')).toBe(false);
     expect(hasText(component, 'Rebuilding')).toBe(false);
 
-    // A zero category is absent, not a `0` tile: the supporting region is not
-    // rendered at all, and the card stays at header + eyebrow + hero + caption.
+    // A zero category is absent, not a `0` column: the supporting region is not
+    // rendered at all, and the card stays at label + eyebrow + hero + caption +
+    // the footer handoff.
     expect(has(component, 'home-recovery-stats')).toBe(false);
     const card = component.root.findByProps({ testID: 'home-recovery-summary' });
-    expect(card.findAll(n => n.type === 'Text').length).toBe(4);
+    expect(card.findAll(n => n.type === 'Text').length).toBe(5);
   });
 
   test('a lift that regresses after being met renders as rebuilding, not a new state', async () => {
@@ -1570,7 +1571,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
 
     // The latest live week is what Home reports; #779 rules out a distinct
     // "regressing" state, so a met lift that drops again is just rebuilding.
-    expect(spoken(component)).toBe('Week 2. 1 of 2 baseline exercises met. 1 rebuilding. Not counted in your normal analytics.');
+    expect(spoken(component)).toBe('Week 2. 1 of 2 baseline exercises met. 1 rebuilding.');
   });
 
   test('an exercise added during recovery is counted but never folds into the baseline denominator', async () => {
@@ -1578,7 +1579,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     const component = await mount({ notes: [NOTE, weekNote('nr1', ADDED_TEXT)] });
 
     expect(spoken(component)).toBe(
-      'Week 1. 2 of 2 baseline exercises met. 1 added during recovery. Not counted in your normal analytics.'
+      'Week 1. 2 of 2 baseline exercises met. 1 added during recovery.'
     );
     expect(hasText(component, 'Added during recovery')).toBe(true);
   });
@@ -1588,22 +1589,23 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     const component = await mount({ notes: [NOTE, weekNote('nr1', SKIPPED_TEXT)] });
 
     expect(spoken(component)).toBe(
-      'Week 1. 1 of 2 baseline exercises met. 1 not reintroduced. Not counted in your normal analytics.'
+      'Week 1. 1 of 2 baseline exercises met. 1 not reintroduced.'
     );
     expect(hasText(component, 'Not reintroduced')).toBe(true);
   });
 
-  test('exclusion and a not-comparable exercise both surface as supporting analytics, in order', async () => {
+  test('a not-comparable exercise surfaces as supporting analytics, in order', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({
       blocks: [block({ include_in_normal_analytics: false })],
       weeks: [week()],
     }));
     const component = await mount({ notes: [NOTE, weekNote('nr1', CLASS_CHANGED_TEXT)] });
 
-    // rebuilding, not_reintroduced, not_comparable, added_during_recovery, then
-    // the inclusion clause last — exactly the order the contract specifies.
+    // rebuilding, not_reintroduced, not_comparable, added_during_recovery —
+    // exactly the order the contract specifies. Inclusion state is no longer
+    // part of this sentence (#820).
     expect(spoken(component)).toBe(
-      'Week 1. 1 of 2 baseline exercises met. 1 not comparable. Not counted in your normal analytics.'
+      'Week 1. 1 of 2 baseline exercises met. 1 not comparable.'
     );
     expect(hasText(component, 'Not comparable')).toBe(true);
   });
@@ -1622,7 +1624,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     expect(hasText(component, 'baseline exercises met')).toBe(false);
     expect(hasText(component, '0 of 0')).toBe(false);
     expect(spoken(component)).toBe(
-      "Week 1. This week's note is no longer available. Not counted in your normal analytics."
+      "Week 1. This week's note is no longer available."
     );
   });
 
@@ -1676,9 +1678,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
 
     expect(hasText(component, 'Baseline captured. No week logged yet.')).toBe(true);
     // There is no week to name, so the eyebrow is absent rather than invented.
-    expect(spoken(component)).toBe(
-      'Baseline captured. No week logged yet. Not counted in your normal analytics.'
-    );
+    expect(spoken(component)).toBe('Baseline captured. No week logged yet.');
   });
 
   test('the summary routes to the Analytics Recovery section, and says so', async () => {
@@ -1750,7 +1750,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     await render.act(async () => { retry.props.onPress(); });
 
     expect(spoken(component)).toBe(
-      'Week 1. 1 of 2 baseline exercises met. 1 rebuilding. Not counted in your normal analytics.'
+      'Week 1. 1 of 2 baseline exercises met. 1 rebuilding.'
     );
     expect(hasText(component, hooks.RECOVERY_UNVERIFIED_MESSAGE)).toBe(false);
   });
@@ -1800,12 +1800,13 @@ describe('Home recovery summary (#757, #779, #782)', () => {
 
     expect(hasText(component, 'Week 1')).toBe(true);
     expect(hasText(component, "This week's note is no longer available.")).toBe(true);
-    expect(hasText(component, 'Not counted in your normal analytics.')).toBe(true);
+    // Inclusion state is Analytics-owned content (#820); Home never states it.
+    expect(hasText(component, 'Not counted in your normal analytics.')).toBe(false);
     expect(hasText(component, hooks.RECOVERY_STALE_MESSAGE)).toBe(true);
 
-    // The worst simultaneous case Home can reach: header, week eyebrow,
-    // fallback, exclusion clause, stale message, and the retry control. No
-    // category tiles are derivable from a week whose note is gone, so nothing
+    // The worst simultaneous case Home can reach: label, week eyebrow,
+    // fallback, stale message, the retry control, and the footer handoff. No
+    // category columns are derivable from a week whose note is gone, so nothing
     // else can stack on top of this — the card stays Home-sized.
     const card = component.root.findByProps({ testID: 'home-recovery-summary' });
     expect(card.findAll(n => n.type === 'Text').length).toBe(6);
@@ -1863,7 +1864,11 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     const card = component.root.findByProps({ testID: 'home-recovery-summary' });
     for (const node of card.findAll(n => n.type === 'Text' || n.type === 'View')) {
       const style = flat(node.props.style);
-      expect(style.height).toBeUndefined();
+      // The 8x8 category status dot (#820) is the same fixed-size decorative
+      // indicator convention as the Exercise Progress band's `classifDot` — not
+      // a text line, and not expected to grow with the user's text size.
+      const isStatusDot = style.width === 8 && style.height === 8;
+      if (!isStatusDot) expect(style.height).toBeUndefined();
       if (node.type === 'Text') expect(style.lineHeight).toBeUndefined();
     }
     // The one press target inside the card meets the touch minimum.

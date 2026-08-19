@@ -234,7 +234,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   const {
     status, stale, message, active,
     comparisonStatus, weekNumber, weekNoteStatus, metCount, totalBaselineExercises,
-    categoryCounts, includedInNormalAnalytics,
+    categoryCounts,
   } = summary;
 
   // Verified, nothing is running, and the answer is CURRENT. This is the one
@@ -289,21 +289,16 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   addStat(categoryCounts.not_comparable, 'Not comparable');
   addStat(categoryCounts.added_during_recovery, 'Added during recovery');
 
-  // Inclusion stays silence-by-default: included says nothing, only the
-  // deviation is stated — and it is stated in words, never by a color or an
-  // icon a screen reader or a colorblind user would miss.
-  const exclusionNotice = includedInNormalAnalytics
-    ? null
-    : 'Not counted in your normal analytics.';
-
   // One announcement for the whole summary, assembled in reading order. The
   // visual hierarchy is a layout device; the spoken version has to carry the
-  // same facts as complete sentences.
+  // same facts as complete sentences. The inclusion clause (#820: dropped
+  // from Home's visible/spoken content — it stays stated on the Analytics
+  // Recovery section, which already reports inclusion per block) is no
+  // longer part of this summary.
   const accessibleContent = [
     weekLabel,
     heroValue ? `${heroValue} baseline exercises met` : fallbackStatus,
     ...stats.map(s => `${s.count} ${s.label.toLowerCase()}`),
-    exclusionNotice,
   ].filter(Boolean)
     .map(part => (/[.!?]$/.test(part) ? part : `${part}.`))
     .join(' ');
@@ -315,20 +310,9 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
       <Card style={styles.recoveryCard}>
         {active ? (
           <>
-            <Pressable
-              testID="home-recovery-link"
-              onPress={() => onNavigate('Analytics', 'recovery')}
-              style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart]}
-              hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
-              accessibilityRole="button"
-              accessibilityLabel="Recovery"
-              accessibilityHint="Opens the Recovery section of the Analytics tab"
-            >
-              <Text style={[styles.recoveryLabel, styles.sectionHeaderLabel]}>Recovery</Text>
-              <View style={styles.sectionHeaderChevron}>
-                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
-              </View>
-            </Pressable>
+            {/* Header is identity only (#820) — the tap target moved to a
+                footer link below the content, same treatment as the 1K card. */}
+            <Text style={styles.recoveryLabel}>Recovery</Text>
             {/* One announcement for the whole summary: separate nodes read as
                 unrelated fragments. */}
             <View
@@ -348,17 +332,17 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
                 <Text style={styles.recoveryFallbackLine}>{fallbackStatus}</Text>
               )}
               {stats.length > 0 ? (
-                <View testID="home-recovery-stats" style={styles.recoveryStatRow}>
-                  {stats.map(stat => (
-                    <View key={stat.label} style={styles.recoveryStat}>
-                      <Text style={styles.recoveryStatValue}>{stat.count}</Text>
-                      <Text style={styles.recoveryStatLabel}>{stat.label}</Text>
-                    </View>
-                  ))}
+                <View testID="home-recovery-stats" style={styles.recoveryStatsDivider}>
+                  <View style={styles.recoveryStatCols}>
+                    {stats.map(stat => (
+                      <View key={stat.label} style={styles.recoveryStatCol}>
+                        <View style={styles.recoveryStatDot} />
+                        <Text style={styles.recoveryStatValue}>{stat.count}</Text>
+                        <Text style={styles.recoveryStatLabel}>{stat.label}</Text>
+                      </View>
+                    ))}
+                  </View>
                 </View>
-              ) : null}
-              {exclusionNotice ? (
-                <Text style={styles.recoveryDetailLine}>{exclusionNotice}</Text>
               ) : null}
             </View>
           </>
@@ -389,6 +373,20 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
             {/* Exactly the name every recovery message tells the user to tap
                 (ui-design-rules §12). */}
             <Text style={styles.recoveryActionText}>Retry recovery</Text>
+          </Pressable>
+        ) : null}
+        {active ? (
+          <Pressable
+            testID="home-recovery-link"
+            onPress={() => onNavigate('Analytics', 'recovery')}
+            style={styles.recoveryFooterLink}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Recovery"
+            accessibilityHint="Opens the Recovery section of the Analytics tab"
+          >
+            <Text style={styles.recoveryFooterLinkText}>Recovery</Text>
+            <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
           </Pressable>
         ) : null}
       </Card>
@@ -795,25 +793,12 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
 
           {/* ══ TIER 3: 1k Club Progress ══ */}
           {/* Handoff to the Analytics strength section, which is where the 1K
-              detail lives (owner scope override on #717). The header row alone
-              is the press target — the total, progress bar, and per-lift grid
-              stay plain data — and it uses the same quiet chevron affordance as
-              the Exercise Progress header. */}
+              detail lives (owner scope override on #717). The header is
+              identity only (#820); the tap target sits below the total,
+              progress bar, and per-lift grid so the card leads with its own
+              number instead of a 44pt header box. */}
           <Card style={styles.oneKCard}>
-            <Pressable
-              testID="home-one-k-link"
-              onPress={() => onNavigate('Analytics', 'strength')}
-              style={[styles.sectionHeaderAction, styles.sectionHeaderActionCenter]}
-              hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
-              accessibilityRole="button"
-              accessibilityLabel="1K Progress"
-              accessibilityHint="Opens the strength section of the Analytics tab"
-            >
-              <Text style={[styles.oneKLabel, styles.sectionHeaderLabel]}>1K Progress</Text>
-              <View style={styles.sectionHeaderChevron}>
-                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
-              </View>
-            </Pressable>
+            <Text style={styles.oneKLabel}>1K Progress</Text>
             <Text style={[styles.oneKHeroValue, { color: lerpColor(colors.accent, colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000)) }]}>
               {dashboardData.oneK?.total ? `${displayWeight(dashboardData.oneK.total, unit).toFixed(0)}` : '—'}
               <Text style={styles.oneKHeroUnit}> {unit}</Text>
@@ -840,6 +825,18 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
                 <Text style={styles.oneKGridLabel}>Deadlifts</Text>
               </View>
             </View>
+            <Pressable
+              testID="home-one-k-link"
+              onPress={() => onNavigate('Analytics', 'strength')}
+              style={styles.oneKFooterLink}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="1K Progress"
+              accessibilityHint="Opens the strength section of the Analytics tab"
+            >
+              <Text style={styles.oneKFooterLinkText}>1K Progress</Text>
+              <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
+            </Pressable>
           </Card>
         </>
       )}
@@ -1049,15 +1046,8 @@ const createStyles = (colors) => StyleSheet.create({
     // hugs its content and the label absorbs narrow widths by wrapping itself.
     maxWidth: '100%',
   },
-  // Cross-axis alignment is deliberately NOT in the shared style: it differs per
-  // card, and baking `flex-start` into the shared rule silently overrode the 1K
-  // card's centered layout and dragged its header to the left edge while the
-  // total and breakdown stayed centered.
   sectionHeaderActionStart: {
     alignSelf: 'flex-start',
-  },
-  sectionHeaderActionCenter: {
-    alignSelf: 'center',
   },
   sectionHeaderLabel: {
     flexShrink: 1,
@@ -1177,16 +1167,34 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.text,
     marginTop: 2,
   },
-  recoveryStatRow: {
+  // Category breakdown (#820): reuses the Exercise Progress band's own
+  // dot/count/label column grammar instead of a bespoke tile system, so the
+  // two summary rows in this hero card read as one visual language.
+  recoveryStatsDivider: {
+    borderTopWidth: 1,
+    borderTopColor: colors.cardBorder,
+    paddingTop: 14,
+    marginTop: 12,
+  },
+  recoveryStatCols: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    columnGap: 20,
-    rowGap: 8,
-    marginTop: 10,
+    rowGap: 12,
+    columnGap: 16,
   },
-  recoveryStat: {
-    // No fixed width: an enlarged label wraps the row instead of clipping.
-    flexShrink: 1,
+  recoveryStatCol: {
+    flexGrow: 1,
+    flexShrink: 0,
+    flexBasis: 'auto',
+    alignItems: 'center',
+    gap: 5,
+  },
+  recoveryStatDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.accent,
+    opacity: 0.55,
   },
   recoveryStatValue: {
     fontSize: 18,
@@ -1197,14 +1205,9 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: colors.textMuted,
+    textAlign: 'center',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-  },
-  recoveryDetailLine: {
-    fontSize: 13,
-    color: colors.textMuted,
-    // No fixed lineHeight: an enlarged line must grow its own box.
-    marginTop: 2,
   },
   recoveryStatusLine: {
     fontSize: 13,
@@ -1219,6 +1222,20 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: colors.accent,
+  },
+  // Quiet footer handoff (#820), replacing the old 44pt header press target —
+  // same treatment as the 1K card's footer link.
+  recoveryFooterLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    minHeight: 44,
+    marginTop: 4,
+  },
+  recoveryFooterLinkText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textMuted,
   },
   goalCard: {
     padding: 24,
@@ -1295,6 +1312,21 @@ const createStyles = (colors) => StyleSheet.create({
   },
   oneKHeroUnit: {
     fontSize: 16,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  // Quiet footer handoff (#820), replacing the old 44pt header press target —
+  // the header is identity only now, so the card leads with its own number
+  // instead of a mostly-empty tap-target box.
+  oneKFooterLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    minHeight: 44,
+    marginTop: 4,
+  },
+  oneKFooterLinkText: {
+    fontSize: 13,
     fontWeight: '600',
     color: colors.textMuted,
   },
