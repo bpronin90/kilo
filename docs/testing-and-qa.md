@@ -376,12 +376,13 @@ notebook twice at mount even in local mode. Coverage:
   failure paths); a pass finishing after sign-out **and a re-sign-in** cannot
   settle the new sign-in's still-running pass or stamp a last-successful-sync
   time for it (success and failure paths); each entry hook reads its table once
-  per mounted instance at
-  mount in local mode and reloads once per instance after the single shared
-  pass in cloud mode; a write broadcast with three mounted instances costs one
-  pass; and, end to end against the real adapter and the xid-faithful fake
-  transport (`mobile/tests/mocks/xidFakeCloud.js`), that single pass is the
-  one that uploads the caller's write.
+  at mount in local mode and reloads once after the single shared pass in cloud
+  mode, however many instances are mounted (three instances cost one read each
+  time since #818 shares the decrypt; before that they cost one read per
+  instance, and before #813 two); a write broadcast with three mounted
+  instances costs one pass; and, end to end against the real adapter and the
+  xid-faithful fake transport (`mobile/tests/mocks/xidFakeCloud.js`), that
+  single pass is the one that uploads the caller's write.
 - `mobile/tests/sync-recovery-ui.test.js` (`phase run ownership tokens`) -
   `beginPhaseRun` marks the phase running and yields the current token; tokens
   are per phase and never reused; `resetPhase` and any later run stale an
@@ -434,6 +435,66 @@ which is what two settled passes after a first upload produced):
 
 No physical-device timing was captured for this change; the modeled numbers
 are a lower bound on device cost, and the operation counts are exact.
+
+### Residual cold-launch lag: duplicated hydration reads (#818)
+
+The delay that survived #809 and #813 reproduces the same with Cloud Sync on
+and off, which rules out sync latency and points at the shared local path. It
+is not one slow phase: it is the same encrypted values being read several times
+in a row. All five tabs mount at once (#527) and hydrate from the same keys, so
+a cold start issued the notebook, the weight table, the current-routine pointer
+and the tracked lifts three times each and the weight goal twice — twenty
+device reads for nine distinct keys — every one of them a native round trip
+plus a full AES-GCM decrypt, and all of them serialized behind the storage
+module's single operation queue so none of them overlapped. React runs child
+effects before the parent's, so the shell's own `useWeightEntries` /
+`useWorkoutNotes` reads — the two Home's `loading` prop is gated on — were
+enqueued 15th and 16th of the twenty, behind every duplicate the four hidden
+tabs had already queued.
+
+`secureStorage.getItem()` now shares one in-flight read per key, which removes
+both costs at once: nine reads instead of twenty, and the two gating reads land
+on a read a tab already started rather than on a new one behind it.
+
+Coverage in `mobile/tests/startup-read-coalescing.test.js`:
+
+- concurrent reads of one key resolve from a single backing read/decrypt;
+- a pending read is **not** shared across a `setItem`, `removeItem`,
+  `updateItem`, or `wipeKiloData` for that key — the read enqueued first still
+  resolves the pre-write value (what it would have returned from that queue
+  position anyway) and the read enqueued after the mutation sees the write;
+- a pending read **is** still shared across `migrateKiloData()`, which only
+  re-encodes values already present. App queues that migration between the tabs'
+  hydration reads and the shell's own, so invalidating there would put the two
+  gating reads back at the end of the queue;
+- mounting every tab's real hook set plus the shell reads the notebook, weight
+  table, current-routine pointer, tracked lifts and weight goal once each, and
+  both gating reads are issued inside the initial mount burst rather than
+  appended after every other tab's hydration.
+
+Verified to fail with the fix disabled: reverting `getItem()` to its
+uncoalesced form fails four of the six tests (the two that pin the
+*non*-sharing rules correctly still pass, since they guard correctness rather
+than the optimization).
+
+The `[startup]` trace gained one fixed-name line beside `home:first-paint`:
+`storage:reads: issued=<n> coalesced=<n> at <ms>ms`. It reports counts only —
+no key names, no values, no sizes — and is compiled out of release builds with
+the rest of `startupTiming.js`.
+
+**Measurement.** Read counts and their order are exact and device-independent
+(they come from driving the real hooks against the AsyncStorage jest mock).
+The per-read cost was measured on the real encrypted path with
+`forceEncryption: true` on a desktop x86 core: 0.5 ms for a 1.5 KB notebook,
+2.6 ms at 14.5 KB, and 15.5 ms at 76.3 KB — so removing two of three notebook
+decrypts saves ~1/5/31 ms respectively there, before the two weight-table and
+two tracked-lift decrypts and the native round trips. A phone core running
+Hermes is several times slower again (see the #813 profiling method above for
+why Node understates this). **No physical-device wall-clock timing was
+captured for this change**; the acceptance criteria ask for force-stopped
+before/after samples in both storage modes on a physical Android device, and
+that remains outstanding — see the device procedure under the #809 section
+above for how to take them.
 
 Operational production checks are not automated test inventory:
 
