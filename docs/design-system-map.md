@@ -402,8 +402,9 @@ regresses after being met is `rebuilding` again, not a new state.
 
 | Element | Property | Value |
 |---|---|---|
-| Card | padding / gap | `24` / `8` |
-| `Recovery` label | fontSize / fontWeight | `12` / `700` |
+| Card | padding / paddingTop / gap | `24` / `14` / `4` |
+| `Recovery` header (`home-recovery-link`) | minHeight | `44` (no fixed `height`) |
+| | label fontSize / fontWeight | `12` / `700` |
 | | textTransform / letterSpacing | `uppercase` / `0.5` |
 | | color | `colors.text` |
 | Week eyebrow | fontSize / fontWeight / color | `11` / `700` / `colors.textMuted` |
@@ -420,16 +421,16 @@ regresses after being met is `rebuilding` again, not a new state.
 | Status line | fontSize / color | `13` / `colors.textMuted` (no fixed `lineHeight`) |
 | `Retry recovery` | minHeight | `44` (no fixed `height`) |
 | | label fontSize / fontWeight / color | `13` / `700` / `colors.accent` |
-| `Recovery` footer link | minHeight | `44` (no fixed `height`) |
-| | label fontSize / fontWeight / color | `13` / `600` / `colors.textMuted` |
 
 No element in the card declares a fixed `height` or `lineHeight`, so every line
-grows with the user's text size.
+grows with the user's text size; the `Recovery` handoff remains the card's only
+navigation press target and keeps its `minHeight: 44`.
 
-The footer handoff (`home-recovery-link`) is a quiet label + chevron row below
-the card's content — the same treatment as the 1K card's footer link — and
-targets the Analytics tab with no section id: section-level targeting exists
-for `weight` and `strength` only, and that vocabulary is owned by `App.js`.
+The header handoff (`home-recovery-link`) reuses the shared `sectionHeaderAction`
+treatment (label plus the plain SVG chevron) already used by `Exercise Progress`
+and `1K Progress`, and targets the Analytics tab with no section id: section-
+level targeting exists for `weight` and `strength` only, and that vocabulary is
+owned by `App.js`.
 
 ### Weekly Summary Hero Card
 
@@ -524,9 +525,10 @@ got the identical treatment for the same reason.
 
 | Element | Property | Value | Line |
 |---|---|---|---|
-| Card padding | `24` | | `1134` |
-| Card borderRadius | `24` | | `1134` |
-| Header label | fontSize / fontWeight | `12` / `800`, uppercase | |
+| Card padding / paddingTop / gap | `24` / `14` / `6` | | `1289` |
+| Card borderRadius | `24` | | `1289` |
+| Header (`home-one-k-link`) | minHeight | `44` (no fixed `height`) | |
+| | label fontSize / fontWeight | `12` / `800`, uppercase | |
 | | color | `colors.textMuted` | |
 | Hero total value | fontSize | `48` (`HeroMetric.hero`) | `1153` |
 | | fontWeight | `900` (`HeroMetric.hero`) | `1153` |
@@ -546,8 +548,6 @@ got the identical treatment for the same reason.
 | | color | `colors.textMuted` | `1199` |
 | Breakdown dividers | borderWidth | `1` | `1187` |
 | | color | `colors.cardBorder` | `1187` |
-| Footer link (`home-one-k-link`) | minHeight | `44` (no fixed `height`) | |
-| | label fontSize / fontWeight / color | `13` / `600` / `colors.textMuted` | |
 
 The vertical `borderLeft/Right` breakdown dividers (vs. Analytics' single
 `borderTop` above the whole row) stay an intentional structural deviation —
