@@ -234,7 +234,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   const {
     status, stale, message, active,
     comparisonStatus, weekNumber, weekNoteStatus, metCount, totalBaselineExercises,
-    categoryCounts, includedInNormalAnalytics,
+    categoryCounts,
   } = summary;
 
   // Verified, nothing is running, and the answer is CURRENT. This is the one
@@ -289,21 +289,16 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   addStat(categoryCounts.not_comparable, 'Not comparable');
   addStat(categoryCounts.added_during_recovery, 'Added during recovery');
 
-  // Inclusion stays silence-by-default: included says nothing, only the
-  // deviation is stated — and it is stated in words, never by a color or an
-  // icon a screen reader or a colorblind user would miss.
-  const exclusionNotice = includedInNormalAnalytics
-    ? null
-    : 'Not counted in your normal analytics.';
-
   // One announcement for the whole summary, assembled in reading order. The
   // visual hierarchy is a layout device; the spoken version has to carry the
-  // same facts as complete sentences.
+  // same facts as complete sentences. The inclusion clause (#820: dropped
+  // from Home's visible/spoken content — it stays stated on the Analytics
+  // Recovery section, which already reports inclusion per block) is no
+  // longer part of this summary.
   const accessibleContent = [
     weekLabel,
     heroValue ? `${heroValue} baseline exercises met` : fallbackStatus,
     ...stats.map(s => `${s.count} ${s.label.toLowerCase()}`),
-    exclusionNotice,
   ].filter(Boolean)
     .map(part => (/[.!?]$/.test(part) ? part : `${part}.`))
     .join(' ');
@@ -315,6 +310,12 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
       <Card style={styles.recoveryCard}>
         {active ? (
           <>
+            {/* Header row is the handoff (#820 revert): kept consistent with
+                Exercise Progress and every Analytics card in the same family
+                rather than the one-off footer link tried earlier. The dead
+                space that pattern originally cost is solved by tightening the
+                card's own top padding and gap, not by shrinking the 44dp
+                target every Home handoff is held to. */}
             <Pressable
               testID="home-recovery-link"
               onPress={() => onNavigate('Analytics', 'recovery')}
@@ -348,17 +349,17 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
                 <Text style={styles.recoveryFallbackLine}>{fallbackStatus}</Text>
               )}
               {stats.length > 0 ? (
-                <View testID="home-recovery-stats" style={styles.recoveryStatRow}>
-                  {stats.map(stat => (
-                    <View key={stat.label} style={styles.recoveryStat}>
-                      <Text style={styles.recoveryStatValue}>{stat.count}</Text>
-                      <Text style={styles.recoveryStatLabel}>{stat.label}</Text>
-                    </View>
-                  ))}
+                <View testID="home-recovery-stats" style={styles.recoveryStatsDivider}>
+                  <View style={styles.recoveryStatCols}>
+                    {stats.map(stat => (
+                      <View key={stat.label} style={styles.recoveryStatCol}>
+                        <View style={styles.recoveryStatDot} />
+                        <Text style={styles.recoveryStatValue}>{stat.count}</Text>
+                        <Text style={styles.recoveryStatLabel}>{stat.label}</Text>
+                      </View>
+                    ))}
+                  </View>
                 </View>
-              ) : null}
-              {exclusionNotice ? (
-                <Text style={styles.recoveryDetailLine}>{exclusionNotice}</Text>
               ) : null}
             </View>
           </>
@@ -795,10 +796,10 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
 
           {/* ══ TIER 3: 1k Club Progress ══ */}
           {/* Handoff to the Analytics strength section, which is where the 1K
-              detail lives (owner scope override on #717). The header row alone
-              is the press target — the total, progress bar, and per-lift grid
-              stay plain data — and it uses the same quiet chevron affordance as
-              the Exercise Progress header. */}
+              detail lives (owner scope override on #717). Header row is the
+              handoff (#820 revert), same family as Exercise Progress; the
+              dead space that pattern cost originally is solved by tightening
+              the card's own top padding and gap, not the 44dp target. */}
           <Card style={styles.oneKCard}>
             <Pressable
               testID="home-one-k-link"
@@ -1049,10 +1050,6 @@ const createStyles = (colors) => StyleSheet.create({
     // hugs its content and the label absorbs narrow widths by wrapping itself.
     maxWidth: '100%',
   },
-  // Cross-axis alignment is deliberately NOT in the shared style: it differs per
-  // card, and baking `flex-start` into the shared rule silently overrode the 1K
-  // card's centered layout and dragged its header to the left edge while the
-  // total and breakdown stayed centered.
   sectionHeaderActionStart: {
     alignSelf: 'flex-start',
   },
@@ -1133,9 +1130,13 @@ const createStyles = (colors) => StyleSheet.create({
   // Recovery status card (#757). Same padding as the other tiers; the label
   // reuses the uppercase section treatment already used by the Exercise
   // Progress and 1K headers, so the handoff reads as one of that family.
+  // Top padding and gap trimmed from the 24/8 default (#820): the header row
+  // is still a full 44dp target, so the fix for the dead space it left above
+  // the week eyebrow is tightening the space around it, not the target itself.
   recoveryCard: {
     padding: 24,
-    gap: 8,
+    paddingTop: 14,
+    gap: 4,
   },
   recoveryLabel: {
     fontSize: 12,
@@ -1177,16 +1178,40 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.text,
     marginTop: 2,
   },
-  recoveryStatRow: {
+  // Category breakdown (#820): reuses the Exercise Progress band's own
+  // dot/count/label column grammar instead of a bespoke tile system, so the
+  // two summary rows in this hero card read as one visual language.
+  recoveryStatsDivider: {
+    borderTopWidth: 1,
+    borderTopColor: colors.cardBorder,
+    paddingTop: 14,
+    marginTop: 12,
+  },
+  recoveryStatCols: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    columnGap: 20,
-    rowGap: 8,
-    marginTop: 10,
+    rowGap: 12,
+    columnGap: 16,
   },
-  recoveryStat: {
-    // No fixed width: an enlarged label wraps the row instead of clipping.
+  // Unlike classifCol's short fixed labels (Progressing/Steady/Regressing),
+  // a category label here can run to "Added during recovery" — long enough
+  // that even alone on its own wrapped row it can exceed the card's width at
+  // enlarged accessibility text sizes. flexShrink lets the column compress
+  // below its own content width so the label wraps instead of overflowing.
+  recoveryStatCol: {
+    flexGrow: 1,
     flexShrink: 1,
+    flexBasis: 'auto',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 5,
+  },
+  recoveryStatDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.accent,
+    opacity: 0.55,
   },
   recoveryStatValue: {
     fontSize: 18,
@@ -1197,14 +1222,9 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: colors.textMuted,
+    textAlign: 'center',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-  },
-  recoveryDetailLine: {
-    fontSize: 13,
-    color: colors.textMuted,
-    // No fixed lineHeight: an enlarged line must grow its own box.
-    marginTop: 2,
   },
   recoveryStatusLine: {
     fontSize: 13,
@@ -1270,8 +1290,13 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '700',
     color: colors.textMuted,
   },
+  // Top padding and gap trimmed from the 24/10 default (#820): the header
+  // row is still a full 44dp target, so the fix for the dead space it left
+  // above the hero total is tightening the space around it, not the target.
   oneKCard: {
     padding: 24,
+    paddingTop: 14,
+    gap: 6,
     alignItems: 'center',
   },
   oneKLabel: {

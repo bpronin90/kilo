@@ -351,14 +351,22 @@ Copy for the three non-ready conditions is the recovery state contract's own
 describe the same condition differently, and `Retry recovery` is the exact
 control name that copy tells the user to tap (ui-design-rules §12).
 
-**Active-block content (#779/#782, redesigned #803).** The active branch derives
-the latest live week through the same `deriveRecoveryComparison` engine
-Analytics uses (`AnalyticsRecoverySection`) — no second calculation, no invented
-percentage or pace. The facts are the ones #779 approved; #803 stopped
-presenting them as prose and made each one independently scannable. Header, then
-one analytics region (`home-recovery-analytics`, a single `accessible` node), in
-this order:
+**Active-block content (#779/#782, redesigned #803, condensed #820).** The
+active branch derives the latest live week through the same
+`deriveRecoveryComparison` engine Analytics uses (`AnalyticsRecoverySection`) —
+no second calculation, no invented percentage or pace. The facts are the ones
+#779 approved; #803 stopped presenting them as prose and made each one
+independently scannable; #820 dropped the card to Goal/1K-card density and gave
+its category breakdown the same grammar the hero card's own Exercise Progress
+band uses, instead of a bespoke tile system. Identity label, then one analytics
+region (`home-recovery-analytics`, a single `accessible` node), in this order:
 
+- **`Recovery` header** — the identity label and the `Recovery` handoff in one
+  row (ui-design-rules.md §13), same family as Exercise Progress and the 1K
+  card. A footer-link split was tried and reverted: it broke the shared
+  header-is-the-handoff pattern for one card without applying it to the
+  others. The dead space that pattern originally left above the week eyebrow
+  is solved by trimming the card's own top padding and gap instead.
 - **Week eyebrow** — `Week N`, the micro-label treatment. Omitted when no week
   exists (`Baseline captured. No week logged yet.`): there is nothing to name,
   and `Week 1` would be invented.
@@ -368,28 +376,39 @@ this order:
   fallback prints no count at all rather than `0 of 0`. Baseline
   unavailable/unsupported takes precedence over a missing/unreadable note,
   since it is a property of the block, not of any one week.
-- **Category tiles** (`home-recovery-stats`) — one value-over-label tile per
+- **Category columns** (`home-recovery-stats`) — one dot/count/label column per
   **nonzero** `rebuilding` / `not reintroduced` / `not comparable` /
   `added during recovery` count, in that order, wrapping rather than clipping.
-  A zero category is absent, not a `0` tile.
-- **Exclusion clause** — `Not counted in your normal analytics.` when
-  `include_in_normal_analytics !== true`. Silence-by-default: included says
-  nothing. Stated in words, never by color or icon alone.
+  A zero category is absent, not a `0` column. Reuses the visual grammar (dot,
+  bold count, uppercase muted label) the hero card's Exercise Progress band
+  already established, behind a `cardBorder` divider — but `flexShrink: 1`
+  where `classifCol` uses `0`: the classification labels are short enough to
+  always fit their wrapped column, while a category label can run to "Added
+  during recovery," long enough to still overflow a full-width column at
+  enlarged accessibility text, so this column has to compress and let the
+  label itself wrap.
 - **Stale message** — the existing `RECOVERY_STALE_MESSAGE`, only when stale.
 
-The region carries one composed `accessibilityLabel` assembling the same facts
-as complete sentences in reading order (`Week 1. 1 of 2 baseline exercises met.
-1 rebuilding. Not counted in your normal analytics.`), so the layout is a
-visual device only — separate value/label nodes would otherwise read as
-unrelated fragments.
+**Dropped from Home (#820):** the exclusion clause (`Not counted in your
+normal analytics.`) no longer renders here or in the composed
+`accessibilityLabel` — inclusion state stays visible on the Analytics Recovery
+section, which already states it per block, so Home shows the result and the
+breakdown without duplicating analytics-scope detail (same compact-summary/
+detail-owner split the 1K card already uses for its chart and mapping).
+
+The region carries one composed `accessibilityLabel` assembling the remaining
+facts as complete sentences in reading order (`Week 1. 1 of 2 baseline
+exercises met. 1 rebuilding.`), so the layout is a visual device only —
+separate value/label nodes would otherwise read as unrelated fragments.
 
 No `on track`, percentage, prediction, or medical claim; a lift that
 regresses after being met is `rebuilding` again, not a new state.
 
 | Element | Property | Value |
 |---|---|---|
-| Card | padding / gap | `24` / `8` |
-| `Recovery` label | fontSize / fontWeight | `12` / `700` |
+| Card | padding / paddingTop / gap | `24` / `14` / `4` |
+| `Recovery` header (`home-recovery-link`) | minHeight | `44` (no fixed `height`) |
+| | label fontSize / fontWeight | `12` / `700` |
 | | textTransform / letterSpacing | `uppercase` / `0.5` |
 | | color | `colors.text` |
 | Week eyebrow | fontSize / fontWeight / color | `11` / `700` / `colors.textMuted` |
@@ -397,22 +416,26 @@ regresses after being met is `rebuilding` again, not a new state.
 | Result figure | style / color | `HeroMetric.statSecondary` (24/900) / `colors.accent` |
 | Result caption | fontSize / color | `13` / `colors.textMuted` |
 | Fallback status | fontSize / fontWeight / color | `16` / `700` / `colors.text` |
-| Tile row | flexWrap / columnGap / rowGap / marginTop | `wrap` / `20` / `8` / `10` |
-| Tile value | fontSize / fontWeight / color | `18` / `700` / `colors.text` |
-| Tile label | fontSize / fontWeight / color | `11` / `600` / `colors.textMuted` |
+| Category divider | borderTopWidth / color / paddingTop / marginTop | `1` / `colors.cardBorder` / `14` / `12` |
+| Category columns | flexWrap / columnGap / rowGap | `wrap` / `16` / `12` |
+| Category dot | size / color | `8x8` circle / `colors.accent` at `0.55` opacity |
+| Category count | fontSize / fontWeight / color | `18` / `700` / `colors.text` |
+| Category label | fontSize / fontWeight / color | `11` / `600` / `colors.textMuted` |
 | | textTransform / letterSpacing | `uppercase` / `0.5` |
-| Detail + status lines | fontSize / color | `13` / `colors.textMuted` (no fixed `lineHeight`) |
+| Status line | fontSize / color | `13` / `colors.textMuted` (no fixed `lineHeight`) |
 | `Retry recovery` | minHeight | `44` (no fixed `height`) |
 | | label fontSize / fontWeight / color | `13` / `700` / `colors.accent` |
 
 No element in the card declares a fixed `height` or `lineHeight`, so every line
 grows with the user's text size; the `Recovery` handoff remains the card's only
-press target and keeps its `minHeight: 44`.
+navigation press target and keeps its `minHeight: 44`.
 
-The header handoff reuses the shared `sectionHeaderAction` treatment (label plus
-the plain SVG chevron) already used by `Exercise Progress` and `1K Progress`, and
-targets the Analytics tab with no section id: section-level targeting exists for
-`weight` and `strength` only, and that vocabulary is owned by `App.js`.
+The header handoff (`home-recovery-link`) reuses the shared `sectionHeaderAction`
+treatment (label plus the plain SVG chevron) already used by `Exercise Progress`
+and `1K Progress`, and targets the `recovery` section of the Analytics tab
+(`onNavigate('Analytics', 'recovery')`) — the Recovery section itself, not just
+the tab that contains it, the same section-id vocabulary `weight` and `strength`
+already use and that is owned by `App.js`.
 
 ### Weekly Summary Hero Card
 
@@ -485,21 +508,33 @@ targets the Analytics tab with no section id: section-level targeting exists for
 
 ### 1K Club Card (Home)
 
-Home is the **compact-summary** treatment (#763): the header row is the tap
-target to Analytics strength, and the breakdown is plain data (no chart,
-mapping, or explanation — those stay Analytics-owned). Progress bar, unit
-suffix, and per-lift value/label typography are normalized against the
-Analytics owner card below. The hero total itself spreads `HeroMetric.hero`
+Home is the **compact-summary** treatment (#763): the breakdown is plain data
+(no chart, mapping, or explanation — those stay Analytics-owned). Progress
+bar, unit suffix, and per-lift value/label typography are normalized against
+the Analytics owner card below. The hero total itself spreads `HeroMetric.hero`
 just like Analytics' — #763 gave it a smaller `32`/`800` override to signal
 the compact-vs-owner distinction, but that read as a visual demotion of a
 primary progress summary, so #771 restored the shared hero scale; the
-compact-summary role is now carried by scope (no chart/mapping/explanation)
-and the quiet handoff chevron, not a shrunken total.
+compact-summary role is now carried by scope (no chart/mapping/explanation),
+not a shrunken total.
+
+**Header stays the handoff (#820).** The 44dp header tap-target box, stacked
+on top of the card's `24` padding, left ~78px of empty space before the hero
+number the card exists to show. A footer-link split (moving the handoff below
+the grid) was tried and reverted — it broke the header-is-the-handoff pattern
+shared with Exercise Progress and Analytics for one card without applying it
+to the others. The fix is instead a trimmed card top padding (`24` → `14`) and
+`gap` (`10` → `6`) around the still-44dp header, so the space shrinks without
+touching the touch target every Home handoff is held to. The Recovery card
+got the identical treatment for the same reason.
 
 | Element | Property | Value | Line |
 |---|---|---|---|
-| Card padding | `24` | | `1134` |
-| Card borderRadius | `24` | | `1134` |
+| Card padding / paddingTop / gap | `24` / `14` / `6` | | `1289` |
+| Card borderRadius | `24` | | `1289` |
+| Header (`home-one-k-link`) | minHeight | `44` (no fixed `height`) | |
+| | label fontSize / fontWeight | `12` / `800`, uppercase | |
+| | color | `colors.textMuted` | |
 | Hero total value | fontSize | `48` (`HeroMetric.hero`) | `1153` |
 | | fontWeight | `900` (`HeroMetric.hero`) | `1153` |
 | | color | `colors.accent` lerped toward `colors.success` as progress nears 1000 (inline override, always applied — `oneKHeroValue`'s own `colors.text` is never seen, `729`) | `1153` |
@@ -958,10 +993,10 @@ Big 3 mapping, calculation explanation, plate calculator). #763 gave Home's
 hero total its own smaller `32`/`800` override to signal that hierarchy, but
 that read as a visual demotion of a primary progress summary — #771 restored
 the pre-#763 scale so the total spreads `HeroMetric.hero` (`48`/`900`) exactly
-like Analytics' owner card. The header row's press target (a plain, quiet
-chevron) still marks Home as a handoff rather than the destination, so the
-compact-vs-owner distinction now lives in scope and ownership, not typographic
-scale. Everything that plays a supporting role — progress track, unit suffix,
+like Analytics' owner card. A plain, quiet chevron in the card's header still
+marks Home as a handoff rather than the destination, so the compact-vs-owner
+distinction lives in scope and ownership, not typographic scale. Everything
+that plays a supporting role — progress track, unit suffix,
 and per-lift breakdown typography — stays normalized so the two surfaces read
 as one family.
 
