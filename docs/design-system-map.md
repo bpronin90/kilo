@@ -379,10 +379,14 @@ region (`home-recovery-analytics`, a single `accessible` node), in this order:
 - **Category columns** (`home-recovery-stats`) — one dot/count/label column per
   **nonzero** `rebuilding` / `not reintroduced` / `not comparable` /
   `added during recovery` count, in that order, wrapping rather than clipping.
-  A zero category is absent, not a `0` column. Reuses the exact
-  `classifRow`/`classifCol` grammar (dot, bold count, uppercase muted label)
-  the hero card's Exercise Progress band already established, behind a
-  `cardBorder` divider.
+  A zero category is absent, not a `0` column. Reuses the visual grammar (dot,
+  bold count, uppercase muted label) the hero card's Exercise Progress band
+  already established, behind a `cardBorder` divider — but `flexShrink: 1`
+  where `classifCol` uses `0`: the classification labels are short enough to
+  always fit their wrapped column, while a category label can run to "Added
+  during recovery," long enough to still overflow a full-width column at
+  enlarged accessibility text, so this column has to compress and let the
+  label itself wrap.
 - **Stale message** — the existing `RECOVERY_STALE_MESSAGE`, only when stale.
 
 **Dropped from Home (#820):** the exclusion clause (`Not counted in your

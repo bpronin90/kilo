@@ -1193,10 +1193,16 @@ const createStyles = (colors) => StyleSheet.create({
     rowGap: 12,
     columnGap: 16,
   },
+  // Unlike classifCol's short fixed labels (Progressing/Steady/Regressing),
+  // a category label here can run to "Added during recovery" — long enough
+  // that even alone on its own wrapped row it can exceed the card's width at
+  // enlarged accessibility text sizes. flexShrink lets the column compress
+  // below its own content width so the label wraps instead of overflowing.
   recoveryStatCol: {
     flexGrow: 1,
-    flexShrink: 0,
+    flexShrink: 1,
     flexBasis: 'auto',
+    minWidth: 0,
     alignItems: 'center',
     gap: 5,
   },
