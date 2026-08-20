@@ -14,7 +14,7 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Alert } from '../lib/platformAlert';
-import { Card, SectionTitle } from './UI';
+import { Card, Button, SectionTitle } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { findActiveBlock, orderedLiveWeeks } from '../lib/data/recoveryBlocks';
 import {
@@ -58,6 +58,13 @@ export function LogRecoverySection({
   viewingHasABWeeks = false,
   viewingEffectiveWeek = null,
   onToggleViewingWeek,
+  // Opens the shared note editor on the currently-viewed note (#823) —
+  // `otherEditor.handleEditViewedNote`, which takes no argument and reads
+  // off the same shared viewing state this card renders from, so the editor
+  // opens on whichever A/B week the user was actually looking at rather than
+  // the note's persisted default. So a recovery week's note is no longer the
+  // one note viewer in this tab with no way back into editing.
+  onEditNote,
   onCompleteWeek,
   onOpenAddWeek,
   onCompleteBlock,
@@ -416,15 +423,15 @@ export function LogRecoverySection({
                           dayGroups={viewingNoteDayGroups}
                           emptyText="No exercises to display."
                         />
-                        {/* The same Week A/B control the non-current routine
-                            card carries (#711), in its existing pill form and
-                            with the exact role/label/selected state it has
-                            there — it changes which week you are READING, not a
-                            routine-lifecycle action. It is the only thing that
-                            makes the other half of an A/B recovery-week note
-                            reachable from this card. */}
-                        {viewingHasABWeeks && (
-                          <View style={styles.weekNoteActions}>
+                        <View style={styles.weekNoteActions}>
+                          {/* The same Week A/B control the non-current routine
+                              card carries (#711), in its existing pill form and
+                              with the exact role/label/selected state it has
+                              there — it changes which week you are READING, not a
+                              routine-lifecycle action. It is the only thing that
+                              makes the other half of an A/B recovery-week note
+                              reachable from this card. */}
+                          {viewingHasABWeeks && (
                             <Pressable
                               onPress={() => onToggleViewingWeek?.()}
                               style={styles.inlineSwitchButton}
@@ -437,8 +444,30 @@ export function LogRecoverySection({
                                 Week {viewingEffectiveWeek === 'B' ? 'A' : 'B'}
                               </Text>
                             </Pressable>
-                          </View>
-                        )}
+                          )}
+                          {/* Every other note viewer in this tab (deload
+                              record, prior routines) already has an explicit
+                              Edit control — this one didn't (#823 audit
+                              finding 3), so reading a recovery week's note had
+                              no path back into editing it. `onEditNote` takes
+                              no argument on purpose: it is
+                              `otherEditor.handleEditViewedNote`, which reads
+                              off the same shared `viewingNote`/
+                              `viewingEffectiveWeek` state this card already
+                              renders from (`isViewingThisNote` guarantees it
+                              matches `linkedNote` here) — that is what makes
+                              the editor open on whichever A/B half the user
+                              was actually looking at, instead of always
+                              reopening on the note's persisted default week. */}
+                          {linkedNote && (
+                            <Button
+                              onPress={() => onEditNote?.()}
+                              title="Edit"
+                              style={styles.inlineSwitchButton}
+                              textStyle={styles.inlineSwitchButtonText}
+                            />
+                          )}
+                        </View>
                       </View>
                     )}
                   </View>

@@ -281,8 +281,14 @@ owner states the ownership pause is lifted.
   occasional actions, reached by the expand-on-tap disclosure the app already
   ships), or a single dedicated action strip directly under the header (for
   actions needed every session). Do not use both for the same card.
-- **A collapsed list shows zero buttons.** Scanning a list of records is a
-  reading task; nothing in it should be pressable except the records themselves.
+- **A collapsed list shows zero buttons, with one narrow exception (#756).**
+  Scanning a list of records is a reading task; nothing in it should be
+  pressable except the records themselves — except a single compact,
+  icon-only action for something common enough that opening the row first
+  would cost an everyday tap (e.g. `Set as current routine` on a collapsed
+  routine row, `+ New routine` in the panel header). Anything less frequent
+  than that stays inside the row's own expand-on-tap body. See
+  `LogPreviousRoutines.js` for the reference implementation.
 - **Place a control by frequency, not by convenience.** An action performed once
   per training block does not belong on every card. If N cards each open the
   same modal, and that modal can already choose its own subject, the N entry

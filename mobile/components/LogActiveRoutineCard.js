@@ -121,6 +121,7 @@ export function LogActiveRoutineCard({
                   <Pressable
                     onPress={(e) => { e.stopPropagation(); handleUnskipWeek(); }}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={styles.skipWeekButton}
                     accessibilityLabel="Remove skip"
                     accessibilityRole="button"
                   >
@@ -135,6 +136,7 @@ export function LogActiveRoutineCard({
                   <Pressable
                     onPress={(e) => { e.stopPropagation(); handleSkipWeek(); }}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={styles.skipWeekButton}
                     accessibilityLabel="Skip week"
                     accessibilityRole="button"
                   >
@@ -270,8 +272,16 @@ const createStyles = (colors) => StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
   },
+  // 44dp floor and a text size matching the pills beside it (#823): this was
+  // previously a bare Pressable sized only by its 11px text, noticeably
+  // smaller and easier to mis-tap than Edit/Week A-B in the same row.
+  skipWeekButton: {
+    minHeight: 44,
+    justifyContent: 'center',
+    flexShrink: 1,
+  },
   skipWeekText: {
-    fontSize: 11,
+    fontSize: 12,
     color: colors.textMuted,
   },
   skipWeekStatusText: {

@@ -1,17 +1,23 @@
-// Routine management (#724): the non-current routines and every routine/recovery
-// management action now live inside a collapsed-by-default disclosure so the
-// active routine stays the dominant Log surface. Collapsed, the section shows
-// a count + latest-routine summary, the shared chevron, and (#756) a compact
-// icon-only `New routine` affordance in the header itself — creating a routine
-// is common enough that it must not require opening the disclosure first.
-// Expanded, it renders the routine cards (#711 information hierarchy: each
-// card's header carries identity only; a compact `Set as current routine` icon
-// sits on every collapsed row (#756) so switching never requires opening the
-// row and scrolling to its body; Week A/B, the full Set as current, Edit, and
-// Delete stay in that row's own expand-on-tap body) plus `Start recovery
-// block`, which remains gated behind expansion (unchanged eligibility/locking).
-// The disclosure's open/closed state is owned by LogScreen (#775) — see the
-// `expanded`/`onToggleExpanded` props below.
+// Routine management (#724, flattened #823): the non-current routines and
+// their management actions live inside a collapsed-by-default disclosure so
+// the active routine stays the dominant Log surface. Collapsed, the section
+// shows a count + latest-routine summary, the shared chevron, and (#756) a
+// compact icon-only `New routine` affordance in the header itself — creating
+// a routine is common enough that it must not require opening the disclosure
+// first. Expanded, it renders the routine cards (#711 information hierarchy:
+// each card's header carries identity only; a compact `Set as current
+// routine` icon sits on every collapsed row (#756) so switching never
+// requires opening the row and scrolling to its body; Week A/B, the full Set
+// as current, Edit, and Delete stay in that row's own expand-on-tap body).
+// `Start recovery block` no longer lives here (#823) — it moved to a
+// persistent control under the current routine card, since gating it behind
+// this disclosure meant the one way to see it required opening the exact
+// panel this section is deliberately flattened out of. The disclosure's
+// open/closed state is owned by LogScreen (#775) — see the
+// `expanded`/`onToggleExpanded` props below. The disclosure no longer sits
+// inside a bordered/radius panel (#823): the header and expanded rows render
+// as a flat list matching the rest of the Routine tab, not a boxed-off
+// sub-section.
 import React, { useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -68,16 +74,6 @@ export function LogPreviousRoutines({
   handleDeleteRoutine,
   handleCreateRoutine,
   recoveryWeekNumberByNoteId = {},
-  // The one relocated Recovery entry point (#724). `showRecoveryStart` is the
-  // full startability predicate decided by LogScreen from the shared
-  // authoritative Recovery state: no active block, verified, not stale, an
-  // eligible baseline, AND no pending/in-flight action or mutation lock — the
-  // contract requires the control ABSENT (not merely disabled) whenever a block
-  // cannot be started. The callback takes no subject — RecoveryBlockStartModal
-  // picks its own baseline and Week 1 — and the precondition is rechecked at
-  // confirm.
-  onStartRecoveryBlock,
-  showRecoveryStart = false,
   // The disclosure is CONTROLLED by LogScreen (#775). Routine and Deload are
   // mutually exclusive branches, so this component unmounts on every view
   // switch; local state made a user's collapse choice die with the unmount and
@@ -308,8 +304,7 @@ export function LogPreviousRoutines({
                         onPress={() => viewingNote && handleDeleteRoutine(viewingNoteId, viewingNote.title || 'Untitled Routine', false)}
                         title="Delete routine"
                         accessibilityLabel={`Delete routine ${viewingNote?.title || 'Untitled Routine'}`}
-                        style={styles.deleteButton}
-                        textStyle={styles.deleteButtonText}
+                        tone="danger"
                       />
                     </View>
                   </>
@@ -318,19 +313,6 @@ export function LogPreviousRoutines({
               );
             })}
 
-            {/* The single `Start recovery block` entry point (#724). Rendered
-                only when a block can actually be started right now (LogScreen
-                folds the pending/busy/mutation lock into `showRecoveryStart`),
-                and absent otherwise — so it is reachable only by opening this
-                disclosure, and never shown as a dead or locked control. */}
-            {showRecoveryStart && (
-              <Button
-                onPress={onStartRecoveryBlock}
-                title="Start recovery block"
-                style={styles.recoveryStartButton}
-                textStyle={styles.recoveryStartButtonText}
-              />
-            )}
             <Button
               onPress={handleCreateRoutine}
               title="+ New routine"
@@ -349,28 +331,21 @@ const createStyles = (colors) => StyleSheet.create({
     marginTop: 4,
     gap: 12,
   },
-  // Collapse panel (#724), mirroring the Recovery History panel on this same
-  // screen: radius 24, 1px border, clipped, with a `subtleBg` header row that is
-  // the whole-header press target and the shared MaterialIcons chevron.
-  panel: {
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    overflow: 'hidden',
-  },
+  // No enclosing bordered/radius panel (#823) — this used to mirror the
+  // Recovery History panel's chrome; the section is now a flat list, matching
+  // the rest of the Routine tab.
+  panel: {},
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 4,
     minHeight: 44,
-    backgroundColor: colors.subtleBg,
   },
   headerBordered: {
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: colors.divider,
   },
   // The disclosure toggle (#756): a sibling of the New Note and chevron
   // controls below, not their parent — a nested Pressable would be grouped
@@ -418,7 +393,7 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.text,
   },
   body: {
-    padding: 16,
+    paddingTop: 12,
     gap: 12,
   },
   otherNoteCard: {
@@ -523,26 +498,6 @@ const createStyles = (colors) => StyleSheet.create({
   },
   switchButtonText: {
     color: colors.accent,
-  },
-  deleteButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: colors.error,
-  },
-  deleteButtonText: {
-    color: colors.error,
-  },
-  // The relocated recovery entry point keeps the accent-filled primary look it
-  // had in LogRecoverySection. It is only ever rendered when live (the lock is
-  // folded into visibility upstream), so it carries no disabled variant; the
-  // authoritative precondition is rechecked at confirm.
-  recoveryStartButton: {
-    backgroundColor: colors.accent,
-    borderWidth: 1,
-    borderColor: colors.accent,
-  },
-  recoveryStartButtonText: {
-    color: colors.onAccent,
   },
   createButton: {
     backgroundColor: 'transparent',

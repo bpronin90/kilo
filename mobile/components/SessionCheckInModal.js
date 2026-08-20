@@ -147,39 +147,6 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
     }
   };
 
-  const handleDismiss = async () => {
-    if (isEdit || !checkInData || !currentId) { onClose(); return; }
-    if (isSaving) return;
-    setIsSaving(true);
-    setSaveError(null);
-    try {
-      const prevCheckins = currentNote?.session_checkins || {};
-      const result = await update(currentId, {
-        session_checkins: {
-          ...prevCheckins,
-          [checkInData.sessionIndex]: {
-            status: null,
-            reasons: [],
-            flagged: checkInData.flagged,
-            detectors: checkInData.detectors,
-            exercises_skipped: checkInData.metrics.exercises_skipped,
-            volume_decline_pct: checkInData.metrics.volume_decline_pct,
-            responded_at: new Date().toISOString(),
-          },
-        },
-      });
-      if (result === false) {
-        setSaveError('Could not dismiss — please try again.');
-        return;
-      }
-      onClose();
-    } catch (e) {
-      setSaveError('Could not dismiss — please try again.');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   if (!checkInData) return null;
 
   const title = deriveTitle(checkInData.detectors, checkInData.flagged);
@@ -218,8 +185,14 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
               <Text style={styles.title}>{title}</Text>
               <Text style={styles.subtitle}>{CHECKIN_SUBTITLE}</Text>
             </View>
+            {/* Closing here defers, exactly like tapping outside the sheet or
+                pressing Android back (both wired to the same `onClose`): it
+                never writes a permanent "responded" record, so any answers
+                selected so far are simply not saved and the check-in can
+                still be asked next time. The only path that ever suppresses
+                a session permanently is completing the flow via `Done`. */}
             <Pressable
-              onPress={handleDismiss}
+              onPress={onClose}
               hitSlop={12}
               style={styles.closeBtn}
               disabled={isSaving}
