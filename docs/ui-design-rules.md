@@ -300,3 +300,24 @@ Anti-pattern this replaces: a header row where a `flex: 1` title column competes
 with an unbounded action container, so the title collapses or truncates to make
 room for controls that were never everyday actions (#709 Stage 2 §5 Issue B;
 contained in #710, removed in #711).
+
+## 14. Destructive actions: button tone and the Danger Zone container
+
+- **Irreversible/destructive actions use `Button tone="danger"`**
+  (`mobile/components/UI.js`): transparent fill, a `1.5px` `colors.error`
+  border, and `colors.error` label text, instead of the shared Button's
+  default solid fill. This is a visual hierarchy signal in addition to
+  wording — never rely on color alone (the label must still state the
+  consequence, e.g. "Delete Account", not just "Delete"). Routine actions
+  (Sign Out, Export, Import) keep the default tone even when they open a
+  confirmation.
+- **Group irreversible actions in a Danger Zone container**, not loose among
+  routine controls: `backgroundColor: colors.errorSurface`, `borderWidth: 1`,
+  `borderColor: colors.error`, `borderRadius: 24`, `padding: 18`, `gap: 12`,
+  with a small heading (`fontSize: 12`, `fontWeight: '800'`,
+  `letterSpacing: 0.6`, uppercase, `colors.error`, "⚠ Danger Zone"). This is a
+  local `View` style per screen, not a shared `UI.js` primitive — only the
+  Button tone is factored out, since the container has no interactive
+  behavior of its own. See `AccountScreen.js` (Delete Account) and
+  `BackupScreen.js` (Wipe Device Data) for the reference implementation
+  (#822).

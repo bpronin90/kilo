@@ -69,7 +69,7 @@ export function SectionTitle({ children }) {
   return <Text style={styles.sectionTitle}>{children}</Text>;
 }
 
-export function Button({ onPress, title, loadingTitle, loading, style, textStyle, disabled = false, accessibilityLabel }) {
+export function Button({ onPress, title, loadingTitle, loading, style, textStyle, disabled = false, accessibilityLabel, tone = 'default' }) {
   const styles = useThemedStyles(createStyles);
   // Disabled and loading are different states. Preserve the existing shorthand
   // for callers that provide loadingTitle alongside disabled={busy}, while
@@ -84,9 +84,9 @@ export function Button({ onPress, title, loadingTitle, loading, style, textStyle
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled, busy: showLoading }}
-      style={[styles.button, disabled ? styles.buttonDisabled : null, style]}
+      style={[styles.button, tone === 'danger' ? styles.buttonDanger : null, disabled ? styles.buttonDisabled : null, style]}
     >
-      <Text style={[styles.buttonText, textStyle]}>
+      <Text style={[styles.buttonText, tone === 'danger' ? styles.buttonTextDanger : null, textStyle]}>
         {showLoading ? (loadingTitle || 'Saving…') : title}
       </Text>
     </Pressable>
@@ -489,6 +489,18 @@ const createStyles = (colors) => StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.45,
+  },
+  // Destructive/irreversible actions: transparent fill with an error-colored
+  // outline and label, so severity reads as hierarchy (a visually distinct
+  // control) rather than color alone — the wording still states the
+  // consequence. See ui-design-rules.md #14.
+  buttonDanger: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: colors.error,
+  },
+  buttonTextDanger: {
+    color: colors.error,
   },
   // The pill is the palette `text`, so the label is the semantic contrasting
   // ink: light mode stays dark pill / light label, dark mode inverts to light

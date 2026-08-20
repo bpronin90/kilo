@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
-import { Share, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { Alert } from '../../lib/platformAlert';
-import { Button, SectionTitle } from '../../components/UI';
+import { Button } from '../../components/UI';
 import { useThemedStyles } from '../../theme/ThemeContext';
-import { LegalLinks } from './LegalLinks';
 
-// Server-side export and account deletion panel (Phase 5 / Task 13).
+// Account deletion panel (Phase 5 / Task 13; server export moved to Data &
+// Backup's Cloud section, issue #822 — Account is identity-only).
 //
-// Both actions call Edge Functions with the user's JWT. The Edge Functions hold
-// the service-role key server-side; no privileged credential is exposed here.
-// Deletion uses a two-step confirmation: the user must tap once to arm, then
-// confirm, reducing accidental destructive actions.
+// Calls the account-delete Edge Function with the user's JWT; the Edge
+// Function holds the service-role key server-side, so no privileged
+// credential is exposed here. Deletion uses a two-step confirmation: the user
+// must tap once to arm, then confirm, reducing accidental destructive
+// actions. Only ever rendered inside AccountScreen's Danger Zone container,
+// which supplies the heading.
 export function AccountLifecycle({ auth }) {
   const styles = useThemedStyles(createStyles);
   const [busy, setBusy] = useState(false);
@@ -27,24 +29,6 @@ export function AccountLifecycle({ auth }) {
       } else {
         setStatus(result?.error || 'Something went wrong.');
       }
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleServerExport = async () => {
-    setBusy(true);
-    setStatus('');
-    try {
-      const result = await auth.serverExport();
-      if (!result.ok) {
-        setStatus(result.error || 'Export failed.');
-        return;
-      }
-      await Share.share({ message: result.json });
-      setStatus('Account data exported.');
-    } catch {
-      setStatus('Export failed.');
     } finally {
       setBusy(false);
     }
@@ -84,27 +68,16 @@ export function AccountLifecycle({ auth }) {
 
   return (
     <View style={styles.accountBlock}>
-      <SectionTitle>Account Data</SectionTitle>
-
       <Text style={styles.accountNote}>
-        Export Account Data fetches what the server currently holds for your
-        account — not what is on this device. It may differ from your local
-        data if you have not recently synced. Deleting your account removes the
-        cloud copy. By default, the training history on this device is kept;
-        the confirmed wipe option below removes it too.
+        Deleting your account removes the cloud copy. By default, the training
+        history on this device is kept; the confirmed wipe option below
+        removes it too.
       </Text>
-
-      <Button
-        title="Export Account Data"
-        loadingTitle="Working…"
-        disabled={busy}
-        onPress={handleServerExport}
-        accessibilityLabel="Export account data"
-      />
 
       {!deleteArmed ? (
         <Button
           title="Delete Account"
+          tone="danger"
           disabled={busy}
           onPress={handleDeleteArm}
           accessibilityLabel="Delete account"
@@ -113,6 +86,7 @@ export function AccountLifecycle({ auth }) {
         <>
           <Button
             title="Confirm Delete Account — Keep Device Data"
+            tone="danger"
             loadingTitle="Working…"
             disabled={busy}
             onPress={() => handleDeleteConfirm(false)}
@@ -120,6 +94,7 @@ export function AccountLifecycle({ auth }) {
           />
           <Button
             title="Confirm Delete & Wipe Device Data"
+            tone="danger"
             loadingTitle="Working…"
             disabled={busy}
             onPress={() => handleDeleteConfirm(true)}
@@ -133,7 +108,6 @@ export function AccountLifecycle({ auth }) {
           {status}
         </Text>
       ) : null}
-      <LegalLinks />
     </View>
   );
 }
