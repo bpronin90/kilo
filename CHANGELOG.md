@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.110.0 - 2026-08-20
+
+- Issue #823: Recovery now gets its own tab on the Log screen (Recovery, Routine, Deload), shown only while a block is active. Starting a recovery block is now a persistent, always-visible control under the current routine card instead of being tucked inside the routine-management disclosure, and Previous Routines lost its enclosing bordered panel in favor of a flatter list. A recovery week's note can now be edited directly from the Recovery tab, closing the post-workout check-in prompt with the X button no longer discards your answers and silently stops future check-ins, the "Skip week"/"Remove skip" control now meets the app's touch-target size, save confirmations are announced to screen readers, and delete confirmations for routines and deload records now state plainly that they erase logged history and cannot be undone.
+
 ## 0.109.2 - 2026-08-20
 
 - Issue #831: Fixed sign in, sign up, sign out, password reset, and other account actions appearing to silently do nothing on a network hiccup - they now always show a readable error instead of the screen looking frozen.
