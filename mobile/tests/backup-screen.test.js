@@ -33,8 +33,74 @@ jest.mock('expo-file-system/legacy', () => ({
   },
 }));
 
+// The Cloud section (#822) mounts the real CloudSyncRecovery when signed in;
+// these mirror the mocks account-lifecycle-ui.test.js uses so it mounts
+// deterministically without hitting a real Supabase client.
+jest.mock('../storage/cloud/consent', () => {
+  const actual = jest.requireActual('../storage/cloud/consent');
+  return {
+    ...actual,
+    fetchConsentStatus: jest.fn().mockResolvedValue({ allowed: true, code: 'OK' }),
+    withdrawConsent: jest.fn().mockResolvedValue({ ok: true, status: 'deletion_pending' }),
+    requestHealthDataDeletion: jest.fn().mockResolvedValue({ ok: true }),
+    fetchActiveConsentRevision: jest.fn().mockResolvedValue({
+      catalog_revision: 1,
+      material_version: 1,
+      privacy_policy_url: 'https://example.invalid/privacy.html',
+    }),
+  };
+});
+
+jest.mock('../hooks/useEntries', () => ({
+  useSyncRecovery: () => mockSyncRecovery,
+  useCloudExport: () => ({ exportCloud: jest.fn() }),
+}));
+
+jest.mock('../storage/cloud/syncAdapter', () => ({
+  getPendingSyncIntent: () => mockPendingSyncIntent(),
+}));
+
+const mockScreenScrollTo = jest.fn();
+jest.mock('../components/ScreenShell', () => {
+  const RN = require('react-native');
+  const ReactActual = require('react');
+  return {
+    ScreenShell: ReactActual.forwardRef(({ children, onBack }, ref) => {
+      ReactActual.useImperativeHandle(ref, () => ({ scrollTo: mockScreenScrollTo }));
+      return ReactActual.createElement(
+        RN.View,
+        null,
+        onBack ? ReactActual.createElement(RN.Text, { onPress: onBack }, '← Back') : null,
+        children,
+      );
+    }),
+  };
+});
+
 // eslint-disable-next-line import/first
 import { StorageAccessFramework as SAF } from 'expo-file-system/legacy';
+// eslint-disable-next-line import/first
+import { CloudSyncRecovery } from '../screens/more/CloudSyncRecovery';
+
+let mockSyncRecovery;
+let mockPendingSyncIntent;
+
+function makeSyncRecovery({ bootstrapStatus = 'idle', syncStatus = 'idle' } = {}) {
+  return {
+    bootstrap: { status: bootstrapStatus, retryable: false },
+    sync: { status: syncStatus, retryable: false },
+    runBootstrap: jest.fn(),
+    runSync: jest.fn(),
+    retryBootstrap: jest.fn(),
+    retrySync: jest.fn(),
+  };
+}
+
+// Default `auth` shape for tests that don't care about the Cloud section: a
+// signed-out, unconfigured build, so the Cloud section renders its plain
+// "not configured" note and the Danger Zone's Wipe button works with no auth
+// call at all wired up.
+const DEFAULT_AUTH = { configured: false, signedIn: false, loading: false };
 
 // Capture the most recent Alert.alert invocation so tests can inspect/trigger
 // the confirm/cancel buttons it was given.
@@ -44,6 +110,9 @@ beforeEach(() => {
   jest.spyOn(Alert, 'alert').mockImplementation((title, message, buttons) => {
     lastAlert = { title, message, buttons };
   });
+  mockSyncRecovery = makeSyncRecovery();
+  mockPendingSyncIntent = jest.fn().mockResolvedValue({ hasPending: false });
+  mockScreenScrollTo.mockClear();
 });
 
 afterEach(() => {
@@ -72,6 +141,7 @@ function renderScreen(props = {}) {
         onBack: jest.fn(),
         onExport: jest.fn(),
         onImport: jest.fn().mockResolvedValue({ ok: true }),
+        auth: DEFAULT_AUTH,
         ...props,
       }),
     );
@@ -81,6 +151,15 @@ function renderScreen(props = {}) {
 
 function statusMatches(tree, pattern) {
   return pattern.test(JSON.stringify(tree.toJSON()));
+}
+
+// Lets a mounted CloudSyncRecovery's consent-fetch effect resolve before a
+// test interacts further, avoiding act() warnings from the async setConsent.
+async function flush() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
 }
 
 const VALID_JSON = JSON.stringify({ version: 1, entries: [] });
@@ -388,5 +467,111 @@ describe('BackupScreen export error propagation', () => {
     });
 
     expect(statusMatches(tree, /Export failed\./)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cloud section and Danger Zone (#822). Account is identity-only now;
+// CloudSyncRecovery, the server-held "Export Account Data" export, and the
+// device-wipe actions all consolidated into Data & Backup, split into a
+// clearly-labeled Cloud section and a Danger Zone.
+// ---------------------------------------------------------------------------
+
+describe('BackupScreen Cloud section', () => {
+  test('shows a plain note when cloud accounts are not configured', () => {
+    const tree = renderScreen({ auth: { configured: false } });
+
+    expect(statusMatches(tree, /Cloud accounts are not configured in this build\./)).toBe(true);
+    expect(tree.root.findAllByType(CloudSyncRecovery).length).toBe(0);
+  });
+
+  test('shows a sign-in CTA when configured but signed out, and it calls onGoToAccount', () => {
+    const onGoToAccount = jest.fn();
+    const tree = renderScreen({
+      auth: { configured: true, loading: false, signedIn: false },
+      onGoToAccount,
+    });
+
+    expect(statusMatches(tree, /Cloud backup is off\./)).toBe(true);
+    const cta = findButton(tree, 'Sign In / Create Account');
+    act(() => { cta.props.onPress(); });
+    expect(onGoToAccount).toHaveBeenCalledTimes(1);
+  });
+
+  test('renders nothing extra while the shell session is still loading', () => {
+    const tree = renderScreen({ auth: { configured: true, loading: true, signedIn: false } });
+
+    expect(statusMatches(tree, /Cloud backup is off\./)).toBe(false);
+    expect(statusMatches(tree, /Cloud accounts are not configured/)).toBe(false);
+  });
+
+  test('signed in: mounts CloudSyncRecovery and offers Export Account Data', async () => {
+    jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' });
+    const serverExport = jest.fn().mockResolvedValue({ ok: true, json: '{}' });
+    const tree = renderScreen({
+      auth: { configured: true, loading: false, signedIn: true, user: { id: 'u1', email: 'a@test.com' }, serverExport },
+    });
+
+    expect(tree.root.findByType(CloudSyncRecovery)).toBeTruthy();
+    await flush();
+
+    const exportBtn = findButton(tree, 'Export Account Data');
+    await act(async () => { await exportBtn.props.onPress(); });
+    expect(serverExport).toHaveBeenCalledTimes(1);
+    expect(statusMatches(tree, /Account data exported\./)).toBe(true);
+  });
+
+  test('signed in: CloudSyncRecovery consent-dismiss scrolls to the top through the shared ScreenShell ref', async () => {
+    const tree = renderScreen({
+      auth: { configured: true, loading: false, signedIn: true, user: { id: 'u1', email: 'a@test.com' } },
+    });
+    await flush();
+
+    const recovery = tree.root.findByType(CloudSyncRecovery);
+    act(() => { recovery.props.onConsentDismiss(); });
+
+    expect(mockScreenScrollTo).toHaveBeenCalledWith({ y: 0, animated: true });
+  });
+});
+
+describe('BackupScreen Danger Zone', () => {
+  test('Wipe Device Data works with no auth prop at all', async () => {
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        React.createElement(BackupScreen, { onBack: jest.fn(), onExport: jest.fn(), onImport: jest.fn() }),
+      );
+    });
+
+    const wipeBtn = findButton(tree, 'Wipe Device Data');
+    act(() => { wipeBtn.props.onPress(); });
+    expect(lastAlert.title).toBe('Wipe Device Data');
+    // No auth.wipeDeviceData exists; confirming must not throw.
+    await act(async () => { await alertButton('Wipe Device Data').onPress(); });
+  });
+
+  test('shows the retry label and warning when a prior wipe failed', () => {
+    const wipeDeviceData = jest.fn().mockResolvedValue({ ok: true });
+    const tree = renderScreen({ auth: { configured: false, deviceWipeRequired: true, wipeDeviceData } });
+
+    expect(tree.root.findByProps({ accessibilityLabel: 'Device wipe required' })).toBeTruthy();
+    const retryBtn = findButton(tree, 'Retry Device Data Wipe');
+    act(() => { retryBtn.props.onPress(); });
+    return act(async () => { await alertButton('Wipe Device Data').onPress(); }).then(() => {
+      expect(wipeDeviceData).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  test('Sign Out & Wipe Device Data only renders when signed in', () => {
+    const signedOut = renderScreen({ auth: { configured: true, loading: false, signedIn: false } });
+    expect(signedOut.root.findAllByProps({ accessibilityLabel: 'Sign out and wipe device data' }).length).toBe(0);
+
+    const signOut = jest.fn().mockResolvedValue({ ok: true });
+    const signedIn = renderScreen({
+      auth: { configured: true, loading: false, signedIn: true, user: { id: 'u1', email: 'a@test.com' }, signOut },
+    });
+    const wipeBtn = signedIn.root.findByProps({ accessibilityLabel: 'Sign out and wipe device data' });
+    act(() => { wipeBtn.props.onPress(); });
+    expect(lastAlert.title).toBe('Sign Out and Wipe Device Data');
   });
 });

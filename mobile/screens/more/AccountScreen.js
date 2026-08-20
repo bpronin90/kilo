@@ -7,7 +7,6 @@ import { Button, SectionTitle, useInputStyle } from '../../components/UI';
 import { Alert } from '../../lib/platformAlert';
 import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
 import { KILO_AUTH_REDIRECT } from '../../hooks/useAuthSession';
-import { CloudSyncRecovery } from './CloudSyncRecovery';
 import { AccountLifecycle } from './AccountLifecycle';
 import { LegalLinks } from './LegalLinks';
 import { SetNewPasswordScreen } from './SetNewPasswordScreen';
@@ -97,40 +96,6 @@ export function AccountScreen({ onBack, auth }) {
       }
     }
   });
-
-  const handleSignOutAndWipe = () => {
-    Alert.alert(
-      'Sign Out and Wipe Device Data',
-      'This signs out and permanently removes the training and health history stored on this device. The cloud copy is kept. Continue?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out & Wipe',
-          style: 'destructive',
-          onPress: () => run(() => auth.signOut({ wipeLocalData: true }).then((result) => (
-            result.ok ? { ok: true, message: 'Signed out and device data wiped.' } : result
-          ))),
-        },
-      ],
-    );
-  };
-
-  const handleDeviceWipe = () => {
-    Alert.alert(
-      'Wipe Device Data',
-      'This permanently removes the training and health history stored on this device. It does not require a cloud account and cannot be undone. Continue?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Wipe Device Data',
-          style: 'destructive',
-          onPress: () => run(() => auth.wipeDeviceData().then((result) => (
-            result.ok ? { ok: true, message: 'Device data wiped.' } : result
-          ))),
-        },
-      ],
-    );
-  };
 
   const handleResendConfirmation = () => runPasswordFlow(async (token) => {
     const result = await auth.resendSignupConfirmation(confirmationEmail, token);
@@ -225,7 +190,7 @@ export function AccountScreen({ onBack, auth }) {
   // recovery session (auth.passwordRecovery) and for a link that failed to
   // establish one (auth.recoveryError: expired or already-used).
   if (auth.configured && (auth.passwordRecovery || auth.recoveryError)) {
-    return <SetNewPasswordScreen auth={auth} onDone={() => {}} />;
+    return <SetNewPasswordScreen auth={auth} onDone={() => {}} onBack={onBack} />;
   }
 
   return (
@@ -242,12 +207,6 @@ export function AccountScreen({ onBack, auth }) {
             Cloud accounts are not configured in this build. The app continues to
             work fully offline with your local data.
           </Text>
-          <Button
-            title="Wipe Device Data"
-            disabled={busy}
-            onPress={handleDeviceWipe}
-            accessibilityLabel="Wipe device data without an account"
-          />
           <LegalLinks />
         </View>
       ) : auth.signedIn ? (
@@ -256,8 +215,7 @@ export function AccountScreen({ onBack, auth }) {
           <Text style={styles.accountNote}>
             Signed in as {auth.user?.email || 'your account'}. Your training
             history is the offline working copy on this device. An account keeps a
-            cloud copy in sync with it so you can continue on another device. Use
-            Cloud Sync below to keep this device and your account matched.
+            cloud copy in sync with it so you can continue on another device.
           </Text>
           <Button
             title="Sign Out"
@@ -265,17 +223,13 @@ export function AccountScreen({ onBack, auth }) {
             disabled={busy}
             onPress={() => run(() => auth.signOut().then((r) => (r.ok ? { ok: true, message: 'Signed out.' } : r)))}
           />
-          <Button
-            title="Sign Out & Wipe Device Data"
-            disabled={busy}
-            onPress={handleSignOutAndWipe}
-            accessibilityLabel="Sign out and wipe device data"
-          />
-          <CloudSyncRecovery
-            user={auth.user}
-            onConsentDismiss={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
-          />
-          <AccountLifecycle auth={auth} />
+          <View style={styles.dangerZone}>
+            <View style={styles.dangerZoneHeading}>
+              <Text style={styles.dangerZoneHeadingText}>⚠ Danger Zone</Text>
+            </View>
+            <AccountLifecycle auth={auth} />
+          </View>
+          <LegalLinks />
         </View>
       ) : auth.loading ? (
         // Configured but the initial session-restore probe is still in flight.
@@ -334,17 +288,6 @@ export function AccountScreen({ onBack, auth }) {
             on another device. Signing in by itself does not change or erase your
             local data.
           </Text>
-          {auth.deviceWipeRequired ? (
-            <Text style={styles.accountError} accessibilityLabel="Device wipe required">
-              Your account session ended, but device data could not be wiped. Retry before sharing this device.
-            </Text>
-          ) : null}
-          <Button
-            title={auth.deviceWipeRequired ? 'Retry Device Data Wipe' : 'Wipe Device Data'}
-            disabled={busy}
-            onPress={handleDeviceWipe}
-            accessibilityLabel="Wipe device data while signed out"
-          />
           <TextInput
             style={inputStyle}
             placeholder="Email"
@@ -457,14 +400,30 @@ const createStyles = (colors) => StyleSheet.create({
     lineHeight: 22,
     marginBottom: 12,
   },
-  accountError: {
-    fontSize: 14,
-    color: colors.error,
-    lineHeight: 20,
-  },
   accountStatus: {
     fontSize: 14,
     color: colors.textMuted,
     marginTop: 16,
+  },
+  // Irreversible-action container: error-tinted surface groups Delete Account
+  // apart from the routine Sign Out above it. See ui-design-rules.md #14.
+  dangerZone: {
+    backgroundColor: colors.errorSurface,
+    borderWidth: 1,
+    borderColor: colors.error,
+    borderRadius: 24,
+    padding: 18,
+    gap: 12,
+  },
+  dangerZoneHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dangerZoneHeadingText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: colors.error,
   },
 });

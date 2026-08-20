@@ -113,6 +113,8 @@ export function MoreScreen({
         onBack={() => setActiveView('menu')}
         onExport={onExport}
         onImport={onImport}
+        auth={auth}
+        onGoToAccount={() => setActiveView('account')}
       />
     );
   }
@@ -137,26 +139,32 @@ export function MoreScreen({
 
   return (
     <ScreenShell title="More" subtitle="Settings, help, and your data.">
-      <SectionTitle>Profile & Account</SectionTitle>
+      <SectionTitle>Preferences</SectionTitle>
       <View style={styles.list}>
         <Pressable style={styles.menuItem} onPress={() => setActiveView('profile')} accessibilityRole="button" accessibilityLabel="User Profile">
           <Text style={styles.menuItemText}>User Profile</Text>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
-        <Pressable style={styles.menuItem} onPress={() => setActiveView('account')} accessibilityRole="button" accessibilityLabel="Account">
-          <Text style={styles.menuItemText}>Account</Text>
-          <Text style={styles.menuItemChevron} accessible={false}>→</Text>
-        </Pressable>
-      </View>
-
-      <SectionTitle>Settings & Data</SectionTitle>
-      <View style={styles.list}>
         <Pressable style={styles.menuItem} onPress={() => setActiveView('settings')} accessibilityRole="button" accessibilityLabel="Settings">
           <Text style={styles.menuItemText}>Settings</Text>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
-        <Pressable style={styles.menuItem} onPress={() => setActiveView('backup')} accessibilityRole="button" accessibilityLabel="Data and Backup">
-          <Text style={styles.menuItemText}>Data & Backup</Text>
+      </View>
+
+      <SectionTitle>Account & Data</SectionTitle>
+      <View style={styles.list}>
+        <Pressable style={[styles.menuItem, styles.menuItemRisky]} onPress={() => setActiveView('account')} accessibilityRole="button" accessibilityLabel="Account">
+          <View style={styles.menuCopy}>
+            <Text style={styles.menuItemText}>Account</Text>
+            <Text style={styles.menuItemHelp}>Sign-in & cloud account</Text>
+          </View>
+          <Text style={styles.menuItemChevron} accessible={false}>→</Text>
+        </Pressable>
+        <Pressable style={[styles.menuItem, styles.menuItemRisky]} onPress={() => setActiveView('backup')} accessibilityRole="button" accessibilityLabel="Data and Backup">
+          <View style={styles.menuCopy}>
+            <Text style={styles.menuItemText}>Data & Backup</Text>
+            <Text style={styles.menuItemHelp}>Local & cloud backup</Text>
+          </View>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
       </View>
@@ -190,14 +198,29 @@ const createStyles = (colors) => StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.cardBorder,
   },
+  // Rows that lead to consequential (cloud, destructive) actions: a themed
+  // border tint signals risk before tapping in, alongside the subtitle copy.
+  menuItemRisky: {
+    borderColor: colors.error,
+  },
+  menuCopy: {
+    flex: 1,
+    gap: 4,
+  },
   menuItemText: {
     fontSize: 17,
     fontWeight: '600',
     color: colors.text,
   },
+  menuItemHelp: {
+    fontSize: 13,
+    color: colors.textMuted,
+  },
   menuItemChevron: {
     fontSize: 18,
     color: colors.textMuted,
     fontWeight: '700',
+    flexShrink: 0,
+    marginLeft: 12,
   },
 });

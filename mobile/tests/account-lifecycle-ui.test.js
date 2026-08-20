@@ -1,13 +1,15 @@
-// Account lifecycle UI tests (Phase 5 / Task 13 / issue #322, #330).
+// Account lifecycle UI tests (Phase 5 / Task 13 / issue #322, #330, #822).
 //
-// Covers the two new useAuthSession methods (serverExport, deleteAccount) and
-// the AccountLifecycle component's export + delete flows:
+// Covers the two useAuthSession methods (serverExport, deleteAccount — the
+// serverExport UI itself now lives in BackupScreen's Cloud section, see
+// tests/backup-screen.test.js) and AccountLifecycle's delete flow:
 //   - serverExport calls /functions/v1/account-export with the session JWT.
 //   - deleteAccount calls /functions/v1/account-delete, then clears the session.
 //   - Export errors surface the error message from the function response.
 //   - deleteAccount success results in a signed-out state.
 //   - No privileged key appears in any test path (service-role key is server-only).
-//   - AccountLifecycle renders Privacy Policy and Terms of Service links (issue #330).
+//   - AccountScreen's Signed-In view renders Privacy Policy and Terms of Service
+//     links (issue #330) below the Danger Zone container.
 
 import React from 'react';
 
@@ -422,31 +424,26 @@ describe('deleteAccount', () => {
 });
 
 // ---------------------------------------------------------------------------
-// AccountLifecycle privacy and terms links (issue #330)
+// Legal link placement in the Signed-In view (issue #330). LegalLinks moved
+// from AccountLifecycle to AccountScreen's signed-in block directly (#822),
+// since it sits below the Danger Zone container now, not inside it.
 // ---------------------------------------------------------------------------
 
-describe('AccountLifecycle legal link placements', () => {
-  function makeAuth() {
-    return {
-      serverExport: jest.fn().mockResolvedValue({ ok: true, json: '{}' }),
-      deleteAccount: jest.fn().mockResolvedValue({ ok: true }),
-    };
-  }
-
-  function renderLifecycle() {
+describe('AccountScreen legal link placements', () => {
+  function renderSignedIn() {
     let tree;
     act(() => {
-      tree = renderer.create(React.createElement(AccountLifecycle, { auth: makeAuth() }));
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(FAKE_SESSION) }));
     });
     return JSON.stringify(tree.toJSON());
   }
 
   test('renders Privacy Policy link', () => {
-    expect(renderLifecycle()).toMatch(/Privacy Policy/);
+    expect(renderSignedIn()).toMatch(/Privacy Policy/);
   });
 
   test('renders Terms of Service link', () => {
-    expect(renderLifecycle()).toMatch(/Terms of Service/);
+    expect(renderSignedIn()).toMatch(/Terms of Service/);
   });
 });
 
@@ -760,30 +757,18 @@ describe('AccountScreen OAuth Flow', () => {
     expect(tree.root.findByProps({ accessibilityLabel: 'Continue with GitHub' })).toBeTruthy();
   });
 
-  test('signed-out users can retry a failed device wipe without authenticating', async () => {
+  test('does not render device-wipe controls (moved to Data & Backup, #822)', () => {
     Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
-    const wipeDeviceData = jest.fn().mockResolvedValue({ ok: true });
-    const { Alert } = require('../lib/platformAlert');
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     let tree;
-    try {
-      act(() => {
-        tree = renderer.create(React.createElement(AccountScreen, {
-          onBack: jest.fn(),
-          auth: makeResolvedAuthProp(null, { deviceWipeRequired: true, wipeDeviceData }),
-        }));
-      });
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, {
+        onBack: jest.fn(),
+        auth: makeResolvedAuthProp(null, { deviceWipeRequired: true }),
+      }));
+    });
 
-      expect(tree.root.findByProps({ accessibilityLabel: 'Device wipe required' })).toBeTruthy();
-      const retry = tree.root.findByProps({ accessibilityLabel: 'Wipe device data while signed out' });
-      act(() => { retry.props.onPress(); });
-      const buttons = alertSpy.mock.calls[0][2];
-      const confirm = buttons.find((button) => button.text === 'Wipe Device Data');
-      await act(async () => { await confirm.onPress(); });
-      expect(wipeDeviceData).toHaveBeenCalledTimes(1);
-    } finally {
-      alertSpy.mockRestore();
-    }
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Device wipe required' }).length).toBe(0);
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Wipe device data' }).length).toBe(0);
   });
 
   test('renders the Signed-In view immediately when a resolved session is passed in (#366)', () => {
@@ -1193,7 +1178,10 @@ describe('AccountScreen CAPTCHA lifecycle', () => {
   });
 });
 
-describe('CloudSyncRecovery status summary', () => {
+// CloudSyncRecovery (status summary, consent, sync phases) moved to
+// BackupScreen's Cloud section (#822) — see tests/backup-screen.test.js for
+// its coverage. AccountScreen itself never renders it now, in any auth state.
+describe('AccountScreen does not render Cloud Sync', () => {
   let originalPlatformOS;
 
   beforeEach(() => {
@@ -1205,65 +1193,17 @@ describe('CloudSyncRecovery status summary', () => {
     Object.defineProperty(Platform, 'OS', { value: originalPlatformOS, configurable: true });
   });
 
-  test('AccountScreen returns Not now to the top through the shared ScreenShell ref', async () => {
+  test('signed-in users see no Cloud Sync panel on Account', () => {
     let tree;
-    await act(async () => {
-      tree = renderer.create(React.createElement(AccountScreen, {
-        onBack: jest.fn(),
-        auth: makeResolvedAuthProp(FAKE_SESSION),
-      }));
-    });
-
-    const recovery = tree.root.findByType(CloudSyncRecovery);
     act(() => {
-      recovery.props.onConsentDismiss();
-    });
-
-    expect(mockScreenScrollTo).toHaveBeenCalledWith({ y: 0, animated: true });
-  });
-
-  test('shows server acknowledgement only for a confirmed clean pass', async () => {
-    mockSyncRecovery = makeSyncRecovery({ syncStatus: 'complete' });
-
-    let tree;
-    await act(async () => {
       tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(FAKE_SESSION) }));
     });
-    await flush();
 
-    const summary = tree.root.findByProps({ accessibilityLabel: 'Cloud sync summary' });
-    expect(summary.props.children).toBe('Server acknowledged — up to date');
+    expect(tree.root.findAllByType(CloudSyncRecovery).length).toBe(0);
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Cloud sync summary' }).length).toBe(0);
   });
 
-  test('shows queued intent even after a prior confirmed pass', async () => {
-    mockSyncRecovery = makeSyncRecovery({ syncStatus: 'complete' });
-    mockPendingSyncIntent.mockResolvedValue({ hasPending: true });
-
-    let tree;
-    await act(async () => {
-      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(FAKE_SESSION) }));
-    });
-    await flush();
-
-    const summary = tree.root.findByProps({ accessibilityLabel: 'Cloud sync summary' });
-    expect(summary.props.children).toBe('Changes queued for cloud sync');
-    expect(JSON.stringify(tree.toJSON())).toMatch(/Local data stays saved on this device while cloud sync is pending or failed\./);
-  });
-
-  test('shows a retryable failure instead of a stale cloud claim', async () => {
-    mockSyncRecovery = makeSyncRecovery({ syncStatus: 'failed' });
-
-    let tree;
-    await act(async () => {
-      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(FAKE_SESSION) }));
-    });
-    await flush();
-
-    const summary = tree.root.findByProps({ accessibilityLabel: 'Cloud sync summary' });
-    expect(summary.props.children).toBe('Sync failed — retry needed');
-  });
-
-  test('does not show cloud sync status for signed-out local-only users', () => {
+  test('signed-out local-only users see no Cloud Sync panel on Account', () => {
     let tree;
     act(() => {
       tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(null) }));
