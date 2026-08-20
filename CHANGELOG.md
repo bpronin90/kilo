@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.109.2 - 2026-08-20
+
+- Issue #831: Fixed sign in, sign up, sign out, password reset, and other account actions appearing to silently do nothing on a network hiccup - they now always show a readable error instead of the screen looking frozen.
+
+## 0.109.1 - 2026-08-20
+
+- Issue #828: Fixed the Weight Trends charts: a 1.5-3 lb weekly change no longer gets flattened by an artificial floor on the y-axis, and the scale labels no longer overlap the plotted line or mislabel the range - they now always describe the data's real min and max.
+
+## 0.109.0 - 2026-08-20
+
+- Issue #822: Reorganized the More tab. The landing page now groups by how consequential a destination is — Preferences (User Profile, Settings) versus Account & Data (Account, Data & Backup) — instead of a loose topic grouping, with the riskier rows marked before you tap in. Account is now sign-in and the account itself only. Data & Backup gained a Cloud section (sync status, consent, cloud export, and a "create an account" prompt when signed out) alongside its existing local export/import, so all local-or-cloud data actions live in one place. Irreversible actions (Delete Account, Wipe Device Data) are now visually distinct and grouped in a Danger Zone. Fixed a bug where the "set a new password" screen, reached from a password-reset link while already signed in, had no way to leave except a hardware back button.
+
+## 0.108.0 - 2026-08-20
+
+- Issue #821: The Analytics tab now opens with an Overview block: one row per signal showing where you are, what changed and over what window, each tapping through to its section. Strength and Progressive Overload are one section, with a Collapse all control for the exercise groups and Big 3 Mapping moved to the foot. Weight and 1K charts now show their scale, and the weight charts no longer stretch a fraction of a pound into a dramatic swing. When there is not enough data to draw a trend, the charts say how much is needed and link to logging it. With deload mode switched off, the Analytics gauge no longer advises planning a deload. The Recovery panel reads with less prose: measurement definitions sit behind a "What do these mean?" control and per-exercise reasons are stated briefly on screen, with the full wording still read out by screen readers.
+
 ## 0.107.12 - 2026-08-19
 
 - Issue #820: Fixed the Home tab's Recovery and 1K cards: trimmed each card's top padding and spacing around its header so it no longer leaves ~78px of empty space before the card's own content, condensed the Recovery card's category breakdown to reuse the Exercise Progress band's dot/count/label styling instead of a separate tile grid, and dropped the "Not counted in your normal analytics" line from Home (it stays visible in Analytics).
