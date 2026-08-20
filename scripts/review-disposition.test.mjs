@@ -91,6 +91,8 @@ test('parses exactly one issue reference', () => {
 
 test('accepts only immutable owner-authored handoffs', () => {
   assert.equal(parseHandoff(handoff()).commit, HEAD);
+  assert.equal(parseHandoff(handoff({ commit: HEAD.slice(0, 7) })).commit, HEAD.slice(0, 7));
+  assert.equal(parseHandoff(handoff({ commit: HEAD.slice(0, 6) })), null);
   assert.equal(parseHandoff(handoff({ updated: '2026-07-16T12:02:00Z' })), null);
   assert.equal(parseHandoff(handoff({ association: 'MEMBER' })), null);
   assert.equal(parseHandoff(handoff({ association: 'COLLABORATOR' })), null);
@@ -102,6 +104,8 @@ test('accepts only immutable owner-authored handoffs', () => {
 
 test('accepts only immutable owner-authored verdicts and overrides', () => {
   assert.equal(parseDisposition(verdict()).disposition, 'APPROVED');
+  assert.equal(parseDisposition(verdict({ commit: HEAD.slice(0, 7) })).commit, HEAD.slice(0, 7));
+  assert.equal(parseDisposition(verdict({ commit: HEAD.slice(0, 6) })), null);
   assert.equal(parseDisposition(verdict({ ownerOverride: true })).disposition, 'OWNER_OVERRIDE');
   assert.equal(parseDisposition(verdict({ association: 'MEMBER' })), null);
   assert.equal(parseDisposition(verdict({ association: 'COLLABORATOR' })), null);
@@ -126,6 +130,22 @@ test('accepts an exact-head approval without pretending to verify execution iden
     description: 'approved for current PR head; review=2',
     controllingCommentId: 2,
   });
+});
+
+test('binds matching short commit prefixes to the exact current head', () => {
+  const shortHead = HEAD.slice(0, 7);
+  const comments = [handoff({ commit: shortHead }), verdict({ commit: shortHead })];
+  const currentHandoff = latestHandoff(comments, 42, HEAD);
+  assert.equal(currentHandoff.commit, HEAD);
+  assert.equal(controllingDisposition(comments, 42, HEAD, currentHandoff).commit, HEAD);
+  assert.equal(evaluateDisposition({ pr: pr(), comments, handoff: currentHandoff }).state, 'success');
+});
+
+test('rejects a well-formed short commit prefix that does not match the current head', () => {
+  const comments = [handoff({ commit: NEXT.slice(0, 7) }), verdict({ commit: NEXT.slice(0, 7) })];
+  assert.equal(latestHandoff(comments, 42, HEAD), null);
+  assert.equal(controllingDisposition(comments, 42, HEAD), null);
+  assert.equal(evaluateDisposition({ pr: pr(), comments }).state, 'failure');
 });
 
 test('feedback and blocked verdicts fail the gate', () => {

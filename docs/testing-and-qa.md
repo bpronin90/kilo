@@ -80,6 +80,11 @@ current-head implementation metadata, or the absence of any exact-head review,
 fails the check with an actionable status rather than leaving it pending
 indefinitely.
 
+Structured records may name that head with the full SHA or a hexadecimal prefix
+of at least seven characters. A prefix is accepted only when it matches the
+specific PR's current 40-character head SHA, and the evaluator normalizes it to
+that full SHA before applying authoritative-handoff or review ordering rules.
+
 As a narrow exception, an ordinary exact-head approval is carried forward
 across a verified closeout refresh. When the current head is a two-parent merge
 of a previously approved head and the current base, and the refresh is

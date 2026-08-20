@@ -7,6 +7,13 @@ import { join } from 'node:path';
 
 const REVIEW_CONTEXT = 'review disposition accepted';
 const SHA_RE = /^[0-9a-f]{40}$/;
+const COMMIT_PREFIX_RE = /^[0-9a-f]{7,40}$/;
+
+function matchesCommitPrefix(commit, head) {
+  return COMMIT_PREFIX_RE.test(commit ?? '')
+    && SHA_RE.test(head ?? '')
+    && head.startsWith(commit);
+}
 
 function fieldValues(body, name) {
   const prefix = `${name}:`;
@@ -58,7 +65,7 @@ export function parseHandoff(comment) {
   const summary = singleField(comment.body, 'Summary');
   const verification = singleField(comment.body, 'Verification');
   const remaining = singleField(comment.body, 'Remaining');
-  if (!pr || !SHA_RE.test(commit ?? '') || !summary || !verification || !remaining) return null;
+  if (!pr || !COMMIT_PREFIX_RE.test(commit ?? '') || !summary || !verification || !remaining) return null;
   return {
     update,
     pr,
@@ -84,7 +91,7 @@ export function parseDisposition(comment) {
   if (!immutableAuthorizedComment(comment)) return null;
   const pr = parseNumber(singleField(comment.body, 'PR'));
   const commit = singleField(comment.body, 'Commit')?.toLowerCase();
-  if (!pr || !SHA_RE.test(commit ?? '')) return null;
+  if (!pr || !COMMIT_PREFIX_RE.test(commit ?? '')) return null;
 
   const verdict = singleControl(comment.body, 'VERDICT');
   if (new Set(['APPROVED', 'FEEDBACK', 'BLOCKED']).has(verdict)) {
@@ -126,7 +133,8 @@ export function latestHandoff(comments, prNumber, commit) {
   return comments
     .map(parseHandoff)
     .filter(Boolean)
-    .filter((record) => record.pr === prNumber && record.commit === commit)
+    .filter((record) => record.pr === prNumber && matchesCommitPrefix(record.commit, commit))
+    .map((record) => ({ ...record, commit }))
     .sort(compareRecords)
     .at(-1) ?? null;
 }
@@ -135,7 +143,8 @@ export function controllingDisposition(comments, prNumber, commit, handoff = nul
   const records = comments
     .map(parseDisposition)
     .filter(Boolean)
-    .filter((record) => record.pr === prNumber && record.commit === commit)
+    .filter((record) => record.pr === prNumber && matchesCommitPrefix(record.commit, commit))
+    .map((record) => ({ ...record, commit }))
     .filter((record) => !handoff || compareRecords(record, handoff) > 0)
     .sort(compareRecords);
   const overrides = records.filter((record) => record.record === 'OWNER_OVERRIDE');
