@@ -372,7 +372,7 @@ export function LogScreenEditorCard({
                 style={styles.saveButton}
               />
             ) : saveSuccess ? (
-              <Text style={styles.autosaveIndicator}>{saveSuccess}</Text>
+              <Text style={styles.autosaveIndicator} accessibilityLiveRegion="polite">{saveSuccess}</Text>
             ) : null}
             {/* A failed write must be visible where the write was asked for.
                 Without this the `Save & Switch` save-failure path (#745 Part 6
@@ -403,22 +403,26 @@ export function LogScreenEditorCard({
               textStyle={styles.switchButtonText}
             />
           )}
-          <Button
-            onPress={() => {
-              if (editingNoteId) {
-                if (isEditingDeloadNote) {
-                  handleDeleteDeloadNoteFromEditor();
+          <View style={styles.dangerZone}>
+            <View style={styles.dangerZoneHeading}>
+              <Text style={styles.dangerZoneHeadingText}>⚠ Danger Zone</Text>
+            </View>
+            <Button
+              onPress={() => {
+                if (editingNoteId) {
+                  if (isEditingDeloadNote) {
+                    handleDeleteDeloadNoteFromEditor();
+                  } else {
+                    handleDeleteRoutine(editingNoteId, editingTitle || 'Untitled Routine', false);
+                  }
                 } else {
-                  handleDeleteRoutine(editingNoteId, editingTitle || 'Untitled Routine', false);
+                  handleDeleteRoutine(currentId, workoutNoteTitle || 'Untitled Routine', true);
                 }
-              } else {
-                handleDeleteRoutine(currentId, workoutNoteTitle || 'Untitled Routine', true);
-              }
-            }}
-            title={isEditingDeloadNote ? 'Delete deload record' : 'Delete routine'}
-            style={styles.deleteButton}
-            textStyle={styles.deleteButtonText}
-          />
+              }}
+              title={isEditingDeloadNote ? 'Delete deload record' : 'Delete routine'}
+              tone="danger"
+            />
+          </View>
         </>
       )}
     </View>
@@ -498,12 +502,26 @@ const createStyles = (colors) => StyleSheet.create({
   switchButtonText: {
     color: colors.accent,
   },
-  deleteButton: {
-    backgroundColor: 'transparent',
+  // Irreversible-action container (#823, ui-design-rules.md §14): groups
+  // Delete apart from the routine-management Buttons above it, matching
+  // BackupScreen's "Wipe Device Data" reference implementation.
+  dangerZone: {
+    backgroundColor: colors.errorSurface,
     borderWidth: 1,
     borderColor: colors.error,
+    borderRadius: 24,
+    padding: 18,
+    gap: 12,
   },
-  deleteButtonText: {
+  dangerZoneHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dangerZoneHeadingText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
     color: colors.error,
   },
   autosaveIndicator: {

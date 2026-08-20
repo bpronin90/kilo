@@ -816,12 +816,18 @@ action is placed by how often it is used:
 | Primary — every session | `Track` a lift, `Edit`, `Week A/B`, skip week | Active card body, plus the one action strip under its header (`LogActiveRoutineCard.js` `actionStrip`) |
 | Secondary — occasional | `Edit routine`, `Delete routine`, viewed-card `Week A/B`, full `Set as current routine` | Non-current card's expand-on-tap body (`LogPreviousRoutines.js` `inlineActions`), inside expanded routine management |
 | Quick access — reachable without opening (#756) | Compact `New routine` icon, compact `Set as current routine` icon per collapsed row | Panel header (present collapsed or expanded) and each collapsed non-current row's header respectively (`LogPreviousRoutines.js`) |
-| Rare — once per training block | `Start recovery block` | Expanded routine-management body (`LogPreviousRoutines.js`); the Recovery section no longer hosts a start control (#724) |
+| Rare — once per training block | `Start recovery block` | A persistent, low-emphasis outline row directly under the current routine card (`LogScreen.js` `recoveryStartRow`), never nested in a menu or disclosure; absent whenever a block cannot be started (#823, superseding #724's routine-management placement) |
 | Recovery — expected next step | `Complete week` **or** `Add week` (never both) | Active Recovery card body, visible by default and the card's only accent-filled control (`LogRecoverySection.js`, #789/#804) |
 | Recovery — correction or once-per-block | `Unlink Week {N}`, `Complete recovery block`, the analytics-inclusion switch | `Manage recovery block`, a collapsed-by-default disclosure inside the active Recovery card; both buttons are secondary `chipBackground` chips with `error` labels (#789/#804) |
 
 Consequences to preserve:
 
+- **More Routines has no enclosing bordered/radius panel (#823).** It used to
+  mirror the Recovery History panel's chrome (`radius 24`, 1px `cardBorder`,
+  a `subtleBg` header fill); it now renders as a flat section — a plain
+  header row and, expanded, a plain list of routine cards — matching the rest
+  of the Routine tab. The disclosure mechanics below (header composition,
+  quick actions, expand/collapse ownership) are otherwise unchanged.
 - **More Routines is a collapsed-by-default disclosure (#724).** Its header is
   no longer one whole-header Pressable; it is a plain row of three sibling
   touch targets — a `headerToggle` Pressable (count/latest summary, `44`
@@ -833,8 +839,8 @@ Consequences to preserve:
   `accessibilityState={{ expanded }}`, so tapping either still toggles the
   disclosure. `New routine` is present whether the disclosure is collapsed or
   expanded, since creating a routine is common enough that it must not require
-  opening the disclosure first. Collapsed, the routine cards and `Start
-  recovery block` stay inside the expanded body only. Each quick action is a
+  opening the disclosure first. Collapsed, the routine cards stay inside the
+  expanded body only. Each quick action is a
   **sibling** of the toggle/row Pressable beside it, never nested inside it:
   VoiceOver groups a nested `Pressable` into its accessible ancestor, which
   would make the nested control unreachable as its own action (#756 review). A
@@ -874,12 +880,34 @@ Consequences to preserve:
   There is no opacity-dimmed disabled variant.
 - The `Double-tap to edit` hint is retired in both the active card and the
   non-current card body (#711, #724); the double-tap gesture itself still works.
-- The single Recovery entry point lives in expanded routine management (#724),
-  not the Recovery section. It is **absent** — not merely disabled — whenever a
-  block cannot be started: it renders only when a baseline note is eligible, no
-  block is active, the shared Recovery read is verified and not stale, and no
-  Recovery action is pending/in-flight with `mutationsAllowed` true. When shown
-  it is always live, and opens `RecoveryBlockStartModal` with
+- **Recovery is its own tab, present only while `LogRecoverySection` has
+  something to show (#823).** `recoveryTabVisible` (`LogScreen.js`) mirrors
+  that component's own early-return contract exactly — not just an active
+  block, but also a pending/in-flight recovery operation or a stale snapshot
+  with no active block, both of which the component already renders a retry
+  banner for. The Routine/Deload pill becomes a three-way
+  Routine/Deload/Recovery toggle whenever `deloadModeEnabled` or
+  `recoveryTabVisible` is true; Recovery renders first (leftmost) whenever
+  it's present, and the tab disappears the instant nothing is left to show —
+  `effectiveTabView` falls back to `routine` the same way it already did for
+  a since-disabled Deload tab. Recovery is also the DEFAULT landing tab
+  whenever it's present: it rendered unconditionally at the top of the
+  Routine tab before this redesign, so a one-shot effect
+  (`recoveryDefaultAppliedRef`, `LogScreen.js`) selects it the first time
+  verified Recovery state resolves with something to show, preserving that
+  same effective visibility without fighting a later manual switch to
+  Routine/Deload. Confirming `RecoveryBlockStartModal` also navigates there
+  (`setTabView('recovery')` in `handleConfirmRecoveryBlock`), so the block
+  just created is where the user lands. `LogRecoverySection` itself renders
+  unchanged — only which tab hosts it, and when, moved.
+- The single Recovery entry point (`Start recovery block`) is a persistent row
+  under the current routine card, not inside routine management or the
+  Recovery tab (#823, superseding #724's routine-management placement). It is
+  **absent** — not merely disabled — whenever a block cannot be started: it
+  renders only when a baseline note is eligible, no block is active, the
+  shared Recovery read is verified and not stale, and no Recovery action is
+  pending/in-flight with `mutationsAllowed` true. When shown it is always
+  live, and opens `RecoveryBlockStartModal` with
   `{ mode: 'routine', note: null }` so the modal's own baseline/Week 1 pickers
   choose the subject; `startRecoveryBlock` rechecks the authoritative
   precondition at confirm.
@@ -891,7 +919,11 @@ Consequences to preserve:
   than being an inert press. Because that viewer state projects one half of an
   A/B note, the inline read also carries the non-current card's `Week A/B` pill
   in its existing treatment and with the same role, label, and `selected` state
-  — otherwise an A/B recovery week's other week would be unreachable here. A week whose `note_id` is null, or names a note
+  — otherwise an A/B recovery week's other week would be unreachable here. The
+  inline read also carries an `Edit` button in the same `inlineSwitchButton`
+  treatment (#823), opening the shared editor via `handleOpenOtherNote` — every
+  other note viewer in this tab (deload record, prior routines) already had
+  one; a recovery week's note previously had no path back into editing. A week whose `note_id` is null, or names a note
   absent from the notebook, shows `Note unavailable` in place of a title,
   announces `Recovery Week N, note unavailable`, and carries no `onPress`, no
   `chevron-right`, and no

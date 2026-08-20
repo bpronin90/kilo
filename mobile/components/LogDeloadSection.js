@@ -162,8 +162,7 @@ export function LogDeloadSection({
                         <Button
                           onPress={handleDeleteActiveDeload}
                           title="Delete active deload"
-                          style={styles.deleteActiveButton}
-                          textStyle={styles.deleteActiveButtonText}
+                          tone="danger"
                         />
                       </>
                     )}
@@ -246,8 +245,7 @@ export function LogDeloadSection({
                           }}
                           title="Delete"
                           accessibilityLabel={`Delete ${note.title}`}
-                          style={styles.deleteActiveButton}
-                          textStyle={styles.deleteActiveButtonText}
+                          tone="danger"
                         />
                       </View>
                     </>
@@ -299,8 +297,7 @@ export function LogDeloadSection({
                         }}
                         title="Delete"
                         accessibilityLabel={`Delete ${title}`}
-                        style={styles.deleteActiveButton}
-                        textStyle={styles.deleteActiveButtonText}
+                        tone="danger"
                       />
                     </View>
                   </>
@@ -426,14 +423,6 @@ const createStyles = (colors) => StyleSheet.create({
   },
   generateButtonText: {
     color: colors.accent,
-  },
-  deleteActiveButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: colors.error,
-  },
-  deleteActiveButtonText: {
-    color: colors.error,
   },
   deloadEmpty: {
     marginTop: 40,

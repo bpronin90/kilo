@@ -598,8 +598,8 @@ export function useLogOtherRoutineEditor({
     Alert.alert(
       'Delete Routine',
       isCurrent
-        ? `"${title}" is your current active routine. Deleting it will affect your analytics. Are you sure?`
-        : `Are you sure you want to delete "${title}"?`,
+        ? `"${title}" is your current active routine. Deleting it permanently erases the workout history logged in this note and will affect your analytics. This cannot be undone.`
+        : `Deleting "${title}" permanently erases the workout history logged in this note. This cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {

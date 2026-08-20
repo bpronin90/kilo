@@ -3175,7 +3175,7 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     expect(wrapRows.length).toBeGreaterThan(0);
 
     const pills = findStyled(root, s => s.minHeight === 44);
-    expect(pills.length).toBe(2); // Edit + Week A/B, nothing else
+    expect(pills.length).toBe(3); // Edit + Week A/B + Skip week/Remove skip (#823: 44dp floor)
     for (const pill of pills) {
       const style = flatStyle(pill);
       expect(style.justifyContent).toBe('center');
@@ -3861,54 +3861,11 @@ describe('LogPreviousRoutines: collapsed routine management (#724)', () => {
   });
 });
 
-describe('LogPreviousRoutines: relocated Start recovery block entry point (#724)', () => {
-
-  const baseProps = {
-    otherNotes: [{ id: 'r1', title: 'Routine 1', updated_at: '2026-01-01T00:00:00.000Z' }],
-    handleViewOtherNote: jest.fn(),
-    viewingNoteId: null,
-    viewingNote: null,
-    viewingNoteDayGroups: [],
-    viewingHasABWeeks: false,
-    viewingEffectiveWeek: null,
-    handleToggleViewingWeek: jest.fn(),
-    handleSwitchCurrent: jest.fn(),
-    handleEditViewedNote: jest.fn(),
-    handleDeleteRoutine: jest.fn(),
-    handleCreateRoutine: jest.fn(),
-  };
-
-  const renderList = (overrides = {}) => {
-    let component;
-    render.act(() => { component = render.create(<ControlledPreviousRoutines {...baseProps} {...overrides} />); });
-    return component.root;
-  };
-
-  test('eligible: absent while collapsed, then shown and live in the expanded body', () => {
-    const onStartRecoveryBlock = jest.fn();
-    const root = renderList({ showRecoveryStart: true, onStartRecoveryBlock });
-
-    // Reachable only by opening the disclosure — never on the collapsed surface.
-    expect(findPressableByText(root, 'Start recovery block')).toBeNull();
-    expandRoutineManagement(root);
-
-    const btn = findPressableByText(root, 'Start recovery block');
-    expect(btn).toBeTruthy();
-    expect(btn.props.accessibilityState.disabled).toBe(false);
-    render.act(() => { btn.props.onPress(); });
-    expect(onStartRecoveryBlock).toHaveBeenCalledTimes(1);
-  });
-
-  test('not startable: absent entirely, even once routine management is expanded', () => {
-    // The mutation lock (pending/busy/mutations-not-allowed) and every other
-    // not-startable condition fold into `showRecoveryStart` upstream, so the
-    // control is never rendered as a dead or disabled affordance (#724 review).
-    const root = renderList({ showRecoveryStart: false });
-    expandRoutineManagement(root);
-    expect(findPressableByText(root, 'Start recovery block')).toBeNull();
-    expect(buttonByText(root, 'Start recovery block')).toBeNull();
-  });
-});
+// `LogPreviousRoutines` no longer accepts `showRecoveryStart`/
+// `onStartRecoveryBlock` (#823) — `Start recovery block` moved to a
+// persistent row owned by `LogScreen` itself, under the current routine
+// card. See "entry point:" tests in the LogScreen-level Recovery describe
+// block below for its current coverage.
 
 // ── applyWeekSkipToText ───────────────────────────────────────────────────────
 
@@ -5464,9 +5421,10 @@ describe('Recovery Block start flow', () => {
   // control in the Recovery section, and it opens the modal with NO subject —
   // the modal's own pickers (which always existed) choose the baseline and
   // Week 1. `openEntryPoint` is how every test below reaches the flow.
+  // #823: it is now a persistent row directly under the current routine
+  // card, never nested inside routine management — reachable with no
+  // disclosure to open first.
   const openEntryPoint = (root) => {
-    // #724: the single entry point moved into expanded routine management.
-    expandRoutineManagement(root);
     const startBtn = findPressableByText(root, 'Start recovery block');
     expect(startBtn).toBeTruthy();
     render.act(() => { startBtn.props.onPress(); });
@@ -5477,18 +5435,14 @@ describe('Recovery Block start flow', () => {
     render.act(() => { option.props.onPress(); });
   };
 
-  test('entry point: the single start control lives in expanded routine management, opening the modal with both pickers and no preset', () => {
+  test('entry point: the single start control is a persistent row under the current routine card, opening the modal with both pickers and no preset', () => {
     setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
     let component;
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    // Collapsed routine management is action-free: the entry point is absent
-    // until the disclosure is opened (#724).
-    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Start recovery block').length).toBe(0);
-    expandRoutineManagement(root);
-
-    // No routine card carries a recovery control any more.
+    // Visible with no disclosure to open first (#823) — unlike #724, routine
+    // management stays collapsed and the control is already there.
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Mark as recovery week').length).toBe(0);
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Start recovery block').length).toBe(1);
 
@@ -5816,6 +5770,10 @@ describe('Recovery Block start flow', () => {
     let component;
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
+
+    // An active block lands on the Recovery tab by default (#823) — switch
+    // to Routine to reach the active routine card the badge renders on.
+    render.act(() => { pressableAround(root, t => t === 'Routine').props.onPress(); });
 
     const badge = root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery Week 1');
     expect(badge.length).toBeGreaterThan(0);
@@ -6662,6 +6620,9 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
+    // An active block lands on the Recovery tab by default (#823) — More
+    // Routines only mounts on the Routine tab.
+    render.act(() => { pressableAround(root, t => t === 'Routine').props.onPress(); });
     expandRoutineManagement(root);
     render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
     render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
@@ -6731,6 +6692,9 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
+    // An active block lands on the Recovery tab by default (#823) — More
+    // Routines only mounts on the Routine tab.
+    render.act(() => { pressableAround(root, t => t === 'Routine').props.onPress(); });
     expandRoutineManagement(root);
     render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
     render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
@@ -6791,6 +6755,9 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
+    // An active block lands on the Recovery tab by default (#823) — More
+    // Routines only mounts on the Routine tab.
+    render.act(() => { pressableAround(root, t => t === 'Routine').props.onPress(); });
     expandRoutineManagement(root);
     render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
     render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
@@ -8635,6 +8602,17 @@ describe('typed note navigation intents (#718)', () => {
       history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
     });
     useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+    // `jest.clearAllMocks()` clears call history but NOT a previously
+    // configured `mockReturnValue` — a prior describe block's active-block
+    // fixture would otherwise leak in here. Explicit no-active-block default
+    // (#823: the screen now lands on the Recovery tab whenever a block is
+    // active, which these tests never intend to exercise).
+    useEntries.useRecoveryBlockState.mockReturnValue({
+      activeBlock: null, blocks: [], weeks: [], recoveryWeekNumberByNoteId: {},
+      refresh: jest.fn(), pendingRecovery: [], recoveryPendingError: null,
+      ready: true, loading: false, refreshing: false, stale: false, error: null,
+      mutationsAllowed: true, retryRecovery: jest.fn(),
+    });
   });
 
   afterEach(() => {
@@ -9860,8 +9838,8 @@ describe('Log disclosures and Recovery reads at the screen level (#775)', () => 
 
   test('tapping a Recovery week renders that note in the Recovery card, leaving More Routines alone', () => {
     setup({ weekNoteId: 'r1' });
+    // An active block lands on the Recovery tab by default (#823).
     const component = mount();
-    expect(routineExpanded(component)).toBe(false);
     expect(hasText(component, 'Squat')).toBe(false);
 
     const row = component.root.findAll(
@@ -9871,7 +9849,9 @@ describe('Log disclosures and Recovery reads at the screen level (#775)', () => 
 
     expect(hasText(component, 'Squat')).toBe(true);
     // The read happened where the tap did: the routine-management disclosure
-    // neither opened nor changed state.
+    // neither opened nor changed state. It only mounts on the Routine tab
+    // (#823), so switch there to check it.
+    switchTo(component, 'Routine');
     expect(routineExpanded(component)).toBe(false);
   });
 
@@ -9909,6 +9889,7 @@ describe('Log disclosures and Recovery reads at the screen level (#775)', () => 
     expect(hasText(component, 'Chin Up')).toBe(true);
     expect(hasText(component, 'Squat')).toBe(false);
     // Still read in place: the routine-management disclosure never opened.
+    switchTo(component, 'Routine');
     expect(routineExpanded(component)).toBe(false);
   });
 
@@ -9925,6 +9906,7 @@ describe('Log disclosures and Recovery reads at the screen level (#775)', () => 
     render.act(() => { row.props.onPress(); });
 
     expect(hasText(component, 'Overhead Press')).toBe(true);
+    switchTo(component, 'Routine');
     expect(routineExpanded(component)).toBe(false);
   });
 

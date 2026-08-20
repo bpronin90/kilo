@@ -117,8 +117,13 @@ describe('SessionCheckInModal — backdrop defers (no storage write)', () => {
   });
 });
 
-describe('SessionCheckInModal — explicit X dismiss writes session_checkins', () => {
-  it('X button onPress calls update with a session_checkins entry then calls onClose', async () => {
+describe('SessionCheckInModal — X button defers (no storage write) (#823)', () => {
+  // Previously the X button went through `handleDismiss`, which wrote a
+  // permanent "responded" record and so silently, irreversibly suppressed the
+  // check-in for that session — the most discoverable close action had the
+  // worst, irreversible outcome (#823 audit finding 1). It now behaves
+  // exactly like the backdrop and Android back: defer, no write.
+  it('X button onPress is wired to onClose and does not call update', async () => {
     const props = makeProps();
     let instance;
     await act(async () => {
@@ -127,23 +132,14 @@ describe('SessionCheckInModal — explicit X dismiss writes session_checkins', (
 
     const closeBtn = findCloseButton(instance.root);
     expect(closeBtn).toBeTruthy();
-
-    // X button is NOT wired to onClose directly — it goes through handleDismiss which writes first.
-    expect(closeBtn.props.onPress).not.toBe(props.onClose);
+    expect(closeBtn.props.onPress).toBe(props.onClose);
 
     await act(async () => {
-      await closeBtn.props.onPress();
+      closeBtn.props.onPress();
     });
 
-    expect(props.update).toHaveBeenCalledWith(
-      'note-1',
-      expect.objectContaining({
-        session_checkins: expect.objectContaining({
-          0: expect.objectContaining({ responded_at: expect.any(String) }),
-        }),
-      })
-    );
-    expect(props.onClose).toHaveBeenCalled();
+    expect(props.update).not.toHaveBeenCalled();
+    expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -257,100 +253,11 @@ describe('SessionCheckInModal — submit failure handling', () => {
   });
 });
 
-describe('SessionCheckInModal — dismiss (X button) failure handling', () => {
-  it('a rejected dismiss keeps the modal open, shows a retryable error, and does not call onClose', async () => {
-    const props = makeProps({ update: jest.fn().mockRejectedValue(new Error('network down')) });
-    let instance;
-    await act(async () => {
-      instance = render.create(<SessionCheckInModal {...props} />);
-    });
-
-    const closeBtn = findCloseButton(instance.root);
-    await act(async () => {
-      await closeBtn.props.onPress();
-    });
-
-    expect(props.update).toHaveBeenCalledTimes(1);
-    expect(props.onClose).not.toHaveBeenCalled();
-    // Saving state settles so the user can retry.
-    expect(findCloseButton(instance.root).props.disabled).toBe(false);
-    const errorText = instance.root.findAll(n => typeof n.props?.children === 'string' && n.props.children.includes('try again'));
-    expect(errorText.length).toBeGreaterThan(0);
-  });
-
-  it('a false update result on dismiss keeps the modal open and shows a retryable error', async () => {
-    const props = makeProps({ update: jest.fn().mockResolvedValue(false) });
-    let instance;
-    await act(async () => {
-      instance = render.create(<SessionCheckInModal {...props} />);
-    });
-
-    const closeBtn = findCloseButton(instance.root);
-    await act(async () => {
-      await closeBtn.props.onPress();
-    });
-
-    expect(props.onClose).not.toHaveBeenCalled();
-    expect(findCloseButton(instance.root).props.disabled).toBe(false);
-    const errorText = instance.root.findAll(n => typeof n.props?.children === 'string' && n.props.children.includes('try again'));
-    expect(errorText.length).toBeGreaterThan(0);
-  });
-
-  it('retrying dismiss after a failure with a working update succeeds and calls onClose', async () => {
-    const update = jest.fn()
-      .mockRejectedValueOnce(new Error('network down'))
-      .mockResolvedValueOnce(true);
-    const props = makeProps({ update });
-    let instance;
-    await act(async () => {
-      instance = render.create(<SessionCheckInModal {...props} />);
-    });
-
-    let closeBtn = findCloseButton(instance.root);
-    await act(async () => {
-      await closeBtn.props.onPress();
-    });
-    expect(props.onClose).not.toHaveBeenCalled();
-
-    closeBtn = findCloseButton(instance.root);
-    await act(async () => {
-      await closeBtn.props.onPress();
-    });
-
-    expect(update).toHaveBeenCalledTimes(2);
-    expect(props.onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it('duplicate dismiss presses while saving are blocked to a single update call', async () => {
-    let resolveUpdate;
-    const update = jest.fn(() => new Promise(resolve => { resolveUpdate = resolve; }));
-    const props = makeProps({ update });
-    let instance;
-    await act(async () => {
-      instance = render.create(<SessionCheckInModal {...props} />);
-    });
-
-    let closeBtn = findCloseButton(instance.root);
-    await act(async () => {
-      closeBtn.props.onPress();
-    });
-
-    // Modal is now mid-save; a second press must be a no-op.
-    closeBtn = findCloseButton(instance.root);
-    expect(closeBtn.props.disabled).toBe(true);
-    await act(async () => {
-      closeBtn.props.onPress();
-    });
-
-    await act(async () => {
-      resolveUpdate(true);
-      await Promise.resolve();
-    });
-
-    expect(update).toHaveBeenCalledTimes(1);
-    expect(props.onClose).toHaveBeenCalledTimes(1);
-  });
-});
+// The dismiss (X button) failure-handling describe block that lived here
+// tested `handleDismiss` — the write path removed by #823 (see the "X button
+// defers" describe block above). The X button no longer performs a storage
+// write at all, so there is no failure mode left to cover: it is exactly the
+// backdrop/onRequestClose case, already covered above.
 
 
 // ── D10 copy contract ────────────────────────────────────────────────────────

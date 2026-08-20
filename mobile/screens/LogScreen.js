@@ -24,6 +24,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Alert } from '../lib/platformAlert';
 import { LogEmptyState } from '../components/LogEmptyState';
 import { ScreenShell } from '../components/ScreenShell';
@@ -233,7 +234,34 @@ export function LogScreen({
     if (result.week) refreshRecoveryState?.();
   };
 
-  const [tabView, setTabView] = useState('routine'); // 'routine' | 'deload'
+  const [tabView, setTabView] = useState('routine'); // 'routine' | 'deload' | 'recovery'
+
+  // Recovery becomes its own tab (#823). Present whenever `LogRecoverySection`
+  // itself has anything to show — not just an active block, but also a
+  // pending/in-flight recovery operation or a stale snapshot with NO active
+  // block, which the component already renders a retry banner for (see its
+  // own early-return contract). Mirroring that condition here, rather than
+  // narrowing to `activeRecoveryBlock` alone, is what keeps that banner from
+  // becoming unreachable once Recovery is a separate tab instead of an
+  // always-mounted section of the Routine tab.
+  const recoveryTabVisible = !!activeRecoveryBlock
+    || (pendingRecovery?.length || 0) > 0
+    || !!recoveryPendingError
+    || recoveryStale;
+
+  // This one-shot effect makes Recovery the DEFAULT landing tab the first
+  // time verified Recovery state resolves with something to show — it was
+  // effectively always "first" before this redesign too, since it rendered
+  // unconditionally at the top of the Routine tab; now that it is a separate
+  // tab, landing there by default is what keeps that behavior. It never
+  // fires again after the first resolution, so a later manual switch to
+  // Routine/Deload is never fought on a subsequent re-render or refresh.
+  const recoveryDefaultAppliedRef = useRef(false);
+  useEffect(() => {
+    if (recoveryDefaultAppliedRef.current || !recoveryReady) return;
+    recoveryDefaultAppliedRef.current = true;
+    if (recoveryTabVisible) setTabView('recovery');
+  }, [recoveryReady, recoveryTabVisible]);
 
   const editorScrollRef = useRef(null);
   const readScrollRef = useRef(null);
@@ -448,14 +476,15 @@ export function LogScreen({
   const openStartRecoveryBlock = () => setRecoveryModal({ mode: 'routine', note: null });
   const closeRecoveryModal = () => setRecoveryModal(null);
 
-  // The relocated `Start recovery block` entry point (#724) now lives inside
-  // expanded routine management, not the Recovery section. The contract requires
-  // it ABSENT — not merely disabled — whenever a block cannot be started right
-  // now, so every gate folds into one visibility predicate: no active block, a
-  // verified and non-stale read, at least one eligible baseline
-  // (eligibleBaselineNotes is already empty until the read is verified), and no
-  // pending/in-flight recovery action or mutation lock. startRecoveryBlock
-  // rechecks the authoritative precondition at confirm regardless.
+  // The relocated `Start recovery block` entry point (#724, then #823) now
+  // renders as a persistent row directly under the current routine card,
+  // never inside a menu or disclosure. The contract requires it ABSENT — not
+  // merely disabled — whenever a block cannot be started right now, so every
+  // gate folds into one visibility predicate: no active block, a verified and
+  // non-stale read, at least one eligible baseline (eligibleBaselineNotes is
+  // already empty until the read is verified), and no pending/in-flight
+  // recovery action or mutation lock. startRecoveryBlock rechecks the
+  // authoritative precondition at confirm regardless.
   const showRecoveryStartInManagement =
     !activeRecoveryBlock
     && recoveryReady
@@ -494,6 +523,11 @@ export function LogScreen({
     });
     if (result?.ok) {
       refreshRecoveryState?.();
+      // Land on the tab that now holds the block just created (#823) — Recovery
+      // used to just appear inline in the Routine tab the user was already on,
+      // but it is a separate tab now, so starting a block has to navigate there
+      // for the new week to actually be visible.
+      setTabView('recovery');
     }
     return result;
   };
@@ -657,7 +691,16 @@ export function LogScreen({
   const isEmpty = !isNotesFirstLoad && !notesError && notes.length === 0;
   const isEditing = !!otherEditor.editingNoteId || currentEditor.mode === 'edit' || deloadEditor.deloadMode === 'edit';
 
-  const effectiveTabView = deloadModeEnabled ? tabView : 'routine';
+  // Recovery is selectable only while `recoveryTabVisible`, and Deload only
+  // while deload mode is enabled — either falls back to Routine the instant
+  // its own condition stops holding (e.g. the active block completes while
+  // its tab is open), exactly as Deload already did before Recovery existed
+  // (#823).
+  const effectiveTabView = tabView === 'recovery' && recoveryTabVisible
+    ? 'recovery'
+    : tabView === 'deload' && deloadModeEnabled
+      ? 'deload'
+      : 'routine';
 
   // First-use state machine (#748; #745 Part 3 §1). Derived from verified data
   // on every render — there is no persisted onboarding flag anywhere, so a user
@@ -724,20 +767,33 @@ export function LogScreen({
           <LogEmptyState onCreateRoutine={handleCreateRoutineEntry} />
         ) : (
           <>
-            {deloadModeEnabled && (
+            {(deloadModeEnabled || recoveryTabVisible) && (
               <View style={styles.tabToggle}>
+                {/* Recovery is first when present (#823) — see
+                    `recoveryTabVisible` above for exactly when that is, so it
+                    is never a permanent, empty tab. */}
+                {recoveryTabVisible && (
+                  <Pressable
+                    onPress={() => setTabView('recovery')}
+                    style={[styles.tabToggleItem, effectiveTabView === 'recovery' && styles.tabToggleItemActive]}
+                  >
+                    <Text style={[styles.tabToggleText, effectiveTabView === 'recovery' && styles.tabToggleTextActive]}>Recovery</Text>
+                  </Pressable>
+                )}
                 <Pressable
                   onPress={() => setTabView('routine')}
                   style={[styles.tabToggleItem, effectiveTabView === 'routine' && styles.tabToggleItemActive]}
                 >
                   <Text style={[styles.tabToggleText, effectiveTabView === 'routine' && styles.tabToggleTextActive]}>Routine</Text>
                 </Pressable>
-                <Pressable
-                  onPress={() => setTabView('deload')}
-                  style={[styles.tabToggleItem, effectiveTabView === 'deload' && styles.tabToggleItemActive]}
-                >
-                  <Text style={[styles.tabToggleText, effectiveTabView === 'deload' && styles.tabToggleTextActive]}>Deload</Text>
-                </Pressable>
+                {deloadModeEnabled && (
+                  <Pressable
+                    onPress={() => setTabView('deload')}
+                    style={[styles.tabToggleItem, effectiveTabView === 'deload' && styles.tabToggleItemActive]}
+                  >
+                    <Text style={[styles.tabToggleText, effectiveTabView === 'deload' && styles.tabToggleTextActive]}>Deload</Text>
+                  </Pressable>
+                )}
               </View>
             )}
 
@@ -833,7 +889,7 @@ export function LogScreen({
               />
             )}
 
-            {effectiveTabView === 'routine' && (
+            {effectiveTabView === 'recovery' && (
               <LogRecoverySection
                 blocks={recoveryBlocks}
                 weeks={recoveryWeeks}
@@ -845,6 +901,7 @@ export function LogScreen({
                 viewingHasABWeeks={otherEditor.viewingHasABWeeks}
                 viewingEffectiveWeek={otherEditor.viewingEffectiveWeek}
                 onToggleViewingWeek={otherEditor.handleToggleViewingWeek}
+                onEditNote={otherEditor.handleOpenOtherNote}
                 onCompleteWeek={handleCompleteCurrentWeek}
                 onOpenAddWeek={openAddWeekModal}
                 onCompleteBlock={handleCompleteRecoveryBlock}
@@ -862,6 +919,26 @@ export function LogScreen({
               />
             )}
 
+            {/* Persistent, low-emphasis entry point (#823): previously
+                `Start recovery block` only existed inside the collapsed
+                "More Routines" disclosure below, so seeing it at all required
+                opening the exact panel that disclosure has since lost its
+                bordered chrome to. It is never nested in a menu now — always
+                visible under the current routine card, subordinate to Edit,
+                and gone the instant a block becomes active (folded into
+                `showRecoveryStartInManagement` unchanged). */}
+            {effectiveTabView === 'routine' && showRecoveryStartInManagement && (
+              <Pressable
+                onPress={openStartRecoveryBlock}
+                style={styles.recoveryStartRow}
+                accessibilityRole="button"
+                accessibilityLabel="Start recovery block"
+              >
+                <Text style={styles.recoveryStartRowText}>Start recovery block</Text>
+                <MaterialIcons name="chevron-right" size={18} color={colors.accent} accessible={false} />
+              </Pressable>
+            )}
+
             {effectiveTabView === 'routine' && (
               <LogPreviousRoutines
                 otherNotes={otherNotes}
@@ -877,8 +954,6 @@ export function LogScreen({
                 handleDeleteRoutine={guardedHandleDeleteRoutine}
                 handleCreateRoutine={handleCreateRoutineEntry}
                 recoveryWeekNumberByNoteId={recoveryWeekNumberByNoteId}
-                onStartRecoveryBlock={openStartRecoveryBlock}
-                showRecoveryStart={showRecoveryStartInManagement}
                 expanded={routineManagementExpanded}
                 onToggleExpanded={() => setRoutineManagementExpanded(e => !e)}
               />
@@ -1091,6 +1166,25 @@ const createStyles = (colors) => StyleSheet.create({
   },
   tabToggleTextActive: {
     color: colors.onAccent,
+  },
+  // Persistent `Start recovery block` entry point (#823): a low-emphasis
+  // outline row, subordinate to Edit on the current routine card above it,
+  // and never nested in a menu — see the render site for why it moved here.
+  recoveryStartRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    minHeight: 44,
+  },
+  recoveryStartRowText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.accent,
   },
   // First-use guidance cards (S1/S2). Ordinary `Card` chrome and ordinary
   // text/textMuted ink — no new filled surface + label pairing, so no new
