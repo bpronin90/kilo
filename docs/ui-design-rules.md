@@ -97,6 +97,14 @@ the changelog and archived roadmaps.
 - A collapsed panel must show a one-line **summary** (count + latest value), so
   collapsing hides detail without hiding meaning. See the history panels'
   `summaryStack` (count 12/600 over a "Latest: …" line).
+- A list of several independently collapsible groups may carry one **bulk
+  collapse control** in the list's own header (Analytics' Progressive Overload
+  is the reference). It is a labelled text control — `Collapse all` / `Expand
+  all`, 12/700 uppercase `textMuted` — paired with the `unfold-less` /
+  `unfold-more` `MaterialIcons` glyph, deliberately *not* the per-panel
+  `expand-less`/`expand-more` chevron, which would read as the header
+  collapsing itself. It reports `accessibilityState={{ expanded }}` and is
+  omitted entirely when there is nothing to collapse.
 
 ## 7. Date-range / filtering controls for long histories
 
@@ -119,9 +127,22 @@ the changelog and archived roadmaps.
 - Supporting stats sit below the hero as a row of equal-weight items (value
   18/700 over an 11/600 uppercase muted label). Dividers between supporting
   stats are 1px `cardBorder`/`divider`, not heavy rules.
-- Group analytics content under `SectionTitle`s ("Weight Trends", "Fatigue",
-  "Strength", "Progressive Overload") so the tab has a clear top-to-bottom
-  reading order.
+- Group analytics content under `SectionTitle`s ("Overview", "Weight Trends",
+  "Fatigue", "Strength") so the tab has a clear top-to-bottom reading order.
+  **One `SectionTitle` per section.** Progressive Overload is a heading *inside*
+  Strength (15/700, not `SectionTitle`), because the 1K total and the per-lift
+  table are one subject; two section titles were splitting it in half.
+- An analytics tab leads with an **overview block**: one row per permanent
+  signal, each stating its current value, what changed and over what window, and
+  linking to the section that itemises it. Rows are full-width, not a column
+  grid, so a large font scale wraps rather than clipping. The overview computes
+  nothing — it reads the same series its sections plot, so the two cannot drift.
+- **A failed read is not an empty state.** Any surface summarising a source that
+  can fail must distinguish "unavailable" from "nothing logged yet"; reporting a
+  load failure as an empty state produces a confident, wrong report (#737).
+- Insufficient-data copy states the **threshold and one action** ("Weigh in on
+  two different days to see this trend" + a link to logging), never a bare
+  "Not enough data".
 - Secondary/explanatory content (Big 3 mapping, "How is this calculated?") is
   collapsible and defaults appropriately — mapping expanded, long explainer
   collapsed.

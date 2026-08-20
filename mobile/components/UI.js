@@ -150,22 +150,32 @@ export function SessionGauge({ count, total, showDeload = true }) {
         )}
       </View>
 
-      <View style={styles.gaugeMeterWrap}>
-        <View style={styles.gaugeBar}>
-          <View style={[styles.gaugeSeg, styles.gaugeSegLeft, { flex: 6, backgroundColor: colors.success }]} />
-          <View style={[styles.gaugeSeg, { flex: 3, backgroundColor: colors.caution }]} />
-          <View style={[styles.gaugeSeg, styles.gaugeSegRight, { flex: 2, backgroundColor: colors.error }]} />
-        </View>
-        <View style={[styles.gaugeMarker, { left: `${markerPct}%`, borderColor: toneColor }]} />
-      </View>
+      {/* The whole deload advisory — meter, zone labels, and caption — is gated
+          on `showDeload`, not just the "Since deload" stat above it (#821).
+          Gating only the number left the Building/Approaching/Deload scale and
+          its caption ("Plan deload asap" at 10+) on screen while deload mode was
+          switched off: an instruction about a disabled feature, driven by a
+          count the card had just hidden. */}
+      {showDeload && (
+        <>
+          <View style={styles.gaugeMeterWrap}>
+            <View style={styles.gaugeBar}>
+              <View style={[styles.gaugeSeg, styles.gaugeSegLeft, { flex: 6, backgroundColor: colors.success }]} />
+              <View style={[styles.gaugeSeg, { flex: 3, backgroundColor: colors.caution }]} />
+              <View style={[styles.gaugeSeg, styles.gaugeSegRight, { flex: 2, backgroundColor: colors.error }]} />
+            </View>
+            <View style={[styles.gaugeMarker, { left: `${markerPct}%`, borderColor: toneColor }]} />
+          </View>
 
-      <View style={styles.gaugeZoneLabels}>
-        <Text style={[styles.gaugeZoneLabel, { flex: 6 }]}>Building</Text>
-        <Text style={[styles.gaugeZoneLabel, styles.gaugeZoneLabelCenter, { flex: 3 }]}>Approaching</Text>
-        <Text style={[styles.gaugeZoneLabel, styles.gaugeZoneLabelRight, { flex: 2 }]}>Deload</Text>
-      </View>
+          <View style={styles.gaugeZoneLabels}>
+            <Text style={[styles.gaugeZoneLabel, { flex: 6 }]}>Building</Text>
+            <Text style={[styles.gaugeZoneLabel, styles.gaugeZoneLabelCenter, { flex: 3 }]}>Approaching</Text>
+            <Text style={[styles.gaugeZoneLabel, styles.gaugeZoneLabelRight, { flex: 2 }]}>Deload</Text>
+          </View>
 
-      <Text style={[styles.sessionGaugeCaption, { color: toneColor }]}>{caption}</Text>
+          <Text style={[styles.sessionGaugeCaption, { color: toneColor }]}>{caption}</Text>
+        </>
+      )}
     </Card>
   );
 }

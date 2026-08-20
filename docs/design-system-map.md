@@ -565,6 +565,35 @@ divider ahead of the chart and info disclosure beneath it.
 
 Source: `mobile/screens/AnalyticsScreen.js`
 
+Section order (#821): **Overview → Weight Trends → Recovery → Fatigue →
+Strength**, with Progressive Overload and Big 3 Mapping inside Strength.
+Progressive Overload deliberately stays last on the tab: it is the longest
+surface and the overview summarises it at the top, so it does not need to be
+scrolled past to reach anything else.
+
+### Overview Card (`AnalyticsOverviewCard.js`, #821)
+
+The tab's first block and the destination for the `overview` navigation id.
+Reads only display-space series the other sections already plot
+(`oneKChartData`, `rolling7`); `deriveOverviewRows` performs no conversion.
+
+| Element | Property | Value |
+|---|---|---|
+| Panel | `ArtisanalPanel`, `padding: 0` | |
+| "Overview" label | fontSize / weight | `11` / `800` uppercase, `letterSpacing: 1` |
+| As-of caption | fontSize | `11`, `textMuted` |
+| Row | paddingHorizontal / Vertical | `16` / `12`, `minHeight: 44` |
+| | divider | `borderTopWidth: 1` / `colors.divider` |
+| Row label | fontSize / weight | `14` / `600` |
+| Row value | fontSize / weight | `17` / `700`, monospace |
+| Row value unit / suffix | fontSize | `11`, `600`, `textMuted` |
+| Delta | fontSize / weight | `12` / `700`, monospace |
+| | color | `colors.success` up, `colors.error` down |
+| Caption | fontSize | `12`, `textMuted` |
+
+Three distinct no-value states: `unavailable` (failed read), loading, and an
+ordinary empty state carrying its own next action. See `ui-design-rules.md` §8.
+
 ### Weight Trends Card
 
 | Element | Property | Value | Line |
