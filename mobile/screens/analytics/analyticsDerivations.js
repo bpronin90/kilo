@@ -228,6 +228,109 @@ export function deriveOneKChartData(oneKSeries, routineStartBoundaries = new Set
   });
 }
 
+// Overview rows (#821). Every value here is READ from a series or collection
+// that already existed — nothing is recomputed and no formula changes. The only
+// new arithmetic is a subtraction between two adjacent points of a series the
+// tab already plots, which is what turns "here is a number" into "here is what
+// changed".
+//
+// A row is `null` when its source cannot honestly report anything. The caller
+// distinguishes three reasons so the block never prints "no data" over a failed
+// read: `unavailable` (the source errored), `loading`, and an ordinary empty
+// state carrying its own next action.
+// NOTE ON UNITS: every numeric input is expected in DISPLAY space — the same
+// arrays AnalyticsScreen already hands the charts (`oneKChartData`, `rolling7`)
+// and a pre-converted current weight. Deltas are therefore subtractions between
+// two values in the unit being shown, and this file never converts anything.
+// Taking raw-lb values here and converting locally is how a kg-mode rounding
+// bug gets reintroduced (#441).
+export function deriveOverviewRows({
+  oneKPoints = [],
+  signals = [],
+  sessionsSinceDeload = null,
+  deloadModeEnabled = true,
+  currentWeight = null,
+  weightPoints = [],
+  notesUnavailable = false,
+  weightUnavailable = false,
+} = {}) {
+  const rows = [];
+
+  // 1K — latest total, and its change against the previous session in the
+  // series. This is the same series the Strength chart plots, so the two can
+  // never disagree.
+  const oneK = (oneKPoints || []).filter(p => p && typeof p.value === 'number');
+  const latestOneK = oneK.length > 0 ? oneK[oneK.length - 1] : null;
+  const priorOneK = oneK.length > 1 ? oneK[oneK.length - 2] : null;
+  rows.push({
+    key: 'oneK',
+    label: '1K Total',
+    section: 'strength',
+    unavailable: notesUnavailable,
+    value: latestOneK ? Math.round(latestOneK.value) : null,
+    showUnit: true,
+    delta: latestOneK && priorOneK ? Math.round(latestOneK.value - priorOneK.value) : null,
+    deltaCaption: latestOneK && priorOneK ? 'since your last session' : null,
+    emptyCaption: 'Map your three lifts and log one full cycle',
+  });
+
+  // Exercise progress — the same overload_trend classification the table
+  // itemises, counted.
+  const counts = { up: 0, flat: 0, down: 0 };
+  for (const signal of signals || []) {
+    if (signal?.overload_trend === 'up') counts.up += 1;
+    else if (signal?.overload_trend === 'down') counts.down += 1;
+    else if (signal?.overload_trend === 'flat') counts.flat += 1;
+  }
+  const classified = counts.up + counts.flat + counts.down;
+  rows.push({
+    key: 'progress',
+    label: 'Exercise Progress',
+    section: 'progressive-overload',
+    unavailable: notesUnavailable,
+    value: classified > 0 ? counts.up : null,
+    valueSuffix: classified > 0 ? `of ${classified} up` : null,
+    counts,
+    emptyCaption: 'Tap Track on an exercise in your log',
+  });
+
+  // Routine depth. Suppressed entirely when deload mode is off — the count only
+  // means something against the deload zones, and #821 also stops SessionGauge
+  // rendering that advisory in the same condition.
+  if (deloadModeEnabled && sessionsSinceDeload != null) {
+    rows.push({
+      key: 'routine',
+      label: 'Routine',
+      section: null,
+      unavailable: false,
+      value: sessionsSinceDeload,
+      valueSuffix: sessionsSinceDeload === 1 ? 'session' : 'sessions',
+      emptyCaption: null,
+    });
+  }
+
+  // Bodyweight — latest 7-day rolling average against the previous point of the
+  // same series, so the delta is average-to-average rather than one noisy
+  // weigh-in against another.
+  const points = (weightPoints || []).filter(p => p && typeof p.value === 'number');
+  const latestPoint = points.length > 0 ? points[points.length - 1] : null;
+  const priorPoint = points.length > 1 ? points[points.length - 2] : null;
+  rows.push({
+    key: 'weight',
+    label: 'Body Weight',
+    section: 'weight',
+    unavailable: weightUnavailable,
+    value: currentWeight != null ? currentWeight : null,
+    showUnit: true,
+    decimals: 1,
+    delta: latestPoint && priorPoint ? Number((latestPoint.value - priorPoint.value).toFixed(1)) : null,
+    deltaCaption: latestPoint && priorPoint ? '7-day average' : null,
+    emptyCaption: 'Log a weigh-in to start a trend',
+  });
+
+  return rows;
+}
+
 export function shapeEditCheckInData(editPendingCheckIn) {
   if (!editPendingCheckIn) return null;
   return {

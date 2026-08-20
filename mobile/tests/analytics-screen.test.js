@@ -426,6 +426,90 @@ describe('AnalyticsScreen Progressive Overload — grouping and layout', () => {
   });
 });
 
+describe('deriveOverviewRows (#821)', () => {
+  const { deriveOverviewRows } = require('../screens/analytics/analyticsDerivations');
+
+  function rowFor(rows, key) {
+    return rows.find(r => r.key === key);
+  }
+
+  test('1K and weight deltas come from the adjacent points of the series the tab plots', () => {
+    const rows = deriveOverviewRows({
+      oneKPoints: [{ value: 940 }, { value: 975 }, { value: 1000 }],
+      weightPoints: [{ value: 186.0 }, { value: 184.8 }],
+      currentWeight: 184.2,
+    });
+
+    expect(rowFor(rows, 'oneK').value).toBe(1000);
+    expect(rowFor(rows, 'oneK').delta).toBe(25);
+    expect(rowFor(rows, 'weight').value).toBe(184.2);
+    expect(rowFor(rows, 'weight').delta).toBe(-1.2);
+  });
+
+  test('a single point yields a value with no delta rather than a delta of zero', () => {
+    const rows = deriveOverviewRows({
+      oneKPoints: [{ value: 900 }],
+      weightPoints: [{ value: 184 }],
+      currentWeight: 184,
+    });
+    expect(rowFor(rows, 'oneK').value).toBe(900);
+    expect(rowFor(rows, 'oneK').delta).toBeNull();
+    expect(rowFor(rows, 'weight').delta).toBeNull();
+  });
+
+  test('exercise progress counts the existing overload_trend classification', () => {
+    const rows = deriveOverviewRows({
+      signals: [
+        { overload_trend: 'up' }, { overload_trend: 'up' },
+        { overload_trend: 'flat' }, { overload_trend: 'down' },
+        { overload_trend: 'baseline' }, { overload_trend: null },
+      ],
+    });
+    const progress = rowFor(rows, 'progress');
+    expect(progress.counts).toEqual({ up: 2, flat: 1, down: 1 });
+    // Unclassified trends are not counted into the denominator.
+    expect(progress.value).toBe(2);
+    expect(progress.valueSuffix).toBe('of 4 up');
+  });
+
+  test('the routine row is suppressed entirely when deload mode is off', () => {
+    const on = deriveOverviewRows({ sessionsSinceDeload: 8, deloadModeEnabled: true });
+    const off = deriveOverviewRows({ sessionsSinceDeload: 8, deloadModeEnabled: false });
+    expect(rowFor(on, 'routine').value).toBe(8);
+    expect(rowFor(off, 'routine')).toBeUndefined();
+  });
+
+  test('a failed read is marked unavailable, not reported as an empty state', () => {
+    const rows = deriveOverviewRows({ notesUnavailable: true, weightUnavailable: true });
+    expect(rowFor(rows, 'oneK').unavailable).toBe(true);
+    expect(rowFor(rows, 'progress').unavailable).toBe(true);
+    expect(rowFor(rows, 'weight').unavailable).toBe(true);
+  });
+});
+
+describe('AnalyticsScreen overview block (#821)', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  test('renders at the top of the tab, above Weight Trends', () => {
+    const component = setup();
+    const root = component.root;
+    expect(root.findAllByProps({ testID: 'analytics-overview' }).length).toBeGreaterThan(0);
+    expect(hasText(root, 'Overview')).toBe(true);
+  });
+
+  test('a failed notes read reports Unavailable rather than an empty state', () => {
+    // Through hookOverrides, not a bare mockReturnValue: setup() re-mocks
+    // useWorkoutNotes itself and would clobber it.
+    const component = setup({
+      hookOverrides: { error: new Error('boom'), refresh: jest.fn() },
+    });
+    const root = component.root;
+    expect(hasText(root, 'Unavailable — could not load')).toBe(true);
+    // And never the "you have nothing logged" copy for the same row.
+    expect(hasText(root, 'Map your three lifts and log one full cycle')).toBe(false);
+  });
+});
+
 describe('AnalyticsScreen Progressive Overload collapse-all', () => {
   afterEach(() => jest.restoreAllMocks());
 
@@ -1552,30 +1636,47 @@ describe('AnalyticsScreen feature toggle gating', () => {
     expect(hasText(root, 'Weight Trends')).toBe(true);
   });
 
-  test('deload mode off hides Since deload stat but keeps gauge graphic and Total', () => {
+  // These two previously pinned the opposite behavior — deload mode off hid the
+  // "Since deload" number but kept the meter, the Building/Approaching/Deload
+  // zone labels and the caption. That was a deliberate earlier decision, and
+  // #821 overturns it on owner direction: the caption reaches "Plan deload
+  // asap", so the old behavior advised a deload for a feature the user had
+  // switched off, driven by a count the card had just hidden. The whole
+  // advisory now travels with the toggle; the Total stat does not.
+  test('deload mode off hides the entire deload advisory, keeping Total', () => {
     const component = setup({ featureToggles: { deloadModeEnabled: false } });
     const root = component.root;
     // Fatigue Tracking still visible → section title stays "Fatigue".
     expect(hasText(root, 'Fatigue')).toBe(true);
     expect(hasText(root, 'Fatigue Tracking')).toBe(true);
-    // Gauge card shows Total and full graphic.
+    // The non-deload half of the card survives.
     expect(hasText(root, 'Total')).toBe(true);
-    expect(hasText(root, 'Building')).toBe(true);
-    // Only the Since deload stat label is hidden.
+    // The advisory does not: stat, meter zones, and caption all go together.
     expect(hasText(root, 'Since deload')).toBe(false);
+    expect(hasText(root, 'Building')).toBe(false);
+    expect(hasText(root, 'Approaching')).toBe(false);
+    expect(hasText(root, 'Deload')).toBe(false);
     expect(hasText(root, 'Weight Trends')).toBe(true);
   });
 
-  test('both toggles off shows Fatigue with gauge graphic and Total, no Since deload', () => {
+  test('both toggles off shows Fatigue and Total with no deload advisory', () => {
     const component = setup({ featureToggles: { deloadModeEnabled: false, fatigueTrackingEnabled: false } });
     const root = component.root;
     expect(hasText(root, 'Fatigue')).toBe(true);
     expect(hasText(root, 'Routine Status')).toBe(false);
     expect(hasText(root, 'Total')).toBe(true);
-    expect(hasText(root, 'Building')).toBe(true);
     expect(hasText(root, 'Since deload')).toBe(false);
+    expect(hasText(root, 'Building')).toBe(false);
     expect(hasText(root, 'Fatigue Tracking')).toBe(false);
     expect(hasText(root, 'Weight Trends')).toBe(true);
+  });
+
+  test('deload mode on still renders the full advisory', () => {
+    const component = setup({ featureToggles: { deloadModeEnabled: true } });
+    const root = component.root;
+    expect(hasText(root, 'Since deload')).toBe(true);
+    expect(hasText(root, 'Building')).toBe(true);
+    expect(hasText(root, 'Approaching')).toBe(true);
   });
 });
 

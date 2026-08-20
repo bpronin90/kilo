@@ -15,6 +15,7 @@ import {
   deriveGroupedSignals,
   deriveOneKChartData,
   deriveRoutineStartBoundaries,
+  deriveOverviewRows,
   shapeEditCheckInData,
 } from './analytics/analyticsDerivations';
 import { formatDuration } from '../lib/format';
@@ -25,7 +26,8 @@ import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue, formatLiftWeightValue, displayChartSeries, lbToKg } from '../lib/units';
 import { AnalyticsWeightTrendsCard } from '../components/AnalyticsWeightTrendsCard';
 import { AnalyticsFatigueCard } from '../components/AnalyticsFatigueCard';
-import { AnalyticsStrengthSection } from '../components/AnalyticsStrengthSection';
+import { AnalyticsStrengthSection, AnalyticsBig3MappingCard } from '../components/AnalyticsStrengthSection';
+import { AnalyticsOverviewCard } from '../components/AnalyticsOverviewCard';
 import { CrossDayComparison, formatOverload } from '../components/AnalyticsCrossDayComparison';
 import { AnalyticsRecoverySection } from '../components/AnalyticsRecoverySection';
 
@@ -334,6 +336,40 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     };
   }, [analytics.oneK, unit]);
 
+  // Overview rows (#821). Fed the same display-space arrays the charts below
+  // are given, so a value here is literally the value its own section plots.
+  const overviewRows = useMemo(
+    () => deriveOverviewRows({
+      oneKPoints: oneKChartData,
+      signals: analytics.signals,
+      sessionsSinceDeload: sinceDeload,
+      deloadModeEnabled,
+      currentWeight: weightTrends.currentWeight != null
+        ? displayWeight(weightTrends.currentWeight, unit)
+        : null,
+      weightPoints: rolling7,
+      notesUnavailable: !!notesError,
+      weightUnavailable: !!weightError,
+    }),
+    [oneKChartData, analytics.signals, sinceDeload, deloadModeEnabled, weightTrends, unit, rolling7, notesError, weightError]
+  );
+
+  const overviewLoading = isNotesLoading || isWeightLoading;
+
+  // The overview names the session count it was built from rather than a clock
+  // time: the tab is derived from logs, so "as of" is a log boundary, not a
+  // refresh. Suppressed at zero so a first-run overview does not open with a
+  // count of nothing.
+  const overviewAsOf = sessionCount > 0
+    ? `${sessionCount} session${sessionCount === 1 ? '' : 's'} logged`
+    : null;
+
+  function handleOverviewSelect(sectionId) {
+    if (!sectionId) return;
+    const y = sectionOffsets.current[sectionId];
+    if (y != null && y > 0) scrollToOffset(y);
+  }
+
   const recoverySection = (
     <AnalyticsRecoverySection
       key="recovery-section"
@@ -382,6 +418,19 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       />
     ) : null,
 
+    // The overview leads the tab (#821). `overview` has always meant "scroll
+    // offset 0"; putting this block first is what makes that id resolve to an
+    // actual overview instead of to whichever section happened to be on top.
+    // Nothing else was reordered — Progressive Overload stays at the bottom,
+    // where its length belongs.
+    <AnalyticsOverviewCard
+      key="overview-card"
+      rows={overviewRows}
+      loading={overviewLoading}
+      asOf={overviewAsOf}
+      onSelectSection={handleOverviewSelect}
+    />,
+
     <AnalyticsWeightTrendsCard
       key="weight-trends-card"
       handleWeightLayout={handleWeightLayout}
@@ -389,6 +438,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       rolling7={rolling7}
       rolling30={rolling30}
       isWeightLoading={isWeightLoading}
+      onNavigate={onNavigate}
     />,
 
     // Recovery sits above Fatigue (R5b, #793): it is the only time-boxed,
@@ -422,18 +472,18 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       />
     ) : null,
 
+    // Strength and Progressive Overload are one section (#821): the 1K total,
+    // then every lift that feeds it. Only the 1K panel carries the section
+    // title now — the sticky header below is a heading inside this section, not
+    // a second top-level one — and Big 3 Mapping moves to the foot, because it
+    // is configuration rather than analysis and was sitting between the total
+    // and its contributors.
     <AnalyticsStrengthSection
       key="strength-section"
       handleStrengthLayout={handleStrengthLayout}
       isNotesLoading={isNotesLoading}
       oneK={displayOneK}
       oneKChartData={oneKChartData}
-      activeSlot={activeSlot}
-      handleSlotTap={handleSlotTap}
-      SLOT_LABELS={SLOT_LABELS}
-      oneKSelections={oneKSelections}
-      noteExerciseNames={noteExerciseNames}
-      handleSelectExercise={handleSelectExercise}
     />,
 
     <View
@@ -443,7 +493,10 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       onLayout={handleProgressiveOverloadHeaderLayout}
     >
       <View style={styles.signalHeaderRow}>
-        <SectionTitle>Progressive Overload</SectionTitle>
+        {/* A heading inside the Strength section, not a section title of its
+            own (#821) — hence the smaller sub-header style rather than
+            SectionTitle, which now appears once per section as intended. */}
+        <Text style={styles.signalSubTitle} accessibilityRole="header">Progressive Overload</Text>
         {groupedSignals.length > 0 && (
           <Pressable
             testID="po-collapse-all"
@@ -626,7 +679,18 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
           </Pressable>
         </View>
       )}
-    </View>
+    </View>,
+
+    // Foot of the merged Strength section.
+    <AnalyticsBig3MappingCard
+      key="big3-mapping"
+      activeSlot={activeSlot}
+      handleSlotTap={handleSlotTap}
+      SLOT_LABELS={SLOT_LABELS}
+      oneKSelections={oneKSelections}
+      noteExerciseNames={noteExerciseNames}
+      handleSelectExercise={handleSelectExercise}
+    />
   ]);
 
   const foundIndex = screenContent.findIndex(child => child?.props?.testID === 'sticky-header');
@@ -668,6 +732,12 @@ const createStyles = (colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+  },
+  signalSubTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+    flexShrink: 1,
   },
   collapseAllButton: {
     flexDirection: 'row',

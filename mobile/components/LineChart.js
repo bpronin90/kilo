@@ -12,6 +12,21 @@ export function LineChart({
   color,
   hideHeader = false,
   onSelect,
+  // Opt-in "measured" mode (#821). Both default to today's behavior so the
+  // Home sparkline — the other caller — renders exactly as it did.
+  //
+  // showScale prints the plotted domain's top and bottom values against the
+  // chart, so a line has a readable scale instead of shape alone.
+  //
+  // minRange floors the plotted domain. Without it the y-axis is always the
+  // data's own min..max, so a 0.4 lb wobble in a 30-day rolling average draws
+  // the same full-height drama as a 20 lb swing. A floor makes noise look like
+  // noise. It is expressed in the same units as `data[].value`, so callers in
+  // display space must convert it themselves.
+  minRange = 0,
+  showScale = false,
+  emptyMessage = 'Not enough data',
+  seriesLabel,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -26,7 +41,7 @@ export function LineChart({
   if (!data || data.length < 2) {
     return (
       <View style={[styles.container, { height }]}>
-        <Text style={styles.noData}>Not enough data</Text>
+        <Text style={styles.noData}>{emptyMessage}</Text>
       </View>
     );
   }
@@ -37,9 +52,33 @@ export function LineChart({
   };
 
   const values = data.map(d => d.value);
-  const minVal = Math.min(...values);
-  const maxVal = Math.max(...values);
+  const dataMin = Math.min(...values);
+  const dataMax = Math.max(...values);
+
+  // Widen the domain symmetrically around the data when it is flatter than
+  // `minRange`, so a nearly-flat series renders as a nearly-flat line.
+  let minVal = dataMin;
+  let maxVal = dataMax;
+  if (minRange > 0 && dataMax - dataMin < minRange) {
+    const mid = (dataMax + dataMin) / 2;
+    minVal = mid - minRange / 2;
+    maxVal = mid + minRange / 2;
+  }
   const range = maxVal - minVal || 1;
+
+  // One decimal only when the data actually carries one, so whole-number
+  // series (1K totals, rep counts) do not gain a fake ".0" of precision.
+  const hasFraction = values.some(v => !Number.isInteger(v));
+  const formatScale = (v) => (hasFraction ? v.toFixed(1) : String(Math.round(v)));
+
+  // Text alternative for a chart that is otherwise invisible to a screen
+  // reader (#821). Always built — it has no visual effect, so the Home
+  // sparkline gains a description without its rendering changing.
+  const unitSuffix = data[data.length - 1]?.unit ? ` ${data[data.length - 1].unit}` : '';
+  const chartDescription =
+    `${seriesLabel ? `${seriesLabel}. ` : ''}Line chart, ${data.length} points. ` +
+    `Ranges from ${formatScale(dataMin)}${unitSuffix} to ${formatScale(dataMax)}${unitSuffix}. ` +
+    `Starts at ${formatScale(values[0])}${unitSuffix}, ends at ${formatScale(values[values.length - 1])}${unitSuffix}.`;
 
   // Keep the stroke and point markers inside the SVG bounds. The selected marker
   // is r=5 with a 2px stroke (outer extent ~6px); without this floor, extreme
@@ -82,7 +121,17 @@ export function LineChart({
         </View>
       )}
 
-      <Pressable onPress={handlePress}>
+      <Pressable
+        onPress={handlePress}
+        accessibilityRole="image"
+        accessibilityLabel={chartDescription}
+      >
+        {showScale && (
+          <View style={styles.scaleColumn} pointerEvents="none">
+            <Text style={styles.scaleLabel}>{formatScale(maxVal)}</Text>
+            <Text style={styles.scaleLabel}>{formatScale(minVal)}</Text>
+          </View>
+        )}
         <Svg width={chartWidth || '100%'} height={height}>
           {chartWidth > 0 && (
             <>
@@ -181,6 +230,27 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.textMuted,
     fontSize: 14,
     marginTop: 20,
+  },
+  // Overlays the plot rather than reserving a gutter, so turning the scale on
+  // does not reflow a chart's width or height. `colors.card` matches the
+  // surface both Analytics charts sit on in either palette.
+  scaleColumn: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    zIndex: 1,
+  },
+  scaleLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.textMuted,
+    backgroundColor: colors.card,
+    paddingHorizontal: 3,
+    borderRadius: 3,
+    overflow: 'hidden',
   },
   dateLabel: {
     fontSize: 11,

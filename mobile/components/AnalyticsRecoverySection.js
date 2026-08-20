@@ -44,8 +44,8 @@ const METRIC_LABELS = Object.freeze({
 // computes: the heaviest completed working set, and load × reps summed over the
 // completed working sets of that week.
 const METRIC_EXPLANATIONS = Object.freeze({
-  top_load: 'Load is the heaviest completed working set that week — not an all-time max or an estimated 1RM.',
-  volume: 'Total work is load × reps added up across every completed working set that week.',
+  top_load: 'Load — the heaviest completed working set that week. Not an all-time max or an estimated 1RM.',
+  volume: 'Total work — load × reps across that week\'s completed working sets.',
 });
 
 const STATE_META = Object.freeze({
@@ -70,10 +70,21 @@ const DETAIL_GROUP_ORDER = Object.freeze([
   RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY,
 ]);
 
+// Two forms of the same fact (#821). The panel was carrying a full sentence on
+// every un-comparable row, which is what made a dense evidence surface read as
+// a wall of prose. The short form is what a sighted reader scans; the long form
+// is unchanged and still spoken, because a screen-reader user cannot glance at
+// the surrounding table to infer what "No comparable metric" meant.
 const UNAVAILABLE_REASON_TEXT = Object.freeze({
   exercise_class_changed: 'Logged as a different kind of exercise than the baseline.',
   no_comparable_metric: "This week's entry has no usable Load, Total work, Reps, or Time value.",
   baseline_value_unusable: 'The frozen baseline value for this exercise is unusable.',
+});
+
+const UNAVAILABLE_REASON_SHORT = Object.freeze({
+  exercise_class_changed: 'Different exercise type',
+  no_comparable_metric: 'No comparable metric',
+  baseline_value_unusable: 'Baseline unusable',
 });
 
 function _formatMetricNumber(metricKey, value, unit) {
@@ -258,13 +269,13 @@ function ExerciseRow({ row, unit }) {
 
       {row.state === RECOVERY_COMPARISON_STATES.NOT_COMPARABLE && (
         <Text style={styles.unavailableText}>
-          {UNAVAILABLE_REASON_TEXT[row.unavailable_reason] || 'This exercise could not be compared.'}
+          {UNAVAILABLE_REASON_SHORT[row.unavailable_reason] || 'Could not be compared'}
         </Text>
       )}
 
       {row.state === RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED && (
         <Text style={styles.unavailableText}>
-          {`Baseline: ${row.metrics.map(m => `${METRIC_LABELS[m.metric]} ${_formatMetricNumber(m.metric, m.baseline, unit)}`).join(' · ')}`}
+          {`Baseline · ${row.metrics.map(m => `${METRIC_LABELS[m.metric]} ${_formatMetricNumber(m.metric, m.baseline, unit)}`).join(' · ')}`}
         </Text>
       )}
     </View>
@@ -299,7 +310,16 @@ function WeekUnavailableNotice({ week }) {
 // timed work has nothing to disambiguate, so it gets no legend — and neither
 // does a not-comparable row, which prints its reason instead of any metric.
 function MetricLegend({ rows }) {
+  const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
+  // Behind a disclosure rather than printed above every expansion (#821). The
+  // definitions still matter — they are why "Total work" replaced the
+  // undefined "Volume" in #758 — but they are read once and then known, and
+  // permanent prose at the head of a data panel is what made this surface feel
+  // like reading rather than looking. Same affordance the 1K card already uses
+  // for "How is this calculated?".
+  const [expanded, setExpanded] = useState(false);
+
   const shown = new Set();
   for (const row of rows) {
     if (row.state === RECOVERY_COMPARISON_STATES.NOT_COMPARABLE) continue;
@@ -310,7 +330,23 @@ function MetricLegend({ rows }) {
 
   return (
     <View style={styles.legend}>
-      {lines.map(line => <Text key={line} style={styles.legendText}>{line}</Text>)}
+      <Pressable
+        onPress={() => setExpanded(e => !e)}
+        style={styles.legendToggle}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        accessibilityLabel={expanded ? 'Hide what these measurements mean' : 'What do these measurements mean?'}
+      >
+        <Text style={styles.legendToggleText}>What do these mean?</Text>
+        <MaterialIcons
+          name={expanded ? 'expand-less' : 'expand-more'}
+          size={16}
+          color={colors.textMuted}
+          accessible={false}
+        />
+      </Pressable>
+      {expanded && lines.map(line => <Text key={line} style={styles.legendText}>{line}</Text>)}
     </View>
   );
 }
@@ -916,6 +952,19 @@ const createStyles = (colors) => StyleSheet.create({
   legend: {
     gap: 4,
   },
+  legendToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    minHeight: 44,
+  },
+  legendToggleText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   legendText: {
     fontSize: 12,
     lineHeight: 17,
@@ -977,12 +1026,20 @@ const createStyles = (colors) => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
+  // Wraps instead of crushing (#821). Up to four metric cells could sit in one
+  // fixed row, so at a large font scale the label, percent and "current /
+  // baseline" line inside each one had nowhere to go. `flexWrap` plus a
+  // `minWidth` floor lets a cell drop to the next line rather than compress
+  // below the point where its numbers are readable — the same failure the
+  // Recovery category columns already had to be fixed for.
   metricsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 16,
   },
   metricCell: {
     flex: 1,
+    minWidth: 128,
     gap: 4,
   },
   metricHeaderRow: {

@@ -1,8 +1,52 @@
 import React, { useState, useMemo } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card, SectionTitle, LineChart } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { useWeightUnit } from '../lib/unitPreference';
+
+// Floor for the plotted y-domain (#821), in display units. A rolling average
+// drifting by a few tenths is noise, and without a floor the chart stretched
+// that noise to full height. 5 lb / 2.5 kg is roughly "a change worth looking
+// at" for bodyweight, so anything flatter now reads as flat.
+const WEIGHT_MIN_RANGE = { lb: 5, kg: 2.5 };
+
+// One insufficient-data treatment for both charts (#821). It replaces the bare
+// "Not enough data", which named no threshold and offered nothing to do about
+// it. Two weigh-ins is the real threshold: computeWeightRollingAverageSeries
+// emits one point per weigh-in DATE, and LineChart needs two points to draw a
+// line — so two weigh-ins on different days is exactly what turns this into a
+// chart, for both the 7-day and the 30-day window.
+function ChartEmptyState({ loading, onNavigate }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
+
+  if (loading) {
+    return (
+      <View style={styles.chartPlaceholder}>
+        <ActivityIndicator size="small" color={colors.accent} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.chartPlaceholder}>
+      <Text style={styles.chartEmpty}>Weigh in on two different days to see this trend.</Text>
+      {!!onNavigate && (
+        <Pressable
+          testID="weight-trends-empty-log-link"
+          onPress={() => onNavigate('Weight')}
+          style={styles.chartEmptyAction}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Log a weigh-in"
+          accessibilityHint="Opens the Weight tab"
+        >
+          <Text style={styles.chartEmptyActionText}>Log a weigh-in</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
 
 export function AnalyticsWeightTrendsCard({
   handleWeightLayout,
@@ -10,6 +54,7 @@ export function AnalyticsWeightTrendsCard({
   rolling7,
   rolling30,
   isWeightLoading,
+  onNavigate,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -33,6 +78,8 @@ export function AnalyticsWeightTrendsCard({
   function handleSelect(point) {
     setSelectedPoint(point);
   }
+
+  const minRange = WEIGHT_MIN_RANGE[unit] ?? WEIGHT_MIN_RANGE.lb;
 
   const display = useMemo(() => {
     if (!selectedPoint) return weightSummary;
@@ -78,13 +125,17 @@ export function AnalyticsWeightTrendsCard({
           <Text style={styles.chartLabel}>7-day rolling average</Text>
           <View style={styles.chartArea}>
             {rolling7.length > 1 ? (
-              <LineChart data={rolling7} height={100} hideHeader onSelect={handleSelect} />
+              <LineChart
+                data={rolling7}
+                height={100}
+                hideHeader
+                showScale
+                minRange={minRange}
+                seriesLabel="7-day rolling average bodyweight"
+                onSelect={handleSelect}
+              />
             ) : (
-              <View style={styles.chartPlaceholder}>
-                {isWeightLoading
-                  ? <ActivityIndicator size="small" color={colors.accent} />
-                  : <Text style={styles.chartEmpty}>Not enough data</Text>}
-              </View>
+              <ChartEmptyState loading={isWeightLoading} onNavigate={onNavigate} />
             )}
           </View>
         </View>
@@ -93,13 +144,18 @@ export function AnalyticsWeightTrendsCard({
           <Text style={styles.chartLabel}>30-day rolling average</Text>
           <View style={styles.chartArea}>
             {rolling30.length > 1 ? (
-              <LineChart data={rolling30} height={100} hideHeader color={colors.textMuted} onSelect={handleSelect} />
+              <LineChart
+                data={rolling30}
+                height={100}
+                hideHeader
+                showScale
+                minRange={minRange}
+                color={colors.textMuted}
+                seriesLabel="30-day rolling average bodyweight"
+                onSelect={handleSelect}
+              />
             ) : (
-              <View style={styles.chartPlaceholder}>
-                {isWeightLoading
-                  ? <ActivityIndicator size="small" color={colors.accent} />
-                  : <Text style={styles.chartEmpty}>Not enough data</Text>}
-              </View>
+              <ChartEmptyState loading={isWeightLoading} onNavigate={onNavigate} />
             )}
           </View>
         </View>
@@ -138,12 +194,16 @@ const createStyles = (colors) => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
+  // minHeight, not a fixed height: the insufficient-data state now carries copy
+  // and a 44px action, and at a large font scale that is taller than the chart
+  // it stands in for. A fixed 100 clipped it.
   chartArea: {
-    height: 100,
+    minHeight: 100,
     justifyContent: 'center',
   },
   chartPlaceholder: {
-    height: 100,
+    minHeight: 100,
+    paddingVertical: 12,
     backgroundColor: colors.subtleBg,
     borderRadius: 8,
     justifyContent: 'center',
@@ -152,6 +212,19 @@ const createStyles = (colors) => StyleSheet.create({
   chartEmpty: {
     fontSize: 13,
     color: colors.textMuted,
+    textAlign: 'center',
+    paddingHorizontal: 16,
+  },
+  chartEmptyAction: {
+    marginTop: 8,
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  chartEmptyActionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.accent,
   },
   weightHeader: {
     flexDirection: 'row',

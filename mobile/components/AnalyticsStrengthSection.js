@@ -13,16 +13,9 @@ export function AnalyticsStrengthSection({
   isNotesLoading,
   oneK,
   oneKChartData,
-  activeSlot,
-  handleSlotTap,
-  SLOT_LABELS,
-  oneKSelections,
-  noteExerciseNames,
-  handleSelectExercise,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
-  const [big3Collapsed, setBig3Collapsed] = useState(false);
   const [selectedSeriesPoint, setSelectedSeriesPoint] = useState(null);
   const [oneKInfoExpanded, setOneKInfoExpanded] = useState(false);
   const [plateWeight, setPlateWeight] = useState(null);
@@ -77,7 +70,18 @@ export function AnalyticsStrengthSection({
               {oneKChartData.length > 1 && (
                 <View style={styles.oneKChartBlock}>
                   <Text style={styles.oneKChartLabel}>1K total over sessions</Text>
-                  <LineChart data={oneKChartData} height={120} hideHeader onSelect={p => setSelectedSeriesPoint(p)} />
+                  {/* showScale, but no minRange: the 1K genuinely moves in
+                      meaningful steps, so flooring its domain would flatten real
+                      progress. The weight charts need the floor; this one only
+                      needed a readable scale. */}
+                  <LineChart
+                    data={oneKChartData}
+                    height={120}
+                    hideHeader
+                    showScale
+                    seriesLabel="1K total by session"
+                    onSelect={p => setSelectedSeriesPoint(p)}
+                  />
                 </View>
               )}
 
@@ -124,11 +128,40 @@ export function AnalyticsStrengthSection({
         </Card>
       )}
 
+      <PlateCalculatorModal
+        visible={plateWeight != null}
+        weight={plateWeight}
+        onClose={() => setPlateWeight(null)}
+      />
+    </View>
+  );
+}
+
+// Split out of AnalyticsStrengthSection (#821). Strength and Progressive
+// Overload are now one section — the 1K total, then every lift that feeds it —
+// and this is configuration rather than analysis, so it sits at the foot of the
+// section instead of between the total and its contributors.
+export function AnalyticsBig3MappingCard({
+  activeSlot,
+  handleSlotTap,
+  SLOT_LABELS,
+  oneKSelections,
+  noteExerciseNames,
+  handleSelectExercise,
+}) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  // Expanded by default, per ui-design-rules §6. Moving the card to the foot of
+  // the section changes where it sits, not whether it opens closed.
+  const [big3Collapsed, setBig3Collapsed] = useState(false);
+
+  return (
       <Card style={styles.slotCard}>
         <Pressable
           style={styles.slotCardHeader}
           onPress={() => setBig3Collapsed(c => !c)}
           accessibilityRole="button"
+          accessibilityState={{ expanded: !big3Collapsed }}
           accessibilityLabel={big3Collapsed ? 'Expand Big 3 mapping' : 'Collapse Big 3 mapping'}
         >
           <Text style={styles.slotCardTitle}>Big 3 Mapping</Text>
@@ -179,13 +212,6 @@ export function AnalyticsStrengthSection({
           </View>
         ))}
       </Card>
-
-      <PlateCalculatorModal
-        visible={plateWeight != null}
-        weight={plateWeight}
-        onClose={() => setPlateWeight(null)}
-      />
-    </View>
   );
 }
 

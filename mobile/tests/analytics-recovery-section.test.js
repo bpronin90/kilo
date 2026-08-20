@@ -236,7 +236,7 @@ describe('AnalyticsRecoverySection — active block evidence', () => {
     expandDetails(root);
 
     expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not reintroduced'))).toBe(true);
-    expect(hasText(root, 'Baseline:')).toBe(true);
+    expect(hasText(root, 'Baseline ·')).toBe(true);
   });
 
   test('an exercise added during recovery renders separately with no baseline ratio', () => {
@@ -513,7 +513,14 @@ describe('AnalyticsRecoverySection — every exercise class/state (mocked compar
     expandDetails(root);
 
     expect(hasText(root, 'Not comparable')).toBe(true);
-    expect(hasText(root, 'Logged as a different kind of exercise than the baseline.')).toBe(true);
+    // The reason is now short on screen and full in the spoken label (#821):
+    // the visible panel was carrying a sentence per un-comparable row. Both
+    // halves are asserted, because dropping the long form would silently cost
+    // screen-reader users the only explanation they get.
+    expect(hasText(root, 'Different exercise type')).toBe(true);
+    expect(
+      rowLabels(root).some(l => l.includes('Logged as a different kind of exercise than the baseline.'))
+    ).toBe(true);
     // The summary line counts it, and it gets its own state group.
     expect(hasText(root, '1 not comparable')).toBe(true);
     const notComparableHeader = groupHeaders(root).find(h => h.props.children === 'Not comparable (1)');
@@ -1116,13 +1123,26 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     expect(labels.some(l => l.startsWith('Bench, Baseline met'))).toBe(true);
   });
 
-  test('the weighted dimensions are explained where they are shown', () => {
+  // The explanations moved behind a disclosure (#821) — permanent prose at the
+  // head of the data panel was the bulk of the section's text weight. They are
+  // still offered wherever the dimensions they define are shown, which is what
+  // this test has always been about; only the number of taps changed.
+  test('the weighted dimensions are explained where they are shown, on request', () => {
     const root = setupMixed();
     expandDetails(root);
 
-    expect(hasText(root, 'Load is the heaviest completed working set that week')).toBe(true);
-    expect(hasText(root, 'not an all-time max or an estimated 1RM')).toBe(true);
-    expect(hasText(root, 'Total work is load × reps added up across every completed working set that week.')).toBe(true);
+    // Collapsed by default: the definitions are not competing with the evidence.
+    expect(hasText(root, 'Load — the heaviest completed working set that week.')).toBe(false);
+
+    const toggle = root
+      .findAllByProps({ accessibilityLabel: 'What do these measurements mean?' })
+      .find(node => typeof node.props.onPress === 'function');
+    expect(toggle).toBeDefined();
+    render.act(() => { toggle.props.onPress(); });
+
+    expect(hasText(root, 'Load — the heaviest completed working set that week.')).toBe(true);
+    expect(hasText(root, 'Not an all-time max or an estimated 1RM.')).toBe(true);
+    expect(hasText(root, "Total work — load × reps across that week's completed working sets.")).toBe(true);
   });
 
   test('a week with no weighted work carries no weighted explanation', () => {
