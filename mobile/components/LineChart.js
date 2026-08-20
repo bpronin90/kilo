@@ -57,7 +57,7 @@ export function LineChart({
   const dataMax = Math.max(...values);
   const minVal = dataMin;
   const maxVal = dataMax;
-  const range = maxVal - minVal || 1;
+  const range = maxVal - minVal;
 
   // One decimal only when the data actually carries one, so whole-number
   // series (1K totals, rep counts) do not gain a fake ".0" of precision.
@@ -88,7 +88,14 @@ export function LineChart({
   const plotWidth = Math.max(chartWidth - scaleGutter, 0);
 
   const getX = (index) => effPaddingHorizontal + (index * (plotWidth - 2 * effPaddingHorizontal) / (data.length - 1));
-  const getY = (value) => height - effPaddingVertical - ((value - minVal) / range * (height - 2 * effPaddingVertical));
+  // A perfectly flat series (range === 0) has no scale to plot against — every
+  // point is both the min and the max. Center it in the plot instead of
+  // falling back to a divisor that would pin the whole line to the bottom
+  // edge (every `value - minVal` is 0, not NaN, so nothing here throws).
+  const getY = (value) =>
+    range === 0
+      ? height / 2
+      : height - effPaddingVertical - ((value - minVal) / range * (height - 2 * effPaddingVertical));
 
   const points = data.map((d, i) => `${getX(i)},${getY(d.value)}`).join(' ');
 

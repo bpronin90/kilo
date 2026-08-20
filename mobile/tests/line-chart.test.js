@@ -68,6 +68,30 @@ describe('LineChart — flat series (<1 lb spread)', () => {
   });
 });
 
+describe('LineChart — zero-span series (identical values)', () => {
+  const zeroSpan = [
+    { value: 184.0, label: 'Mon', unit: 'lb' },
+    { value: 184.0, label: 'Tue', unit: 'lb' },
+    { value: 184.0, label: 'Wed', unit: 'lb' },
+  ];
+
+  test('renders a centered horizontal line instead of pinning to the bottom edge', () => {
+    const component = mountChart({ data: zeroSpan, height: 100, showScale: false });
+    const circles = component.root.findAll(
+      (n) => n.props && n.props.cy !== undefined && n.props.r !== undefined
+    );
+    const ys = circles.map((c) => c.props.cy);
+    expect(new Set(ys).size).toBe(1);
+    expect(ys[0]).toBe(50);
+  });
+
+  test('scale labels show the single value for both min and max, honestly', () => {
+    const component = mountChart({ data: zeroSpan, showScale: true, seriesLabel: 'test' });
+    expect(component.root.findByProps({ testID: 'line-chart-scale-max' }).props.children).toBe('184');
+    expect(component.root.findByProps({ testID: 'line-chart-scale-min' }).props.children).toBe('184');
+  });
+});
+
 describe('LineChart — normal series (2-4 lb) is not suppressed by a domain floor', () => {
   const normal = [
     { value: 182.0, label: 'Mon', unit: 'lb' },
