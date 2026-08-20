@@ -70,10 +70,6 @@ export function AnalyticsStrengthSection({
               {oneKChartData.length > 1 && (
                 <View style={styles.oneKChartBlock}>
                   <Text style={styles.oneKChartLabel}>1K total over sessions</Text>
-                  {/* showScale, but no minRange: the 1K genuinely moves in
-                      meaningful steps, so flooring its domain would flatten real
-                      progress. The weight charts need the floor; this one only
-                      needed a readable scale. */}
                   <LineChart
                     data={oneKChartData}
                     height={120}

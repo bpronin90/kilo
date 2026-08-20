@@ -3,6 +3,11 @@ import { StyleSheet, View, Text, Pressable } from 'react-native';
 import Svg, { Polyline, Circle, Rect, G, Line } from 'react-native-svg';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
+// Reserved width for the showScale gutter (#828). Shared between the layout
+// math (narrows the plot) and the style below (sizes the column) so they
+// can't drift apart.
+const SCALE_GUTTER_WIDTH = 34;
+
 export function LineChart({
   data = [],
   height = 80,
@@ -12,18 +17,14 @@ export function LineChart({
   color,
   hideHeader = false,
   onSelect,
-  // Opt-in "measured" mode (#821). Both default to today's behavior so the
-  // Home sparkline — the other caller — renders exactly as it did.
+  // Opt-in "measured" mode (#821). Defaults to today's behavior so the Home
+  // sparkline — the other caller — renders exactly as it did.
   //
   // showScale prints the plotted domain's top and bottom values against the
-  // chart, so a line has a readable scale instead of shape alone.
-  //
-  // minRange floors the plotted domain. Without it the y-axis is always the
-  // data's own min..max, so a 0.4 lb wobble in a 30-day rolling average draws
-  // the same full-height drama as a 20 lb swing. A floor makes noise look like
-  // noise. It is expressed in the same units as `data[].value`, so callers in
-  // display space must convert it themselves.
-  minRange = 0,
+  // chart, so a line has a readable scale instead of shape alone. The domain
+  // is always the data's own min..max (#828) — there is no floor to widen it,
+  // so whatever the labels claim is exactly what the data spans, and what the
+  // accessibilityLabel below says too.
   showScale = false,
   emptyMessage = 'Not enough data',
   seriesLabel,
@@ -54,16 +55,8 @@ export function LineChart({
   const values = data.map(d => d.value);
   const dataMin = Math.min(...values);
   const dataMax = Math.max(...values);
-
-  // Widen the domain symmetrically around the data when it is flatter than
-  // `minRange`, so a nearly-flat series renders as a nearly-flat line.
-  let minVal = dataMin;
-  let maxVal = dataMax;
-  if (minRange > 0 && dataMax - dataMin < minRange) {
-    const mid = (dataMax + dataMin) / 2;
-    minVal = mid - minRange / 2;
-    maxVal = mid + minRange / 2;
-  }
+  const minVal = dataMin;
+  const maxVal = dataMax;
   const range = maxVal - minVal || 1;
 
   // One decimal only when the data actually carries one, so whole-number
@@ -88,15 +81,21 @@ export function LineChart({
   const effPaddingVertical = Math.max(paddingVertical, MARKER_INSET);
   const effPaddingHorizontal = Math.max(paddingHorizontal, MARKER_INSET);
 
-  const getX = (index) => effPaddingHorizontal + (index * (chartWidth - 2 * effPaddingHorizontal) / (data.length - 1));
+  // Reserve a fixed gutter for the scale labels (#828) so they sit beside the
+  // plot instead of painted over it. The Svg is narrowed by this amount; when
+  // showScale is off the gutter is 0 and layout is byte-identical to before.
+  const scaleGutter = showScale ? SCALE_GUTTER_WIDTH : 0;
+  const plotWidth = Math.max(chartWidth - scaleGutter, 0);
+
+  const getX = (index) => effPaddingHorizontal + (index * (plotWidth - 2 * effPaddingHorizontal) / (data.length - 1));
   const getY = (value) => height - effPaddingVertical - ((value - minVal) / range * (height - 2 * effPaddingVertical));
 
   const points = data.map((d, i) => `${getX(i)},${getY(d.value)}`).join(' ');
 
   const handlePress = (evt) => {
-    if (!chartWidth) return;
+    if (!plotWidth) return;
     const { locationX } = evt.nativeEvent;
-    const index = Math.round((locationX - effPaddingHorizontal) / (chartWidth - 2 * effPaddingHorizontal) * (data.length - 1));
+    const index = Math.round((locationX - effPaddingHorizontal) / (plotWidth - 2 * effPaddingHorizontal) * (data.length - 1));
     if (index >= 0 && index < data.length) {
       const next = index === selectedIndex ? null : index;
       setSelectedIndex(next);
@@ -125,15 +124,10 @@ export function LineChart({
         onPress={handlePress}
         accessibilityRole="image"
         accessibilityLabel={chartDescription}
+        style={styles.plotRow}
       >
-        {showScale && (
-          <View style={styles.scaleColumn} pointerEvents="none">
-            <Text style={styles.scaleLabel}>{formatScale(maxVal)}</Text>
-            <Text style={styles.scaleLabel}>{formatScale(minVal)}</Text>
-          </View>
-        )}
-        <Svg width={chartWidth || '100%'} height={height}>
-          {chartWidth > 0 && (
+        <Svg testID="line-chart-svg" width={plotWidth || '100%'} height={height}>
+          {plotWidth > 0 && (
             <>
               <Polyline
                 points={points}
@@ -184,8 +178,19 @@ export function LineChart({
             </>
           )}
         </Svg>
+        {showScale && (
+          // Sits beside the plot in the reserved gutter, aligned with the
+          // top/bottom of the *plot area* (inset by effPaddingVertical) so it
+          // lines up with where maxVal/minVal actually draw, not the
+          // container's raw edges (#828). Not absolutely positioned, so it
+          // can never paint over the line or a point marker.
+          <View style={[styles.scaleColumn, { height, paddingVertical: effPaddingVertical }]} pointerEvents="none">
+            <Text testID="line-chart-scale-max" style={styles.scaleLabel}>{formatScale(maxVal)}</Text>
+            <Text testID="line-chart-scale-min" style={styles.scaleLabel}>{formatScale(minVal)}</Text>
+          </View>
+        )}
       </Pressable>
-      
+
       {(selectedIndex !== null && hideHeader) ? (
         <Text style={styles.selectionLabel}>
           {displayPoint.label ? `${displayPoint.label} · ` : ''}
@@ -231,26 +236,21 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 14,
     marginTop: 20,
   },
-  // Overlays the plot rather than reserving a gutter, so turning the scale on
-  // does not reflow a chart's width or height. `colors.card` matches the
-  // surface both Analytics charts sit on in either palette.
+  plotRow: {
+    flexDirection: 'row',
+  },
+  // A reserved column beside the Svg (#828), not an overlay: the plot is
+  // narrowed to make room for it, so it can never sit on top of the line, a
+  // point marker, or the selection band.
   scaleColumn: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 0,
+    width: SCALE_GUTTER_WIDTH,
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    zIndex: 1,
   },
   scaleLabel: {
     fontSize: 10,
     fontWeight: '600',
     color: colors.textMuted,
-    backgroundColor: colors.card,
-    paddingHorizontal: 3,
-    borderRadius: 3,
-    overflow: 'hidden',
   },
   dateLabel: {
     fontSize: 11,

@@ -4,12 +4,6 @@ import { Card, SectionTitle, LineChart } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { useWeightUnit } from '../lib/unitPreference';
 
-// Floor for the plotted y-domain (#821), in display units. A rolling average
-// drifting by a few tenths is noise, and without a floor the chart stretched
-// that noise to full height. 5 lb / 2.5 kg is roughly "a change worth looking
-// at" for bodyweight, so anything flatter now reads as flat.
-const WEIGHT_MIN_RANGE = { lb: 5, kg: 2.5 };
-
 // One insufficient-data treatment for both charts (#821). It replaces the bare
 // "Not enough data", which named no threshold and offered nothing to do about
 // it. Two weigh-ins is the real threshold: computeWeightRollingAverageSeries
@@ -79,8 +73,6 @@ export function AnalyticsWeightTrendsCard({
     setSelectedPoint(point);
   }
 
-  const minRange = WEIGHT_MIN_RANGE[unit] ?? WEIGHT_MIN_RANGE.lb;
-
   const display = useMemo(() => {
     if (!selectedPoint) return weightSummary;
     const label = selectedPoint.label;
@@ -130,7 +122,6 @@ export function AnalyticsWeightTrendsCard({
                 height={100}
                 hideHeader
                 showScale
-                minRange={minRange}
                 seriesLabel="7-day rolling average bodyweight"
                 onSelect={handleSelect}
               />
@@ -149,7 +140,6 @@ export function AnalyticsWeightTrendsCard({
                 height={100}
                 hideHeader
                 showScale
-                minRange={minRange}
                 color={colors.textMuted}
                 seriesLabel="30-day rolling average bodyweight"
                 onSelect={handleSelect}
