@@ -118,11 +118,12 @@ const ANALYTICS_SECTION_IDS = new Set([
 ]);
 
 // The single typed intent that reaches Cloud Sync (#737). Cloud Sync is a panel
-// inside More > Account, so the destination sub-view is `account` and the panel
+// inside More > Data & Backup (moved there from Account by #822 — Account is
+// now identity-only), so the destination sub-view is `backup` and the panel
 // itself is the anchor. Built through the ordinary `{ tab, target }` contract
 // (#718) rather than a bespoke route: the shell mints the monotonic key, so
 // asking for Cloud Sync twice in a row still re-applies both times.
-export const CLOUD_SYNC_NAV_TARGET = { kind: 'subview', view: 'account', anchor: 'cloud-sync' };
+export const CLOUD_SYNC_NAV_TARGET = { kind: 'subview', view: 'backup', anchor: 'cloud-sync' };
 
 // Typed cross-screen navigation intents (#718). A navigation request is
 // `{ tab, target, key }`: `handleTabPress(tab, target)` carries the first two
