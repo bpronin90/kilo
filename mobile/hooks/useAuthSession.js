@@ -22,6 +22,19 @@ const LOCAL_ONLY_RESULT = Object.freeze({
   error: 'Cloud accounts are not configured in this build.',
 });
 
+// Every exported function below promises callers an { ok: true, ... } or
+// { ok: false, error } result — AccountScreen's run(), AccountLifecycle, and
+// BackupScreen all gate their status text on that shape and have no catch of
+// their own. supabase-js can reject instead of resolving { data, error } on a
+// genuine network-layer failure (its own AuthRetryableFetchError family), so
+// every function that calls into the raw client wraps its body in this to
+// keep the contract even when the client throws. Without it the promise
+// rejects unhandled and the UI shows nothing at all — no status text, no
+// error — on what was actually a failed request (#831).
+function networkErrorResult(e) {
+  return { ok: false, error: e?.message || 'A network error occurred. Check your connection and try again.' };
+}
+
 // Deep link the app registers for both the GitHub OAuth callback and the
 // password-recovery callback (#497). Native delivers both via this URL
 // scheme; web carries the same payload as query/hash params on the app's own
@@ -212,18 +225,22 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
     if (!client) return LOCAL_ONLY_RESULT;
     const challenge = claimCaptchaToken(captchaToken);
     if (!challenge.ok) return challenge;
-    const { data, error } = await client.auth.signInWithPassword({
-      email,
-      password,
-      ...(challenge.captchaToken ? { options: { captchaToken: challenge.captchaToken } } : {}),
-    });
-    if (error) {
-      // Distinguish an unconfirmed account from a generic bad-credentials
-      // error so the screen can offer the resend-confirmation action instead
-      // of a dead-end "invalid login" message (#799).
-      return { ok: false, error: error.message, unconfirmed: error.code === 'email_not_confirmed' };
+    try {
+      const { data, error } = await client.auth.signInWithPassword({
+        email,
+        password,
+        ...(challenge.captchaToken ? { options: { captchaToken: challenge.captchaToken } } : {}),
+      });
+      if (error) {
+        // Distinguish an unconfirmed account from a generic bad-credentials
+        // error so the screen can offer the resend-confirmation action instead
+        // of a dead-end "invalid login" message (#799).
+        return { ok: false, error: error.message, unconfirmed: error.code === 'email_not_confirmed' };
+      }
+      return { ok: true, session: data?.session || null };
+    } catch (e) {
+      return networkErrorResult(e);
     }
-    return { ok: true, session: data?.session || null };
   }, [claimCaptchaToken, requireClient]);
 
   const signUpWithPassword = useCallback(async (email, password, captchaToken) => {
@@ -231,13 +248,17 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
     if (!client) return LOCAL_ONLY_RESULT;
     const challenge = claimCaptchaToken(captchaToken);
     if (!challenge.ok) return challenge;
-    const { data, error } = await client.auth.signUp({
-      email,
-      password,
-      ...(challenge.captchaToken ? { options: { captchaToken: challenge.captchaToken } } : {}),
-    });
-    if (error) return { ok: false, error: error.message };
-    return { ok: true, session: data?.session || null };
+    try {
+      const { data, error } = await client.auth.signUp({
+        email,
+        password,
+        ...(challenge.captchaToken ? { options: { captchaToken: challenge.captchaToken } } : {}),
+      });
+      if (error) return { ok: false, error: error.message };
+      return { ok: true, session: data?.session || null };
+    } catch (e) {
+      return networkErrorResult(e);
+    }
   }, [claimCaptchaToken, requireClient]);
 
   // Resend a signup-confirmation email. Same CAPTCHA handling as the other
@@ -249,13 +270,17 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
     if (!client) return LOCAL_ONLY_RESULT;
     const challenge = claimCaptchaToken(captchaToken);
     if (!challenge.ok) return challenge;
-    const { error } = await client.auth.resend({
-      type: 'signup',
-      email,
-      ...(challenge.captchaToken ? { options: { captchaToken: challenge.captchaToken } } : {}),
-    });
-    if (error) return { ok: false, error: error.message };
-    return { ok: true };
+    try {
+      const { error } = await client.auth.resend({
+        type: 'signup',
+        email,
+        ...(challenge.captchaToken ? { options: { captchaToken: challenge.captchaToken } } : {}),
+      });
+      if (error) return { ok: false, error: error.message };
+      return { ok: true };
+    } catch (e) {
+      return networkErrorResult(e);
+    }
   }, [claimCaptchaToken, requireClient]);
 
   const wipeDeviceData = useCallback(async () => {
@@ -277,16 +302,20 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
   const signOut = useCallback(async (options) => {
     const client = requireClient();
     if (!client) return LOCAL_ONLY_RESULT;
-    const { error } = await client.auth.signOut();
-    if (error) return { ok: false, error: error.message };
-    applySession(null);
-    if (options?.wipeLocalData) {
-      const wipeResult = await wipeDeviceData();
-      if (!wipeResult.ok) {
-        return { ok: false, error: 'Signed out, but device data could not be wiped. Try the wipe again before sharing this device.' };
+    try {
+      const { error } = await client.auth.signOut();
+      if (error) return { ok: false, error: error.message };
+      applySession(null);
+      if (options?.wipeLocalData) {
+        const wipeResult = await wipeDeviceData();
+        if (!wipeResult.ok) {
+          return { ok: false, error: 'Signed out, but device data could not be wiped. Try the wipe again before sharing this device.' };
+        }
       }
+      return { ok: true };
+    } catch (e) {
+      return networkErrorResult(e);
     }
-    return { ok: true };
   }, [requireClient, applySession, wipeDeviceData]);
 
   const resetPasswordForEmail = useCallback(async (email, options) => {
@@ -294,25 +323,29 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
     if (!client) return LOCAL_ONLY_RESULT;
     const challenge = claimCaptchaToken(options?.captchaToken);
     if (!challenge.ok) return challenge;
-    // Send the bare, allowlisted redirect URL unchanged (kilo://auth/callback
-    // native, the web origin on web). No query marker is added — that would
-    // risk an allowlist miss and a Site-URL fallback (see the discriminator
-    // note above).
-    const { error } = await client.auth.resetPasswordForEmail(
-      email,
-      (options?.redirectTo || challenge.captchaToken)
-        ? {
-            ...(options?.redirectTo ? { redirectTo: options.redirectTo } : {}),
-            ...(challenge.captchaToken ? { captchaToken: challenge.captchaToken } : {}),
-          }
-        : undefined,
-    );
-    if (error) return { ok: false, error: error.message };
-    // Record that a recovery is in flight so a returning web callback error
-    // (expired/used link) can be attributed to recovery without a URL marker.
-    // No-op on native (no localStorage).
-    markRecoveryPending();
-    return { ok: true };
+    try {
+      // Send the bare, allowlisted redirect URL unchanged (kilo://auth/callback
+      // native, the web origin on web). No query marker is added — that would
+      // risk an allowlist miss and a Site-URL fallback (see the discriminator
+      // note above).
+      const { error } = await client.auth.resetPasswordForEmail(
+        email,
+        (options?.redirectTo || challenge.captchaToken)
+          ? {
+              ...(options?.redirectTo ? { redirectTo: options.redirectTo } : {}),
+              ...(challenge.captchaToken ? { captchaToken: challenge.captchaToken } : {}),
+            }
+          : undefined,
+      );
+      if (error) return { ok: false, error: error.message };
+      // Record that a recovery is in flight so a returning web callback error
+      // (expired/used link) can be attributed to recovery without a URL marker.
+      // No-op on native (no localStorage).
+      markRecoveryPending();
+      return { ok: true };
+    } catch (e) {
+      return networkErrorResult(e);
+    }
   }, [claimCaptchaToken, requireClient]);
 
   // Call the account-export Edge Function with the requester's JWT.
@@ -322,10 +355,10 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
     if (!client) return LOCAL_ONLY_RESULT;
     const supabaseUrl = getSupabaseConfig()?.url;
     if (!supabaseUrl) return LOCAL_ONLY_RESULT;
-    const { data: { session } } = await client.auth.getSession();
-    const token = session?.access_token;
-    if (!token) return { ok: false, error: 'Not signed in.' };
     try {
+      const { data: { session } } = await client.auth.getSession();
+      const token = session?.access_token;
+      if (!token) return { ok: false, error: 'Not signed in.' };
       const res = await fetch(
         `${supabaseUrl}/functions/v1/account-export`,
         { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } },
@@ -345,10 +378,10 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
     if (!client) return LOCAL_ONLY_RESULT;
     const supabaseUrl = getSupabaseConfig()?.url;
     if (!supabaseUrl) return LOCAL_ONLY_RESULT;
-    const { data: { session } } = await client.auth.getSession();
-    const token = session?.access_token;
-    if (!token) return { ok: false, error: 'Not signed in.' };
     try {
+      const { data: { session } } = await client.auth.getSession();
+      const token = session?.access_token;
+      if (!token) return { ok: false, error: 'Not signed in.' };
       const res = await fetch(
         `${supabaseUrl}/functions/v1/account-delete`,
         { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } },
@@ -379,9 +412,13 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
           ...(options.skipBrowserRedirect != null ? { skipBrowserRedirect: options.skipBrowserRedirect } : {}),
         }
       : undefined;
-    const { data, error } = await client.auth.signInWithOAuth({ provider, options: oauthOptions });
-    if (error) return { ok: false, error: error.message };
-    return { ok: true, url: data?.url || null };
+    try {
+      const { data, error } = await client.auth.signInWithOAuth({ provider, options: oauthOptions });
+      if (error) return { ok: false, error: error.message };
+      return { ok: true, url: data?.url || null };
+    } catch (e) {
+      return networkErrorResult(e);
+    }
   }, [requireClient]);
 
   // Web OAuth / password-reset callback handler. supabase-js with
@@ -423,24 +460,28 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
       return { ok: false, error: desc };
     }
 
-    // Extract and pass only the code value (not the full URL) to exchangeCodeForSession.
-    const codeMatch = /[?&]code=([^&#]+)/.exec(target);
-    if (codeMatch && typeof client.auth.exchangeCodeForSession === 'function') {
-      const code = decodeURIComponent(codeMatch[1]);
-      const { data, error } = await client.auth.exchangeCodeForSession(code);
+    try {
+      // Extract and pass only the code value (not the full URL) to exchangeCodeForSession.
+      const codeMatch = /[?&]code=([^&#]+)/.exec(target);
+      if (codeMatch && typeof client.auth.exchangeCodeForSession === 'function') {
+        const code = decodeURIComponent(codeMatch[1]);
+        const { data, error } = await client.auth.exchangeCodeForSession(code);
+        if (error) return { ok: false, error: error.message };
+        if (!data?.session) return { ok: false, error: 'Sign in did not complete.' };
+        applySession(data.session);
+        return { ok: true, session: data.session };
+      }
+
+      // Fallback for web implicit flow: supabase-js with detectSessionInUrl=true
+      // restores the session from the URL fragment automatically.
+      const { data, error } = await client.auth.getSession();
       if (error) return { ok: false, error: error.message };
       if (!data?.session) return { ok: false, error: 'Sign in did not complete.' };
       applySession(data.session);
       return { ok: true, session: data.session };
+    } catch (e) {
+      return networkErrorResult(e);
     }
-
-    // Fallback for web implicit flow: supabase-js with detectSessionInUrl=true
-    // restores the session from the URL fragment automatically.
-    const { data, error } = await client.auth.getSession();
-    if (error) return { ok: false, error: error.message };
-    if (!data?.session) return { ok: false, error: 'Sign in did not complete.' };
-    applySession(data.session);
-    return { ok: true, session: data.session };
   }, [requireClient, applySession]);
 
   // Native cold/warm-start deep-link handling for the recovery callback,
@@ -487,13 +528,17 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
   const updatePassword = useCallback(async (password) => {
     const client = requireClient();
     if (!client) return LOCAL_ONLY_RESULT;
-    const { data, error } = await client.auth.updateUser({ password });
-    if (error) return { ok: false, error: error.message };
-    if (mountedRef.current) {
-      setPasswordRecovery(false);
-      setRecoveryError('');
+    try {
+      const { data, error } = await client.auth.updateUser({ password });
+      if (error) return { ok: false, error: error.message };
+      if (mountedRef.current) {
+        setPasswordRecovery(false);
+        setRecoveryError('');
+      }
+      return { ok: true, user: data?.user || null };
+    } catch (e) {
+      return networkErrorResult(e);
     }
-    return { ok: true, user: data?.user || null };
   }, [requireClient]);
 
   return {

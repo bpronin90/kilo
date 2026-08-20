@@ -342,6 +342,24 @@ describe('serverExport', () => {
     // This is covered implicitly by the hook's local-only guard.
     expect(true).toBe(true);
   });
+
+  // #831: getSession() ran unwrapped ahead of the fetch's own try/catch, so a
+  // rejected getSession() (a genuine network failure, not a fetch failure)
+  // used to propagate unhandled instead of resolving { ok: false, error }.
+  test('returns { ok: false, error } instead of throwing when getSession itself rejects', async () => {
+    const { ref } = renderHook();
+    await flush();
+    // The mount-time session-restore probe already consumed the first
+    // getSession() resolution; reject only serverExport's own call.
+    mockAuth.getSession.mockRejectedValueOnce(new Error('A network error occurred'));
+
+    let result;
+    await act(async () => { result = await ref.current.serverExport(); });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/network error/i);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -418,6 +436,20 @@ describe('deleteAccount', () => {
     const headerValues = Object.values(headers).join(' ');
     expect(headerValues).not.toMatch(/service_role/i);
     expect(headerValues).not.toMatch(/secret/i);
+  });
+
+  // #831: same unwrapped-getSession() gap as serverExport above.
+  test('returns { ok: false, error } instead of throwing when getSession itself rejects', async () => {
+    const { ref } = renderHook();
+    await flush();
+    mockAuth.getSession.mockRejectedValueOnce(new Error('A network error occurred'));
+
+    let result;
+    await act(async () => { result = await ref.current.deleteAccount(); });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/network error/i);
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 });
 
