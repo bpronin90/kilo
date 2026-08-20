@@ -1,5 +1,6 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
+import { PixelRatio } from 'react-native';
 import { ThemeProvider } from '../theme/ThemeContext';
 import { LineChart } from '../components/LineChart';
 
@@ -10,6 +11,16 @@ jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
 
 const CHART_WIDTH = 300;
 const SCALE_GUTTER_WIDTH = 34;
+
+// Deterministic default; individual tests override this to simulate the OS
+// large-text / accessibility text-size setting (#828).
+beforeEach(() => {
+  jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(1);
+});
+
+afterEach(() => {
+  PixelRatio.getFontScale.mockRestore();
+});
 
 // The chart gates its SVG children on a measured width, which onLayout only
 // supplies on a real host. Feed it one so points/marks/labels actually render.
@@ -141,6 +152,50 @@ describe('LineChart — showScale layout', () => {
     const component = mountChart({ data, showScale: false });
     expect(() => component.root.findByProps({ testID: 'line-chart-scale-max' })).toThrow();
     expect(() => component.root.findByProps({ testID: 'line-chart-scale-min' })).toThrow();
+  });
+});
+
+describe('LineChart — showScale at large text (#828 feedback)', () => {
+  const data = [
+    { value: 184.0, label: 'Mon', unit: 'lb' },
+    { value: 184.6, label: 'Tue', unit: 'lb' },
+  ];
+
+  test('the gutter grows with the OS font scale, so the plot narrows to match', () => {
+    PixelRatio.getFontScale.mockReturnValue(2);
+    const component = mountChart({ data, showScale: true, seriesLabel: 'test' });
+    const scaledGutter = Math.ceil(SCALE_GUTTER_WIDTH * 2);
+    expect(svgWidth(component)).toBe(CHART_WIDTH - scaledGutter);
+  });
+
+  test('the reserved column width tracks the same scaled gutter, so the label never has less room than the plot assumes', () => {
+    PixelRatio.getFontScale.mockReturnValue(2);
+    const component = mountChart({ data, showScale: true, seriesLabel: 'test' });
+    const scaledGutter = Math.ceil(SCALE_GUTTER_WIDTH * 2);
+    const column = component.root.findAll(
+      (n) =>
+        Array.isArray(n.props?.style) &&
+        n.props.style.some((s) => s && s.width === scaledGutter)
+    );
+    expect(column.length).toBeGreaterThan(0);
+  });
+
+  test('labels carry a shrink-to-fit backstop so a scale mismatch can never overflow into the plot', () => {
+    PixelRatio.getFontScale.mockReturnValue(3);
+    const component = mountChart({ data, showScale: true, seriesLabel: 'test' });
+    const max = component.root.findByProps({ testID: 'line-chart-scale-max' });
+    const min = component.root.findByProps({ testID: 'line-chart-scale-min' });
+    for (const label of [max, min]) {
+      expect(label.props.numberOfLines).toBe(1);
+      expect(label.props.adjustsFontSizeToFit).toBe(true);
+    }
+  });
+
+  test("Home's no-showScale path ignores font scale entirely — no gutter, full width", () => {
+    PixelRatio.getFontScale.mockReturnValue(3);
+    const component = mountChart({ data, height: 44, paddingVertical: 0, paddingHorizontal: 0 });
+    expect(svgWidth(component)).toBe(CHART_WIDTH);
+    expect(() => component.root.findByProps({ testID: 'line-chart-scale-max' })).toThrow();
   });
 });
 

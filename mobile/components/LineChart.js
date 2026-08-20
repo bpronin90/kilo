@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, Pressable } from 'react-native';
+import { StyleSheet, View, Text, Pressable, PixelRatio } from 'react-native';
 import Svg, { Polyline, Circle, Rect, G, Line } from 'react-native-svg';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
-// Reserved width for the showScale gutter (#828). Shared between the layout
-// math (narrows the plot) and the style below (sizes the column) so they
-// can't drift apart.
+// Base width for the showScale gutter at the OS default text size (#828). A
+// fixed pixel width doesn't track React Native's accessibility font scaling
+// — a label like "184.6" set at 200% text can render wider than a static 34
+// while the plot still assumes 34, overflowing into the line. The gutter is
+// scaled by PixelRatio.getFontScale() below so it grows with the same factor
+// that grows the label text; numberOfLines/adjustsFontSizeToFit on the label
+// itself is the backstop for any residual mismatch.
 const SCALE_GUTTER_WIDTH = 34;
 
 export function LineChart({
@@ -81,10 +85,11 @@ export function LineChart({
   const effPaddingVertical = Math.max(paddingVertical, MARKER_INSET);
   const effPaddingHorizontal = Math.max(paddingHorizontal, MARKER_INSET);
 
-  // Reserve a fixed gutter for the scale labels (#828) so they sit beside the
-  // plot instead of painted over it. The Svg is narrowed by this amount; when
+  // Reserve a gutter for the scale labels (#828) so they sit beside the plot
+  // instead of painted over it. The Svg is narrowed by this amount; when
   // showScale is off the gutter is 0 and layout is byte-identical to before.
-  const scaleGutter = showScale ? SCALE_GUTTER_WIDTH : 0;
+  // Scaled by the OS text-size setting so large-text labels still fit.
+  const scaleGutter = showScale ? Math.ceil(SCALE_GUTTER_WIDTH * PixelRatio.getFontScale()) : 0;
   const plotWidth = Math.max(chartWidth - scaleGutter, 0);
 
   const getX = (index) => effPaddingHorizontal + (index * (plotWidth - 2 * effPaddingHorizontal) / (data.length - 1));
@@ -190,10 +195,32 @@ export function LineChart({
           // top/bottom of the *plot area* (inset by effPaddingVertical) so it
           // lines up with where maxVal/minVal actually draw, not the
           // container's raw edges (#828). Not absolutely positioned, so it
-          // can never paint over the line or a point marker.
-          <View style={[styles.scaleColumn, { height, paddingVertical: effPaddingVertical }]} pointerEvents="none">
-            <Text testID="line-chart-scale-max" style={styles.scaleLabel}>{formatScale(maxVal)}</Text>
-            <Text testID="line-chart-scale-min" style={styles.scaleLabel}>{formatScale(minVal)}</Text>
+          // can never paint over the line or a point marker. Width tracks the
+          // same font-scaled gutter reserved from the plot above.
+          <View style={[styles.scaleColumn, { height, width: scaleGutter, paddingVertical: effPaddingVertical }]} pointerEvents="none">
+            {/* numberOfLines + adjustsFontSizeToFit is a backstop, not the
+                primary fit: the gutter above is already sized for the current
+                font scale, but this guarantees a wrapped second line — which
+                would silently grow past the column and back into the plot —
+                can never happen. */}
+            <Text
+              testID="line-chart-scale-max"
+              style={styles.scaleLabel}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.5}
+            >
+              {formatScale(maxVal)}
+            </Text>
+            <Text
+              testID="line-chart-scale-min"
+              style={styles.scaleLabel}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.5}
+            >
+              {formatScale(minVal)}
+            </Text>
           </View>
         )}
       </Pressable>
@@ -248,16 +275,19 @@ const createStyles = (colors) => StyleSheet.create({
   },
   // A reserved column beside the Svg (#828), not an overlay: the plot is
   // narrowed to make room for it, so it can never sit on top of the line, a
-  // point marker, or the selection band.
+  // point marker, or the selection band. Width is set inline per-render (it
+  // tracks the OS font scale), not here. Children stretch to that width
+  // (default alignItems) rather than shrink-wrapping to content, so each
+  // label actually has a width to measure against for numberOfLines/
+  // adjustsFontSizeToFit — the backstop only works if the Text knows its box.
   scaleColumn: {
-    width: SCALE_GUTTER_WIDTH,
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
   },
   scaleLabel: {
     fontSize: 10,
     fontWeight: '600',
     color: colors.textMuted,
+    textAlign: 'right',
   },
   dateLabel: {
     fontSize: 11,
