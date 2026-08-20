@@ -589,6 +589,58 @@ describe('AnalyticsScreen Progressive Overload collapse-all', () => {
     const component = setup();
     expect(component.root.findAllByProps({ testID: 'po-collapse-all' }).length).toBe(0);
   });
+
+  // #826 review: the bulk action must not reach past the search filter in
+  // EITHER direction. Rebuilding the collapsed set from the visible names alone
+  // silently expanded a filtered-out group on "Collapse all", and clearing it
+  // entirely did the same on "Expand all".
+  function pressable(root, testID) {
+    return root.findAllByProps({ testID }).find(node => typeof node.props.onPress === 'function');
+  }
+
+  function search(root, text) {
+    const input = root.findAllByProps({ testID: 'po-search' }).find(n => n.props.onChangeText);
+    render.act(() => { input.props.onChangeText(text); });
+  }
+
+  test('collapsing a filtered view leaves a hidden collapsed group collapsed', () => {
+    const component = setupTwoGroups();
+    const root = component.root;
+
+    // Friday collapsed on its own; Monday still open.
+    render.act(() => { pressable(root, 'po-group-header-FRIDAY').props.onPress(); });
+    expect(hasText(root, '275')).toBe(false);
+    expect(hasText(root, '185')).toBe(true);
+
+    // Narrow to Monday only, then collapse everything visible.
+    search(root, 'bench');
+    render.act(() => { collapseAllControl(root).props.onPress(); });
+    search(root, '');
+
+    // Monday is now collapsed, and Friday was never touched.
+    expect(hasText(root, '185')).toBe(false);
+    expect(hasText(root, '275')).toBe(false);
+    expect(hasText(root, 'MONDAY')).toBe(true);
+    expect(hasText(root, 'FRIDAY')).toBe(true);
+  });
+
+  test('expanding a filtered view leaves a hidden collapsed group collapsed', () => {
+    const component = setupTwoGroups();
+    const root = component.root;
+
+    render.act(() => { collapseAllControl(root).props.onPress(); });
+    expect(hasText(root, '185')).toBe(false);
+    expect(hasText(root, '275')).toBe(false);
+
+    // Narrow to Monday, expand what is visible, then restore the full list.
+    search(root, 'bench');
+    render.act(() => { collapseAllControl(root).props.onPress(); });
+    search(root, '');
+
+    // Monday reopened; Friday stayed as the user left it.
+    expect(hasText(root, '185')).toBe(true);
+    expect(hasText(root, '275')).toBe(false);
+  });
 });
 
 describe('AnalyticsScreen 1K Progress Card', () => {

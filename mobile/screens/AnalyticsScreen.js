@@ -260,19 +260,25 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   }
 
   // Bulk collapse for Progressive Overload. `groupedSignals` is the same list
-  // the rows render from, so the control always acts on exactly what is on
-  // screen — including while a search query is narrowing the groups. Expanding
-  // clears the whole set rather than only the visible names, so a group hidden
-  // behind a search filter is never left collapsed with no way to reach its
-  // header.
+  // the rows render from, so the control acts on exactly what is on screen —
+  // and ONLY on that. A group filtered out by the search box keeps whatever
+  // state the user left it in, in both directions: collapsing must never expand
+  // something, and expanding a narrowed view must not silently reopen groups the
+  // user cannot see the result of (#826 review). Rebuilding the set from the
+  // visible names alone did both.
   const allGroupsCollapsed =
     groupedSignals.length > 0 && groupedSignals.every(group => collapsedGroups.has(group.name));
 
   function toggleAllGroups() {
     setCollapsedGroups(prev => {
-      const collapsed =
-        groupedSignals.length > 0 && groupedSignals.every(group => prev.has(group.name));
-      return collapsed ? new Set() : new Set(groupedSignals.map(group => group.name));
+      const visible = groupedSignals.map(group => group.name);
+      const allVisibleCollapsed = visible.length > 0 && visible.every(name => prev.has(name));
+      const next = new Set(prev);
+      for (const name of visible) {
+        if (allVisibleCollapsed) next.delete(name);
+        else next.add(name);
+      }
+      return next;
     });
   }
 
@@ -527,6 +533,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       </View>
       <View style={styles.searchContainer}>
         <TextInput
+          testID="po-search"
           style={styles.searchInput}
           placeholder="Search tracked exercises..."
           placeholderTextColor={colors.textMuted}
@@ -564,7 +571,8 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
             const isCollapsed = collapsedGroups.has(group.name);
             return (
               <View key={group.name} style={[styles.groupSection, groupIdx > 0 && styles.groupSectionBorder]}>
-                <Pressable 
+                <Pressable
+                  testID={`po-group-header-${group.name}`}
                   onPress={() => toggleGroup(group.name)}
                   style={styles.groupHeader}
                 >
