@@ -238,16 +238,19 @@ export function LogScreen({
 
   // Recovery becomes its own tab (#823). Present whenever `LogRecoverySection`
   // itself has anything to show — not just an active block, but also a
-  // pending/in-flight recovery operation or a stale snapshot with NO active
-  // block, which the component already renders a retry banner for (see its
-  // own early-return contract). Mirroring that condition here, rather than
-  // narrowing to `activeRecoveryBlock` alone, is what keeps that banner from
-  // becoming unreachable once Recovery is a separate tab instead of an
-  // always-mounted section of the Routine tab.
+  // pending/in-flight recovery operation, a stale snapshot with NO active
+  // block, or a terminal INITIAL-load failure (`!recoveryReady` with a real
+  // error, as opposed to still-loading), all of which the component already
+  // renders a banner/retry for (see its own early-return contract). Mirroring
+  // that condition here, rather than narrowing to `activeRecoveryBlock`
+  // alone, is what keeps those banners from becoming unreachable once
+  // Recovery is a separate tab instead of an always-mounted section of the
+  // Routine tab.
   const recoveryTabVisible = !!activeRecoveryBlock
     || (pendingRecovery?.length || 0) > 0
     || !!recoveryPendingError
-    || recoveryStale;
+    || recoveryStale
+    || (!recoveryReady && !!recoveryStateError);
 
   // This one-shot effect makes Recovery the DEFAULT landing tab the first
   // time verified Recovery state resolves with something to show — it was
@@ -901,7 +904,7 @@ export function LogScreen({
                 viewingHasABWeeks={otherEditor.viewingHasABWeeks}
                 viewingEffectiveWeek={otherEditor.viewingEffectiveWeek}
                 onToggleViewingWeek={otherEditor.handleToggleViewingWeek}
-                onEditNote={otherEditor.handleOpenOtherNote}
+                onEditNote={otherEditor.handleEditViewedNote}
                 onCompleteWeek={handleCompleteCurrentWeek}
                 onOpenAddWeek={openAddWeekModal}
                 onCompleteBlock={handleCompleteRecoveryBlock}

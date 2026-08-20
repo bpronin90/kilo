@@ -883,9 +883,11 @@ Consequences to preserve:
 - **Recovery is its own tab, present only while `LogRecoverySection` has
   something to show (#823).** `recoveryTabVisible` (`LogScreen.js`) mirrors
   that component's own early-return contract exactly — not just an active
-  block, but also a pending/in-flight recovery operation or a stale snapshot
-  with no active block, both of which the component already renders a retry
-  banner for. The Routine/Deload pill becomes a three-way
+  block, but also a pending/in-flight recovery operation, a stale snapshot
+  with no active block, or a terminal initial-load failure
+  (`!recoveryReady && recoveryStateError`, as opposed to still-loading), all
+  of which the component already renders a banner/retry for. The
+  Routine/Deload pill becomes a three-way
   Routine/Deload/Recovery toggle whenever `deloadModeEnabled` or
   `recoveryTabVisible` is true; Recovery renders first (leftmost) whenever
   it's present, and the tab disappears the instant nothing is left to show —
@@ -921,9 +923,12 @@ Consequences to preserve:
   in its existing treatment and with the same role, label, and `selected` state
   — otherwise an A/B recovery week's other week would be unreachable here. The
   inline read also carries an `Edit` button in the same `inlineSwitchButton`
-  treatment (#823), opening the shared editor via `handleOpenOtherNote` — every
-  other note viewer in this tab (deload record, prior routines) already had
-  one; a recovery week's note previously had no path back into editing. A week whose `note_id` is null, or names a note
+  treatment (#823), opening the shared editor via `handleEditViewedNote`
+  (not `handleOpenOtherNote`, deliberately: it reads the currently-selected
+  A/B week off shared viewing state, so Edit opens the same half the user was
+  just reading) — every other note viewer in this tab (deload record, prior
+  routines) already had one; a recovery week's note previously had no path
+  back into editing. A week whose `note_id` is null, or names a note
   absent from the notebook, shows `Note unavailable` in place of a title,
   announces `Recovery Week N, note unavailable`, and carries no `onPress`, no
   `chevron-right`, and no

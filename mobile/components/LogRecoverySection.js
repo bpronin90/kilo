@@ -58,10 +58,12 @@ export function LogRecoverySection({
   viewingHasABWeeks = false,
   viewingEffectiveWeek = null,
   onToggleViewingWeek,
-  // Opens the shared note editor on the linked note (#823) — the same
-  // handler LogDeloadSection's "Edit deload record" button uses
-  // (`otherEditor.handleOpenOtherNote`), so a recovery week's note is no
-  // longer the one note viewer in this tab with no way back into editing.
+  // Opens the shared note editor on the currently-viewed note (#823) —
+  // `otherEditor.handleEditViewedNote`, which takes no argument and reads
+  // off the same shared viewing state this card renders from, so the editor
+  // opens on whichever A/B week the user was actually looking at rather than
+  // the note's persisted default. So a recovery week's note is no longer the
+  // one note viewer in this tab with no way back into editing.
   onEditNote,
   onCompleteWeek,
   onOpenAddWeek,
@@ -447,10 +449,19 @@ export function LogRecoverySection({
                               record, prior routines) already has an explicit
                               Edit control — this one didn't (#823 audit
                               finding 3), so reading a recovery week's note had
-                              no path back into editing it. */}
+                              no path back into editing it. `onEditNote` takes
+                              no argument on purpose: it is
+                              `otherEditor.handleEditViewedNote`, which reads
+                              off the same shared `viewingNote`/
+                              `viewingEffectiveWeek` state this card already
+                              renders from (`isViewingThisNote` guarantees it
+                              matches `linkedNote` here) — that is what makes
+                              the editor open on whichever A/B half the user
+                              was actually looking at, instead of always
+                              reopening on the note's persisted default week. */}
                           {linkedNote && (
                             <Button
-                              onPress={() => onEditNote?.(linkedNote)}
+                              onPress={() => onEditNote?.()}
                               title="Edit"
                               style={styles.inlineSwitchButton}
                               textStyle={styles.inlineSwitchButtonText}
