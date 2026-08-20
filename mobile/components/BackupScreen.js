@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { Platform, Share, StyleSheet, Text, TextInput } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { Platform, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Alert } from '../lib/platformAlert';
 import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle, Button } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { CloudSyncRecovery } from '../screens/more/CloudSyncRecovery';
 
 function backupFileName() {
   return `kilo-backup-${new Date().toISOString().slice(0, 10)}`;
@@ -74,12 +75,91 @@ async function readNewestBackupFile() {
   return { read: true, json, name: newest.name };
 }
 
-export function BackupScreen({ onBack, onExport, onImport }) {
+export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
+  const scrollRef = useRef(null);
   const [importText, setImportText] = useState('');
   const [status, setStatus] = useState(null); // { ok: bool, message: string }
   const [busy, setBusy] = useState(false);
+  const [cloudExportBusy, setCloudExportBusy] = useState(false);
+  const [cloudExportStatus, setCloudExportStatus] = useState('');
+  const [dangerBusy, setDangerBusy] = useState(false);
+  const [dangerStatus, setDangerStatus] = useState('');
+
+  // Server-held account data export (moved from AccountLifecycle, #822 —
+  // Account is identity-only now). Distinct from CloudSyncRecovery's own
+  // "Export Cloud Copy" below, which exports the local device snapshot with
+  // the signed-in identity attached; this fetches what the server currently
+  // holds for the account instead.
+  const handleServerExport = async () => {
+    setCloudExportBusy(true);
+    setCloudExportStatus('');
+    try {
+      const result = await auth.serverExport();
+      if (!result.ok) {
+        setCloudExportStatus(result.error || 'Export failed.');
+        return;
+      }
+      await Share.share({ message: result.json });
+      setCloudExportStatus('Account data exported.');
+    } catch {
+      setCloudExportStatus('Export failed.');
+    } finally {
+      setCloudExportBusy(false);
+    }
+  };
+
+  const runDanger = async (fn) => {
+    setDangerBusy(true);
+    setDangerStatus('');
+    try {
+      const result = await fn();
+      if (result?.ok) {
+        setDangerStatus(result.message || 'Done.');
+      } else {
+        setDangerStatus(result?.error || 'Something went wrong.');
+      }
+    } finally {
+      setDangerBusy(false);
+    }
+  };
+
+  // Moved from AccountScreen (#822): wiping local data never required a
+  // cloud account, so it belongs with the rest of Data & Backup, not Account.
+  const handleDeviceWipe = () => {
+    Alert.alert(
+      'Wipe Device Data',
+      'This permanently removes the training and health history stored on this device. It does not require a cloud account and cannot be undone. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Wipe Device Data',
+          style: 'destructive',
+          onPress: () => runDanger(() => auth?.wipeDeviceData?.().then((result) => (
+            result.ok ? { ok: true, message: 'Device data wiped.' } : result
+          ))),
+        },
+      ],
+    );
+  };
+
+  const handleSignOutAndWipe = () => {
+    Alert.alert(
+      'Sign Out and Wipe Device Data',
+      'This signs out and permanently removes the training and health history stored on this device. The cloud copy is kept. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out & Wipe',
+          style: 'destructive',
+          onPress: () => runDanger(() => auth.signOut({ wipeLocalData: true }).then((result) => (
+            result.ok ? { ok: true, message: 'Signed out and device data wiped.' } : result
+          ))),
+        },
+      ],
+    );
+  };
 
   // Actually produces and saves the export. Only reached after the user has
   // acknowledged that the artifact is unencrypted (see handleExport).
@@ -211,7 +291,12 @@ export function BackupScreen({ onBack, onExport, onImport }) {
   };
 
   return (
-    <ScreenShell title="Data & Backup" subtitle="Export or restore your training data." onBack={onBack}>
+    <ScreenShell
+      ref={scrollRef}
+      title="Data & Backup"
+      subtitle="Export or restore your training data — on this device or in the cloud."
+      onBack={onBack}
+    >
 
       {status ? (
         <Card tone={status.ok ? 'success' : 'error'}>
@@ -256,6 +341,90 @@ export function BackupScreen({ onBack, onExport, onImport }) {
         />
         <Button title="Import Data" onPress={handleImport} disabled={busy} style={styles.actionButton} />
       </Card>
+
+      <SectionTitle>Cloud</SectionTitle>
+      {!auth?.configured ? (
+        <Card>
+          <Text style={styles.helpText}>
+            Cloud accounts are not configured in this build. The app continues to
+            work fully offline with your local data.
+          </Text>
+        </Card>
+      ) : auth?.loading ? null : !auth?.signedIn ? (
+        <Card tone="accent">
+          <Text style={[styles.helpText, styles.textLight]}>
+            Cloud backup is off. Create an account to keep a synced copy of your
+            data across devices.
+          </Text>
+          <Button
+            title="Sign In / Create Account"
+            onPress={onGoToAccount}
+            accessibilityLabel="Go to Account to sign in"
+            style={styles.actionButton}
+          />
+        </Card>
+      ) : (
+        <>
+          <Card>
+            <Text style={styles.helpText}>
+              Export Account Data fetches what the server currently holds for
+              your account — not what is on this device. It may differ from
+              your local data if you have not recently synced.
+            </Text>
+            <Button
+              title="Export Account Data"
+              loadingTitle="Working…"
+              disabled={cloudExportBusy}
+              onPress={handleServerExport}
+              accessibilityLabel="Export account data"
+              style={styles.actionButton}
+            />
+            {cloudExportStatus ? (
+              <Text style={styles.helpText} accessibilityLabel="Account export status">
+                {cloudExportStatus}
+              </Text>
+            ) : null}
+          </Card>
+          <CloudSyncRecovery
+            user={auth.user}
+            onConsentDismiss={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+          />
+        </>
+      )}
+
+      <View style={styles.dangerZone}>
+        <View style={styles.dangerZoneHeading}>
+          <Text style={styles.dangerZoneHeadingText}>⚠ Danger Zone</Text>
+        </View>
+        {auth?.deviceWipeRequired ? (
+          <Text style={styles.warnText} accessibilityLabel="Device wipe required">
+            Your account session ended, but device data could not be wiped. Retry before sharing this device.
+          </Text>
+        ) : null}
+        <Button
+          title={auth?.deviceWipeRequired ? 'Retry Device Data Wipe' : 'Wipe Device Data'}
+          tone="danger"
+          disabled={dangerBusy}
+          onPress={handleDeviceWipe}
+          accessibilityLabel="Wipe device data"
+          style={styles.actionButton}
+        />
+        {auth?.signedIn ? (
+          <Button
+            title="Sign Out & Wipe Device Data"
+            tone="danger"
+            disabled={dangerBusy}
+            onPress={handleSignOutAndWipe}
+            accessibilityLabel="Sign out and wipe device data"
+            style={styles.actionButton}
+          />
+        ) : null}
+        {dangerStatus ? (
+          <Text style={styles.helpText} accessibilityLabel="Danger zone status">
+            {dangerStatus}
+          </Text>
+        ) : null}
+      </View>
     </ScreenShell>
   );
 }
@@ -293,5 +462,31 @@ const createStyles = (colors) => StyleSheet.create({
     fontFamily: 'monospace',
     minHeight: 100,
     textAlignVertical: 'top',
+  },
+  // Card tone="accent" is a filled dark surface; its label needs the light
+  // contrasting ink rather than the default muted text color.
+  textLight: {
+    color: colors.textLight,
+  },
+  // Irreversible-action container: error-tinted surface groups Wipe Device
+  // Data apart from routine export/import/sync. See ui-design-rules.md #14.
+  dangerZone: {
+    backgroundColor: colors.errorSurface,
+    borderWidth: 1,
+    borderColor: colors.error,
+    borderRadius: 24,
+    padding: 18,
+    gap: 12,
+  },
+  dangerZoneHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dangerZoneHeadingText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: colors.error,
   },
 });

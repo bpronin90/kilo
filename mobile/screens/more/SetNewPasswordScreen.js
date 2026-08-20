@@ -21,7 +21,7 @@ import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
 // single ScreenShell child with its own `gap: 12`, matching AccountScreen's
 // `accountBlock` convention, rather than adding ad-hoc margins between
 // elements.
-export function SetNewPasswordScreen({ auth, onDone }) {
+export function SetNewPasswordScreen({ auth, onDone, onBack }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const inputStyle = useInputStyle();
@@ -72,6 +72,7 @@ export function SetNewPasswordScreen({ auth, onDone }) {
     <ScreenShell
       title="Set New Password"
       subtitle="Choose a new password to finish resetting your account."
+      onBack={onBack}
     >
       <View style={styles.block}>
         <SectionTitle>New Password</SectionTitle>

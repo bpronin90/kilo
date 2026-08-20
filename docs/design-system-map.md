@@ -157,6 +157,11 @@ The pill/label pairing inverts by mode: light renders a dark pill with a light
 label, dark renders a light pill with a dark label. Both clear AA (see the
 derived-token table above).
 
+`tone="danger"` (#822): transparent `backgroundColor`, `borderWidth: 1.5`
+`colors.error` border, `colors.error` text — for irreversible actions, paired
+with the Danger Zone container pattern (`ui-design-rules.md` #14). Default
+tone is unchanged.
+
 ### StatCard
 
 | Property | Value | Line |

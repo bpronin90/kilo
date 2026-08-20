@@ -54,14 +54,20 @@ export function HelpScreen({ onBack }) {
         </View>
       </Card>
 
-      <SectionTitle>Account & Cloud Backup</SectionTitle>
+      <SectionTitle>Account & Cloud Sync</SectionTitle>
 
       <Card>
         <Text style={styles.helpText}>
           Kilo works fully offline. Everything you log — workouts, body weight, tracked exercises, and settings — is stored on this device, and you never need an account to use the app.
         </Text>
         <Text style={[styles.helpText, { marginTop: 12 }]}>
-          An optional Account (in the More tab) keeps your data synced to the cloud, so you can pick up on a new phone or after reinstalling. Your device holds the offline working copy you use day to day; your account holds a cloud copy that stays in step with it. When you sync, the two are reconciled — if the same item was changed in both places, the most recent change wins.
+          An optional Account (More → Account) lets you sign in. Cloud Sync
+          (More → Data & Backup) then keeps your data synced to the cloud, so
+          you can pick up on a new phone or after reinstalling. Your device
+          holds the offline working copy you use day to day; your account
+          holds a cloud copy that stays in step with it. When you sync, the
+          two are reconciled — if the same item was changed in both places,
+          the most recent change wins.
         </Text>
         <View style={{ marginTop: 12, gap: 10 }}>
           <View style={styles.termRow}>
