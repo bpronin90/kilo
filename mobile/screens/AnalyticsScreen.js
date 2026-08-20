@@ -257,6 +257,23 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     });
   }
 
+  // Bulk collapse for Progressive Overload. `groupedSignals` is the same list
+  // the rows render from, so the control always acts on exactly what is on
+  // screen — including while a search query is narrowing the groups. Expanding
+  // clears the whole set rather than only the visible names, so a group hidden
+  // behind a search filter is never left collapsed with no way to reach its
+  // header.
+  const allGroupsCollapsed =
+    groupedSignals.length > 0 && groupedSignals.every(group => collapsedGroups.has(group.name));
+
+  function toggleAllGroups() {
+    setCollapsedGroups(prev => {
+      const collapsed =
+        groupedSignals.length > 0 && groupedSignals.every(group => prev.has(group.name));
+      return collapsed ? new Set() : new Set(groupedSignals.map(group => group.name));
+    });
+  }
+
   async function handleSelectExercise(slot, exerciseName) {
     if (!currentNote) return;
     const next = { ...oneKSelections, [slot]: exerciseName };
@@ -425,7 +442,36 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       testID="sticky-header"
       onLayout={handleProgressiveOverloadHeaderLayout}
     >
-      <SectionTitle>Progressive Overload</SectionTitle>
+      <View style={styles.signalHeaderRow}>
+        <SectionTitle>Progressive Overload</SectionTitle>
+        {groupedSignals.length > 0 && (
+          <Pressable
+            testID="po-collapse-all"
+            onPress={toggleAllGroups}
+            style={styles.collapseAllButton}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: !allGroupsCollapsed }}
+            accessibilityLabel={
+              allGroupsCollapsed ? 'Expand all exercise groups' : 'Collapse all exercise groups'
+            }
+          >
+            <Text style={styles.collapseAllText}>
+              {allGroupsCollapsed ? 'Expand all' : 'Collapse all'}
+            </Text>
+            {/* `unfold-less`/`unfold-more` rather than the single-panel
+                `expand-less`/`expand-more` chevron of ui-design-rules §6: this
+                acts on every group at once, and reusing the per-panel glyph
+                would read as the sticky header collapsing itself. */}
+            <MaterialIcons
+              name={allGroupsCollapsed ? 'unfold-more' : 'unfold-less'}
+              size={16}
+              color={colors.textMuted}
+              accessible={false}
+            />
+          </Pressable>
+        )}
+      </View>
       <View style={styles.searchContainer}>
         <TextInput
           style={styles.searchInput}
@@ -616,6 +662,26 @@ const createStyles = (colors) => StyleSheet.create({
     backgroundColor: colors.background,
     paddingTop: 8,
     paddingBottom: 8,
+  },
+  signalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  collapseAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    minHeight: 44,
+    paddingHorizontal: 4,
+  },
+  collapseAllText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   searchContainer: {
     marginTop: 12,

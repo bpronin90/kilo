@@ -426,6 +426,87 @@ describe('AnalyticsScreen Progressive Overload — grouping and layout', () => {
   });
 });
 
+describe('AnalyticsScreen Progressive Overload collapse-all', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  function setupTwoGroups() {
+    const currentNote = {
+      id: 'n1',
+      raw_text: 'Monday\n+ lifting\n1. bench press\n\nFriday\n+ lifting\n1. squat',
+    };
+    jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
+      signals: [
+        { name: 'Bench Press', latest_pr: 225, kilo_max: 200, latest_top_weight: 185, overload_trend: 'up' },
+        { name: 'Squat', latest_pr: 315, kilo_max: 290, latest_top_weight: 275, overload_trend: 'up' },
+      ],
+      nameDisplayMap: new Map([['bench press', 'Bench Press'], ['squat', 'Squat']]),
+      repDropOffFlags: {},
+      perDaySignals: {},
+    });
+    return setup({
+      hookOverrides: { currentNote, trackedLifts: { 'bench press': true, squat: true } },
+    });
+  }
+
+  // The control is a Pressable, so the rendered tree carries its testID on more
+  // than one host node; the one that owns onPress is the control itself.
+  function collapseAllControl(root) {
+    return root
+      .findAllByProps({ testID: 'po-collapse-all' })
+      .find(node => typeof node.props.onPress === 'function');
+  }
+
+  test('collapses every group, then restores them, without touching group headers', () => {
+    const component = setupTwoGroups();
+    const root = component.root;
+
+    // Asserted on the per-row metric values rather than the exercise names:
+    // "Bench Press" and "Squat" are also the default Big 3 Mapping selections,
+    // so the names stay on screen no matter what this control does.
+    expect(hasText(root, '185')).toBe(true);
+    expect(hasText(root, '275')).toBe(true);
+    expect(hasText(root, 'Collapse all')).toBe(true);
+
+    render.act(() => {
+      collapseAllControl(root).props.onPress();
+    });
+
+    // Exercise rows are gone; the day headers that reopen them are not.
+    expect(hasText(root, '185')).toBe(false);
+    expect(hasText(root, '275')).toBe(false);
+    expect(hasText(root, 'MONDAY')).toBe(true);
+    expect(hasText(root, 'FRIDAY')).toBe(true);
+    expect(hasText(root, 'Expand all')).toBe(true);
+
+    render.act(() => {
+      collapseAllControl(root).props.onPress();
+    });
+
+    expect(hasText(root, '185')).toBe(true);
+    expect(hasText(root, '275')).toBe(true);
+    expect(hasText(root, 'Collapse all')).toBe(true);
+  });
+
+  test('reports its expanded state to assistive tech', () => {
+    const component = setupTwoGroups();
+    const root = component.root;
+
+    expect(collapseAllControl(root).props.accessibilityState).toEqual({ expanded: true });
+
+    render.act(() => {
+      collapseAllControl(root).props.onPress();
+    });
+
+    expect(collapseAllControl(root).props.accessibilityState).toEqual({ expanded: false });
+    expect(collapseAllControl(root).props.accessibilityLabel).toBe('Expand all exercise groups');
+  });
+
+  test('is not rendered when there are no tracked exercises to collapse', () => {
+    const component = setup();
+    expect(component.root.findAllByProps({ testID: 'po-collapse-all' }).length).toBe(0);
+  });
+});
+
 describe('AnalyticsScreen 1K Progress Card', () => {
   afterEach(() => jest.restoreAllMocks());
 

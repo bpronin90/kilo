@@ -97,6 +97,14 @@ the changelog and archived roadmaps.
 - A collapsed panel must show a one-line **summary** (count + latest value), so
   collapsing hides detail without hiding meaning. See the history panels'
   `summaryStack` (count 12/600 over a "Latest: …" line).
+- A list of several independently collapsible groups may carry one **bulk
+  collapse control** in the list's own header (Analytics' Progressive Overload
+  is the reference). It is a labelled text control — `Collapse all` / `Expand
+  all`, 12/700 uppercase `textMuted` — paired with the `unfold-less` /
+  `unfold-more` `MaterialIcons` glyph, deliberately *not* the per-panel
+  `expand-less`/`expand-more` chevron, which would read as the header
+  collapsing itself. It reports `accessibilityState={{ expanded }}` and is
+  omitted entirely when there is nothing to collapse.
 
 ## 7. Date-range / filtering controls for long histories
 
