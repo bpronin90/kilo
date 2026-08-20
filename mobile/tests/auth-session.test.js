@@ -612,6 +612,112 @@ describe('useAuthSession', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// #831: every function below promises callers { ok: true, ... } or
+// { ok: false, error } — nothing else. supabase-js can reject a call instead
+// of resolving { data, error } on a genuine network failure (its own
+// AuthRetryableFetchError family). Before this fix that rejection propagated
+// unhandled: callers (AccountScreen's run(), etc.) have no catch of their
+// own, so the UI showed nothing at all on a failed request. Each test below
+// makes the mocked client call reject and asserts the hook still resolves to
+// a readable { ok: false, error } instead of the `await` itself throwing.
+// ---------------------------------------------------------------------------
+describe('network/client exceptions surface as { ok: false, error } (#831)', () => {
+  test('signInWithPassword', async () => {
+    mockAuth.signInWithPassword.mockRejectedValueOnce(new Error('A network error occurred'));
+    const { ref } = renderAuthHook();
+    await flush();
+    let result;
+    await act(async () => { result = await ref.current.signInWithPassword('a@b.com', 'pw'); });
+    expect(result).toEqual({ ok: false, error: 'A network error occurred' });
+  });
+
+  test('signUpWithPassword', async () => {
+    mockAuth.signUp.mockRejectedValueOnce(new Error('A network error occurred'));
+    const { ref } = renderAuthHook();
+    await flush();
+    let result;
+    await act(async () => { result = await ref.current.signUpWithPassword('a@b.com', 'pw'); });
+    expect(result).toEqual({ ok: false, error: 'A network error occurred' });
+  });
+
+  test('resendSignupConfirmation', async () => {
+    mockAuth.resend.mockRejectedValueOnce(new Error('A network error occurred'));
+    const { ref } = renderAuthHook();
+    await flush();
+    let result;
+    await act(async () => { result = await ref.current.resendSignupConfirmation('a@b.com'); });
+    expect(result).toEqual({ ok: false, error: 'A network error occurred' });
+  });
+
+  test('signOut', async () => {
+    mockAuth.signOut.mockRejectedValueOnce(new Error('A network error occurred'));
+    const { ref } = renderAuthHook();
+    await flush();
+    let result;
+    await act(async () => { result = await ref.current.signOut(); });
+    expect(result).toEqual({ ok: false, error: 'A network error occurred' });
+  });
+
+  test('resetPasswordForEmail', async () => {
+    mockAuth.resetPasswordForEmail.mockRejectedValueOnce(new Error('A network error occurred'));
+    const { ref } = renderAuthHook();
+    await flush();
+    let result;
+    await act(async () => { result = await ref.current.resetPasswordForEmail('a@b.com', {}); });
+    expect(result).toEqual({ ok: false, error: 'A network error occurred' });
+  });
+
+  test('signInWithOAuth', async () => {
+    mockAuth.signInWithOAuth.mockRejectedValueOnce(new Error('A network error occurred'));
+    const { ref } = renderAuthHook();
+    await flush();
+    let result;
+    await act(async () => { result = await ref.current.signInWithOAuth('github'); });
+    expect(result).toEqual({ ok: false, error: 'A network error occurred' });
+  });
+
+  test('handleAuthCallbackUrl — code-exchange branch', async () => {
+    mockAuth.exchangeCodeForSession.mockRejectedValueOnce(new Error('A network error occurred'));
+    const { ref } = renderAuthHook();
+    await flush();
+    let result;
+    await act(async () => { result = await ref.current.handleAuthCallbackUrl('https://app/?code=abc'); });
+    expect(result).toEqual({ ok: false, error: 'A network error occurred' });
+  });
+
+  test('handleAuthCallbackUrl — getSession fallback branch', async () => {
+    const { ref } = renderAuthHook();
+    await flush();
+    // The mount-time session-restore probe already consumed the first
+    // getSession() resolution; reject only the call handleAuthCallbackUrl
+    // itself makes.
+    mockAuth.getSession.mockRejectedValueOnce(new Error('A network error occurred'));
+    let result;
+    await act(async () => { result = await ref.current.handleAuthCallbackUrl('https://app/'); });
+    expect(result).toEqual({ ok: false, error: 'A network error occurred' });
+  });
+
+  test('updatePassword', async () => {
+    mockAuth.updateUser.mockRejectedValueOnce(new Error('A network error occurred'));
+    const { ref } = renderAuthHook();
+    await flush();
+    let result;
+    await act(async () => { result = await ref.current.updatePassword('new-pw'); });
+    expect(result).toEqual({ ok: false, error: 'A network error occurred' });
+  });
+
+  test('falls back to a readable message when the thrown error has no useful .message', async () => {
+    mockAuth.signInWithPassword.mockRejectedValueOnce(new Error());
+    const { ref } = renderAuthHook();
+    await flush();
+    let result;
+    await act(async () => { result = await ref.current.signInWithPassword('a@b.com', 'pw'); });
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('A network error occurred. Check your connection and try again.');
+  });
+});
+
 describe('password Auth CAPTCHA', () => {
   const oldSiteKey = process.env.EXPO_PUBLIC_TURNSTILE_SITE_KEY;
   const oldOrigin = process.env.EXPO_PUBLIC_TURNSTILE_ORIGIN;
