@@ -30,8 +30,11 @@ import {
   loadRecoveryBlocks,
   loadRecoveryBlocksRaw,
   loadRecoveryWeeksForBlock,
+  RECOVERY_BLOCK_NOT_COMPLETED,
+  RECOVERY_BLOCK_NOT_NEWEST_COMPLETED,
   replaceRecoveryBlockWeeksRaw,
   replaceRecoveryBlocksRaw,
+  uncompleteRecoveryBlock,
   uncompleteRecoveryWeek,
   updateRecoveryBlock,
   updateRecoveryWeek,
@@ -51,6 +54,8 @@ import {
   addRecoveryWeekWithNewNoteCore,
   completeCurrentWeekCore,
   completeRecoveryBlockCore,
+  reopenRecoveryBlockCore,
+  startRecoveryBlockCore,
   uncompleteCurrentWeekCore,
   unlinkNoteForDeleteCore,
 } from '../hooks/entries/recoveryBlockHooks';
@@ -638,6 +643,78 @@ describe('block completion', () => {
   });
 });
 
+// ── storage: reopening the newest completed block (#839) ──────────────────────
+
+describe('uncompleteRecoveryBlock: successful reopen', () => {
+  test('clears completed_at, bumps updated_at, and leaves everything else untouched', async () => {
+    const block = await makeBlock({ includeInNormalAnalytics: true });
+    await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    const completed = await completeRecoveryBlock(block.id, '2026-05-01T00:00:00.000Z');
+
+    const reopened = await uncompleteRecoveryBlock(completed.id);
+
+    expect(reopened.completed_at).toBeNull();
+    expect(isBlockActive(reopened)).toBe(true);
+    expect(reopened.updated_at).not.toBe(completed.updated_at);
+    expect(reopened.baseline).toEqual(completed.baseline);
+    expect(reopened.baseline_note_id).toBe(completed.baseline_note_id);
+    expect(reopened.started_at).toBe(completed.started_at);
+    expect(reopened.include_in_normal_analytics).toBe(true);
+    // Weeks are untouched — reopening the block never reopens its latest week.
+    const weeks = await loadRecoveryWeeksForBlock(block.id);
+    expect(weeks).toHaveLength(1);
+    expect(weeks[0].completed_at).toBeNull();
+    expect(await getActiveRecoveryBlock()).toMatchObject({ id: block.id });
+  });
+});
+
+describe('uncompleteRecoveryBlock: every blocked state rejects without mutation', () => {
+  test('a missing block rejects with BLOCK_NOT_FOUND', async () => {
+    await expect(uncompleteRecoveryBlock('rb_nope'))
+      .rejects.toMatchObject({ code: RECOVERY_ERROR_CODES.BLOCK_NOT_FOUND });
+  });
+
+  test('a tombstoned (deleted) block rejects with BLOCK_NOT_FOUND', async () => {
+    const block = await makeBlock();
+    await completeRecoveryBlock(block.id);
+    await deleteRecoveryBlock(block.id);
+    await expect(uncompleteRecoveryBlock(block.id))
+      .rejects.toMatchObject({ code: RECOVERY_ERROR_CODES.BLOCK_NOT_FOUND });
+  });
+
+  test('an already-active (never completed) block rejects with BLOCK_NOT_COMPLETED', async () => {
+    const block = await makeBlock();
+    await expect(uncompleteRecoveryBlock(block.id))
+      .rejects.toMatchObject({ code: RECOVERY_BLOCK_NOT_COMPLETED });
+    expect(await getActiveRecoveryBlock()).toMatchObject({ id: block.id });
+  });
+
+  test('an older completed block rejects with BLOCK_NOT_NEWEST_COMPLETED, even with no active block', async () => {
+    const first = await makeBlock();
+    const older = await completeRecoveryBlock(first.id, '2026-01-01T00:00:00.000Z');
+    const second = await makeBlock();
+    await completeRecoveryBlock(second.id, '2026-02-01T00:00:00.000Z');
+
+    await expect(uncompleteRecoveryBlock(older.id))
+      .rejects.toMatchObject({ code: RECOVERY_BLOCK_NOT_NEWEST_COMPLETED });
+    // No mutation: the older block is still completed.
+    const raw = await loadRecoveryBlocksRaw();
+    expect(raw.find(b => b.id === older.id).completed_at).toBeTruthy();
+  });
+
+  test('a completed block rejects with ACTIVE_BLOCK_EXISTS while another block is active', async () => {
+    const completedFirst = await makeBlock();
+    const completed = await completeRecoveryBlock(completedFirst.id);
+    const active = await makeBlock();
+
+    await expect(uncompleteRecoveryBlock(completed.id))
+      .rejects.toMatchObject({ code: RECOVERY_ERROR_CODES.ACTIVE_BLOCK_EXISTS });
+    expect(await getActiveRecoveryBlock()).toMatchObject({ id: active.id });
+    const raw = await loadRecoveryBlocksRaw();
+    expect(raw.find(b => b.id === completed.id).completed_at).toBeTruthy();
+  });
+});
+
 describe('block tombstones', () => {
   test('delete tombstones rather than removing the record', async () => {
     const block = await makeBlock();
@@ -1021,6 +1098,10 @@ const journalStorage = {
   loadRecoveryBlockWeeks,
   loadRecoveryBlockWeeksRaw,
   loadRecoveryWeeksForBlock,
+  createRecoveryBlock,
+  completeRecoveryBlock,
+  deleteRecoveryBlock,
+  uncompleteRecoveryBlock,
   addRecoveryWeek,
   completeRecoveryWeek,
   uncompleteRecoveryWeek,
@@ -2157,6 +2238,96 @@ describe('serialization and pre-action gating', () => {
 
     expect(result.ok).toBe(true);
     expect(result.week.id).toBe(weekA.id);
+  });
+});
+
+// ── reopening the newest completed block (#839) ────────────────────────────────
+
+describe('reopenRecoveryBlockCore: guarded action', () => {
+  test('a successful reopen returns ok:true with the reactivated block', async () => {
+    const block = await makeBlock();
+    const completed = await completeRecoveryBlock(block.id);
+
+    const result = await reopenRecoveryBlockCore(journalStorage, { blockId: completed.id });
+
+    expect(result.ok).toBe(true);
+    expect(result.block.id).toBe(completed.id);
+    expect(result.block.completed_at).toBeNull();
+    expect(await getActiveRecoveryBlock()).toMatchObject({ id: completed.id });
+  });
+
+  test('a typed storage rejection surfaces as a clean ok:false result, not a thrown error', async () => {
+    const first = await makeBlock();
+    const older = await completeRecoveryBlock(first.id, '2026-01-01T00:00:00.000Z');
+    const second = await makeBlock();
+    await completeRecoveryBlock(second.id, '2026-02-01T00:00:00.000Z');
+
+    const result = await reopenRecoveryBlockCore(journalStorage, { blockId: older.id });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe(RECOVERY_BLOCK_NOT_NEWEST_COMPLETED);
+    const raw = await loadRecoveryBlocksRaw();
+    expect(raw.find(b => b.id === older.id).completed_at).toBeTruthy();
+  });
+
+  test('concurrent reopen calls against the same block: exactly one succeeds, the other is rejected cleanly', async () => {
+    const block = await makeBlock();
+    const completed = await completeRecoveryBlock(block.id);
+
+    const [first, second] = await Promise.all([
+      reopenRecoveryBlockCore(journalStorage, { blockId: completed.id }),
+      reopenRecoveryBlockCore(journalStorage, { blockId: completed.id }),
+    ]);
+
+    const outcomes = [first, second];
+    expect(outcomes.filter(r => r.ok)).toHaveLength(1);
+    const [loser] = outcomes.filter(r => !r.ok);
+    // The process-wide lock serializes the two calls: the second one to run
+    // sees the block the first already reactivated — live, but no longer
+    // completed — never a second silent success or a lost update.
+    expect(loser.code).toBe(RECOVERY_BLOCK_NOT_COMPLETED);
+    expect(await getActiveRecoveryBlock()).toMatchObject({ id: completed.id });
+  });
+});
+
+describe('Start versus Reopen: same-tick serialization (#839)', () => {
+  test('exactly one active block remains when Start and Reopen race, and the loser is a clean typed rejection with no orphaned records', async () => {
+    const oldBlock = await makeBlock({ baselineNoteId: 'baseline-old' });
+    const completed = await completeRecoveryBlock(oldBlock.id);
+
+    const [startResult, reopenResult] = await Promise.all([
+      startRecoveryBlockCore(journalStorage, {
+        baselineNoteId: 'baseline-new',
+        baselineNoteTitle: 'New Split',
+        baselineNoteText: '',
+        weekNoteId: 'week-note-new',
+      }),
+      reopenRecoveryBlockCore(journalStorage, { blockId: completed.id }),
+    ]);
+
+    const outcomes = [startResult, reopenResult];
+    expect(outcomes.filter(r => r.ok)).toHaveLength(1);
+    const [loser] = outcomes.filter(r => !r.ok);
+    // Whichever action loses observes the winner's already-active block and
+    // is refused before writing anything of its own — the exact race the
+    // shared process-wide lock exists to prevent (#839).
+    expect(loser.code).toBe(RECOVERY_ERROR_CODES.ACTIVE_BLOCK_EXISTS);
+
+    const activeBlocks = (await loadRecoveryBlocks()).filter(isBlockActive);
+    expect(activeBlocks).toHaveLength(1);
+
+    const allBlocks = await loadRecoveryBlocksRaw();
+    const allWeeks = await loadRecoveryBlockWeeksRaw();
+    if (!startResult.ok) {
+      // No orphaned block or week from the losing Start attempt.
+      expect(allBlocks.some(b => b.baseline_note_id === 'baseline-new')).toBe(false);
+      expect(allWeeks.some(w => w.note_id === 'week-note-new')).toBe(false);
+    }
+    if (!reopenResult.ok) {
+      // No lost record from the losing Reopen attempt: the old block is
+      // still exactly as completed as it was.
+      expect(allBlocks.find(b => b.id === completed.id).completed_at).toBeTruthy();
+    }
   });
 });
 

@@ -817,6 +817,7 @@ action is placed by how often it is used:
 | Secondary — occasional | `Edit routine`, `Delete routine`, viewed-card `Week A/B`, full `Set as current routine` | Non-current card's expand-on-tap body (`LogPreviousRoutines.js` `inlineActions`), inside expanded routine management |
 | Quick access — reachable without opening (#756, #836) | `New routine` (icon + visible label, the section's ONE create-routine affordance), compact `Set as current routine` icon per collapsed row | Panel header (present collapsed or expanded) and each collapsed non-current row's header respectively (`LogPreviousRoutines.js`) |
 | Rare — once per training block | `Start recovery block` | A persistent, low-emphasis outline row directly under the current routine card (`LogScreen.js` `recoveryStartRow`), never nested in a menu or disclosure; absent whenever a block cannot be started (#823, superseding #724's routine-management placement) |
+| Rare — reopening the most recently completed block, offered only with no block active (#839) | `Reopen recovery block: {baseline title}` | A second, lower-emphasis outline row (`LogScreen.js` `recoveryReopenRow`) directly below `Start recovery block` — same shape, `textMuted` ink instead of `accent`, so `Start` stays visually primary; computes its own visibility independently and can render alongside `Start`. The Analytics evidence card (`AnalyticsRecoverySection.js`) offers the same action, secondary-styled, only on the newest completed block's own card |
 | Recovery — expected next step | `Complete week` **or** `Add week` (never both), each behind its own confirmation | Active Recovery card body, visible by default and the card's only accent-filled control (`LogRecoverySection.js`, #789/#804/#836) |
 | Recovery — reversal, offered only for the just-completed latest week | `Undo completion` | Beside `Add week`, secondary `chipBackground` + `error` chip; confirms before reopening the week, and disappears once a later week exists (`LogRecoverySection.js`, #836) |
 | Recovery — correction or once-per-block | `Unlink Week {N}`, `Complete recovery block`, the analytics-inclusion switch | `Manage recovery block`, a collapsed-by-default disclosure inside the active Recovery card; both buttons are secondary `chipBackground` chips with `error` labels (#789/#804) |
@@ -911,8 +912,8 @@ Consequences to preserve:
   (`setTabView('recovery')` in `handleConfirmRecoveryBlock`), so the block
   just created is where the user lands. `LogRecoverySection` itself renders
   unchanged — only which tab hosts it, and when, moved.
-- The single Recovery entry point (`Start recovery block`) is a persistent row
-  under the current routine card, not inside routine management or the
+- The primary Recovery entry point (`Start recovery block`) is a persistent
+  row under the current routine card, not inside routine management or the
   Recovery tab (#823, superseding #724's routine-management placement). It is
   **absent** — not merely disabled — whenever a block cannot be started: it
   renders only when a baseline note is eligible, no block is active, the
@@ -922,6 +923,25 @@ Consequences to preserve:
   `{ mode: 'routine', note: null }` so the modal's own baseline/Week 1 pickers
   choose the subject; `startRecoveryBlock` rechecks the authoritative
   precondition at confirm.
+- **A second, secondary entry point reopens the newest completed block
+  (#839).** `Reopen recovery block: {baseline title}` renders directly below
+  `Start recovery block` — same row shape, `textMuted` ink rather than
+  `accent` so `Start` stays visually primary — whenever no block is active
+  and the newest completed block (by `completed_at`) is live. It computes its
+  visibility independently of `Start`'s and the two render together whenever
+  both qualify; neither gates the other, and both disappear once either
+  succeeds and a block becomes active. Tapping it confirms
+  (`Reopen this recovery block?`, naming the baseline, stating that every
+  week's status is unchanged and that only the most recent completed block
+  can be reopened while no other is active) before calling
+  `useRecoveryBlockLifecycle().reopenBlock`, which clears only the block's
+  `completed_at` — no week's completion state moves. The Analytics evidence
+  card (`AnalyticsRecoverySection.js`) offers the identical action, low
+  -emphasis and non-destructive, on the newest completed block's own card
+  only — never on every collapsed history row, and never on an older
+  completed block. `Start` and `reopenBlock`'s writes now run behind the same
+  process-wide recovery-operation lock (`runGuardedRecoveryAction`), so the
+  two can never both observe "no active block" and create conflicting state.
 - **A Recovery week row reads its own note (#775).** Tapping a live week renders
   that note inline in the Recovery card, off the same
   `viewingNoteId`/`viewingNote`/`viewingNoteDayGroups` state the routine and

@@ -269,7 +269,7 @@ export function LogRecoverySection({
   const handleCompleteBlock = () => {
     Alert.alert(
       'Complete recovery block?',
-      'Exercise targets are advisory — unmet targets will not block completion. The baseline routine is untouched and this cannot be undone.',
+      'Exercise targets are advisory — unmet targets will not block completion. The baseline routine is untouched. You can reopen your most recently completed block later, as long as no other block is active.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
