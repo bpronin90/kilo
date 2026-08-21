@@ -101,9 +101,6 @@ export function LogPreviousRoutines({
 
   const routineCount = otherNotes.length;
   const sortedNotes = sortByCreatedDesc(otherNotes);
-  // One ordering for both surfaces: the collapsed summary names whichever
-  // routine the expanded list puts first.
-  const latestRoutine = sortedNotes[0] ?? null;
 
   return (
     <View style={styles.previousRoutines}>
@@ -118,26 +115,31 @@ export function LogPreviousRoutines({
             accessibilityState={{ expanded }}
           >
             <View style={styles.headerContent}>
-              <Text style={styles.summaryCount}>
-                {`${routineCount} ${routineCount === 1 ? 'routine' : 'routines'}`}
-              </Text>
-              {!expanded && latestRoutine && (
-                <Text style={styles.summaryLatest} numberOfLines={1}>
-                  {'Latest: '}
-                  <Text style={styles.summaryEmphasis}>
-                    {latestRoutine.title || 'Untitled Routine'}
-                  </Text>
+              {/* Collapsed, the header is the only summary (#836): a count
+                  in the form the section itself is named for, at a weight
+                  legible as a heading rather than a caption. `Latest:` is
+                  gone — naming one routine out of several implied a
+                  hierarchy among prior routines that does not exist.
+                  Expanded, the list already shows every routine, so
+                  repeating the count here would tell the user nothing the
+                  rows below do not already show. */}
+              {!expanded && (
+                <Text style={styles.summaryCount}>
+                  {`${routineCount} more ${routineCount === 1 ? 'routine' : 'routines'}`}
                 </Text>
               )}
             </View>
           </Pressable>
-          {/* Compact New Note affordance (#756): the collapsed disclosure used to
-              hide `+ New routine` inside the expanded body, so creating a routine
-              cost an extra tap that scanning the section shouldn't require. This
-              icon-only control sits in the header — present collapsed or
-              expanded — so it never competes for space with the count/latest
-              summary or the expanded routine list. It is a SIBLING of the toggle
-              Pressable above, not nested inside it: VoiceOver groups a nested
+          {/* The section's one create-routine affordance (#836): the former
+              bottom `+ New routine` button, always reachable only once the
+              disclosure was expanded, is gone — this header control is now
+              the ONLY way to create a routine from this section, present
+              collapsed or expanded, so it never competes for space with the
+              count summary or the expanded routine list. It carries a
+              visible label, not just an icon, so its purpose is explicit to
+              sighted users too, not only to the accessibilityLabel a screen
+              reader announces. It is a SIBLING of the toggle Pressable
+              above, not nested inside it: VoiceOver groups a nested
               Pressable into its accessible ancestor, which would make this
               unreachable as its own action (PR #760 review). */}
           <Pressable
@@ -148,6 +150,7 @@ export function LogPreviousRoutines({
             accessibilityLabel="New routine"
           >
             <MaterialIcons name="add" size={18} color={colors.accent} accessible={false} />
+            <Text style={styles.headerNewRoutineButtonText}>New routine</Text>
           </Pressable>
           <Pressable
             onPress={toggleExpanded}
@@ -312,13 +315,6 @@ export function LogPreviousRoutines({
               </Card>
               );
             })}
-
-            <Button
-              onPress={handleCreateRoutine}
-              title="+ New routine"
-              style={styles.createButton}
-              textStyle={styles.createButtonText}
-            />
           </View>
         )}
       </View>
@@ -361,13 +357,21 @@ const createStyles = (colors) => StyleSheet.create({
   headerContent: {
     flex: 1,
   },
-  // The compact header-level New Note affordance (#756): icon-only so it never
-  // grows the header past its existing count/latest-summary footprint.
+  // The header-level New Note affordance (#756, labeled #836): icon plus a
+  // visible "New routine" label so a sighted user reads its purpose directly
+  // rather than relying on the icon alone — it is this section's ONE
+  // create-routine affordance now that the bottom duplicate is gone.
   headerNewRoutineButton: {
-    minWidth: 44,
-    minHeight: 44,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 4,
+    minHeight: 44,
+    paddingHorizontal: 4,
+  },
+  headerNewRoutineButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.accent,
   },
   // The chevron is its own tap target now too (#756), a sibling of the toggle
   // Pressable rather than a bare icon nested inside it, for the same
@@ -378,17 +382,11 @@ const createStyles = (colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Prominent enough to read as the section's collapsed heading, not a small
+  // caption (#836) — the header is the ONLY summary while collapsed now that
+  // `Latest:` is gone.
   summaryCount: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textMuted,
-  },
-  summaryLatest: {
-    fontSize: 13,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  summaryEmphasis: {
+    fontSize: 15,
     fontWeight: '700',
     color: colors.text,
   },
@@ -497,15 +495,6 @@ const createStyles = (colors) => StyleSheet.create({
     borderColor: colors.cardBorder,
   },
   switchButtonText: {
-    color: colors.accent,
-  },
-  createButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: colors.accent,
-    borderStyle: 'dashed',
-  },
-  createButtonText: {
     color: colors.accent,
   },
 });

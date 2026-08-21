@@ -2668,9 +2668,11 @@ describe('LogScreen editor header: editing-week toggle for non-current A/B notes
     // No toggle before there is any A/B routine open in the editor.
     expect(findPressableByText(root, 'Week B')).toBeNull();
 
-    // `+ New routine` opens the ordinary `editingNoteId === 'new'` editor
-    // directly (#786/R6b-3), the same editor this test has always exercised.
-    render.act(() => { findPressableByText(root, '+ New routine').props.onPress(); });
+    // `New routine` opens the ordinary `editingNoteId === 'new'` editor
+    // directly (#786/R6b-3; the header affordance is the section's only
+    // create-routine control since #836), the same editor this test has
+    // always exercised.
+    render.act(() => { findPressableByText(root, 'New routine').props.onPress(); });
 
     render.act(() => {
       getInput(root).props.onChangeText('MONDAY — Push\n-DB Bench Press 3x8\n---\nMONDAY — Home\n-DB Floor Press 3x8');
@@ -3336,20 +3338,18 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     ).length).toBe(0);
 
     // No routine card is mounted and no other management action exists while
-    // collapsed. (The latest title appears only inside the summary line, not
-    // as a card.)
+    // collapsed.
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Routine One').length).toBe(0);
-    for (const label of ['+ New routine', 'Start recovery block', 'Set as current routine', 'Edit routine', 'Delete routine']) {
+    for (const label of ['Start recovery block', 'Set as current routine', 'Edit routine', 'Delete routine']) {
       expect(root.findAll(n => n.type === 'Text' && n.props.children === label).length).toBe(0);
     }
 
-    // The collapsed summary still carries meaning: a count and the latest name.
-    expect(root.findAll(n => n.type === 'Text' && n.props.children === '2 routines').length).toBe(1);
-    const latest = root.findAll(
+    // The collapsed summary is the header's only content (#836): a count,
+    // with no "Latest:" naming one routine over the others.
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === '2 more routines').length).toBe(1);
+    expect(root.findAll(
       n => n.type === 'Text' && Array.isArray(n.props.children) && n.props.children[0] === 'Latest: '
-    );
-    expect(latest.length).toBe(1);
-    expect(latest[0].props.children[1].props.children).toBe('Routine Two');
+    ).length).toBe(0);
   });
 });
 
@@ -3785,15 +3785,13 @@ describe('LogPreviousRoutines: collapsed routine management (#724)', () => {
   };
 
   const countText = (root) =>
-    root.findAll(n => n.type === 'Text' && typeof n.props.children === 'string' && / routines?$/.test(n.props.children))
+    root.findAll(n => n.type === 'Text' && typeof n.props.children === 'string' && / more routines?$/.test(n.props.children))
       .map(n => n.props.children);
 
-  const latestValue = (root) => {
-    const line = root.findAll(
+  const latestLineCount = (root) =>
+    root.findAll(
       n => n.type === 'Text' && Array.isArray(n.props.children) && n.props.children[0] === 'Latest: '
-    )[0];
-    return line ? line.props.children[1].props.children : null;
-  };
+    ).length;
 
   const headerFor = (root) => root.findAll(
     n => n.props
@@ -3802,47 +3800,48 @@ describe('LogPreviousRoutines: collapsed routine management (#724)', () => {
       && typeof n.props.onPress === 'function'
   )[0];
 
-  test('zero non-current routines: a plural-zero count, no latest line, and creation reachable only after expanding', () => {
+  test('zero non-current routines: a plural-zero count, no latest line, and the New routine control always reachable (#836)', () => {
     const root = renderList({ otherNotes: [] });
-    expect(countText(root)).toEqual(['0 routines']);
-    expect(latestValue(root)).toBeNull();
-    // Collapsed management is action-free even with an empty list.
-    expect(root.findAll(n => n.type === 'Text' && n.props.children === '+ New routine').length).toBe(0);
-    expandRoutineManagement(root);
-    expect(findPressableByText(root, '+ New routine')).toBeTruthy();
+    expect(countText(root)).toEqual(['0 more routines']);
+    expect(latestLineCount(root)).toBe(0);
+    // The section's one create-routine affordance is present collapsed too
+    // (#836) — it no longer requires expanding the disclosure first.
+    expect(findPressableByText(root, 'New routine')).toBeTruthy();
   });
 
-  test('one non-current routine reads as a singular count with a latest summary', () => {
+  test('one non-current routine reads as a singular "more routine" count with no latest line (#836)', () => {
     const root = renderList({ otherNotes: [{ id: 'r1', title: 'Only One', updated_at: '2026-01-01T00:00:00.000Z' }] });
-    expect(countText(root)).toEqual(['1 routine']);
-    expect(latestValue(root)).toBe('Only One');
+    expect(countText(root)).toEqual(['1 more routine']);
+    expect(latestLineCount(root)).toBe(0);
   });
 
-  test('many routines: the latest summary names the most recently created one regardless of list order', () => {
+  test('many routines: the count reflects the list regardless of order, with no latest line (#836)', () => {
     const root = renderList({ otherNotes: [
       { id: 'r1', title: 'Older', saved_at: '2026-01-01T00:00:00.000Z' },
       { id: 'r2', title: 'Newest', saved_at: '2026-03-01T00:00:00.000Z' },
       { id: 'r3', title: 'Middle', saved_at: '2026-02-01T00:00:00.000Z' },
     ] });
-    expect(countText(root)).toEqual(['3 routines']);
-    expect(latestValue(root)).toBe('Newest');
+    expect(countText(root)).toEqual(['3 more routines']);
+    expect(latestLineCount(root)).toBe(0);
   });
 
-  test('the whole header toggles expansion, announces its state, and mounts/unmounts the body', () => {
+  test('the whole header toggles expansion, announces its state, and the count is not repeated once expanded (#836)', () => {
     const root = renderList({ otherNotes: [{ id: 'r1', title: 'One', updated_at: '2026-01-01T00:00:00.000Z' }] });
     expect(headerFor(root).props.accessibilityState).toEqual({ expanded: false });
-    expect(findPressableByText(root, '+ New routine')).toBeNull();
+    expect(countText(root)).toEqual(['1 more routine']);
+    // The New routine control is present both collapsed and expanded.
+    expect(findPressableByText(root, 'New routine')).toBeTruthy();
 
     render.act(() => { headerFor(root).props.onPress(); });
     expect(headerFor(root).props.accessibilityState).toEqual({ expanded: true });
-    expect(findPressableByText(root, '+ New routine')).toBeTruthy();
-    // Expanded, the collapsed "Latest:" summary is replaced by the detail card.
-    expect(latestValue(root)).toBeNull();
+    expect(findPressableByText(root, 'New routine')).toBeTruthy();
+    // Expanded, the list already shows every routine, so the count is not
+    // repeated in the header.
+    expect(countText(root)).toEqual([]);
 
     render.act(() => { headerFor(root).props.onPress(); });
     expect(headerFor(root).props.accessibilityState).toEqual({ expanded: false });
-    expect(findPressableByText(root, '+ New routine')).toBeNull();
-    expect(latestValue(root)).toBe('One');
+    expect(countText(root)).toEqual(['1 more routine']);
   });
 
   test('the disclosure header keeps a 44dp touch target when collapsed-empty and when expanded (#724 review)', () => {
@@ -6029,7 +6028,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
   };
 
   let add, remove, update, refresh, alertSpy;
-  let completeWeekSpy, addWeekSpy, deleteWeekSpy;
+  let completeWeekSpy, uncompleteWeekSpy, addWeekSpy, deleteWeekSpy;
   let loadWeeksForBlockSpy, loadBlocksSpy, loadAllWeeksSpy, loadWorkoutNotesRawSpy;
   // The note store the journal's registered note operations act on. The two
   // journaled operations own the note deletion end to end (#696), so there is
@@ -6130,6 +6129,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     jest.clearAllMocks();
     alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     completeWeekSpy = jest.spyOn(recoveryStorageModule, 'completeRecoveryWeek');
+    uncompleteWeekSpy = jest.spyOn(recoveryStorageModule, 'uncompleteRecoveryWeek');
     addWeekSpy = jest.spyOn(recoveryStorageModule, 'addRecoveryWeek');
     deleteWeekSpy = jest.spyOn(recoveryStorageModule, 'deleteRecoveryWeek');
     // The two journaled multi-record operations (#696) read and write
@@ -6146,6 +6146,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
   afterEach(() => {
     alertSpy.mockRestore();
     completeWeekSpy.mockRestore();
+    uncompleteWeekSpy.mockRestore();
     addWeekSpy.mockRestore();
     deleteWeekSpy.mockRestore();
     journalModule.__resetRecoveryOperationJournal();
@@ -6166,7 +6167,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     expect(findPressableByText(root, 'Add week')).toBeNull();
   });
 
-  test('tapping "Complete week" completes the current week and refreshes', async () => {
+  test('tapping "Complete week" confirms the consequence, then completes the current week and refreshes (#836)', async () => {
     const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
     setup({ notes: [baselineNote, week1Note], weeks });
     completeWeekSpy.mockResolvedValue({ ...weeks[0], completed_at: '2026-01-08T00:00:00.000Z' });
@@ -6175,7 +6176,13 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    await render.act(async () => { findPressableByText(root, 'Complete week').props.onPress(); });
+    render.act(() => { findPressableByText(root, 'Complete week').props.onPress(); });
+    expect(completeWeekSpy).not.toHaveBeenCalled();
+    const [title, message, buttons] = alertSpy.mock.calls[0];
+    expect(title).toBe('Complete Week 1?');
+    expect(message).toContain('does not create or submit a note for the next week');
+
+    await render.act(async () => { await buttons.find(b => b.text === 'Complete week').onPress(); });
 
     expect(completeWeekSpy).toHaveBeenCalledWith('rw1');
     expect(refresh).toHaveBeenCalled();
@@ -6509,9 +6516,61 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    await render.act(async () => { findPressableByText(root, 'Complete week').props.onPress(); });
+    render.act(() => { findPressableByText(root, 'Complete week').props.onPress(); });
+    const confirmButtons = alertSpy.mock.calls[0][2];
+    await render.act(async () => { await confirmButtons.find(b => b.text === 'Complete week').onPress(); });
 
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Network unavailable').length).toBe(1);
+  });
+
+  test('no undo affordance while the current week is still in progress (#836)', () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note], weeks });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    expect(findPressableByText(root, 'Undo completion')).toBeNull();
+  });
+
+  test('undoing a just-completed week confirms, then restores it to in-progress without touching its note (#836)', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note], weeks });
+    uncompleteWeekSpy.mockResolvedValue({ ...weeks[0], completed_at: null });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Undo completion').props.onPress(); });
+    expect(uncompleteWeekSpy).not.toHaveBeenCalled();
+    const [title, message, buttons] = alertSpy.mock.calls[0];
+    expect(title).toBe('Reopen Week 1?');
+    expect(message).toContain('Its note is unchanged');
+
+    await render.act(async () => { await buttons.find(b => b.text === 'Reopen week').onPress(); });
+
+    expect(uncompleteWeekSpy).toHaveBeenCalledWith('rw1');
+    expect(refresh).toHaveBeenCalled();
+    // The note itself was never touched by the undo.
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  test('undo targets only the latest week; an earlier completed week offers no undo once a later week exists (#836)', () => {
+    const weeks = [
+      { id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null },
+      { id: 'rw2', block_id: 'rb1', note_id: week2Note.id, week_number: 2, completed_at: null, deleted_at: null },
+    ];
+    setup({ notes: [baselineNote, week1Note, week2Note], weeks });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    // Week 2 is in progress, so there is nothing completed to undo — Week 1
+    // (already superseded) must not offer it either.
+    expect(findPressableByText(root, 'Undo completion')).toBeNull();
   });
 
   test('Log renders no Recovery section when only completed blocks exist — one block', () => {
@@ -6555,9 +6614,10 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     expect(findPressableByText(root, '2 completed blocks')).toBeNull();
   });
 
-  test('Log hides completed-week rows within the active block, shows only the current in-progress week', () => {
-    // Completed week rows live in Analytics (#729). The active block card must
-    // render only the current (not-yet-completed) week.
+  test('Log shows every live week as its own labeled entry, distinguishing completed from in-progress (#836)', () => {
+    // #836 corrects #729's original hidden-completed-week behavior: each
+    // week is now its own distinct, labeled entry so the block's whole
+    // sequence is visible, and a completed week's note stays viewable.
     const weeks = [
       { id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null },
       { id: 'rw2', block_id: 'rb1', note_id: week2Note.id, week_number: 2, completed_at: null, deleted_at: null },
@@ -6568,24 +6628,96 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    // The in-progress week renders as a navigable row; the completed week does not.
+    // Both weeks render as their own navigable row.
     const weekRows = root.findAll(n =>
       n.props && typeof n.props.accessibilityLabel === 'string'
       && n.props.accessibilityLabel.startsWith('View ')
       && n.props.accessibilityLabel.includes('Recovery Week')
       && typeof n.props.onPress === 'function'
     );
-    expect(weekRows.some(r => r.props.accessibilityLabel.includes('Week 2'))).toBe(true);
-    expect(weekRows.some(r => r.props.accessibilityLabel.includes('Week 1'))).toBe(false);
-    // No "Completed …" status text in the Recovery section.
-    expect(root.findAll(n => n.type === 'Text' && typeof n.props.children === 'string' && n.props.children.startsWith('Completed ')).length).toBe(0);
+    expect(weekRows.some(r => r.props.accessibilityLabel.includes('Week 2') && !r.props.accessibilityLabel.includes('completed'))).toBe(true);
+    expect(weekRows.some(r => r.props.accessibilityLabel.includes('Week 1') && r.props.accessibilityLabel.includes('completed'))).toBe(true);
+    // The two are visibly distinguished by status text.
+    const texts = root.findAll(n => n.type === 'Text').map(n => n.props.children);
+    expect(texts).toContain('Completed');
+    expect(texts).toContain('In progress');
+  });
+
+  test('tapping an expanded recovery week again collapses it (#836)', () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note], weeks });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    const row = () => root.findAll(n =>
+      n.props && typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.startsWith('View ')
+      && n.props.accessibilityLabel.includes('Recovery Week')
+      && typeof n.props.onPress === 'function'
+    )[0];
+
+    render.act(() => { row().props.onPress(); });
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Bench').length).toBeGreaterThan(0);
+
+    // A second tap on the same row collapses it — a repeat tap used to be
+    // set-only and never closed the note (#836).
+    render.act(() => { row().props.onPress(); });
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Bench').length).toBe(0);
+  });
+
+  test('an expanded Recovery note stays local to the Recovery tab: Routine neither shows nor inherits it (#836)', () => {
+    // A distinct exercise name from every other note in this fixture set
+    // (including the current routine card, which stays mounted once the
+    // Routine tab is showing) so its presence unambiguously means THIS
+    // note's body rendered — not a coincidental text collision.
+    const week1NoteUnique = { ...week1Note, raw_text: 'Push\n-Incline Row\n60 5,5,5' };
+    // A second, ordinary (non-recovery) prior routine is what makes the
+    // Routine tab's "More Routines" list render at all.
+    const priorRoutine = { id: 'prior1', title: 'Prior Routine', raw_text: 'Legs\n-Squat\n100 5,5,5', updated_at: '2026-01-20T00:00:00.000Z' };
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1NoteUnique.id, week_number: 1, completed_at: null, deleted_at: null }];
+    setup({ notes: [baselineNote, week1NoteUnique, priorRoutine], weeks });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    const recoveryRow = () => root.findAll(n =>
+      n.props && typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.startsWith('View ')
+      && n.props.accessibilityLabel.includes('Recovery Week')
+      && typeof n.props.onPress === 'function'
+    )[0];
+    render.act(() => { recoveryRow().props.onPress(); });
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Incline Row').length).toBeGreaterThan(0);
+
+    // Switching to Routine must not show the Recovery week's note content —
+    // its expansion is local to the Recovery tab.
+    render.act(() => { pressableAround(root, t => t === 'Routine').props.onPress(); });
+    expandRoutineManagement(root);
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Incline Row').length).toBe(0);
+
+    // And Routine's own "More Routines" row for the SAME recovery-week note
+    // is not expanded either — Routine inherits nothing from Recovery.
+    const routineRow = root.findAll(n =>
+      n.props && typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.startsWith(`Expand ${week1NoteUnique.title}`)
+      && typeof n.props.onPress === 'function'
+    )[0];
+    expect(routineRow).toBeTruthy();
+
+    // Switching back to Recovery: the original expansion is exactly as the
+    // user left it, unaffected by the trip through Routine.
+    render.act(() => { pressableAround(root, t => t === 'Recovery').props.onPress(); });
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Incline Row').length).toBeGreaterThan(0);
   });
 
   test('Unlink remains reachable, with its week context, when the latest week is completed and no next week exists', () => {
-    // The completed latest-week row is hidden, but Unlink must still be
-    // accessible so the user can back out before adding the next week (#729).
-    // It now lives inside `Manage recovery block` and names the concrete
-    // current week rather than floating in the action row (#789).
+    // Unlink must be accessible so the user can back out before adding the
+    // next week (#729). It lives inside `Manage recovery block` and names
+    // the concrete current week rather than floating in the action row
+    // (#789).
     const weeks = [
       { id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null },
     ];
@@ -6595,13 +6727,14 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    // The completed week row is hidden.
+    // The completed week's row is now shown too (#836), reachable to view/edit.
     const weekRows = root.findAll(n =>
       n.props && typeof n.props.accessibilityLabel === 'string'
       && n.props.accessibilityLabel.startsWith('View ')
       && n.props.accessibilityLabel.includes('Recovery Week')
+      && typeof n.props.onPress === 'function'
     );
-    expect(weekRows.length).toBe(0);
+    expect(weekRows.length).toBe(1);
 
     // The Unlink affordance is still present once the disclosure is opened,
     // and it names the week it targets.
@@ -9103,7 +9236,7 @@ describe('More Routines: the row date is the routine\'s creation day (#775)', ()
     expect(rowLabels(root)).toEqual([`Collapse AB, Week B · Created ${expectedDate('2026-01-05')}`]);
   });
 
-  test('list and Latest: agree — newest created first, undated last in notebook order', () => {
+  test('the expanded list orders newest created first, undated last in notebook order', () => {
     const otherNotes = [
       { id: 'a', title: 'Undated First', updated_at: '2026-08-09T00:00:00.000Z' },
       { id: 'b', title: 'Oldest', saved_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-08-10T00:00:00.000Z' },
@@ -9111,12 +9244,6 @@ describe('More Routines: the row date is the routine\'s creation day (#775)', ()
       { id: 'c', title: 'Undated Second' },
       { id: 'd', title: 'Newest', saved_at: '2026-07-01T00:00:00.000Z', updated_at: '2026-01-02T00:00:00.000Z' },
     ];
-    const collapsed = renderList({ otherNotes });
-    const latest = collapsed.findAll(
-      n => n.type === 'Text' && Array.isArray(n.props.children) && n.props.children[0] === 'Latest: '
-    )[0];
-    expect(latest.props.children[1].props.children).toBe('Newest');
-
     const root = renderList({ otherNotes });
     expandRoutineManagement(root);
     expect(rowLabels(root).map(l => l.replace(/^Expand /, '').split(',')[0])).toEqual([
@@ -9581,17 +9708,18 @@ describe('LogRecoverySection: simplified active Recovery panel (#804)', () => {
       && flat(n).backgroundColor === LightColors.accent
   );
 
-  test('the week row carries the note, not a second copy of the headline state', () => {
+  test('the week row carries the note and its own status, alongside the headline (#836)', () => {
     const root = renderSection();
     const texts = allText(root);
 
-    // The headline owns the state fact exactly once. The row's former `WEEK 3`
-    // micro-label and `In progress` status were that same fact competing with
-    // it, so they are gone; the note title — the only thing the row uniquely
-    // offers — stays.
+    // #836 corrected #789's original design: the headline only ever
+    // describes the CURRENT week, but now every live week — completed
+    // history included — renders as its own row, so each row states its own
+    // status too. The headline still owns the current-week state fact; the
+    // row's per-week label and status are additional, not a duplicate of it.
     expect(texts).toContain('Week 3 in progress');
-    expect(texts).not.toContain('In progress');
-    expect(texts).not.toContain('Week 3');
+    expect(texts).toContain('In progress');
+    expect(texts).toContain('Week 3');
     expect(texts).toContain('Recovery Week Note');
   });
 

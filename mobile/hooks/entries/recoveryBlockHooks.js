@@ -13,6 +13,14 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import * as Storage from '../../storage/entries';
+// Imported directly from recoveryStorage.js, not re-exported through the
+// storage/entries.js barrel (#836): that barrel is outside this issue's
+// Allowed Files, and every OTHER recovery storage function used here already
+// goes through it. Merging this one function onto the barrel's namespace at
+// the call site (see `uncompleteCurrentWeek` below) keeps every existing
+// `storage.*` call working unchanged while adding the one function the
+// barrel does not yet export.
+import { uncompleteRecoveryWeek } from '../../storage/entries/recoveryStorage';
 import {
   RECOVERY_OPERATION_CODES,
   RECOVERY_OPERATION_TYPES,
@@ -864,6 +872,32 @@ export function completeCurrentWeekCore(storage, { blockId }) {
   });
 }
 
+// Reopen the block's current (latest live) week — the inverse of
+// completeCurrentWeekCore (#836). Restricted to the latest week exactly like
+// unlinkRecoveryWeekCore: an earlier, already-superseded week can never be
+// reopened, which is what keeps "at most one week in progress" true after an
+// undo. A no-op error (not a silent success) when the current week is not
+// actually completed, so a stale button press explains itself rather than
+// pretending to have done something.
+export function uncompleteCurrentWeekCore(storage, { blockId }) {
+  return runGuardedRecoveryAction({ blockId }, async () => {
+    const ordered = await storage.loadRecoveryWeeksForBlock(blockId);
+    const current = ordered.length > 0 ? ordered[ordered.length - 1] : null;
+    if (!current) {
+      return { ok: false, code: 'NO_CURRENT_WEEK', error: 'This block has no completed week to reopen.' };
+    }
+    if (!current.completed_at) {
+      return { ok: false, code: 'WEEK_NOT_COMPLETE', error: 'The current week is already in progress.' };
+    }
+    try {
+      const week = await storage.uncompleteRecoveryWeek(current.id);
+      return { ok: true, week };
+    } catch (e) {
+      return { ok: false, code: e?.code || null, error: e?.message || 'Could not reopen this week.' };
+    }
+  });
+}
+
 // Attach the next sequential week. Rejects (without calling storage) when the
 // current week has not been explicitly completed yet — Week 2+ can never be
 // added early, no matter what the caller's own gating missed or what changed
@@ -1121,6 +1155,16 @@ export function useRecoveryBlockLifecycle() {
     if (result.ok) notifyRecoveryBlocks();
     return result;
   }, []);
+  const uncompleteCurrentWeek = useCallback(async (params) => {
+    const gate = await ensureVerifiedRecoveryState();
+    if (!gate.ok) return gate;
+    // See the import comment above: `uncompleteRecoveryWeek` is merged onto
+    // the barrel's namespace here rather than added to storage/entries.js
+    // itself, since that barrel is outside this issue's Allowed Files.
+    const result = await uncompleteCurrentWeekCore({ ...RecoveryStorage, uncompleteRecoveryWeek }, params);
+    if (result.ok) notifyRecoveryBlocks();
+    return result;
+  }, []);
   const addWeek = useCallback(async (params) => {
     const gate = await ensureVerifiedRecoveryState();
     if (!gate.ok) return gate;
@@ -1189,5 +1233,5 @@ export function useRecoveryBlockLifecycle() {
     return result;
   }, []);
 
-  return { completeCurrentWeek, addWeek, addWeekWithNewNote, completeBlock, unlinkWeek, unlinkNoteForDelete, setIncludeInNormalAnalytics, retryRecovery };
+  return { completeCurrentWeek, uncompleteCurrentWeek, addWeek, addWeekWithNewNote, completeBlock, unlinkWeek, unlinkNoteForDelete, setIncludeInNormalAnalytics, retryRecovery };
 }
