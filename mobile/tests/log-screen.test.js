@@ -6687,6 +6687,10 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     // RecoveryBlockEndModal instead.
     expect(alertSpy).not.toHaveBeenCalledWith('Complete recovery block?', expect.any(String), expect.any(Array));
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'End this recovery block?').length).toBe(1);
+    // #843 review: the baseline routine/notes stay untouched, stated plainly.
+    expect(root.findAll(n => n.type === 'Text'
+      && String(n.props.children).includes('baseline routine and every week')
+      && String(n.props.children).includes('untouched')).length).toBe(1);
 
     await render.act(async () => { await findPressableByText(root, 'End block').props.onPress(); });
 
@@ -7464,6 +7468,52 @@ describe('Recovery Block Week 2+ lifecycle', () => {
   });
 });
 
+// #843 review: the summary must state a first-to-last date RANGE, not just a
+// single "started" date, and must preselect the stored inclusion value.
+describe('RecoveryBlockEndModal', () => {
+  const { RecoveryBlockEndModal } = require('../components/RecoveryBlockEndModal');
+
+  const BLOCK = {
+    id: 'rb1', baseline_note_title: 'Push Day',
+    started_at: '2026-01-01T00:00:00.000Z', include_in_normal_analytics: false,
+  };
+  const weeks = [
+    { id: 'rw1', block_id: 'rb1', week_number: 1, saved_at: '2026-01-01T00:00:00.000Z' },
+    { id: 'rw2', block_id: 'rb1', week_number: 2, saved_at: '2026-01-15T00:00:00.000Z' },
+  ];
+
+  test('the summary states a first-to-last date range, and Off is preselected as the current setting', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <RecoveryBlockEndModal
+          visible
+          block={BLOCK}
+          weeks={weeks}
+          onSetInclusion={jest.fn()}
+          onConfirmComplete={jest.fn()}
+          onClose={jest.fn()}
+        />
+      );
+    });
+    const root = component.root;
+    const allText = () => root.findAll(n => n.type === 'Text').map(n => {
+      const c = n.props.children;
+      return Array.isArray(c) ? c.join('') : String(c ?? '');
+    });
+
+    const first = new Date(weeks[0].saved_at).toLocaleDateString();
+    const last = new Date(weeks[1].saved_at).toLocaleDateString();
+    expect(allText().some(t => t.includes(`Push Day · 2 weeks · ${first}–${last}`))).toBe(true);
+
+    const off = root.findAll(n => n.props && n.props.accessibilityLabel === 'Keep them out of normal analytics')[0];
+    const on = root.findAll(n => n.props && n.props.accessibilityLabel === 'Count them with everything else')[0];
+    expect(off.props.accessibilityState).toEqual({ checked: true });
+    expect(on.props.accessibilityState).toEqual({ checked: false });
+    expect(allText().filter(t => t === 'Your current setting')).toHaveLength(1);
+  });
+});
+
 // ── Reopen the newest completed recovery block (#839) ──────────────────────
 
 describe('Recovery Block reopen flow', () => {
@@ -7774,15 +7824,35 @@ describe('Recovery inclusion preference', () => {
     await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, JSON.stringify([]));
   };
 
+  // The `Counting in normal analytics` row is its own value-row interaction
+  // (#843 review): the switch is not rendered inline under the row — it
+  // takes a tap on the row itself to reveal, same as the other two `Manage
+  // block` rows requiring a tap to act.
+  const expandInclusionRow = (root) => {
+    const row = root.findAll(
+      n => n.props
+        && typeof n.props.accessibilityLabel === 'string'
+        && n.props.accessibilityLabel.startsWith('Counting in normal analytics')
+        && typeof n.props.onPress === 'function'
+    )[0];
+    if (!row) return null;
+    if (!(row.props.accessibilityState && row.props.accessibilityState.expanded)) {
+      render.act(() => { row.props.onPress(); });
+    }
+    return row;
+  };
+
   const renderScreen = async () => {
     let component;
     await render.act(async () => { component = render.create(<ControlledLogScreen />); });
     // The inclusion control is still on Log and still the only way to set this
     // preference while a block is active, but it is no longer in the default
-    // view: it lives inside `Manage recovery block` (#789). Every assertion in
-    // this suite is about the control's behavior, so open the disclosure once
-    // here rather than restating the interaction in each test.
+    // view: it lives inside `Manage recovery block` (#789), behind its own
+    // `Counting in normal analytics` row (#843). Every assertion in this
+    // suite is about the control's behavior, so open both here rather than
+    // restating the interaction in each test.
     expandManageRecovery(component.root);
+    expandInclusionRow(component.root);
     return component;
   };
 
@@ -7856,6 +7926,7 @@ describe('Recovery inclusion preference', () => {
     expect(seen[seen.length - 1].isNoteExcluded(weekNote.id)).toBe(true);
 
     expandManageRecovery(component.root);
+    expandInclusionRow(component.root);
     const [control] = switchesFor(component.root);
     await render.act(async () => { await control.props.onValueChange(true); });
 
@@ -10245,6 +10316,18 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
     n => n.props && typeof n.props.accessibilityLabel === 'string'
       && n.props.accessibilityLabel.startsWith(RECOVERY_INCLUSION_LABEL) && n.props.onValueChange
   )[0];
+  // The `Counting in normal analytics` row's own value-row interaction
+  // (#843 review): a tap away, not rendered inline under the row by default.
+  const expandCounting = (root) => {
+    const row = root.findAll(
+      n => n.props
+        && typeof n.props.accessibilityLabel === 'string'
+        && n.props.accessibilityLabel.startsWith('Counting in normal analytics')
+        && typeof n.props.onPress === 'function'
+    )[0];
+    if (row) render.act(() => { row.props.onPress(); });
+    return row;
+  };
 
   test('an open week leads with the state fact and offers exactly one lifecycle action', () => {
     const root = renderSection({ onCompleteWeek: jest.fn(), onOpenAddWeek: jest.fn() });
@@ -10311,12 +10394,33 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
     expect(trigger(root).props.accessibilityState).toEqual({ expanded: true });
     expect(byLabel(root, 'Unlink Week 3')).toBeTruthy();
     expect(byLabel(root, 'End recovery block')).toBeTruthy();
+    expandCounting(root);
     expect(inclusionSwitch(root)).toBeTruthy();
 
     // And it collapses again.
     render.act(() => { trigger(root).props.onPress(); });
     expect(trigger(root).props.accessibilityState).toEqual({ expanded: false });
     expect(byLabel(root, 'End recovery block')).toBeUndefined();
+  });
+
+  // #843 review: `Counting in normal analytics` is its own value-row
+  // interaction, matching `Unlink`/`End recovery block` — the switch is a
+  // tap away, not rendered inline the instant `Manage block` opens.
+  test('the Counting in normal analytics row states the live value and reveals the switch only on its own tap', () => {
+    const root = renderSection({ onUnlinkWeek: jest.fn(), onCompleteBlock: jest.fn() });
+    render.act(() => { trigger(root).props.onPress(); });
+
+    const row = byLabel(root, 'Counting in normal analytics: Off');
+    expect(row).toBeTruthy();
+    expect(row.props.accessibilityState).toEqual({ expanded: false });
+    expect(inclusionSwitch(root)).toBeUndefined();
+
+    render.act(() => { row.props.onPress(); });
+    expect(byLabel(root, 'Counting in normal analytics: Off').props.accessibilityState).toEqual({ expanded: true });
+    expect(inclusionSwitch(root)).toBeTruthy();
+
+    render.act(() => { row.props.onPress(); });
+    expect(inclusionSwitch(root)).toBeUndefined();
   });
 
   test('locked mutations disable each control individually and never the disclosure itself', () => {
@@ -10339,6 +10443,7 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
     expect(trigger(root).props.accessibilityState).toEqual({ expanded: true });
     expect(byLabel(root, 'Unlink Week 3').props.accessibilityState.disabled).toBe(true);
     expect(byLabel(root, 'End recovery block').props.accessibilityState.disabled).toBe(true);
+    expandCounting(root);
     expect(inclusionSwitch(root).props.accessibilityState.disabled).toBe(true);
   });
 
@@ -10472,6 +10577,18 @@ describe('LogRecoverySection: simplified active Recovery panel (#804)', () => {
     n => n.props && typeof n.props.accessibilityLabel === 'string'
       && n.props.accessibilityLabel.startsWith(RECOVERY_INCLUSION_LABEL) && n.props.onValueChange
   )[0];
+  // The `Counting in normal analytics` row's own value-row interaction
+  // (#843 review): a tap away, not rendered inline under the row by default.
+  const expandCounting = (root) => {
+    const row = root.findAll(
+      n => n.props
+        && typeof n.props.accessibilityLabel === 'string'
+        && n.props.accessibilityLabel.startsWith('Counting in normal analytics')
+        && typeof n.props.onPress === 'function'
+    )[0];
+    if (row) render.act(() => { row.props.onPress(); });
+    return row;
+  };
   const accentFilled = (root) => root.findAll(
     n => n.props && typeof n.props.onPress === 'function'
       && flat(n).backgroundColor === LightColors.accent
@@ -10517,6 +10634,34 @@ describe('LogRecoverySection: simplified active Recovery panel (#804)', () => {
       onToggleViewingWeek: jest.fn(),
     });
     expect(byLabel(viewing, 'Switch to Week B')).toBeTruthy();
+  });
+
+  // #843 review: the compact reading mode must not silently drop a
+  // user-entered `*mark`, and must not repeat the note's own day heading
+  // (already shown once by the inset surface's own kicker).
+  test('compact rendering preserves a marked set and does not duplicate the day heading', () => {
+    const markedNote = {
+      id: 'weeknote', title: 'Recovery Week Note',
+      raw_text: 'Monday\n+Lifting\n-Overhead Press\n65 5,5,5 *PR',
+    };
+    const onViewNote = jest.fn();
+    const root = renderSection({
+      weeks: [week({ note_id: 'weeknote' })],
+      notes: [markedNote],
+      onViewNote,
+      viewingNoteId: 'weeknote',
+      viewingNote: markedNote,
+      viewingNoteDayGroups: buildDayGroups(parse(markedNote.raw_text).sections),
+    });
+
+    expect(allText(root)).toContain('★ PR');
+    // "Monday" is this note's one day heading; it must render exactly once
+    // (via the inset surface's own uppercase kicker), not a second time from
+    // WorkoutContentRenderer's own WorkoutHeading.
+    const mondayCount = root.findAll(n => n.type === 'Text'
+      && String(Array.isArray(n.props.children) ? n.props.children.join('') : n.props.children ?? '')
+        .toUpperCase() === 'MONDAY').length;
+    expect(mondayCount).toBe(1);
   });
 
   test('a week with no readable note offers no read affordance at all', () => {
@@ -10602,6 +10747,7 @@ describe('LogRecoverySection: simplified active Recovery panel (#804)', () => {
     expand(root);
     expect(byLabel(root, 'Unlink Week 3').props.accessibilityState.disabled).toBe(true);
     expect(byLabel(root, 'End recovery block').props.accessibilityState.disabled).toBe(true);
+    expandCounting(root);
     expect(inclusionSwitch(root).props.accessibilityState.disabled).toBe(true);
   });
 

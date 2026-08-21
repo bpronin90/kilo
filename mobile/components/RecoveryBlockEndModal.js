@@ -24,11 +24,15 @@ import {
 } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { RECOVERY_INCLUSION_HELP } from './RecoveryInclusionToggle';
 
 export function RecoveryBlockEndModal({
   visible,
   block,
-  weekCount = 0,
+  // The block's own live weeks, oldest first (LogScreen passes
+  // `orderedLiveWeeks`) — used to state the summary's first-to-last date
+  // range, not just a single "started" date.
+  weeks = [],
   blockingMessage = null,
   onSetInclusion,
   onConfirmComplete,
@@ -54,6 +58,18 @@ export function RecoveryBlockEndModal({
   if (!visible) return null;
 
   const baselineTitle = block?.baseline_note_title || 'Untitled Routine';
+  const weekCount = weeks.length;
+  // First-to-last date range (review finding): the block's own `started_at`
+  // is the first date, and the most recently added live week's `saved_at` is
+  // the last — falling back to a single date when there is only one week (or
+  // none yet), rather than printing a redundant one-day "range".
+  const firstDateVal = block?.started_at || weeks[0]?.saved_at || null;
+  const lastDateVal = weeks.length ? weeks[weeks.length - 1].saved_at : firstDateVal;
+  const firstDate = firstDateVal ? new Date(firstDateVal).toLocaleDateString() : null;
+  const lastDate = lastDateVal ? new Date(lastDateVal).toLocaleDateString() : null;
+  const dateRangeText = firstDate
+    ? (lastDate && lastDate !== firstDate ? `${firstDate}–${lastDate}` : firstDate)
+    : null;
 
   const handleConfirm = async () => {
     if (submitting || blockingMessage) return;
@@ -104,7 +120,11 @@ export function RecoveryBlockEndModal({
 
           <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">
             <Text style={styles.summary}>
-              {`${baselineTitle} · ${weekCount} ${weekCount === 1 ? 'week' : 'weeks'}${block?.started_at ? ` · started ${new Date(block.started_at).toLocaleDateString()}` : ''}`}
+              {`${baselineTitle} · ${weekCount} ${weekCount === 1 ? 'week' : 'weeks'}${dateRangeText ? ` · ${dateRangeText}` : ''}`}
+            </Text>
+            <Text style={styles.assurance}>
+              The baseline routine and every week's note are untouched — this only changes how
+              these weeks count in analytics.
             </Text>
 
             {blockingMessage ? (
@@ -139,8 +159,8 @@ export function RecoveryBlockEndModal({
                   {!storedInclusion && <Text style={styles.optionCurrent}>Your current setting</Text>}
                 </View>
                 <Text style={styles.optionCopy}>
-                  These weeks stay visible in Recovery Analytics only — classifications, overload
-                  signals, Kilo Max, 1K, and Home summaries treat them as if they did not happen.
+                  Off (the default) keeps them out of normal analytics — classifications, overload
+                  signals, Kilo Max, 1K, and Home summaries.
                 </Text>
               </View>
             </Pressable>
@@ -164,15 +184,19 @@ export function RecoveryBlockEndModal({
                   {storedInclusion && <Text style={styles.optionCurrent}>Your current setting</Text>}
                 </View>
                 <Text style={styles.optionCopy}>
-                  These weeks are included in normal analytics — classifications, overload signals,
-                  Kilo Max, 1K, and Home summaries.
+                  This block's linked recovery notes are included in normal analytics —
+                  classifications, overload signals, Kilo Max, 1K, and Home summaries.
                 </Text>
               </View>
             </Pressable>
 
+            {/* The Recovery Analytics editability footnote (#843): the exact
+                closing assurance `RECOVERY_INCLUSION_HELP` already gives this
+                same setting on Log and Analytics, so the wording matches
+                everywhere it appears rather than paraphrasing it here. */}
             <Text style={styles.footnote}>
-              You can change this later from Recovery Analytics — this setting never affects the
-              notes themselves, which stay fully visible and editable either way.
+              {RECOVERY_INCLUSION_HELP.slice(RECOVERY_INCLUSION_HELP.indexOf('Either way'))}
+              {' '}You can change this later from Recovery Analytics.
             </Text>
           </ScrollView>
 
@@ -251,6 +275,11 @@ const createStyles = (colors) => StyleSheet.create({
   },
   summary: {
     fontSize: 13,
+    color: colors.textMuted,
+  },
+  assurance: {
+    fontSize: 12,
+    lineHeight: 17,
     color: colors.textMuted,
   },
   errorBanner: {

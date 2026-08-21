@@ -1267,7 +1267,7 @@ export function LogScreen({
       <RecoveryBlockEndModal
         visible={endBlockModalOpen}
         block={activeRecoveryBlock}
-        weekCount={activeRecoveryBlock ? orderedLiveWeeks(recoveryWeeks, activeRecoveryBlock.id).length : 0}
+        weeks={activeRecoveryBlock ? orderedLiveWeeks(recoveryWeeks, activeRecoveryBlock.id) : []}
         blockingMessage={
           !activeRecoveryBlock
             ? 'No active recovery block to end.'

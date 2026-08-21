@@ -12,7 +12,7 @@ import { formatLiftWeightValue } from '../lib/units';
 // adding a size prop to SetLine — UI.js is outside this issue's Allowed
 // Files, and SetLine's own plate-calculator affordance is not part of the
 // compact Recovery reading surface.
-function CompactSetLine({ sets, unit, styles }) {
+function CompactSetLine({ sets, unit, styles, mark }) {
   if (!sets || sets.length === 0) return null;
   const groups = [];
   let currentGroup = null;
@@ -33,6 +33,9 @@ function CompactSetLine({ sets, unit, styles }) {
           <Text style={styles.compactSetReps}>{group.reps.join(', ')}</Text>
         </View>
       ))}
+      {mark ? (
+        <Text style={styles.compactSetMark} accessibilityLabel={`Marked: ${mark}`}>{`★ ${mark}`}</Text>
+      ) : null}
     </View>
   );
 }
@@ -62,8 +65,12 @@ export function WorkoutContentRenderer({
       {noteError ? <NoteParseError message={noteError} /> : null}
       {dayGroups.map((group, gi) => (
         <View key={`day-${gi}`}>
-          {group.heading && (
-            <WorkoutHeading 
+          {/* Compact mode (#843) never repeats the day heading: the surface
+              that hosts it already renders an uppercase day/section kicker
+              of its own (LogRecoverySection.js's `noteSurfaceKicker`), so
+              rendering it again here would show the same heading twice. */}
+          {group.heading && !compact && (
+            <WorkoutHeading
               selectable={true}
               style={gi === 0 ? { marginTop: 0 } : null}
             >
@@ -138,6 +145,7 @@ export function WorkoutContentRenderer({
                                     sets={row.sets}
                                     unit={unit}
                                     styles={styles}
+                                    mark={annotation ? annotation.mark : null}
                                   />
                                 ) : (
                                   <SetLine
@@ -274,6 +282,12 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: colors.textMuted,
+  },
+  compactSetMark: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textMuted,
+    marginLeft: 6,
   },
   emptyText: {
     color: colors.textMuted,

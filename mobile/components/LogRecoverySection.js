@@ -176,6 +176,14 @@ export function LogRecoverySection({
   // already exposed. Keying by id collapses on any block change with no effect
   // and no stale-state window.
   const [manageExpandedBlockId, setManageExpandedBlockId] = useState(null);
+  // The `Counting in normal analytics` row's own value-row interaction
+  // (#843 review): the row states the live `On`/`Off` value and a trailing
+  // chevron, but the actual `RecoveryInclusionToggle` switch and its help
+  // are a tap away, not always rendered under the row — matching the other
+  // two `Manage block` rows, which also require a tap to act rather than
+  // exposing their control inline. Keyed by block id for the same reason
+  // `manageExpandedBlockId` is.
+  const [inclusionRowExpandedBlockId, setInclusionRowExpandedBlockId] = useState(null);
   // Double-tap the expanded note body to edit it (#841 owner amendment):
   // the same gesture/timing the Routine tab's card already uses
   // (LogPreviousRoutines.js's viewingNoteLastTapRef), reproduced here rather
@@ -277,6 +285,7 @@ export function LogRecoverySection({
   // Derived, never stored: a disclosure opened for a different block reads as
   // collapsed for this one.
   const manageExpanded = !!activeBlock && manageExpandedBlockId === activeBlock.id;
+  const inclusionRowExpanded = !!activeBlock && inclusionRowExpandedBlockId === activeBlock.id;
   const headline = currentWeek
     ? (currentWeek.completed_at
       ? `Week ${currentWeek.week_number} complete — add the next week`
@@ -782,7 +791,13 @@ export function LogRecoverySection({
             {manageExpanded && (
               <View style={styles.manageList}>
                 <View style={[styles.manageRow, styles.manageRowDivider]}>
-                  <View style={styles.manageRowMain}>
+                  <Pressable
+                    onPress={() => setInclusionRowExpandedBlockId(id => (id === activeBlock.id ? null : activeBlock.id))}
+                    style={styles.manageRowMain}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Counting in normal analytics: ${activeBlock.include_in_normal_analytics === true ? 'On' : 'Off'}`}
+                    accessibilityState={{ expanded: inclusionRowExpanded }}
+                  >
                     <View style={styles.manageRowInfo}>
                       <Text style={styles.manageRowTitle}>Counting in normal analytics</Text>
                       <Text style={styles.manageRowSubtitle}>
@@ -793,17 +808,24 @@ export function LogRecoverySection({
                     <Text style={styles.manageRowState}>
                       {activeBlock.include_in_normal_analytics === true ? 'On' : 'Off'}
                     </Text>
-                    <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
-                  </View>
-                  <View style={styles.manageRowExpanded}>
-                    <RecoveryInclusionToggle
-                      block={activeBlock}
-                      disabled={inclusionLocked}
-                      busy={inclusionBusyBlockId === activeBlock.id}
-                      error={inclusionErrorFor(activeBlock.id)}
-                      onToggle={handleToggleInclusion}
+                    <MaterialIcons
+                      name={inclusionRowExpanded ? 'expand-less' : 'chevron-right'}
+                      size={20}
+                      color={colors.textMuted}
+                      accessible={false}
                     />
-                  </View>
+                  </Pressable>
+                  {inclusionRowExpanded && (
+                    <View style={styles.manageRowExpanded}>
+                      <RecoveryInclusionToggle
+                        block={activeBlock}
+                        disabled={inclusionLocked}
+                        busy={inclusionBusyBlockId === activeBlock.id}
+                        error={inclusionErrorFor(activeBlock.id)}
+                        onToggle={handleToggleInclusion}
+                      />
+                    </View>
+                  )}
                 </View>
 
                 {/* Always names the concrete current week, open or just
