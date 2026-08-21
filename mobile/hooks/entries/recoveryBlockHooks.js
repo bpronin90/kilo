@@ -13,14 +13,6 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import * as Storage from '../../storage/entries';
-// Imported directly from recoveryStorage.js, not re-exported through the
-// storage/entries.js barrel (#836): that barrel is outside this issue's
-// Allowed Files, and every OTHER recovery storage function used here already
-// goes through it. Merging this one function onto the barrel's namespace at
-// the call site (see `uncompleteCurrentWeek` below) keeps every existing
-// `storage.*` call working unchanged while adding the one function the
-// barrel does not yet export.
-import { uncompleteRecoveryWeek } from '../../storage/entries/recoveryStorage';
 import {
   RECOVERY_OPERATION_CODES,
   RECOVERY_OPERATION_TYPES,
@@ -1158,10 +1150,7 @@ export function useRecoveryBlockLifecycle() {
   const uncompleteCurrentWeek = useCallback(async (params) => {
     const gate = await ensureVerifiedRecoveryState();
     if (!gate.ok) return gate;
-    // See the import comment above: `uncompleteRecoveryWeek` is merged onto
-    // the barrel's namespace here rather than added to storage/entries.js
-    // itself, since that barrel is outside this issue's Allowed Files.
-    const result = await uncompleteCurrentWeekCore({ ...RecoveryStorage, uncompleteRecoveryWeek }, params);
+    const result = await uncompleteCurrentWeekCore(RecoveryStorage, params);
     if (result.ok) notifyRecoveryBlocks();
     return result;
   }, []);
