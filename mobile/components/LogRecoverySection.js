@@ -174,7 +174,17 @@ export function LogRecoverySection({
   // exactly what the authoritative contract exists to refuse, and the lifecycle
   // hooks reject it at confirm time anyway — disabling here keeps the UI from
   // advertising an action that would only fail after Confirm.
-  const actionsLocked = !!busy || hasPendingRecovery || !mutationsAllowed;
+  //
+  // A fourth reason (#841 automated review finding): `Complete recovery
+  // block` unmounts this whole active-block card, and `Unlink Week` removes
+  // a week's row outright — either can fire while a recovery note is
+  // mid-edit and take the inline editor's only Save/Cancel down with it,
+  // stranding an unsaved (or already-autosaved) edit with no way back to
+  // confirm or discard it. Locking every lifecycle control — not just those
+  // two — while `editingNoteId` is set keeps this one flag's meaning intact
+  // ("nothing here may mutate right now") instead of drawing a new
+  // action-by-action distinction.
+  const actionsLocked = !!busy || hasPendingRecovery || !mutationsAllowed || !!editingNoteId;
   const noticeIsTerminal = !hasPendingRecovery && !!pendingRecoveryError;
 
   // Unverified Recovery state is never rendered as "no recovery blocks" (#716).

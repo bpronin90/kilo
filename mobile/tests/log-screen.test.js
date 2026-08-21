@@ -879,6 +879,116 @@ describe('handleDoneOther flushes trailing edits when Done races an in-flight au
   });
 });
 
+// ── Cancel (Recovery inline editor) vs in-flight autosave (#841 automated review) ──
+// The same #528 race, mirrored for `handleCancelRecoveryEdit`: clearing the
+// debounce timer only stops an autosave that has not fired yet, not one
+// already mid-flight. Cancel must wait for it before reverting, or the
+// revert write and the stale autosave write can land in either order — and
+// a revert that itself fails must never close the editor, since that would
+// strand an unwanted autosaved edit as the permanent, un-retryable outcome.
+describe('handleCancelRecoveryEdit waits for an in-flight autosave and only closes on a confirmed revert (#841)', () => {
+  const { useLogOtherRoutineEditor } = require('../screens/log/useLogOtherRoutineEditor');
+
+  let harnessRenderer;
+  afterEach(() => {
+    if (harnessRenderer) {
+      render.act(() => { harnessRenderer.unmount(); });
+      harnessRenderer = null;
+    }
+  });
+
+  const mountHarness = ({ notes, update }) => {
+    let latest = null;
+    function Harness({ notes: n }) {
+      const hook = useLogOtherRoutineEditor({
+        notes: n,
+        currentId: 'other',
+        currentNote: { id: 'other' },
+        deloadHistory: [],
+        update,
+        add: jest.fn(),
+        remove: jest.fn(),
+        selectCurrent: jest.fn(),
+        updateDeload: jest.fn(),
+        deleteDeloadNote: jest.fn(),
+        autosaveCurrentTimerRef: { current: null },
+        handleSave: jest.fn(),
+        currentEditorMode: 'read',
+        hasUnsavedCurrent: false,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+      });
+      latest = { hook };
+      return null;
+    }
+    render.act(() => { harnessRenderer = render.create(<Harness notes={notes} />); });
+    return () => latest.hook;
+  };
+
+  test('Cancel waits for the in-flight autosave before issuing its revert write', async () => {
+    const note = { id: 'weeknote', title: 'Recovery Week Note', raw_text: 'ORIGINAL' };
+    let releaseAutosave;
+    const autosaveGate = new Promise((resolve) => { releaseAutosave = resolve; });
+    const update = jest.fn().mockImplementation(async (id, patch) => {
+      if (update.mock.calls.length === 1) await autosaveGate;
+      return { id, title: patch.title, raw_text: patch.raw_text };
+    });
+    const getHook = mountHarness({ notes: [note], update });
+
+    // Seed the recovery viewer, then open the inline editor off it exactly as
+    // LogRecoverySection's Edit action does.
+    render.act(() => { getHook().setRecoveryViewingNoteId(note.id); });
+    render.act(() => { getHook().handleEditRecoveryViewedNote(); });
+    expect(getHook().editingNoteId).toBe(note.id);
+
+    // Type, and let the debounced autosave start (simulated directly, as the
+    // #528 tests above do — the real debounce timer is not under test here).
+    render.act(() => { getHook().setEditingText('UNWANTED AUTOSAVED EDIT'); });
+    let autosavePromise;
+    render.act(() => { autosavePromise = getHook().handleSaveOtherNote({ autosave: true }); });
+    expect(update).toHaveBeenCalledTimes(1);
+
+    // Press Cancel while that autosave is still in flight.
+    let cancelPromise;
+    render.act(() => { cancelPromise = getHook().handleCancelRecoveryEdit(); });
+    // Cancel must not have issued its own revert write yet — it is still
+    // awaiting the in-flight autosave's promise.
+    expect(update).toHaveBeenCalledTimes(1);
+
+    await render.act(async () => {
+      releaseAutosave();
+      await autosavePromise;
+      await cancelPromise;
+    });
+
+    // The revert write is issued only after the autosave settles, so it is
+    // always the LAST word — the note ends up back at its original content,
+    // never left on the unwanted autosaved text.
+    expect(update).toHaveBeenCalledTimes(2);
+    expect(update).toHaveBeenLastCalledWith('weeknote', expect.objectContaining({ raw_text: 'ORIGINAL' }));
+    expect(getHook().editingNoteId).toBe(null);
+  });
+
+  test('a failed revert keeps the inline editor open instead of closing on an unconfirmed Cancel', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const note = { id: 'weeknote', title: 'Recovery Week Note', raw_text: 'ORIGINAL' };
+    const update = jest.fn().mockRejectedValue(new Error('write failed'));
+    const getHook = mountHarness({ notes: [note], update });
+
+    render.act(() => { getHook().setRecoveryViewingNoteId(note.id); });
+    render.act(() => { getHook().handleEditRecoveryViewedNote(); });
+    render.act(() => { getHook().setEditingText('edited'); });
+
+    await render.act(async () => { await getHook().handleCancelRecoveryEdit(); });
+
+    // The revert write failed, so Cancel must not have closed the session —
+    // otherwise the edited-but-unreverted text would be stranded with no
+    // visible way back to Save or retry Cancel.
+    expect(getHook().editingNoteId).toBe(note.id);
+    expect(alertSpy).toHaveBeenCalled();
+    alertSpy.mockRestore();
+  });
+});
+
 // ── Web edit path: explicit non-double-tap edit control (#314) ───────────────
 // Web has no reliable double-tap idiom, so Log must expose an explicit tap-once
 // edit affordance. LogScreen passes enterCurrentEditor (single-press editor
@@ -5996,6 +6106,95 @@ describe('Recovery Block start flow', () => {
   });
 });
 
+// -- Recovery-tab lockout while a note is edited inline (#841 automated review) --
+//
+// The shared full-screen editor keys off `otherEditor.editingNoteId`
+// truthiness alone, not tab or mode, to decide which note/handlers it binds
+// to. A recovery-sourced session deliberately stays out of `isEditing`
+// (Save/Cancel live inline in the Recovery block instead), which means the
+// tab toggle stays visible while it is open — so leaving Recovery has to be
+// refused outright, or the user could reach the current routine's
+// full-screen editor while `editingNoteId` still names the recovery note.
+describe('LogScreen: leaving Recovery is refused while a recovery note is mid-edit (#841)', () => {
+  const baselineNote = { id: 'baseline1', title: 'Push Day', raw_text: 'Push\n-Bench\n100 5,5,5', updated_at: '2026-01-01T00:00:00.000Z' };
+  const weekNote = { id: 'week1note', title: 'Recovery Week 1 Note', raw_text: 'Pull\n-Row\n80 5,5,5', updated_at: '2026-01-08T00:00:00.000Z' };
+
+  const activeBlock = {
+    id: 'rb1', baseline_note_id: baselineNote.id, baseline_note_title: baselineNote.title,
+    started_at: '2026-01-01T00:00:00.000Z', completed_at: null, deleted_at: null,
+  };
+  const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: weekNote.id, week_number: 1, completed_at: null, deleted_at: null }];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [baselineNote, weekNote], currentId: baselineNote.id, currentNote: baselineNote, deloadNotes: [],
+      loading: false, error: null, refresh: jest.fn(),
+      selectCurrent: jest.fn(), update: jest.fn().mockResolvedValue({}), add: jest.fn(), remove: jest.fn(),
+    });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: [], toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({ note: null, loading: false, save: jest.fn(), clear: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    // Deload also selectable, so the guard is proven against BOTH sibling
+    // tabs, not just the one that happens to be Routine.
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: true });
+    useEntries.useRecoveryBlockState.mockReturnValue({
+      activeBlock, blocks: [activeBlock], weeks,
+      recoveryWeekNumberByNoteId: { [weekNote.id]: 1 },
+      loading: false, error: null, refresh: jest.fn(),
+    });
+    useEntries.useStartRecoveryBlock.mockReturnValue({ startBlock: jest.fn() });
+    useEntries.isEligibleBaselineNote.mockImplementation(jest.requireActual('../hooks/entries/recoveryBlockHooks').isEligibleBaselineNote);
+    useEntries.isEligibleRecoveryWeekNote.mockImplementation(jest.requireActual('../hooks/entries/recoveryBlockHooks').isEligibleRecoveryWeekNote);
+  });
+
+  // Finds the tab toggle's own Pressable for an exact label — not
+  // `findPressableByText`'s substring match, which would also match "More
+  // Routines" for the text "Routine".
+  const tabButton = (root, label) => {
+    for (const node of root.findAll(n => n.type === 'Text' && n.props.children === label)) {
+      let p = node.parent;
+      while (p && typeof p.props?.onPress !== 'function') p = p.parent;
+      if (p) return p;
+    }
+    return null;
+  };
+
+  test('an active block defaults the screen to Recovery, and editing its week note inline locks the tab toggle', () => {
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    // The active-block default (LogScreen's recoveryDefaultAppliedRef effect)
+    // already lands on Recovery with no tap needed.
+    const weekRow = root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'View Recovery Week 1 Note, Recovery Week 1' && typeof n.props.onPress === 'function'
+    )[0];
+    expect(weekRow).toBeTruthy();
+    render.act(() => { weekRow.props.onPress(); });
+
+    const editBtn = root.findAll(n => n.props && n.props.accessibilityLabel === 'Edit' && typeof n.props.onPress === 'function')[0];
+    expect(editBtn).toBeTruthy();
+    render.act(() => { editBtn.props.onPress(); });
+
+    // Now mid-edit: both sibling tabs report disabled and refuse to switch.
+    const routineTab = tabButton(root, 'Routine');
+    const deloadTab = tabButton(root, 'Deload');
+    expect(routineTab.props.disabled).toBe(true);
+    expect(routineTab.props.accessibilityState.disabled).toBe(true);
+    expect(deloadTab.props.disabled).toBe(true);
+    expect(deloadTab.props.accessibilityState.disabled).toBe(true);
+
+    render.act(() => { routineTab.props.onPress(); });
+    render.act(() => { deloadTab.props.onPress(); });
+    // Recovery's own inline editor is still on screen — the tab never moved.
+    expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery note title')[0]).toBeTruthy();
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'More Routines').length).toBe(0);
+  });
+});
+
 describe('useStartRecoveryBlock: rollback on Week-1 failure leaves no orphan active block', () => {
   test('createRecoveryBlock succeeding but addRecoveryWeek throwing deletes the just-created block', async () => {
     // Only ../hooks/useEntries is auto-mocked at the top of this file.
@@ -9977,6 +10176,39 @@ describe('LogRecoverySection: inline recovery-note editing (#841)', () => {
     render.act(() => { byLabel(root, 'Edit').props.onPress(); });
     expect(flatText(root)).toContain('Baseline: Push Day');
     expect(flatText(root)).toContain('Week 1 in progress');
+  });
+
+  // Automated review finding: `Complete recovery block` unmounts this whole
+  // active-block card, and `Unlink Week` removes a week's row outright —
+  // either could otherwise fire while a note is mid-edit and take the
+  // inline editor's only Save/Cancel down with it. Every lifecycle control
+  // locks, not just the two that can unmount something, so the one
+  // `actionsLocked` flag keeps a single meaning throughout the card.
+  test('every recovery lifecycle action locks while a note is edited inline', () => {
+    const root = renderInline({
+      onCompleteWeek: jest.fn(),
+      onOpenAddWeek: jest.fn(),
+      onUnlinkWeek: jest.fn(),
+      onCompleteBlock: jest.fn(),
+    });
+    expect(byLabel(root, 'Complete week').props.accessibilityState.disabled).toBeFalsy();
+
+    render.act(() => { byLabel(root, 'Edit').props.onPress(); });
+    expect(byLabel(root, 'Complete week').props.accessibilityState.disabled).toBe(true);
+
+    const manageTrigger = root.findAll(
+      n => n.props && typeof n.props.accessibilityLabel === 'string'
+        && n.props.accessibilityLabel.startsWith('Manage recovery block')
+        && typeof n.props.onPress === 'function'
+    )[0];
+    // The disclosure trigger itself never disables (#780/#789 contract) — a
+    // locked user must still be able to open it and see why its contents
+    // are unavailable.
+    expect(manageTrigger.props.disabled).toBeFalsy();
+    render.act(() => { manageTrigger.props.onPress(); });
+
+    expect(byLabel(root, 'Unlink Week 1').props.accessibilityState.disabled).toBe(true);
+    expect(byLabel(root, 'Complete recovery block').props.accessibilityState.disabled).toBe(true);
   });
 });
 

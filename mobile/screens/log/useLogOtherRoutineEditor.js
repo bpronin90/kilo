@@ -566,9 +566,9 @@ export function useLogOtherRoutineEditor({
       setEditingTitle('');
       setEditingFullText('');
       setEditingActiveWeek(null);
-      return;
+      return true;
     }
-    if (!originalNoteState) return;
+    if (!originalNoteState) return true;
     if (autosaveOtherTimerRef.current) {
       clearTimeout(autosaveOtherTimerRef.current);
       autosaveOtherTimerRef.current = null;
@@ -640,9 +640,11 @@ export function useLogOtherRoutineEditor({
         setDeloadEditDate(originalNoteState.date);
         setDeloadEditOrdinal(originalNoteState.ordinal);
       }
+      return true;
     } catch (err) {
       console.warn('Undo revert failed:', err);
       Alert.alert('Error', 'Failed to revert changes. Please try again.');
+      return false;
     }
   };
 
@@ -652,12 +654,28 @@ export function useLogOtherRoutineEditor({
   // unlike the full-screen Undo, Cancel here is an exit, not a mid-edit
   // revert. Nothing is saved on the way out beyond what autosave already
   // wrote and this now reverts.
+  //
+  // Cancelling the debounce timer only stops an autosave that has not fired
+  // yet — it does nothing about one already mid-flight (automated review
+  // finding). `saveOtherNoteInFlightRef` is awaited FIRST so the revert
+  // write in `handleUndoOther` always lands after any autosave it needs to
+  // undo, never racing it. `handleUndoOther` swallows its own errors (it
+  // already alerts them) and now reports success/failure instead of
+  // resolving either way — the editing session only closes on a CONFIRMED
+  // revert, so a failed rollback leaves the inline editor open with the
+  // unwanted autosaved content still visible and Cancel re-pressable,
+  // rather than quietly exiting to a note whose persisted state was never
+  // actually restored.
   const handleCancelRecoveryEdit = async () => {
     if (autosaveOtherTimerRef.current) {
       clearTimeout(autosaveOtherTimerRef.current);
       autosaveOtherTimerRef.current = null;
     }
-    await handleUndoOther();
+    if (saveOtherNoteInFlightRef.current) {
+      await saveOtherNoteInFlightRef.current;
+    }
+    const reverted = await handleUndoOther();
+    if (!reverted) return;
     setEditingNoteId(null);
     setEditingSource(null);
     setOriginalNoteState(null);

@@ -762,6 +762,26 @@ export function LogScreen({
   const isEditing = (!!otherEditor.editingNoteId && otherEditor.editingSource !== 'recovery')
     || currentEditor.mode === 'edit' || deloadEditor.deloadMode === 'edit';
 
+  // A recovery-sourced editingNoteId session stays out of `isEditing` above
+  // (its Save/Cancel live inline in LogRecoverySection, not the shared
+  // full-screen editor), which means the tab toggle stays mounted AND
+  // visible while it is open — unlike every other edit surface, which hides
+  // the toggle by making `isEditing` true. Left unguarded, switching to
+  // Routine or Deload would hide the only Save/Cancel controls for the
+  // in-progress edit and, worse, would let the user open the CURRENT
+  // routine's full-screen editor while `otherEditor.editingNoteId` still
+  // names the recovery note — every ternary in that editor keys off
+  // `editingNoteId` truthiness, not tab or mode, so it would render and Done
+  // the wrong note entirely (automated review finding). Leaving Recovery is
+  // therefore refused outright while a recovery inline edit is open; the
+  // user finishes it (Save or Cancel) first, exactly as every other editor
+  // already requires via `isEditing` hiding the toggle.
+  const recoveryInlineEditActive = otherEditor.editingSource === 'recovery' && !!otherEditor.editingNoteId;
+  const handleTabViewChange = (next) => {
+    if (recoveryInlineEditActive && next !== 'recovery') return;
+    setTabView(next);
+  };
+
   // Recovery is selectable only while `recoveryTabVisible`, and Deload only
   // while deload mode is enabled — either falls back to Routine the instant
   // its own condition stops holding (e.g. the active block completes while
@@ -845,21 +865,25 @@ export function LogScreen({
                     is never a permanent, empty tab. */}
                 {recoveryTabVisible && (
                   <Pressable
-                    onPress={() => setTabView('recovery')}
+                    onPress={() => handleTabViewChange('recovery')}
                     style={[styles.tabToggleItem, effectiveTabView === 'recovery' && styles.tabToggleItemActive]}
                   >
                     <Text style={[styles.tabToggleText, effectiveTabView === 'recovery' && styles.tabToggleTextActive]}>Recovery</Text>
                   </Pressable>
                 )}
                 <Pressable
-                  onPress={() => setTabView('routine')}
+                  onPress={() => handleTabViewChange('routine')}
+                  disabled={recoveryInlineEditActive}
+                  accessibilityState={{ disabled: recoveryInlineEditActive }}
                   style={[styles.tabToggleItem, effectiveTabView === 'routine' && styles.tabToggleItemActive]}
                 >
                   <Text style={[styles.tabToggleText, effectiveTabView === 'routine' && styles.tabToggleTextActive]}>Routine</Text>
                 </Pressable>
                 {deloadModeEnabled && (
                   <Pressable
-                    onPress={() => setTabView('deload')}
+                    onPress={() => handleTabViewChange('deload')}
+                    disabled={recoveryInlineEditActive}
+                    accessibilityState={{ disabled: recoveryInlineEditActive }}
                     style={[styles.tabToggleItem, effectiveTabView === 'deload' && styles.tabToggleItemActive]}
                   >
                     <Text style={[styles.tabToggleText, effectiveTabView === 'deload' && styles.tabToggleTextActive]}>Deload</Text>
