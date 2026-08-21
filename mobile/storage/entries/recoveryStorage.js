@@ -202,6 +202,98 @@ export async function completeRecoveryBlock(id, completedAt = new Date().toISOSt
   return updated;
 }
 
+// Extra typed failure codes for reopening (#839), local to this module: the
+// domain's frozen RECOVERY_ERROR_CODES enum in lib/data/recoveryBlocks.js is
+// out of scope for this change, and RecoveryBlockError accepts any code
+// string, so these are defined here rather than widening that file.
+export const RECOVERY_BLOCK_NOT_COMPLETED = 'BLOCK_NOT_COMPLETED';
+export const RECOVERY_BLOCK_NOT_NEWEST_COMPLETED = 'BLOCK_NOT_NEWEST_COMPLETED';
+
+// The block most recently completed among live blocks, if any. "Newest" is by
+// `completed_at`, not `started_at` — the confirmation copy promises "your most
+// recently completed block", and two blocks can complete out of the order
+// they started in. Ties (an explicit `completedAt` caller, an import, or
+// synchronized records can genuinely equal another block's timestamp) break
+// on `id` — the one other field guaranteed both present and immutable — so
+// every device resolves the SAME winner from the same records rather than
+// each seeing a different "newest" depending on local array order (#839
+// review). LogScreen.js and AnalyticsRecoverySection.js apply this identical
+// ordering for their own read-only "which block offers Reopen" computation.
+export function compareRecoveryBlocksNewestCompletedFirst(a, b) {
+  return String(b.completed_at).localeCompare(String(a.completed_at))
+    || String(b.id).localeCompare(String(a.id));
+}
+
+function _newestCompletedBlock(list) {
+  return (list || [])
+    .filter(b => isLiveRecord(b) && b.completed_at)
+    .sort(compareRecoveryBlocksNewestCompletedFirst)[0] || null;
+}
+
+// Reopen a completed block (#839): clears `completed_at` back to null and
+// leaves the baseline, weeks, notes, inclusion preference, and every other
+// field untouched — the inverse of completeRecoveryBlock, and deliberately
+// nothing more. Every eligibility check below runs BEFORE any write, so a
+// rejection is provably a no-op:
+//
+//   - missing/tombstoned: BLOCK_NOT_FOUND, matching every other block API's
+//     own not-found contract;
+//   - not completed (still active): BLOCK_NOT_COMPLETED — an active block has
+//     nothing to reopen;
+//   - another block already active: ACTIVE_BLOCK_EXISTS, mirroring
+//     createRecoveryBlock's own check, since reopening one is exactly as
+//     capable of breaking "at most one active block" as starting one;
+//   - not the newest completed block: BLOCK_NOT_NEWEST_COMPLETED — reopening
+//     an older completed block would let two completed blocks disagree about
+//     which one is "the" recovery history to resume, which the caller-facing
+//     contract (only the most recent) forbids.
+export async function uncompleteRecoveryBlock(id) {
+  const list = await readList(RECOVERY_BLOCKS_KEY);
+  const idx = list.findIndex(b => b.id === id);
+  if (idx < 0) {
+    throw new RecoveryBlockError(
+      RECOVERY_ERROR_CODES.BLOCK_NOT_FOUND,
+      `No recovery block with id ${id}.`
+    );
+  }
+  const block = list[idx];
+  if (!isLiveRecord(block)) {
+    throw new RecoveryBlockError(
+      RECOVERY_ERROR_CODES.BLOCK_NOT_FOUND,
+      `Recovery block ${id} is deleted.`
+    );
+  }
+  if (!block.completed_at) {
+    throw new RecoveryBlockError(
+      RECOVERY_BLOCK_NOT_COMPLETED,
+      `Recovery block ${id} is not completed, so it cannot be reopened.`
+    );
+  }
+  const active = findActiveBlock(list);
+  if (active) {
+    throw new RecoveryBlockError(
+      RECOVERY_ERROR_CODES.ACTIVE_BLOCK_EXISTS,
+      `Recovery block ${active.id} is already active; complete or delete it before reopening another block.`
+    );
+  }
+  const newest = _newestCompletedBlock(list);
+  if (!newest || newest.id !== id) {
+    throw new RecoveryBlockError(
+      RECOVERY_BLOCK_NOT_NEWEST_COMPLETED,
+      `Only the most recently completed recovery block can be reopened.`
+    );
+  }
+
+  const updated = {
+    ...block,
+    completed_at: null,
+    updated_at: new Date().toISOString(),
+  };
+  list[idx] = updated;
+  await writeList(RECOVERY_BLOCKS_KEY, list);
+  return updated;
+}
+
 // Tombstone a block and every live membership it owns.
 //
 // Cascading to the weeks matters for convergence: an orphaned live membership

@@ -8,12 +8,14 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { Alert } from '../lib/platformAlert';
 import { Card, HeroMetric, SectionTitle } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatLiftWeightValue } from '../lib/units';
 import { formatDate, formatDuration } from '../lib/format';
 import { findActiveBlock, isLiveRecord } from '../lib/data/recoveryBlocks';
+import { compareRecoveryBlocksNewestCompletedFirst } from '../storage/entries/recoveryStorage';
 import { parseWorkoutNote } from '../lib/parser/workoutNote';
 import {
   RECOVERY_LOADING_MESSAGE,
@@ -409,7 +411,19 @@ function _summaryLine(weekLabel, summary) {
 // block, so the caller mounts this keyed by `block.id`. Reusing the instance
 // across a history switch would carry the previous block's open disclosure and
 // selected week onto a block that never had them.
-function BlockEvidence({ block, weeks, notes, unit }) {
+function BlockEvidence({
+  block, weeks, notes, unit,
+  // Reopen (#839): the secondary, non-destructive action offered ONLY on the
+  // newest completed block's own card, and only while no block is active —
+  // the parent computes both conditions and hands down a single `showReopen`
+  // rather than this component re-deriving "newest" from a `blocks` array it
+  // does not otherwise receive.
+  showReopen = false,
+  reopenDisabled = false,
+  reopenBusy = false,
+  reopenError = null,
+  onReopen,
+}) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const [selectedWeekId, setSelectedWeekId] = useState(null);
@@ -564,6 +578,26 @@ function BlockEvidence({ block, weeks, notes, unit }) {
         </>
       )}
 
+      {showReopen && (
+        <View style={styles.reopenWrapper}>
+          <Pressable
+            onPress={() => onReopen?.(block)}
+            disabled={reopenDisabled}
+            style={[styles.reopenButton, reopenDisabled && styles.reopenButtonDisabled]}
+            accessibilityRole="button"
+            accessibilityLabel={`Reopen recovery block: ${routineTitle}`}
+            accessibilityState={{ disabled: reopenDisabled, busy: reopenBusy }}
+          >
+            <Text style={styles.reopenButtonText}>
+              {reopenBusy ? 'Reopening…' : 'Reopen recovery block'}
+            </Text>
+          </Pressable>
+          {!!reopenError && (
+            <Text style={styles.reopenErrorText} accessibilityRole="alert">{reopenError}</Text>
+          )}
+        </View>
+      )}
+
       <Text style={styles.provenanceText}>{provenance}</Text>
     </Card>
   );
@@ -597,14 +631,48 @@ export function AnalyticsRecoverySection({
   // names the latest, which is the whole answer for most visits.
   const [historyCollapsed, setHistoryCollapsed] = useState(true);
   const [focusedBlockId, setFocusedBlockId] = useState(null);
-  const { setIncludeInNormalAnalytics } = useRecoveryBlockLifecycle();
+  const { setIncludeInNormalAnalytics, reopenBlock } = useRecoveryBlockLifecycle();
   const [inclusionBusyBlockId, setInclusionBusyBlockId] = useState(null);
   const [inclusionError, setInclusionError] = useState(null);
+  const [reopenBusy, setReopenBusy] = useState(false);
+  const [reopenError, setReopenError] = useState(null);
 
   const activeBlock = findActiveBlock(blocks);
+  // Same comparator storage's own uncompleteRecoveryBlock enforces — newest
+  // `completed_at` first, `id` breaking a tie (#839 review) — applied to both
+  // the history list's display order and which single card offers Reopen, so
+  // the ONE card offering it is always the block a confirm will actually be
+  // allowed to act on, on every device.
   const completedBlocks = blocks
     .filter(b => isLiveRecord(b) && b.completed_at)
-    .sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at)));
+    .sort(compareRecoveryBlocksNewestCompletedFirst);
+  const newestCompletedBlock = completedBlocks[0] || null;
+
+  const handleReopen = (block) => {
+    const baselineTitle = block.baseline_note_title || 'Untitled Routine';
+    Alert.alert(
+      'Reopen this recovery block?',
+      `This reactivates ${baselineTitle} as your active recovery block. Every week's status stays exactly as it is — you can add a new week or undo the latest week's completion once it's reopened. You can only reopen your most recently completed block, and only while no other block is active.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reopen block',
+          onPress: async () => {
+            setReopenError(null);
+            setReopenBusy(true);
+            try {
+              const result = await reopenBlock({ blockId: block.id });
+              if (!result || result.ok === false) {
+                setReopenError((result && result.error) || 'Could not reopen this recovery block.');
+              }
+            } finally {
+              setReopenBusy(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const handleToggleInclusion = async (block, include) => {
     if (inclusionBusyBlockId) return;
@@ -728,7 +796,18 @@ export function AnalyticsRecoverySection({
         </Pressable>
       )}
 
-      <BlockEvidence key={focusedBlock.id} block={focusedBlock} weeks={weeks} notes={notes} unit={unit} />
+      <BlockEvidence
+        key={focusedBlock.id}
+        block={focusedBlock}
+        weeks={weeks}
+        notes={notes}
+        unit={unit}
+        showReopen={!activeBlock && !!newestCompletedBlock && focusedBlock.id === newestCompletedBlock.id}
+        reopenDisabled={!mutationsAllowed || hasPendingRecovery || reopenBusy}
+        reopenBusy={reopenBusy}
+        reopenError={reopenError}
+        onReopen={handleReopen}
+      />
 
       {completedBlocks.length > 0 && (
         <View style={styles.historyPanel}>
@@ -852,6 +931,34 @@ const createStyles = (colors) => StyleSheet.create({
   provenanceText: {
     fontSize: 12,
     color: colors.textMuted,
+  },
+  // Reopen (#839): low-emphasis, non-destructive outline button — matching
+  // the Log tab's own secondary styling for the same action — never the
+  // filled/accent treatment a primary action would use.
+  reopenWrapper: {
+    gap: 6,
+  },
+  reopenButton: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  reopenButtonDisabled: {
+    opacity: 0.5,
+  },
+  reopenButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  reopenErrorText: {
+    fontSize: 12,
+    color: colors.error,
   },
   backToActive: {
     flexDirection: 'row',

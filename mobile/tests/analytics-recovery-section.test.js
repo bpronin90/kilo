@@ -18,6 +18,7 @@
 
 import React from 'react';
 import render, { act } from 'react-test-renderer';
+import { Alert } from 'react-native';
 import { AnalyticsRecoverySection } from '../components/AnalyticsRecoverySection';
 import { captureRecoveryBaselineFromText } from '../lib/data/recoveryBlocks';
 import { MAX_RAW_TEXT_LENGTH } from '../lib/parser/workoutNote';
@@ -1343,5 +1344,153 @@ describe('AnalyticsRecoverySection — inclusion preference (#728)', () => {
 
     expect(control.props.disabled).toBe(true);
     expect(control.props.accessibilityState.disabled).toBe(true);
+  });
+});
+
+describe('AnalyticsRecoverySection — reopen the newest completed block (#839)', () => {
+  let mockReopen;
+  let alertSpy;
+
+  function completedBlock(id, completedAt, title = 'Push Pull Legs') {
+    return block({ id, completed_at: completedAt, baseline_note_title: title });
+  }
+
+  function setupReopen(props = {}) {
+    let component;
+    act(() => {
+      component = render.create(
+        <AnalyticsRecoverySection blocks={[]} weeks={[]} notes={[]} {...props} />
+      );
+    });
+    return component;
+  }
+
+  function reopenButton(root) {
+    return root.findAll(
+      n => n.props && n.props.accessibilityLabel && n.props.accessibilityLabel.startsWith('Reopen recovery block:')
+        && typeof n.props.onPress === 'function'
+    )[0];
+  }
+
+  beforeEach(() => {
+    mockReopen = jest.fn().mockResolvedValue({ ok: true });
+    jest.spyOn(require('../hooks/entries/recoveryBlockHooks'), 'useRecoveryBlockLifecycle')
+      .mockReturnValue({ setIncludeInNormalAnalytics: jest.fn(), reopenBlock: mockReopen });
+    alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  test('Reopen appears on the newest completed block\'s own evidence card', () => {
+    const newest = completedBlock('rb-newest', '2026-06-01T00:00:00.000Z');
+    const older = completedBlock('rb-older', '2026-05-01T00:00:00.000Z');
+    const component = setupReopen({ blocks: [newest, older] });
+
+    expect(reopenButton(component.root)).toBeTruthy();
+  });
+
+  test('Reopen does not appear on an older completed block, even when focused', () => {
+    const newest = completedBlock('rb-newest', '2026-06-01T00:00:00.000Z');
+    const older = completedBlock('rb-older', '2026-05-01T00:00:00.000Z');
+    const component = setupReopen({ blocks: [newest, older] });
+
+    const toggle = byLabel(component.root, 'Expand recovery history');
+    act(() => { toggle.props.onPress(); });
+    const olderRow = byLabel(
+      component.root,
+      `View recovery evidence for ${older.baseline_note_title}, completed ${require('../lib/format').formatDate(older.completed_at)}`
+    );
+    act(() => { olderRow.props.onPress(); });
+
+    expect(reopenButton(component.root)).toBeUndefined();
+  });
+
+  test('Reopen is absent while a block is active, even though a completed block exists', () => {
+    const active = block({ id: 'rb-active', completed_at: null });
+    const completed = completedBlock('rb-newest', '2026-06-01T00:00:00.000Z');
+    const component = setupReopen({ blocks: [active, completed] });
+
+    expect(reopenButton(component.root)).toBeUndefined();
+  });
+
+  test('tapping Reopen shows the #839 confirmation copy naming the baseline', () => {
+    const newest = completedBlock('rb-newest', '2026-06-01T00:00:00.000Z', 'Push Pull Legs');
+    const component = setupReopen({ blocks: [newest] });
+
+    act(() => { reopenButton(component.root).props.onPress(); });
+
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Reopen this recovery block?',
+      expect.stringContaining('Push Pull Legs'),
+      expect.arrayContaining([
+        expect.objectContaining({ text: 'Cancel' }),
+        expect.objectContaining({ text: 'Reopen block' }),
+      ])
+    );
+  });
+
+  test('confirming calls reopenBlock with the block id', async () => {
+    const newest = completedBlock('rb-newest', '2026-06-01T00:00:00.000Z');
+    const component = setupReopen({ blocks: [newest] });
+
+    act(() => { reopenButton(component.root).props.onPress(); });
+    const buttons = alertSpy.mock.calls[0][2];
+    await act(async () => { await buttons.find(b => b.text === 'Reopen block').onPress(); });
+
+    expect(mockReopen).toHaveBeenCalledWith({ blockId: 'rb-newest' });
+  });
+
+  test('a rejected reopen surfaces an error under the button and leaves the block completed', async () => {
+    mockReopen.mockResolvedValue({ ok: false, error: 'Only the most recently completed recovery block can be reopened.' });
+    const newest = completedBlock('rb-newest', '2026-06-01T00:00:00.000Z');
+    const component = setupReopen({ blocks: [newest] });
+
+    act(() => { reopenButton(component.root).props.onPress(); });
+    const buttons = alertSpy.mock.calls[0][2];
+    await act(async () => { await buttons.find(b => b.text === 'Reopen block').onPress(); });
+
+    expect(hasText(component.root, 'Only the most recently completed recovery block can be reopened.')).toBe(true);
+    expect(reopenButton(component.root)).toBeTruthy();
+  });
+
+  test('an in-flight reopen disables the button and shows busy copy', async () => {
+    let releaseReopen;
+    mockReopen.mockImplementation(() => new Promise(resolve => { releaseReopen = resolve; }));
+    const newest = completedBlock('rb-newest', '2026-06-01T00:00:00.000Z');
+    const component = setupReopen({ blocks: [newest] });
+
+    act(() => { reopenButton(component.root).props.onPress(); });
+    const buttons = alertSpy.mock.calls[0][2];
+    let confirmPromise;
+    act(() => { confirmPromise = buttons.find(b => b.text === 'Reopen block').onPress(); });
+
+    const busyBtn = reopenButton(component.root);
+    expect(busyBtn.props.disabled).toBe(true);
+    expect(hasText(component.root, 'Reopening…')).toBe(true);
+
+    await act(async () => {
+      releaseReopen({ ok: true });
+      await confirmPromise;
+    });
+  });
+
+  test('after a successful reopen, the block presents as active rather than completed history', () => {
+    // Presentational component: the parent screen re-reads shared Recovery
+    // state after `reopenBlock` resolves and passes updated props down — this
+    // simulates that update directly, since AnalyticsRecoverySection itself
+    // holds no block-lifecycle state of its own. `completed_at: null` is
+    // exactly what a successful reopen persists.
+    const reopened = block({ id: 'rb-newest', completed_at: null, baseline_note_title: 'Push Pull Legs' });
+    const component = setupReopen({ blocks: [reopened] });
+
+    // No completed-block history panel — the block is active, not history.
+    expect(byLabel(component.root, 'Expand recovery history')).toBeUndefined();
+    // Reopen never offers itself on an already-active block.
+    expect(reopenButton(component.root)).toBeUndefined();
+    // Provenance reads as an open-ended active block ("Started …"), not a
+    // completed date range.
+    expect(hasText(component.root, 'Started ')).toBe(true);
   });
 });

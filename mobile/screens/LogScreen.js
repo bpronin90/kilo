@@ -40,6 +40,7 @@ import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { normalizeLiftName, listTrackedLifts } from '../lib/data';
 import { DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
 import { findLiveMembershipForNote, nextWeekNumber } from '../lib/data/recoveryBlocks';
+import { compareRecoveryBlocksNewestCompletedFirst } from '../storage/entries/recoveryStorage';
 import {
   useTrackedLifts,
   useWorkoutNotes,
@@ -508,6 +509,30 @@ export function LogScreen({
     && recoveryMutationsAllowed
     && eligibleBaselineNotes.length > 0;
 
+  // The `Reopen recovery block: {baseline title}` secondary entry point
+  // (#839). Uses the EXACT SAME comparator storage's own "newest completed"
+  // resolution does — including its `id` tie-break for equal `completed_at`
+  // values (#839 review) — so what this row NAMES is exactly what
+  // `reopenBlock` will act on, and every device resolves the same winner
+  // rather than each seeing a different "newest" depending on local array
+  // order; `reopenRecoveryBlockCore` re-verifies this against persisted state
+  // at confirm time regardless (#711-style gate). Independent of
+  // `showRecoveryStartInManagement`: both compute their own visibility and
+  // render together whenever both qualify, per #839's contract that neither
+  // replaces or gates the other.
+  const newestCompletedRecoveryBlock = recoveryBlocks
+    .filter(b => !!b.completed_at)
+    .sort(compareRecoveryBlocksNewestCompletedFirst)[0] || null;
+
+  const showRecoveryReopenInManagement =
+    !activeRecoveryBlock
+    && recoveryReady
+    && !recoveryStale
+    && !recoveryActionBusy
+    && (pendingRecovery?.length || 0) === 0
+    && recoveryMutationsAllowed
+    && !!newestCompletedRecoveryBlock;
+
   const handleConfirmRecoveryBlock = async ({ baselineNoteId, weekChoice, weekNoteId, newNoteTitle }) => {
     if (!startRecoveryBlock) {
       return { ok: false, error: 'Recovery blocks are not available in this build yet.' };
@@ -608,6 +633,42 @@ export function LogScreen({
     if (result?.ok) refreshRecoveryState?.();
     return result;
   });
+
+  // Reopen the newest completed recovery block (#839). Reactivates only the
+  // block — every week's completion state is untouched — so on success the
+  // ordinary active Recovery tab/card returns exactly as it would for any
+  // other active block, including its existing Add week / Undo completion
+  // affordances.
+  const handleReopenRecoveryBlock = (block) => runRecoveryAction('reopen', async () => {
+    if (!recoveryLifecycle.reopenBlock) return { ok: false, error: 'Recovery blocks are not available in this build yet.' };
+    const result = await recoveryLifecycle.reopenBlock({ blockId: block.id });
+    if (result?.ok) {
+      refreshRecoveryState?.();
+      setTabView('recovery');
+    }
+    return result;
+  });
+
+  const openReopenRecoveryBlockConfirm = () => {
+    if (!newestCompletedRecoveryBlock) return;
+    const baselineTitle = newestCompletedRecoveryBlock.baseline_note_title || 'Untitled Routine';
+    Alert.alert(
+      'Reopen this recovery block?',
+      `This reactivates ${baselineTitle} as your active recovery block. Every week's status stays exactly as it is — you can add a new week or undo the latest week's completion once it's reopened. You can only reopen your most recently completed block, and only while no other block is active.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reopen block',
+          onPress: async () => {
+            const result = await handleReopenRecoveryBlock(newestCompletedRecoveryBlock);
+            if (!result.ok) {
+              Alert.alert('Could not reopen this recovery block', result.error || 'Could not reopen this recovery block.');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const handleUnlinkRecoveryWeek = (params) => runRecoveryAction(params.weekId, async () => {
     if (!recoveryLifecycle.unlinkWeek) return { ok: false, error: 'Recovery blocks are not available in this build yet.' };
@@ -945,6 +1006,25 @@ export function LogScreen({
               </Pressable>
             )}
 
+            {/* Secondary, lower-emphasis entry point immediately below Start
+                (#839): computes its own visibility independently of Start's
+                and renders alongside it whenever both qualify — neither
+                replaces or gates the other. Non-destructive styling
+                (`textMuted`, not `accent`) keeps Start visually primary. */}
+            {effectiveTabView === 'routine' && showRecoveryReopenInManagement && (
+              <Pressable
+                onPress={openReopenRecoveryBlockConfirm}
+                style={styles.recoveryReopenRow}
+                accessibilityRole="button"
+                accessibilityLabel={`Reopen recovery block: ${newestCompletedRecoveryBlock.baseline_note_title || 'Untitled Routine'}`}
+              >
+                <Text style={styles.recoveryReopenRowText} numberOfLines={1}>
+                  {`Reopen recovery block: ${newestCompletedRecoveryBlock.baseline_note_title || 'Untitled Routine'}`}
+                </Text>
+                <MaterialIcons name="chevron-right" size={18} color={colors.textMuted} accessible={false} />
+              </Pressable>
+            )}
+
             {effectiveTabView === 'routine' && (
               <LogPreviousRoutines
                 otherNotes={otherNotes}
@@ -1191,6 +1271,28 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: colors.accent,
+  },
+  // Secondary `Reopen recovery block: {baseline title}` entry point (#839):
+  // same outline-row shape as Start, but `textMuted` ink keeps it visibly
+  // lower-emphasis and non-destructive next to Start's `accent` primary.
+  recoveryReopenRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    minHeight: 44,
+    marginTop: 8,
+  },
+  recoveryReopenRowText: {
+    flex: 1,
+    marginRight: 8,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textMuted,
   },
   // First-use guidance cards (S1/S2). Ordinary `Card` chrome and ordinary
   // text/textMuted ink — no new filled surface + label pairing, so no new

@@ -742,65 +742,28 @@ export function isEligibleRecoveryWeekNote(note, { blocks = [], weeks = [], delo
 // left behind — the two writes must land as one unit from the caller's
 // perspective, even though the storage layer does them as two calls.
 //
+// The whole flow — the optional "New note" Week-1 write, the block create,
+// the week attach, and both rollback paths — runs behind the SAME
+// process-wide recovery-operation lock Reopen uses (#839), via
+// `runGuardedRecoveryAction`. That is what makes Start and Reopen's
+// "no active block" checks serialize instead of racing: nothing else that
+// takes this lock (including a concurrent reopen) can observe persisted state
+// in between this function's own read and write.
+//
 // Extracted from the hook as a plain async function (taking the storage API
 // as a parameter) so the rollback path is directly unit-testable with a fake
 // storage object, with no React rendering involved.
-export async function startRecoveryBlockCore(storage, { baselineNoteId, baselineNoteTitle = null, baselineNoteText = '', weekNoteId }) {
-  let block = null;
-  try {
-    block = await storage.createRecoveryBlock({
-      baselineNoteId,
-      baselineNoteTitle,
-      baselineNoteText,
-    });
-  } catch (e) {
-    return { ok: false, code: e?.code || null, error: e?.message || 'Could not start the recovery block.' };
-  }
-
-  try {
-    const week = await storage.addRecoveryWeek({ blockId: block.id, noteId: weekNoteId });
-    notifyRecoveryBlocks();
-    return { ok: true, block, week };
-  } catch (e) {
-    try {
-      await storage.deleteRecoveryBlock(block.id);
-    } catch (_rollbackError) {
-      // Best-effort rollback; the original failure is what the caller needs
-      // to see either way.
-    }
-    notifyRecoveryBlocks();
-    return { ok: false, code: e?.code || null, error: e?.message || 'Could not add Recovery Week 1.' };
-  }
-}
-
-export function useStartRecoveryBlock() {
-  // Same confirm-time recheck as every other recovery mutation: the start modal
-  // can sit open while the authoritative read goes stale, and freezing a
-  // baseline against unverified state is exactly the write this boundary exists
-  // to prevent.
-  //
-  // `createWeekNote` (optional): when the caller has no existing `weekNoteId`
-  // yet — the "New note" Week-1 path — it supplies an async factory instead
-  // of creating the note itself beforehand. The note write happens IN HERE,
-  // strictly after the gate above resolves, and there is exactly one gate:
-  // nothing downstream re-checks or can reject after a write has already
-  // landed (#711 review finding 2). Previously the caller created the note
-  // BEFORE calling `startBlock`, which itself re-gated — so a second,
-  // independent rejection could arrive after the note was already persisted,
-  // relying on a best-effort rollback. Folding note creation into this single
-  // gated call makes that ordering structurally impossible: there is no path
-  // to `createWeekNote` that does not first pass this gate, because nothing
-  // outside this function ever calls it.
-  //
-  // `removeWeekNote` (optional): rollback for a note this call itself
-  // created, used only when the subsequent block/week write fails.
-  const startBlock = useCallback(async ({
-    baselineNoteId, baselineNoteTitle = null, baselineNoteText = '', weekNoteId = null,
-    createWeekNote, removeWeekNote,
-  } = {}) => {
-    const gate = await ensureVerifiedRecoveryState();
-    if (!gate.ok) return gate;
-
+//
+// `createWeekNote` (optional): when the caller has no existing `weekNoteId`
+// yet — the "New note" Week-1 path — it supplies an async factory instead of
+// creating the note itself beforehand. `removeWeekNote` (optional) is the
+// rollback for a note this call created, used only when the subsequent
+// block/week write fails.
+export function startRecoveryBlockCore(storage, {
+  baselineNoteId, baselineNoteTitle = null, baselineNoteText = '', weekNoteId = null,
+  createWeekNote, removeWeekNote,
+} = {}) {
+  return runGuardedRecoveryAction({}, async () => {
     let finalWeekNoteId = weekNoteId;
     let createdNoteId = null;
     if (!finalWeekNoteId && createWeekNote) {
@@ -812,17 +775,66 @@ export function useStartRecoveryBlock() {
       return { ok: false, error: 'Select or create a note for Recovery Week 1.' };
     }
 
-    const result = await startRecoveryBlockCore(Storage, {
-      baselineNoteId, baselineNoteTitle, baselineNoteText, weekNoteId: finalWeekNoteId,
-    });
-    if (!result.ok && createdNoteId && removeWeekNote) {
-      try {
-        await removeWeekNote(createdNoteId);
-      } catch (_rollbackError) {
-        // Best-effort: the original failure is what the caller needs to see.
+    let block = null;
+    try {
+      block = await storage.createRecoveryBlock({
+        baselineNoteId,
+        baselineNoteTitle,
+        baselineNoteText,
+      });
+    } catch (e) {
+      if (createdNoteId && removeWeekNote) {
+        try {
+          await removeWeekNote(createdNoteId);
+        } catch (_rollbackError) {
+          // Best-effort: the original failure is what the caller needs to see.
+        }
       }
+      return { ok: false, code: e?.code || null, error: e?.message || 'Could not start the recovery block.' };
     }
-    return result;
+
+    try {
+      const week = await storage.addRecoveryWeek({ blockId: block.id, noteId: finalWeekNoteId });
+      notifyRecoveryBlocks();
+      return { ok: true, block, week };
+    } catch (e) {
+      try {
+        await storage.deleteRecoveryBlock(block.id);
+      } catch (_rollbackError) {
+        // Best-effort rollback; the original failure is what the caller needs
+        // to see either way.
+      }
+      if (createdNoteId && removeWeekNote) {
+        try {
+          await removeWeekNote(createdNoteId);
+        } catch (_rollbackError) {
+          // Best-effort: the original failure is what the caller needs to see.
+        }
+      }
+      notifyRecoveryBlocks();
+      return { ok: false, code: e?.code || null, error: e?.message || 'Could not add Recovery Week 1.' };
+    }
+  });
+}
+
+export function useStartRecoveryBlock() {
+  // Same confirm-time recheck as every other recovery mutation: the start modal
+  // can sit open while the authoritative read goes stale, and freezing a
+  // baseline against unverified state is exactly the write this boundary exists
+  // to prevent. Everything after this gate — including the optional new-note
+  // write — runs inside `startRecoveryBlockCore`'s own guarded lock, so there
+  // is exactly one gate and one lock acquisition; nothing downstream re-checks
+  // or can reject after a write has already landed (#711 review finding 2).
+  const startBlock = useCallback(async ({
+    baselineNoteId, baselineNoteTitle = null, baselineNoteText = '', weekNoteId = null,
+    createWeekNote, removeWeekNote,
+  } = {}) => {
+    const gate = await ensureVerifiedRecoveryState();
+    if (!gate.ok) return gate;
+
+    return startRecoveryBlockCore(Storage, {
+      baselineNoteId, baselineNoteTitle, baselineNoteText, weekNoteId, createWeekNote, removeWeekNote,
+    });
   }, []);
   return { startBlock };
 }
@@ -1050,6 +1062,32 @@ export function completeRecoveryBlockCore(storage, { blockId }) {
   });
 }
 
+// Reopen the newest completed block (#839): reactivates only the block —
+// every week's completion state is untouched, matching
+// storage.uncompleteRecoveryBlock's own contract. Unlike completeBlock this
+// touches one collection, so it stays a plain guarded action (the same shape
+// as setRecoveryNormalAnalyticsInclusionCore) rather than a journaled
+// multi-record operation. Every eligibility check — live, completed, newest
+// completed, no other block active — is enforced by
+// storage.uncompleteRecoveryBlock itself before any write, so a rejection
+// here is provably a no-op.
+//
+// `runGuardedRecoveryAction` acquires the SAME process-wide lock
+// `startRecoveryBlockCore` now runs under, which is what makes Start and
+// Reopen serialize: whichever of them runs first sees "no active block" and
+// creates one; the other, running after, sees that block and is rejected —
+// never both racing to the same conclusion.
+export function reopenRecoveryBlockCore(storage, { blockId }) {
+  return runGuardedRecoveryAction({ blockId }, async () => {
+    try {
+      const block = await storage.uncompleteRecoveryBlock(blockId);
+      return { ok: true, block };
+    } catch (e) {
+      return { ok: false, code: e?.code || null, error: e?.message || 'Could not reopen this recovery block.' };
+    }
+  });
+}
+
 // Unlink one week membership. Restricted to the latest live week of a still
 // -active block — earlier/history weeks, and any week of a block that has
 // since completed, keep the ordinal sequence gap-free and stable, so unlinking
@@ -1194,6 +1232,13 @@ export function useRecoveryBlockLifecycle() {
     if (result.ok) notifyRecoveryBlocks();
     return result;
   }, []);
+  const reopenBlock = useCallback(async (params) => {
+    const gate = await ensureVerifiedRecoveryState();
+    if (!gate.ok) return gate;
+    const result = await reopenRecoveryBlockCore(RecoveryStorage, params);
+    if (result.ok) notifyRecoveryBlocks();
+    return result;
+  }, []);
   const unlinkWeek = useCallback(async (params) => {
     const gate = await ensureVerifiedRecoveryState();
     if (!gate.ok) return gate;
@@ -1236,5 +1281,5 @@ export function useRecoveryBlockLifecycle() {
     return result;
   }, []);
 
-  return { completeCurrentWeek, uncompleteCurrentWeek, addWeek, addWeekWithNewNote, completeBlock, unlinkWeek, unlinkNoteForDelete, setIncludeInNormalAnalytics, retryRecovery };
+  return { completeCurrentWeek, uncompleteCurrentWeek, addWeek, addWeekWithNewNote, completeBlock, reopenBlock, unlinkWeek, unlinkNoteForDelete, setIncludeInNormalAnalytics, retryRecovery };
 }
