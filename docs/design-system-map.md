@@ -1005,11 +1005,16 @@ Consequences to preserve:
   (#843, superseding #789's in-card placement).** Its trigger is **never**
   disabled — a locked user can still open it and see why each row is
   unavailable — and it renders three divided list rows with trailing
-  chevrons: `Counting in normal analytics` (live `On`/`Off`, expands the
-  existing `RecoveryInclusionToggle` with its help beneath it), `Unlink Week
-  {N}'s note` (always naming the concrete current week — there is no
-  row-level `Unlink`), and error-colored `End recovery block`, which opens
-  `RecoveryBlockEndModal` instead of `Alert.alert`.
+  chevrons: `Counting in normal analytics` (the row itself IS the
+  Log-surface inclusion control now, `accessibilityRole="switch"` — tapping
+  it writes `include_in_normal_analytics` directly, live `On`/`Off` stated
+  on the row, and an inline `info-outline` help toggle beside the title
+  swaps the subtitle for the same `RECOVERY_INCLUSION_HELP` copy on demand;
+  `RecoveryInclusionToggle`'s own Switch presentation is unchanged but no
+  longer used here — it still hosts Analytics/Home's per-completed-block
+  rows), `Unlink Week {N}'s note` (always naming the concrete current week —
+  there is no row-level `Unlink`), and error-colored `End recovery block`,
+  which opens `RecoveryBlockEndModal` instead of `Alert.alert`.
 - **Recovery's expanded-note viewer is a separate state slot from Routine's
   (#836).** `useLogOtherRoutineEditor.js` instantiates its shared
   `viewingNoteId`/`viewingNote`/`viewingNoteDayGroups`/`Week A/B` machinery
@@ -1025,9 +1030,10 @@ Consequences to preserve:
   section on Log. A cold first read stays neutral (renders nothing) so a
   non-adopter never sees a Recovery card flash; a terminal first-read failure
   still shows the unknown state with `Retry recovery`.
-- `RecoveryInclusionToggle` (hosted by the active card on Log and by every
-  completed-block row on Analytics) states `Include recovery notes in normal
-  analytics` and nothing else by default. The explanation moved behind an
+- `RecoveryInclusionToggle` (#843: no longer hosted on Log — see the
+  `Manage block` bullet above — now hosted only by every completed-block row
+  on Analytics/Home) states `Include recovery notes in normal analytics` and
+  nothing else by default. The explanation moved behind an
   `info-outline` info button beside the label (#757): a 16dp glyph centered in
   a real `44 x 44` Pressable box — **not** a `hitSlop`, which React Native
   clips at the parent's bounds and which would therefore claim a target this

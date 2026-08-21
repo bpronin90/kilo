@@ -7757,7 +7757,6 @@ describe('Recovery inclusion preference', () => {
   const journalModule = require('../storage/entries/recoveryOperationJournal');
   const { RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEEKS_KEY, RECOVERY_OPERATION_JOURNAL_KEY } =
     require('../storage/entries/keys');
-  const { RECOVERY_INCLUSION_LABEL } = require('../components/LogRecoverySection');
 
   const baselineNote = { id: 'baseline1', title: 'Push Day', raw_text: 'Push\n-Bench\n100 5,5,5', updated_at: '2026-01-01T00:00:00.000Z' };
   const weekNote = { id: 'week1note', title: 'Recovery Week 1 Note', raw_text: 'Push\n-Bench\n60 5,5,5', updated_at: '2026-01-08T00:00:00.000Z' };
@@ -7824,41 +7823,28 @@ describe('Recovery inclusion preference', () => {
     await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, JSON.stringify([]));
   };
 
-  // The `Counting in normal analytics` row is its own value-row interaction
-  // (#843 review): the switch is not rendered inline under the row — it
-  // takes a tap on the row itself to reveal, same as the other two `Manage
-  // block` rows requiring a tap to act.
-  const expandInclusionRow = (root) => {
-    const row = root.findAll(
-      n => n.props
-        && typeof n.props.accessibilityLabel === 'string'
-        && n.props.accessibilityLabel.startsWith('Counting in normal analytics')
-        && typeof n.props.onPress === 'function'
-    )[0];
-    if (!row) return null;
-    if (!(row.props.accessibilityState && row.props.accessibilityState.expanded)) {
-      render.act(() => { row.props.onPress(); });
-    }
-    return row;
-  };
+  // `Counting in normal analytics` IS the Log-surface inclusion control now
+  // (#843 review): a tap on the row itself writes the field directly — there
+  // is no separate `RecoveryInclusionToggle` Switch nested under it. Log
+  // only ever shows one row (the one active block), so a live lookup by role
+  // is enough; it is re-run after every `act()` rather than cached, since
+  // the row's own accessibilityLabel/state changes with the value.
+  const inclusionRow = (root) => root.findAll(
+    n => n.props && n.props.accessibilityRole === 'switch' && typeof n.props.onPress === 'function'
+  )[0];
 
   const renderScreen = async () => {
     let component;
     await render.act(async () => { component = render.create(<ControlledLogScreen />); });
     // The inclusion control is still on Log and still the only way to set this
     // preference while a block is active, but it is no longer in the default
-    // view: it lives inside `Manage recovery block` (#789), behind its own
-    // `Counting in normal analytics` row (#843). Every assertion in this
-    // suite is about the control's behavior, so open both here rather than
-    // restating the interaction in each test.
+    // view: it lives inside `Manage recovery block` (#789), as the
+    // `Counting in normal analytics` row itself (#843). Every assertion in
+    // this suite is about the control's behavior, so open the disclosure
+    // once here rather than restating the interaction in each test.
     expandManageRecovery(component.root);
-    expandInclusionRow(component.root);
     return component;
   };
-
-  const switchesFor = (root) =>
-    root.findAll(n => n.props && typeof n.props.accessibilityLabel === 'string'
-      && n.props.accessibilityLabel.startsWith(RECOVERY_INCLUSION_LABEL) && n.props.onValueChange);
 
   const persistedBlocks = async () => JSON.parse((await AsyncStorage.getItem(RECOVERY_BLOCKS_KEY)) || '[]');
 
@@ -7871,24 +7857,20 @@ describe('Recovery inclusion preference', () => {
   test('the active block exposes the control with the exact label, switch role, and unchecked state', async () => {
     await setup();
     const component = await renderScreen();
-    const [control] = switchesFor(component.root);
+    const control = inclusionRow(component.root);
 
     expect(control).toBeTruthy();
     expect(control.props.accessibilityRole).toBe('switch');
-    expect(control.props.accessibilityLabel).toBe('Include recovery notes in normal analytics: Push Day');
     // Default off (#692): the control must report the authored preference.
-    expect(control.props.value).toBe(false);
-    expect(control.props.accessibilityState).toEqual({ checked: false, disabled: false });
-    // The label already carries block identity (#738); the hint still disambiguates further.
-    expect(control.props.accessibilityHint).toContain('Push Day');
+    expect(control.props.accessibilityLabel).toBe('Counting in normal analytics: Off');
+    expect(control.props.accessibilityState).toEqual({ checked: false, disabled: false, busy: false });
   });
 
   test('toggling it on persists exactly that field and nothing else', async () => {
     await setup();
     const component = await renderScreen();
-    const [control] = switchesFor(component.root);
 
-    await render.act(async () => { await control.props.onValueChange(true); });
+    await render.act(async () => { await inclusionRow(component.root).props.onPress(); });
 
     const [stored] = await persistedBlocks();
     expect(stored.include_in_normal_analytics).toBe(true);
@@ -7911,29 +7893,40 @@ describe('Recovery inclusion preference', () => {
       seen.push(useRecoveryAnalyticsFilter());
       return null;
     }
+    const Harness = () => (
+      <React.Fragment>
+        <FilterProbe />
+        <ControlledLogScreen />
+      </React.Fragment>
+    );
 
     let component;
-    await render.act(async () => {
-      component = render.create(
-        <React.Fragment>
-          <FilterProbe />
-          <ControlledLogScreen />
-        </React.Fragment>
-      );
-    });
+    await render.act(async () => { component = render.create(<Harness />); });
 
     // Default off: the linked note is out of ordinary analytics.
     expect(seen[seen.length - 1].isNoteExcluded(weekNote.id)).toBe(true);
 
     expandManageRecovery(component.root);
-    expandInclusionRow(component.root);
-    const [control] = switchesFor(component.root);
-    await render.act(async () => { await control.props.onValueChange(true); });
+    await render.act(async () => { await inclusionRow(component.root).props.onPress(); });
 
     // Same mounted subscriber, no remount: the note is back in.
     expect(seen[seen.length - 1].isNoteExcluded(weekNote.id)).toBe(false);
 
-    await render.act(async () => { await control.props.onValueChange(false); });
+    // The row toggles relative to the CURRENT value, so — since this test's
+    // `useRecoveryBlockState` mock is static — reflect the write that just
+    // landed before pressing again, via `component.update` (reconciliation
+    // against the SAME mounted tree, not a fresh mount/unmount).
+    useEntries.useRecoveryBlockState.mockReturnValue({
+      activeBlock: { ...activeBlock, include_in_normal_analytics: true },
+      blocks: [{ ...activeBlock, include_in_normal_analytics: true }],
+      weeks,
+      recoveryWeekNumberByNoteId: { [weekNote.id]: 1 },
+      loading: false, error: null, refresh: jest.fn(),
+      pendingRecovery: [], recoveryPendingError: null, retryRecovery: jest.fn(),
+    });
+    await render.act(async () => { component.update(<Harness />); });
+
+    await render.act(async () => { await inclusionRow(component.root).props.onPress(); });
     expect(seen[seen.length - 1].isNoteExcluded(weekNote.id)).toBe(true);
 
     await render.act(async () => { component.unmount(); });
@@ -7943,61 +7936,53 @@ describe('Recovery inclusion preference', () => {
   test('toggling it back off restores exclusion, and the persisted note records are never rewritten', async () => {
     await setup({ blocks: [{ ...activeBlock, include_in_normal_analytics: true }] });
     const component = await renderScreen();
-    const [control] = switchesFor(component.root);
-    expect(control.props.value).toBe(true);
+    const control = inclusionRow(component.root);
     expect(control.props.accessibilityState.checked).toBe(true);
 
     const weeksBefore = await AsyncStorage.getItem(RECOVERY_BLOCK_WEEKS_KEY);
-    await render.act(async () => { await control.props.onValueChange(false); });
+    await render.act(async () => { await control.props.onPress(); });
 
     const [stored] = await persistedBlocks();
     expect(stored.include_in_normal_analytics).toBe(false);
     expect(await AsyncStorage.getItem(RECOVERY_BLOCK_WEEKS_KEY)).toBe(weeksBefore);
   });
 
-  test('completed blocks keep their own stored preference and toggle independently', async () => {
+  test('the active block\'s own stored preference is exposed even with completed blocks in storage', async () => {
+    // Log exposes only the active block's inclusion control; completed-block
+    // controls live on Analytics (#728). Both completed blocks are in
+    // storage but must not produce a second row here.
     await setup({ blocks: [activeBlock, completedBlockOn, completedBlockOff] });
     const component = await renderScreen();
-    const controls = switchesFor(component.root);
+    const controls = component.root.findAll(
+      n => n.props && n.props.accessibilityRole === 'switch' && typeof n.props.onPress === 'function'
+    );
 
-    // Log exposes only the active block's inclusion control; completed-block
-    // controls live on Analytics (#728). Both completed blocks are in storage
-    // but must not produce switches here.
-    expect(controls.length).toBe(1);
-    expect(controls[0].props.testID).toBe('recovery-inclusion-switch-rbActive');
-    expect(controls[0].props.value).toBe(false);
+    expect(controls).toHaveLength(1);
+    expect(controls[0].props.accessibilityState.checked).toBe(false);
   });
 
-  test('an in-flight write disables EVERY inclusion switch, not just the one being written', async () => {
-    // Log shows only the active block; completed-block global serialization is
-    // tested on Analytics (#728).
+  test('an in-flight write disables the control, and re-enables once it settles', async () => {
     await setup({ blocks: [activeBlock] });
     let resolveWrite;
     const updateSpy = jest.spyOn(recoveryStorageModule, 'updateRecoveryBlock')
       .mockImplementation(() => new Promise((resolve) => { resolveWrite = resolve; }));
 
     const component = await renderScreen();
-    const byBlock = () => Object.fromEntries(
-      switchesFor(component.root).map(c => [c.props.testID.replace('recovery-inclusion-switch-', ''), c])
-    );
-    expect(Object.values(byBlock()).every(c => c.props.disabled === false)).toBe(true);
+    expect(inclusionRow(component.root).props.accessibilityState.disabled).toBe(false);
 
-    // Start a write on one block and leave it in flight: the guarded action
-    // reaches storage after a few microtasks, and the mock never settles.
-    await render.act(async () => { byBlock().rbActive.props.onValueChange(true); });
+    // Start the write and leave it in flight: the guarded action reaches
+    // storage after a few microtasks, and the mock never settles.
+    await render.act(async () => { inclusionRow(component.root).props.onPress(); });
 
-    for (const [id, control] of Object.entries(byBlock())) {
-      expect(control.props.disabled).toBe(true);
-      expect(control.props.accessibilityState.disabled).toBe(true);
-      expect(id).toBeTruthy();
-    }
+    expect(inclusionRow(component.root).props.disabled).toBe(true);
+    expect(inclusionRow(component.root).props.accessibilityState.disabled).toBe(true);
 
     await render.act(async () => {
       resolveWrite({ ...activeBlock, include_in_normal_analytics: true });
     });
 
-    // Every switch is interactive again once the write settles.
-    expect(Object.values(byBlock()).every(c => c.props.disabled === false)).toBe(true);
+    // Interactive again once the write settles.
+    expect(inclusionRow(component.root).props.accessibilityState.disabled).toBe(false);
     updateSpy.mockRestore();
   });
 
@@ -8006,10 +7991,11 @@ describe('Recovery inclusion preference', () => {
       pendingRecovery: [{ operation_id: 1, block_id: 'rbActive', error: 'A recovery change is still being applied on this device.' }],
     });
     const component = await renderScreen();
-    const [control] = switchesFor(component.root);
+    const control = inclusionRow(component.root);
 
     expect(control.props.disabled).toBe(true);
-    expect(control.props.accessibilityState).toEqual({ checked: false, disabled: true });
+    expect(control.props.accessibilityState.disabled).toBe(true);
+    expect(control.props.accessibilityState.checked).toBe(false);
   });
 
   test('a rejected write surfaces an honest error and leaves the stored preference alone', async () => {
@@ -8017,9 +8003,8 @@ describe('Recovery inclusion preference', () => {
     const updateSpy = jest.spyOn(recoveryStorageModule, 'updateRecoveryBlock')
       .mockRejectedValue(Object.assign(new Error('Recovery block rbActive is deleted.'), { code: 'BLOCK_NOT_FOUND' }));
     const component = await renderScreen();
-    const [control] = switchesFor(component.root);
 
-    await render.act(async () => { await control.props.onValueChange(true); });
+    await render.act(async () => { await inclusionRow(component.root).props.onPress(); });
 
     const texts = component.root.findAllByType('Text').map(t => {
       const c = t.props.children;
@@ -8028,8 +8013,8 @@ describe('Recovery inclusion preference', () => {
     expect(texts).toContain('Recovery block rbActive is deleted.');
     const [stored] = await persistedBlocks();
     expect(stored.include_in_normal_analytics).toBe(false);
-    // The switch still reports the PERSISTED value, not the attempted one.
-    expect(switchesFor(component.root)[0].props.value).toBe(false);
+    // The control still reports the PERSISTED value, not the attempted one.
+    expect(inclusionRow(component.root).props.accessibilityState.checked).toBe(false);
 
     updateSpy.mockRestore();
   });
@@ -10276,7 +10261,7 @@ describe('LogRecoverySection: inline recovery-note editing (#841)', () => {
 // LogRecoverySection directly so the assertions are about the card's own
 // structure rather than about LogScreen's wiring.
 describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
-  const { LogRecoverySection, RECOVERY_INCLUSION_LABEL } = require('../components/LogRecoverySection');
+  const { LogRecoverySection } = require('../components/LogRecoverySection');
   const { RECOVERY_STALE_MESSAGE } = require('../hooks/entries/recoveryBlockHooks');
 
   const BLOCK = {
@@ -10312,22 +10297,12 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
       && n.props.accessibilityLabel.startsWith('Manage recovery block')
       && typeof n.props.onPress === 'function'
   )[0];
-  const inclusionSwitch = (root) => root.findAll(
-    n => n.props && typeof n.props.accessibilityLabel === 'string'
-      && n.props.accessibilityLabel.startsWith(RECOVERY_INCLUSION_LABEL) && n.props.onValueChange
+  // `Counting in normal analytics` IS the Log-surface inclusion control
+  // (#843 review) — a tap on the row writes the field directly. There is no
+  // separate `RecoveryInclusionToggle` Switch nested under it.
+  const inclusionRow = (root) => root.findAll(
+    n => n.props && n.props.accessibilityRole === 'switch' && typeof n.props.onPress === 'function'
   )[0];
-  // The `Counting in normal analytics` row's own value-row interaction
-  // (#843 review): a tap away, not rendered inline under the row by default.
-  const expandCounting = (root) => {
-    const row = root.findAll(
-      n => n.props
-        && typeof n.props.accessibilityLabel === 'string'
-        && n.props.accessibilityLabel.startsWith('Counting in normal analytics')
-        && typeof n.props.onPress === 'function'
-    )[0];
-    if (row) render.act(() => { row.props.onPress(); });
-    return row;
-  };
 
   test('an open week leads with the state fact and offers exactly one lifecycle action', () => {
     const root = renderSection({ onCompleteWeek: jest.fn(), onOpenAddWeek: jest.fn() });
@@ -10344,7 +10319,7 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
     expect(byLabel(root, 'Add next recovery week')).toBeUndefined();
     expect(byLabel(root, 'End recovery block')).toBeUndefined();
     expect(byLabel(root, 'Unlink Week 3')).toBeUndefined();
-    expect(inclusionSwitch(root)).toBeUndefined();
+    expect(inclusionRow(root)).toBeUndefined();
   });
 
   test('a just-completed week says so and swaps the one primary action to Add week', () => {
@@ -10394,8 +10369,7 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
     expect(trigger(root).props.accessibilityState).toEqual({ expanded: true });
     expect(byLabel(root, 'Unlink Week 3')).toBeTruthy();
     expect(byLabel(root, 'End recovery block')).toBeTruthy();
-    expandCounting(root);
-    expect(inclusionSwitch(root)).toBeTruthy();
+    expect(inclusionRow(root)).toBeTruthy();
 
     // And it collapses again.
     render.act(() => { trigger(root).props.onPress(); });
@@ -10403,24 +10377,21 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
     expect(byLabel(root, 'End recovery block')).toBeUndefined();
   });
 
-  // #843 review: `Counting in normal analytics` is its own value-row
-  // interaction, matching `Unlink`/`End recovery block` — the switch is a
-  // tap away, not rendered inline the instant `Manage block` opens.
-  test('the Counting in normal analytics row states the live value and reveals the switch only on its own tap', () => {
+  // #843 review: `Counting in normal analytics` IS the Log-surface
+  // inclusion control — its live On/Off state is stated on the row itself,
+  // with no nested `RecoveryInclusionToggle` Switch. The write path this
+  // row's tap drives is covered end to end against real storage by the
+  // "Recovery inclusion preference" describe block above.
+  test('the Counting in normal analytics row states the live value with no nested switch', () => {
     const root = renderSection({ onUnlinkWeek: jest.fn(), onCompleteBlock: jest.fn() });
     render.act(() => { trigger(root).props.onPress(); });
 
     const row = byLabel(root, 'Counting in normal analytics: Off');
     expect(row).toBeTruthy();
-    expect(row.props.accessibilityState).toEqual({ expanded: false });
-    expect(inclusionSwitch(root)).toBeUndefined();
-
-    render.act(() => { row.props.onPress(); });
-    expect(byLabel(root, 'Counting in normal analytics: Off').props.accessibilityState).toEqual({ expanded: true });
-    expect(inclusionSwitch(root)).toBeTruthy();
-
-    render.act(() => { row.props.onPress(); });
-    expect(inclusionSwitch(root)).toBeUndefined();
+    expect(row.props.accessibilityRole).toBe('switch');
+    expect(row.props.accessibilityState).toEqual({ checked: false, disabled: false, busy: false });
+    // No separate Switch control is nested under the row.
+    expect(root.findAll(n => n.props && typeof n.props.onValueChange === 'function')).toHaveLength(0);
   });
 
   test('locked mutations disable each control individually and never the disclosure itself', () => {
@@ -10443,8 +10414,7 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
     expect(trigger(root).props.accessibilityState).toEqual({ expanded: true });
     expect(byLabel(root, 'Unlink Week 3').props.accessibilityState.disabled).toBe(true);
     expect(byLabel(root, 'End recovery block').props.accessibilityState.disabled).toBe(true);
-    expandCounting(root);
-    expect(inclusionSwitch(root).props.accessibilityState.disabled).toBe(true);
+    expect(inclusionRow(root).props.accessibilityState.disabled).toBe(true);
   });
 
   test('banners stay outside the disclosure so they are announced without expanding anything', () => {
@@ -10512,7 +10482,7 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
     expect(trigger(root).props.accessibilityState).toEqual({ expanded: false });
     expect(byLabel(root, 'Unlink Week 1')).toBeUndefined();
     expect(byLabel(root, 'End recovery block')).toBeUndefined();
-    expect(inclusionSwitch(root)).toBeUndefined();
+    expect(inclusionRow(root)).toBeUndefined();
 
     // And it still opens normally, now scoped to the new block.
     render.act(() => { trigger(root).props.onPress(); });
@@ -10530,7 +10500,7 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
 // gate, confirm, or calculation moves — the assertions below therefore pin the
 // preserved behavior alongside the new hierarchy.
 describe('LogRecoverySection: simplified active Recovery panel (#804)', () => {
-  const { LogRecoverySection, RECOVERY_INCLUSION_LABEL } = require('../components/LogRecoverySection');
+  const { LogRecoverySection } = require('../components/LogRecoverySection');
   const { RECOVERY_STALE_MESSAGE } = require('../hooks/entries/recoveryBlockHooks');
   const { LightColors } = require('../theme/colors');
   const { buildDayGroups } = require('../screens/log/logScreenHelpers');
@@ -10573,22 +10543,12 @@ describe('LogRecoverySection: simplified active Recovery panel (#804)', () => {
       && typeof n.props.onPress === 'function'
   )[0];
   const expand = (root) => { render.act(() => { trigger(root).props.onPress(); }); };
-  const inclusionSwitch = (root) => root.findAll(
-    n => n.props && typeof n.props.accessibilityLabel === 'string'
-      && n.props.accessibilityLabel.startsWith(RECOVERY_INCLUSION_LABEL) && n.props.onValueChange
+  // `Counting in normal analytics` IS the Log-surface inclusion control
+  // (#843 review) — no separate `RecoveryInclusionToggle` Switch nested
+  // under it.
+  const inclusionRow = (root) => root.findAll(
+    n => n.props && n.props.accessibilityRole === 'switch' && typeof n.props.onPress === 'function'
   )[0];
-  // The `Counting in normal analytics` row's own value-row interaction
-  // (#843 review): a tap away, not rendered inline under the row by default.
-  const expandCounting = (root) => {
-    const row = root.findAll(
-      n => n.props
-        && typeof n.props.accessibilityLabel === 'string'
-        && n.props.accessibilityLabel.startsWith('Counting in normal analytics')
-        && typeof n.props.onPress === 'function'
-    )[0];
-    if (row) render.act(() => { row.props.onPress(); });
-    return row;
-  };
   const accentFilled = (root) => root.findAll(
     n => n.props && typeof n.props.onPress === 'function'
       && flat(n).backgroundColor === LightColors.accent
@@ -10747,8 +10707,7 @@ describe('LogRecoverySection: simplified active Recovery panel (#804)', () => {
     expand(root);
     expect(byLabel(root, 'Unlink Week 3').props.accessibilityState.disabled).toBe(true);
     expect(byLabel(root, 'End recovery block').props.accessibilityState.disabled).toBe(true);
-    expandCounting(root);
-    expect(inclusionSwitch(root).props.accessibilityState.disabled).toBe(true);
+    expect(inclusionRow(root).props.accessibilityState.disabled).toBe(true);
   });
 
   test('a terminal error explains itself, locks nothing, and offers no retry', () => {

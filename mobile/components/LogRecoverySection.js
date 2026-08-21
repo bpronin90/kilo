@@ -28,7 +28,7 @@ import {
   RECOVERY_UNVERIFIED_MESSAGE,
   useRecoveryBlockLifecycle,
 } from '../hooks/entries/recoveryBlockHooks';
-import { RecoveryInclusionToggle } from './RecoveryInclusionToggle';
+import { RECOVERY_INCLUSION_HELP } from './RecoveryInclusionToggle';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
 export { RECOVERY_INCLUSION_LABEL } from './RecoveryInclusionToggle';
 
@@ -176,14 +176,15 @@ export function LogRecoverySection({
   // already exposed. Keying by id collapses on any block change with no effect
   // and no stale-state window.
   const [manageExpandedBlockId, setManageExpandedBlockId] = useState(null);
-  // The `Counting in normal analytics` row's own value-row interaction
-  // (#843 review): the row states the live `On`/`Off` value and a trailing
-  // chevron, but the actual `RecoveryInclusionToggle` switch and its help
-  // are a tap away, not always rendered under the row — matching the other
-  // two `Manage block` rows, which also require a tap to act rather than
-  // exposing their control inline. Keyed by block id for the same reason
-  // `manageExpandedBlockId` is.
-  const [inclusionRowExpandedBlockId, setInclusionRowExpandedBlockId] = useState(null);
+  // `Counting in normal analytics` IS the Log-surface inclusion control now
+  // (#843 review): tapping the row itself writes `include_in_normal_analytics`
+  // — there is no separate `RecoveryInclusionToggle` Switch nested under it
+  // on Log any more (that component, and its Switch presentation, remain
+  // exactly as they are for Analytics/Home). This tracks only whether the
+  // row's own on-demand help text (the same `RECOVERY_INCLUSION_HELP` copy)
+  // is shown, mirroring `RecoveryInclusionToggle`'s own local `helpShown`
+  // pattern — it never gates the write.
+  const [inclusionHelpShownBlockId, setInclusionHelpShownBlockId] = useState(null);
   // Double-tap the expanded note body to edit it (#841 owner amendment):
   // the same gesture/timing the Routine tab's card already uses
   // (LogPreviousRoutines.js's viewingNoteLastTapRef), reproduced here rather
@@ -285,7 +286,7 @@ export function LogRecoverySection({
   // Derived, never stored: a disclosure opened for a different block reads as
   // collapsed for this one.
   const manageExpanded = !!activeBlock && manageExpandedBlockId === activeBlock.id;
-  const inclusionRowExpanded = !!activeBlock && inclusionRowExpandedBlockId === activeBlock.id;
+  const inclusionHelpShown = !!activeBlock && inclusionHelpShownBlockId === activeBlock.id;
   const headline = currentWeek
     ? (currentWeek.completed_at
       ? `Week ${currentWeek.week_number} complete — add the next week`
@@ -791,41 +792,66 @@ export function LogRecoverySection({
             {manageExpanded && (
               <View style={styles.manageList}>
                 <View style={[styles.manageRow, styles.manageRowDivider]}>
+                  {/* The row IS the Log-surface inclusion control (#843
+                      review) — tapping it writes `include_in_normal_analytics`
+                      directly. There is no nested `RecoveryInclusionToggle`
+                      Switch here; that component, unchanged, still hosts the
+                      Switch presentation on Analytics/Home. */}
                   <Pressable
-                    onPress={() => setInclusionRowExpandedBlockId(id => (id === activeBlock.id ? null : activeBlock.id))}
-                    style={styles.manageRowMain}
-                    accessibilityRole="button"
+                    onPress={() => handleToggleInclusion(activeBlock, !(activeBlock.include_in_normal_analytics === true))}
+                    disabled={inclusionLocked}
+                    style={[styles.manageRowMain, inclusionLocked && styles.manageRowDisabled]}
+                    accessibilityRole="switch"
                     accessibilityLabel={`Counting in normal analytics: ${activeBlock.include_in_normal_analytics === true ? 'On' : 'Off'}`}
-                    accessibilityState={{ expanded: inclusionRowExpanded }}
+                    accessibilityState={{
+                      checked: activeBlock.include_in_normal_analytics === true,
+                      disabled: inclusionLocked,
+                      busy: inclusionBusyBlockId === activeBlock.id,
+                    }}
                   >
                     <View style={styles.manageRowInfo}>
-                      <Text style={styles.manageRowTitle}>Counting in normal analytics</Text>
-                      <Text style={styles.manageRowSubtitle}>
-                        Off keeps these weeks out of classifications, overload signals, Kilo Max, 1K,
-                        and Home summaries.
-                      </Text>
+                      <View style={styles.manageRowTitleRow}>
+                        <Text style={styles.manageRowTitle}>Counting in normal analytics</Text>
+                        {/* On-demand help (#757's pattern, reproduced here
+                            rather than shared — `RecoveryInclusionToggle`
+                            keeps its own separate copy for Analytics/Home).
+                            A sibling of the row's own Pressable, not nested
+                            inside it, so it stays reachable as its own
+                            action. */}
+                        <Pressable
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            setInclusionHelpShownBlockId(id => (id === activeBlock.id ? null : activeBlock.id));
+                          }}
+                          style={styles.inclusionHelpToggle}
+                          accessibilityRole="button"
+                          accessibilityState={{ expanded: inclusionHelpShown }}
+                          accessibilityLabel={`${inclusionHelpShown ? 'Hide' : 'Show'} what counting these weeks in normal analytics does`}
+                        >
+                          <MaterialIcons name="info-outline" size={16} color={colors.textMuted} accessible={false} />
+                        </Pressable>
+                      </View>
+                      {inclusionHelpShown ? (
+                        <Text style={styles.manageRowSubtitle} accessibilityLiveRegion="polite">
+                          {RECOVERY_INCLUSION_HELP}
+                        </Text>
+                      ) : (
+                        <Text style={styles.manageRowSubtitle}>
+                          Off keeps these weeks out of classifications, overload signals, Kilo Max,
+                          1K, and Home summaries.
+                        </Text>
+                      )}
+                      {inclusionErrorFor(activeBlock.id) ? (
+                        <Text style={styles.manageRowInlineError}>{inclusionErrorFor(activeBlock.id)}</Text>
+                      ) : null}
                     </View>
                     <Text style={styles.manageRowState}>
-                      {activeBlock.include_in_normal_analytics === true ? 'On' : 'Off'}
+                      {inclusionBusyBlockId === activeBlock.id
+                        ? 'Saving…'
+                        : (activeBlock.include_in_normal_analytics === true ? 'On' : 'Off')}
                     </Text>
-                    <MaterialIcons
-                      name={inclusionRowExpanded ? 'expand-less' : 'chevron-right'}
-                      size={20}
-                      color={colors.textMuted}
-                      accessible={false}
-                    />
+                    <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
                   </Pressable>
-                  {inclusionRowExpanded && (
-                    <View style={styles.manageRowExpanded}>
-                      <RecoveryInclusionToggle
-                        block={activeBlock}
-                        disabled={inclusionLocked}
-                        busy={inclusionBusyBlockId === activeBlock.id}
-                        error={inclusionErrorFor(activeBlock.id)}
-                        onToggle={handleToggleInclusion}
-                      />
-                    </View>
-                  )}
                 </View>
 
                 {/* Always names the concrete current week, open or just
@@ -1212,6 +1238,12 @@ const createStyles = (colors) => StyleSheet.create({
     flex: 1,
     gap: 2,
   },
+  manageRowTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    rowGap: 2,
+  },
   manageRowTitle: {
     fontSize: 14,
     fontWeight: '700',
@@ -1227,14 +1259,26 @@ const createStyles = (colors) => StyleSheet.create({
     lineHeight: 16,
     color: colors.textMuted,
   },
+  manageRowInlineError: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+    color: colors.error,
+  },
   manageRowState: {
     fontSize: 13,
     fontWeight: '700',
     color: colors.textMuted,
   },
-  manageRowExpanded: {
-    paddingHorizontal: 18,
-    paddingBottom: 14,
+  // On-demand inclusion help toggle (#843 review), matching
+  // `RecoveryInclusionToggle`'s own info-button box: a real 44dp target, not
+  // a `hitSlop`, which React Native clips at the parent's bounds.
+  inclusionHelpToggle: {
+    flexShrink: 0,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pendingBanner: {
     paddingHorizontal: 12,
