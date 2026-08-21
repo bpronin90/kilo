@@ -796,62 +796,65 @@ export function LogRecoverySection({
                       review) — tapping it writes `include_in_normal_analytics`
                       directly. There is no nested `RecoveryInclusionToggle`
                       Switch here; that component, unchanged, still hosts the
-                      Switch presentation on Analytics/Home. */}
-                  <Pressable
-                    onPress={() => handleToggleInclusion(activeBlock, !(activeBlock.include_in_normal_analytics === true))}
-                    disabled={inclusionLocked}
-                    style={[styles.manageRowMain, inclusionLocked && styles.manageRowDisabled]}
-                    accessibilityRole="switch"
-                    accessibilityLabel={`Counting in normal analytics: ${activeBlock.include_in_normal_analytics === true ? 'On' : 'Off'}`}
-                    accessibilityState={{
-                      checked: activeBlock.include_in_normal_analytics === true,
-                      disabled: inclusionLocked,
-                      busy: inclusionBusyBlockId === activeBlock.id,
-                    }}
-                  >
-                    <View style={styles.manageRowInfo}>
-                      <View style={styles.manageRowTitleRow}>
+                      Switch presentation on Analytics/Home.
+                      The outer View is plain (non-accessible, non-Pressable)
+                      so the switch Pressable and the help Pressable below are
+                      TRUE siblings, not nested inside one another — VoiceOver
+                      groups a nested Pressable into its accessible ancestor,
+                      which would make the help button unreachable as its own
+                      action if it lived inside the switch's own Pressable
+                      (#843 review finding: `e.stopPropagation()` only affects
+                      event bubbling, not the accessibility tree). */}
+                  <View style={styles.manageRowMain}>
+                    <Pressable
+                      onPress={() => handleToggleInclusion(activeBlock, !(activeBlock.include_in_normal_analytics === true))}
+                      disabled={inclusionLocked}
+                      style={[styles.inclusionSwitchArea, inclusionLocked && styles.manageRowDisabled]}
+                      accessibilityRole="switch"
+                      accessibilityLabel={`Counting in normal analytics: ${activeBlock.include_in_normal_analytics === true ? 'On' : 'Off'}`}
+                      accessibilityState={{
+                        checked: activeBlock.include_in_normal_analytics === true,
+                        disabled: inclusionLocked,
+                        busy: inclusionBusyBlockId === activeBlock.id,
+                      }}
+                    >
+                      <View style={styles.manageRowInfo}>
                         <Text style={styles.manageRowTitle}>Counting in normal analytics</Text>
-                        {/* On-demand help (#757's pattern, reproduced here
-                            rather than shared — `RecoveryInclusionToggle`
-                            keeps its own separate copy for Analytics/Home).
-                            A sibling of the row's own Pressable, not nested
-                            inside it, so it stays reachable as its own
-                            action. */}
-                        <Pressable
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            setInclusionHelpShownBlockId(id => (id === activeBlock.id ? null : activeBlock.id));
-                          }}
-                          style={styles.inclusionHelpToggle}
-                          accessibilityRole="button"
-                          accessibilityState={{ expanded: inclusionHelpShown }}
-                          accessibilityLabel={`${inclusionHelpShown ? 'Hide' : 'Show'} what counting these weeks in normal analytics does`}
-                        >
-                          <MaterialIcons name="info-outline" size={16} color={colors.textMuted} accessible={false} />
-                        </Pressable>
+                        {inclusionHelpShown ? (
+                          <Text style={styles.manageRowSubtitle} accessibilityLiveRegion="polite">
+                            {RECOVERY_INCLUSION_HELP}
+                          </Text>
+                        ) : (
+                          <Text style={styles.manageRowSubtitle}>
+                            Off keeps these weeks out of classifications, overload signals, Kilo Max,
+                            1K, and Home summaries.
+                          </Text>
+                        )}
+                        {inclusionErrorFor(activeBlock.id) ? (
+                          <Text style={styles.manageRowInlineError}>{inclusionErrorFor(activeBlock.id)}</Text>
+                        ) : null}
                       </View>
-                      {inclusionHelpShown ? (
-                        <Text style={styles.manageRowSubtitle} accessibilityLiveRegion="polite">
-                          {RECOVERY_INCLUSION_HELP}
-                        </Text>
-                      ) : (
-                        <Text style={styles.manageRowSubtitle}>
-                          Off keeps these weeks out of classifications, overload signals, Kilo Max,
-                          1K, and Home summaries.
-                        </Text>
-                      )}
-                      {inclusionErrorFor(activeBlock.id) ? (
-                        <Text style={styles.manageRowInlineError}>{inclusionErrorFor(activeBlock.id)}</Text>
-                      ) : null}
-                    </View>
-                    <Text style={styles.manageRowState}>
-                      {inclusionBusyBlockId === activeBlock.id
-                        ? 'Saving…'
-                        : (activeBlock.include_in_normal_analytics === true ? 'On' : 'Off')}
-                    </Text>
+                      <Text style={styles.manageRowState}>
+                        {inclusionBusyBlockId === activeBlock.id
+                          ? 'Saving…'
+                          : (activeBlock.include_in_normal_analytics === true ? 'On' : 'Off')}
+                      </Text>
+                    </Pressable>
+                    {/* On-demand help (#757's pattern, reproduced here rather
+                        than shared — `RecoveryInclusionToggle` keeps its own
+                        separate copy for Analytics/Home). A true sibling of
+                        the switch Pressable above, not nested inside it. */}
+                    <Pressable
+                      onPress={() => setInclusionHelpShownBlockId(id => (id === activeBlock.id ? null : activeBlock.id))}
+                      style={styles.inclusionHelpToggle}
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: inclusionHelpShown }}
+                      accessibilityLabel={`${inclusionHelpShown ? 'Hide' : 'Show'} what counting these weeks in normal analytics does`}
+                    >
+                      <MaterialIcons name="info-outline" size={16} color={colors.textMuted} accessible={false} />
+                    </Pressable>
                     <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
-                  </Pressable>
+                  </View>
                 </View>
 
                 {/* Always names the concrete current week, open or just
@@ -1234,15 +1237,18 @@ const createStyles = (colors) => StyleSheet.create({
   manageRowDisabled: {
     opacity: 0.5,
   },
+  // The switch Pressable's own hit area within the plain `manageRowMain`
+  // wrapper (#843 review) — everything but the trailing help/chevron glyphs,
+  // which are its siblings, not its children.
+  inclusionSwitchArea: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   manageRowInfo: {
     flex: 1,
     gap: 2,
-  },
-  manageRowTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    rowGap: 2,
   },
   manageRowTitle: {
     fontSize: 14,

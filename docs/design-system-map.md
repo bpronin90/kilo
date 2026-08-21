@@ -1008,8 +1008,11 @@ Consequences to preserve:
   chevrons: `Counting in normal analytics` (the row itself IS the
   Log-surface inclusion control now, `accessibilityRole="switch"` — tapping
   it writes `include_in_normal_analytics` directly, live `On`/`Off` stated
-  on the row, and an inline `info-outline` help toggle beside the title
-  swaps the subtitle for the same `RECOVERY_INCLUSION_HELP` copy on demand;
+  on the row; a trailing `info-outline` help toggle swaps the subtitle for
+  the same `RECOVERY_INCLUSION_HELP` copy on demand. The switch Pressable
+  and the help Pressable are TRUE siblings under a plain, non-accessible
+  wrapper View — not nested inside one another — so VoiceOver never groups
+  the help button into the switch's own accessible tree (#843 review).
   `RecoveryInclusionToggle`'s own Switch presentation is unchanged but no
   longer used here — it still hosts Analytics/Home's per-completed-block
   rows), `Unlink Week {N}'s note` (always naming the concrete current week —

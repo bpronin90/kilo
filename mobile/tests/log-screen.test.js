@@ -10392,6 +10392,24 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
     expect(row.props.accessibilityState).toEqual({ checked: false, disabled: false, busy: false });
     // No separate Switch control is nested under the row.
     expect(root.findAll(n => n.props && typeof n.props.onValueChange === 'function')).toHaveLength(0);
+
+    // #843 review: the on-demand help toggle must be a SIBLING of the switch
+    // Pressable, not nested inside it — a nested Pressable is grouped into
+    // its accessible ancestor by VoiceOver, making it unreachable as its own
+    // action.
+    const helpToggle = root.findAll(
+      n => n.props && n.props.accessibilityRole === 'button'
+        && typeof n.props.accessibilityLabel === 'string'
+        && n.props.accessibilityLabel.includes('counting these weeks in normal analytics')
+    )[0];
+    expect(helpToggle).toBeTruthy();
+    let ancestor = helpToggle.parent;
+    let foundSwitchAncestor = false;
+    while (ancestor) {
+      if (ancestor.props && ancestor.props.accessibilityRole === 'switch') foundSwitchAncestor = true;
+      ancestor = ancestor.parent;
+    }
+    expect(foundSwitchAncestor).toBe(false);
   });
 
   test('locked mutations disable each control individually and never the disclosure itself', () => {
