@@ -83,6 +83,7 @@ export {
   addRecoveryWeek,
   updateRecoveryWeek,
   completeRecoveryWeek,
+  uncompleteRecoveryWeek,
   deleteRecoveryWeek,
 } from './entries/recoveryStorage';
 

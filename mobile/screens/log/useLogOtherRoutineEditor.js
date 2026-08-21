@@ -37,6 +37,68 @@ function spliceActiveWeekText(fullText, week, newActiveText) {
   return weekAText + '\n---\n' + newActiveText;
 }
 
+// One independent "which note is expanded, and which A/B half" slot (#836).
+// Instantiated once for the Routine tab (LogPreviousRoutines) and once for the
+// Recovery tab (LogRecoverySection) so the two tabs never share a viewed note:
+// switching tabs must not leak Recovery's expansion into Routine or vice versa.
+function useNoteViewer(notes) {
+  const [viewingNoteId, setViewingNoteId] = useState(null);
+  // Per-note selected week for the expanded card. Reset whenever the viewed
+  // note changes to that note's own persisted `activeWeek` (or 'A' when
+  // missing/invalid), so switching between routines never bleeds one note's
+  // selection into another's.
+  const [viewingActiveWeek, setViewingActiveWeek] = useState(null);
+
+  const viewingNote = useMemo(() =>
+    viewingNoteId ? notes.find(n => n.id === viewingNoteId) : null
+  , [viewingNoteId, notes]);
+
+  const viewingNoteParsed = useMemo(() =>
+    viewingNote ? parseWorkoutNote(viewingNote.raw_text || '') : null
+  , [viewingNote]);
+
+  const viewingHasABWeeks = !!viewingNoteParsed && (viewingNoteParsed.weekBStartIndex ?? null) !== null;
+  const viewingEffectiveWeek = viewingHasABWeeks ? (viewingActiveWeek ?? 'A') : null;
+
+  useEffect(() => {
+    if (!viewingNoteId) {
+      setViewingActiveWeek(null);
+      return;
+    }
+    const note = notes.find(n => n.id === viewingNoteId);
+    const persisted = isValidActiveWeek(note?.activeWeek) ? note.activeWeek : null;
+    setViewingActiveWeek(persisted ?? 'A');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewingNoteId]);
+
+  const viewingActiveText = useMemo(() => {
+    if (!viewingNote) return '';
+    if (!viewingHasABWeeks) return viewingNote.raw_text || '';
+    return sliceActiveWeekText(viewingNote.raw_text || '', viewingEffectiveWeek);
+  }, [viewingNote, viewingHasABWeeks, viewingEffectiveWeek]);
+
+  const viewingNoteProjectedParsed = useMemo(() => {
+    if (!viewingNote) return null;
+    return viewingHasABWeeks ? parseWorkoutNote(viewingActiveText) : viewingNoteParsed;
+  }, [viewingNote, viewingHasABWeeks, viewingActiveText, viewingNoteParsed]);
+
+  const viewingNoteDayGroups = useMemo(() => {
+    if (!viewingNoteProjectedParsed) return [];
+    return buildDayGroups(viewingNoteProjectedParsed.sections);
+  }, [viewingNoteProjectedParsed]);
+
+  return {
+    viewingNoteId,
+    setViewingNoteId,
+    viewingNote,
+    viewingNoteDayGroups,
+    viewingHasABWeeks,
+    viewingEffectiveWeek,
+    viewingActiveWeek,
+    setViewingActiveWeek,
+  };
+}
+
 export function useLogOtherRoutineEditor({
   notes,
   currentId,
@@ -66,12 +128,14 @@ export function useLogOtherRoutineEditor({
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
   const [originalNoteState, setOriginalNoteState] = useState(null);
-  const [viewingNoteId, setViewingNoteId] = useState(null);
-  // Per-note selected week for the expanded (non-current) viewing card. Reset
-  // whenever the viewed note changes to that note's own persisted `activeWeek`
-  // (or 'A' when missing/invalid), so switching between routines never bleeds
-  // one note's selection into another's.
-  const [viewingActiveWeek, setViewingActiveWeek] = useState(null);
+  // Two independent viewer slots (#836): `routineViewer` backs the Routine
+  // tab (LogPreviousRoutines and the deload viewer), `recoveryViewer` backs
+  // the Recovery tab (LogRecoverySection). Keeping them as separate
+  // `useNoteViewer` instances — not one shared `viewingNoteId` — is what makes
+  // an expanded note on one tab invisible on the other: switching tabs can
+  // never leak or inherit the other tab's expansion.
+  const routineViewer = useNoteViewer(notes);
+  const recoveryViewer = useNoteViewer(notes);
   const [deloadEditDate, setDeloadEditDate] = useState('');
   // Tracks whether the user actually interacted with the compact "Date ·
   // <value>" disclosure (#764 feedback). deloadEditDate is seeded from the
@@ -201,64 +265,25 @@ export function useLogOtherRoutineEditor({
     return textChanged || dateChanged || ordinalChanged;
   }, [editingNoteId, editingNote, editingTitle, editingFullText, isEditingDeloadNote, deloadEditDate, deloadEditOrdinal, editingDeloadHasLinkedRecord, deloadHistory]);
 
-  const viewingNote = useMemo(() =>
-    viewingNoteId ? notes.find(n => n.id === viewingNoteId) : null
-  , [viewingNoteId, notes]);
-
-  const viewingNoteParsed = useMemo(() =>
-    viewingNote ? parseWorkoutNote(viewingNote.raw_text || '') : null
-  , [viewingNote]);
-
-  const viewingHasABWeeks = !!viewingNoteParsed && (viewingNoteParsed.weekBStartIndex ?? null) !== null;
-  const viewingEffectiveWeek = viewingHasABWeeks ? (viewingActiveWeek ?? 'A') : null;
-
-  // Reset the viewed note's selected week whenever the viewed note changes,
-  // seeding from that note's own persisted activeWeek (defaulting to Week A
-  // for a legacy note with no valid selection), so each routine remembers its
-  // own selection independently.
-  useEffect(() => {
-    if (!viewingNoteId) {
-      setViewingActiveWeek(null);
-      return;
-    }
-    const note = notes.find(n => n.id === viewingNoteId);
-    const persisted = isValidActiveWeek(note?.activeWeek) ? note.activeWeek : null;
-    setViewingActiveWeek(persisted ?? 'A');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewingNoteId]);
-
-  const viewingActiveText = useMemo(() => {
-    if (!viewingNote) return '';
-    if (!viewingHasABWeeks) return viewingNote.raw_text || '';
-    return sliceActiveWeekText(viewingNote.raw_text || '', viewingEffectiveWeek);
-  }, [viewingNote, viewingHasABWeeks, viewingEffectiveWeek]);
-
-  const viewingNoteProjectedParsed = useMemo(() => {
-    if (!viewingNote) return null;
-    return viewingHasABWeeks ? parseWorkoutNote(viewingActiveText) : viewingNoteParsed;
-  }, [viewingNote, viewingHasABWeeks, viewingActiveText, viewingNoteParsed]);
-
-  const viewingNoteDayGroups = useMemo(() => {
-    if (!viewingNoteProjectedParsed) return [];
-    return buildDayGroups(viewingNoteProjectedParsed.sections);
-  }, [viewingNoteProjectedParsed]);
-
-  // Toggles the expanded (non-current) card's selected week and persists it
-  // through the note's existing activeWeek field — never touching currentId,
-  // so this never affects which routine is current.
-  const handleToggleViewingWeek = async () => {
-    if (!viewingNoteId || !viewingHasABWeeks) return;
-    const previous = viewingEffectiveWeek ?? 'A';
+  // Toggles an expanded card's selected week and persists it through the
+  // note's existing activeWeek field — never touching currentId, so this
+  // never affects which routine is current. One implementation shared by
+  // both viewer slots (#836), parameterized on which one is toggling.
+  const makeToggleViewingWeek = (viewer) => async () => {
+    if (!viewer.viewingNoteId || !viewer.viewingHasABWeeks) return;
+    const previous = viewer.viewingEffectiveWeek ?? 'A';
     const next = previous === 'B' ? 'A' : 'B';
-    setViewingActiveWeek(next);
+    viewer.setViewingActiveWeek(next);
     try {
-      const updated = await update(viewingNoteId, { activeWeek: next });
-      if (!updated) setViewingActiveWeek(previous);
+      const updated = await update(viewer.viewingNoteId, { activeWeek: next });
+      if (!updated) viewer.setViewingActiveWeek(previous);
     } catch (err) {
-      setViewingActiveWeek(previous);
+      viewer.setViewingActiveWeek(previous);
       throw err;
     }
   };
+  const handleToggleViewingWeek = makeToggleViewingWeek(routineViewer);
+  const handleToggleRecoveryViewingWeek = makeToggleViewingWeek(recoveryViewer);
 
   // Debounced autosave for a non-current (existing) note while in edit mode.
   useEffect(() => {
@@ -289,35 +314,51 @@ export function useLogOtherRoutineEditor({
     }
   }, [editingNoteId]);
 
+  // Toggle-to-collapse (#836): tapping the same note again closes it, both on
+  // the Routine tab and — via `handleViewRecoveryNote` below — the Recovery
+  // tab, which used to be set-only there and never collapsed on a repeat tap.
   const handleViewOtherNote = (note) => {
-    setViewingNoteId(prev => (prev === note.id ? null : note.id));
+    routineViewer.setViewingNoteId(prev => (prev === note.id ? null : note.id));
   };
 
-  const handleEditViewedNote = () => {
-    if (!viewingNote) return;
-    setEditingNoteId(viewingNote.id);
-    setEditingTitle(viewingNote.title || '');
-    setEditingFullText(viewingNote.raw_text);
+  const handleViewRecoveryNote = (note) => {
+    if (!note) return;
+    recoveryViewer.setViewingNoteId(prev => (prev === note.id ? null : note.id));
+  };
+
+  // Opens the editor on whichever note/A-B-half a viewer slot is currently
+  // showing. One implementation shared by both viewer slots (#836): the
+  // Recovery card's Edit control reads off `recoveryViewer` through
+  // `handleEditRecoveryViewedNote` below, exactly as the Routine tab's Edit
+  // control already read off `routineViewer` here.
+  const makeHandleEditViewedNote = (viewer) => () => {
+    const note = viewer.viewingNote;
+    if (!note) return;
+    setEditingNoteId(note.id);
+    setEditingTitle(note.title || '');
+    setEditingFullText(note.raw_text);
     // Continue editing whichever week the expanded card was showing, so the
     // editor never silently switches weeks on entry.
-    setEditingActiveWeek(viewingHasABWeeks ? viewingEffectiveWeek : null);
-    setDeloadEditDate(viewingNote.saved_at ? viewingNote.saved_at.slice(0, 10) : '');
+    setEditingActiveWeek(viewer.viewingHasABWeeks ? viewer.viewingEffectiveWeek : null);
+    setDeloadEditDate(note.saved_at ? note.saved_at.slice(0, 10) : '');
     setDeloadEditDateTouched(false);
-    const _histRec = deloadHistory.find(r => r.note_id === viewingNote.id);
+    const _histRec = deloadHistory.find(r => r.note_id === note.id);
     const initialOrdinal = _histRec?.deload_session_ordinal != null ? String(_histRec.deload_session_ordinal) : '';
     setDeloadEditOrdinal(initialOrdinal);
     setOriginalNoteState({
-      id: viewingNote.id,
-      title: viewingNote.title || '',
-      text: viewingNote.raw_text,
-      date: viewingNote.saved_at ? viewingNote.saved_at.slice(0, 10) : '',
+      id: note.id,
+      title: note.title || '',
+      text: note.raw_text,
+      date: note.saved_at ? note.saved_at.slice(0, 10) : '',
       ordinal: initialOrdinal,
-      activeWeek: viewingHasABWeeks ? viewingEffectiveWeek : null,
+      activeWeek: viewer.viewingHasABWeeks ? viewer.viewingEffectiveWeek : null,
     });
     setSaveError('');
     setSaveSuccess('');
     clearAdoptionPrompt();
   };
+  const handleEditViewedNote = makeHandleEditViewedNote(routineViewer);
+  const handleEditRecoveryViewedNote = makeHandleEditViewedNote(recoveryViewer);
 
   const handleOpenOtherNote = (other) => {
     setEditingNoteId(other.id);
@@ -609,7 +650,8 @@ export function useLogOtherRoutineEditor({
             await remove(id);
             setEditingNoteId(null);
             setOriginalNoteState(null);
-            setViewingNoteId(null);
+            routineViewer.setViewingNoteId(null);
+            recoveryViewer.setViewingNoteId(null);
           },
         },
       ]
@@ -695,7 +737,8 @@ export function useLogOtherRoutineEditor({
     setAdoptionError('');
     setEditingNoteId(null);
     setOriginalNoteState(null);
-    setViewingNoteId(null);
+    routineViewer.setViewingNoteId(null);
+    recoveryViewer.setViewingNoteId(null);
     return { ok: true };
   };
 
@@ -801,7 +844,8 @@ export function useLogOtherRoutineEditor({
       await selectCurrent(id);
       setEditingNoteId(null);
       setOriginalNoteState(null);
-      setViewingNoteId(null);
+      routineViewer.setViewingNoteId(null);
+      recoveryViewer.setViewingNoteId(null);
       setAdoptionPrompt(null);
       setAdoptionError('');
     };
@@ -885,8 +929,21 @@ export function useLogOtherRoutineEditor({
     setSaveSuccess,
     originalNoteState,
     setOriginalNoteState,
-    viewingNoteId,
-    setViewingNoteId,
+    // Routine-tab viewer (unchanged external names): LogPreviousRoutines and
+    // LogDeloadSection keep consuming `viewingNoteId`/`viewingNote`/etc.
+    viewingNoteId: routineViewer.viewingNoteId,
+    setViewingNoteId: routineViewer.setViewingNoteId,
+    // Recovery-tab viewer (#836): a fully separate slot so an expanded
+    // Recovery note never appears on the Routine tab and vice versa.
+    recoveryViewingNoteId: recoveryViewer.viewingNoteId,
+    setRecoveryViewingNoteId: recoveryViewer.setViewingNoteId,
+    recoveryViewingNote: recoveryViewer.viewingNote,
+    recoveryViewingNoteDayGroups: recoveryViewer.viewingNoteDayGroups,
+    recoveryViewingHasABWeeks: recoveryViewer.viewingHasABWeeks,
+    recoveryViewingEffectiveWeek: recoveryViewer.viewingEffectiveWeek,
+    handleToggleRecoveryViewingWeek,
+    handleViewRecoveryNote,
+    handleEditRecoveryViewedNote,
     deloadEditDate,
     // Wrapped so any UI-driven change marks the date as explicitly touched
     // (#764 feedback fix 2) — a title-/text-only edit must never fall into
@@ -909,10 +966,10 @@ export function useLogOtherRoutineEditor({
     editingEffectiveWeek,
     handleToggleEditingWeek,
     handleMergeEditingWeeks,
-    viewingNote,
-    viewingNoteDayGroups,
-    viewingHasABWeeks,
-    viewingEffectiveWeek,
+    viewingNote: routineViewer.viewingNote,
+    viewingNoteDayGroups: routineViewer.viewingNoteDayGroups,
+    viewingHasABWeeks: routineViewer.viewingHasABWeeks,
+    viewingEffectiveWeek: routineViewer.viewingEffectiveWeek,
     handleToggleViewingWeek,
     handleViewOtherNote,
     handleEditViewedNote,

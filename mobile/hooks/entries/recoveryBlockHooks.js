@@ -864,6 +864,46 @@ export function completeCurrentWeekCore(storage, { blockId }) {
   });
 }
 
+// Reopen the block's current (latest live) week — the inverse of
+// completeCurrentWeekCore (#836). Restricted to the latest week exactly like
+// unlinkRecoveryWeekCore: an earlier, already-superseded week can never be
+// reopened, which is what keeps "at most one week in progress" true after an
+// undo. A no-op error (not a silent success) when the current week is not
+// actually completed, so a stale button press explains itself rather than
+// pretending to have done something.
+//
+// Also refuses on a block that is no longer active (review finding): the
+// reopen confirmation can sit open long enough for `completeRecoveryBlockCore`
+// to complete the block AND this same week together in the meantime, and
+// without this check a stale confirm would still clear `completed_at` on that
+// week — leaving a COMPLETED block with an IN-PROGRESS week, a combination the
+// domain otherwise guarantees can never happen (recoveryBlocks.js `isBlockActive`).
+export function uncompleteCurrentWeekCore(storage, { blockId }) {
+  return runGuardedRecoveryAction({ blockId }, async () => {
+    const [blocks, ordered] = await Promise.all([
+      storage.loadRecoveryBlocks(),
+      storage.loadRecoveryWeeksForBlock(blockId),
+    ]);
+    const block = blocks.find(b => b.id === blockId);
+    if (!block || !isBlockActive(block)) {
+      return { ok: false, code: 'BLOCK_NOT_ACTIVE', error: 'This recovery block is no longer active.' };
+    }
+    const current = ordered.length > 0 ? ordered[ordered.length - 1] : null;
+    if (!current) {
+      return { ok: false, code: 'NO_CURRENT_WEEK', error: 'This block has no completed week to reopen.' };
+    }
+    if (!current.completed_at) {
+      return { ok: false, code: 'WEEK_NOT_COMPLETE', error: 'The current week is already in progress.' };
+    }
+    try {
+      const week = await storage.uncompleteRecoveryWeek(current.id);
+      return { ok: true, week };
+    } catch (e) {
+      return { ok: false, code: e?.code || null, error: e?.message || 'Could not reopen this week.' };
+    }
+  });
+}
+
 // Attach the next sequential week. Rejects (without calling storage) when the
 // current week has not been explicitly completed yet — Week 2+ can never be
 // added early, no matter what the caller's own gating missed or what changed
@@ -1121,6 +1161,13 @@ export function useRecoveryBlockLifecycle() {
     if (result.ok) notifyRecoveryBlocks();
     return result;
   }, []);
+  const uncompleteCurrentWeek = useCallback(async (params) => {
+    const gate = await ensureVerifiedRecoveryState();
+    if (!gate.ok) return gate;
+    const result = await uncompleteCurrentWeekCore(RecoveryStorage, params);
+    if (result.ok) notifyRecoveryBlocks();
+    return result;
+  }, []);
   const addWeek = useCallback(async (params) => {
     const gate = await ensureVerifiedRecoveryState();
     if (!gate.ok) return gate;
@@ -1189,5 +1236,5 @@ export function useRecoveryBlockLifecycle() {
     return result;
   }, []);
 
-  return { completeCurrentWeek, addWeek, addWeekWithNewNote, completeBlock, unlinkWeek, unlinkNoteForDelete, setIncludeInNormalAnalytics, retryRecovery };
+  return { completeCurrentWeek, uncompleteCurrentWeek, addWeek, addWeekWithNewNote, completeBlock, unlinkWeek, unlinkNoteForDelete, setIncludeInNormalAnalytics, retryRecovery };
 }

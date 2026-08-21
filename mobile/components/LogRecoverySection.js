@@ -66,6 +66,11 @@ export function LogRecoverySection({
   // one note viewer in this tab with no way back into editing.
   onEditNote,
   onCompleteWeek,
+  // Reopens the most recently completed week (#836), restoring it to
+  // in-progress without touching its note. LogScreen only offers this when
+  // `canAddWeek` holds — i.e. the current week is completed AND it is the
+  // latest live week, so no later week exists to make the undo ambiguous.
+  onUndoCompleteWeek,
   onOpenAddWeek,
   onCompleteBlock,
   onUnlinkWeek,
@@ -199,6 +204,10 @@ export function LogRecoverySection({
   const currentWeek = activeWeeks.length > 0 ? activeWeeks[activeWeeks.length - 1] : null;
   const canCompleteWeek = !!currentWeek && !currentWeek.completed_at;
   const canAddWeek = !!activeBlock && (!currentWeek || !!currentWeek.completed_at);
+  // Undo is offered only when there IS a just-completed current week to
+  // reopen (#836) — `canAddWeek` alone is also true for a block with no
+  // weeks at all yet, which has nothing to undo.
+  const canUndoCompleteWeek = !!currentWeek && !!currentWeek.completed_at;
   // The single fact that matters while logging (#789): which week you are on and
   // whether it needs an action. `addRecoveryWeekCore`/`completeCurrentWeekCore`
   // guarantee at most one non-completed week per block, so `currentWeek` is
@@ -221,8 +230,40 @@ export function LogRecoverySection({
     }
   };
 
+  // Complete Week states its consequence before committing (#836): it
+  // completes the current week and keeps its note exactly as it is — it does
+  // not create or submit a note for the next week. That happens separately,
+  // through `Add week`, once this confirms.
   const handleCompleteWeek = () => {
-    runAction(() => onCompleteWeek({ blockId: activeBlock.id }));
+    Alert.alert(
+      `Complete Week ${currentWeek.week_number}?`,
+      `This marks Week ${currentWeek.week_number} complete and keeps its note as it is. It does not create or submit a note for the next week — you'll choose or create that note when you add it.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Complete week',
+          onPress: () => runAction(() => onCompleteWeek({ blockId: activeBlock.id })),
+        },
+      ]
+    );
+  };
+
+  // Undo for the just-completed week (#836): only ever offered when
+  // `canAddWeek` holds, so this can never reach a week that already has a
+  // later week — restoring it to in-progress never leaves two weeks open at
+  // once. The note is untouched either way.
+  const handleUndoCompleteWeek = () => {
+    Alert.alert(
+      `Reopen Week ${currentWeek.week_number}?`,
+      `Week ${currentWeek.week_number} goes back to in progress. Its note is unchanged.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reopen week',
+          onPress: () => runAction(() => onUndoCompleteWeek({ blockId: activeBlock.id })),
+        },
+      ]
+    );
   };
 
   const handleCompleteBlock = () => {
@@ -371,8 +412,16 @@ export function LogRecoverySection({
             ) : null}
 
             <View style={styles.weekList}>
-              {activeWeeks.filter(w => !w.completed_at).map(week => {
+              {/* Every live week of this block renders as its own labeled
+                  entry (#836) — completed weeks included, not just the
+                  current one — so the block's whole sequence is visible and
+                  a completed week's note stays reachable to view/edit. Each
+                  is visually distinguished by its own `In progress`/
+                  `Completed` status, in addition to the headline above, which
+                  only ever states the CURRENT week's status. */}
+              {activeWeeks.map(week => {
                 const linkedNote = week.note_id ? notesById.get(week.note_id) : null;
+                const isCompleted = !!week.completed_at;
                 // The row stays — the week is still one of this block's weeks
                 // — but it offers no read action, because there is nothing to
                 // read. Unlink no longer lives on the row (#789); dropping
@@ -380,9 +429,14 @@ export function LogRecoverySection({
                 // `accessibilityRole="button"` is what keeps it from being an
                 // inert press for a sighted user and an announced-but-dead
                 // button for a screen-reader user (#775).
+                //
+                // An in-progress row's label is unchanged from before (#836):
+                // only a completed row's label gains an explicit ", completed"
+                // suffix, since a completed week is new to this list and has
+                // no existing label contract to preserve.
                 const rowLabel = linkedNote
-                  ? `View ${_noteTitle(linkedNote)}, Recovery Week ${week.week_number}`
-                  : `Recovery Week ${week.week_number}, note unavailable`;
+                  ? `View ${_noteTitle(linkedNote)}, Recovery Week ${week.week_number}${isCompleted ? ', completed' : ''}`
+                  : `Recovery Week ${week.week_number}${isCompleted ? ', completed' : ''}, note unavailable`;
                 const isViewingThisNote = !!linkedNote && viewingNoteId === week.note_id && !!viewingNote;
                 const rowProps = linkedNote
                   ? { onPress: () => onViewNote?.(linkedNote), accessibilityRole: 'button' }
@@ -403,14 +457,21 @@ export function LogRecoverySection({
                       style={styles.weekRow}
                       accessible
                       accessibilityLabel={rowLabel}
+                      accessibilityState={linkedNote ? { expanded: isViewingThisNote } : undefined}
                       {...rowProps}
                     >
+                      <View style={styles.weekRowInfo}>
+                        <Text style={styles.weekNumberLabel}>Week {week.week_number}</Text>
+                        <Text style={[styles.weekStatusText, isCompleted && styles.weekStatusTextCompleted]}>
+                          {isCompleted ? 'Completed' : 'In progress'}
+                        </Text>
+                      </View>
                       <Text style={styles.weekNoteTitle} numberOfLines={1}>
                         {linkedNote ? _noteTitle(linkedNote) : RECOVERY_NOTE_UNAVAILABLE}
                       </Text>
                       {linkedNote ? (
                         <MaterialIcons
-                          name="chevron-right"
+                          name={isViewingThisNote ? 'expand-less' : 'chevron-right'}
                           size={18}
                           color={colors.textMuted}
                           accessible={false}
@@ -503,6 +564,26 @@ export function LogRecoverySection({
                   accessibilityState={{ disabled: actionsLocked }}
                 >
                   <Text style={styles.primaryButtonText}>Add week</Text>
+                </Pressable>
+              )}
+              {/* Reopens the week `Add week` would otherwise leave completed
+                  forever (#836). Secondary chip styling, not the primary
+                  fill: `Add week` is still the expected next step, and this
+                  is the way back for the one case that is not. Restricted to
+                  exactly the week `canUndoCompleteWeek` names — the most
+                  recently completed week, only while no later week exists. */}
+              {canUndoCompleteWeek && (
+                <Pressable
+                  onPress={handleUndoCompleteWeek}
+                  disabled={actionsLocked}
+                  style={styles.inlineButton}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Undo completing Week ${currentWeek.week_number}`}
+                  accessibilityState={{ disabled: actionsLocked }}
+                >
+                  <Text style={styles.inlineButtonText}>
+                    {busy === 'undo-week' ? 'Reopening…' : 'Undo completion'}
+                  </Text>
                 </Pressable>
               )}
             </View>
@@ -719,6 +800,28 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: colors.text,
+  },
+  // Groups the row's own week number and status so it reads as one unit
+  // beside the note title (#836). A fixed floor, not 0, so it never gets
+  // squeezed to nothing beside `weekNoteTitle`'s flex:1.
+  weekRowInfo: {
+    minWidth: 88,
+  },
+  weekNumberLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  // Distinguishes a completed week from the in-progress one at a glance
+  // (#836), reusing the existing baselineCaption weight/size rather than
+  // introducing a new type scale.
+  weekStatusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  weekStatusTextCompleted: {
+    color: colors.textMuted,
   },
   // The secondary chip for the disclosed, infrequent controls. `minHeight: 44`
   // is required, not incidental: at 12/6 padding a one-line chip fell short of

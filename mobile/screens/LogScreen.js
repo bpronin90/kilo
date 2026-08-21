@@ -418,7 +418,18 @@ export function LogScreen({
       otherEditor.handleDoneOther();
       return true;
     }
-    if (otherEditor.viewingNoteId) {
+    // Recovery's expanded note collapses on Back too (#836), same as the
+    // Routine-tab viewer below — but each only while ITS OWN tab is actually
+    // on screen. The two viewers are independent, so a note left expanded on
+    // one tab must not make Back silently consume the event (and stay put)
+    // while the other tab is showing (review finding): Routine and Deload
+    // both read off `otherEditor.viewingNoteId`, so that check is gated on
+    // every tab except Recovery, symmetric to the Recovery gate above it.
+    if (tabView === 'recovery' && otherEditor.recoveryViewingNoteId) {
+      otherEditor.setRecoveryViewingNoteId(null);
+      return true;
+    }
+    if (tabView !== 'recovery' && otherEditor.viewingNoteId) {
       otherEditor.setViewingNoteId(null);
       return true;
     }
@@ -439,7 +450,7 @@ export function LogScreen({
   useEffect(() => {
     if (!isActive) return undefined;
     return registerBackConsumer?.(() => handleAndroidBackRef.current());
-  }, [isActive, otherEditor.editingNoteId, otherEditor.viewingNoteId, currentEditor.mode, deloadEditor.deloadMode, registerBackConsumer]);
+  }, [isActive, otherEditor.editingNoteId, otherEditor.viewingNoteId, otherEditor.recoveryViewingNoteId, tabView, currentEditor.mode, deloadEditor.deloadMode, registerBackConsumer]);
 
   const otherNotes = notes.filter(n => n.id !== currentId && !n.title?.startsWith('Deload · '));
 
@@ -619,21 +630,12 @@ export function LogScreen({
     return result;
   });
 
-  // A Recovery week tap now reads its note INSIDE the Recovery card (#775), so
-  // this only selects the note; it no longer reveals More Routines, and it no
-  // longer refuses the current routine — a recovery week linked to the current
-  // routine used to be an inert press, because the only surface that could show
-  // it (the non-current routine list) never renders it. It stays set-only, not
-  // the toggling handleViewOtherNote, so a repeat tap still shows the note.
-  //
-  // The absent-note guard is retained defensively: LogRecoverySection no longer
-  // gives a week without a resolvable note a press target at all, so this is
-  // unreachable from the UI, but the handler must not select a null note if a
-  // future caller passes one.
-  const handleViewRecoveryNote = (note) => {
-    if (!note) return;
-    otherEditor.setViewingNoteId(note.id);
-  };
+  const handleUndoCompleteWeek = (params) => runRecoveryAction('undo-week', async () => {
+    if (!recoveryLifecycle.uncompleteCurrentWeek) return { ok: false, error: 'Recovery blocks are not available in this build yet.' };
+    const result = await recoveryLifecycle.uncompleteCurrentWeek(params);
+    if (result?.ok) refreshRecoveryState?.();
+    return result;
+  });
 
   // Deleting a linked recovery-week note (any week, active or completed
   // -history — this is deliberately not restricted to the latest week the way
@@ -897,15 +899,16 @@ export function LogScreen({
                 blocks={recoveryBlocks}
                 weeks={recoveryWeeks}
                 notes={notes}
-                onViewNote={handleViewRecoveryNote}
-                viewingNoteId={otherEditor.viewingNoteId}
-                viewingNote={otherEditor.viewingNote}
-                viewingNoteDayGroups={otherEditor.viewingNoteDayGroups}
-                viewingHasABWeeks={otherEditor.viewingHasABWeeks}
-                viewingEffectiveWeek={otherEditor.viewingEffectiveWeek}
-                onToggleViewingWeek={otherEditor.handleToggleViewingWeek}
-                onEditNote={otherEditor.handleEditViewedNote}
+                onViewNote={otherEditor.handleViewRecoveryNote}
+                viewingNoteId={otherEditor.recoveryViewingNoteId}
+                viewingNote={otherEditor.recoveryViewingNote}
+                viewingNoteDayGroups={otherEditor.recoveryViewingNoteDayGroups}
+                viewingHasABWeeks={otherEditor.recoveryViewingHasABWeeks}
+                viewingEffectiveWeek={otherEditor.recoveryViewingEffectiveWeek}
+                onToggleViewingWeek={otherEditor.handleToggleRecoveryViewingWeek}
+                onEditNote={otherEditor.handleEditRecoveryViewedNote}
                 onCompleteWeek={handleCompleteCurrentWeek}
+                onUndoCompleteWeek={handleUndoCompleteWeek}
                 onOpenAddWeek={openAddWeekModal}
                 onCompleteBlock={handleCompleteRecoveryBlock}
                 onUnlinkWeek={handleUnlinkRecoveryWeek}

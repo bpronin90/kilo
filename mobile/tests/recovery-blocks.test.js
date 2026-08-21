@@ -32,6 +32,7 @@ import {
   loadRecoveryWeeksForBlock,
   replaceRecoveryBlockWeeksRaw,
   replaceRecoveryBlocksRaw,
+  uncompleteRecoveryWeek,
   updateRecoveryBlock,
   updateRecoveryWeek,
 } from '../storage/entries/recoveryStorage';
@@ -50,6 +51,7 @@ import {
   addRecoveryWeekWithNewNoteCore,
   completeCurrentWeekCore,
   completeRecoveryBlockCore,
+  uncompleteCurrentWeekCore,
   unlinkNoteForDeleteCore,
 } from '../hooks/entries/recoveryBlockHooks';
 
@@ -842,6 +844,122 @@ describe('week completion, update, and tombstones', () => {
     await expect(deleteRecoveryWeek('rw_nope'))
       .rejects.toMatchObject({ code: RECOVERY_ERROR_CODES.WEEK_NOT_FOUND });
   });
+
+  // #836: the inverse of completeRecoveryWeek — reopening a completed week.
+  test('uncompleting a week clears completed_at and preserves everything else, including the note link', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    const completed = await completeRecoveryWeek(week.id, '2026-05-01T00:00:00.000Z');
+    expect(completed.completed_at).toBe('2026-05-01T00:00:00.000Z');
+
+    const reopened = await uncompleteRecoveryWeek(week.id);
+    expect(reopened.completed_at).toBeNull();
+    expect(reopened.note_id).toBe('wn_w1');
+    expect(reopened.block_id).toBe(block.id);
+    expect(reopened.week_number).toBe(week.week_number);
+  });
+
+  test('uncompleting a week that is not completed is a no-op', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    const result = await uncompleteRecoveryWeek(week.id);
+    expect(result.completed_at).toBeNull();
+    expect(result.updated_at).toBe(week.updated_at);
+  });
+
+  test('uncompleting a missing or deleted week rejects deterministically', async () => {
+    await expect(uncompleteRecoveryWeek('rw_nope'))
+      .rejects.toMatchObject({ code: RECOVERY_ERROR_CODES.WEEK_NOT_FOUND });
+
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    await deleteRecoveryWeek(week.id);
+    await expect(uncompleteRecoveryWeek(week.id))
+      .rejects.toMatchObject({ code: RECOVERY_ERROR_CODES.WEEK_NOT_FOUND });
+  });
+});
+
+// ── uncompleteCurrentWeekCore — reopening the latest completed week (#836) ────
+
+describe('uncompleteCurrentWeekCore: permitted and blocked undo states', () => {
+  test('the latest, just-completed week can be reopened, restoring in-progress with its note untouched', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    await completeRecoveryWeek(week.id);
+
+    const result = await uncompleteCurrentWeekCore(journalStorage, { blockId: block.id });
+    expect(result.ok).toBe(true);
+    expect(result.week.completed_at).toBeNull();
+    expect(result.week.note_id).toBe('wn_w1');
+
+    const persisted = await loadRecoveryWeeksForBlock(block.id);
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0].completed_at).toBeNull();
+  });
+
+  test('an earlier, already-superseded week cannot be reopened once a later week exists', async () => {
+    const block = await makeBlock();
+    const week1 = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    await completeRecoveryWeek(week1.id);
+    await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w2' });
+
+    // The current (latest) week is Week 2, still in progress — nothing
+    // completed to undo, and Week 1 is never targeted even though it is
+    // completed, because it is no longer the latest.
+    const result = await uncompleteCurrentWeekCore(journalStorage, { blockId: block.id });
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('WEEK_NOT_COMPLETE');
+
+    const week1After = (await loadRecoveryWeeksForBlock(block.id)).find(w => w.note_id === 'wn_w1');
+    expect(week1After.completed_at).toBeTruthy();
+  });
+
+  test('a block with no weeks yet has nothing to reopen', async () => {
+    const block = await makeBlock();
+    const result = await uncompleteCurrentWeekCore(journalStorage, { blockId: block.id });
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('NO_CURRENT_WEEK');
+  });
+
+  test('two concurrent undo attempts are serialized: the second is rejected while the first is in flight', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    await completeRecoveryWeek(week.id);
+
+    const [first, second] = await Promise.all([
+      uncompleteCurrentWeekCore(journalStorage, { blockId: block.id }),
+      uncompleteCurrentWeekCore(journalStorage, { blockId: block.id }),
+    ]);
+    const results = [first, second];
+    expect(results.filter(r => r.ok)).toHaveLength(1);
+    expect(results.some(r => !r.ok)).toBe(true);
+  });
+
+  // Review finding: a block completed (with its open week) via
+  // completeRecoveryBlockCore in the window between the reopen confirmation
+  // opening and being pressed must refuse the reopen — otherwise it would
+  // leave a COMPLETED block with an IN-PROGRESS week, a combination the
+  // domain otherwise guarantees can never happen.
+  test('a week cannot be reopened once its block has completed, even though the week itself is still completed', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    // completeRecoveryBlockCore completes the block AND its open current week
+    // together as one atomic operation — this is the realistic path that
+    // could race a pending reopen confirmation.
+    const completion = await completeRecoveryBlockCore(journalStorage, { blockId: block.id });
+    expect(completion.ok).toBe(true);
+    expect((await loadRecoveryWeeksForBlock(block.id)).find(w => w.id === week.id).completed_at).toBeTruthy();
+
+    const result = await uncompleteCurrentWeekCore(journalStorage, { blockId: block.id });
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('BLOCK_NOT_ACTIVE');
+
+    // The week is untouched: still completed, block still completed.
+    const weekAfter = (await loadRecoveryWeeksForBlock(block.id)).find(w => w.id === week.id);
+    expect(weekAfter.completed_at).toBeTruthy();
+    const blockAfter = (await loadRecoveryBlocks()).find(b => b.id === block.id);
+    expect(blockAfter.completed_at).toBeTruthy();
+  });
 });
 
 // ── raw accessors (cloud sync seam) ───────────────────────────────────────────
@@ -905,6 +1023,7 @@ const journalStorage = {
   loadRecoveryWeeksForBlock,
   addRecoveryWeek,
   completeRecoveryWeek,
+  uncompleteRecoveryWeek,
   deleteRecoveryWeek,
 };
 

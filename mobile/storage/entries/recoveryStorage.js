@@ -380,6 +380,40 @@ export async function completeRecoveryWeek(id, completedAt = new Date().toISOStr
   return updated;
 }
 
+// Reopen one completed recovery week (#836). The inverse of completeRecoveryWeek:
+// clears `completed_at` back to null and leaves everything else — including the
+// linked note — untouched. Restricted to the latest live week of an active block
+// by the caller (recoveryBlockHooks.js's uncompleteCurrentWeekCore), the same
+// position rule unlinkRecoveryWeekCore already enforces; this function itself
+// only performs the raw mutation. A week that is not currently completed is a
+// no-op, matching completeRecoveryWeek's own idempotent contract.
+export async function uncompleteRecoveryWeek(id) {
+  const list = await readList(RECOVERY_BLOCK_WEEKS_KEY);
+  const idx = list.findIndex(w => w.id === id);
+  if (idx < 0) {
+    throw new RecoveryBlockError(
+      RECOVERY_ERROR_CODES.WEEK_NOT_FOUND,
+      `No recovery week with id ${id}.`
+    );
+  }
+  if (!isLiveRecord(list[idx])) {
+    throw new RecoveryBlockError(
+      RECOVERY_ERROR_CODES.WEEK_NOT_FOUND,
+      `Recovery week ${id} is deleted.`
+    );
+  }
+  if (!list[idx].completed_at) return list[idx];
+
+  const updated = {
+    ...list[idx],
+    completed_at: null,
+    updated_at: new Date().toISOString(),
+  };
+  list[idx] = updated;
+  await writeList(RECOVERY_BLOCK_WEEKS_KEY, list);
+  return updated;
+}
+
 // Tombstone one membership. The workout note itself is untouched — removing a
 // note from a recovery block never edits its canonical text.
 export async function deleteRecoveryWeek(id) {

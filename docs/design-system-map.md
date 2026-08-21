@@ -815,9 +815,10 @@ action is placed by how often it is used:
 |---|---|---|
 | Primary — every session | `Track` a lift, `Edit`, `Week A/B`, skip week | Active card body, plus the one action strip under its header (`LogActiveRoutineCard.js` `actionStrip`) |
 | Secondary — occasional | `Edit routine`, `Delete routine`, viewed-card `Week A/B`, full `Set as current routine` | Non-current card's expand-on-tap body (`LogPreviousRoutines.js` `inlineActions`), inside expanded routine management |
-| Quick access — reachable without opening (#756) | Compact `New routine` icon, compact `Set as current routine` icon per collapsed row | Panel header (present collapsed or expanded) and each collapsed non-current row's header respectively (`LogPreviousRoutines.js`) |
+| Quick access — reachable without opening (#756, #836) | `New routine` (icon + visible label, the section's ONE create-routine affordance), compact `Set as current routine` icon per collapsed row | Panel header (present collapsed or expanded) and each collapsed non-current row's header respectively (`LogPreviousRoutines.js`) |
 | Rare — once per training block | `Start recovery block` | A persistent, low-emphasis outline row directly under the current routine card (`LogScreen.js` `recoveryStartRow`), never nested in a menu or disclosure; absent whenever a block cannot be started (#823, superseding #724's routine-management placement) |
-| Recovery — expected next step | `Complete week` **or** `Add week` (never both) | Active Recovery card body, visible by default and the card's only accent-filled control (`LogRecoverySection.js`, #789/#804) |
+| Recovery — expected next step | `Complete week` **or** `Add week` (never both), each behind its own confirmation | Active Recovery card body, visible by default and the card's only accent-filled control (`LogRecoverySection.js`, #789/#804/#836) |
+| Recovery — reversal, offered only for the just-completed latest week | `Undo completion` | Beside `Add week`, secondary `chipBackground` + `error` chip; confirms before reopening the week, and disappears once a later week exists (`LogRecoverySection.js`, #836) |
 | Recovery — correction or once-per-block | `Unlink Week {N}`, `Complete recovery block`, the analytics-inclusion switch | `Manage recovery block`, a collapsed-by-default disclosure inside the active Recovery card; both buttons are secondary `chipBackground` chips with `error` labels (#789/#804) |
 
 Consequences to preserve:
@@ -830,9 +831,11 @@ Consequences to preserve:
   quick actions, expand/collapse ownership) are otherwise unchanged.
 - **More Routines is a collapsed-by-default disclosure (#724).** Its header is
   no longer one whole-header Pressable; it is a plain row of three sibling
-  touch targets — a `headerToggle` Pressable (count/latest summary, `44`
-  `minHeight`), a compact icon-only `New routine` affordance (#756,
-  `MaterialIcons` `add`, `accessibilityLabel="New routine"`), and a
+  touch targets — a `headerToggle` Pressable (count summary only while
+  collapsed, `44` `minHeight`), a `New routine` affordance (#756, labeled
+  #836: `MaterialIcons` `add` plus a visible "New routine" text label — not
+  icon-only — since it is this section's ONE create-routine control now that
+  the former bottom `+ New routine` duplicate is gone), and a
   `headerChevronButton` Pressable carrying the `MaterialIcons`
   `expand-more`/`expand-less` chevron (18, `textMuted`) — with the toggle and
   chevron both wired to the same expand/collapse handler and
@@ -872,10 +875,16 @@ Consequences to preserve:
   to the creation day encoded in the note id (`wn_YYYY-MM-DD_…`) and then to no
   date at all. `updated_at` is never displayed: it is the sync conflict cursor
   (`docs/backend-schema.md`), so editing, tapping `Week A/B`, syncing, or
-  restoring a backup all moved it. The expanded list and the collapsed `Latest:`
-  summary sort by that same displayed field, newest first, undated last in
-  notebook order, so the summary always names the routine the list shows first.
-  The viewed row keeps its `Week <X> · ` prefix in front of the date.
+  restoring a backup all moved it. The expanded list sorts by that same
+  displayed field, newest first, undated last in notebook order. The viewed
+  row keeps its `Week <X> · ` prefix in front of the date.
+- **The collapsed header has no `Latest:` line (#836, retiring #775's
+  collapsed-summary naming).** Naming one routine out of several implied a
+  hierarchy among prior routines that does not exist. Collapsed, the header
+  shows only a `{N} more routine(s)` count, at a weight legible as a
+  section heading (`15`/`700`, `colors.text`) rather than a small caption;
+  expanded, the count is not repeated at all, since the list below it already
+  shows every routine.
 - The active card's strip renders `Skip week` **or** `Remove skip`, never both.
   There is no opacity-dimmed disabled variant.
 - The `Double-tap to edit` hint is retired in both the active card and the
@@ -940,38 +949,64 @@ Consequences to preserve:
   Its first line is a state-derived headline — `Week {N} in progress` or
   `Week {N} complete — add the next week` — and the baseline follows as one
   de-emphasized `Baseline: <routine>` caption, replacing the former
-  label+value pair. Exactly one lifecycle action is visible by default
-  (`Complete week` while the week is open, `Add week` once it completes; the
-  two are mutually exclusive by construction). Everything not needed to log
-  today's workout sits in one `Manage recovery block` disclosure, collapsed by
-  default, holding `Unlink Week {N}` (always naming the concrete current week,
-  open or just-completed — there is no row-level `Unlink`), `Complete recovery
-  block`, and the `RecoveryInclusionToggle` with its help. Stale, pending,
-  terminal, and inline-error banners stay **outside** the disclosure so they
-  are announced without expanding anything, and `Retry recovery` is never
-  disclosed. The disclosure trigger reuses the existing chip treatment, carries
+  label+value pair. The headline describes only the CURRENT week; every live
+  week of the block — completed history included, since #836 — renders below
+  it as its own row (see the next bullet). One primary lifecycle action is
+  visible by default (`Complete week` while the week is open, `Add week` once
+  it completes; the two are mutually exclusive by construction); once the
+  current week is complete, a secondary `Undo completion` chip sits beside
+  `Add week` (#836) — offered only for that just-completed latest week, never
+  for an earlier one once a later week exists. `Complete week` confirms its
+  consequence before committing (`Complete Week {N}?`, stating that it
+  completes the current week, preserves its note, and does not create or
+  submit the next week's note); `Undo completion` confirms too
+  (`Reopen Week {N}?`), restoring the week to in-progress and leaving its note
+  untouched. Everything not needed to log today's workout sits in one
+  `Manage recovery block` disclosure, collapsed by default, holding `Unlink
+  Week {N}` (always naming the concrete current week, open or just-completed —
+  there is no row-level `Unlink`), `Complete recovery block`, and the
+  `RecoveryInclusionToggle` with its help. Stale, pending, terminal, and
+  inline-error banners stay **outside** the disclosure so they are announced
+  without expanding anything, and `Retry recovery` is never disclosed. The
+  disclosure trigger reuses the existing chip treatment, carries
   `accessibilityRole="button"` with `accessibilityState={{ expanded }}`, and is
   **never** disabled: under `actionsLocked` the controls inside it each keep
   their own existing disabled gating (`actionsLocked` for the lifecycle
   buttons, `inclusionLocked` for the switch) so a locked user can still open it
   and see which specific control is unavailable, rather than being stranded
   behind a container that will not open.
-- **The active Recovery card states each fact once and fills exactly one button
-  (#804).** The week row is a borderless single line (`minHeight: 44`) holding
-  the note title and a `chevron-right` read affordance — its former `WEEK {N}`
-  micro-label and `In progress` status restated the headline directly above it,
-  and its border was the only box inside the card. The accessible names are
-  unchanged (`View <title>, Recovery Week N` / `Recovery Week N, note
-  unavailable`), since a screen-reader user reaches the control out of context.
-  The one visible lifecycle action (`Complete week` / `Add week`) is the card's
-  only `accent` fill with `onAccent` ink; `Complete recovery block` demotes from
-  that fill to the same secondary `chipBackground` + `error` chip `Unlink Week
-  {N}` uses, so the rarest irreversible action is no longer the loudest control.
-  Both disclosed chips carry an explicit `minHeight: 44`. The `Manage recovery
-  block` trigger drops its chip fill and border — it discloses, it does not act
-  — and its glyph is the standard `MaterialIcons` `expand-more`/`expand-less`
+- **Every live week is its own labeled, distinguishable row (#836, correcting
+  #804's hidden-completed-week design).** Each week row is a borderless single
+  line (`minHeight: 44`) holding a `Week {N}` label plus an explicit
+  `In progress`/`Completed` status, the note title, and a `chevron-right` (or
+  `expand-less` while expanded) read affordance — completed weeks render
+  alongside the current one, not just in Analytics history, so the block's
+  whole sequence and each week's note stay visible and reachable on Log. A
+  second tap on an already-expanded row collapses it (previously set-only, so
+  a repeat tap never closed the note); Back also collapses it but is not the
+  only way. The accessible names for an in-progress row are unchanged (`View
+  <title>, Recovery Week N` / `Recovery Week N, note unavailable`); a
+  completed row's name gains an explicit `, completed` suffix. The expanded
+  note's `Edit` action opens the shared editor on the exact note and A/B half
+  being viewed. The one visible lifecycle action (`Complete week` / `Add
+  week`) is the card's only `accent` fill with `onAccent` ink;
+  `Complete recovery block` and `Undo completion` are the same secondary
+  `chipBackground` + `error` chip `Unlink Week {N}` uses, so the rarest and
+  reversal actions are never the loudest control. Every disclosed or secondary
+  chip carries an explicit `minHeight: 44`. The `Manage recovery block`
+  trigger drops its chip fill and border — it discloses, it does not act — and
+  its glyph is the standard `MaterialIcons` `expand-more`/`expand-less`
   chevron (18, `textMuted`) required by `ui-design-rules.md` §6, replacing the
   `▸`/`▾` text arrows.
+- **Recovery's expanded-note viewer is a separate state slot from Routine's
+  (#836).** `useLogOtherRoutineEditor.js` instantiates its shared
+  `viewingNoteId`/`viewingNote`/`viewingNoteDayGroups`/`Week A/B` machinery
+  twice — once for the Routine tab (`LogPreviousRoutines`, unchanged prop
+  names), once for Recovery (`recoveryViewingNoteId` etc., consumed by
+  `LogRecoverySection`) — so an expanded note on one tab can never appear on,
+  or be inherited by, the other. Recovery's own note tap
+  (`handleViewRecoveryNote`) is now toggling, matching the Routine tab's
+  `handleViewOtherNote`, rather than the previous set-only handler.
 - `LogRecoverySection` renders only when Recovery affects the current workout
   (active/pending/terminal-error/stale). Completed history and its inclusion
   controls live in Analytics (#727-729), so completed-only users see no Recovery

@@ -198,11 +198,12 @@ const promptCount = (root) =>
   root.findAll(n => n.props && n.props.testID === 'routine-adoption-prompt').length;
 
 // Drives the editor to a saved brand-new routine, which is the only thing that
-// raises the post-save adoption prompt. Both create-routine entry points open
-// the ordinary `editingNoteId === 'new'` editor directly (#786/R6b-3).
+// raises the post-save adoption prompt. The create-routine entry point opens
+// the ordinary `editingNoteId === 'new'` editor directly (#786/R6b-3); it is
+// the section's one create-routine control, reachable without expanding the
+// disclosure first (#836).
 const openNewRoutineEditor = (root) => {
-  expandRoutineManagement(root);
-  const entry = findPressableByText(root, '+ New routine') || findPressableByText(root, 'New Routine');
+  const entry = findPressableByText(root, 'New routine') || findPressableByText(root, 'New Routine');
   render.act(() => { entry.props.onPress(); });
 };
 
