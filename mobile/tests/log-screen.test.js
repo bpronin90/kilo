@@ -1116,8 +1116,8 @@ const findPressableByText = (root, text) => {
 const expandRoutineManagement = (root) => {
   const header = root.findAll(
     n => n.props
-      && (n.props.accessibilityLabel === 'Expand routine management'
-        || n.props.accessibilityLabel === 'Collapse routine management')
+      && (n.props.accessibilityLabel === 'Show routines'
+        || n.props.accessibilityLabel === 'Hide routines')
       && typeof n.props.onPress === 'function'
   )[0];
   if (!header) return;
@@ -3420,14 +3420,14 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     });
     const root = component.root;
 
-    // Collapsed routine management (#724, redesigned #843) still hides the
-    // routine cards and every row-level management action behind the
-    // disclosure, but the count and the `New routine` affordance now live
-    // OUTSIDE the panel entirely — always visible, not gated by the
+    // Collapsed routine management (#724, redesigned #843, recontained #847)
+    // still hides the routine cards and every row-level management action
+    // behind the disclosure, but the count and the `New routine` affordance
+    // live outside it entirely — always visible, not gated by the
     // disclosure's own open state, and a sibling of the toggle rather than
     // its child (PR #760 review).
     const toggle = root.findAll(
-      n => n.props && n.props.accessibilityLabel === 'Expand routine management'
+      n => n.props && n.props.accessibilityLabel === 'Show routines'
         && typeof n.props.onPress === 'function'
     )[0];
     expect(toggle).toBeTruthy();
@@ -3442,7 +3442,7 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     render.act(() => { newRoutine.props.onPress({ stopPropagation: jest.fn() }); });
     expect(handleCreateRoutine).toHaveBeenCalledTimes(1);
     expect(root.findAll(
-      n => n.props && n.props.accessibilityLabel === 'Collapse routine management'
+      n => n.props && n.props.accessibilityLabel === 'Hide routines'
     ).length).toBe(0);
 
     // No routine card is mounted and no other management action exists while
@@ -3461,8 +3461,8 @@ describe('Routine-card header/action containment (#710, #711)', () => {
   });
 });
 
-// -- More Routines: compact panel rhythm matching Weight History (#841) -----
-describe('LogPreviousRoutines: compact disclosure panel rhythm (#841)', () => {
+// -- More Routines: quiet individual note cards, no enclosing panel (#847) --
+describe('LogPreviousRoutines: quiet note-card containment (#847)', () => {
   const notes = [
     { id: 'r1', title: 'Routine One', raw_text: 'MONDAY\n-Squat 3x5\n', saved_at: '2026-01-01T00:00:00.000Z' },
     { id: 'r2', title: 'Routine Two', raw_text: 'MONDAY\n-Bench 3x5\n', saved_at: '2026-01-02T00:00:00.000Z' },
@@ -3492,48 +3492,47 @@ describe('LogPreviousRoutines: compact disclosure panel rhythm (#841)', () => {
   };
   const flat = (n) => Object.assign({}, ...(Array.isArray(n.props.style) ? n.props.style : [n.props.style]).filter(Boolean));
 
-  test('the disclosure renders as one bordered, rounded panel — not a borderless header floating above the list', () => {
+  test('collapsed, no routine card and no enclosing panel-style surface render at all', () => {
     const root = render_(false);
-    // The outer panel View is the one carrying the boxed chrome; the header
-    // sits inside it with its own tinted background, matching the shared
-    // Weight History rhythm (WeightHistoryList.js's `card`/`headerRow`).
-    const panel = root.findAll(n => n.props && n.props.style && flat(n).borderRadius === 24)[0];
-    expect(panel).toBeTruthy();
-    const panelStyle = flat(panel);
-    expect(panelStyle.backgroundColor).toBe(LightColors.card);
-    expect(panelStyle.borderWidth).toBe(1);
-    expect(panelStyle.borderColor).toBe(LightColors.cardBorder);
-    expect(panelStyle.overflow).toBe('hidden');
-
-    // The header IS the toggle Pressable now (#843) — no separate wrapping
-    // View — so its tinted background lives on the toggle's own style.
-    const toggle = root.findAll(n => n.props && n.props.accessibilityLabel === 'Expand routine management')[0];
-    expect(flat(toggle).backgroundColor).toBe(LightColors.subtleBg);
-  });
-
-  test('collapsed, the panel is exactly the header — no dead body slab beneath it', () => {
-    const root = render_(false);
-    // No routine card is mounted while collapsed, so there is nothing for a
-    // body wrapper to hold — the panel's rendered height is the header's own.
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Routine One').length).toBe(0);
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Routine Two').length).toBe(0);
+    // No tinted, bordered panel-equivalent surface is mounted while collapsed.
+    expect(root.findAll(n => n.props && n.props.style && flat(n).backgroundColor === LightColors.subtleBg).length).toBe(0);
   });
 
-  // Rows are a flat, divided list now (#843), not gap-separated cards — every
-  // row but the last carries its own bottom divider instead of a `gap`
-  // between siblings, so the former "top spacing equals the row gap" rhythm
-  // this test pinned no longer applies to the redesigned panel.
-  test('expanded, every row but the last carries a divider — not the first', () => {
+  test('expanded, each routine renders as its own bordered, rounded card — not one shared panel', () => {
     const root = render_(true);
-    const flat = (n) => Object.assign({}, ...(Array.isArray(n.props.style) ? n.props.style : [n.props.style]).filter(Boolean));
-    // The row divider uses `colors.divider`, distinct from the header's own
-    // `cardBorder` bottom rule, so this only counts row-to-row separators.
-    // Host nodes only (`typeof n.type === 'string'`): a plain `View` renders
-    // as both a composite and a host node carrying the same style prop, so an
-    // unfiltered walk would count every divider twice.
+    // Two separate rounded, bordered surfaces, one per routine — not a single
+    // enclosing panel wrapping a flat divided list.
+    const cards = root.findAll(n => typeof n.type === 'string' && n.props && n.props.style && flat(n).borderRadius === 24 && flat(n).overflow === 'hidden');
+    expect(cards.length).toBe(2);
+    for (const card of cards) {
+      const style = flat(card);
+      expect(style.backgroundColor).toBe(LightColors.card);
+      expect(style.borderWidth).toBe(1);
+      expect(style.borderColor).toBe(LightColors.cardBorder);
+    }
+
+    // No shared row-divider chrome (colors.divider) links the cards together.
     const dividedRows = root.findAll(n => typeof n.type === 'string' && n.props && n.props.style && flat(n).borderBottomColor === LightColors.divider);
-    // Two routines: exactly one internal divider between them.
-    expect(dividedRows.length).toBe(1);
+    expect(dividedRows.length).toBe(0);
+
+    // The cards are separated by ordinary shell spacing (a `gap` container),
+    // not nested inside one tinted collection bar.
+    expect(root.findAll(n => n.props && n.props.style && flat(n).backgroundColor === LightColors.subtleBg).length).toBe(0);
+  });
+
+  test('the collection disclosure is a lightweight text-plus-glyph control, not a bordered panel header', () => {
+    const root = render_(false);
+    const toggle = root.findAll(n => n.props && n.props.accessibilityLabel === 'Show routines')[0];
+    expect(toggle).toBeTruthy();
+    const style = flat(toggle);
+    // No panel-equivalent chrome on the toggle itself: no border, no tinted
+    // background, no rounded card radius.
+    expect(style.backgroundColor).toBeUndefined();
+    expect(style.borderWidth).toBeUndefined();
+    expect(style.borderRadius).toBeUndefined();
+    expect(style.minHeight).toBeGreaterThanOrEqual(44);
   });
 });
 
@@ -3763,7 +3762,7 @@ describe('LogPreviousRoutines: compact New Note and set-current actions (#756)',
     render.act(() => { headerButton.props.onPress({ stopPropagation: jest.fn() }); });
     expect(props.handleCreateRoutine).toHaveBeenCalledTimes(1);
     // Still collapsed: the disclosure toggle was not fired by the nested press.
-    const toggle = root.findAll(n => n.props && n.props.accessibilityLabel === 'Expand routine management')[0];
+    const toggle = root.findAll(n => n.props && n.props.accessibilityLabel === 'Show routines')[0];
     expect(toggle).toBeTruthy();
   });
 
@@ -3965,8 +3964,8 @@ describe('LogPreviousRoutines: collapsed routine management (#724)', () => {
 
   const headerFor = (root) => root.findAll(
     n => n.props
-      && (n.props.accessibilityLabel === 'Expand routine management'
-        || n.props.accessibilityLabel === 'Collapse routine management')
+      && (n.props.accessibilityLabel === 'Show routines'
+        || n.props.accessibilityLabel === 'Hide routines')
       && typeof n.props.onPress === 'function'
   )[0];
 
@@ -9426,7 +9425,7 @@ describe('typed note navigation intents (#718)', () => {
     // Collapse the whole routine-management disclosure — not the note — leaving
     // the note still selected behind it.
     const collapse = component.root.findAll(
-      n => n.props && n.props.accessibilityLabel === 'Collapse routine management' && typeof n.props.onPress === 'function'
+      n => n.props && n.props.accessibilityLabel === 'Hide routines' && typeof n.props.onPress === 'function'
     )[0];
     render.act(() => { collapse.props.onPress(); });
     expect(isShowingViewedNote(component)).toBe(false);
@@ -10838,7 +10837,7 @@ describe('Log disclosures and Recovery reads at the screen level (#775)', () => 
 
   const routineToggle = (component) => component.root.findAll(
     n => n.props
-      && /^(Expand|Collapse) routine management$/.test(n.props.accessibilityLabel || '')
+      && /^(Show|Hide) routines$/.test(n.props.accessibilityLabel || '')
       && typeof n.props.onPress === 'function'
   )[0];
   const routineExpanded = (component) => routineToggle(component).props.accessibilityState.expanded;

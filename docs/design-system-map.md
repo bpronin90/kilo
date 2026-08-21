@@ -808,7 +808,11 @@ exceptions for #710 and #711 are enumerated in that same header block. #843
 is a further owner-authorized exception (the Recovery/Routine redesign
 below), scoped to `styles.tabToggle` in `LogScreen.js` plus
 `LogRecoverySection.js`, `RecoveryBlockEndModal.js` (new), and
-`LogPreviousRoutines.js`. The Current routine card remains locked.
+`LogPreviousRoutines.js`. #847 is a further owner-authorized exception,
+scoped to `LogPreviousRoutines.js` alone, that removes #843's enclosing More
+Routines panel and restores individually rounded non-current routine cards
+(see Consequences below). The Current routine card remains locked — neither
+#843 nor #847 authorizes touching it.
 
 ### Action hierarchy (#711)
 
@@ -819,7 +823,7 @@ action is placed by how often it is used:
 |---|---|---|
 | Primary — every session | `Track` a lift, `Edit`, `Week A/B`, skip week | Active card body, plus the one action strip under its header (`LogActiveRoutineCard.js` `actionStrip`) |
 | Secondary — occasional | `Edit routine`, `Delete routine`, viewed-card `Week A/B`, full `Set as current routine` | Non-current row's expand-on-tap body (`LogPreviousRoutines.js` `inlineActions`), inside expanded routine management |
-| Quick access — reachable without opening (#756, #836; the per-row quick action retired #843) | `New routine` (icon + visible label, the section's ONE create-routine affordance) | A sibling row of the section title, OUTSIDE the disclosure panel entirely (#843) — present and identical whether the panel is collapsed or expanded (`LogPreviousRoutines.js` `topRow`) |
+| Quick access — reachable without opening (#756, #836; the per-row quick action retired #843) | `New routine` (icon + visible label, the section's ONE create-routine affordance) | A sibling row of the section title, OUTSIDE the collection disclosure entirely (#843, #847) — present and identical whether the collection is collapsed or expanded (`LogPreviousRoutines.js` `topRow`) |
 | Rare — once per training block | `Start recovery block` | A persistent, low-emphasis outline row directly under the current routine card (`LogScreen.js` `recoveryStartRow`), never nested in a menu or disclosure; absent whenever a block cannot be started (#823, superseding #724's routine-management placement) |
 | Rare — reopening the most recently completed block, offered only with no block active (#839) | `Reopen recovery block: {baseline title}` | A second, lower-emphasis outline row (`LogScreen.js` `recoveryReopenRow`) directly below `Start recovery block` — same shape, `textMuted` ink instead of `accent`, so `Start` stays visually primary; computes its own visibility independently and can render alongside `Start`. The Analytics evidence card (`AnalyticsRecoverySection.js`) offers the same action, secondary-styled, only on the newest completed block's own card |
 | Recovery — expected next step | `Complete Week {N}` **or** `Add week` (never both), each behind its own confirmation | The active card's action zone, visible by default, full-width/48px, and the card's only accent-filled control, with a muted explanatory caption beneath it (`LogRecoverySection.js`, #789/#804/#836/#843) |
@@ -828,30 +832,41 @@ action is placed by how often it is used:
 
 Consequences to preserve:
 
-- **More Routines is one card-equivalent panel with a flat, divided row list
-  (#843, superseding #823's borderless flat section).** The panel itself
-  (`LogPreviousRoutines.js` `panel`) is the ordinary `radius 24`, 1px
-  `cardBorder`, `subtleBg`-header chrome — but there are no nested per-row
-  `Card` borders, radii, or horizontal margins inside it any more: rows are
-  divided by a single `colors.divider` bottom rule (all but the last), and an
-  open row's background is `colors.subtleBg`.
-- **The count and `New routine` live OUTSIDE the panel entirely (#843,
-  superseding #756/#836's in-header placement).** `More Routines · {count}`
-  IS the section's `SectionTitle` now — always visible, expanded or
-  collapsed, never repeated or hidden by the disclosure's own state — and a
-  sibling 38px outlined `New routine` control (icon + visible label, this
-  section's ONE create-routine affordance) sits beside it. The panel's own
-  header inside is now just the toggle Pressable — no count text, no `New
-  routine` button left inside it.
-- **More Routines is a collapsed-by-default disclosure (#724).** The header
-  toggle carries the standard `MaterialIcons` `expand-more`/`expand-less`
-  chevron (18, `textMuted`) and `accessibilityState={{ expanded }}`.
-  Collapsed, the routine rows stay inside the expanded body only. An external
-  request to reveal a non-current routine — a typed navigation intent (#718)
-  naming a non-current, non-deload routine, and nothing else since #775 —
-  auto-expands the disclosure via a monotonic reveal nonce keyed on the REQUEST,
-  not on `viewingNoteId`, so a repeat request for the already-selected note
-  reopens it while an unchanged nonce respects a user's collapse. A Recovery tap
+- **More Routines has no enclosing panel (#847, superseding #843's
+  card-equivalent panel with a flat, divided row list).** Each non-current
+  routine renders as its own quiet, individually rounded `Card` (`radius 24`,
+  1px `cardBorder`, standard card background), separated from its siblings by
+  ordinary shell spacing (`LogPreviousRoutines.js` `cardList`, `gap: 12`) —
+  not a shared outer surface, a flat divided list, or a tinted collection bar.
+  This restores the pre-#843 (`096bf89^`) hierarchy: individual pills,
+  restrained borders, the active routine dramatically more prominent by
+  comparison. No accent rails, filled accent headers, or "current" badges are
+  added to these cards.
+- **The count and `New routine` live OUTSIDE the collection disclosure
+  entirely (#843, #847, superseding #756/#836's in-header placement).**
+  `More Routines · {count}` IS the section's `SectionTitle` now — always
+  visible, expanded or collapsed, never repeated or hidden by the
+  disclosure's own state — and a sibling 38px outlined `New routine` control
+  (icon + visible label, this section's ONE create-routine affordance) sits
+  beside it in the same header row.
+- **More Routines is a collapsed-by-default disclosure (#724), and since #847
+  the disclosure trigger is a lightweight text-plus-glyph control, not a
+  bordered panel header.** It is modeled on Analytics → Progressive
+  Overload's bulk expand/collapse control (`AnalyticsScreen.js`
+  `collapseAllButton`): compact `Show routines`/`Hide routines` text (muted
+  ink, uppercase, letter-spaced) plus a `MaterialIcons` `unfold-more`/
+  `unfold-less` glyph (16, `textMuted`), a 44dp touch target, explicit
+  `accessibilityRole="button"`, and `accessibilityState={{ expanded }}`. It
+  carries no border, background tint, or card radius of its own — unlike
+  #843's bordered/tinted panel header, and unlike Progressive Overload's own
+  chevron (`unfold-less`/`unfold-more` is reused here deliberately: this
+  control also acts on a whole collection at once, not a single panel).
+  Collapsed, the routine cards render nowhere. An external request to reveal
+  a non-current routine — a typed navigation intent (#718) naming a
+  non-current, non-deload routine, and nothing else since #775 — auto-expands
+  the disclosure via a monotonic reveal nonce keyed on the REQUEST, not on
+  `viewingNoteId`, so a repeat request for the already-selected note reopens
+  it while an unchanged nonce respects a user's collapse. A Recovery tap
   reveals nothing: it reads its note in the Recovery card instead (see below).
 - **The per-row icon-only `Set as current routine` quick action is retired
   (#843, superseding #756).** Switching the current routine is reachable only
@@ -1057,10 +1072,10 @@ Consequences to preserve:
 | | color | `colors.accent` | `LogActiveRoutineCard.js` |
 | Current routine card | borderWidth | `4`, `colors.accent` on all sides | `LogActiveRoutineCard.js` |
 | | padding | `0` | `LogActiveRoutineCard.js` |
-| Other note title | fontSize | `20` | `LogPreviousRoutines.js:173` |
-| | fontWeight | `800` | `LogPreviousRoutines.js:174` |
-| Other note subtitle | fontSize | `12` | `LogPreviousRoutines.js:178` |
-| | color | `colors.textMuted` | `LogPreviousRoutines.js:179` |
+| Other note title | fontSize | `17` | `LogPreviousRoutines.js:337` |
+| | fontWeight | `700` | `LogPreviousRoutines.js:338` |
+| Other note subtitle | fontSize | `12` | `LogPreviousRoutines.js:342` |
+| | color | `colors.textMuted` | `LogPreviousRoutines.js:343` |
 | WorkoutHeading (UI.js) | fontSize | `22` | UI.js:640 |
 | | fontWeight | `800` | UI.js:641 |
 | | textTransform | `capitalize` | UI.js:645 |

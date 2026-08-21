@@ -1,26 +1,31 @@
-// Routine management (#724, flattened #823, redesigned #843): the
-// non-current routines and their management actions live inside a
+// Routine management (#724, flattened #823, redesigned #843, recontained #847):
+// the non-current routines and their management actions live behind a
 // collapsed-by-default disclosure so the active routine stays the dominant
-// Log surface. The count and the create-routine affordance are now OUTSIDE
-// the disclosure panel entirely (#843) — `More Routines · {count}` is always
-// visible, expanded or collapsed, alongside a persistent `New routine`
-// control, so neither ever depends on the panel's own open state. The panel
-// itself is one flat, divided list — no nested row-card borders, radii, or
-// horizontal margins (#843) — matching a single card-equivalent surface
-// rather than a stack of small cards. `Set as current routine` is reachable
-// only from a row's own expanded body now; the former icon-only quick action
-// and the standalone recovery badge on collapsed rows are gone (#843).
+// Log surface. The count and the create-routine affordance are OUTSIDE the
+// disclosure entirely — `More Routines · {count}` is always visible,
+// expanded or collapsed, alongside a persistent `New routine` control, so
+// neither ever depends on the collection's own open state.
+//
+// #847 removes the enclosing "More Routines panel" (#843's single
+// card-equivalent surface with a tinted header and a flat divided row list)
+// and returns non-current routines to individually rounded, quietly bordered
+// `Card` surfaces — the pre-#843 hierarchy — so the Current routine stays the
+// singular, highly highlighted note by comparison. The collection disclosure
+// itself is now a lightweight text-plus-glyph control beside the section
+// header, modeled on Analytics -> Progressive Overload's bulk expand/collapse
+// control (AnalyticsScreen.js's `collapseAllButton`), not a bordered panel
+// header. `Set as current routine` stays reachable only from a row's own
+// expanded body.
 //
 // The disclosure's open/closed state is owned by LogScreen (#775) — see the
 // `expanded`/`onToggleExpanded` props below.
 //
-// #843 owner-authorized exception to the Log tab's style lock, scoped to this
-// file plus LogRecoverySection.js and RecoveryBlockEndModal.js. The Current
-// routine card remains locked.
+// #847 owner-authorized exception to the Log tab's style lock, scoped to this
+// file. The Current routine card remains locked.
 import React, { useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { Button, SectionTitle } from './UI';
+import { Button, Card, SectionTitle } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { localDate } from '../lib/LogScreenHelpers';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
@@ -98,8 +103,8 @@ export function LogPreviousRoutines({
   return (
     <View style={styles.previousRoutines}>
       {/* The count and the create-routine affordance sit outside the
-          disclosure panel entirely (#843) — both are visible whether the
-          panel is expanded or collapsed. */}
+          disclosure entirely (#843) — both are visible whether the
+          collection below is expanded or collapsed. */}
       <View style={styles.topRow}>
         <SectionTitle>{`More Routines · ${routineCount}`}</SectionTitle>
         <Pressable
@@ -113,150 +118,151 @@ export function LogPreviousRoutines({
         </Pressable>
       </View>
 
-      <View style={styles.panel}>
-        <Pressable
-          onPress={toggleExpanded}
-          style={[styles.header, expanded && styles.headerBordered]}
-          accessibilityRole="button"
-          accessibilityLabel={expanded ? 'Collapse routine management' : 'Expand routine management'}
-          accessibilityState={{ expanded }}
-        >
-          <View style={styles.headerContent} />
-          <MaterialIcons
-            name={expanded ? 'expand-less' : 'expand-more'}
-            size={18}
-            color={colors.textMuted}
-            accessible={false}
-          />
-        </Pressable>
+      {/* The collection disclosure (#847): compact text plus glyph, modeled
+          on Analytics -> Progressive Overload's bulk expand/collapse control
+          — no enclosing panel surface or tinted bar of its own. Its label
+          names what it reveals (the routine collection), never implying that
+          every individual note body opens with it. */}
+      <Pressable
+        onPress={toggleExpanded}
+        style={styles.disclosureToggle}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        accessibilityRole="button"
+        accessibilityLabel={expanded ? 'Hide routines' : 'Show routines'}
+        accessibilityState={{ expanded }}
+      >
+        <Text style={styles.disclosureToggleText}>{expanded ? 'Hide routines' : 'Show routines'}</Text>
+        <MaterialIcons
+          name={expanded ? 'unfold-less' : 'unfold-more'}
+          size={16}
+          color={colors.textMuted}
+          accessible={false}
+        />
+      </Pressable>
 
-        {expanded && (
-          <View style={styles.body}>
-            {sortedNotes.map((other, index) => {
-              // Same rule as LogActiveRoutineCard (#738 review): an explicit
-              // accessibilityLabel replaces the label VoiceOver would otherwise derive
-              // from this header's Text descendants. Two routines sharing a title are
-              // permitted by the note-creation path, so the label must also carry the
-              // visible date/week and recovery-week badge that distinguish them.
-              const isViewedOther = viewingNoteId === other.id;
-              const otherCreatedKey = routineCreatedKey(other);
-              // A routine with neither a saved_at nor a dated id carries no date
-              // at all, on screen or in the label — the title still identifies
-              // it, and no unstable stand-in is invented (#775).
-              const otherCreatedText = otherCreatedKey
-                ? `Created ${localDate(otherCreatedKey).toLocaleDateString()}`
-                : null;
-              const otherDateLabel = otherCreatedText
-                ? (isViewedOther && viewingHasABWeeks
-                    ? `Week ${viewingEffectiveWeek} · ${otherCreatedText}`
-                    : otherCreatedText)
-                : null;
-              const otherRecoveryWeek = recoveryWeekNumberByNoteId[other.id];
-              const otherRecoveryLabel = otherRecoveryWeek != null
-                ? `Recovery Week ${otherRecoveryWeek}`
-                : null;
-              // Collapsed metadata line (#843): date and recovery-week fold
-              // into one inline caption instead of a date line plus a
-              // separate standalone badge.
-              const otherMetaText = [otherDateLabel, otherRecoveryWeek != null ? `Recovery week ${otherRecoveryWeek}` : null]
-                .filter(Boolean)
-                .join(' · ');
-              const otherHeaderLabel = [
-                `${isViewedOther ? 'Collapse' : 'Expand'} ${other.title || 'Untitled Routine'}`,
-                otherDateLabel,
-                otherRecoveryLabel,
-              ].filter(Boolean).join(', ');
-              return (
-                <View
-                  key={other.id}
-                  style={[styles.row, index < sortedNotes.length - 1 && styles.rowDivider, isViewedOther && styles.rowOpen]}
+      {expanded && (
+        <View style={styles.cardList}>
+          {sortedNotes.map((other) => {
+            // Same rule as LogActiveRoutineCard (#738 review): an explicit
+            // accessibilityLabel replaces the label VoiceOver would otherwise derive
+            // from this header's Text descendants. Two routines sharing a title are
+            // permitted by the note-creation path, so the label must also carry the
+            // visible date/week and recovery-week badge that distinguish them.
+            const isViewedOther = viewingNoteId === other.id;
+            const otherCreatedKey = routineCreatedKey(other);
+            // A routine with neither a saved_at nor a dated id carries no date
+            // at all, on screen or in the label — the title still identifies
+            // it, and no unstable stand-in is invented (#775).
+            const otherCreatedText = otherCreatedKey
+              ? `Created ${localDate(otherCreatedKey).toLocaleDateString()}`
+              : null;
+            const otherDateLabel = otherCreatedText
+              ? (isViewedOther && viewingHasABWeeks
+                  ? `Week ${viewingEffectiveWeek} · ${otherCreatedText}`
+                  : otherCreatedText)
+              : null;
+            const otherRecoveryWeek = recoveryWeekNumberByNoteId[other.id];
+            const otherRecoveryLabel = otherRecoveryWeek != null
+              ? `Recovery Week ${otherRecoveryWeek}`
+              : null;
+            // Collapsed metadata line: date and recovery-week fold into one
+            // inline caption instead of a date line plus a separate
+            // standalone badge — kept quiet, not a competing accent.
+            const otherMetaText = [otherDateLabel, otherRecoveryWeek != null ? `Recovery week ${otherRecoveryWeek}` : null]
+              .filter(Boolean)
+              .join(' · ');
+            const otherHeaderLabel = [
+              `${isViewedOther ? 'Collapse' : 'Expand'} ${other.title || 'Untitled Routine'}`,
+              otherDateLabel,
+              otherRecoveryLabel,
+            ].filter(Boolean).join(', ');
+            return (
+              <Card key={other.id} style={styles.otherNoteCard}>
+                <Pressable
+                  onPress={() => handleViewOtherNote(other)}
+                  style={styles.otherNoteHeader}
+                  accessibilityRole="button"
+                  accessibilityLabel={otherHeaderLabel}
+                  accessibilityState={{ expanded: isViewedOther }}
                 >
-                  <Pressable
-                    onPress={() => handleViewOtherNote(other)}
-                    style={styles.otherNoteHeader}
-                    accessibilityRole="button"
-                    accessibilityLabel={otherHeaderLabel}
-                    accessibilityState={{ expanded: isViewedOther }}
-                  >
-                    <View style={styles.otherNoteInfo}>
-                      <Text
-                        style={styles.otherNoteTitle}
-                        numberOfLines={2}
-                        ellipsizeMode="tail"
-                      >
-                        {other.title || 'Untitled Routine'}
-                      </Text>
-                      {otherMetaText ? (
-                        <Text style={styles.otherNoteSub}>{otherMetaText}</Text>
-                      ) : null}
+                  <View style={styles.otherNoteInfo}>
+                    <Text
+                      style={styles.otherNoteTitle}
+                      numberOfLines={2}
+                      ellipsizeMode="tail"
+                    >
+                      {other.title || 'Untitled Routine'}
+                    </Text>
+                    {otherMetaText ? (
+                      <Text style={styles.otherNoteSub}>{otherMetaText}</Text>
+                    ) : null}
+                  </View>
+                  <MaterialIcons
+                    name={isViewedOther ? 'expand-less' : 'expand-more'}
+                    size={18}
+                    color={colors.textMuted}
+                    accessible={false}
+                  />
+                </Pressable>
+                {isViewedOther && viewingNote && (
+                  <>
+                    {/* The gesture is preserved; the visible "Double-tap to edit"
+                        hint is gone (#724) — the expanded body's explicit `Edit
+                        routine` control is the advertised path. */}
+                    <Pressable onPress={handleViewedNoteBodyPress} style={styles.currentNoteContent}>
+                      <WorkoutContentRenderer
+                        dayGroups={viewingNoteDayGroups}
+                        emptyText="No exercises to display."
+                      />
+                    </Pressable>
+                    <View style={styles.inlineActions}>
+                      {/* The viewed card's Week A/B switch (#711), unchanged
+                          pill form: it changes which week you are READING,
+                          not a routine-lifecycle action like the buttons
+                          below, and keeps the exact role/label/selected
+                          state it had before. */}
+                      {viewingHasABWeeks && (
+                        <View style={styles.viewActions}>
+                          <Pressable
+                            onPress={handleToggleViewingWeek}
+                            style={styles.inlineSwitchButton}
+                            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Switch to Week ${viewingEffectiveWeek === 'B' ? 'A' : 'B'}`}
+                            accessibilityState={{ selected: viewingEffectiveWeek === 'B' }}
+                          >
+                            <Text style={styles.inlineSwitchButtonText}>
+                              Week {viewingEffectiveWeek === 'B' ? 'A' : 'B'}
+                            </Text>
+                          </Pressable>
+                        </View>
+                      )}
+                      <Button
+                        onPress={handleEditViewedNote}
+                        title="Edit routine"
+                        style={styles.switchButton}
+                        textStyle={styles.switchButtonText}
+                      />
+                      <Button
+                        onPress={() => handleSwitchCurrent(other.id)}
+                        title="Set as current routine"
+                        style={styles.switchButton}
+                        textStyle={styles.switchButtonText}
+                      />
+                      <Button
+                        onPress={() => viewingNote && handleDeleteRoutine(viewingNoteId, viewingNote.title || 'Untitled Routine', false)}
+                        title="Delete routine"
+                        accessibilityLabel={`Delete routine ${viewingNote?.title || 'Untitled Routine'}`}
+                        tone="danger"
+                      />
                     </View>
-                    <MaterialIcons
-                      name={isViewedOther ? 'expand-less' : 'expand-more'}
-                      size={18}
-                      color={colors.textMuted}
-                      accessible={false}
-                    />
-                  </Pressable>
-                  {isViewedOther && viewingNote && (
-                    <>
-                      {/* The gesture is preserved; the visible "Double-tap to edit"
-                          hint is gone (#724) — the expanded body's explicit `Edit
-                          routine` control is the advertised path. */}
-                      <Pressable onPress={handleViewedNoteBodyPress} style={styles.currentNoteContent}>
-                        <WorkoutContentRenderer
-                          dayGroups={viewingNoteDayGroups}
-                          emptyText="No exercises to display."
-                        />
-                      </Pressable>
-                      <View style={styles.inlineActions}>
-                        {/* The viewed card's Week A/B switch (#711), unchanged
-                            pill form: it changes which week you are READING,
-                            not a routine-lifecycle action like the buttons
-                            below, and keeps the exact role/label/selected
-                            state it had before. */}
-                        {viewingHasABWeeks && (
-                          <View style={styles.viewActions}>
-                            <Pressable
-                              onPress={handleToggleViewingWeek}
-                              style={styles.inlineSwitchButton}
-                              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                              accessibilityRole="button"
-                              accessibilityLabel={`Switch to Week ${viewingEffectiveWeek === 'B' ? 'A' : 'B'}`}
-                              accessibilityState={{ selected: viewingEffectiveWeek === 'B' }}
-                            >
-                              <Text style={styles.inlineSwitchButtonText}>
-                                Week {viewingEffectiveWeek === 'B' ? 'A' : 'B'}
-                              </Text>
-                            </Pressable>
-                          </View>
-                        )}
-                        <Button
-                          onPress={handleEditViewedNote}
-                          title="Edit routine"
-                          style={styles.switchButton}
-                          textStyle={styles.switchButtonText}
-                        />
-                        <Button
-                          onPress={() => handleSwitchCurrent(other.id)}
-                          title="Set as current routine"
-                          style={styles.switchButton}
-                          textStyle={styles.switchButtonText}
-                        />
-                        <Button
-                          onPress={() => viewingNote && handleDeleteRoutine(viewingNoteId, viewingNote.title || 'Untitled Routine', false)}
-                          title="Delete routine"
-                          accessibilityLabel={`Delete routine ${viewingNote?.title || 'Untitled Routine'}`}
-                          tone="danger"
-                        />
-                      </View>
-                    </>
-                  )}
-                </View>
-              );
-            })}
-          </View>
-        )}
-      </View>
+                  </>
+                )}
+              </Card>
+            );
+          })}
+        </View>
+      )}
     </View>
   );
 }
@@ -273,7 +279,7 @@ const createStyles = (colors) => StyleSheet.create({
     gap: 12,
   },
   // The persistent `New routine` control (#843): a sibling of the section
-  // title, visible whether the panel below is expanded or collapsed.
+  // title, visible whether the collection below is expanded or collapsed.
   newRoutineButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -289,43 +295,31 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '700',
     color: colors.accent,
   },
-  // One card-equivalent panel with a flat divided list (#843): no nested
-  // row-card borders, radii, or horizontal margins inside it.
-  panel: {
-    backgroundColor: colors.card,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    overflow: 'hidden',
-  },
-  header: {
+  // Lightweight collection disclosure (#847): compact text plus glyph, muted
+  // ink, 44dp target — no bordered panel or tinted bar of its own, matching
+  // Analytics -> Progressive Overload's `collapseAllButton`.
+  disclosureToggle: {
     flexDirection: 'row',
+    alignSelf: 'flex-start',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    gap: 4,
     minHeight: 44,
-    backgroundColor: colors.subtleBg,
   },
-  headerBordered: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+  disclosureToggleText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  headerContent: {
-    flex: 1,
+  // Individual quiet rounded cards (#847), pre-#843 hierarchy: separated by
+  // normal shell spacing, no shared outer panel or divided-list chrome.
+  cardList: {
+    gap: 12,
   },
-  body: {
-    paddingVertical: 4,
-  },
-  row: {
-    paddingHorizontal: 0,
-  },
-  rowDivider: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.divider,
-  },
-  rowOpen: {
-    backgroundColor: colors.subtleBg,
+  otherNoteCard: {
+    padding: 0,
+    overflow: 'hidden',
   },
   otherNoteHeader: {
     flexDirection: 'row',
