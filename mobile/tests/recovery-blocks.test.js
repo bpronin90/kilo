@@ -2434,8 +2434,8 @@ describe('LogRecoverySection: no in-section Recovery entry point (#724)', () => 
 
     expect(startControl(root)).toBeNull();
     // The active card leads with the week state and names its baseline in the
-    // caption (#789); `Complete recovery block` now lives one tap away inside
-    // `Manage recovery block` rather than in a flat action row.
+    // caption (#789); `End recovery block` (#843) now lives one tap away
+    // inside `Manage block` rather than in a flat action row.
     expect(textCount(root, 'Week 1 in progress')).toBe(1);
     expect(root.findAll(n => n.type === 'Text' && Array.isArray(n.props.children)
       && n.props.children.join('') === 'Baseline: Legs Day').length).toBe(1);
@@ -2445,7 +2445,7 @@ describe('LogRecoverySection: no in-section Recovery entry point (#724)', () => 
       && typeof n.props.onPress === 'function')[0];
     expect(manage).toBeTruthy();
     render.act(() => { manage.props.onPress(); });
-    expect(textCount(root, 'Complete recovery block')).toBe(1);
+    expect(textCount(root, 'End recovery block')).toBe(1);
   });
 
   test('only completed blocks — no active block — renders nothing; history lives in Analytics (#729)', () => {

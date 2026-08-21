@@ -128,8 +128,10 @@ Source: `mobile/components/UI.js`
 
 Every ordinary card uses this 1px `cardBorder` in both modes — no card is
 special-cased. The single documented exception is the current-routine card in
-`LogActiveRoutineCard.js`, which keeps a 4px `colors.accent` border on all
-sides so the active note is identifiable at a glance.
+`LogActiveRoutineCard.js`, which pairs the standard 1px `cardBorder` with a
+single 4px `colors.accent` rail across the card's top edge (#843) so the
+active note is still identifiable at a glance, without a filled rectangle
+everywhere else on screen the way the former all-round border was.
 
 Tone variants (accent/success/error/warn) override bg and border to the tone color. Lines `165-180`.
 
@@ -804,7 +806,11 @@ Source: `mobile/screens/LogScreen.js`, and the extracted
 
 Style lock header at lines 1-7 (`mobile/screens/LogScreen.js`): do not change
 Log styling unless the repo owner explicitly asks. The authorized layout
-exceptions for #710 and #711 are enumerated in that same header block.
+exceptions for #710 and #711 are enumerated in that same header block. #843
+is a further owner-authorized exception (the Recovery/Routine redesign
+below), scoped to `styles.tabToggle` in `LogScreen.js` plus
+`LogRecoverySection.js`, `RecoveryBlockEndModal.js` (new),
+`LogActiveRoutineCard.js`, and `LogPreviousRoutines.js`.
 
 ### Action hierarchy (#711)
 
@@ -813,57 +819,48 @@ action is placed by how often it is used:
 
 | Tier | Actions | Location |
 |---|---|---|
-| Primary — every session | `Track` a lift, `Edit`, `Week A/B`, skip week | Active card body, plus the one action strip under its header (`LogActiveRoutineCard.js` `actionStrip`) |
-| Secondary — occasional | `Edit routine`, `Delete routine`, viewed-card `Week A/B`, full `Set as current routine` | Non-current card's expand-on-tap body (`LogPreviousRoutines.js` `inlineActions`), inside expanded routine management |
-| Quick access — reachable without opening (#756, #836) | `New routine` (icon + visible label, the section's ONE create-routine affordance), compact `Set as current routine` icon per collapsed row | Panel header (present collapsed or expanded) and each collapsed non-current row's header respectively (`LogPreviousRoutines.js`) |
+| Primary — every session | `Track` a lift, `Edit`, `Week A/B`, skip week | Active card body, plus the one 38px control row under its header (`LogActiveRoutineCard.js` `controlRow`, #843) |
+| Secondary — occasional | `Edit routine`, `Delete routine`, viewed-card `Week A/B`, full `Set as current routine` | Non-current row's expand-on-tap body (`LogPreviousRoutines.js` `inlineActions`), inside expanded routine management |
+| Quick access — reachable without opening (#756, #836; the per-row quick action retired #843) | `New routine` (icon + visible label, the section's ONE create-routine affordance) | A sibling row of the section title, OUTSIDE the disclosure panel entirely (#843) — present and identical whether the panel is collapsed or expanded (`LogPreviousRoutines.js` `topRow`) |
 | Rare — once per training block | `Start recovery block` | A persistent, low-emphasis outline row directly under the current routine card (`LogScreen.js` `recoveryStartRow`), never nested in a menu or disclosure; absent whenever a block cannot be started (#823, superseding #724's routine-management placement) |
 | Rare — reopening the most recently completed block, offered only with no block active (#839) | `Reopen recovery block: {baseline title}` | A second, lower-emphasis outline row (`LogScreen.js` `recoveryReopenRow`) directly below `Start recovery block` — same shape, `textMuted` ink instead of `accent`, so `Start` stays visually primary; computes its own visibility independently and can render alongside `Start`. The Analytics evidence card (`AnalyticsRecoverySection.js`) offers the same action, secondary-styled, only on the newest completed block's own card |
-| Recovery — expected next step | `Complete week` **or** `Add week` (never both), each behind its own confirmation | Active Recovery card body, visible by default and the card's only accent-filled control (`LogRecoverySection.js`, #789/#804/#836) |
-| Recovery — reversal, offered only for the just-completed latest week | `Undo completion` | Beside `Add week`, secondary `chipBackground` + `error` chip; confirms before reopening the week, and disappears once a later week exists (`LogRecoverySection.js`, #836) |
-| Recovery — correction or once-per-block | `Unlink Week {N}`, `Complete recovery block`, the analytics-inclusion switch | `Manage recovery block`, a collapsed-by-default disclosure inside the active Recovery card; both buttons are secondary `chipBackground` chips with `error` labels (#789/#804) |
+| Recovery — expected next step | `Complete Week {N}` **or** `Add week` (never both), each behind its own confirmation | The active card's action zone, visible by default, full-width/48px, and the card's only accent-filled control, with a muted explanatory caption beneath it (`LogRecoverySection.js`, #789/#804/#836/#843) |
+| Recovery — reversal, offered only for the just-completed latest week | `Undo completion` | Beside the primary action, muted (not `error`) ink — a routine correction, not a destructive action (#843; was an `error`-labeled chip) (`LogRecoverySection.js`, #836) |
+| Recovery — correction or once-per-block | `Counting in normal analytics`, `Unlink Week {N}'s note`, `End recovery block` | `Manage block`, a sibling card next to the active card (#843, no longer a disclosure INSIDE it), holding three divided list rows; `End recovery block` opens `RecoveryBlockEndModal` instead of `Alert.alert` |
 
 Consequences to preserve:
 
-- **More Routines has no enclosing bordered/radius panel (#823).** It used to
-  mirror the Recovery History panel's chrome (`radius 24`, 1px `cardBorder`,
-  a `subtleBg` header fill); it now renders as a flat section — a plain
-  header row and, expanded, a plain list of routine cards — matching the rest
-  of the Routine tab. The disclosure mechanics below (header composition,
-  quick actions, expand/collapse ownership) are otherwise unchanged.
-- **More Routines is a collapsed-by-default disclosure (#724).** Its header is
-  no longer one whole-header Pressable; it is a plain row of three sibling
-  touch targets — a `headerToggle` Pressable (count summary only while
-  collapsed, `44` `minHeight`), a `New routine` affordance (#756, labeled
-  #836: `MaterialIcons` `add` plus a visible "New routine" text label — not
-  icon-only — since it is this section's ONE create-routine control now that
-  the former bottom `+ New routine` duplicate is gone), and a
-  `headerChevronButton` Pressable carrying the `MaterialIcons`
-  `expand-more`/`expand-less` chevron (18, `textMuted`) — with the toggle and
-  chevron both wired to the same expand/collapse handler and
-  `accessibilityState={{ expanded }}`, so tapping either still toggles the
-  disclosure. `New routine` is present whether the disclosure is collapsed or
-  expanded, since creating a routine is common enough that it must not require
-  opening the disclosure first. Collapsed, the routine cards stay inside the
-  expanded body only. Each quick action is a
-  **sibling** of the toggle/row Pressable beside it, never nested inside it:
-  VoiceOver groups a nested `Pressable` into its accessible ancestor, which
-  would make the nested control unreachable as its own action (#756 review). A
-  card header's only nested press target is otherwise still identity, with one
-  exception: each non-current card's own collapsed (unopened) row also carries
-  a sibling, icon-only `Set as current routine: <title>` affordance
-  (`MaterialIcons` `check-circle-outline`) so switching the current routine
-  never requires opening that row and scrolling to its expand-on-tap body. It
-  disappears once the row is opened, where the existing full `Set as current
-  routine` button in the row's body remains the only instance of that action.
-  Both quick actions call straight through to the same handlers
-  (`handleCreateRoutine`, `handleSwitchCurrent`) the expanded-body controls
-  already used, so every existing confirmation and safeguard is unchanged. An
-  external request to reveal a non-current routine — a typed navigation intent
-  (#718) naming a non-current, non-deload routine, and nothing else since #775 —
+- **More Routines is one card-equivalent panel with a flat, divided row list
+  (#843, superseding #823's borderless flat section).** The panel itself
+  (`LogPreviousRoutines.js` `panel`) is the ordinary `radius 24`, 1px
+  `cardBorder`, `subtleBg`-header chrome — but there are no nested per-row
+  `Card` borders, radii, or horizontal margins inside it any more: rows are
+  divided by a single `colors.divider` bottom rule (all but the last), and an
+  open row's background is `colors.subtleBg`.
+- **The count and `New routine` live OUTSIDE the panel entirely (#843,
+  superseding #756/#836's in-header placement).** `More Routines · {count}`
+  IS the section's `SectionTitle` now — always visible, expanded or
+  collapsed, never repeated or hidden by the disclosure's own state — and a
+  sibling 38px outlined `New routine` control (icon + visible label, this
+  section's ONE create-routine affordance) sits beside it. The panel's own
+  header inside is now just the toggle Pressable — no count text, no `New
+  routine` button left inside it.
+- **More Routines is a collapsed-by-default disclosure (#724).** The header
+  toggle carries the standard `MaterialIcons` `expand-more`/`expand-less`
+  chevron (18, `textMuted`) and `accessibilityState={{ expanded }}`.
+  Collapsed, the routine rows stay inside the expanded body only. An external
+  request to reveal a non-current routine — a typed navigation intent (#718)
+  naming a non-current, non-deload routine, and nothing else since #775 —
   auto-expands the disclosure via a monotonic reveal nonce keyed on the REQUEST,
   not on `viewingNoteId`, so a repeat request for the already-selected note
   reopens it while an unchanged nonce respects a user's collapse. A Recovery tap
   reveals nothing: it reads its note in the Recovery card instead (see below).
+- **The per-row icon-only `Set as current routine` quick action is retired
+  (#843, superseding #756).** Switching the current routine is reachable only
+  from a row's own expanded body now, alongside `Edit routine` and `Delete
+  routine`; a collapsed row shows only title and an inline `Created {date} ·
+  Recovery week {n}` metadata caption (folding the former standalone recovery
+  badge into that one line) plus the expand glyph.
 - **The disclosure state is owned by `LogScreen`, not by the sections (#775).**
   Routine and Deload are mutually exclusive branches, so `LogPreviousRoutines`
   and `LogDeloadSection` unmount on every view switch; `expanded`,
@@ -965,59 +962,62 @@ Consequences to preserve:
   (in the disclosure, see below), and that unlink confirmation drops both the
   quoted title and the "note itself is kept" clause. `Untitled Routine` is
   reserved for notes that exist.
-- **The active Recovery card leads with state, not with the baseline (#789).**
-  Its first line is a state-derived headline — `Week {N} in progress` or
-  `Week {N} complete — add the next week` — and the baseline follows as one
-  de-emphasized `Baseline: <routine>` caption, replacing the former
-  label+value pair. The headline describes only the CURRENT week; every live
-  week of the block — completed history included, since #836 — renders below
-  it as its own row (see the next bullet). One primary lifecycle action is
-  visible by default (`Complete week` while the week is open, `Add week` once
-  it completes; the two are mutually exclusive by construction); once the
-  current week is complete, a secondary `Undo completion` chip sits beside
-  `Add week` (#836) — offered only for that just-completed latest week, never
-  for an earlier one once a later week exists. `Complete week` confirms its
-  consequence before committing (`Complete Week {N}?`, stating that it
-  completes the current week, preserves its note, and does not create or
-  submit the next week's note); `Undo completion` confirms too
-  (`Reopen Week {N}?`), restoring the week to in-progress and leaving its note
-  untouched. Everything not needed to log today's workout sits in one
-  `Manage recovery block` disclosure, collapsed by default, holding `Unlink
-  Week {N}` (always naming the concrete current week, open or just-completed —
-  there is no row-level `Unlink`), `Complete recovery block`, and the
-  `RecoveryInclusionToggle` with its help. Stale, pending, terminal, and
-  inline-error banners stay **outside** the disclosure so they are announced
-  without expanding anything, and `Retry recovery` is never disclosed. The
-  disclosure trigger reuses the existing chip treatment, carries
-  `accessibilityRole="button"` with `accessibilityState={{ expanded }}`, and is
-  **never** disabled: under `actionsLocked` the controls inside it each keep
-  their own existing disabled gating (`actionsLocked` for the lifecycle
-  buttons, `inclusionLocked` for the switch) so a locked user can still open it
-  and see which specific control is unavailable, rather than being stranded
-  behind a container that will not open.
-- **Every live week is its own labeled, distinguishable row (#836, correcting
-  #804's hidden-completed-week design).** Each week row is a borderless single
-  line (`minHeight: 44`) holding a `Week {N}` label plus an explicit
-  `In progress`/`Completed` status, the note title, and a `chevron-right` (or
-  `expand-less` while expanded) read affordance — completed weeks render
-  alongside the current one, not just in Analytics history, so the block's
-  whole sequence and each week's note stay visible and reachable on Log. A
-  second tap on an already-expanded row collapses it (previously set-only, so
-  a repeat tap never closed the note); Back also collapses it but is not the
-  only way. The accessible names for an in-progress row are unchanged (`View
-  <title>, Recovery Week N` / `Recovery Week N, note unavailable`); a
-  completed row's name gains an explicit `, completed` suffix. The expanded
-  note's `Edit` action opens the shared editor on the exact note and A/B half
-  being viewed. The one visible lifecycle action (`Complete week` / `Add
-  week`) is the card's only `accent` fill with `onAccent` ink;
-  `Complete recovery block` and `Undo completion` are the same secondary
-  `chipBackground` + `error` chip `Unlink Week {N}` uses, so the rarest and
-  reversal actions are never the loudest control. Every disclosed or secondary
-  chip carries an explicit `minHeight: 44`. The `Manage recovery block`
-  trigger drops its chip fill and border — it discloses, it does not act — and
-  its glyph is the standard `MaterialIcons` `expand-more`/`expand-less`
-  chevron (18, `textMuted`) required by `ui-design-rules.md` §6, replacing the
-  `▸`/`▾` text arrows.
+- **The active Recovery card is one grouped, three-zone card (#789, restyled
+  #843).** `padding: 0`, clipped at the existing 24px radius/border, holding a
+  state zone, a week table, and an action zone, followed by a SIBLING `Manage
+  block` card (see below) — the disclosure that used to live inside the
+  active card moved out. The state zone (`colors.subtleBg`) leads with a
+  `RECOVERY BLOCK` kicker, then a state-derived headline — `Week {N} in
+  progress` or `Week {N} complete — add the next week` — then the baseline as
+  one de-emphasized `Baseline: <routine>` caption; the headline still
+  describes only the CURRENT week. The action zone holds exactly one
+  full-width 48px primary action (`Complete Week {N}` while the week is open,
+  `Add week` once it completes — mutually exclusive by construction) with a
+  muted explanatory caption beneath it; once the current week is complete, a
+  muted-ink (not `error`) `Undo completion` control sits beside it (#836) —
+  offered only for that just-completed latest week. `Complete Week {N}`
+  confirms its consequence before committing (`Complete Week {N}?`, stating
+  that it completes the current week, preserves its note, and does not create
+  or submit the next week's note, via `Alert.alert`, unchanged); `Undo
+  completion` confirms too (`Reopen Week {N}?`).
+- **Every live week is its own labeled, distinguishable row (#836, restyled
+  #843).** Each row (`minHeight: 56`, 18px horizontal padding, divider lines)
+  holds a 26px status dot (a success-at-12%-alpha filled circle with a 16px
+  check for completed; an accent-bordered ring for in-progress — no more
+  repeated `In progress`/`Completed` text), a fixed 56px `Week {N}` label, a
+  one-line note title, and an `expand-more`/`expand-less` glyph — never
+  `chevron-right` — for every linked-note row, completed weeks included. The
+  current week's row and expanded body share an accent-at-6%-alpha background
+  and a 3px accent left rail (padding compensated 18→15). A second tap on an
+  already-expanded row collapses it; Back also collapses it. Accessible names
+  are unchanged (`View <title>, Recovery Week N` / `Recovery Week N, note
+  unavailable`; a completed row's name gains `, completed`). The expanded body
+  is inset in a card-colored, 14px-radius bordered surface with an uppercase
+  accent kicker on the left and the Recovery `A`/`B` segment (replacing the
+  former `Week A/B` pill; 32px visual height, documented sub-44dp exception)
+  above the content it governs. Note content renders via
+  `WorkoutContentRenderer`'s `compact` prop (exercise 14/700; sets
+  13/muted/600) — Routine rendering elsewhere stays full-scale. The one
+  expanded-note action is a single 36px outlined `Edit note` control
+  (`accessibilityLabel="Edit"`, unchanged), opening the shared inline editor
+  (#841) on the exact note and A/B half being viewed.
+- **`Manage block` is a sibling card, not a disclosure inside the active card
+  (#843, superseding #789's in-card placement).** Its trigger is **never**
+  disabled — a locked user can still open it and see why each row is
+  unavailable — and it renders three divided list rows with trailing
+  chevrons: `Counting in normal analytics` (the row itself IS the
+  Log-surface inclusion control now, `accessibilityRole="switch"` — tapping
+  it writes `include_in_normal_analytics` directly, live `On`/`Off` stated
+  on the row; a trailing `info-outline` help toggle swaps the subtitle for
+  the same `RECOVERY_INCLUSION_HELP` copy on demand. The switch Pressable
+  and the help Pressable are TRUE siblings under a plain, non-accessible
+  wrapper View — not nested inside one another — so VoiceOver never groups
+  the help button into the switch's own accessible tree (#843 review).
+  `RecoveryInclusionToggle`'s own Switch presentation is unchanged but no
+  longer used here — it still hosts Analytics/Home's per-completed-block
+  rows), `Unlink Week {N}'s note` (always naming the concrete current week —
+  there is no row-level `Unlink`), and error-colored `End recovery block`,
+  which opens `RecoveryBlockEndModal` instead of `Alert.alert`.
 - **Recovery's expanded-note viewer is a separate state slot from Routine's
   (#836).** `useLogOtherRoutineEditor.js` instantiates its shared
   `viewingNoteId`/`viewingNote`/`viewingNoteDayGroups`/`Week A/B` machinery
@@ -1033,9 +1033,10 @@ Consequences to preserve:
   section on Log. A cold first read stays neutral (renders nothing) so a
   non-adopter never sees a Recovery card flash; a terminal first-read failure
   still shows the unknown state with `Retry recovery`.
-- `RecoveryInclusionToggle` (hosted by the active card on Log and by every
-  completed-block row on Analytics) states `Include recovery notes in normal
-  analytics` and nothing else by default. The explanation moved behind an
+- `RecoveryInclusionToggle` (#843: no longer hosted on Log — see the
+  `Manage block` bullet above — now hosted only by every completed-block row
+  on Analytics/Home) states `Include recovery notes in normal analytics` and
+  nothing else by default. The explanation moved behind an
   `info-outline` info button beside the label (#757): a 16dp glyph centered in
   a real `44 x 44` Pressable box — **not** a `hitSlop`, which React Native
   clips at the parent's bounds and which would therefore claim a target this
@@ -1053,11 +1054,11 @@ Consequences to preserve:
 
 | Element | Property | Value | Line |
 |---|---|---|---|
-| Current note title | fontSize | `24` | `LogActiveRoutineCard.js:187` |
-| | fontWeight | `800` | `LogActiveRoutineCard.js:188` |
-| | color | `colors.accent` | `LogActiveRoutineCard.js:189` |
-| Current routine card | borderWidth | `4` | `LogActiveRoutineCard.js:166` |
-| | padding | `0` | `LogActiveRoutineCard.js:164` |
+| Current note title | fontSize | `24` | `LogActiveRoutineCard.js` |
+| | fontWeight | `800` | `LogActiveRoutineCard.js` |
+| | color | `colors.text` (#843; was `colors.accent`) | `LogActiveRoutineCard.js` |
+| Current routine card | borderWidth | standard 1px `cardBorder` + 4px `colors.accent` top rail (#843; was 4px all-round) | `LogActiveRoutineCard.js` |
+| | padding | `0` | `LogActiveRoutineCard.js` |
 | Other note title | fontSize | `20` | `LogPreviousRoutines.js:173` |
 | | fontWeight | `800` | `LogPreviousRoutines.js:174` |
 | Other note subtitle | fontSize | `12` | `LogPreviousRoutines.js:178` |

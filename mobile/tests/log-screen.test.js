@@ -3169,7 +3169,7 @@ describe('LogActiveRoutineCard: header collapses, body edits (separate handlers)
 
   test('tapping the header calls toggleCollapsed, not the body handler', () => {
     const { root, props } = renderCard();
-    const header = pressableAround(root, t => t.includes('Current routine'));
+    const header = pressableAround(root, t => t === 'CURRENT');
     render.act(() => { header.props.onPress(); });
     expect(props.toggleCollapsed).toHaveBeenCalledTimes(1);
     expect(props.handleNoteBodyPress).not.toHaveBeenCalled();
@@ -3273,9 +3273,9 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     expect(title.props.ellipsizeMode).toBe('tail');
 
     // Identity only: title, subtitle, badge — and not one nested control.
-    const header = pressableAround(root, t => t.includes('Current routine'));
+    const header = pressableAround(root, t => t === 'CURRENT');
     expect(nestedPressablesUnder(header).length).toBe(0);
-    expect(header.findAll(n => n.type === 'Text' && String(n.props.children).includes('Recovery Week')).length)
+    expect(header.findAll(n => n.type === 'Text' && String(n.props.children).includes('RECOVERY WEEK')).length)
       .toBeGreaterThan(0);
 
     const infoColumn = findStyled(root, s => s.flex === 1 && 'minWidth' in s);
@@ -3286,11 +3286,13 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     const wrapRows = findStyled(root, s => s.flexWrap === 'wrap');
     expect(wrapRows.length).toBeGreaterThan(0);
 
-    const pills = findStyled(root, s => s.minHeight === 44);
-    expect(pills.length).toBe(3); // Edit + Week A/B + Skip week/Remove skip (#823: 44dp floor)
+    // #843 restyles the three controls to a consistently shaped 38px row,
+    // keeping the documented sub-44dp hitSlop exception rather than raising
+    // every control to a 44dp box.
+    const pills = findStyled(root, s => s.height === 38);
+    expect(pills.length).toBe(3); // Edit + Week A/B + Skip week/Remove skip
     for (const pill of pills) {
       const style = flatStyle(pill);
-      expect(style.justifyContent).toBe('center');
       expect(style.flexShrink).toBe(1);
     }
 
@@ -3331,7 +3333,7 @@ describe('Routine-card header/action containment (#710, #711)', () => {
 
     const header = pressableAround(root, t => t.includes(LONG_TITLE));
     expect(nestedPressablesUnder(header).length).toBe(0);
-    expect(header.findAll(n => n.type === 'Text' && String(n.props.children).includes('Recovery Week')).length)
+    expect(header.findAll(n => n.type === 'Text' && String(n.props.children).includes('Recovery week')).length)
       .toBeGreaterThan(0);
 
     const infoColumn = findStyled(root, s => s.flex === 1 && 'minWidth' in s);
@@ -3383,7 +3385,7 @@ describe('Routine-card header/action containment (#710, #711)', () => {
         />
       );
     });
-    const routinesTitle = findTitleText(routinesComponent.root, 'More Routines');
+    const routinesTitle = findTitleText(routinesComponent.root, 'More Routines · 0');
     expect(routinesTitle).toBeTruthy();
 
     const recoveryStyle = flatStyle(recoveryTitle);
@@ -3420,20 +3422,18 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     });
     const root = component.root;
 
-    // Collapsed routine management (#724) still hides the routine cards and
-    // most management actions behind the disclosure, but (#756) the header
-    // itself now also carries a compact `New routine` affordance so creating a
-    // routine never requires opening the disclosure first. The toggle is its
-    // own two adjacent buttons (content + chevron), each a sibling of New
-    // Note rather than its parent, so no quick action is grouped away from
-    // VoiceOver under an ancestor Pressable (PR #760 review).
-    const buttons = root.findAll(
-      n => typeof n.type === 'string' && n.props && n.props.accessibilityRole === 'button'
-    );
-    expect(buttons.length).toBe(3);
-    const toggles = buttons.filter(b => b.props.accessibilityLabel === 'Expand routine management');
-    expect(toggles.length).toBe(2);
-    for (const toggle of toggles) expect(toggle.props.accessibilityState).toEqual({ expanded: false });
+    // Collapsed routine management (#724, redesigned #843) still hides the
+    // routine cards and every row-level management action behind the
+    // disclosure, but the count and the `New routine` affordance now live
+    // OUTSIDE the panel entirely — always visible, not gated by the
+    // disclosure's own open state, and a sibling of the toggle rather than
+    // its child (PR #760 review).
+    const toggle = root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'Expand routine management'
+        && typeof n.props.onPress === 'function'
+    )[0];
+    expect(toggle).toBeTruthy();
+    expect(toggle.props.accessibilityState).toEqual({ expanded: false });
     const newRoutine = root.findAll(
       n => n.props && n.props.accessibilityLabel === 'New routine' && typeof n.props.onPress === 'function'
     )[0];
@@ -3454,9 +3454,9 @@ describe('Routine-card header/action containment (#710, #711)', () => {
       expect(root.findAll(n => n.type === 'Text' && n.props.children === label).length).toBe(0);
     }
 
-    // The collapsed summary is the header's only content (#836): a count,
-    // with no "Latest:" naming one routine over the others.
-    expect(root.findAll(n => n.type === 'Text' && n.props.children === '2 more routines').length).toBe(1);
+    // The count is `More Routines · {count}` (#843), always visible, with no
+    // "Latest:" naming one routine over the others.
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'More Routines · 2').length).toBe(1);
     expect(root.findAll(
       n => n.type === 'Text' && Array.isArray(n.props.children) && n.props.children[0] === 'Latest: '
     ).length).toBe(0);
@@ -3507,11 +3507,10 @@ describe('LogPreviousRoutines: compact disclosure panel rhythm (#841)', () => {
     expect(panelStyle.borderColor).toBe(LightColors.cardBorder);
     expect(panelStyle.overflow).toBe('hidden');
 
+    // The header IS the toggle Pressable now (#843) — no separate wrapping
+    // View — so its tinted background lives on the toggle's own style.
     const toggle = root.findAll(n => n.props && n.props.accessibilityLabel === 'Expand routine management')[0];
-    let header = toggle.parent;
-    while (header && !(header.props && header.props.style && flat(header).backgroundColor)) header = header.parent;
-    expect(header).toBeTruthy();
-    expect(flat(header).backgroundColor).toBe(LightColors.subtleBg);
+    expect(flat(toggle).backgroundColor).toBe(LightColors.subtleBg);
   });
 
   test('collapsed, the panel is exactly the header — no dead body slab beneath it', () => {
@@ -3522,22 +3521,21 @@ describe('LogPreviousRoutines: compact disclosure panel rhythm (#841)', () => {
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Routine Two').length).toBe(0);
   });
 
-  test('expanded, the gap from the header to the first routine equals the gap between routines', () => {
+  // Rows are a flat, divided list now (#843), not gap-separated cards — every
+  // row but the last carries its own bottom divider instead of a `gap`
+  // between siblings, so the former "top spacing equals the row gap" rhythm
+  // this test pinned no longer applies to the redesigned panel.
+  test('expanded, every row but the last carries a divider — not the first', () => {
     const root = render_(true);
-    // `body`'s own top spacing and its inter-row `gap` are the same value
-    // (#841): the header's bottom border already separates it from the list,
-    // so a second, larger top padding would double the visual gap versus the
-    // gap between rows below it.
-    const bodyCandidates = root.findAll(n => {
-      if (!n.props || !n.props.style) return false;
-      const s = flat(n);
-      return s.gap === 12 && (s.paddingVertical === 12 || s.paddingTop === 12);
-    });
-    expect(bodyCandidates.length).toBeGreaterThan(0);
-    const body = bodyCandidates[0];
-    const s = flat(body);
-    const topSpacing = s.paddingTop ?? s.paddingVertical;
-    expect(topSpacing).toBe(s.gap);
+    const flat = (n) => Object.assign({}, ...(Array.isArray(n.props.style) ? n.props.style : [n.props.style]).filter(Boolean));
+    // The row divider uses `colors.divider`, distinct from the header's own
+    // `cardBorder` bottom rule, so this only counts row-to-row separators.
+    // Host nodes only (`typeof n.type === 'string'`): a plain `View` renders
+    // as both a composite and a host node carrying the same style prop, so an
+    // unfiltered walk would count every divider twice.
+    const dividedRows = root.findAll(n => typeof n.type === 'string' && n.props && n.props.style && flat(n).borderBottomColor === LightColors.divider);
+    // Two routines: exactly one internal divider between them.
+    expect(dividedRows.length).toBe(1);
   });
 });
 
@@ -3623,7 +3621,7 @@ describe('Log action hierarchy (#711)', () => {
   describe('active card action strip', () => {
     test('the Week A/B switch moved out of the header into the strip and still toggles', () => {
       const { root, props } = renderActiveCard({ hasABWeeks: true, effectiveActiveWeek: 'A' });
-      const header = pressableAround(root, t => t.includes('Current routine'));
+      const header = pressableAround(root, t => t === 'CURRENT');
       expect(header.findAll(n => n !== header && n.props && typeof n.props.onPress === 'function').length).toBe(0);
 
       const weekBtn = pressableAround(root, t => t === 'Week B');
@@ -3771,44 +3769,34 @@ describe('LogPreviousRoutines: compact New Note and set-current actions (#756)',
     expect(toggle).toBeTruthy();
   });
 
-  test('every collapsed non-current row exposes its own accessible set-current action', () => {
-    const { root, props } = renderList();
-    expandRoutineManagement(root);
-
-    const rowOne = root.findAll(
-      n => n.props && n.props.accessibilityLabel === 'Set as current routine: Routine One'
-        && typeof n.props.onPress === 'function'
-    )[0];
-    const rowTwo = root.findAll(
-      n => n.props && n.props.accessibilityLabel === 'Set as current routine: Routine Two'
-        && typeof n.props.onPress === 'function'
-    )[0];
-    expect(rowOne).toBeTruthy();
-    expect(rowTwo).toBeTruthy();
-
-    render.act(() => { rowOne.props.onPress({ stopPropagation: jest.fn() }); });
-    expect(props.handleSwitchCurrent).toHaveBeenCalledWith('r1');
-    // The row itself was not opened by the nested press — the row's own
-    // header press target is a distinct handler (handleViewOtherNote).
-    expect(props.handleViewOtherNote).not.toHaveBeenCalled();
-  });
-
-  test('an opened row drops the compact action; the full action in its body remains the only one', () => {
-    const note = notes[0];
-    const { root } = renderList({ viewingNoteId: note.id, viewingNote: note });
+  // The icon-only per-row quick action is gone (#843): `Set as current
+  // routine` is reachable only from a row's own expanded body now, alongside
+  // Edit routine and Delete routine.
+  test('a collapsed row exposes no icon-only set-current action', () => {
+    const { root } = renderList();
     expandRoutineManagement(root);
 
     expect(root.findAll(
-      n => n.props && n.props.accessibilityLabel === 'Set as current routine: Routine One'
+      n => n.props && typeof n.props.accessibilityLabel === 'string'
+        && n.props.accessibilityLabel.startsWith('Set as current routine:')
     ).length).toBe(0);
-    expect(pressableAround(root, t => t === 'Set as current routine')).toBeTruthy();
+  });
+
+  test('opening a row reveals `Set as current routine` in its expanded body', () => {
+    const note = notes[0];
+    const { root, props } = renderList({ viewingNoteId: note.id, viewingNote: note });
+    expandRoutineManagement(root);
+
+    const setCurrent = pressableAround(root, t => t === 'Set as current routine');
+    expect(setCurrent).toBeTruthy();
+    render.act(() => { setCurrent.props.onPress(); });
+    expect(props.handleSwitchCurrent).toHaveBeenCalledWith('r1');
   });
 
   // PR #760 review: a nested Pressable is grouped into its accessible ancestor
-  // by VoiceOver, making it unreachable as its own action. Both quick actions
-  // must be siblings of the toggle/row Pressable they sit beside, not children
-  // of it.
-  test('neither quick action is nested inside another accessible Pressable', () => {
+  // by VoiceOver, making it unreachable as its own action. `New routine` must
+  // be a sibling of the toggle it sits beside, not a child of it.
+  test('the New routine control is not nested inside another accessible Pressable', () => {
     const { root } = renderList();
     expandRoutineManagement(root);
 
@@ -3832,12 +3820,6 @@ describe('LogPreviousRoutines: compact New Note and set-current actions (#756)',
       n => n.props && n.props.accessibilityLabel === 'New routine' && typeof n.props.onPress === 'function'
     )[0];
     expect(isOwnAncestorButton(headerButton, 'New routine')).toBe(false);
-
-    const rowButton = root.findAll(
-      n => n.props && n.props.accessibilityLabel === 'Set as current routine: Routine One'
-        && typeof n.props.onPress === 'function'
-    )[0];
-    expect(isOwnAncestorButton(rowButton, 'Set as current routine: Routine One')).toBe(false);
   });
 });
 
@@ -3972,8 +3954,10 @@ describe('LogPreviousRoutines: collapsed routine management (#724)', () => {
     return component.root;
   };
 
+  // The count is `More Routines · {count}` (#843) — the section title itself
+  // — always visible outside the panel, expanded or collapsed.
   const countText = (root) =>
-    root.findAll(n => n.type === 'Text' && typeof n.props.children === 'string' && / more routines?$/.test(n.props.children))
+    root.findAll(n => n.type === 'Text' && typeof n.props.children === 'string' && /^More Routines · \d+$/.test(n.props.children))
       .map(n => n.props.children);
 
   const latestLineCount = (root) =>
@@ -3988,48 +3972,47 @@ describe('LogPreviousRoutines: collapsed routine management (#724)', () => {
       && typeof n.props.onPress === 'function'
   )[0];
 
-  test('zero non-current routines: a plural-zero count, no latest line, and the New routine control always reachable (#836)', () => {
+  test('zero non-current routines: a plural-zero count, no latest line, and the New routine control always reachable (#836, #843)', () => {
     const root = renderList({ otherNotes: [] });
-    expect(countText(root)).toEqual(['0 more routines']);
+    expect(countText(root)).toEqual(['More Routines · 0']);
     expect(latestLineCount(root)).toBe(0);
     // The section's one create-routine affordance is present collapsed too
     // (#836) — it no longer requires expanding the disclosure first.
     expect(findPressableByText(root, 'New routine')).toBeTruthy();
   });
 
-  test('one non-current routine reads as a singular "more routine" count with no latest line (#836)', () => {
+  test('one non-current routine: the count still reads "More Routines · 1" with no latest line (#836, #843)', () => {
     const root = renderList({ otherNotes: [{ id: 'r1', title: 'Only One', updated_at: '2026-01-01T00:00:00.000Z' }] });
-    expect(countText(root)).toEqual(['1 more routine']);
+    expect(countText(root)).toEqual(['More Routines · 1']);
     expect(latestLineCount(root)).toBe(0);
   });
 
-  test('many routines: the count reflects the list regardless of order, with no latest line (#836)', () => {
+  test('many routines: the count reflects the list regardless of order, with no latest line (#836, #843)', () => {
     const root = renderList({ otherNotes: [
       { id: 'r1', title: 'Older', saved_at: '2026-01-01T00:00:00.000Z' },
       { id: 'r2', title: 'Newest', saved_at: '2026-03-01T00:00:00.000Z' },
       { id: 'r3', title: 'Middle', saved_at: '2026-02-01T00:00:00.000Z' },
     ] });
-    expect(countText(root)).toEqual(['3 more routines']);
+    expect(countText(root)).toEqual(['More Routines · 3']);
     expect(latestLineCount(root)).toBe(0);
   });
 
-  test('the whole header toggles expansion, announces its state, and the count is not repeated once expanded (#836)', () => {
+  test('the header toggles expansion and announces its state; the count and New routine stay visible either way (#836, #843)', () => {
     const root = renderList({ otherNotes: [{ id: 'r1', title: 'One', updated_at: '2026-01-01T00:00:00.000Z' }] });
     expect(headerFor(root).props.accessibilityState).toEqual({ expanded: false });
-    expect(countText(root)).toEqual(['1 more routine']);
-    // The New routine control is present both collapsed and expanded.
+    expect(countText(root)).toEqual(['More Routines · 1']);
     expect(findPressableByText(root, 'New routine')).toBeTruthy();
 
     render.act(() => { headerFor(root).props.onPress(); });
     expect(headerFor(root).props.accessibilityState).toEqual({ expanded: true });
     expect(findPressableByText(root, 'New routine')).toBeTruthy();
-    // Expanded, the list already shows every routine, so the count is not
-    // repeated in the header.
-    expect(countText(root)).toEqual([]);
+    // Unlike the former in-header summary, the count lives outside the
+    // disclosure entirely now, so it is unaffected by expansion.
+    expect(countText(root)).toEqual(['More Routines · 1']);
 
     render.act(() => { headerFor(root).props.onPress(); });
     expect(headerFor(root).props.accessibilityState).toEqual({ expanded: false });
-    expect(countText(root)).toEqual(['1 more routine']);
+    expect(countText(root)).toEqual(['More Routines · 1']);
   });
 
   test('the disclosure header keeps a 44dp touch target when collapsed-empty and when expanded (#724 review)', () => {
@@ -4041,7 +4024,7 @@ describe('LogPreviousRoutines: collapsed routine management (#724)', () => {
     const empty = renderList({ otherNotes: [] });
     expect(flat(headerFor(empty)).minHeight).toBeGreaterThanOrEqual(44);
 
-    // Expanded, where the header holds only the count, still ≥44dp.
+    // Expanded, where the header holds only the chevron, still ≥44dp.
     const one = renderList({ otherNotes: [{ id: 'r1', title: 'One', updated_at: '2026-01-01T00:00:00.000Z' }] });
     render.act(() => { headerFor(one).props.onPress(); });
     expect(flat(headerFor(one)).minHeight).toBeGreaterThanOrEqual(44);
@@ -5672,7 +5655,7 @@ describe('Recovery Block start flow', () => {
     // not offered anywhere — not even inside expanded routine management —
     // which is exactly what recoveryBlockingMessage would have refused.
     expandManageRecovery(root);
-    expect(findPressableByText(root, 'Complete recovery block')).toBeTruthy();
+    expect(findPressableByText(root, 'End recovery block')).toBeTruthy();
     expandRoutineManagement(root);
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Start recovery block').length).toBe(0);
   });
@@ -6440,7 +6423,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    expect(findPressableByText(root, 'Complete week')).toBeTruthy();
+    expect(findPressableByText(root, 'Complete Week')).toBeTruthy();
     expect(findPressableByText(root, 'Add week')).toBeNull();
   });
 
@@ -6453,7 +6436,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    render.act(() => { findPressableByText(root, 'Complete week').props.onPress(); });
+    render.act(() => { findPressableByText(root, 'Complete Week').props.onPress(); });
     expect(completeWeekSpy).not.toHaveBeenCalled();
     const [title, message, buttons] = alertSpy.mock.calls[0];
     expect(title).toBe('Complete Week 1?');
@@ -6473,7 +6456,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     const root = component.root;
 
     expect(findPressableByText(root, 'Add week')).toBeTruthy();
-    expect(findPressableByText(root, 'Complete week')).toBeNull();
+    expect(findPressableByText(root, 'Complete Week')).toBeNull();
   });
 
   test('add-week existing-note path attaches the chosen note as the next week, no new note created', async () => {
@@ -6690,7 +6673,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     expect(await readJournal()).toEqual([]);
   });
 
-  test('"Complete recovery block" confirms with advisory-target copy and, on confirm, completes the block', async () => {
+  test('"End recovery block" opens the confirmation modal and, on confirm, completes the block (#843)', async () => {
     const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
     await setup({ notes: [baselineNote, week1Note], weeks });
 
@@ -6699,21 +6682,25 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     const root = component.root;
 
     expandManageRecovery(root);
-    render.act(() => { findPressableByText(root, 'Complete recovery block').props.onPress(); });
-    expect(alertSpy).toHaveBeenCalledWith(
-      'Complete recovery block?',
-      expect.stringContaining('advisory'),
-      expect.any(Array)
-    );
+    render.act(() => { findPressableByText(root, 'End recovery block').props.onPress(); });
+    // The Alert-based confirm is gone (#843) — this now opens
+    // RecoveryBlockEndModal instead.
+    expect(alertSpy).not.toHaveBeenCalledWith('Complete recovery block?', expect.any(String), expect.any(Array));
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'End this recovery block?').length).toBe(1);
+    // #843 review: the baseline routine/notes stay untouched, stated plainly.
+    expect(root.findAll(n => n.type === 'Text'
+      && String(n.props.children).includes('baseline routine and every week')
+      && String(n.props.children).includes('untouched')).length).toBe(1);
 
-    const buttons = alertSpy.mock.calls[0][2];
-    await render.act(async () => { await buttons.find(b => b.text === 'Complete').onPress(); });
+    await render.act(async () => { await findPressableByText(root, 'End block').props.onPress(); });
 
     // The verified postcondition is the assertion: the persisted block carries
     // a completion timestamp, and the journal is empty because it was cleared
     // only after that was read back.
     expect((await readPersistedBlocks()).find(b => b.id === 'rb1').completed_at).toBeTruthy();
     expect(await readJournal()).toEqual([]);
+    // The modal closes on success.
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'End this recovery block?').length).toBe(0);
   });
 
   test('completing the block with an open current week completes that week too, with one stable timestamp', async () => {
@@ -6725,9 +6712,8 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     const root = component.root;
 
     expandManageRecovery(root);
-    render.act(() => { findPressableByText(root, 'Complete recovery block').props.onPress(); });
-    const buttons = alertSpy.mock.calls[0][2];
-    await render.act(async () => { await buttons.find(b => b.text === 'Complete').onPress(); });
+    render.act(() => { findPressableByText(root, 'End recovery block').props.onPress(); });
+    await render.act(async () => { await findPressableByText(root, 'End block').props.onPress(); });
 
     // One journaled operation, one immutable requested timestamp: the block and
     // its open current week must carry exactly the same completed_at, and the
@@ -6793,7 +6779,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    render.act(() => { findPressableByText(root, 'Complete week').props.onPress(); });
+    render.act(() => { findPressableByText(root, 'Complete Week').props.onPress(); });
     const confirmButtons = alertSpy.mock.calls[0][2];
     await render.act(async () => { await confirmButtons.find(b => b.text === 'Complete week').onPress(); });
 
@@ -6914,10 +6900,12 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     );
     expect(weekRows.some(r => r.props.accessibilityLabel.includes('Week 2') && !r.props.accessibilityLabel.includes('completed'))).toBe(true);
     expect(weekRows.some(r => r.props.accessibilityLabel.includes('Week 1') && r.props.accessibilityLabel.includes('completed'))).toBe(true);
-    // The two are visibly distinguished by status text.
-    const texts = root.findAll(n => n.type === 'Text').map(n => n.props.children);
-    expect(texts).toContain('Completed');
-    expect(texts).toContain('In progress');
+    // The two are visibly distinguished by the status dot alone (#843), not a
+    // repeated text label — at least one completed check glyph renders (the
+    // exact render count of a font-icon component is not a stable assertion
+    // across environments).
+    const checks = root.findAll(n => n.props && n.props.name === 'check');
+    expect(checks.length).toBeGreaterThanOrEqual(1);
   });
 
   test('tapping an expanded recovery week again collapses it (#836)', () => {
@@ -7254,7 +7242,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     expect(retry).toBeTruthy();
     expect(retry.props.accessibilityLabel).toBe('Retry recovery');
     // Conflicting lifecycle actions are disabled while the operation is pending.
-    expect(findPressableByText(root, 'Complete week').props.disabled).toBe(true);
+    expect(findPressableByText(root, 'Complete Week').props.disabled).toBe(true);
 
     // Blocked never means hidden (#789): the `Manage recovery block` trigger is
     // NEVER disabled, so a locked user can still open it and see which specific
@@ -7271,7 +7259,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     const unlink = root.findAll(n => n.props && n.props.accessibilityLabel === 'Unlink Week 1')[0];
     expect(unlink.props.disabled).toBe(true);
     expect(unlink.props.accessibilityState.disabled).toBe(true);
-    const completeBlock = findPressableByText(root, 'Complete recovery block');
+    const completeBlock = findPressableByText(root, 'End recovery block');
     expect(completeBlock.props.disabled).toBe(true);
     expect(completeBlock.props.accessibilityState.disabled).toBe(true);
   });
@@ -7299,9 +7287,9 @@ describe('Recovery Block Week 2+ lifecycle', () => {
       && n.props.accessibilityLabel.startsWith('Recovery change not applied'))[0];
     expect(notice).toBeTruthy();
     expect(findPressableByText(root, 'Retry recovery')).toBeNull();
-    expect(findPressableByText(root, 'Complete week').props.disabled).toBe(false);
+    expect(findPressableByText(root, 'Complete Week').props.disabled).toBe(false);
     expandManageRecovery(root);
-    expect(findPressableByText(root, 'Complete recovery block').props.disabled).toBe(false);
+    expect(findPressableByText(root, 'End recovery block').props.disabled).toBe(false);
   });
 
   test('deleting an unlinked note skips the recovery confirmation entirely', () => {
@@ -7428,7 +7416,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     expect(deleteWeekFn).not.toHaveBeenCalled();
   });
 
-  test('race protection: an Add Week confirm while "Complete recovery block" is still persisting is rejected, not silently written', async () => {
+  test('race protection: an Add Week confirm while ending the recovery block is still persisting is rejected, not silently written', async () => {
     const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
     await setup({ notes: [baselineNote, week1Note, otherNote], weeks });
     // Hold the block-completion write open so the two actions genuinely
@@ -7453,10 +7441,9 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     const root = component.root;
 
     expandManageRecovery(root);
-    render.act(() => { findPressableByText(root, 'Complete recovery block').props.onPress(); });
-    const buttons = alertSpy.mock.calls[0][2];
+    render.act(() => { findPressableByText(root, 'End recovery block').props.onPress(); });
     let completePromise;
-    render.act(() => { completePromise = buttons.find(b => b.text === 'Complete').onPress(); });
+    render.act(() => { completePromise = findPressableByText(root, 'End block').props.onPress(); });
 
     // Race an Add Week confirm against the in-flight completion, bypassing the
     // disabled button to prove the mutex itself — not just the UI affordance —
@@ -7478,6 +7465,52 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     expect((await readPersistedBlocks()).find(b => b.id === 'rb1').completed_at).toBeTruthy();
     expect(await readJournal()).toEqual([]);
     writeSpy.mockRestore();
+  });
+});
+
+// #843 review: the summary must state a first-to-last date RANGE, not just a
+// single "started" date, and must preselect the stored inclusion value.
+describe('RecoveryBlockEndModal', () => {
+  const { RecoveryBlockEndModal } = require('../components/RecoveryBlockEndModal');
+
+  const BLOCK = {
+    id: 'rb1', baseline_note_title: 'Push Day',
+    started_at: '2026-01-01T00:00:00.000Z', include_in_normal_analytics: false,
+  };
+  const weeks = [
+    { id: 'rw1', block_id: 'rb1', week_number: 1, saved_at: '2026-01-01T00:00:00.000Z' },
+    { id: 'rw2', block_id: 'rb1', week_number: 2, saved_at: '2026-01-15T00:00:00.000Z' },
+  ];
+
+  test('the summary states a first-to-last date range, and Off is preselected as the current setting', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <RecoveryBlockEndModal
+          visible
+          block={BLOCK}
+          weeks={weeks}
+          onSetInclusion={jest.fn()}
+          onConfirmComplete={jest.fn()}
+          onClose={jest.fn()}
+        />
+      );
+    });
+    const root = component.root;
+    const allText = () => root.findAll(n => n.type === 'Text').map(n => {
+      const c = n.props.children;
+      return Array.isArray(c) ? c.join('') : String(c ?? '');
+    });
+
+    const first = new Date(weeks[0].saved_at).toLocaleDateString();
+    const last = new Date(weeks[1].saved_at).toLocaleDateString();
+    expect(allText().some(t => t.includes(`Push Day · 2 weeks · ${first}–${last}`))).toBe(true);
+
+    const off = root.findAll(n => n.props && n.props.accessibilityLabel === 'Keep them out of normal analytics')[0];
+    const on = root.findAll(n => n.props && n.props.accessibilityLabel === 'Count them with everything else')[0];
+    expect(off.props.accessibilityState).toEqual({ checked: true });
+    expect(on.props.accessibilityState).toEqual({ checked: false });
+    expect(allText().filter(t => t === 'Your current setting')).toHaveLength(1);
   });
 });
 
@@ -7724,7 +7757,6 @@ describe('Recovery inclusion preference', () => {
   const journalModule = require('../storage/entries/recoveryOperationJournal');
   const { RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEEKS_KEY, RECOVERY_OPERATION_JOURNAL_KEY } =
     require('../storage/entries/keys');
-  const { RECOVERY_INCLUSION_LABEL } = require('../components/LogRecoverySection');
 
   const baselineNote = { id: 'baseline1', title: 'Push Day', raw_text: 'Push\n-Bench\n100 5,5,5', updated_at: '2026-01-01T00:00:00.000Z' };
   const weekNote = { id: 'week1note', title: 'Recovery Week 1 Note', raw_text: 'Push\n-Bench\n60 5,5,5', updated_at: '2026-01-08T00:00:00.000Z' };
@@ -7791,21 +7823,28 @@ describe('Recovery inclusion preference', () => {
     await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, JSON.stringify([]));
   };
 
+  // `Counting in normal analytics` IS the Log-surface inclusion control now
+  // (#843 review): a tap on the row itself writes the field directly — there
+  // is no separate `RecoveryInclusionToggle` Switch nested under it. Log
+  // only ever shows one row (the one active block), so a live lookup by role
+  // is enough; it is re-run after every `act()` rather than cached, since
+  // the row's own accessibilityLabel/state changes with the value.
+  const inclusionRow = (root) => root.findAll(
+    n => n.props && n.props.accessibilityRole === 'switch' && typeof n.props.onPress === 'function'
+  )[0];
+
   const renderScreen = async () => {
     let component;
     await render.act(async () => { component = render.create(<ControlledLogScreen />); });
     // The inclusion control is still on Log and still the only way to set this
     // preference while a block is active, but it is no longer in the default
-    // view: it lives inside `Manage recovery block` (#789). Every assertion in
-    // this suite is about the control's behavior, so open the disclosure once
-    // here rather than restating the interaction in each test.
+    // view: it lives inside `Manage recovery block` (#789), as the
+    // `Counting in normal analytics` row itself (#843). Every assertion in
+    // this suite is about the control's behavior, so open the disclosure
+    // once here rather than restating the interaction in each test.
     expandManageRecovery(component.root);
     return component;
   };
-
-  const switchesFor = (root) =>
-    root.findAll(n => n.props && typeof n.props.accessibilityLabel === 'string'
-      && n.props.accessibilityLabel.startsWith(RECOVERY_INCLUSION_LABEL) && n.props.onValueChange);
 
   const persistedBlocks = async () => JSON.parse((await AsyncStorage.getItem(RECOVERY_BLOCKS_KEY)) || '[]');
 
@@ -7818,24 +7857,20 @@ describe('Recovery inclusion preference', () => {
   test('the active block exposes the control with the exact label, switch role, and unchecked state', async () => {
     await setup();
     const component = await renderScreen();
-    const [control] = switchesFor(component.root);
+    const control = inclusionRow(component.root);
 
     expect(control).toBeTruthy();
     expect(control.props.accessibilityRole).toBe('switch');
-    expect(control.props.accessibilityLabel).toBe('Include recovery notes in normal analytics: Push Day');
     // Default off (#692): the control must report the authored preference.
-    expect(control.props.value).toBe(false);
-    expect(control.props.accessibilityState).toEqual({ checked: false, disabled: false });
-    // The label already carries block identity (#738); the hint still disambiguates further.
-    expect(control.props.accessibilityHint).toContain('Push Day');
+    expect(control.props.accessibilityLabel).toBe('Counting in normal analytics: Off');
+    expect(control.props.accessibilityState).toEqual({ checked: false, disabled: false, busy: false });
   });
 
   test('toggling it on persists exactly that field and nothing else', async () => {
     await setup();
     const component = await renderScreen();
-    const [control] = switchesFor(component.root);
 
-    await render.act(async () => { await control.props.onValueChange(true); });
+    await render.act(async () => { await inclusionRow(component.root).props.onPress(); });
 
     const [stored] = await persistedBlocks();
     expect(stored.include_in_normal_analytics).toBe(true);
@@ -7858,28 +7893,40 @@ describe('Recovery inclusion preference', () => {
       seen.push(useRecoveryAnalyticsFilter());
       return null;
     }
+    const Harness = () => (
+      <React.Fragment>
+        <FilterProbe />
+        <ControlledLogScreen />
+      </React.Fragment>
+    );
 
     let component;
-    await render.act(async () => {
-      component = render.create(
-        <React.Fragment>
-          <FilterProbe />
-          <ControlledLogScreen />
-        </React.Fragment>
-      );
-    });
+    await render.act(async () => { component = render.create(<Harness />); });
 
     // Default off: the linked note is out of ordinary analytics.
     expect(seen[seen.length - 1].isNoteExcluded(weekNote.id)).toBe(true);
 
     expandManageRecovery(component.root);
-    const [control] = switchesFor(component.root);
-    await render.act(async () => { await control.props.onValueChange(true); });
+    await render.act(async () => { await inclusionRow(component.root).props.onPress(); });
 
     // Same mounted subscriber, no remount: the note is back in.
     expect(seen[seen.length - 1].isNoteExcluded(weekNote.id)).toBe(false);
 
-    await render.act(async () => { await control.props.onValueChange(false); });
+    // The row toggles relative to the CURRENT value, so — since this test's
+    // `useRecoveryBlockState` mock is static — reflect the write that just
+    // landed before pressing again, via `component.update` (reconciliation
+    // against the SAME mounted tree, not a fresh mount/unmount).
+    useEntries.useRecoveryBlockState.mockReturnValue({
+      activeBlock: { ...activeBlock, include_in_normal_analytics: true },
+      blocks: [{ ...activeBlock, include_in_normal_analytics: true }],
+      weeks,
+      recoveryWeekNumberByNoteId: { [weekNote.id]: 1 },
+      loading: false, error: null, refresh: jest.fn(),
+      pendingRecovery: [], recoveryPendingError: null, retryRecovery: jest.fn(),
+    });
+    await render.act(async () => { component.update(<Harness />); });
+
+    await render.act(async () => { await inclusionRow(component.root).props.onPress(); });
     expect(seen[seen.length - 1].isNoteExcluded(weekNote.id)).toBe(true);
 
     await render.act(async () => { component.unmount(); });
@@ -7889,61 +7936,53 @@ describe('Recovery inclusion preference', () => {
   test('toggling it back off restores exclusion, and the persisted note records are never rewritten', async () => {
     await setup({ blocks: [{ ...activeBlock, include_in_normal_analytics: true }] });
     const component = await renderScreen();
-    const [control] = switchesFor(component.root);
-    expect(control.props.value).toBe(true);
+    const control = inclusionRow(component.root);
     expect(control.props.accessibilityState.checked).toBe(true);
 
     const weeksBefore = await AsyncStorage.getItem(RECOVERY_BLOCK_WEEKS_KEY);
-    await render.act(async () => { await control.props.onValueChange(false); });
+    await render.act(async () => { await control.props.onPress(); });
 
     const [stored] = await persistedBlocks();
     expect(stored.include_in_normal_analytics).toBe(false);
     expect(await AsyncStorage.getItem(RECOVERY_BLOCK_WEEKS_KEY)).toBe(weeksBefore);
   });
 
-  test('completed blocks keep their own stored preference and toggle independently', async () => {
+  test('the active block\'s own stored preference is exposed even with completed blocks in storage', async () => {
+    // Log exposes only the active block's inclusion control; completed-block
+    // controls live on Analytics (#728). Both completed blocks are in
+    // storage but must not produce a second row here.
     await setup({ blocks: [activeBlock, completedBlockOn, completedBlockOff] });
     const component = await renderScreen();
-    const controls = switchesFor(component.root);
+    const controls = component.root.findAll(
+      n => n.props && n.props.accessibilityRole === 'switch' && typeof n.props.onPress === 'function'
+    );
 
-    // Log exposes only the active block's inclusion control; completed-block
-    // controls live on Analytics (#728). Both completed blocks are in storage
-    // but must not produce switches here.
-    expect(controls.length).toBe(1);
-    expect(controls[0].props.testID).toBe('recovery-inclusion-switch-rbActive');
-    expect(controls[0].props.value).toBe(false);
+    expect(controls).toHaveLength(1);
+    expect(controls[0].props.accessibilityState.checked).toBe(false);
   });
 
-  test('an in-flight write disables EVERY inclusion switch, not just the one being written', async () => {
-    // Log shows only the active block; completed-block global serialization is
-    // tested on Analytics (#728).
+  test('an in-flight write disables the control, and re-enables once it settles', async () => {
     await setup({ blocks: [activeBlock] });
     let resolveWrite;
     const updateSpy = jest.spyOn(recoveryStorageModule, 'updateRecoveryBlock')
       .mockImplementation(() => new Promise((resolve) => { resolveWrite = resolve; }));
 
     const component = await renderScreen();
-    const byBlock = () => Object.fromEntries(
-      switchesFor(component.root).map(c => [c.props.testID.replace('recovery-inclusion-switch-', ''), c])
-    );
-    expect(Object.values(byBlock()).every(c => c.props.disabled === false)).toBe(true);
+    expect(inclusionRow(component.root).props.accessibilityState.disabled).toBe(false);
 
-    // Start a write on one block and leave it in flight: the guarded action
-    // reaches storage after a few microtasks, and the mock never settles.
-    await render.act(async () => { byBlock().rbActive.props.onValueChange(true); });
+    // Start the write and leave it in flight: the guarded action reaches
+    // storage after a few microtasks, and the mock never settles.
+    await render.act(async () => { inclusionRow(component.root).props.onPress(); });
 
-    for (const [id, control] of Object.entries(byBlock())) {
-      expect(control.props.disabled).toBe(true);
-      expect(control.props.accessibilityState.disabled).toBe(true);
-      expect(id).toBeTruthy();
-    }
+    expect(inclusionRow(component.root).props.disabled).toBe(true);
+    expect(inclusionRow(component.root).props.accessibilityState.disabled).toBe(true);
 
     await render.act(async () => {
       resolveWrite({ ...activeBlock, include_in_normal_analytics: true });
     });
 
-    // Every switch is interactive again once the write settles.
-    expect(Object.values(byBlock()).every(c => c.props.disabled === false)).toBe(true);
+    // Interactive again once the write settles.
+    expect(inclusionRow(component.root).props.accessibilityState.disabled).toBe(false);
     updateSpy.mockRestore();
   });
 
@@ -7952,10 +7991,11 @@ describe('Recovery inclusion preference', () => {
       pendingRecovery: [{ operation_id: 1, block_id: 'rbActive', error: 'A recovery change is still being applied on this device.' }],
     });
     const component = await renderScreen();
-    const [control] = switchesFor(component.root);
+    const control = inclusionRow(component.root);
 
     expect(control.props.disabled).toBe(true);
-    expect(control.props.accessibilityState).toEqual({ checked: false, disabled: true });
+    expect(control.props.accessibilityState.disabled).toBe(true);
+    expect(control.props.accessibilityState.checked).toBe(false);
   });
 
   test('a rejected write surfaces an honest error and leaves the stored preference alone', async () => {
@@ -7963,9 +8003,8 @@ describe('Recovery inclusion preference', () => {
     const updateSpy = jest.spyOn(recoveryStorageModule, 'updateRecoveryBlock')
       .mockRejectedValue(Object.assign(new Error('Recovery block rbActive is deleted.'), { code: 'BLOCK_NOT_FOUND' }));
     const component = await renderScreen();
-    const [control] = switchesFor(component.root);
 
-    await render.act(async () => { await control.props.onValueChange(true); });
+    await render.act(async () => { await inclusionRow(component.root).props.onPress(); });
 
     const texts = component.root.findAllByType('Text').map(t => {
       const c = t.props.children;
@@ -7974,8 +8013,8 @@ describe('Recovery inclusion preference', () => {
     expect(texts).toContain('Recovery block rbActive is deleted.');
     const [stored] = await persistedBlocks();
     expect(stored.include_in_normal_analytics).toBe(false);
-    // The switch still reports the PERSISTED value, not the attempted one.
-    expect(switchesFor(component.root)[0].props.value).toBe(false);
+    // The control still reports the PERSISTED value, not the attempted one.
+    expect(inclusionRow(component.root).props.accessibilityState.checked).toBe(false);
 
     updateSpy.mockRestore();
   });
@@ -10097,16 +10136,18 @@ describe('LogRecoverySection: inline recovery-note editing (#841)', () => {
     expect(textInput(root).props.value).toBe(weekBText);
   });
 
-  test('the Edit action and Week A/B pill are structurally symmetric peer controls', () => {
+  // #843 gives the two controls distinct treatments — one 36px outlined
+  // `Edit note` control and a 32px A/B segment — rather than matching pill
+  // styling, so this pins each control's own documented metric instead of
+  // symmetry between them.
+  test('Edit note is a 36px outlined control and the A/B segment is 32px', () => {
     const root = renderInline();
     const editBtn = byLabel(root, 'Edit');
     const weekPill = byLabel(root, 'Switch to Week A');
     const flat = (n) => Object.assign({}, ...(Array.isArray(n.props.style) ? n.props.style : [n.props.style]).filter(Boolean));
-    const editStyle = flat(editBtn);
-    const pillStyle = flat(weekPill);
-    for (const key of ['minHeight', 'paddingHorizontal', 'paddingVertical', 'borderWidth', 'borderColor', 'borderRadius', 'backgroundColor']) {
-      expect(editStyle[key]).toEqual(pillStyle[key]);
-    }
+    expect(flat(editBtn).height).toBe(36);
+    expect(flat(editBtn).borderWidth).toBe(1);
+    expect(flat(weekPill).height).toBe(32);
   });
 
   test('Save calls through to the owner and returns the block to read mode without collapsing the week', () => {
@@ -10191,10 +10232,10 @@ describe('LogRecoverySection: inline recovery-note editing (#841)', () => {
       onUnlinkWeek: jest.fn(),
       onCompleteBlock: jest.fn(),
     });
-    expect(byLabel(root, 'Complete week').props.accessibilityState.disabled).toBeFalsy();
+    expect(byLabel(root, 'Complete Week 1').props.accessibilityState.disabled).toBeFalsy();
 
     render.act(() => { byLabel(root, 'Edit').props.onPress(); });
-    expect(byLabel(root, 'Complete week').props.accessibilityState.disabled).toBe(true);
+    expect(byLabel(root, 'Complete Week 1').props.accessibilityState.disabled).toBe(true);
 
     const manageTrigger = root.findAll(
       n => n.props && typeof n.props.accessibilityLabel === 'string'
@@ -10208,7 +10249,7 @@ describe('LogRecoverySection: inline recovery-note editing (#841)', () => {
     render.act(() => { manageTrigger.props.onPress(); });
 
     expect(byLabel(root, 'Unlink Week 1').props.accessibilityState.disabled).toBe(true);
-    expect(byLabel(root, 'Complete recovery block').props.accessibilityState.disabled).toBe(true);
+    expect(byLabel(root, 'End recovery block').props.accessibilityState.disabled).toBe(true);
   });
 });
 
@@ -10220,7 +10261,7 @@ describe('LogRecoverySection: inline recovery-note editing (#841)', () => {
 // LogRecoverySection directly so the assertions are about the card's own
 // structure rather than about LogScreen's wiring.
 describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
-  const { LogRecoverySection, RECOVERY_INCLUSION_LABEL } = require('../components/LogRecoverySection');
+  const { LogRecoverySection } = require('../components/LogRecoverySection');
   const { RECOVERY_STALE_MESSAGE } = require('../hooks/entries/recoveryBlockHooks');
 
   const BLOCK = {
@@ -10256,9 +10297,11 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
       && n.props.accessibilityLabel.startsWith('Manage recovery block')
       && typeof n.props.onPress === 'function'
   )[0];
-  const inclusionSwitch = (root) => root.findAll(
-    n => n.props && typeof n.props.accessibilityLabel === 'string'
-      && n.props.accessibilityLabel.startsWith(RECOVERY_INCLUSION_LABEL) && n.props.onValueChange
+  // `Counting in normal analytics` IS the Log-surface inclusion control
+  // (#843 review) — a tap on the row writes the field directly. There is no
+  // separate `RecoveryInclusionToggle` Switch nested under it.
+  const inclusionRow = (root) => root.findAll(
+    n => n.props && n.props.accessibilityRole === 'switch' && typeof n.props.onPress === 'function'
   )[0];
 
   test('an open week leads with the state fact and offers exactly one lifecycle action', () => {
@@ -10272,11 +10315,11 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
     expect(texts).not.toContain('Baseline routine');
 
     // Exactly one lifecycle action is visible by default.
-    expect(byLabel(root, 'Complete week')).toBeTruthy();
+    expect(byLabel(root, 'Complete Week 3')).toBeTruthy();
     expect(byLabel(root, 'Add next recovery week')).toBeUndefined();
-    expect(byLabel(root, 'Complete recovery block')).toBeUndefined();
+    expect(byLabel(root, 'End recovery block')).toBeUndefined();
     expect(byLabel(root, 'Unlink Week 3')).toBeUndefined();
-    expect(inclusionSwitch(root)).toBeUndefined();
+    expect(inclusionRow(root)).toBeUndefined();
   });
 
   test('a just-completed week says so and swaps the one primary action to Add week', () => {
@@ -10287,7 +10330,7 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
 
     expect(allText(root)).toContain('Week 3 complete — add the next week');
     expect(byLabel(root, 'Add next recovery week')).toBeTruthy();
-    expect(byLabel(root, 'Complete week')).toBeUndefined();
+    expect(byLabel(root, 'Complete Week 3')).toBeUndefined();
   });
 
   test('a block whose weeks are all unlinked still states an honest headline', () => {
@@ -10325,13 +10368,48 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
     render.act(() => { control.props.onPress(); });
     expect(trigger(root).props.accessibilityState).toEqual({ expanded: true });
     expect(byLabel(root, 'Unlink Week 3')).toBeTruthy();
-    expect(byLabel(root, 'Complete recovery block')).toBeTruthy();
-    expect(inclusionSwitch(root)).toBeTruthy();
+    expect(byLabel(root, 'End recovery block')).toBeTruthy();
+    expect(inclusionRow(root)).toBeTruthy();
 
     // And it collapses again.
     render.act(() => { trigger(root).props.onPress(); });
     expect(trigger(root).props.accessibilityState).toEqual({ expanded: false });
-    expect(byLabel(root, 'Complete recovery block')).toBeUndefined();
+    expect(byLabel(root, 'End recovery block')).toBeUndefined();
+  });
+
+  // #843 review: `Counting in normal analytics` IS the Log-surface
+  // inclusion control — its live On/Off state is stated on the row itself,
+  // with no nested `RecoveryInclusionToggle` Switch. The write path this
+  // row's tap drives is covered end to end against real storage by the
+  // "Recovery inclusion preference" describe block above.
+  test('the Counting in normal analytics row states the live value with no nested switch', () => {
+    const root = renderSection({ onUnlinkWeek: jest.fn(), onCompleteBlock: jest.fn() });
+    render.act(() => { trigger(root).props.onPress(); });
+
+    const row = byLabel(root, 'Counting in normal analytics: Off');
+    expect(row).toBeTruthy();
+    expect(row.props.accessibilityRole).toBe('switch');
+    expect(row.props.accessibilityState).toEqual({ checked: false, disabled: false, busy: false });
+    // No separate Switch control is nested under the row.
+    expect(root.findAll(n => n.props && typeof n.props.onValueChange === 'function')).toHaveLength(0);
+
+    // #843 review: the on-demand help toggle must be a SIBLING of the switch
+    // Pressable, not nested inside it — a nested Pressable is grouped into
+    // its accessible ancestor by VoiceOver, making it unreachable as its own
+    // action.
+    const helpToggle = root.findAll(
+      n => n.props && n.props.accessibilityRole === 'button'
+        && typeof n.props.accessibilityLabel === 'string'
+        && n.props.accessibilityLabel.includes('counting these weeks in normal analytics')
+    )[0];
+    expect(helpToggle).toBeTruthy();
+    let ancestor = helpToggle.parent;
+    let foundSwitchAncestor = false;
+    while (ancestor) {
+      if (ancestor.props && ancestor.props.accessibilityRole === 'switch') foundSwitchAncestor = true;
+      ancestor = ancestor.parent;
+    }
+    expect(foundSwitchAncestor).toBe(false);
   });
 
   test('locked mutations disable each control individually and never the disclosure itself', () => {
@@ -10348,13 +10426,13 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
     expect(control.props.disabled).toBeFalsy();
     expect(control.props.accessibilityState.disabled).toBeUndefined();
 
-    expect(byLabel(root, 'Complete week').props.accessibilityState.disabled).toBe(true);
+    expect(byLabel(root, 'Complete Week 3').props.accessibilityState.disabled).toBe(true);
 
     render.act(() => { control.props.onPress(); });
     expect(trigger(root).props.accessibilityState).toEqual({ expanded: true });
     expect(byLabel(root, 'Unlink Week 3').props.accessibilityState.disabled).toBe(true);
-    expect(byLabel(root, 'Complete recovery block').props.accessibilityState.disabled).toBe(true);
-    expect(inclusionSwitch(root).props.accessibilityState.disabled).toBe(true);
+    expect(byLabel(root, 'End recovery block').props.accessibilityState.disabled).toBe(true);
+    expect(inclusionRow(root).props.accessibilityState.disabled).toBe(true);
   });
 
   test('banners stay outside the disclosure so they are announced without expanding anything', () => {
@@ -10421,8 +10499,8 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
     expect(trigger(root).props.accessibilityLabel).toBe('Manage recovery block: Upper/Lower');
     expect(trigger(root).props.accessibilityState).toEqual({ expanded: false });
     expect(byLabel(root, 'Unlink Week 1')).toBeUndefined();
-    expect(byLabel(root, 'Complete recovery block')).toBeUndefined();
-    expect(inclusionSwitch(root)).toBeUndefined();
+    expect(byLabel(root, 'End recovery block')).toBeUndefined();
+    expect(inclusionRow(root)).toBeUndefined();
 
     // And it still opens normally, now scoped to the new block.
     render.act(() => { trigger(root).props.onPress(); });
@@ -10440,7 +10518,7 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
 // gate, confirm, or calculation moves — the assertions below therefore pin the
 // preserved behavior alongside the new hierarchy.
 describe('LogRecoverySection: simplified active Recovery panel (#804)', () => {
-  const { LogRecoverySection, RECOVERY_INCLUSION_LABEL } = require('../components/LogRecoverySection');
+  const { LogRecoverySection } = require('../components/LogRecoverySection');
   const { RECOVERY_STALE_MESSAGE } = require('../hooks/entries/recoveryBlockHooks');
   const { LightColors } = require('../theme/colors');
   const { buildDayGroups } = require('../screens/log/logScreenHelpers');
@@ -10483,9 +10561,11 @@ describe('LogRecoverySection: simplified active Recovery panel (#804)', () => {
       && typeof n.props.onPress === 'function'
   )[0];
   const expand = (root) => { render.act(() => { trigger(root).props.onPress(); }); };
-  const inclusionSwitch = (root) => root.findAll(
-    n => n.props && typeof n.props.accessibilityLabel === 'string'
-      && n.props.accessibilityLabel.startsWith(RECOVERY_INCLUSION_LABEL) && n.props.onValueChange
+  // `Counting in normal analytics` IS the Log-surface inclusion control
+  // (#843 review) — no separate `RecoveryInclusionToggle` Switch nested
+  // under it.
+  const inclusionRow = (root) => root.findAll(
+    n => n.props && n.props.accessibilityRole === 'switch' && typeof n.props.onPress === 'function'
   )[0];
   const accentFilled = (root) => root.findAll(
     n => n.props && typeof n.props.onPress === 'function'
@@ -10498,11 +10578,11 @@ describe('LogRecoverySection: simplified active Recovery panel (#804)', () => {
 
     // #836 corrected #789's original design: the headline only ever
     // describes the CURRENT week, but now every live week — completed
-    // history included — renders as its own row, so each row states its own
-    // status too. The headline still owns the current-week state fact; the
-    // row's per-week label and status are additional, not a duplicate of it.
+    // history included — renders as its own row. #843 moves status off a
+    // repeated text label onto the row's status dot alone; the headline
+    // still owns the current-week state fact, and the row's own week label
+    // and note title are additional, not a duplicate of it.
     expect(texts).toContain('Week 3 in progress');
-    expect(texts).toContain('In progress');
     expect(texts).toContain('Week 3');
     expect(texts).toContain('Recovery Week Note');
   });
@@ -10534,6 +10614,34 @@ describe('LogRecoverySection: simplified active Recovery panel (#804)', () => {
     expect(byLabel(viewing, 'Switch to Week B')).toBeTruthy();
   });
 
+  // #843 review: the compact reading mode must not silently drop a
+  // user-entered `*mark`, and must not repeat the note's own day heading
+  // (already shown once by the inset surface's own kicker).
+  test('compact rendering preserves a marked set and does not duplicate the day heading', () => {
+    const markedNote = {
+      id: 'weeknote', title: 'Recovery Week Note',
+      raw_text: 'Monday\n+Lifting\n-Overhead Press\n65 5,5,5 *PR',
+    };
+    const onViewNote = jest.fn();
+    const root = renderSection({
+      weeks: [week({ note_id: 'weeknote' })],
+      notes: [markedNote],
+      onViewNote,
+      viewingNoteId: 'weeknote',
+      viewingNote: markedNote,
+      viewingNoteDayGroups: buildDayGroups(parse(markedNote.raw_text).sections),
+    });
+
+    expect(allText(root)).toContain('★ PR');
+    // "Monday" is this note's one day heading; it must render exactly once
+    // (via the inset surface's own uppercase kicker), not a second time from
+    // WorkoutContentRenderer's own WorkoutHeading.
+    const mondayCount = root.findAll(n => n.type === 'Text'
+      && String(Array.isArray(n.props.children) ? n.props.children.join('') : n.props.children ?? '')
+        .toUpperCase() === 'MONDAY').length;
+    expect(mondayCount).toBe(1);
+  });
+
   test('a week with no readable note offers no read affordance at all', () => {
     const root = renderSection({ weeks: [week({ note_id: null })], onViewNote: jest.fn() });
 
@@ -10550,7 +10658,7 @@ describe('LogRecoverySection: simplified active Recovery panel (#804)', () => {
     const open = renderSection({ onCompleteWeek: jest.fn() });
     const filled = accentFilled(open);
     expect(filled).toHaveLength(1);
-    expect(filled[0].props.accessibilityLabel).toBe('Complete week');
+    expect(filled[0].props.accessibilityLabel).toBe('Complete Week 3');
 
     // It swaps rather than multiplying once the week completes.
     const done = renderSection({
@@ -10568,7 +10676,7 @@ describe('LogRecoverySection: simplified active Recovery panel (#804)', () => {
 
     // Completing a block is irreversible and happens once per block: an accent
     // fill here would make it the loudest button on the card.
-    for (const label of ['Unlink Week 3', 'Complete recovery block']) {
+    for (const label of ['Unlink Week 3', 'End recovery block']) {
       const control = byLabel(root, label);
       expect(flat(control).backgroundColor).not.toBe(LightColors.accent);
       expect(flat(control).minHeight).toBeGreaterThanOrEqual(44);
@@ -10586,11 +10694,16 @@ describe('LogRecoverySection: simplified active Recovery panel (#804)', () => {
     ).map(n => n.props.name))];
 
     expect(allText(root).join(' ')).not.toMatch(/[▸▾▲▼]/);
+    // Every linked week row also uses expand-more/-less now (#843: "never
+    // chevron-right for inline expansion"), so with both the trigger and the
+    // (unviewed) week row collapsed, the glyph SET is still just 'expand-more'.
     expect(chevrons(root)).toEqual(['expand-more']);
     expect(flat(trigger(root)).minHeight).toBeGreaterThanOrEqual(44);
 
     expand(root);
-    expect(chevrons(root)).toEqual(['expand-less']);
+    // The trigger is now expanded (expand-less); the week row's own glyph is
+    // independent and still collapsed (expand-more).
+    expect(chevrons(root)).toEqual(expect.arrayContaining(['expand-less', 'expand-more']));
     expect(trigger(root).props.accessibilityState).toEqual({ expanded: true });
   });
 
@@ -10605,14 +10718,14 @@ describe('LogRecoverySection: simplified active Recovery panel (#804)', () => {
 
     expect(allText(root)).toContain('A recovery change is still being applied on this device.');
     expect(byLabel(root, 'Retry recovery')).toBeTruthy();
-    expect(byLabel(root, 'Complete week').props.accessibilityState.disabled).toBe(true);
+    expect(byLabel(root, 'Complete Week 3').props.accessibilityState.disabled).toBe(true);
 
     // The disclosure itself is never disabled, and its contents stay locked.
     expect(trigger(root).props.disabled).toBeFalsy();
     expand(root);
     expect(byLabel(root, 'Unlink Week 3').props.accessibilityState.disabled).toBe(true);
-    expect(byLabel(root, 'Complete recovery block').props.accessibilityState.disabled).toBe(true);
-    expect(inclusionSwitch(root).props.accessibilityState.disabled).toBe(true);
+    expect(byLabel(root, 'End recovery block').props.accessibilityState.disabled).toBe(true);
+    expect(inclusionRow(root).props.accessibilityState.disabled).toBe(true);
   });
 
   test('a terminal error explains itself, locks nothing, and offers no retry', () => {
@@ -10624,7 +10737,7 @@ describe('LogRecoverySection: simplified active Recovery panel (#804)', () => {
 
     expect(allText(root)).toContain('That recovery change was cancelled.');
     expect(byLabel(root, 'Retry recovery')).toBeUndefined();
-    expect(byLabel(root, 'Complete week').props.accessibilityState.disabled).toBe(false);
+    expect(byLabel(root, 'Complete Week 3').props.accessibilityState.disabled).toBe(false);
   });
 
   test('a stale snapshot keeps its notice and last-known-good card outside the disclosure', () => {
