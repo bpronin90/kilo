@@ -755,7 +755,12 @@ export function LogScreen({
   // would sit directly on top of "create your first routine" — telling a user
   // with a full notebook that they have none.
   const isEmpty = !isNotesFirstLoad && !notesError && notes.length === 0;
-  const isEditing = !!otherEditor.editingNoteId || currentEditor.mode === 'edit' || deloadEditor.deloadMode === 'edit';
+  // A recovery-sourced editingNoteId session (#841) edits inline inside
+  // LogRecoverySection's own expanded week, not the shared full-screen
+  // editor — so it must not flip isEditing/hide the tab content the way
+  // every other editingNoteId source does.
+  const isEditing = (!!otherEditor.editingNoteId && otherEditor.editingSource !== 'recovery')
+    || currentEditor.mode === 'edit' || deloadEditor.deloadMode === 'edit';
 
   // Recovery is selectable only while `recoveryTabVisible`, and Deload only
   // while deload mode is enabled — either falls back to Routine the instant
@@ -968,6 +973,23 @@ export function LogScreen({
                 viewingEffectiveWeek={otherEditor.recoveryViewingEffectiveWeek}
                 onToggleViewingWeek={otherEditor.handleToggleRecoveryViewingWeek}
                 onEditNote={otherEditor.handleEditRecoveryViewedNote}
+                // Inline recovery-note editor wiring (#841): a note is being
+                // edited inline in THIS block only when editingNoteId names it
+                // AND that session was opened from the recovery surface —
+                // otherwise editingNoteId belongs to the shared full-screen
+                // editor (or to nothing) and this block stays in read mode.
+                editingNoteId={otherEditor.editingSource === 'recovery' ? otherEditor.editingNoteId : null}
+                editingTitle={otherEditor.editingTitle}
+                onChangeEditingTitle={otherEditor.setEditingTitle}
+                editingText={otherEditor.editingText}
+                onChangeEditingText={otherEditor.setEditingText}
+                editingHasABWeeks={otherEditor.editingHasABWeeks}
+                editingEffectiveWeek={otherEditor.editingEffectiveWeek}
+                onToggleEditingWeek={otherEditor.handleToggleEditingWeek}
+                editingIsSaving={otherEditor.noteIsSaving}
+                editingSaveError={otherEditor.saveError}
+                onSaveEdit={otherEditor.handleDoneOther}
+                onCancelEdit={otherEditor.handleCancelRecoveryEdit}
                 onCompleteWeek={handleCompleteCurrentWeek}
                 onUndoCompleteWeek={handleUndoCompleteWeek}
                 onOpenAddWeek={openAddWeekModal}

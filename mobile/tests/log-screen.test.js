@@ -3353,6 +3353,84 @@ describe('Routine-card header/action containment (#710, #711)', () => {
   });
 });
 
+// -- More Routines: compact panel rhythm matching Weight History (#841) -----
+describe('LogPreviousRoutines: compact disclosure panel rhythm (#841)', () => {
+  const notes = [
+    { id: 'r1', title: 'Routine One', raw_text: 'MONDAY\n-Squat 3x5\n', saved_at: '2026-01-01T00:00:00.000Z' },
+    { id: 'r2', title: 'Routine Two', raw_text: 'MONDAY\n-Bench 3x5\n', saved_at: '2026-01-02T00:00:00.000Z' },
+  ];
+  const baseProps = {
+    otherNotes: notes,
+    handleViewOtherNote: jest.fn(),
+    viewingNoteId: null,
+    viewingNote: null,
+    viewingNoteDayGroups: [],
+    viewingHasABWeeks: false,
+    viewingEffectiveWeek: null,
+    handleToggleViewingWeek: jest.fn(),
+    handleSwitchCurrent: jest.fn(),
+    handleEditViewedNote: jest.fn(),
+    handleDeleteRoutine: jest.fn(),
+    handleCreateRoutine: jest.fn(),
+  };
+  const render_ = (expanded) => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledPreviousRoutines {...baseProps} expanded={expanded} />
+      );
+    });
+    return component.root;
+  };
+  const flat = (n) => Object.assign({}, ...(Array.isArray(n.props.style) ? n.props.style : [n.props.style]).filter(Boolean));
+
+  test('the disclosure renders as one bordered, rounded panel — not a borderless header floating above the list', () => {
+    const root = render_(false);
+    // The outer panel View is the one carrying the boxed chrome; the header
+    // sits inside it with its own tinted background, matching the shared
+    // Weight History rhythm (WeightHistoryList.js's `card`/`headerRow`).
+    const panel = root.findAll(n => n.props && n.props.style && flat(n).borderRadius === 24)[0];
+    expect(panel).toBeTruthy();
+    const panelStyle = flat(panel);
+    expect(panelStyle.backgroundColor).toBe(LightColors.card);
+    expect(panelStyle.borderWidth).toBe(1);
+    expect(panelStyle.borderColor).toBe(LightColors.cardBorder);
+    expect(panelStyle.overflow).toBe('hidden');
+
+    const toggle = root.findAll(n => n.props && n.props.accessibilityLabel === 'Expand routine management')[0];
+    let header = toggle.parent;
+    while (header && !(header.props && header.props.style && flat(header).backgroundColor)) header = header.parent;
+    expect(header).toBeTruthy();
+    expect(flat(header).backgroundColor).toBe(LightColors.subtleBg);
+  });
+
+  test('collapsed, the panel is exactly the header — no dead body slab beneath it', () => {
+    const root = render_(false);
+    // No routine card is mounted while collapsed, so there is nothing for a
+    // body wrapper to hold — the panel's rendered height is the header's own.
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Routine One').length).toBe(0);
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Routine Two').length).toBe(0);
+  });
+
+  test('expanded, the gap from the header to the first routine equals the gap between routines', () => {
+    const root = render_(true);
+    // `body`'s own top spacing and its inter-row `gap` are the same value
+    // (#841): the header's bottom border already separates it from the list,
+    // so a second, larger top padding would double the visual gap versus the
+    // gap between rows below it.
+    const bodyCandidates = root.findAll(n => {
+      if (!n.props || !n.props.style) return false;
+      const s = flat(n);
+      return s.gap === 12 && (s.paddingVertical === 12 || s.paddingTop === 12);
+    });
+    expect(bodyCandidates.length).toBeGreaterThan(0);
+    const body = bodyCandidates[0];
+    const s = flat(body);
+    const topSpacing = s.paddingTop ?? s.paddingVertical;
+    expect(topSpacing).toBe(s.gap);
+  });
+});
+
 // #711: the two behavior changes, and the relocation contract for the
 // non-current card. Everything else in this issue moves controls without
 // changing what they do.
@@ -9691,6 +9769,214 @@ describe('Recovery weeks read their own notes (#775)', () => {
       '"Recovery Week Note" will be removed from this recovery block. The note itself is kept and stays editable.'
     );
     alertSpy.mockRestore();
+  });
+});
+
+// -- Inline recovery-note editing (#841) -------------------------------------
+//
+// Both entry points — the explicit `Edit` action and double-tapping the
+// expanded note body — must open the SAME inline editor inside this block,
+// seeded from the same note and currently viewed A/B week, and must never
+// drive the shared full-screen Routine editor (LogScreen owns that gate via
+// `editingSource === 'recovery'`; these tests only exercise what
+// LogRecoverySection itself renders for a given prop shape). A small
+// controlled wrapper stands in for that LogScreen wiring, mirroring
+// `ControlledPreviousRoutines` above.
+describe('LogRecoverySection: inline recovery-note editing (#841)', () => {
+  const { LogRecoverySection } = require('../components/LogRecoverySection');
+  const { buildDayGroups } = require('../screens/log/logScreenHelpers');
+  const { parseWorkoutNote: parse } = require('../lib/parser');
+
+  const BLOCK = {
+    id: 'rb841', baseline_note_id: 'baseline', baseline_note_title: 'Push Day',
+    started_at: '2026-05-01T00:00:00.000Z', completed_at: null, deleted_at: null,
+  };
+  const week = (overrides = {}) => ({
+    id: 'rw1', block_id: 'rb841', note_id: 'weeknote', week_number: 1,
+    completed_at: null, deleted_at: null, ...overrides,
+  });
+  const AB_NOTE = {
+    id: 'weeknote', title: 'AB Week',
+    raw_text: 'Monday\n+Lifting\n-Overhead Press\n65 5,5,5\n---\nTuesday\n+Lifting\n-Chin Up\n0 5,5,5',
+  };
+  const weekAText = AB_NOTE.raw_text.split('\n---\n')[0];
+  const weekBText = AB_NOTE.raw_text.split('\n---\n')[1];
+
+  // Stands in for LogScreen: seeds the inline editor from whichever A/B week
+  // is currently viewed, exactly as `handleEditRecoveryViewedNote` does, and
+  // routes Save/Cancel through the caller's spies before closing.
+  function ControlledInlineEdit({ note, onSaveEdit, onCancelEdit, ...props }) {
+    const [editingNoteId, setEditingNoteId] = React.useState(null);
+    const [editingTitle, setEditingTitle] = React.useState('');
+    const [editingText, setEditingText] = React.useState('');
+    const [editingWeek, setEditingWeek] = React.useState(null);
+    const handleEditNote = () => {
+      setEditingNoteId(note.id);
+      setEditingTitle(note.title || '');
+      setEditingText(props.viewingHasABWeeks ? (
+        props.viewingEffectiveWeek === 'B' ? weekBText : weekAText
+      ) : note.raw_text);
+      setEditingWeek(props.viewingHasABWeeks ? props.viewingEffectiveWeek : null);
+    };
+    return (
+      <LogRecoverySection
+        {...props}
+        onEditNote={handleEditNote}
+        editingNoteId={editingNoteId}
+        editingTitle={editingTitle}
+        onChangeEditingTitle={setEditingTitle}
+        editingText={editingText}
+        onChangeEditingText={setEditingText}
+        editingHasABWeeks={props.viewingHasABWeeks}
+        editingEffectiveWeek={editingWeek}
+        onToggleEditingWeek={() => setEditingWeek(w => (w === 'B' ? 'A' : 'B'))}
+        onSaveEdit={() => { onSaveEdit?.(); setEditingNoteId(null); }}
+        onCancelEdit={() => { onCancelEdit?.(); setEditingNoteId(null); }}
+      />
+    );
+  }
+
+  const renderInline = (overrides = {}) => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledInlineEdit
+          note={AB_NOTE}
+          blocks={[BLOCK]}
+          weeks={[week()]}
+          notes={[AB_NOTE]}
+          viewingNoteId="weeknote"
+          viewingNote={AB_NOTE}
+          viewingHasABWeeks
+          viewingEffectiveWeek="B"
+          viewingNoteDayGroups={buildDayGroups(parse(weekBText).sections)}
+          {...overrides}
+        />
+      );
+    });
+    return component.root;
+  };
+
+  const byLabel = (root, label) => root.findAll(
+    n => n.props && n.props.accessibilityLabel === label && typeof n.props.onPress === 'function'
+  )[0];
+  const titleInput = (root) => root.findAll(
+    n => n.props && n.props.accessibilityLabel === 'Recovery note title'
+  )[0];
+  const textInput = (root) => root.findAll(
+    n => n.props && n.props.accessibilityLabel === 'Recovery note text'
+  )[0];
+
+  test('the explicit Edit action opens the inline editor seeded from the viewed note and its current A/B week', () => {
+    const root = renderInline();
+    expect(titleInput(root)).toBeUndefined();
+
+    render.act(() => { byLabel(root, 'Edit').props.onPress(); });
+
+    const title = titleInput(root);
+    const text = textInput(root);
+    expect(title.props.value).toBe('AB Week');
+    expect(text.props.value).toBe(weekBText);
+    // Still viewing/editing Week B: the pill offers the switch TO A.
+    expect(byLabel(root, 'Switch to Week A')).toBeTruthy();
+    expect(byLabel(root, 'Switch to Week B')).toBeUndefined();
+  });
+
+  test('double-tapping the expanded note body opens the same inline editor as Edit', () => {
+    const root = renderInline();
+    // Locate the Pressable wrapping the rendered note body by walking up
+    // from a rendered exercise name to its nearest onPress ancestor.
+    const anyExerciseText = root.findAll(n => n.type === 'Text' && n.props.children === 'Chin Up')[0];
+    let node = anyExerciseText.parent;
+    while (node && !(node.props && typeof node.props.onPress === 'function')) node = node.parent;
+    expect(node).toBeTruthy();
+
+    render.act(() => { node.props.onPress(); });
+    render.act(() => { node.props.onPress(); });
+
+    expect(titleInput(root).props.value).toBe('AB Week');
+    expect(textInput(root).props.value).toBe(weekBText);
+  });
+
+  test('the Edit action and Week A/B pill are structurally symmetric peer controls', () => {
+    const root = renderInline();
+    const editBtn = byLabel(root, 'Edit');
+    const weekPill = byLabel(root, 'Switch to Week A');
+    const flat = (n) => Object.assign({}, ...(Array.isArray(n.props.style) ? n.props.style : [n.props.style]).filter(Boolean));
+    const editStyle = flat(editBtn);
+    const pillStyle = flat(weekPill);
+    for (const key of ['minHeight', 'paddingHorizontal', 'paddingVertical', 'borderWidth', 'borderColor', 'borderRadius', 'backgroundColor']) {
+      expect(editStyle[key]).toEqual(pillStyle[key]);
+    }
+  });
+
+  test('Save calls through to the owner and returns the block to read mode without collapsing the week', () => {
+    const onSaveEdit = jest.fn();
+    const root = renderInline({ onSaveEdit });
+    render.act(() => { byLabel(root, 'Edit').props.onPress(); });
+    expect(titleInput(root)).toBeTruthy();
+
+    render.act(() => { byLabel(root, 'Save recovery note').props.onPress(); });
+    expect(onSaveEdit).toHaveBeenCalledTimes(1);
+    expect(titleInput(root)).toBeUndefined();
+    // Still viewing the same week — the row stayed expanded, not collapsed.
+    expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'View AB Week, Recovery Week 1')[0]
+      .props.accessibilityState.expanded).toBe(true);
+  });
+
+  test('Cancel discards the in-progress edit and never calls Save', () => {
+    const onSaveEdit = jest.fn();
+    const onCancelEdit = jest.fn();
+    const root = renderInline({ onSaveEdit, onCancelEdit });
+    render.act(() => { byLabel(root, 'Edit').props.onPress(); });
+
+    render.act(() => { byLabel(root, 'Cancel editing recovery note').props.onPress(); });
+    expect(onCancelEdit).toHaveBeenCalledTimes(1);
+    expect(onSaveEdit).not.toHaveBeenCalled();
+    expect(titleInput(root)).toBeUndefined();
+  });
+
+  test('a save failure keeps the inline editor open with the error visible in the block', () => {
+    const root = renderInline({ editingSaveError: 'Save failed' });
+    render.act(() => { byLabel(root, 'Edit').props.onPress(); });
+    expect(titleInput(root)).toBeTruthy();
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Save failed').length).toBe(1);
+  });
+
+  // Since viewingNoteId (which week is expanded) and editingNoteId (which
+  // note is mid-edit) are independent props, nothing stops LogScreen from
+  // moving `viewingNoteId` to a different week while a recovery note is
+  // being edited — except this row-level freeze. Without it, switching the
+  // viewed week would unmount the inline editor's `isViewingThisNote` branch
+  // out from under an unsaved edit, silently discarding no persisted data
+  // but stranding the user mid-edit with no visible Save/Cancel.
+  test('every week row is frozen — including the one being edited — while a recovery note is mid-edit', () => {
+    const otherWeek = { id: 'rw2', block_id: 'rb841', note_id: 'other', week_number: 2, completed_at: null, deleted_at: null };
+    const OTHER_NOTE = { id: 'other', title: 'Other Week', raw_text: 'Monday\n+Lifting\n-Row\n95 5,5,5' };
+    const root = renderInline({ weeks: [week(), otherWeek], notes: [AB_NOTE, OTHER_NOTE] });
+
+    render.act(() => { byLabel(root, 'Edit').props.onPress(); });
+    expect(titleInput(root)).toBeTruthy();
+
+    for (const label of ['View AB Week, Recovery Week 1', 'View Other Week, Recovery Week 2']) {
+      const row = root.findAll(n => n.props && n.props.accessibilityLabel === label)[0];
+      expect(row).toBeTruthy();
+      expect(row.props.onPress).toBeUndefined();
+      expect(row.props.accessibilityState.disabled).toBe(true);
+    }
+  });
+
+  test('recovery block and week fields stay unchanged while editing', () => {
+    const flatText = (root) => root.findAll(n => n.type === 'Text').map(n => {
+      const c = n.props.children;
+      return Array.isArray(c) ? c.join('') : String(c ?? '');
+    });
+    const root = renderInline();
+    expect(flatText(root)).toContain('Baseline: Push Day');
+    expect(flatText(root)).toContain('Week 1 in progress');
+    render.act(() => { byLabel(root, 'Edit').props.onPress(); });
+    expect(flatText(root)).toContain('Baseline: Push Day');
+    expect(flatText(root)).toContain('Week 1 in progress');
   });
 });
 

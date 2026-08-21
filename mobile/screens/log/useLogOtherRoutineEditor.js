@@ -117,6 +117,13 @@ export function useLogOtherRoutineEditor({
   editorScrollRef,
 }) {
   const [editingNoteId, setEditingNoteId] = useState(null);
+  // Which surface opened the current editingNoteId session (#841): 'recovery'
+  // when the Recovery block's own inline editor is driving it, null (or any
+  // other value) for every other entry point. LogScreen reads this to decide
+  // whether the shared full-screen editor should render for the current
+  // editingNoteId — a recovery-sourced session edits inline in the Recovery
+  // block instead, so the full-screen route must stay closed for it.
+  const [editingSource, setEditingSource] = useState(null);
   const [editingTitle, setEditingTitle] = useState('');
   // Full underlying raw_text being edited (both A/B halves + separator, when
   // present). The publicly exposed `editingText`/`setEditingText` below
@@ -331,10 +338,11 @@ export function useLogOtherRoutineEditor({
   // Recovery card's Edit control reads off `recoveryViewer` through
   // `handleEditRecoveryViewedNote` below, exactly as the Routine tab's Edit
   // control already read off `routineViewer` here.
-  const makeHandleEditViewedNote = (viewer) => () => {
+  const makeHandleEditViewedNote = (viewer, source = null) => () => {
     const note = viewer.viewingNote;
     if (!note) return;
     setEditingNoteId(note.id);
+    setEditingSource(source);
     setEditingTitle(note.title || '');
     setEditingFullText(note.raw_text);
     // Continue editing whichever week the expanded card was showing, so the
@@ -357,11 +365,12 @@ export function useLogOtherRoutineEditor({
     setSaveSuccess('');
     clearAdoptionPrompt();
   };
-  const handleEditViewedNote = makeHandleEditViewedNote(routineViewer);
-  const handleEditRecoveryViewedNote = makeHandleEditViewedNote(recoveryViewer);
+  const handleEditViewedNote = makeHandleEditViewedNote(routineViewer, null);
+  const handleEditRecoveryViewedNote = makeHandleEditViewedNote(recoveryViewer, 'recovery');
 
   const handleOpenOtherNote = (other) => {
     setEditingNoteId(other.id);
+    setEditingSource(null);
     setEditingTitle(other.title || '');
     setEditingFullText(other.raw_text);
     const _persistedWeek = isValidActiveWeek(other.activeWeek) ? other.activeWeek : null;
@@ -519,6 +528,7 @@ export function useLogOtherRoutineEditor({
         if (!ok) return;
       }
       setEditingNoteId(null);
+      setEditingSource(null);
       setOriginalNoteState(null);
       clearAdoptionPrompt();
       return;
@@ -546,6 +556,7 @@ export function useLogOtherRoutineEditor({
       }
     }
     setEditingNoteId(null);
+    setEditingSource(null);
     setOriginalNoteState(null);
     clearAdoptionPrompt();
   };
@@ -635,6 +646,23 @@ export function useLogOtherRoutineEditor({
     }
   };
 
+  // Cancel for the Recovery block's inline editor (#841): reverts to the
+  // persisted content exactly as `handleUndoOther` already does for the
+  // shared full-screen editor, then closes the inline session outright —
+  // unlike the full-screen Undo, Cancel here is an exit, not a mid-edit
+  // revert. Nothing is saved on the way out beyond what autosave already
+  // wrote and this now reverts.
+  const handleCancelRecoveryEdit = async () => {
+    if (autosaveOtherTimerRef.current) {
+      clearTimeout(autosaveOtherTimerRef.current);
+      autosaveOtherTimerRef.current = null;
+    }
+    await handleUndoOther();
+    setEditingNoteId(null);
+    setEditingSource(null);
+    setOriginalNoteState(null);
+  };
+
   const handleDeleteRoutine = (id, title, isCurrent) => {
     Alert.alert(
       'Delete Routine',
@@ -649,6 +677,7 @@ export function useLogOtherRoutineEditor({
           onPress: async () => {
             await remove(id);
             setEditingNoteId(null);
+            setEditingSource(null);
             setOriginalNoteState(null);
             routineViewer.setViewingNoteId(null);
             recoveryViewer.setViewingNoteId(null);
@@ -670,6 +699,7 @@ export function useLogOtherRoutineEditor({
           onPress: async () => {
             await deleteDeloadNote(editingNoteId);
             setEditingNoteId(null);
+            setEditingSource(null);
             setOriginalNoteState(null);
           },
         },
@@ -685,6 +715,7 @@ export function useLogOtherRoutineEditor({
   const handleCreateRoutine = (seed) => {
     setOriginalNoteState(null);
     setEditingNoteId('new');
+    setEditingSource(null);
     setEditingTitle(seed?.title ?? '');
     setEditingFullText(seed?.text ?? '');
     setEditingActiveWeek(null);
@@ -736,6 +767,7 @@ export function useLogOtherRoutineEditor({
     setAdoptionPrompt(null);
     setAdoptionError('');
     setEditingNoteId(null);
+    setEditingSource(null);
     setOriginalNoteState(null);
     routineViewer.setViewingNoteId(null);
     recoveryViewer.setViewingNoteId(null);
@@ -843,6 +875,7 @@ export function useLogOtherRoutineEditor({
       // place that clears it on a completed adoption.
       await selectCurrent(id);
       setEditingNoteId(null);
+      setEditingSource(null);
       setOriginalNoteState(null);
       routineViewer.setViewingNoteId(null);
       recoveryViewer.setViewingNoteId(null);
@@ -918,6 +951,7 @@ export function useLogOtherRoutineEditor({
   return {
     editingNoteId,
     setEditingNoteId,
+    editingSource,
     editingTitle,
     setEditingTitle,
     editingText,
@@ -944,6 +978,7 @@ export function useLogOtherRoutineEditor({
     handleToggleRecoveryViewingWeek,
     handleViewRecoveryNote,
     handleEditRecoveryViewedNote,
+    handleCancelRecoveryEdit,
     deloadEditDate,
     // Wrapped so any UI-driven change marks the date as explicitly touched
     // (#764 feedback fix 2) — a title-/text-only edit must never fall into

@@ -10,11 +10,11 @@
 // directly and never decides eligibility itself beyond what those handlers
 // already enforce.
 
-import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Alert } from '../lib/platformAlert';
-import { Card, Button, SectionTitle } from './UI';
+import { Card, SectionTitle } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { findActiveBlock, orderedLiveWeeks } from '../lib/data/recoveryBlocks';
 import {
@@ -65,6 +65,26 @@ export function LogRecoverySection({
   // the note's persisted default. So a recovery week's note is no longer the
   // one note viewer in this tab with no way back into editing.
   onEditNote,
+  // Inline recovery-note editor (#841): both the explicit `Edit` action and
+  // double-tapping the expanded note body open the SAME inline editor here,
+  // never the shared full-screen Routine editor. `editingNoteId` is null
+  // unless the currently open editor session was opened FROM this block (see
+  // LogScreen's `editingSource === 'recovery'` gate) — a full-screen or
+  // Routine-tab edit of some other note never makes any row here look like
+  // it is mid-edit. Seeded (title/text/A-B week) by `onEditNote` exactly as
+  // before; these props only render what is already seeded.
+  editingNoteId = null,
+  editingTitle = '',
+  onChangeEditingTitle,
+  editingText = '',
+  onChangeEditingText,
+  editingHasABWeeks = false,
+  editingEffectiveWeek = null,
+  onToggleEditingWeek,
+  editingIsSaving = false,
+  editingSaveError = '',
+  onSaveEdit,
+  onCancelEdit,
   onCompleteWeek,
   // Reopens the most recently completed week (#836), restoring it to
   // in-progress without touching its note. LogScreen only offers this when
@@ -132,6 +152,11 @@ export function LogRecoverySection({
   // already exposed. Keying by id collapses on any block change with no effect
   // and no stale-state window.
   const [manageExpandedBlockId, setManageExpandedBlockId] = useState(null);
+  // Double-tap the expanded note body to edit it (#841 owner amendment):
+  // the same gesture/timing the Routine tab's card already uses
+  // (LogPreviousRoutines.js's viewingNoteLastTapRef), reproduced here rather
+  // than shared because the two components track different Allowed Files.
+  const viewingNoteLastTapRef = useRef(0);
 
   const activeBlock = findActiveBlock(blocks);
   // Two distinct states. A PENDING operation locks conflicting actions, because a
@@ -438,8 +463,18 @@ export function LogRecoverySection({
                   ? `View ${_noteTitle(linkedNote)}, Recovery Week ${week.week_number}${isCompleted ? ', completed' : ''}`
                   : `Recovery Week ${week.week_number}${isCompleted ? ', completed' : ''}, note unavailable`;
                 const isViewingThisNote = !!linkedNote && viewingNoteId === week.note_id && !!viewingNote;
+                // Freezes which week is expanded while ANY recovery note is
+                // mid-edit (#841): the inline editor only renders inside
+                // `isViewingThisNote`'s block below, so switching which week
+                // is viewed while editing would silently unmount the editor
+                // out from under an unsaved edit instead of routing the user
+                // through Save/Cancel. Blocking every row's toggle — including
+                // the edited row's own, which would otherwise collapse it
+                // shut on the same note — is what keeps a second row from
+                // ever opening for editing at the same time too.
+                const rowBlockedByEdit = !!editingNoteId;
                 const rowProps = linkedNote
-                  ? { onPress: () => onViewNote?.(linkedNote), accessibilityRole: 'button' }
+                  ? { onPress: rowBlockedByEdit ? undefined : () => onViewNote?.(linkedNote), accessibilityRole: 'button' }
                   : {};
                 const RowMain = linkedNote ? Pressable : View;
                 return (
@@ -457,7 +492,7 @@ export function LogRecoverySection({
                       style={styles.weekRow}
                       accessible
                       accessibilityLabel={rowLabel}
-                      accessibilityState={linkedNote ? { expanded: isViewingThisNote } : undefined}
+                      accessibilityState={linkedNote ? { expanded: isViewingThisNote, disabled: rowBlockedByEdit } : undefined}
                       {...rowProps}
                     >
                       <View style={styles.weekRowInfo}>
@@ -478,59 +513,154 @@ export function LogRecoverySection({
                         />
                       ) : null}
                     </RowMain>
-                    {isViewingThisNote && (
-                      <View style={styles.weekNoteContent}>
-                        <WorkoutContentRenderer
-                          dayGroups={viewingNoteDayGroups}
-                          emptyText="No exercises to display."
-                        />
-                        <View style={styles.weekNoteActions}>
-                          {/* The same Week A/B control the non-current routine
-                              card carries (#711), in its existing pill form and
-                              with the exact role/label/selected state it has
-                              there — it changes which week you are READING, not a
-                              routine-lifecycle action. It is the only thing that
-                              makes the other half of an A/B recovery-week note
-                              reachable from this card. */}
-                          {viewingHasABWeeks && (
-                            <Pressable
-                              onPress={() => onToggleViewingWeek?.()}
-                              style={styles.inlineSwitchButton}
-                              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                              accessibilityRole="button"
-                              accessibilityLabel={`Switch to Week ${viewingEffectiveWeek === 'B' ? 'A' : 'B'}`}
-                              accessibilityState={{ selected: viewingEffectiveWeek === 'B' }}
-                            >
-                              <Text style={styles.inlineSwitchButtonText}>
-                                Week {viewingEffectiveWeek === 'B' ? 'A' : 'B'}
-                              </Text>
-                            </Pressable>
-                          )}
-                          {/* Every other note viewer in this tab (deload
-                              record, prior routines) already has an explicit
-                              Edit control — this one didn't (#823 audit
-                              finding 3), so reading a recovery week's note had
-                              no path back into editing it. `onEditNote` takes
-                              no argument on purpose: it is
-                              `otherEditor.handleEditViewedNote`, which reads
-                              off the same shared `viewingNote`/
-                              `viewingEffectiveWeek` state this card already
-                              renders from (`isViewingThisNote` guarantees it
-                              matches `linkedNote` here) — that is what makes
-                              the editor open on whichever A/B half the user
-                              was actually looking at, instead of always
-                              reopening on the note's persisted default week. */}
-                          {linkedNote && (
-                            <Button
-                              onPress={() => onEditNote?.()}
-                              title="Edit"
-                              style={styles.inlineSwitchButton}
-                              textStyle={styles.inlineSwitchButtonText}
-                            />
+                    {isViewingThisNote && (() => {
+                      // Editing THIS week's note inline, not some other row's
+                      // (#841): `editingNoteId` is already scoped to a
+                      // recovery-sourced session by LogScreen, so comparing it
+                      // to this row's linked note id is enough to tell the two
+                      // apart. `editingBlocked` disables Edit/double-tap on
+                      // every OTHER row while one recovery note is mid-edit,
+                      // so a second edit session can never start out from
+                      // under the first without an explicit Save/Cancel.
+                      const isEditingThisNote = !!linkedNote && editingNoteId === linkedNote.id;
+                      const editingBlocked = !!editingNoteId && !isEditingThisNote;
+                      const handleNoteBodyPress = () => {
+                        if (editingBlocked) return;
+                        const now = Date.now();
+                        const DOUBLE_TAP_DELAY = 300;
+                        if (now - viewingNoteLastTapRef.current < DOUBLE_TAP_DELAY) {
+                          onEditNote?.();
+                          viewingNoteLastTapRef.current = 0;
+                        } else {
+                          viewingNoteLastTapRef.current = now;
+                        }
+                      };
+                      return (
+                        <View style={styles.weekNoteContent}>
+                          {isEditingThisNote ? (
+                            <View style={styles.inlineEditor}>
+                              <TextInput
+                                value={editingTitle}
+                                onChangeText={onChangeEditingTitle}
+                                placeholder="Routine Name"
+                                placeholderTextColor={colors.textMuted}
+                                autoCorrect={false}
+                                autoCapitalize="none"
+                                spellCheck={false}
+                                style={styles.inlineEditorTitleInput}
+                                accessibilityLabel="Recovery note title"
+                              />
+                              <TextInput
+                                value={editingText}
+                                onChangeText={onChangeEditingText}
+                                placeholder="Workout note…"
+                                placeholderTextColor={colors.textMuted}
+                                multiline
+                                autoCorrect={false}
+                                autoCapitalize="none"
+                                spellCheck={false}
+                                style={styles.inlineEditorTextInput}
+                                accessibilityLabel="Recovery note text"
+                              />
+                              {editingSaveError ? (
+                                <Text style={styles.errorBannerText}>{editingSaveError}</Text>
+                              ) : null}
+                              <View style={styles.weekNoteActions}>
+                                {editingHasABWeeks && (
+                                  <Pressable
+                                    onPress={() => onToggleEditingWeek?.()}
+                                    style={styles.inlineSwitchButton}
+                                    hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={`Switch to Week ${editingEffectiveWeek === 'B' ? 'A' : 'B'}`}
+                                    accessibilityState={{ selected: editingEffectiveWeek === 'B' }}
+                                  >
+                                    <Text style={styles.inlineSwitchButtonText}>
+                                      Week {editingEffectiveWeek === 'B' ? 'A' : 'B'}
+                                    </Text>
+                                  </Pressable>
+                                )}
+                                <Pressable
+                                  onPress={() => onCancelEdit?.()}
+                                  style={styles.inlineSwitchButton}
+                                  accessibilityRole="button"
+                                  accessibilityLabel="Cancel editing recovery note"
+                                >
+                                  <Text style={styles.inlineSwitchButtonText}>Cancel</Text>
+                                </Pressable>
+                                <Pressable
+                                  onPress={() => onSaveEdit?.()}
+                                  disabled={editingIsSaving}
+                                  style={[styles.inlineSwitchButton, editingIsSaving && styles.inlineSwitchButtonDisabled]}
+                                  accessibilityRole="button"
+                                  accessibilityLabel="Save recovery note"
+                                  accessibilityState={{ disabled: editingIsSaving }}
+                                >
+                                  <Text style={styles.inlineSwitchButtonText}>
+                                    {editingIsSaving ? 'Saving…' : 'Save'}
+                                  </Text>
+                                </Pressable>
+                              </View>
+                            </View>
+                          ) : (
+                            <>
+                              {/* Double-tap is the primary direct-manipulation
+                                  edit gesture (#841 owner amendment), matching
+                                  the Routine tab's existing prior-routine
+                                  interaction. */}
+                              <Pressable onPress={handleNoteBodyPress} style={styles.weekNoteBody}>
+                                <WorkoutContentRenderer
+                                  dayGroups={viewingNoteDayGroups}
+                                  emptyText="No exercises to display."
+                                />
+                              </Pressable>
+                              <View style={styles.weekNoteActions}>
+                                {/* The same Week A/B control the non-current
+                                    routine card carries (#711), in its existing
+                                    pill form and with the exact role/label/
+                                    selected state it has there — it changes
+                                    which week you are READING, not a
+                                    routine-lifecycle action. */}
+                                {viewingHasABWeeks && (
+                                  <Pressable
+                                    onPress={() => onToggleViewingWeek?.()}
+                                    style={styles.inlineSwitchButton}
+                                    hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={`Switch to Week ${viewingEffectiveWeek === 'B' ? 'A' : 'B'}`}
+                                    accessibilityState={{ selected: viewingEffectiveWeek === 'B' }}
+                                  >
+                                    <Text style={styles.inlineSwitchButtonText}>
+                                      Week {viewingEffectiveWeek === 'B' ? 'A' : 'B'}
+                                    </Text>
+                                  </Pressable>
+                                )}
+                                {/* Explicit, visible Edit affordance kept for
+                                    discoverability/accessibility (#841 owner
+                                    amendment) — a peer control of Week A/B, not
+                                    a replacement for the double-tap gesture.
+                                    Enters the SAME inline editor above; it
+                                    never navigates to the shared full-screen
+                                    Routine editor (see LogScreen's
+                                    `editingSource === 'recovery'` gate). */}
+                                {linkedNote && (
+                                  <Pressable
+                                    onPress={() => onEditNote?.()}
+                                    disabled={editingBlocked}
+                                    style={[styles.inlineSwitchButton, editingBlocked && styles.inlineSwitchButtonDisabled]}
+                                    accessibilityRole="button"
+                                    accessibilityLabel="Edit"
+                                    accessibilityState={{ disabled: editingBlocked }}
+                                  >
+                                    <Text style={styles.inlineSwitchButtonText}>Edit</Text>
+                                  </Pressable>
+                                )}
+                              </View>
+                            </>
                           )}
                         </View>
-                      </View>
-                    )}
+                      );
+                    })()}
                   </View>
                 );
               })}
@@ -761,6 +891,37 @@ const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: 12,
     gap: 8,
   },
+  weekNoteBody: {},
+  // The inline recovery-note editor (#841): a compact title + text pair, no
+  // outer Card — it already lives inside this week's own content area, so a
+  // second nested bordered surface would only add chrome the note viewer
+  // above it never had.
+  inlineEditor: {
+    gap: 8,
+  },
+  inlineEditorTitleInput: {
+    backgroundColor: colors.inputBackground,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  inlineEditorTextInput: {
+    backgroundColor: colors.inputBackground,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: colors.text,
+    minHeight: 160,
+    textAlignVertical: 'top',
+  },
   // Holds the Week A/B pill at its natural width, exactly as the non-current
   // routine card's `viewActions` row does (LogPreviousRoutines.js).
   weekNoteActions: {
@@ -769,7 +930,11 @@ const createStyles = (colors) => StyleSheet.create({
     gap: 12,
   },
   // The relocated pill keeps the treatment authorized for it in #710/#711:
-  // same background, border, radius, 44dp floor, and shrink behavior.
+  // same background, border, radius, 44dp floor, and shrink behavior. Edit
+  // (#841) is a plain Pressable using this SAME style object, not a `Button`
+  // wrapping it — `Button`'s own base style carries a `marginTop` Week A/B
+  // never had, which broke the peer controls' vertical alignment when Edit
+  // was rendered through it.
   inlineSwitchButton: {
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -780,6 +945,9 @@ const createStyles = (colors) => StyleSheet.create({
     minHeight: 44,
     justifyContent: 'center',
     flexShrink: 1,
+  },
+  inlineSwitchButtonDisabled: {
+    opacity: 0.45,
   },
   inlineSwitchButtonText: {
     fontSize: 12,
