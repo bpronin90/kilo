@@ -128,10 +128,8 @@ Source: `mobile/components/UI.js`
 
 Every ordinary card uses this 1px `cardBorder` in both modes — no card is
 special-cased. The single documented exception is the current-routine card in
-`LogActiveRoutineCard.js`, which pairs the standard 1px `cardBorder` with a
-single 4px `colors.accent` rail across the card's top edge (#843) so the
-active note is still identifiable at a glance, without a filled rectangle
-everywhere else on screen the way the former all-round border was.
+`LogActiveRoutineCard.js`, which keeps a 4px `colors.accent` border on all
+sides so the active note is identifiable at a glance.
 
 Tone variants (accent/success/error/warn) override bg and border to the tone color. Lines `165-180`.
 
@@ -809,8 +807,8 @@ Log styling unless the repo owner explicitly asks. The authorized layout
 exceptions for #710 and #711 are enumerated in that same header block. #843
 is a further owner-authorized exception (the Recovery/Routine redesign
 below), scoped to `styles.tabToggle` in `LogScreen.js` plus
-`LogRecoverySection.js`, `RecoveryBlockEndModal.js` (new),
-`LogActiveRoutineCard.js`, and `LogPreviousRoutines.js`.
+`LogRecoverySection.js`, `RecoveryBlockEndModal.js` (new), and
+`LogPreviousRoutines.js`. The Current routine card remains locked.
 
 ### Action hierarchy (#711)
 
@@ -819,7 +817,7 @@ action is placed by how often it is used:
 
 | Tier | Actions | Location |
 |---|---|---|
-| Primary — every session | `Track` a lift, `Edit`, `Week A/B`, skip week | Active card body, plus the one 38px control row under its header (`LogActiveRoutineCard.js` `controlRow`, #843) |
+| Primary — every session | `Track` a lift, `Edit`, `Week A/B`, skip week | Active card body, plus the one action strip under its header (`LogActiveRoutineCard.js` `actionStrip`) |
 | Secondary — occasional | `Edit routine`, `Delete routine`, viewed-card `Week A/B`, full `Set as current routine` | Non-current row's expand-on-tap body (`LogPreviousRoutines.js` `inlineActions`), inside expanded routine management |
 | Quick access — reachable without opening (#756, #836; the per-row quick action retired #843) | `New routine` (icon + visible label, the section's ONE create-routine affordance) | A sibling row of the section title, OUTSIDE the disclosure panel entirely (#843) — present and identical whether the panel is collapsed or expanded (`LogPreviousRoutines.js` `topRow`) |
 | Rare — once per training block | `Start recovery block` | A persistent, low-emphasis outline row directly under the current routine card (`LogScreen.js` `recoveryStartRow`), never nested in a menu or disclosure; absent whenever a block cannot be started (#823, superseding #724's routine-management placement) |
@@ -1056,8 +1054,8 @@ Consequences to preserve:
 |---|---|---|---|
 | Current note title | fontSize | `24` | `LogActiveRoutineCard.js` |
 | | fontWeight | `800` | `LogActiveRoutineCard.js` |
-| | color | `colors.text` (#843; was `colors.accent`) | `LogActiveRoutineCard.js` |
-| Current routine card | borderWidth | standard 1px `cardBorder` + 4px `colors.accent` top rail (#843; was 4px all-round) | `LogActiveRoutineCard.js` |
+| | color | `colors.accent` | `LogActiveRoutineCard.js` |
+| Current routine card | borderWidth | `4`, `colors.accent` on all sides | `LogActiveRoutineCard.js` |
 | | padding | `0` | `LogActiveRoutineCard.js` |
 | Other note title | fontSize | `20` | `LogPreviousRoutines.js:173` |
 | | fontWeight | `800` | `LogPreviousRoutines.js:174` |

@@ -21,11 +21,11 @@
 // non-current card's expanded body gains a `gap: 12` `viewActions` row for the
 // relocated Week A/B pill.
 //
-// Authorized exception (#843), the owner-authorized Recovery/Routine
+// Authorized exception (#843), the owner-authorized Recovery and More Routines
 // redesign: `styles.tabToggle` and its item styles below are restyled to a
 // neutral navigation strip; `LogRecoverySection.js`, `RecoveryBlockEndModal.js`
-// (new), `LogActiveRoutineCard.js`, and `LogPreviousRoutines.js` carry their
-// own approved redesign. No other styling exception is authorized.
+// (new), and `LogPreviousRoutines.js` carry their own approved redesign. The
+// Current routine card remains locked. No other styling exception is authorized.
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';

@@ -15,8 +15,8 @@
 // `expanded`/`onToggleExpanded` props below.
 //
 // #843 owner-authorized exception to the Log tab's style lock, scoped to this
-// file plus LogActiveRoutineCard.js, LogRecoverySection.js, and
-// RecoveryBlockEndModal.js.
+// file plus LogRecoverySection.js and RecoveryBlockEndModal.js. The Current
+// routine card remains locked.
 import React, { useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';

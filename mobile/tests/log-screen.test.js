@@ -3169,7 +3169,7 @@ describe('LogActiveRoutineCard: header collapses, body edits (separate handlers)
 
   test('tapping the header calls toggleCollapsed, not the body handler', () => {
     const { root, props } = renderCard();
-    const header = pressableAround(root, t => t === 'CURRENT');
+    const header = pressableAround(root, t => t.includes('Current routine'));
     render.act(() => { header.props.onPress(); });
     expect(props.toggleCollapsed).toHaveBeenCalledTimes(1);
     expect(props.handleNoteBodyPress).not.toHaveBeenCalled();
@@ -3273,9 +3273,9 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     expect(title.props.ellipsizeMode).toBe('tail');
 
     // Identity only: title, subtitle, badge — and not one nested control.
-    const header = pressableAround(root, t => t === 'CURRENT');
+    const header = pressableAround(root, t => t.includes('Current routine'));
     expect(nestedPressablesUnder(header).length).toBe(0);
-    expect(header.findAll(n => n.type === 'Text' && String(n.props.children).includes('RECOVERY WEEK')).length)
+    expect(header.findAll(n => n.type === 'Text' && String(n.props.children).includes('Recovery Week')).length)
       .toBeGreaterThan(0);
 
     const infoColumn = findStyled(root, s => s.flex === 1 && 'minWidth' in s);
@@ -3286,13 +3286,11 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     const wrapRows = findStyled(root, s => s.flexWrap === 'wrap');
     expect(wrapRows.length).toBeGreaterThan(0);
 
-    // #843 restyles the three controls to a consistently shaped 38px row,
-    // keeping the documented sub-44dp hitSlop exception rather than raising
-    // every control to a 44dp box.
-    const pills = findStyled(root, s => s.height === 38);
-    expect(pills.length).toBe(3); // Edit + Week A/B + Skip week/Remove skip
+    const pills = findStyled(root, s => s.minHeight === 44);
+    expect(pills.length).toBe(3); // Edit + Week A/B + Skip week/Remove skip (#823: 44dp floor)
     for (const pill of pills) {
       const style = flatStyle(pill);
+      expect(style.justifyContent).toBe('center');
       expect(style.flexShrink).toBe(1);
     }
 
@@ -3621,7 +3619,7 @@ describe('Log action hierarchy (#711)', () => {
   describe('active card action strip', () => {
     test('the Week A/B switch moved out of the header into the strip and still toggles', () => {
       const { root, props } = renderActiveCard({ hasABWeeks: true, effectiveActiveWeek: 'A' });
-      const header = pressableAround(root, t => t === 'CURRENT');
+      const header = pressableAround(root, t => t.includes('Current routine'));
       expect(header.findAll(n => n !== header && n.props && typeof n.props.onPress === 'function').length).toBe(0);
 
       const weekBtn = pressableAround(root, t => t === 'Week B');

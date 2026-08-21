@@ -12,8 +12,8 @@
 //
 // #843 owner-authorized exception to the Log tab's style lock: this file's
 // card, week-table, and action-zone visuals are the approved redesign, scoped
-// to this file plus RecoveryBlockEndModal.js, LogActiveRoutineCard.js, and
-// LogPreviousRoutines.js. `End recovery block` now opens
+// to this file plus RecoveryBlockEndModal.js and LogPreviousRoutines.js. The
+// Current routine card remains locked. `End recovery block` now opens
 // `RecoveryBlockEndModal` (owned by LogScreen) instead of `Alert.alert`.
 
 import React, { useRef, useState } from 'react';
