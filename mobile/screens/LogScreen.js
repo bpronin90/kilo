@@ -419,14 +419,17 @@ export function LogScreen({
       return true;
     }
     // Recovery's expanded note collapses on Back too (#836), same as the
-    // Routine tab's below — but only when Recovery is the tab actually on
-    // screen, since the two viewers are independent and Back must not reach
-    // into a tab the user cannot currently see.
+    // Routine-tab viewer below — but each only while ITS OWN tab is actually
+    // on screen. The two viewers are independent, so a note left expanded on
+    // one tab must not make Back silently consume the event (and stay put)
+    // while the other tab is showing (review finding): Routine and Deload
+    // both read off `otherEditor.viewingNoteId`, so that check is gated on
+    // every tab except Recovery, symmetric to the Recovery gate above it.
     if (tabView === 'recovery' && otherEditor.recoveryViewingNoteId) {
       otherEditor.setRecoveryViewingNoteId(null);
       return true;
     }
-    if (otherEditor.viewingNoteId) {
+    if (tabView !== 'recovery' && otherEditor.viewingNoteId) {
       otherEditor.setViewingNoteId(null);
       return true;
     }

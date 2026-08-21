@@ -871,9 +871,23 @@ export function completeCurrentWeekCore(storage, { blockId }) {
 // undo. A no-op error (not a silent success) when the current week is not
 // actually completed, so a stale button press explains itself rather than
 // pretending to have done something.
+//
+// Also refuses on a block that is no longer active (review finding): the
+// reopen confirmation can sit open long enough for `completeRecoveryBlockCore`
+// to complete the block AND this same week together in the meantime, and
+// without this check a stale confirm would still clear `completed_at` on that
+// week — leaving a COMPLETED block with an IN-PROGRESS week, a combination the
+// domain otherwise guarantees can never happen (recoveryBlocks.js `isBlockActive`).
 export function uncompleteCurrentWeekCore(storage, { blockId }) {
   return runGuardedRecoveryAction({ blockId }, async () => {
-    const ordered = await storage.loadRecoveryWeeksForBlock(blockId);
+    const [blocks, ordered] = await Promise.all([
+      storage.loadRecoveryBlocks(),
+      storage.loadRecoveryWeeksForBlock(blockId),
+    ]);
+    const block = blocks.find(b => b.id === blockId);
+    if (!block || !isBlockActive(block)) {
+      return { ok: false, code: 'BLOCK_NOT_ACTIVE', error: 'This recovery block is no longer active.' };
+    }
     const current = ordered.length > 0 ? ordered[ordered.length - 1] : null;
     if (!current) {
       return { ok: false, code: 'NO_CURRENT_WEEK', error: 'This block has no completed week to reopen.' };

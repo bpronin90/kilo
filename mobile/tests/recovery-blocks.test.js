@@ -934,6 +934,32 @@ describe('uncompleteCurrentWeekCore: permitted and blocked undo states', () => {
     expect(results.filter(r => r.ok)).toHaveLength(1);
     expect(results.some(r => !r.ok)).toBe(true);
   });
+
+  // Review finding: a block completed (with its open week) via
+  // completeRecoveryBlockCore in the window between the reopen confirmation
+  // opening and being pressed must refuse the reopen — otherwise it would
+  // leave a COMPLETED block with an IN-PROGRESS week, a combination the
+  // domain otherwise guarantees can never happen.
+  test('a week cannot be reopened once its block has completed, even though the week itself is still completed', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    // completeRecoveryBlockCore completes the block AND its open current week
+    // together as one atomic operation — this is the realistic path that
+    // could race a pending reopen confirmation.
+    const completion = await completeRecoveryBlockCore(journalStorage, { blockId: block.id });
+    expect(completion.ok).toBe(true);
+    expect((await loadRecoveryWeeksForBlock(block.id)).find(w => w.id === week.id).completed_at).toBeTruthy();
+
+    const result = await uncompleteCurrentWeekCore(journalStorage, { blockId: block.id });
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('BLOCK_NOT_ACTIVE');
+
+    // The week is untouched: still completed, block still completed.
+    const weekAfter = (await loadRecoveryWeeksForBlock(block.id)).find(w => w.id === week.id);
+    expect(weekAfter.completed_at).toBeTruthy();
+    const blockAfter = (await loadRecoveryBlocks()).find(b => b.id === block.id);
+    expect(blockAfter.completed_at).toBeTruthy();
+  });
 });
 
 // ── raw accessors (cloud sync seam) ───────────────────────────────────────────

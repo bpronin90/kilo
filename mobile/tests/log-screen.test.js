@@ -6713,6 +6713,41 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Incline Row').length).toBeGreaterThan(0);
   });
 
+  test('Android Back on Recovery does not consume the event for a note left expanded on the invisible Routine tab (#836 review)', () => {
+    // A recovery-week note is expanded on Routine (via routineViewer, not
+    // Recovery's own viewer) and the user then switches to Recovery WITHOUT
+    // touching Recovery's viewer. Back on Recovery must not fall through to
+    // collapsing that invisible Routine-tab expansion — that would consume
+    // the event and strand the user on Recovery instead of navigating back.
+    const priorRoutine = { id: 'prior1', title: 'Prior Routine', raw_text: 'Legs\n-Squat\n100 5,5,5', updated_at: '2026-01-20T00:00:00.000Z' };
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note, priorRoutine], weeks });
+
+    let capturedConsumer;
+    const registerBackConsumer = jest.fn((consumer) => { capturedConsumer = consumer; return jest.fn(); });
+    let component;
+    render.act(() => {
+      component = render.create(<ControlledLogScreen isActive registerBackConsumer={registerBackConsumer} />);
+    });
+    const root = component.root;
+
+    // Land on Routine and expand the prior (non-recovery) routine's row —
+    // this sets the shared Routine-tab viewer.
+    render.act(() => { pressableAround(root, t => t === 'Routine').props.onPress(); });
+    expandRoutineManagement(root);
+    render.act(() => { findPressableByText(root, priorRoutine.title).props.onPress(); });
+
+    // Switch to Recovery. Recovery's own viewer is untouched (nothing
+    // expanded there).
+    render.act(() => { pressableAround(root, t => t === 'Recovery').props.onPress(); });
+
+    let handled;
+    render.act(() => { handled = capturedConsumer(); });
+    // Nothing on Recovery consumed Back, so it falls through to the shell's
+    // own fallback instead of silently no-opping.
+    expect(handled).toBe(false);
+  });
+
   test('Unlink remains reachable, with its week context, when the latest week is completed and no next week exists', () => {
     // Unlink must be accessible so the user can back out before adding the
     // next week (#729). It lives inside `Manage recovery block` and names
