@@ -327,21 +327,31 @@ const createStyles = (colors) => StyleSheet.create({
     marginTop: 4,
     gap: 12,
   },
-  // No enclosing bordered/radius panel (#823) — this used to mirror the
-  // Recovery History panel's chrome; the section is now a flat list, matching
-  // the rest of the Routine tab.
-  panel: {},
+  // Boxed disclosure panel matching Weight History's shared rhythm (#841):
+  // one bordered, rounded card holds the header and — only while expanded —
+  // the routine rows, so a collapsed panel is exactly the header's height
+  // with no dead slab beneath it, and an expanded panel reads as one panel
+  // rather than a borderless header floating above unrelated cards.
+  panel: {
+    backgroundColor: colors.card,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    overflow: 'hidden',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 12,
+    paddingHorizontal: 16,
     gap: 4,
     minHeight: 44,
+    backgroundColor: colors.subtleBg,
   },
   headerBordered: {
     borderBottomWidth: 1,
-    borderBottomColor: colors.divider,
+    borderBottomColor: colors.cardBorder,
   },
   // The disclosure toggle (#756): a sibling of the New Note and chevron
   // controls below, not their parent — a nested Pressable would be grouped
@@ -390,13 +400,17 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
   },
+  // No extra top padding beyond the header's own bottom border (#841): the
+  // old paddingTop:12 stacked on top of the header's paddingVertical:12,
+  // doubling the gap to the first row versus the gap:12 between rows below.
   body: {
-    paddingTop: 12,
+    paddingVertical: 12,
     gap: 12,
   },
   otherNoteCard: {
     padding: 0,
     overflow: 'hidden',
+    marginHorizontal: 12,
   },
   // The row's outer layout (#756): holds the identity Pressable and the
   // compact set-current Pressable as siblings, so neither is nested inside

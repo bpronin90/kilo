@@ -755,7 +755,32 @@ export function LogScreen({
   // would sit directly on top of "create your first routine" — telling a user
   // with a full notebook that they have none.
   const isEmpty = !isNotesFirstLoad && !notesError && notes.length === 0;
-  const isEditing = !!otherEditor.editingNoteId || currentEditor.mode === 'edit' || deloadEditor.deloadMode === 'edit';
+  // A recovery-sourced editingNoteId session (#841) edits inline inside
+  // LogRecoverySection's own expanded week, not the shared full-screen
+  // editor — so it must not flip isEditing/hide the tab content the way
+  // every other editingNoteId source does.
+  const isEditing = (!!otherEditor.editingNoteId && otherEditor.editingSource !== 'recovery')
+    || currentEditor.mode === 'edit' || deloadEditor.deloadMode === 'edit';
+
+  // A recovery-sourced editingNoteId session stays out of `isEditing` above
+  // (its Save/Cancel live inline in LogRecoverySection, not the shared
+  // full-screen editor), which means the tab toggle stays mounted AND
+  // visible while it is open — unlike every other edit surface, which hides
+  // the toggle by making `isEditing` true. Left unguarded, switching to
+  // Routine or Deload would hide the only Save/Cancel controls for the
+  // in-progress edit and, worse, would let the user open the CURRENT
+  // routine's full-screen editor while `otherEditor.editingNoteId` still
+  // names the recovery note — every ternary in that editor keys off
+  // `editingNoteId` truthiness, not tab or mode, so it would render and Done
+  // the wrong note entirely (automated review finding). Leaving Recovery is
+  // therefore refused outright while a recovery inline edit is open; the
+  // user finishes it (Save or Cancel) first, exactly as every other editor
+  // already requires via `isEditing` hiding the toggle.
+  const recoveryInlineEditActive = otherEditor.editingSource === 'recovery' && !!otherEditor.editingNoteId;
+  const handleTabViewChange = (next) => {
+    if (recoveryInlineEditActive && next !== 'recovery') return;
+    setTabView(next);
+  };
 
   // Recovery is selectable only while `recoveryTabVisible`, and Deload only
   // while deload mode is enabled — either falls back to Routine the instant
@@ -840,21 +865,25 @@ export function LogScreen({
                     is never a permanent, empty tab. */}
                 {recoveryTabVisible && (
                   <Pressable
-                    onPress={() => setTabView('recovery')}
+                    onPress={() => handleTabViewChange('recovery')}
                     style={[styles.tabToggleItem, effectiveTabView === 'recovery' && styles.tabToggleItemActive]}
                   >
                     <Text style={[styles.tabToggleText, effectiveTabView === 'recovery' && styles.tabToggleTextActive]}>Recovery</Text>
                   </Pressable>
                 )}
                 <Pressable
-                  onPress={() => setTabView('routine')}
+                  onPress={() => handleTabViewChange('routine')}
+                  disabled={recoveryInlineEditActive}
+                  accessibilityState={{ disabled: recoveryInlineEditActive }}
                   style={[styles.tabToggleItem, effectiveTabView === 'routine' && styles.tabToggleItemActive]}
                 >
                   <Text style={[styles.tabToggleText, effectiveTabView === 'routine' && styles.tabToggleTextActive]}>Routine</Text>
                 </Pressable>
                 {deloadModeEnabled && (
                   <Pressable
-                    onPress={() => setTabView('deload')}
+                    onPress={() => handleTabViewChange('deload')}
+                    disabled={recoveryInlineEditActive}
+                    accessibilityState={{ disabled: recoveryInlineEditActive }}
                     style={[styles.tabToggleItem, effectiveTabView === 'deload' && styles.tabToggleItemActive]}
                   >
                     <Text style={[styles.tabToggleText, effectiveTabView === 'deload' && styles.tabToggleTextActive]}>Deload</Text>
@@ -968,6 +997,23 @@ export function LogScreen({
                 viewingEffectiveWeek={otherEditor.recoveryViewingEffectiveWeek}
                 onToggleViewingWeek={otherEditor.handleToggleRecoveryViewingWeek}
                 onEditNote={otherEditor.handleEditRecoveryViewedNote}
+                // Inline recovery-note editor wiring (#841): a note is being
+                // edited inline in THIS block only when editingNoteId names it
+                // AND that session was opened from the recovery surface —
+                // otherwise editingNoteId belongs to the shared full-screen
+                // editor (or to nothing) and this block stays in read mode.
+                editingNoteId={otherEditor.editingSource === 'recovery' ? otherEditor.editingNoteId : null}
+                editingTitle={otherEditor.editingTitle}
+                onChangeEditingTitle={otherEditor.setEditingTitle}
+                editingText={otherEditor.editingText}
+                onChangeEditingText={otherEditor.setEditingText}
+                editingHasABWeeks={otherEditor.editingHasABWeeks}
+                editingEffectiveWeek={otherEditor.editingEffectiveWeek}
+                onToggleEditingWeek={otherEditor.handleToggleEditingWeek}
+                editingIsSaving={otherEditor.noteIsSaving}
+                editingSaveError={otherEditor.saveError}
+                onSaveEdit={otherEditor.handleDoneOther}
+                onCancelEdit={otherEditor.handleCancelRecoveryEdit}
                 onCompleteWeek={handleCompleteCurrentWeek}
                 onUndoCompleteWeek={handleUndoCompleteWeek}
                 onOpenAddWeek={openAddWeekModal}
