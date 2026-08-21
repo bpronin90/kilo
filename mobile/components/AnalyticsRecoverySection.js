@@ -15,6 +15,7 @@ import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatLiftWeightValue } from '../lib/units';
 import { formatDate, formatDuration } from '../lib/format';
 import { findActiveBlock, isLiveRecord } from '../lib/data/recoveryBlocks';
+import { compareRecoveryBlocksNewestCompletedFirst } from '../storage/entries/recoveryStorage';
 import { parseWorkoutNote } from '../lib/parser/workoutNote';
 import {
   RECOVERY_LOADING_MESSAGE,
@@ -637,12 +638,14 @@ export function AnalyticsRecoverySection({
   const [reopenError, setReopenError] = useState(null);
 
   const activeBlock = findActiveBlock(blocks);
+  // Same comparator storage's own uncompleteRecoveryBlock enforces — newest
+  // `completed_at` first, `id` breaking a tie (#839 review) — applied to both
+  // the history list's display order and which single card offers Reopen, so
+  // the ONE card offering it is always the block a confirm will actually be
+  // allowed to act on, on every device.
   const completedBlocks = blocks
     .filter(b => isLiveRecord(b) && b.completed_at)
-    .sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at)));
-  // Same "newest" tiebreak storage's own uncompleteRecoveryBlock enforces —
-  // by `completed_at` descending — so the ONE card offering Reopen is always
-  // the block a confirm will actually be allowed to act on.
+    .sort(compareRecoveryBlocksNewestCompletedFirst);
   const newestCompletedBlock = completedBlocks[0] || null;
 
   const handleReopen = (block) => {

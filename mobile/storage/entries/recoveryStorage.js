@@ -212,11 +212,22 @@ export const RECOVERY_BLOCK_NOT_NEWEST_COMPLETED = 'BLOCK_NOT_NEWEST_COMPLETED';
 // The block most recently completed among live blocks, if any. "Newest" is by
 // `completed_at`, not `started_at` — the confirmation copy promises "your most
 // recently completed block", and two blocks can complete out of the order
-// they started in.
+// they started in. Ties (an explicit `completedAt` caller, an import, or
+// synchronized records can genuinely equal another block's timestamp) break
+// on `id` — the one other field guaranteed both present and immutable — so
+// every device resolves the SAME winner from the same records rather than
+// each seeing a different "newest" depending on local array order (#839
+// review). LogScreen.js and AnalyticsRecoverySection.js apply this identical
+// ordering for their own read-only "which block offers Reopen" computation.
+export function compareRecoveryBlocksNewestCompletedFirst(a, b) {
+  return String(b.completed_at).localeCompare(String(a.completed_at))
+    || String(b.id).localeCompare(String(a.id));
+}
+
 function _newestCompletedBlock(list) {
   return (list || [])
     .filter(b => isLiveRecord(b) && b.completed_at)
-    .sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at)))[0] || null;
+    .sort(compareRecoveryBlocksNewestCompletedFirst)[0] || null;
 }
 
 // Reopen a completed block (#839): clears `completed_at` back to null and

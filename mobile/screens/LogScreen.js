@@ -40,6 +40,7 @@ import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { normalizeLiftName, listTrackedLifts } from '../lib/data';
 import { DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
 import { findLiveMembershipForNote, nextWeekNumber } from '../lib/data/recoveryBlocks';
+import { compareRecoveryBlocksNewestCompletedFirst } from '../storage/entries/recoveryStorage';
 import {
   useTrackedLifts,
   useWorkoutNotes,
@@ -509,16 +510,19 @@ export function LogScreen({
     && eligibleBaselineNotes.length > 0;
 
   // The `Reopen recovery block: {baseline title}` secondary entry point
-  // (#839). Computed the same way storage's own "newest completed" tiebreak
-  // works — by `completed_at` descending — so what this row NAMES is exactly
-  // what `reopenBlock` will act on; `reopenRecoveryBlockCore` re-verifies this
-  // against persisted state at confirm time regardless (#711-style gate).
-  // Independent of `showRecoveryStartInManagement`: both compute their own
-  // visibility and render together whenever both qualify, per #839's contract
-  // that neither replaces or gates the other.
+  // (#839). Uses the EXACT SAME comparator storage's own "newest completed"
+  // resolution does — including its `id` tie-break for equal `completed_at`
+  // values (#839 review) — so what this row NAMES is exactly what
+  // `reopenBlock` will act on, and every device resolves the same winner
+  // rather than each seeing a different "newest" depending on local array
+  // order; `reopenRecoveryBlockCore` re-verifies this against persisted state
+  // at confirm time regardless (#711-style gate). Independent of
+  // `showRecoveryStartInManagement`: both compute their own visibility and
+  // render together whenever both qualify, per #839's contract that neither
+  // replaces or gates the other.
   const newestCompletedRecoveryBlock = recoveryBlocks
     .filter(b => !!b.completed_at)
-    .sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at)))[0] || null;
+    .sort(compareRecoveryBlocksNewestCompletedFirst)[0] || null;
 
   const showRecoveryReopenInManagement =
     !activeRecoveryBlock

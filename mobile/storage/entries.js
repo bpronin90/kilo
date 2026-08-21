@@ -76,6 +76,7 @@ export {
   updateRecoveryBlock,
   completeRecoveryBlock,
   uncompleteRecoveryBlock,
+  compareRecoveryBlocksNewestCompletedFirst,
   RECOVERY_BLOCK_NOT_COMPLETED,
   RECOVERY_BLOCK_NOT_NEWEST_COMPLETED,
   deleteRecoveryBlock,

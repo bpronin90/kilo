@@ -30,6 +30,7 @@ import {
   loadRecoveryBlocks,
   loadRecoveryBlocksRaw,
   loadRecoveryWeeksForBlock,
+  compareRecoveryBlocksNewestCompletedFirst,
   RECOVERY_BLOCK_NOT_COMPLETED,
   RECOVERY_BLOCK_NOT_NEWEST_COMPLETED,
   replaceRecoveryBlockWeeksRaw,
@@ -655,7 +656,9 @@ describe('uncompleteRecoveryBlock: successful reopen', () => {
 
     expect(reopened.completed_at).toBeNull();
     expect(isBlockActive(reopened)).toBe(true);
-    expect(reopened.updated_at).not.toBe(completed.updated_at);
+    // Re-stamped at write time — not strict inequality, since a fast test run
+    // can genuinely complete both writes within the same millisecond.
+    expect(new Date(reopened.updated_at).getTime()).toBeGreaterThanOrEqual(new Date(completed.updated_at).getTime());
     expect(reopened.baseline).toEqual(completed.baseline);
     expect(reopened.baseline_note_id).toBe(completed.baseline_note_id);
     expect(reopened.started_at).toBe(completed.started_at);
@@ -700,6 +703,25 @@ describe('uncompleteRecoveryBlock: every blocked state rejects without mutation'
     // No mutation: the older block is still completed.
     const raw = await loadRecoveryBlocksRaw();
     expect(raw.find(b => b.id === older.id).completed_at).toBeTruthy();
+  });
+
+  test('equal completed_at timestamps break deterministically on id, the same way on every read', async () => {
+    // An explicit `completedAt` argument (or an import/sync) can genuinely
+    // give two blocks the identical completion timestamp; only one of them
+    // may be "the newest" (#839 review) and it must be the same one no matter
+    // what order the records happen to sit in locally.
+    const first = await makeBlock();
+    const a = await completeRecoveryBlock(first.id, '2026-01-01T00:00:00.000Z');
+    const second = await makeBlock();
+    const b = await completeRecoveryBlock(second.id, '2026-01-01T00:00:00.000Z');
+    const expectedWinner = [a, b].sort(compareRecoveryBlocksNewestCompletedFirst)[0];
+    const expectedLoser = expectedWinner.id === a.id ? b : a;
+
+    const result = await uncompleteRecoveryBlock(expectedWinner.id);
+    expect(result.completed_at).toBeNull();
+
+    await expect(uncompleteRecoveryBlock(expectedLoser.id))
+      .rejects.toMatchObject({ code: RECOVERY_ERROR_CODES.ACTIVE_BLOCK_EXISTS });
   });
 
   test('a completed block rejects with ACTIVE_BLOCK_EXISTS while another block is active', async () => {
