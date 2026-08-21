@@ -19,8 +19,13 @@
 // former `editHintRow` becomes `actionStrip` and gains `flexWrap: 'wrap'` +
 // `gap: 12`, with a `gap: 12` `actionStripPrimary` row inside it; the
 // non-current card's expanded body gains a `gap: 12` `viewActions` row for the
-// relocated Week A/B pill. Every relocated control keeps its existing style
-// object. No other styling exception is authorized.
+// relocated Week A/B pill.
+//
+// Authorized exception (#843), the owner-authorized Recovery/Routine
+// redesign: `styles.tabToggle` and its item styles below are restyled to a
+// neutral navigation strip; `LogRecoverySection.js`, `RecoveryBlockEndModal.js`
+// (new), `LogActiveRoutineCard.js`, and `LogPreviousRoutines.js` carry their
+// own approved redesign. No other styling exception is authorized.
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -39,7 +44,7 @@ import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { normalizeLiftName, listTrackedLifts } from '../lib/data';
 import { DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
-import { findLiveMembershipForNote, nextWeekNumber } from '../lib/data/recoveryBlocks';
+import { findLiveMembershipForNote, nextWeekNumber, orderedLiveWeeks } from '../lib/data/recoveryBlocks';
 import { compareRecoveryBlocksNewestCompletedFirst } from '../storage/entries/recoveryStorage';
 import {
   useTrackedLifts,
@@ -60,6 +65,7 @@ import { LogActiveRoutineCard } from '../components/LogActiveRoutineCard';
 import { LogScreenEditorCard, RoutineAdoptionPrompt } from '../components/LogScreenEditorCard';
 import { RecoveryBlockStartModal } from '../components/RecoveryBlockStartModal';
 import { RecoveryBlockWeekModal } from '../components/RecoveryBlockWeekModal';
+import { RecoveryBlockEndModal } from '../components/RecoveryBlockEndModal';
 import { LogRecoverySection } from '../components/LogRecoverySection';
 
 import { useLogCurrentRoutineEditor } from './log/useLogCurrentRoutineEditor';
@@ -144,6 +150,11 @@ export function LogScreen({
   const recoveryLifecycle = useRecoveryBlockLifecycle() || {};
   const [recoveryModal, setRecoveryModal] = useState(null); // { mode: 'routine'|'note', note } | null
   const [addWeekModalOpen, setAddWeekModalOpen] = useState(false);
+  // The only new persisted-in-render state this redesign adds (#843): whether
+  // `RecoveryBlockEndModal` is open. Everything else the modal needs
+  // (`pendingInclusion`, `submitting`, `submitError`) is local to the modal
+  // itself.
+  const [endBlockModalOpen, setEndBlockModalOpen] = useState(false);
 
   // Both Log disclosures are owned here (#775), not by the sections that render
   // them. Routine and Deload are mutually exclusive branches, so
@@ -274,7 +285,7 @@ export function LogScreen({
   // the recovery-block modal and the add-week modal are sibling <Modal>s each
   // driven by its own `visible` prop, so ownership is a derived predicate over
   // the state those two already keep, not a new mechanism.
-  const otherModalOwnsScreen = !!recoveryModal || addWeekModalOpen;
+  const otherModalOwnsScreen = !!recoveryModal || addWeekModalOpen || endBlockModalOpen;
 
   const currentEditor = useLogCurrentRoutineEditor({
     workoutNoteText,
@@ -633,6 +644,24 @@ export function LogScreen({
     if (result?.ok) refreshRecoveryState?.();
     return result;
   });
+
+  // `RecoveryBlockEndModal`'s own inclusion write (#843): ordered strictly
+  // before `handleCompleteRecoveryBlock` by the modal itself, but not
+  // serialized behind the SAME `runRecoveryAction` key — the modal's own
+  // `submitting` state is what keeps it from double-firing, and this write
+  // changes no week/note/baseline, exactly like the per-block toggle
+  // `LogRecoverySection` already owns.
+  const handleSetRecoveryInclusionFromEndModal = async (params) => {
+    if (!recoveryLifecycle.setIncludeInNormalAnalytics) {
+      return { ok: false, error: 'Recovery blocks are not available in this build yet.' };
+    }
+    const result = await recoveryLifecycle.setIncludeInNormalAnalytics(params);
+    if (result?.ok) refreshRecoveryState?.();
+    return result;
+  };
+
+  const openEndBlockModal = () => setEndBlockModalOpen(true);
+  const closeEndBlockModal = () => setEndBlockModalOpen(false);
 
   // Reopen the newest completed recovery block (#839). Reactivates only the
   // block — every week's completion state is untouched — so on success the
@@ -1017,7 +1046,7 @@ export function LogScreen({
                 onCompleteWeek={handleCompleteCurrentWeek}
                 onUndoCompleteWeek={handleUndoCompleteWeek}
                 onOpenAddWeek={openAddWeekModal}
-                onCompleteBlock={handleCompleteRecoveryBlock}
+                onOpenEndBlockModal={openEndBlockModal}
                 onUnlinkWeek={handleUnlinkRecoveryWeek}
                 busy={recoveryActionBusy}
                 pendingRecovery={pendingRecovery}
@@ -1235,6 +1264,19 @@ export function LogScreen({
         onConfirm={handleConfirmAddWeek}
         onClose={closeAddWeekModal}
       />
+      <RecoveryBlockEndModal
+        visible={endBlockModalOpen}
+        block={activeRecoveryBlock}
+        weekCount={activeRecoveryBlock ? orderedLiveWeeks(recoveryWeeks, activeRecoveryBlock.id).length : 0}
+        blockingMessage={
+          !activeRecoveryBlock
+            ? 'No active recovery block to end.'
+            : (recoveryActionBusy ? 'Another recovery action is already in progress.' : null)
+        }
+        onSetInclusion={handleSetRecoveryInclusionFromEndModal}
+        onConfirmComplete={handleCompleteRecoveryBlock}
+        onClose={closeEndBlockModal}
+      />
     </>
   );
 }
@@ -1275,29 +1317,44 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '700',
     color: colors.accent,
   },
+  // Neutral navigation strip (#843), restyled from the former accent-filled
+  // toggle: a subtle background and card border rather than a chip surface,
+  // with the active item picked out by the card color and a small shadow —
+  // the same emphasis language ordinary cards already use, not a second
+  // accent fill competing with Recovery's own primary action. The former
+  // 12px bottom margin is dropped; spacing to the content below now comes
+  // from the surrounding sections' own gaps.
   tabToggle: {
     flexDirection: 'row',
     borderRadius: 12,
-    backgroundColor: colors.chipBackground,
-    marginBottom: 12,
-    padding: 2,
+    backgroundColor: colors.subtleBg,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    padding: 3,
   },
   tabToggleItem: {
     flex: 1,
-    paddingVertical: 6,
-    borderRadius: 10,
+    paddingVertical: 9,
+    borderRadius: 9,
     alignItems: 'center',
   },
   tabToggleItemActive: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.card,
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 1,
   },
   tabToggleText: {
     fontSize: 14,
-    fontWeight: '700',
-    color: colors.chipText,
+    fontWeight: '600',
+    color: colors.textMuted,
   },
   tabToggleTextActive: {
-    color: colors.onAccent,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
   },
   // Persistent `Start recovery block` entry point (#823): a low-emphasis
   // outline row, subordinate to Edit on the current routine card above it,

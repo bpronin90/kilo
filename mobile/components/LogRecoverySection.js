@@ -1,14 +1,20 @@
-// Recovery Block lifecycle UI (#696): the active block's baseline, current
-// week, lifecycle actions, and active-block inclusion control. Completed-block
-// history lives in Analytics (#729). Week 1 attach/start lives in
-// RecoveryBlockStartModal (#695); this component only ever advances or
-// completes a block that already exists.
+// Recovery Block lifecycle UI (#696, redesigned #843): the active block's
+// baseline, current week, lifecycle actions, and active-block inclusion
+// control. Completed-block history lives in Analytics (#729). Week 1
+// attach/start lives in RecoveryBlockStartModal (#695); this component only
+// ever advances or completes a block that already exists.
 //
 // All lifecycle mutation (complete week, add week, complete block, unlink
 // week) is delegated to the handlers passed in from LogScreen, which bind to
 // hooks/entries/recoveryBlockHooks.js — this file never imports storage
 // directly and never decides eligibility itself beyond what those handlers
 // already enforce.
+//
+// #843 owner-authorized exception to the Log tab's style lock: this file's
+// card, week-table, and action-zone visuals are the approved redesign, scoped
+// to this file plus RecoveryBlockEndModal.js, LogActiveRoutineCard.js, and
+// LogPreviousRoutines.js. `End recovery block` now opens
+// `RecoveryBlockEndModal` (owned by LogScreen) instead of `Alert.alert`.
 
 import React, { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -34,6 +40,20 @@ const RECOVERY_NOTE_UNAVAILABLE = 'Note unavailable';
 
 function _noteTitle(note) {
   return note?.title || 'Untitled Routine';
+}
+
+// `colors.accent`/`colors.success` are plain `#rrggbb` strings in both
+// palettes (theme/colors.js) — this derives the two alpha tints the design
+// calls for (accent-6%, success-12%) without introducing any new raw hex
+// (#843 constraint: "Use only palette role names and derived colors.accent at
+// 6% / colors.success at 12%").
+function _withAlpha(hex, alpha) {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return hex;
+  const r = parseInt(m[1].slice(0, 2), 16);
+  const g = parseInt(m[1].slice(2, 4), 16);
+  const b = parseInt(m[1].slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
 }
 
 export function LogRecoverySection({
@@ -65,11 +85,11 @@ export function LogRecoverySection({
   // the note's persisted default. So a recovery week's note is no longer the
   // one note viewer in this tab with no way back into editing.
   onEditNote,
-  // Inline recovery-note editor (#841): both the explicit `Edit` action and
-  // double-tapping the expanded note body open the SAME inline editor here,
-  // never the shared full-screen Routine editor. `editingNoteId` is null
-  // unless the currently open editor session was opened FROM this block (see
-  // LogScreen's `editingSource === 'recovery'` gate) — a full-screen or
+  // Inline recovery-note editor (#841): both the explicit `Edit note` action
+  // and double-tapping the expanded note body open the SAME inline editor
+  // here, never the shared full-screen Routine editor. `editingNoteId` is
+  // null unless the currently open editor session was opened FROM this block
+  // (see LogScreen's `editingSource === 'recovery'` gate) — a full-screen or
   // Routine-tab edit of some other note never makes any row here look like
   // it is mid-edit. Seeded (title/text/A-B week) by `onEditNote` exactly as
   // before; these props only render what is already seeded.
@@ -92,7 +112,11 @@ export function LogRecoverySection({
   // latest live week, so no later week exists to make the undo ambiguous.
   onUndoCompleteWeek,
   onOpenAddWeek,
-  onCompleteBlock,
+  // Opens LogScreen's `RecoveryBlockEndModal` (#843) — this component no
+  // longer completes a block itself, and never shows the old `Alert.alert`
+  // for it. LogScreen owns `endBlockModalOpen` and the modal's confirm/error
+  // handling; this is purely "ask to open it".
+  onOpenEndBlockModal,
   onUnlinkWeek,
   // The single in-flight lifecycle-action key, owned by LogScreen (not local
   // state here): null | 'week' | 'block' | 'add' | a week id being unlinked.
@@ -137,11 +161,11 @@ export function LogRecoverySection({
   const { setIncludeInNormalAnalytics } = useRecoveryBlockLifecycle();
   const [inclusionBusyBlockId, setInclusionBusyBlockId] = useState(null);
   const [inclusionError, setInclusionError] = useState(null);
-  // The `Manage recovery block` disclosure (#789), collapsed by default. It is
-  // presentation state only: nothing inside it changes handler, gating, or
-  // confirm copy, and the trigger itself is NEVER disabled — a locked user must
-  // still be able to open it and see WHY each control inside is unavailable
-  // (#780 corrected blocked-mutation contract).
+  // The `Manage block` disclosure (#789, restyled #843), collapsed by default.
+  // It is presentation state only: nothing inside it changes handler, gating,
+  // or confirm copy, and the trigger itself is NEVER disabled — a locked user
+  // must still be able to open it and see WHY each control inside is
+  // unavailable (#780 corrected blocked-mutation contract).
   //
   // Stored as the block id it was opened FOR, not as a boolean. This component
   // stays mounted across a block's whole lifetime, and completing a block only
@@ -205,23 +229,25 @@ export function LogRecoverySection({
         <View style={styles.activeGroup}>
           <SectionTitle>Recovery</SectionTitle>
           <Card style={styles.card}>
-            <View
-              style={styles.pendingBanner}
-              accessible
-              accessibilityRole="alert"
-              accessibilityLabel={RECOVERY_UNVERIFIED_MESSAGE}
-            >
-              <Text style={styles.pendingBannerText}>{RECOVERY_UNVERIFIED_MESSAGE}</Text>
-              <Pressable
-                onPress={() => onRetryRecovery?.()}
-                disabled={!!busy}
-                style={styles.pendingRetryButton}
-                accessibilityRole="button"
-                accessibilityLabel="Retry recovery"
-                accessibilityState={{ disabled: !!busy }}
+            <View style={styles.stateZone}>
+              <View
+                style={styles.pendingBanner}
+                accessible
+                accessibilityRole="alert"
+                accessibilityLabel={RECOVERY_UNVERIFIED_MESSAGE}
               >
-                <Text style={styles.pendingRetryText}>Retry recovery</Text>
-              </Pressable>
+                <Text style={styles.pendingBannerText}>{RECOVERY_UNVERIFIED_MESSAGE}</Text>
+                <Pressable
+                  onPress={() => onRetryRecovery?.()}
+                  disabled={!!busy}
+                  style={styles.pendingRetryButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry recovery"
+                  accessibilityState={{ disabled: !!busy }}
+                >
+                  <Text style={styles.pendingRetryText}>Retry recovery</Text>
+                </Pressable>
+              </View>
             </View>
           </Card>
         </View>
@@ -296,21 +322,6 @@ export function LogRecoverySection({
         {
           text: 'Reopen week',
           onPress: () => runAction(() => onUndoCompleteWeek({ blockId: activeBlock.id })),
-        },
-      ]
-    );
-  };
-
-  const handleCompleteBlock = () => {
-    Alert.alert(
-      'Complete recovery block?',
-      'Exercise targets are advisory — unmet targets will not block completion. The baseline routine is untouched. You can reopen your most recently completed block later, as long as no other block is active.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Complete',
-          style: 'destructive',
-          onPress: () => runAction(() => onCompleteBlock({ blockId: activeBlock.id })),
         },
       ]
     );
@@ -420,8 +431,10 @@ export function LogRecoverySection({
         <View style={styles.activeGroup}>
           <SectionTitle>Recovery</SectionTitle>
           <Card style={styles.card}>
-            {stateStale ? staleBanner : null}
-            {showRecoveryNotice ? pendingBanner : null}
+            <View style={styles.stateZone}>
+              {stateStale ? staleBanner : null}
+              {showRecoveryNotice ? pendingBanner : null}
+            </View>
           </Card>
         </View>
       )}
@@ -429,46 +442,46 @@ export function LogRecoverySection({
         <View style={styles.activeGroup}>
           <SectionTitle>Recovery</SectionTitle>
           <Card style={styles.card}>
-            {/* State-derived headline first, supporting evidence second (#789).
-                The baseline is still stated in full, but as one de-emphasized
-                caption rather than the card's loudest two rows. */}
-            <Text style={styles.headline}>{headline}</Text>
-            <Text style={styles.baselineCaption}>
-              Baseline: {activeBlock.baseline_note_title || 'Untitled Routine'}
-            </Text>
+            {/* Zone 1 — state: a kicker, the headline fact, and the
+                de-emphasized baseline caption (#843). */}
+            <View style={styles.stateZone}>
+              <Text style={styles.stateKicker}>RECOVERY BLOCK</Text>
+              <Text style={styles.headline}>{headline}</Text>
+              <Text style={styles.baselineCaption}>
+                Baseline: {activeBlock.baseline_note_title || 'Untitled Routine'}
+              </Text>
 
-            {stateStale ? staleBanner : null}
-            {showRecoveryNotice ? pendingBanner : null}
+              {stateStale ? staleBanner : null}
+              {showRecoveryNotice ? pendingBanner : null}
 
-            {actionError ? (
-              <View style={styles.errorBanner}>
-                <Text style={styles.errorBannerText}>{actionError}</Text>
-              </View>
-            ) : null}
+              {actionError ? (
+                <View style={styles.errorBanner}>
+                  <Text style={styles.errorBannerText}>{actionError}</Text>
+                </View>
+              ) : null}
+            </View>
 
-            <View style={styles.weekList}>
-              {/* Every live week of this block renders as its own labeled
-                  entry (#836) — completed weeks included, not just the
-                  current one — so the block's whole sequence is visible and
-                  a completed week's note stays reachable to view/edit. Each
-                  is visually distinguished by its own `In progress`/
-                  `Completed` status, in addition to the headline above, which
-                  only ever states the CURRENT week's status. */}
-              {activeWeeks.map(week => {
+            {/* Zone 2 — the week table (#843): every live week of this block,
+                completed weeks included, so the block's whole sequence is
+                visible and a completed week's note stays reachable. Status is
+                carried by the dot alone, not a repeated text label — the
+                accessibility label still states it explicitly. */}
+            <View style={styles.weekTable}>
+              {activeWeeks.map((week, weekIndex) => {
                 const linkedNote = week.note_id ? notesById.get(week.note_id) : null;
                 const isCompleted = !!week.completed_at;
+                const isCurrentWeek = !!currentWeek && week.id === currentWeek.id;
+                const isLastRow = weekIndex === activeWeeks.length - 1;
                 // The row stays — the week is still one of this block's weeks
                 // — but it offers no read action, because there is nothing to
                 // read. Unlink no longer lives on the row (#789); dropping
-                // `onPress` AND
-                // `accessibilityRole="button"` is what keeps it from being an
-                // inert press for a sighted user and an announced-but-dead
-                // button for a screen-reader user (#775).
+                // `onPress` AND `accessibilityRole="button"` is what keeps it
+                // from being an inert press for a sighted user and an
+                // announced-but-dead button for a screen-reader user (#775).
                 //
-                // An in-progress row's label is unchanged from before (#836):
-                // only a completed row's label gains an explicit ", completed"
-                // suffix, since a completed week is new to this list and has
-                // no existing label contract to preserve.
+                // Status suffix on the label is unchanged from #836: only a
+                // completed row's label gains an explicit ", completed"
+                // suffix.
                 const rowLabel = linkedNote
                   ? `View ${_noteTitle(linkedNote)}, Recovery Week ${week.week_number}${isCompleted ? ', completed' : ''}`
                   : `Recovery Week ${week.week_number}${isCompleted ? ', completed' : ''}, note unavailable`;
@@ -487,37 +500,45 @@ export function LogRecoverySection({
                   ? { onPress: rowBlockedByEdit ? undefined : () => onViewNote?.(linkedNote), accessibilityRole: 'button' }
                   : {};
                 const RowMain = linkedNote ? Pressable : View;
+                const dayHeading = viewingNoteDayGroups?.[0]?.heading || `Week ${week.week_number}`;
                 return (
-                  <View key={week.id} style={styles.weekItem}>
-                    {/* One borderless line, not a bordered three-line box
-                        (#804). The headline directly above already states
-                        `Week {N} in progress`, so the row's own `Week {N}`
-                        micro-label and `In progress` status were the same fact
-                        rendered twice in a competing row. What is left is the
-                        only thing the row uniquely offers: the note you can
-                        read. The accessible name is unchanged — a screen-reader
-                        user reaches this control out of context and still needs
-                        the week number and the read verb in its label. */}
+                  <View
+                    key={week.id}
+                    style={[
+                      styles.weekItem,
+                      !isLastRow && styles.weekItemDivider,
+                      // Current-week wrapper: accent-at-6%-alpha background and
+                      // a 3px accent left rail, with left padding compensated
+                      // from 18 to 15 so the rail's own width completes the
+                      // table's 18px rhythm (#843).
+                      isCurrentWeek && { backgroundColor: _withAlpha(colors.accent, 0.06), borderLeftWidth: 3, borderLeftColor: colors.accent },
+                    ]}
+                  >
                     <RowMain
-                      style={styles.weekRow}
+                      style={[styles.weekRow, isCurrentWeek && styles.weekRowCurrent]}
                       accessible
                       accessibilityLabel={rowLabel}
                       accessibilityState={linkedNote ? { expanded: isViewingThisNote, disabled: rowBlockedByEdit } : undefined}
                       {...rowProps}
                     >
-                      <View style={styles.weekRowInfo}>
-                        <Text style={styles.weekNumberLabel}>Week {week.week_number}</Text>
-                        <Text style={[styles.weekStatusText, isCompleted && styles.weekStatusTextCompleted]}>
-                          {isCompleted ? 'Completed' : 'In progress'}
-                        </Text>
+                      <View
+                        style={[
+                          styles.statusDot,
+                          isCompleted
+                            ? { backgroundColor: _withAlpha(colors.success, 0.12) }
+                            : { borderWidth: 2, borderColor: colors.accent },
+                        ]}
+                      >
+                        {isCompleted && <MaterialIcons name="check" size={16} color={colors.success} accessible={false} />}
                       </View>
+                      <Text style={styles.weekLabel}>Week {week.week_number}</Text>
                       <Text style={styles.weekNoteTitle} numberOfLines={1}>
                         {linkedNote ? _noteTitle(linkedNote) : RECOVERY_NOTE_UNAVAILABLE}
                       </Text>
                       {linkedNote ? (
                         <MaterialIcons
-                          name={isViewingThisNote ? 'expand-less' : 'chevron-right'}
-                          size={18}
+                          name={isViewingThisNote ? 'expand-less' : 'expand-more'}
+                          size={20}
                           color={colors.textMuted}
                           accessible={false}
                         />
@@ -546,7 +567,7 @@ export function LogRecoverySection({
                         }
                       };
                       return (
-                        <View style={styles.weekNoteContent}>
+                        <View style={[styles.weekNoteContent, isCurrentWeek && styles.weekNoteContentCurrent]}>
                           {isEditingThisNote ? (
                             <View style={styles.inlineEditor}>
                               <TextInput
@@ -577,18 +598,12 @@ export function LogRecoverySection({
                               ) : null}
                               <View style={styles.weekNoteActions}>
                                 {editingHasABWeeks && (
-                                  <Pressable
-                                    onPress={() => onToggleEditingWeek?.()}
-                                    style={styles.inlineSwitchButton}
-                                    hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                                    accessibilityRole="button"
-                                    accessibilityLabel={`Switch to Week ${editingEffectiveWeek === 'B' ? 'A' : 'B'}`}
-                                    accessibilityState={{ selected: editingEffectiveWeek === 'B' }}
-                                  >
-                                    <Text style={styles.inlineSwitchButtonText}>
-                                      Week {editingEffectiveWeek === 'B' ? 'A' : 'B'}
-                                    </Text>
-                                  </Pressable>
+                                  <ABSegment
+                                    styles={styles}
+                                    colors={colors}
+                                    effectiveWeek={editingEffectiveWeek}
+                                    onToggle={() => onToggleEditingWeek?.()}
+                                  />
                                 )}
                                 <Pressable
                                   onPress={() => onCancelEdit?.()}
@@ -613,7 +628,27 @@ export function LogRecoverySection({
                               </View>
                             </View>
                           ) : (
-                            <>
+                            <View style={styles.noteSurface}>
+                              <View style={styles.noteSurfaceHeader}>
+                                <Text style={styles.noteSurfaceKicker} numberOfLines={1}>
+                                  {String(dayHeading).toUpperCase()}
+                                </Text>
+                                {/* The Recovery `A`/`B` segment (#843), replacing
+                                    the pill: it changes which week you are
+                                    READING, not a routine-lifecycle action, and
+                                    sits above the content it governs. 32px
+                                    visual height with hitSlop closing the gap to
+                                    the 44dp touch floor — the design's
+                                    documented exception. */}
+                                {viewingHasABWeeks && (
+                                  <ABSegment
+                                    styles={styles}
+                                    colors={colors}
+                                    effectiveWeek={viewingEffectiveWeek}
+                                    onToggle={() => onToggleViewingWeek?.()}
+                                  />
+                                )}
+                              </View>
                               {/* Double-tap is the primary direct-manipulation
                                   edit gesture (#841 owner amendment), matching
                                   the Routine tab's existing prior-routine
@@ -622,51 +657,31 @@ export function LogRecoverySection({
                                 <WorkoutContentRenderer
                                   dayGroups={viewingNoteDayGroups}
                                   emptyText="No exercises to display."
+                                  compact
                                 />
                               </Pressable>
                               <View style={styles.weekNoteActions}>
-                                {/* The same Week A/B control the non-current
-                                    routine card carries (#711), in its existing
-                                    pill form and with the exact role/label/
-                                    selected state it has there — it changes
-                                    which week you are READING, not a
-                                    routine-lifecycle action. */}
-                                {viewingHasABWeeks && (
-                                  <Pressable
-                                    onPress={() => onToggleViewingWeek?.()}
-                                    style={styles.inlineSwitchButton}
-                                    hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                                    accessibilityRole="button"
-                                    accessibilityLabel={`Switch to Week ${viewingEffectiveWeek === 'B' ? 'A' : 'B'}`}
-                                    accessibilityState={{ selected: viewingEffectiveWeek === 'B' }}
-                                  >
-                                    <Text style={styles.inlineSwitchButtonText}>
-                                      Week {viewingEffectiveWeek === 'B' ? 'A' : 'B'}
-                                    </Text>
-                                  </Pressable>
-                                )}
-                                {/* Explicit, visible Edit affordance kept for
-                                    discoverability/accessibility (#841 owner
-                                    amendment) — a peer control of Week A/B, not
-                                    a replacement for the double-tap gesture.
-                                    Enters the SAME inline editor above; it
-                                    never navigates to the shared full-screen
-                                    Routine editor (see LogScreen's
+                                {/* The card's single expanded-note action
+                                    (#843): one 36px outlined `Edit note`
+                                    control. Enters the SAME inline editor
+                                    above; it never navigates to the shared
+                                    full-screen Routine editor (see LogScreen's
                                     `editingSource === 'recovery'` gate). */}
                                 {linkedNote && (
                                   <Pressable
                                     onPress={() => onEditNote?.()}
                                     disabled={editingBlocked}
-                                    style={[styles.inlineSwitchButton, editingBlocked && styles.inlineSwitchButtonDisabled]}
+                                    style={[styles.editNoteButton, editingBlocked && styles.inlineSwitchButtonDisabled]}
                                     accessibilityRole="button"
                                     accessibilityLabel="Edit"
                                     accessibilityState={{ disabled: editingBlocked }}
                                   >
-                                    <Text style={styles.inlineSwitchButtonText}>Edit</Text>
+                                    <MaterialIcons name="edit" size={14} color={colors.accent} accessible={false} />
+                                    <Text style={styles.editNoteButtonText}>Edit note</Text>
                                   </Pressable>
                                 )}
                               </View>
-                            </>
+                            </View>
                           )}
                         </View>
                       );
@@ -676,126 +691,160 @@ export function LogRecoverySection({
               })}
             </View>
 
-            {/* Exactly one lifecycle action is primary and visible by default
-                (#789). `canCompleteWeek` and `canAddWeek` are mutually
-                exclusive by construction, so this row never holds two. */}
-            <View style={styles.actionsRow}>
+            {/* Zone 3 — the action zone (#843): exactly one primary lifecycle
+                action, full-width and 48px. `canCompleteWeek` and
+                `canAddWeek` are mutually exclusive by construction, so this
+                never holds two. */}
+            <View style={styles.actionZone}>
               {canCompleteWeek && (
-                <Pressable
-                  onPress={handleCompleteWeek}
-                  disabled={actionsLocked}
-                  style={styles.primaryButton}
-                  accessibilityRole="button"
-                  accessibilityLabel="Complete week"
-                  accessibilityState={{ disabled: actionsLocked }}
-                >
-                  <Text style={styles.primaryButtonText}>
-                    {busy === 'week' ? 'Completing…' : 'Complete week'}
+                <>
+                  <Pressable
+                    onPress={handleCompleteWeek}
+                    disabled={actionsLocked}
+                    style={[styles.primaryButton, actionsLocked && styles.primaryButtonDisabled]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Complete Week ${currentWeek.week_number}`}
+                    accessibilityState={{ disabled: actionsLocked }}
+                  >
+                    <Text style={styles.primaryButtonText}>
+                      {busy === 'week' ? 'Completing…' : `Complete Week ${currentWeek.week_number}`}
+                    </Text>
+                  </Pressable>
+                  <Text style={styles.actionCaption}>
+                    Keeps Week {currentWeek.week_number}'s note as it is — you'll choose or create next
+                    week's note separately.
                   </Text>
-                </Pressable>
+                </>
               )}
               {canAddWeek && (
-                <Pressable
-                  onPress={onOpenAddWeek}
-                  disabled={actionsLocked}
-                  style={styles.primaryButton}
-                  accessibilityRole="button"
-                  accessibilityLabel="Add next recovery week"
-                  accessibilityState={{ disabled: actionsLocked }}
-                >
-                  <Text style={styles.primaryButtonText}>Add week</Text>
-                </Pressable>
+                <>
+                  <Pressable
+                    onPress={onOpenAddWeek}
+                    disabled={actionsLocked}
+                    style={[styles.primaryButton, actionsLocked && styles.primaryButtonDisabled]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Add next recovery week"
+                    accessibilityState={{ disabled: actionsLocked }}
+                  >
+                    <Text style={styles.primaryButtonText}>Add week</Text>
+                  </Pressable>
+                  <Text style={styles.actionCaption}>
+                    Attach an existing note or create a new one as the next recovery week.
+                  </Text>
+                </>
               )}
               {/* Reopens the week `Add week` would otherwise leave completed
-                  forever (#836). Secondary chip styling, not the primary
-                  fill: `Add week` is still the expected next step, and this
-                  is the way back for the one case that is not. Restricted to
-                  exactly the week `canUndoCompleteWeek` names — the most
-                  recently completed week, only while no later week exists. */}
+                  forever (#836). Muted ink, not error — this is a routine
+                  correction, not a destructive action. Restricted to exactly
+                  the week `canUndoCompleteWeek` names — the most recently
+                  completed week, only while no later week exists. */}
               {canUndoCompleteWeek && (
                 <Pressable
                   onPress={handleUndoCompleteWeek}
                   disabled={actionsLocked}
-                  style={styles.inlineButton}
+                  style={styles.undoButton}
                   accessibilityRole="button"
                   accessibilityLabel={`Undo completing Week ${currentWeek.week_number}`}
                   accessibilityState={{ disabled: actionsLocked }}
                 >
-                  <Text style={styles.inlineButtonText}>
+                  <Text style={styles.undoButtonText}>
                     {busy === 'undo-week' ? 'Reopening…' : 'Undo completion'}
                   </Text>
                 </Pressable>
               )}
             </View>
+          </Card>
 
-            {/* One disclosure for everything that is not needed to log today's
-                workout (#789). The trigger carries no `disabled` key in any
-                state — see `manageExpanded` above — so a locked user can always
-                open it; each control inside keeps exactly the per-control
-                gating it had when it lived in the flat action row. */}
+          {/* Manage block (#843): a sibling card, not a disclosure inside the
+              active card. The trigger carries no `disabled` key in any state
+              — see `manageExpanded` above — so a locked user can always open
+              it; each row inside keeps exactly the per-control gating it had
+              before. */}
+          <Card style={styles.manageCard}>
             <Pressable
               onPress={() => setManageExpandedBlockId(id => (id === activeBlock.id ? null : activeBlock.id))}
-              style={styles.disclosureTrigger}
+              style={styles.manageTrigger}
               accessibilityRole="button"
               accessibilityLabel={`Manage recovery block: ${activeBlock.baseline_note_title || 'Untitled Routine'}`}
               accessibilityState={{ expanded: manageExpanded }}
             >
-              <Text style={styles.disclosureTriggerText}>Manage recovery block</Text>
+              <Text style={styles.manageTriggerText}>Manage block</Text>
               {/* The one sanctioned disclosure glyph (`ui-design-rules.md` §6):
                   a `MaterialIcons` chevron, never a text arrow (#804). */}
               <MaterialIcons
                 name={manageExpanded ? 'expand-less' : 'expand-more'}
-                size={18}
+                size={20}
                 color={colors.textMuted}
                 accessible={false}
               />
             </Pressable>
 
             {manageExpanded && (
-              <View style={styles.disclosureContent}>
-                <View style={styles.actionsRow}>
-                  {/* Always names the concrete current week, open or just
-                      completed, so Unlink is never a context-free button. */}
-                  {currentWeek && (
-                    <Pressable
-                      onPress={() => handleUnlinkWeek(currentWeek)}
-                      disabled={actionsLocked}
-                      style={styles.inlineButton}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Unlink Week ${currentWeek.week_number}`}
-                      accessibilityState={{ disabled: actionsLocked }}
-                    >
-                      <Text style={styles.inlineButtonText}>
-                        {busy === currentWeek.id ? 'Unlinking…' : `Unlink Week ${currentWeek.week_number}`}
+              <View style={styles.manageList}>
+                <View style={[styles.manageRow, styles.manageRowDivider]}>
+                  <View style={styles.manageRowMain}>
+                    <View style={styles.manageRowInfo}>
+                      <Text style={styles.manageRowTitle}>Counting in normal analytics</Text>
+                      <Text style={styles.manageRowSubtitle}>
+                        Off keeps these weeks out of classifications, overload signals, Kilo Max, 1K,
+                        and Home summaries.
                       </Text>
-                    </Pressable>
-                  )}
-                  {/* Demoted to the same secondary destructive chip Unlink
-                      uses (#804). An accent fill here made the rarest,
-                      irreversible action the loudest button on the card while
-                      the expected next step was a plain chip — the hierarchy
-                      inverted. The confirm, gating, and handler are unchanged. */}
-                  <Pressable
-                    onPress={handleCompleteBlock}
-                    disabled={actionsLocked}
-                    style={styles.inlineButton}
-                    accessibilityRole="button"
-                    accessibilityLabel="Complete recovery block"
-                    accessibilityState={{ disabled: actionsLocked }}
-                  >
-                    <Text style={styles.inlineButtonText}>
-                      {busy === 'block' ? 'Completing…' : 'Complete recovery block'}
+                    </View>
+                    <Text style={styles.manageRowState}>
+                      {activeBlock.include_in_normal_analytics === true ? 'On' : 'Off'}
                     </Text>
-                  </Pressable>
+                    <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
+                  </View>
+                  <View style={styles.manageRowExpanded}>
+                    <RecoveryInclusionToggle
+                      block={activeBlock}
+                      disabled={inclusionLocked}
+                      busy={inclusionBusyBlockId === activeBlock.id}
+                      error={inclusionErrorFor(activeBlock.id)}
+                      onToggle={handleToggleInclusion}
+                    />
+                  </View>
                 </View>
 
-                <RecoveryInclusionToggle
-                  block={activeBlock}
-                  disabled={inclusionLocked}
-                  busy={inclusionBusyBlockId === activeBlock.id}
-                  error={inclusionErrorFor(activeBlock.id)}
-                  onToggle={handleToggleInclusion}
-                />
+                {/* Always names the concrete current week, open or just
+                    completed, so Unlink is never a context-free button. */}
+                {currentWeek && (
+                  <Pressable
+                    onPress={() => handleUnlinkWeek(currentWeek)}
+                    disabled={actionsLocked}
+                    style={[styles.manageRow, styles.manageRowDivider, styles.manageRowMain, actionsLocked && styles.manageRowDisabled]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Unlink Week ${currentWeek.week_number}`}
+                    accessibilityState={{ disabled: actionsLocked }}
+                  >
+                    <View style={styles.manageRowInfo}>
+                      <Text style={styles.manageRowTitle}>
+                        {busy === currentWeek.id ? 'Unlinking…' : `Unlink Week ${currentWeek.week_number}'s note`}
+                      </Text>
+                      <Text style={styles.manageRowSubtitle}>
+                        Removes the note from this block. The note itself is kept and stays editable.
+                      </Text>
+                    </View>
+                    <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
+                  </Pressable>
+                )}
+
+                <Pressable
+                  onPress={() => onOpenEndBlockModal?.()}
+                  disabled={actionsLocked}
+                  style={[styles.manageRow, styles.manageRowMain, actionsLocked && styles.manageRowDisabled]}
+                  accessibilityRole="button"
+                  accessibilityLabel="End recovery block"
+                  accessibilityState={{ disabled: actionsLocked }}
+                >
+                  <View style={styles.manageRowInfo}>
+                    <Text style={styles.manageRowTitleError}>End recovery block</Text>
+                    <Text style={styles.manageRowSubtitle}>
+                      Completes this block and asks how these weeks should count in analytics.
+                    </Text>
+                  </View>
+                  <MaterialIcons name="chevron-right" size={20} color={colors.error} accessible={false} />
+                </Pressable>
               </View>
             )}
           </Card>
@@ -806,74 +855,69 @@ export function LogRecoverySection({
   );
 }
 
+// The Recovery `A`/`B` segment (#843): a two-item segmented control replacing
+// the former `Week A`/`Week B` pill. Keeps the exact role/label/selected
+// state the pill had — this changes which week is being READ, not a
+// lifecycle action.
+function ABSegment({ styles, colors, effectiveWeek, onToggle }) {
+  const isB = effectiveWeek === 'B';
+  return (
+    <Pressable
+      onPress={onToggle}
+      style={styles.abSegment}
+      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+      accessibilityRole="button"
+      accessibilityLabel={`Switch to Week ${isB ? 'A' : 'B'}`}
+      accessibilityState={{ selected: isB }}
+    >
+      <View style={[styles.abSegmentItem, !isB && styles.abSegmentItemActive]}>
+        <Text style={[styles.abSegmentText, !isB && styles.abSegmentTextActive]}>A</Text>
+      </View>
+      <View style={[styles.abSegmentItem, isB && styles.abSegmentItemActive]}>
+        <Text style={[styles.abSegmentText, isB && styles.abSegmentTextActive]}>B</Text>
+      </View>
+    </Pressable>
+  );
+}
+
 const createStyles = (colors) => StyleSheet.create({
   container: {
     gap: 16,
   },
   activeGroup: {
-    gap: 16,
+    gap: 12,
   },
+  // Clipped card chrome (#843): padding:0 so the three internal zones each
+  // own their own padding, with the existing 24px radius/border doing the
+  // clipping.
   card: {
-    gap: 10,
+    padding: 0,
+    overflow: 'hidden',
+    gap: 0,
   },
-  // Plain wrapping text at the weight the baseline title used to hold, so the
-  // loudest row is now the state fact rather than the routine name. No
-  // `numberOfLines`: large text wraps instead of truncating.
+  stateZone: {
+    backgroundColor: colors.subtleBg,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 16,
+    gap: 6,
+  },
+  stateKicker: {
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    color: colors.textMuted,
+  },
   headline: {
-    fontSize: 18,
+    fontSize: 24,
     fontWeight: '800',
     color: colors.text,
   },
   baselineCaption: {
     fontSize: 13,
+    lineHeight: 19,
     color: colors.textMuted,
-  },
-  // A disclosure, not an action: the chip fill and border are dropped (#804) so
-  // the card's only bordered, filled control is the one primary lifecycle
-  // action. Label plus chevron, at the same 44dp floor it already had.
-  disclosureTrigger: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 10,
-    minHeight: 44,
-  },
-  disclosureTriggerText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.accent,
-  },
-  disclosureContent: {
-    gap: 10,
-  },
-  pendingBanner: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: colors.subtleBg,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    gap: 8,
-  },
-  pendingBannerText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  pendingRetryButton: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: colors.chipBackground,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-  },
-  pendingRetryText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.accent,
   },
   errorBanner: {
     paddingHorizontal: 12,
@@ -882,24 +926,82 @@ const createStyles = (colors) => StyleSheet.create({
     backgroundColor: colors.cardErrorBg,
     borderWidth: 1,
     borderColor: colors.cardErrorBg,
+    marginTop: 4,
   },
   errorBannerText: {
     fontSize: 13,
     fontWeight: '600',
     color: colors.textLight,
   },
-  weekList: {
-    gap: 8,
+  weekTable: {},
+  weekItem: {},
+  weekItemDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
   },
-  // Groups one week's row with the note it renders inline when tapped (#775).
-  // Layout-only containment; both values are the list's and the row's own
-  // existing spacing, so no new Log-tab spacing decision is introduced.
-  weekItem: {
-    gap: 8,
+  weekRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 56,
+    paddingHorizontal: 18,
+  },
+  // Left padding compensated from 18 to 15 to absorb the 3px accent rail on
+  // the current-week wrapper, so the row's content still lands on the same
+  // 18px rhythm as every other row (#843).
+  weekRowCurrent: {
+    paddingLeft: 15,
+  },
+  statusDot: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weekLabel: {
+    width: 56,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  weekNoteTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
   },
   weekNoteContent: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 18,
+    paddingBottom: 16,
+    gap: 10,
+  },
+  weekNoteContentCurrent: {
+    paddingLeft: 15,
+  },
+  // The expanded note's own inset, card-colored bordered surface (#843) — a
+  // 14px-radius surface distinct from the week row it belongs to.
+  noteSurface: {
+    backgroundColor: colors.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    padding: 14,
+    gap: 10,
+  },
+  noteSurfaceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 8,
+  },
+  noteSurfaceKicker: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    color: colors.accent,
   },
   weekNoteBody: {},
   // The inline recovery-note editor (#841): a compact title + text pair, no
@@ -932,19 +1034,12 @@ const createStyles = (colors) => StyleSheet.create({
     minHeight: 160,
     textAlignVertical: 'top',
   },
-  // Holds the Week A/B pill at its natural width, exactly as the non-current
-  // routine card's `viewActions` row does (LogPreviousRoutines.js).
   weekNoteActions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    alignItems: 'center',
     gap: 12,
   },
-  // The relocated pill keeps the treatment authorized for it in #710/#711:
-  // same background, border, radius, 44dp floor, and shrink behavior. Edit
-  // (#841) is a plain Pressable using this SAME style object, not a `Button`
-  // wrapping it — `Button`'s own base style carries a `marginTop` Week A/B
-  // never had, which broke the peer controls' vertical alignment when Edit
-  // was rendered through it.
   inlineSwitchButton: {
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -964,82 +1059,188 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '700',
     color: colors.accent,
   },
-  // Borderless single line (#804). Removing the box removes a border the card
-  // did not need; the 44dp floor the bordered three-line row used to reach
-  // incidentally is now stated explicitly, so a one-line row keeps the target.
-  weekRow: {
+  // The one expanded-note action (#843): a 36px outlined `Edit note` control.
+  editNoteButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    minHeight: 44,
-  },
-  weekNoteTitle: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  // Groups the row's own week number and status so it reads as one unit
-  // beside the note title (#836). A fixed floor, not 0, so it never gets
-  // squeezed to nothing beside `weekNoteTitle`'s flex:1.
-  weekRowInfo: {
-    minWidth: 88,
-  },
-  weekNumberLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.textMuted,
-  },
-  // Distinguishes a completed week from the in-progress one at a glance
-  // (#836), reusing the existing baselineCaption weight/size rather than
-  // introducing a new type scale.
-  weekStatusText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.accent,
-  },
-  weekStatusTextCompleted: {
-    color: colors.textMuted,
-  },
-  // The secondary chip for the disclosed, infrequent controls. `minHeight: 44`
-  // is required, not incidental: at 12/6 padding a one-line chip fell short of
-  // the touch-target floor (#804).
-  inlineButton: {
+    gap: 6,
+    height: 36,
     paddingHorizontal: 12,
-    paddingVertical: 10,
     borderRadius: 10,
-    backgroundColor: colors.chipBackground,
     borderWidth: 1,
     borderColor: colors.cardBorder,
-    minHeight: 44,
     justifyContent: 'center',
   },
-  inlineButtonText: {
+  editNoteButtonText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.error,
+    color: colors.accent,
   },
-  actionsRow: {
+  // The Recovery A/B segment (#843): 32px visual height, documented exception
+  // to the 44dp floor — hitSlop closes most of the gap, matching the same
+  // exception pattern the former pill already used.
+  abSegment: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.chipBackground,
+    overflow: 'hidden',
+  },
+  abSegmentItem: {
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  abSegmentItemActive: {
+    backgroundColor: colors.accent,
+  },
+  abSegmentText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.accent,
+  },
+  abSegmentTextActive: {
+    color: colors.onAccent,
+  },
+  actionZone: {
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 18,
     gap: 8,
   },
-  // The card's single primary action carries the only accent fill (#804), with
-  // `onAccent` ink — the pairing already recorded for accent surfaces in
-  // `docs/design-system-map.md`.
+  // The card's single primary action carries the only accent fill (#843),
+  // full-width and 48px, with `onAccent` ink — the pairing already recorded
+  // for accent surfaces in `docs/design-system-map.md`.
   primaryButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    height: 48,
     borderRadius: 12,
     backgroundColor: colors.accent,
     borderWidth: 1,
     borderColor: colors.accent,
-    minHeight: 44,
+    alignItems: 'center',
     justifyContent: 'center',
   },
+  primaryButtonDisabled: {
+    opacity: 0.5,
+  },
   primaryButtonText: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '700',
     color: colors.onAccent,
+  },
+  actionCaption: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.textMuted,
+  },
+  // `Undo completion` (#843): muted, not error, ink — reopening the latest
+  // week is a routine correction, not a destructive action.
+  undoButton: {
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingVertical: 6,
+  },
+  undoButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  manageCard: {
+    padding: 0,
+    overflow: 'hidden',
+    gap: 0,
+  },
+  manageTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 48,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+  },
+  manageTriggerText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  manageList: {
+    borderTopWidth: 1,
+    borderTopColor: colors.cardBorder,
+  },
+  manageRow: {},
+  manageRowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+  },
+  manageRowMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 56,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+  },
+  manageRowDisabled: {
+    opacity: 0.5,
+  },
+  manageRowInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  manageRowTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  manageRowTitleError: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.error,
+  },
+  manageRowSubtitle: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.textMuted,
+  },
+  manageRowState: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  manageRowExpanded: {
+    paddingHorizontal: 18,
+    paddingBottom: 14,
+  },
+  pendingBanner: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: colors.subtleBg,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    gap: 8,
+    marginTop: 4,
+  },
+  pendingBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  pendingRetryButton: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: colors.chipBackground,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  pendingRetryText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.accent,
   },
 });

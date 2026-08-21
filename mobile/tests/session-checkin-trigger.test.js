@@ -439,7 +439,7 @@ describe('LogScreen supplies the ownership predicate and the toggle gate', () =>
   );
 
   test('ownership covers both the recovery-block modal and the add-week modal', () => {
-    expect(src).toMatch(/const otherModalOwnsScreen = !!recoveryModal \|\| addWeekModalOpen;/);
+    expect(src).toMatch(/const otherModalOwnsScreen = !!recoveryModal \|\| addWeekModalOpen \|\| endBlockModalOpen;/);
   });
 
   test('the predicate and the verified-read state are passed into the editor hook', () => {

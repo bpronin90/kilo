@@ -3,6 +3,39 @@ import { StyleSheet, Text, View } from 'react-native';
 import { WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, AnnotationNote, UnparsedRow, NoteParseError, SET_ROW_FONT_SIZE } from './UI';
 import { useThemedStyles } from '../theme/ThemeContext';
 import { normalizeLiftName } from '../lib/data';
+import { useWeightUnit } from '../lib/unitPreference';
+import { formatLiftWeightValue } from '../lib/units';
+
+// Compact set-line grouping (#843), mirroring UI.js's SetLine algorithm but
+// rendered at Recovery's compact type scale (13/muted/600) instead of
+// SetLine's own fixed SET_ROW_FONT_SIZE. Kept local to this file rather than
+// adding a size prop to SetLine — UI.js is outside this issue's Allowed
+// Files, and SetLine's own plate-calculator affordance is not part of the
+// compact Recovery reading surface.
+function CompactSetLine({ sets, unit, styles }) {
+  if (!sets || sets.length === 0) return null;
+  const groups = [];
+  let currentGroup = null;
+  for (const set of sets) {
+    if (!currentGroup || currentGroup.weight !== set.weight_value) {
+      currentGroup = { weight: set.weight_value, reps: [] };
+      groups.push(currentGroup);
+    }
+    currentGroup.reps.push(set.skipped ? '-' : set.rep_count);
+  }
+  return (
+    <View style={styles.compactSetLine}>
+      {groups.map((group, i) => (
+        <View key={i} style={styles.compactSetGroup}>
+          <Text style={styles.compactSetWeight}>
+            {group.weight ? `${formatLiftWeightValue(group.weight, unit)} ${unit}` : 'BW'}
+          </Text>
+          <Text style={styles.compactSetReps}>{group.reps.join(', ')}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 export function WorkoutContentRenderer({
   dayGroups,
@@ -15,9 +48,15 @@ export function WorkoutContentRenderer({
   mutedUnparsed = false,
   noteError = null,
   emptyText = "Add some exercises to see the formatted view.",
-  altWeekText = ""
+  altWeekText = "",
+  // Recovery's compact reading mode (#843): exercise names render at 14/700
+  // and sets at 13/muted/600 instead of the routine-tab full scale, so a
+  // note's content never competes with the card that hosts it. Routine
+  // rendering (every other caller) is unaffected — this defaults to false.
+  compact = false,
 }) {
   const styles = useThemedStyles(createStyles);
+  const unit = useWeightUnit();
   return (
     <>
       {noteError ? <NoteParseError message={noteError} /> : null}
@@ -41,14 +80,21 @@ export function WorkoutContentRenderer({
                 const trackingEnabled = !isDeload && typeof onToggleTrack === 'function';
                 const isTracked = !!trackedLifts[exNormName];
                 const isFlagged = !isDeload && roughNoteId === currentId && roughFlaggedNames.has(exNormName);
+                const ExerciseWrap = compact ? View : ExerciseBlock;
+                const exerciseWrapProps = compact
+                  ? { style: styles.compactExerciseBlock }
+                  : {
+                    name: ex.name,
+                    isTracked: trackingEnabled ? isTracked : undefined,
+                    onToggleTrack: trackingEnabled ? () => onToggleTrack(ex.name) : undefined,
+                    selectable: true,
+                  };
                 return (
                   <View key={`ex-${gi}-${si}-${ei}`} style={isFlagged ? styles.flaggedExercise : null}>
-                    <ExerciseBlock
-                      name={ex.name}
-                      isTracked={trackingEnabled ? isTracked : undefined}
-                      onToggleTrack={trackingEnabled ? () => onToggleTrack(ex.name) : undefined}
-                      selectable={true}
-                    >
+                    <ExerciseWrap {...exerciseWrapProps}>
+                      {compact && (
+                        <Text selectable={true} style={styles.compactExerciseName}>{ex.name}</Text>
+                      )}
                       {(() => {
                         const items = [];
                         const renderedUnparsed = new Set();
@@ -86,12 +132,21 @@ export function WorkoutContentRenderer({
                             const annotation = entry.annotation;
                             if (row) {
                               items.push(
-                                <SetLine
-                                  key={`row-${gi}-${si}-${ei}-${eni}`}
-                                  sets={row.sets}
-                                  selectable={true}
-                                  mark={annotation ? annotation.mark : null}
-                                />
+                                compact ? (
+                                  <CompactSetLine
+                                    key={`row-${gi}-${si}-${ei}-${eni}`}
+                                    sets={row.sets}
+                                    unit={unit}
+                                    styles={styles}
+                                  />
+                                ) : (
+                                  <SetLine
+                                    key={`row-${gi}-${si}-${ei}-${eni}`}
+                                    sets={row.sets}
+                                    selectable={true}
+                                    mark={annotation ? annotation.mark : null}
+                                  />
+                                )
                               );
                             }
                             if (annotation && annotation.tail) {
@@ -130,7 +185,13 @@ export function WorkoutContentRenderer({
                         }
                         const loggedCount = ex.session_entries.filter(e => !e.skipped && !e.unparsed).length;
                         ex.rows.slice(loggedCount).forEach((row, ri) => {
-                          items.push(<SetLine key={`plain-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />);
+                          items.push(
+                            compact ? (
+                              <CompactSetLine key={`plain-${gi}-${si}-${ei}-${ri}`} sets={row.sets} unit={unit} styles={styles} />
+                            ) : (
+                              <SetLine key={`plain-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />
+                            )
+                          );
                         });
                         const positionalRaws = new Set(positions.map(p => p.raw));
                         ex.unparsed_rows.forEach((u, ui) => {
@@ -147,7 +208,7 @@ export function WorkoutContentRenderer({
                         });
                         return items;
                       })()}
-                    </ExerciseBlock>
+                    </ExerciseWrap>
                   </View>
                 );
               })}
@@ -183,6 +244,36 @@ const createStyles = (colors) => StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: colors.error,
     marginLeft: -3,
+  },
+  // Recovery's compact type scale (#843): see the `compact` prop above.
+  compactExerciseBlock: {
+    marginBottom: 10,
+    gap: 3,
+  },
+  compactExerciseName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  compactSetLine: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  compactSetGroup: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
+  },
+  compactSetWeight: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  compactSetReps: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textMuted,
   },
   emptyText: {
     color: colors.textMuted,
