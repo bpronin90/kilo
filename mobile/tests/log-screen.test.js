@@ -1139,6 +1139,153 @@ describe('current-routine autosave close and revert ordering (#851)', () => {
   });
 });
 
+// ── uneven positional-session guard (#855) ──────────────────────────────────
+
+describe('Log Done guards uneven session histories (#855)', () => {
+  const { useLogCurrentRoutineEditor } = require('../screens/log/useLogCurrentRoutineEditor');
+  const { useLogOtherRoutineEditor } = require('../screens/log/useLogOtherRoutineEditor');
+  const ALIGNED = '-Bench\n- 135 5,5\n-Deadlift\n- 225 5';
+  const UNEVEN = '-Bench\n- 135 5,5\n- 140 5,5\n-Deadlift\n- 225 5';
+  const mounted = [];
+  let alertSpy;
+
+  beforeEach(() => {
+    alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    render.act(() => { mounted.forEach(component => component.unmount()); });
+    mounted.length = 0;
+    alertSpy.mockRestore();
+  });
+
+  function mountCurrent({ raw = ALIGNED, activeWeek = null } = {}) {
+    const note = { id: 'current', title: 'Routine', raw_text: raw, activeWeek };
+    const update = jest.fn(async (id, patch) => ({ ...note, id, ...patch }));
+    let latest = null;
+    function Harness() {
+      const [text, setText] = React.useState(raw);
+      const [title, setTitle] = React.useState(note.title);
+      latest = useLogCurrentRoutineEditor({
+        workoutNoteText: text,
+        setWorkoutNoteText: setText,
+        workoutNoteTitle: title,
+        setWorkoutNoteTitle: setTitle,
+        currentId: note.id,
+        currentNote: note,
+        notes: [note],
+        trackedLifts: [],
+        update,
+        add: jest.fn(),
+        selectCurrent: jest.fn(),
+        fatigueTrackingEnabled: false,
+        notesLoading: false,
+        notesError: null,
+        otherModalOwnsScreen: false,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+        readScrollRef: { current: { scrollTo: jest.fn() } },
+      });
+      return null;
+    }
+    render.act(() => { mounted.push(render.create(<Harness />)); });
+    return { getHook: () => latest, update };
+  }
+
+  function mountOther(note) {
+    const update = jest.fn(async (id, patch) => ({ ...note, id, ...patch }));
+    let latest = null;
+    function Harness() {
+      latest = useLogOtherRoutineEditor({
+        notes: [note],
+        currentId: 'current',
+        currentNote: { id: 'current', raw_text: ALIGNED },
+        deloadHistory: [],
+        update,
+        add: jest.fn(),
+        remove: jest.fn(),
+        selectCurrent: jest.fn(),
+        updateDeload: jest.fn(),
+        deleteDeloadNote: jest.fn(),
+        autosaveCurrentTimerRef: { current: null },
+        handleSave: jest.fn(),
+        currentEditorMode: 'read',
+        hasUnsavedCurrent: false,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+      });
+      return null;
+    }
+    render.act(() => { mounted.push(render.create(<Harness />)); });
+    return { getHook: () => latest, update };
+  }
+
+  test('current Done identifies affected exercises and waits for explicit acknowledgement before saving', async () => {
+    const { getHook, update } = mountCurrent();
+    render.act(() => { getHook().enterCurrentEditor(); });
+    render.act(() => { getHook().handleCurrentTextChange(UNEVEN); });
+
+    expect(getHook().sessionAlignmentIssue.message).toMatch(/Bench — 2 entries/);
+    expect(getHook().sessionAlignmentIssue.message).toMatch(/Deadlift — 1 entry/);
+
+    await render.act(async () => { await getHook().handleDoneCurrent(); });
+
+    expect(update).not.toHaveBeenCalled();
+    expect(getHook().mode).toBe('edit');
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Session entries do not line up',
+      expect.stringMatching(/standalone "-"[\s\S]*Save uneven/),
+      expect.any(Array)
+    );
+
+    const saveUneven = alertSpy.mock.calls[0][2].find(button => button.text === 'Save uneven');
+    await render.act(async () => { await saveUneven.onPress(); });
+
+    expect(update).toHaveBeenLastCalledWith(
+      'current',
+      expect.objectContaining({ raw_text: UNEVEN })
+    );
+    expect(getHook().mode).toBe('read');
+  });
+
+  test('A/B detection follows only the active editor half', async () => {
+    const weekAUneven = UNEVEN;
+    const weekBAligned = '-OHP\n- 95 5\n-Row\n- 115 8';
+    const { getHook } = mountCurrent({
+      raw: `${weekAUneven}\n---\n${weekBAligned}`,
+      activeWeek: 'B',
+    });
+
+    expect(getHook().effectiveActiveWeek).toBe('B');
+    expect(getHook().sessionAlignmentIssue).toBeNull();
+
+    await render.act(async () => { await getHook().handleToggleWeek(); });
+    expect(getHook().effectiveActiveWeek).toBe('A');
+    expect(getHook().sessionAlignmentIssue.message).toMatch(/Deadlift/);
+  });
+
+  test('Recovery note Save uses the same guard and acknowledgement contract', async () => {
+    const note = { id: 'recovery', title: 'Recovery Week 1', raw_text: ALIGNED };
+    const { getHook, update } = mountOther(note);
+    render.act(() => { getHook().setRecoveryViewingNoteId(note.id); });
+    render.act(() => { getHook().handleEditRecoveryViewedNote(); });
+    render.act(() => { getHook().setEditingText(UNEVEN); });
+
+    await render.act(async () => { await getHook().handleDoneOther(); });
+
+    expect(update).not.toHaveBeenCalled();
+    expect(getHook().editingNoteId).toBe(note.id);
+    expect(alertSpy.mock.calls[0][1]).toMatch(/Deadlift — 1 entry/);
+
+    const saveUneven = alertSpy.mock.calls[0][2].find(button => button.text === 'Save uneven');
+    await render.act(async () => { await saveUneven.onPress(); });
+
+    expect(update).toHaveBeenLastCalledWith(
+      note.id,
+      expect.objectContaining({ raw_text: UNEVEN })
+    );
+    expect(getHook().editingNoteId).toBeNull();
+  });
+});
+
 describe('Log web edit path: explicit edit control is wired (#314)', () => {
   let src;
   beforeAll(() => {
@@ -5437,6 +5584,19 @@ describe('LogScreenEditorCard workout syntax help button', () => {
     const component = renderEditor();
     const button = findSyntaxHelpButton(component.root);
     expect(button).toBeTruthy();
+  });
+
+  test('active edit surfaces the structured session-alignment warning beside the note input', () => {
+    const message = 'Uneven exercise histories do not line up: Bench — 2 entries; Deadlift — 1 entry.';
+    const component = renderEditor({
+      sessionAlignmentIssue: { code: 'uneven_session_entries', message },
+    });
+    const warning = component.root.findByProps({ testID: 'session-alignment-warning' });
+    expect(warning.props.accessibilityRole).toBe('alert');
+    const text = warning.findAllByType('Text').map(node => node.props.children).join(' ');
+    expect(text).toContain('Check session entries');
+    expect(text).toContain(message);
+    expect(text).toContain('explicitly save the uneven history');
   });
 
   test('tapping the button opens the modal, and the close control closes it', () => {

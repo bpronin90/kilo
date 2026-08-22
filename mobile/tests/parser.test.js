@@ -1,6 +1,7 @@
 import { parseWeightEntry, parseWorkoutRow, parseHeaderDeclaration, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals, parseExerciseHeader, generateDeloadNote, sessionsSinceLastDeload, weeksSinceLastDeload } from '../lib/parser';
 import { getDefaultTrackedNames, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES, classifyExerciseSessions } from '../lib/data';
 import { MAX_RAW_TEXT_LENGTH, applyWeekSkipToText, removeWeekSkipFromText } from '../lib/parser/workoutNote.js';
+import { deriveSessionAlignmentIssue } from '../lib/parser/sessions.js';
 import { formatLiftWeightValue, kgMarkerToLb } from '../lib/units';
 
 // ── getDefaultTrackedNames ────────────────────────────────────────────────────
@@ -2418,11 +2419,44 @@ describe('buildSessionsFromNote — uneven count warnings', () => {
     expect(r.sessions).toHaveLength(2);
   });
 
-  test('missing exercise slot is filled with a skipped entry', () => {
+  test('missing exercise slot is marked missing, never synthesized as an intentional skip', () => {
     const note = '-Bench\n- 125 4,4,4\n- 125 5,5,5\n-Deadlift\n- 225 3,3';
     const r = buildSessionsFromNote(note);
     const dl2 = r.sessions[1].entries.find(e => e.exercise_name === 'Deadlift');
-    expect(dl2.entry.skipped).toBe(true);
+    expect(dl2.entry).toMatchObject({ missing: true, skipped: false, raw: null, sets: [] });
+  });
+
+  test('alignment evidence identifies every exercise count and the unauthored position', () => {
+    const note = '-Bench\n- 125 4,4,4\n- 125 5,5,5\n-Deadlift\n- 225 3,3';
+    const issue = deriveSessionAlignmentIssue(note);
+    expect(issue).toMatchObject({
+      code: 'uneven_session_entries',
+      minEntryCount: 1,
+      maxEntryCount: 2,
+      affectedExercises: [
+        { name: 'Bench', entryCount: 2, missingSessionIndexes: [] },
+        { name: 'Deadlift', entryCount: 1, missingSessionIndexes: [2] },
+      ],
+    });
+    expect(issue.message).toMatch(/Bench — 2 entries/);
+    expect(issue.message).toMatch(/Deadlift has no authored entry at position 2/);
+  });
+
+  test('a possible duplicate row is surfaced without guessing which exercise is wrong', () => {
+    const note = '-Bench\n- 125 4,4,4\n- 125 5,5,5\n- 125 6,6,6\n-Deadlift\n- 225 3,3\n- 225 4,4';
+    const issue = deriveSessionAlignmentIssue(note);
+    expect(issue.maxEntryCount).toBe(3);
+    expect(issue.message).toMatch(/Bench — 3 entries/);
+    expect(issue.message).toMatch(/Deadlift — 2 entries/);
+    expect(issue.message).toMatch(/missing or extra row/);
+  });
+
+  test('an authored standalone dash is an intentional skip and restores alignment', () => {
+    const note = '-Bench\n- 125 4,4,4\n- 125 5,5,5\n-Deadlift\n- 225 3,3\n-';
+    const result = buildSessionsFromNote(note);
+    expect(deriveSessionAlignmentIssue(note)).toBeNull();
+    expect(result.warnings).toHaveLength(0);
+    expect(result.sessions[1].entries.find(e => e.exercise_name === 'Deadlift').entry.skipped).toBe(true);
   });
 });
 
