@@ -18,7 +18,10 @@ const _KG_TOKEN_RE = /^kg$/i;
 // immediately followed by a digit. Returns the input unchanged otherwise.
 function _stripLeadingFlag(s) {
   const m = /^([A-Za-z]+)\s+(\S.*)$/.exec(s);
-  return (m && /^\d/.test(m[2])) ? m[2] : s;
+  // `kg` is grammar, not a cosmetic equipment/variation flag. Stripping it
+  // from `kg 10` would turn an invalid unit-without-load row into #854's
+  // valid preserved bare integer.
+  return (m && !_KG_TOKEN_RE.test(m[1]) && /^\d/.test(m[2])) ? m[2] : s;
 }
 
 // Extract a trailing "*..." annotation (e.g. "*PR", "*top set") from a raw
