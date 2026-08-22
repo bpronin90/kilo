@@ -1262,6 +1262,18 @@ describe('Log Done guards uneven session histories (#855)', () => {
     expect(getHook().sessionAlignmentIssue.message).toMatch(/Deadlift/);
   });
 
+  test('ordinary multi-day progress neither shows the warning nor blocks Done', async () => {
+    const raw = 'Monday\n+Lifting\n-Bench\n- 125 5\n- 130 5\nWednesday\n+Lifting\n-Squat\n- 225 5';
+    const { getHook } = mountCurrent({ raw });
+    render.act(() => { getHook().enterCurrentEditor(); });
+
+    expect(getHook().sessionAlignmentIssue).toBeNull();
+    await render.act(async () => { await getHook().handleDoneCurrent(); });
+
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(getHook().mode).toBe('read');
+  });
+
   test('Recovery note Save uses the same guard and acknowledgement contract', async () => {
     const note = { id: 'recovery', title: 'Recovery Week 1', raw_text: ALIGNED };
     const { getHook, update } = mountOther(note);

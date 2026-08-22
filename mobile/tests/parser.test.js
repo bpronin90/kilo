@@ -2458,6 +2458,29 @@ describe('buildSessionsFromNote — uneven count warnings', () => {
     expect(result.warnings).toHaveLength(0);
     expect(result.sessions[1].entries.find(e => e.exercise_name === 'Deadlift').entry.skipped).toBe(true);
   });
+
+  test('ordinary multi-day progress is not compared across independent day sections', () => {
+    const note = 'Monday\n+Lifting\n-Bench\n- 125 5\n- 130 5\nWednesday\n+Lifting\n-Squat\n- 225 5';
+    expect(deriveSessionAlignmentIssue(note)).toBeNull();
+    expect(buildSessionsFromNote(note).warnings).toHaveLength(0);
+  });
+
+  test('warmup and lifting subsections on the same day keep independent positional histories', () => {
+    const note = 'Monday\n+Warmup\n-Bike\n- 5 min\n- 6 min\n+Lifting\n-Bench\n- 125 5';
+    expect(deriveSessionAlignmentIssue(note)).toBeNull();
+  });
+
+  test('genuine mismatches from multiple day sections are aggregated with their section labels', () => {
+    const note = 'Monday\n+Lifting\n-Bench\n- 125 5\n- 130 5\n-Row\n- 95 8\nWednesday\n+Lifting\n-Squat\n- 225 5\n- 230 5\n-OHP\n- 85 8';
+    const issue = deriveSessionAlignmentIssue(note);
+    expect(issue.affectedSections).toHaveLength(2);
+    expect(issue.affectedSections.map(section => section.sectionLabel)).toEqual([
+      'Monday · Lifting',
+      'Wednesday · Lifting',
+    ]);
+    expect(issue.message).toMatch(/Monday · Lifting:[\s\S]*Row — 1 entry/);
+    expect(issue.message).toMatch(/Wednesday · Lifting:[\s\S]*OHP — 1 entry/);
+  });
 });
 
 // ── Exercise alias matching ───────────────────────────────────────────────────
