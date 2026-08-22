@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Alert } from '../../lib/platformAlert';
-import { parseWorkoutNote } from '../../lib/parser';
+import { parseWorkoutNote, convertNewNoteLinesToLb } from '../../lib/parser';
+import { getWeightUnit } from '../../lib/unitPreference';
 import {
   findMatchingExerciseNames,
   rolloverOneKExercises,
@@ -401,6 +402,21 @@ export function useLogOtherRoutineEditor({
     const snapshotTitle = editingTitle;
     const snapshotDeloadDate = deloadEditDate;
     const snapshotDeloadOrdinal = deloadEditOrdinal;
+    // Entry-boundary unit conversion (#852): rewrite any line new relative
+    // to what's currently stored so its weight tokens land in raw_text as
+    // the canonical lb value — see convertNewNoteLinesToLb's doc comment
+    // (mobile/lib/parser/noteUnitConversion.js) for the full existing-note
+    // compatibility contract, and useLogCurrentRoutineEditor.js's handleSave
+    // for the same wiring on the current-routine editor. Deload notes are
+    // exempt: every deload line already carries an explicit "lbs" suffix
+    // (see workoutNote.js's _DELOAD_RE), so there's nothing ambiguous to
+    // convert and this text is left untouched. `snapshotText` above
+    // intentionally keeps comparing the UNCONVERTED text — that check is
+    // only about whether the user kept typing during this async save.
+    const previousRawText = (editingNoteId && editingNoteId !== 'new') ? (editingNote?.raw_text || '') : '';
+    const textForSave = isEditingDeloadNote
+      ? editingFullText
+      : convertNewNoteLinesToLb(previousRawText, editingFullText, getWeightUnit());
 
     const run = async () => {
       setNoteIsSaving(true);
@@ -413,7 +429,7 @@ export function useLogOtherRoutineEditor({
           titleToSave = DELOAD_NOTE_PREFIX + (deloadEditDate || titleToSave);
         }
         if (editingNoteId === 'new') {
-          result = await add(titleToSave, editingFullText);
+          result = await add(titleToSave, textForSave);
           setEditingNoteId(result.id);
           // The one write this action performs is the `add` above. Adoption is
           // offered, never performed here (#748) — see `adoptionPrompt`.
@@ -432,7 +448,7 @@ export function useLogOtherRoutineEditor({
             if (withWeek) result = withWeek;
           }
         } else {
-          const patch = { title: titleToSave, raw_text: editingFullText };
+          const patch = { title: titleToSave, raw_text: textForSave };
           if (editingHasABWeeks && isValidActiveWeek(editingEffectiveWeek)) {
             patch.activeWeek = editingEffectiveWeek;
           } else if (!editingHasABWeeks && editingNote?.activeWeek != null) {

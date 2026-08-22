@@ -1,4 +1,4 @@
-import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals, parseExerciseHeader, generateDeloadNote, sessionsSinceLastDeload, weeksSinceLastDeload } from '../lib/parser';
+import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals, parseExerciseHeader, generateDeloadNote, sessionsSinceLastDeload, weeksSinceLastDeload, convertPlainRowToLb, convertNewNoteLinesToLb } from '../lib/parser';
 import { getDefaultTrackedNames, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES } from '../lib/data';
 import { MAX_RAW_TEXT_LENGTH, applyWeekSkipToText, removeWeekSkipFromText } from '../lib/parser/workoutNote.js';
 import { formatLiftWeightValue } from '../lib/units';
@@ -809,6 +809,121 @@ describe('parseWorkoutNote — unit-aware entry (#852)', () => {
     const r = parseWorkoutNote('-Bench\n80 8,8');
     __resetWeightUnitForTests();
     expect(r.sections[0].exercises[0].sets[0].weight_value).toBe(80);
+  });
+});
+
+// ── #852: entry-boundary text conversion ────────────────────────────────────
+// convertPlainRowToLb/convertNewNoteLinesToLb are what actually let a Log
+// editor honor the selected unit while keeping raw_text the single,
+// unit-independent source of truth every other reader (Recovery Analytics,
+// Home, Analytics, sync recompute) relies on: a kg-typed row is rewritten to
+// its canonical lb text at save time, so parseWorkoutNote's fixed 'lb'
+// default keeps reading it correctly forever after, exactly like a row that
+// was always typed in lb.
+describe('convertPlainRowToLb — unambiguous single-row conversion (#852)', () => {
+  test('lb is always an identity passthrough', () => {
+    expect(convertPlainRowToLb('80 8,8', 'lb')).toBe('80 8,8');
+  });
+
+  test('converts a simple weight+rep-group row', () => {
+    expect(convertPlainRowToLb('80 8,8', 'kg')).toBe('176.4 8,8');
+  });
+
+  test('converts each pair independently across multiple weight/rep pairs', () => {
+    expect(convertPlainRowToLb('80 5,5 100 3,3', 'kg')).toBe('176.4 5,5 220.5 3,3');
+  });
+
+  test('converts a decimal load', () => {
+    expect(convertPlainRowToLb('22.5 6,6', 'kg')).toBe('49.6 6,6');
+  });
+
+  test('converts a within-row skipped set, keeping the shared weight once', () => {
+    expect(convertPlainRowToLb('80 4,-', 'kg')).toBe('176.4 4,-');
+  });
+
+  test('round-trips: the converted text re-parses to the exact kg-typed load', () => {
+    const converted = convertPlainRowToLb('80 8,8', 'kg');
+    const reparsed = parseWorkoutRow(converted, 'lb');
+    expect(reparsed.sets[0].weight_value).toBe(176.4);
+    expect(formatLiftWeightValue(reparsed.sets[0].weight_value, 'kg')).toBe('80');
+  });
+
+  test('a bare rep-only row has no weight token to convert', () => {
+    expect(convertPlainRowToLb('8,8,8', 'kg')).toBe('8,8,8');
+  });
+
+  test('a leading-flag row is left untouched (flag would be lost by reconstruction)', () => {
+    expect(convertPlainRowToLb('Flat 225 5', 'kg')).toBe('Flat 225 5');
+  });
+
+  test('a row with a "*mark" is left untouched', () => {
+    expect(convertPlainRowToLb('80 8,8 *PR', 'kg')).toBe('80 8,8 *PR');
+  });
+
+  test('a row with an inline " - " tail/continuation is left untouched', () => {
+    expect(convertPlainRowToLb('225 5 - RPE 9', 'kg')).toBe('225 5 - RPE 9');
+  });
+
+  test('blank, skipped, and unparseable input pass through unchanged', () => {
+    expect(convertPlainRowToLb('', 'kg')).toBe('');
+    expect(convertPlainRowToLb('-', 'kg')).toBe('-');
+    expect(convertPlainRowToLb('8', 'kg')).toBe('8'); // ambiguous single integer
+  });
+});
+
+describe('convertNewNoteLinesToLb — existing-note compatibility (#852)', () => {
+  test('lb is always an identity passthrough', () => {
+    const text = '-Bench\n80 8,8';
+    expect(convertNewNoteLinesToLb(text, text, 'lb')).toBe(text);
+  });
+
+  test('an unedited note round-trips byte-for-byte under kg — nothing is reinterpreted', () => {
+    const text = '-Bench\n80 8,8\n-Squat\n- 100 5,5';
+    expect(convertNewNoteLinesToLb(text, text, 'kg')).toBe(text);
+  });
+
+  test('a freshly appended line is converted; the pre-existing line is untouched', () => {
+    const previous = '-Bench\n80 8,8';
+    const next = `${previous}\n90 5,5`;
+    const result = convertNewNoteLinesToLb(previous, next, 'kg');
+    expect(result).toBe('-Bench\n80 8,8\n198.4 5,5');
+  });
+
+  test('converts a new dash-prefixed session entry, preserving the "- " prefix', () => {
+    const previous = '-Bench\n- 80 8,8';
+    const next = `${previous}\n- 90 5,5`;
+    const result = convertNewNoteLinesToLb(previous, next, 'kg');
+    expect(result).toBe('-Bench\n- 80 8,8\n- 198.4 5,5');
+  });
+
+  test('an edited (changed) line is treated as new and converted', () => {
+    const previous = '-Bench\n80 8,8';
+    const next = '-Bench\n80 8,8,8';
+    const result = convertNewNoteLinesToLb(previous, next, 'kg');
+    expect(result).toBe('-Bench\n176.4 8,8,8');
+  });
+
+  test('duplicate lines are matched by count, not just presence', () => {
+    const previous = '-Bench\n80 8,8\n80 8,8';
+    const next = '-Bench\n80 8,8\n80 8,8\n80 8,8';
+    const result = convertNewNoteLinesToLb(previous, next, 'kg');
+    // Two of the three "80 8,8" lines match the two in `previous` and stay
+    // untouched; only the third (no remaining match) is converted.
+    expect(result).toBe('-Bench\n80 8,8\n80 8,8\n176.4 8,8');
+  });
+
+  test('reordering existing lines does not trigger reconversion', () => {
+    const previous = '-Bench\n80 8,8\n-Squat\n100 5,5';
+    // Every line here still exists verbatim in `previous`, just reordered —
+    // the two set rows are swapped relative to their headings.
+    const reordered = '-Bench\n100 5,5\n-Squat\n80 8,8';
+    const result = convertNewNoteLinesToLb(previous, reordered, 'kg');
+    expect(result).toBe(reordered);
+  });
+
+  test('a brand-new note (no previous text) converts every eligible line', () => {
+    const result = convertNewNoteLinesToLb('', '-Bench\n80 8,8', 'kg');
+    expect(result).toBe('-Bench\n176.4 8,8');
   });
 });
 

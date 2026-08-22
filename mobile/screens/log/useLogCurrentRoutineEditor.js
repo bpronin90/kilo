@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Keyboard, Platform } from 'react-native';
 import { Alert } from '../../lib/platformAlert';
-import { parseWorkoutNote, countWorkoutSessionsFromSections, applyWeekSkipToText } from '../../lib/parser';
+import { parseWorkoutNote, countWorkoutSessionsFromSections, applyWeekSkipToText, convertNewNoteLinesToLb } from '../../lib/parser';
 import { removeWeekSkipFromText } from '../../lib/parser/workoutNote.js';
+import { getWeightUnit } from '../../lib/unitPreference';
 import {
   normalizeLiftName,
   deriveWorkoutNoteAnalytics,
@@ -407,13 +408,27 @@ export function useLogCurrentRoutineEditor({
     const savedForId = currentId;
     const snapshotText = textToSave;
     const snapshotTitle = workoutNoteTitle;
+    // Entry-boundary unit conversion (#852): rewrite any line that's new
+    // relative to what's currently stored so its weight tokens land in
+    // raw_text as the canonical lb value — the only way a kg-typed load
+    // keeps deriving correctly on every later read (Home, Analytics,
+    // Recovery, reopening this note), since none of them know the live
+    // unit preference. Every already-saved line is left byte-for-byte
+    // untouched, so it is never reinterpreted just because the preference
+    // changed after it was written. See convertNewNoteLinesToLb's doc
+    // comment (mobile/lib/parser/noteUnitConversion.js) for the full
+    // contract. `snapshotText`/`contentUnchanged` below intentionally keep
+    // comparing the UNCONVERTED text — that check is only about whether the
+    // user kept typing during this async save, unrelated to conversion.
+    const previousRawText = currentId ? (currentNoteRef.current?.raw_text || '') : '';
+    const convertedText = convertNewNoteLinesToLb(previousRawText, textToSave, getWeightUnit());
     setIsSaving(true);
     setSaveError('');
     setSaveSuccess('');
     try {
       let result = null;
       const titleToSave = workoutNoteTitle || 'Untitled Routine';
-      const { sections: savedSections } = parseWorkoutNote(textToSave);
+      const { sections: savedSections } = parseWorkoutNote(convertedText);
       const explicitTrackedNames = listTrackedLifts(trackedLifts);
       const defaultNames = getDefaultTrackedNames();
       const normalizedDefaults = new Set(defaultNames.map(n => normalizeLiftName(n)));
@@ -454,7 +469,7 @@ export function useLogCurrentRoutineEditor({
         const allSections = [
           ...notes.flatMap(n => {
             if (n.id && excludedNoteIds.has(n.id)) return [];
-            const text = n.id === currentId ? textToSave : n.raw_text;
+            const text = n.id === currentId ? convertedText : n.raw_text;
             return text ? parseWorkoutNote(text).sections : [];
           }),
           ...(currentId ? [] : savedSections),
@@ -472,7 +487,7 @@ export function useLogCurrentRoutineEditor({
       if (currentId) {
         result = await update(currentId, {
           title: titleToSave,
-          raw_text: textToSave,
+          raw_text: convertedText,
           ...classificationsPatch,
           skip_markers,
           attendance_flags,
@@ -480,7 +495,7 @@ export function useLogCurrentRoutineEditor({
           ...activeWeekPatch,
         });
       } else {
-        result = await add(titleToSave, workoutNoteText);
+        result = await add(titleToSave, convertedText);
         await selectCurrent(result.id);
         if (result) {
           await update(result.id, {

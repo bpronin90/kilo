@@ -97,6 +97,15 @@ export function HelpScreen({ onBack }) {
 
       <Card>
         <WorkoutSyntaxReference />
+        {/* The syntax example above always illustrates the format with lb
+            numbers, but entry itself honors your selected unit (#852): the
+            weight you type for a new set is read as your Weight unit
+            (Settings → Units), whichever one that is. */}
+        <Text style={[styles.helpText, { marginTop: 12 }]}>
+          {unit === 'kg'
+            ? 'Your weight unit is set to kg, so the number you type for a new set (e.g. "60 5,5,5") is read as kg — the example above illustrates the format, not the unit.'
+            : 'Weights typed for a new set are read in lb, matching your selected weight unit.'}
+        </Text>
       </Card>
 
       <SectionTitle>Terminology</SectionTitle>

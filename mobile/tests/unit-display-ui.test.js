@@ -8,6 +8,7 @@ jest.mock('@expo/vector-icons/MaterialIcons', () => ({ __esModule: true, default
 import { SetLine } from '../components/UI';
 import { WeightHistoryList } from '../components/WeightHistoryList';
 import { SettingsScreen } from '../components/SettingsScreen';
+import { HelpScreen } from '../components/HelpScreen';
 import { setWeightUnitPreference, __resetWeightUnitForTests } from '../lib/unitPreference';
 
 const mockSaveProfile = jest.fn().mockResolvedValue({});
@@ -187,5 +188,49 @@ describe('Settings unit selector', () => {
       await kgTab.props.onPress();
     });
     expect(mockSaveProfile).not.toHaveBeenCalled();
+  });
+});
+
+// ── #852: Settings/Help copy honestly reflects that entry is unit-aware ────
+describe('Settings unit-aware entry copy (#852)', () => {
+  test('the Weight unit help text says entry includes workout notes, not that they stay in lb', () => {
+    let component;
+    act(() => {
+      component = renderer.create(
+        <SettingsScreen
+          onBack={() => {}}
+          multiplier={1.07}
+          onUpdate={() => {}}
+          weightDateEditEnabled={false}
+          onUpdateWeightDateEditEnabled={() => {}}
+          deloadDateEditEnabled={false}
+          onUpdateDeloadDateEditEnabled={() => {}}
+        />
+      );
+    });
+    const texts = allTexts(component.root);
+    expect(texts.some((t) => /workout-note/i.test(t))).toBe(true);
+    expect(texts.some((t) => /workout notes.*stay in lb/i.test(t))).toBe(false);
+  });
+});
+
+describe('HelpScreen unit-aware entry copy (#852)', () => {
+  test('lb (default): explains entry is read in lb', () => {
+    let component;
+    act(() => {
+      component = renderer.create(<HelpScreen onBack={() => {}} />);
+    });
+    const texts = allTexts(component.root);
+    expect(texts.some((t) => /read in lb/i.test(t))).toBe(true);
+  });
+
+  test('kg: explains a typed set is read as kg, not lb', () => {
+    setWeightUnitPreference('kg');
+    let component;
+    act(() => {
+      component = renderer.create(<HelpScreen onBack={() => {}} />);
+    });
+    const texts = allTexts(component.root);
+    expect(texts.some((t) => /read as kg/i.test(t))).toBe(true);
   });
 });
