@@ -1,6 +1,7 @@
 import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals, parseExerciseHeader, generateDeloadNote, sessionsSinceLastDeload, weeksSinceLastDeload } from '../lib/parser';
-import { getDefaultTrackedNames, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES } from '../lib/data';
+import { getDefaultTrackedNames, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES, classifyExerciseSessions } from '../lib/data';
 import { MAX_RAW_TEXT_LENGTH, applyWeekSkipToText, removeWeekSkipFromText } from '../lib/parser/workoutNote.js';
+import { formatLiftWeightValue, kgMarkerToLb } from '../lib/units';
 
 // ── getDefaultTrackedNames ────────────────────────────────────────────────────
 
@@ -689,6 +690,193 @@ describe('parseWorkoutRow', () => {
     expect(r.ok).toBe(true);
     expect(r.sets).toHaveLength(2);
     expect(r.sets[1]).toMatchObject({ rep_count: 0, skipped: true, weight_value: 80 });
+  });
+});
+
+// ── #852: in-text kg marker ──────────────────────────────────────────────────
+// An explicit `kg` marker on a weight token — attached ("40kg") or
+// space-separated ("40 kg") — is the symmetric case of the `lbs` marker the
+// deload grammar already accepts ("Name: 135 lbs 3x5"). A bare token never
+// changes meaning (still lb, no global unit mode); only this explicit,
+// per-token opt-in converts. raw_text itself is never rewritten by the
+// parser — these tests parse the literal marker text directly, proving the
+// conversion is derived fresh from what the user typed every time, with no
+// separate "converted" record to fall out of sync.
+describe('parseWorkoutRow — in-text kg marker (#852)', () => {
+  test('bare weight token is unaffected: still means lb, no converted_from_kg flag', () => {
+    const r = parseWorkoutRow('40 10');
+    expect(r.ok).toBe(true);
+    expect(r.sets[0].weight_value).toBe(40);
+    expect(r.sets[0].converted_from_kg).toBeUndefined();
+  });
+
+  // A positive kg load can round to 0 lb (anything under ~0.227 kg). Left
+  // unguarded it renders as BW and drops out of weighted analytics, silently
+  // turning a weighted set into a bodyweight one.
+  test('a kg load that rounds to 0 lb is rejected, not silently made bodyweight', () => {
+    const r = parseWorkoutRow('0.2kg 10');
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('0.2kg converts to less than 1 lb — enter a larger load');
+    expect(r.category).toBe('invalid_field_value');
+  });
+
+  test('the smallest kg load that still reaches 1 lb is accepted', () => {
+    const r = parseWorkoutRow('0.3kg 10');
+    expect(r.ok).toBe(true);
+    expect(r.sets[0].weight_value).toBe(1);
+    expect(r.sets[0].converted_from_kg).toBe(true);
+  });
+
+  test('attached "40kg 10" converts to whole-lb canonical value', () => {
+    const r = parseWorkoutRow('40kg 10');
+    expect(r.ok).toBe(true);
+    expect(r.sets[0].weight_value).toBe(88);
+    expect(r.sets[0].weight_unit).toBe('lb');
+    expect(r.sets[0].converted_from_kg).toBe(true);
+    expect(r.sets[0].kg_value).toBe(40);
+  });
+
+  test('space-separated "40 kg 10" parses identically to the attached form', () => {
+    const attached = parseWorkoutRow('40kg 10');
+    const spaced = parseWorkoutRow('40 kg 10');
+    expect(spaced.sets[0]).toEqual(attached.sets[0]);
+  });
+
+  test('rounds to a WHOLE lb, not one decimal (40 kg -> 88, not 88.18)', () => {
+    const r = parseWorkoutRow('40kg 10');
+    expect(r.sets[0].weight_value).toBe(88);
+    expect(Number.isInteger(r.sets[0].weight_value)).toBe(true);
+  });
+
+  test('decimal kg load converts correctly', () => {
+    const r = parseWorkoutRow('22.5kg 6,6');
+    expect(r.sets[0].weight_value).toBe(50);
+    expect(r.sets[0].kg_value).toBe(22.5);
+  });
+
+  test('kg marker on a within-row skipped set converts the shared weight once', () => {
+    const r = parseWorkoutRow('40kg 4,-');
+    expect(r.sets).toHaveLength(2);
+    expect(r.sets[0]).toMatchObject({ weight_value: 88, converted_from_kg: true, kg_value: 40 });
+    expect(r.sets[1]).toMatchObject({ skipped: true, weight_value: 88, converted_from_kg: true, kg_value: 40 });
+  });
+
+  test('mixed row: a kg-marked pair and a bare-lb pair are independent', () => {
+    const r = parseWorkoutRow('40kg 10 60 8,8');
+    expect(r.ok).toBe(true);
+    expect(r.sets[0]).toMatchObject({ weight_value: 88, converted_from_kg: true, kg_value: 40 });
+    expect(r.sets[1]).toMatchObject({ weight_value: 60 });
+    expect(r.sets[1].converted_from_kg).toBeUndefined();
+    expect(r.sets[2]).toMatchObject({ weight_value: 60 });
+  });
+
+  test('mixed row, space-separated marker form, lb pair first', () => {
+    const r = parseWorkoutRow('60 8,8 40 kg 10');
+    expect(r.sets[0]).toMatchObject({ weight_value: 60 });
+    expect(r.sets[0].converted_from_kg).toBeUndefined();
+    expect(r.sets[2]).toMatchObject({ weight_value: 88, converted_from_kg: true, kg_value: 40 });
+  });
+
+  test('zero-weight rejection still applies to a kg-marked load', () => {
+    const r = parseWorkoutRow('0kg 8,8');
+    expect(r.ok).toBe(false);
+    expect(r.category).toBe('invalid_field_value');
+  });
+
+  test('a bare rep-only row (no weight token) is unaffected', () => {
+    const r = parseWorkoutRow('8,8,8');
+    expect(r.ok).toBe(true);
+    expect(r.sets.every(s => s.weight_value === null && !s.converted_from_kg)).toBe(true);
+  });
+
+  test('"kg" with no preceding valid load is rejected, not silently accepted', () => {
+    const r = parseWorkoutRow('kg 10');
+    expect(r.ok).toBe(false);
+  });
+
+  test('a leading flag still works alongside a kg marker ("Flat 40kg 10")', () => {
+    const r = parseWorkoutRow('Flat 40kg 10');
+    expect(r.ok).toBe(true);
+    expect(r.sets[0]).toMatchObject({ weight_value: 88, converted_from_kg: true, kg_value: 40 });
+  });
+
+  test('kgMarkerToLb matches the value the parser derives', () => {
+    expect(kgMarkerToLb(40)).toBe(88);
+    expect(parseWorkoutRow('40kg 10').sets[0].weight_value).toBe(kgMarkerToLb(40));
+  });
+
+  test('raw_text round-trip: parsing the same marked text twice yields identical sets (nothing rewritten, nothing drifts)', () => {
+    const raw = '40kg 10';
+    const first = parseWorkoutRow(raw);
+    const second = parseWorkoutRow(raw);
+    expect(first.sets).toEqual(second.sets);
+  });
+});
+
+describe('parseWorkoutNote — in-text kg marker reaches session entries and derived sets (#852)', () => {
+  test('a kg-marked dash-prefixed session entry carries the conversion through', () => {
+    const r = parseWorkoutNote('-Bench\n- 40kg 10');
+    expect(r.ok).toBe(true);
+    const set = r.sections[0].exercises[0].sets[0];
+    expect(set).toMatchObject({ weight_value: 88, converted_from_kg: true, kg_value: 40 });
+  });
+
+  test('a kg-marked bare row carries the conversion through', () => {
+    const r = parseWorkoutNote('-Bench\n40kg 10');
+    const set = r.sections[0].exercises[0].sets[0];
+    expect(set).toMatchObject({ weight_value: 88, converted_from_kg: true, kg_value: 40 });
+  });
+
+  test('existing (unmarked) notes are completely unaffected: no behavior change', () => {
+    const r = parseWorkoutNote('-Bench\n135 5,5,5');
+    const set = r.sections[0].exercises[0].sets[0];
+    expect(set.weight_value).toBe(135);
+    expect(set.converted_from_kg).toBeUndefined();
+  });
+
+  test('deload-style explicit lbs marker is untouched by the new kg grammar', () => {
+    const r = parseWorkoutNote('Bench: 135 lbs 3x5');
+    expect(r.ok).toBe(true);
+    expect(r.sections[0].exercises[0].sets[0].weight_value).toBe(135);
+  });
+});
+
+// #852 Verification: "an analytics test asserting a kg-marked set contributes
+// its converted lb value to tonnage and maxes." lib/data/workoutAnalytics.js
+// (and lib/parser/analytics.js, which it wraps) were deliberately left
+// untouched — weight_value is already a plain generic number to every
+// analytics function, so a kg-marked set's converted value reaches tonnage
+// and max/PR calculations with zero source changes. These tests prove that.
+describe('analytics: a kg-marked set contributes its converted lb value to tonnage and maxes (#852)', () => {
+  test('estimated_pr (the "max") is computed from the converted lb value, not the typed kg number', () => {
+    const { sections } = parseWorkoutNote('-Bench\n40kg 8');
+    const ex = deriveWorkoutAnalytics(sections).exercises[0];
+    expect(ex.sets[0].weight_value).toBe(88);
+    expect(ex.estimated_pr).toBeCloseTo(epleyPR(88, 8));
+    // Sanity: nowhere does the raw, un-converted "40" leak into the max.
+    expect(ex.estimated_pr).not.toBeCloseTo(epleyPR(40, 8));
+  });
+
+  test('a kg-marked set can be the session top set alongside a bare-lb set', () => {
+    const { sections } = parseWorkoutNote('-Bench\n80 5\n40kg 8');
+    const ex = deriveWorkoutAnalytics(sections).exercises[0];
+    expect(ex.estimated_pr).toBeCloseTo(Math.max(epleyPR(80, 5), epleyPR(88, 8)));
+  });
+
+  test('tonnage (weight * reps summed across sets) includes the converted value', () => {
+    const { sections } = parseWorkoutNote('-Bench\n80 5\n40kg 8');
+    const ex = deriveWorkoutAnalytics(sections).exercises[0];
+    const tonnage = ex.sets.reduce((sum, s) => sum + s.weight_value * s.rep_count, 0);
+    expect(tonnage).toBe(80 * 5 + 88 * 8);
+  });
+
+  test('progression classification treats a kg-marked top set as an ordinary lb value', () => {
+    // Monday's 80 lb top set vs Tuesday's 40kg (-> 88 lb) top set: a real
+    // increase, so this must classify as progressing — exactly as it would
+    // if Tuesday had instead read a bare "88 8".
+    const note = 'Monday\n-Bench\n80 5\nTuesday\n-Bench\n40kg 8';
+    const { sections } = parseWorkoutNote(note);
+    expect(classifyExerciseSessions(sections, ['Bench'])['bench']).toBe('progressing');
   });
 });
 

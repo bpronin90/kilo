@@ -273,8 +273,22 @@ export function SetLine({ sets, selectable, mark }) {
   let currentGroup = null;
 
   for (const set of sets) {
-    if (!currentGroup || currentGroup.weight !== set.weight_value) {
-      currentGroup = { weight: set.weight_value, reps: [] };
+    // #852: a kg-marked load ("40kg 10") converts to its canonical lb
+    // weight_value at parse time, so a converted set and a bare-lb set can
+    // share a weight_value ("88 10" then "40kg 8") while needing different
+    // labels. Break the group on the conversion identity too, not just the
+    // number, so a genuine lb set is never labelled as converted. kgValue is
+    // compared as well: 40kg and 41kg both round to 88 lb but render
+    // different suffixes, so they must not merge either.
+    const convertedFromKg = !!set.converted_from_kg;
+    const kgValue = set.kg_value ?? null;
+    if (
+      !currentGroup
+      || currentGroup.weight !== set.weight_value
+      || currentGroup.convertedFromKg !== convertedFromKg
+      || currentGroup.kgValue !== kgValue
+    ) {
+      currentGroup = { weight: set.weight_value, reps: [], convertedFromKg, kgValue };
       groups.push(currentGroup);
     }
     currentGroup.reps.push(set.skipped ? '-' : set.rep_count);
@@ -289,9 +303,24 @@ export function SetLine({ sets, selectable, mark }) {
               onPress={() => setPlateWeight(group.weight)}
               hitSlop={6}
               accessibilityRole="button"
-              accessibilityLabel={`Show plate loading for ${group.weight} pounds`}
+              accessibilityLabel={
+                group.convertedFromKg
+                  ? `Show plate loading for ${group.weight} pounds, converted from ${group.kgValue} kilograms`
+                  : `Show plate loading for ${group.weight} pounds`
+              }
             >
-              <Text selectable={selectable} style={styles.setWeight}>{`${formatLiftWeightValue(group.weight, unit)} ${unit}`}</Text>
+              {/* #852: a converted group's "(40kg)" suffix is part of the
+                  SAME plain string as the weight, not a separately styled
+                  nested Text — `children` then stays a plain string in
+                  every case, exactly as before #852 (several tests match on
+                  `typeof children === 'string'`), and the parenthetical
+                  already reads as an annotation without needing its own
+                  font treatment. */}
+              <Text selectable={selectable} style={styles.setWeight}>
+                {group.convertedFromKg
+                  ? `${formatLiftWeightValue(group.weight, unit)} ${unit} (${group.kgValue}kg)`
+                  : `${formatLiftWeightValue(group.weight, unit)} ${unit}`}
+              </Text>
             </Pressable>
           ) : (
             <Text selectable={selectable} style={styles.setWeight}>BW</Text>

@@ -3273,6 +3273,109 @@ describe('#615: WorkoutContentRenderer renders marks and comments', () => {
   });
 });
 
+// #852: the inline read view (both the full-scale routine rendering and
+// Recovery's `compact` mode) must show a kg-marked set's converted whole-lb
+// value AND visibly indicate that a conversion happened — not just print a
+// number. Both modes share the same grouping/labeling approach (see
+// WorkoutContentRenderer.js's CompactSetLine and UI.js's SetLine), so both
+// are covered here from the same marked note text.
+describe('#852: inline read view indicates a kg-marked set was converted', () => {
+  const { WorkoutContentRenderer } = require('../components/WorkoutContentRenderer');
+  const { parseWorkoutNote } = require('../lib/parser/workoutNote');
+
+  function dayGroupsFor(note) {
+    const { sections } = parseWorkoutNote(note);
+    return [{ heading: null, sections }];
+  }
+
+  test('full-scale rendering: shows the converted whole-lb value and the original kg number', () => {
+    const dayGroups = dayGroupsFor('-Bench\n- 40kg 10');
+    let component;
+    render.act(() => {
+      component = render.create(<WorkoutContentRenderer dayGroups={dayGroups} />);
+    });
+    const weightNode = component.root.find(
+      n => n.type === 'Text' && typeof n.props.children === 'string' && n.props.children.startsWith('88')
+    );
+    expect(weightNode).toBeTruthy();
+    // Whole lb (40 kg -> 88, not 88.18), and the original kg value is visible
+    // alongside it so the conversion is indicated, not just a bare number.
+    expect(weightNode.props.children).toBe('88 lb (40kg)');
+  });
+
+  test('full-scale rendering: an unmarked set never shows a kg suffix', () => {
+    const dayGroups = dayGroupsFor('-Bench\n- 135 5,5,5');
+    let component;
+    render.act(() => {
+      component = render.create(<WorkoutContentRenderer dayGroups={dayGroups} />);
+    });
+    const weightNode = component.root.find(
+      n => n.type === 'Text' && typeof n.props.children === 'string' && n.props.children.startsWith('135')
+    );
+    expect(weightNode.props.children).toBe('135 lb');
+  });
+
+  test('compact (Recovery) rendering: shows the converted value and the kg suffix too', () => {
+    const dayGroups = dayGroupsFor('-Bench\n- 40kg 10');
+    let component;
+    render.act(() => {
+      component = render.create(<WorkoutContentRenderer dayGroups={dayGroups} compact={true} />);
+    });
+    const weightNode = component.root.find(
+      n => n.type === 'Text' && typeof n.props.children === 'string' && n.props.children.startsWith('88')
+    );
+    expect(weightNode).toBeTruthy();
+    expect(weightNode.props.children).toBe('88 lb (40kg)');
+    expect(weightNode.props.accessibilityLabel).toBe('88 lb, converted from 40 kilograms');
+  });
+
+  test('mixed row: only the kg-marked pair shows the conversion suffix', () => {
+    const dayGroups = dayGroupsFor('-Bench\n- 40kg 10 60 8,8');
+    let component;
+    render.act(() => {
+      component = render.create(<WorkoutContentRenderer dayGroups={dayGroups} />);
+    });
+    const convertedNode = component.root.find(
+      n => n.type === 'Text' && typeof n.props.children === 'string' && n.props.children.startsWith('88')
+    );
+    expect(convertedNode.props.children).toBe('88 lb (40kg)');
+    const plainNode = component.root.find(
+      n => n.type === 'Text' && typeof n.props.children === 'string' && n.props.children.startsWith('60')
+    );
+    expect(plainNode.props.children).toBe('60 lb');
+  });
+
+  // Regression: a converted set and a genuine lb set can share the same
+  // weight_value (40kg rounds to 88 lb), so grouping on the number alone
+  // merged them into one group and labelled the genuine 88 lb set as
+  // converted. The group must break on conversion identity too.
+  test('an adjacent genuine 88 lb set is not labelled as converted', () => {
+    const dayGroups = dayGroupsFor('-Bench\n- 88 10 40kg 8');
+    let component;
+    render.act(() => {
+      component = render.create(<WorkoutContentRenderer dayGroups={dayGroups} />);
+    });
+    const weightNodes = component.root
+      .findAll(n => n.type === 'Text' && typeof n.props.children === 'string' && n.props.children.startsWith('88'))
+      .map(n => n.props.children);
+    expect(weightNodes).toEqual(['88 lb', '88 lb (40kg)']);
+  });
+
+  // Two different kg loads can round to the same lb value (40kg and 39.9kg
+  // are both 88 lb) and must stay separate: they render different suffixes.
+  test('40kg and 39.9kg both rounding to 88 lb stay separate groups', () => {
+    const dayGroups = dayGroupsFor('-Bench\n- 40kg 10 39.9kg 8');
+    let component;
+    render.act(() => {
+      component = render.create(<WorkoutContentRenderer dayGroups={dayGroups} />);
+    });
+    const weightNodes = component.root
+      .findAll(n => n.type === 'Text' && typeof n.props.children === 'string' && n.props.children.startsWith('88'))
+      .map(n => n.props.children);
+    expect(weightNodes).toEqual(['88 lb (40kg)', '88 lb (39.9kg)']);
+  });
+});
+
 // Walk up from a matching Text node to its Nth Pressable (onPress) ancestor,
 // nearest first. `depth` defaults to the nearest one; pass 2 to reach the
 // enclosing container Pressable when the matched text sits inside its own
