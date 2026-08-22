@@ -58,6 +58,20 @@ export function inputWeightToLb(value, unit) {
   return unit === 'kg' ? Math.round(kgToLb(value) * 10) / 10 : value;
 }
 
+// In-text kg marker conversion (#852: an explicit `kg` marker on a logged-set
+// weight token, e.g. "40kg 10"). Rounds to a WHOLE lb — deliberately coarser
+// than inputWeightToLb's one-decimal rounding — because the point of the
+// marker is telling the user what plate/dial number to load back at their
+// usual (lb) gym next time; a decimal lb reading isn't actionable there.
+// This single rounded value is what both the renderer and analytics use, so
+// a kg-marked set sits in its lb progression as an ordinary, self-consistent
+// number rather than two slightly different numbers depending on where it's
+// read.
+export function kgMarkerToLb(kgValue) {
+  if (kgValue === null || kgValue === undefined || Number.isNaN(kgValue)) return kgValue;
+  return Math.round(kgToLb(kgValue));
+}
+
 // Convert a LineChart series ({ value, label, unit, ... }[]) into display
 // space. Returns the same array reference for lb so memoized lb renders are
 // untouched. `decimals` controls kg rounding (1 for bodyweight series, 0 for

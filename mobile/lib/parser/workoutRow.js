@@ -1,3 +1,19 @@
+// In-text kg marker (#852). A logged-set weight token may carry an explicit
+// `kg` marker — attached ("40kg") or space-separated ("40 kg") — the
+// symmetric case of the `lbs` marker the deload grammar already accepts
+// ("Name: 135 lbs 3x5"). It means: this one value was recorded in kg (e.g.
+// off a kg-only machine at another gym); fold it into the normal lb
+// progression. A BARE weight token is never affected by this — it keeps
+// meaning lb, exactly as before this marker existed; there is no global
+// unit mode here, only this explicit, per-token opt-in. raw_text is never
+// rewritten: the marker is read fresh from the literal text on every parse,
+// so a marked row round-trips byte-for-byte and existing (unmarked) notes
+// are completely unaffected.
+import { kgMarkerToLb } from '../units.js';
+
+const _KG_ATTACHED_RE = /^(\d+(?:\.\d+)?)kg$/i;
+const _KG_TOKEN_RE = /^kg$/i;
+
 // Strip a single leading alphabetic flag (e.g. "F", "Flat", "Cable") when
 // immediately followed by a digit. Returns the input unchanged otherwise.
 function _stripLeadingFlag(s) {
@@ -170,14 +186,30 @@ function _parseSetTokens(setStr, raw, declaration = null) {
   let i = 0;
   while (i < tokens.length) {
     const load_tok = tokens[i];
-    if (!LOAD_RE.test(load_tok)) {
+    // A weight token may carry an explicit kg marker, attached ("40kg") or
+    // as the following space-separated token ("40 kg") — see the module
+    // comment above. Neither form changes whether the row is valid, only
+    // how this one load is derived.
+    const kgAttachedMatch = _KG_ATTACHED_RE.exec(load_tok);
+    let weight;
+    let isKgMarked;
+    if (kgAttachedMatch) {
+      weight = parseFloat(kgAttachedMatch[1]);
+      isKgMarked = true;
+    } else if (LOAD_RE.test(load_tok)) {
+      weight = parseFloat(load_tok);
+      isKgMarked = false;
+    } else {
       return { ok: false, raw, error: `Unrecognized input "${load_tok}" — use: weight reps,reps`, category: 'invalid_field_value' };
     }
-    const weight = parseFloat(load_tok);
     if (weight <= 0) {
       return { ok: false, raw, error: 'Weight must be greater than zero', category: 'invalid_field_value' };
     }
     i++;
+    if (!isKgMarked && i < tokens.length && _KG_TOKEN_RE.test(tokens[i])) {
+      isKgMarked = true;
+      i++;
+    }
     if (i >= tokens.length) {
       return { ok: false, raw, error: `Missing reps after weight ${weight}`, category: 'structural_violation' };
     }
@@ -197,12 +229,34 @@ function _parseSetTokens(setStr, raw, declaration = null) {
       return { ok: false, raw, error: 'Rep counts must be positive integers', category: 'invalid_field_value' };
     }
     i++;
+    // A kg-marked load derives its canonical lb value once here (whole lb —
+    // see kgMarkerToLb). `converted_from_kg` and `kg_value` (the original
+    // typed kg number, e.g. 40) carry that fact onto every set built from
+    // this load so a renderer can show that a conversion happened — and
+    // what it was converted from — not just display a number. An unmarked
+    // load is stored exactly as typed (identity), same as always.
+    const weight_value = isKgMarked ? kgMarkerToLb(weight) : weight;
+    // A positive kg load below ~0.227 kg rounds to a canonical 0 lb, which
+    // would render as BW and drop out of weighted analytics (they require
+    // weight_value > 0) — silently changing a weighted set into a bodyweight
+    // one. Reject it here rather than let the meaning shift: the typed value
+    // passed the > 0 check above, so the failure is the conversion, and the
+    // message says so.
+    if (isKgMarked && !(weight_value > 0)) {
+      return {
+        ok: false,
+        raw,
+        error: `${weight}kg converts to less than 1 lb — enter a larger load`,
+        category: 'invalid_field_value',
+      };
+    }
     for (const rep_count of reps) {
       sets.push({
         set_index: set_index++,
         rep_count: rep_count === null ? 0 : rep_count,
         ...(rep_count === null ? { skipped: true } : null),
-        weight_value: weight, weight_unit: 'lb',
+        weight_value, weight_unit: 'lb',
+        ...(isKgMarked ? { converted_from_kg: true, kg_value: weight } : null),
         duration_seconds: null, assistance_value: null, assistance_unit: null, note_text: null,
       });
     }

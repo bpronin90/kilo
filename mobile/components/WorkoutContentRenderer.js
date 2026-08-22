@@ -16,8 +16,18 @@ function CompactSetLine({ sets, unit, styles, mark }) {
   const groups = [];
   let currentGroup = null;
   for (const set of sets) {
-    if (!currentGroup || currentGroup.weight !== set.weight_value) {
-      currentGroup = { weight: set.weight_value, reps: [] };
+    // #852: mirrors SetLine's grouping in UI.js — see that component's
+    // comment for why the group breaks on conversion identity, not just the
+    // weight number.
+    const convertedFromKg = !!set.converted_from_kg;
+    const kgValue = set.kg_value ?? null;
+    if (
+      !currentGroup
+      || currentGroup.weight !== set.weight_value
+      || currentGroup.convertedFromKg !== convertedFromKg
+      || currentGroup.kgValue !== kgValue
+    ) {
+      currentGroup = { weight: set.weight_value, reps: [], convertedFromKg, kgValue };
       groups.push(currentGroup);
     }
     // #854/G4: a duration set (header-declared, e.g. "3x30 sec") carries
@@ -30,8 +40,23 @@ function CompactSetLine({ sets, unit, styles, mark }) {
     <View style={styles.compactSetLine}>
       {groups.map((group, i) => (
         <View key={i} style={styles.compactSetGroup}>
-          <Text style={styles.compactSetWeight}>
-            {group.weight ? `${formatLiftWeightValue(group.weight, unit)} ${unit}` : 'BW'}
+          {/* #852: mirrors SetLine's single-string weight+suffix in UI.js —
+              see that component's comment for why the "(40kg)" suffix is
+              part of the same plain string rather than a separately styled
+              nested Text. */}
+          <Text
+            style={styles.compactSetWeight}
+            accessibilityLabel={
+              group.weight && group.convertedFromKg
+                ? `${formatLiftWeightValue(group.weight, unit)} ${unit}, converted from ${group.kgValue} kilograms`
+                : undefined
+            }
+          >
+            {group.weight
+              ? (group.convertedFromKg
+                ? `${formatLiftWeightValue(group.weight, unit)} ${unit} (${group.kgValue}kg)`
+                : `${formatLiftWeightValue(group.weight, unit)} ${unit}`)
+              : 'BW'}
           </Text>
           <Text style={styles.compactSetReps}>{group.reps.join(', ')}</Text>
         </View>
