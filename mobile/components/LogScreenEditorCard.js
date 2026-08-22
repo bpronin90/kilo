@@ -152,6 +152,7 @@ export function LogScreenEditorCard({
   adoptionBusy,
   onAdoptPromptedRoutine,
   onDismissAdoptionPrompt,
+  handleRevertEdit,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -215,6 +216,13 @@ export function LogScreenEditorCard({
             title={saveSuccess ? 'Saved!' : 'Save changes'}
             disabled={isSaving}
             style={styles.saveButton}
+          />
+          <Button
+            onPress={handleRevertEdit}
+            title="Reset edit"
+            tone="danger"
+            style={styles.revertButton}
+            accessibilityLabel="Reset this edit"
           />
         </Card>
       ) : (
@@ -408,6 +416,11 @@ export function LogScreenEditorCard({
               <Text style={styles.dangerZoneHeadingText}>⚠ Danger Zone</Text>
             </View>
             <Button
+              onPress={handleRevertEdit}
+              title={(editingNoteId === 'new' || (!editingNoteId && !currentId)) ? 'Clear draft' : 'Revert this edit'}
+              tone="danger"
+            />
+            <Button
               onPress={() => {
                 if (editingNoteId) {
                   if (isEditingDeloadNote) {
@@ -452,6 +465,9 @@ const createStyles = (colors) => StyleSheet.create({
     textAlignVertical: 'top',
   },
   saveButton: {
+    marginTop: 12,
+  },
+  revertButton: {
     marginTop: 12,
   },
   // Empty-note seed example (#785). A tinted block matching the syntax-help

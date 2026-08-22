@@ -329,3 +329,10 @@ contained in #710, removed in #711).
   behavior of its own. See `AccountScreen.js` (Delete Account) and
   `BackupScreen.js` (Wipe Device Data) for the reference implementation
   (#822).
+- **Autosaved editor rollback is explicit and confirmed.** Safe editor exit is
+  `Done` (including Android Back) and keeps the latest authored state. A
+  whole-edit rollback is labelled `Revert this edit`, lives in the editor body
+  rather than the compact header, and requires destructive confirmation that
+  explains it will restore the editor-entry snapshot, including over autosaved
+  changes. A control labelled `Cancel` may only open this explicit choice; it
+  must never perform the rollback directly (#851).

@@ -84,6 +84,9 @@ export function useLogCurrentRoutineEditor({
   const keyboardExitTimeoutRef = useRef(null);
   const readScrollYRef = useRef(0);
   const autosaveCurrentTimerRef = useRef(null);
+  const saveCurrentInFlightRef = useRef(null);
+  const lastSavedCurrentTextRef = useRef(null);
+  const lastSavedCurrentTitleRef = useRef(null);
   const pendingActiveWeekRef = useRef(null);
   const activeWeekAuthorityRef = useRef(
     isValidActiveWeek(currentNote?.activeWeek) ? 'persisted' : 'fallback'
@@ -397,20 +400,21 @@ export function useLogCurrentRoutineEditor({
   // the SAME update as raw_text (unskip cleanup path); omitted = untouched.
   // Bundling both here keeps text, counter, and check-in cleanup atomic — a
   // failed save changes none of them.
-  const handleSave = async ({ autosave = false, overrideText, universalSkipCount, sessionCheckins } = {}) => {
-    if (isSaving) return;
+  const handleSave = ({ autosave = false, overrideText, universalSkipCount, sessionCheckins } = {}) => {
+    if (saveCurrentInFlightRef.current) return saveCurrentInFlightRef.current;
     const textToSave = overrideText ?? workoutNoteText;
     if (!currentId && !textToSave.trim()) {
       setSaveError('Workout notes are required');
-      return;
+      return Promise.resolve(false);
     }
     const savedForId = currentId;
     const snapshotText = textToSave;
     const snapshotTitle = workoutNoteTitle;
-    setIsSaving(true);
-    setSaveError('');
-    setSaveSuccess('');
-    try {
+    const run = async () => {
+      setIsSaving(true);
+      setSaveError('');
+      setSaveSuccess('');
+      try {
       let result = null;
       const titleToSave = workoutNoteTitle || 'Untitled Routine';
       const { sections: savedSections } = parseWorkoutNote(textToSave);
@@ -496,6 +500,8 @@ export function useLogCurrentRoutineEditor({
         // Commit the counter only after the write actually persisted, so a
         // failed save leaves the advisory flag in sync with the stored text.
         universalSkipCountRef.current = resolvedUniversalSkipCount;
+        lastSavedCurrentTextRef.current = snapshotText;
+        lastSavedCurrentTitleRef.current = snapshotTitle;
         const contentUnchanged =
           (overrideText != null ? overrideText : workoutNoteTextRef.current) === snapshotText &&
           workoutNoteTitleRef.current === snapshotTitle;
@@ -510,12 +516,18 @@ export function useLogCurrentRoutineEditor({
         setSaveError('Save failed');
         return false;
       }
-    } catch {
-      setSaveError('Save failed');
-      return false;
-    } finally {
-      setIsSaving(false);
-    }
+      } catch {
+        setSaveError('Save failed');
+        return false;
+      } finally {
+        setIsSaving(false);
+        saveCurrentInFlightRef.current = null;
+      }
+    };
+
+    const promise = run();
+    saveCurrentInFlightRef.current = promise;
+    return promise;
   };
 
   const finishExitCurrentEditor = () => {
@@ -551,6 +563,7 @@ export function useLogCurrentRoutineEditor({
     setOriginalNoteState({
       title: workoutNoteTitle,
       text: workoutNoteText,
+      activeWeek: effectiveActiveWeek,
     });
     setMode('edit');
     requestAnimationFrame(() => {
@@ -635,36 +648,80 @@ export function useLogCurrentRoutineEditor({
       return;
     }
     if (hasUnsavedCurrent) {
-      const ok = await handleSave();
+      let ok = await handleSave();
       if (!ok) return;
+      let guard = 0;
+      while (
+        workoutNoteTextRef.current !== lastSavedCurrentTextRef.current ||
+        workoutNoteTitleRef.current !== lastSavedCurrentTitleRef.current
+      ) {
+        if (guard >= 5) return;
+        guard += 1;
+        ok = await handleSave();
+        if (!ok) return;
+      }
     }
     _runCheckInDetection();
     exitCurrentEditor();
   };
 
-  const handleUndoCurrent = async () => {
+  const performRevertCurrent = async () => {
     if (!currentId) {
       setWorkoutNoteTitle('');
       setWorkoutNoteText('');
-      return;
+      return true;
     }
-    if (!originalNoteState) return;
+    if (!originalNoteState) return true;
     if (autosaveCurrentTimerRef.current) {
       clearTimeout(autosaveCurrentTimerRef.current);
       autosaveCurrentTimerRef.current = null;
+    }
+    if (saveCurrentInFlightRef.current) {
+      await saveCurrentInFlightRef.current;
     }
     try {
       await update(currentId, {
         title: originalNoteState.title,
         raw_text: originalNoteState.text,
-        ...activeWeekPatch,
+        activeWeek: isValidActiveWeek(originalNoteState.activeWeek)
+          ? originalNoteState.activeWeek
+          : null,
       });
       setWorkoutNoteTitle(originalNoteState.title);
       setWorkoutNoteText(originalNoteState.text);
+      if (isValidActiveWeek(originalNoteState.activeWeek)) {
+        pendingActiveWeekRef.current = originalNoteState.activeWeek;
+        activeWeekAuthorityRef.current = 'user';
+        setLocalActiveWeek(originalNoteState.activeWeek);
+      } else {
+        pendingActiveWeekRef.current = null;
+        activeWeekAuthorityRef.current = 'fallback';
+        setLocalActiveWeek(null);
+      }
+      return true;
     } catch (err) {
-      console.warn('Undo revert failed:', err);
+      console.warn('Revert failed:', err);
       Alert.alert('Error', 'Failed to revert changes. Please try again.');
+      return false;
     }
+  };
+
+  const handleUndoCurrent = () => {
+    const isDraft = !currentId;
+    Alert.alert(
+      isDraft ? 'Clear this draft?' : 'Revert this edit?',
+      isDraft
+        ? 'This clears everything entered in this unsaved routine.'
+        : 'This restores the routine to how it was when you opened the editor, including changes already autosaved.',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        {
+          text: isDraft ? 'Clear draft' : 'Revert this edit',
+          style: 'destructive',
+          onPress: performRevertCurrent,
+        },
+      ]
+    );
   };
 
   // Splices a transformed active-week body back into the full note text,
