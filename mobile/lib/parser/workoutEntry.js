@@ -1,12 +1,17 @@
 import { parseWorkoutRow } from './workoutRow.js';
 
-export function parseWorkoutEntry(items, workout_date) {
+// `unit` ('lb' | 'kg', default 'lb') is the entry unit bare weight tokens are
+// typed in (#852). Defaults to 'lb' rather than the live selected preference
+// to match parseWorkoutRow/parseWorkoutNote — see the module comment in
+// workoutRow.js for why. A caller wiring this to interactive entry should
+// pass getWeightUnit() explicitly.
+export function parseWorkoutEntry(items, workout_date, unit = 'lb') {
   const date = workout_date || new Date().toISOString().slice(0, 10);
   const parsedItems = [];
   const rowErrors = [];
 
   for (const { exerciseName, raw } of items) {
-    const row = parseWorkoutRow(raw);
+    const row = parseWorkoutRow(raw, unit);
     if (row.blank || row.skipped) continue;
     if (!row.ok) {
       rowErrors.push({ exerciseName, error: row.error, category: row.category });

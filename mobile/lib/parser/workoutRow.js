@@ -1,3 +1,29 @@
+// Kilo lb/kg entry unit (#852). A bare weight token in a logged set row (e.g.
+// the "80" in "80 8,8") can be typed in either lb or kg; `unit` says which,
+// and the parser converts it to the canonical lb storage value via
+// inputWeightToLb (identity when unit is 'lb'), mirroring the entry-path
+// conversion parseWeightEntry already applies to bodyweight (#441).
+// weight_unit itself stays the fixed canonical 'lb' tag either way.
+//
+// `unit` defaults to 'lb' rather than the live selected preference
+// (getWeightUnit()) deliberately: parseWorkoutRow/parseWorkoutNote are the
+// single parse path shared by every reader of a note's raw_text — the Log
+// editors, Recovery Analytics baseline capture and comparison, Home/
+// Analytics summaries, and the cloud sync recompute in
+// storage/entries/derivedCache.js. Recovery Analytics in particular requires
+// its comparisons to stay unit-independent (see "derivation is pure and
+// unit-independent" in tests/recovery-analytics.test.js) — a canonical
+// comparison must not shift just because the viewer's display unit changed
+// between weeks. Defaulting to 'lb' keeps every one of those call sites
+// bit-for-bit unchanged (existing-note compatibility, #852's other scope
+// item, is therefore a true no-op for every caller that doesn't opt in).
+// A caller that wants entry to honor the selected unit passes it explicitly,
+// e.g. `parseWorkoutRow(raw, getWeightUnit())`; wiring that into the actual
+// Log-editor entry surfaces (mobile/screens/log/useLog*Editor.js) is outside
+// this issue's Allowed Files and is called out in the handoff as a
+// remaining gap.
+import { inputWeightToLb } from '../units.js';
+
 // Strip a single leading alphabetic flag (e.g. "F", "Flat", "Cable") when
 // immediately followed by a digit. Returns the input unchanged otherwise.
 function _stripLeadingFlag(s) {
@@ -25,7 +51,11 @@ function _extractMark(trimmed) {
 //
 // Accepted forms: <rep-group> | (<load> <rep-group>)+
 // A standalone rep-group requires at least one comma to be unambiguous.
-function _parseSetTokens(setStr, raw) {
+// `unit` ('lb' | 'kg') governs how a <load> token is interpreted (#852);
+// callers that only need the ok/fail classification (e.g. `_isSetSegment`)
+// can omit it since unit never changes whether a string parses, only the
+// resulting weight_value.
+function _parseSetTokens(setStr, raw, unit = 'lb') {
   // ", " can be a pair separator ("90 10, 70 10,10") or a spaced rep-group
   // separator ("135 8, 8, 8"). Disambiguate: split on ", " and check whether
   // every subsequent chunk contains a space (weight+reps pair shape). If so,
@@ -95,12 +125,17 @@ function _parseSetTokens(setStr, raw) {
       return { ok: false, raw, error: 'Rep counts must be positive integers', category: 'invalid_field_value' };
     }
     i++;
+    // `weight` is the number as typed, in the caller's selected unit;
+    // inputWeightToLb converts it to the canonical lb storage value (identity
+    // when unit is 'lb'). weight_unit stays the fixed canonical tag — see the
+    // module comment above for why entry unit and storage unit are distinct.
+    const weight_value = inputWeightToLb(weight, unit);
     for (const rep_count of reps) {
       sets.push({
         set_index: set_index++,
         rep_count: rep_count === null ? 0 : rep_count,
         ...(rep_count === null ? { skipped: true } : null),
-        weight_value: weight, weight_unit: 'lb',
+        weight_value, weight_unit: 'lb',
         duration_seconds: null, assistance_value: null, assistance_unit: null, note_text: null,
       });
     }
@@ -150,15 +185,18 @@ function _segmentWorkoutRow(trimmed) {
 // Parse a single logged set row. Returns `{ ok, blank }` for empty input,
 // `{ ok, skipped }` for a bare "-", or `{ ok, skipped: false, mark, tail, sets }`
 // on success. `mark` is the trailing `*...` star text; `tail` is any captured
-// inline prose (e.g. "RPE 9") that follows a valid set segment.
-export function parseWorkoutRow(raw) {
+// inline prose (e.g. "RPE 9") that follows a valid set segment. `unit`
+// ('lb' | 'kg', default 'lb') is the entry unit a bare weight token is typed
+// in — see the module comment above for why the default is fixed rather than
+// live.
+export function parseWorkoutRow(raw, unit = 'lb') {
   if (!raw || raw.trim() === '') return { ok: true, blank: true };
   const trimmed = raw.trim();
   if (trimmed === '-') return { ok: true, skipped: true };
 
   const mark = _extractMark(trimmed);
   const { setString, tail } = _segmentWorkoutRow(trimmed);
-  const result = _parseSetTokens(setString, raw);
+  const result = _parseSetTokens(setString, raw, unit);
   if (!result.ok) return result;
   return { ...result, mark, tail };
 }

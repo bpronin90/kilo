@@ -1,6 +1,8 @@
 import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals, parseExerciseHeader, generateDeloadNote, sessionsSinceLastDeload, weeksSinceLastDeload } from '../lib/parser';
 import { getDefaultTrackedNames, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES } from '../lib/data';
 import { MAX_RAW_TEXT_LENGTH, applyWeekSkipToText, removeWeekSkipFromText } from '../lib/parser/workoutNote.js';
+import { formatLiftWeightValue } from '../lib/units';
+import { setWeightUnitPreference, __resetWeightUnitForTests } from '../lib/unitPreference';
 
 // ── getDefaultTrackedNames ────────────────────────────────────────────────────
 
@@ -689,6 +691,124 @@ describe('parseWorkoutRow', () => {
     expect(r.ok).toBe(true);
     expect(r.sets).toHaveLength(2);
     expect(r.sets[1]).toMatchObject({ rep_count: 0, skipped: true, weight_value: 80 });
+  });
+});
+
+// ── #852: unit-aware entry ──────────────────────────────────────────────────
+// parseWorkoutRow/parseWorkoutEntry/parseWorkoutNote accept an explicit `unit`
+// ('lb' | 'kg') saying which unit a bare weight token was typed in, and
+// convert it to the canonical lb storage value the same way parseWeightEntry
+// already does for bodyweight (#441). `unit` defaults to 'lb': this is the
+// single parse path every reader of a note's raw_text shares (Log editors,
+// Recovery Analytics, Home/Analytics summaries, cloud sync recompute), and
+// Recovery Analytics specifically requires its comparisons to stay
+// unit-independent regardless of the live display preference (see
+// tests/recovery-analytics.test.js — "derivation is pure and
+// unit-independent"). So the default must never vary with the live
+// preference; only a caller that explicitly opts in by passing `unit` gets
+// unit-aware interpretation.
+describe('parseWorkoutRow — unit-aware entry (#852)', () => {
+  test('kg entry converts to the canonical lb value, not a bare passthrough', () => {
+    const r = parseWorkoutRow('80 8,8', 'kg');
+    expect(r.ok).toBe(true);
+    expect(r.sets[0].weight_value).toBe(176.4);
+    expect(r.sets[1].weight_value).toBe(176.4);
+    // Storage stays canonically lb-tagged regardless of entry unit (#852:
+    // "Preserve the canonical internal representation intentionally").
+    expect(r.sets[0].weight_unit).toBe('lb');
+  });
+
+  test('lb entry with an explicit unit is an identity passthrough', () => {
+    const r = parseWorkoutRow('80 8,8', 'lb');
+    expect(r.sets[0].weight_value).toBe(80);
+  });
+
+  test('kg entry across multiple weight/rep pairs converts each load independently', () => {
+    const r = parseWorkoutRow('80 5,5 100 3,3', 'kg');
+    expect(r.ok).toBe(true);
+    expect(r.sets[0].weight_value).toBe(176.4);
+    expect(r.sets[2].weight_value).toBe(220.5);
+  });
+
+  test('kg entry with a decimal load converts correctly', () => {
+    const r = parseWorkoutRow('22.5 6,6', 'kg');
+    expect(r.sets[0].weight_value).toBe(49.6);
+  });
+
+  test('kg entry: within-row skipped set converts the shared weight once', () => {
+    const r = parseWorkoutRow('80 4,-', 'kg');
+    expect(r.sets).toHaveLength(2);
+    expect(r.sets[0]).toMatchObject({ weight_value: 176.4, weight_unit: 'lb' });
+    expect(r.sets[1]).toMatchObject({ skipped: true, weight_value: 176.4, weight_unit: 'lb' });
+  });
+
+  test('zero-weight rejection checks the typed value, not the converted one', () => {
+    const r = parseWorkoutRow('0 8,8', 'kg');
+    expect(r.ok).toBe(false);
+    expect(r.category).toBe('invalid_field_value');
+  });
+
+  test('a bare rep-group (no weight token) is unaffected by unit', () => {
+    const r = parseWorkoutRow('8,8,8', 'kg');
+    expect(r.ok).toBe(true);
+    expect(r.sets.every(s => s.weight_value === null)).toBe(true);
+  });
+
+  test('round-trips cleanly: a kg-typed load redisplays as the original kg number', () => {
+    const r = parseWorkoutRow('80 8,8', 'kg');
+    expect(formatLiftWeightValue(r.sets[0].weight_value, 'kg')).toBe('80');
+  });
+
+  test('omitting unit defaults to lb, identical to pre-#852 behavior', () => {
+    const r = parseWorkoutRow('80 8,8');
+    expect(r.sets[0].weight_value).toBe(80);
+  });
+
+  test('existing-note compatibility: the default never varies with the live selected preference', () => {
+    // A canonical/display parse (no explicit `unit`) must return the same
+    // weight_value regardless of what the user currently has selected in
+    // Settings — otherwise every existing note's history would silently
+    // reinterpret itself the moment someone flips their display unit.
+    setWeightUnitPreference('lb');
+    const inLb = parseWorkoutRow('80 8,8');
+    setWeightUnitPreference('kg');
+    const inKg = parseWorkoutRow('80 8,8');
+    __resetWeightUnitForTests();
+    expect(inKg.sets[0].weight_value).toBe(inLb.sets[0].weight_value);
+    expect(inKg.sets[0].weight_value).toBe(80);
+  });
+});
+
+describe('parseWorkoutEntry — unit-aware entry (#852)', () => {
+  test('threads an explicit unit through to every parsed row', () => {
+    const r = parseWorkoutEntry([{ exerciseName: 'Squat', raw: '80 5,5' }], '2026-05-09', 'kg');
+    expect(r.ok).toBe(true);
+    expect(r.items[0].sets[0].weight_value).toBe(176.4);
+  });
+
+  test('defaults to lb when no unit is passed', () => {
+    const r = parseWorkoutEntry([{ exerciseName: 'Squat', raw: '80 5,5' }], '2026-05-09');
+    expect(r.items[0].sets[0].weight_value).toBe(80);
+  });
+});
+
+describe('parseWorkoutNote — unit-aware entry (#852)', () => {
+  test('threads an explicit unit through to a logged set row', () => {
+    const r = parseWorkoutNote('-Bench\n80 8,8', 'kg');
+    expect(r.ok).toBe(true);
+    expect(r.sections[0].exercises[0].sets[0].weight_value).toBe(176.4);
+  });
+
+  test('threads an explicit unit through a dash-prefixed session entry row', () => {
+    const r = parseWorkoutNote('-Bench\n- 80 8,8', 'kg');
+    expect(r.sections[0].exercises[0].sets[0].weight_value).toBe(176.4);
+  });
+
+  test('defaults to lb when no unit is passed, regardless of live preference', () => {
+    setWeightUnitPreference('kg');
+    const r = parseWorkoutNote('-Bench\n80 8,8');
+    __resetWeightUnitForTests();
+    expect(r.sections[0].exercises[0].sets[0].weight_value).toBe(80);
   });
 });
 
