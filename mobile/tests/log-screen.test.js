@@ -4450,6 +4450,15 @@ describe('handleSkipWeek: fatigue prompt gated on successful save', () => {
     // the integration tests below.
     expect(src).toMatch(/if\s*\(!saved\)\s*\{/);
   });
+
+  test('Log withholds both specialized save controls while the current note is saving', () => {
+    const src = fs.readFileSync(
+      path.join(__dirname, '../screens/LogScreen.js'),
+      'utf8'
+    );
+    expect(src).toMatch(/handleSkipWeek=\{currentEditor\.isSaving \? undefined : currentEditor\.handleSkipWeek\}/);
+    expect(src).toMatch(/handleUnskipWeek=\{currentEditor\.isSaving \? undefined : currentEditor\.handleUnskipWeek\}/);
+  });
 });
 
 // ── Skip week / Undo skip: integration (#502 revised direction) ────────────
@@ -4530,6 +4539,49 @@ describe('Skip week / Undo skip: integration (#502)', () => {
     const skipCount = (getLatest().getText().match(/^-$/gm) || []).length;
     expect(skipCount).toBe(2);
     expect(getLatest().hook.skipWeekStatus).toBe('Skip applied');
+  });
+
+  test('a rapid second Skip press cannot reuse an older in-flight save as success', async () => {
+    let releaseFirstSave;
+    const firstSaveGate = new Promise(resolve => { releaseFirstSave = resolve; });
+    const { getLatest, update } = makeHarness({
+      updateImpl: async (_id, patch) => {
+        if (update.mock.calls.length === 1) await firstSaveGate;
+        return {
+          id: 'note1',
+          title: patch.title || 'Routine',
+          raw_text: patch.raw_text,
+        };
+      },
+    });
+
+    let firstPress;
+    render.act(() => { firstPress = getLatest().hook.handleSkipWeek(); });
+    await render.act(async () => {
+      for (let i = 0; i < 10 && update.mock.calls.length === 0; i += 1) {
+        await Promise.resolve();
+      }
+    });
+    expect(update).toHaveBeenCalledTimes(1);
+
+    await render.act(async () => { await getLatest().hook.handleSkipWeek(); });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(getLatest().hook.skipWeekStatus).toBe('Finishing the previous save — try again');
+
+    await render.act(async () => {
+      releaseFirstSave();
+      await firstPress;
+    });
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect((getLatest().getText().match(/^-$/gm) || [])).toHaveLength(1);
+    expect(update).toHaveBeenLastCalledWith(
+      'note1',
+      expect.objectContaining({
+        raw_text: expect.stringMatching(/^-$/m),
+        skip_markers: expect.objectContaining({ universal_skip_count: 1 }),
+      })
+    );
   });
 
   test('Undo skip removes exactly the last universal skip', async () => {

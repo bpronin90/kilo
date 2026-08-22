@@ -401,7 +401,18 @@ export function useLogCurrentRoutineEditor({
   // Bundling both here keeps text, counter, and check-in cleanup atomic — a
   // failed save changes none of them.
   const handleSave = ({ autosave = false, overrideText, universalSkipCount, sessionCheckins } = {}) => {
-    if (saveCurrentInFlightRef.current) return saveCurrentInFlightRef.current;
+    const isSpecializedSave = overrideText !== undefined
+      || universalSkipCount !== undefined
+      || sessionCheckins !== undefined;
+    if (saveCurrentInFlightRef.current) {
+      // Ordinary Done/autosave callers may await the write already persisting
+      // the same live editor state. Skip/remove-skip calls carry their own
+      // atomic text/counter/check-in payload and must never inherit success
+      // from an older request that did not write that payload.
+      return isSpecializedSave
+        ? Promise.resolve(false)
+        : saveCurrentInFlightRef.current;
+    }
     const textToSave = overrideText ?? workoutNoteText;
     if (!currentId && !textToSave.trim()) {
       setSaveError('Workout notes are required');
@@ -741,6 +752,10 @@ export function useLogCurrentRoutineEditor({
 
   const handleSkipWeek = async () => {
     if (!currentId) return;
+    if (saveCurrentInFlightRef.current) {
+      setSkipWeekStatus('Finishing the previous save — try again');
+      return;
+    }
     const newActiveText = applyWeekSkipToText(activeEditText, activeWeekParsed.sections);
     if (newActiveText === activeEditText) {
       // No eligible logged exercise to skip: surface this so the press is
@@ -780,6 +795,10 @@ export function useLogCurrentRoutineEditor({
   // manual removal). Text, counter, and check-in cleanup are persisted in one
   // update via handleSave so a partial write can never desync them.
   const _performUnskipRemoval = async (newActiveText, nextUniversalSkipCount) => {
+    if (saveCurrentInFlightRef.current) {
+      setSkipWeekStatus('Finishing the previous save — try again');
+      return;
+    }
     // The session being removed is the note's current deepest session column
     // (the one the just-removed trailing skip belonged to), computed from the
     // full note text before the removal — this matches the sessionIndex
@@ -834,6 +853,10 @@ export function useLogCurrentRoutineEditor({
 
   const handleUnskipWeek = async () => {
     if (!currentId) return;
+    if (saveCurrentInFlightRef.current) {
+      setSkipWeekStatus('Finishing the previous save — try again');
+      return;
+    }
     const newActiveText = removeWeekSkipFromText(activeEditText, activeWeekParsed.sections);
     const count = universalSkipCountRef.current;
     if (newActiveText === activeEditText) {

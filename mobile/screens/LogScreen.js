@@ -995,8 +995,8 @@ export function LogScreen({
                 handleToggleWeek={currentEditor.handleToggleWeek}
                 enterCurrentEditor={currentEditor.enterCurrentEditor}
                 handleNoteBodyPress={currentEditor.handleNoteBodyPress}
-                handleSkipWeek={currentEditor.handleSkipWeek}
-                handleUnskipWeek={currentEditor.handleUnskipWeek}
+                handleSkipWeek={currentEditor.isSaving ? undefined : currentEditor.handleSkipWeek}
+                handleUnskipWeek={currentEditor.isSaving ? undefined : currentEditor.handleUnskipWeek}
                 canUnskipWeek={currentEditor.canUnskipWeek}
                 skipWeekStatus={currentEditor.skipWeekStatus}
                 toggleCollapsed={toggleCollapsed}
