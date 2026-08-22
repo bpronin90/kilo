@@ -217,13 +217,6 @@ export function LogScreenEditorCard({
             disabled={isSaving}
             style={styles.saveButton}
           />
-          <Button
-            onPress={handleRevertEdit}
-            title="Reset edit"
-            tone="danger"
-            style={styles.revertButton}
-            accessibilityLabel="Reset this edit"
-          />
         </Card>
       ) : (
         <>
@@ -465,9 +458,6 @@ const createStyles = (colors) => StyleSheet.create({
     textAlignVertical: 'top',
   },
   saveButton: {
-    marginTop: 12,
-  },
-  revertButton: {
     marginTop: 12,
   },
   // Empty-note seed example (#785). A tinted block matching the syntax-help

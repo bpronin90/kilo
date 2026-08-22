@@ -1217,7 +1217,6 @@ export function LogScreen({
           onAdoptPromptedRoutine={otherEditor.handleAdoptPromptedRoutine}
           onDismissAdoptionPrompt={otherEditor.handleDismissAdoptionPrompt}
           handleRevertEdit={
-            deloadEditor.deloadMode === 'edit' ? deloadEditor.handleUndoDeload :
             otherEditor.editingNoteId ? otherEditor.handleUndoOther :
             currentEditor.handleUndoCurrent
           }

@@ -91,19 +91,9 @@ export function useLogDeloadEditor({
   };
 
   const handleUndoDeload = () => {
-    if (!originalNoteState) return;
-    Alert.alert(
-      'Reset this edit?',
-      'This discards changes made since you opened the deload editor.',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        {
-          text: 'Reset edit',
-          style: 'destructive',
-          onPress: () => setDeloadEditText(originalNoteState.text),
-        },
-      ]
-    );
+    if (originalNoteState) {
+      setDeloadEditText(originalNoteState.text);
+    }
   };
 
   const handleGenerateDeload = () => {
