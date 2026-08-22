@@ -1,4 +1,5 @@
 import { normalizeExerciseKey, _canonicalizeName } from './exerciseNames.js';
+import { isStrengthExerciseName } from '../data/exerciseCatalog.js';
 
 export function epleyPR(weight, reps) {
   if (!weight || !reps || weight <= 0 || reps <= 0) return null;
@@ -16,9 +17,24 @@ export function deriveWorkoutAnalytics(sections) {
         byName.set(key, { name: _canonicalizeName(ex.name), occurrences: [], sets: [], rows: [], unparsed_rows: [] });
       }
       const derived = byName.get(key);
-      derived.occurrences.push({ heading, subheading, kind, rows: ex.rows, sets: ex.sets, unparsed_rows: ex.unparsed_rows, session_entries: ex.session_entries });
-      for (const s of ex.sets) derived.sets.push(s);
-      for (const r of ex.rows) derived.rows.push(r);
+      // #854/G5+R3: cardio/non-weight exercises now parse as ordinary
+      // structured rows (real weight_value/rep_count), so they must be kept
+      // out of tonnage, PR/max, and rep-drop-off aggregates — a warmup
+      // section always excludes its sets, and a non-strength exercise name
+      // (e.g. "Bike") is excluded even outside a warmup boundary. Only the
+      // aggregate-facing sets/rows/session_entries are zeroed here; the
+      // exercise object the note renderer reads (`sections` from
+      // parseWorkoutNote) is never touched, so the row still renders its
+      // real logged value.
+      const excludeFromAggregates = kind === 'warmup' || !isStrengthExerciseName(ex.name);
+      const aggSets = excludeFromAggregates ? [] : ex.sets;
+      const aggRows = excludeFromAggregates ? ex.rows.map(r => ({ ...r, sets: [] })) : ex.rows;
+      const aggSessionEntries = excludeFromAggregates
+        ? ex.session_entries.map(e => (e.sets && e.sets.length > 0 ? { ...e, sets: [] } : e))
+        : ex.session_entries;
+      derived.occurrences.push({ heading, subheading, kind, rows: aggRows, sets: aggSets, unparsed_rows: ex.unparsed_rows, session_entries: aggSessionEntries });
+      for (const s of aggSets) derived.sets.push(s);
+      for (const r of aggRows) derived.rows.push(r);
       for (const u of ex.unparsed_rows) derived.unparsed_rows.push(u);
     }
   }

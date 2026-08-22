@@ -1,4 +1,4 @@
-import { parseWorkoutRow } from './workoutRow.js';
+import { parseWorkoutRow, parseHeaderDeclaration } from './workoutRow.js';
 
 // Upper bound on untrusted note text fed to the per-line parser. Real workout
 // notes are at most a few KB; this cap (~200KB, thousands of lines) sits far
@@ -14,7 +14,11 @@ const _SESSION_ENTRY_RE = /^-\s+(.+)/;
 const _EXERCISE_NUMBERED_RE = /^(\d+[a-z]?)\.\s+(.+)/i;
 const _EXERCISE_CORE_RE = /^Core:\s+(.+)/i;
 const _DELOAD_RE = /^([^:+\d-][^:]*?):\s+(\d+(?:\.\d+)?)\s+lbs?\s+(\d+)x(\d+)\s*$/i;
-const _NON_WEIGHT_RE = /\b(treadmill|bike|bicycle|cycling|elliptical|run|walk|swim|cardio|rowing machine|ski erg)\b/i;
+
+// #854/G7b: a bare prose line typed directly as a set row, not through "-- ".
+function _proseAsSetRowMessage() {
+  return 'This looks like a note, not a set — start it with "-- " (two dashes and a space) to keep it as a comment.';
+}
 
 // Shared by parseWorkoutNote and `_isExerciseHeaderLine` below (single source
 // of truth for the "is this a header or a missing-space set row" decision, so
@@ -27,9 +31,9 @@ const _NON_WEIGHT_RE = /\b(treadmill|bike|bicycle|cycling|elliptical|run|walk|sw
 // reclassify a genuine alphabetic exercise header (e.g. "-Row 135 10") as a
 // missing-space set row, which is not what this recovery is for. Returns the
 // parsed row on match, else null.
-function _dashContentAsSetRow(content) {
+function _dashContentAsSetRow(content, declaration = null) {
   if (!/^\d/.test(content)) return null;
-  const r = parseWorkoutRow(content);
+  const r = parseWorkoutRow(content, declaration);
   return (r.ok && !r.blank && !r.skipped) ? r : null;
 }
 
@@ -88,24 +92,32 @@ export function parseWorkoutNote(noteText) {
   let currentDay = null;
   let currentSection = null;
   let currentExercise = null;
-  let currentExerciseNonWeight = false;
+  // #854/G1: the header-declaration grammar governing bare-integer set rows
+  // under the currently open exercise (null = no declaration, so a bare
+  // integer is preserved rather than parsed — see G1-p).
+  let currentDeclaration = null;
   let weekBStartIndex = null;
+  // #854/G7c: prose lines with no open exercise are preserved as note-level
+  // annotations on the section that hosts them, never silently dropped.
+  let sectionAnnotations = [];
 
   function flushExercise() {
     if (currentExercise && currentSection) {
       currentExercise.sets = currentExercise.rows.flatMap(r => r.sets);
       currentSection.exercises.push(currentExercise);
       currentExercise = null;
-      currentExerciseNonWeight = false;
+      currentDeclaration = null;
     }
   }
 
   function flushSection() {
     flushExercise();
     if (currentSection) {
+      if (sectionAnnotations.length > 0) currentSection.annotations = sectionAnnotations;
       sections.push(currentSection);
       currentSection = null;
     }
+    sectionAnnotations = [];
   }
 
   function ensureSection() {
@@ -118,7 +130,7 @@ export function parseWorkoutNote(noteText) {
     flushExercise();
     ensureSection();
     currentExercise = { name, raw_header: rawHeader, rows: [], session_entries: [], unparsed_rows: [], unparsed_positions: [] };
-    currentExerciseNonWeight = _NON_WEIGHT_RE.test(name);
+    currentDeclaration = parseHeaderDeclaration(rawHeader);
   }
 
   for (const rawLine of noteText.split('\n')) {
@@ -173,6 +185,11 @@ export function parseWorkoutNote(noteText) {
         } else {
           currentExercise.unparsed_rows.push(trimmed);
         }
+      } else {
+        // #854/G7a: "-- " with no open exercise to attach to — retained as a
+        // section-level annotation instead of dropped.
+        ensureSection();
+        sectionAnnotations.push(trimmed.slice(2).trim());
       }
       continue;
     }
@@ -180,31 +197,31 @@ export function parseWorkoutNote(noteText) {
     const dashMatch = _EXERCISE_DASH_RE.exec(trimmed);
     if (dashMatch) {
       const dashContent = dashMatch[1].trim();
-      const recovery = _dashContentAsSetRow(dashContent);
+      const recovery = _dashContentAsSetRow(dashContent, currentDeclaration);
       if (recovery) {
         // Missing dash-space (#617): "-230 5" was meant as "- 230 5", a
         // logged set, not an exercise-name header. Never mint a numeric-named
         // phantom exercise for it.
-        if (currentExercise && !currentExerciseNonWeight) {
-          // Recover it as a set under the current exercise, same shape as a
-          // normal dash-space session entry.
-          const offset = currentExercise.rows.reduce((sum, r) => sum + r.sets.length, 0);
-          const reindexed = recovery.sets.map(s => ({ ...s, set_index: offset + s.set_index }));
-          currentExercise.rows.push({ raw: dashContent, sets: reindexed });
-          currentExercise.session_entries.push({
-            skipped: false,
-            raw: dashContent,
-            sets: reindexed,
-            recovered: true,
-            annotation: _makeAnnotation(recovery.mark, recovery.tail),
-          });
-        } else if (currentExercise) {
-          // Non-weight (e.g. cardio) exercise: don't misread a numeric row as
-          // a weighted set. Keep it visible as unparsed content instead of
-          // inventing sets or a header, consistent with how other stray rows
-          // under a non-weight exercise are handled.
-          currentExercise.unparsed_rows.push(dashContent);
-          currentExercise.session_entries.push({ skipped: false, raw: dashContent, sets: [], unparsed: true });
+        if (currentExercise) {
+          if (recovery.preserved) {
+            // #854/G1-p: recognized bare integer, no governing declaration —
+            // preserved, not structured data.
+            currentExercise.unparsed_rows.push(dashContent);
+            currentExercise.session_entries.push({ skipped: false, raw: dashContent, sets: [], unparsed: true, error: null, category: null });
+          } else {
+            // Recover it as a set under the current exercise, same shape as a
+            // normal dash-space session entry.
+            const offset = currentExercise.rows.reduce((sum, r) => sum + r.sets.length, 0);
+            const reindexed = recovery.sets.map(s => ({ ...s, set_index: offset + s.set_index }));
+            currentExercise.rows.push({ raw: dashContent, sets: reindexed });
+            currentExercise.session_entries.push({
+              skipped: false,
+              raw: dashContent,
+              sets: reindexed,
+              recovered: true,
+              annotation: _makeAnnotation(recovery.mark, recovery.tail),
+            });
+          }
         } else {
           // No current exercise to attach the recovered set to: never invent
           // one just to hold it. Surface a visible Tier-A parser error instead
@@ -262,31 +279,36 @@ export function parseWorkoutNote(noteText) {
     if (currentExercise) {
       const sessionEntryMatch = _SESSION_ENTRY_RE.exec(trimmed);
 
-      if (currentExerciseNonWeight) {
-        currentExercise.unparsed_rows.push(trimmed);
-        if (sessionEntryMatch) {
-          currentExercise.session_entries.push({ skipped: false, raw: sessionEntryMatch[1].trim(), sets: [], unparsed: true });
-        }
-      } else if (sessionEntryMatch) {
+      if (sessionEntryMatch) {
         const entryRaw = sessionEntryMatch[1].trim();
-        const rowResult = parseWorkoutRow(entryRaw);
-        if (rowResult.ok && !rowResult.blank && !rowResult.skipped) {
+        const rowResult = parseWorkoutRow(entryRaw, currentDeclaration);
+        if (rowResult.ok && !rowResult.blank && !rowResult.skipped && !rowResult.preserved) {
           const offset = currentExercise.rows.reduce((sum, r) => sum + r.sets.length, 0);
           const reindexed = rowResult.sets.map(s => ({ ...s, set_index: offset + s.set_index }));
           currentExercise.rows.push({ raw: entryRaw, sets: reindexed });
           currentExercise.session_entries.push({ skipped: false, raw: entryRaw, sets: reindexed, annotation: _makeAnnotation(rowResult.mark, rowResult.tail) });
         } else if (rowResult.skipped) {
           currentExercise.session_entries.push({ skipped: true, raw: entryRaw, sets: [] });
+        } else if (rowResult.preserved) {
+          // #854/G1-p: a bare integer with no governing header declaration —
+          // recognized, but not structured workout data. Preserved visibly,
+          // no ⚠, no message.
+          currentExercise.unparsed_rows.push(entryRaw);
+          currentExercise.session_entries.push({ skipped: false, raw: entryRaw, sets: [], unparsed: true, error: null, category: null });
         } else if (!rowResult.blank) {
+          // #854/G7b: prose typed directly as a set row (no digits at all)
+          // gets a message teaching the "-- " note form instead of the reps
+          // grammar it was never attempting to use.
+          const error = /\d/.test(entryRaw) ? (rowResult.error ?? null) : _proseAsSetRowMessage();
           currentExercise.unparsed_rows.push(entryRaw);
           // Carry the parser's error/category onto the unparsed entry so the
           // read view can surface a labeled, actionable message instead of a
           // bare red line. The raw text is preserved unchanged.
-          currentExercise.session_entries.push({ skipped: false, raw: entryRaw, sets: [], unparsed: true, error: rowResult.error ?? null, category: rowResult.category ?? null });
+          currentExercise.session_entries.push({ skipped: false, raw: entryRaw, sets: [], unparsed: true, error, category: rowResult.category ?? null });
         }
       } else {
-        const rowResult = parseWorkoutRow(trimmed);
-        if (rowResult.ok && !rowResult.blank && !rowResult.skipped) {
+        const rowResult = parseWorkoutRow(trimmed, currentDeclaration);
+        if (rowResult.ok && !rowResult.blank && !rowResult.skipped && !rowResult.preserved) {
           const offset = currentExercise.rows.reduce((sum, r) => sum + r.sets.length, 0);
           const reindexed = rowResult.sets.map(s => ({ ...s, set_index: offset + s.set_index }));
           currentExercise.rows.push({ raw: trimmed, sets: reindexed });
@@ -294,13 +316,23 @@ export function parseWorkoutNote(noteText) {
           // '--' comment still attaches to it via annotation.comments since it
           // is a valid logged entry (not skipped, not unparsed).
           currentExercise.session_entries.push({ skipped: false, raw: trimmed, sets: reindexed, bare: true, annotation: _makeAnnotation(rowResult.mark, rowResult.tail) });
+        } else if (rowResult.preserved) {
+          currentExercise.unparsed_positions.push({ pos: currentExercise.session_entries.length, raw: trimmed, error: null, category: null });
+          currentExercise.unparsed_rows.push(trimmed);
         } else if (!rowResult.blank && !rowResult.skipped) {
+          const error = /\d/.test(trimmed) ? (rowResult.error ?? null) : _proseAsSetRowMessage();
           // Preserve the parser error/category alongside the positional raw so
           // a bare-int/garbage row can render its recovery hint in place.
-          currentExercise.unparsed_positions.push({ pos: currentExercise.session_entries.length, raw: trimmed, error: rowResult.error ?? null, category: rowResult.category ?? null });
+          currentExercise.unparsed_positions.push({ pos: currentExercise.session_entries.length, raw: trimmed, error, category: rowResult.category ?? null });
           currentExercise.unparsed_rows.push(trimmed);
         }
       }
+    } else {
+      // #854/G7c: a nonblank line with no open exercise is never data and
+      // never an error — preserved as a note/section-level annotation so it
+      // is accounted for instead of silently vanishing.
+      ensureSection();
+      sectionAnnotations.push(trimmed);
     }
   }
 

@@ -9,9 +9,8 @@ import { formatLiftWeightValue } from '../lib/units';
 // Compact set-line grouping (#843), mirroring UI.js's SetLine algorithm but
 // rendered at Recovery's compact type scale (13/muted/600) instead of
 // SetLine's own fixed SET_ROW_FONT_SIZE. Kept local to this file rather than
-// adding a size prop to SetLine — UI.js is outside this issue's Allowed
-// Files, and SetLine's own plate-calculator affordance is not part of the
-// compact Recovery reading surface.
+// adding a size prop to SetLine — SetLine's own plate-calculator affordance
+// is not part of the compact Recovery reading surface.
 function CompactSetLine({ sets, unit, styles, mark }) {
   if (!sets || sets.length === 0) return null;
   const groups = [];
@@ -21,7 +20,11 @@ function CompactSetLine({ sets, unit, styles, mark }) {
       currentGroup = { weight: set.weight_value, reps: [] };
       groups.push(currentGroup);
     }
-    currentGroup.reps.push(set.skipped ? '-' : set.rep_count);
+    // #854/G4: a duration set (header-declared, e.g. "3x30 sec") carries
+    // duration_seconds instead of rep_count.
+    currentGroup.reps.push(
+      set.skipped ? '-' : (set.duration_seconds != null ? `${set.duration_seconds}s` : set.rep_count)
+    );
   }
   return (
     <View style={styles.compactSetLine}>
@@ -82,6 +85,11 @@ export function WorkoutContentRenderer({
               {section.subheading && (
                 <WorkoutSubheading selectable={true}>{section.subheading}</WorkoutSubheading>
               )}
+              {/* #854/G7c: nonblank lines with no open exercise are preserved
+                  as section-level annotations rather than silently dropped. */}
+              {(section.annotations || []).map((text, ai) => (
+                <AnnotationNote key={`section-note-${gi}-${si}-${ai}`} text={text} selectable={true} />
+              ))}
               {section.exercises.map((ex, ei) => {
                 const exNormName = normalizeLiftName(ex.name);
                 const trackingEnabled = !isDeload && typeof onToggleTrack === 'function';
