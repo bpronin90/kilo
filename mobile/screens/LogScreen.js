@@ -1203,6 +1203,13 @@ export function LogScreen({
           editingText={otherEditor.editingText}
           setEditingText={otherEditor.setEditingText}
           activeEditText={currentEditor.activeEditText}
+          sessionAlignmentIssue={
+            deloadEditor.deloadMode === 'edit'
+              ? null
+              : otherEditor.editingNoteId
+                ? otherEditor.sessionAlignmentIssue
+                : currentEditor.sessionAlignmentIssue
+          }
           handleCurrentTextChange={currentEditor.handleCurrentTextChange}
           handleSaveOtherNote={otherEditor.handleSaveOtherNote}
           handleSave={currentEditor.handleSave}

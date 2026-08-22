@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Alert } from '../../lib/platformAlert';
 import { parseWorkoutNote } from '../../lib/parser';
+import { deriveSessionAlignmentIssue } from '../../lib/parser/sessions.js';
 import {
   findMatchingExerciseNames,
   rolloverOneKExercises,
@@ -220,6 +221,14 @@ export function useLogOtherRoutineEditor({
   const editingText = useMemo(
     () => (editingHasABWeeks ? sliceActiveWeekText(editingFullText, editingEffectiveWeek) : editingFullText),
     [editingFullText, editingHasABWeeks, editingEffectiveWeek]
+  );
+
+  // Non-current and Recovery editors share this hook. Derive against the
+  // visible A/B half so the inline Recovery Save and the full-screen Done path
+  // enforce the same positional-session contract.
+  const sessionAlignmentIssue = useMemo(
+    () => deriveSessionAlignmentIssue(editingText),
+    [editingText]
   );
 
   // Setter bound to the editor input: splices the edited half back into the
@@ -517,10 +526,24 @@ export function useLogOtherRoutineEditor({
     setAdoptionError('');
   };
 
-  const handleDoneOther = async () => {
+  const handleDoneOther = async ({ sessionAlignmentAcknowledged = false } = {}) => {
     if (autosaveOtherTimerRef.current) {
       clearTimeout(autosaveOtherTimerRef.current);
       autosaveOtherTimerRef.current = null;
+    }
+    if (sessionAlignmentIssue && !sessionAlignmentAcknowledged) {
+      Alert.alert(
+        'Session entries do not line up',
+        `${sessionAlignmentIssue.message}\n\nChoose "Save uneven" only if these positions are intentional. Kilo will keep the authored history as-is.`,
+        [
+          { text: 'Keep editing', style: 'cancel' },
+          {
+            text: 'Save uneven',
+            onPress: () => handleDoneOther({ sessionAlignmentAcknowledged: true }),
+          },
+        ]
+      );
+      return;
     }
     if (editingNoteId === 'new') {
       if (hasUnsavedOther) {
@@ -1032,6 +1055,7 @@ export function useLogOtherRoutineEditor({
     hasUnsavedOther,
     editingHasABWeeks,
     editingEffectiveWeek,
+    sessionAlignmentIssue,
     handleToggleEditingWeek,
     handleMergeEditingWeeks,
     viewingNote: routineViewer.viewingNote,

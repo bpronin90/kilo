@@ -3,6 +3,7 @@ import { Keyboard, Platform } from 'react-native';
 import { Alert } from '../../lib/platformAlert';
 import { parseWorkoutNote, countWorkoutSessionsFromSections, applyWeekSkipToText } from '../../lib/parser';
 import { removeWeekSkipFromText } from '../../lib/parser/workoutNote.js';
+import { deriveSessionAlignmentIssueFromSections } from '../../lib/parser/sessions.js';
 import {
   normalizeLiftName,
   deriveWorkoutNoteAnalytics,
@@ -279,6 +280,14 @@ export function useLogCurrentRoutineEditor({
   const activeWeekParsed = useMemo(
     () => (hasABWeeks ? parseWorkoutNote(activeEditText) : parsed),
     [hasABWeeks, activeEditText, parsed]
+  );
+
+  // The editor operates on one A/B half at a time, so alignment is derived
+  // from that same visible slice. This keeps a clean Week A from being blocked
+  // by Week B (and vice versa) while still making the affected half explicit.
+  const sessionAlignmentIssue = useMemo(
+    () => deriveSessionAlignmentIssueFromSections(activeWeekParsed.sections),
+    [activeWeekParsed]
   );
 
   const dayGroups = useMemo(
@@ -645,10 +654,24 @@ export function useLogCurrentRoutineEditor({
     onCheckInPrompt?.();
   };
 
-  const handleDoneCurrent = async () => {
+  const handleDoneCurrent = async ({ sessionAlignmentAcknowledged = false } = {}) => {
     if (autosaveCurrentTimerRef.current) {
       clearTimeout(autosaveCurrentTimerRef.current);
       autosaveCurrentTimerRef.current = null;
+    }
+    if (sessionAlignmentIssue && !sessionAlignmentAcknowledged) {
+      Alert.alert(
+        'Session entries do not line up',
+        `${sessionAlignmentIssue.message}\n\nChoose "Save uneven" only if these positions are intentional. Kilo will keep the authored history as-is.`,
+        [
+          { text: 'Keep editing', style: 'cancel' },
+          {
+            text: 'Save uneven',
+            onPress: () => handleDoneCurrent({ sessionAlignmentAcknowledged: true }),
+          },
+        ]
+      );
+      return;
     }
     if (!currentId) {
       if (hasUnsavedCurrent) {
@@ -955,6 +978,7 @@ export function useLogCurrentRoutineEditor({
     activeWeekParsed,
     dayGroups,
     noteError,
+    sessionAlignmentIssue,
     parsed,
     logSessionCount,
   };

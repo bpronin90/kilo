@@ -1,24 +1,98 @@
 import { parseWorkoutNote } from './workoutNote.js';
 
+function _exercisesWithSessionEntries(sections) {
+  return sections
+    .flatMap(section => section.exercises)
+    .filter(exercise => (exercise.session_entries || []).length > 0);
+}
+
+function _formatEntryCount(count) {
+  return `${count} ${count === 1 ? 'entry' : 'entries'}`;
+}
+
+function _sectionLabel(section, sectionIndex) {
+  const parts = [section.heading, section.subheading].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : `Routine section ${sectionIndex + 1}`;
+}
+
+// Positional history is only trustworthy when every participating exercise has
+// an authored entry (a logged row or an explicit `-` skip) at every position.
+// Keep this as structured evidence so the editor can name the affected
+// exercises and positions instead of surfacing the old telemetry-only string.
+export function deriveSessionAlignmentIssueFromSections(sections) {
+  // Session positions are local to a parsed section/day slot. Comparing a
+  // Monday exercise with a Wednesday exercise would make the normal middle of
+  // a training week look misaligned, so derive independently per section and
+  // aggregate only the sections that contain a real mismatch.
+  const affectedSections = (sections || []).flatMap((section, sectionIndex) => {
+    const exercises = _exercisesWithSessionEntries([section]);
+    if (exercises.length < 2) return [];
+
+    const counts = exercises.map(exercise => exercise.session_entries.length);
+    const maxEntryCount = Math.max(...counts);
+    const minEntryCount = Math.min(...counts);
+    if (minEntryCount === maxEntryCount) return [];
+
+    const label = _sectionLabel(section, sectionIndex);
+    const affectedExercises = exercises.map(exercise => {
+      const entryCount = exercise.session_entries.length;
+      return {
+        name: exercise.name,
+        entryCount,
+        sectionIndex,
+        sectionLabel: label,
+        missingSessionIndexes: Array.from(
+          { length: maxEntryCount - entryCount },
+          (_, index) => entryCount + index + 1
+        ),
+      };
+    });
+    return [{ sectionIndex, sectionLabel: label, minEntryCount, maxEntryCount, affectedExercises }];
+  });
+  if (affectedSections.length === 0) return null;
+
+  const affectedExercises = affectedSections.flatMap(section => section.affectedExercises);
+  const details = affectedSections.map(section => {
+    const countSummary = section.affectedExercises
+      .map(exercise => `${exercise.name} — ${_formatEntryCount(exercise.entryCount)}`)
+      .join('; ');
+    const missingSummary = section.affectedExercises
+      .filter(exercise => exercise.missingSessionIndexes.length > 0)
+      .map(exercise => (
+        `${exercise.name} has no authored ${exercise.missingSessionIndexes.length === 1 ? 'entry' : 'entries'} `
+        + `at ${exercise.missingSessionIndexes.length === 1 ? 'position' : 'positions'} `
+        + exercise.missingSessionIndexes.join(', ')
+      ))
+      .join('; ');
+    return `${section.sectionLabel}: ${countSummary}. ${missingSummary}.`;
+  }).join(' ');
+
+  return {
+    code: 'uneven_session_entries',
+    minEntryCount: Math.min(...affectedSections.map(section => section.minEntryCount)),
+    maxEntryCount: Math.max(...affectedSections.map(section => section.maxEntryCount)),
+    affectedSections,
+    affectedExercises,
+    message: `Uneven exercise histories do not line up within the same day section. ${details} `
+      + 'Add a standalone "-" under an exercise for an intentional skip, or correct a missing or extra row.',
+  };
+}
+
+export function deriveSessionAlignmentIssue(noteText) {
+  const { sections } = parseWorkoutNote(noteText || '');
+  return deriveSessionAlignmentIssueFromSections(sections);
+}
+
 export function buildSessionsFromNote(noteText) {
   const { sections } = parseWorkoutNote(noteText || '');
 
-  const allExercises = sections.flatMap(s => s.exercises);
-  const withEntries = allExercises.filter(e => e.session_entries.length > 0);
+  const withEntries = _exercisesWithSessionEntries(sections);
 
   if (withEntries.length === 0) return { sessions: [], warnings: [] };
 
-  const counts = withEntries.map(e => e.session_entries.length);
-  const maxCount = Math.max(...counts);
-  const minCount = Math.min(...counts);
-
-  const warnings = [];
-  if (minCount !== maxCount) {
-    const details = withEntries.map(e => `${e.name} (${e.session_entries.length})`).join(', ');
-    warnings.push(
-      `Uneven entry counts — ${details}. Check your note for missing or extra entries and correct before logging.`
-    );
-  }
+  const maxCount = Math.max(...withEntries.map(e => e.session_entries.length));
+  const alignmentIssue = deriveSessionAlignmentIssueFromSections(sections);
+  const warnings = alignmentIssue ? [alignmentIssue.message] : [];
 
   const sessions = Array.from({ length: maxCount }, (_, i) => ({
     session_index: i + 1,
@@ -26,7 +100,10 @@ export function buildSessionsFromNote(noteText) {
       exercise_name: ex.name,
       entry: i < ex.session_entries.length
         ? ex.session_entries[i]
-        : { skipped: true, raw: null, sets: [] },
+        // An absent authored row is not an intentional skip. Mark it missing
+        // so no consumer can silently turn uneven history into a synthetic
+        // user action; an authored standalone `-` still arrives as skipped.
+        : { missing: true, skipped: false, raw: null, sets: [] },
     })),
   }));
 

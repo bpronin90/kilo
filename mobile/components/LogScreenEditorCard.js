@@ -139,6 +139,7 @@ export function LogScreenEditorCard({
   editingText,
   setEditingText,
   activeEditText,
+  sessionAlignmentIssue,
   handleCurrentTextChange,
   handleSaveOtherNote,
   handleSave,
@@ -352,6 +353,20 @@ export function LogScreenEditorCard({
               spellCheck={false}
               style={[styles.input, styles.editorInput]}
             />
+            {sessionAlignmentIssue ? (
+              <View
+                style={styles.sessionAlignmentWarning}
+                accessibilityRole="alert"
+                accessibilityLiveRegion="polite"
+                testID="session-alignment-warning"
+              >
+                <Text style={styles.sessionAlignmentWarningTitle}>Check session entries</Text>
+                <Text style={styles.sessionAlignmentWarningText}>{sessionAlignmentIssue.message}</Text>
+                <Text style={styles.sessionAlignmentWarningText}>
+                  Done will ask you to correct this or explicitly save the uneven history.
+                </Text>
+              </View>
+            ) : null}
             {editorText.trim() === '' && (
               <Pressable
                 onPress={handleInsertSeedExample}
@@ -459,6 +474,26 @@ const createStyles = (colors) => StyleSheet.create({
   },
   saveButton: {
     marginTop: 12,
+  },
+  sessionAlignmentWarning: {
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.caution,
+    backgroundColor: colors.cautionSurface,
+    gap: 4,
+  },
+  sessionAlignmentWarningTitle: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '700',
+    color: colors.cautionSurfaceText,
+  },
+  sessionAlignmentWarningText: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.cautionSurfaceText,
   },
   // Empty-note seed example (#785). A tinted block matching the syntax-help
   // code block styling (§4: no nested Card), tappable at minHeight 44.
