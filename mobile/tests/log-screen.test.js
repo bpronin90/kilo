@@ -879,22 +879,21 @@ describe('handleDoneOther flushes trailing edits when Done races an in-flight au
   });
 });
 
-// ── Cancel (Recovery inline editor) vs in-flight autosave (#841 automated review) ──
-// The same #528 race, mirrored for `handleCancelRecoveryEdit`: clearing the
-// debounce timer only stops an autosave that has not fired yet, not one
-// already mid-flight. Cancel must wait for it before reverting, or the
-// revert write and the stale autosave write can land in either order — and
-// a revert that itself fails must never close the editor, since that would
-// strand an unwanted autosaved edit as the permanent, un-retryable outcome.
-describe('handleCancelRecoveryEdit waits for an in-flight autosave and only closes on a confirmed revert (#841)', () => {
+// ── Recovery close/revert choice vs in-flight autosave (#851) ──
+describe('Recovery Cancel offers safe Done and confirmed persisted revert (#851)', () => {
   const { useLogOtherRoutineEditor } = require('../screens/log/useLogOtherRoutineEditor');
 
   let harnessRenderer;
+  let alertSpy;
+  beforeEach(() => {
+    alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  });
   afterEach(() => {
     if (harnessRenderer) {
       render.act(() => { harnessRenderer.unmount(); });
       harnessRenderer = null;
     }
+    alertSpy.mockRestore();
   });
 
   const mountHarness = ({ notes, update }) => {
@@ -947,17 +946,20 @@ describe('handleCancelRecoveryEdit waits for an in-flight autosave and only clos
     render.act(() => { autosavePromise = getHook().handleSaveOtherNote({ autosave: true }); });
     expect(update).toHaveBeenCalledTimes(1);
 
-    // Press Cancel while that autosave is still in flight.
-    let cancelPromise;
-    render.act(() => { cancelPromise = getHook().handleCancelRecoveryEdit(); });
-    // Cancel must not have issued its own revert write yet — it is still
-    // awaiting the in-flight autosave's promise.
+    // Cancel itself only opens explicit choices; the destructive choice then
+    // waits for the in-flight autosave before restoring the entry snapshot.
+    render.act(() => { getHook().handleCancelRecoveryEdit(); });
+    const buttons = alertSpy.mock.calls[0][2];
+    expect(buttons.map(button => button.text)).toEqual(['Keep editing', 'Done', 'Revert this edit']);
+    expect(buttons.find(button => button.text === 'Revert this edit').style).toBe('destructive');
+    let revertPromise;
+    render.act(() => { revertPromise = buttons.find(button => button.text === 'Revert this edit').onPress(); });
     expect(update).toHaveBeenCalledTimes(1);
 
     await render.act(async () => {
       releaseAutosave();
       await autosavePromise;
-      await cancelPromise;
+      await revertPromise;
     });
 
     // The revert write is issued only after the autosave settles, so it is
@@ -968,8 +970,24 @@ describe('handleCancelRecoveryEdit waits for an in-flight autosave and only clos
     expect(getHook().editingNoteId).toBe(null);
   });
 
-  test('a failed revert keeps the inline editor open instead of closing on an unconfirmed Cancel', async () => {
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  test('Done saves the latest recovery edit and closes without restoring the entry snapshot', async () => {
+    const note = { id: 'weeknote', title: 'Recovery Week Note', raw_text: 'ORIGINAL' };
+    const update = jest.fn().mockImplementation(async (id, patch) => ({ id, ...patch }));
+    const getHook = mountHarness({ notes: [note], update });
+
+    render.act(() => { getHook().setRecoveryViewingNoteId(note.id); });
+    render.act(() => { getHook().handleEditRecoveryViewedNote(); });
+    render.act(() => { getHook().setEditingText('KEPT EDIT'); });
+    render.act(() => { getHook().handleCancelRecoveryEdit(); });
+
+    const done = alertSpy.mock.calls[0][2].find(button => button.text === 'Done');
+    await render.act(async () => { await done.onPress(); });
+
+    expect(update).toHaveBeenLastCalledWith('weeknote', expect.objectContaining({ raw_text: 'KEPT EDIT' }));
+    expect(getHook().editingNoteId).toBe(null);
+  });
+
+  test('a failed confirmed revert keeps the inline editor open', async () => {
     const note = { id: 'weeknote', title: 'Recovery Week Note', raw_text: 'ORIGINAL' };
     const update = jest.fn().mockRejectedValue(new Error('write failed'));
     const getHook = mountHarness({ notes: [note], update });
@@ -978,14 +996,15 @@ describe('handleCancelRecoveryEdit waits for an in-flight autosave and only clos
     render.act(() => { getHook().handleEditRecoveryViewedNote(); });
     render.act(() => { getHook().setEditingText('edited'); });
 
-    await render.act(async () => { await getHook().handleCancelRecoveryEdit(); });
+    render.act(() => { getHook().handleCancelRecoveryEdit(); });
+    const revert = alertSpy.mock.calls[0][2].find(button => button.text === 'Revert this edit');
+    await render.act(async () => { await revert.onPress(); });
 
     // The revert write failed, so Cancel must not have closed the session —
     // otherwise the edited-but-unreverted text would be stranded with no
     // visible way back to Save or retry Cancel.
     expect(getHook().editingNoteId).toBe(note.id);
     expect(alertSpy).toHaveBeenCalled();
-    alertSpy.mockRestore();
   });
 });
 
@@ -994,6 +1013,132 @@ describe('handleCancelRecoveryEdit waits for an in-flight autosave and only clos
 // edit affordance. LogScreen passes enterCurrentEditor (single-press editor
 // entry) to the active routine card alongside the legacy double-tap body
 // handler, so the explicit "Edit" button works on web without a double-tap.
+describe('current-routine autosave close and revert ordering (#851)', () => {
+  const { useLogCurrentRoutineEditor } = require('../screens/log/useLogCurrentRoutineEditor');
+  const original = { id: 'note1', title: 'Routine A', raw_text: 'ORIGINAL', activeWeek: null };
+
+  let component;
+  let latest;
+  let alertSpy;
+
+  const mountHarness = (update) => {
+    function Harness() {
+      const [text, setText] = React.useState(original.raw_text);
+      const [title, setTitle] = React.useState(original.title);
+      latest = useLogCurrentRoutineEditor({
+        workoutNoteText: text,
+        setWorkoutNoteText: setText,
+        workoutNoteTitle: title,
+        setWorkoutNoteTitle: setTitle,
+        currentId: original.id,
+        currentNote: original,
+        notes: [original],
+        trackedLifts: [],
+        update,
+        add: jest.fn(),
+        selectCurrent: jest.fn(),
+        fatigueTrackingEnabled: false,
+        notesLoading: false,
+        notesError: null,
+        otherModalOwnsScreen: false,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+        readScrollRef: { current: { scrollTo: jest.fn() } },
+      });
+      return null;
+    }
+    render.act(() => { component = render.create(<Harness />); });
+  };
+
+  beforeEach(() => {
+    alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    if (component) {
+      render.act(() => { component.unmount(); });
+      component = null;
+    }
+    alertSpy.mockRestore();
+  });
+
+  test('Done flushes text typed while an older autosave is in flight before closing', async () => {
+    let releaseAutosave;
+    const autosaveGate = new Promise(resolve => { releaseAutosave = resolve; });
+    const update = jest.fn().mockImplementation(async (id, patch) => {
+      if (update.mock.calls.length === 1) await autosaveGate;
+      return { id, title: patch.title, raw_text: patch.raw_text };
+    });
+    mountHarness(update);
+
+    render.act(() => { latest.enterCurrentEditor(); });
+    render.act(() => { latest.handleCurrentTextChange('AUTOSAVED'); });
+    let autosavePromise;
+    render.act(() => { autosavePromise = latest.handleSave({ autosave: true }); });
+    render.act(() => { latest.handleCurrentTextChange('LATEST'); });
+    let donePromise;
+    render.act(() => { donePromise = latest.handleDoneCurrent(); });
+
+    await render.act(async () => {
+      for (let i = 0; i < 10 && update.mock.calls.length === 0; i += 1) {
+        await Promise.resolve();
+      }
+    });
+    expect(update).toHaveBeenCalledTimes(1);
+    await render.act(async () => {
+      releaseAutosave();
+      await autosavePromise;
+      await donePromise;
+    });
+
+    expect(update).toHaveBeenCalledTimes(2);
+    expect(update).toHaveBeenLastCalledWith(
+      original.id,
+      expect.objectContaining({ raw_text: 'LATEST' })
+    );
+    expect(latest.mode).toBe('read');
+  });
+
+  test('confirmed revert waits for an in-flight autosave and restores the entry snapshot last', async () => {
+    let releaseAutosave;
+    const autosaveGate = new Promise(resolve => { releaseAutosave = resolve; });
+    const update = jest.fn().mockImplementation(async (id, patch) => {
+      if (update.mock.calls.length === 1) await autosaveGate;
+      return { id, title: patch.title, raw_text: patch.raw_text };
+    });
+    mountHarness(update);
+
+    render.act(() => { latest.enterCurrentEditor(); });
+    render.act(() => { latest.handleCurrentTextChange('AUTOSAVED'); });
+    let autosavePromise;
+    render.act(() => { autosavePromise = latest.handleSave({ autosave: true }); });
+    render.act(() => { latest.handleCurrentTextChange('LATEST UNSAVED'); });
+    render.act(() => { latest.handleUndoCurrent(); });
+    const revert = alertSpy.mock.calls[0][2].find(button => button.text === 'Revert this edit');
+    let revertPromise;
+    render.act(() => { revertPromise = revert.onPress(); });
+
+    await render.act(async () => {
+      for (let i = 0; i < 10 && update.mock.calls.length === 0; i += 1) {
+        await Promise.resolve();
+      }
+    });
+    expect(update).toHaveBeenCalledTimes(1);
+    await render.act(async () => {
+      releaseAutosave();
+      await autosavePromise;
+      await revertPromise;
+    });
+
+    expect(update).toHaveBeenCalledTimes(2);
+    expect(update).toHaveBeenLastCalledWith(
+      original.id,
+      expect.objectContaining({ title: original.title, raw_text: original.raw_text })
+    );
+    expect(latest.activeEditText).toBe(original.raw_text);
+    expect(latest.mode).toBe('edit');
+  });
+});
+
 describe('Log web edit path: explicit edit control is wired (#314)', () => {
   let src;
   beforeAll(() => {
@@ -1062,7 +1207,7 @@ describe('Log deload date web fallback renders a DOM date input (#314)', () => {
 });
 
 // ── Undo escape hatch: source-level assertions ─────────────────────
-describe('Undo escape hatch: source-level assertions', () => {
+describe('explicit editor rollback: source-level assertions (#851)', () => {
   let src;
   beforeAll(() => {
     src = readLogScreenSource();
@@ -1078,9 +1223,10 @@ describe('Undo escape hatch: source-level assertions', () => {
     expect(src).toMatch(/const\s+handleUndoDeload\s*=\s*/);
   });
 
-  test('undo buttons are rendered in the headerRight section', () => {
-    // Matches both original flat names and hook-prefixed names (e.g. deloadEditor.handleUndoDeload)
-    expect(src).toMatch(/onPress\s*=\s*\{[\s\S]{0,60}deload[A-Za-z.]*Mode\s*===\s*'edit'\s*\?[\s\S]{0,100}handleUndoDeload[\s\S]{0,100}handleUndoOther[\s\S]{0,100}handleUndoCurrent/);
+  test('rollback is removed from the crowded header and rendered with explicit body copy', () => {
+    expect(src).not.toMatch(/accessibilityLabel="Undo"/);
+    expect(src).toMatch(/title=\{\(editingNoteId === 'new'[\s\S]{0,180}'Revert this edit'\}/);
+    expect(src).toMatch(/handleRevertEdit=\{[\s\S]{0,220}handleUndoCurrent/);
   });
 
   test('handleAndroidBack invokes done handlers for swipe-to-save behavior', () => {
@@ -1291,15 +1437,17 @@ describe('active deload deletion (#560)', () => {
   });
 });
 
-describe('Undo escape hatch: integration tests', () => {
+describe('explicit editor rollback: integration tests (#851)', () => {
   let mockUpdateNote;
   let mockUpdateDeload;
   let mockSelectCurrent;
   let currentNotesList;
+  let rollbackAlertSpy;
 
   beforeEach(() => {
     jest.useFakeTimers();
     jest.clearAllMocks();
+    rollbackAlertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     currentNotesList = [
       { id: 'note1', title: 'Routine A', raw_text: 'Monday\n+Lifting\n-Bench\n135 5,5,5', saved_at: '2026-06-01T12:00:00.000Z' }
     ];
@@ -1361,8 +1509,17 @@ describe('Undo escape hatch: integration tests', () => {
   });
 
   afterEach(() => {
+    rollbackAlertSpy.mockRestore();
     jest.useRealTimers();
   });
+
+  const confirmRevert = async () => {
+    const prompt = rollbackAlertSpy.mock.calls.find(call => call[0] === 'Revert this edit?');
+    expect(prompt).toBeTruthy();
+    const revert = prompt[2].find(button => button.text === 'Revert this edit');
+    expect(revert).toEqual(expect.objectContaining({ style: 'destructive' }));
+    await revert.onPress();
+  };
 
   test('App Guide (HelpScreen) in MoreScreen renders the correct example syntax', () => {
     let component;
@@ -1419,7 +1576,7 @@ describe('Undo escape hatch: integration tests', () => {
     expect(editorInput.props.placeholder).toContain('135 5,5,5');
   });
 
-  test('editing current note and pressing Undo reverts the note state in UI and DB', async () => {
+  test('editing current note requires confirmation before reverting UI and DB', async () => {
     const setWorkoutNoteText = jest.fn();
     const setWorkoutNoteTitle = jest.fn();
 
@@ -1444,24 +1601,26 @@ describe('Undo escape hatch: integration tests', () => {
       editButton.props.onPress({ stopPropagation: jest.fn() });
     });
 
-    // Find Undo button in ScreenShell headerRight
-    const undoButton = findPressableByText(root, 'Undo');
-    expect(undoButton).toBeTruthy();
+    const revertButton = findPressableByText(root, 'Revert this edit');
+    expect(revertButton).toBeTruthy();
 
     await render.act(async () => {
-      await undoButton.props.onPress();
+      revertButton.props.onPress();
+      expect(mockUpdateNote).not.toHaveBeenCalled();
+      await confirmRevert();
     });
 
     expect(mockUpdateNote).toHaveBeenCalledWith('note1', {
       title: 'Original Title',
       raw_text: 'Original Text',
+      activeWeek: null,
     });
 
     expect(setWorkoutNoteText).toHaveBeenCalledWith('Original Text');
     expect(setWorkoutNoteTitle).toHaveBeenCalledWith('Original Title');
   });
 
-  test('editing other note and pressing Undo reverts the note state in UI and DB', async () => {
+  test('editing other note requires confirmation before reverting UI and DB', async () => {
     const otherNote = { id: 'note2', title: 'Routine B', raw_text: 'Original Other Text', saved_at: '2026-06-02T12:00:00.000Z' };
 
     useEntries.useWorkoutNotes.mockReturnValue({
@@ -1513,22 +1672,24 @@ describe('Undo escape hatch: integration tests', () => {
       textInput.props.onChangeText('Changed Other Text');
     });
 
-    // Tap Undo button
-    const undoButton = findPressableByText(root, 'Undo');
-    expect(undoButton).toBeTruthy();
+    const revertButton = findPressableByText(root, 'Revert this edit');
+    expect(revertButton).toBeTruthy();
     await render.act(async () => {
-      await undoButton.props.onPress();
+      revertButton.props.onPress();
+      expect(mockUpdateNote).not.toHaveBeenCalled();
+      await confirmRevert();
     });
 
     expect(mockUpdateNote).toHaveBeenCalledWith('note2', {
       title: 'Routine B',
       raw_text: 'Original Other Text',
+      activeWeek: null,
     });
 
     expect(textInput.props.value).toBe('Original Other Text');
   });
 
-  test('editing current note and pressing Undo leaves UI state intact and alerts if DB update fails', async () => {
+  test('a failed confirmed current-note revert leaves UI state intact and alerts', async () => {
     const setWorkoutNoteText = jest.fn();
     const setWorkoutNoteTitle = jest.fn();
     
@@ -1555,19 +1716,19 @@ describe('Undo escape hatch: integration tests', () => {
       editButton.props.onPress({ stopPropagation: jest.fn() });
     });
 
-    // Find Undo button
-    const undoButton = findPressableByText(root, 'Undo');
-    expect(undoButton).toBeTruthy();
+    const revertButton = findPressableByText(root, 'Revert this edit');
+    expect(revertButton).toBeTruthy();
 
     await render.act(async () => {
-      await undoButton.props.onPress();
+      revertButton.props.onPress();
+      await confirmRevert();
     });
 
     expect(setWorkoutNoteText).not.toHaveBeenCalled();
     expect(setWorkoutNoteTitle).not.toHaveBeenCalled();
   });
 
-  test('editing other deload note and pressing Undo triggers compensating updateDeload rollback if note update fails', async () => {
+  test('confirmed other-deload revert compensates history if note update fails', async () => {
     const deloadNoteId = 'note3';
     const deloadNote = {
       id: deloadNoteId,
@@ -1660,11 +1821,11 @@ describe('Undo escape hatch: integration tests', () => {
       ordinalInput.props.onChangeText('10');
     });
 
-    // Tap Undo button
-    const undoButton = findPressableByText(root, 'Undo');
-    expect(undoButton).toBeTruthy();
+    const revertButton = findPressableByText(root, 'Revert this edit');
+    expect(revertButton).toBeTruthy();
     await render.act(async () => {
-      await undoButton.props.onPress();
+      revertButton.props.onPress();
+      await confirmRevert();
     });
 
     expect(mockUpdateDeload).toHaveBeenLastCalledWith('hist3', {
@@ -1673,7 +1834,7 @@ describe('Undo escape hatch: integration tests', () => {
     });
   });
 
-  test('editing other deload note, clearing the session ordinal, and pressing Undo triggers compensating updateDeload rollback with null ordinal if note update fails', async () => {
+  test('confirmed other-deload revert compensates a cleared ordinal with null if note update fails', async () => {
     const deloadNoteId = 'note4';
     const deloadNote = {
       id: deloadNoteId,
@@ -1765,11 +1926,11 @@ describe('Undo escape hatch: integration tests', () => {
       ordinalInput.props.onChangeText('');
     });
 
-    // Tap Undo
-    const undoButton = findPressableByText(root, 'Undo');
-    expect(undoButton).toBeTruthy();
+    const revertButton = findPressableByText(root, 'Revert this edit');
+    expect(revertButton).toBeTruthy();
     await render.act(async () => {
-      await undoButton.props.onPress();
+      revertButton.props.onPress();
+      await confirmRevert();
     });
 
     // Check that updateDeload compensating rollback was called with deload_session_ordinal: null
@@ -4289,6 +4450,15 @@ describe('handleSkipWeek: fatigue prompt gated on successful save', () => {
     // the integration tests below.
     expect(src).toMatch(/if\s*\(!saved\)\s*\{/);
   });
+
+  test('Log withholds both specialized save controls while the current note is saving', () => {
+    const src = fs.readFileSync(
+      path.join(__dirname, '../screens/LogScreen.js'),
+      'utf8'
+    );
+    expect(src).toMatch(/handleSkipWeek=\{currentEditor\.isSaving \? undefined : currentEditor\.handleSkipWeek\}/);
+    expect(src).toMatch(/handleUnskipWeek=\{currentEditor\.isSaving \? undefined : currentEditor\.handleUnskipWeek\}/);
+  });
 });
 
 // ── Skip week / Undo skip: integration (#502 revised direction) ────────────
@@ -4369,6 +4539,49 @@ describe('Skip week / Undo skip: integration (#502)', () => {
     const skipCount = (getLatest().getText().match(/^-$/gm) || []).length;
     expect(skipCount).toBe(2);
     expect(getLatest().hook.skipWeekStatus).toBe('Skip applied');
+  });
+
+  test('a rapid second Skip press cannot reuse an older in-flight save as success', async () => {
+    let releaseFirstSave;
+    const firstSaveGate = new Promise(resolve => { releaseFirstSave = resolve; });
+    const { getLatest, update } = makeHarness({
+      updateImpl: async (_id, patch) => {
+        if (update.mock.calls.length === 1) await firstSaveGate;
+        return {
+          id: 'note1',
+          title: patch.title || 'Routine',
+          raw_text: patch.raw_text,
+        };
+      },
+    });
+
+    let firstPress;
+    render.act(() => { firstPress = getLatest().hook.handleSkipWeek(); });
+    await render.act(async () => {
+      for (let i = 0; i < 10 && update.mock.calls.length === 0; i += 1) {
+        await Promise.resolve();
+      }
+    });
+    expect(update).toHaveBeenCalledTimes(1);
+
+    await render.act(async () => { await getLatest().hook.handleSkipWeek(); });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(getLatest().hook.skipWeekStatus).toBe('Finishing the previous save — try again');
+
+    await render.act(async () => {
+      releaseFirstSave();
+      await firstPress;
+    });
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect((getLatest().getText().match(/^-$/gm) || [])).toHaveLength(1);
+    expect(update).toHaveBeenLastCalledWith(
+      'note1',
+      expect.objectContaining({
+        raw_text: expect.stringMatching(/^-$/m),
+        skip_markers: expect.objectContaining({ universal_skip_count: 1 }),
+      })
+    );
   });
 
   test('Undo skip removes exactly the last universal skip', async () => {
@@ -10161,7 +10374,7 @@ describe('LogRecoverySection: inline recovery-note editing (#841)', () => {
       .props.accessibilityState.expanded).toBe(true);
   });
 
-  test('Cancel discards the in-progress edit and never calls Save', () => {
+  test('Cancel delegates the close decision and never invokes Save directly', () => {
     const onSaveEdit = jest.fn();
     const onCancelEdit = jest.fn();
     const root = renderInline({ onSaveEdit, onCancelEdit });

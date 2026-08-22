@@ -152,6 +152,7 @@ export function LogScreenEditorCard({
   adoptionBusy,
   onAdoptPromptedRoutine,
   onDismissAdoptionPrompt,
+  handleRevertEdit,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -407,6 +408,11 @@ export function LogScreenEditorCard({
             <View style={styles.dangerZoneHeading}>
               <Text style={styles.dangerZoneHeadingText}>⚠ Danger Zone</Text>
             </View>
+            <Button
+              onPress={handleRevertEdit}
+              title={(editingNoteId === 'new' || (!editingNoteId && !currentId)) ? 'Clear draft' : 'Revert this edit'}
+              tone="danger"
+            />
             <Button
               onPress={() => {
                 if (editingNoteId) {

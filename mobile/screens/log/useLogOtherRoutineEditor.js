@@ -577,7 +577,7 @@ export function useLogOtherRoutineEditor({
     clearAdoptionPrompt();
   };
 
-  const handleUndoOther = async () => {
+  const performRevertOther = async () => {
     if (editingNoteId === 'new') {
       setEditingTitle('');
       setEditingFullText('');
@@ -589,16 +589,19 @@ export function useLogOtherRoutineEditor({
       clearTimeout(autosaveOtherTimerRef.current);
       autosaveOtherTimerRef.current = null;
     }
+    if (saveOtherNoteInFlightRef.current) {
+      await saveOtherNoteInFlightRef.current;
+    }
     let rolledBackDeload = false;
     let deloadRevertPatch = null;
     try {
       const patch = {
         title: originalNoteState.title,
         raw_text: originalNoteState.text,
+        activeWeek: isValidActiveWeek(originalNoteState.activeWeek)
+          ? originalNoteState.activeWeek
+          : null,
       };
-      if (isValidActiveWeek(originalNoteState.activeWeek)) {
-        patch.activeWeek = originalNoteState.activeWeek;
-      }
       if (isEditingDeloadNote) {
         const histRecord = editingDeloadHasLinkedRecord
           ? deloadHistory.find(r => r.note_id === editingNoteId)
@@ -658,43 +661,55 @@ export function useLogOtherRoutineEditor({
       }
       return true;
     } catch (err) {
-      console.warn('Undo revert failed:', err);
+      console.warn('Revert failed:', err);
       Alert.alert('Error', 'Failed to revert changes. Please try again.');
       return false;
     }
   };
 
-  // Cancel for the Recovery block's inline editor (#841): reverts to the
-  // persisted content exactly as `handleUndoOther` already does for the
-  // shared full-screen editor, then closes the inline session outright —
-  // unlike the full-screen Undo, Cancel here is an exit, not a mid-edit
-  // revert. Nothing is saved on the way out beyond what autosave already
-  // wrote and this now reverts.
-  //
-  // Cancelling the debounce timer only stops an autosave that has not fired
-  // yet — it does nothing about one already mid-flight (automated review
-  // finding). `saveOtherNoteInFlightRef` is awaited FIRST so the revert
-  // write in `handleUndoOther` always lands after any autosave it needs to
-  // undo, never racing it. `handleUndoOther` swallows its own errors (it
-  // already alerts them) and now reports success/failure instead of
-  // resolving either way — the editing session only closes on a CONFIRMED
-  // revert, so a failed rollback leaves the inline editor open with the
-  // unwanted autosaved content still visible and Cancel re-pressable,
-  // rather than quietly exiting to a note whose persisted state was never
-  // actually restored.
-  const handleCancelRecoveryEdit = async () => {
-    if (autosaveOtherTimerRef.current) {
-      clearTimeout(autosaveOtherTimerRef.current);
-      autosaveOtherTimerRef.current = null;
-    }
-    if (saveOtherNoteInFlightRef.current) {
-      await saveOtherNoteInFlightRef.current;
-    }
-    const reverted = await handleUndoOther();
-    if (!reverted) return;
-    setEditingNoteId(null);
-    setEditingSource(null);
-    setOriginalNoteState(null);
+  const handleUndoOther = () => {
+    const isDraft = editingNoteId === 'new';
+    Alert.alert(
+      isDraft ? 'Clear this draft?' : 'Revert this edit?',
+      isDraft
+        ? 'This clears everything entered in this unsaved routine.'
+        : 'This restores the note to how it was when you opened the editor, including changes already autosaved.',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        {
+          text: isDraft ? 'Clear draft' : 'Revert this edit',
+          style: 'destructive',
+          onPress: performRevertOther,
+        },
+      ]
+    );
+  };
+
+  // Recovery's inline control is still labelled Cancel by the scoped shared
+  // component. It therefore opens an explicit choice instead of attaching a
+  // destructive meaning to Cancel: Done persists the latest edit and closes,
+  // while Revert this edit restores the editor-entry snapshot only after a
+  // second, destructive-labelled press.
+  const handleCancelRecoveryEdit = () => {
+    Alert.alert(
+      'Close recovery note editor?',
+      'Done keeps your latest changes. Revert this edit restores the note to how it was when you opened the editor, including changes already autosaved.',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Done', onPress: handleDoneOther },
+        {
+          text: 'Revert this edit',
+          style: 'destructive',
+          onPress: async () => {
+            const reverted = await performRevertOther();
+            if (!reverted) return;
+            setEditingNoteId(null);
+            setEditingSource(null);
+            setOriginalNoteState(null);
+          },
+        },
+      ]
+    );
   };
 
   const handleDeleteRoutine = (id, title, isCurrent) => {
