@@ -77,6 +77,42 @@ describe('1k progress — Home vs Analytics consistency (issue #379)', () => {
   });
 });
 
+// #854/R5: exercise_classifications is a save-time cache (written by
+// useLogCurrentRoutineEditor from deriveWorkoutNoteAnalytics). A note saved
+// before a parser grammar change (e.g. #854's F2b widening) can carry
+// classifications derived from stale parsing until its next save. Home must
+// recompute this live from allSections on every render rather than trust the
+// persisted value, so a grammar change never surfaces a stale status row.
+describe('deriveHomeDashboardData — exercise_classifications self-heals across a grammar change (#854/R5)', () => {
+  test('sessionStatusRows reflect a live recompute, not the note\'s stale persisted cache', () => {
+    // Two consecutive sessions of Squat, each showing clear progress (so the
+    // live classification is "progressing") — but the persisted cache on the
+    // note claims something else entirely, standing in for a value computed
+    // under an older grammar before this note was last saved.
+    const text = '-Squat\n225 5,5,5\n- 235 5,5,5';
+    const { sections } = parseWorkoutNote(text);
+    const workoutNote = {
+      id: 'n1',
+      raw_text: text,
+      one_k_exercises: null,
+      exercise_classifications: { squat: 'regressing' },
+    };
+
+    const { weeklySummary } = deriveHomeDashboardData({
+      weightEntries: [],
+      workoutNote,
+      weightGoal: null,
+      allSections: sections,
+      trackedLifts: { squat: true },
+    });
+
+    const squatRow = weeklySummary.sessionStatusRows.find(r => r.name === 'squat');
+    expect(squatRow).toBeDefined();
+    expect(squatRow.classification).not.toBe('regressing');
+    expect(squatRow.classification).toBe('progressing');
+  });
+});
+
 // ── HomeScreen hydration gating (issue #442) ─────────────────────────────────
 //
 // Problem: the empty/get-started card flashed briefly on fresh app open for

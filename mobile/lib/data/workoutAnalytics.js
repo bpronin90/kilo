@@ -445,7 +445,16 @@ export function deriveOverloadCounts(sections, signals, perDaySignals) {
 
 // ── Weekly Assessment Summary ────────────────────────────────────────────────
 
-export function computeWeeklySummary(sections, workoutNote) {
+// #854/R5: `workoutNote.exercise_classifications` is a save-time cache, so an
+// existing note can carry classifications derived under an older parser
+// grammar until its next save. `liveClassifications`, when supplied, is a
+// freshly derived value (same shape, same `deriveWorkoutNoteAnalytics` call
+// the save path uses) that the caller recomputes on every render instead of
+// trusting the persisted value — this makes the read side self-healing
+// across a grammar change with no separate migration step. Omitted for
+// backward compatibility with callers (and tests) that intentionally want
+// the persisted value.
+export function computeWeeklySummary(sections, workoutNote, liveClassifications) {
   // A session exists if there are any non-skipped entries or sets in the sections
   const hasActivity = (sections || []).some(section =>
     section.exercises.some(ex => {
@@ -458,7 +467,7 @@ export function computeWeeklySummary(sections, workoutNote) {
 
   // 1. Classification counts (tracked exercises only)
   let classifications = null;
-  const sourceClassifs = workoutNote?.exercise_classifications;
+  const sourceClassifs = liveClassifications || workoutNote?.exercise_classifications;
 
   if (sourceClassifs) {
     classifications = { progressing: 0, stalled: 0, regressing: 0, inconsistent: 0, initial: 0 };

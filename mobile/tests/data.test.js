@@ -2044,6 +2044,32 @@ describe('computeWeeklySummary', () => {
     const result = computeWeeklySummary(sections, {});
     expect(result.classifications).toBe(null);
   });
+
+  // #854/R5: exercise_classifications is a save-time cache, so a note saved
+  // under an older parser grammar can carry stale values until its next
+  // save. A freshly derived `liveClassifications` third argument overrides
+  // the persisted cache so the read side never shows stale data.
+  test('a supplied liveClassifications overrides the stale persisted exercise_classifications', () => {
+    const sections = [asymSection('2026-05-24', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])];
+    const staleWorkoutNote = {
+      exercise_classifications: { squat: 'stalled', bench: 'stalled' },
+    };
+    const liveClassifications = { squat: 'progressing', bench: 'progressing', deadlift: 'progressing' };
+    const result = computeWeeklySummary(sections, staleWorkoutNote, liveClassifications);
+    expect(result.classifications).toEqual({ progressing: 3, stalled: 0, regressing: 0, inconsistent: 0, initial: 0 });
+    expect(result.sessionStatusRows).toEqual([
+      { name: 'squat', classification: 'progressing' },
+      { name: 'bench', classification: 'progressing' },
+      { name: 'deadlift', classification: 'progressing' },
+    ]);
+  });
+
+  test('falls back to the persisted exercise_classifications when liveClassifications is omitted', () => {
+    const sections = [asymSection('2026-05-24', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])];
+    const workoutNote = { exercise_classifications: { squat: 'stalled' } };
+    const result = computeWeeklySummary(sections, workoutNote);
+    expect(result.classifications).toEqual({ progressing: 0, stalled: 1, regressing: 0, inconsistent: 0, initial: 0 });
+  });
 });
 
 describe('classifyExerciseSessions normalization and alias tests', () => {

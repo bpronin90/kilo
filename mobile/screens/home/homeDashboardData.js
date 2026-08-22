@@ -27,6 +27,8 @@ import {
   deriveWorkoutNoteAnalytics,
   deriveOverloadCounts,
   computeWeeklySummary,
+  getDefaultTrackedNames,
+  normalizeLiftName,
 } from '../../lib/data';
 
 // Home's ordinary-analytics population (#699). This module owns the decision end
@@ -179,7 +181,21 @@ export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal
   const { signals, perDaySignals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames);
   const counts = deriveOverloadCounts(sections, signals, perDaySignals);
 
-  const weeklySummary = computeWeeklySummary(sections, workoutNote);
+  // #854/R5: recompute exercise_classifications live from allSections instead
+  // of trusting the note's save-time cache, so a note saved under an older
+  // parser grammar never shows a stale status row — mirrors the exact
+  // trackedNames construction the save path uses (defaults plus any explicit
+  // tracked names not already a default) so the live value matches what a
+  // fresh save would persist.
+  const defaultNames = getDefaultTrackedNames();
+  const normalizedDefaults = new Set(defaultNames.map(n => normalizeLiftName(n)));
+  const allTrackedNames = [
+    ...defaultNames,
+    ...globallyTracked.filter(n => !normalizedDefaults.has(normalizeLiftName(n))),
+  ];
+  const { classifications: liveClassifications } = deriveWorkoutNoteAnalytics(allSections, allTrackedNames);
+
+  const weeklySummary = computeWeeklySummary(sections, workoutNote, liveClassifications);
   weeklySummary.classifications = counts;
 
   const sessionCount = countWorkoutSessionsFromSections(sections || []);
