@@ -9,4 +9,3 @@ export { normalizeExerciseKey } from './parser/exerciseNames.js';
 export { parseExerciseHeader, generateDeloadNote } from './parser/deloadGenerator.js';
 export { sessionDateMapFromNote, sessionsSinceLastDeload, weeksSinceLastDeload } from './parser/deloadHistory.js';
 export { parseWorkoutEntry } from './parser/workoutEntry.js';
-export { convertPlainRowToLb, convertNewNoteLinesToLb } from './parser/noteUnitConversion.js';

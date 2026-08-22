@@ -18,8 +18,18 @@ function CompactSetLine({ sets, unit, styles, mark }) {
   let currentGroup = null;
   for (const set of sets) {
     if (!currentGroup || currentGroup.weight !== set.weight_value) {
-      currentGroup = { weight: set.weight_value, reps: [] };
+      // #852: mirrors SetLine's grouping in UI.js — see that component's
+      // comment for why convertedFromKg/kgValue are carried per group.
+      currentGroup = {
+        weight: set.weight_value,
+        reps: [],
+        convertedFromKg: !!set.converted_from_kg,
+        kgValue: set.kg_value ?? null,
+      };
       groups.push(currentGroup);
+    } else if (set.converted_from_kg && !currentGroup.convertedFromKg) {
+      currentGroup.convertedFromKg = true;
+      currentGroup.kgValue = set.kg_value ?? null;
     }
     currentGroup.reps.push(set.skipped ? '-' : set.rep_count);
   }
@@ -27,8 +37,23 @@ function CompactSetLine({ sets, unit, styles, mark }) {
     <View style={styles.compactSetLine}>
       {groups.map((group, i) => (
         <View key={i} style={styles.compactSetGroup}>
-          <Text style={styles.compactSetWeight}>
-            {group.weight ? `${formatLiftWeightValue(group.weight, unit)} ${unit}` : 'BW'}
+          {/* #852: mirrors SetLine's single-string weight+suffix in UI.js —
+              see that component's comment for why the "(40kg)" suffix is
+              part of the same plain string rather than a separately styled
+              nested Text. */}
+          <Text
+            style={styles.compactSetWeight}
+            accessibilityLabel={
+              group.weight && group.convertedFromKg
+                ? `${formatLiftWeightValue(group.weight, unit)} ${unit}, converted from ${group.kgValue} kilograms`
+                : undefined
+            }
+          >
+            {group.weight
+              ? (group.convertedFromKg
+                ? `${formatLiftWeightValue(group.weight, unit)} ${unit} (${group.kgValue}kg)`
+                : `${formatLiftWeightValue(group.weight, unit)} ${unit}`)
+              : 'BW'}
           </Text>
           <Text style={styles.compactSetReps}>{group.reps.join(', ')}</Text>
         </View>

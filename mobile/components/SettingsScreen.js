@@ -109,7 +109,7 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
         <View style={[styles.settingRow, { marginBottom: 0 }]}>
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>Weight unit</Text>
-            <Text style={styles.settingHelp}>Display and entry unit for body weight and lifts, including new workout-note sets you log. Data is always stored internally in lb.</Text>
+            <Text style={styles.settingHelp}>Display and entry unit for body weight and lifts. Workout notes and stored data stay in lb.</Text>
           </View>
           <View style={styles.unitToggle}>
             <Pressable

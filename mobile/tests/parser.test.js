@@ -1,8 +1,7 @@
-import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals, parseExerciseHeader, generateDeloadNote, sessionsSinceLastDeload, weeksSinceLastDeload, convertPlainRowToLb, convertNewNoteLinesToLb } from '../lib/parser';
-import { getDefaultTrackedNames, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES } from '../lib/data';
+import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals, parseExerciseHeader, generateDeloadNote, sessionsSinceLastDeload, weeksSinceLastDeload } from '../lib/parser';
+import { getDefaultTrackedNames, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES, classifyExerciseSessions } from '../lib/data';
 import { MAX_RAW_TEXT_LENGTH, applyWeekSkipToText, removeWeekSkipFromText } from '../lib/parser/workoutNote.js';
-import { formatLiftWeightValue } from '../lib/units';
-import { setWeightUnitPreference, __resetWeightUnitForTests } from '../lib/unitPreference';
+import { formatLiftWeightValue, kgMarkerToLb } from '../lib/units';
 
 // ── getDefaultTrackedNames ────────────────────────────────────────────────────
 
@@ -694,236 +693,173 @@ describe('parseWorkoutRow', () => {
   });
 });
 
-// ── #852: unit-aware entry ──────────────────────────────────────────────────
-// parseWorkoutRow/parseWorkoutEntry/parseWorkoutNote accept an explicit `unit`
-// ('lb' | 'kg') saying which unit a bare weight token was typed in, and
-// convert it to the canonical lb storage value the same way parseWeightEntry
-// already does for bodyweight (#441). `unit` defaults to 'lb': this is the
-// single parse path every reader of a note's raw_text shares (Log editors,
-// Recovery Analytics, Home/Analytics summaries, cloud sync recompute), and
-// Recovery Analytics specifically requires its comparisons to stay
-// unit-independent regardless of the live display preference (see
-// tests/recovery-analytics.test.js — "derivation is pure and
-// unit-independent"). So the default must never vary with the live
-// preference; only a caller that explicitly opts in by passing `unit` gets
-// unit-aware interpretation.
-describe('parseWorkoutRow — unit-aware entry (#852)', () => {
-  test('kg entry converts to the canonical lb value, not a bare passthrough', () => {
-    const r = parseWorkoutRow('80 8,8', 'kg');
+// ── #852: in-text kg marker ──────────────────────────────────────────────────
+// An explicit `kg` marker on a weight token — attached ("40kg") or
+// space-separated ("40 kg") — is the symmetric case of the `lbs` marker the
+// deload grammar already accepts ("Name: 135 lbs 3x5"). A bare token never
+// changes meaning (still lb, no global unit mode); only this explicit,
+// per-token opt-in converts. raw_text itself is never rewritten by the
+// parser — these tests parse the literal marker text directly, proving the
+// conversion is derived fresh from what the user typed every time, with no
+// separate "converted" record to fall out of sync.
+describe('parseWorkoutRow — in-text kg marker (#852)', () => {
+  test('bare weight token is unaffected: still means lb, no converted_from_kg flag', () => {
+    const r = parseWorkoutRow('40 10');
     expect(r.ok).toBe(true);
-    expect(r.sets[0].weight_value).toBe(176.4);
-    expect(r.sets[1].weight_value).toBe(176.4);
-    // Storage stays canonically lb-tagged regardless of entry unit (#852:
-    // "Preserve the canonical internal representation intentionally").
+    expect(r.sets[0].weight_value).toBe(40);
+    expect(r.sets[0].converted_from_kg).toBeUndefined();
+  });
+
+  test('attached "40kg 10" converts to whole-lb canonical value', () => {
+    const r = parseWorkoutRow('40kg 10');
+    expect(r.ok).toBe(true);
+    expect(r.sets[0].weight_value).toBe(88);
     expect(r.sets[0].weight_unit).toBe('lb');
+    expect(r.sets[0].converted_from_kg).toBe(true);
+    expect(r.sets[0].kg_value).toBe(40);
   });
 
-  test('lb entry with an explicit unit is an identity passthrough', () => {
-    const r = parseWorkoutRow('80 8,8', 'lb');
-    expect(r.sets[0].weight_value).toBe(80);
+  test('space-separated "40 kg 10" parses identically to the attached form', () => {
+    const attached = parseWorkoutRow('40kg 10');
+    const spaced = parseWorkoutRow('40 kg 10');
+    expect(spaced.sets[0]).toEqual(attached.sets[0]);
   });
 
-  test('kg entry across multiple weight/rep pairs converts each load independently', () => {
-    const r = parseWorkoutRow('80 5,5 100 3,3', 'kg');
-    expect(r.ok).toBe(true);
-    expect(r.sets[0].weight_value).toBe(176.4);
-    expect(r.sets[2].weight_value).toBe(220.5);
+  test('rounds to a WHOLE lb, not one decimal (40 kg -> 88, not 88.18)', () => {
+    const r = parseWorkoutRow('40kg 10');
+    expect(r.sets[0].weight_value).toBe(88);
+    expect(Number.isInteger(r.sets[0].weight_value)).toBe(true);
   });
 
-  test('kg entry with a decimal load converts correctly', () => {
-    const r = parseWorkoutRow('22.5 6,6', 'kg');
-    expect(r.sets[0].weight_value).toBe(49.6);
+  test('decimal kg load converts correctly', () => {
+    const r = parseWorkoutRow('22.5kg 6,6');
+    expect(r.sets[0].weight_value).toBe(50);
+    expect(r.sets[0].kg_value).toBe(22.5);
   });
 
-  test('kg entry: within-row skipped set converts the shared weight once', () => {
-    const r = parseWorkoutRow('80 4,-', 'kg');
+  test('kg marker on a within-row skipped set converts the shared weight once', () => {
+    const r = parseWorkoutRow('40kg 4,-');
     expect(r.sets).toHaveLength(2);
-    expect(r.sets[0]).toMatchObject({ weight_value: 176.4, weight_unit: 'lb' });
-    expect(r.sets[1]).toMatchObject({ skipped: true, weight_value: 176.4, weight_unit: 'lb' });
+    expect(r.sets[0]).toMatchObject({ weight_value: 88, converted_from_kg: true, kg_value: 40 });
+    expect(r.sets[1]).toMatchObject({ skipped: true, weight_value: 88, converted_from_kg: true, kg_value: 40 });
   });
 
-  test('zero-weight rejection checks the typed value, not the converted one', () => {
-    const r = parseWorkoutRow('0 8,8', 'kg');
+  test('mixed row: a kg-marked pair and a bare-lb pair are independent', () => {
+    const r = parseWorkoutRow('40kg 10 60 8,8');
+    expect(r.ok).toBe(true);
+    expect(r.sets[0]).toMatchObject({ weight_value: 88, converted_from_kg: true, kg_value: 40 });
+    expect(r.sets[1]).toMatchObject({ weight_value: 60 });
+    expect(r.sets[1].converted_from_kg).toBeUndefined();
+    expect(r.sets[2]).toMatchObject({ weight_value: 60 });
+  });
+
+  test('mixed row, space-separated marker form, lb pair first', () => {
+    const r = parseWorkoutRow('60 8,8 40 kg 10');
+    expect(r.sets[0]).toMatchObject({ weight_value: 60 });
+    expect(r.sets[0].converted_from_kg).toBeUndefined();
+    expect(r.sets[2]).toMatchObject({ weight_value: 88, converted_from_kg: true, kg_value: 40 });
+  });
+
+  test('zero-weight rejection still applies to a kg-marked load', () => {
+    const r = parseWorkoutRow('0kg 8,8');
     expect(r.ok).toBe(false);
     expect(r.category).toBe('invalid_field_value');
   });
 
-  test('a bare rep-group (no weight token) is unaffected by unit', () => {
-    const r = parseWorkoutRow('8,8,8', 'kg');
+  test('a bare rep-only row (no weight token) is unaffected', () => {
+    const r = parseWorkoutRow('8,8,8');
     expect(r.ok).toBe(true);
-    expect(r.sets.every(s => s.weight_value === null)).toBe(true);
+    expect(r.sets.every(s => s.weight_value === null && !s.converted_from_kg)).toBe(true);
   });
 
-  test('round-trips cleanly: a kg-typed load redisplays as the original kg number', () => {
-    const r = parseWorkoutRow('80 8,8', 'kg');
-    expect(formatLiftWeightValue(r.sets[0].weight_value, 'kg')).toBe('80');
+  test('"kg" with no preceding valid load is rejected, not silently accepted', () => {
+    const r = parseWorkoutRow('kg 10');
+    expect(r.ok).toBe(false);
   });
 
-  test('omitting unit defaults to lb, identical to pre-#852 behavior', () => {
-    const r = parseWorkoutRow('80 8,8');
-    expect(r.sets[0].weight_value).toBe(80);
-  });
-
-  test('existing-note compatibility: the default never varies with the live selected preference', () => {
-    // A canonical/display parse (no explicit `unit`) must return the same
-    // weight_value regardless of what the user currently has selected in
-    // Settings — otherwise every existing note's history would silently
-    // reinterpret itself the moment someone flips their display unit.
-    setWeightUnitPreference('lb');
-    const inLb = parseWorkoutRow('80 8,8');
-    setWeightUnitPreference('kg');
-    const inKg = parseWorkoutRow('80 8,8');
-    __resetWeightUnitForTests();
-    expect(inKg.sets[0].weight_value).toBe(inLb.sets[0].weight_value);
-    expect(inKg.sets[0].weight_value).toBe(80);
-  });
-});
-
-describe('parseWorkoutEntry — unit-aware entry (#852)', () => {
-  test('threads an explicit unit through to every parsed row', () => {
-    const r = parseWorkoutEntry([{ exerciseName: 'Squat', raw: '80 5,5' }], '2026-05-09', 'kg');
+  test('a leading flag still works alongside a kg marker ("Flat 40kg 10")', () => {
+    const r = parseWorkoutRow('Flat 40kg 10');
     expect(r.ok).toBe(true);
-    expect(r.items[0].sets[0].weight_value).toBe(176.4);
+    expect(r.sets[0]).toMatchObject({ weight_value: 88, converted_from_kg: true, kg_value: 40 });
   });
 
-  test('defaults to lb when no unit is passed', () => {
-    const r = parseWorkoutEntry([{ exerciseName: 'Squat', raw: '80 5,5' }], '2026-05-09');
-    expect(r.items[0].sets[0].weight_value).toBe(80);
+  test('kgMarkerToLb matches the value the parser derives', () => {
+    expect(kgMarkerToLb(40)).toBe(88);
+    expect(parseWorkoutRow('40kg 10').sets[0].weight_value).toBe(kgMarkerToLb(40));
+  });
+
+  test('raw_text round-trip: parsing the same marked text twice yields identical sets (nothing rewritten, nothing drifts)', () => {
+    const raw = '40kg 10';
+    const first = parseWorkoutRow(raw);
+    const second = parseWorkoutRow(raw);
+    expect(first.sets).toEqual(second.sets);
   });
 });
 
-describe('parseWorkoutNote — unit-aware entry (#852)', () => {
-  test('threads an explicit unit through to a logged set row', () => {
-    const r = parseWorkoutNote('-Bench\n80 8,8', 'kg');
+describe('parseWorkoutNote — in-text kg marker reaches session entries and derived sets (#852)', () => {
+  test('a kg-marked dash-prefixed session entry carries the conversion through', () => {
+    const r = parseWorkoutNote('-Bench\n- 40kg 10');
     expect(r.ok).toBe(true);
-    expect(r.sections[0].exercises[0].sets[0].weight_value).toBe(176.4);
+    const set = r.sections[0].exercises[0].sets[0];
+    expect(set).toMatchObject({ weight_value: 88, converted_from_kg: true, kg_value: 40 });
   });
 
-  test('threads an explicit unit through a dash-prefixed session entry row', () => {
-    const r = parseWorkoutNote('-Bench\n- 80 8,8', 'kg');
-    expect(r.sections[0].exercises[0].sets[0].weight_value).toBe(176.4);
+  test('a kg-marked bare row carries the conversion through', () => {
+    const r = parseWorkoutNote('-Bench\n40kg 10');
+    const set = r.sections[0].exercises[0].sets[0];
+    expect(set).toMatchObject({ weight_value: 88, converted_from_kg: true, kg_value: 40 });
   });
 
-  test('defaults to lb when no unit is passed, regardless of live preference', () => {
-    setWeightUnitPreference('kg');
-    const r = parseWorkoutNote('-Bench\n80 8,8');
-    __resetWeightUnitForTests();
-    expect(r.sections[0].exercises[0].sets[0].weight_value).toBe(80);
-  });
-});
-
-// ── #852: entry-boundary text conversion ────────────────────────────────────
-// convertPlainRowToLb/convertNewNoteLinesToLb are what actually let a Log
-// editor honor the selected unit while keeping raw_text the single,
-// unit-independent source of truth every other reader (Recovery Analytics,
-// Home, Analytics, sync recompute) relies on: a kg-typed row is rewritten to
-// its canonical lb text at save time, so parseWorkoutNote's fixed 'lb'
-// default keeps reading it correctly forever after, exactly like a row that
-// was always typed in lb.
-describe('convertPlainRowToLb — unambiguous single-row conversion (#852)', () => {
-  test('lb is always an identity passthrough', () => {
-    expect(convertPlainRowToLb('80 8,8', 'lb')).toBe('80 8,8');
+  test('existing (unmarked) notes are completely unaffected: no behavior change', () => {
+    const r = parseWorkoutNote('-Bench\n135 5,5,5');
+    const set = r.sections[0].exercises[0].sets[0];
+    expect(set.weight_value).toBe(135);
+    expect(set.converted_from_kg).toBeUndefined();
   });
 
-  test('converts a simple weight+rep-group row', () => {
-    expect(convertPlainRowToLb('80 8,8', 'kg')).toBe('176.4 8,8');
-  });
-
-  test('converts each pair independently across multiple weight/rep pairs', () => {
-    expect(convertPlainRowToLb('80 5,5 100 3,3', 'kg')).toBe('176.4 5,5 220.5 3,3');
-  });
-
-  test('converts a decimal load', () => {
-    expect(convertPlainRowToLb('22.5 6,6', 'kg')).toBe('49.6 6,6');
-  });
-
-  test('converts a within-row skipped set, keeping the shared weight once', () => {
-    expect(convertPlainRowToLb('80 4,-', 'kg')).toBe('176.4 4,-');
-  });
-
-  test('round-trips: the converted text re-parses to the exact kg-typed load', () => {
-    const converted = convertPlainRowToLb('80 8,8', 'kg');
-    const reparsed = parseWorkoutRow(converted, 'lb');
-    expect(reparsed.sets[0].weight_value).toBe(176.4);
-    expect(formatLiftWeightValue(reparsed.sets[0].weight_value, 'kg')).toBe('80');
-  });
-
-  test('a bare rep-only row has no weight token to convert', () => {
-    expect(convertPlainRowToLb('8,8,8', 'kg')).toBe('8,8,8');
-  });
-
-  test('a leading-flag row is left untouched (flag would be lost by reconstruction)', () => {
-    expect(convertPlainRowToLb('Flat 225 5', 'kg')).toBe('Flat 225 5');
-  });
-
-  test('a row with a "*mark" is left untouched', () => {
-    expect(convertPlainRowToLb('80 8,8 *PR', 'kg')).toBe('80 8,8 *PR');
-  });
-
-  test('a row with an inline " - " tail/continuation is left untouched', () => {
-    expect(convertPlainRowToLb('225 5 - RPE 9', 'kg')).toBe('225 5 - RPE 9');
-  });
-
-  test('blank, skipped, and unparseable input pass through unchanged', () => {
-    expect(convertPlainRowToLb('', 'kg')).toBe('');
-    expect(convertPlainRowToLb('-', 'kg')).toBe('-');
-    expect(convertPlainRowToLb('8', 'kg')).toBe('8'); // ambiguous single integer
+  test('deload-style explicit lbs marker is untouched by the new kg grammar', () => {
+    const r = parseWorkoutNote('Bench: 135 lbs 3x5');
+    expect(r.ok).toBe(true);
+    expect(r.sections[0].exercises[0].sets[0].weight_value).toBe(135);
   });
 });
 
-describe('convertNewNoteLinesToLb — existing-note compatibility (#852)', () => {
-  test('lb is always an identity passthrough', () => {
-    const text = '-Bench\n80 8,8';
-    expect(convertNewNoteLinesToLb(text, text, 'lb')).toBe(text);
+// #852 Verification: "an analytics test asserting a kg-marked set contributes
+// its converted lb value to tonnage and maxes." lib/data/workoutAnalytics.js
+// (and lib/parser/analytics.js, which it wraps) were deliberately left
+// untouched — weight_value is already a plain generic number to every
+// analytics function, so a kg-marked set's converted value reaches tonnage
+// and max/PR calculations with zero source changes. These tests prove that.
+describe('analytics: a kg-marked set contributes its converted lb value to tonnage and maxes (#852)', () => {
+  test('estimated_pr (the "max") is computed from the converted lb value, not the typed kg number', () => {
+    const { sections } = parseWorkoutNote('-Bench\n40kg 8');
+    const ex = deriveWorkoutAnalytics(sections).exercises[0];
+    expect(ex.sets[0].weight_value).toBe(88);
+    expect(ex.estimated_pr).toBeCloseTo(epleyPR(88, 8));
+    // Sanity: nowhere does the raw, un-converted "40" leak into the max.
+    expect(ex.estimated_pr).not.toBeCloseTo(epleyPR(40, 8));
   });
 
-  test('an unedited note round-trips byte-for-byte under kg — nothing is reinterpreted', () => {
-    const text = '-Bench\n80 8,8\n-Squat\n- 100 5,5';
-    expect(convertNewNoteLinesToLb(text, text, 'kg')).toBe(text);
+  test('a kg-marked set can be the session top set alongside a bare-lb set', () => {
+    const { sections } = parseWorkoutNote('-Bench\n80 5\n40kg 8');
+    const ex = deriveWorkoutAnalytics(sections).exercises[0];
+    expect(ex.estimated_pr).toBeCloseTo(Math.max(epleyPR(80, 5), epleyPR(88, 8)));
   });
 
-  test('a freshly appended line is converted; the pre-existing line is untouched', () => {
-    const previous = '-Bench\n80 8,8';
-    const next = `${previous}\n90 5,5`;
-    const result = convertNewNoteLinesToLb(previous, next, 'kg');
-    expect(result).toBe('-Bench\n80 8,8\n198.4 5,5');
+  test('tonnage (weight * reps summed across sets) includes the converted value', () => {
+    const { sections } = parseWorkoutNote('-Bench\n80 5\n40kg 8');
+    const ex = deriveWorkoutAnalytics(sections).exercises[0];
+    const tonnage = ex.sets.reduce((sum, s) => sum + s.weight_value * s.rep_count, 0);
+    expect(tonnage).toBe(80 * 5 + 88 * 8);
   });
 
-  test('converts a new dash-prefixed session entry, preserving the "- " prefix', () => {
-    const previous = '-Bench\n- 80 8,8';
-    const next = `${previous}\n- 90 5,5`;
-    const result = convertNewNoteLinesToLb(previous, next, 'kg');
-    expect(result).toBe('-Bench\n- 80 8,8\n- 198.4 5,5');
-  });
-
-  test('an edited (changed) line is treated as new and converted', () => {
-    const previous = '-Bench\n80 8,8';
-    const next = '-Bench\n80 8,8,8';
-    const result = convertNewNoteLinesToLb(previous, next, 'kg');
-    expect(result).toBe('-Bench\n176.4 8,8,8');
-  });
-
-  test('duplicate lines are matched by count, not just presence', () => {
-    const previous = '-Bench\n80 8,8\n80 8,8';
-    const next = '-Bench\n80 8,8\n80 8,8\n80 8,8';
-    const result = convertNewNoteLinesToLb(previous, next, 'kg');
-    // Two of the three "80 8,8" lines match the two in `previous` and stay
-    // untouched; only the third (no remaining match) is converted.
-    expect(result).toBe('-Bench\n80 8,8\n80 8,8\n176.4 8,8');
-  });
-
-  test('reordering existing lines does not trigger reconversion', () => {
-    const previous = '-Bench\n80 8,8\n-Squat\n100 5,5';
-    // Every line here still exists verbatim in `previous`, just reordered —
-    // the two set rows are swapped relative to their headings.
-    const reordered = '-Bench\n100 5,5\n-Squat\n80 8,8';
-    const result = convertNewNoteLinesToLb(previous, reordered, 'kg');
-    expect(result).toBe(reordered);
-  });
-
-  test('a brand-new note (no previous text) converts every eligible line', () => {
-    const result = convertNewNoteLinesToLb('', '-Bench\n80 8,8', 'kg');
-    expect(result).toBe('-Bench\n176.4 8,8');
+  test('progression classification treats a kg-marked top set as an ordinary lb value', () => {
+    // Monday's 80 lb top set vs Tuesday's 40kg (-> 88 lb) top set: a real
+    // increase, so this must classify as progressing — exactly as it would
+    // if Tuesday had instead read a bare "88 8".
+    const note = 'Monday\n-Bench\n80 5\nTuesday\n-Bench\n40kg 8';
+    const { sections } = parseWorkoutNote(note);
+    expect(classifyExerciseSessions(sections, ['Bench'])['bench']).toBe('progressing');
   });
 });
 

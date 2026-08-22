@@ -27,9 +27,9 @@ const _NON_WEIGHT_RE = /\b(treadmill|bike|bicycle|cycling|elliptical|run|walk|sw
 // reclassify a genuine alphabetic exercise header (e.g. "-Row 135 10") as a
 // missing-space set row, which is not what this recovery is for. Returns the
 // parsed row on match, else null.
-function _dashContentAsSetRow(content, unit) {
+function _dashContentAsSetRow(content) {
   if (!/^\d/.test(content)) return null;
-  const r = parseWorkoutRow(content, unit);
+  const r = parseWorkoutRow(content);
   return (r.ok && !r.blank && !r.skipped) ? r : null;
 }
 
@@ -68,14 +68,7 @@ function _makeSet(setIndex, repCount, weightValue, weightUnit) {
   };
 }
 
-// `unit` ('lb' | 'kg', default 'lb') is the entry unit bare weight tokens in
-// the note are typed in (#852). Defaults to 'lb' — see the workoutRow.js
-// module comment for why the default is fixed rather than the live selected
-// preference: this is the single parse path every reader of a note's
-// raw_text shares (Log editors, Recovery Analytics, Home/Analytics
-// summaries, the cloud sync recompute), and several of them (Recovery
-// Analytics in particular) require the parse to stay unit-independent.
-export function parseWorkoutNote(noteText, unit = 'lb') {
+export function parseWorkoutNote(noteText) {
   if (!noteText || noteText.trim() === '') return { ok: true, sections: [], weekBStartIndex: null };
 
   // Reject untrusted text over the cap before the per-line split/loop runs.
@@ -187,7 +180,7 @@ export function parseWorkoutNote(noteText, unit = 'lb') {
     const dashMatch = _EXERCISE_DASH_RE.exec(trimmed);
     if (dashMatch) {
       const dashContent = dashMatch[1].trim();
-      const recovery = _dashContentAsSetRow(dashContent, unit);
+      const recovery = _dashContentAsSetRow(dashContent);
       if (recovery) {
         // Missing dash-space (#617): "-230 5" was meant as "- 230 5", a
         // logged set, not an exercise-name header. Never mint a numeric-named
@@ -276,7 +269,7 @@ export function parseWorkoutNote(noteText, unit = 'lb') {
         }
       } else if (sessionEntryMatch) {
         const entryRaw = sessionEntryMatch[1].trim();
-        const rowResult = parseWorkoutRow(entryRaw, unit);
+        const rowResult = parseWorkoutRow(entryRaw);
         if (rowResult.ok && !rowResult.blank && !rowResult.skipped) {
           const offset = currentExercise.rows.reduce((sum, r) => sum + r.sets.length, 0);
           const reindexed = rowResult.sets.map(s => ({ ...s, set_index: offset + s.set_index }));
@@ -292,7 +285,7 @@ export function parseWorkoutNote(noteText, unit = 'lb') {
           currentExercise.session_entries.push({ skipped: false, raw: entryRaw, sets: [], unparsed: true, error: rowResult.error ?? null, category: rowResult.category ?? null });
         }
       } else {
-        const rowResult = parseWorkoutRow(trimmed, unit);
+        const rowResult = parseWorkoutRow(trimmed);
         if (rowResult.ok && !rowResult.blank && !rowResult.skipped) {
           const offset = currentExercise.rows.reduce((sum, r) => sum + r.sets.length, 0);
           const reindexed = rowResult.sets.map(s => ({ ...s, set_index: offset + s.set_index }));

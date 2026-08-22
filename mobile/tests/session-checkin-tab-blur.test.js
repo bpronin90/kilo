@@ -29,7 +29,6 @@ jest.mock('../lib/data', () => ({
 jest.mock('../lib/parser', () => ({
   parseWorkoutNote: jest.fn(() => ({ sections: [], weekBStartIndex: null })),
   countWorkoutSessionsFromSections: jest.fn(() => 2),
-  convertNewNoteLinesToLb: jest.fn((previousText, nextText) => nextText),
 }));
 
 jest.mock('react-native/Libraries/Alert/Alert', () => ({ alert: jest.fn() }));
