@@ -829,6 +829,8 @@ action is placed by how often it is used:
 | Recovery — expected next step | `Complete Week {N}` **or** `Add week` (never both), each behind its own confirmation | The active card's action zone, visible by default, full-width/48px, and the card's only accent-filled control, with a muted explanatory caption beneath it (`LogRecoverySection.js`, #789/#804/#836/#843) |
 | Recovery — reversal, offered only for the just-completed latest week | `Undo completion` | Beside the primary action, muted (not `error`) ink — a routine correction, not a destructive action (#843; was an `error`-labeled chip) (`LogRecoverySection.js`, #836) |
 | Recovery — correction or once-per-block | `Counting in normal analytics`, `Unlink Week {N}'s note`, `End recovery block` | `Manage block`, a sibling card next to the active card (#843, no longer a disclosure INSIDE it), holding three divided list rows; `End recovery block` opens `RecoveryBlockEndModal` instead of `Alert.alert` |
+| Routine/Recovery editor — safe exit | `Done` (and Android Back) | Keeps the latest edit, flushing any pending or in-flight autosave before the editor closes (#851) |
+| Editor — whole-edit rollback | `Revert this edit` | A danger-zone body action, never an ambiguous header `Undo`; confirmation names the editor-entry snapshot and includes already-autosaved changes. Recovery's scoped inline `Cancel` opens a choice between Keep editing, Done, and the same confirmed rollback (#851) |
 
 Consequences to preserve:
 

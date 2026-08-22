@@ -995,8 +995,8 @@ export function LogScreen({
                 handleToggleWeek={currentEditor.handleToggleWeek}
                 enterCurrentEditor={currentEditor.enterCurrentEditor}
                 handleNoteBodyPress={currentEditor.handleNoteBodyPress}
-                handleSkipWeek={currentEditor.handleSkipWeek}
-                handleUnskipWeek={currentEditor.handleUnskipWeek}
+                handleSkipWeek={currentEditor.isSaving ? undefined : currentEditor.handleSkipWeek}
+                handleUnskipWeek={currentEditor.isSaving ? undefined : currentEditor.handleUnskipWeek}
                 canUnskipWeek={currentEditor.canUnskipWeek}
                 skipWeekStatus={currentEditor.skipWeekStatus}
                 toggleCollapsed={toggleCollapsed}
@@ -1164,18 +1164,6 @@ export function LogScreen({
             )}
             <Pressable
               onPress={
-                deloadEditor.deloadMode === 'edit' ? deloadEditor.handleUndoDeload :
-                otherEditor.editingNoteId ? otherEditor.handleUndoOther :
-                currentEditor.handleUndoCurrent
-              }
-              style={[styles.modeToggle, { backgroundColor: 'transparent', marginRight: 8 }]}
-              accessibilityLabel="Undo"
-              accessibilityRole="button"
-            >
-              <Text style={[styles.modeToggleText, { color: colors.textMuted, fontWeight: '500' }]}>Undo</Text>
-            </Pressable>
-            <Pressable
-              onPress={
                 deloadEditor.deloadMode === 'edit' ? deloadEditor.handleDoneDeload :
                 otherEditor.editingNoteId ? otherEditor.handleDoneOther :
                 currentEditor.handleDoneCurrent
@@ -1228,6 +1216,10 @@ export function LogScreen({
           adoptionBusy={otherEditor.adoptionBusy}
           onAdoptPromptedRoutine={otherEditor.handleAdoptPromptedRoutine}
           onDismissAdoptionPrompt={otherEditor.handleDismissAdoptionPrompt}
+          handleRevertEdit={
+            otherEditor.editingNoteId ? otherEditor.handleUndoOther :
+            currentEditor.handleUndoCurrent
+          }
         />
       </ScreenShell>
       <SessionCheckInModal
