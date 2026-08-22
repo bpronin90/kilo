@@ -134,6 +134,20 @@ function _parseSetTokens(setStr, raw) {
     // what it was converted from — not just display a number. An unmarked
     // load is stored exactly as typed (identity), same as always.
     const weight_value = isKgMarked ? kgMarkerToLb(weight) : weight;
+    // A positive kg load below ~0.227 kg rounds to a canonical 0 lb, which
+    // would render as BW and drop out of weighted analytics (they require
+    // weight_value > 0) — silently changing a weighted set into a bodyweight
+    // one. Reject it here rather than let the meaning shift: the typed value
+    // passed the > 0 check above, so the failure is the conversion, and the
+    // message says so.
+    if (isKgMarked && !(weight_value > 0)) {
+      return {
+        ok: false,
+        raw,
+        error: `${weight}kg converts to less than 1 lb — enter a larger load`,
+        category: 'invalid_field_value',
+      };
+    }
     for (const rep_count of reps) {
       sets.push({
         set_index: set_index++,

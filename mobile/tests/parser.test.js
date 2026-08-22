@@ -710,6 +710,23 @@ describe('parseWorkoutRow — in-text kg marker (#852)', () => {
     expect(r.sets[0].converted_from_kg).toBeUndefined();
   });
 
+  // A positive kg load can round to 0 lb (anything under ~0.227 kg). Left
+  // unguarded it renders as BW and drops out of weighted analytics, silently
+  // turning a weighted set into a bodyweight one.
+  test('a kg load that rounds to 0 lb is rejected, not silently made bodyweight', () => {
+    const r = parseWorkoutRow('0.2kg 10');
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('0.2kg converts to less than 1 lb — enter a larger load');
+    expect(r.category).toBe('invalid_field_value');
+  });
+
+  test('the smallest kg load that still reaches 1 lb is accepted', () => {
+    const r = parseWorkoutRow('0.3kg 10');
+    expect(r.ok).toBe(true);
+    expect(r.sets[0].weight_value).toBe(1);
+    expect(r.sets[0].converted_from_kg).toBe(true);
+  });
+
   test('attached "40kg 10" converts to whole-lb canonical value', () => {
     const r = parseWorkoutRow('40kg 10');
     expect(r.ok).toBe(true);
