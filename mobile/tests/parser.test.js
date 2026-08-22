@@ -1363,15 +1363,19 @@ describe('parseWorkoutNote — sample file patterns', () => {
     expect(ex.unparsed_rows).not.toContain('7.2 5');
   });
 
-  // ...but #854/R3 keeps it out of strength aggregates (tonnage, PR/max) even
-  // outside a warmup-kind section, since "Treadmill" is not a strength name.
-  test('treadmill sets are excluded from strength aggregates (R3)', () => {
+  // ...but #854/R3 keeps its PR/max out of strength aggregates even outside a
+  // warmup-kind section, since "Treadmill" is not a strength name — the real
+  // occurrence data stays intact (`.sets` here) for consumers that need it,
+  // e.g. deriveNonWeightedTrackedExerciseMetrics.
+  test('treadmill PR/max is excluded from strength aggregates (R3), but occurrence data stays intact', () => {
     const r = parseWorkoutNote('0. Treadmill\n7.2 5');
     const { exercises } = deriveWorkoutAnalytics(r.sections);
     const treadmill = exercises.find(e => e.name === 'Treadmill');
     expect(treadmill).toBeDefined();
-    expect(treadmill.sets).toHaveLength(0);
+    expect(treadmill.sets).toHaveLength(1);
+    expect(treadmill.occurrences[0].sets).toHaveLength(1);
     expect(treadmill.estimated_pr).toBeNull();
+    expect(treadmill.latest_pr).toBeNull();
   });
 
   // #854/G5: the treadmill block now parses its well-formed rows as real
@@ -1406,7 +1410,7 @@ describe('parseWorkoutNote — sample file patterns', () => {
 
     const { exercises } = deriveWorkoutAnalytics(r.sections);
     const treadmillAgg = exercises.find(e => e.name === 'Treadmill');
-    expect(treadmillAgg.sets).toHaveLength(0);
+    expect(treadmillAgg.sets.length).toBeGreaterThan(0);
     expect(treadmillAgg.estimated_pr).toBeNull();
 
     const bench = r.sections[0].exercises.find(e => e.name === 'DB Bench Press');
@@ -3471,6 +3475,25 @@ describe('#854: F2b grammar contract (per #853 decision table)', () => {
       expect(parseHeaderDeclaration('-Curl 2x10')).toEqual({ type: 'reps' });
     });
 
+    // Follow-up review finding: the canonical "×" (U+00D7) the repo already
+    // uses for prescriptions (see deloadGenerator.js's parseExerciseHeader)
+    // must govern the same as ASCII "x", not just "X".
+    test('the canonical "×" multiplier governs the same as ASCII "x"', () => {
+      expect(parseHeaderDeclaration('-Bench 4×6–8')).toEqual({ type: 'reps' });
+      expect(parseHeaderDeclaration('-Plank 2×60s')).toEqual({ type: 'duration' });
+      expect(parseHeaderDeclaration('-Plank 2×30 sec')).toEqual({ type: 'duration' });
+    });
+
+    test('a "×"-declared header governs a bare-integer row the same as ASCII "x"', () => {
+      const { sections } = parseWorkoutNote('-Bench 4×6–8\n8');
+      const bench = sections[0].exercises[0];
+      expect(bench.sets).toEqual([{
+        set_index: 1, rep_count: 8,
+        weight_value: null, weight_unit: null,
+        duration_seconds: null, assistance_value: null, assistance_unit: null, note_text: null,
+      }]);
+    });
+
     test('rule 4: a scalar time prescription alone declares nothing (G1-p)', () => {
       expect(parseHeaderDeclaration('-Walk 5 min')).toBeNull();
       expect(parseHeaderDeclaration('-Walk 10min')).toBeNull();
@@ -3571,23 +3594,43 @@ describe('#854: F2b grammar contract (per #853 decision table)', () => {
       }]);
     });
 
-    test('a warmup-section set of any exercise is excluded from strength aggregates', () => {
+    // #854/R3: the real occurrence data stays intact (`.sets`) for consumers
+    // that need it (e.g. deriveNonWeightedTrackedExerciseMetrics) — only
+    // PR/max is excluded for a warmup-kind occurrence.
+    test('a warmup-section set of any exercise keeps its data but is excluded from PR/max', () => {
       const note = 'Monday\n+Warmup\n-Bike\n10 5\n+Lifting\n-Bench\n135 5,5,5';
       const { sections } = parseWorkoutNote(note);
       const { exercises } = deriveWorkoutAnalytics(sections);
       const bike = exercises.find(e => e.name === 'Bike');
-      expect(bike.sets).toHaveLength(0);
+      expect(bike.sets).toHaveLength(1);
+      expect(bike.estimated_pr).toBeNull();
       const bench = exercises.find(e => e.name === 'Bench');
       expect(bench.sets).toHaveLength(3);
+      expect(bench.estimated_pr).not.toBeNull();
     });
 
-    test('a cardio-named exercise is excluded from strength aggregates even outside a warmup section', () => {
+    test('a cardio-named exercise keeps its data but is excluded from PR/max even outside a warmup section', () => {
       const note = '-Bike\n10 5\n-Bench\n135 5,5,5';
       const { sections } = parseWorkoutNote(note);
       const { exercises } = deriveWorkoutAnalytics(sections);
       const bike = exercises.find(e => e.name === 'Bike');
-      expect(bike.sets).toHaveLength(0);
+      expect(bike.sets).toHaveLength(1);
       expect(bike.estimated_pr).toBeNull();
+      expect(bike.latest_pr).toBeNull();
+    });
+
+    // #854/R3: dedicated non-weighted consumers (tracked-exercise cards) must
+    // still see the real cardio data through deriveWorkoutAnalytics —
+    // exercised via deriveNonWeightedTrackedExerciseMetrics itself, since
+    // that is the actual regression this guards against.
+    test('a tracked cardio exercise still gets non-weighted metrics (reps/hold), not a blanked-out card', () => {
+      const { deriveNonWeightedTrackedExerciseMetrics } = require('../lib/data');
+      const note = '-Bike\n20,20\n20,20\n25,25';
+      const { sections } = parseWorkoutNote(note);
+      const metrics = deriveNonWeightedTrackedExerciseMetrics(sections, ['Bike']);
+      expect(metrics['bike']).toBeDefined();
+      expect(metrics['bike'].exercise_class).toBe('reps_only');
+      expect(metrics['bike'].avg_reps).not.toBeNull();
     });
   });
 

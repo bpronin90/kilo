@@ -52,10 +52,14 @@ function _trailingCommaMessage(tok) {
 //   3. "N x M" / "N x M-P" — rep prescription  -> reps
 //   4. "N T" alone — scalar time prescription  -> no declaration (G1-p)
 //   5. no declaration                          -> no declaration (G1-p)
+// [xX×]: the "x" multiplier in a set×rep/hold prescription is authored as
+// either the ASCII letter or the canonical "×" (U+00D7) the repo already
+// uses elsewhere (see deloadGenerator.js's parseExerciseHeader) — matching
+// only ASCII "x" left "×"-authored headers (e.g. "4×6–8", "2×60s") ungoverned.
 const _TIME_UNIT = '(?:sec|secs|seconds?|s|min|mins|minutes?|m)';
-const _HEADER_TIMED_HOLDS_RE = new RegExp(`\\d+\\s*x\\s*\\d+(?:\\.\\d+)?\\s*${_TIME_UNIT}\\b`, 'i');
+const _HEADER_TIMED_HOLDS_RE = new RegExp(`\\d+\\s*[xX×]\\s*\\d+(?:\\.\\d+)?\\s*${_TIME_UNIT}\\b`, 'i');
 const _HEADER_TIMED_RANGE_RE = new RegExp(`\\d+\\s*[-–]\\s*\\d+(?:\\.\\d+)?\\s*${_TIME_UNIT}\\b`, 'i');
-const _HEADER_REP_PRESCRIPTION_RE = /\d+\s*x\s*\d+(?:\s*[-–]\s*\d+)?/i;
+const _HEADER_REP_PRESCRIPTION_RE = /\d+\s*[xX×]\s*\d+(?:\s*[-–]\s*\d+)?/;
 
 export function parseHeaderDeclaration(rawHeader) {
   if (!rawHeader) return null;

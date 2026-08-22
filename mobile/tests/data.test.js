@@ -532,6 +532,29 @@ describe('classifyExerciseSessions', () => {
     expect(result['squat']).toBe('progressing');
     expect(result['deadlift']).toBeDefined();
   });
+
+  // #854/R3: a cardio-named tracked exercise never gets a strength
+  // progression classification, even though it now parses as real
+  // structured data (G5).
+  test('a cardio-named exercise gets no classification (R3), even with real weighted-looking rows', () => {
+    const sections = [classifSection('Bike', [w(10, 5), w(10, 5), w(12, 5)])];
+    expect(classifyExerciseSessions(sections, ['Bike'])['bike']).toBeNull();
+  });
+
+  // #854/R3: a warmup-kind occurrence never contributes to a strength
+  // exercise's own progression classification.
+  test('a warmup-kind occurrence is excluded from a strength exercise\'s classification', () => {
+    const sections = [
+      { heading: null, subheading: null, kind: 'warmup', exercises: [
+        { name: 'Squat', rows: [], sets: [w(45, 10), w(45, 10)], unparsed_rows: [], session_entries: [] },
+      ]},
+      // One real (non-warmup) logged session — a single entry with both sets.
+      classifSection('Squat', [[w(225, 5), w(225, 5)]]),
+    ];
+    // Only one real (non-warmup) logged session exists, so there is no
+    // baseline yet to classify against.
+    expect(classifyExerciseSessions(sections, ['Squat'])['squat']).toBe('initial');
+  });
 });
 
 // ── computeWeeksIn ────────────────────────────────────────────────────────────
@@ -1251,6 +1274,30 @@ describe('deriveRepDropOffFlags', () => {
     expect(result['squat']).toEqual({ '0': 'hit_wall' });
     expect(result['bench press']).toBeUndefined();
   });
+
+  // #854/R3: a cardio-named exercise never gets a drop-off flag, even with
+  // real weighted-looking rows.
+  test('a cardio-named exercise gets an empty map (R3), even with real weighted-looking rows', () => {
+    const sections = [dropOffSection('Bike', [[ws(10, 8), ws(10, 4)]])];
+    const result = deriveRepDropOffFlags(sections, ['Bike']);
+    expect(result['bike']).toEqual({});
+  });
+
+  // #854/R3: a warmup-kind entry contributes no flag, but positional
+  // indices into the exercise's FULL entry history are unaffected —
+  // session_checkins and other position-keyed consumers must not see the
+  // index shift.
+  test('a warmup-kind entry contributes no flag without shifting later positional indices', () => {
+    const sections = [
+      { heading: null, subheading: null, kind: 'warmup', exercises: [
+        { name: 'Squat', rows: [], sets: [ws(45, 10), ws(45, 4)], unparsed_rows: [], session_entries: [] },
+      ]},
+      dropOffSection('Squat', [[ws(225, 8), ws(225, 4)]]),
+    ];
+    const result = deriveRepDropOffFlags(sections, ['Squat']);
+    // Index 0 is the warmup entry (no flag); index 1 is the real session.
+    expect(result['squat']).toEqual({ '1': 'hit_wall' });
+  });
 });
 
 // ── deriveSessionCheckIn ──────────────────────────────────────────────────────
@@ -1573,6 +1620,20 @@ describe('deriveSessionCheckIn', () => {
     expect(r.metrics.exercises_skipped).toBe(4);
   });
 
+  // #854/R3: volume_drop/collapse is a strength-specific signal — a
+  // cardio-named exercise with a real weighted-looking rep collapse never
+  // fires either detector.
+  test('a cardio-named exercise never fires volume_drop or collapse (R3), even with a real rep collapse', () => {
+    const sections = [dropOffSection('Bike', [
+      [ws(10, 8), ws(10, 8)],
+      [ws(10, 8), ws(10, 8)],
+      [ws(10, 4), skset(10)],
+    ])];
+    const r = deriveSessionCheckIn(sections, ['Bike']);
+    expect(r.isRough).toBe(false);
+    expect(r.detectors).toEqual([]);
+    expect(r.flagged).toEqual([]);
+  });
 });
 
 // ── D10 trigger contract: timelines and boundaries over real note text ───────
