@@ -1,5 +1,5 @@
 import { deriveWorkoutAnalytics, normalizeExerciseKey, deriveProgressionSignals, derivePerDaySignals } from '../parser.js';
-import { normalizeLiftName } from './exerciseCatalog.js';
+import { normalizeLiftName, isStrengthExerciseName } from './exerciseCatalog.js';
 import { computeWeeksIn } from './routineStatus.js';
 import { deriveSkipData } from './skipData.js';
 import { computeKiloMax, getKiloFatigueMultiplier } from './fatigue.js';
@@ -15,6 +15,11 @@ function _totalRepsAtWeight(sets, weight) {
 // is treated as its own session unit (not merged into one blob).
 // When no session_entries exist, each row is one session unit; falls back
 // to occ.sets as one unit only when rows is empty (test/legacy path).
+// `kind` (the occurrence's section kind, e.g. 'warmup') is stamped onto every
+// returned entry — additive, ignored by consumers that don't need it (e.g.
+// deriveNonWeightedTrackedExerciseMetrics) — so strength-aggregate callers
+// below can exclude warmup-kind entries without losing entries other
+// consumers need (#854/R3).
 export function _occurrenceEntries(occ) {
   const rows = occ.rows || [];
   if ((occ.session_entries || []).length > 0) {
@@ -22,15 +27,15 @@ export function _occurrenceEntries(occ) {
     const extra = rows
       .slice(loggedCount)
       .filter(r => r.sets && r.sets.length > 0)
-      .map(r => ({ skipped: false, sets: r.sets }));
-    return [...occ.session_entries, ...extra];
+      .map(r => ({ skipped: false, sets: r.sets, kind: occ.kind }));
+    return [...occ.session_entries.map(e => ({ ...e, kind: occ.kind })), ...extra];
   }
   if (rows.length > 0) {
     return rows
       .filter(r => r.sets && r.sets.length > 0)
-      .map(r => ({ skipped: false, sets: r.sets }));
+      .map(r => ({ skipped: false, sets: r.sets, kind: occ.kind }));
   }
-  return occ.sets.length > 0 ? [{ skipped: false, sets: occ.sets }] : [];
+  return occ.sets.length > 0 ? [{ skipped: false, sets: occ.sets, kind: occ.kind }] : [];
 }
 
 function _topWeight(sets) {
@@ -84,7 +89,13 @@ export function classifyExerciseSessions(sections, trackedNames) {
     const key = normalizeExerciseKey(name);
     const ex = byKey.get(key);
     if (!ex) { result[normName] = null; continue; }
-    const allEntries = ex.occurrences.flatMap(occ => _occurrenceEntries(occ));
+    // #854/R3: progressing/stalled/regressing is a strength-specific
+    // signal — a cardio-named exercise never gets one, and a warmup-kind
+    // entry never contributes to it, without discarding the exercise's
+    // underlying occurrence data (other consumers still read it intact).
+    const allEntries = isStrengthExerciseName(ex.name)
+      ? ex.occurrences.flatMap(occ => _occurrenceEntries(occ)).filter(e => e.kind !== 'warmup')
+      : [];
     const classification = _classifyEntries(allEntries);
     result[normName] = classification;
   }
@@ -121,10 +132,15 @@ export function deriveRepDropOffFlags(sections, trackedNames) {
     const key = normalizeExerciseKey(name);
     const ex = byKey.get(key);
     if (!ex) { result[normName] = {}; continue; }
+    // #854/R3: allEntries stays the exercise's FULL entry history (positional
+    // indices below are matched elsewhere by that same position) — only the
+    // flag computation is gated, so a cardio-named exercise or a warmup-kind
+    // entry contributes no drop-off flag without shifting any other index.
+    const strengthEligible = isStrengthExerciseName(ex.name);
     const allEntries = ex.occurrences.flatMap(occ => _occurrenceEntries(occ));
     const sessionFlags = {};
     allEntries.forEach((entry, idx) => {
-      if (!entry.skipped && !entry.unparsed && entry.sets && entry.sets.length > 0) {
+      if (strengthEligible && entry.kind !== 'warmup' && !entry.skipped && !entry.unparsed && entry.sets && entry.sets.length > 0) {
         sessionFlags[String(idx)] = computeRepDropOff(entry.sets);
       }
     });
@@ -291,11 +307,23 @@ export function deriveSessionCheckIn(sections, trackedNames) {
       if (skipFired) addReason(a, 'skip');
       continue;
     }
+
+    // #854/R3: volume_drop/collapse is a strength-specific signal — a
+    // cardio-named exercise, or a warmup-kind latest entry, never
+    // contributes it. The skip/attendance signals above, and the general
+    // "has any history" gate, already used the exercise's full, unfiltered
+    // entry history.
+    if (!isStrengthExerciseName(a.name) || latest.kind === 'warmup') continue;
+    // Re-derive the baseline excluding warmup-kind entries so a warm-up set
+    // at this same exercise never seeds the comparison either.
+    const strengthPriorLogged = priorLogged.filter(e => e.kind !== 'warmup');
+    if (strengthPriorLogged.length === 0) continue;
+
     const latestSets = latest.sets || [];
     // Two prior logged entries minimum: a single observation is not a baseline,
     // so a user's second-ever session at a lift is never judged against their
     // first.
-    if (priorLogged.length >= SESSION_CHECKIN_MIN_PRIOR_ENTRIES) {
+    if (strengthPriorLogged.length >= SESSION_CHECKIN_MIN_PRIOR_ENTRIES) {
       // Score ONLY the latest entry's own top weight — the thing the user was
       // actually testing. Back-off and accessory rows below it are ignored, so
       // changing the shape of a session (heavy top set, then lighter volume)
@@ -312,8 +340,8 @@ export function deriveSessionCheckIn(sections, trackedNames) {
         // added load safe — a heavier top set has no baseline of its own, so
         // nothing is scored and progression is never called a decline.
         let baseReps = 0;
-        for (let i = priorLogged.length - 1; i >= 0; i--) {
-          const m = _maxRepsAtWeight(priorLogged[i].sets, topWeight);
+        for (let i = strengthPriorLogged.length - 1; i >= 0; i--) {
+          const m = _maxRepsAtWeight(strengthPriorLogged[i].sets, topWeight);
           if (m > 0) { baseReps = m; break; }
         }
         if (baseReps > 0) { // otherwise: new weight, nothing to compare against
@@ -325,7 +353,7 @@ export function deriveSessionCheckIn(sections, trackedNames) {
           if (collapsedSets >= SESSION_CHECKIN_MIN_COLLAPSED_SETS) {
             addReason(a, 'volume_drop');
             anyVolumeDrop = true;
-            sumBaseTon += _checkinTonnage(priorLogged[priorLogged.length - 1].sets);
+            sumBaseTon += _checkinTonnage(strengthPriorLogged[strengthPriorLogged.length - 1].sets);
             sumLatestTon += _checkinTonnage(latestSets);
           }
         }
@@ -371,7 +399,10 @@ export function deriveSignals(sections, trackedNames, multiplier = getKiloFatigu
   return {
     exercises: signals.map(sig => {
       const ex = byName.get(normalizeExerciseKey(sig.name));
-      if (!ex) return sig;
+      // #854/R3: kilo_max is a strength-specific aggregate — a cardio-named
+      // exercise never gets one, matching the null deriveProgressionSignals
+      // already returned for it above.
+      if (!ex || !isStrengthExerciseName(ex.name)) return sig;
       const { kilo_max_adjusted } = computeKiloMax(ex.occurrences, multiplier);
       return { ...sig, kilo_max: kilo_max_adjusted };
     }),
@@ -445,7 +476,16 @@ export function deriveOverloadCounts(sections, signals, perDaySignals) {
 
 // ── Weekly Assessment Summary ────────────────────────────────────────────────
 
-export function computeWeeklySummary(sections, workoutNote) {
+// #854/R5: `workoutNote.exercise_classifications` is a save-time cache, so an
+// existing note can carry classifications derived under an older parser
+// grammar until its next save. `liveClassifications`, when supplied, is a
+// freshly derived value (same shape, same `deriveWorkoutNoteAnalytics` call
+// the save path uses) that the caller recomputes on every render instead of
+// trusting the persisted value — this makes the read side self-healing
+// across a grammar change with no separate migration step. Omitted for
+// backward compatibility with callers (and tests) that intentionally want
+// the persisted value.
+export function computeWeeklySummary(sections, workoutNote, liveClassifications) {
   // A session exists if there are any non-skipped entries or sets in the sections
   const hasActivity = (sections || []).some(section =>
     section.exercises.some(ex => {
@@ -458,7 +498,7 @@ export function computeWeeklySummary(sections, workoutNote) {
 
   // 1. Classification counts (tracked exercises only)
   let classifications = null;
-  const sourceClassifs = workoutNote?.exercise_classifications;
+  const sourceClassifs = liveClassifications || workoutNote?.exercise_classifications;
 
   if (sourceClassifs) {
     classifications = { progressing: 0, stalled: 0, regressing: 0, inconsistent: 0, initial: 0 };

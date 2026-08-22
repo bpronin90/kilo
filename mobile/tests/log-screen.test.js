@@ -5622,7 +5622,10 @@ describe('#616: WorkoutContentRenderer surfaces parser errors', () => {
     expect(bannerText.props.style.color).toBe(LightColors.error);
   });
 
-  test('a non-weight unparsed row gets no error glyph (it is not a syntax error)', () => {
+  // #854/G5: cardio/non-weight exercises use the same row grammar as any
+  // other exercise now, so a genuinely malformed row under one still gets
+  // the ordinary error glyph — it is no longer special-cased silent.
+  test('a malformed row under a non-weight exercise gets the ordinary error glyph', () => {
     const dayGroups = dayGroupsFor('-Treadmill\n- 5 min easy');
     let component;
     render.act(() => {
@@ -5630,9 +5633,56 @@ describe('#616: WorkoutContentRenderer surfaces parser errors', () => {
     });
     const root = component.root;
     const glyphNodes = root.findAll(n => n.type === 'Text' && n.props.children === '⚠');
-    expect(glyphNodes.length).toBe(0);
+    expect(glyphNodes.length).toBe(1);
     // The raw non-weight line is still rendered.
     expect(root.find(n => n.type === 'Text' && n.props.children === '5 min easy')).toBeTruthy();
+  });
+
+  // #854/G1-p: a bare integer with no governing header declaration renders
+  // visibly with no ⚠ and no message — recognized but not structured data.
+  test('a bare integer with no declaration renders with no error glyph', () => {
+    const dayGroups = dayGroupsFor('-Bench\n225 5\n140');
+    let component;
+    render.act(() => {
+      component = render.create(<WorkoutContentRenderer dayGroups={dayGroups} />);
+    });
+    const root = component.root;
+    const glyphNodes = root.findAll(n => n.type === 'Text' && n.props.children === '⚠');
+    expect(glyphNodes.length).toBe(0);
+    expect(root.find(n => n.type === 'Text' && n.props.children === '140')).toBeTruthy();
+  });
+
+  // #854/G4: a duration set (header-declared, e.g. "3x30 sec") renders as
+  // "Ns", not a bare/blank reps column.
+  test('a duration set renders as "Ns"', () => {
+    const dayGroups = dayGroupsFor('-Plank 3x30 sec\n45');
+    let component;
+    render.act(() => {
+      component = render.create(<WorkoutContentRenderer dayGroups={dayGroups} />);
+    });
+    expect(component.root.find(n => n.type === 'Text' && n.props.children === '45s')).toBeTruthy();
+  });
+
+  // #854/G7a: a "-- " line with no preceding valid entry (including no open
+  // exercise) is retained as a section-level annotation, not dropped.
+  test('a "-- " line with no open exercise renders as a preserved section note', () => {
+    const dayGroups = dayGroupsFor('+Lifting\n-- felt strong today\n-Bench\n135 5');
+    let component;
+    render.act(() => {
+      component = render.create(<WorkoutContentRenderer dayGroups={dayGroups} />);
+    });
+    expect(component.root.find(n => n.type === 'Text' && n.props.children === 'felt strong today')).toBeTruthy();
+  });
+
+  // #854/G7c: a nonblank line with no open exercise is preserved as a
+  // section-level annotation, never silently dropped.
+  test('an orphan line with no open exercise renders as a preserved section note', () => {
+    const dayGroups = dayGroupsFor('+Lifting\nfelt good warming up\n-Bench\n135 5');
+    let component;
+    render.act(() => {
+      component = render.create(<WorkoutContentRenderer dayGroups={dayGroups} />);
+    });
+    expect(component.root.find(n => n.type === 'Text' && n.props.children === 'felt good warming up')).toBeTruthy();
   });
 });
 

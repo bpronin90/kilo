@@ -8,8 +8,15 @@ export function parseWorkoutEntry(items, workout_date) {
   for (const { exerciseName, raw } of items) {
     const row = parseWorkoutRow(raw);
     if (row.blank || row.skipped) continue;
-    if (!row.ok) {
-      rowErrors.push({ exerciseName, error: row.error, category: row.category });
+    // A bare integer with no note-level header declaration (#854/G1-p) is
+    // never structured data; this structured-entry form has no header text
+    // to declare against, so treat it the same as any other unrecognized row.
+    if (!row.ok || row.preserved) {
+      rowErrors.push({
+        exerciseName,
+        error: row.error || 'Enter reps as reps,reps or weight reps,reps',
+        category: row.category || 'invalid_field_value',
+      });
       continue;
     }
     parsedItems.push({

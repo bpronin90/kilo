@@ -1,4 +1,4 @@
-import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals, parseExerciseHeader, generateDeloadNote, sessionsSinceLastDeload, weeksSinceLastDeload } from '../lib/parser';
+import { parseWeightEntry, parseWorkoutRow, parseHeaderDeclaration, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals, parseExerciseHeader, generateDeloadNote, sessionsSinceLastDeload, weeksSinceLastDeload } from '../lib/parser';
 import { getDefaultTrackedNames, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES, classifyExerciseSessions } from '../lib/data';
 import { MAX_RAW_TEXT_LENGTH, applyWeekSkipToText, removeWeekSkipFromText } from '../lib/parser/workoutNote.js';
 import { formatLiftWeightValue, kgMarkerToLb } from '../lib/units';
@@ -586,10 +586,32 @@ describe('parseWorkoutRow', () => {
     expect(r.sets[0].rep_count).toBe(8);
   });
 
-  test('rejects single integer — ambiguous with load', () => {
+  // #854/G1-p: a bare integer with no governing header declaration is
+  // preserved, not rejected — it is recognized syntax, just not structured
+  // workout data.
+  test('bare integer with no declaration is preserved, not rejected', () => {
     const r = parseWorkoutRow('8');
-    expect(r.ok).toBe(false);
-    expect(r.category).toBe('invalid_field_value');
+    expect(r.ok).toBe(true);
+    expect(r.preserved).toBe(true);
+    expect(r.sets).toEqual([]);
+  });
+
+  test('bare integer under a reps-declaring header parses as one set of that many reps', () => {
+    const r = parseWorkoutRow('8', { type: 'reps' });
+    expect(r.ok).toBe(true);
+    expect(r.sets).toHaveLength(1);
+    expect(r.sets[0].rep_count).toBe(8);
+    expect(r.sets[0].weight_value).toBeNull();
+    expect(r.sets[0].duration_seconds).toBeNull();
+  });
+
+  test('bare integer under a duration-declaring header parses as one timed set', () => {
+    const r = parseWorkoutRow('45', { type: 'duration' });
+    expect(r.ok).toBe(true);
+    expect(r.sets).toHaveLength(1);
+    expect(r.sets[0].duration_seconds).toBe(45);
+    expect(r.sets[0].rep_count).toBeNull();
+    expect(r.sets[0].weight_value).toBeNull();
   });
 
   test('weight + single-rep group', () => {
@@ -628,9 +650,13 @@ describe('parseWorkoutRow', () => {
     expect(r.sets).toHaveLength(3);
   });
 
-  test('rejects weight with no following reps', () => {
+  // #854/G1-p: same rule applies to any bare integer, including one that
+  // could be mistaken for a bare weight — no declaration means preserved,
+  // not an attempted (and failed) parse.
+  test('bare integer with no declaration is preserved even when it looks like a weight', () => {
     const r = parseWorkoutRow('135');
-    expect(r.ok).toBe(false);
+    expect(r.ok).toBe(true);
+    expect(r.preserved).toBe(true);
   });
 
   test('rejects zero weight', () => {
@@ -1513,15 +1539,37 @@ describe('parseWorkoutNote — sample file patterns', () => {
     expect(days).toContain('Wednesday — Pull');
   });
 
-  test('treadmill rows do not produce weighted sets', () => {
+  // #854/G5: cardio/non-weight exercises no longer get a special no-parse
+  // path — ordinary row grammar applies under every exercise, so a treadmill
+  // row is real structured data at the parser/render layer...
+  test('treadmill rows parse as ordinary structured sets', () => {
     const r = parseWorkoutNote('0. Treadmill\n7.2 5');
     const ex = r.sections[0].exercises[0];
     expect(ex.name).toBe('Treadmill');
-    expect(ex.sets).toHaveLength(0);
-    expect(ex.unparsed_rows).toContain('7.2 5');
+    expect(ex.sets).toHaveLength(1);
+    expect(ex.sets[0]).toMatchObject({ weight_value: 7.2, rep_count: 5 });
+    expect(ex.unparsed_rows).not.toContain('7.2 5');
   });
 
-  test('previous_workout treadmill block degrades fully to unparsed_rows', () => {
+  // ...but #854/R3 keeps its PR/max out of strength aggregates even outside a
+  // warmup-kind section, since "Treadmill" is not a strength name — the real
+  // occurrence data stays intact (`.sets` here) for consumers that need it,
+  // e.g. deriveNonWeightedTrackedExerciseMetrics.
+  test('treadmill PR/max is excluded from strength aggregates (R3), but occurrence data stays intact', () => {
+    const r = parseWorkoutNote('0. Treadmill\n7.2 5');
+    const { exercises } = deriveWorkoutAnalytics(r.sections);
+    const treadmill = exercises.find(e => e.name === 'Treadmill');
+    expect(treadmill).toBeDefined();
+    expect(treadmill.sets).toHaveLength(1);
+    expect(treadmill.occurrences[0].sets).toHaveLength(1);
+    expect(treadmill.estimated_pr).toBeNull();
+    expect(treadmill.latest_pr).toBeNull();
+  });
+
+  // #854/G5: the treadmill block now parses its well-formed rows as real
+  // sets (only the genuinely malformed "7.1 for 5" stays unparsed); R3 keeps
+  // every treadmill set out of strength aggregates regardless.
+  test('previous_workout treadmill block parses as data but stays out of strength aggregates', () => {
     const note = [
       'Monday – Upper Push',
       '0. Treadmill',
@@ -1545,16 +1593,19 @@ describe('parseWorkoutNote — sample file patterns', () => {
 
     const treadmill = r.sections[0].exercises.find(e => e.name === 'Treadmill');
     expect(treadmill).toBeDefined();
-    expect(treadmill.sets).toHaveLength(0);
-    expect(treadmill.unparsed_rows.length).toBeGreaterThan(0);
-    // no treadmill speed should appear as a weight_value on any set across the note
-    const allSets = r.sections.flatMap(s => s.exercises.flatMap(e => e.sets));
-    const treadmillSpeeds = allSets.filter(s => s.weight_value !== null && s.weight_value < 10);
-    expect(treadmillSpeeds).toHaveLength(0);
+    expect(treadmill.sets.length).toBeGreaterThan(0);
+    expect(treadmill.unparsed_rows).toContain('7.1 for 5');
+
+    const { exercises } = deriveWorkoutAnalytics(r.sections);
+    const treadmillAgg = exercises.find(e => e.name === 'Treadmill');
+    expect(treadmillAgg.sets.length).toBeGreaterThan(0);
+    expect(treadmillAgg.estimated_pr).toBeNull();
 
     const bench = r.sections[0].exercises.find(e => e.name === 'DB Bench Press');
     expect(bench).toBeDefined();
     expect(bench.sets).toHaveLength(6);
+    const benchAgg = exercises.find(e => e.name === 'DB Bench Press');
+    expect(benchAgg.sets).toHaveLength(6);
   });
 
   test('Core: exercise with rep-only rows', () => {
@@ -3313,18 +3364,33 @@ describe('#616: parseWorkoutNote preserves parser errors on unparsed records', (
   });
 
   test('bare unparsed row records error and category in unparsed_positions with its raw', () => {
-    const { sections } = parseWorkoutNote('-Bench\n225 5\n140');
-    const pos = sections[0].exercises[0].unparsed_positions.find(p => p.raw === '140');
+    const { sections } = parseWorkoutNote('-Bench\n225 5\n135-155');
+    const pos = sections[0].exercises[0].unparsed_positions.find(p => p.raw === '135-155');
     expect(pos).toBeDefined();
-    expect(pos.error).toBe('Enter reps as reps,reps or weight reps,reps');
+    expect(pos.error).toMatch(/Ranges aren.t supported/);
     expect(pos.category).toBe('invalid_field_value');
   });
 
-  test('non-weight unparsed row carries no parser error (not a syntax error)', () => {
+  // #854/G1-p: a bare integer with no governing header declaration is
+  // preserved, not an error — distinct from #616's carried-error contract
+  // above, which is for genuinely invalid rows.
+  test('bare integer with no declaration is preserved (no error) in unparsed_positions', () => {
+    const { sections } = parseWorkoutNote('-Bench\n225 5\n140');
+    const pos = sections[0].exercises[0].unparsed_positions.find(p => p.raw === '140');
+    expect(pos).toBeDefined();
+    expect(pos.error).toBeNull();
+    expect(pos.category).toBeNull();
+  });
+
+  // #854/G5: cardio/non-weight exercises use the same row grammar as any
+  // other exercise now, so a genuinely malformed row still carries a real
+  // parser error/category — it is no longer silently swallowed.
+  test('a malformed row under a non-weight (cardio) exercise still carries a real parser error', () => {
     const { sections } = parseWorkoutNote('-Treadmill\n- 5 min easy');
     const entry = sections[0].exercises[0].session_entries.find(e => e.unparsed);
     expect(entry).toBeDefined();
-    expect(entry.error == null).toBe(true);
+    expect(entry.error).toBe('Invalid reps "min" — use: 8 or 8,8,8');
+    expect(entry.category).toBe('invalid_field_value');
   });
 
   test('oversize note is rejected with ok:false, an error message, and no synthetic sections', () => {
@@ -3433,15 +3499,22 @@ describe('#617: missing dash-space set rows recover or error instead of becoming
     expect(sections[0].exercises[0].sets).toEqual([]);
   });
 
-  test('under a non-weight (cardio) current exercise, a missing-space numeric row is kept as visible unparsed content, not a weighted set or a new header', () => {
+  // #854/G5: recovery under a cardio-named exercise behaves the same as
+  // under any other exercise now — a missing-space numeric row recovers as
+  // a real logged set, not special-cased unparsed content.
+  test('under a non-weight (cardio) current exercise, a missing-space numeric row still recovers as a set, not a new header', () => {
     const { sections } = parseWorkoutNote('-Treadmill\n-230 5');
     expect(sections[0].exercises).toHaveLength(1);
     const ex = sections[0].exercises[0];
     expect(ex.name).toBe('Treadmill');
-    const entry = ex.session_entries.find(e => e.unparsed);
+    const entry = ex.session_entries.find(e => e.recovered);
     expect(entry).toBeDefined();
     expect(entry.raw).toBe('230 5');
-    expect(entry.sets).toHaveLength(0);
+    expect(entry.sets).toEqual([{
+      set_index: 1, rep_count: 5,
+      weight_value: 230, weight_unit: 'lb',
+      duration_seconds: null, assistance_value: null, assistance_unit: null, note_text: null,
+    }]);
   });
 
   test('a dash header whose content does not parse as a set row is still a normal exercise header (no regression)', () => {
@@ -3481,5 +3554,295 @@ describe('#617: missing dash-space set rows recover or error instead of becoming
     const names = sections.flatMap(s => s.exercises.map(e => e.name));
     expect(names).toEqual(['Bench', 'Row', 'Core: Plank', 'Hinge', 'Bench']);
     expect(weekBStartIndex).not.toBeNull();
+  });
+});
+
+// #854: implements the #853 owner-approved F2a grammar decision table.
+// Regression fixtures use redacted representative patterns from the #849/#850
+// forensic audits, per the issue's Verification requirement.
+describe('#854: F2b grammar contract (per #853 decision table)', () => {
+  describe('G2 — bodyweight skip marker widened to the weighted branch alphabet', () => {
+    test('"3,3,-" parses as two reps sets plus one skipped set', () => {
+      const r = parseWorkoutRow('3,3,-');
+      expect(r.ok).toBe(true);
+      expect(r.sets).toHaveLength(3);
+      expect(r.sets[0]).toMatchObject({ rep_count: 3, weight_value: null });
+      expect(r.sets[1]).toMatchObject({ rep_count: 3, weight_value: null });
+      expect(r.sets[2]).toMatchObject({ rep_count: 0, skipped: true, weight_value: null });
+    });
+
+    test('"-,-" parses as two skipped sets', () => {
+      const r = parseWorkoutRow('-,-');
+      expect(r.ok).toBe(true);
+      expect(r.sets).toHaveLength(2);
+      expect(r.sets.every(s => s.skipped && s.rep_count === 0)).toBe(true);
+    });
+
+    test('a standalone "-" is still a whole-session skip marker, not a bodyweight group', () => {
+      const r = parseWorkoutRow('-');
+      expect(r.ok).toBe(true);
+      expect(r.skipped).toBe(true);
+    });
+
+    test('ranges are still rejected after the G2 widening: "135-155", "95-115"', () => {
+      expect(parseWorkoutRow('135-155').ok).toBe(false);
+      expect(parseWorkoutRow('95-115').ok).toBe(false);
+    });
+
+    test('a fraction-shaped token is still rejected after the G2 widening: "12/10"', () => {
+      expect(parseWorkoutRow('12/10').ok).toBe(false);
+    });
+  });
+
+  describe('G3 — trailing comma gets a specific message, and never misfires on a valid G2 skip group', () => {
+    test('"12," names the trailing comma and offers both completions', () => {
+      const r = parseWorkoutRow('12,');
+      expect(r.ok).toBe(false);
+      expect(r.error).toBe('Trailing comma in "12," — remove it (e.g. "12") or complete the group (e.g. "12,12")');
+    });
+
+    test('"120 12," under a weighted row also names the trailing comma', () => {
+      const r = parseWorkoutRow('120 12,');
+      expect(r.ok).toBe(false);
+      expect(r.error).toMatch(/Trailing comma in "12,"/);
+    });
+
+    test('"3,3,-" is valid (G2), not a trailing-comma error', () => {
+      expect(parseWorkoutRow('3,3,-').ok).toBe(true);
+    });
+  });
+
+  describe('G6 — ranges in set-row position are rejected with a range-specific message; headers unaffected', () => {
+    test.each(['135-155', '95-115'])('%s gets the range message, not the generic reps message', (input) => {
+      const r = parseWorkoutRow(input);
+      expect(r.ok).toBe(false);
+      expect(r.error).toMatch(/Ranges aren.t supported as a set value/);
+      expect(r.category).toBe('invalid_field_value');
+    });
+
+    test('"12/10" also gets the range message', () => {
+      const r = parseWorkoutRow('12/10');
+      expect(r.ok).toBe(false);
+      expect(r.error).toMatch(/Ranges aren.t supported as a set value/);
+    });
+
+    test('a range-shaped rep token in the weighted branch also gets the range message', () => {
+      const r = parseWorkoutRow('120 12-15');
+      expect(r.ok).toBe(false);
+      expect(r.error).toMatch(/Ranges aren.t supported as a set value/);
+    });
+
+    test('a range in an exercise header is unaffected — headers never reach the row grammar', () => {
+      const { sections } = parseWorkoutNote('-Bench 3x6-8\n135 5,5,5');
+      // The prescription range parses fine into the exercise identity (name
+      // normalization strips it; raw_header keeps it for G1's declaration
+      // grammar) — it never reaches the row grammar that rejects G6 ranges.
+      expect(sections[0].exercises[0].name).toBe('Bench');
+      expect(sections[0].exercises[0].raw_header).toBe('-Bench 3x6-8');
+      expect(sections[0].exercises[0].sets).toHaveLength(3);
+    });
+  });
+
+  describe('G1/G1-p — header-declaration grammar for bare-integer set rows', () => {
+    test('rule 1: "N x M T" timed-holds header declares duration', () => {
+      const d = parseHeaderDeclaration('-Plank 3x30 sec');
+      expect(d).toEqual({ type: 'duration' });
+    });
+
+    test('rule 2: "N-M T" timed target range declares duration', () => {
+      expect(parseHeaderDeclaration('-Hold 60-90 sec')).toEqual({ type: 'duration' });
+      expect(parseHeaderDeclaration('-Hold 30-45s')).toEqual({ type: 'duration' });
+    });
+
+    test('rule 1 precedes rule 3: "3x30 sec" reads as duration, not 30 reps', () => {
+      expect(parseHeaderDeclaration('-Plank 3x30 sec')).toEqual({ type: 'duration' });
+    });
+
+    test('rule 3: "N x M" / "N x M-P" rep prescription declares reps', () => {
+      expect(parseHeaderDeclaration('-Bench 3x6-8')).toEqual({ type: 'reps' });
+      expect(parseHeaderDeclaration('-Curl 2x10')).toEqual({ type: 'reps' });
+    });
+
+    // Follow-up review finding: the canonical "×" (U+00D7) the repo already
+    // uses for prescriptions (see deloadGenerator.js's parseExerciseHeader)
+    // must govern the same as ASCII "x", not just "X".
+    test('the canonical "×" multiplier governs the same as ASCII "x"', () => {
+      expect(parseHeaderDeclaration('-Bench 4×6–8')).toEqual({ type: 'reps' });
+      expect(parseHeaderDeclaration('-Plank 2×60s')).toEqual({ type: 'duration' });
+      expect(parseHeaderDeclaration('-Plank 2×30 sec')).toEqual({ type: 'duration' });
+    });
+
+    test('a "×"-declared header governs a bare-integer row the same as ASCII "x"', () => {
+      const { sections } = parseWorkoutNote('-Bench 4×6–8\n8');
+      const bench = sections[0].exercises[0];
+      expect(bench.sets).toEqual([{
+        set_index: 1, rep_count: 8,
+        weight_value: null, weight_unit: null,
+        duration_seconds: null, assistance_value: null, assistance_unit: null, note_text: null,
+      }]);
+    });
+
+    test('rule 4: a scalar time prescription alone declares nothing (G1-p)', () => {
+      expect(parseHeaderDeclaration('-Walk 5 min')).toBeNull();
+      expect(parseHeaderDeclaration('-Walk 10min')).toBeNull();
+    });
+
+    test('rule 5: no declaration at all', () => {
+      expect(parseHeaderDeclaration('-Bench')).toBeNull();
+      expect(parseHeaderDeclaration('-RDL')).toBeNull();
+    });
+
+    test('a bare integer under a governing reps header parses as one set of that many reps', () => {
+      const { sections } = parseWorkoutNote('-Bench 3x6-8\n8');
+      const bench = sections[0].exercises[0];
+      expect(bench.sets).toEqual([{
+        set_index: 1, rep_count: 8,
+        weight_value: null, weight_unit: null,
+        duration_seconds: null, assistance_value: null, assistance_unit: null, note_text: null,
+      }]);
+    });
+
+    test('a bare integer under a governing duration header parses as one timed set', () => {
+      const { sections } = parseWorkoutNote('-Plank 3x30 sec\n45');
+      const plank = sections[0].exercises[0];
+      expect(plank.sets).toEqual([{
+        set_index: 1, rep_count: null,
+        weight_value: null, weight_unit: null,
+        duration_seconds: 45, assistance_value: null, assistance_unit: null, note_text: null,
+      }]);
+    });
+
+    test('a bare integer with no header declaration is preserved: visible, no ⚠, no message', () => {
+      const { sections } = parseWorkoutNote('-Bench\n140');
+      const bench = sections[0].exercises[0];
+      expect(bench.sets).toHaveLength(0);
+      expect(bench.unparsed_rows).toContain('140');
+      const pos = bench.unparsed_positions.find(p => p.raw === '140');
+      expect(pos).toBeDefined();
+      expect(pos.error).toBeNull();
+      expect(pos.category).toBeNull();
+    });
+
+    test('a bare integer with no declaration, dash-prefixed, is preserved: visible, no ⚠, no message', () => {
+      const { sections } = parseWorkoutNote('-Bench\n- 140');
+      const bench = sections[0].exercises[0];
+      expect(bench.sets).toHaveLength(0);
+      const entry = bench.session_entries.find(e => e.raw === '140');
+      expect(entry).toBeDefined();
+      expect(entry.unparsed).toBe(true);
+      expect(entry.error).toBeNull();
+    });
+
+    test('a scalar-time header ("5 min") does not govern a bare integer row (rule 4 -> G1-p, accepted cost)', () => {
+      const { sections } = parseWorkoutNote('-Walk 5 min\n20');
+      const walk = sections[0].exercises[0];
+      expect(walk.sets).toHaveLength(0);
+      expect(walk.unparsed_rows).toContain('20');
+    });
+  });
+
+  describe('G7a — "-- " prose is preserved, never data, never an error', () => {
+    test('with no open exercise, a "-- " line is retained as a section-level annotation instead of dropped', () => {
+      const { sections } = parseWorkoutNote('Monday\n+Lifting\n-- felt strong today\n-Bench\n135 5');
+      expect(sections[0].annotations).toEqual(['felt strong today']);
+      expect(sections[0].exercises[0].name).toBe('Bench');
+    });
+  });
+
+  describe('G7b — bare prose typed directly as a set row teaches the "-- " form', () => {
+    test('a dash-prefixed prose line under an open exercise gets the note-form message, not the reps grammar', () => {
+      const { sections } = parseWorkoutNote('-Bench\n- felt tired today');
+      const entry = sections[0].exercises[0].session_entries.find(e => e.unparsed);
+      expect(entry).toBeDefined();
+      expect(entry.error).toMatch(/start it with "-- "/);
+    });
+
+    test('a bare (non-dash) prose line under an open exercise also gets the note-form message', () => {
+      const { sections } = parseWorkoutNote('-Bench\n225 5\nfelt tired today');
+      const pos = sections[0].exercises[0].unparsed_positions.find(p => p.raw === 'felt tired today');
+      expect(pos).toBeDefined();
+      expect(pos.error).toMatch(/start it with "-- "/);
+    });
+  });
+
+  describe('G7c — a nonblank line with no open exercise is preserved, never dropped, never an error', () => {
+    test('an orphan line before any exercise header is retained as a section annotation', () => {
+      const { sections } = parseWorkoutNote('Monday\n+Lifting\nfelt good warming up\n-Bench\n135 5');
+      expect(sections[0].annotations).toEqual(['felt good warming up']);
+    });
+  });
+
+  describe('G5 — cardio/non-weight exercises use ordinary row grammar; R3 excludes them from strength aggregates', () => {
+    test('a treadmill row parses as an ordinary structured set', () => {
+      const { sections } = parseWorkoutNote('-Bike\n10 5');
+      expect(sections[0].exercises[0].sets).toEqual([{
+        set_index: 1, rep_count: 5,
+        weight_value: 10, weight_unit: 'lb',
+        duration_seconds: null, assistance_value: null, assistance_unit: null, note_text: null,
+      }]);
+    });
+
+    // #854/R3: the real occurrence data stays intact (`.sets`) for consumers
+    // that need it (e.g. deriveNonWeightedTrackedExerciseMetrics) — only
+    // PR/max is excluded for a warmup-kind occurrence.
+    test('a warmup-section set of any exercise keeps its data but is excluded from PR/max', () => {
+      const note = 'Monday\n+Warmup\n-Bike\n10 5\n+Lifting\n-Bench\n135 5,5,5';
+      const { sections } = parseWorkoutNote(note);
+      const { exercises } = deriveWorkoutAnalytics(sections);
+      const bike = exercises.find(e => e.name === 'Bike');
+      expect(bike.sets).toHaveLength(1);
+      expect(bike.estimated_pr).toBeNull();
+      const bench = exercises.find(e => e.name === 'Bench');
+      expect(bench.sets).toHaveLength(3);
+      expect(bench.estimated_pr).not.toBeNull();
+    });
+
+    test('a cardio-named exercise keeps its data but is excluded from PR/max even outside a warmup section', () => {
+      const note = '-Bike\n10 5\n-Bench\n135 5,5,5';
+      const { sections } = parseWorkoutNote(note);
+      const { exercises } = deriveWorkoutAnalytics(sections);
+      const bike = exercises.find(e => e.name === 'Bike');
+      expect(bike.sets).toHaveLength(1);
+      expect(bike.estimated_pr).toBeNull();
+      expect(bike.latest_pr).toBeNull();
+    });
+
+    // #854/R3: dedicated non-weighted consumers (tracked-exercise cards) must
+    // still see the real cardio data through deriveWorkoutAnalytics —
+    // exercised via deriveNonWeightedTrackedExerciseMetrics itself, since
+    // that is the actual regression this guards against.
+    test('a tracked cardio exercise still gets non-weighted metrics (reps/hold), not a blanked-out card', () => {
+      const { deriveNonWeightedTrackedExerciseMetrics } = require('../lib/data');
+      const note = '-Bike\n20,20\n20,20\n25,25';
+      const { sections } = parseWorkoutNote(note);
+      const metrics = deriveNonWeightedTrackedExerciseMetrics(sections, ['Bike']);
+      expect(metrics['bike']).toBeDefined();
+      expect(metrics['bike'].exercise_class).toBe('reps_only');
+      expect(metrics['bike'].avg_reps).not.toBeNull();
+    });
+  });
+
+  describe('C2 — a preserved bare-integer segment does not get swallowed into a continuation set', () => {
+    test('"100 5 - 8" keeps "8" as a captured prose tail, not an extra empty set', () => {
+      const r = parseWorkoutRow('100 5 - 8');
+      expect(r.ok).toBe(true);
+      expect(r.sets).toHaveLength(1);
+      expect(r.tail).toBe('8');
+    });
+
+    // #617/G1 interaction: a missing-space bare integer ("-8") under a
+    // current exercise with no declaration still recovers (never a phantom
+    // "8"-named exercise) — it lands as a preserved, not structured, entry.
+    test('"-8" under a current exercise with no declaration recovers as preserved content, not a phantom exercise', () => {
+      const { sections } = parseWorkoutNote('-Bench\n-8');
+      expect(sections[0].exercises).toHaveLength(1);
+      const bench = sections[0].exercises[0];
+      expect(bench.name).toBe('Bench');
+      expect(bench.sets).toHaveLength(0);
+      const entry = bench.session_entries.find(e => e.raw === '8');
+      expect(entry).toBeDefined();
+      expect(entry.unparsed).toBe(true);
+      expect(entry.error).toBeNull();
+    });
   });
 });

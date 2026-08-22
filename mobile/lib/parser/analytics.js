@@ -1,4 +1,5 @@
 import { normalizeExerciseKey, _canonicalizeName } from './exerciseNames.js';
+import { isStrengthExerciseName } from '../data/exerciseCatalog.js';
 
 export function epleyPR(weight, reps) {
   if (!weight || !reps || weight <= 0 || reps <= 0) return null;
@@ -16,6 +17,15 @@ export function deriveWorkoutAnalytics(sections) {
         byName.set(key, { name: _canonicalizeName(ex.name), occurrences: [], sets: [], rows: [], unparsed_rows: [] });
       }
       const derived = byName.get(key);
+      // #854/G5: cardio/non-weight exercises now parse as ordinary
+      // structured rows (real weight_value/rep_count) — occurrences/sets/rows
+      // stay intact here so consumers that need the real logged data for
+      // tracked warmup, timed-hold, reps-only, and cardio exercises (e.g.
+      // deriveNonWeightedTrackedExerciseMetrics) keep working. R3's
+      // exclusion from strength aggregates (tonnage, PR/max, rep-drop-off) is
+      // applied below, only to this function's own PR calculation, and at
+      // the specific strength-aggregate call sites in workoutAnalytics.js —
+      // never by blanking the shared occurrence data itself.
       derived.occurrences.push({ heading, subheading, kind, rows: ex.rows, sets: ex.sets, unparsed_rows: ex.unparsed_rows, session_entries: ex.session_entries });
       for (const s of ex.sets) derived.sets.push(s);
       for (const r of ex.rows) derived.rows.push(r);
@@ -25,9 +35,17 @@ export function deriveWorkoutAnalytics(sections) {
 
   const exercises = [];
   for (const derived of byName.values()) {
+    // #854/R3: PR/max is a strength-specific metric — a warmup-kind
+    // occurrence, or any occurrence under a non-strength (cardio) exercise
+    // name, never contributes to it. This only filters the PR calculation
+    // below; `occurrences`/`sets`/`rows` on the returned exercise stay the
+    // real, unfiltered data.
+    const strengthEligible = isStrengthExerciseName(derived.name);
     const set_prs = [];
     for (let oi = 0; oi < derived.occurrences.length; oi++) {
-      for (const set of derived.occurrences[oi].sets) {
+      const occ = derived.occurrences[oi];
+      if (!strengthEligible || occ.kind === 'warmup') continue;
+      for (const set of occ.sets) {
         set_prs.push({ set, epley_pr: epleyPR(set.weight_value, set.rep_count), occurrence_index: oi });
       }
     }
@@ -90,8 +108,11 @@ function _occurrenceTopWeight(occurrence) {
   return Math.max(...weighted.map(s => s.weight_value));
 }
 
+// #854/R3: a warmup-kind occurrence never contributes to a progression
+// signal (strength or bodyweight/reps-only) — excluded unconditionally here,
+// independent of the exercise-name strength gate its callers apply.
 function _buildComparable(occs) {
-  return occs.flatMap(occ => {
+  return occs.filter(occ => occ.kind !== 'warmup').flatMap(occ => {
     const valid = (occ.session_entries || []).filter(se => !se.skipped && !se.unparsed);
     if (valid.length > 0) return valid.map(se => ({ sets: se.sets }));
     const rows = (occ.rows || []).filter(r => r.sets && r.sets.length > 0);
@@ -169,7 +190,11 @@ export function deriveProgressionSignals(sections, trackedNames) {
       if (occs.length === 0) return absent;
 
       const kilo_max = ex.estimated_pr;
-      const comparable = _buildComparable(occs);
+      // #854/R3: progression signal (weighted or bodyweight/reps-only) is a
+      // strength-aggregate concept — a cardio-named tracked exercise gets no
+      // signal here at all; its card metrics come from
+      // deriveNonWeightedTrackedExerciseMetrics instead.
+      const comparable = isStrengthExerciseName(ex.name) ? _buildComparable(occs) : [];
       const signal = _deriveSignalForComparables(comparable);
       if (!signal) return absent;
 
@@ -198,9 +223,11 @@ export function derivePerDaySignals(sections, trackedNames) {
       byHeading.get(heading).push(occ);
     }
 
+    // #854/R3: see deriveProgressionSignals above — same strength-name gate.
+    const strengthEligible = isStrengthExerciseName(ex.name);
     const dayMap = {};
     for (const [heading, occs] of byHeading) {
-      const comparable = _buildComparable(occs);
+      const comparable = strengthEligible ? _buildComparable(occs) : [];
       const signal = _deriveSignalForComparables(comparable);
       if (!signal) {
         dayMap[heading] = { latest_pr: null, latest_top_weight: null, overload_trend: null, is_bodyweight: false };

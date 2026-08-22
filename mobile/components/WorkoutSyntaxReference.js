@@ -38,6 +38,7 @@ export const WORKOUT_SYNTAX_ROW_EXPLANATIONS = [
   { code: '140 5,5', desc: 'Logs 2 sets at 140 lbs for 5 reps (each new line is a new session)' },
   { code: '-', desc: 'A single dash on a set line marks that session as skipped' },
   { code: '12,12', desc: 'Logs bodyweight exercises (reps only, no weight prefix)' },
+  { code: '-- felt strong today', desc: 'Two dashes start a note — never parsed as a set' },
 ];
 
 export function WorkoutSyntaxReference() {

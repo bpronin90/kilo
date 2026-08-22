@@ -291,7 +291,11 @@ export function SetLine({ sets, selectable, mark }) {
       currentGroup = { weight: set.weight_value, reps: [], convertedFromKg, kgValue };
       groups.push(currentGroup);
     }
-    currentGroup.reps.push(set.skipped ? '-' : set.rep_count);
+    // #854/G4: a duration set (header-declared, e.g. "3x30 sec") carries
+    // duration_seconds instead of rep_count.
+    currentGroup.reps.push(
+      set.skipped ? '-' : (set.duration_seconds != null ? `${set.duration_seconds}s` : set.rep_count)
+    );
   }
 
   return (
