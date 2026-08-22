@@ -17,19 +17,19 @@ function CompactSetLine({ sets, unit, styles, mark }) {
   const groups = [];
   let currentGroup = null;
   for (const set of sets) {
-    if (!currentGroup || currentGroup.weight !== set.weight_value) {
-      // #852: mirrors SetLine's grouping in UI.js — see that component's
-      // comment for why convertedFromKg/kgValue are carried per group.
-      currentGroup = {
-        weight: set.weight_value,
-        reps: [],
-        convertedFromKg: !!set.converted_from_kg,
-        kgValue: set.kg_value ?? null,
-      };
+    // #852: mirrors SetLine's grouping in UI.js — see that component's
+    // comment for why the group breaks on conversion identity, not just the
+    // weight number.
+    const convertedFromKg = !!set.converted_from_kg;
+    const kgValue = set.kg_value ?? null;
+    if (
+      !currentGroup
+      || currentGroup.weight !== set.weight_value
+      || currentGroup.convertedFromKg !== convertedFromKg
+      || currentGroup.kgValue !== kgValue
+    ) {
+      currentGroup = { weight: set.weight_value, reps: [], convertedFromKg, kgValue };
       groups.push(currentGroup);
-    } else if (set.converted_from_kg && !currentGroup.convertedFromKg) {
-      currentGroup.convertedFromKg = true;
-      currentGroup.kgValue = set.kg_value ?? null;
     }
     currentGroup.reps.push(set.skipped ? '-' : set.rep_count);
   }

@@ -273,23 +273,23 @@ export function SetLine({ sets, selectable, mark }) {
   let currentGroup = null;
 
   for (const set of sets) {
-    if (!currentGroup || currentGroup.weight !== set.weight_value) {
-      // #852: a kg-marked load ("40kg 10") converts to its canonical lb
-      // weight_value at parse time, so grouping by weight_value already
-      // merges it correctly with any bare-lb set of the same value. Carry
-      // convertedFromKg/kgValue from whichever set in the group set them
-      // (in practice every set sharing a load token agrees) so the group
-      // can show that this number was converted, not just display it.
-      currentGroup = {
-        weight: set.weight_value,
-        reps: [],
-        convertedFromKg: !!set.converted_from_kg,
-        kgValue: set.kg_value ?? null,
-      };
+    // #852: a kg-marked load ("40kg 10") converts to its canonical lb
+    // weight_value at parse time, so a converted set and a bare-lb set can
+    // share a weight_value ("88 10" then "40kg 8") while needing different
+    // labels. Break the group on the conversion identity too, not just the
+    // number, so a genuine lb set is never labelled as converted. kgValue is
+    // compared as well: 40kg and 41kg both round to 88 lb but render
+    // different suffixes, so they must not merge either.
+    const convertedFromKg = !!set.converted_from_kg;
+    const kgValue = set.kg_value ?? null;
+    if (
+      !currentGroup
+      || currentGroup.weight !== set.weight_value
+      || currentGroup.convertedFromKg !== convertedFromKg
+      || currentGroup.kgValue !== kgValue
+    ) {
+      currentGroup = { weight: set.weight_value, reps: [], convertedFromKg, kgValue };
       groups.push(currentGroup);
-    } else if (set.converted_from_kg && !currentGroup.convertedFromKg) {
-      currentGroup.convertedFromKg = true;
-      currentGroup.kgValue = set.kg_value ?? null;
     }
     currentGroup.reps.push(set.skipped ? '-' : set.rep_count);
   }
