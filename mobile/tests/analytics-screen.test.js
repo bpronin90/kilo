@@ -13,6 +13,7 @@ import {
   deloadSessionsLogged,
   elapsedWeeksOnRoutine,
 } from '../lib/data';
+import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
 
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -87,11 +88,28 @@ function setup({ entries = [], hookOverrides = {}, featureToggles = {} } = {}) {
     blocks: hookOverrides.recoveryBlocks || [],
     weeks: hookOverrides.recoveryWeeks || [],
     loading: false,
+    // Drives `useActiveTrainingContext` (real implementation by default — see
+    // the module mock above), which reads `activeBlock`/`weeks`, NOT `blocks`
+    // (#871). Existing callers that only set `recoveryBlocks` above therefore
+    // keep resolving to the NORMAL status exactly as before this field
+    // existed — only a test that explicitly sets `activeBlock` opts into the
+    // active-Recovery hierarchy.
+    activeBlock: hookOverrides.activeBlock ?? null,
+    ready: hookOverrides.recoveryReady,
+    stale: hookOverrides.recoveryStale,
+    pendingRecovery: hookOverrides.pendingRecovery,
   });
 
   let component;
   render.act(() => {
-    component = render.create(<AnalyticsScreen multiplier={1.07} section={null} />);
+    component = render.create(
+      <AnalyticsScreen
+        multiplier={1.07}
+        section={hookOverrides.section ?? null}
+        sectionNonce={hookOverrides.sectionNonce}
+        onNavigate={hookOverrides.onNavigate}
+      />
+    );
   });
   return component;
 }
@@ -485,6 +503,34 @@ describe('deriveOverviewRows (#821)', () => {
     expect(rowFor(rows, 'oneK').unavailable).toBe(true);
     expect(rowFor(rows, 'progress').unavailable).toBe(true);
     expect(rowFor(rows, 'weight').unavailable).toBe(true);
+  });
+
+  // Review finding on PR #876 (#871): the 1K row kept reporting its
+  // "since your last session" delta as fresh during active Recovery, unlike
+  // Exercise Progress/Routine which already get `paused` metadata. The value
+  // itself must stay the true latest total — only the delta/caption are
+  // suppressed and the row is marked paused, same shape as the other two.
+  test('the 1K row is marked paused and suppresses its delta during active Recovery, but keeps its true value', () => {
+    const rows = deriveOverviewRows({
+      oneKPoints: [{ value: 940 }, { value: 975 }, { value: 1000 }],
+      activeTraining: { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 1 },
+    });
+    const oneK = rowFor(rows, 'oneK');
+    expect(oneK.value).toBe(1000);
+    expect(oneK.paused).toBe(true);
+    expect(oneK.pausedCaption).toBe('Baseline training paused during Recovery');
+    expect(oneK.delta).toBeNull();
+    expect(oneK.deltaCaption).toBeNull();
+  });
+
+  test('outside active Recovery the 1K row is not paused and its delta still reports', () => {
+    const rows = deriveOverviewRows({
+      oneKPoints: [{ value: 940 }, { value: 975 }, { value: 1000 }],
+    });
+    const oneK = rowFor(rows, 'oneK');
+    expect(oneK.paused).toBe(false);
+    expect(oneK.delta).toBe(25);
+    expect(oneK.deltaCaption).toBe('since your last session');
   });
 });
 
@@ -2347,6 +2393,321 @@ describe('AnalyticsScreen load-failure banners (#737)', () => {
 
     expect(hasText(component.root, 'Could not load workout notes')).toBe(true);
     expect(component.root.findAllByType('ActivityIndicator')).toHaveLength(0);
+  });
+});
+
+// ── Zero Friction F9 (#871): Analytics follows active Recovery ────────────────
+//
+// During an active Recovery block, baseline-only sections (Fatigue,
+// Strength/Progressive Overload, Big 3 Mapping) collapse under one
+// disclosure and the Overview leads with Recovery state + current weight
+// instead of frozen baseline counts. Weight keeps updating live; baseline
+// counts stay reachable, unrecomputed, and captioned as paused. Ending
+// Recovery restores the exact pre-existing hierarchy (already proven by the
+// R5b describe block above, which sets no `activeBlock` and therefore never
+// enters this branch).
+
+describe('AnalyticsScreen follows active Recovery (#871)', () => {
+  // `activeTrainingContext` is driven directly through
+  // `useEntries.useActiveTrainingContext` rather than through
+  // `useRecoveryBlockState` overrides: the real `useActiveTrainingContext`
+  // implementation (recoveryBlockHooks.js) calls ITS OWN module-local
+  // `useRecoveryBlockState`, not the one this file mocks on the `useEntries`
+  // module surface — so driving it through that mock would silently read
+  // real (unmocked) storage state instead. Mocking `useActiveTrainingContext`
+  // itself is exactly the seam AnalyticsScreen consumes it through, and is
+  // already this file's pattern (see the `threads the stored currentId`
+  // describe block below).
+  const actualUseActiveTrainingContext = jest.requireActual('../hooks/useEntries').useActiveTrainingContext;
+  // `useRecoveryBlockState` (recoveryBlockHooks.js) backs every mount with a
+  // module-level shared subscription (one real listener for however many
+  // instances are mounted). Every `setup()` call below is captured here and
+  // unmounted afterward so it does not stay subscribed into a LATER test in
+  // this file that exercises the real, unmocked hook (e.g. "threads the
+  // stored currentId" right below this block) — an unmounted-but-still-open
+  // handle there previously crashed on stale shared state.
+  const mountedComponents = [];
+  function renderScreen(hookOverrides) {
+    const component = setup({ hookOverrides });
+    mountedComponents.push(component);
+    return component;
+  }
+  afterEach(() => {
+    useEntries.useActiveTrainingContext.mockImplementation(actualUseActiveTrainingContext);
+    while (mountedComponents.length > 0) {
+      const c = mountedComponents.pop();
+      render.act(() => { c.unmount(); });
+    }
+  });
+
+  function mockActiveTraining(overrides = {}) {
+    useEntries.useActiveTrainingContext.mockReturnValue({
+      status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK,
+      activeNoteId: 'note-recovery-w1',
+      baselineNoteId: 'note-baseline',
+      baselinePaused: true,
+      recoveryWeekNumber: 1,
+      nextAction: null,
+      activeBlock: { id: 'rb-open' },
+      stale: false,
+      pending: false,
+      activeNote: null,
+      baselineNote: null,
+      ...overrides,
+    });
+  }
+
+  test('open-week Recovery collapses baseline sections under one disclosure by default', () => {
+    mockActiveTraining();
+    const component = renderScreen();
+    const root = component.root;
+
+    expect(root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).length).toBeGreaterThan(0);
+    // Baseline-only content is not on screen while collapsed.
+    expect(hasText(root, 'Fatigue Tracking')).toBe(false);
+    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBe(0);
+    expect(root.findAllByProps({ testID: 'overload-list-anchor' }).length).toBe(0);
+    // Recovery-live content stays visible.
+    expect(hasText(root, 'Weight Trends')).toBe(true);
+  });
+
+  test('tapping the disclosure expands baseline sections; tapping again re-collapses', () => {
+    mockActiveTraining();
+    const component = renderScreen();
+    const root = component.root;
+    const toggle = root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).find(n => typeof n.props.onPress === 'function');
+
+    render.act(() => { toggle.props.onPress(); });
+    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
+    expect(toggle.props.accessibilityState.expanded).toBe(true);
+
+    render.act(() => { toggle.props.onPress(); });
+    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBe(0);
+    expect(toggle.props.accessibilityState.expanded).toBe(false);
+  });
+
+  test('navigating to a section inside the collapsed disclosure auto-expands it', () => {
+    mockActiveTraining();
+    const component = renderScreen({ section: 'strength', sectionNonce: 1 });
+    const root = component.root;
+    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
+  });
+
+  test('Overview leads with a Recovery row and Body Weight stays live, not paused', () => {
+    mockActiveTraining();
+    const component = renderScreen();
+    const root = component.root;
+    const labels = findAllText(root);
+    const indexOf = (needle) => labels.findIndex(s => s.includes(needle));
+
+    expect(indexOf('Recovery')).toBeGreaterThanOrEqual(0);
+    const weightRow = root.findAllByProps({ testID: 'overview-row-weight' }).find(n => typeof n.props.onPress === 'function');
+    // The weight row's own text content must never say "paused" — it is
+    // live during Recovery (#871 scope: weight keeps updating normally).
+    const weightTexts = weightRow.findAllByType('Text').map(t => {
+      const c = t.props.children;
+      return Array.isArray(c) ? c.join('') : String(c ?? '');
+    }).join(' ');
+    expect(weightTexts.toLowerCase()).not.toContain('paused');
+  });
+
+  test('Exercise Progress row is captioned as paused baseline history during active Recovery', () => {
+    mockActiveTraining();
+    const component = renderScreen();
+    const root = component.root;
+    expect(hasText(root, 'Baseline training paused during Recovery')).toBe(true);
+  });
+
+  // Review finding on PR #876: the 1K row rendered its frozen value and
+  // "since your last session" delta as if fresh during active Recovery,
+  // unlike Exercise Progress/Routine which already get the paused treatment.
+  test('1K row is captioned as paused baseline history and does not show a fresh delta during active Recovery', () => {
+    mockActiveTraining();
+    const component = renderScreen();
+    const root = component.root;
+    const oneKRow = root.findAllByProps({ testID: 'overview-row-oneK' }).find(n => typeof n.props.onPress === 'function');
+    const oneKTexts = oneKRow.findAllByType('Text').map(t => {
+      const c = t.props.children;
+      return Array.isArray(c) ? c.join('') : String(c ?? '');
+    }).join(' ');
+    expect(oneKTexts).toContain('Baseline training paused during Recovery');
+    expect(oneKTexts.toLowerCase()).not.toContain('since your last session');
+  });
+
+  test('between-weeks Recovery (open block, no open week) also collapses the baseline disclosure', () => {
+    mockActiveTraining({
+      status: ACTIVE_TRAINING_STATUS.RECOVERY_BETWEEN_WEEKS,
+      activeNoteId: null,
+      recoveryWeekNumber: 1,
+      nextAction: 'add_week_or_end_recovery',
+    });
+    const component = renderScreen();
+    const root = component.root;
+    expect(root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).length).toBeGreaterThan(0);
+    expect(hasText(root, 'Between weeks')).toBe(true);
+  });
+
+  test('a stale read with no active block (STALE status) is treated as unreliable, not active Recovery — normal hierarchy stays', () => {
+    mockActiveTraining({
+      status: ACTIVE_TRAINING_STATUS.STALE,
+      activeNoteId: 'note-baseline',
+      baselineNoteId: 'note-baseline',
+      baselinePaused: false,
+      recoveryWeekNumber: null,
+      activeBlock: null,
+      stale: true,
+    });
+    const component = renderScreen();
+    const root = component.root;
+    expect(root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).length).toBe(0);
+  });
+
+  test('a pending journaled Recovery operation with no active block (PENDING status) keeps the normal hierarchy', () => {
+    mockActiveTraining({
+      status: ACTIVE_TRAINING_STATUS.PENDING,
+      activeNoteId: 'note-baseline',
+      baselineNoteId: 'note-baseline',
+      baselinePaused: false,
+      recoveryWeekNumber: null,
+      activeBlock: null,
+      pending: true,
+    });
+    const component = renderScreen();
+    const root = component.root;
+    expect(root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).length).toBe(0);
+  });
+
+  test('ending Recovery (verified NORMAL) restores the unchanged normal hierarchy with everything expanded', () => {
+    mockActiveTraining({
+      status: ACTIVE_TRAINING_STATUS.NORMAL,
+      activeNoteId: 'note-baseline',
+      baselineNoteId: 'note-baseline',
+      baselinePaused: false,
+      recoveryWeekNumber: null,
+      activeBlock: null,
+    });
+    const component = renderScreen();
+    const root = component.root;
+    expect(root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).length).toBe(0);
+    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
+    expect(hasText(root, 'Baseline training paused during Recovery')).toBe(false);
+  });
+
+  test('active Recovery suppresses the deload advisory on the session gauge but keeps the count', () => {
+    mockActiveTraining();
+    const component = renderScreen();
+    const root = component.root;
+    const toggle = root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).find(n => typeof n.props.onPress === 'function');
+    render.act(() => { toggle.props.onPress(); });
+    const gauge = root.findByType(require('../components/UI').SessionGauge);
+    expect(gauge.props.showDeload).toBe(false);
+  });
+
+  // Review finding on PR #876: Overview's 1K and Exercise Progress rows drove
+  // `sectionOffsets` directly while collapsed, which never opened the
+  // disclosure — a fresh mount had no offset yet (silent no-op) and a stale
+  // offset scrolled to the wrong place. Both rows must instead route through
+  // the same expand-then-layout flow external section navigation already
+  // uses.
+  test('tapping Overview\'s 1K row during active Recovery auto-expands the collapsed baseline disclosure (fresh mount, no prior offset)', () => {
+    mockActiveTraining();
+    const component = renderScreen();
+    const root = component.root;
+
+    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBe(0);
+
+    const oneKRow = root.findAllByProps({ testID: 'overview-row-oneK' }).find(n => typeof n.props.onPress === 'function');
+    render.act(() => { oneKRow.props.onPress(); });
+
+    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
+  });
+
+  test('tapping Overview\'s Exercise Progress row during active Recovery auto-expands the collapsed baseline disclosure', () => {
+    mockActiveTraining();
+    const component = renderScreen();
+    const root = component.root;
+
+    const progressRow = root.findAllByProps({ testID: 'overview-row-progress' }).find(n => typeof n.props.onPress === 'function');
+    render.act(() => { progressRow.props.onPress(); });
+
+    expect(root.findAllByProps({ testID: 'overload-list-anchor' }).length).toBeGreaterThan(0);
+  });
+
+  test('tapping Overview\'s 1K row still scrolls correctly once the disclosure is already expanded (offset exists)', () => {
+    mockActiveTraining();
+    const component = renderScreen();
+    const root = component.root;
+
+    const toggle = root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).find(n => typeof n.props.onPress === 'function');
+    render.act(() => { toggle.props.onPress(); });
+    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
+
+    const oneKRow = root.findAllByProps({ testID: 'overview-row-oneK' }).find(n => typeof n.props.onPress === 'function');
+    render.act(() => { oneKRow.props.onPress(); });
+
+    // Disclosure stays expanded (it was already open) and the row's own tap
+    // does not collapse it back.
+    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
+  });
+
+  // Review finding on PR #876: `baselineCollapsed` persists across tab
+  // changes (AnalyticsScreen stays mounted). Without resetting on a NEW
+  // active-Recovery period, a block the user previously expanded — then
+  // ended — would leave a later, unrelated Recovery period pre-expanded
+  // instead of opening with the intended collapsed default.
+  test('starting a NEW active-Recovery period resets baselineCollapsed to collapsed, even after the user expanded a prior period', () => {
+    mockActiveTraining({ activeBlock: { id: 'rb-first' } });
+    const component = renderScreen();
+    const root = component.root;
+
+    // User expands the disclosure during the first Recovery period.
+    let toggle = root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).find(n => typeof n.props.onPress === 'function');
+    render.act(() => { toggle.props.onPress(); });
+    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
+
+    // Recovery ends (verified NORMAL) — the disclosure itself disappears.
+    mockActiveTraining({ status: ACTIVE_TRAINING_STATUS.NORMAL, activeBlock: null, baselinePaused: false, recoveryWeekNumber: null });
+    render.act(() => {
+      component.update(<AnalyticsScreen multiplier={1.07} section={null} sectionNonce={undefined} />);
+    });
+    expect(root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).length).toBe(0);
+
+    // A new, distinct active-Recovery period starts (different block id).
+    mockActiveTraining({ activeBlock: { id: 'rb-second' } });
+    render.act(() => {
+      component.update(<AnalyticsScreen multiplier={1.07} section={null} sectionNonce={undefined} />);
+    });
+
+    // The new period must open collapsed, not carry forward the earlier
+    // expansion.
+    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBe(0);
+    toggle = root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).find(n => typeof n.props.onPress === 'function');
+    expect(toggle.props.accessibilityState.expanded).toBe(false);
+  });
+
+  test('a same-period toggle (open-week to between-weeks, same block id) is NOT reset by the in-session expand', () => {
+    mockActiveTraining({ activeBlock: { id: 'rb-same' } });
+    const component = renderScreen();
+    const root = component.root;
+
+    const toggle = root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).find(n => typeof n.props.onPress === 'function');
+    render.act(() => { toggle.props.onPress(); });
+    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
+
+    // Same Recovery block transitions from an open week to between-weeks —
+    // the block id is unchanged, so the user's expansion must survive.
+    mockActiveTraining({
+      status: ACTIVE_TRAINING_STATUS.RECOVERY_BETWEEN_WEEKS,
+      activeNoteId: null,
+      recoveryWeekNumber: 1,
+      nextAction: 'add_week_or_end_recovery',
+      activeBlock: { id: 'rb-same' },
+    });
+    render.act(() => {
+      component.update(<AnalyticsScreen multiplier={1.07} section={null} sectionNonce={undefined} />);
+    });
+
+    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
   });
 });
 

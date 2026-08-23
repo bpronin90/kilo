@@ -37,25 +37,29 @@ function OverviewRow({ row, unit, onPress }) {
   const delta = formatDelta(row);
   const interactive = !!row.section && !!onPress && !row.unavailable;
 
-  // The three "no number" conditions are deliberately distinct. A failed read
+  // The four "no number" conditions are deliberately distinct. A failed read
   // must never render as an empty state: "—, Unavailable" and "—, log something"
   // are different claims, and #737 exists because the tab used to make the
-  // second one when the first was true.
+  // second one when the first was true. `paused` (#871) is its own condition
+  // for the same reason: a frozen baseline count during active Recovery must
+  // read as paused history, never as a fresh empty/loaded value.
   const caption = row.unavailable
     ? 'Unavailable — could not load'
-    : value == null
-      ? row.emptyCaption
-      : delta && row.deltaCaption
-        ? null
+    : row.paused
+      ? (row.pausedCaption || 'Paused')
+      : value == null
+        ? row.emptyCaption
         : null;
 
   const accessibilityLabel = [
     row.label,
     row.unavailable
       ? 'unavailable, could not be loaded'
-      : value == null
-        ? (row.emptyCaption || 'no data yet')
-        : `${value}${row.showUnit ? ` ${unit}` : ''}${row.valueSuffix ? ` ${row.valueSuffix}` : ''}`,
+      : row.paused
+        ? `${value != null ? `${value}${row.showUnit ? ` ${unit}` : ''}${row.valueSuffix ? ` ${row.valueSuffix}` : ''}, ` : ''}${row.pausedCaption || 'paused'}`
+        : value == null
+          ? (row.emptyCaption || 'no data yet')
+          : `${value}${row.showUnit ? ` ${unit}` : ''}${row.valueSuffix ? ` ${row.valueSuffix}` : ''}`,
     delta && row.deltaCaption
       ? `${delta.up ? 'up' : 'down'} ${delta.text.replace(/[▲▼]\s*/, '')}${row.showUnit ? ` ${unit}` : ''}, ${row.deltaCaption}`
       : null,
@@ -69,7 +73,11 @@ function OverviewRow({ row, unit, onPress }) {
           {value == null ? (
             <Text style={styles.rowValueEmpty}>—</Text>
           ) : (
-            <Text style={styles.rowValue}>
+            // Paused rows (#871) keep their real value on screen — it is still
+            // the true frozen count — but muted like the empty-value tone, so a
+            // baseline count that has stopped accumulating never reads as a
+            // fresh live one at a glance.
+            <Text style={row.paused ? styles.rowValuePaused : styles.rowValue}>
               {value}
               {row.showUnit && <Text style={styles.rowValueUnit}> {unit}</Text>}
             </Text>
@@ -214,6 +222,14 @@ const createStyles = (colors) => StyleSheet.create({
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
   },
   rowValueEmpty: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  // Same weight/size as a normal value, muted like the empty tone (#871): a
+  // paused baseline count is a real, true number — not absent — but must not
+  // read with the same visual weight as a value that is live right now.
+  rowValuePaused: {
     fontSize: 17,
     fontWeight: '700',
     color: colors.textMuted,
