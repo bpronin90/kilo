@@ -373,13 +373,43 @@ describe('backup round trip', () => {
     expect(result.error).toMatch(/reason must be a string/);
   });
 
-  test('an empty-string reason is refused: null is the one stored absence', async () => {
+  // #872 requires an empty reason to be ACCEPTED and normalized consistently —
+  // never rejected. Import converges it on `null`, the same value that clearing
+  // the field in the app produces, so a blank in a hand-edited file means "no
+  // reason" exactly as it does everywhere else (review of 33fe98b).
+  test.each([
+    ['an empty string', ''],
+    ['whitespace only', '   '],
+    ['newlines only', '\n\n'],
+  ])('%s is accepted on import and stored as null, not refused', async (_label, value) => {
+    await seedNoteAndBlock(legacyBlock({ reason: 'torn hamstring' }));
+    const payload = JSON.parse(JSON.stringify(await exportBackup()));
+    payload.recovery_blocks[0].reason = value;
+
+    await AsyncStorage.clear();
+    const result = await importBackup(payload);
+    expect(result.ok).toBe(true);
+    expect((await loadRecoveryBlocksRaw())[0].reason).toBeNull();
+  });
+
+  test('an imported empty reason is indistinguishable from a cleared one', async () => {
+    // The three states #872 requires to stay indistinguishable, reached by
+    // three different routes and landing on the same stored value.
     await seedNoteAndBlock(legacyBlock({ reason: 'torn hamstring' }));
     const payload = JSON.parse(JSON.stringify(await exportBackup()));
     payload.recovery_blocks[0].reason = '   ';
-    const result = await importBackup(payload);
-    expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/must be null rather than empty/);
+    await AsyncStorage.clear();
+    await importBackup(payload);
+    const imported = (await loadRecoveryBlocksRaw())[0].reason;
+
+    await AsyncStorage.clear();
+    await seedNoteAndBlock(legacyBlock({ reason: 'torn hamstring' }));
+    await updateRecoveryBlock('rb-legacy', { reason: '' });
+    const cleared = (await loadRecoveryBlocksRaw())[0].reason;
+
+    expect(imported).toBeNull();
+    expect(cleared).toBeNull();
+    expect(imported).toBe(cleared);
   });
 
   test('a rejected payload writes nothing at all', async () => {
