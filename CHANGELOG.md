@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.113.0 - 2026-08-23
+
+- Issue #856: Log editor: syntax and session-alignment problems in a workout note are now surfaced inline while typing, with a compact error/warning count and Next/Prev controls that jump the cursor straight to the offending line, no more digging through the text or leaving edit mode. Validation is debounced so retyping a large note stays responsive, and nothing about the authored text is ever rewritten.
+
+## 0.112.1 - 2026-08-23
+
+- Issue #855: Warned before saving workout notes whose exercise session entries do not line up, with explicit correction, skip, and acknowledgement paths.
+
+## 0.112.0 - 2026-08-23
+
+- Issue #854: Workout parsing now follows the owner-approved F2a grammar contract. Bodyweight sets accept a skipped-set marker ("3,3,-"), trailing commas and ranges get specific correction messages instead of generic ones, and a bare integer under a "3x30 sec"/"3x6-8"-style exercise header now logs as one set of the declared duration or reps. Cardio/non-weight exercises log ordinary structured sets like any other exercise, but stay out of tonnage, PR/max, and rep-drop-off calculations. A "-- " comment or any other nonblank line with no matching structured meaning is preserved and visible in the read view instead of being silently dropped, and prose typed directly as a set row is pointed at the "-- " comment syntax instead of the reps grammar it wasn't using. Home's progress status rows now recompute live instead of trusting a note's previously saved cache, so existing notes reflect the new grammar immediately rather than only after their next save.
+
+## 0.111.4 - 2026-08-23
+
+- Issue #852: Added an explicit kg marker for workout-note weights (e.g. "40kg 10" or "40 kg 10"), so a load recorded on a kg-only machine at another gym folds into your normal lb progression. The set is shown as a whole-lb value with a visible note that it was converted, in both the note view and exercise history/progress. A bare weight number is unchanged: it still means lb, and your saved notes are never rewritten.
+
+## 0.111.3 - 2026-08-23
+
+- Issue #851: Prevented editor Cancel, Undo, and Back paths from silently discarding autosaved workout changes.
+
+## 0.111.2 - 2026-08-23
+
+- Issue #847: Restored More Routines' quiet, individually rounded note-card hierarchy, replacing the enclosing panel with a lightweight show/hide control.
+
+## 0.111.1 - 2026-08-23
+
+- Issue #845: Restored the locked Current routine card presentation after it was changed by the Log Recovery and Routine redesign.
+
+## 0.111.0 - 2026-08-23
+
+- Issue #843: Redesigned the Log tab's Recovery and Routine sub-tabs. Recovery's active block now renders as one grouped card with a state zone, an aligned week table (status carried by a dot, no more per-row "In progress"/"Completed" text), and a single primary action ("Complete Week N" or "Add week"). A sibling "Manage block" card holds the analytics-inclusion setting, Unlink, and End recovery block, which now opens a dedicated confirmation modal instead of a plain alert — inclusion is preselected from the block's current setting and can still be changed before confirming. More Routines always shows "More Routines · {count}" and a New routine control outside the disclosure, with a flat divided row list inside it.
+
+## 0.110.3 - 2026-08-23
+
+- Issue #841: More Routines now renders as one compact disclosure panel matching Weight History's rhythm, with no dead space collapsed and normal list-row spacing to the first routine when expanded. Recovery-week notes can now be edited inline in the Recovery block itself — via the visible Edit action or double-tapping the note body — instead of opening the shared full-screen Routine editor.
+
+## 0.110.2 - 2026-08-23
+
+- Issue #839: Recovery: you can now reopen your most recently completed recovery block (when no other block is active) without losing any week's completion state. The Log tab shows a "Reopen recovery block" row alongside "Start recovery block" whenever eligible, and the Analytics evidence card offers the same action on the newest completed block. The "Complete recovery block" confirmation no longer falsely claims completion cannot be undone.
+
+## 0.110.1 - 2026-08-23
+
+- Issue #836: Recovery tab: every week now shows as its own labeled entry, completed weeks included, with a clear in progress/completed status. Complete week confirms its consequence before committing, and the most recently completed week can be undone back to in progress without losing its note. Tapping an expanded week's note again collapses it, and Recovery's expanded note no longer leaks into or out of the Routine tab. Routine tab: removed the duplicate top/bottom create-routine control (one remains, clearly labeled), dropped the "Latest:" summary line, and collapsed More Routines now reads "X more routines".
+
 ## 0.110.0 - 2026-08-20
 
 - Issue #823: Recovery now gets its own tab on the Log screen (Recovery, Routine, Deload), shown only while a block is active. Starting a recovery block is now a persistent, always-visible control under the current routine card instead of being tucked inside the routine-management disclosure, and Previous Routines lost its enclosing bordered panel in favor of a flatter list. A recovery week's note can now be edited directly from the Recovery tab, closing the post-workout check-in prompt with the X button no longer discards your answers and silently stops future check-ins, the "Skip week"/"Remove skip" control now meets the app's touch-target size, save confirmations are announced to screen readers, and delete confirmations for routines and deload records now state plainly that they erase logged history and cannot be undone.
