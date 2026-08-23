@@ -30,6 +30,7 @@ import { AnalyticsStrengthSection, AnalyticsBig3MappingCard } from '../component
 import { AnalyticsOverviewCard } from '../components/AnalyticsOverviewCard';
 import { CrossDayComparison, formatOverload } from '../components/AnalyticsCrossDayComparison';
 import { AnalyticsRecoverySection } from '../components/AnalyticsRecoverySection';
+import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
 
 // The one section id that needs no measurement: "the top of Analytics" (#770).
 // `Full history and insights` on Home requests it, and it is what makes that
@@ -85,6 +86,22 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   // resolve the same activeNoteId Log does (Log reads `currentId` directly)
   // rather than silently losing it (review finding, PR #873).
   const activeTrainingContext = useActiveTrainingContext({ currentId, notes });
+  // Zero Friction F9 (#871): whether Analytics is currently inside an active
+  // Recovery block — a live open week, or between weeks with the block still
+  // active. Both mean "baseline training is paused right now", the same
+  // reading `HomeScreen` already gives this context (#869). Neither STALE nor
+  // PENDING nor NORMAL counts: a last-known-good/unresolved read must not flip
+  // the hierarchy on a guess, and a verified NORMAL read means Recovery is
+  // over — restoring the unchanged normal hierarchy is the whole point.
+  const isActiveRecovery = activeTrainingContext.status === ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK
+    || activeTrainingContext.status === ACTIVE_TRAINING_STATUS.RECOVERY_BETWEEN_WEEKS;
+  // Baseline-only sections (Fatigue, Strength/Progressive Overload, Big 3
+  // mapping) collapse under one disclosure while Recovery is active (#871).
+  // Collapsed by default: the whole point is that these are not what the user
+  // opened Analytics to see right now. Only meaningful while `isActiveRecovery`
+  // — it is never read outside that branch, so Recovery ending always restores
+  // the plain, always-expanded normal hierarchy regardless of this state.
+  const [baselineCollapsed, setBaselineCollapsed] = useState(true);
   // Ordinary-analytics boundary (#699). Recovery-linked notes whose block keeps
   // `include_in_normal_analytics` off are dropped from every ordinary population
   // below. AnalyticsRecoverySection still receives the unfiltered `notes`.
@@ -147,11 +164,21 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       return;
     }
 
+    // A request for a section that lives inside the collapsed baseline
+    // disclosure (#871) must open it first — the section's own onLayout never
+    // fires while its content is unmounted, so the request would otherwise sit
+    // pending forever. Requesting `recovery` or `weight` never needs this: both
+    // stay outside the disclosure.
+    if (isActiveRecovery && baselineCollapsed
+      && (section === 'strength' || section === 'progressive-overload')) {
+      setBaselineCollapsed(false);
+    }
+
     const y = sectionOffsets.current[section];
     if (y > 0) scrollToOffset(y);
     // `sectionNonce` changes on every navigation request, so repeating the same
     // handoff (weight → weight) re-targets the section instead of no-op'ing.
-  }, [section, sectionNonce]);
+  }, [section, sectionNonce, isActiveRecovery, baselineCollapsed]);
 
   // One measurement path for every targetable section (#770). The layout that
   // resolves a still-pending request fulfills it; `hasScrolled` keeps a later
@@ -366,8 +393,12 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       weightPoints: rolling7,
       notesUnavailable: !!notesError,
       weightUnavailable: !!weightError,
+      activeTraining: { status: activeTrainingContext.status, recoveryWeekNumber: activeTrainingContext.recoveryWeekNumber },
     }),
-    [oneKChartData, analytics.signals, sinceDeload, deloadModeEnabled, weightTrends, unit, rolling7, notesError, weightError]
+    [
+      oneKChartData, analytics.signals, sinceDeload, deloadModeEnabled, weightTrends, unit, rolling7,
+      notesError, weightError, activeTrainingContext.status, activeTrainingContext.recoveryWeekNumber,
+    ]
   );
 
   const overviewLoading = isNotesLoading || isWeightLoading;
@@ -473,12 +504,47 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       </View>
     ) : recoverySection,
 
-    <View key="combined-section-title">
-      <SectionTitle>Fatigue</SectionTitle>
-    </View>,
-    <SessionGauge key="session-gauge" count={sinceDeload} total={sessionCount} showDeload={deloadModeEnabled} />,
+    // Baseline-training disclosure (#871, Zero Friction F9). Fatigue,
+    // Strength/Progressive Overload, and Big 3 Mapping are all derived from
+    // baseline sessions, which have stopped accumulating for the duration of
+    // an active Recovery block — they group under one collapsible "paused"
+    // disclosure instead of leading the tab, and expand back to the plain,
+    // always-visible normal hierarchy the moment Recovery ends.
+    isActiveRecovery ? (
+      <Pressable
+        key="baseline-disclosure-toggle"
+        testID="baseline-disclosure-toggle"
+        onPress={() => setBaselineCollapsed(v => !v)}
+        style={styles.baselineDisclosureToggle}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: !baselineCollapsed }}
+        accessibilityLabel="Baseline training, paused during Recovery"
+        accessibilityHint={baselineCollapsed ? 'Shows fatigue and strength history from before Recovery' : 'Hides fatigue and strength history from before Recovery'}
+      >
+        <Text style={styles.baselineDisclosureLabel}>Baseline training · paused during Recovery</Text>
+        <MaterialIcons
+          name={baselineCollapsed ? 'expand-more' : 'expand-less'}
+          size={20}
+          color={colors.textMuted}
+          accessible={false}
+        />
+      </Pressable>
+    ) : null,
 
-    fatigueTrackingEnabled ? (
+    (!isActiveRecovery || !baselineCollapsed) ? (
+      <View key="combined-section-title">
+        <SectionTitle>Fatigue</SectionTitle>
+      </View>
+    ) : null,
+    (!isActiveRecovery || !baselineCollapsed) ? (
+      // Suppressed advisory (#871): the deload gauge assumes baseline sessions
+      // are actively accumulating, which is untrue for the duration of an
+      // active Recovery block. The count itself still renders (as paused
+      // history), only the "you should deload soon" advisory is withheld.
+      <SessionGauge key="session-gauge" count={sinceDeload} total={sessionCount} showDeload={deloadModeEnabled && !isActiveRecovery} />
+    ) : null,
+
+    (!isActiveRecovery || !baselineCollapsed) && fatigueTrackingEnabled ? (
       <AnalyticsFatigueCard
         key="fatigue-card"
         checkInHistory={checkInHistory}
@@ -494,14 +560,17 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     // a second top-level one — and Big 3 Mapping moves to the foot, because it
     // is configuration rather than analysis and was sitting between the total
     // and its contributors.
-    <AnalyticsStrengthSection
-      key="strength-section"
-      handleStrengthLayout={handleStrengthLayout}
-      isNotesLoading={isNotesLoading}
-      oneK={displayOneK}
-      oneKChartData={oneKChartData}
-    />,
+    (!isActiveRecovery || !baselineCollapsed) ? (
+      <AnalyticsStrengthSection
+        key="strength-section"
+        handleStrengthLayout={handleStrengthLayout}
+        isNotesLoading={isNotesLoading}
+        oneK={displayOneK}
+        oneKChartData={oneKChartData}
+      />
+    ) : null,
 
+    (!isActiveRecovery || !baselineCollapsed) ? (
     <View
       key="sticky-header"
       style={styles.signalStickyHeader}
@@ -560,12 +629,14 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
           <Text style={styles.signalColumnLabel}>Trend</Text>
         </View>
       </View>
-    </View>,
+    </View>
+    ) : null,
 
     // Progressive Overload's measurable box (#770): the sticky header above
     // cannot report its own content offset, so this list — an ordinary child
     // with an ordinary one — carries the anchor. Every branch renders content,
     // so the wrapper is never an empty box in the shell's column.
+    (!isActiveRecovery || !baselineCollapsed) ? (
     <View
       key="overload-list"
       testID="overload-list-anchor"
@@ -697,18 +768,21 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
           </Pressable>
         </View>
       )}
-    </View>,
+    </View>
+    ) : null,
 
     // Foot of the merged Strength section.
-    <AnalyticsBig3MappingCard
-      key="big3-mapping"
-      activeSlot={activeSlot}
-      handleSlotTap={handleSlotTap}
-      SLOT_LABELS={SLOT_LABELS}
-      oneKSelections={oneKSelections}
-      noteExerciseNames={noteExerciseNames}
-      handleSelectExercise={handleSelectExercise}
-    />
+    (!isActiveRecovery || !baselineCollapsed) ? (
+      <AnalyticsBig3MappingCard
+        key="big3-mapping"
+        activeSlot={activeSlot}
+        handleSlotTap={handleSlotTap}
+        SLOT_LABELS={SLOT_LABELS}
+        oneKSelections={oneKSelections}
+        noteExerciseNames={noteExerciseNames}
+        handleSelectExercise={handleSelectExercise}
+      />
+    ) : null,
   ]);
 
   const foundIndex = screenContent.findIndex(child => child?.props?.testID === 'sticky-header');
@@ -740,6 +814,25 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
 }
 
 const createStyles = (colors) => StyleSheet.create({
+  // Baseline-training disclosure header (#871). Reads as the same quiet
+  // section-header family used elsewhere in Analytics/Home (label + chevron),
+  // not a filled control — the emphasis on this tab right now belongs to the
+  // Recovery-live content above it.
+  baselineDisclosureToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    minHeight: 44,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+  },
+  baselineDisclosureLabel: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
   signalStickyHeader: {
     backgroundColor: colors.background,
     paddingTop: 8,

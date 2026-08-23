@@ -9,6 +9,7 @@ import {
 } from '../../lib/data';
 import { normalizeExerciseKey } from '../../lib/parser';
 import { filterNotesForNormalAnalytics } from '../../lib/data/recoveryAnalyticsFilter';
+import { ACTIVE_TRAINING_STATUS } from '../../lib/data/activeTrainingContext';
 
 // `excludedNoteIds` (#699) is the set of recovery-linked note ids whose block
 // keeps `include_in_normal_analytics` off. It is applied ONCE here, so every
@@ -253,8 +254,16 @@ export function deriveOverviewRows({
   weightPoints = [],
   notesUnavailable = false,
   weightUnavailable = false,
+  // Zero Friction F9 (#871): the shared "what am I training now?" context
+  // (#868), same shape `useActiveTrainingContext` resolves for Home/Log. Only
+  // `status`/`recoveryWeekNumber` are read here — this derives no new Recovery
+  // formula and recomputes nothing, it only relabels which existing rows are
+  // "live right now" vs "frozen baseline history" and leads with the former
+  // during an active block.
+  activeTraining = null,
 } = {}) {
-  const rows = [];
+  const isRecoveryActive = activeTraining?.status === ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK
+    || activeTraining?.status === ACTIVE_TRAINING_STATUS.RECOVERY_BETWEEN_WEEKS;
 
   // 1K — latest total, and its change against the previous session in the
   // series. This is the same series the Strength chart plots, so the two can
@@ -262,7 +271,7 @@ export function deriveOverviewRows({
   const oneK = (oneKPoints || []).filter(p => p && typeof p.value === 'number');
   const latestOneK = oneK.length > 0 ? oneK[oneK.length - 1] : null;
   const priorOneK = oneK.length > 1 ? oneK[oneK.length - 2] : null;
-  rows.push({
+  const oneKRow = {
     key: 'oneK',
     label: '1K Total',
     section: 'strength',
@@ -272,10 +281,13 @@ export function deriveOverviewRows({
     delta: latestOneK && priorOneK ? Math.round(latestOneK.value - priorOneK.value) : null,
     deltaCaption: latestOneK && priorOneK ? 'since your last session' : null,
     emptyCaption: 'Map your three lifts and log one full cycle',
-  });
+  };
 
   // Exercise progress — the same overload_trend classification the table
-  // itemises, counted.
+  // itemises, counted. During active Recovery this reads the current routine
+  // as it stood before the block paused it (#699 excludes recovery-linked
+  // notes from this population already) — it is frozen baseline history, not
+  // a fresh count, so it is marked `paused` rather than recomputed.
   const counts = { up: 0, flat: 0, down: 0 };
   for (const signal of signals || []) {
     if (signal?.overload_trend === 'up') counts.up += 1;
@@ -283,7 +295,7 @@ export function deriveOverviewRows({
     else if (signal?.overload_trend === 'flat') counts.flat += 1;
   }
   const classified = counts.up + counts.flat + counts.down;
-  rows.push({
+  const progressRow = {
     key: 'progress',
     label: 'Exercise Progress',
     section: 'progressive-overload',
@@ -292,30 +304,35 @@ export function deriveOverviewRows({
     valueSuffix: classified > 0 ? `of ${classified} up` : null,
     counts,
     emptyCaption: 'Tap Track on an exercise in your log',
-  });
+    paused: isRecoveryActive,
+    pausedCaption: isRecoveryActive ? 'Baseline training paused during Recovery' : null,
+  };
 
   // Routine depth. Suppressed entirely when deload mode is off — the count only
   // means something against the deload zones, and #821 also stops SessionGauge
-  // rendering that advisory in the same condition.
-  if (deloadModeEnabled && sessionsSinceDeload != null) {
-    rows.push({
-      key: 'routine',
-      label: 'Routine',
-      section: null,
-      unavailable: false,
-      value: sessionsSinceDeload,
-      valueSuffix: sessionsSinceDeload === 1 ? 'session' : 'sessions',
-      emptyCaption: null,
-    });
-  }
+  // rendering that advisory in the same condition. Also suppressed here (as
+  // `paused`, not hidden) during active Recovery: it is a baseline count that
+  // has stopped accumulating, not fresh routine-health advice (#871).
+  const routineRow = (deloadModeEnabled && sessionsSinceDeload != null) ? {
+    key: 'routine',
+    label: 'Routine',
+    section: null,
+    unavailable: false,
+    value: sessionsSinceDeload,
+    valueSuffix: sessionsSinceDeload === 1 ? 'session' : 'sessions',
+    emptyCaption: null,
+    paused: isRecoveryActive,
+    pausedCaption: isRecoveryActive ? 'Baseline training paused during Recovery' : null,
+  } : null;
 
   // Bodyweight — latest 7-day rolling average against the previous point of the
   // same series, so the delta is average-to-average rather than one noisy
-  // weigh-in against another.
+  // weigh-in against another. Weight keeps updating during Recovery (#871
+  // scope), so this row is never marked paused.
   const points = (weightPoints || []).filter(p => p && typeof p.value === 'number');
   const latestPoint = points.length > 0 ? points[points.length - 1] : null;
   const priorPoint = points.length > 1 ? points[points.length - 2] : null;
-  rows.push({
+  const weightRow = {
     key: 'weight',
     label: 'Body Weight',
     section: 'weight',
@@ -326,9 +343,37 @@ export function deriveOverviewRows({
     delta: latestPoint && priorPoint ? Number((latestPoint.value - priorPoint.value).toFixed(1)) : null,
     deltaCaption: latestPoint && priorPoint ? '7-day average' : null,
     emptyCaption: 'Log a weigh-in to start a trend',
-  });
+  };
 
-  return rows;
+  if (!isRecoveryActive) {
+    // Unchanged normal hierarchy (#871 acceptance: ending Recovery restores
+    // this exact order).
+    return [oneKRow, progressRow, routineRow, weightRow].filter(Boolean);
+  }
+
+  // Active Recovery: lead with the Recovery state itself, then current weight
+  // — the two rows that answer something current right now — ahead of the
+  // frozen baseline rows.
+  // A value only prints for a genuinely open, in-progress week — the
+  // BETWEEN_WEEKS status's `recoveryWeekNumber` names the latest COMPLETED
+  // week, and showing it as this row's value would read as "week 1 is
+  // current" when it is not; the between-weeks caption is the true current
+  // answer instead.
+  const isOpenWeek = activeTraining.status === ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK;
+  const recoveryRow = {
+    key: 'recovery',
+    label: 'Recovery',
+    section: 'recovery',
+    unavailable: false,
+    value: isOpenWeek ? activeTraining.recoveryWeekNumber : null,
+    showUnit: false,
+    valueSuffix: isOpenWeek && activeTraining.recoveryWeekNumber != null ? 'week' : null,
+    emptyCaption: !isOpenWeek
+      ? 'Between weeks — add the next week or end Recovery'
+      : null,
+  };
+
+  return [recoveryRow, weightRow, oneKRow, progressRow, routineRow].filter(Boolean);
 }
 
 export function shapeEditCheckInData(editPendingCheckIn) {
