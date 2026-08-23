@@ -31,15 +31,24 @@ export function LogActiveRoutineCard({
   roughFlaggedNames,
   activeEditText,
   recoveryWeekNumber = null,
+  // #870: true while an active Recovery block has paused this stored
+  // routine as the baseline it is standing in for. This card is the ONLY
+  // place the baseline itself is presented while paused — the note text
+  // content is unchanged and stays readable/editable, but the identity
+  // label switches from "Current routine" to "Baseline routine · paused" so
+  // it never reads as the thing actually being trained right now (Recovery
+  // already owns that role).
+  baselinePaused = false,
 }) {
   const styles = useThemedStyles(createStyles);
+  const identityLabel = baselinePaused ? 'Baseline routine · paused' : 'Current routine';
   // An explicit accessibilityLabel on an accessible ancestor replaces the label VoiceOver
   // would otherwise derive from its Text descendants (#738 review) — so the routine title,
   // week, and recovery-week badge that are visibly inside this header must be spelled out
   // here too, or focusing it announces only "Collapse/Expand current routine".
   const collapseLabel = [
     `${isCollapsed ? 'Expand' : 'Collapse'} ${workoutNoteTitle || 'Untitled Routine'}`,
-    hasABWeeks ? `Week ${effectiveActiveWeek} · Current routine` : 'Current routine',
+    hasABWeeks ? `Week ${effectiveActiveWeek} · ${identityLabel}` : identityLabel,
     recoveryWeekNumber != null ? `Recovery Week ${recoveryWeekNumber}` : null,
   ].filter(Boolean).join(', ');
   return (
@@ -61,7 +70,7 @@ export function LogActiveRoutineCard({
               {workoutNoteTitle || 'Untitled Routine'}
             </Text>
             <Text style={styles.otherNoteSub}>
-              {hasABWeeks ? `Week ${effectiveActiveWeek} · Current routine` : 'Current routine'}
+              {hasABWeeks ? `Week ${effectiveActiveWeek} · ${identityLabel}` : identityLabel}
             </Text>
             {recoveryWeekNumber != null && (
               <View

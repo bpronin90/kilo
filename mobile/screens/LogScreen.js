@@ -152,7 +152,20 @@ export function LogScreen({
   // Product-wide "what am I training now?" context (#868), shared verbatim
   // with Home and Analytics — same authoritative Recovery snapshot as above,
   // resolved at this screen's existing Recovery-state boundary.
-  const activeTrainingContext = useActiveTrainingContext({ currentId, notes });
+  // `|| {}` for the same reason every other Recovery-adjacent hook on this
+  // screen guards its return value: most Log-tab tests mock the whole
+  // `useEntries` module and never configure this hook's return, so an
+  // automocked `jest.fn()` resolving to `undefined` must not crash the
+  // screen — it simply means no derived training-context fields are used.
+  const activeTrainingContext = useActiveTrainingContext({ currentId, notes }) || {};
+  // #870: while an active Recovery block has paused the stored baseline
+  // routine, Deload is no longer offered as a peer live-training mode next
+  // to it — Deload targets the SAME baseline note the block is standing in
+  // for, and presenting it as an equal third tab would let a user land on a
+  // second, competing "current training" surface while Recovery already owns
+  // that role. `activeTrainingContext.baselinePaused` is the exact same
+  // predicate Home already gates its own baseline-paused hierarchy on.
+  const baselinePaused = !!activeTrainingContext.baselinePaused;
   const { startBlock: startRecoveryBlock } = useStartRecoveryBlock() || {};
   const recoveryLifecycle = useRecoveryBlockLifecycle() || {};
   const [recoveryModal, setRecoveryModal] = useState(null); // { mode: 'routine'|'note', note } | null
@@ -271,20 +284,6 @@ export function LogScreen({
     || recoveryStale
     || (!recoveryReady && !!recoveryStateError);
 
-  // This one-shot effect makes Recovery the DEFAULT landing tab the first
-  // time verified Recovery state resolves with something to show — it was
-  // effectively always "first" before this redesign too, since it rendered
-  // unconditionally at the top of the Routine tab; now that it is a separate
-  // tab, landing there by default is what keeps that behavior. It never
-  // fires again after the first resolution, so a later manual switch to
-  // Routine/Deload is never fought on a subsequent re-render or refresh.
-  const recoveryDefaultAppliedRef = useRef(false);
-  useEffect(() => {
-    if (recoveryDefaultAppliedRef.current || !recoveryReady) return;
-    recoveryDefaultAppliedRef.current = true;
-    if (recoveryTabVisible) setTabView('recovery');
-  }, [recoveryReady, recoveryTabVisible]);
-
   const editorScrollRef = useRef(null);
   const readScrollRef = useRef(null);
 
@@ -339,6 +338,34 @@ export function LogScreen({
     hasUnsavedCurrent: currentEditor.hasUnsavedCurrent,
     editorScrollRef,
   });
+
+  // This one-shot effect makes Recovery the DEFAULT landing tab the first
+  // time verified Recovery state resolves with something to show — it was
+  // effectively always "first" before this redesign too, since it rendered
+  // unconditionally at the top of the Routine tab; now that it is a separate
+  // tab, landing there by default is what keeps that behavior. It never
+  // fires again after the first resolution, so a later manual switch to
+  // Routine/Deload is never fought on a subsequent re-render or refresh.
+  //
+  // #870: it also focuses the exact open-week note, the same one Home's
+  // `Log workout` handoff focuses (see HomeScreen's `handleLogWorkoutPress`
+  // and this screen's `navRecoveryKey` effect below) — so a direct Log-tab
+  // entry and a Home handoff land on the identical note instead of a bare
+  // week list the user must tap into a second time. Only applied when
+  // nothing else has already claimed the recovery-note focus (still 0 =
+  // no handoff has run yet), and it is set-only — it never collapses a note
+  // the user already opened.
+  const recoveryDefaultAppliedRef = useRef(false);
+  useEffect(() => {
+    if (recoveryDefaultAppliedRef.current || !recoveryReady) return;
+    recoveryDefaultAppliedRef.current = true;
+    if (!recoveryTabVisible) return;
+    setTabView('recovery');
+    if (navRecoveryKey === 0 && activeTrainingContext.status === 'recovery_open_week' && activeTrainingContext.activeNoteId) {
+      otherEditor.setRecoveryViewingNoteId(activeTrainingContext.activeNoteId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recoveryReady, recoveryTabVisible]);
 
   // Typed note navigation intent (#718). The shell says WHICH note a cross-screen
   // handoff wants shown and nothing more: it never reads or owns this screen's
@@ -859,13 +886,15 @@ export function LogScreen({
   };
 
   // Recovery is selectable only while `recoveryTabVisible`, and Deload only
-  // while deload mode is enabled — either falls back to Routine the instant
-  // its own condition stops holding (e.g. the active block completes while
-  // its tab is open), exactly as Deload already did before Recovery existed
-  // (#823).
+  // while deload mode is enabled AND the baseline is not paused (#870) —
+  // either falls back to Routine the instant its own condition stops holding
+  // (e.g. the active block completes while its tab is open, or Recovery
+  // starts while Deload is open), exactly as Deload already fell back before
+  // Recovery existed (#823).
+  const deloadTabEnabled = deloadModeEnabled && !baselinePaused;
   const effectiveTabView = tabView === 'recovery' && recoveryTabVisible
     ? 'recovery'
-    : tabView === 'deload' && deloadModeEnabled
+    : tabView === 'deload' && deloadTabEnabled
       ? 'deload'
       : 'routine';
 
@@ -934,7 +963,7 @@ export function LogScreen({
           <LogEmptyState onCreateRoutine={handleCreateRoutineEntry} />
         ) : (
           <>
-            {(deloadModeEnabled || recoveryTabVisible) && (
+            {(deloadTabEnabled || recoveryTabVisible) && (
               <View style={styles.tabToggle}>
                 {/* Recovery is first when present (#823) — see
                     `recoveryTabVisible` above for exactly when that is, so it
@@ -955,7 +984,7 @@ export function LogScreen({
                 >
                   <Text style={[styles.tabToggleText, effectiveTabView === 'routine' && styles.tabToggleTextActive]}>Routine</Text>
                 </Pressable>
-                {deloadModeEnabled && (
+                {deloadTabEnabled && (
                   <Pressable
                     onPress={() => handleTabViewChange('deload')}
                     disabled={recoveryInlineEditActive}
@@ -1057,6 +1086,7 @@ export function LogScreen({
                 roughFlaggedNames={currentEditor.roughFlaggedNames}
                 activeEditText={currentEditor.activeEditText}
                 recoveryWeekNumber={currentRecoveryWeekNumber}
+                baselinePaused={baselinePaused}
               />
             )}
 
