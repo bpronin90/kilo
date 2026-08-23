@@ -6003,6 +6003,66 @@ describe('LogScreenEditorCard quiet on-demand problem list (#863)', () => {
 
     expect(findByTestID(root, 'editor-validation-bar')).toBeFalsy();
   });
+
+  test('the inline problem list persists taps while the keyboard is open (#863 review)', () => {
+    const component = renderEditor({ activeEditText: 'Monday\n-Bench\n135 8,,8' });
+    render.act(() => { findByTestID(component.root, 'editor-validation-badge').props.onPress(); });
+    const list = findByTestID(component.root, 'editor-validation-list');
+    expect(list.props.keyboardShouldPersistTaps).toBe('handled');
+  });
+
+  test('missing-session caret lands before a directly-following dash-header exercise, not inside it (#863 review)', () => {
+    // Bench (the affected exercise) is immediately followed by "-Squat" with
+    // no blank line between them — the inserted "-" marker line and "-Squat"
+    // share a leading "-", which previously fooled a char-by-char scan into
+    // landing the caret one character into "-Squat" instead of before it.
+    const text = ['Monday', '-Bench', '- 135 5,5', '-Squat', '- 225 5,5', '- 230 5,5'].join('\n');
+    const component = renderEditor({
+      activeEditText: text,
+      sessionAlignmentIssue: {
+        code: 'uneven_session_entries',
+        message: 'placeholder',
+        affectedExercises: [
+          { name: 'Bench', entryCount: 1, sectionIndex: 0, sectionLabel: 'Monday', missingSessionIndexes: [2] },
+        ],
+      },
+    });
+    const root = component.root;
+    render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+    render.act(() => { findFirstListRow(root).props.onPress(); });
+
+    const noteInput = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === text);
+    const expectedOffset = text.indexOf('-Squat');
+    expect(noteInput.props.selection).toEqual({ start: expectedOffset, end: expectedOffset });
+  });
+
+  test('two rows with an identical diagnostic get distinct ids, and fixing one clears only its own selection (#863 review)', () => {
+    jest.useFakeTimers();
+    try {
+      const text = ['Monday', '-Bench', '135 8,,8', '135 8,,8'].join('\n');
+      const fixedSecond = ['Monday', '-Bench', '135 8,,8', '135 8,8'].join('\n');
+      const component = renderEditor({ activeEditText: text });
+      const root = component.root;
+      render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+      const rows = findByTestID(root, 'editor-validation-list').findAll(n => typeof n.props?.onPress === 'function');
+      expect(rows.length).toBe(2);
+
+      // Select the SECOND occurrence — the one that's about to be fixed.
+      render.act(() => { rows[1].props.onPress(); });
+      expect(findByTestID(root, 'editor-validation-bar')).toBeTruthy();
+
+      render.act(() => { component.update(buildElement({ activeEditText: fixedSecond })); });
+      settleDebounce();
+
+      // Its own bar clears, and the still-broken first occurrence remains
+      // listed as exactly one problem (not silently reattached to it).
+      expect(findByTestID(root, 'editor-validation-bar')).toBeFalsy();
+      render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+      expect(rowLabels(root).length).toBe(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
 
 describe('LogDeloadSection deload ordinal input has autocorrect disabled', () => {

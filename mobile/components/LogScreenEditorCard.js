@@ -37,8 +37,13 @@ function _lineCharRange(text, lineNumber) {
 // (the "Skip week" marker insertion, #855) rather than re-deriving the
 // section/exercise-block grammar here: a throwaway copy of `sections` is
 // built where only the target exercise looks eligible for a skip marker, so
-// exactly one line gets inserted, and the first index at which the
-// transformed text diverges from the original is the insertion point.
+// exactly one whole line gets inserted, and the first LINE at which the
+// transformed text diverges from the original marks the insertion point.
+// Diffed line-by-line rather than character-by-character: the inserted
+// marker line is itself "-", which shares a leading "-" with a following
+// dash-header line (e.g. "-Squat") when the exercise has no trailing blank
+// line — a char-by-char common-prefix scan would stop one character short,
+// landing the caret inside that next header instead of before it.
 // Returns null if the exercise can't be found or nothing was inserted.
 function _insertionOffsetAfterExercise(text, sections, sectionIndex, exerciseName, entryCount) {
   const section = sections?.[sectionIndex];
@@ -55,10 +60,12 @@ function _insertionOffsetAfterExercise(text, sections, sectionIndex, exerciseNam
   const transformed = applyWeekSkipToText(text, fakeSections);
   if (transformed === text) return null;
 
-  const max = Math.min(text.length, transformed.length);
+  const originalLines = text.split('\n');
+  const transformedLines = transformed.split('\n');
   let i = 0;
-  while (i < max && text[i] === transformed[i]) i++;
-  return i;
+  while (i < originalLines.length && originalLines[i] === transformedLines[i]) i++;
+  if (i >= originalLines.length) return text.length;
+  return originalLines.slice(0, i).join('\n').length + 1;
 }
 
 // Post-save adoption prompt (#748; #745 Part 4 §A1). Lightweight, non-modal,
@@ -297,16 +304,27 @@ export function LogScreenEditorCard({
   // (#863 AC8) — line-independent, so editing lines above a selected problem
   // doesn't lose the selection, and fixing the problem (which changes its
   // message or removes it) naturally drops it from the list.
-  const syntaxProblems = React.useMemo(() => (
-    (validationParsed.problems || []).map(p => ({
-      kind: 'syntax',
-      id: `syntax:${p.exerciseName || ''}:${p.message}`,
-      line: p.line ?? Infinity,
-      severity: p.severity,
-      exerciseName: p.exerciseName,
-      label: p.exerciseName ? `${p.exerciseName} — ${p.message}` : p.message,
-    }))
-  ), [validationParsed]);
+  const syntaxProblems = React.useMemo(() => {
+    // Two malformed rows under the same exercise can produce the identical
+    // diagnostic text (e.g. the same typo repeated). A base id built from
+    // just exerciseName+message would collide for both, so every occurrence
+    // beyond the first in source order gets a numeric suffix — stable
+    // because problems are always walked in the same top-down parse order.
+    const occurrenceCounts = new Map();
+    return (validationParsed.problems || []).map(p => {
+      const base = `syntax:${p.exerciseName || ''}:${p.message}`;
+      const occurrence = occurrenceCounts.get(base) ?? 0;
+      occurrenceCounts.set(base, occurrence + 1);
+      return {
+        kind: 'syntax',
+        id: occurrence === 0 ? base : `${base}#${occurrence}`,
+        line: p.line ?? Infinity,
+        severity: p.severity,
+        exerciseName: p.exerciseName,
+        label: p.exerciseName ? `${p.exerciseName} — ${p.message}` : p.message,
+      };
+    });
+  }, [validationParsed]);
 
   // Session-alignment presentation (#863): one row per missing session
   // position for each exercise whose `missingSessionIndexes` is non-empty —
@@ -573,6 +591,7 @@ export function LogScreenEditorCard({
               <ScrollView
                 style={styles.validationList}
                 nestedScrollEnabled
+                keyboardShouldPersistTaps="handled"
                 testID="editor-validation-list"
               >
                 {validationProblems.map((problem, index) => (
