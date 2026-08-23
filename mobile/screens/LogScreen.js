@@ -166,6 +166,14 @@ export function LogScreen({
   // that role. `activeTrainingContext.baselinePaused` is the exact same
   // predicate Home already gates its own baseline-paused hierarchy on.
   const baselinePaused = !!activeTrainingContext.baselinePaused;
+  // #870 review fix: `baselinePaused` describes the Recovery block globally —
+  // it stays true even when Recovery was started from (or the user has since
+  // switched to) a saved routine other than the one this block paused. The
+  // Routine-tab card, however, always renders `currentId`'s note, so it must
+  // only wear the "paused" label when `currentId` IS the exact routine the
+  // active block is standing in for. Anything else is an unrelated current
+  // routine and must keep its ordinary "Current routine" identity.
+  const currentIsPausedBaseline = baselinePaused && currentId != null && currentId === activeTrainingContext.baselineNoteId;
   const { startBlock: startRecoveryBlock } = useStartRecoveryBlock() || {};
   const recoveryLifecycle = useRecoveryBlockLifecycle() || {};
   const [recoveryModal, setRecoveryModal] = useState(null); // { mode: 'routine'|'note', note } | null
@@ -1086,7 +1094,7 @@ export function LogScreen({
                 roughFlaggedNames={currentEditor.roughFlaggedNames}
                 activeEditText={currentEditor.activeEditText}
                 recoveryWeekNumber={currentRecoveryWeekNumber}
-                baselinePaused={baselinePaused}
+                baselinePaused={currentIsPausedBaseline}
               />
             )}
 

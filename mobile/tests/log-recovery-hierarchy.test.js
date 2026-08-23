@@ -88,6 +88,12 @@ const week1Note = {
   raw_text: 'Monday\n+Lifting\n-Bench\n95 5,5,5',
   saved_at: '2026-06-02T12:00:00.000Z',
 };
+const otherRoutineNote = {
+  id: 'other-routine',
+  title: 'Pull Day',
+  raw_text: 'Tuesday\n+Lifting\n-Row\n95 5,5,5',
+  saved_at: '2026-06-03T12:00:00.000Z',
+};
 
 function setupMocks({
   activeBlock = null,
@@ -95,11 +101,14 @@ function setupMocks({
   weeks = [],
   deloadModeEnabled = true,
   activeTrainingContext = null,
+  currentId = baselineNote.id,
+  currentNote = baselineNote,
+  extraNotes = [],
 } = {}) {
   useEntries.useWorkoutNotes.mockReturnValue({
-    notes: [baselineNote, week1Note],
-    currentId: baselineNote.id,
-    currentNote: baselineNote,
+    notes: [baselineNote, week1Note, ...extraNotes],
+    currentId,
+    currentNote,
     deloadNotes: [],
     loading: false,
     error: null,
@@ -272,6 +281,47 @@ describe('#870 Recovery Log hierarchy', () => {
 
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Baseline routine · paused').length).toBeGreaterThan(0);
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Current routine').length).toBe(0);
+  });
+
+  // #870 review fix: `baselinePaused` is a block-global flag — it stays true
+  // even when `currentId` no longer names the note the block actually
+  // paused (the block was started from a different saved routine, or the
+  // user switched current routines mid-block). The Routine-tab card always
+  // renders `currentId`, so it must keep the ordinary "Current routine"
+  // label for an unrelated current routine and must NOT claim it is the
+  // paused baseline.
+  test('the current-routine card does not label an unrelated current routine as the paused baseline', () => {
+    setupMocks({
+      activeBlock: activeBlockFixture,
+      blocks: [activeBlockFixture],
+      weeks: [openWeekFixture],
+      currentId: otherRoutineNote.id,
+      currentNote: otherRoutineNote,
+      extraNotes: [otherRoutineNote],
+      activeTrainingContext: {
+        status: 'recovery_open_week',
+        activeNoteId: week1Note.id,
+        baselineNoteId: baselineNote.id,
+        baselinePaused: true,
+        recoveryWeekNumber: 1,
+        activeNote: week1Note,
+        baselineNote,
+      },
+    });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+    // Switch to the Routine tab, where the current-routine card lives.
+    const routineTabBtn = root.findAll(n =>
+      n.type === 'Text' && n.props.children === 'Routine'
+    )[0];
+    expect(routineTabBtn).toBeTruthy();
+    let node = routineTabBtn.parent;
+    while (node && typeof node.props.onPress !== 'function') node = node.parent;
+    render.act(() => { node.props.onPress(); });
+
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Current routine').length).toBeGreaterThan(0);
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Baseline routine · paused').length).toBe(0);
   });
 
   test('direct Log-tab entry auto-focuses the same open-week note a Home handoff would focus', () => {
