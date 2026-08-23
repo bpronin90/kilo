@@ -654,24 +654,15 @@ export function useLogCurrentRoutineEditor({
     onCheckInPrompt?.();
   };
 
-  const handleDoneCurrent = async ({ sessionAlignmentAcknowledged = false } = {}) => {
+  // #863: session alignment is a purely inline, ignorable signal now — the
+  // note is already autosaved by the time Done is pressed, so "Keep
+  // editing" and "Save uneven" ended with identical bytes on disk anyway.
+  // No dialog on this path any more; alignment problems are surfaced by
+  // LogScreenEditorCard's on-demand problem list instead.
+  const handleDoneCurrent = async () => {
     if (autosaveCurrentTimerRef.current) {
       clearTimeout(autosaveCurrentTimerRef.current);
       autosaveCurrentTimerRef.current = null;
-    }
-    if (sessionAlignmentIssue && !sessionAlignmentAcknowledged) {
-      Alert.alert(
-        'Session entries do not line up',
-        `${sessionAlignmentIssue.message}\n\nChoose "Save uneven" only if these positions are intentional. Kilo will keep the authored history as-is.`,
-        [
-          { text: 'Keep editing', style: 'cancel' },
-          {
-            text: 'Save uneven',
-            onPress: () => handleDoneCurrent({ sessionAlignmentAcknowledged: true }),
-          },
-        ]
-      );
-      return;
     }
     if (!currentId) {
       if (hasUnsavedCurrent) {

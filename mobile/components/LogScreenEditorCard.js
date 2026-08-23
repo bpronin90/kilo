@@ -1,20 +1,23 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AccessibilityInfo, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card, Button } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
 import { formatDate } from '../lib/format';
-import { parseWorkoutNote } from '../lib/parser';
+import { parseWorkoutNote, applyWeekSkipToText } from '../lib/parser';
 import { WorkoutSyntaxModal } from './WorkoutSyntaxModal';
 import { WORKOUT_SEED_EXAMPLE_TEXT } from './WorkoutSyntaxReference';
 
-// #856: how long to wait after the last keystroke before recomputing the
-// jump-to-problem list. Separate from AUTOSAVE_DEBOUNCE_MS — validation is a
-// pure local reparse with no network/storage cost, so it can afford a
-// shorter delay while still keeping repeated typing on a large note
-// responsive (no full reparse on every keystroke).
-const VALIDATION_DEBOUNCE_MS = 400;
+// #863: how long to wait after the last keystroke before recomputing the
+// problem list. Separate from AUTOSAVE_DEBOUNCE_MS — validation is a pure
+// local reparse with no network/storage cost, so it can afford a longer
+// delay while still keeping repeated typing on a large note responsive (no
+// full reparse on every keystroke). Raised from 400ms (#856) to 1000ms:
+// validation never blocks the TextInput (it recomputes off a debounced
+// copy), so the longer window only removes any chance of the recompute
+// competing with typing on a large note.
+const VALIDATION_DEBOUNCE_MS = 1000;
 
 // Offsets of the start/end of `lineNumber` (1-indexed, matching
 // parseWorkoutNote's `line`/`header_line` fields) within `text`. Returns null
@@ -26,6 +29,87 @@ function _lineCharRange(text, lineNumber) {
   let start = 0;
   for (let i = 0; i < lineNumber - 1; i++) start += lines[i].length + 1;
   return { start, end: start + lines[lineNumber - 1].length };
+}
+
+// Length of the common leading run and common trailing run between two line
+// arrays (a minimal single-hunk diff): everything before `prefix` and
+// everything from `lines.length - suffix` onward is identical between the
+// two versions, and only the run in between actually changed. `prefix` and
+// `suffix` never overlap.
+function _commonPrefixSuffixLineCounts(oldLines, newLines) {
+  const maxLen = Math.min(oldLines.length, newLines.length);
+  let prefix = 0;
+  while (prefix < maxLen && oldLines[prefix] === newLines[prefix]) prefix++;
+  const maxSuffix = maxLen - prefix;
+  let suffix = 0;
+  while (
+    suffix < maxSuffix &&
+    oldLines[oldLines.length - 1 - suffix] === newLines[newLines.length - 1 - suffix]
+  ) suffix++;
+  return { prefix, suffix };
+}
+
+// Follows one specific 0-based line index from `oldLines` across a single
+// edit into `newLines` (#863 review): a selected syntax problem must stay
+// attached to its own physical row when lines shift above it — including
+// when another row elsewhere happens to hold byte-identical text (two
+// identical typos in the same exercise) — and must correctly detach only
+// when that specific row's own text actually changed or was removed.
+// Line-number- or offset-based ids can't tell "moved" from "a duplicate
+// sibling moved into the old slot" apart; this instead uses the standard
+// common-prefix/common-suffix single-hunk diff: a line inside the
+// untouched prefix or suffix maps straight across (by index, or by offset
+// from the end), and a line inside the changed middle region maps only if
+// its exact text still appears verbatim somewhere in the new middle
+// segment (the row merely moved) — otherwise there's no correspondence
+// (the row itself was edited or deleted) and null is returned.
+function _mapLineIndexAcrossEdit(oldLines, newLines, oldIndex) {
+  const { prefix, suffix } = _commonPrefixSuffixLineCounts(oldLines, newLines);
+  if (oldIndex < prefix) return oldIndex;
+  if (oldIndex >= oldLines.length - suffix) return newLines.length - (oldLines.length - oldIndex);
+  const newMiddleEnd = newLines.length - suffix;
+  const target = oldLines[oldIndex];
+  for (let i = prefix; i < newMiddleEnd; i++) {
+    if (newLines[i] === target) return i;
+  }
+  return null;
+}
+
+// Character offset immediately after a single exercise's existing entries
+// (and any blank lines that trail them), for placing the caret when a
+// missing-session problem is selected (#863). Reuses `applyWeekSkipToText`
+// (the "Skip week" marker insertion, #855) rather than re-deriving the
+// section/exercise-block grammar here: a throwaway copy of `sections` is
+// built where only the target exercise looks eligible for a skip marker, so
+// exactly one whole line gets inserted, and the first LINE at which the
+// transformed text diverges from the original marks the insertion point.
+// Diffed line-by-line rather than character-by-character: the inserted
+// marker line is itself "-", which shares a leading "-" with a following
+// dash-header line (e.g. "-Squat") when the exercise has no trailing blank
+// line — a char-by-char common-prefix scan would stop one character short,
+// landing the caret inside that next header instead of before it.
+// Returns null if the exercise can't be found or nothing was inserted.
+function _insertionOffsetAfterExercise(text, sections, sectionIndex, exerciseName, entryCount) {
+  const section = sections?.[sectionIndex];
+  const exercise = section?.exercises.find(
+    e => e.name === exerciseName && e.session_entries.length === entryCount
+  ) ?? section?.exercises.find(e => e.name === exerciseName);
+  if (!exercise) return null;
+
+  const fakeSections = (sections || []).map(s => ({
+    exercises: s.exercises.map(e => ({
+      session_entries: e === exercise ? [{ skipped: false }] : [],
+    })),
+  }));
+  const transformed = applyWeekSkipToText(text, fakeSections);
+  if (transformed === text) return null;
+
+  const originalLines = text.split('\n');
+  const transformedLines = transformed.split('\n');
+  let i = 0;
+  while (i < originalLines.length && originalLines[i] === transformedLines[i]) i++;
+  if (i >= originalLines.length) return text.length;
+  return originalLines.slice(0, i).join('\n').length + 1;
 }
 
 // Post-save adoption prompt (#748; #745 Part 4 §A1). Lightweight, non-modal,
@@ -174,6 +258,8 @@ export function LogScreenEditorCard({
   onAdoptPromptedRoutine,
   onDismissAdoptionPrompt,
   handleRevertEdit,
+  currentMode,
+  editingEffectiveWeek,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -213,28 +299,35 @@ export function LogScreenEditorCard({
     editorInputRef.current?.focus();
   };
 
+  // Which editing "session" is live, for identity purposes (#863): resets
+  // the debounce-skip below immediately, and separately clears the selected
+  // problem/list (below) on note switch, deload-mode switch, entering/
+  // leaving the current-routine editor, or switching A/B week while editing
+  // another note. `currentMode`/`editingEffectiveWeek` are read-only signals
+  // from the caller's hooks — this card never sets them.
+  const editorIdentity = `${editingNoteId}:${deloadMode}:${currentMode}:${editingEffectiveWeek}`;
+
   // Debounced local validation (#856): syntax/alignment problems can be
   // discovered and reached without leaving edit mode. Recomputed off a
   // debounced copy of the text, not on every keystroke, so retyping a large
-  // note stays responsive — the debounce is purely for this jump list; the
-  // TextInput itself always reflects `editorText` immediately and no text is
-  // ever rewritten or lost.
+  // note stays responsive — the debounce is purely for this problem list;
+  // the TextInput itself always reflects `editorText` immediately and no
+  // text is ever rewritten or lost.
   //
-  // One effect, keyed on identity (which note/mode) as well as text, so the
-  // "skip the debounce" cases — first mount, and switching to a different
-  // note/mode (whose text must sync immediately, not lag) — are each hit
+  // One effect, keyed on identity as well as text, so the "skip the
+  // debounce" cases — first mount, and switching to a different editing
+  // session (whose text must sync immediately, not lag) — are each hit
   // exactly once and never re-arm themselves. An earlier version re-armed
   // the skip on every identity-effect run, including the initial mount,
   // which silently swallowed the FIRST real keystroke's debounce on every
   // fresh render of this card — a single edit that fixed the last error
   // could leave the problem list stale until a second edit came in.
   const [debouncedEditorText, setDebouncedEditorText] = useState(editorText);
-  const validationIdentityRef = useRef(`${editingNoteId}:${deloadMode}`);
+  const validationIdentityRef = useRef(editorIdentity);
   const skipNextValidationDebounceRef = useRef(true);
   useEffect(() => {
-    const identity = `${editingNoteId}:${deloadMode}`;
-    const identityChanged = identity !== validationIdentityRef.current;
-    validationIdentityRef.current = identity;
+    const identityChanged = editorIdentity !== validationIdentityRef.current;
+    validationIdentityRef.current = editorIdentity;
     if (identityChanged || skipNextValidationDebounceRef.current) {
       skipNextValidationDebounceRef.current = false;
       setDebouncedEditorText(editorText);
@@ -242,72 +335,142 @@ export function LogScreenEditorCard({
     }
     const timer = setTimeout(() => setDebouncedEditorText(editorText), VALIDATION_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [editorText, editingNoteId, deloadMode]);
+  }, [editorText, editorIdentity]);
 
   const validationParsed = React.useMemo(
     () => parseWorkoutNote(debouncedEditorText),
     [debouncedEditorText]
   );
 
-  // The session-alignment warning is already computed live by the caller
-  // (from the same active-week text this card renders); folded in here as a
-  // single warning problem so one navigation list covers both syntax errors
-  // and alignment, deterministically ordered by line.
-  const alignmentProblem = React.useMemo(() => {
-    if (!sessionAlignmentIssue) return null;
-    const first = sessionAlignmentIssue.affectedExercises?.[0];
-    const section = first ? validationParsed.sections?.[first.sectionIndex] : null;
-    const exercise = section?.exercises.find(e => e.name === first.name);
-    return {
-      line: exercise?.header_line ?? null,
-      message: sessionAlignmentIssue.message,
-      exerciseName: first?.name ?? null,
-      severity: 'warning',
-    };
+  // Syntax problems, given concise human-readable context instead of a
+  // visible line number: the exercise they belong to (when known) plus the
+  // parser's diagnostic. `id` here is only for React's list key — it is
+  // NOT used to track a selection across edits (see the line-tracking
+  // effect below `selectedAnchor`), so it doesn't need to survive a
+  // recompute; a line number is always unique within one parse.
+  const syntaxProblems = React.useMemo(() => (
+    (validationParsed.problems || []).map(p => ({
+      kind: 'syntax',
+      id: `syntax:${p.line}`,
+      line: p.line ?? Infinity,
+      severity: p.severity,
+      exerciseName: p.exerciseName,
+      label: p.exerciseName ? `${p.exerciseName} — ${p.message}` : p.message,
+    }))
+  ), [validationParsed]);
+
+  // Session-alignment presentation (#863): one row per missing session
+  // position for each exercise whose `missingSessionIndexes` is non-empty —
+  // exercises whose authored entries already line up are left out entirely.
+  // The session-alignment warning itself is already computed live by the
+  // caller from the same active-week text this card renders; this is a
+  // presentation-layer derivation of its `affectedExercises`, not a change
+  // to the detection in deriveSessionAlignmentIssueFromSections.
+  const alignmentProblems = React.useMemo(() => {
+    const list = [];
+    for (const exercise of sessionAlignmentIssue?.affectedExercises || []) {
+      if (!exercise.missingSessionIndexes || exercise.missingSessionIndexes.length === 0) continue;
+      const section = validationParsed.sections?.[exercise.sectionIndex];
+      const parsedExercise = section?.exercises.find(e => e.name === exercise.name);
+      for (const position of exercise.missingSessionIndexes) {
+        list.push({
+          kind: 'alignment',
+          id: `alignment:${exercise.sectionIndex}:${exercise.name}:${position}`,
+          line: parsedExercise?.header_line ?? Infinity,
+          severity: 'warning',
+          sectionIndex: exercise.sectionIndex,
+          exerciseName: exercise.name,
+          entryCount: exercise.entryCount,
+          position,
+          label: `${exercise.sectionLabel} · ${exercise.name} — session ${position} has no entry`,
+        });
+      }
+    }
+    return list;
   }, [sessionAlignmentIssue, validationParsed]);
 
-  const validationProblems = React.useMemo(() => {
-    const list = [...(validationParsed.problems || [])];
-    if (alignmentProblem) list.push(alignmentProblem);
-    return list.sort((a, b) => (a.line ?? Infinity) - (b.line ?? Infinity));
-  }, [validationParsed, alignmentProblem]);
+  const validationProblems = React.useMemo(() => (
+    [...syntaxProblems, ...alignmentProblems].sort((a, b) => a.line - b.line)
+  ), [syntaxProblems, alignmentProblems]);
 
-  const [activeProblemIndex, setActiveProblemIndex] = useState(0);
+  // The badge/list-open affordance (#863): replaces the always-visible
+  // active-problem message and standing alignment block with an on-demand
+  // list, and a single dismissible bar for whichever one problem was picked.
+  // The selection itself is `selectedAnchor`, not a problem object: an
+  // alignment anchor is its stable position-based id; a syntax anchor is
+  // the LINE it currently sits on, kept in sync (below) as edits shift or
+  // resolve it, since two identical-text duplicate rows in the same
+  // exercise cannot be told apart by content alone.
+  const [listOpen, setListOpen] = useState(false);
+  const [selectedAnchor, setSelectedAnchor] = useState(null);
   useEffect(() => {
-    setActiveProblemIndex(0);
-  }, [editingNoteId, deloadMode]);
-  useEffect(() => {
-    setActiveProblemIndex(i => (
-      validationProblems.length === 0 ? 0 : Math.min(i, validationProblems.length - 1)
-    ));
-  }, [validationProblems.length]);
+    setListOpen(false);
+    setSelectedAnchor(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorIdentity]);
 
-  const handleJumpToProblem = (index) => {
-    const problem = validationProblems[index];
-    if (!problem) return;
-    setActiveProblemIndex(index);
+  // Follows a selected syntax problem's own physical line across each
+  // debounced recompute (#863 review), using `_mapLineIndexAcrossEdit` to
+  // tell "this exact row moved because lines shifted above it" apart from
+  // "this exact row was edited/removed" — even when a sibling row
+  // elsewhere holds byte-identical text, which a content- or offset-only
+  // identity can't distinguish. Alignment anchors don't need this: their
+  // id is already position-based, not text-based, so it can't collide.
+  const prevDebouncedTextForTrackingRef = useRef(debouncedEditorText);
+  useEffect(() => {
+    const prevText = prevDebouncedTextForTrackingRef.current;
+    prevDebouncedTextForTrackingRef.current = debouncedEditorText;
+    if (prevText === debouncedEditorText) return;
+    setSelectedAnchor(current => {
+      if (!current || current.kind !== 'syntax') return current;
+      const newIndex = _mapLineIndexAcrossEdit(
+        prevText.split('\n'), debouncedEditorText.split('\n'), current.line - 1
+      );
+      return newIndex == null ? null : { kind: 'syntax', line: newIndex + 1 };
+    });
+  }, [debouncedEditorText]);
+
+  // Resolved from the live list on every recompute rather than cached: this
+  // is what makes the bar disappear on its own once the selected problem is
+  // fixed (its anchor no longer resolves to anything) and stay attached to
+  // the same logical problem, at its new line, while the user edits lines
+  // above it.
+  const selectedProblem = React.useMemo(() => {
+    if (!selectedAnchor) return null;
+    if (selectedAnchor.kind === 'alignment') {
+      return alignmentProblems.find(p => p.id === selectedAnchor.id) ?? null;
+    }
+    return syntaxProblems.find(p => p.line === selectedAnchor.line) ?? null;
+  }, [selectedAnchor, syntaxProblems, alignmentProblems]);
+
+  const handleToggleProblemList = () => setListOpen(open => !open);
+
+  const handleSelectProblem = (problem) => {
+    setListOpen(false);
+    setSelectedAnchor(
+      problem.kind === 'alignment' ? { kind: 'alignment', id: problem.id } : { kind: 'syntax', line: problem.line }
+    );
     // Only move the caret when the debounced copy matches what's on screen —
-    // otherwise the line offsets could point at stale text mid-edit. The
+    // otherwise the line/offset math could point at stale text mid-edit. The
     // problem is still selected/announced either way.
     if (debouncedEditorText !== editorText) return;
-    const range = _lineCharRange(debouncedEditorText, problem.line);
-    if (!range) return;
-    setSeedSelection(range);
+    if (problem.kind === 'syntax') {
+      const range = _lineCharRange(debouncedEditorText, problem.line);
+      if (!range) return;
+      setSeedSelection(range);
+    } else {
+      const offset = _insertionOffsetAfterExercise(
+        debouncedEditorText, validationParsed.sections, problem.sectionIndex, problem.exerciseName, problem.entryCount
+      );
+      if (offset == null) return;
+      setSeedSelection({ start: offset, end: offset });
+    }
     editorInputRef.current?.focus();
   };
 
-  const handleNextProblem = () => {
-    if (validationProblems.length === 0) return;
-    handleJumpToProblem((activeProblemIndex + 1) % validationProblems.length);
-  };
-  const handlePrevProblem = () => {
-    if (validationProblems.length === 0) return;
-    handleJumpToProblem((activeProblemIndex - 1 + validationProblems.length) % validationProblems.length);
-  };
+  const handleDismissProblemBar = () => setSelectedAnchor(null);
 
   const validationErrorCount = validationProblems.filter(p => p.severity === 'error').length;
-  const validationWarningCount = validationProblems.filter(p => p.severity === 'warning').length;
-  const activeValidationProblem = validationProblems[activeProblemIndex] ?? null;
 
   return (
     <View style={styles.editContainer}>
@@ -453,58 +616,75 @@ export function LogScreenEditorCard({
                 <Text style={styles.syntaxHelpButtonText}>Workout syntax help</Text>
               </Pressable>
               {validationProblems.length > 0 && (
-                <View style={styles.validationRow} testID="editor-validation-summary">
-                  <Text
+                <Pressable
+                  onPress={handleToggleProblemList}
+                  style={styles.validationBadge}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    `${validationProblems.length} ${validationProblems.length === 1 ? 'problem' : 'problems'}`
+                    + `. ${listOpen ? 'Hide' : 'Show'} problem list.`
+                  }
+                  accessibilityState={{ expanded: listOpen }}
+                  testID="editor-validation-badge"
+                >
+                  <View
                     style={[
-                      styles.validationCountText,
-                      activeValidationProblem?.severity === 'warning' && !validationErrorCount
-                        ? styles.validationCountTextWarning
-                        : null,
+                      styles.validationBadgeCircle,
+                      { borderColor: validationErrorCount > 0 ? colors.error : colors.caution },
                     ]}
                   >
-                    {validationErrorCount > 0
-                      ? `${validationErrorCount} ${validationErrorCount === 1 ? 'error' : 'errors'}`
-                      + (validationWarningCount > 0 ? ` · ${validationWarningCount} ${validationWarningCount === 1 ? 'warning' : 'warnings'}` : '')
-                      : `${validationWarningCount} ${validationWarningCount === 1 ? 'warning' : 'warnings'}`}
+                    <Text
+                      style={[
+                        styles.validationBadgeGlyph,
+                        { color: validationErrorCount > 0 ? colors.error : colors.caution },
+                      ]}
+                    >
+                      !
+                    </Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.validationBadgeCount,
+                      { color: validationErrorCount > 0 ? colors.error : colors.caution },
+                    ]}
+                  >
+                    {validationProblems.length}
                   </Text>
-                  <Pressable
-                    onPress={handlePrevProblem}
-                    style={styles.validationNavButton}
-                    accessibilityRole="button"
-                    accessibilityLabel="Previous problem"
-                  >
-                    <Text style={styles.validationNavButtonText}>‹ Prev</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={handleNextProblem}
-                    style={styles.validationNavButton}
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      activeValidationProblem
-                        ? `Next problem, ${activeProblemIndex + 1} of ${validationProblems.length}: ${activeValidationProblem.message}`
-                        : 'Next problem'
-                    }
-                    testID="editor-validation-next"
-                  >
-                    <Text style={styles.validationNavButtonText}>Next ›</Text>
-                  </Pressable>
-                </View>
+                </Pressable>
               )}
             </View>
-            {activeValidationProblem ? (
-              <Text
-                style={[
-                  styles.validationActiveMessage,
-                  activeValidationProblem.severity === 'warning'
-                    ? styles.validationActiveMessageWarning
-                    : styles.validationActiveMessageError,
-                ]}
-                accessibilityLiveRegion="polite"
-                testID="editor-validation-active-message"
+            {listOpen && validationProblems.length > 0 && (
+              <ScrollView
+                style={styles.validationList}
+                nestedScrollEnabled
+                keyboardShouldPersistTaps="handled"
+                testID="editor-validation-list"
               >
-                {`${activeValidationProblem.line ? `Line ${activeValidationProblem.line}: ` : ''}${activeValidationProblem.message}`}
-              </Text>
-            ) : null}
+                {validationProblems.map((problem, index) => (
+                  <Pressable
+                    key={problem.id}
+                    onPress={() => handleSelectProblem(problem)}
+                    style={[
+                      styles.validationListRow,
+                      index > 0 && styles.validationListRowDivider,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={problem.label}
+                  >
+                    <Text
+                      style={[
+                        styles.validationListRowText,
+                        problem.severity === 'error'
+                          ? styles.validationListRowTextError
+                          : styles.validationListRowTextWarning,
+                      ]}
+                    >
+                      {problem.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            )}
             <TextInput
               ref={editorInputRef}
               value={editorText}
@@ -521,18 +701,30 @@ export function LogScreenEditorCard({
               spellCheck={false}
               style={[styles.input, styles.editorInput]}
             />
-            {sessionAlignmentIssue ? (
+            {selectedProblem ? (
               <View
-                style={styles.sessionAlignmentWarning}
-                accessibilityRole="alert"
+                style={styles.validationBar}
                 accessibilityLiveRegion="polite"
-                testID="session-alignment-warning"
+                testID="editor-validation-bar"
               >
-                <Text style={styles.sessionAlignmentWarningTitle}>Check session entries</Text>
-                <Text style={styles.sessionAlignmentWarningText}>{sessionAlignmentIssue.message}</Text>
-                <Text style={styles.sessionAlignmentWarningText}>
-                  Done will ask you to correct this or explicitly save the uneven history.
+                <Text
+                  style={[
+                    styles.validationBarText,
+                    selectedProblem.severity === 'error'
+                      ? styles.validationBarTextError
+                      : styles.validationBarTextWarning,
+                  ]}
+                >
+                  {selectedProblem.label}
                 </Text>
+                <Pressable
+                  onPress={handleDismissProblemBar}
+                  style={styles.validationBarDismiss}
+                  accessibilityRole="button"
+                  accessibilityLabel="Dismiss problem message"
+                >
+                  <Text style={styles.validationBarDismissText}>✕</Text>
+                </Pressable>
               </View>
             ) : null}
             {editorText.trim() === '' && (
@@ -643,26 +835,6 @@ const createStyles = (colors) => StyleSheet.create({
   saveButton: {
     marginTop: 12,
   },
-  sessionAlignmentWarning: {
-    marginTop: 10,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.caution,
-    backgroundColor: colors.cautionSurface,
-    gap: 4,
-  },
-  sessionAlignmentWarningTitle: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '700',
-    color: colors.cautionSurfaceText,
-  },
-  sessionAlignmentWarningText: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.cautionSurfaceText,
-  },
   // Empty-note seed example (#785). A tinted block matching the syntax-help
   // code block styling (§4: no nested Card), tappable at minHeight 44.
   seedBlock: {
@@ -686,15 +858,17 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 13,
     color: colors.text,
   },
+  // #863: help control and badge share one row, space-between so they sit
+  // at opposite edges, and a common minHeight (below) so their baselines
+  // align at every supported text size.
   editorToolRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 16,
+    justifyContent: 'space-between',
+    gap: 8,
   },
   syntaxHelpButton: {
-    alignSelf: 'flex-start',
-    marginBottom: 8,
     minHeight: 44,
     justifyContent: 'center',
   },
@@ -703,44 +877,95 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '600',
     color: colors.accent,
   },
-  // Compact error/warning count + jump navigation (#856). Sits beside the
-  // syntax-help control rather than in its own bordered block — this is a
-  // status readout, not a new filled surface (§13: no new contrast pairing).
-  validationRow: {
+  // Outlined circled "!" + count (#863), replacing the standing bordered
+  // warning block and the always-visible active-problem message with a
+  // single quiet, on-demand affordance. Outline only, no filled surface
+  // behind the glyph — a filled badge would be a new contrast pairing
+  // (§13) and read as loud, the thing this replaces.
+  validationBadge: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 8,
-  },
-  validationCountText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.error,
-  },
-  validationCountTextWarning: {
-    color: colors.caution,
-  },
-  validationNavButton: {
     minHeight: 44,
     justifyContent: 'center',
-    paddingHorizontal: 4,
+    gap: 6,
   },
-  validationNavButtonText: {
+  validationBadgeCircle: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  validationBadgeGlyph: {
+    fontSize: 11,
+    fontWeight: '800',
+    lineHeight: 13,
+  },
+  validationBadgeCount: {
     fontSize: 13,
-    fontWeight: '600',
-    color: colors.accent,
+    fontWeight: '700',
   },
-  validationActiveMessage: {
+  // Inline, height-limited, internally scrollable problem list (#863),
+  // expanded by tapping the badge. Each row is one problem, in source order,
+  // labeled with human-readable context rather than a line number.
+  validationList: {
+    marginTop: 8,
+    maxHeight: 220,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    borderRadius: 12,
+  },
+  validationListRow: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  validationListRowDivider: {
+    borderTopWidth: 1,
+    borderTopColor: colors.cardBorder,
+  },
+  validationListRowText: {
     fontSize: 13,
     lineHeight: 18,
-    marginBottom: 8,
   },
-  validationActiveMessageError: {
+  validationListRowTextError: {
     color: colors.error,
   },
-  validationActiveMessageWarning: {
+  validationListRowTextWarning: {
     color: colors.caution,
+  },
+  // The single dismissible bar (#863) for whichever one problem is
+  // selected. Renders below the TextInput, not above it, so jumping to a
+  // problem deep in a long note never scrolls the message off screen.
+  validationBar: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 8,
+  },
+  validationBarText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  validationBarTextError: {
+    color: colors.error,
+  },
+  validationBarTextWarning: {
+    color: colors.caution,
+  },
+  validationBarDismiss: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  validationBarDismissText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textMuted,
   },
   switchButton: {
     backgroundColor: 'transparent',
