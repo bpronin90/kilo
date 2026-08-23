@@ -2558,6 +2558,113 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
     const gauge = root.findByType(require('../components/UI').SessionGauge);
     expect(gauge.props.showDeload).toBe(false);
   });
+
+  // Review finding on PR #876: Overview's 1K and Exercise Progress rows drove
+  // `sectionOffsets` directly while collapsed, which never opened the
+  // disclosure — a fresh mount had no offset yet (silent no-op) and a stale
+  // offset scrolled to the wrong place. Both rows must instead route through
+  // the same expand-then-layout flow external section navigation already
+  // uses.
+  test('tapping Overview\'s 1K row during active Recovery auto-expands the collapsed baseline disclosure (fresh mount, no prior offset)', () => {
+    mockActiveTraining();
+    const component = renderScreen();
+    const root = component.root;
+
+    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBe(0);
+
+    const oneKRow = root.findAllByProps({ testID: 'overview-row-oneK' }).find(n => typeof n.props.onPress === 'function');
+    render.act(() => { oneKRow.props.onPress(); });
+
+    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
+  });
+
+  test('tapping Overview\'s Exercise Progress row during active Recovery auto-expands the collapsed baseline disclosure', () => {
+    mockActiveTraining();
+    const component = renderScreen();
+    const root = component.root;
+
+    const progressRow = root.findAllByProps({ testID: 'overview-row-progress' }).find(n => typeof n.props.onPress === 'function');
+    render.act(() => { progressRow.props.onPress(); });
+
+    expect(root.findAllByProps({ testID: 'overload-list-anchor' }).length).toBeGreaterThan(0);
+  });
+
+  test('tapping Overview\'s 1K row still scrolls correctly once the disclosure is already expanded (offset exists)', () => {
+    mockActiveTraining();
+    const component = renderScreen();
+    const root = component.root;
+
+    const toggle = root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).find(n => typeof n.props.onPress === 'function');
+    render.act(() => { toggle.props.onPress(); });
+    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
+
+    const oneKRow = root.findAllByProps({ testID: 'overview-row-oneK' }).find(n => typeof n.props.onPress === 'function');
+    render.act(() => { oneKRow.props.onPress(); });
+
+    // Disclosure stays expanded (it was already open) and the row's own tap
+    // does not collapse it back.
+    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
+  });
+
+  // Review finding on PR #876: `baselineCollapsed` persists across tab
+  // changes (AnalyticsScreen stays mounted). Without resetting on a NEW
+  // active-Recovery period, a block the user previously expanded — then
+  // ended — would leave a later, unrelated Recovery period pre-expanded
+  // instead of opening with the intended collapsed default.
+  test('starting a NEW active-Recovery period resets baselineCollapsed to collapsed, even after the user expanded a prior period', () => {
+    mockActiveTraining({ activeBlock: { id: 'rb-first' } });
+    const component = renderScreen();
+    const root = component.root;
+
+    // User expands the disclosure during the first Recovery period.
+    let toggle = root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).find(n => typeof n.props.onPress === 'function');
+    render.act(() => { toggle.props.onPress(); });
+    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
+
+    // Recovery ends (verified NORMAL) — the disclosure itself disappears.
+    mockActiveTraining({ status: ACTIVE_TRAINING_STATUS.NORMAL, activeBlock: null, baselinePaused: false, recoveryWeekNumber: null });
+    render.act(() => {
+      component.update(<AnalyticsScreen multiplier={1.07} section={null} sectionNonce={undefined} />);
+    });
+    expect(root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).length).toBe(0);
+
+    // A new, distinct active-Recovery period starts (different block id).
+    mockActiveTraining({ activeBlock: { id: 'rb-second' } });
+    render.act(() => {
+      component.update(<AnalyticsScreen multiplier={1.07} section={null} sectionNonce={undefined} />);
+    });
+
+    // The new period must open collapsed, not carry forward the earlier
+    // expansion.
+    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBe(0);
+    toggle = root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).find(n => typeof n.props.onPress === 'function');
+    expect(toggle.props.accessibilityState.expanded).toBe(false);
+  });
+
+  test('a same-period toggle (open-week to between-weeks, same block id) is NOT reset by the in-session expand', () => {
+    mockActiveTraining({ activeBlock: { id: 'rb-same' } });
+    const component = renderScreen();
+    const root = component.root;
+
+    const toggle = root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).find(n => typeof n.props.onPress === 'function');
+    render.act(() => { toggle.props.onPress(); });
+    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
+
+    // Same Recovery block transitions from an open week to between-weeks —
+    // the block id is unchanged, so the user's expansion must survive.
+    mockActiveTraining({
+      status: ACTIVE_TRAINING_STATUS.RECOVERY_BETWEEN_WEEKS,
+      activeNoteId: null,
+      recoveryWeekNumber: 1,
+      nextAction: 'add_week_or_end_recovery',
+      activeBlock: { id: 'rb-same' },
+    });
+    render.act(() => {
+      component.update(<AnalyticsScreen multiplier={1.07} section={null} sectionNonce={undefined} />);
+    });
+
+    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
+  });
 });
 
 // Review finding on PR #873 (#868): a restored profile whose stored

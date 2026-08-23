@@ -102,6 +102,22 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   // — it is never read outside that branch, so Recovery ending always restores
   // the plain, always-expanded normal hierarchy regardless of this state.
   const [baselineCollapsed, setBaselineCollapsed] = useState(true);
+  // Identity of the current active-Recovery PERIOD, distinct from `isActiveRecovery`
+  // itself (review finding, PR #876): `activeBlock.id` stays the same across an
+  // open-week/between-weeks flip within one Recovery block, but is a NEW id (or
+  // null, when Recovery is not active) once that block ends and a later one
+  // starts. Resetting on every `isActiveRecovery === true` render would fight the
+  // user's own in-session toggle; resetting only on this identity change lets a
+  // fresh Recovery period always open collapsed while leaving mid-period toggles
+  // alone.
+  const activeRecoveryBlockId = isActiveRecovery ? (activeTrainingContext.activeBlock?.id ?? null) : null;
+  const prevActiveRecoveryBlockId = useRef(null);
+  useEffect(() => {
+    if (activeRecoveryBlockId && activeRecoveryBlockId !== prevActiveRecoveryBlockId.current) {
+      setBaselineCollapsed(true);
+    }
+    prevActiveRecoveryBlockId.current = activeRecoveryBlockId;
+  }, [activeRecoveryBlockId]);
   // Ordinary-analytics boundary (#699). Recovery-linked notes whose block keeps
   // `include_in_normal_analytics` off are dropped from every ordinary population
   // below. AnalyticsRecoverySection still receives the unfiltered `notes`.
@@ -151,15 +167,23 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     hasScrolled.current = true;
   }
 
-  useEffect(() => {
-    pendingSection.current = section;
+  // One navigation path for every section request, whether it arrives as an
+  // external `section` prop handoff or as a same-screen tap (the Overview
+  // card's rows, #871 review finding). Both must resolve a destination that
+  // lives inside the collapsed baseline disclosure the same way: expand it
+  // first and let the layout that follows fulfill the still-pending request,
+  // rather than reading `sectionOffsets` directly while the section is
+  // unmounted. Reading it directly is exactly what let Overview's 1K/Exercise
+  // Progress rows silently no-op (fresh mount, no offset yet) or scroll to a
+  // stale position (an offset measured before the disclosure last collapsed).
+  function navigateToSection(sectionId) {
+    pendingSection.current = sectionId;
     hasScrolled.current = false;
-    if (!section) return;
 
     // The overview is the top of the tab, so its position is known without
     // measurement and an `overview` request lands immediately. Every other
     // destination waits for its layout.
-    if (section === OVERVIEW_SECTION) {
+    if (sectionId === OVERVIEW_SECTION) {
       scrollToOffset(0);
       return;
     }
@@ -170,12 +194,21 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     // pending forever. Requesting `recovery` or `weight` never needs this: both
     // stay outside the disclosure.
     if (isActiveRecovery && baselineCollapsed
-      && (section === 'strength' || section === 'progressive-overload')) {
+      && (sectionId === 'strength' || sectionId === 'progressive-overload')) {
       setBaselineCollapsed(false);
     }
 
-    const y = sectionOffsets.current[section];
+    const y = sectionOffsets.current[sectionId];
     if (y > 0) scrollToOffset(y);
+  }
+
+  useEffect(() => {
+    if (!section) {
+      pendingSection.current = section;
+      hasScrolled.current = false;
+      return;
+    }
+    navigateToSection(section);
     // `sectionNonce` changes on every navigation request, so repeating the same
     // handoff (weight → weight) re-targets the section instead of no-op'ing.
   }, [section, sectionNonce, isActiveRecovery, baselineCollapsed]);
@@ -413,8 +446,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
 
   function handleOverviewSelect(sectionId) {
     if (!sectionId) return;
-    const y = sectionOffsets.current[sectionId];
-    if (y != null && y > 0) scrollToOffset(y);
+    navigateToSection(sectionId);
   }
 
   const recoverySection = (
