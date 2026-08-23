@@ -436,9 +436,51 @@ describe('cloud bootstrap plan', () => {
     });
   });
 
-  test('a legacy block uploads an explicit null rather than undefined', () => {
+  // Review of 60e30bf. Bootstrap is a BLIND upsert — no LWW guard, no pre-pull
+  // merge for recovery blocks — and PostgREST builds its
+  // `on conflict do update set` list from the keys the payload carries. So a
+  // legacy row that coerced its absent reason to null would upload an
+  // authoritative "no reason" and erase a reason another device had already
+  // synced, before any merge pass could reconcile it.
+  test('a legacy block OMITS reason entirely rather than uploading null', () => {
     const plan = buildBootstrapPlan({ recoveryBlocks: [legacyBlock()] }, 'user-1');
+    expect(plan.recovery_blocks[0]).not.toHaveProperty('reason');
+    // The rest of the row is unaffected.
+    expect(plan.recovery_blocks[0]).toMatchObject({ id: 'rb-legacy', user_id: 'user-1' });
+  });
+
+  test('an explicitly cleared reason still uploads null, because that IS the edit', () => {
+    const plan = buildBootstrapPlan({ recoveryBlocks: [legacyBlock({ reason: null })] }, 'user-1');
     expect(plan.recovery_blocks[0]).toHaveProperty('reason', null);
+  });
+});
+
+describe('bootstrap upsert batching: an omitted column stays omitted', () => {
+  const { groupRowsByKeyShape } = require('../storage/cloud/bootstrap');
+
+  test('rows that omit a column travel in their own batch', () => {
+    const withReason = { id: 'a', reason: 'torn hamstring' };
+    const legacy = { id: 'b' };
+    const groups = groupRowsByKeyShape([withReason, legacy, { id: 'c', reason: null }]);
+
+    expect(groups).toHaveLength(2);
+    // PostgREST rejects a bulk upsert whose objects differ in keys, so every
+    // batch must be internally uniform.
+    for (const batch of groups) {
+      const shapes = new Set(batch.map(r => Object.keys(r).sort().join(' ')));
+      expect(shapes.size).toBe(1);
+    }
+    expect(groups.find(g => g.some(r => r.id === 'b'))).toEqual([legacy]);
+  });
+
+  test('a uniform set of rows produces exactly one batch', () => {
+    const rows = [{ id: 'a', reason: null }, { id: 'b', reason: 'x' }];
+    expect(groupRowsByKeyShape(rows)).toEqual([rows]);
+  });
+
+  test('order within a batch is preserved', () => {
+    const rows = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+    expect(groupRowsByKeyShape(rows)).toEqual([rows]);
   });
 });
 
