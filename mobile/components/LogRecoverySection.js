@@ -455,7 +455,12 @@ export function LogRecoverySection({
             {/* Zone 1 — state: a kicker, the headline fact, and the
                 de-emphasized baseline caption (#843). */}
             <View style={styles.stateZone}>
-              <Text style={styles.stateKicker}>RECOVERY BLOCK</Text>
+              {/* #870: the open week is what a returning user is actually
+                  training right now, so it is labelled as such — not merely
+                  "a recovery block" — while a completed-week or no-week
+                  state (between weeks) keeps the neutral "RECOVERY BLOCK"
+                  kicker, since neither has an open workout to claim. */}
+              <Text style={styles.stateKicker}>{canCompleteWeek ? 'CURRENT TRAINING' : 'RECOVERY BLOCK'}</Text>
               <Text style={styles.headline}>{headline}</Text>
               <Text style={styles.baselineCaption}>
                 Baseline: {activeBlock.baseline_note_title || 'Untitled Routine'}
