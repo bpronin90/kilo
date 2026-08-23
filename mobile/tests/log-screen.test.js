@@ -5937,6 +5937,33 @@ describe('LogScreenEditorCard quiet on-demand problem list (#863)', () => {
     }
   });
 
+  test('the bar stays attached when a line shifts WITHIN the same exercise, above the selected row (#863 review)', () => {
+    // Distinct from the previous test: here the inserted line is inside the
+    // very exercise the selected problem belongs to, not above the whole
+    // exercise block. An identity based on offset-from-the-exercise-header
+    // would change here and wrongly clear the bar; a diff-based identity
+    // that follows the row's own unchanged text must not.
+    jest.useFakeTimers();
+    try {
+      const original = ['Monday', '-Bench', '135 8,,8'].join('\n');
+      const shifted = ['Monday', '-Bench', '135 5,5', '135 8,,8'].join('\n');
+      const component = renderEditor({ activeEditText: original });
+      const root = component.root;
+      render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+      render.act(() => { findFirstListRow(root).props.onPress(); });
+      const barBefore = findByTestID(root, 'editor-validation-bar').findAllByType('Text')[0].props.children;
+
+      render.act(() => { component.update(buildElement({ activeEditText: shifted })); });
+      settleDebounce();
+
+      const bar = findByTestID(root, 'editor-validation-bar');
+      expect(bar).toBeTruthy();
+      expect(bar.findAllByType('Text')[0].props.children).toBe(barBefore);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   test('the FIRST edit after mount still debounces into an updated problem list (no skipped-debounce regression)', () => {
     jest.useFakeTimers();
     try {

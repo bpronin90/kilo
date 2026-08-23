@@ -31,21 +31,48 @@ function _lineCharRange(text, lineNumber) {
   return { start, end: start + lines[lineNumber - 1].length };
 }
 
-// The header_line of the exercise that owns `line` (a syntax problem's
-// line), i.e. the nearest exercise header at or before it, searched across
-// every section in source order. Returns null if no exercise owns it (a
-// problem with no `exerciseName`, or a stale/empty parse).
-function _headerLineForExercise(sections, exerciseName, line) {
-  if (!exerciseName) return null;
-  let best = null;
-  for (const section of sections || []) {
-    for (const exercise of section.exercises) {
-      if (exercise.name !== exerciseName || exercise.header_line == null) continue;
-      if (exercise.header_line > line) continue;
-      if (best == null || exercise.header_line > best) best = exercise.header_line;
-    }
+// Length of the common leading run and common trailing run between two line
+// arrays (a minimal single-hunk diff): everything before `prefix` and
+// everything from `lines.length - suffix` onward is identical between the
+// two versions, and only the run in between actually changed. `prefix` and
+// `suffix` never overlap.
+function _commonPrefixSuffixLineCounts(oldLines, newLines) {
+  const maxLen = Math.min(oldLines.length, newLines.length);
+  let prefix = 0;
+  while (prefix < maxLen && oldLines[prefix] === newLines[prefix]) prefix++;
+  const maxSuffix = maxLen - prefix;
+  let suffix = 0;
+  while (
+    suffix < maxSuffix &&
+    oldLines[oldLines.length - 1 - suffix] === newLines[newLines.length - 1 - suffix]
+  ) suffix++;
+  return { prefix, suffix };
+}
+
+// Follows one specific 0-based line index from `oldLines` across a single
+// edit into `newLines` (#863 review): a selected syntax problem must stay
+// attached to its own physical row when lines shift above it — including
+// when another row elsewhere happens to hold byte-identical text (two
+// identical typos in the same exercise) — and must correctly detach only
+// when that specific row's own text actually changed or was removed.
+// Line-number- or offset-based ids can't tell "moved" from "a duplicate
+// sibling moved into the old slot" apart; this instead uses the standard
+// common-prefix/common-suffix single-hunk diff: a line inside the
+// untouched prefix or suffix maps straight across (by index, or by offset
+// from the end), and a line inside the changed middle region maps only if
+// its exact text still appears verbatim somewhere in the new middle
+// segment (the row merely moved) — otherwise there's no correspondence
+// (the row itself was edited or deleted) and null is returned.
+function _mapLineIndexAcrossEdit(oldLines, newLines, oldIndex) {
+  const { prefix, suffix } = _commonPrefixSuffixLineCounts(oldLines, newLines);
+  if (oldIndex < prefix) return oldIndex;
+  if (oldIndex >= oldLines.length - suffix) return newLines.length - (oldLines.length - oldIndex);
+  const newMiddleEnd = newLines.length - suffix;
+  const target = oldLines[oldIndex];
+  for (let i = prefix; i < newMiddleEnd; i++) {
+    if (newLines[i] === target) return i;
   }
-  return best;
+  return null;
 }
 
 // Character offset immediately after a single exercise's existing entries
@@ -317,37 +344,20 @@ export function LogScreenEditorCard({
 
   // Syntax problems, given concise human-readable context instead of a
   // visible line number: the exercise they belong to (when known) plus the
-  // parser's diagnostic. `id` is the logical identity a selection sticks to
-  // (#863 AC8) — line-independent, so editing lines above a selected problem
-  // doesn't lose the selection, and fixing the problem (which changes its
-  // message or removes it) naturally drops it from the list.
-  const syntaxProblems = React.useMemo(() => {
-    const sections = validationParsed.sections || [];
-    return (validationParsed.problems || []).map(p => {
-      // Two malformed rows under the same exercise can produce the
-      // identical diagnostic text (e.g. the same typo repeated twice), so a
-      // base id built from just exerciseName+message would collide for
-      // both. Disambiguate with the row's offset from its OWN exercise's
-      // header line rather than a rank among the duplicates: a rank (1st,
-      // 2nd, ...) reshuffles onto the surviving duplicate's old rank the
-      // moment an earlier one is fixed, so the bar would silently reattach
-      // to it instead of clearing per AC8. An offset from the exercise's
-      // own header is specific to that one row, stays constant when lines
-      // shift above the exercise (same requirement the base id already
-      // gives non-duplicates), and cannot collide with a sibling duplicate,
-      // which necessarily sits on a different line.
-      const headerLine = _headerLineForExercise(sections, p.exerciseName, p.line);
-      const offset = headerLine != null ? p.line - headerLine : p.line;
-      return {
-        kind: 'syntax',
-        id: `syntax:${p.exerciseName || ''}:${p.message}:${offset}`,
-        line: p.line ?? Infinity,
-        severity: p.severity,
-        exerciseName: p.exerciseName,
-        label: p.exerciseName ? `${p.exerciseName} — ${p.message}` : p.message,
-      };
-    });
-  }, [validationParsed]);
+  // parser's diagnostic. `id` here is only for React's list key — it is
+  // NOT used to track a selection across edits (see the line-tracking
+  // effect below `selectedAnchor`), so it doesn't need to survive a
+  // recompute; a line number is always unique within one parse.
+  const syntaxProblems = React.useMemo(() => (
+    (validationParsed.problems || []).map(p => ({
+      kind: 'syntax',
+      id: `syntax:${p.line}`,
+      line: p.line ?? Infinity,
+      severity: p.severity,
+      exerciseName: p.exerciseName,
+      label: p.exerciseName ? `${p.exerciseName} — ${p.message}` : p.message,
+    }))
+  ), [validationParsed]);
 
   // Session-alignment presentation (#863): one row per missing session
   // position for each exercise whose `missingSessionIndexes` is non-empty —
@@ -386,27 +396,60 @@ export function LogScreenEditorCard({
   // The badge/list-open affordance (#863): replaces the always-visible
   // active-problem message and standing alignment block with an on-demand
   // list, and a single dismissible bar for whichever one problem was picked.
+  // The selection itself is `selectedAnchor`, not a problem object: an
+  // alignment anchor is its stable position-based id; a syntax anchor is
+  // the LINE it currently sits on, kept in sync (below) as edits shift or
+  // resolve it, since two identical-text duplicate rows in the same
+  // exercise cannot be told apart by content alone.
   const [listOpen, setListOpen] = useState(false);
-  const [selectedProblemId, setSelectedProblemId] = useState(null);
+  const [selectedAnchor, setSelectedAnchor] = useState(null);
   useEffect(() => {
     setListOpen(false);
-    setSelectedProblemId(null);
+    setSelectedAnchor(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorIdentity]);
 
+  // Follows a selected syntax problem's own physical line across each
+  // debounced recompute (#863 review), using `_mapLineIndexAcrossEdit` to
+  // tell "this exact row moved because lines shifted above it" apart from
+  // "this exact row was edited/removed" — even when a sibling row
+  // elsewhere holds byte-identical text, which a content- or offset-only
+  // identity can't distinguish. Alignment anchors don't need this: their
+  // id is already position-based, not text-based, so it can't collide.
+  const prevDebouncedTextForTrackingRef = useRef(debouncedEditorText);
+  useEffect(() => {
+    const prevText = prevDebouncedTextForTrackingRef.current;
+    prevDebouncedTextForTrackingRef.current = debouncedEditorText;
+    if (prevText === debouncedEditorText) return;
+    setSelectedAnchor(current => {
+      if (!current || current.kind !== 'syntax') return current;
+      const newIndex = _mapLineIndexAcrossEdit(
+        prevText.split('\n'), debouncedEditorText.split('\n'), current.line - 1
+      );
+      return newIndex == null ? null : { kind: 'syntax', line: newIndex + 1 };
+    });
+  }, [debouncedEditorText]);
+
   // Resolved from the live list on every recompute rather than cached: this
   // is what makes the bar disappear on its own once the selected problem is
-  // fixed (id no longer present) and stay attached to the same logical
-  // problem, at its new line, while the user edits lines above it.
-  const selectedProblem = selectedProblemId
-    ? (validationProblems.find(p => p.id === selectedProblemId) ?? null)
-    : null;
+  // fixed (its anchor no longer resolves to anything) and stay attached to
+  // the same logical problem, at its new line, while the user edits lines
+  // above it.
+  const selectedProblem = React.useMemo(() => {
+    if (!selectedAnchor) return null;
+    if (selectedAnchor.kind === 'alignment') {
+      return alignmentProblems.find(p => p.id === selectedAnchor.id) ?? null;
+    }
+    return syntaxProblems.find(p => p.line === selectedAnchor.line) ?? null;
+  }, [selectedAnchor, syntaxProblems, alignmentProblems]);
 
   const handleToggleProblemList = () => setListOpen(open => !open);
 
   const handleSelectProblem = (problem) => {
     setListOpen(false);
-    setSelectedProblemId(problem.id);
+    setSelectedAnchor(
+      problem.kind === 'alignment' ? { kind: 'alignment', id: problem.id } : { kind: 'syntax', line: problem.line }
+    );
     // Only move the caret when the debounced copy matches what's on screen —
     // otherwise the line/offset math could point at stale text mid-edit. The
     // problem is still selected/announced either way.
@@ -425,7 +468,7 @@ export function LogScreenEditorCard({
     editorInputRef.current?.focus();
   };
 
-  const handleDismissProblemBar = () => setSelectedProblemId(null);
+  const handleDismissProblemBar = () => setSelectedAnchor(null);
 
   const validationErrorCount = validationProblems.filter(p => p.severity === 'error').length;
 
