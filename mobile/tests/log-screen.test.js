@@ -5810,6 +5810,52 @@ describe('LogScreenEditorCard quiet on-demand problem list (#863)', () => {
     expect(findByTestID(root, 'editor-validation-list')).toBeFalsy();
   });
 
+  test('a syntax jump stays controlled until visible, then badge toggles cannot reapply it (#865)', () => {
+    const text = ['Monday', '-Bench', '135 8,,8'].join('\n');
+    const component = renderEditor({ activeEditText: text });
+    const root = component.root;
+    render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+    render.act(() => { findFirstListRow(root).props.onPress(); });
+
+    let noteInput = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === text);
+    const expected = {
+      start: 'Monday\n-Bench\n'.length,
+      end: 'Monday\n-Bench\n135 8,,8'.length,
+    };
+    expect(noteInput.props.selection).toEqual(expected);
+    expect(noteInput.props.selectionColor).toBe(LightColors.accent);
+
+    render.act(() => {
+      noteInput.props.onSelectionChange({ nativeEvent: { selection: expected } });
+    });
+    noteInput = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === text);
+    expect(noteInput.props.selection).toBeUndefined();
+
+    render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+    render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+    noteInput = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === text);
+    expect(noteInput.props.selection).toBeUndefined();
+  });
+
+  test('selecting another problem replaces the acknowledged range instead of restoring it (#865)', () => {
+    const text = ['Monday', '-Bench', '135 8,,8', '-Squat', '225 5-8'].join('\n');
+    const component = renderEditor({ activeEditText: text });
+    const root = component.root;
+    render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+    render.act(() => { findListRowByPrefix(root, 'Bench —').props.onPress(); });
+    let noteInput = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === text);
+    const firstSelection = noteInput.props.selection;
+    render.act(() => {
+      noteInput.props.onSelectionChange({ nativeEvent: { selection: firstSelection } });
+    });
+
+    render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+    render.act(() => { findListRowByPrefix(root, 'Squat —').props.onPress(); });
+    noteInput = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === text);
+    expect(noteInput.props.selection).toEqual({ start: text.indexOf('225 5-8'), end: text.length });
+    expect(noteInput.props.selection).not.toEqual(firstSelection);
+  });
+
   test('list rows use human-readable context, never a visible line number', () => {
     const text = ['Monday', '-Bench', '135 8,,8'].join('\n');
     const component = renderEditor({ activeEditText: text });

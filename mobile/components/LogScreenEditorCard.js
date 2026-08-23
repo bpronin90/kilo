@@ -283,6 +283,10 @@ export function LogScreenEditorCard({
   // which note/mode is being edited clears it immediately too.
   const editorInputRef = useRef(null);
   const [seedSelection, setSeedSelection] = useState(null);
+  // Keep a problem jump controlled until the native input confirms that it
+  // applied the range. Then release it so badge/list renders cannot reapply a
+  // stale caret and scroll the multiline editor back to it (#865).
+  const [problemSelectionRequest, setProblemSelectionRequest] = useState(null);
   useEffect(() => {
     if (!seedSelection) return undefined;
     const timer = setTimeout(() => setSeedSelection(null), 0);
@@ -290,6 +294,7 @@ export function LogScreenEditorCard({
   }, [seedSelection]);
   useEffect(() => {
     setSeedSelection(null);
+    setProblemSelectionRequest(null);
   }, [editingNoteId, deloadMode]);
   const editorText = editingNoteId ? editingText : activeEditText;
   const setEditorText = editingNoteId ? setEditingText : handleCurrentTextChange;
@@ -406,6 +411,7 @@ export function LogScreenEditorCard({
   useEffect(() => {
     setListOpen(false);
     setSelectedAnchor(null);
+    setProblemSelectionRequest(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorIdentity]);
 
@@ -457,13 +463,13 @@ export function LogScreenEditorCard({
     if (problem.kind === 'syntax') {
       const range = _lineCharRange(debouncedEditorText, problem.line);
       if (!range) return;
-      setSeedSelection(range);
+      setProblemSelectionRequest(range);
     } else {
       const offset = _insertionOffsetAfterExercise(
         debouncedEditorText, validationParsed.sections, problem.sectionIndex, problem.exerciseName, problem.entryCount
       );
       if (offset == null) return;
-      setSeedSelection({ start: offset, end: offset });
+      setProblemSelectionRequest({ start: offset, end: offset });
     }
     editorInputRef.current?.focus();
   };
@@ -690,9 +696,24 @@ export function LogScreenEditorCard({
               value={editorText}
               onChangeText={(next) => {
                 setSeedSelection(null);
+                setProblemSelectionRequest(null);
                 setEditorText(next);
               }}
-              selection={seedSelection ?? undefined}
+              selection={problemSelectionRequest ?? seedSelection ?? undefined}
+              selectionColor={colors.accent}
+              onSelectionChange={(event) => {
+                if (!problemSelectionRequest) return;
+                const applied = event?.nativeEvent?.selection;
+                if (
+                  applied?.start === problemSelectionRequest.start
+                  && applied?.end === problemSelectionRequest.end
+                ) {
+                  // Native now owns the visible selection. Releasing the prop
+                  // preserves it while preventing later list toggles from
+                  // navigating back to this range.
+                  setProblemSelectionRequest(null);
+                }
+              }}
               placeholder="e.g.&#10;Monday&#10;+Lifting&#10;-Bench&#10;135 5,5,5"
               placeholderTextColor={colors.textMuted}
               multiline
