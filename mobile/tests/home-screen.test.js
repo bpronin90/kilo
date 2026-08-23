@@ -2092,3 +2092,222 @@ describe('Recovery inclusion help disclosure (#757)', () => {
     await render.act(async () => { component.unmount(); });
   });
 });
+
+// ── Home follows the shared active-training context during Recovery (#869) ──
+//
+// #868 gave every screen one derived answer to "what am I training now?".
+// This is Home's own branch on it: during an open Recovery week the hero
+// names Recovery and the active note and `Log workout` targets that exact
+// note (even when it is not `currentId`); between weeks the hero presents
+// add-week/end-Recovery as the current decision and the primary action never
+// falls back to the frozen baseline note; and the frozen-baseline cards
+// (Exercise Progress, 1K Progress) collapse into one compact handoff rather
+// than dominating the screen with numbers that cannot move until Recovery
+// ends — restoring exactly once Recovery does.
+describe('HomeScreen follows the shared active-training context (#869)', () => {
+  const React = require('react');
+  const render = require('react-test-renderer');
+  const { HomeScreen } = require('../screens/HomeScreen');
+  const useEntriesModule = require('../hooks/useEntries');
+  const hooks = require('../hooks/entries/recoveryBlockHooks');
+  const AsyncStorage = require('@react-native-async-storage/async-storage');
+
+  const BLOCKS_KEY = 'kilo_recovery_blocks';
+  const WEEKS_KEY = 'kilo_recovery_block_weeks';
+
+  const NOTE = {
+    id: 'n1',
+    title: 'Routine A',
+    raw_text: 'Monday\n+Lifting\n-Bench\n135 5,5,5\n-Squat\n185 5,5,5',
+    saved_at: '2026-06-01T12:00:00.000Z',
+  };
+  const baseline = captureRecoveryBaselineFromText(NOTE.raw_text);
+  const PARTIAL_TEXT = 'Monday\n+Lifting\n-Bench\n135 5,5,5\n-Squat\n135 5,5,5';
+
+  const weekNote = (id, raw_text, over = {}) => ({
+    id, title: `Recovery week ${id}`, raw_text, saved_at: '2026-06-08T12:00:00.000Z', ...over,
+  });
+
+  const block = (over = {}) => ({
+    id: 'rb1',
+    baseline_note_id: NOTE.id,
+    baseline_note_title: 'Routine A',
+    baseline,
+    include_in_normal_analytics: false,
+    started_at: '2026-06-08T12:00:00.000Z',
+    completed_at: null,
+    updated_at: '2026-06-08T12:00:00.000Z',
+    deleted_at: null,
+    ...over,
+  });
+  const week = (over = {}) => ({
+    id: 'rw1',
+    block_id: 'rb1',
+    note_id: 'nr1',
+    week_number: 1,
+    completed_at: null,
+    updated_at: '2026-06-08T12:00:00.000Z',
+    deleted_at: null,
+    ...over,
+  });
+
+  const storageWith = ({ blocks = [], weeks = [] } = {}) => async (key) => {
+    if (key === BLOCKS_KEY) return JSON.stringify(blocks);
+    if (key === WEEKS_KEY) return JSON.stringify(weeks);
+    return null;
+  };
+
+  const props = (over = {}) => ({
+    weightEntries: [],
+    workoutNote: NOTE,
+    currentId: NOTE.id,
+    notes: [NOTE, weekNote('nr1', PARTIAL_TEXT)],
+    successMessage: '',
+    onNavigate: jest.fn(),
+    loading: false,
+    ...over,
+  });
+
+  const texts = (component) => component.root.findAll(n => n.type === 'Text')
+    .map(n => (Array.isArray(n.props.children) ? n.props.children.join('') : String(n.props.children ?? '')));
+  const hasText = (component, needle) => texts(component).some(t => t.includes(needle));
+  const has = (component, testID) => component.root.findAllByProps({ testID }).length > 0;
+
+  let mounted;
+  const mount = async (over) => {
+    let component;
+    await render.act(async () => { component = render.create(<HomeScreen {...props(over)} />); });
+    mounted = component;
+    return component;
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    hooks._resetRecoveryAnalyticsFilterCache();
+    useEntriesModule.useWeightGoal.mockReturnValue({ goal: null, loading: false, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+    useEntriesModule.useTrackedLifts.mockReturnValue({ trackedLifts: {}, loading: false, save: jest.fn(), toggle: jest.fn() });
+  });
+
+  afterEach(async () => {
+    if (mounted) await render.act(async () => { mounted.unmount(); });
+    mounted = null;
+    AsyncStorage.getItem.mockReset();
+    hooks._resetRecoveryAnalyticsFilterCache();
+  });
+
+  test('an open Recovery week names Recovery, the week, and the active note in the hero', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
+    const component = await mount();
+
+    expect(hasText(component, 'Recovery · Week 1')).toBe(true);
+    expect(hasText(component, 'Recovery week nr1')).toBe(true);
+    // The frozen baseline label must not read as though baseline training is
+    // still current.
+    expect(hasText(component, 'Week —')).toBe(false);
+  });
+
+  test('Log workout targets the exact active Recovery note, even though it is not currentId', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
+    const onNavigate = jest.fn();
+    const component = await mount({ onNavigate });
+
+    render.act(() => { component.root.findByProps({ testID: 'home-current-routine-link' }).props.onPress(); });
+
+    expect(onNavigate).toHaveBeenCalledWith('Log', { kind: 'recovery-note', noteId: 'nr1' });
+  });
+
+  test('repeated Log workout handoffs keep targeting the same active Recovery note', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
+    const onNavigate = jest.fn();
+    const component = await mount({ onNavigate });
+
+    const link = component.root.findByProps({ testID: 'home-current-routine-link' });
+    render.act(() => { link.props.onPress(); });
+    render.act(() => { link.props.onPress(); });
+
+    expect(onNavigate).toHaveBeenNthCalledWith(1, 'Log', { kind: 'recovery-note', noteId: 'nr1' });
+    expect(onNavigate).toHaveBeenNthCalledWith(2, 'Log', { kind: 'recovery-note', noteId: 'nr1' });
+  });
+
+  // #874 review finding 2: a linked week whose note has been deleted still
+  // leaves `activeNoteId` set on the shared context, but `activeNote` resolves
+  // to null. Sending that id anyway would have Log report "Note not found"
+  // instead of landing on the Recovery view that actually explains the gap.
+  test('a deleted active-week note is never sent as a target Log cannot resolve', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block()],
+      weeks: [week({ note_id: 'nr-missing' })],
+    }));
+    const onNavigate = jest.fn();
+    const component = await mount({ onNavigate, notes: [NOTE] });
+
+    render.act(() => { component.root.findByProps({ testID: 'home-current-routine-link' }).props.onPress(); });
+
+    expect(onNavigate).toHaveBeenCalledWith('Log', { kind: 'recovery-note', noteId: null });
+  });
+
+  test('an open Recovery week collapses the frozen baseline cards into one handoff', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
+    const component = await mount();
+
+    expect(has(component, 'home-baseline-paused-link')).toBe(true);
+    expect(hasText(component, 'Baseline training paused during Recovery')).toBe(true);
+    expect(has(component, 'home-strength-summary-link')).toBe(false);
+    expect(has(component, 'home-one-k-link')).toBe(false);
+  });
+
+  test('the baseline-paused handoff still reaches Analytics', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
+    const onNavigate = jest.fn();
+    const component = await mount({ onNavigate });
+
+    render.act(() => { component.root.findByProps({ testID: 'home-baseline-paused-link' }).props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Analytics', 'progressive-overload');
+  });
+
+  test('between weeks, the hero presents add-week/end-Recovery as the current decision', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block()],
+      weeks: [week({ completed_at: '2026-06-15T12:00:00.000Z' })],
+    }));
+    const onNavigate = jest.fn();
+    const component = await mount({ onNavigate });
+
+    expect(hasText(component, 'Recovery · Between weeks')).toBe(true);
+    const link = component.root.findByProps({ testID: 'home-current-routine-link' });
+    expect(link.props.accessibilityLabel).toBe('Add week or end Recovery');
+
+    render.act(() => { link.props.onPress(); });
+    // Never the frozen baseline note: lands on Recovery with no note target.
+    expect(onNavigate).toHaveBeenCalledWith('Log', { kind: 'recovery-note', noteId: null });
+  });
+
+  test('between weeks, the frozen baseline cards stay collapsed too', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block()],
+      weeks: [week({ completed_at: '2026-06-15T12:00:00.000Z' })],
+    }));
+    const component = await mount();
+
+    expect(has(component, 'home-baseline-paused-link')).toBe(true);
+    expect(has(component, 'home-strength-summary-link')).toBe(false);
+    expect(has(component, 'home-one-k-link')).toBe(false);
+  });
+
+  test('Recovery ending restores the normal Home hierarchy unchanged', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block({ completed_at: '2026-07-01T12:00:00.000Z' })],
+      weeks: [week({ completed_at: '2026-07-01T12:00:00.000Z' })],
+    }));
+    const onNavigate = jest.fn();
+    const component = await mount({ onNavigate, notes: [NOTE] });
+
+    expect(has(component, 'home-baseline-paused-link')).toBe(false);
+    expect(has(component, 'home-strength-summary-link')).toBe(true);
+    expect(has(component, 'home-one-k-link')).toBe(true);
+    expect(hasText(component, 'Recovery ·')).toBe(false);
+
+    render.act(() => { component.root.findByProps({ testID: 'home-current-routine-link' }).props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Log');
+  });
+});

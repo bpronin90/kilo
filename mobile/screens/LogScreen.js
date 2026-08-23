@@ -112,6 +112,8 @@ export function LogScreen({
   registerBackConsumer,
   navNoteId = null,
   navNoteKey = 0,
+  navRecoveryNoteId = null,
+  navRecoveryKey = 0,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -425,6 +427,46 @@ export function LogScreen({
     if (!isDeloadTarget) revealRoutine();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navNoteKey, navNoteId, notesLoading, notesError, notes, currentId, currentEditor.mode, otherEditor.editingNoteId, deloadEditor.deloadMode]);
+
+  // Recovery-view navigation intent (#869 review, #874): the plain `note`
+  // target above always forces Routine/Deload and opens the ordinary
+  // previous-routines viewer, which is wrong for a recovery-linked note —
+  // and a plain tab press leaves whatever `tabView` the user last picked in
+  // place, so a between-weeks handoff could land on Routine/Deload instead
+  // of the Recovery decision it promised. This intent lands on the Recovery
+  // view outright and, when a specific note is named and resolves, focuses
+  // it there — through `recoveryViewer`, never the routine/deload viewer.
+  const appliedRecoveryKeyRef = useRef(0);
+  useEffect(() => {
+    if (navRecoveryKey === appliedRecoveryKeyRef.current) return; // already consumed
+    // Resolvability gate, same reasoning as the note-target effect above:
+    // never act on Recovery visibility before the authoritative read settles.
+    if (!recoveryReady) return;
+
+    if (currentEditor.mode === 'edit' || otherEditor.editingNoteId || deloadEditor.deloadMode === 'edit') {
+      appliedRecoveryKeyRef.current = navRecoveryKey;
+      Alert.alert(
+        'Finish your edit first',
+        'Tap Done to close the note you are editing, then try again.'
+      );
+      return;
+    }
+
+    appliedRecoveryKeyRef.current = navRecoveryKey;
+    if (!recoveryTabVisible) return; // nothing to land on
+
+    setTabView('recovery');
+    if (navRecoveryNoteId) {
+      const note = notes.find(n => n.id === navRecoveryNoteId);
+      // Missing target is silent here, unlike the note-target effect's alert:
+      // LogRecoverySection itself already reports a missing/unreadable
+      // current-week note truthfully once the Recovery view is showing, so
+      // landing there without a focused note is still the correct, honest
+      // outcome rather than a second competing error surface.
+      if (note) otherEditor.setRecoveryViewingNoteId(note.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navRecoveryKey, navRecoveryNoteId, recoveryReady, recoveryTabVisible, notes, currentEditor.mode, otherEditor.editingNoteId, deloadEditor.deloadMode]);
 
   const handleAndroidBack = () => {
     if (deloadEditor.deloadMode === 'edit') {

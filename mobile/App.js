@@ -132,6 +132,7 @@ export const CLOUD_SYNC_NAV_TARGET = { kind: 'subview', view: 'backup', anchor: 
 //
 //   { kind: 'section', id: <ANALYTICS_SECTION_IDS> } → Analytics
 //   { kind: 'note',    noteId: string }              → Log
+//   { kind: 'recovery-note', noteId?: string }       → Log, Recovery view
 //   { kind: 'subview', view: string, anchor?: string } → More
 //
 // This normalizer is the single place that decides whether a request is a
@@ -159,6 +160,19 @@ export function normalizeNavTarget(tab, targetInput) {
   }
   if (target.kind === 'note' && tab === 'Log' && typeof target.noteId === 'string' && target.noteId) {
     return { kind: 'note', noteId: target.noteId };
+  }
+  // Recovery view intent (#869): lands Log on its Recovery view rather than
+  // treating the note as an ordinary Routine/Deload note (the plain `note`
+  // kind above forces Routine/Deload and opens the wrong viewer for a
+  // recovery-linked note — #874 review). `noteId` is optional: absent, it
+  // is "just land on Recovery" (the between-weeks decision, or an active
+  // week whose linked note could not be resolved); present, Log also
+  // focuses that specific recovery note.
+  if (target.kind === 'recovery-note' && tab === 'Log') {
+    return {
+      kind: 'recovery-note',
+      noteId: typeof target.noteId === 'string' && target.noteId ? target.noteId : null,
+    };
   }
   if (target.kind === 'subview' && tab === 'More' && typeof target.view === 'string' && target.view) {
     return {
@@ -234,6 +248,8 @@ function AppShell({ onDeviceDataWiped }) {
   const [analyticsTargetKey, setAnalyticsTargetKey] = useState(0);
   const [logNoteTarget, setLogNoteTarget] = useState(null); // { kind: 'note', noteId } | null
   const [logNoteTargetKey, setLogNoteTargetKey] = useState(0);
+  const [logRecoveryTarget, setLogRecoveryTarget] = useState(null); // { kind: 'recovery-note', noteId } | null
+  const [logRecoveryTargetKey, setLogRecoveryTargetKey] = useState(0);
   const [moreSubviewTarget, setMoreSubviewTarget] = useState(null); // { kind: 'subview', view, anchor } | null
   const [moreSubviewTargetKey, setMoreSubviewTargetKey] = useState(0);
   const [tabBarHeight, setTabBarHeight] = useState(TAB_BAR_HEIGHT_FALLBACK);
@@ -511,6 +527,7 @@ function AppShell({ onDeviceDataWiped }) {
     const target = normalizeNavTarget(tab, targetInput);
     const sectionTarget = target?.kind === 'section' ? target : null;
     const noteTarget = target?.kind === 'note' ? target : null;
+    const recoveryTarget = target?.kind === 'recovery-note' ? target : null;
     const subviewTarget = target?.kind === 'subview' ? target : null;
 
     // The target itself is cleared unconditionally so a plain tab press to any
@@ -525,6 +542,8 @@ function AppShell({ onDeviceDataWiped }) {
     if (sectionTarget) setAnalyticsTargetKey((n) => n + 1);
     setLogNoteTarget(noteTarget);
     if (noteTarget) setLogNoteTargetKey((n) => n + 1);
+    setLogRecoveryTarget(recoveryTarget);
+    if (recoveryTarget) setLogRecoveryTargetKey((n) => n + 1);
     setMoreSubviewTarget(subviewTarget);
     if (subviewTarget) setMoreSubviewTargetKey((n) => n + 1);
 
@@ -823,6 +842,8 @@ function AppShell({ onDeviceDataWiped }) {
             // every shell render, defeating its memoization.
             navNoteId={logNoteTarget ? logNoteTarget.noteId : null}
             navNoteKey={logNoteTargetKey}
+            navRecoveryNoteId={logRecoveryTarget ? logRecoveryTarget.noteId : null}
+            navRecoveryKey={logRecoveryTargetKey}
           />
         </View>
         <View

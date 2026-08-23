@@ -595,6 +595,23 @@ describe('normalizeNavTarget: the typed navigation-intent contract (#718)', () =
     expect(normalizeNavTarget('Analytics', { kind: 'note', noteId: 'n1' })).toBe(null);
   });
 
+  // #869/#874: a dedicated intent so Home's Recovery handoff lands Log on its
+  // Recovery view, distinct from the plain `note` kind which always forces
+  // Routine/Deload and opens the wrong viewer for a recovery-linked note.
+  test('recovery-note targets are accepted only on Log, and the noteId is optional', () => {
+    expect(normalizeNavTarget('Log', { kind: 'recovery-note', noteId: 'n1' }))
+      .toEqual({ kind: 'recovery-note', noteId: 'n1' });
+    // Absent/empty/non-string noteId all normalize to null — "just land on
+    // Recovery" (the between-weeks decision, or an unresolved active note).
+    expect(normalizeNavTarget('Log', { kind: 'recovery-note' }))
+      .toEqual({ kind: 'recovery-note', noteId: null });
+    expect(normalizeNavTarget('Log', { kind: 'recovery-note', noteId: '' }))
+      .toEqual({ kind: 'recovery-note', noteId: null });
+    expect(normalizeNavTarget('Log', { kind: 'recovery-note', noteId: 42 }))
+      .toEqual({ kind: 'recovery-note', noteId: null });
+    expect(normalizeNavTarget('Analytics', { kind: 'recovery-note', noteId: 'n1' })).toBe(null);
+  });
+
   test('subview targets are accepted only on More and carry an optional string anchor', () => {
     expect(normalizeNavTarget('More', { kind: 'subview', view: 'account' }))
       .toEqual({ kind: 'subview', view: 'account', anchor: null });
