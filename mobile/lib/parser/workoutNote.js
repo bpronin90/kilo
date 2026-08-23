@@ -240,7 +240,11 @@ export function parseWorkoutNote(noteText) {
             error: `Set row with no exercise — start the exercise with "- " (a dash and a space): "${trimmed}"`,
             sections: [],
             weekBStartIndex: null,
-            problems: [{
+            // Every error already collected before this rejection is kept
+            // (not just the rejection itself) so the editor can still
+            // navigate to an earlier malformed row, not only the one that
+            // ultimately aborted the parse.
+            problems: [...problems, {
               line: lineNumber,
               message: `Set row with no exercise — start the exercise with "- " (a dash and a space): "${trimmed}"`,
               exerciseName: null,

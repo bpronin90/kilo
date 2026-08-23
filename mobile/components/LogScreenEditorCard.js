@@ -218,25 +218,31 @@ export function LogScreenEditorCard({
   // debounced copy of the text, not on every keystroke, so retyping a large
   // note stays responsive — the debounce is purely for this jump list; the
   // TextInput itself always reflects `editorText` immediately and no text is
-  // ever rewritten or lost. The skip-first-run guard means no timer is ever
-  // scheduled for a card that renders with static text and is never typed
-  // into (the common case in most of this screen's lifecycle) — only an
-  // actual `editorText` change after mount starts the debounce.
+  // ever rewritten or lost.
+  //
+  // One effect, keyed on identity (which note/mode) as well as text, so the
+  // "skip the debounce" cases — first mount, and switching to a different
+  // note/mode (whose text must sync immediately, not lag) — are each hit
+  // exactly once and never re-arm themselves. An earlier version re-armed
+  // the skip on every identity-effect run, including the initial mount,
+  // which silently swallowed the FIRST real keystroke's debounce on every
+  // fresh render of this card — a single edit that fixed the last error
+  // could leave the problem list stale until a second edit came in.
   const [debouncedEditorText, setDebouncedEditorText] = useState(editorText);
+  const validationIdentityRef = useRef(`${editingNoteId}:${deloadMode}`);
   const skipNextValidationDebounceRef = useRef(true);
   useEffect(() => {
-    if (skipNextValidationDebounceRef.current) {
+    const identity = `${editingNoteId}:${deloadMode}`;
+    const identityChanged = identity !== validationIdentityRef.current;
+    validationIdentityRef.current = identity;
+    if (identityChanged || skipNextValidationDebounceRef.current) {
       skipNextValidationDebounceRef.current = false;
+      setDebouncedEditorText(editorText);
       return undefined;
     }
     const timer = setTimeout(() => setDebouncedEditorText(editorText), VALIDATION_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [editorText]);
-  useEffect(() => {
-    skipNextValidationDebounceRef.current = true;
-    setDebouncedEditorText(editorText);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingNoteId, deloadMode]);
+  }, [editorText, editingNoteId, deloadMode]);
 
   const validationParsed = React.useMemo(
     () => parseWorkoutNote(debouncedEditorText),

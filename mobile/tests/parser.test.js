@@ -3948,6 +3948,16 @@ describe('#856: parseWorkoutNote line-addressable problems', () => {
     expect(result.problems[0].line).toBe(2);
   });
 
+  test('the no-exercise rejection preserves problems already collected earlier in the note', () => {
+    const text = ['Monday', '-Bench', '135 8,,8', 'Monday', '-230 5'].join('\n');
+    const result = parseWorkoutNote(text);
+    expect(result.ok).toBe(false);
+    expect(result.problems).toHaveLength(2);
+    expect(result.problems[0].line).toBe(3);
+    expect(result.problems[0].exerciseName).toBe('Bench');
+    expect(result.problems[1].line).toBe(5);
+  });
+
   test('an oversized note has no line-addressable problems (rejected before the per-line pass)', () => {
     const result = parseWorkoutNote('x'.repeat(MAX_RAW_TEXT_LENGTH + 1));
     expect(result.ok).toBe(false);

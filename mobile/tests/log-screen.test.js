@@ -5705,31 +5705,35 @@ describe('LogScreenEditorCard local validation and jump-to-problem (#856)', () =
     mounted.length = 0;
   });
 
+  function buildElement(overrides = {}) {
+    return (
+      <LogScreenEditorCard
+        deloadMode="read"
+        deloadEditText=""
+        isSaving={false}
+        saveSuccess={false}
+        editingNoteId={null}
+        isEditingDeloadNote={false}
+        workoutNoteTitle="Test"
+        editingTitle=""
+        editingDeloadHasLinkedRecord={false}
+        deloadEditDate=""
+        deloadEditOrdinal=""
+        showDeloadDatePicker={false}
+        editingNote={null}
+        editingText=""
+        activeEditText=""
+        currentId={null}
+        {...mockHandlers}
+        {...overrides}
+      />
+    );
+  }
+
   function renderEditor(overrides = {}) {
     let component;
     render.act(() => {
-      component = render.create(
-        <LogScreenEditorCard
-          deloadMode="read"
-          deloadEditText=""
-          isSaving={false}
-          saveSuccess={false}
-          editingNoteId={null}
-          isEditingDeloadNote={false}
-          workoutNoteTitle="Test"
-          editingTitle=""
-          editingDeloadHasLinkedRecord={false}
-          deloadEditDate=""
-          deloadEditOrdinal=""
-          showDeloadDatePicker={false}
-          editingNote={null}
-          editingText=""
-          activeEditText=""
-          currentId={null}
-          {...mockHandlers}
-          {...overrides}
-        />
-      );
+      component = render.create(buildElement(overrides));
     });
     mounted.push(component);
     return component;
@@ -5819,6 +5823,31 @@ describe('LogScreenEditorCard local validation and jump-to-problem (#856)', () =
       end: expectedStart + '135 8,,8'.length,
     });
     expect(mockHandlers.handleCurrentTextChange).not.toHaveBeenCalled();
+  });
+
+  test('the FIRST edit after mount still debounces into an updated problem list (no skipped-debounce regression)', () => {
+    jest.useFakeTimers();
+    try {
+      const clean = 'Monday\n-Bench\n135 5,5,5';
+      const broken = 'Monday\n-Bench\n135 8,,8';
+      const component = renderEditor({ activeEditText: clean });
+      expect(findByTestID(component.root, 'editor-validation-summary')).toBeFalsy();
+
+      // A single edit — the first (and only) prop change since mount.
+      render.act(() => {
+        component.update(buildElement({ activeEditText: broken }));
+      });
+      render.act(() => {
+        jest.runAllTimers();
+      });
+
+      const summary = findByTestID(component.root, 'editor-validation-summary');
+      expect(summary).toBeTruthy();
+      const countText = summary.findAllByType('Text').map(n => n.props.children).join(' ');
+      expect(countText).toContain('1 error');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 
