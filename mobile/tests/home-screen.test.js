@@ -2213,7 +2213,7 @@ describe('HomeScreen follows the shared active-training context (#869)', () => {
 
     render.act(() => { component.root.findByProps({ testID: 'home-current-routine-link' }).props.onPress(); });
 
-    expect(onNavigate).toHaveBeenCalledWith('Log', { kind: 'note', noteId: 'nr1' });
+    expect(onNavigate).toHaveBeenCalledWith('Log', { kind: 'recovery-note', noteId: 'nr1' });
   });
 
   test('repeated Log workout handoffs keep targeting the same active Recovery note', async () => {
@@ -2225,8 +2225,25 @@ describe('HomeScreen follows the shared active-training context (#869)', () => {
     render.act(() => { link.props.onPress(); });
     render.act(() => { link.props.onPress(); });
 
-    expect(onNavigate).toHaveBeenNthCalledWith(1, 'Log', { kind: 'note', noteId: 'nr1' });
-    expect(onNavigate).toHaveBeenNthCalledWith(2, 'Log', { kind: 'note', noteId: 'nr1' });
+    expect(onNavigate).toHaveBeenNthCalledWith(1, 'Log', { kind: 'recovery-note', noteId: 'nr1' });
+    expect(onNavigate).toHaveBeenNthCalledWith(2, 'Log', { kind: 'recovery-note', noteId: 'nr1' });
+  });
+
+  // #874 review finding 2: a linked week whose note has been deleted still
+  // leaves `activeNoteId` set on the shared context, but `activeNote` resolves
+  // to null. Sending that id anyway would have Log report "Note not found"
+  // instead of landing on the Recovery view that actually explains the gap.
+  test('a deleted active-week note is never sent as a target Log cannot resolve', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block()],
+      weeks: [week({ note_id: 'nr-missing' })],
+    }));
+    const onNavigate = jest.fn();
+    const component = await mount({ onNavigate, notes: [NOTE] });
+
+    render.act(() => { component.root.findByProps({ testID: 'home-current-routine-link' }).props.onPress(); });
+
+    expect(onNavigate).toHaveBeenCalledWith('Log', { kind: 'recovery-note', noteId: null });
   });
 
   test('an open Recovery week collapses the frozen baseline cards into one handoff', async () => {
@@ -2261,8 +2278,8 @@ describe('HomeScreen follows the shared active-training context (#869)', () => {
     expect(link.props.accessibilityLabel).toBe('Add week or end Recovery');
 
     render.act(() => { link.props.onPress(); });
-    // Never the frozen baseline note: a plain tab press, not a note target.
-    expect(onNavigate).toHaveBeenCalledWith('Log');
+    // Never the frozen baseline note: lands on Recovery with no note target.
+    expect(onNavigate).toHaveBeenCalledWith('Log', { kind: 'recovery-note', noteId: null });
   });
 
   test('between weeks, the frozen baseline cards stay collapsed too', async () => {

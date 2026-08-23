@@ -453,12 +453,25 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
 
   // `Log workout` targets the exact active Recovery note (#869 acceptance),
   // including when it is not `currentId` — never the frozen baseline note.
-  // Restricted to the open-week branch: in every other status (normal
-  // included) `activeNoteId` resolves to the ordinary `currentId`, and this
-  // must not change that path's existing plain `onNavigate('Log')` handoff.
+  // The `recovery-note` intent (not the plain `note` kind normal Home uses)
+  // lands Log on its Recovery view instead of the Routine/Deload viewer a
+  // plain note target opens (#874 review finding 1), and is gated on the
+  // RESOLVED note, not just `activeNoteId`: a linked note that has been
+  // deleted still leaves `activeNoteId` set but `activeNote` null, and
+  // sending a noteId Log cannot resolve would surface "Note not found"
+  // instead of the Recovery view that actually reports the broken link
+  // (#874 review finding 2). Between weeks there is no active note at all,
+  // so the same intent is sent with no noteId — landing on Recovery without
+  // pretending a note exists. Normal state is untouched: it never reaches
+  // either branch, so it keeps its existing plain `onNavigate('Log')`.
   const handleLogWorkoutPress = () => {
-    if (isRecoveryOpenWeek && activeTrainingContext.activeNoteId) {
-      onNavigate('Log', { kind: 'note', noteId: activeTrainingContext.activeNoteId });
+    if (isRecoveryOpenWeek) {
+      onNavigate('Log', {
+        kind: 'recovery-note',
+        noteId: activeTrainingContext.activeNote ? activeTrainingContext.activeNoteId : null,
+      });
+    } else if (isRecoveryBetweenWeeks) {
+      onNavigate('Log', { kind: 'recovery-note', noteId: null });
     } else {
       onNavigate('Log');
     }

@@ -10615,6 +10615,146 @@ describe('typed note navigation intents (#718)', () => {
   });
 });
 
+// #869/#874 review: the plain `note` intent above always forces Routine/
+// Deload and opens the previous-routines viewer, which is the WRONG surface
+// for a recovery-linked note — it belongs to `recoveryViewer`, under the
+// Recovery tab. This is the `recovery-note` intent's own contract.
+describe('typed recovery-view navigation intents (#869/#874)', () => {
+  const CURRENT = {
+    id: 'note1',
+    title: 'Routine A',
+    raw_text: 'Monday\n+Lifting\n-Bench\n135 5,5,5',
+    saved_at: '2026-06-01T12:00:00.000Z',
+  };
+  const RECOVERY_NOTE = {
+    id: 'rn1',
+    title: 'Recovery week 1',
+    raw_text: 'Monday\n+Lifting\n-Bench\n95 5,5,5',
+    saved_at: '2026-06-08T12:00:00.000Z',
+  };
+
+  let alertSpy;
+
+  function mockNotes({ notes = [CURRENT, RECOVERY_NOTE], loading = false, error = null } = {}) {
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes,
+      currentId: 'note1',
+      currentNote: CURRENT,
+      deloadNotes: [],
+      loading,
+      error,
+      refresh: jest.fn(),
+      selectCurrent: jest.fn(),
+      update: jest.fn().mockResolvedValue({}),
+      add: jest.fn(),
+      remove: jest.fn(),
+    });
+  }
+
+  const hasText = (component, needle) => component.root.findAll(
+    n => n.type === 'Text'
+      && String(Array.isArray(n.props.children) ? n.props.children.join('') : n.props.children ?? '').includes(needle)
+  ).length > 0;
+  // The Recovery view's own state headline (LogRecoverySection) — proof the
+  // screen actually landed there, not just that SOME view rendered.
+  const onRecoveryView = (component) => hasText(component, 'Week 1 in progress');
+  const onRoutineView = (component) => hasText(component, 'More Routines');
+
+  function mount(props) {
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen {...props} />); });
+    return component;
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    mockNotes();
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: [], toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({ note: { raw_text: '' }, loading: false, save: jest.fn(), clear: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+    useEntries.useRecoveryBlockState.mockReturnValue({
+      activeBlock: { id: 'rb1', baseline_note_id: 'note1', include_in_normal_analytics: false, completed_at: null, deleted_at: null },
+      blocks: [{ id: 'rb1', baseline_note_id: 'note1', include_in_normal_analytics: false, completed_at: null, deleted_at: null }],
+      weeks: [{ id: 'rw1', block_id: 'rb1', note_id: 'rn1', week_number: 1, completed_at: null, deleted_at: null }],
+      recoveryWeekNumberByNoteId: { rn1: 1 },
+      refresh: jest.fn(),
+      pendingRecovery: [],
+      recoveryPendingError: null,
+      ready: true,
+      loading: false,
+      refreshing: false,
+      stale: false,
+      error: null,
+      mutationsAllowed: true,
+      retryRecovery: jest.fn(),
+    });
+  });
+
+  afterEach(() => {
+    alertSpy.mockRestore();
+  });
+
+  test('a bare recovery-view target lands on Recovery, not the Routine/Deload viewer', () => {
+    const component = mount({ navRecoveryNoteId: null, navRecoveryKey: 1 });
+    expect(onRecoveryView(component)).toBe(true);
+    expect(onRoutineView(component)).toBe(false);
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  test('a resolvable recovery-note id lands on Recovery with that note focused, never the Routine viewer', () => {
+    const component = mount({ navRecoveryNoteId: 'rn1', navRecoveryKey: 1 });
+    expect(onRecoveryView(component)).toBe(true);
+    // The recovery-linked note's own inline body, not the previous-routines
+    // "Double-tap to edit" hint the plain `note` intent would have opened.
+    expect(hasText(component, 'Recovery week 1')).toBe(true);
+    expect(onRoutineView(component)).toBe(false);
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  test('an unresolvable recovery-note id still lands on Recovery, silently — no "Note not found" alert', () => {
+    const component = mount({ navRecoveryNoteId: 'gone', navRecoveryKey: 1 });
+    expect(onRecoveryView(component)).toBe(true);
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  test('repeating the same recovery-view request re-applies under a later key', () => {
+    const component = mount({ navRecoveryNoteId: null, navRecoveryKey: 1 });
+    expect(onRecoveryView(component)).toBe(true);
+
+    // Manually leave Recovery, the way a user would.
+    const routineToggle = pressableAround(component.root, t => t === 'Routine');
+    render.act(() => { routineToggle.props.onPress(); });
+    expect(onRoutineView(component)).toBe(true);
+
+    render.act(() => { component.update(<ControlledLogScreen navRecoveryNoteId={null} navRecoveryKey={2} />); });
+    expect(onRecoveryView(component)).toBe(true);
+  });
+
+  test('a recovery-view request while mid-edit is refused out loud, like the note intent', () => {
+    const component = mount({ navRecoveryNoteId: null, navRecoveryKey: 0 });
+
+    // The screen defaults onto Recovery on first resolution; switch to
+    // Routine and open its editor, the way a user would before this request
+    // arrives.
+    const routineToggle = pressableAround(component.root, t => t === 'Routine');
+    render.act(() => { routineToggle.props.onPress(); });
+    render.act(() => {
+      findPressableByText(component.root, 'Edit').props.onPress({ stopPropagation: jest.fn() });
+    });
+
+    render.act(() => { component.update(<ControlledLogScreen navRecoveryNoteId={null} navRecoveryKey={1} />); });
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Finish your edit first',
+      expect.stringContaining('Tap Done')
+    );
+    expect(onRecoveryView(component)).toBe(false);
+  });
+});
+
 // ── honest first-paint and failed-read states (#737) ──────────────────────────
 //
 // Before this, an unresolved or failed notes read produced the same thing: an
