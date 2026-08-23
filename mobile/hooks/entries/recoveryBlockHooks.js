@@ -432,10 +432,20 @@ export function useActiveTrainingContext({ currentId = null, notes = [] } = {}) 
       notes,
       recoveryReady: recovery.ready,
       recoveryLoading: recovery.loading,
+      // Propagated so a verified-but-unreliable read (the latest refresh
+      // failed, or a journaled Recovery operation is still unresolved) can
+      // never present as a confirmed `NORMAL`/no-active-block answer (#868
+      // review, PR #873) — see activeTrainingContext.js's STALE/PENDING
+      // statuses.
+      recoveryStale: recovery.stale,
+      pendingRecovery: recovery.pendingRecovery,
       activeBlock: recovery.activeBlock,
       weeks: recovery.weeks,
     }),
-    [currentId, notes, recovery.ready, recovery.loading, recovery.activeBlock, recovery.weeks]
+    [
+      currentId, notes, recovery.ready, recovery.loading, recovery.stale,
+      recovery.pendingRecovery, recovery.activeBlock, recovery.weeks,
+    ]
   );
 }
 

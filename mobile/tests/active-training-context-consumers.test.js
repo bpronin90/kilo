@@ -167,8 +167,78 @@ describe('useActiveTrainingContext — Home/Log/Analytics agreement', () => {
     round = { home: captured.home.at(-1), log: captured.log.at(-1), analytics: captured.analytics.at(-1) };
     // The read failed, but a verified snapshot already existed, so the
     // last-known-good BETWEEN_WEEKS context is still what all three resolve —
-    // never NORMAL, and never a silent disagreement between screens.
+    // never NORMAL, and never a silent disagreement between screens. The
+    // `stale` flag propagates too, so a consumer showing this recovery data
+    // can still flag it as not-fully-current (#868 review, PR #873).
     expect(round.home.status).toBe(ACTIVE_TRAINING_STATUS.RECOVERY_BETWEEN_WEEKS);
+    expect(round.home.stale).toBe(true);
+    expect(round.log).toEqual(round.home);
+    expect(round.analytics).toEqual(round.home);
+
+    TestRenderer.act(() => {
+      renderer.unmount();
+    });
+  });
+
+  // Review finding on PR #873 (#868): a verified-but-stale snapshot with NO
+  // active block previously resolved to a confirmed-looking `NORMAL`, silently
+  // dropping the fact that the latest refresh had failed.
+  test('stale + no active block never resolves as normal, and all three consumers agree', async () => {
+    const baselineNote = { ...makeWorkoutNoteItem({ title: 'Baseline Routine', raw_text: '' }), id: 'baseline-note-stale' };
+    await Storage.saveWorkoutNoteItem(baselineNote);
+    await Storage.setCurrentWorkoutNote(baselineNote.id);
+    const currentId = baselineNote.id;
+    const notes = await Storage.loadWorkoutNotes();
+
+    const captured = { home: [], log: [], analytics: [] };
+    const Home = makeConsumer(captured, 'home');
+    const Log = makeConsumer(captured, 'log');
+    const Analytics = makeConsumer(captured, 'analytics');
+
+    let renderer;
+    TestRenderer.act(() => {
+      renderer = TestRenderer.create(
+        <React.Fragment>
+          <Home currentId={currentId} notes={notes} />
+          <Log currentId={currentId} notes={notes} />
+          <Analytics currentId={currentId} notes={notes} />
+        </React.Fragment>
+      );
+    });
+    await flushAsync();
+    TestRenderer.act(() => {
+      renderer.update(
+        <React.Fragment>
+          <Home currentId={currentId} notes={notes} />
+          <Log currentId={currentId} notes={notes} />
+          <Analytics currentId={currentId} notes={notes} />
+        </React.Fragment>
+      );
+    });
+
+    let round = { home: captured.home.at(-1), log: captured.log.at(-1), analytics: captured.analytics.at(-1) };
+    expect(round.home.status).toBe(ACTIVE_TRAINING_STATUS.NORMAL);
+
+    // Corrupt the journal so the NEXT authoritative read fails over an
+    // already-verified "no active block" snapshot.
+    await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, '{not json');
+    await TestRenderer.act(async () => {
+      await refreshRecoveryState().catch(() => {});
+    });
+    TestRenderer.act(() => {
+      renderer.update(
+        <React.Fragment>
+          <Home currentId={currentId} notes={notes} />
+          <Log currentId={currentId} notes={notes} />
+          <Analytics currentId={currentId} notes={notes} />
+        </React.Fragment>
+      );
+    });
+
+    round = { home: captured.home.at(-1), log: captured.log.at(-1), analytics: captured.analytics.at(-1) };
+    expect(round.home.status).toBe(ACTIVE_TRAINING_STATUS.STALE);
+    expect(round.home.status).not.toBe(ACTIVE_TRAINING_STATUS.NORMAL);
+    expect(round.home.stale).toBe(true);
     expect(round.log).toEqual(round.home);
     expect(round.analytics).toEqual(round.home);
 

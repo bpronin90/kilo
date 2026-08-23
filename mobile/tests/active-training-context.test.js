@@ -85,6 +85,61 @@ describe('deriveActiveTrainingContext', () => {
     expect(ctx.activeNoteId).toBe('note-1');
   });
 
+  test('stale + no active block: never resolves as normal, but still exposes last-known-good shape', () => {
+    const ctx = deriveActiveTrainingContext({
+      currentId: 'note-1', recoveryReady: true, recoveryStale: true, activeBlock: null, weeks: [],
+    });
+    expect(ctx.status).toBe(ACTIVE_TRAINING_STATUS.STALE);
+    expect(ctx.status).not.toBe(ACTIVE_TRAINING_STATUS.NORMAL);
+    expect(ctx.stale).toBe(true);
+    // Last-known-good shape is still exposed, just not claimed as confirmed.
+    expect(ctx.activeNoteId).toBe('note-1');
+    expect(ctx.baselinePaused).toBe(false);
+  });
+
+  test('pending + no active block: never resolves as normal', () => {
+    const ctx = deriveActiveTrainingContext({
+      currentId: 'note-1', recoveryReady: true, pendingRecovery: [{ id: 'op1' }], activeBlock: null, weeks: [],
+    });
+    expect(ctx.status).toBe(ACTIVE_TRAINING_STATUS.PENDING);
+    expect(ctx.status).not.toBe(ACTIVE_TRAINING_STATUS.NORMAL);
+    expect(ctx.pending).toBe(true);
+  });
+
+  test('failed (unverified) never resolves as normal even with a currentId set', () => {
+    const ctx = deriveActiveTrainingContext({ currentId: 'note-1', recoveryReady: false, recoveryLoading: false });
+    expect(ctx.status).not.toBe(ACTIVE_TRAINING_STATUS.NORMAL);
+    expect(ctx.status).toBe(ACTIVE_TRAINING_STATUS.UNVERIFIED);
+  });
+
+  test('stale still shown alongside an active open week: status stays recovery_open_week, stale flag propagates', () => {
+    const b = block({ id: 'rb1' });
+    const w1 = week({ blockId: 'rb1', noteId: 'note-w1', weekNumber: 1, completedAt: null, id: 'rw1' });
+    const ctx = deriveActiveTrainingContext({
+      currentId: 'note-1', recoveryReady: true, recoveryStale: true, activeBlock: b, weeks: [w1],
+    });
+    expect(ctx.status).toBe(ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK);
+    expect(ctx.stale).toBe(true);
+    expect(ctx.activeNoteId).toBe('note-w1');
+  });
+
+  test('pending still shown alongside an active between-weeks block: status unchanged, pending flag propagates', () => {
+    const b = block({ id: 'rb1' });
+    const w1 = week({ blockId: 'rb1', noteId: 'note-w1', weekNumber: 1, completedAt: '2026-01-08T00:00:00.000Z', id: 'rw1' });
+    const ctx = deriveActiveTrainingContext({
+      currentId: 'note-1', recoveryReady: true, pendingRecovery: [{ id: 'op1' }], activeBlock: b, weeks: [w1],
+    });
+    expect(ctx.status).toBe(ACTIVE_TRAINING_STATUS.RECOVERY_BETWEEN_WEEKS);
+    expect(ctx.pending).toBe(true);
+  });
+
+  test('clean verified normal state exposes stale:false and pending:false', () => {
+    const ctx = deriveActiveTrainingContext({ currentId: 'note-1', recoveryReady: true, activeBlock: null, weeks: [] });
+    expect(ctx.status).toBe(ACTIVE_TRAINING_STATUS.NORMAL);
+    expect(ctx.stale).toBe(false);
+    expect(ctx.pending).toBe(false);
+  });
+
   test('week ordering is structural (live ordered memberships), not array order', () => {
     const b = block({ id: 'rb1' });
     // Deliberately inserted out of order.
