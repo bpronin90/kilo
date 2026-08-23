@@ -1227,6 +1227,8 @@ export function LogScreen({
             otherEditor.editingNoteId ? otherEditor.handleUndoOther :
             currentEditor.handleUndoCurrent
           }
+          currentMode={currentEditor.mode}
+          editingEffectiveWeek={otherEditor.editingEffectiveWeek}
         />
       </ScreenShell>
       <SessionCheckInModal

@@ -1218,7 +1218,7 @@ describe('Log Done guards uneven session histories (#855)', () => {
     return { getHook: () => latest, update };
   }
 
-  test('current Done identifies affected exercises and waits for explicit acknowledgement before saving', async () => {
+  test('current Done identifies affected exercises but never blocks on them (#863)', async () => {
     const { getHook, update } = mountCurrent();
     render.act(() => { getHook().enterCurrentEditor(); });
     render.act(() => { getHook().handleCurrentTextChange(UNEVEN); });
@@ -1228,17 +1228,7 @@ describe('Log Done guards uneven session histories (#855)', () => {
 
     await render.act(async () => { await getHook().handleDoneCurrent(); });
 
-    expect(update).not.toHaveBeenCalled();
-    expect(getHook().mode).toBe('edit');
-    expect(alertSpy).toHaveBeenCalledWith(
-      'Session entries do not line up',
-      expect.stringMatching(/standalone "-"[\s\S]*Save uneven/),
-      expect.any(Array)
-    );
-
-    const saveUneven = alertSpy.mock.calls[0][2].find(button => button.text === 'Save uneven');
-    await render.act(async () => { await saveUneven.onPress(); });
-
+    expect(alertSpy).not.toHaveBeenCalled();
     expect(update).toHaveBeenLastCalledWith(
       'current',
       expect.objectContaining({ raw_text: UNEVEN })
@@ -1274,7 +1264,7 @@ describe('Log Done guards uneven session histories (#855)', () => {
     expect(getHook().mode).toBe('read');
   });
 
-  test('Recovery note Save uses the same guard and acknowledgement contract', async () => {
+  test('Recovery note Save identifies affected exercises but never blocks on them (#863)', async () => {
     const note = { id: 'recovery', title: 'Recovery Week 1', raw_text: ALIGNED };
     const { getHook, update } = mountOther(note);
     render.act(() => { getHook().setRecoveryViewingNoteId(note.id); });
@@ -1283,13 +1273,7 @@ describe('Log Done guards uneven session histories (#855)', () => {
 
     await render.act(async () => { await getHook().handleDoneOther(); });
 
-    expect(update).not.toHaveBeenCalled();
-    expect(getHook().editingNoteId).toBe(note.id);
-    expect(alertSpy.mock.calls[0][1]).toMatch(/Deadlift — 1 entry/);
-
-    const saveUneven = alertSpy.mock.calls[0][2].find(button => button.text === 'Save uneven');
-    await render.act(async () => { await saveUneven.onPress(); });
-
+    expect(alertSpy).not.toHaveBeenCalled();
     expect(update).toHaveBeenLastCalledWith(
       note.id,
       expect.objectContaining({ raw_text: UNEVEN })
@@ -5598,17 +5582,12 @@ describe('LogScreenEditorCard workout syntax help button', () => {
     expect(button).toBeTruthy();
   });
 
-  test('active edit surfaces the structured session-alignment warning beside the note input', () => {
+  test('the standing bordered session-alignment block is gone (#863)', () => {
     const message = 'Uneven exercise histories do not line up: Bench — 2 entries; Deadlift — 1 entry.';
     const component = renderEditor({
       sessionAlignmentIssue: { code: 'uneven_session_entries', message },
     });
-    const warning = component.root.findByProps({ testID: 'session-alignment-warning' });
-    expect(warning.props.accessibilityRole).toBe('alert');
-    const text = warning.findAllByType('Text').map(node => node.props.children).join(' ');
-    expect(text).toContain('Check session entries');
-    expect(text).toContain(message);
-    expect(text).toContain('explicitly save the uneven history');
+    expect(component.root.findAll(n => n.props?.testID === 'session-alignment-warning').length).toBe(0);
   });
 
   test('tapping the button opens the modal, and the close control closes it', () => {
@@ -5675,9 +5654,11 @@ describe('LogScreenEditorCard workout syntax help button', () => {
   });
 });
 
-// ── #856: local validation + jump-to-error in the Log editor ─────────────────
+// ── #863: quiet on-demand problem list in the Log editor ─────────────────────
 
-describe('LogScreenEditorCard local validation and jump-to-problem (#856)', () => {
+describe('LogScreenEditorCard quiet on-demand problem list (#863)', () => {
+  const { LightColors } = require('../theme/colors');
+
   const mockHandlers = {
     handleSaveDeload: jest.fn(),
     handleCurrentTextChange: jest.fn(),
@@ -5695,7 +5676,7 @@ describe('LogScreenEditorCard local validation and jump-to-problem (#856)', () =
     setEditingText: jest.fn(),
   };
 
-  // Jumping to a problem sets a one-shot forced selection (the same
+  // Selecting a problem sets a one-shot forced selection (the same
   // mechanism the seed-example insert uses), which schedules a same-tick
   // cleanup timer. Unmounting after each test lets that timer fire against a
   // still-live tree instead of leaking past this test into a later one.
@@ -5724,6 +5705,8 @@ describe('LogScreenEditorCard local validation and jump-to-problem (#856)', () =
         editingText=""
         activeEditText=""
         currentId={null}
+        currentMode="edit"
+        editingEffectiveWeek={null}
         {...mockHandlers}
         {...overrides}
       />
@@ -5743,86 +5726,215 @@ describe('LogScreenEditorCard local validation and jump-to-problem (#856)', () =
     return root.findAll(n => n.props?.testID === testID)[0];
   }
 
-  test('a clean note shows no validation summary or active-problem message', () => {
+  function findFlatStyle(node) {
+    return [].concat(node.props.style).filter(Boolean).reduce((acc, s) => ({ ...acc, ...s }), {});
+  }
+
+  function rowLabels(root) {
+    return findByTestID(root, 'editor-validation-list')
+      .findAllByType('Text')
+      .map(n => n.props.children);
+  }
+
+  function findFirstListRow(root) {
+    return findByTestID(root, 'editor-validation-list')
+      .findAll(n => typeof n.props?.onPress === 'function')[0];
+  }
+
+  function findListRowByPrefix(root, prefix) {
+    return findByTestID(root, 'editor-validation-list')
+      .findAll(n => typeof n.props?.onPress === 'function' && n.props?.accessibilityLabel?.startsWith(prefix))[0];
+  }
+
+  // Advances the debounced recompute past VALIDATION_DEBOUNCE_MS so a prop
+  // update (a simulated edit) is reflected in the problem list.
+  function settleDebounce() {
+    render.act(() => { jest.runAllTimers(); });
+  }
+
+  test('a clean note shows no badge and no bar', () => {
     const component = renderEditor({ activeEditText: 'Monday\n-Bench\n135 5,5,5' });
-    expect(findByTestID(component.root, 'editor-validation-summary')).toBeFalsy();
-    expect(findByTestID(component.root, 'editor-validation-active-message')).toBeFalsy();
+    expect(findByTestID(component.root, 'editor-validation-badge')).toBeFalsy();
+    expect(findByTestID(component.root, 'editor-validation-bar')).toBeFalsy();
   });
 
-  test('a syntax error surfaces a compact count and a line-addressed message', () => {
+  test('badge renders an outlined "!" and the total count, colored by the severity mix', () => {
+    const errorOnly = renderEditor({ activeEditText: 'Monday\n-Bench\n135 8,,8' });
+    let badge = findByTestID(errorOnly.root, 'editor-validation-badge');
+    expect(badge).toBeTruthy();
+    expect(badge.props.accessibilityLabel).toMatch(/^1 problem\./);
+    const glyph = badge.findAllByType('Text')[0];
+    expect(glyph.props.children).toBe('!');
+    expect(findFlatStyle(glyph).color).toBe(LightColors.error);
+    const count = badge.findAllByType('Text')[1];
+    expect(count.props.children).toBe(1);
+    expect(findFlatStyle(count).color).toBe(LightColors.error);
+
+    const warningOnly = renderEditor({
+      activeEditText: 'Monday\n-Bench\n- 135 5,5\n- 140 5,5\n-Deadlift\n- 225 5',
+      sessionAlignmentIssue: {
+        code: 'uneven_session_entries',
+        message: 'placeholder',
+        affectedExercises: [
+          { name: 'Bench', entryCount: 2, sectionIndex: 0, sectionLabel: 'Monday', missingSessionIndexes: [] },
+          { name: 'Deadlift', entryCount: 1, sectionIndex: 0, sectionLabel: 'Monday', missingSessionIndexes: [2] },
+        ],
+      },
+    });
+    badge = findByTestID(warningOnly.root, 'editor-validation-badge');
+    expect(findFlatStyle(badge.findAllByType('Text')[0]).color).toBe(LightColors.caution);
+
+    const mixed = renderEditor({
+      activeEditText: 'Monday\n-Bench\n135 8,,8\n- 140 5,5\n-Deadlift\n- 225 5',
+      sessionAlignmentIssue: {
+        code: 'uneven_session_entries',
+        message: 'placeholder',
+        affectedExercises: [
+          { name: 'Deadlift', entryCount: 1, sectionIndex: 0, sectionLabel: 'Monday', missingSessionIndexes: [2] },
+        ],
+      },
+    });
+    badge = findByTestID(mixed.root, 'editor-validation-badge');
+    expect(findFlatStyle(badge.findAllByType('Text')[0]).color).toBe(LightColors.error);
+  });
+
+  test('tapping the badge opens the list; tapping it again closes it', () => {
     const component = renderEditor({ activeEditText: 'Monday\n-Bench\n135 8,,8' });
-    const summary = findByTestID(component.root, 'editor-validation-summary');
-    expect(summary).toBeTruthy();
-    const countText = summary.findAllByType('Text').map(n => n.props.children).join(' ');
-    expect(countText).toContain('1 error');
-
-    const message = findByTestID(component.root, 'editor-validation-active-message');
-    expect(message.props.children).toContain('Line 3');
-    expect(message.props.children).toMatch(/trailing comma/i);
-  });
-
-  test('multiple errors report a plural count, and Next/Prev cycle deterministically by line', () => {
-    const text = [
-      'Monday',
-      '-Bench',
-      '135 8,,8',
-      '-Squat',
-      '225 5-8',
-    ].join('\n');
-    const component = renderEditor({ activeEditText: text });
     const root = component.root;
-    const summary = findByTestID(root, 'editor-validation-summary');
-    const countText = summary.findAllByType('Text').map(n => n.props.children).join(' ');
-    expect(countText).toContain('2 errors');
+    expect(findByTestID(root, 'editor-validation-list')).toBeFalsy();
 
-    // Starts on the first (lowest-line) problem.
-    expect(findByTestID(root, 'editor-validation-active-message').props.children).toContain('Line 3');
+    render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+    expect(findByTestID(root, 'editor-validation-list')).toBeTruthy();
 
-    const nextButton = findByTestID(root, 'editor-validation-next');
-    render.act(() => { nextButton.props.onPress(); });
-    expect(findByTestID(root, 'editor-validation-active-message').props.children).toContain('Line 5');
-
-    // Wraps back around deterministically.
-    render.act(() => { nextButton.props.onPress(); });
-    expect(findByTestID(root, 'editor-validation-active-message').props.children).toContain('Line 3');
+    render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+    expect(findByTestID(root, 'editor-validation-list')).toBeFalsy();
   });
 
-  test('the session-alignment warning is folded into the same navigable problem list', () => {
-    const message = 'Uneven exercise histories do not line up: Bench — 2 entries; Deadlift — 1 entry.';
-    const text = ['Monday', '-Bench', '135 5', '135 5', '-Deadlift', '225 5'].join('\n');
+  test('list rows use human-readable context, never a visible line number', () => {
+    const text = ['Monday', '-Bench', '135 8,,8'].join('\n');
+    const component = renderEditor({ activeEditText: text });
+    render.act(() => { findByTestID(component.root, 'editor-validation-badge').props.onPress(); });
+    const labels = rowLabels(component.root);
+    expect(labels.length).toBeGreaterThan(0);
+    labels.forEach(label => expect(label).not.toMatch(/\bLine \d/));
+    expect(labels[0]).toMatch(/^Bench —/);
+  });
+
+  test('session alignment: only exercises with a missing position appear, one row per position', () => {
+    const text = ['Monday', '-Bench', '- 135 5', '- 135 5', '- 135 5', '-Deadlift', '- 225 5'].join('\n');
     const component = renderEditor({
       activeEditText: text,
       sessionAlignmentIssue: {
         code: 'uneven_session_entries',
-        message,
-        affectedExercises: [{ name: 'Bench', sectionIndex: 0 }],
+        message: 'placeholder',
+        affectedExercises: [
+          { name: 'Bench', entryCount: 3, sectionIndex: 0, sectionLabel: 'Monday', missingSessionIndexes: [] },
+          { name: 'Deadlift', entryCount: 1, sectionIndex: 0, sectionLabel: 'Monday', missingSessionIndexes: [2, 3] },
+        ],
       },
     });
-    const summary = findByTestID(component.root, 'editor-validation-summary');
-    const countText = summary.findAllByType('Text').map(n => n.props.children).join(' ');
-    expect(countText).toContain('1 warning');
-    const activeMessage = findByTestID(component.root, 'editor-validation-active-message');
-    expect(activeMessage.props.children).toContain(message);
+    render.act(() => { findByTestID(component.root, 'editor-validation-badge').props.onPress(); });
+    const labels = rowLabels(component.root);
+    expect(labels).toEqual([
+      'Monday · Deadlift — session 2 has no entry',
+      'Monday · Deadlift — session 3 has no entry',
+    ]);
   });
 
-  test('jumping to a problem sets the TextInput selection to that line, without altering the text', () => {
+  test('selecting a syntax row closes the list, selects the malformed line, and shows the bar below the input', () => {
     const text = ['Monday', '-Bench', '135 8,,8'].join('\n');
     const component = renderEditor({ activeEditText: text });
     const root = component.root;
+    render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
 
-    render.act(() => {
-      findByTestID(root, 'editor-validation-next').props.onPress();
+    const row = findFirstListRow(root);
+    render.act(() => { row.props.onPress(); });
+
+    expect(findByTestID(root, 'editor-validation-list')).toBeFalsy();
+    const noteInput = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === text);
+    const expectedStart = 'Monday\n-Bench\n'.length;
+    expect(noteInput.props.selection).toEqual({ start: expectedStart, end: expectedStart + '135 8,,8'.length });
+    expect(mockHandlers.handleCurrentTextChange).not.toHaveBeenCalled();
+
+    const bar = findByTestID(root, 'editor-validation-bar');
+    expect(bar).toBeTruthy();
+    expect(bar.findAllByType('Text')[0].props.children).toMatch(/^Bench —/);
+  });
+
+  test('selecting a missing-session row places the caret right after that exercise\'s existing entries', () => {
+    const text = ['Monday', '-Bench', '- 135 5,5', '- 140 5,5', '-Deadlift', '- 225 5'].join('\n');
+    const component = renderEditor({
+      activeEditText: text,
+      sessionAlignmentIssue: {
+        code: 'uneven_session_entries',
+        message: 'placeholder',
+        affectedExercises: [
+          { name: 'Deadlift', entryCount: 1, sectionIndex: 0, sectionLabel: 'Monday', missingSessionIndexes: [2] },
+        ],
+      },
     });
+    const root = component.root;
+    render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+    const row = findFirstListRow(root);
+    render.act(() => { row.props.onPress(); });
 
     const noteInput = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === text);
-    expect(noteInput).toBeTruthy();
-    // Line 3 ("135 8,,8") starts right after "Monday\n-Bench\n".
-    const expectedStart = 'Monday\n-Bench\n'.length;
-    expect(noteInput.props.selection).toEqual({
-      start: expectedStart,
-      end: expectedStart + '135 8,,8'.length,
-    });
-    expect(mockHandlers.handleCurrentTextChange).not.toHaveBeenCalled();
+    // Deadlift is the last exercise with no trailing lines after it, so the
+    // insertion point (mirroring the "Skip week" marker) lands at the very
+    // end of the text.
+    expect(noteInput.props.selection).toEqual({ start: text.length, end: text.length });
+
+    const bar = findByTestID(root, 'editor-validation-bar');
+    expect(bar.findAllByType('Text')[0].props.children).toBe('Monday · Deadlift — session 2 has no entry');
+  });
+
+  test('fixing the selected problem clears the bar on its own', () => {
+    jest.useFakeTimers();
+    try {
+      const broken = ['Monday', '-Bench', '135 8,,8'].join('\n');
+      const fixed = ['Monday', '-Bench', '135 8,8'].join('\n');
+      const component = renderEditor({ activeEditText: broken });
+      const root = component.root;
+      render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+      const row = findFirstListRow(root);
+      render.act(() => { row.props.onPress(); });
+      expect(findByTestID(root, 'editor-validation-bar')).toBeTruthy();
+
+      render.act(() => { component.update(buildElement({ activeEditText: fixed })); });
+      settleDebounce();
+
+      expect(findByTestID(root, 'editor-validation-bar')).toBeFalsy();
+      expect(findByTestID(root, 'editor-validation-badge')).toBeFalsy();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('the bar stays attached to the same logical problem when lines shift above it, and other problems remain listed', () => {
+    jest.useFakeTimers();
+    try {
+      const original = ['Monday', '-Bench', '135 8,,8', '-Squat', '225 5-8'].join('\n');
+      const shifted = ['Monday', '-Row', '135 5,5', '-Bench', '135 8,,8', '-Squat', '225 5-8'].join('\n');
+      const component = renderEditor({ activeEditText: original });
+      const root = component.root;
+      render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+      const benchRow = findListRowByPrefix(root, 'Bench —');
+      render.act(() => { benchRow.props.onPress(); });
+      const barBefore = findByTestID(root, 'editor-validation-bar').findAllByType('Text')[0].props.children;
+
+      render.act(() => { component.update(buildElement({ activeEditText: shifted })); });
+      settleDebounce();
+
+      const barAfter = findByTestID(root, 'editor-validation-bar').findAllByType('Text')[0].props.children;
+      expect(barAfter).toBe(barBefore);
+
+      // The other, unfixed problem (Squat) is still reachable in the list.
+      render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+      const labels = rowLabels(root);
+      expect(labels.some(l => l.startsWith('Squat —'))).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test('the FIRST edit after mount still debounces into an updated problem list (no skipped-debounce regression)', () => {
@@ -5831,23 +5943,65 @@ describe('LogScreenEditorCard local validation and jump-to-problem (#856)', () =
       const clean = 'Monday\n-Bench\n135 5,5,5';
       const broken = 'Monday\n-Bench\n135 8,,8';
       const component = renderEditor({ activeEditText: clean });
-      expect(findByTestID(component.root, 'editor-validation-summary')).toBeFalsy();
+      expect(findByTestID(component.root, 'editor-validation-badge')).toBeFalsy();
 
       // A single edit — the first (and only) prop change since mount.
       render.act(() => {
         component.update(buildElement({ activeEditText: broken }));
       });
-      render.act(() => {
-        jest.runAllTimers();
-      });
+      settleDebounce();
 
-      const summary = findByTestID(component.root, 'editor-validation-summary');
-      expect(summary).toBeTruthy();
-      const countText = summary.findAllByType('Text').map(n => n.props.children).join(' ');
-      expect(countText).toContain('1 error');
+      expect(findByTestID(component.root, 'editor-validation-badge')).toBeTruthy();
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  test('leaving the editor (currentMode) clears the selected problem and closes the list', () => {
+    const text = ['Monday', '-Bench', '135 8,,8'].join('\n');
+    const component = renderEditor({ activeEditText: text, currentMode: 'edit' });
+    const root = component.root;
+    render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+    const row = findFirstListRow(root);
+    render.act(() => { row.props.onPress(); });
+    expect(findByTestID(root, 'editor-validation-bar')).toBeTruthy();
+
+    render.act(() => { component.update(buildElement({ activeEditText: text, currentMode: 'read' })); });
+
+    expect(findByTestID(root, 'editor-validation-bar')).toBeFalsy();
+  });
+
+  test('switching A/B week (editingEffectiveWeek) clears the selected problem and closes the list', () => {
+    const text = ['Monday', '-Bench', '135 8,,8'].join('\n');
+    const component = renderEditor({
+      editingNoteId: 'other-1',
+      editingText: text,
+      editingEffectiveWeek: 'A',
+    });
+    const root = component.root;
+    render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+    expect(findByTestID(root, 'editor-validation-list')).toBeTruthy();
+
+    render.act(() => {
+      component.update(buildElement({ editingNoteId: 'other-1', editingText: text, editingEffectiveWeek: 'B' }));
+    });
+
+    expect(findByTestID(root, 'editor-validation-list')).toBeFalsy();
+  });
+
+  test('dismissing the bar clears the selected problem without closing anything else', () => {
+    const text = ['Monday', '-Bench', '135 8,,8'].join('\n');
+    const component = renderEditor({ activeEditText: text });
+    const root = component.root;
+    render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+    const row = findFirstListRow(root);
+    render.act(() => { row.props.onPress(); });
+    const bar = findByTestID(root, 'editor-validation-bar');
+
+    const dismiss = bar.findAll(n => n.props?.accessibilityLabel === 'Dismiss problem message')[0];
+    render.act(() => { dismiss.props.onPress(); });
+
+    expect(findByTestID(root, 'editor-validation-bar')).toBeFalsy();
   });
 });
 
