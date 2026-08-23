@@ -793,6 +793,7 @@ function AppShell({ onDeviceDataWiped }) {
           <MemoHomeScreen
             weightEntries={weightHook.entries}
             workoutNote={noteHook.currentNote}
+            currentId={noteHook.currentId}
             notes={noteHook.notes}
             successMessage={saveSuccess}
             onNavigate={handleTabPress}

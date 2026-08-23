@@ -397,7 +397,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   );
 }
 
-export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, onNavigate, loading, loadError = false, onRetryLoad }) {
+export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes, successMessage, onNavigate, loading, loadError = false, onRetryLoad }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { goal: weightGoal, loading: goalLoading, error: goalError, refresh: refreshGoal } = useWeightGoal();
@@ -434,11 +434,15 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
 
   // Product-wide "what am I training now?" context (#868), shared verbatim
   // with Log and Analytics — same authoritative Recovery snapshot as
-  // `recoverySummary` above, plus the current-routine note this screen was
-  // handed. Not yet threaded into Home's own rendering (that stays exactly as
-  // it already behaves); this is the shared derivation Home now resolves at
-  // its existing Recovery-state boundary, alongside the other two screens.
-  const activeTrainingContext = useActiveTrainingContext({ currentId: workoutNote?.id ?? null, notes });
+  // `recoverySummary` above, plus the STORED current-routine id (not
+  // `workoutNote?.id`: a restored profile whose `current_workout_id`
+  // references a missing/tombstoned note leaves `workoutNote` null while
+  // `currentId` is still set, and this context must resolve the same
+  // activeNoteId Log does — review finding, PR #873). Not yet threaded into
+  // Home's own rendering (that stays exactly as it already behaves); this is
+  // the shared derivation Home now resolves at its existing Recovery-state
+  // boundary, alongside the other two screens.
+  const activeTrainingContext = useActiveTrainingContext({ currentId, notes });
 
   const noteSectionsList = useMemo(
     () => normalNotes.map(n => getNoteSections(n)),

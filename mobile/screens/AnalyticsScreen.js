@@ -42,6 +42,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   const styles = useThemedStyles(createStyles);
   const {
     notes,
+    currentId,
     currentNote,
     loading: loadingNotes,
     error: notesError,
@@ -78,7 +79,12 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   // Product-wide "what am I training now?" context (#868), shared verbatim
   // with Home and Log — same authoritative Recovery snapshot as above,
   // resolved at this screen's existing Recovery-state boundary.
-  const activeTrainingContext = useActiveTrainingContext({ currentId: currentNote?.id ?? null, notes });
+  // The STORED current-routine id, not `currentNote?.id`: a restored profile
+  // whose `current_workout_id` references a missing/tombstoned note leaves
+  // `currentNote` null while `currentId` is still set, and this context must
+  // resolve the same activeNoteId Log does (Log reads `currentId` directly)
+  // rather than silently losing it (review finding, PR #873).
+  const activeTrainingContext = useActiveTrainingContext({ currentId, notes });
   // Ordinary-analytics boundary (#699). Recovery-linked notes whose block keeps
   // `include_in_normal_analytics` off are dropped from every ordinary population
   // below. AnalyticsRecoverySection still receives the unfiltered `notes`.

@@ -43,6 +43,7 @@ jest.mock('../hooks/useEntries', () => {
     useDeloadHistory: jest.fn(),
     useFeatureToggles: jest.fn(),
     useRecoveryBlockState: jest.fn(),
+    useActiveTrainingContext: jest.fn(actual.useActiveTrainingContext),
   };
 });
 
@@ -2346,5 +2347,20 @@ describe('AnalyticsScreen load-failure banners (#737)', () => {
 
     expect(hasText(component.root, 'Could not load workout notes')).toBe(true);
     expect(component.root.findAllByType('ActivityIndicator')).toHaveLength(0);
+  });
+});
+
+// Review finding on PR #873 (#868): a restored profile whose stored
+// `current_workout_id` references a missing/tombstoned note leaves
+// `currentNote` null while `currentId` is still set. Analytics must resolve
+// `activeTrainingContext` off that stored id, not off `currentNote?.id`, or it
+// silently disagrees with Log (which reads `currentId` directly).
+describe('AnalyticsScreen threads the stored currentId into activeTrainingContext', () => {
+  test('activeTrainingContext resolves the stored currentId even when currentNote is null', () => {
+    setup({ hookOverrides: { currentId: 'stored-current-id', currentNote: null } });
+
+    expect(useEntries.useActiveTrainingContext).toHaveBeenCalledWith(
+      expect.objectContaining({ currentId: 'stored-current-id' })
+    );
   });
 });
