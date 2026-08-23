@@ -31,6 +31,23 @@ function _lineCharRange(text, lineNumber) {
   return { start, end: start + lines[lineNumber - 1].length };
 }
 
+// The header_line of the exercise that owns `line` (a syntax problem's
+// line), i.e. the nearest exercise header at or before it, searched across
+// every section in source order. Returns null if no exercise owns it (a
+// problem with no `exerciseName`, or a stale/empty parse).
+function _headerLineForExercise(sections, exerciseName, line) {
+  if (!exerciseName) return null;
+  let best = null;
+  for (const section of sections || []) {
+    for (const exercise of section.exercises) {
+      if (exercise.name !== exerciseName || exercise.header_line == null) continue;
+      if (exercise.header_line > line) continue;
+      if (best == null || exercise.header_line > best) best = exercise.header_line;
+    }
+  }
+  return best;
+}
+
 // Character offset immediately after a single exercise's existing entries
 // (and any blank lines that trail them), for placing the caret when a
 // missing-session problem is selected (#863). Reuses `applyWeekSkipToText`
@@ -305,19 +322,25 @@ export function LogScreenEditorCard({
   // doesn't lose the selection, and fixing the problem (which changes its
   // message or removes it) naturally drops it from the list.
   const syntaxProblems = React.useMemo(() => {
-    // Two malformed rows under the same exercise can produce the identical
-    // diagnostic text (e.g. the same typo repeated). A base id built from
-    // just exerciseName+message would collide for both, so every occurrence
-    // beyond the first in source order gets a numeric suffix — stable
-    // because problems are always walked in the same top-down parse order.
-    const occurrenceCounts = new Map();
+    const sections = validationParsed.sections || [];
     return (validationParsed.problems || []).map(p => {
-      const base = `syntax:${p.exerciseName || ''}:${p.message}`;
-      const occurrence = occurrenceCounts.get(base) ?? 0;
-      occurrenceCounts.set(base, occurrence + 1);
+      // Two malformed rows under the same exercise can produce the
+      // identical diagnostic text (e.g. the same typo repeated twice), so a
+      // base id built from just exerciseName+message would collide for
+      // both. Disambiguate with the row's offset from its OWN exercise's
+      // header line rather than a rank among the duplicates: a rank (1st,
+      // 2nd, ...) reshuffles onto the surviving duplicate's old rank the
+      // moment an earlier one is fixed, so the bar would silently reattach
+      // to it instead of clearing per AC8. An offset from the exercise's
+      // own header is specific to that one row, stays constant when lines
+      // shift above the exercise (same requirement the base id already
+      // gives non-duplicates), and cannot collide with a sibling duplicate,
+      // which necessarily sits on a different line.
+      const headerLine = _headerLineForExercise(sections, p.exerciseName, p.line);
+      const offset = headerLine != null ? p.line - headerLine : p.line;
       return {
         kind: 'syntax',
-        id: occurrence === 0 ? base : `${base}#${occurrence}`,
+        id: `syntax:${p.exerciseName || ''}:${p.message}:${offset}`,
         line: p.line ?? Infinity,
         severity: p.severity,
         exerciseName: p.exerciseName,

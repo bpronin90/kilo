@@ -6063,6 +6063,35 @@ describe('LogScreenEditorCard quiet on-demand problem list (#863)', () => {
       jest.useRealTimers();
     }
   });
+
+  test('fixing the FIRST of two identical duplicates also clears its own selection, without reattaching to the second (#863 review)', () => {
+    jest.useFakeTimers();
+    try {
+      const text = ['Monday', '-Bench', '135 8,,8', '135 8,,8'].join('\n');
+      const fixedFirst = ['Monday', '-Bench', '135 8,8', '135 8,,8'].join('\n');
+      const component = renderEditor({ activeEditText: text });
+      const root = component.root;
+      render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+      const rows = findByTestID(root, 'editor-validation-list').findAll(n => typeof n.props?.onPress === 'function');
+      expect(rows.length).toBe(2);
+
+      // Select the FIRST occurrence — the one that's about to be fixed. A
+      // rank-based id would reassign the surviving second occurrence onto
+      // this exact selection once the first is gone, so the bar would
+      // wrongly stay up; an offset-from-the-exercise-header id must not.
+      render.act(() => { rows[0].props.onPress(); });
+      expect(findByTestID(root, 'editor-validation-bar')).toBeTruthy();
+
+      render.act(() => { component.update(buildElement({ activeEditText: fixedFirst })); });
+      settleDebounce();
+
+      expect(findByTestID(root, 'editor-validation-bar')).toBeFalsy();
+      render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+      expect(rowLabels(root).length).toBe(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
 
 describe('LogDeloadSection deload ordinal input has autocorrect disabled', () => {
