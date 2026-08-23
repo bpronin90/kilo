@@ -5810,6 +5810,59 @@ describe('LogScreenEditorCard quiet on-demand problem list (#863)', () => {
     expect(findByTestID(root, 'editor-validation-list')).toBeFalsy();
   });
 
+  test('a syntax jump releases without an iOS acknowledgment, so badge toggles cannot reapply it (#865)', () => {
+    jest.useFakeTimers();
+    try {
+      const text = ['Monday', '-Bench', '135 8,,8'].join('\n');
+      const component = renderEditor({ activeEditText: text });
+      const root = component.root;
+      render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+      render.act(() => { findFirstListRow(root).props.onPress(); });
+
+      let noteInput = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === text);
+      const expected = {
+        start: 'Monday\n-Bench\n'.length,
+        end: 'Monday\n-Bench\n135 8,,8'.length,
+      };
+      expect(noteInput.props.selection).toEqual(expected);
+      expect(noteInput.props.selectionColor).toBe(LightColors.accent);
+
+      // React Native 0.81.5 iOS applies this JS-driven range without emitting
+      // onSelectionChange. The one-shot fallback must still release control.
+      render.act(() => { jest.runOnlyPendingTimers(); });
+      noteInput = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === text);
+      expect(noteInput.props.selection).toBeUndefined();
+
+      render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+      render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+      noteInput = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === text);
+      expect(noteInput.props.selection).toBeUndefined();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('an unacknowledged jump yields to a different native selection before selecting another problem (#865)', () => {
+    const text = ['Monday', '-Bench', '135 8,,8', '-Squat', '225 5-8'].join('\n');
+    const component = renderEditor({ activeEditText: text });
+    const root = component.root;
+    render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+    render.act(() => { findListRowByPrefix(root, 'Bench —').props.onPress(); });
+    let noteInput = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === text);
+    const firstSelection = noteInput.props.selection;
+    render.act(() => {
+      noteInput.props.onSelectionChange({ nativeEvent: { selection: { start: 0, end: 0 } } });
+    });
+    noteInput = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === text);
+    expect(noteInput.props.selection).toBeUndefined();
+
+    render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+    render.act(() => { findListRowByPrefix(root, 'Squat —').props.onPress(); });
+    noteInput = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === text);
+    expect(noteInput.props.selection).toEqual({ start: text.indexOf('225 5-8'), end: text.length });
+    expect(noteInput.props.selection).not.toEqual(firstSelection);
+  });
+
   test('list rows use human-readable context, never a visible line number', () => {
     const text = ['Monday', '-Bench', '135 8,,8'].join('\n');
     const component = renderEditor({ activeEditText: text });
@@ -5861,31 +5914,45 @@ describe('LogScreenEditorCard quiet on-demand problem list (#863)', () => {
     expect(bar.findAllByType('Text')[0].props.children).toMatch(/^Bench —/);
   });
 
-  test('selecting a missing-session row places the caret right after that exercise\'s existing entries', () => {
-    const text = ['Monday', '-Bench', '- 135 5,5', '- 140 5,5', '-Deadlift', '- 225 5'].join('\n');
-    const component = renderEditor({
-      activeEditText: text,
-      sessionAlignmentIssue: {
-        code: 'uneven_session_entries',
-        message: 'placeholder',
-        affectedExercises: [
-          { name: 'Deadlift', entryCount: 1, sectionIndex: 0, sectionLabel: 'Monday', missingSessionIndexes: [2] },
-        ],
-      },
-    });
-    const root = component.root;
-    render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
-    const row = findFirstListRow(root);
-    render.act(() => { row.props.onPress(); });
+  test('a missing-session caret releases before later badge toggles (#865)', () => {
+    jest.useFakeTimers();
+    try {
+      const text = ['Monday', '-Bench', '- 135 5,5', '- 140 5,5', '-Deadlift', '- 225 5'].join('\n');
+      const component = renderEditor({
+        activeEditText: text,
+        sessionAlignmentIssue: {
+          code: 'uneven_session_entries',
+          message: 'placeholder',
+          affectedExercises: [
+            { name: 'Deadlift', entryCount: 1, sectionIndex: 0, sectionLabel: 'Monday', missingSessionIndexes: [2] },
+          ],
+        },
+      });
+      const root = component.root;
+      render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+      const row = findFirstListRow(root);
+      render.act(() => { row.props.onPress(); });
 
-    const noteInput = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === text);
-    // Deadlift is the last exercise with no trailing lines after it, so the
-    // insertion point (mirroring the "Skip week" marker) lands at the very
-    // end of the text.
-    expect(noteInput.props.selection).toEqual({ start: text.length, end: text.length });
+      let noteInput = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === text);
+      // Deadlift is the last exercise with no trailing lines after it, so the
+      // insertion point (mirroring the "Skip week" marker) lands at the very
+      // end of the text.
+      expect(noteInput.props.selection).toEqual({ start: text.length, end: text.length });
 
-    const bar = findByTestID(root, 'editor-validation-bar');
-    expect(bar.findAllByType('Text')[0].props.children).toBe('Monday · Deadlift — session 2 has no entry');
+      render.act(() => { jest.runOnlyPendingTimers(); });
+      noteInput = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === text);
+      expect(noteInput.props.selection).toBeUndefined();
+
+      render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+      render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+      noteInput = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === text);
+      expect(noteInput.props.selection).toBeUndefined();
+
+      const bar = findByTestID(root, 'editor-validation-bar');
+      expect(bar.findAllByType('Text')[0].props.children).toBe('Monday · Deadlift — session 2 has no entry');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test('fixing the selected problem clears the bar on its own', () => {

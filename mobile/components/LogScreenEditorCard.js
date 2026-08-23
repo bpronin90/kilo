@@ -283,13 +283,25 @@ export function LogScreenEditorCard({
   // which note/mode is being edited clears it immediately too.
   const editorInputRef = useRef(null);
   const [seedSelection, setSeedSelection] = useState(null);
+  // Apply a problem jump for one render, then release control so native keeps
+  // the visible selection/caret without badge/list renders reapplying a stale
+  // range. iOS does not emit onSelectionChange for JS-driven selections, so
+  // the timer is the guaranteed completion path; the handler below releases
+  // earlier when native does report any subsequent selection (#865).
+  const [problemSelectionRequest, setProblemSelectionRequest] = useState(null);
   useEffect(() => {
     if (!seedSelection) return undefined;
     const timer = setTimeout(() => setSeedSelection(null), 0);
     return () => clearTimeout(timer);
   }, [seedSelection]);
   useEffect(() => {
+    if (!problemSelectionRequest) return undefined;
+    const timer = setTimeout(() => setProblemSelectionRequest(null), 0);
+    return () => clearTimeout(timer);
+  }, [problemSelectionRequest]);
+  useEffect(() => {
     setSeedSelection(null);
+    setProblemSelectionRequest(null);
   }, [editingNoteId, deloadMode]);
   const editorText = editingNoteId ? editingText : activeEditText;
   const setEditorText = editingNoteId ? setEditingText : handleCurrentTextChange;
@@ -406,6 +418,7 @@ export function LogScreenEditorCard({
   useEffect(() => {
     setListOpen(false);
     setSelectedAnchor(null);
+    setProblemSelectionRequest(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorIdentity]);
 
@@ -457,13 +470,13 @@ export function LogScreenEditorCard({
     if (problem.kind === 'syntax') {
       const range = _lineCharRange(debouncedEditorText, problem.line);
       if (!range) return;
-      setSeedSelection(range);
+      setProblemSelectionRequest(range);
     } else {
       const offset = _insertionOffsetAfterExercise(
         debouncedEditorText, validationParsed.sections, problem.sectionIndex, problem.exerciseName, problem.entryCount
       );
       if (offset == null) return;
-      setSeedSelection({ start: offset, end: offset });
+      setProblemSelectionRequest({ start: offset, end: offset });
     }
     editorInputRef.current?.focus();
   };
@@ -690,9 +703,18 @@ export function LogScreenEditorCard({
               value={editorText}
               onChangeText={(next) => {
                 setSeedSelection(null);
+                setProblemSelectionRequest(null);
                 setEditorText(next);
               }}
-              selection={seedSelection ?? undefined}
+              selection={problemSelectionRequest ?? seedSelection ?? undefined}
+              selectionColor={colors.accent}
+              onSelectionChange={() => {
+                if (!problemSelectionRequest) return;
+                // Any event after the request means native selection has
+                // moved or been acknowledged. Yield immediately so a user
+                // caret move can never be forced back to the requested range.
+                setProblemSelectionRequest(null);
+              }}
               placeholder="e.g.&#10;Monday&#10;+Lifting&#10;-Bench&#10;135 5,5,5"
               placeholderTextColor={colors.textMuted}
               multiline
