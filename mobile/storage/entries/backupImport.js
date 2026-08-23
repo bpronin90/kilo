@@ -51,6 +51,7 @@ import {
 import {
   MAX_RECOVERY_REASON_LENGTH,
   RECOVERY_BASELINE_VERSION,
+  normalizeRecoveryReason,
 } from '../../lib/data/recoveryBlocks';
 
 // v4 adds the two recovery collections (#694). Everything a v3 file carries is
@@ -152,6 +153,26 @@ const MAX_IMPORT_RAW_TEXT_LENGTH = 200000;
 // producing NaN or nonsense results.
 const MIN_IMPORT_FATIGUE_MULTIPLIER = 0;
 const MAX_IMPORT_FATIGUE_MULTIPLIER = 10;
+
+// #872. A backup file is NOT a trusted producer of canonical text. It can be
+// hand-edited, and a value like "knee\n  surgery" clears validation — it is a
+// non-blank string inside the length bound — while still violating the one-line
+// form every in-app write path produces. Normalizing on the way in makes import
+// a peer of creation, editing, and cross-device merge rather than the single
+// door that admits a shape the domain never stores.
+//
+// Normalizing rather than rejecting is deliberate: a slightly-off reason in an
+// otherwise valid file is a formatting difference, and failing a whole restore
+// over one stray newline would cost the user their data to make a point about
+// whitespace. Values that are actually wrong — a non-string, an empty string, an
+// over-length one — are still rejected by `validateRecoveryBlocks`.
+//
+// An absent `reason` stays absent: silence in a legacy file is not an
+// instruction to write a null.
+function normalizeImportedRecoveryBlock(block) {
+  if (!Object.prototype.hasOwnProperty.call(block, 'reason')) return block;
+  return { ...block, reason: normalizeRecoveryReason(block.reason) };
+}
 
 // Project one record through an explicit field allowlist. An absent field stays
 // absent rather than becoming `undefined`, so the emitted JSON matches the
@@ -1125,7 +1146,7 @@ export async function importBackup(payload, strategy = 'replace', { mode = IMPOR
           table: SYNC_TABLES.RECOVERY_BLOCKS,
           readRaw: loadRecoveryBlocksRaw,
           writeRaw: replaceRecoveryBlocksRaw,
-          imported: payload.recovery_blocks.map((b) => projectFields(b, RECOVERY_BLOCK_FIELDS)),
+          imported: payload.recovery_blocks.map((b) => normalizeImportedRecoveryBlock(projectFields(b, RECOVERY_BLOCK_FIELDS))),
           clientId,
         });
       }
@@ -1151,7 +1172,7 @@ export async function importBackup(payload, strategy = 'replace', { mode = IMPOR
       // would hit: a membership is only interpretable once its block exists.
       if (hasRecovery) {
         await replaceRecoveryBlocksRaw(
-          payload.recovery_blocks.map((b) => projectFields(b, RECOVERY_BLOCK_FIELDS)),
+          payload.recovery_blocks.map((b) => normalizeImportedRecoveryBlock(projectFields(b, RECOVERY_BLOCK_FIELDS))),
         );
       }
       if (hasRecovery) {

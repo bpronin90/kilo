@@ -1025,7 +1025,11 @@ Consequences to preserve:
   swaps the row in place for an inline `TextInput` with `Cancel`/`Save`
   rather than opening a modal, seeded from the stored value so `Cancel` is a
   true discard, and saving empty text clears the field. Collapsing `Manage
-  block` closes the editor with it), `Counting in normal analytics` (the row itself IS the
+  block` closes the editor with it — and note that this is not the only place
+  the field is editable: the Analytics evidence card carries the same inline
+  editor on its reason caption, which is the ONLY way to reach a block once it
+  is completed, since `Manage block` exists only for the active one),
+  `Counting in normal analytics` (the row itself IS the
   Log-surface inclusion control now, `accessibilityRole="switch"` — tapping
   it writes `include_in_normal_analytics` directly, live `On`/`Off` stated
   on the row; a trailing `info-outline` help toggle swaps the subtitle for

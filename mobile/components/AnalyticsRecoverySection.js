@@ -1,20 +1,22 @@
 // Analytics Recovery section (#698): renders the #697 return-to-baseline
 // comparison contract for the active recovery block and, on request, any
-// completed block from history. Read-only evidence display — no control here
-// mutates a block or week, and nothing claims medical recovery. The hero is a
-// factual exercise count ("X of Y baseline exercises met"), never a composite
-// percentage or a completion gate.
+// completed block from history. The comparison itself is read-only — nothing
+// here recomputes, gates, or claims medical recovery, and the hero is a factual
+// exercise count ("X of Y baseline exercises met"), never a composite percentage
+// or a completion gate. The few controls that DO write (the inclusion toggle
+// #728, Reopen #839, and the optional reason #872) each change one presentation
+// or lifecycle field and none of them feed the comparison above.
 
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Alert } from '../lib/platformAlert';
-import { Card, HeroMetric, SectionTitle } from './UI';
+import { Card, HeroMetric, SectionTitle, createInputStyle } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatLiftWeightValue } from '../lib/units';
 import { formatDate, formatDuration } from '../lib/format';
-import { findActiveBlock, isLiveRecord } from '../lib/data/recoveryBlocks';
+import { MAX_RECOVERY_REASON_LENGTH, findActiveBlock, isLiveRecord } from '../lib/data/recoveryBlocks';
 import { compareRecoveryBlocksNewestCompletedFirst } from '../storage/entries/recoveryStorage';
 import { parseWorkoutNote } from '../lib/parser/workoutNote';
 import {
@@ -423,14 +425,61 @@ function BlockEvidence({
   reopenBusy = false,
   reopenError = null,
   onReopen,
+  // The optional reason (#872). Editing lives HERE, not only on Log's `Manage
+  // block`, because this card is the one surface that presents a COMPLETED
+  // block — and naming a past injury correctly is exactly what a lifter does
+  // while reviewing a finished recovery. `setRecoveryBlockReasonCore` has
+  // always accepted completed blocks; before this the domain simply had no UI
+  // that reached them (Codex review, PR #877).
+  reasonLocked = false,
+  onSaveReason,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const [selectedWeekId, setSelectedWeekId] = useState(null);
+  // Editor state is local to this component, and the parent renders it with
+  // `key={focusedBlock.id}` — so switching which block is in focus remounts and
+  // resets the draft rather than carrying one block's unsaved text onto another.
+  const [editingReason, setEditingReason] = useState(false);
+  const [reasonDraft, setReasonDraft] = useState('');
+  const [reasonBusy, setReasonBusy] = useState(false);
+  const [reasonError, setReasonError] = useState(null);
   // Details start collapsed (#758). The question this surface answers — how
   // close am I to my normal training — is answered by the summary above; the
   // per-exercise diagnostic panel is the follow-up, not the opening statement.
   const [detailsExpanded, setDetailsExpanded] = useState(false);
+
+  // Seeded from the STORED value, so Cancel is a true discard — the record is
+  // the only source of what the field currently says.
+  const openReasonEditor = () => {
+    setReasonError(null);
+    setReasonDraft(block.reason || '');
+    setEditingReason(true);
+  };
+  const closeReasonEditor = () => {
+    setEditingReason(false);
+    setReasonDraft('');
+    setReasonError(null);
+  };
+  const handleSaveReason = async () => {
+    if (reasonBusy || !onSaveReason) return;
+    setReasonError(null);
+    setReasonBusy(true);
+    try {
+      // The raw draft goes to the domain, which owns normalization — clearing
+      // the field is an ordinary save of empty text, not a separate action.
+      const result = await onSaveReason({ blockId: block.id, reason: reasonDraft });
+      if (!result || result.ok === false) {
+        setReasonError((result && result.error) || 'That reason could not be saved.');
+        return;
+      }
+      closeReasonEditor();
+    } finally {
+      setReasonBusy(false);
+    }
+  };
+  const reasonEditable = !!onSaveReason;
+  const reasonDisabled = reasonLocked || reasonBusy;
 
   const comparison = useMemo(
     () => deriveRecoveryComparison({ block, weeks, notes }),
@@ -472,7 +521,69 @@ function BlockEvidence({
           shows nothing rather than an empty placeholder. It is context for
           reading the comparison, never an input to it: no metric, week status,
           or summary line below reads this value. */}
-      {block.reason ? (
+      {editingReason ? (
+        <View style={styles.reasonEditor}>
+          <TextInput
+            style={styles.reasonInput}
+            value={reasonDraft}
+            onChangeText={setReasonDraft}
+            placeholder="e.g. torn hamstring, 8 weeks off"
+            placeholderTextColor={colors.textMuted}
+            maxLength={MAX_RECOVERY_REASON_LENGTH}
+            editable={!reasonDisabled}
+            accessibilityLabel="Reason for this recovery block"
+          />
+          <Text style={styles.reasonCaption}>
+            Only for your own records. Leave it empty to remove it.
+          </Text>
+          {reasonError ? <Text style={styles.reasonErrorText}>{reasonError}</Text> : null}
+          <View style={styles.reasonEditorActions}>
+            <Pressable
+              onPress={closeReasonEditor}
+              disabled={reasonBusy}
+              style={styles.reasonEditorButton}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel editing the reason"
+              accessibilityState={{ disabled: reasonBusy }}
+            >
+              <Text style={styles.reasonEditorCancelText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleSaveReason}
+              disabled={reasonDisabled}
+              style={styles.reasonEditorButton}
+              accessibilityRole="button"
+              accessibilityLabel="Save the reason"
+              accessibilityState={{ disabled: reasonDisabled, busy: reasonBusy }}
+            >
+              <Text style={styles.reasonEditorSaveText}>
+                {reasonBusy ? 'Saving…' : 'Save'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : reasonEditable ? (
+        /* Tapping the caption opens the editor in place. A block with no reason
+           still offers the affordance — that is the only way to ADD one to a
+           completed block — but it reads as an invitation, not as a field
+           claiming a value it does not have. */
+        <Pressable
+          onPress={openReasonEditor}
+          disabled={reasonDisabled}
+          accessibilityRole="button"
+          accessibilityLabel={block.reason
+            ? `Edit reason for this recovery block: ${block.reason}`
+            : 'Add a reason for this recovery block'}
+          accessibilityState={{ disabled: reasonDisabled }}
+        >
+          <Text
+            style={[styles.reasonCaption, reasonDisabled && styles.reasonCaptionDisabled]}
+            numberOfLines={2}
+          >
+            {block.reason ? `Reason: ${block.reason}` : 'Add a reason'}
+          </Text>
+        </Pressable>
+      ) : block.reason ? (
         <Text style={styles.reasonCaption} numberOfLines={2}>
           Reason: {block.reason}
         </Text>
@@ -643,7 +754,7 @@ export function AnalyticsRecoverySection({
   // names the latest, which is the whole answer for most visits.
   const [historyCollapsed, setHistoryCollapsed] = useState(true);
   const [focusedBlockId, setFocusedBlockId] = useState(null);
-  const { setIncludeInNormalAnalytics, reopenBlock } = useRecoveryBlockLifecycle();
+  const { setIncludeInNormalAnalytics, reopenBlock, setBlockReason } = useRecoveryBlockLifecycle();
   const [inclusionBusyBlockId, setInclusionBusyBlockId] = useState(null);
   const [inclusionError, setInclusionError] = useState(null);
   const [reopenBusy, setReopenBusy] = useState(false);
@@ -819,6 +930,11 @@ export function AnalyticsRecoverySection({
         reopenBusy={reopenBusy}
         reopenError={reopenError}
         onReopen={handleReopen}
+        // Gated exactly like the inclusion switch (#872): a write that
+        // `ensureVerifiedRecoveryState` would reject anyway must not be
+        // advertised as available.
+        reasonLocked={!mutationsAllowed || hasPendingRecovery}
+        onSaveReason={setBlockReason}
       />
 
       {completedBlocks.length > 0 && (
@@ -957,6 +1073,43 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     color: colors.textMuted,
+  },
+  reasonCaptionDisabled: {
+    opacity: 0.5,
+  },
+  // The inline editor (#872), matching Log's `Manage block` treatment: the field
+  // is one short line, and a modal for it would cost more attention than the
+  // edit is worth.
+  reasonEditor: {
+    gap: 8,
+    paddingVertical: 4,
+  },
+  reasonInput: {
+    ...createInputStyle(colors),
+  },
+  reasonErrorText: {
+    fontSize: 12,
+    color: colors.error,
+  },
+  reasonEditorActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  reasonEditorButton: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  reasonEditorCancelText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  reasonEditorSaveText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.accent,
   },
   provenanceText: {
     fontSize: 12,

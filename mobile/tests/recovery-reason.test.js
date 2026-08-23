@@ -304,6 +304,33 @@ describe('backup round trip', () => {
     expect((await loadRecoveryBlocksRaw())[0].reason).toBe('torn hamstring');
   });
 
+  // Codex review, PR #877. A file can be hand-edited between export and import,
+  // and a multi-line value clears validation — it is a non-blank string inside
+  // the bound — so without normalizing on the way in, import is the one write
+  // path that can plant a reason no in-app action could ever produce.
+  test('a hand-edited non-canonical reason is normalized on import, not stored verbatim', async () => {
+    await seedNoteAndBlock(legacyBlock({ reason: 'torn hamstring' }));
+    const backup = await exportBackup();
+
+    const tampered = JSON.parse(JSON.stringify(backup));
+    tampered.recovery_blocks[0].reason = '  knee\n  surgery  ';
+
+    await AsyncStorage.clear();
+    const result = await importBackup(tampered);
+    expect(result.ok).toBe(true);
+    // Exactly what normalizeRecoveryReason would have produced at creation.
+    expect((await loadRecoveryBlocksRaw())[0].reason).toBe('knee surgery');
+  });
+
+  test('import normalization leaves an absent reason absent', async () => {
+    await seedNoteAndBlock(legacyBlock());
+    const backup = await exportBackup();
+    await AsyncStorage.clear();
+    expect(await importBackup(backup)).toMatchObject({ ok: true });
+    // Silence in a legacy file is not an instruction to write a null.
+    expect((await loadRecoveryBlocksRaw())[0]).not.toHaveProperty('reason');
+  });
+
   test('a legacy block exports with NO reason key, and restores unchanged', async () => {
     await seedNoteAndBlock(legacyBlock());
     const backup = await exportBackup();
@@ -635,5 +662,50 @@ describe('AnalyticsRecoverySection: completed history carries the reason', () =>
       component.root,
       'View recovery evidence for Push Pull Legs, completed 06-01-2026'
     )).not.toBeNull();
+  });
+
+  // Codex review, PR #877. `setRecoveryBlockReasonCore` has always accepted a
+  // completed block; before this the domain had no UI that reached one, so the
+  // documented capability was unreachable the moment a block was completed.
+  // This card is the only surface that presents a completed block, which makes
+  // it the only place the edit can live.
+  test('a completed block offers the editor, naming what is currently stored', () => {
+    const component = renderSection([completed({ reason: 'torn hamstring' })]);
+    expect(byLabel(
+      component.root,
+      'Edit reason for this recovery block: torn hamstring'
+    )).not.toBeNull();
+  });
+
+  test('a completed block with no reason still invites adding one', () => {
+    const component = renderSection([completed()]);
+    expect(byLabel(component.root, 'Add a reason for this recovery block')).not.toBeNull();
+    expect(hasText(component.root, 'Add a reason')).toBe(true);
+    // Still no fabricated "Reason: —" claiming a value the block never had.
+    expect(hasText(component.root, 'Reason:')).toBe(false);
+  });
+
+  test('the completed-block editor seeds from the record, and Cancel discards', () => {
+    const component = renderSection([completed({ reason: 'torn hamstring' })]);
+    renderer.act(() => {
+      byLabel(component.root, 'Edit reason for this recovery block: torn hamstring').props.onPress();
+    });
+
+    const input = byLabel(component.root, 'Reason for this recovery block');
+    expect(input.props.value).toBe('torn hamstring');
+    expect(input.props.maxLength).toBe(MAX_RECOVERY_REASON_LENGTH);
+
+    renderer.act(() => { input.props.onChangeText('rewritten'); });
+    renderer.act(() => {
+      byLabel(component.root, 'Cancel editing the reason').props.onPress();
+    });
+
+    // Reopening reads the record again rather than re-offering the abandoned
+    // draft — the same discard contract Log's editor holds.
+    renderer.act(() => {
+      byLabel(component.root, 'Edit reason for this recovery block: torn hamstring').props.onPress();
+    });
+    expect(byLabel(component.root, 'Reason for this recovery block').props.value)
+      .toBe('torn hamstring');
   });
 });
