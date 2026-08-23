@@ -54,6 +54,7 @@ import {
   useFeatureToggles,
   useRecoveryBlockState,
   useStartRecoveryBlock,
+  useActiveTrainingContext,
   isEligibleBaselineNote,
   isEligibleRecoveryWeekNote,
 } from '../hooks/useEntries';
@@ -146,6 +147,10 @@ export function LogScreen({
     error: recoveryStateError = null,
     mutationsAllowed: recoveryMutationsAllowed = true,
   } = useRecoveryBlockState() || {};
+  // Product-wide "what am I training now?" context (#868), shared verbatim
+  // with Home and Analytics — same authoritative Recovery snapshot as above,
+  // resolved at this screen's existing Recovery-state boundary.
+  const activeTrainingContext = useActiveTrainingContext({ currentId, notes });
   const { startBlock: startRecoveryBlock } = useStartRecoveryBlock() || {};
   const recoveryLifecycle = useRecoveryBlockLifecycle() || {};
   const [recoveryModal, setRecoveryModal] = useState(null); // { mode: 'routine'|'note', note } | null

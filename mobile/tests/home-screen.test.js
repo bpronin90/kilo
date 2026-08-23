@@ -448,6 +448,61 @@ describe('HomeScreen holds its loading state while the recovery boundary is unve
   });
 });
 
+// Review finding on PR #873 (#868): a restored profile whose stored
+// `current_workout_id` references a missing/tombstoned note leaves
+// `workoutNote` null while `currentId` is still set. Home must resolve
+// `activeTrainingContext` off that stored id, not off `workoutNote?.id`, or
+// it silently disagrees with Log (which reads `currentId` directly).
+describe('HomeScreen threads the stored currentId into activeTrainingContext', () => {
+  const React = require('react');
+  const render = require('react-test-renderer');
+  const { HomeScreen } = require('../screens/HomeScreen');
+  const useEntriesModule = require('../hooks/useEntries');
+  const hooks = require('../hooks/entries/recoveryBlockHooks');
+  const AsyncStorage = require('@react-native-async-storage/async-storage');
+
+  const props = (over = {}) => ({
+    weightEntries: [],
+    workoutNote: null,
+    currentId: 'stored-current-id',
+    notes: [],
+    successMessage: '',
+    onNavigate: jest.fn(),
+    loading: false,
+    ...over,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    hooks._resetRecoveryAnalyticsFilterCache();
+    useEntriesModule.useWeightGoal.mockReturnValue({ goal: null, loading: false, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+    useEntriesModule.useTrackedLifts.mockReturnValue({ trackedLifts: {}, loading: false, save: jest.fn(), toggle: jest.fn() });
+    AsyncStorage.getItem.mockImplementation(async () => null);
+  });
+
+  afterEach(() => {
+    AsyncStorage.getItem.mockReset();
+    hooks._resetRecoveryAnalyticsFilterCache();
+  });
+
+  test('activeTrainingContext resolves the stored currentId even when workoutNote is null', async () => {
+    const spy = jest.spyOn(useEntriesModule, 'useActiveTrainingContext');
+
+    let component;
+    await render.act(async () => {
+      component = render.create(<HomeScreen {...props({ workoutNote: null, currentId: 'stored-current-id' })} />);
+    });
+
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ currentId: 'stored-current-id' }));
+
+    const lastCall = spy.mock.calls[spy.mock.calls.length - 1][0];
+    expect(lastCall.currentId).toBe('stored-current-id');
+
+    spy.mockRestore();
+    await render.act(async () => { component.unmount(); });
+  });
+});
+
 // Home's four cross-screen handoffs (#717). The populated dashboard already shows
 // the information a user needs to continue; these press targets carry them to the
 // destination instead of making them re-find it by tab.
