@@ -30,6 +30,7 @@ import {
   nextWeekNumber,
   orderedLiveWeeks,
 } from '../../lib/data/recoveryBlocks';
+import { resolveActiveTrainingContext } from '../../lib/data/activeTrainingContext';
 import {
   buildRecoveryAnalyticsFilter,
   deriveRecoveryExcludedNoteIds,
@@ -411,6 +412,31 @@ export function useRecoveryBlockState() {
       retryRecovery: refresh,
     };
   }, [view, refresh]);
+}
+
+// One presentation-level answer to "what am I training now?" (#868), shared by
+// Home, Log, and Analytics. Wraps the same authoritative `useRecoveryBlockState`
+// snapshot every screen already renders from — this adds no second read and no
+// second store — plus the caller's own workout-note `currentId`/`notes`, which
+// stay owned by `useWorkoutNotes` exactly as before.
+//
+// Deliberately takes `currentId`/`notes` as parameters rather than calling
+// `useWorkoutNotes()` itself: every screen already holds that state locally at
+// its own Recovery-state boundary, and this hook only derives an interpretation
+// over it, never a competing read.
+export function useActiveTrainingContext({ currentId = null, notes = [] } = {}) {
+  const recovery = useRecoveryBlockState() || {};
+  return useMemo(
+    () => resolveActiveTrainingContext({
+      currentId,
+      notes,
+      recoveryReady: recovery.ready,
+      recoveryLoading: recovery.loading,
+      activeBlock: recovery.activeBlock,
+      weeks: recovery.weeks,
+    }),
+    [currentId, notes, recovery.ready, recovery.loading, recovery.activeBlock, recovery.weeks]
+  );
 }
 
 // Consumer refcount backing the single-shared-subscription behavior above.

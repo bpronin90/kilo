@@ -160,6 +160,7 @@ export { useSyncRecovery, useCloudExport, useAutoSync } from './entries/syncReco
 export {
   useRecoveryBlockState,
   useStartRecoveryBlock,
+  useActiveTrainingContext,
   isEligibleBaselineNote,
   isEligibleRecoveryWeekNote,
 } from './entries/recoveryBlockHooks';

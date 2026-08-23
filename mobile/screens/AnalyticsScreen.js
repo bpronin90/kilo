@@ -5,7 +5,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { HeroMetric, SectionTitle, SessionGauge, ArtisanalPanel, ErrorBanner } from '../components/UI';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { deriveWeightGoalAnalytics, DEFAULT_1K_EXERCISES, normalizeLiftName, deriveCheckInHistory, deriveRoutineStatus } from '../lib/data';
-import { useTrackedLifts, useWorkoutNotes, useWeightEntries, useDeloadHistory, useFeatureToggles, useRecoveryBlockState } from '../hooks/useEntries';
+import { useTrackedLifts, useWorkoutNotes, useWeightEntries, useDeloadHistory, useFeatureToggles, useRecoveryBlockState, useActiveTrainingContext } from '../hooks/useEntries';
 import { useRecoveryAnalyticsFilter } from '../hooks/entries/recoveryBlockHooks';
 import { isLiveRecord } from '../lib/data/recoveryBlocks';
 import {
@@ -75,6 +75,10 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     pendingRecovery: recoveryPendingRecovery = [],
     retryRecovery: retryRecoveryState,
   } = useRecoveryBlockState() || {};
+  // Product-wide "what am I training now?" context (#868), shared verbatim
+  // with Home and Log — same authoritative Recovery snapshot as above,
+  // resolved at this screen's existing Recovery-state boundary.
+  const activeTrainingContext = useActiveTrainingContext({ currentId: currentNote?.id ?? null, notes });
   // Ordinary-analytics boundary (#699). Recovery-linked notes whose block keeps
   // `include_in_normal_analytics` off are dropped from every ordinary population
   // below. AnalyticsRecoverySection still receives the unfiltered `notes`.

@@ -977,6 +977,20 @@ in `useRecoveryBlockLifecycle`/`useStartRecoveryBlock` calls
 read then, not trusting the render that opened the dialog — and returns
 `RECOVERY_STATE_UNVERIFIED` without touching storage if it cannot.
 
+`lib/data/activeTrainingContext.js` derives one presentation-level answer to
+"what am I training now?" (#868) over that same store — never a second copy of
+it. `useActiveTrainingContext` (in `recoveryBlockHooks.js`) wraps
+`useRecoveryBlockState()` plus the caller's own workout-note `currentId`/
+`notes`, and Home, Log, and Analytics all resolve it at their existing Recovery
+-state boundary, so they cannot disagree about which note is "active" (the open
+Recovery week's note when one exists, otherwise the stored current routine),
+which is the frozen baseline, whether the baseline is paused, or the current
+Recovery week number. An unverified/loading Recovery read resolves to its own
+status, never to "normal" — the derivation reads `ready`/`loading` off the
+shared store the same way every other consumer does. "Latest open week" comes
+from `orderedLiveWeeks`, the same structural ordering `recoveryBlockHooks.js`
+already uses, never from note titles, `currentId`, or array order.
+
 Surface ownership is deliberately split by lifecycle state. Log owns only the
 active block, current-workout lifecycle actions, and the active block's ordinary
 analytics inclusion control; completed week rows and completed-block history do
