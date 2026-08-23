@@ -1093,8 +1093,8 @@ Consequences to preserve:
 | | color | `colors.accent` | `LogScreen.js:746` |
 | | bg | `colors.chipBackground` | `LogScreen.js:741` |
 | | borderRadius | `12` | `LogScreen.js:740` |
-| Input field | fontSize | `16` | `LogScreenEditorCard.js:270` |
-| | borderRadius | `16` | `LogScreenEditorCard.js:265` |
+| Input field | fontSize | `16` | `LogScreenEditorCard.js:626` |
+| | borderRadius | `16` | `LogScreenEditorCard.js:621` |
 
 ---
 

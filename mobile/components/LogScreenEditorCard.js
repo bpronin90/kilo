@@ -5,8 +5,28 @@ import { Card, Button } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
 import { formatDate } from '../lib/format';
+import { parseWorkoutNote } from '../lib/parser';
 import { WorkoutSyntaxModal } from './WorkoutSyntaxModal';
 import { WORKOUT_SEED_EXAMPLE_TEXT } from './WorkoutSyntaxReference';
+
+// #856: how long to wait after the last keystroke before recomputing the
+// jump-to-problem list. Separate from AUTOSAVE_DEBOUNCE_MS — validation is a
+// pure local reparse with no network/storage cost, so it can afford a
+// shorter delay while still keeping repeated typing on a large note
+// responsive (no full reparse on every keystroke).
+const VALIDATION_DEBOUNCE_MS = 400;
+
+// Offsets of the start/end of `lineNumber` (1-indexed, matching
+// parseWorkoutNote's `line`/`header_line` fields) within `text`. Returns null
+// for an out-of-range line (e.g. the debounced text is momentarily stale).
+function _lineCharRange(text, lineNumber) {
+  if (!lineNumber || lineNumber < 1) return null;
+  const lines = text.split('\n');
+  if (lineNumber > lines.length) return null;
+  let start = 0;
+  for (let i = 0; i < lineNumber - 1; i++) start += lines[i].length + 1;
+  return { start, end: start + lines[lineNumber - 1].length };
+}
 
 // Post-save adoption prompt (#748; #745 Part 4 §A1). Lightweight, non-modal,
 // and dismissible by design — an `Alert` would interrupt a user who saved a
@@ -193,6 +213,102 @@ export function LogScreenEditorCard({
     editorInputRef.current?.focus();
   };
 
+  // Debounced local validation (#856): syntax/alignment problems can be
+  // discovered and reached without leaving edit mode. Recomputed off a
+  // debounced copy of the text, not on every keystroke, so retyping a large
+  // note stays responsive — the debounce is purely for this jump list; the
+  // TextInput itself always reflects `editorText` immediately and no text is
+  // ever rewritten or lost.
+  //
+  // One effect, keyed on identity (which note/mode) as well as text, so the
+  // "skip the debounce" cases — first mount, and switching to a different
+  // note/mode (whose text must sync immediately, not lag) — are each hit
+  // exactly once and never re-arm themselves. An earlier version re-armed
+  // the skip on every identity-effect run, including the initial mount,
+  // which silently swallowed the FIRST real keystroke's debounce on every
+  // fresh render of this card — a single edit that fixed the last error
+  // could leave the problem list stale until a second edit came in.
+  const [debouncedEditorText, setDebouncedEditorText] = useState(editorText);
+  const validationIdentityRef = useRef(`${editingNoteId}:${deloadMode}`);
+  const skipNextValidationDebounceRef = useRef(true);
+  useEffect(() => {
+    const identity = `${editingNoteId}:${deloadMode}`;
+    const identityChanged = identity !== validationIdentityRef.current;
+    validationIdentityRef.current = identity;
+    if (identityChanged || skipNextValidationDebounceRef.current) {
+      skipNextValidationDebounceRef.current = false;
+      setDebouncedEditorText(editorText);
+      return undefined;
+    }
+    const timer = setTimeout(() => setDebouncedEditorText(editorText), VALIDATION_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [editorText, editingNoteId, deloadMode]);
+
+  const validationParsed = React.useMemo(
+    () => parseWorkoutNote(debouncedEditorText),
+    [debouncedEditorText]
+  );
+
+  // The session-alignment warning is already computed live by the caller
+  // (from the same active-week text this card renders); folded in here as a
+  // single warning problem so one navigation list covers both syntax errors
+  // and alignment, deterministically ordered by line.
+  const alignmentProblem = React.useMemo(() => {
+    if (!sessionAlignmentIssue) return null;
+    const first = sessionAlignmentIssue.affectedExercises?.[0];
+    const section = first ? validationParsed.sections?.[first.sectionIndex] : null;
+    const exercise = section?.exercises.find(e => e.name === first.name);
+    return {
+      line: exercise?.header_line ?? null,
+      message: sessionAlignmentIssue.message,
+      exerciseName: first?.name ?? null,
+      severity: 'warning',
+    };
+  }, [sessionAlignmentIssue, validationParsed]);
+
+  const validationProblems = React.useMemo(() => {
+    const list = [...(validationParsed.problems || [])];
+    if (alignmentProblem) list.push(alignmentProblem);
+    return list.sort((a, b) => (a.line ?? Infinity) - (b.line ?? Infinity));
+  }, [validationParsed, alignmentProblem]);
+
+  const [activeProblemIndex, setActiveProblemIndex] = useState(0);
+  useEffect(() => {
+    setActiveProblemIndex(0);
+  }, [editingNoteId, deloadMode]);
+  useEffect(() => {
+    setActiveProblemIndex(i => (
+      validationProblems.length === 0 ? 0 : Math.min(i, validationProblems.length - 1)
+    ));
+  }, [validationProblems.length]);
+
+  const handleJumpToProblem = (index) => {
+    const problem = validationProblems[index];
+    if (!problem) return;
+    setActiveProblemIndex(index);
+    // Only move the caret when the debounced copy matches what's on screen —
+    // otherwise the line offsets could point at stale text mid-edit. The
+    // problem is still selected/announced either way.
+    if (debouncedEditorText !== editorText) return;
+    const range = _lineCharRange(debouncedEditorText, problem.line);
+    if (!range) return;
+    setSeedSelection(range);
+    editorInputRef.current?.focus();
+  };
+
+  const handleNextProblem = () => {
+    if (validationProblems.length === 0) return;
+    handleJumpToProblem((activeProblemIndex + 1) % validationProblems.length);
+  };
+  const handlePrevProblem = () => {
+    if (validationProblems.length === 0) return;
+    handleJumpToProblem((activeProblemIndex - 1 + validationProblems.length) % validationProblems.length);
+  };
+
+  const validationErrorCount = validationProblems.filter(p => p.severity === 'error').length;
+  const validationWarningCount = validationProblems.filter(p => p.severity === 'warning').length;
+  const activeValidationProblem = validationProblems[activeProblemIndex] ?? null;
+
   return (
     <View style={styles.editContainer}>
       <WorkoutSyntaxModal
@@ -336,7 +452,59 @@ export function LogScreenEditorCard({
               >
                 <Text style={styles.syntaxHelpButtonText}>Workout syntax help</Text>
               </Pressable>
+              {validationProblems.length > 0 && (
+                <View style={styles.validationRow} testID="editor-validation-summary">
+                  <Text
+                    style={[
+                      styles.validationCountText,
+                      activeValidationProblem?.severity === 'warning' && !validationErrorCount
+                        ? styles.validationCountTextWarning
+                        : null,
+                    ]}
+                  >
+                    {validationErrorCount > 0
+                      ? `${validationErrorCount} ${validationErrorCount === 1 ? 'error' : 'errors'}`
+                      + (validationWarningCount > 0 ? ` · ${validationWarningCount} ${validationWarningCount === 1 ? 'warning' : 'warnings'}` : '')
+                      : `${validationWarningCount} ${validationWarningCount === 1 ? 'warning' : 'warnings'}`}
+                  </Text>
+                  <Pressable
+                    onPress={handlePrevProblem}
+                    style={styles.validationNavButton}
+                    accessibilityRole="button"
+                    accessibilityLabel="Previous problem"
+                  >
+                    <Text style={styles.validationNavButtonText}>‹ Prev</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={handleNextProblem}
+                    style={styles.validationNavButton}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      activeValidationProblem
+                        ? `Next problem, ${activeProblemIndex + 1} of ${validationProblems.length}: ${activeValidationProblem.message}`
+                        : 'Next problem'
+                    }
+                    testID="editor-validation-next"
+                  >
+                    <Text style={styles.validationNavButtonText}>Next ›</Text>
+                  </Pressable>
+                </View>
+              )}
             </View>
+            {activeValidationProblem ? (
+              <Text
+                style={[
+                  styles.validationActiveMessage,
+                  activeValidationProblem.severity === 'warning'
+                    ? styles.validationActiveMessageWarning
+                    : styles.validationActiveMessageError,
+                ]}
+                accessibilityLiveRegion="polite"
+                testID="editor-validation-active-message"
+              >
+                {`${activeValidationProblem.line ? `Line ${activeValidationProblem.line}: ` : ''}${activeValidationProblem.message}`}
+              </Text>
+            ) : null}
             <TextInput
               ref={editorInputRef}
               value={editorText}
@@ -534,6 +702,45 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: colors.accent,
+  },
+  // Compact error/warning count + jump navigation (#856). Sits beside the
+  // syntax-help control rather than in its own bordered block — this is a
+  // status readout, not a new filled surface (§13: no new contrast pairing).
+  validationRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  validationCountText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.error,
+  },
+  validationCountTextWarning: {
+    color: colors.caution,
+  },
+  validationNavButton: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  validationNavButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  validationActiveMessage: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  validationActiveMessageError: {
+    color: colors.error,
+  },
+  validationActiveMessageWarning: {
+    color: colors.caution,
   },
   switchButton: {
     backgroundColor: 'transparent',
