@@ -283,15 +283,22 @@ export function LogScreenEditorCard({
   // which note/mode is being edited clears it immediately too.
   const editorInputRef = useRef(null);
   const [seedSelection, setSeedSelection] = useState(null);
-  // Keep a problem jump controlled until the native input confirms that it
-  // applied the range. Then release it so badge/list renders cannot reapply a
-  // stale caret and scroll the multiline editor back to it (#865).
+  // Apply a problem jump for one render, then release control so native keeps
+  // the visible selection/caret without badge/list renders reapplying a stale
+  // range. iOS does not emit onSelectionChange for JS-driven selections, so
+  // the timer is the guaranteed completion path; the handler below releases
+  // earlier when native does report any subsequent selection (#865).
   const [problemSelectionRequest, setProblemSelectionRequest] = useState(null);
   useEffect(() => {
     if (!seedSelection) return undefined;
     const timer = setTimeout(() => setSeedSelection(null), 0);
     return () => clearTimeout(timer);
   }, [seedSelection]);
+  useEffect(() => {
+    if (!problemSelectionRequest) return undefined;
+    const timer = setTimeout(() => setProblemSelectionRequest(null), 0);
+    return () => clearTimeout(timer);
+  }, [problemSelectionRequest]);
   useEffect(() => {
     setSeedSelection(null);
     setProblemSelectionRequest(null);
@@ -701,18 +708,12 @@ export function LogScreenEditorCard({
               }}
               selection={problemSelectionRequest ?? seedSelection ?? undefined}
               selectionColor={colors.accent}
-              onSelectionChange={(event) => {
+              onSelectionChange={() => {
                 if (!problemSelectionRequest) return;
-                const applied = event?.nativeEvent?.selection;
-                if (
-                  applied?.start === problemSelectionRequest.start
-                  && applied?.end === problemSelectionRequest.end
-                ) {
-                  // Native now owns the visible selection. Releasing the prop
-                  // preserves it while preventing later list toggles from
-                  // navigating back to this range.
-                  setProblemSelectionRequest(null);
-                }
+                // Any event after the request means native selection has
+                // moved or been acknowledged. Yield immediately so a user
+                // caret move can never be forced back to the requested range.
+                setProblemSelectionRequest(null);
               }}
               placeholder="e.g.&#10;Monday&#10;+Lifting&#10;-Bench&#10;135 5,5,5"
               placeholderTextColor={colors.textMuted}
