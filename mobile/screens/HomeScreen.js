@@ -6,6 +6,7 @@ import { Card, HeroMetric, LineChart, getSessionTone, Button, ErrorBanner } from
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { CLOUD_SYNC_NOTICE, useWeightGoal, useTrackedLifts, getNoteSections, useCloudSyncSummary, useActiveTrainingContext } from '../hooks/useEntries';
 import { deriveHomeDashboardData, useHomeNormalNotes, useHomeRecoverySummary, HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './home/homeDashboardData';
+import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue, displayChartSeries } from '../lib/units';
 import { markStartupPhase, markStartupStorageReads } from '../storage/entries/startupTiming';
@@ -438,11 +439,37 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   // `workoutNote?.id`: a restored profile whose `current_workout_id`
   // references a missing/tombstoned note leaves `workoutNote` null while
   // `currentId` is still set, and this context must resolve the same
-  // activeNoteId Log does — review finding, PR #873). Not yet threaded into
-  // Home's own rendering (that stays exactly as it already behaves); this is
-  // the shared derivation Home now resolves at its existing Recovery-state
-  // boundary, alongside the other two screens.
+  // activeNoteId Log does — review finding, PR #873).
   const activeTrainingContext = useActiveTrainingContext({ currentId, notes });
+
+  // Home's own active-Recovery branch (#869). Only these two derived
+  // statuses ever set `baselinePaused` (see activeTrainingContext.js) — every
+  // other status (normal, loading, unverified, stale, pending) keeps Home's
+  // existing hierarchy exactly as it already renders, because none of them is
+  // a confirmed "baseline training is paused" answer.
+  const isRecoveryOpenWeek = activeTrainingContext.status === ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK;
+  const isRecoveryBetweenWeeks = activeTrainingContext.status === ACTIVE_TRAINING_STATUS.RECOVERY_BETWEEN_WEEKS;
+  const baselinePaused = !!activeTrainingContext.baselinePaused;
+
+  // `Log workout` targets the exact active Recovery note (#869 acceptance),
+  // including when it is not `currentId` — never the frozen baseline note.
+  // Restricted to the open-week branch: in every other status (normal
+  // included) `activeNoteId` resolves to the ordinary `currentId`, and this
+  // must not change that path's existing plain `onNavigate('Log')` handoff.
+  const handleLogWorkoutPress = () => {
+    if (isRecoveryOpenWeek && activeTrainingContext.activeNoteId) {
+      onNavigate('Log', { kind: 'note', noteId: activeTrainingContext.activeNoteId });
+    } else {
+      onNavigate('Log');
+    }
+  };
+
+  const heroPrimaryActionLabel = isRecoveryBetweenWeeks ? 'Add week or end Recovery' : 'Log workout';
+  const heroPrimaryActionHint = isRecoveryOpenWeek
+    ? 'Opens the Log tab for the active Recovery week'
+    : isRecoveryBetweenWeeks
+      ? 'Opens the Log tab to add the next Recovery week or end Recovery'
+      : 'Opens the Log tab for your current routine';
 
   const noteSectionsList = useMemo(
     () => normalNotes.map(n => getNoteSections(n)),
@@ -599,9 +626,24 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
                 one stable row below the hero state instead of being scattered
                 beside the values they act on (#717 review). */}
             <View style={styles.heroWeekRow}>
-              <Text style={[styles.heroWeekLabel, weekToneColor ? { color: weekToneColor } : null]}>
-                {dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Week —'}
-              </Text>
+              {isRecoveryOpenWeek || isRecoveryBetweenWeeks ? (
+                <>
+                  <Text style={[styles.heroWeekLabel, styles.heroWeekLabelRecovery]}>
+                    {isRecoveryOpenWeek
+                      ? `Recovery · Week ${activeTrainingContext.recoveryWeekNumber ?? '—'}`
+                      : 'Recovery · Between weeks'}
+                  </Text>
+                  {isRecoveryOpenWeek && activeTrainingContext.activeNote ? (
+                    <Text testID="home-recovery-active-note" style={styles.heroRecoveryNoteLabel}>
+                      {activeTrainingContext.activeNote.title || 'Untitled'}
+                    </Text>
+                  ) : null}
+                </>
+              ) : (
+                <Text style={[styles.heroWeekLabel, weekToneColor ? { color: weekToneColor } : null]}>
+                  {dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Week —'}
+                </Text>
+              )}
             </View>
 
             {/* The hero metric stays a plain, non-pressable value (§8). With no
@@ -621,14 +663,14 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
             <View style={styles.heroPrimaryActions}>
               <Pressable
                 testID="home-current-routine-link"
-                onPress={() => onNavigate('Log')}
+                onPress={handleLogWorkoutPress}
                 style={styles.heroPrimaryAction}
                 hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
                 accessibilityRole="button"
-                accessibilityLabel="Log workout"
-                accessibilityHint="Opens the Log tab for your current routine"
+                accessibilityLabel={heroPrimaryActionLabel}
+                accessibilityHint={heroPrimaryActionHint}
               >
-                <Text style={styles.heroPrimaryActionText}>Log workout</Text>
+                <Text style={styles.heroPrimaryActionText}>{heroPrimaryActionLabel}</Text>
                 <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
               </Pressable>
 
@@ -695,35 +737,59 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
                 tappable was too much clickable area. The affordance is the plain
                 chevron already used by `Full history and insights` on this same
                 screen — no fill, no border. */}
-            <View style={styles.classifSection}>
-              <Pressable
-                testID="home-strength-summary-link"
-                onPress={() => onNavigate('Analytics', 'progressive-overload')}
-                style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart]}
-                hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
-                accessibilityRole="button"
-                accessibilityLabel="Exercise Progress"
-                accessibilityHint="Opens the Progressive Overload section of the Analytics tab"
-              >
-                <Text style={[styles.classifSectionLabel, styles.sectionHeaderLabel]}>Exercise Progress</Text>
-                <View style={styles.sectionHeaderChevron}>
-                  <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
-                </View>
-              </Pressable>
-              <View style={styles.classifRow}>
-                {[
-                  { label: 'Progressing', count: dashboardData.weeklySummary.classifications?.progressing ?? 0, color: colors.success },
-                  { label: 'Steady', count: dashboardData.weeklySummary.classifications?.stalled ?? 0, color: colors.caution },
-                  { label: 'Regressing', count: dashboardData.weeklySummary.classifications?.regressing ?? 0, color: colors.error },
-                ].map((item, idx) => (
-                  <View key={idx} style={styles.classifCol}>
-                    <View style={[styles.classifDot, { backgroundColor: item.color }]} />
-                    <Text style={styles.classifCount}>{item.count}</Text>
-                    <Text style={styles.classifLabel}>{item.label}</Text>
+            {baselinePaused ? (
+              // Frozen baseline handoff (#869). The classification band and the
+              // 1K card below both describe the frozen baseline routine, which
+              // is not what is being trained right now — collapsed into one
+              // compact, low-emphasis row rather than dominating active-Recovery
+              // Home with numbers that cannot move until Recovery ends.
+              <View style={styles.classifSection}>
+                <Pressable
+                  testID="home-baseline-paused-link"
+                  onPress={() => onNavigate('Analytics', 'progressive-overload')}
+                  style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart]}
+                  hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Baseline training paused during Recovery"
+                  accessibilityHint="Opens the Progressive Overload section of the Analytics tab"
+                >
+                  <Text style={[styles.classifSectionLabel, styles.sectionHeaderLabel]}>Baseline training paused during Recovery</Text>
+                  <View style={styles.sectionHeaderChevron}>
+                    <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
                   </View>
-                ))}
+                </Pressable>
               </View>
-            </View>
+            ) : (
+              <View style={styles.classifSection}>
+                <Pressable
+                  testID="home-strength-summary-link"
+                  onPress={() => onNavigate('Analytics', 'progressive-overload')}
+                  style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart]}
+                  hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Exercise Progress"
+                  accessibilityHint="Opens the Progressive Overload section of the Analytics tab"
+                >
+                  <Text style={[styles.classifSectionLabel, styles.sectionHeaderLabel]}>Exercise Progress</Text>
+                  <View style={styles.sectionHeaderChevron}>
+                    <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
+                  </View>
+                </Pressable>
+                <View style={styles.classifRow}>
+                  {[
+                    { label: 'Progressing', count: dashboardData.weeklySummary.classifications?.progressing ?? 0, color: colors.success },
+                    { label: 'Steady', count: dashboardData.weeklySummary.classifications?.stalled ?? 0, color: colors.caution },
+                    { label: 'Regressing', count: dashboardData.weeklySummary.classifications?.regressing ?? 0, color: colors.error },
+                  ].map((item, idx) => (
+                    <View key={idx} style={styles.classifCol}>
+                      <View style={[styles.classifDot, { backgroundColor: item.color }]} />
+                      <Text style={styles.classifCount}>{item.count}</Text>
+                      <Text style={styles.classifLabel}>{item.label}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
 
             {/* #7 quiet CTA. Targets `overview` rather than a bare tab press
                 (#770): "full history and insights" promises the whole tab from
@@ -811,7 +877,13 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
               detail lives (owner scope override on #717). Header row is the
               handoff (#820 revert), same family as Exercise Progress; the
               dead space that pattern cost originally is solved by tightening
-              the card's own top padding and gap, not the 44dp target. */}
+              the card's own top padding and gap, not the 44dp target.
+              Folded into the compact "Baseline training paused during
+              Recovery" handoff above during active Recovery (#869): this
+              card is the same frozen baseline total that handoff already
+              covers, so showing both would repeat the same paused number
+              twice. */}
+          {baselinePaused ? null : (
           <Card style={styles.oneKCard}>
             <Pressable
               testID="home-one-k-link"
@@ -854,6 +926,7 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
               </View>
             </View>
           </Card>
+          )}
         </>
       )}
     </ScreenShell>
@@ -956,6 +1029,19 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '600',
     color: colors.textMuted,
     flexShrink: 1,
+  },
+  // Active-Recovery eyebrow (#869): accent-colored so the hero visibly
+  // announces Recovery rather than reading as an ordinary baseline week.
+  heroWeekLabelRecovery: {
+    color: colors.accent,
+  },
+  // The active Recovery note's own title, named directly under the eyebrow so
+  // "what is current" answers both the week number and which note that is.
+  heroRecoveryNoteLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 2,
   },
   heroWeightRow: {
     minWidth: 0,
