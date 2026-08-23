@@ -3903,3 +3903,64 @@ describe('#854: F2b grammar contract (per #853 decision table)', () => {
     });
   });
 });
+
+// ── #856: line-addressable validation problems ────────────────────────────────
+
+describe('#856: parseWorkoutNote line-addressable problems', () => {
+  test('a clean note has no problems and every exercise header has a header_line', () => {
+    const { problems, sections } = parseWorkoutNote('Monday\n-Bench\n135 5,5,5');
+    expect(problems).toEqual([]);
+    expect(sections[0].exercises[0].header_line).toBe(2);
+  });
+
+  test('an invalid rep group on line 3 is reported at that line with the exercise name', () => {
+    const { problems } = parseWorkoutNote('Monday\n-Bench\n135 8,,8');
+    expect(problems).toHaveLength(1);
+    expect(problems[0].line).toBe(3);
+    expect(problems[0].exerciseName).toBe('Bench');
+    expect(problems[0].severity).toBe('error');
+    expect(problems[0].message).toMatch(/trailing comma/i);
+  });
+
+  test('multiple errors across multiple exercises are reported in line order', () => {
+    const text = [
+      'Monday',
+      '-Bench',
+      '135 8,,8',
+      '-Squat',
+      '225 5-8',
+    ].join('\n');
+    const { problems } = parseWorkoutNote(text);
+    expect(problems.map(p => p.line)).toEqual([3, 5]);
+    expect(problems.map(p => p.exerciseName)).toEqual(['Bench', 'Squat']);
+  });
+
+  test('a bare-row error with no leading dash is still line-addressable', () => {
+    const { problems } = parseWorkoutNote('Monday\n-Bench\n135 5,5,5\nRPE 9 no reps here');
+    expect(problems).toHaveLength(1);
+    expect(problems[0].line).toBe(4);
+  });
+
+  test('a set row with no open exercise is rejected with a line-addressable problem', () => {
+    const result = parseWorkoutNote('Monday\n-230 5');
+    expect(result.ok).toBe(false);
+    expect(result.problems).toHaveLength(1);
+    expect(result.problems[0].line).toBe(2);
+  });
+
+  test('an oversized note has no line-addressable problems (rejected before the per-line pass)', () => {
+    const result = parseWorkoutNote('x'.repeat(MAX_RAW_TEXT_LENGTH + 1));
+    expect(result.ok).toBe(false);
+    expect(result.problems).toEqual([]);
+  });
+
+  test('a deload line records its header_line', () => {
+    const { sections } = parseWorkoutNote('Monday\nSquat: 135 lbs 3x5');
+    expect(sections[0].exercises[0].header_line).toBe(2);
+  });
+
+  test('a preserved bare integer with no governing declaration is never reported as a problem', () => {
+    const { problems } = parseWorkoutNote('-Plank\n8');
+    expect(problems).toEqual([]);
+  });
+});

@@ -5675,6 +5675,153 @@ describe('LogScreenEditorCard workout syntax help button', () => {
   });
 });
 
+// ── #856: local validation + jump-to-error in the Log editor ─────────────────
+
+describe('LogScreenEditorCard local validation and jump-to-problem (#856)', () => {
+  const mockHandlers = {
+    handleSaveDeload: jest.fn(),
+    handleCurrentTextChange: jest.fn(),
+    handleSaveOtherNote: jest.fn(),
+    handleSave: jest.fn(),
+    handleSwitchCurrent: jest.fn(),
+    handleDeleteDeloadNoteFromEditor: jest.fn(),
+    handleDeleteRoutine: jest.fn(),
+    setDeloadEditText: jest.fn(),
+    setEditingTitle: jest.fn(),
+    setWorkoutNoteTitle: jest.fn(),
+    setDeloadEditDate: jest.fn(),
+    setShowDeloadDatePicker: jest.fn(),
+    setDeloadEditOrdinal: jest.fn(),
+    setEditingText: jest.fn(),
+  };
+
+  // Jumping to a problem sets a one-shot forced selection (the same
+  // mechanism the seed-example insert uses), which schedules a same-tick
+  // cleanup timer. Unmounting after each test lets that timer fire against a
+  // still-live tree instead of leaking past this test into a later one.
+  const mounted = [];
+  afterEach(() => {
+    render.act(() => { mounted.forEach(c => c.unmount()); });
+    mounted.length = 0;
+  });
+
+  function renderEditor(overrides = {}) {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <LogScreenEditorCard
+          deloadMode="read"
+          deloadEditText=""
+          isSaving={false}
+          saveSuccess={false}
+          editingNoteId={null}
+          isEditingDeloadNote={false}
+          workoutNoteTitle="Test"
+          editingTitle=""
+          editingDeloadHasLinkedRecord={false}
+          deloadEditDate=""
+          deloadEditOrdinal=""
+          showDeloadDatePicker={false}
+          editingNote={null}
+          editingText=""
+          activeEditText=""
+          currentId={null}
+          {...mockHandlers}
+          {...overrides}
+        />
+      );
+    });
+    mounted.push(component);
+    return component;
+  }
+
+  function findByTestID(root, testID) {
+    return root.findAll(n => n.props?.testID === testID)[0];
+  }
+
+  test('a clean note shows no validation summary or active-problem message', () => {
+    const component = renderEditor({ activeEditText: 'Monday\n-Bench\n135 5,5,5' });
+    expect(findByTestID(component.root, 'editor-validation-summary')).toBeFalsy();
+    expect(findByTestID(component.root, 'editor-validation-active-message')).toBeFalsy();
+  });
+
+  test('a syntax error surfaces a compact count and a line-addressed message', () => {
+    const component = renderEditor({ activeEditText: 'Monday\n-Bench\n135 8,,8' });
+    const summary = findByTestID(component.root, 'editor-validation-summary');
+    expect(summary).toBeTruthy();
+    const countText = summary.findAllByType('Text').map(n => n.props.children).join(' ');
+    expect(countText).toContain('1 error');
+
+    const message = findByTestID(component.root, 'editor-validation-active-message');
+    expect(message.props.children).toContain('Line 3');
+    expect(message.props.children).toMatch(/trailing comma/i);
+  });
+
+  test('multiple errors report a plural count, and Next/Prev cycle deterministically by line', () => {
+    const text = [
+      'Monday',
+      '-Bench',
+      '135 8,,8',
+      '-Squat',
+      '225 5-8',
+    ].join('\n');
+    const component = renderEditor({ activeEditText: text });
+    const root = component.root;
+    const summary = findByTestID(root, 'editor-validation-summary');
+    const countText = summary.findAllByType('Text').map(n => n.props.children).join(' ');
+    expect(countText).toContain('2 errors');
+
+    // Starts on the first (lowest-line) problem.
+    expect(findByTestID(root, 'editor-validation-active-message').props.children).toContain('Line 3');
+
+    const nextButton = findByTestID(root, 'editor-validation-next');
+    render.act(() => { nextButton.props.onPress(); });
+    expect(findByTestID(root, 'editor-validation-active-message').props.children).toContain('Line 5');
+
+    // Wraps back around deterministically.
+    render.act(() => { nextButton.props.onPress(); });
+    expect(findByTestID(root, 'editor-validation-active-message').props.children).toContain('Line 3');
+  });
+
+  test('the session-alignment warning is folded into the same navigable problem list', () => {
+    const message = 'Uneven exercise histories do not line up: Bench — 2 entries; Deadlift — 1 entry.';
+    const text = ['Monday', '-Bench', '135 5', '135 5', '-Deadlift', '225 5'].join('\n');
+    const component = renderEditor({
+      activeEditText: text,
+      sessionAlignmentIssue: {
+        code: 'uneven_session_entries',
+        message,
+        affectedExercises: [{ name: 'Bench', sectionIndex: 0 }],
+      },
+    });
+    const summary = findByTestID(component.root, 'editor-validation-summary');
+    const countText = summary.findAllByType('Text').map(n => n.props.children).join(' ');
+    expect(countText).toContain('1 warning');
+    const activeMessage = findByTestID(component.root, 'editor-validation-active-message');
+    expect(activeMessage.props.children).toContain(message);
+  });
+
+  test('jumping to a problem sets the TextInput selection to that line, without altering the text', () => {
+    const text = ['Monday', '-Bench', '135 8,,8'].join('\n');
+    const component = renderEditor({ activeEditText: text });
+    const root = component.root;
+
+    render.act(() => {
+      findByTestID(root, 'editor-validation-next').props.onPress();
+    });
+
+    const noteInput = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === text);
+    expect(noteInput).toBeTruthy();
+    // Line 3 ("135 8,,8") starts right after "Monday\n-Bench\n".
+    const expectedStart = 'Monday\n-Bench\n'.length;
+    expect(noteInput.props.selection).toEqual({
+      start: expectedStart,
+      end: expectedStart + '135 8,,8'.length,
+    });
+    expect(mockHandlers.handleCurrentTextChange).not.toHaveBeenCalled();
+  });
+});
+
 describe('LogDeloadSection deload ordinal input has autocorrect disabled', () => {
   test('deload ordinal modal TextInput has autoCorrect={false}, autoCapitalize="none", spellCheck={false}', () => {
     let component;

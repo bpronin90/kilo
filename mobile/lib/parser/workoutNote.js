@@ -73,7 +73,7 @@ function _makeSet(setIndex, repCount, weightValue, weightUnit) {
 }
 
 export function parseWorkoutNote(noteText) {
-  if (!noteText || noteText.trim() === '') return { ok: true, sections: [], weekBStartIndex: null };
+  if (!noteText || noteText.trim() === '') return { ok: true, sections: [], weekBStartIndex: null, problems: [] };
 
   // Reject untrusted text over the cap before the per-line split/loop runs.
   // Returns the safe-empty shape so existing callers that only read `sections`
@@ -85,6 +85,7 @@ export function parseWorkoutNote(noteText) {
       error: `Note text is too large to parse (${noteText.length} characters; limit ${MAX_RAW_TEXT_LENGTH}).`,
       sections: [],
       weekBStartIndex: null,
+      problems: [],
     };
   }
 
@@ -100,6 +101,10 @@ export function parseWorkoutNote(noteText) {
   // #854/G7c: prose lines with no open exercise are preserved as note-level
   // annotations on the section that hosts them, never silently dropped.
   let sectionAnnotations = [];
+  // #856: flat, line-addressable list of syntax errors encountered while
+  // walking the note, in line order — the single source of truth for
+  // jump-to-problem navigation in the editor. Never affects parsing itself.
+  const problems = [];
 
   function flushExercise() {
     if (currentExercise && currentSection) {
@@ -133,7 +138,10 @@ export function parseWorkoutNote(noteText) {
     currentDeclaration = parseHeaderDeclaration(rawHeader);
   }
 
-  for (const rawLine of noteText.split('\n')) {
+  const rawLines = noteText.split('\n');
+  for (let lineIdx = 0; lineIdx < rawLines.length; lineIdx++) {
+    const rawLine = rawLines[lineIdx];
+    const lineNumber = lineIdx + 1;
     const trimmed = rawLine.trim();
     if (!trimmed) continue;
 
@@ -232,24 +240,33 @@ export function parseWorkoutNote(noteText) {
             error: `Set row with no exercise — start the exercise with "- " (a dash and a space): "${trimmed}"`,
             sections: [],
             weekBStartIndex: null,
+            problems: [{
+              line: lineNumber,
+              message: `Set row with no exercise — start the exercise with "- " (a dash and a space): "${trimmed}"`,
+              exerciseName: null,
+              severity: 'error',
+            }],
           };
         }
         continue;
       }
 
       startExercise(_normalizeExerciseName(dashContent), trimmed);
+      currentExercise.header_line = lineNumber;
       continue;
     }
 
     const numberedMatch = _EXERCISE_NUMBERED_RE.exec(trimmed);
     if (numberedMatch) {
       startExercise(_normalizeExerciseName(numberedMatch[2].trim()), trimmed);
+      currentExercise.header_line = lineNumber;
       continue;
     }
 
     const coreMatch = _EXERCISE_CORE_RE.exec(trimmed);
     if (coreMatch) {
       startExercise(_normalizeExerciseName('Core: ' + coreMatch[1].trim()), trimmed);
+      currentExercise.header_line = lineNumber;
       continue;
     }
 
@@ -268,6 +285,7 @@ export function parseWorkoutNote(noteText) {
       currentSection.exercises.push({
         name: dlName,
         raw_header: trimmed,
+        header_line: lineNumber,
         rows: [{ raw: trimmed, sets: dlSets }],
         sets: dlSets,
         session_entries: [],
@@ -305,6 +323,9 @@ export function parseWorkoutNote(noteText) {
           // read view can surface a labeled, actionable message instead of a
           // bare red line. The raw text is preserved unchanged.
           currentExercise.session_entries.push({ skipped: false, raw: entryRaw, sets: [], unparsed: true, error, category: rowResult.category ?? null });
+          if (error) {
+            problems.push({ line: lineNumber, message: error, exerciseName: currentExercise.name, severity: 'error' });
+          }
         }
       } else {
         const rowResult = parseWorkoutRow(trimmed, currentDeclaration);
@@ -325,6 +346,9 @@ export function parseWorkoutNote(noteText) {
           // a bare-int/garbage row can render its recovery hint in place.
           currentExercise.unparsed_positions.push({ pos: currentExercise.session_entries.length, raw: trimmed, error, category: rowResult.category ?? null });
           currentExercise.unparsed_rows.push(trimmed);
+          if (error) {
+            problems.push({ line: lineNumber, message: error, exerciseName: currentExercise.name, severity: 'error' });
+          }
         }
       }
     } else {
@@ -337,7 +361,7 @@ export function parseWorkoutNote(noteText) {
   }
 
   flushSection();
-  return { ok: true, sections, weekBStartIndex };
+  return { ok: true, sections, weekBStartIndex, problems };
 }
 
 // Shared line-classifier for the skip-week transforms below: matches the
