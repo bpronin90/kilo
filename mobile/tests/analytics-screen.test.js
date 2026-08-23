@@ -504,6 +504,34 @@ describe('deriveOverviewRows (#821)', () => {
     expect(rowFor(rows, 'progress').unavailable).toBe(true);
     expect(rowFor(rows, 'weight').unavailable).toBe(true);
   });
+
+  // Review finding on PR #876 (#871): the 1K row kept reporting its
+  // "since your last session" delta as fresh during active Recovery, unlike
+  // Exercise Progress/Routine which already get `paused` metadata. The value
+  // itself must stay the true latest total — only the delta/caption are
+  // suppressed and the row is marked paused, same shape as the other two.
+  test('the 1K row is marked paused and suppresses its delta during active Recovery, but keeps its true value', () => {
+    const rows = deriveOverviewRows({
+      oneKPoints: [{ value: 940 }, { value: 975 }, { value: 1000 }],
+      activeTraining: { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 1 },
+    });
+    const oneK = rowFor(rows, 'oneK');
+    expect(oneK.value).toBe(1000);
+    expect(oneK.paused).toBe(true);
+    expect(oneK.pausedCaption).toBe('Baseline training paused during Recovery');
+    expect(oneK.delta).toBeNull();
+    expect(oneK.deltaCaption).toBeNull();
+  });
+
+  test('outside active Recovery the 1K row is not paused and its delta still reports', () => {
+    const rows = deriveOverviewRows({
+      oneKPoints: [{ value: 940 }, { value: 975 }, { value: 1000 }],
+    });
+    const oneK = rowFor(rows, 'oneK');
+    expect(oneK.paused).toBe(false);
+    expect(oneK.delta).toBe(25);
+    expect(oneK.deltaCaption).toBe('since your last session');
+  });
 });
 
 describe('AnalyticsScreen overview block (#821)', () => {
@@ -2488,6 +2516,22 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
     const component = renderScreen();
     const root = component.root;
     expect(hasText(root, 'Baseline training paused during Recovery')).toBe(true);
+  });
+
+  // Review finding on PR #876: the 1K row rendered its frozen value and
+  // "since your last session" delta as if fresh during active Recovery,
+  // unlike Exercise Progress/Routine which already get the paused treatment.
+  test('1K row is captioned as paused baseline history and does not show a fresh delta during active Recovery', () => {
+    mockActiveTraining();
+    const component = renderScreen();
+    const root = component.root;
+    const oneKRow = root.findAllByProps({ testID: 'overview-row-oneK' }).find(n => typeof n.props.onPress === 'function');
+    const oneKTexts = oneKRow.findAllByType('Text').map(t => {
+      const c = t.props.children;
+      return Array.isArray(c) ? c.join('') : String(c ?? '');
+    }).join(' ');
+    expect(oneKTexts).toContain('Baseline training paused during Recovery');
+    expect(oneKTexts.toLowerCase()).not.toContain('since your last session');
   });
 
   test('between-weeks Recovery (open block, no open week) also collapses the baseline disclosure', () => {

@@ -271,6 +271,11 @@ export function deriveOverviewRows({
   const oneK = (oneKPoints || []).filter(p => p && typeof p.value === 'number');
   const latestOneK = oneK.length > 0 ? oneK[oneK.length - 1] : null;
   const priorOneK = oneK.length > 1 ? oneK[oneK.length - 2] : null;
+  // During active Recovery this is the same frozen baseline logic as Exercise
+  // Progress/Routine below: the value itself is untouched (still the latest
+  // real 1K total), but its "since your last session" delta is suppressed and
+  // it is marked `paused` so the row never presents a frozen number as a fresh
+  // live change (#871 review finding).
   const oneKRow = {
     key: 'oneK',
     label: '1K Total',
@@ -278,9 +283,11 @@ export function deriveOverviewRows({
     unavailable: notesUnavailable,
     value: latestOneK ? Math.round(latestOneK.value) : null,
     showUnit: true,
-    delta: latestOneK && priorOneK ? Math.round(latestOneK.value - priorOneK.value) : null,
-    deltaCaption: latestOneK && priorOneK ? 'since your last session' : null,
+    delta: (!isRecoveryActive && latestOneK && priorOneK) ? Math.round(latestOneK.value - priorOneK.value) : null,
+    deltaCaption: (!isRecoveryActive && latestOneK && priorOneK) ? 'since your last session' : null,
     emptyCaption: 'Map your three lifts and log one full cycle',
+    paused: isRecoveryActive,
+    pausedCaption: isRecoveryActive ? 'Baseline training paused during Recovery' : null,
   };
 
   // Exercise progress — the same overload_trend classification the table
