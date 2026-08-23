@@ -33,6 +33,40 @@ export const RECOVERY_ERROR_CODES = Object.freeze({
   INVALID_NOTE_ID: 'INVALID_NOTE_ID',
 });
 
+// ── the optional "why this block started" reason (#872) ───────────────────────
+
+// A reason is one concise line of context ("torn hamstring", "8 weeks off after
+// surgery"), not a journal entry. The cap is deliberately short: the field is
+// rendered as a caption beside a block on Log and Analytics, and every surface
+// that shows it has room for a line, not a paragraph. The server bounds the
+// same column far more loosely (see the payload-bounds trigger), because a
+// server bound exists to stop abuse, not to enforce this product decision.
+export const MAX_RECOVERY_REASON_LENGTH = 280;
+
+// Normalize a caller-supplied reason to the ONE canonical stored form.
+//
+// The rules, applied in this order and nowhere else in the app, so a reason
+// typed at creation, edited later, restored from a backup, or merged from
+// another device all land on the same value:
+//
+//   - anything that is not a string (null, undefined, a number, an object) is
+//     `null`. A reason is optional, and the domain never invents one;
+//   - every whitespace run — including the newlines a multiline paste carries —
+//     collapses to a single space, then the result is trimmed. So "  " and ""
+//     both become `null` rather than a record that claims a blank reason;
+//   - the result is capped at MAX_RECOVERY_REASON_LENGTH characters.
+//
+// `null` (not `''`) is the stored absence, matching every other optional column
+// on the record and the nullable `reason` column in kilo.recovery_blocks: a
+// legacy row that predates this field and a row whose reason was cleared are
+// then indistinguishable, which is exactly right — neither has one.
+export function normalizeRecoveryReason(value) {
+  if (typeof value !== 'string') return null;
+  const collapsed = value.replace(/\s+/g, ' ').trim();
+  if (collapsed.length === 0) return null;
+  return collapsed.slice(0, MAX_RECOVERY_REASON_LENGTH);
+}
+
 export class RecoveryBlockError extends Error {
   constructor(code, message) {
     super(message);
@@ -214,6 +248,7 @@ export function buildRecoveryBlock({
   baselineNoteTitle = null,
   baseline,
   includeInNormalAnalytics = false,
+  reason = null,
   now = new Date().toISOString(),
 }) {
   if (!baselineNoteId || typeof baselineNoteId !== 'string') {
@@ -231,6 +266,12 @@ export function buildRecoveryBlock({
     // default: mixing rehab loads into ordinary progression would read as a
     // months-long regression. Opting in is an explicit user choice.
     include_in_normal_analytics: includeInNormalAnalytics === true,
+    // Optional free text (#872). Always present as a key so the record shape is
+    // uniform, always `null` when the user gave nothing: the field records why
+    // a recovery started, and a block started without an explanation genuinely
+    // has none. Nothing else in the domain reads it — it changes no baseline,
+    // membership, fatigue, comparison, or analytics result.
+    reason: normalizeRecoveryReason(reason),
     started_at: now,
     completed_at: null,
     saved_at: now,

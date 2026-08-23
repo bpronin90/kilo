@@ -1981,3 +1981,125 @@ describe('a pass never discards work it cannot see', () => {
     expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, PHANTOM_ID))).toBe(true);
   });
 });
+
+// ── the optional recovery-block reason across the sync boundary (#872) ────────
+//
+// The field is opaque to sync — it is neither a key, a constraint, nor an
+// ordering input — so what these tests defend is that it is not silently
+// DROPPED by any of the projections a block passes through: the push column
+// whitelist, the merge, and the local write-back. The legacy case matters most:
+// a block written before the column existed carries no `reason` key at all, and
+// nothing in the pass may invent one for it.
+describe('recovery block reason crosses the sync boundary intact', () => {
+  async function seedBlockWithReason(reason) {
+    const adapter = Storage.getStorageAdapter();
+    await adapter.saveWorkoutNoteItem({
+      id: 'wn-reason',
+      title: 'Baseline routine',
+      raw_text: 'Squat 100x5',
+      saved_at: '2026-08-01T08:00:00.000Z',
+    });
+    const block = {
+      id: 'rb-reason',
+      baseline_note_id: 'wn-reason',
+      baseline_note_title: 'Baseline routine',
+      baseline: { version: 1, exercises: [] },
+      include_in_normal_analytics: false,
+      started_at: '2026-08-01T09:00:00.000Z',
+      completed_at: null,
+      saved_at: '2026-08-01T09:00:00.000Z',
+      updated_at: '2026-08-01T09:00:00.000Z',
+      deleted_at: null,
+    };
+    // `undefined` would round-trip through JSON as an ABSENT key, which is the
+    // legacy shape — so the caller asks for that explicitly by passing it.
+    if (reason !== undefined) block.reason = reason;
+    await Storage.replaceRecoveryBlocksRaw([block]);
+    return block;
+  }
+
+  it('pushes a block together with its reason', async () => {
+    await seedBlockWithReason('torn hamstring');
+    await sync();
+
+    expect(cloud.remoteRow(SYNC_TABLES.RECOVERY_BLOCKS, 'rb-reason')).toMatchObject({
+      id: 'rb-reason',
+      reason: 'torn hamstring',
+    });
+  });
+
+  it('a LEGACY block with no reason key syncs, and no reason is invented for it', async () => {
+    await seedBlockWithReason(undefined);
+    await sync();
+
+    const remote = cloud.remoteRow(SYNC_TABLES.RECOVERY_BLOCKS, 'rb-reason');
+    expect(remote).toMatchObject({ id: 'rb-reason' });
+    expect(remote.reason ?? null).toBeNull();
+    expect((await Storage.loadRecoveryBlocksRaw())[0].reason ?? null).toBeNull();
+  });
+
+  it('uploads a reason EDITED while signed out', async () => {
+    await seedBlockWithReason(null);
+    await sync();
+
+    signOut();
+    // The ordinary local mutation path, not a hand-written record: this is what
+    // the Manage-block editor calls.
+    await Storage.updateRecoveryBlock('rb-reason', { reason: 'returning from surgery' });
+
+    signInAsSameOwner();
+    await sync();
+
+    expect(cloud.remoteRow(SYNC_TABLES.RECOVERY_BLOCKS, 'rb-reason')).toMatchObject({
+      reason: 'returning from surgery',
+    });
+  });
+
+  it('downloads a reason onto a device that has never seen the block', async () => {
+    await seedBlockWithReason('torn hamstring');
+    await sync();
+
+    // The fresh-device shape used above for weight entries: no cursor, no
+    // baseline, nothing local — so every remote row is legitimately absent and
+    // the pass is a first download rather than a delete.
+    await clearSyncSnapshot(SYNC_TABLES.RECOVERY_BLOCKS);
+    await clearCursor(SYNC_TABLES.RECOVERY_BLOCKS);
+    await Storage.replaceRecoveryBlocksRaw([]);
+
+    await sync();
+
+    const local = (await Storage.loadRecoveryBlocksRaw()).find((b) => b.id === 'rb-reason');
+    expect(local).toMatchObject({ reason: 'torn hamstring' });
+    // The frozen baseline and the block's identity came down with it, unchanged.
+    expect(local.baseline).toEqual({ version: 1, exercises: [] });
+    expect(local.baseline_note_id).toBe('wn-reason');
+  });
+
+  it('keeps a pending local reason edit rather than losing it to a remote row in the same pass', async () => {
+    await seedBlockWithReason('first guess');
+    await sync();
+
+    // Another device rewrites the same block and the server stamps it with a
+    // timestamp NEWER than this device's local clock — the shape that made
+    // pre-#525 merges discard the pending local write.
+    const remote = cloud.remoteRow(SYNC_TABLES.RECOVERY_BLOCKS, 'rb-reason');
+    await cloud.transport.push(SYNC_TABLES.RECOVERY_BLOCKS, [
+      { ...remote, reason: 'written by another device' },
+    ]);
+
+    signOut();
+    await Storage.updateRecoveryBlock('rb-reason', { reason: 'corrected on this device' });
+    signInAsSameOwner();
+
+    await sync();
+
+    // "Last write to REACH the server wins": the pending local edit is always
+    // submitted, so it is the one the account converges on — and, crucially, it
+    // is not dropped in favour of the remote row it never saw.
+    expect(cloud.remoteRow(SYNC_TABLES.RECOVERY_BLOCKS, 'rb-reason')).toMatchObject({
+      reason: 'corrected on this device',
+    });
+    await sync();
+    expect((await Storage.loadRecoveryBlocksRaw())[0].reason).toBe('corrected on this device');
+  });
+});

@@ -1019,8 +1019,13 @@ Consequences to preserve:
 - **`Manage block` is a sibling card, not a disclosure inside the active card
   (#843, superseding #789's in-card placement).** Its trigger is **never**
   disabled — a locked user can still open it and see why each row is
-  unavailable — and it renders three divided list rows with trailing
-  chevrons: `Counting in normal analytics` (the row itself IS the
+  unavailable — and it renders four divided list rows with trailing
+  chevrons: `Reason for this block` (#872 — the optional free text, showing
+  the stored reason or `Not set. Add why this recovery started.`; tapping it
+  swaps the row in place for an inline `TextInput` with `Cancel`/`Save`
+  rather than opening a modal, seeded from the stored value so `Cancel` is a
+  true discard, and saving empty text clears the field. Collapsing `Manage
+  block` closes the editor with it), `Counting in normal analytics` (the row itself IS the
   Log-surface inclusion control now, `accessibilityRole="switch"` — tapping
   it writes `include_in_normal_analytics` directly, live `On`/`Off` stated
   on the row; a trailing `info-outline` help toggle swaps the subtitle for

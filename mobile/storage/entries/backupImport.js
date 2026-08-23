@@ -48,7 +48,10 @@ import {
   loadRecoveryBlockWeeksRaw,
   replaceRecoveryBlockWeeksRaw,
 } from './recoveryStorage';
-import { RECOVERY_BASELINE_VERSION } from '../../lib/data/recoveryBlocks';
+import {
+  MAX_RECOVERY_REASON_LENGTH,
+  RECOVERY_BASELINE_VERSION,
+} from '../../lib/data/recoveryBlocks';
 
 // v4 adds the two recovery collections (#694). Everything a v3 file carries is
 // unchanged, so a v4 file is a strict superset and a v3 importer would simply
@@ -98,6 +101,10 @@ const RECOVERY_BLOCK_FIELDS = [
   'baseline_note_title',
   'baseline',
   'include_in_normal_analytics',
+  // #872. Absent on every block written before that issue, and `projectFields`
+  // keeps an absent field absent, so a backup taken from legacy records carries
+  // no `reason` key at all rather than a fabricated null.
+  'reason',
   'started_at',
   'completed_at',
   'saved_at',
@@ -509,6 +516,24 @@ function validateRecoveryBlocks(blocks) {
       return { ok: false, error: `Invalid backup: recovery block ${block.id} baseline_note_title must be a string` };
     if (block.include_in_normal_analytics != null && typeof block.include_in_normal_analytics !== 'boolean')
       return { ok: false, error: `Invalid backup: recovery block ${block.id} include_in_normal_analytics must be a boolean` };
+    // The optional reason (#872). Absent and null are both "no reason" — a
+    // backup written before the field existed says nothing about it, and
+    // silence is never an instruction. A present value must be a string within
+    // the same bound the domain normalizes to, so a hand-edited file cannot
+    // write a record local creation could never produce; the empty string is
+    // rejected rather than coerced, because `null` is the one stored absence
+    // and an importable file should say exactly what it means.
+    if (block.reason != null) {
+      if (typeof block.reason !== 'string')
+        return { ok: false, error: `Invalid backup: recovery block ${block.id} reason must be a string` };
+      if (block.reason.trim().length === 0)
+        return { ok: false, error: `Invalid backup: recovery block ${block.id} reason must be null rather than empty` };
+      if (block.reason.length > MAX_RECOVERY_REASON_LENGTH)
+        return {
+          ok: false,
+          error: `Invalid backup: recovery block ${block.id} reason too long (${block.reason.length}; limit ${MAX_RECOVERY_REASON_LENGTH})`,
+        };
+    }
 
     const baselineCheck = validateRecoveryBaseline(block.baseline);
     if (!baselineCheck.ok) return baselineCheck;

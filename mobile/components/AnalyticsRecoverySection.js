@@ -465,6 +465,18 @@ function BlockEvidence({
   return (
     <Card style={styles.card}>
       <Text style={styles.identityCaption}>{identityCaption}</Text>
+      {/* The optional reason (#872), on the active and the completed block
+          alike — this card is the same evidence surface for both. Rendered
+          only when the block carries one, so a block started without an
+          explanation (including every block written before the field existed)
+          shows nothing rather than an empty placeholder. It is context for
+          reading the comparison, never an input to it: no metric, week status,
+          or summary line below reads this value. */}
+      {block.reason ? (
+        <Text style={styles.reasonCaption} numberOfLines={2}>
+          Reason: {block.reason}
+        </Text>
+      ) : null}
 
       {comparison.status === RECOVERY_COMPARISON_STATUS.BASELINE_UNAVAILABLE && (
         <Text style={styles.unavailablePanelText}>
@@ -852,12 +864,22 @@ export function AnalyticsRecoverySection({
                   style={[styles.historyRow, selected && styles.historyRowSelected]}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
-                  accessibilityLabel={`View recovery evidence for ${block.baseline_note_title || 'Untitled Routine'}, completed ${formatDate(block.completed_at)}`}
+                  accessibilityLabel={`View recovery evidence for ${block.baseline_note_title || 'Untitled Routine'}, completed ${formatDate(block.completed_at)}${block.reason ? `. Reason: ${block.reason}` : ''}`}
                 >
                   <Text style={styles.historyBaselineTitle}>{block.baseline_note_title || 'Untitled Routine'}</Text>
                   <Text style={styles.historyDates}>
                     {formatDate(block.started_at)} – {formatDate(block.completed_at)}
                   </Text>
+                  {/* What a completed block was FOR is usually the fastest way
+                      to recognize it in a list of past recoveries (#872) —
+                      more so than its baseline routine, which several blocks
+                      may share. One line; the row is a selector, not the
+                      evidence panel. */}
+                  {block.reason ? (
+                    <Text style={styles.historyDates} numberOfLines={1}>
+                      {block.reason}
+                    </Text>
+                  ) : null}
                 </Pressable>
                 {blockWeeks.map(w => (
                   <WeekIndexRow
@@ -926,6 +948,14 @@ const createStyles = (colors) => StyleSheet.create({
   identityCaption: {
     fontSize: 13,
     fontWeight: '700',
+    color: colors.textMuted,
+  },
+  // Deliberately lighter than `identityCaption` (#872): the reason is context
+  // for the comparison above it, not a second heading competing with the
+  // block's identity.
+  reasonCaption: {
+    fontSize: 12,
+    lineHeight: 16,
     color: colors.textMuted,
   },
   provenanceText: {

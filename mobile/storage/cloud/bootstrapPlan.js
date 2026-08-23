@@ -432,6 +432,11 @@ function buildRecoveryBlockRows(snapshot, userId) {
       baseline_note_title: b.baseline_note_title ?? null,
       baseline: b.baseline ?? null,
       include_in_normal_analytics: b.include_in_normal_analytics === true,
+      // Explicit, like every other column here — never a wildcard spread of the
+      // local record. A block written by a build that predates #872 has no
+      // `reason` key at all, so the `?? null` is what makes a legacy row upload
+      // as "no reason given" rather than as `undefined`.
+      reason: b.reason ?? null,
       started_at: b.started_at ?? null,
       completed_at: b.completed_at ?? null,
       saved_at: b.saved_at ?? null,

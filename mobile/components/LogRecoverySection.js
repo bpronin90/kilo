@@ -20,9 +20,13 @@ import React, { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Alert } from '../lib/platformAlert';
-import { Card, SectionTitle } from './UI';
+import { Card, SectionTitle, createInputStyle } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
-import { findActiveBlock, orderedLiveWeeks } from '../lib/data/recoveryBlocks';
+import {
+  MAX_RECOVERY_REASON_LENGTH,
+  findActiveBlock,
+  orderedLiveWeeks,
+} from '../lib/data/recoveryBlocks';
 import {
   RECOVERY_STALE_MESSAGE,
   RECOVERY_UNVERIFIED_MESSAGE,
@@ -158,9 +162,22 @@ export function LogRecoverySection({
   // there is no cross-record state for LogScreen to serialize, and it carries
   // its own in-flight key. It is still disabled by `actionsLocked` below, so it
   // can never race a journaled lifecycle operation over the same block.
-  const { setIncludeInNormalAnalytics } = useRecoveryBlockLifecycle();
+  const { setIncludeInNormalAnalytics, setBlockReason } = useRecoveryBlockLifecycle();
   const [inclusionBusyBlockId, setInclusionBusyBlockId] = useState(null);
   const [inclusionError, setInclusionError] = useState(null);
+  // The optional reason editor (#872), owned here for the same reason the
+  // inclusion preference is: a single-field patch on a single collection needs
+  // no cross-record serialization from LogScreen, only the shared
+  // `actionsLocked` gate so it cannot race a journaled lifecycle operation.
+  //
+  // Keyed by block id, not a boolean, for the reason `manageExpandedBlockId`
+  // is: this component stays mounted across a block's whole lifetime, so a
+  // boolean would carry an open editor (and its draft text) from a block the
+  // user just completed onto the next one they start.
+  const [reasonEditingBlockId, setReasonEditingBlockId] = useState(null);
+  const [reasonDraft, setReasonDraft] = useState('');
+  const [reasonBusyBlockId, setReasonBusyBlockId] = useState(null);
+  const [reasonError, setReasonError] = useState(null);
   // The `Manage block` disclosure (#789, restyled #843), collapsed by default.
   // It is presentation state only: nothing inside it changes handler, gating,
   // or confirm copy, and the trigger itself is NEVER disabled — a locked user
@@ -387,6 +404,47 @@ export function LogRecoverySection({
   // silently discards the interaction.
   const inclusionLocked = actionsLocked || !!inclusionBusyBlockId;
 
+  // ── the optional reason (#872) ──────────────────────────────────────────────
+  //
+  // Opening the editor seeds the draft from the STORED value, so Cancel is a
+  // true discard: the record is the only source of what the field currently
+  // says, and an editor seeded from a previous draft would quietly re-offer
+  // text the user already abandoned.
+  const openReasonEditor = (block) => {
+    setReasonError(null);
+    setReasonDraft(block.reason || '');
+    setReasonEditingBlockId(block.id);
+  };
+  const closeReasonEditor = () => {
+    setReasonEditingBlockId(null);
+    setReasonDraft('');
+    setReasonError(null);
+  };
+  const handleSaveReason = async (block) => {
+    if (reasonBusyBlockId) return;
+    setReasonError(null);
+    setReasonBusyBlockId(block.id);
+    try {
+      // The raw draft goes to the domain, which owns normalization — clearing
+      // the field is therefore an ordinary save of empty text, not a separate
+      // "remove" action with its own contract.
+      const result = await setBlockReason({ blockId: block.id, reason: reasonDraft });
+      if (!result || result.ok === false) {
+        setReasonError({
+          blockId: block.id,
+          message: (result && result.error) || 'That reason could not be saved.',
+        });
+        return;
+      }
+      closeReasonEditor();
+    } finally {
+      setReasonBusyBlockId(null);
+    }
+  };
+  const reasonErrorFor = (blockId) =>
+    (reasonError && reasonError.blockId === blockId) ? reasonError.message : null;
+  const reasonLocked = actionsLocked || !!reasonBusyBlockId;
+
   // A verified snapshot whose latest refresh failed (#716). Last-known-good
   // blocks and weeks stay on screen — they are still the truth as of the last
   // successful read — and this says so plainly rather than letting the user
@@ -465,6 +523,17 @@ export function LogRecoverySection({
               <Text style={styles.baselineCaption}>
                 Baseline: {activeBlock.baseline_note_title || 'Untitled Routine'}
               </Text>
+              {/* The optional reason (#872), rendered only when there is one:
+                  a block started without an explanation shows no empty
+                  "Reason: —" row claiming a field the user never filled in.
+                  A caption beside the baseline, capped at two lines — this
+                  zone states what the block IS, and the reason is part of
+                  that, not an action. */}
+              {activeBlock.reason ? (
+                <Text style={styles.baselineCaption} numberOfLines={2}>
+                  Reason: {activeBlock.reason}
+                </Text>
+              ) : null}
 
               {stateStale ? staleBanner : null}
               {showRecoveryNotice ? pendingBanner : null}
@@ -777,7 +846,18 @@ export function LogRecoverySection({
               before. */}
           <Card style={styles.manageCard}>
             <Pressable
-              onPress={() => setManageExpandedBlockId(id => (id === activeBlock.id ? null : activeBlock.id))}
+              onPress={() => setManageExpandedBlockId(id => {
+                // Collapsing the disclosure would unmount an open reason
+                // editor along with it, stranding whatever the user had
+                // typed with no Save or Cancel to reach. Closing the editor
+                // as part of the same gesture makes the discard explicit
+                // instead of silent (#872).
+                if (id === activeBlock.id) {
+                  closeReasonEditor();
+                  return null;
+                }
+                return activeBlock.id;
+              })}
               style={styles.manageTrigger}
               accessibilityRole="button"
               accessibilityLabel={`Manage recovery block: ${activeBlock.baseline_note_title || 'Untitled Routine'}`}
@@ -796,6 +876,85 @@ export function LogRecoverySection({
 
             {manageExpanded && (
               <View style={styles.manageList}>
+                {/* Reason (#872): the administration surface for the optional
+                    free text, collapsed to a single row until the user asks to
+                    change it. Writing it changes no note, week, baseline,
+                    fatigue record, or analytics result — only this one field —
+                    so it sits above the controls that do move lifecycle state.
+                */}
+                <View style={[styles.manageRow, styles.manageRowDivider]}>
+                  {reasonEditingBlockId === activeBlock.id ? (
+                    <View style={styles.reasonEditor}>
+                      <Text style={styles.manageRowTitle}>Reason for this block</Text>
+                      <TextInput
+                        style={styles.reasonInput}
+                        value={reasonDraft}
+                        onChangeText={setReasonDraft}
+                        placeholder="e.g. torn hamstring, 8 weeks off"
+                        placeholderTextColor={colors.textMuted}
+                        maxLength={MAX_RECOVERY_REASON_LENGTH}
+                        editable={!reasonLocked}
+                        accessibilityLabel="Reason for this recovery block"
+                      />
+                      <Text style={styles.manageRowSubtitle}>
+                        Only for your own records. Leave it empty to remove it.
+                      </Text>
+                      {reasonErrorFor(activeBlock.id) ? (
+                        <Text style={styles.manageRowInlineError}>{reasonErrorFor(activeBlock.id)}</Text>
+                      ) : null}
+                      <View style={styles.reasonEditorActions}>
+                        <Pressable
+                          onPress={closeReasonEditor}
+                          disabled={reasonBusyBlockId === activeBlock.id}
+                          style={styles.reasonEditorButton}
+                          accessibilityRole="button"
+                          accessibilityLabel="Cancel editing the reason"
+                          accessibilityState={{ disabled: reasonBusyBlockId === activeBlock.id }}
+                        >
+                          <Text style={styles.reasonEditorCancelText}>Cancel</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => handleSaveReason(activeBlock)}
+                          disabled={reasonLocked}
+                          style={[styles.reasonEditorButton, reasonLocked && styles.manageRowDisabled]}
+                          accessibilityRole="button"
+                          accessibilityLabel="Save the reason"
+                          accessibilityState={{
+                            disabled: reasonLocked,
+                            busy: reasonBusyBlockId === activeBlock.id,
+                          }}
+                        >
+                          <Text style={styles.reasonEditorSaveText}>
+                            {reasonBusyBlockId === activeBlock.id ? 'Saving…' : 'Save'}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ) : (
+                    <Pressable
+                      onPress={() => openReasonEditor(activeBlock)}
+                      disabled={reasonLocked}
+                      style={[styles.manageRowMain, reasonLocked && styles.manageRowDisabled]}
+                      accessibilityRole="button"
+                      accessibilityLabel={activeBlock.reason
+                        ? `Edit reason for this recovery block: ${activeBlock.reason}`
+                        : 'Add a reason for this recovery block'}
+                      accessibilityState={{ disabled: reasonLocked }}
+                    >
+                      <View style={styles.manageRowInfo}>
+                        <Text style={styles.manageRowTitle}>Reason for this block</Text>
+                        <Text style={styles.manageRowSubtitle} numberOfLines={2}>
+                          {activeBlock.reason || 'Not set. Add why this recovery started.'}
+                        </Text>
+                        {reasonErrorFor(activeBlock.id) ? (
+                          <Text style={styles.manageRowInlineError}>{reasonErrorFor(activeBlock.id)}</Text>
+                        ) : null}
+                      </View>
+                      <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
+                    </Pressable>
+                  )}
+                </View>
+
                 <View style={[styles.manageRow, styles.manageRowDivider]}>
                   {/* The row IS the Log-surface inclusion control (#843
                       review) — tapping it writes `include_in_normal_analytics`
@@ -1280,6 +1439,36 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: colors.textMuted,
+  },
+  // The inline reason editor (#872). It replaces the row's own contents rather
+  // than opening a modal: the field is one short line, and a sheet for it would
+  // cost more attention than the edit is worth.
+  reasonEditor: {
+    flex: 1,
+    gap: 8,
+  },
+  reasonInput: {
+    ...createInputStyle(colors),
+  },
+  reasonEditorActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  reasonEditorButton: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  reasonEditorCancelText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  reasonEditorSaveText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.accent,
   },
   // On-demand inclusion help toggle (#843 review), matching
   // `RecoveryInclusionToggle`'s own info-button box: a real 44dp target, not

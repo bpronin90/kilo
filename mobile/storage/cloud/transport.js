@@ -161,6 +161,11 @@ const UPSERT_COLUMNS = Object.freeze({
     'baseline_note_title',
     'baseline',
     'include_in_normal_analytics',
+    // The optional "why this block started" reason (#872). Whitelisted so an
+    // edit reaches the cloud, and so a device that first learns of a block from
+    // a pull keeps the reason on the next push instead of quietly dropping the
+    // column back to null on every round trip.
+    'reason',
     'started_at',
     'completed_at',
     'saved_at',

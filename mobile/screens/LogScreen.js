@@ -626,7 +626,7 @@ export function LogScreen({
     && recoveryMutationsAllowed
     && !!newestCompletedRecoveryBlock;
 
-  const handleConfirmRecoveryBlock = async ({ baselineNoteId, weekChoice, weekNoteId, newNoteTitle }) => {
+  const handleConfirmRecoveryBlock = async ({ baselineNoteId, weekChoice, weekNoteId, newNoteTitle, reason }) => {
     if (!startRecoveryBlock) {
       return { ok: false, error: 'Recovery blocks are not available in this build yet.' };
     }
@@ -647,6 +647,9 @@ export function LogScreen({
       baselineNoteTitle: baselineNote.title || null,
       baselineNoteText: baselineNote.raw_text || '',
       weekNoteId: weekChoice === 'new' ? null : weekNoteId,
+      // Optional free text (#872), passed straight through — this screen makes
+      // no decision about it and never substitutes one of its own.
+      reason,
       createWeekNote: weekChoice === 'new' ? () => add(newNoteTitle, '') : undefined,
       // New-note path only: if the note this call created is left orphaned by
       // a later block/week failure, `startRecoveryBlock` rolls it back
