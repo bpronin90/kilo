@@ -425,19 +425,42 @@ function buildRecoveryBlockRows(snapshot, userId) {
   const now = new Date().toISOString();
   return (snapshot.recoveryBlocks || [])
     .filter((b) => b && b.id)
-    .map((b) => ({
-      user_id: userId,
-      id: b.id,
-      baseline_note_id: b.baseline_note_id ?? null,
-      baseline_note_title: b.baseline_note_title ?? null,
-      baseline: b.baseline ?? null,
-      include_in_normal_analytics: b.include_in_normal_analytics === true,
-      started_at: b.started_at ?? null,
-      completed_at: b.completed_at ?? null,
-      saved_at: b.saved_at ?? null,
-      updated_at: b.updated_at ?? now,
-      deleted_at: b.deleted_at ?? null,
-    }));
+    .map((b) => {
+      const row = {
+        user_id: userId,
+        id: b.id,
+        baseline_note_id: b.baseline_note_id ?? null,
+        baseline_note_title: b.baseline_note_title ?? null,
+        baseline: b.baseline ?? null,
+        include_in_normal_analytics: b.include_in_normal_analytics === true,
+        started_at: b.started_at ?? null,
+        completed_at: b.completed_at ?? null,
+        saved_at: b.saved_at ?? null,
+        updated_at: b.updated_at ?? now,
+        deleted_at: b.deleted_at ?? null,
+      };
+      // #872, review of 60e30bf. `reason` is the ONE column here that is carried
+      // conditionally, because bootstrap is a blind upsert with no LWW guard:
+      // PostgREST builds its `on conflict do update set` list from the keys the
+      // payload actually carries, so a column that is absent is left at whatever
+      // the server already holds.
+      //
+      // That distinction is the whole point. A block written before this field
+      // existed has NO `reason` key, which means "this device knows nothing
+      // about that column" — not "there is no reason". Coercing it to null (as
+      // this builder first did) would upload an authoritative "no reason" and
+      // erase a reason another device had already synced, before any merge pass
+      // could reconcile it. An explicit `null` is different and IS sent: that is
+      // a reason the user actively cleared, and it should propagate.
+      //
+      // This mirrors what the ordinary push path already does via its
+      // hasOwnProperty projection in transport.js. Rows are grouped by key shape
+      // before upserting (see bootstrap.js) so a mixed batch stays valid.
+      if (Object.prototype.hasOwnProperty.call(b, 'reason')) {
+        row.reason = b.reason;
+      }
+      return row;
+    });
 }
 
 function buildRecoveryBlockWeekRows(snapshot, userId) {

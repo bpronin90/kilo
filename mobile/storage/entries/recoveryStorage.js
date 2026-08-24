@@ -31,6 +31,7 @@ import {
   findLiveMembershipForNote,
   isLiveRecord,
   nextWeekNumber,
+  normalizeRecoveryReason,
   orderedLiveWeeks,
 } from '../../lib/data/recoveryBlocks';
 
@@ -107,6 +108,7 @@ export async function createRecoveryBlock({
   baselineNoteTitle = null,
   baselineNoteText = '',
   includeInNormalAnalytics = false,
+  reason = null,
 } = {}) {
   const list = await readList(RECOVERY_BLOCKS_KEY);
   const active = findActiveBlock(list);
@@ -122,6 +124,9 @@ export async function createRecoveryBlock({
     baselineNoteTitle,
     baseline: captureRecoveryBaselineFromText(baselineNoteText),
     includeInNormalAnalytics,
+    // Normalized by buildRecoveryBlock, so an empty or whitespace-only entry
+    // creates a block with no reason rather than one claiming a blank one.
+    reason,
   });
 
   list.push(block);
@@ -129,10 +134,10 @@ export async function createRecoveryBlock({
   return block;
 }
 
-// Patch a block's mutable presentation fields (today: `baseline_note_title` and
-// `include_in_normal_analytics`). Record identity, the frozen baseline, and
-// lifecycle state are dropped from the patch rather than applied — see
-// BLOCK_IMMUTABLE_FIELDS.
+// Patch a block's mutable presentation fields (today: `baseline_note_title`,
+// `include_in_normal_analytics`, and the optional `reason`). Record identity,
+// the frozen baseline, and lifecycle state are dropped from the patch rather
+// than applied — see BLOCK_IMMUTABLE_FIELDS.
 //
 // A tombstoned block is rejected outright: a deleted record has no mutable
 // state, and allowing a write would let a stale device edit a block the user
@@ -156,6 +161,18 @@ export async function updateRecoveryBlock(id, patch) {
   }
 
   const effective = _stripImmutable(patch, BLOCK_IMMUTABLE_FIELDS);
+  // The optional reason (#872) is normalized HERE rather than trusted from the
+  // caller, so every write path — creation, this patch, and a UI that hands the
+  // raw contents of a text field straight through — stores the same canonical
+  // form. A patch whose normalized reason already matches the stored one is then
+  // dropped from the patch for the same reason immutable fields are: re-saving
+  // identical text (or clearing a reason that was never there) is not a change,
+  // and stamping updated_at for it would enqueue a content-free push.
+  if (Object.prototype.hasOwnProperty.call(effective, 'reason')) {
+    const nextReason = normalizeRecoveryReason(effective.reason);
+    if (nextReason === (list[idx].reason ?? null)) delete effective.reason;
+    else effective.reason = nextReason;
+  }
   // A patch of nothing but immutable fields is a no-op, not a touch. Stamping a
   // fresh updated_at here would mark the record dirty and hand the sync engine a
   // change to push that carries no content.

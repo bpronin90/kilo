@@ -704,7 +704,7 @@ chip is gone; nothing in the active path produces or reads `rep_drop_off_flags`.
 | `kilo_weight_date_edit_enabled` | Developer / advanced setting enabling manual date editing on weight entries |
 | `kilo_deload_date_edit_enabled` | Developer / advanced setting enabling manual date editing on deload entries |
 | `kilo_log_current_collapsed` | Persisted UI state: whether the current Log routine card is collapsed |
-| `kilo_recovery_blocks` | JSON array of recovery-block records (`baseline_note_id`, the frozen versioned `baseline` snapshot, `include_in_normal_analytics`, `started_at`, `completed_at`) plus sync metadata and retained tombstones |
+| `kilo_recovery_blocks` | JSON array of recovery-block records (`baseline_note_id`, the frozen versioned `baseline` snapshot, `include_in_normal_analytics`, the optional free-text `reason` a block was started, `started_at`, `completed_at`) plus sync metadata and retained tombstones. `reason` is `null` when none was given, including on every record written before it existed; nothing in the domain reads it, so it changes no membership, baseline, comparison, or analytics result |
 | `kilo_recovery_block_weeks` | JSON array of ordered recovery-week memberships linking a workout note to a block (`block_id`, `note_id`, domain-assigned `week_number`, `completed_at`) plus sync metadata and retained tombstones |
 | `kilo_recovery_operation_journal_v1` | Device-local write-ahead journal of in-flight multi-record recovery lifecycle operations (`operation_id`, schema `version`, `type`, affected `block_id`/`week_id`/`note_id`, immutable requested timestamp, intended outcome, stage/attempt metadata, `created_at`/`updated_at`, last-error diagnostics). Protocol metadata, not user health data: never exported in a backup, never a sync table, and never stores workout-note text |
 
@@ -833,7 +833,14 @@ in `syncRecoveryHooks.js` so both upload paths (`runBootstrap` and
 `recovery_blocks` and `recovery_block_weeks`, so bootstrap reads and uploads
 exactly the collections the journal rewrites — and it matters more there than for
 an ordinary pass, because there is no earlier cloud state to converge against:
-whatever bootstrap uploads becomes the account's initial truth. An operation still
+whatever bootstrap uploads becomes the account's initial truth. The one exception
+is a recovery block's optional `reason` (#872), which `buildRecoveryBlockRows`
+carries only when the local record actually has the key. Bootstrap is a blind
+upsert and PostgREST derives its `on conflict do update set` list from the keys
+the payload carries, so a legacy record — which says nothing about that column —
+omits it and leaves any server-side value intact, while an explicit `null` (a
+reason the user cleared) is sent and does propagate. Rows are grouped by key
+shape before upserting, since PostgREST requires a uniform key set per batch. An operation still
 pending at sign-in would otherwise be uploaded as a partial transition, and a
 lifecycle action started while the snapshot is being built or uploaded would race a
 whole-list write. Because both callers persist ownership and switch the storage

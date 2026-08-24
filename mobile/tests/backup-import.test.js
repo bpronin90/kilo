@@ -809,7 +809,12 @@ describe('recovery data in the backup format', () => {
     expect(exported.private_scratch).toBeUndefined();
     expect(Object.keys(exported).sort()).toEqual([
       'baseline', 'baseline_note_id', 'baseline_note_title', 'completed_at',
-      'deleted_at', 'id', 'include_in_normal_analytics', 'saved_at',
+      // `reason` joined the record in #872. It is here because the seeded block
+      // was created by the current builder, which always writes the key; a
+      // LEGACY block that predates the field exports without it (see
+      // recovery-reason.test.js), which is exactly what the absent-stays-absent
+      // projection is for.
+      'deleted_at', 'id', 'include_in_normal_analytics', 'reason', 'saved_at',
       'started_at', 'updated_at',
     ]);
   });

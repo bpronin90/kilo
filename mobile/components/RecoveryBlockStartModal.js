@@ -21,6 +21,7 @@ import {
 } from 'react-native';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { createInputStyle } from './UI';
+import { MAX_RECOVERY_REASON_LENGTH } from '../lib/data/recoveryBlocks';
 
 export function RecoveryBlockStartModal({
   visible,
@@ -39,6 +40,10 @@ export function RecoveryBlockStartModal({
   const [weekChoice, setWeekChoice] = useState('existing'); // 'existing' | 'new'
   const [weekNoteId, setWeekNoteId] = useState(null);
   const [newNoteTitle, setNewNoteTitle] = useState('');
+  // The optional reason (#872). Never gates Confirm and never blocks the flow:
+  // a lifter starting a recovery block in the moment should not have to explain
+  // themselves first, and the field is editable afterwards from Manage block.
+  const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
 
@@ -48,6 +53,7 @@ export function RecoveryBlockStartModal({
       setWeekChoice('existing');
       setWeekNoteId(null);
       setNewNoteTitle('');
+      setReason('');
       setSubmitting(false);
       setSubmitError(null);
       return;
@@ -112,6 +118,10 @@ export function RecoveryBlockStartModal({
         weekChoice,
         weekNoteId: weekChoice === 'existing' ? weekNoteId : null,
         newNoteTitle: weekChoice === 'new' ? newNoteTitle.trim() : null,
+        // Handed over raw: the domain owns normalization, so a whitespace-only
+        // entry becomes "no reason" in exactly one place rather than in every
+        // caller that happens to remember to trim.
+        reason,
       });
       if (!result || result.ok === false) {
         setSubmitError((result && result.error) || 'Could not start the recovery block.');
@@ -251,6 +261,26 @@ export function RecoveryBlockStartModal({
                 )}
               </>
             )}
+
+            {/* Why this block is starting (#872). Last in the sheet and
+                explicitly optional: it records context for the lifter's own
+                later review and takes no part in the baseline, the week
+                sequence, fatigue, or any analytics result. `maxLength` matches
+                the domain cap so the field cannot accept text the record would
+                silently truncate on save. */}
+            <Text style={styles.sectionLabel}>Reason (optional)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. torn hamstring, 8 weeks off"
+              placeholderTextColor={colors.textMuted}
+              value={reason}
+              onChangeText={setReason}
+              maxLength={MAX_RECOVERY_REASON_LENGTH}
+              accessibilityLabel="Reason for this recovery block (optional)"
+            />
+            <Text style={styles.hintText}>
+              Only for your own records. You can add or change this later.
+            </Text>
           </ScrollView>
 
           <View style={styles.footer}>
@@ -354,6 +384,10 @@ const createStyles = (colors) => StyleSheet.create({
   },
   emptyText: {
     fontSize: 13,
+    color: colors.textMuted,
+  },
+  hintText: {
+    fontSize: 12,
     color: colors.textMuted,
   },
   optionRow: {

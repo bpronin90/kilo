@@ -795,9 +795,13 @@ export function isEligibleRecoveryWeekNote(note, { blocks = [], weeks = [], delo
 // creating the note itself beforehand. `removeWeekNote` (optional) is the
 // rollback for a note this call created, used only when the subsequent
 // block/week write fails.
+// `reason` (optional, #872) is the user's own free-text note on why this
+// recovery started. It is carried straight through to the block record and
+// normalized there; nothing in this flow branches on it, and an absent or
+// blank one is a perfectly ordinary block.
 export function startRecoveryBlockCore(storage, {
   baselineNoteId, baselineNoteTitle = null, baselineNoteText = '', weekNoteId = null,
-  createWeekNote, removeWeekNote,
+  reason = null, createWeekNote, removeWeekNote,
 } = {}) {
   return runGuardedRecoveryAction({}, async () => {
     let finalWeekNoteId = weekNoteId;
@@ -817,6 +821,7 @@ export function startRecoveryBlockCore(storage, {
         baselineNoteId,
         baselineNoteTitle,
         baselineNoteText,
+        reason,
       });
     } catch (e) {
       if (createdNoteId && removeWeekNote) {
@@ -863,13 +868,13 @@ export function useStartRecoveryBlock() {
   // or can reject after a write has already landed (#711 review finding 2).
   const startBlock = useCallback(async ({
     baselineNoteId, baselineNoteTitle = null, baselineNoteText = '', weekNoteId = null,
-    createWeekNote, removeWeekNote,
+    reason = null, createWeekNote, removeWeekNote,
   } = {}) => {
     const gate = await ensureVerifiedRecoveryState();
     if (!gate.ok) return gate;
 
     return startRecoveryBlockCore(Storage, {
-      baselineNoteId, baselineNoteTitle, baselineNoteText, weekNoteId, createWeekNote, removeWeekNote,
+      baselineNoteId, baselineNoteTitle, baselineNoteText, weekNoteId, reason, createWeekNote, removeWeekNote,
     });
   }, []);
   return { startBlock };
@@ -1227,6 +1232,35 @@ export function setRecoveryNormalAnalyticsInclusionCore(storage, { blockId, incl
   });
 }
 
+// Edit (or clear) one block's optional `reason` (#872).
+//
+// Guarded like every other recovery mutation so it cannot land while a journaled
+// operation over the same block is still unresolved, and journal-free for the
+// same reason the inclusion preference is: a single-field patch on a single
+// collection has no second record whose partial write would need rolling
+// forward.
+//
+// `updateRecoveryBlock` normalizes the text and strips every immutable field, so
+// this changes no baseline, membership, note, fatigue check-in, week ordinal, or
+// lifecycle timestamp — and a patch whose normalized reason already matches the
+// stored one does not even stamp `updated_at`. Completed blocks are editable on
+// purpose: naming a past injury correctly is exactly the kind of thing a lifter
+// does when reviewing a finished recovery.
+export function setRecoveryBlockReasonCore(storage, { blockId, reason }) {
+  return runGuardedRecoveryAction({ blockId }, async () => {
+    try {
+      const block = await storage.updateRecoveryBlock(blockId, { reason });
+      return { ok: true, block };
+    } catch (e) {
+      return {
+        ok: false,
+        code: e?.code || null,
+        error: e?.message || 'Could not save this block’s reason.',
+      };
+    }
+  });
+}
+
 export function useRecoveryBlockLifecycle() {
   const completeCurrentWeek = useCallback(async (params) => {
     const gate = await ensureVerifiedRecoveryState();
@@ -1317,5 +1351,16 @@ export function useRecoveryBlockLifecycle() {
     return result;
   }, []);
 
-  return { completeCurrentWeek, uncompleteCurrentWeek, addWeek, addWeekWithNewNote, completeBlock, reopenBlock, unlinkWeek, unlinkNoteForDelete, setIncludeInNormalAnalytics, retryRecovery };
+  // Editing the reason changes no note and no baseline, so — exactly like the
+  // inclusion preference above — the notebook is not reloaded; only the recovery
+  // subscribers refresh, which is what repaints the Log and Analytics captions.
+  const setBlockReason = useCallback(async (params) => {
+    const gate = await ensureVerifiedRecoveryState();
+    if (!gate.ok) return gate;
+    const result = await setRecoveryBlockReasonCore(RecoveryStorage, params);
+    if (result.ok) notifyRecoveryBlocks();
+    return result;
+  }, []);
+
+  return { completeCurrentWeek, uncompleteCurrentWeek, addWeek, addWeekWithNewNote, completeBlock, reopenBlock, unlinkWeek, unlinkNoteForDelete, setIncludeInNormalAnalytics, setBlockReason, retryRecovery };
 }

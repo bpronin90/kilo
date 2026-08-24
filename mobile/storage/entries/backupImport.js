@@ -48,7 +48,11 @@ import {
   loadRecoveryBlockWeeksRaw,
   replaceRecoveryBlockWeeksRaw,
 } from './recoveryStorage';
-import { RECOVERY_BASELINE_VERSION } from '../../lib/data/recoveryBlocks';
+import {
+  MAX_RECOVERY_REASON_LENGTH,
+  RECOVERY_BASELINE_VERSION,
+  normalizeRecoveryReason,
+} from '../../lib/data/recoveryBlocks';
 
 // v4 adds the two recovery collections (#694). Everything a v3 file carries is
 // unchanged, so a v4 file is a strict superset and a v3 importer would simply
@@ -98,6 +102,10 @@ const RECOVERY_BLOCK_FIELDS = [
   'baseline_note_title',
   'baseline',
   'include_in_normal_analytics',
+  // #872. Absent on every block written before that issue, and `projectFields`
+  // keeps an absent field absent, so a backup taken from legacy records carries
+  // no `reason` key at all rather than a fabricated null.
+  'reason',
   'started_at',
   'completed_at',
   'saved_at',
@@ -145,6 +153,28 @@ const MAX_IMPORT_RAW_TEXT_LENGTH = 200000;
 // producing NaN or nonsense results.
 const MIN_IMPORT_FATIGUE_MULTIPLIER = 0;
 const MAX_IMPORT_FATIGUE_MULTIPLIER = 10;
+
+// #872. A backup file is NOT a trusted producer of canonical text. It can be
+// hand-edited, and a value like "knee\n  surgery" clears validation — it is a
+// non-blank string inside the length bound — while still violating the one-line
+// form every in-app write path produces. Normalizing on the way in makes import
+// a peer of creation, editing, and cross-device merge rather than the single
+// door that admits a shape the domain never stores.
+//
+// Normalizing rather than rejecting is deliberate: a slightly-off reason in an
+// otherwise valid file is a formatting difference, and failing a whole restore
+// over one stray newline would cost the user their data to make a point about
+// whitespace. That extends to a blank — an empty or whitespace-only value is
+// "no reason", so it canonicalizes to `null` here rather than failing the
+// import. Only what normalization CANNOT fix is rejected by
+// `validateRecoveryBlocks`: a non-string, and a value past the domain cap.
+//
+// An absent `reason` stays absent: silence in a legacy file is not an
+// instruction to write a null.
+function normalizeImportedRecoveryBlock(block) {
+  if (!Object.prototype.hasOwnProperty.call(block, 'reason')) return block;
+  return { ...block, reason: normalizeRecoveryReason(block.reason) };
+}
 
 // Project one record through an explicit field allowlist. An absent field stays
 // absent rather than becoming `undefined`, so the emitted JSON matches the
@@ -509,6 +539,28 @@ function validateRecoveryBlocks(blocks) {
       return { ok: false, error: `Invalid backup: recovery block ${block.id} baseline_note_title must be a string` };
     if (block.include_in_normal_analytics != null && typeof block.include_in_normal_analytics !== 'boolean')
       return { ok: false, error: `Invalid backup: recovery block ${block.id} include_in_normal_analytics must be a boolean` };
+    // The optional reason (#872). Absent, null, empty, and whitespace-only are
+    // ALL "no reason" — a backup written before the field existed says nothing
+    // about it, and silence is never an instruction.
+    //
+    // An empty or whitespace-only value is ACCEPTED, not rejected: #872 requires
+    // an empty reason to be accepted and normalized consistently, and
+    // `normalizeImportedRecoveryBlock` canonicalizes it to `null` on the way in
+    // — the same value clearing the field in the app produces. Rejecting it here
+    // would have made import the one path that treats "no reason" as an error,
+    // and would have run before normalization could fix it (review of 33fe98b).
+    //
+    // Validation therefore bounds only what normalization CANNOT fix: a value
+    // that is not a string at all, and one past the domain cap.
+    if (block.reason != null) {
+      if (typeof block.reason !== 'string')
+        return { ok: false, error: `Invalid backup: recovery block ${block.id} reason must be a string` };
+      if (block.reason.length > MAX_RECOVERY_REASON_LENGTH)
+        return {
+          ok: false,
+          error: `Invalid backup: recovery block ${block.id} reason too long (${block.reason.length}; limit ${MAX_RECOVERY_REASON_LENGTH})`,
+        };
+    }
 
     const baselineCheck = validateRecoveryBaseline(block.baseline);
     if (!baselineCheck.ok) return baselineCheck;
@@ -1100,7 +1152,7 @@ export async function importBackup(payload, strategy = 'replace', { mode = IMPOR
           table: SYNC_TABLES.RECOVERY_BLOCKS,
           readRaw: loadRecoveryBlocksRaw,
           writeRaw: replaceRecoveryBlocksRaw,
-          imported: payload.recovery_blocks.map((b) => projectFields(b, RECOVERY_BLOCK_FIELDS)),
+          imported: payload.recovery_blocks.map((b) => normalizeImportedRecoveryBlock(projectFields(b, RECOVERY_BLOCK_FIELDS))),
           clientId,
         });
       }
@@ -1126,7 +1178,7 @@ export async function importBackup(payload, strategy = 'replace', { mode = IMPOR
       // would hit: a membership is only interpretable once its block exists.
       if (hasRecovery) {
         await replaceRecoveryBlocksRaw(
-          payload.recovery_blocks.map((b) => projectFields(b, RECOVERY_BLOCK_FIELDS)),
+          payload.recovery_blocks.map((b) => normalizeImportedRecoveryBlock(projectFields(b, RECOVERY_BLOCK_FIELDS))),
         );
       }
       if (hasRecovery) {

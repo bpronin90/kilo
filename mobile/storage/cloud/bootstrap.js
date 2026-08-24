@@ -49,6 +49,29 @@ const UPSERT_ORDER = [
 // failure is reported on the result rather than swallowed.
 const DEFERRABLE_TABLES = new Set(['recovery_blocks', 'recovery_block_weeks']);
 
+// Split rows into groups that each carry an identical key set, preserving the
+// original order within every group.
+//
+// PostgREST requires a uniform key set across a bulk upsert, but an optional
+// column is meaningfully ABSENT rather than null on some rows (#872: a recovery
+// block written before `reason` existed says nothing about it, and sending null
+// would overwrite a reason another device already synced). Grouping lets those
+// rows travel together and keep the column out of the generated
+// `on conflict do update set` list entirely.
+//
+// Builders that emit a fixed key set produce exactly one group, so this is a
+// no-op for every table but recovery blocks.
+export function groupRowsByKeyShape(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    const shape = JSON.stringify(Object.keys(row).sort());
+    const existing = groups.get(shape);
+    if (existing) existing.push(row);
+    else groups.set(shape, [row]);
+  }
+  return [...groups.values()];
+}
+
 const CONFLICT_TARGETS = {
   user_profile: 'user_id',
   user_health_profile: 'user_id',
@@ -313,9 +336,22 @@ export async function bootstrapFromLocal(userId, client = getSupabaseClient()) {
     summary[table] = rows.length;
     if (rows.length === 0) continue;
 
-    const { error } = await db
-      .from(table)
-      .upsert(rows, { onConflict: CONFLICT_TARGETS[table] });
+    // PostgREST rejects a bulk upsert whose objects do not all carry the same
+    // keys ("All object keys must match"), so rows that deliberately omit an
+    // optional column — see `reason` in buildRecoveryBlockRows (#872) — are sent
+    // as their own batch. Each batch is internally uniform, and a batch that
+    // omits a column leaves the server's existing value for it untouched rather
+    // than overwriting it with null.
+    //
+    // A no-op for every other table: those builders emit a fixed key set, so
+    // they group into exactly one batch.
+    let error = null;
+    for (const batch of groupRowsByKeyShape(rows)) {
+      ({ error } = await db
+        .from(table)
+        .upsert(batch, { onConflict: CONFLICT_TARGETS[table] }));
+      if (error) break;
+    }
     if (error) {
       // See DEFERRABLE_TABLES: a rejected recovery upsert is carried to the
       // caller and left for the sync pass to converge, instead of failing an
