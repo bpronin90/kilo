@@ -490,7 +490,7 @@ F16
 
 # Phase 2 — Make Recovery a Product-Wide Active Context
 
-**Status:** Complete as of 2026-08-24. Delivered through #868 (shared active
+**Status:** Complete as of 2026-08-23. Delivered through #868 (shared active
 training context), #869 (Recovery-aware Home), #870 (Recovery-first Log), #871
 (live-versus-paused Analytics), and #872/PR #877 (optional Recovery reason).
 
