@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Keyboard, Platform } from 'react-native';
+import { Keyboard, Platform, AppState } from 'react-native';
 import { Alert } from '../../lib/platformAlert';
 import { parseWorkoutNote, countWorkoutSessionsFromSections, applyWeekSkipToText, resolveExerciseSourceAnchor } from '../../lib/parser';
 import { removeWeekSkipFromText } from '../../lib/parser/workoutNote.js';
@@ -16,6 +16,22 @@ import {
 import { loadRecoveryExcludedNoteIds } from '../../hooks/entries/recoveryBlockHooks';
 import { AUTOSAVE_DEBOUNCE_MS, DELOAD_NOTE_PREFIX } from '../../lib/LogScreenHelpers';
 import { buildDayGroups } from './logScreenHelpers';
+import {
+  saveWorkoutNoteDraft,
+  loadWorkoutNoteDraft,
+  clearWorkoutNoteDraft,
+} from '../../storage/entries/workoutNoteDrafts';
+
+// See useLogOtherRoutineEditor.js for why this is much shorter than
+// AUTOSAVE_DEBOUNCE_MS (#880): the write is cheap (no parse/derive/cloud
+// work) and exists specifically to cover the gap the expensive autosave
+// cannot — a brand-new note (no currentId), which the real autosave never
+// touches until the first explicit Save gives it an id.
+const DRAFT_DEBOUNCE_MS = 400;
+
+function currentDraftKey(currentId) {
+  return currentId ? `current:${currentId}` : 'current:new';
+}
 
 function isValidActiveWeek(value) {
   return value === 'A' || value === 'B';
@@ -102,6 +118,20 @@ export function useLogCurrentRoutineEditor({
   workoutNoteTitleRef.current = workoutNoteTitle;
   currentIdRef.current = currentId;
   currentNoteRef.current = currentNote;
+
+  // Cheap local draft (#880), independent of the expensive autosave timer
+  // above.
+  const draftCurrentTimerRef = useRef(null);
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+
+  const writeCurrentDraftNow = () => {
+    saveWorkoutNoteDraft(currentDraftKey(currentIdRef.current), {
+      title: workoutNoteTitleRef.current,
+      raw_text: workoutNoteTextRef.current,
+      baseUpdatedAt: currentNoteRef.current?.updated_at ?? null,
+    }).catch(() => {});
+  };
 
   // Check-in gates, held in a ref for the same reason as the values above:
   // detection runs after an awaited save, so it must read the gates as they are
@@ -342,6 +372,39 @@ export function useLogCurrentRoutineEditor({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workoutNoteText, workoutNoteTitle, mode, currentId]);
 
+  // Cheap draft persistence (#880). Runs whenever the editor is open,
+  // including a brand-new note (`currentId` is null) — the exact gap the
+  // debounced autosave above deliberately does not cover.
+  useEffect(() => {
+    if (mode !== 'edit') return;
+    if (draftCurrentTimerRef.current) clearTimeout(draftCurrentTimerRef.current);
+    draftCurrentTimerRef.current = setTimeout(() => {
+      draftCurrentTimerRef.current = null;
+      writeCurrentDraftNow();
+    }, DRAFT_DEBOUNCE_MS);
+    return () => {
+      if (draftCurrentTimerRef.current) {
+        clearTimeout(draftCurrentTimerRef.current);
+        draftCurrentTimerRef.current = null;
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workoutNoteText, workoutNoteTitle, mode, currentId]);
+
+  // Flush the pending draft immediately on backgrounding instead of waiting
+  // out the debounce.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'background' && state !== 'inactive') return;
+      if (draftCurrentTimerRef.current) {
+        clearTimeout(draftCurrentTimerRef.current);
+        draftCurrentTimerRef.current = null;
+      }
+      if (modeRef.current === 'edit') writeCurrentDraftNow();
+    });
+    return () => sub.remove();
+  }, []);
+
   useEffect(() => {
     return () => {
       if (autosaveCurrentTimerRef.current) clearTimeout(autosaveCurrentTimerRef.current);
@@ -531,6 +594,17 @@ export function useLogCurrentRoutineEditor({
           setWorkoutNoteText(result.raw_text || '');
           if (!autosave) setSaveSuccess('Saved on device');
         }
+        // Deterministic cleanup after a successful save (#880): clear both
+        // the pre-save draft key ('current:new' for a note's first save) and
+        // the post-save key, in case a cheap-draft write already landed
+        // under the real id before this save resolved.
+        {
+          const preKey = currentDraftKey(savedForId);
+          clearWorkoutNoteDraft(preKey).catch(() => {});
+          if (!savedForId && result?.id) {
+            clearWorkoutNoteDraft(currentDraftKey(result.id)).catch(() => {});
+          }
+        }
         return true;
       } else {
         setSaveError('Save failed');
@@ -589,6 +663,34 @@ export function useLogCurrentRoutineEditor({
     requestAnimationFrame(() => {
       editorScrollRef.current?.scrollTo({ y: scrollY, animated: false });
     });
+    restoreCurrentDraftIfSafe();
+  };
+
+  // Restores a cheap local draft into the live editor on opening the editor
+  // (covers foreground/restart: the app process may have been killed with an
+  // unsaved draft still on disk). Only trusted when its `baseUpdatedAt`
+  // matches the canonical note's `updated_at` this editor is opening on (or
+  // `null`, for a note that has none yet) — a mismatch means the canonical
+  // record moved on since the draft was written (e.g. a cloud merge), and the
+  // draft must never silently overwrite it (#880 acceptance).
+  const restoreCurrentDraftIfSafe = async () => {
+    const expectedId = currentIdRef.current;
+    const canonicalUpdatedAt = currentNoteRef.current?.updated_at ?? null;
+    const key = currentDraftKey(expectedId);
+    const draft = await loadWorkoutNoteDraft(key).catch(() => null);
+    if (!draft) return;
+    // The context may have changed while this read was in flight (editor
+    // closed, or a different note opened).
+    if (currentIdRef.current !== expectedId || modeRef.current !== 'edit') return;
+    if (draft.baseUpdatedAt !== canonicalUpdatedAt) {
+      clearWorkoutNoteDraft(key).catch(() => {});
+      return;
+    }
+    const draftText = draft.raw_text || '';
+    const draftTitle = draft.title || '';
+    if (draftText === workoutNoteTextRef.current && draftTitle === workoutNoteTitleRef.current) return;
+    setWorkoutNoteTitle(draftTitle);
+    setWorkoutNoteText(draftText);
   };
 
   // #881 (F10a §2/§6): resolves a double-tapped exercise's source anchor
@@ -723,6 +825,7 @@ export function useLogCurrentRoutineEditor({
     if (!currentId) {
       setWorkoutNoteTitle('');
       setWorkoutNoteText('');
+      clearWorkoutNoteDraft('current:new').catch(() => {});
       return true;
     }
     if (!originalNoteState) return true;
@@ -752,6 +855,7 @@ export function useLogCurrentRoutineEditor({
         activeWeekAuthorityRef.current = 'fallback';
         setLocalActiveWeek(null);
       }
+      clearWorkoutNoteDraft(`current:${currentId}`).catch(() => {});
       return true;
     } catch (err) {
       console.warn('Revert failed:', err);

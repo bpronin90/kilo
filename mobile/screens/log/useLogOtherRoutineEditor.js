@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { AppState } from 'react-native';
 import { Alert } from '../../lib/platformAlert';
 import { parseWorkoutNote, resolveExerciseSourceAnchor } from '../../lib/parser';
 import { deriveSessionAlignmentIssue } from '../../lib/parser/sessions.js';
@@ -10,6 +11,24 @@ import {
 } from '../../lib/data';
 import { DELOAD_NOTE_PREFIX, AUTOSAVE_DEBOUNCE_MS } from '../../lib/LogScreenHelpers';
 import { buildDayGroups } from './logScreenHelpers';
+import {
+  saveWorkoutNoteDraft,
+  loadWorkoutNoteDraft,
+  clearWorkoutNoteDraft,
+} from '../../storage/entries/workoutNoteDrafts';
+
+// Cheap-draft debounce (#880), deliberately much shorter than
+// AUTOSAVE_DEBOUNCE_MS: this write only persists {title, text} to a scratch
+// key, with no parse/derive/cloud work, so it is safe to run far more often
+// than the real autosave. It exists precisely for the gap the real autosave
+// cannot cover — a brand-new (`editingNoteId === 'new'`) note, which the real
+// autosave never touches until the first explicit save gives it an id.
+const DRAFT_DEBOUNCE_MS = 400;
+
+function otherDraftKey(editingNoteId) {
+  if (!editingNoteId) return null;
+  return editingNoteId === 'new' ? 'other:new' : `other:${editingNoteId}`;
+}
 
 function isValidActiveWeek(value) {
   return value === 'A' || value === 'B';
@@ -193,6 +212,25 @@ export function useLogOtherRoutineEditor({
   deloadEditDateRef.current = deloadEditDate;
   deloadEditOrdinalRef.current = deloadEditOrdinal;
 
+  // Cheap local draft (#880): separate timer/state from the expensive
+  // autosave above, and from AUTOSAVE_DEBOUNCE_MS's timer.
+  const draftOtherTimerRef = useRef(null);
+  const notesRef = useRef(notes);
+  notesRef.current = notes;
+
+  const writeOtherDraftNow = () => {
+    const key = otherDraftKey(editingNoteIdRef.current);
+    if (!key) return;
+    const note = editingNoteIdRef.current === 'new'
+      ? null
+      : notesRef.current.find(n => n.id === editingNoteIdRef.current);
+    saveWorkoutNoteDraft(key, {
+      title: editingTitleRef.current,
+      raw_text: editingFullTextRef.current,
+      baseUpdatedAt: note?.updated_at ?? null,
+    }).catch(() => {});
+  };
+
   useEffect(() => {
     if (saveSuccess) {
       const timer = setTimeout(() => setSaveSuccess(''), 2000);
@@ -322,9 +360,46 @@ export function useLogOtherRoutineEditor({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingFullText, editingTitle, editingNoteId, deloadEditDate]);
 
+  // Cheap draft persistence (#880). Unlike the autosave effect above, this
+  // runs for `editingNoteId === 'new'` too — that is the exact gap where an
+  // interruption before the first explicit Save silently loses a whole new
+  // routine, because the real autosave has no id to autosave against yet.
+  useEffect(() => {
+    if (!editingNoteId) return;
+    if (draftOtherTimerRef.current) clearTimeout(draftOtherTimerRef.current);
+    draftOtherTimerRef.current = setTimeout(() => {
+      draftOtherTimerRef.current = null;
+      writeOtherDraftNow();
+    }, DRAFT_DEBOUNCE_MS);
+    return () => {
+      if (draftOtherTimerRef.current) {
+        clearTimeout(draftOtherTimerRef.current);
+        draftOtherTimerRef.current = null;
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingFullText, editingTitle, editingNoteId]);
+
+  // Flush the pending cheap draft immediately on backgrounding rather than
+  // waiting out the debounce — the whole point of a local draft is to survive
+  // exactly this interruption.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'background' && state !== 'inactive') return;
+      if (draftOtherTimerRef.current) {
+        clearTimeout(draftOtherTimerRef.current);
+        draftOtherTimerRef.current = null;
+      }
+      if (editingNoteIdRef.current) writeOtherDraftNow();
+    });
+    return () => sub.remove();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     return () => {
       if (autosaveOtherTimerRef.current) clearTimeout(autosaveOtherTimerRef.current);
+      if (draftOtherTimerRef.current) clearTimeout(draftOtherTimerRef.current);
     };
   }, []);
 
@@ -434,6 +509,34 @@ export function useLogOtherRoutineEditor({
     setSaveError('');
     setSaveSuccess('');
     clearAdoptionPrompt();
+    restoreOtherDraftIfCurrent(other.id, other.updated_at ?? null);
+  };
+
+  // Restores a cheap local draft into the live editor state, but only when it
+  // is still safe to trust: the draft must have been captured against the
+  // SAME canonical `updated_at` this editor just opened on (or `null`, for a
+  // note that had none), and the context must still be the one the caller
+  // opened — this call is fire-and-forget from a state setter, and the user
+  // can close the editor (or open a different note) before the read
+  // completes. A draft whose base predates the canonical note it is being
+  // offered against belongs to content already superseded (e.g. by a cloud
+  // sync merge) and must never silently overwrite newer canonical text — it
+  // is discarded instead.
+  const restoreOtherDraftIfCurrent = async (expectedId, canonicalUpdatedAt) => {
+    const key = otherDraftKey(expectedId);
+    if (!key) return;
+    const draft = await loadWorkoutNoteDraft(key).catch(() => null);
+    if (!draft) return;
+    if (editingNoteIdRef.current !== expectedId) return;
+    if (draft.baseUpdatedAt !== canonicalUpdatedAt) {
+      clearWorkoutNoteDraft(key).catch(() => {});
+      return;
+    }
+    const draftText = draft.raw_text || '';
+    const draftTitle = draft.title || '';
+    if (draftText === editingFullTextRef.current && draftTitle === editingTitleRef.current) return;
+    setEditingTitle(draftTitle);
+    setEditingFullText(draftText);
   };
 
   const handleSaveOtherNote = ({ autosave = false } = {}) => {
@@ -535,6 +638,18 @@ export function useLogOtherRoutineEditor({
             setEditingFullText(result.raw_text || '');
             if (!autosave) setSaveSuccess('Saved!');
           }
+          // Deterministic cleanup after a successful save (#880): the draft
+          // that shadowed this write is now redundant. Clear both the
+          // pre-save key ('other:new' for a first save) and the post-save
+          // key, since a subsequent cheap-draft write could have already
+          // landed under the note's real id before this save resolved.
+          {
+            const preKey = otherDraftKey(savedNoteId);
+            if (preKey) clearWorkoutNoteDraft(preKey).catch(() => {});
+            if (savedNoteId === 'new' && result.id) {
+              clearWorkoutNoteDraft(otherDraftKey(result.id)).catch(() => {});
+            }
+          }
           return true;
         }
       } catch {
@@ -614,6 +729,7 @@ export function useLogOtherRoutineEditor({
       setEditingTitle('');
       setEditingFullText('');
       setEditingActiveWeek(null);
+      clearWorkoutNoteDraft('other:new').catch(() => {});
       return true;
     }
     if (!originalNoteState) return true;
@@ -691,6 +807,7 @@ export function useLogOtherRoutineEditor({
         setDeloadEditDate(originalNoteState.date);
         setDeloadEditOrdinal(originalNoteState.ordinal);
       }
+      clearWorkoutNoteDraft(otherDraftKey(editingNoteId)).catch(() => {});
       return true;
     } catch (err) {
       console.warn('Revert failed:', err);
@@ -778,10 +895,12 @@ export function useLogOtherRoutineEditor({
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            await deleteDeloadNote(editingNoteId);
+            const deletedId = editingNoteId;
+            await deleteDeloadNote(deletedId);
             setEditingNoteId(null);
             setEditingSource(null);
             setOriginalNoteState(null);
+            clearWorkoutNoteDraft(otherDraftKey(deletedId)).catch(() => {});
           },
         },
       ]
@@ -803,6 +922,11 @@ export function useLogOtherRoutineEditor({
     setSaveError('');
     setSaveSuccess('');
     clearAdoptionPrompt();
+    // Only restore over a BLANK manual-entry draft. A `seed` (the guided
+    // sheet's "write it as text instead" escape) is deliberate content the
+    // user just composed there; a leftover local draft from an earlier,
+    // unrelated new-note attempt must never silently clobber it.
+    if (!seed) restoreOtherDraftIfCurrent('new', null);
   };
 
   const ADOPT_FAILED_MESSAGE =

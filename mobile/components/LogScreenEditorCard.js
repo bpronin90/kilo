@@ -800,6 +800,14 @@ export function LogScreenEditorCard({
                 disabled={editingNoteId ? noteIsSaving : isSaving}
                 style={styles.saveButton}
               />
+            ) : (editingNoteId ? noteIsSaving : isSaving) ? (
+              // Truthful, non-noisy "Saving…" state (#880): shown only for
+              // the exact span the local write is actually in flight, so it
+              // never says the note is durable before it is. It replaces
+              // itself with `saveSuccess` (below) the instant the write
+              // resolves — one accessibilityLiveRegion node, one announcement
+              // per state change, never a repeat of the same text.
+              <Text style={styles.autosaveIndicator} accessibilityLiveRegion="polite">Saving…</Text>
             ) : saveSuccess ? (
               <Text style={styles.autosaveIndicator} accessibilityLiveRegion="polite">{saveSuccess}</Text>
             ) : null}

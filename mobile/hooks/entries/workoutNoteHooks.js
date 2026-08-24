@@ -5,6 +5,7 @@ import { reconcileWorkoutReminder } from '../../lib/reminderScheduler';
 import { maybeSyncCloud, readVia, writeVia } from './storageMode';
 import { safeNotify } from './shared';
 import { markStartupPhase } from '../../storage/entries/startupTiming';
+import { clearWorkoutNoteDraft } from '../../storage/entries/workoutNoteDrafts';
 
 export const DELOAD_NOTE_PREFIX = 'Deload · ';
 
@@ -118,6 +119,11 @@ export function useWorkoutNotes() {
     if (id === currentId) {
       await Storage.clearCurrentWorkoutId();
     }
+    // Deterministic cleanup on note deletion (#880): a deleted note's local
+    // draft — under either editor's context key — must never resurrect the
+    // note's text on a later restore.
+    clearWorkoutNoteDraft(`current:${id}`).catch(() => {});
+    clearWorkoutNoteDraft(`other:${id}`).catch(() => {});
     notifyWorkoutNotes();
   }, [currentId]);
 
