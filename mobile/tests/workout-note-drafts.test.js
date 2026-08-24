@@ -3,6 +3,7 @@ import {
   saveWorkoutNoteDraft,
   loadWorkoutNoteDraft,
   clearWorkoutNoteDraft,
+  clearWorkoutNoteDraftIfMatches,
   clearAllWorkoutNoteDrafts,
 } from '../storage/entries/workoutNoteDrafts';
 
@@ -107,5 +108,86 @@ describe('workout note drafts', () => {
     await saveWorkoutNoteDraft('current:existing-1', { title: '', raw_text: 'y', baseUpdatedAt: ts });
     const draftExisting = await loadWorkoutNoteDraft('current:existing-1');
     expect(draftExisting.baseUpdatedAt).toBe(ts);
+  });
+
+  // ── PR #882 review regressions ────────────────────────────────────────────
+
+  describe('clearWorkoutNoteDraftIfMatches (finding 2: save-in-flight race)', () => {
+    test('clears the draft when it exactly matches the saved snapshot', async () => {
+      await saveWorkoutNoteDraft('current:note-1', { title: 'T', raw_text: 'saved text' });
+      await clearWorkoutNoteDraftIfMatches('current:note-1', { title: 'T', raw_text: 'saved text' });
+      expect(await loadWorkoutNoteDraft('current:note-1')).toBeNull();
+    });
+
+    test('keeps a draft that is NEWER than the snapshot just saved (user kept typing during the write)', async () => {
+      // A save started with 'saved text', but by the time it resolves the
+      // cheap draft timer has already persisted newer keystrokes.
+      await saveWorkoutNoteDraft('current:note-1', { title: 'T', raw_text: 'saved text PLUS more typed during the save' });
+      await clearWorkoutNoteDraftIfMatches('current:note-1', { title: 'T', raw_text: 'saved text' });
+      const draft = await loadWorkoutNoteDraft('current:note-1');
+      expect(draft).not.toBeNull();
+      expect(draft.raw_text).toBe('saved text PLUS more typed during the save');
+    });
+
+    test('keeps a draft whose title differs from the saved snapshot even if the text matches', async () => {
+      await saveWorkoutNoteDraft('current:note-1', { title: 'Renamed mid-save', raw_text: 'saved text' });
+      await clearWorkoutNoteDraftIfMatches('current:note-1', { title: 'T', raw_text: 'saved text' });
+      expect(await loadWorkoutNoteDraft('current:note-1')).not.toBeNull();
+    });
+
+    test('is a safe no-op when there is no draft for the key', async () => {
+      await expect(clearWorkoutNoteDraftIfMatches('current:never-written', { title: '', raw_text: '' })).resolves.toBeUndefined();
+    });
+  });
+
+  describe('atomic mutation of the shared draft table (finding 3)', () => {
+    test('two concurrent saves to different context keys both persist (no lost update)', async () => {
+      await Promise.all([
+        saveWorkoutNoteDraft('current:a', { title: 'A', raw_text: 'text-a' }),
+        saveWorkoutNoteDraft('other:b', { title: 'B', raw_text: 'text-b' }),
+      ]);
+      expect((await loadWorkoutNoteDraft('current:a')).raw_text).toBe('text-a');
+      expect((await loadWorkoutNoteDraft('other:b')).raw_text).toBe('text-b');
+    });
+
+    // Regresses the exact scenario the review flagged: useWorkoutNotes.remove
+    // launches clears for `current:<id>` and `other:<id>` concurrently. With
+    // a plain (non-atomic) read-then-write, both calls can read the same
+    // pre-clear map and the later whole-map write resurrects whichever key
+    // the earlier call had just deleted.
+    test('two concurrent clears for different keys never resurrect one another (useWorkoutNotes.remove pattern)', async () => {
+      await saveWorkoutNoteDraft('current:note-1', { title: 'A', raw_text: 'text-a' });
+      await saveWorkoutNoteDraft('other:note-1', { title: 'B', raw_text: 'text-b' });
+
+      await Promise.all([
+        clearWorkoutNoteDraft('current:note-1'),
+        clearWorkoutNoteDraft('other:note-1'),
+      ]);
+
+      expect(await loadWorkoutNoteDraft('current:note-1')).toBeNull();
+      expect(await loadWorkoutNoteDraft('other:note-1')).toBeNull();
+    });
+
+    test('a concurrent save and an unrelated concurrent clear never lose the save', async () => {
+      await saveWorkoutNoteDraft('other:note-2', { title: 'existing', raw_text: 'existing-text' });
+
+      await Promise.all([
+        saveWorkoutNoteDraft('current:note-3', { title: 'new', raw_text: 'new-text' }),
+        clearWorkoutNoteDraft('other:note-2'),
+      ]);
+
+      expect((await loadWorkoutNoteDraft('current:note-3')).raw_text).toBe('new-text');
+      expect(await loadWorkoutNoteDraft('other:note-2')).toBeNull();
+    });
+
+    test('a burst of concurrent writes to many distinct keys all survive (no interleaved lost update)', async () => {
+      const keys = Array.from({ length: 12 }, (_, i) => `current:burst-${i}`);
+      await Promise.all(keys.map((k, i) => saveWorkoutNoteDraft(k, { title: `t${i}`, raw_text: `text-${i}` })));
+      const results = await Promise.all(keys.map((k) => loadWorkoutNoteDraft(k)));
+      results.forEach((draft, i) => {
+        expect(draft).not.toBeNull();
+        expect(draft.raw_text).toBe(`text-${i}`);
+      });
+    });
   });
 });

@@ -20,6 +20,7 @@ import {
   saveWorkoutNoteDraft,
   loadWorkoutNoteDraft,
   clearWorkoutNoteDraft,
+  clearWorkoutNoteDraftIfMatches,
 } from '../../storage/entries/workoutNoteDrafts';
 
 // See useLogOtherRoutineEditor.js for why this is much shorter than
@@ -597,12 +598,18 @@ export function useLogCurrentRoutineEditor({
         // Deterministic cleanup after a successful save (#880): clear both
         // the pre-save draft key ('current:new' for a note's first save) and
         // the post-save key, in case a cheap-draft write already landed
-        // under the real id before this save resolved.
+        // under the real id before this save resolved. Compare-and-clear
+        // ONLY (#880 review): if the user kept typing while this write was
+        // in flight, the 400ms draft timer can have persisted text NEWER
+        // than `snapshotText`/`snapshotTitle` before the save resolved. An
+        // unconditional clear would delete those newer, not-yet-autosaved
+        // keystrokes — losing them on a crash before the next autosave.
         {
           const preKey = currentDraftKey(savedForId);
-          clearWorkoutNoteDraft(preKey).catch(() => {});
+          const snapshot = { title: snapshotTitle, raw_text: snapshotText };
+          clearWorkoutNoteDraftIfMatches(preKey, snapshot).catch(() => {});
           if (!savedForId && result?.id) {
-            clearWorkoutNoteDraft(currentDraftKey(result.id)).catch(() => {});
+            clearWorkoutNoteDraftIfMatches(currentDraftKey(result.id), snapshot).catch(() => {});
           }
         }
         return true;

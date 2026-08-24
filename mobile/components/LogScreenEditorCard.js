@@ -794,9 +794,14 @@ export function LogScreenEditorCard({
               </Pressable>
             )}
             {(editingNoteId === 'new' || (!editingNoteId && !currentId)) ? (
+              // #880 review: a brand-new note's FIRST save is exactly the
+              // non-autosaved, longest-running path (full parse + derive +
+              // possible cloud enqueue, with nothing cached yet), so it must
+              // show the in-flight state too — not just a disabled button
+              // with no indication of what it's doing.
               <Button
                 onPress={editingNoteId ? handleSaveOtherNote : handleSave}
-                title="Save"
+                title={(editingNoteId ? noteIsSaving : isSaving) ? 'Saving…' : 'Save'}
                 disabled={editingNoteId ? noteIsSaving : isSaving}
                 style={styles.saveButton}
               />

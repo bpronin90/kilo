@@ -15,6 +15,7 @@ import {
   saveWorkoutNoteDraft,
   loadWorkoutNoteDraft,
   clearWorkoutNoteDraft,
+  clearWorkoutNoteDraftIfMatches,
 } from '../../storage/entries/workoutNoteDrafts';
 
 // Cheap-draft debounce (#880), deliberately much shorter than
@@ -452,6 +453,12 @@ export function useLogOtherRoutineEditor({
     setSaveError('');
     setSaveSuccess('');
     clearAdoptionPrompt();
+    // #880 review: this is an existing-note entry point exactly like
+    // handleOpenOtherNote below, and was previously missing the draft
+    // restore — drafts written while editing an ordinary Previous Routines
+    // or Recovery note were stranded after a restart, silently showing
+    // canonical content instead.
+    restoreOtherDraftIfCurrent(note.id, note.updated_at ?? null);
   };
   const handleEditViewedNote = makeHandleEditViewedNote(routineViewer, null);
   const handleEditRecoveryViewedNote = makeHandleEditViewedNote(recoveryViewer, 'recovery');
@@ -643,11 +650,17 @@ export function useLogOtherRoutineEditor({
           // pre-save key ('other:new' for a first save) and the post-save
           // key, since a subsequent cheap-draft write could have already
           // landed under the note's real id before this save resolved.
+          // Compare-and-clear ONLY (#880 review): if the user kept typing
+          // while this write was in flight, the cheap draft timer can have
+          // persisted text NEWER than `snapshotText`/`snapshotTitle` before
+          // the save resolved — an unconditional clear would delete those
+          // not-yet-autosaved keystrokes.
           {
             const preKey = otherDraftKey(savedNoteId);
-            if (preKey) clearWorkoutNoteDraft(preKey).catch(() => {});
+            const snapshot = { title: snapshotTitle, raw_text: snapshotText };
+            if (preKey) clearWorkoutNoteDraftIfMatches(preKey, snapshot).catch(() => {});
             if (savedNoteId === 'new' && result.id) {
-              clearWorkoutNoteDraft(otherDraftKey(result.id)).catch(() => {});
+              clearWorkoutNoteDraftIfMatches(otherDraftKey(result.id), snapshot).catch(() => {});
             }
           }
           return true;
