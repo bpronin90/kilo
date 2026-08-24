@@ -17,6 +17,7 @@ instead of copying the same contract into several files.
 
 | Document | Owns |
 |----------|------|
+| [Zero-Friction and Active Context Roadmap](zero-friction-roadmap.md) | Active phased product-delivery plan; Phases 1 and 2 are complete. |
 | [Calculations Reference](calculations-reference.md) | Workout, weight, goal, and recovery calculations in plain language. |
 | [UI Design Rules](ui-design-rules.md) | Adopted layout, component, interaction, appearance, and copy rules. |
 | [Design System Map](design-system-map.md) | Current visual tokens, shared components, and screen-level implementation map. |
@@ -43,8 +44,9 @@ Contributor workflow lives in the root [Contributing guide](../CONTRIBUTING.md).
 ## Historical Material
 
 [Archive Index](archive/README.md) groups completed roadmaps, superseded
-specifications, parser samples, and the retired browser prototype. Archived
-files preserve provenance but do not define current product behavior.
+specifications, delivery evidence, parser samples, and the retired browser
+prototype. Archived files preserve provenance but do not define current product
+behavior.
 
 ## Maintenance Rules
 

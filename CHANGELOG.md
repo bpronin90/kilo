@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.115.0 - 2026-08-23
+
+- Issue #872: You can now record why a Recovery block started — an optional line of your own ("torn hamstring", "8 weeks off") entered when you start the block and editable afterwards, either from Manage block on Log or straight from the Recovery evidence card in Analytics, including on a block you have already finished. It appears beside the block on Log and on the Recovery evidence and completed-block history in Analytics. It is optional everywhere, changes nothing about how recovery weeks are compared or counted, and blocks started before this update simply have none.
+
+## 0.114.0 - 2026-08-23
+
+- Issue #871: Analytics now follows active Recovery: the Overview leads with Recovery state and current weight instead of frozen baseline counts, and Fatigue, Strength/Progressive Overload, and Big 3 Mapping collapse under one "Baseline training · paused during Recovery" disclosure. Weight keeps updating live, baseline counts stay reachable and unrecomputed, and the normal hierarchy is restored automatically once Recovery ends.
+
+## 0.113.4 - 2026-08-23
+
+- Issue #870: Log now makes the open Recovery week the primary object during a recovery block: it is labelled "Current training" and auto-focused on both direct Log entry and Home's handoff, the frozen baseline card reads "Baseline routine · paused", and Deload is hidden as a peer training mode while a baseline is paused.
+
+## 0.113.3 - 2026-08-23
+
+- Issue #869: Home now follows active Recovery: the hero names the current Recovery week and note, `Log workout` opens that exact note, the between-weeks decision (add week or end Recovery) replaces the primary action, and the frozen baseline cards collapse into one compact handoff until Recovery ends.
+
+## 0.113.2 - 2026-08-23
+
+- Issue #865: Kept selected Log problem lines visibly highlighted without warning controls jumping the note back to stale positions.
+
+## 0.113.1 - 2026-08-23
+
+- Issue #863: Replaced the Log editor's blocking exit alert and always-on error text with a quiet, on-demand problem list: an outlined "!" badge shows the count, tapping it opens a compact list of syntax and session-alignment problems described in plain language, and selecting one jumps to it and shows a single dismissible message below the note.
+
 ## 0.113.0 - 2026-08-23
 
 - Issue #856: Log editor: syntax and session-alignment problems in a workout note are now surfaced inline while typing, with a compact error/warning count and Next/Prev controls that jump the cursor straight to the offending line, no more digging through the text or leaving edit mode. Validation is debounced so retyping a large note stays responsive, and nothing about the authored text is ever rewritten.
