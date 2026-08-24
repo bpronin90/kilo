@@ -30,6 +30,8 @@ authoritative description of the active product.
 
 ## Retired Implementation and Reference Inputs
 
+- [D9a/D10 preview checklist](d9a-d10-preview-checklist.md) preserves the
+  completed validation checklist for the retired `0.103.0` preview.
 - [Browser prototype](browser-prototype/) contains the frozen pre-native app and
   its tests. It is not built, tested, or shipped.
 - [Parser samples](samples/) are historical inputs from parser development and
