@@ -24,6 +24,12 @@ const VALIDATION_DEBOUNCE_MS = 1000;
 // never drift apart.
 const EDITOR_INPUT_VERTICAL_PADDING = 14;
 
+// #886: and the horizontal inset of the same box — border included — so the
+// measuring mirror below wraps at exactly the width the input wraps at.
+const EDITOR_INPUT_HORIZONTAL_PADDING = 14;
+const EDITOR_INPUT_BORDER_WIDTH = 1;
+const EDITOR_INPUT_TEXT_INSET = (EDITOR_INPUT_HORIZONTAL_PADDING + EDITOR_INPUT_BORDER_WIDTH) * 2;
+
 // #886: how many frames a source jump will wait for the editor surface to
 // finish laying out before giving up on measuring it. The surface is
 // `display: none` until the frame the editor opens on, so the first
@@ -35,16 +41,36 @@ const SOURCE_JUMP_MEASURE_ATTEMPTS = 5;
 // caller falls back to its deterministic landing.
 const SOURCE_JUMP_MEASURE_TIMEOUT_MS = 250;
 
+// #886: splits the note at the START of the line holding `targetOffset`, so
+// the two halves can be measured as the "above the target" / "target and
+// below" split. The separating newline is dropped: each half is measured as
+// its own block, and the block boundary reproduces that line break exactly.
+// Returns null when the target is on the first line — there is nothing above
+// it to measure, and an empty block does not measure as zero everywhere.
+function _splitAtTargetLine(text, targetOffset) {
+  const clamped = Math.min(Math.max(0, targetOffset), text.length);
+  const breakAt = text.lastIndexOf('\n', Math.max(0, clamped - 1));
+  if (breakAt < 0) return null;
+  return { above: text.slice(0, breakAt), below: text.slice(breakAt + 1) };
+}
+
 // #886: where the target line sits inside the editor's scroll content.
-// `linesBefore / totalLines` is taken as a share of the input's OWN measured
-// text height rather than a JS-side guess at a line height, so whatever the
-// platform actually renders per line is already baked in and the error cannot
-// accumulate as the target moves further down the note.
-function _sourceJumpContentOffset({ containerY, inputY, inputHeight, text, targetOffset }) {
+//
+// `aboveHeight / (aboveHeight + belowHeight)` comes from mirroring the note's
+// own text at the input's own text width (see `sourceJumpMirror` below), so
+// the split is by RENDERED rows: a wrapped line counts for every row it
+// actually occupies. Counting newline-delimited lines instead would disagree
+// with the measured `inputHeight`, which counts wrapped rows, and a cluster of
+// long lines anywhere in the note would then throw the landing off by however
+// many rows those lines wrapped to (PR #887 review / Codex P1).
+//
+// That row fraction is then taken as a share of the input's OWN measured text
+// height, so the platform's real per-row metric is baked in too and nothing
+// here has to guess a line height.
+function _sourceJumpContentOffset({ containerY, inputY, inputHeight, aboveHeight, belowHeight }) {
   const textHeight = Math.max(0, inputHeight - EDITOR_INPUT_VERTICAL_PADDING * 2);
-  const totalLines = text.split('\n').length;
-  const linesBefore = text.slice(0, Math.max(0, targetOffset)).split('\n').length - 1;
-  const fraction = totalLines > 0 ? Math.min(1, Math.max(0, linesBefore / totalLines)) : 0;
+  const mirrored = aboveHeight + belowHeight;
+  const fraction = mirrored > 0 ? Math.min(1, Math.max(0, aboveHeight / mirrored)) : 0;
   return containerY + inputY + EDITOR_INPUT_VERTICAL_PADDING + textHeight * fraction;
 }
 
@@ -540,6 +566,12 @@ export function LogScreenEditorCard({
   const appliedSourceJumpTokenRef = useRef(null);
   const sourceJumpFrameRef = useRef(null);
   const sourceJumpTimerRef = useRef(null);
+  const sourceJumpMirrorRef = useRef(null);
+  const mountedRef = useRef(true);
+  // The invisible mirror of the note's own text, rendered only while a jump
+  // is being placed. `null` the rest of the time, so nothing measures or
+  // lays out a second copy of a long note during ordinary editing.
+  const [sourceJumpMirror, setSourceJumpMirror] = useState(null);
   const cancelSourceJumpMeasure = () => {
     if (sourceJumpFrameRef.current != null) {
       cancelAnimationFrame(sourceJumpFrameRef.current);
@@ -549,15 +581,39 @@ export function LogScreenEditorCard({
       clearTimeout(sourceJumpTimerRef.current);
       sourceJumpTimerRef.current = null;
     }
+    sourceJumpMirrorRef.current = null;
+    if (mountedRef.current) setSourceJumpMirror(null);
   };
-  useEffect(() => cancelSourceJumpMeasure, []);
+  useEffect(() => () => {
+    mountedRef.current = false;
+    cancelSourceJumpMeasure();
+  }, []);
+
+  // Collects the two mirrored block heights. Only the pass whose token is
+  // still current can report, so a superseded jump's late layout event is
+  // discarded rather than landing an offset for the wrong exercise.
+  const handleSourceJumpMirrorLayout = (half, token, height) => {
+    const pass = sourceJumpMirrorRef.current;
+    if (!pass || pass.token !== token) return;
+    pass[half] = height;
+    if (pass.above == null || pass.below == null) return;
+    pass.report({
+      y: _sourceJumpContentOffset({
+        containerY: editContainerYRef.current,
+        inputY: pass.inputY,
+        inputHeight: pass.inputHeight,
+        aboveHeight: pass.above,
+        belowHeight: pass.below,
+      }),
+    });
+  };
 
   // Reports the applied jump exactly once: with a placement as soon as one is
   // measurable, or without one the moment that is provably not going to
   // happen (no measurable surface, a failed or never-answered measure, or a
   // layout that never settles). The caller must always be released, because
   // that release is also what clears `pendingSourceJump`.
-  const _reportSourceJumpPlacement = (targetOffset, text) => {
+  const _reportSourceJumpPlacement = (token, targetOffset, text) => {
     // A newer jump supersedes any measurement still in flight for an older
     // one, so the older one can never land its offset after this one's.
     cancelSourceJumpMeasure();
@@ -583,8 +639,8 @@ export function LogScreenEditorCard({
         sourceJumpFrameRef.current = null;
         input.measureLayout(
           container,
-          (_x, inputY, _w, inputHeight) => {
-            if (!(inputHeight > 0)) {
+          (_x, inputY, inputWidth, inputHeight) => {
+            if (!(inputHeight > 0) || !(inputWidth > EDITOR_INPUT_TEXT_INSET)) {
               // Layout has not settled yet — the editor surface is
               // `display: none` right up to the frame it opens on.
               if (n + 1 >= SOURCE_JUMP_MEASURE_ATTEMPTS) {
@@ -594,14 +650,30 @@ export function LogScreenEditorCard({
               attempt(n + 1);
               return;
             }
-            report({
-              y: _sourceJumpContentOffset({
-                containerY: editContainerYRef.current,
-                inputY,
-                inputHeight,
-                text,
-                targetOffset,
-              }),
+            const split = _splitAtTargetLine(text, targetOffset);
+            // Nothing above the target line, so no mirror is needed and the
+            // landing is the top of the text.
+            if (!split) {
+              report({
+                y: _sourceJumpContentOffset({
+                  containerY: editContainerYRef.current,
+                  inputY,
+                  inputHeight,
+                  aboveHeight: 0,
+                  belowHeight: 1,
+                }),
+              });
+              return;
+            }
+            if (!mountedRef.current) return;
+            sourceJumpMirrorRef.current = {
+              token, inputY, inputHeight, above: null, below: null, report,
+            };
+            setSourceJumpMirror({
+              token,
+              width: inputWidth - EDITOR_INPUT_TEXT_INSET,
+              above: split.above,
+              below: split.below,
             });
           },
           () => { report(); },
@@ -641,7 +713,7 @@ export function LogScreenEditorCard({
     appliedSourceJumpTokenRef.current = pendingSourceJump.token;
     setProblemSelectionRequest({ start: pendingSourceJump.start, end: pendingSourceJump.end });
     editorInputRef.current?.focus();
-    _reportSourceJumpPlacement(pendingSourceJump.start, editorText);
+    _reportSourceJumpPlacement(pendingSourceJump.token, pendingSourceJump.start, editorText);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingSourceJump, editingNoteId, currentMode, editorText]);
 
@@ -715,6 +787,41 @@ export function LogScreenEditorCard({
       style={styles.editContainer}
       testID="log-editor-surface"
     >
+      {/* #886: the source-jump measuring mirror. Absolutely positioned and
+          fully transparent, so it takes part in no layout the user can see,
+          and hidden from assistive tech so the note is never announced twice.
+          Rendered at the input's own text width with the input's own font, so
+          it wraps exactly where the input wraps — which is the whole point:
+          the split is by rendered rows, not by newlines. Mounted only while a
+          jump is being placed, and only ever one copy of the text (the two
+          halves are the note, split at the target line). */}
+      {sourceJumpMirror ? (
+        <View
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={[styles.sourceJumpMirror, { width: sourceJumpMirror.width }]}
+        >
+          <Text
+            style={styles.sourceJumpMirrorText}
+            testID="source-jump-mirror-above"
+            onLayout={(e) => handleSourceJumpMirrorLayout(
+              'above', sourceJumpMirror.token, e.nativeEvent.layout.height
+            )}
+          >
+            {sourceJumpMirror.above}
+          </Text>
+          <Text
+            style={styles.sourceJumpMirrorText}
+            testID="source-jump-mirror-below"
+            onLayout={(e) => handleSourceJumpMirrorLayout(
+              'below', sourceJumpMirror.token, e.nativeEvent.layout.height
+            )}
+          >
+            {sourceJumpMirror.below}
+          </Text>
+        </View>
+      ) : null}
       <WorkoutSyntaxModal
         visible={syntaxHelpVisible}
         onClose={() => setSyntaxHelpVisible(false)}
@@ -1091,6 +1198,23 @@ const createStyles = (colors) => StyleSheet.create({
   editorInput: {
     minHeight: 250,
     textAlignVertical: 'top',
+  },
+  // #886 measuring mirror. Out of flow and invisible; `left: -10000` keeps it
+  // off screen even on a platform that still paints a zero-opacity subtree.
+  sourceJumpMirror: {
+    position: 'absolute',
+    left: -10000,
+    top: 0,
+    opacity: 0,
+  },
+  // Matches `input`'s text metrics — anything that changes where the editor
+  // wraps has to change here too, or the measured split stops agreeing with
+  // the box it is describing. `includeFontPadding: false` (Android) keeps each
+  // half's height a clean multiple of its rows, so the ratio between them is
+  // the row ratio and nothing else.
+  sourceJumpMirrorText: {
+    fontSize: 16,
+    includeFontPadding: false,
   },
   saveButton: {
     marginTop: 12,
