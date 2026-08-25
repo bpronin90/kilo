@@ -5,7 +5,7 @@
 // matrix are iOS/Android device-only and are not present here.
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { Text } from 'react-native';
+import { Text, TextInput } from 'react-native';
 import {
   parseWorkoutNote,
   hashSourceSlice,
@@ -378,8 +378,8 @@ describe('WorkoutContentRenderer exercise double-tap (F10a §5, §7 9-10)', () =
 describe('LogScreenEditorCard: pendingSourceJump handoff (#881 PR #883 review)', () => {
   const { LogScreenEditorCard } = require('../components/LogScreenEditorCard');
 
-  function buildElement(overrides = {}) {
-    const handlers = {
+  function buildElement(overrides = {}, sharedHandlers = null) {
+    const handlers = sharedHandlers || {
       handleSaveDeload: jest.fn(),
       handleCurrentTextChange: jest.fn(),
       handleSaveOtherNote: jest.fn(),
@@ -424,17 +424,31 @@ describe('LogScreenEditorCard: pendingSourceJump handoff (#881 PR #883 review)',
   }
 
   const mounted = [];
+  // #886: applying a jump now also measures where its target line sits in the
+  // editor's scroll content, which costs a frame plus a native measure
+  // callback, so the handoff completes on timers rather than synchronously.
+  beforeEach(() => { jest.useFakeTimers(); });
   afterEach(() => {
     act(() => { mounted.forEach(c => c.unmount()); });
     mounted.length = 0;
   });
+  afterEach(() => { jest.useRealTimers(); });
 
-  function renderEditor(overrides = {}) {
+  function renderEditor(overrides = {}, createNodeMock) {
     const { element, handlers } = buildElement(overrides);
     let component;
-    act(() => { component = TestRenderer.create(element); });
+    act(() => {
+      component = createNodeMock
+        ? TestRenderer.create(element, { createNodeMock })
+        : TestRenderer.create(element);
+    });
     mounted.push(component);
     return { root: component.root, handlers };
+  }
+
+  // Releases the measurement wait (frame + native measure, or its timeout).
+  function settleJump() {
+    act(() => { jest.runOnlyPendingTimers(); });
   }
 
   function findNoteInput(root, value) {
@@ -453,6 +467,7 @@ describe('LogScreenEditorCard: pendingSourceJump handoff (#881 PR #883 review)',
     });
     const input = findNoteInput(root, text);
     expect(input.props.selection).toEqual({ start: text.indexOf('135'), end: text.indexOf('135') });
+    settleJump();
     expect(handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
   });
 
@@ -468,12 +483,12 @@ describe('LogScreenEditorCard: pendingSourceJump handoff (#881 PR #883 review)',
     });
     const input = findNoteInput(root, text);
     expect(input.props.selection).toEqual({ start: text.indexOf('-Squat'), end: text.indexOf('-Squat') });
+    settleJump();
     expect(handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
   });
 
   test('one-shot release: the forced selection clears itself without a second application', () => {
-    jest.useFakeTimers();
-    try {
+    {
       const text = ['Monday', '-Bench Press', '135 5,5,5'].join('\n');
       const { root, handlers } = renderEditor({
         activeEditText: text,
@@ -489,8 +504,6 @@ describe('LogScreenEditorCard: pendingSourceJump handoff (#881 PR #883 review)',
       act(() => { jest.runOnlyPendingTimers(); });
       expect(findNoteInput(root, text).props.selection).toBeUndefined();
       expect(handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
-    } finally {
-      jest.useRealTimers();
     }
   });
 
@@ -524,6 +537,161 @@ describe('LogScreenEditorCard: pendingSourceJump handoff (#881 PR #883 review)',
     const input = findNoteInput(root, mutated);
     expect(input.props.selection).toBeUndefined();
     expect(handlers.onSourceJumpApplied).not.toHaveBeenCalled();
+  });
+
+  // ── #886: where the jump actually LANDS ────────────────────────────────
+  //
+  // The caret alone positions nothing: the editor input is `multiline` with
+  // no height cap, so it grows to the whole note inside the page scroll view
+  // and the page offset is the only thing the user sees. These cover the
+  // measured offset the card hands back for the caller to scroll to.
+
+  const LONG_NOTE = (() => {
+    const lines = ['Monday'];
+    for (let i = 0; i < 40; i += 1) {
+      lines.push(`-Exercise ${i}`);
+      lines.push('135 5,5,5');
+    }
+    return lines.join('\n');
+  })();
+
+  const CONTAINER_Y = 220;
+  const INPUT_Y = 180;
+  const INPUT_HEIGHT = 2028; // 2000px of text + 14px padding top and bottom
+
+  // The analytic answer the card must reproduce: the target line's own share
+  // of the input's MEASURED text height, in editor-scroll-content
+  // coordinates. Deliberately restated here rather than imported, so a
+  // regression in the component's own math cannot silently agree with itself.
+  function expectedPlacementY(text, targetOffset) {
+    const totalLines = text.split('\n').length;
+    const linesBefore = text.slice(0, targetOffset).split('\n').length - 1;
+    return CONTAINER_Y + INPUT_Y + 14 + (INPUT_HEIGHT - 28) * (linesBefore / totalLines);
+  }
+
+  const measuresTo = (inputY, inputHeight) => (_relativeTo, onSuccess) =>
+    onSuccess(0, inputY, 320, inputHeight);
+
+  function jumpProps(text, targetOffset, token) {
+    return {
+      activeEditText: text,
+      currentMode: 'edit',
+      pendingSourceJump: {
+        start: targetOffset, end: targetOffset,
+        editingNoteId: null, currentMode: 'edit', expectedText: text, source: null, token,
+      },
+    };
+  }
+
+  function layOutSurface(root) {
+    act(() => {
+      root.findByProps({ testID: 'log-editor-surface' }).props
+        .onLayout({ nativeEvent: { layout: { x: 0, y: CONTAINER_Y, width: 320, height: 2400 } } });
+    });
+  }
+
+  // Mounts the editor WITHOUT a jump, installs a measurement on the live
+  // input ref (the RN test double answers no measure of its own), lays the
+  // surface out, and only then delivers the jump — which is the real order
+  // on device: the surface exists, then a double-tap resolves onto it.
+  function armJump(text, targetOffset, token, measureImpl) {
+    const base = buildElement({ activeEditText: text, currentMode: 'edit' });
+    let component;
+    act(() => { component = TestRenderer.create(base.element); });
+    mounted.push(component);
+    const input = component.root.findAllByType(TextInput)
+      .find(node => node.props.multiline && node.props.value === text);
+    input.instance.measureLayout = measureImpl;
+    layOutSurface(component.root);
+    const { element } = buildElement(jumpProps(text, targetOffset, token), base.handlers);
+    act(() => { component.update(element); });
+    return base.handlers;
+  }
+
+  test('#886: the reported landing is the target line\'s own offset in the editor, not the read view\'s', () => {
+    const target = LONG_NOTE.indexOf('-Exercise 30');
+    const handlers = armJump(LONG_NOTE, target, 'p1', measuresTo(INPUT_Y, INPUT_HEIGHT));
+    settleJump();
+    expect(handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
+    expect(handlers.onSourceJumpApplied.mock.calls[0][0].y)
+      .toBeCloseTo(expectedPlacementY(LONG_NOTE, target), 5);
+  });
+
+  test('#886: the landing error does not grow with source depth — every depth is exact', () => {
+    const depths = ['-Exercise 0', '-Exercise 10', '-Exercise 25', '-Exercise 39'];
+    const reported = depths.map((header, i) => {
+      const target = LONG_NOTE.indexOf(header);
+      const handlers = armJump(LONG_NOTE, target, `d${i}`, measuresTo(INPUT_Y, INPUT_HEIGHT));
+      settleJump();
+      const { y } = handlers.onSourceJumpApplied.mock.calls[0][0];
+      expect(y).toBeCloseTo(expectedPlacementY(LONG_NOTE, target), 5);
+      return y;
+    });
+    // Strictly increasing: a deeper exercise always lands further down.
+    for (let i = 1; i < reported.length; i += 1) {
+      expect(reported[i]).toBeGreaterThan(reported[i - 1]);
+    }
+  });
+
+  test('#886: a repeat jump to the SAME exercise reports its landing again, not a one-time effect', () => {
+    const target = LONG_NOTE.indexOf('-Exercise 35');
+    // A fresh mount is the real repeat: the editor surface is only hidden
+    // between sessions, and the second jump carries its own token.
+    const first = armJump(LONG_NOTE, target, 'same-1', measuresTo(INPUT_Y, INPUT_HEIGHT));
+    settleJump();
+    const second = armJump(LONG_NOTE, target, 'same-2', measuresTo(INPUT_Y, INPUT_HEIGHT));
+    settleJump();
+    expect(second.onSourceJumpApplied).toHaveBeenCalledTimes(1);
+    expect(second.onSourceJumpApplied.mock.calls[0][0].y)
+      .toBeCloseTo(first.onSourceJumpApplied.mock.calls[0][0].y, 5);
+  });
+
+  test('#886: a following jump to a DIFFERENT exercise reports that exercise, not the previous landing', () => {
+    const shallow = LONG_NOTE.indexOf('-Exercise 2');
+    const deep = LONG_NOTE.indexOf('-Exercise 37');
+    const a = armJump(LONG_NOTE, shallow, 'diff-1', measuresTo(INPUT_Y, INPUT_HEIGHT));
+    settleJump();
+    const b = armJump(LONG_NOTE, deep, 'diff-2', measuresTo(INPUT_Y, INPUT_HEIGHT));
+    settleJump();
+    const first = a.onSourceJumpApplied.mock.calls[0][0].y;
+    const next = b.onSourceJumpApplied.mock.calls[0][0].y;
+    expect(next).toBeGreaterThan(first);
+    expect(next).toBeCloseTo(expectedPlacementY(LONG_NOTE, deep), 5);
+  });
+
+  test('#886: a measure that never answers still releases the jump, with no placement to scroll to', () => {
+    const target = LONG_NOTE.indexOf('-Exercise 12');
+    const handlers = armJump(LONG_NOTE, target, 'silent', () => {});
+    settleJump();
+    expect(handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
+    expect(handlers.onSourceJumpApplied.mock.calls[0][0]).toBeUndefined();
+  });
+
+  test('#886: a failed measure releases the jump rather than scrolling to a guess', () => {
+    const target = LONG_NOTE.indexOf('-Exercise 12');
+    const handlers = armJump(LONG_NOTE, target, 'failed', (_rel, _ok, onFail) => onFail());
+    settleJump();
+    expect(handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
+    expect(handlers.onSourceJumpApplied.mock.calls[0][0]).toBeUndefined();
+  });
+
+  test('#886: a surface that has not laid out yet is retried, then reported once it has', () => {
+    const target = LONG_NOTE.indexOf('-Exercise 20');
+    let measured = 0;
+    const handlers = armJump(LONG_NOTE, target, 'settle', (_rel, onSuccess) => {
+      measured += 1;
+      // `display: none` right up to the frame the editor opens on, so the
+      // first measurements legitimately come back with nothing to measure.
+      const settled = measured >= 3;
+      onSuccess(0, settled ? INPUT_Y : 0, 320, settled ? INPUT_HEIGHT : 0);
+    });
+    settleJump();
+    settleJump();
+    settleJump();
+    expect(measured).toBe(3);
+    expect(handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
+    expect(handlers.onSourceJumpApplied.mock.calls[0][0].y)
+      .toBeCloseTo(expectedPlacementY(LONG_NOTE, target), 5);
   });
 
   test('inert: a jump targeting a different note/mode never touches this surface', () => {

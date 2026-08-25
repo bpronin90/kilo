@@ -19,6 +19,35 @@ import { WORKOUT_SEED_EXAMPLE_TEXT } from './WorkoutSyntaxReference';
 // competing with typing on a large note.
 const VALIDATION_DEBOUNCE_MS = 1000;
 
+// #886: the raw-text editor input's own vertical padding, shared with the
+// `input` style below so the source-jump measurement and the rendered box can
+// never drift apart.
+const EDITOR_INPUT_VERTICAL_PADDING = 14;
+
+// #886: how many frames a source jump will wait for the editor surface to
+// finish laying out before giving up on measuring it. The surface is
+// `display: none` until the frame the editor opens on, so the first
+// measurement can legitimately come back with a zero height.
+const SOURCE_JUMP_MEASURE_ATTEMPTS = 5;
+
+// #886: hard ceiling on that same wait. A native measure that never answers
+// must not leave the jump un-released, so the placement is abandoned and the
+// caller falls back to its deterministic landing.
+const SOURCE_JUMP_MEASURE_TIMEOUT_MS = 250;
+
+// #886: where the target line sits inside the editor's scroll content.
+// `linesBefore / totalLines` is taken as a share of the input's OWN measured
+// text height rather than a JS-side guess at a line height, so whatever the
+// platform actually renders per line is already baked in and the error cannot
+// accumulate as the target moves further down the note.
+function _sourceJumpContentOffset({ containerY, inputY, inputHeight, text, targetOffset }) {
+  const textHeight = Math.max(0, inputHeight - EDITOR_INPUT_VERTICAL_PADDING * 2);
+  const totalLines = text.split('\n').length;
+  const linesBefore = text.slice(0, Math.max(0, targetOffset)).split('\n').length - 1;
+  const fraction = totalLines > 0 ? Math.min(1, Math.max(0, linesBefore / totalLines)) : 0;
+  return containerY + inputY + EDITOR_INPUT_VERTICAL_PADDING + textHeight * fraction;
+}
+
 // Offsets of the start/end of `lineNumber` (1-indexed, matching
 // parseWorkoutNote's `line`/`header_line` fields) within `text`. Returns null
 // for an out-of-range line (e.g. the debounced text is momentarily stale).
@@ -501,6 +530,87 @@ export function LogScreenEditorCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorIdentity]);
 
+  // #886 source-jump placement. `editContainerRef`/`editContainerYRef` give
+  // the card's own origin inside the editor scroll content (this View is a
+  // direct child of ScreenShell's content container, so its layout `y` IS a
+  // scroll offset); the input is then measured relative to it, which is what
+  // lets the offset be computed without this card ever holding the scroll ref.
+  const editContainerRef = useRef(null);
+  const editContainerYRef = useRef(0);
+  const appliedSourceJumpTokenRef = useRef(null);
+  const sourceJumpFrameRef = useRef(null);
+  const sourceJumpTimerRef = useRef(null);
+  const cancelSourceJumpMeasure = () => {
+    if (sourceJumpFrameRef.current != null) {
+      cancelAnimationFrame(sourceJumpFrameRef.current);
+      sourceJumpFrameRef.current = null;
+    }
+    if (sourceJumpTimerRef.current != null) {
+      clearTimeout(sourceJumpTimerRef.current);
+      sourceJumpTimerRef.current = null;
+    }
+  };
+  useEffect(() => cancelSourceJumpMeasure, []);
+
+  // Reports the applied jump exactly once: with a placement as soon as one is
+  // measurable, or without one the moment that is provably not going to
+  // happen (no measurable surface, a failed or never-answered measure, or a
+  // layout that never settles). The caller must always be released, because
+  // that release is also what clears `pendingSourceJump`.
+  const _reportSourceJumpPlacement = (targetOffset, text) => {
+    // A newer jump supersedes any measurement still in flight for an older
+    // one, so the older one can never land its offset after this one's.
+    cancelSourceJumpMeasure();
+    let reported = false;
+    const report = (placement) => {
+      if (reported) return;
+      reported = true;
+      cancelSourceJumpMeasure();
+      onSourceJumpApplied?.(placement);
+    };
+    const input = editorInputRef.current;
+    const container = editContainerRef.current;
+    // No measurable surface (web/test renderers, or a ref that never
+    // attached): release synchronously so the caller falls back to its
+    // deterministic landing rather than sitting on a stale offset.
+    if (!input || !container || typeof input.measureLayout !== 'function') {
+      report();
+      return;
+    }
+    sourceJumpTimerRef.current = setTimeout(report, SOURCE_JUMP_MEASURE_TIMEOUT_MS);
+    const attempt = (n) => {
+      sourceJumpFrameRef.current = requestAnimationFrame(() => {
+        sourceJumpFrameRef.current = null;
+        input.measureLayout(
+          container,
+          (_x, inputY, _w, inputHeight) => {
+            if (!(inputHeight > 0)) {
+              // Layout has not settled yet — the editor surface is
+              // `display: none` right up to the frame it opens on.
+              if (n + 1 >= SOURCE_JUMP_MEASURE_ATTEMPTS) {
+                report();
+                return;
+              }
+              attempt(n + 1);
+              return;
+            }
+            report({
+              y: _sourceJumpContentOffset({
+                containerY: editContainerYRef.current,
+                inputY,
+                inputHeight,
+                text,
+                targetOffset,
+              }),
+            });
+          },
+          () => { report(); },
+        );
+      });
+    };
+    attempt(0);
+  };
+
   // #881 (F10a §4): applies a resolved exercise source jump as a one-shot
   // collapsed caret via the existing `problemSelectionRequest` scaffolding,
   // gated on the editor having actually mounted with the matching session
@@ -512,14 +622,26 @@ export function LogScreenEditorCard({
   // so if this ran first, the identity-reset effect's unconditional
   // `setProblemSelectionRequest(null)` would fire right after and clobber
   // the just-applied selection before it ever painted.
+  //
+  // #886: the caret alone does not position anything here. This input is
+  // `multiline` with no height cap, so it grows to the full height of the
+  // note inside ScreenShell's scroll view — nothing native scrolls a caret
+  // into view, and the page offset is the only thing that decides what the
+  // user actually sees. So the jump also measures where its target line sits
+  // in that page and hands the offset back through `onSourceJumpApplied`,
+  // which is what the caller scrolls to. Reported exactly once per jump,
+  // whether or not a measurement was obtainable; `appliedSourceJumpTokenRef`
+  // keeps that one-shot guarantee across the frames the measurement takes.
   useEffect(() => {
     if (!pendingSourceJump) return;
+    if (appliedSourceJumpTokenRef.current === pendingSourceJump.token) return;
     if (pendingSourceJump.editingNoteId !== editingNoteId) return;
     if (pendingSourceJump.editingNoteId == null && currentMode !== pendingSourceJump.currentMode) return;
     if (editorText !== pendingSourceJump.expectedText) return;
+    appliedSourceJumpTokenRef.current = pendingSourceJump.token;
     setProblemSelectionRequest({ start: pendingSourceJump.start, end: pendingSourceJump.end });
     editorInputRef.current?.focus();
-    onSourceJumpApplied?.();
+    _reportSourceJumpPlacement(pendingSourceJump.start, editorText);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingSourceJump, editingNoteId, currentMode, editorText]);
 
@@ -587,7 +709,12 @@ export function LogScreenEditorCard({
   const validationErrorCount = validationProblems.filter(p => p.severity === 'error').length;
 
   return (
-    <View style={styles.editContainer}>
+    <View
+      ref={editContainerRef}
+      onLayout={(e) => { editContainerYRef.current = e.nativeEvent.layout.y; }}
+      style={styles.editContainer}
+      testID="log-editor-surface"
+    >
       <WorkoutSyntaxModal
         visible={syntaxHelpVisible}
         onClose={() => setSyntaxHelpVisible(false)}
@@ -953,7 +1080,7 @@ const createStyles = (colors) => StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.inputBorder,
     paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingVertical: EDITOR_INPUT_VERTICAL_PADDING,
     fontSize: 16,
     color: colors.text,
   },

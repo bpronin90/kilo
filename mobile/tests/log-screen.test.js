@@ -12174,3 +12174,209 @@ describe('Log disclosures and Recovery reads at the screen level (#775)', () => 
     expect(routineExpanded(component)).toBe(false);
   });
 });
+
+// ── #886: where a source jump lands the current-routine editor ─────────────
+//
+// The regression: entering the editor from a double-tapped exercise reused
+// the READ view's scroll offset (#150's Edit-button behavior). The rendered
+// note and the raw text are different layouts, so that offset is wrong by a
+// margin that grows the further down the note the tapped exercise sits — and
+// because the editor scroll view is only hidden between sessions, never
+// unmounted, a second jump inherited wherever the previous one ended up.
+
+describe('current-routine source jump landing (#886)', () => {
+  const { useLogCurrentRoutineEditor } = require('../screens/log/useLogCurrentRoutineEditor');
+  const { buildExerciseSourceAnchor } = require('../lib/parser');
+
+  const LONG_NOTE = (() => {
+    const lines = ['Monday'];
+    for (let i = 0; i < 30; i += 1) {
+      lines.push(`-Exercise ${i}`);
+      lines.push('135 5,5,5');
+    }
+    return lines.join('\n');
+  })();
+
+  const mounted = [];
+  beforeEach(() => { jest.useFakeTimers(); });
+  afterEach(() => {
+    render.act(() => { mounted.forEach(component => component.unmount()); });
+    mounted.length = 0;
+    jest.useRealTimers();
+  });
+
+  // The hook opens the editor and then positions it on the next frame.
+  const flushFrames = () => { render.act(() => { jest.runOnlyPendingTimers(); }); };
+
+  function mountEditor({ raw = LONG_NOTE } = {}) {
+    const note = { id: 'current', title: 'Routine', raw_text: raw, activeWeek: null };
+    const editorScrollTo = jest.fn();
+    const readScrollTo = jest.fn();
+    let latest = null;
+    function Harness() {
+      const [text, setText] = React.useState(raw);
+      const [title, setTitle] = React.useState(note.title);
+      latest = useLogCurrentRoutineEditor({
+        workoutNoteText: text,
+        setWorkoutNoteText: setText,
+        workoutNoteTitle: title,
+        setWorkoutNoteTitle: setTitle,
+        currentId: note.id,
+        currentNote: note,
+        notes: [note],
+        trackedLifts: [],
+        update: jest.fn(async (id, patch) => ({ ...note, id, ...patch })),
+        add: jest.fn(),
+        selectCurrent: jest.fn(),
+        fatigueTrackingEnabled: false,
+        notesLoading: false,
+        notesError: null,
+        otherModalOwnsScreen: false,
+        editorScrollRef: { current: { scrollTo: editorScrollTo } },
+        readScrollRef: { current: { scrollTo: readScrollTo } },
+      });
+      return null;
+    }
+    render.act(() => { mounted.push(render.create(<Harness />)); });
+    return { getHook: () => latest, editorScrollTo, readScrollTo };
+  }
+
+  // Builds the anchor the rendered note would hand back for one exercise, so
+  // these drive the same entry point a double-tap does.
+  function anchorFor(raw, exerciseName) {
+    const parsed = parseWorkoutNote(raw);
+    for (let s = 0; s < parsed.sections.length; s += 1) {
+      const ordinal = parsed.sections[s].exercises.findIndex(e => e.name === exerciseName);
+      if (ordinal >= 0) {
+        return buildExerciseSourceAnchor({
+          noteId: 'current',
+          weekIndex: 0,
+          sliceText: raw,
+          sectionIndex: s,
+          exerciseOrdinal: ordinal,
+          exercise: parsed.sections[s].exercises[ordinal],
+        });
+      }
+    }
+    throw new Error(`no exercise ${exerciseName}`);
+  }
+
+  const scrollToRead = (getHook, y) => {
+    render.act(() => { getHook().handleReadScroll({ nativeEvent: { contentOffset: { y } } }); });
+  };
+
+  test('the ordinary Edit button still restores the read view offset it always has', () => {
+    const { getHook, editorScrollTo } = mountEditor();
+    scrollToRead(getHook, 1840);
+    render.act(() => { getHook().enterCurrentEditor(); });
+    flushFrames();
+    expect(getHook().mode).toBe('edit');
+    expect(editorScrollTo).toHaveBeenCalledWith({ y: 1840, animated: false });
+  });
+
+  test('a source jump never carries the read view offset into the raw-text editor', () => {
+    const { getHook, editorScrollTo } = mountEditor();
+    // The user scrolled a long way down the RENDERED note to reach the
+    // exercise they double-tapped — the offset that used to be reused.
+    scrollToRead(getHook, 1840);
+    render.act(() => { getHook().handleExerciseSourceJump(anchorFor(LONG_NOTE, 'Exercise 25')); });
+    flushFrames();
+
+    expect(getHook().mode).toBe('edit');
+    expect(getHook().pendingSourceJump).toMatchObject({ currentMode: 'edit' });
+    expect(editorScrollTo).not.toHaveBeenCalledWith({ y: 1840, animated: false });
+    // Deterministic baseline until the editor reports where the line is.
+    expect(editorScrollTo).toHaveBeenCalledWith({ y: 0, animated: false });
+  });
+
+  test('the editor is scrolled to the measured target line once the surface reports it', () => {
+    const { getHook, editorScrollTo } = mountEditor();
+    scrollToRead(getHook, 1840);
+    render.act(() => { getHook().handleExerciseSourceJump(anchorFor(LONG_NOTE, 'Exercise 25')); });
+    flushFrames();
+    editorScrollTo.mockClear();
+
+    render.act(() => { getHook().clearPendingSourceJump({ y: 1600 }); });
+    // Parked below the top edge, so the header reads as placed rather than
+    // clipped against it.
+    expect(editorScrollTo).toHaveBeenCalledWith({ y: 1600 - 96, animated: false });
+    expect(getHook().pendingSourceJump).toBeNull();
+  });
+
+  test('a target near the top of the note is clamped, never scrolled to a negative offset', () => {
+    const { getHook, editorScrollTo } = mountEditor();
+    render.act(() => { getHook().handleExerciseSourceJump(anchorFor(LONG_NOTE, 'Exercise 0')); });
+    flushFrames();
+    editorScrollTo.mockClear();
+
+    render.act(() => { getHook().clearPendingSourceJump({ y: 30 }); });
+    expect(editorScrollTo).toHaveBeenCalledWith({ y: 0, animated: false });
+  });
+
+  test('an unmeasurable landing keeps the top-of-note baseline instead of guessing', () => {
+    const { getHook, editorScrollTo } = mountEditor();
+    scrollToRead(getHook, 1840);
+    render.act(() => { getHook().handleExerciseSourceJump(anchorFor(LONG_NOTE, 'Exercise 25')); });
+    flushFrames();
+    editorScrollTo.mockClear();
+
+    render.act(() => { getHook().clearPendingSourceJump(); });
+    expect(editorScrollTo).not.toHaveBeenCalled();
+    expect(getHook().pendingSourceJump).toBeNull();
+  });
+
+  test('after leaving the editor, a repeat jump to the SAME exercise lands again', async () => {
+    const { getHook, editorScrollTo } = mountEditor();
+    scrollToRead(getHook, 1840);
+    render.act(() => { getHook().handleExerciseSourceJump(anchorFor(LONG_NOTE, 'Exercise 25')); });
+    flushFrames();
+    render.act(() => { getHook().clearPendingSourceJump({ y: 1600 }); });
+    await render.act(async () => { await getHook().handleDoneCurrent(); });
+    expect(getHook().mode).toBe('read');
+    editorScrollTo.mockClear();
+
+    // The editor scroll view is still mounted at 1504 from the first jump.
+    scrollToRead(getHook, 640);
+    render.act(() => { getHook().handleExerciseSourceJump(anchorFor(LONG_NOTE, 'Exercise 25')); });
+    flushFrames();
+    expect(editorScrollTo).toHaveBeenCalledWith({ y: 0, animated: false });
+    expect(editorScrollTo).not.toHaveBeenCalledWith({ y: 640, animated: false });
+
+    render.act(() => { getHook().clearPendingSourceJump({ y: 1600 }); });
+    expect(editorScrollTo).toHaveBeenLastCalledWith({ y: 1504, animated: false });
+  });
+
+  test('after leaving the editor, a jump to a DIFFERENT exercise lands on that one', async () => {
+    const { getHook, editorScrollTo } = mountEditor();
+    render.act(() => { getHook().handleExerciseSourceJump(anchorFor(LONG_NOTE, 'Exercise 25')); });
+    flushFrames();
+    render.act(() => { getHook().clearPendingSourceJump({ y: 1600 }); });
+    await render.act(async () => { await getHook().handleDoneCurrent(); });
+
+    const second = anchorFor(LONG_NOTE, 'Exercise 5');
+    render.act(() => { getHook().handleExerciseSourceJump(second); });
+    flushFrames();
+    // Its own resolved target, not the previous jump's.
+    expect(getHook().pendingSourceJump.start).toBe(
+      LONG_NOTE.indexOf('-Exercise 5') + '-Exercise 5'.length
+    );
+    editorScrollTo.mockClear();
+    render.act(() => { getHook().clearPendingSourceJump({ y: 360 }); });
+    expect(editorScrollTo).toHaveBeenCalledWith({ y: 360 - 96, animated: false });
+  });
+
+  test('a jump taken while already editing does not re-park the editor at the top', () => {
+    const { getHook, editorScrollTo } = mountEditor();
+    scrollToRead(getHook, 1840);
+    render.act(() => { getHook().enterCurrentEditor(); });
+    flushFrames();
+    editorScrollTo.mockClear();
+
+    render.act(() => { getHook().handleExerciseSourceJump(anchorFor(LONG_NOTE, 'Exercise 12')); });
+    flushFrames();
+    expect(editorScrollTo).not.toHaveBeenCalled();
+
+    render.act(() => { getHook().clearPendingSourceJump({ y: 900 }); });
+    expect(editorScrollTo).toHaveBeenCalledWith({ y: 804, animated: false });
+  });
+});
