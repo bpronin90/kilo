@@ -5,7 +5,7 @@
 // matrix are iOS/Android device-only and are not present here.
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { Text } from 'react-native';
+import { Text, TextInput } from 'react-native';
 import {
   parseWorkoutNote,
   hashSourceSlice,
@@ -378,8 +378,8 @@ describe('WorkoutContentRenderer exercise double-tap (F10a §5, §7 9-10)', () =
 describe('LogScreenEditorCard: pendingSourceJump handoff (#881 PR #883 review)', () => {
   const { LogScreenEditorCard } = require('../components/LogScreenEditorCard');
 
-  function buildElement(overrides = {}) {
-    const handlers = {
+  function buildElement(overrides = {}, sharedHandlers = null) {
+    const handlers = sharedHandlers || {
       handleSaveDeload: jest.fn(),
       handleCurrentTextChange: jest.fn(),
       handleSaveOtherNote: jest.fn(),
@@ -424,17 +424,38 @@ describe('LogScreenEditorCard: pendingSourceJump handoff (#881 PR #883 review)',
   }
 
   const mounted = [];
+  // #886: applying a jump now also measures where its target line sits in the
+  // editor's scroll content, which costs a frame plus a native measure
+  // callback, so the handoff completes on timers rather than synchronously.
+  beforeEach(() => { jest.useFakeTimers(); });
   afterEach(() => {
     act(() => { mounted.forEach(c => c.unmount()); });
     mounted.length = 0;
   });
+  afterEach(() => { jest.useRealTimers(); });
 
-  function renderEditor(overrides = {}) {
+  function renderEditor(overrides = {}, createNodeMock) {
     const { element, handlers } = buildElement(overrides);
     let component;
-    act(() => { component = TestRenderer.create(element); });
+    act(() => {
+      component = createNodeMock
+        ? TestRenderer.create(element, { createNodeMock })
+        : TestRenderer.create(element);
+    });
     mounted.push(component);
     return { root: component.root, handlers };
+  }
+
+  // Advances one frame: enough for the placement pass to measure the input
+  // and mount its mirror, without collapsing the timeout that backs it.
+  function settleJump() {
+    act(() => { jest.advanceTimersByTime(1); });
+  }
+
+  // Runs out that timeout, which is what releases a jump whose measurement
+  // never answers.
+  function expireJumpWait() {
+    act(() => { jest.advanceTimersByTime(300); });
   }
 
   function findNoteInput(root, value) {
@@ -453,6 +474,7 @@ describe('LogScreenEditorCard: pendingSourceJump handoff (#881 PR #883 review)',
     });
     const input = findNoteInput(root, text);
     expect(input.props.selection).toEqual({ start: text.indexOf('135'), end: text.indexOf('135') });
+    expireJumpWait();
     expect(handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
   });
 
@@ -468,12 +490,12 @@ describe('LogScreenEditorCard: pendingSourceJump handoff (#881 PR #883 review)',
     });
     const input = findNoteInput(root, text);
     expect(input.props.selection).toEqual({ start: text.indexOf('-Squat'), end: text.indexOf('-Squat') });
+    expireJumpWait();
     expect(handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
   });
 
   test('one-shot release: the forced selection clears itself without a second application', () => {
-    jest.useFakeTimers();
-    try {
+    {
       const text = ['Monday', '-Bench Press', '135 5,5,5'].join('\n');
       const { root, handlers } = renderEditor({
         activeEditText: text,
@@ -489,8 +511,6 @@ describe('LogScreenEditorCard: pendingSourceJump handoff (#881 PR #883 review)',
       act(() => { jest.runOnlyPendingTimers(); });
       expect(findNoteInput(root, text).props.selection).toBeUndefined();
       expect(handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
-    } finally {
-      jest.useRealTimers();
     }
   });
 
@@ -524,6 +544,297 @@ describe('LogScreenEditorCard: pendingSourceJump handoff (#881 PR #883 review)',
     const input = findNoteInput(root, mutated);
     expect(input.props.selection).toBeUndefined();
     expect(handlers.onSourceJumpApplied).not.toHaveBeenCalled();
+  });
+
+  // ── #886: where the jump actually LANDS ────────────────────────────────
+  //
+  // The caret alone positions nothing: the editor input is `multiline` with
+  // no height cap, so it grows to the whole note inside the page scroll view
+  // and the page offset is the only thing the user sees. These cover the
+  // measured offset the card hands back for the caller to scroll to.
+
+  const LONG_NOTE = (() => {
+    const lines = ['Monday'];
+    for (let i = 0; i < 40; i += 1) {
+      lines.push(`-Exercise ${i}`);
+      lines.push('135 5,5,5');
+    }
+    return lines.join('\n');
+  })();
+
+  const CONTAINER_Y = 220;
+  const INPUT_Y = 180;
+  const INPUT_WIDTH = 320;
+  const INPUT_HEIGHT = 2028; // 2000px of text + 14px padding top and bottom
+  const ROW_H = 25; // one rendered row in the measuring mirror
+
+  // The analytic answer the card must reproduce: the target line's share of
+  // the input's MEASURED text height, by RENDERED ROWS, in
+  // editor-scroll-content coordinates. Deliberately restated here rather than
+  // imported, so a regression in the component's own math cannot silently
+  // agree with itself.
+  function expectedPlacementY(rowsAbove, rowsBelow) {
+    return CONTAINER_Y + INPUT_Y + 14
+      + (INPUT_HEIGHT - 28) * (rowsAbove / (rowsAbove + rowsBelow));
+  }
+
+  // Rows each half occupies when nothing wraps — one row per newline.
+  function unwrappedRows(text, targetOffset) {
+    const totalLines = text.split('\n').length;
+    const above = text.slice(0, targetOffset).split('\n').length - 1;
+    return { above, below: totalLines - above };
+  }
+
+  const measuresTo = (inputY, inputHeight) => (_relativeTo, onSuccess) =>
+    onSuccess(0, inputY, INPUT_WIDTH, inputHeight);
+
+  function jumpProps(text, targetOffset, token) {
+    return {
+      activeEditText: text,
+      currentMode: 'edit',
+      pendingSourceJump: {
+        start: targetOffset, end: targetOffset,
+        editingNoteId: null, currentMode: 'edit', expectedText: text, source: null, token,
+      },
+    };
+  }
+
+  function layOutSurface(root) {
+    act(() => {
+      root.findByProps({ testID: 'log-editor-surface' }).props
+        .onLayout({ nativeEvent: { layout: { x: 0, y: CONTAINER_Y, width: 320, height: 2400 } } });
+    });
+  }
+
+  // Mounts the editor WITHOUT a jump, installs a measurement on the live
+  // input ref (the RN test double answers no measure of its own), lays the
+  // surface out, and only then delivers the jump — which is the real order
+  // on device: the surface exists, then a double-tap resolves onto it.
+  function armJump(text, targetOffset, token, measureImpl) {
+    const base = buildElement({ activeEditText: text, currentMode: 'edit' });
+    let component;
+    act(() => { component = TestRenderer.create(base.element); });
+    mounted.push(component);
+    const input = component.root.findAllByType(TextInput)
+      .find(node => node.props.multiline && node.props.value === text);
+    input.instance.measureLayout = measureImpl;
+    layOutSurface(component.root);
+    const { element } = buildElement(jumpProps(text, targetOffset, token), base.handlers);
+    act(() => { component.update(element); });
+    return { handlers: base.handlers, root: component.root };
+  }
+
+  // Answers the measuring mirror with the rendered heights of its two halves.
+  // This is the step that makes wrapping visible to the card: the heights are
+  // rows actually laid out, not lines counted in JS.
+  function layOutMirror(root, rowsAbove, rowsBelow) {
+    const halves = ['above', 'below'];
+    const rows = [rowsAbove, rowsBelow];
+    act(() => {
+      halves.forEach((half, i) => {
+        mirrorHalf(root, half).props
+          .onLayout({ nativeEvent: { layout: { x: 0, y: 0, width: 290, height: rows[i] * ROW_H } } });
+      });
+    });
+  }
+
+  // `findAllByProps` matches both the composite and its host element, so pick
+  // the outermost rather than insisting on a single hit.
+  const mirrorHalves = (root, half) => root.findAllByProps({ testID: `source-jump-mirror-${half}` });
+  const mirrorHalf = (root, half) => mirrorHalves(root, half)[0];
+  const mirrorMounted = root => mirrorHalves(root, 'above').length > 0;
+
+  // One jump, end to end: measure the input, then answer the mirror.
+  function placeJump(text, targetOffset, token, rows) {
+    const { handlers, root } = armJump(text, targetOffset, token, measuresTo(INPUT_Y, INPUT_HEIGHT));
+    settleJump();
+    const split = rows || unwrappedRows(text, targetOffset);
+    layOutMirror(root, split.above, split.below);
+    return { handlers, split };
+  }
+
+  test('#886: the reported landing is the target line\'s own offset in the editor, not the read view\'s', () => {
+    const target = LONG_NOTE.indexOf('-Exercise 30');
+    const { handlers, split } = placeJump(LONG_NOTE, target, 'p1');
+    expect(handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
+    expect(handlers.onSourceJumpApplied.mock.calls[0][0].y)
+      .toBeCloseTo(expectedPlacementY(split.above, split.below), 5);
+  });
+
+  test('#886: the landing error does not grow with source depth — every depth is exact', () => {
+    const depths = ['-Exercise 0', '-Exercise 10', '-Exercise 25', '-Exercise 39'];
+    const reported = depths.map((header, i) => {
+      const target = LONG_NOTE.indexOf(header);
+      const { handlers, split } = placeJump(LONG_NOTE, target, `d${i}`);
+      const { y } = handlers.onSourceJumpApplied.mock.calls[0][0];
+      expect(y).toBeCloseTo(expectedPlacementY(split.above, split.below), 5);
+      return y;
+    });
+    // Strictly increasing: a deeper exercise always lands further down.
+    for (let i = 1; i < reported.length; i += 1) {
+      expect(reported[i]).toBeGreaterThan(reported[i - 1]);
+    }
+  });
+
+  // PR #887 review / Codex P1: the input's measured height counts WRAPPED
+  // rows, so a fraction counted in newline-delimited lines disagrees with it
+  // whenever wrapping is uneven — and long lines sitting BELOW the target
+  // would drag the landing off by however many rows they wrapped to.
+  test('#886: the landing follows rendered rows, not newline count, when lines wrap unevenly', () => {
+    const target = LONG_NOTE.indexOf('-Exercise 20');
+    const logical = unwrappedRows(LONG_NOTE, target);
+    // Every line below the target wraps to three rows; nothing above does.
+    const wrapped = { above: logical.above, below: logical.below * 3 };
+    const { handlers } = placeJump(LONG_NOTE, target, 'wrap', wrapped);
+
+    const { y } = handlers.onSourceJumpApplied.mock.calls[0][0];
+    expect(y).toBeCloseTo(expectedPlacementY(wrapped.above, wrapped.below), 5);
+    // And that is materially higher up the page than counting newlines would
+    // have put it — the exact drift this fix exists to remove.
+    const byNewlineCount = expectedPlacementY(logical.above, logical.below);
+    expect(byNewlineCount - y).toBeGreaterThan(200);
+  });
+
+  test('#886: a target on the first line needs no mirror and lands at the top of the text', () => {
+    const target = LONG_NOTE.indexOf('Monday');
+    const { handlers, root } = armJump(LONG_NOTE, target, 'first', measuresTo(INPUT_Y, INPUT_HEIGHT));
+    settleJump();
+    expect(mirrorMounted(root)).toBe(false);
+    expect(handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
+    expect(handlers.onSourceJumpApplied.mock.calls[0][0].y)
+      .toBeCloseTo(CONTAINER_Y + INPUT_Y + 14, 5);
+  });
+
+  test('#886: a repeat jump to the SAME exercise reports its landing again, not a one-time effect', () => {
+    const target = LONG_NOTE.indexOf('-Exercise 35');
+    // A fresh mount is the real repeat: the editor surface is only hidden
+    // between sessions, and the second jump carries its own token.
+    const first = placeJump(LONG_NOTE, target, 'same-1');
+    const second = placeJump(LONG_NOTE, target, 'same-2');
+    expect(second.handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
+    expect(second.handlers.onSourceJumpApplied.mock.calls[0][0].y)
+      .toBeCloseTo(first.handlers.onSourceJumpApplied.mock.calls[0][0].y, 5);
+  });
+
+  test('#886: a following jump to a DIFFERENT exercise reports that exercise, not the previous landing', () => {
+    const shallow = LONG_NOTE.indexOf('-Exercise 2');
+    const deep = LONG_NOTE.indexOf('-Exercise 37');
+    const a = placeJump(LONG_NOTE, shallow, 'diff-1');
+    const b = placeJump(LONG_NOTE, deep, 'diff-2');
+    const first = a.handlers.onSourceJumpApplied.mock.calls[0][0].y;
+    const next = b.handlers.onSourceJumpApplied.mock.calls[0][0].y;
+    expect(next).toBeGreaterThan(first);
+    expect(next).toBeCloseTo(expectedPlacementY(b.split.above, b.split.below), 5);
+  });
+
+  test('#886: the mirror is mounted only while a jump is being placed', () => {
+    const target = LONG_NOTE.indexOf('-Exercise 8');
+    const { handlers, root } = armJump(LONG_NOTE, target, 'mirror', measuresTo(INPUT_Y, INPUT_HEIGHT));
+    expect(mirrorMounted(root)).toBe(false);
+    settleJump();
+    const above = mirrorHalf(root, 'above');
+    // It carries the note's own text, split at the target line, and is
+    // hidden from both the eye and assistive tech.
+    expect(above.props.children).toBe(LONG_NOTE.slice(0, LONG_NOTE.lastIndexOf('\n', target - 1)));
+    expect(above.parent.props.accessibilityElementsHidden).toBe(true);
+    expect(above.parent.props.importantForAccessibility).toBe('no-hide-descendants');
+    expect(above.parent.props.style).toEqual(
+      expect.arrayContaining([expect.objectContaining({ width: INPUT_WIDTH - 30 })])
+    );
+
+    const split = unwrappedRows(LONG_NOTE, target);
+    layOutMirror(root, split.above, split.below);
+    expect(handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
+    expect(mirrorMounted(root)).toBe(false);
+  });
+
+  // PR #887 review: a native `measureLayout` callback cannot be recalled once
+  // issued, so cancelling the frame and the timeout is not enough on its own.
+  test('#886: a superseded jump\'s late measurement can never land its offset', () => {
+    const base = buildElement({ activeEditText: LONG_NOTE, currentMode: 'edit' });
+    let component;
+    act(() => { component = TestRenderer.create(base.element); });
+    mounted.push(component);
+    const root = component.root;
+    const input = root.findAllByType(TextInput)
+      .find(node => node.props.multiline && node.props.value === LONG_NOTE);
+    // Hold each measurement open so the two passes can be interleaved.
+    const answer = [];
+    input.instance.measureLayout = (_rel, onSuccess) => { answer.push(onSuccess); };
+    layOutSurface(root);
+
+    const superseded = LONG_NOTE.indexOf('-Exercise 3');
+    const current = LONG_NOTE.indexOf('-Exercise 30');
+    const deliver = (target, token) => {
+      act(() => {
+        component.update(buildElement(jumpProps(LONG_NOTE, target, token), base.handlers).element);
+      });
+      settleJump();
+    };
+    deliver(superseded, 'stale-1');
+    deliver(current, 'stale-2');
+    expect(answer).toHaveLength(2);
+
+    // The first, superseded measurement answers late.
+    act(() => { answer[0](0, INPUT_Y, INPUT_WIDTH, INPUT_HEIGHT); });
+    expect(base.handlers.onSourceJumpApplied).not.toHaveBeenCalled();
+    expect(mirrorMounted(root)).toBe(false);
+
+    // The live one still lands, on its own exercise.
+    act(() => { answer[1](0, INPUT_Y, INPUT_WIDTH, INPUT_HEIGHT); });
+    const split = unwrappedRows(LONG_NOTE, current);
+    layOutMirror(root, split.above, split.below);
+    expect(base.handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
+    expect(base.handlers.onSourceJumpApplied.mock.calls[0][0].y)
+      .toBeCloseTo(expectedPlacementY(split.above, split.below), 5);
+  });
+
+  test('#886: a measure that never answers still releases the jump, with no placement to scroll to', () => {
+    const target = LONG_NOTE.indexOf('-Exercise 12');
+    const { handlers } = armJump(LONG_NOTE, target, 'silent', () => {});
+    settleJump();
+    expireJumpWait();
+    expect(handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
+    expect(handlers.onSourceJumpApplied.mock.calls[0][0]).toBeUndefined();
+  });
+
+  test('#886: a mirror that never lays out still releases the jump within its timeout', () => {
+    const target = LONG_NOTE.indexOf('-Exercise 12');
+    const { handlers, root } = armJump(LONG_NOTE, target, 'nolayout', measuresTo(INPUT_Y, INPUT_HEIGHT));
+    settleJump();
+    expect(mirrorMounted(root)).toBe(true);
+    expireJumpWait();
+    expect(handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
+    expect(handlers.onSourceJumpApplied.mock.calls[0][0]).toBeUndefined();
+  });
+
+  test('#886: a failed measure releases the jump rather than scrolling to a guess', () => {
+    const target = LONG_NOTE.indexOf('-Exercise 12');
+    const { handlers } = armJump(LONG_NOTE, target, 'failed', (_rel, _ok, onFail) => onFail());
+    settleJump();
+    expect(handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
+    expect(handlers.onSourceJumpApplied.mock.calls[0][0]).toBeUndefined();
+  });
+
+  test('#886: a surface that has not laid out yet is retried, then reported once it has', () => {
+    const target = LONG_NOTE.indexOf('-Exercise 20');
+    let measured = 0;
+    const { handlers, root } = armJump(LONG_NOTE, target, 'settle', (_rel, onSuccess) => {
+      measured += 1;
+      // `display: none` right up to the frame the editor opens on, so the
+      // first measurements legitimately come back with nothing to measure.
+      const settled = measured >= 3;
+      onSuccess(0, settled ? INPUT_Y : 0, settled ? INPUT_WIDTH : 0, settled ? INPUT_HEIGHT : 0);
+    });
+    settleJump();
+    settleJump();
+    settleJump();
+    expect(measured).toBe(3);
+    const split = unwrappedRows(LONG_NOTE, target);
+    layOutMirror(root, split.above, split.below);
+    expect(handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
+    expect(handlers.onSourceJumpApplied.mock.calls[0][0].y)
+      .toBeCloseTo(expectedPlacementY(split.above, split.below), 5);
   });
 
   test('inert: a jump targeting a different note/mode never touches this surface', () => {

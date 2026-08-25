@@ -35,6 +35,12 @@ import {
 // touches until the first explicit Save gives it an id.
 const DRAFT_DEBOUNCE_MS = 400;
 
+// #886: how far below the top of the editor viewport a source-jumped exercise
+// header is parked. Enough breathing room to show the line above it (so the
+// landing reads as "here", not "cut off at the edge") while keeping the
+// exercise and its first set rows clear of the keyboard.
+const SOURCE_JUMP_TOP_GAP = 96;
+
 function currentDraftKey(currentId) {
   return currentId ? `current:${currentId}` : 'current:new';
 }
@@ -830,7 +836,11 @@ export function useLogCurrentRoutineEditor({
     }, Platform.OS === 'ios' ? 250 : 150);
   };
 
-  const openCurrentEditor = ({ restoreDraft }) => {
+  // `restoreScroll` (#886): the ordinary Edit button keeps its #150 behavior of
+  // carrying the read view's vertical offset into the editor, which preserves
+  // the user's reading position when both views are showing the same region.
+  // A source jump must NOT do that — see `handleExerciseSourceJump` below.
+  const openCurrentEditor = ({ restoreDraft, restoreScroll = true }) => {
     const scrollY = readScrollYRef.current;
     const expectedId = currentIdRef.current;
     const canonicalUpdatedAt = currentNoteRef.current?.updated_at ?? null;
@@ -849,7 +859,11 @@ export function useLogCurrentRoutineEditor({
     modeRef.current = 'edit';
     setMode('edit');
     requestAnimationFrame(() => {
-      editorScrollRef.current?.scrollTo({ y: scrollY, animated: false });
+      // #886: a source jump parks the editor at the top instead of inheriting
+      // the read view's offset. The editor scroll view is never unmounted (it
+      // is only `display: none`), so without this a repeat jump would open on
+      // whatever offset the previous editor session happened to end at.
+      editorScrollRef.current?.scrollTo({ y: restoreScroll ? scrollY : 0, animated: false });
     });
     if (restoreDraft) {
       restoreCurrentDraftIfSafe({
@@ -912,7 +926,23 @@ export function useLogCurrentRoutineEditor({
   // the matching text loaded. A discarded/stale anchor is a strict no-op:
   // the editor does not open and nothing here mutates the read view.
   const [pendingSourceJump, setPendingSourceJump] = useState(null);
-  const clearPendingSourceJump = () => setPendingSourceJump(null);
+
+  // #886: called by the editor surface once it has actually applied the jump.
+  // `placement.y` is the target line's own offset inside the EDITOR's scroll
+  // content, measured on the raw-text input — never the read view's offset,
+  // whose layout diverges from the raw text further down the note. When the
+  // surface could not measure itself there is nothing better to aim at, so
+  // the editor keeps the deterministic top-of-note landing `openCurrentEditor`
+  // already applied rather than being scrolled somewhere guessed.
+  const clearPendingSourceJump = (placement) => {
+    setPendingSourceJump(null);
+    if (!placement || !Number.isFinite(placement.y)) return;
+    editorScrollRef.current?.scrollTo({
+      y: Math.max(0, placement.y - SOURCE_JUMP_TOP_GAP),
+      animated: false,
+    });
+  };
+
   const handleExerciseSourceJump = (anchor) => {
     if (!anchor || anchor.noteId !== currentId) return;
     const weekIndex = hasABWeeks && effectiveActiveWeek === 'B' ? 1 : 0;
@@ -922,7 +952,13 @@ export function useLogCurrentRoutineEditor({
     if (anchor.weekIndex !== weekIndex) return;
     const range = resolveExerciseSourceAnchor(anchor, { noteId: currentId, weekIndex, sliceText: activeEditText });
     if (!range) return;
-    if (mode !== 'edit') openCurrentEditor({ restoreDraft: false });
+    // #886: `restoreScroll: false` — a source jump is not a "resume reading
+    // where you were" entry. Reusing the read view's offset here landed the
+    // editor at an arbitrary spot whose error grew with how deep the tapped
+    // exercise sat in the note, because the rendered and raw layouts diverge.
+    // The real landing is applied by `clearPendingSourceJump` above, from the
+    // editor's own measurement of the target line.
+    if (mode !== 'edit') openCurrentEditor({ restoreDraft: false, restoreScroll: false });
     setPendingSourceJump({
       start: range.end,
       end: range.end,
