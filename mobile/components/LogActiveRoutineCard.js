@@ -30,6 +30,11 @@ export function LogActiveRoutineCard({
   currentId,
   roughFlaggedNames,
   activeEditText,
+  // #881: exercise source-jump wiring — passed straight through to
+  // WorkoutContentRenderer, which no-ops the gesture whenever any of these
+  // is missing. `currentId` (already a prop above, for the flagged-name
+  // comparison) doubles as the source note id.
+  onExerciseSourceJump,
   recoveryWeekNumber = null,
   // #870: true while an active Recovery block has paused this stored
   // routine as the baseline it is standing in for. This card is the ONLY
@@ -168,6 +173,10 @@ export function LogActiveRoutineCard({
             roughFlaggedNames={roughFlaggedNames}
             emptyText="Add some exercises to see the formatted view."
             altWeekText={hasABWeeks ? activeEditText.trim() : ""}
+            sourceNoteId={currentId}
+            sourceWeekIndex={hasABWeeks && effectiveActiveWeek === 'B' ? 1 : 0}
+            sourceSliceText={activeEditText}
+            onExercisePress={onExerciseSourceJump}
           />
         </Pressable>
       </Card>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Keyboard, Platform } from 'react-native';
 import { Alert } from '../../lib/platformAlert';
-import { parseWorkoutNote, countWorkoutSessionsFromSections, applyWeekSkipToText } from '../../lib/parser';
+import { parseWorkoutNote, countWorkoutSessionsFromSections, applyWeekSkipToText, resolveExerciseSourceAnchor } from '../../lib/parser';
 import { removeWeekSkipFromText } from '../../lib/parser/workoutNote.js';
 import { deriveSessionAlignmentIssueFromSections } from '../../lib/parser/sessions.js';
 import {
@@ -591,6 +591,35 @@ export function useLogCurrentRoutineEditor({
     });
   };
 
+  // #881 (F10a §2/§6): resolves a double-tapped exercise's source anchor
+  // against the CURRENT live text for the week it was built against, and —
+  // only on success — opens the shared editor with a one-shot collapsed
+  // caret request for LogScreenEditorCard to apply once it has mounted with
+  // the matching text loaded. A discarded/stale anchor is a strict no-op:
+  // the editor does not open and nothing here mutates the read view.
+  const [pendingSourceJump, setPendingSourceJump] = useState(null);
+  const clearPendingSourceJump = () => setPendingSourceJump(null);
+  const handleExerciseSourceJump = (anchor) => {
+    if (!anchor || anchor.noteId !== currentId) return;
+    const weekIndex = hasABWeeks && effectiveActiveWeek === 'B' ? 1 : 0;
+    // The renderer only ever builds an anchor against the week it is
+    // currently rendering, so a mismatch here means the anchor is from a
+    // week that is no longer the active one — discard rather than guess.
+    if (anchor.weekIndex !== weekIndex) return;
+    const range = resolveExerciseSourceAnchor(anchor, { noteId: currentId, weekIndex, sliceText: activeEditText });
+    if (!range) return;
+    if (mode !== 'edit') enterCurrentEditor();
+    setPendingSourceJump({
+      start: range.end,
+      end: range.end,
+      editingNoteId: null,
+      currentMode: 'edit',
+      expectedText: activeEditText,
+      source: null,
+      token: `${Date.now()}-${Math.random()}`,
+    });
+  };
+
   // Raises the fatigue check-in, from the single trigger site: Done, after
   // handleSave has returned true. Precedence is evaluated top-down and the
   // first matching rule decides.
@@ -959,6 +988,9 @@ export function useLogCurrentRoutineEditor({
     handleNoteBodyPress,
     handleSave,
     enterCurrentEditor,
+    pendingSourceJump,
+    clearPendingSourceJump,
+    handleExerciseSourceJump,
     handleDoneCurrent,
     handleUndoCurrent,
     handleCurrentTextChange,

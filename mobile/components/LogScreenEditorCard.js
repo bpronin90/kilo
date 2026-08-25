@@ -260,6 +260,14 @@ export function LogScreenEditorCard({
   handleRevertEdit,
   currentMode,
   editingEffectiveWeek,
+  // #881 (F10a §4/§6): a double-tapped exercise's resolved source jump,
+  // reusing this card's existing one-shot `problemSelectionRequest`
+  // scaffolding rather than a parallel mechanism. `null` unless the pending
+  // jump targets THIS surface (current editor or a non-Recovery other note)
+  // — LogScreen filters out a Recovery-sourced jump before it ever reaches
+  // this prop, since Recovery applies its own equivalent locally.
+  pendingSourceJump = null,
+  onSourceJumpApplied,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -305,6 +313,7 @@ export function LogScreenEditorCard({
   }, [editingNoteId, deloadMode]);
   const editorText = editingNoteId ? editingText : activeEditText;
   const setEditorText = editingNoteId ? setEditingText : handleCurrentTextChange;
+
   const handleInsertSeedExample = () => {
     setEditorText(WORKOUT_SEED_EXAMPLE_TEXT);
     setSeedSelection({ start: WORKOUT_SEED_EXAMPLE_TEXT.length, end: WORKOUT_SEED_EXAMPLE_TEXT.length });
@@ -421,6 +430,28 @@ export function LogScreenEditorCard({
     setProblemSelectionRequest(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorIdentity]);
+
+  // #881 (F10a §4): applies a resolved exercise source jump as a one-shot
+  // collapsed caret via the existing `problemSelectionRequest` scaffolding,
+  // gated on the editor having actually mounted with the matching session
+  // (editingNoteId) and the exact target text loaded — never focusing ahead
+  // of that, which is what caused #865's selection race. Declared AFTER the
+  // `editorIdentity` reset effect above (PR #883 review): entering the
+  // current editor and requesting the jump both land in the same commit —
+  // `currentMode` flips 'read'→'edit', which changes `editorIdentity` too —
+  // so if this ran first, the identity-reset effect's unconditional
+  // `setProblemSelectionRequest(null)` would fire right after and clobber
+  // the just-applied selection before it ever painted.
+  useEffect(() => {
+    if (!pendingSourceJump) return;
+    if (pendingSourceJump.editingNoteId !== editingNoteId) return;
+    if (pendingSourceJump.editingNoteId == null && currentMode !== pendingSourceJump.currentMode) return;
+    if (editorText !== pendingSourceJump.expectedText) return;
+    setProblemSelectionRequest({ start: pendingSourceJump.start, end: pendingSourceJump.end });
+    editorInputRef.current?.focus();
+    onSourceJumpApplied?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingSourceJump, editingNoteId, currentMode, editorText]);
 
   // Follows a selected syntax problem's own physical line across each
   // debounced recompute (#863 review), using `_mapLineIndexAcrossEdit` to
