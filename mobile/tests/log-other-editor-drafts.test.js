@@ -6,6 +6,7 @@ import { useLogOtherRoutineEditor } from '../screens/log/useLogOtherRoutineEdito
 import {
   saveWorkoutNoteDraft,
   loadWorkoutNoteDraft,
+  loadWorkoutNoteDrafts,
 } from '../storage/entries/workoutNoteDrafts';
 
 // Regression coverage for PR #882 review finding 1: restore was wired only
@@ -63,11 +64,13 @@ async function flush(times = 3) {
 describe('useLogOtherRoutineEditor — draft restore wiring (#880 / PR #882 finding 1)', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
+    jest.useFakeTimers();
     mountedTrees = [];
   });
   afterEach(() => {
     mountedTrees.forEach((tree) => act(() => tree.unmount()));
     mountedTrees = [];
+    jest.useRealTimers();
   });
 
   test('restores a draft when opening an ordinary Previous Routines note via Edit (handleEditViewedNote)', async () => {
@@ -144,5 +147,27 @@ describe('useLogOtherRoutineEditor — draft restore wiring (#880 / PR #882 find
     await flush();
 
     expect(ref.current.editingText).toBe('Bench 3x5\nOHP 3x5');
+  });
+
+  test('separate new-routine typing windows keep one active draft', async () => {
+    const props = makeProps();
+    const { ref } = renderHook(props);
+    act(() => { ref.current.handleCreateRoutine(); });
+
+    // setEditingText is the real editor setter and therefore exercises the
+    // same pending-restore cancellation invoked by the card and Recovery UI.
+    for (let i = 1; i <= 12; i += 1) {
+      act(() => { ref.current.setEditingText(`Backlog set ${i}`); });
+      // eslint-disable-next-line no-await-in-loop
+      await act(async () => { jest.advanceTimersByTime(500); });
+      // eslint-disable-next-line no-await-in-loop
+      await flush();
+    }
+
+    const drafts = await loadWorkoutNoteDrafts('other:new');
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0].raw_text).toBe('Backlog set 12');
+    expect(props.add).not.toHaveBeenCalled();
+    expect(props.update).not.toHaveBeenCalled();
   });
 });

@@ -210,6 +210,7 @@ export function useLogCurrentRoutineEditor({
   const preserveExistingDraftRef = useRef(false);
   const lastDraftWriteSignatureRef = useRef(null);
   const draftRestoreTokenRef = useRef(0);
+  const draftRestorePendingRef = useRef(false);
   const modeRef = useRef(mode);
   modeRef.current = mode;
 
@@ -242,7 +243,12 @@ export function useLogCurrentRoutineEditor({
   // A pending async restore must yield to any real editor interaction. This is
   // what keeps restoration passive: it can never rewrite a focused value and
   // thereby move the caret or selection after the user has started editing.
+  // Preserve is armed once for that cancelled restore, not on every later
+  // keystroke; ordinary same-revision typing must keep replacing one active
+  // draft instead of retaining every debounce-window snapshot.
   const cancelPendingDraftRestore = () => {
+    if (!draftRestorePendingRef.current) return;
+    draftRestorePendingRef.current = false;
     draftRestoreTokenRef.current += 1;
     preserveExistingDraftRef.current = true;
   };
@@ -832,6 +838,7 @@ export function useLogCurrentRoutineEditor({
     const expectedText = workoutNoteTextRef.current;
     draftBaseUpdatedAtRef.current = canonicalUpdatedAt;
     preserveExistingDraftRef.current = !restoreDraft;
+    draftRestorePendingRef.current = restoreDraft;
     const restoreToken = draftRestoreTokenRef.current + 1;
     draftRestoreTokenRef.current = restoreToken;
     setOriginalNoteState({
@@ -878,18 +885,24 @@ export function useLogCurrentRoutineEditor({
     expectedText,
     restoreToken,
   }) => {
-    const key = currentDraftKey(expectedId);
-    const draft = await loadWorkoutNoteDraft(key, { baseUpdatedAt: canonicalUpdatedAt }).catch(() => null);
-    if (!draft) return;
-    if (draftRestoreTokenRef.current !== restoreToken) return;
-    if (currentIdRef.current !== expectedId || modeRef.current !== 'edit') return;
-    if ((currentNoteRef.current?.updated_at ?? null) !== canonicalUpdatedAt) return;
-    if (workoutNoteTitleRef.current !== expectedTitle || workoutNoteTextRef.current !== expectedText) return;
-    const draftText = draft.raw_text || '';
-    const draftTitle = draft.title || '';
-    if (draftText === workoutNoteTextRef.current && draftTitle === workoutNoteTitleRef.current) return;
-    setWorkoutNoteTitle(draftTitle);
-    setWorkoutNoteText(draftText);
+    try {
+      const key = currentDraftKey(expectedId);
+      const draft = await loadWorkoutNoteDraft(key, { baseUpdatedAt: canonicalUpdatedAt }).catch(() => null);
+      if (!draft) return;
+      if (draftRestoreTokenRef.current !== restoreToken) return;
+      if (currentIdRef.current !== expectedId || modeRef.current !== 'edit') return;
+      if ((currentNoteRef.current?.updated_at ?? null) !== canonicalUpdatedAt) return;
+      if (workoutNoteTitleRef.current !== expectedTitle || workoutNoteTextRef.current !== expectedText) return;
+      const draftText = draft.raw_text || '';
+      const draftTitle = draft.title || '';
+      if (draftText === workoutNoteTextRef.current && draftTitle === workoutNoteTitleRef.current) return;
+      setWorkoutNoteTitle(draftTitle);
+      setWorkoutNoteText(draftText);
+    } finally {
+      if (draftRestoreTokenRef.current === restoreToken) {
+        draftRestorePendingRef.current = false;
+      }
+    }
   };
 
   // #881 (F10a §2/§6): resolves a double-tapped exercise's source anchor

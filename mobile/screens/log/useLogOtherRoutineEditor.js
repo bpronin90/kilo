@@ -290,6 +290,7 @@ export function useLogOtherRoutineEditor({
   const preserveExistingDraftRef = useRef(false);
   const lastDraftWriteSignatureRef = useRef(null);
   const draftRestoreTokenRef = useRef(0);
+  const draftRestorePendingRef = useRef(false);
   const notesRef = useRef(notes);
   notesRef.current = notes;
 
@@ -321,6 +322,8 @@ export function useLogOtherRoutineEditor({
   };
 
   const cancelPendingDraftRestore = () => {
+    if (!draftRestorePendingRef.current) return;
+    draftRestorePendingRef.current = false;
     draftRestoreTokenRef.current += 1;
     preserveExistingDraftRef.current = true;
   };
@@ -531,6 +534,7 @@ export function useLogOtherRoutineEditor({
     draftRestoreTokenRef.current = restoreToken;
     draftBaseUpdatedAtRef.current = canonicalUpdatedAt;
     preserveExistingDraftRef.current = !restoreDraft;
+    draftRestorePendingRef.current = restoreDraft;
     editingNoteIdRef.current = note.id;
     editingSourceRef.current = source;
     editingTitleRef.current = note.title || '';
@@ -613,6 +617,7 @@ export function useLogOtherRoutineEditor({
     draftRestoreTokenRef.current = restoreToken;
     draftBaseUpdatedAtRef.current = canonicalUpdatedAt;
     preserveExistingDraftRef.current = false;
+    draftRestorePendingRef.current = true;
     editingNoteIdRef.current = other.id;
     editingSourceRef.current = null;
     editingTitleRef.current = other.title || '';
@@ -673,21 +678,27 @@ export function useLogOtherRoutineEditor({
     expectedText,
     restoreToken,
   }) => {
-    const key = otherDraftKey(expectedId, expectedSource);
-    if (!key) return;
-    const draft = await loadWorkoutNoteDraft(key, { baseUpdatedAt: canonicalUpdatedAt }).catch(() => null);
-    if (!draft) return;
-    if (editingNoteIdRef.current !== expectedId) return;
-    if (editingSourceRef.current !== expectedSource) return;
-    if (draftRestoreTokenRef.current !== restoreToken) return;
-    const currentCanonical = notesRef.current.find((note) => note.id === expectedId);
-    if ((currentCanonical?.updated_at ?? null) !== canonicalUpdatedAt) return;
-    if (editingTitleRef.current !== expectedTitle || editingFullTextRef.current !== expectedText) return;
-    const draftText = draft.raw_text || '';
-    const draftTitle = draft.title || '';
-    if (draftText === editingFullTextRef.current && draftTitle === editingTitleRef.current) return;
-    setEditingTitle(draftTitle);
-    setEditingFullText(draftText);
+    try {
+      const key = otherDraftKey(expectedId, expectedSource);
+      if (!key) return;
+      const draft = await loadWorkoutNoteDraft(key, { baseUpdatedAt: canonicalUpdatedAt }).catch(() => null);
+      if (!draft) return;
+      if (editingNoteIdRef.current !== expectedId) return;
+      if (editingSourceRef.current !== expectedSource) return;
+      if (draftRestoreTokenRef.current !== restoreToken) return;
+      const currentCanonical = notesRef.current.find((note) => note.id === expectedId);
+      if ((currentCanonical?.updated_at ?? null) !== canonicalUpdatedAt) return;
+      if (editingTitleRef.current !== expectedTitle || editingFullTextRef.current !== expectedText) return;
+      const draftText = draft.raw_text || '';
+      const draftTitle = draft.title || '';
+      if (draftText === editingFullTextRef.current && draftTitle === editingTitleRef.current) return;
+      setEditingTitle(draftTitle);
+      setEditingFullText(draftText);
+    } finally {
+      if (draftRestoreTokenRef.current === restoreToken) {
+        draftRestorePendingRef.current = false;
+      }
+    }
   };
 
   const handleSaveOtherNote = ({ autosave = false } = {}) => {
@@ -1121,6 +1132,7 @@ export function useLogOtherRoutineEditor({
     draftRestoreTokenRef.current = restoreToken;
     draftBaseUpdatedAtRef.current = null;
     preserveExistingDraftRef.current = !!seed;
+    draftRestorePendingRef.current = !seed;
     editingNoteIdRef.current = 'new';
     editingSourceRef.current = null;
     editingTitleRef.current = initialTitle;

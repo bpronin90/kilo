@@ -181,6 +181,68 @@ describe('useLogCurrentRoutineEditor — durable drafts (#880)', () => {
     expect(live.props.update).not.toHaveBeenCalled();
   });
 
+  test('separate typing windows keep one active new-note draft instead of retaining every snapshot', async () => {
+    const live = makeLiveProps();
+    const { ref, rerender } = renderHook(live.build());
+    act(() => { ref.current.enterCurrentEditor(); });
+
+    // Exercise the real change handler because it also cancels a pending
+    // restore. That cancellation is a one-shot preservation boundary; it
+    // must not re-arm retention on the next eleven ordinary changes.
+    for (let i = 1; i <= 12; i += 1) {
+      act(() => { ref.current.handleCurrentTextChange(`Day 1\nSet ${i}`); });
+      rerender(live.build());
+      // eslint-disable-next-line no-await-in-loop
+      await act(async () => { jest.advanceTimersByTime(500); });
+      // eslint-disable-next-line no-await-in-loop
+      await flush();
+    }
+
+    const drafts = await loadWorkoutNoteDrafts('current:new');
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0].raw_text).toBe('Day 1\nSet 12');
+    expect(live.props.add).not.toHaveBeenCalled();
+    expect(live.props.update).not.toHaveBeenCalled();
+  });
+
+  test('cancelling a pending restore preserves its draft once while later typing replaces only the active copy', async () => {
+    await saveWorkoutNoteDraft('current:new', {
+      title: 'Interrupted routine',
+      raw_text: 'Interrupted text',
+      baseUpdatedAt: null,
+    });
+    const live = makeLiveProps();
+    const { ref, rerender } = renderHook(live.build());
+    act(() => { ref.current.enterCurrentEditor(); });
+
+    // Interact before the asynchronous restore can apply. The stored draft is
+    // retained because changing the controlled value must win without
+    // destroying the interrupted work.
+    act(() => { ref.current.handleCurrentTextChange('Fresh text 1'); });
+    rerender(live.build());
+    await act(async () => { jest.advanceTimersByTime(500); });
+    await flush();
+
+    let drafts = await loadWorkoutNoteDrafts('current:new');
+    expect(drafts.map((draft) => draft.raw_text)).toEqual(
+      expect.arrayContaining(['Interrupted text', 'Fresh text 1']),
+    );
+    expect(drafts).toHaveLength(2);
+
+    // A later ordinary typing window updates the active draft. It must not
+    // archive Fresh text 1 as a third retained keystroke snapshot.
+    act(() => { ref.current.handleCurrentTextChange('Fresh text 2'); });
+    rerender(live.build());
+    await act(async () => { jest.advanceTimersByTime(500); });
+    await flush();
+
+    drafts = await loadWorkoutNoteDrafts('current:new');
+    expect(drafts.map((draft) => draft.raw_text)).toEqual(
+      expect.arrayContaining(['Interrupted text', 'Fresh text 2']),
+    );
+    expect(drafts).toHaveLength(2);
+  });
+
   test('restores a draft on entering the editor when it matches the canonical note version', async () => {
     const note = { id: 'note-1', title: 'Push Day', raw_text: 'Bench 3x5', updated_at: '2026-08-01T00:00:00.000Z' };
     await saveWorkoutNoteDraft('current:note-1', {
