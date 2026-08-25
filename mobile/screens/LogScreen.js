@@ -954,6 +954,20 @@ export function LogScreen({
     ? deloadEditor.isSaving
     : currentEditor.isSaving;
 
+  const activeSaveStatus = deloadEditor.deloadMode === 'edit'
+    ? deloadEditor.isSaving
+      ? 'saving'
+      : deloadEditor.saveSuccess
+        ? 'saved'
+        : null
+    : otherEditor.editingNoteId
+      ? otherEditor.saveStatus
+      : currentEditor.saveStatus;
+
+  const activeEditorInteraction = otherEditor.editingNoteId
+    ? otherEditor.cancelPendingDraftRestore
+    : currentEditor.cancelPendingDraftRestore;
+
   return (
     <>
       <ScreenShell
@@ -1096,6 +1110,7 @@ export function LogScreen({
                 currentId={currentId}
                 roughFlaggedNames={currentEditor.roughFlaggedNames}
                 activeEditText={currentEditor.activeEditText}
+                onExerciseSourceJump={currentEditor.handleExerciseSourceJump}
                 recoveryWeekNumber={currentRecoveryWeekNumber}
                 baselinePaused={currentIsPausedBaseline}
               />
@@ -1112,6 +1127,8 @@ export function LogScreen({
                 viewingNoteDayGroups={otherEditor.recoveryViewingNoteDayGroups}
                 viewingHasABWeeks={otherEditor.recoveryViewingHasABWeeks}
                 viewingEffectiveWeek={otherEditor.recoveryViewingEffectiveWeek}
+                viewingActiveText={otherEditor.recoveryViewingActiveText}
+                onExerciseSourceJump={otherEditor.handleRecoveryExerciseSourceJump}
                 onToggleViewingWeek={otherEditor.handleToggleRecoveryViewingWeek}
                 onEditNote={otherEditor.handleEditRecoveryViewedNote}
                 // Inline recovery-note editor wiring (#841): a note is being
@@ -1129,8 +1146,13 @@ export function LogScreen({
                 onToggleEditingWeek={otherEditor.handleToggleEditingWeek}
                 editingIsSaving={otherEditor.noteIsSaving}
                 editingSaveError={otherEditor.saveError}
+                editingSaveSuccess={otherEditor.saveSuccess}
+                editingSaveStatus={otherEditor.saveStatus}
+                onEditorInteraction={otherEditor.cancelPendingDraftRestore}
                 onSaveEdit={otherEditor.handleDoneOther}
                 onCancelEdit={otherEditor.handleCancelRecoveryEdit}
+                pendingSourceJump={otherEditor.pendingSourceJump}
+                onSourceJumpApplied={otherEditor.clearPendingSourceJump}
                 onCompleteWeek={handleCompleteCurrentWeek}
                 onUndoCompleteWeek={handleUndoCompleteWeek}
                 onOpenAddWeek={openAddWeekModal}
@@ -1197,6 +1219,8 @@ export function LogScreen({
                 viewingNoteDayGroups={otherEditor.viewingNoteDayGroups}
                 viewingHasABWeeks={otherEditor.viewingHasABWeeks}
                 viewingEffectiveWeek={otherEditor.viewingEffectiveWeek}
+                viewingActiveText={otherEditor.viewingActiveText}
+                onExerciseSourceJump={otherEditor.handleRoutineExerciseSourceJump}
                 handleToggleViewingWeek={otherEditor.handleToggleViewingWeek}
                 handleSwitchCurrent={otherEditor.handleSwitchCurrent}
                 handleEditViewedNote={otherEditor.handleEditViewedNote}
@@ -1274,6 +1298,8 @@ export function LogScreen({
           isSaving={activeIsSaving}
           saveSuccess={activeSaveSuccess}
           saveError={activeSaveError}
+          saveStatus={activeSaveStatus}
+          onEditorInteraction={activeEditorInteraction}
           editingNoteId={otherEditor.editingNoteId}
           isEditingDeloadNote={otherEditor.isEditingDeloadNote}
           editingTitle={otherEditor.editingTitle}
@@ -1317,6 +1343,17 @@ export function LogScreen({
           }
           currentMode={currentEditor.mode}
           editingEffectiveWeek={otherEditor.editingEffectiveWeek}
+          // #881: whichever pending source jump targets THIS shared card —
+          // the current-editor session (`editingNoteId` null) or a
+          // non-Recovery other note. A Recovery-sourced jump is filtered out
+          // here; LogRecoverySection applies that one itself, on its own
+          // inline TextInput.
+          pendingSourceJump={
+            otherEditor.editingNoteId
+              ? (otherEditor.pendingSourceJump?.source === 'recovery' ? null : otherEditor.pendingSourceJump)
+              : currentEditor.pendingSourceJump
+          }
+          onSourceJumpApplied={otherEditor.editingNoteId ? otherEditor.clearPendingSourceJump : currentEditor.clearPendingSourceJump}
         />
       </ScreenShell>
       <SessionCheckInModal

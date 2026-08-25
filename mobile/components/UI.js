@@ -227,14 +227,18 @@ export function WorkoutSubheading({ children, selectable }) {
   );
 }
 
-export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabledTrack, selectable }) {
+export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabledTrack, selectable, onNamePress }) {
   const styles = useThemedStyles(createStyles);
   const TrackContainer = (disabledTrack || !onToggleTrack) ? View : Pressable;
 
   return (
     <View style={styles.exerciseBlock}>
       <View style={styles.exerciseHeader}>
-        <Text selectable={selectable} style={styles.exerciseName}>{name}</Text>
+        {/* #881: `onNamePress` (when provided) carries WorkoutContentRenderer's
+            manual double-tap detector — a plain onPress on a selectable Text
+            has no effect on native long-press/selection, so single-tap and
+            text-selection behavior are unchanged. */}
+        <Text selectable={selectable} style={styles.exerciseName} onPress={onNamePress}>{name}</Text>
         {(onToggleTrack || disabledTrack) && (
           <TrackContainer 
             onPress={disabledTrack ? null : onToggleTrack}

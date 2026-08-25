@@ -16,7 +16,7 @@
 // Current routine card remains locked. `End recovery block` now opens
 // `RecoveryBlockEndModal` (owned by LogScreen) instead of `Alert.alert`.
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Alert } from '../lib/platformAlert';
@@ -34,6 +34,12 @@ import {
 } from '../hooks/entries/recoveryBlockHooks';
 import { RECOVERY_INCLUSION_HELP } from './RecoveryInclusionToggle';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
+// #880 revised body: Recovery renders its own inline editor and does not
+// inherit LogScreenEditorCard's status region, so it reuses the exact same
+// component — same Saving…/Saved/Not-yet-synced semantics, same reserved
+// layout space, same debounced-announcement behavior — rather than a
+// parallel implementation that could silently drift from it.
+import { SaveStatusRegion } from './LogScreenEditorCard';
 export { RECOVERY_INCLUSION_LABEL } from './RecoveryInclusionToggle';
 
 // A week whose `note_id` is null, or names a note that is not in the notebook,
@@ -81,6 +87,10 @@ export function LogRecoverySection({
   viewingNoteDayGroups = [],
   viewingHasABWeeks = false,
   viewingEffectiveWeek = null,
+  // #881: the exact slice `viewingNoteDayGroups` was built from, and the
+  // handler that resolves+opens a double-tapped exercise's source jump.
+  viewingActiveText = null,
+  onExerciseSourceJump,
   onToggleViewingWeek,
   // Opens the shared note editor on the currently-viewed note (#823) —
   // `otherEditor.handleEditViewedNote`, which takes no argument and reads
@@ -107,8 +117,23 @@ export function LogRecoverySection({
   onToggleEditingWeek,
   editingIsSaving = false,
   editingSaveError = '',
+  // #880 revised body: the same durable-save state the shared editor card
+  // shows (Saved / Not yet synced), sourced from the SAME
+  // useLogOtherRoutineEditor instance (`editingSource === 'recovery'` is
+  // just one entry point into it).
+  editingSaveSuccess = '',
+  editingSaveStatus = null,
+  onEditorInteraction,
   onSaveEdit,
   onCancelEdit,
+  // #881 (F10a §4/§6): a double-tapped exercise's resolved source jump,
+  // built by useLogOtherRoutineEditor's `resolveAndOpenSourceJump` and
+  // consumed here — never in the shared LogScreenEditorCard — because the
+  // Recovery inline editor has no shared TextInput scaffolding of its own.
+  // `null` unless the pending jump targets THIS surface (`source ===
+  // 'recovery'`); LogScreen is responsible for that filtering.
+  pendingSourceJump = null,
+  onSourceJumpApplied,
   onCompleteWeek,
   // Reopens the most recently completed week (#836), restoring it to
   // in-progress without touching its note. LogScreen only offers this when
@@ -207,6 +232,30 @@ export function LogRecoverySection({
   // (LogPreviousRoutines.js's viewingNoteLastTapRef), reproduced here rather
   // than shared because the two components track different Allowed Files.
   const viewingNoteLastTapRef = useRef(0);
+
+  // #881 (F10a §4): equivalent one-shot collapsed-caret behavior for the
+  // Recovery inline editor's own `editingText` TextInput — no shared
+  // scaffolding exists here (LogScreenEditorCard's `problemSelectionRequest`
+  // is a different file), so this reproduces the same set-once, render-once,
+  // release-on-onSelectionChange lifecycle locally. Applied only once
+  // `editingNoteId`/`editingText` actually match the jump's target (guards
+  // against focusing before the target text has loaded, per #865).
+  const recoveryEditingTextInputRef = useRef(null);
+  const [recoverySelectionRequest, setRecoverySelectionRequest] = useState(null);
+  useEffect(() => {
+    if (!recoverySelectionRequest) return undefined;
+    const timer = setTimeout(() => setRecoverySelectionRequest(null), 0);
+    return () => clearTimeout(timer);
+  }, [recoverySelectionRequest]);
+  useEffect(() => {
+    if (!pendingSourceJump || pendingSourceJump.source !== 'recovery') return;
+    if (pendingSourceJump.editingNoteId !== editingNoteId) return;
+    if (pendingSourceJump.expectedText !== editingText) return;
+    setRecoverySelectionRequest({ start: pendingSourceJump.start, end: pendingSourceJump.end });
+    recoveryEditingTextInputRef.current?.focus();
+    onSourceJumpApplied?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingSourceJump, editingNoteId, editingText]);
 
   const activeBlock = findActiveBlock(blocks);
   // Two distinct states. A PENDING operation locks conflicting actions, because a
@@ -656,7 +705,11 @@ export function LogRecoverySection({
                             <View style={styles.inlineEditor}>
                               <TextInput
                                 value={editingTitle}
-                                onChangeText={onChangeEditingTitle}
+                                onChangeText={(next) => {
+                                  onEditorInteraction?.();
+                                  onChangeEditingTitle?.(next);
+                                }}
+                                onFocus={onEditorInteraction}
                                 placeholder="Routine Name"
                                 placeholderTextColor={colors.textMuted}
                                 autoCorrect={false}
@@ -666,8 +719,13 @@ export function LogRecoverySection({
                                 accessibilityLabel="Recovery note title"
                               />
                               <TextInput
+                                ref={recoveryEditingTextInputRef}
                                 value={editingText}
-                                onChangeText={onChangeEditingText}
+                                onChangeText={(next) => {
+                                  onEditorInteraction?.();
+                                  onChangeEditingText?.(next);
+                                }}
+                                onFocus={onEditorInteraction}
                                 placeholder="Workout note…"
                                 placeholderTextColor={colors.textMuted}
                                 multiline
@@ -676,10 +734,19 @@ export function LogRecoverySection({
                                 spellCheck={false}
                                 style={styles.inlineEditorTextInput}
                                 accessibilityLabel="Recovery note text"
+                                selection={recoverySelectionRequest ?? undefined}
+                                onSelectionChange={() => {
+                                  if (!recoverySelectionRequest) return;
+                                  setRecoverySelectionRequest(null);
+                                }}
                               />
                               {editingSaveError ? (
                                 <Text style={styles.errorBannerText}>{editingSaveError}</Text>
                               ) : null}
+                              <SaveStatusRegion
+                                status={editingSaveStatus}
+                                savedLabel={editingSaveSuccess || undefined}
+                              />
                               <View style={styles.weekNoteActions}>
                                 {editingHasABWeeks && (
                                   <ABSegment
@@ -706,7 +773,7 @@ export function LogRecoverySection({
                                   accessibilityState={{ disabled: editingIsSaving }}
                                 >
                                   <Text style={styles.inlineSwitchButtonText}>
-                                    {editingIsSaving ? 'Saving…' : 'Save'}
+                                    Save
                                   </Text>
                                 </Pressable>
                               </View>
@@ -742,6 +809,10 @@ export function LogRecoverySection({
                                   dayGroups={viewingNoteDayGroups}
                                   emptyText="No exercises to display."
                                   compact
+                                  sourceNoteId={linkedNote?.id ?? null}
+                                  sourceWeekIndex={viewingHasABWeeks && viewingEffectiveWeek === 'B' ? 1 : 0}
+                                  sourceSliceText={viewingActiveText}
+                                  onExercisePress={onExerciseSourceJump}
                                 />
                               </Pressable>
                               <View style={styles.weekNoteActions}>
