@@ -15,3 +15,6 @@ GEMINI.md
 # Local-only agent workflow tooling
 scripts/close-issue.sh
 docs/archive/closeout-script-spec.md
+
+# Local-only audit evidence containing production health data
+docs/ux-friction-audit.md
