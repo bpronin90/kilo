@@ -218,6 +218,84 @@ function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
   });
 }
 
+// Save-state region shared by the full-screen editor card and Recovery's
+// own inline editor (#880 revised body — Recovery renders its own editor and
+// does not inherit this card's status region, so it must reuse this exact
+// component rather than a parallel implementation with different semantics).
+//
+// Three possible labels, in priority order:
+//   Saving…        — a write for this note is in flight right now.
+//   Saved / <text> — the caller's own success text (e.g. "Saved on device",
+//                    "Saved!"); local durability, never downgraded by an
+//                    unconfirmed cloud upload.
+//   Not yet synced — locally durable, but the sync queue still has this note
+//                    dirty or the last sync pass failed. Derived upstream
+//                    from syncQueue/syncRecovery, never a network probe —
+//                    this component only renders whatever `pendingConvergence`
+//                    it is handed.
+//
+// Non-interference (#880 revised body): the outer View reserves a fixed
+// minHeight regardless of which (or no) label is showing, so text appearing,
+// changing, or disappearing never reflows the editor or moves a control
+// under the user's finger. The Text itself only ever gets
+// `accessibilityLiveRegion="polite"` — it is never focusable and never calls
+// any focus API, so it cannot steal or move focus, and it renders no
+// pressable, so there is nothing here for the user to tap.
+//
+// Announcements fire on state TRANSITIONS only, debounced: `displayedLabel`
+// only adopts a new raw label after it has held steady for
+// SAVE_STATUS_ANNOUNCE_DEBOUNCE_MS, so a rapid Saving…→Saved flip (a fast
+// local write) collapses into a single eventual update/announcement instead
+// of two. The FIRST label a mount computes is applied immediately (no lag on
+// initial mount) because `useState(computeSaveStatusLabel(...))` seeds
+// `displayedLabel` with it directly — only SUBSEQUENT changes are debounced.
+const SAVE_STATUS_ANNOUNCE_DEBOUNCE_MS = 220;
+
+export function computeSaveStatusLabel({ isSaving, saveSuccess, pendingConvergence }) {
+  if (isSaving) return 'Saving…';
+  if (saveSuccess) return saveSuccess;
+  if (pendingConvergence) return 'Not yet synced';
+  return '';
+}
+
+export function SaveStatusRegion({ isSaving, saveSuccess, pendingConvergence, style, testID }) {
+  const styles = useThemedStyles(createStyles);
+  const rawLabel = computeSaveStatusLabel({ isSaving, saveSuccess, pendingConvergence });
+  const [displayedLabel, setDisplayedLabel] = useState(rawLabel);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    if (rawLabel === displayedLabel) return undefined;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      setDisplayedLabel(rawLabel);
+    }, SAVE_STATUS_ANNOUNCE_DEBOUNCE_MS);
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawLabel]);
+
+  useEffect(() => () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }, []);
+
+  return (
+    <View style={[styles.saveStatusRegion, style]} testID={testID}>
+      <Text
+        style={styles.autosaveIndicator}
+        accessibilityLiveRegion="polite"
+      >
+        {displayedLabel || ''}
+      </Text>
+    </View>
+  );
+}
+
 export function LogScreenEditorCard({
   deloadMode,
   deloadEditText,
@@ -226,6 +304,7 @@ export function LogScreenEditorCard({
   isSaving,
   saveSuccess,
   saveError,
+  pendingConvergence,
   editingNoteId,
   isEditingDeloadNote,
   editingTitle,
@@ -805,17 +884,13 @@ export function LogScreenEditorCard({
                 disabled={editingNoteId ? noteIsSaving : isSaving}
                 style={styles.saveButton}
               />
-            ) : (editingNoteId ? noteIsSaving : isSaving) ? (
-              // Truthful, non-noisy "Saving…" state (#880): shown only for
-              // the exact span the local write is actually in flight, so it
-              // never says the note is durable before it is. It replaces
-              // itself with `saveSuccess` (below) the instant the write
-              // resolves — one accessibilityLiveRegion node, one announcement
-              // per state change, never a repeat of the same text.
-              <Text style={styles.autosaveIndicator} accessibilityLiveRegion="polite">Saving…</Text>
-            ) : saveSuccess ? (
-              <Text style={styles.autosaveIndicator} accessibilityLiveRegion="polite">{saveSuccess}</Text>
-            ) : null}
+            ) : (
+              <SaveStatusRegion
+                isSaving={editingNoteId ? noteIsSaving : isSaving}
+                saveSuccess={saveSuccess}
+                pendingConvergence={pendingConvergence}
+              />
+            )}
             {/* A failed write must be visible where the write was asked for.
                 Without this the `Save & Switch` save-failure path (#745 Part 6
                 P6) was silent, which reads as a cancelled adoption rather than
@@ -1068,6 +1143,15 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'right',
     marginTop: 8,
+  },
+  // Fixed height regardless of whether a label is showing (#880 revised
+  // body, non-interference): 12px font + 8px marginTop from
+  // autosaveIndicator above, rounded up — so the region's own height never
+  // changes as its text appears, changes, or clears, and nothing below it in
+  // the card ever reflows.
+  saveStatusRegion: {
+    minHeight: 28,
+    justifyContent: 'center',
   },
   saveErrorText: {
     fontSize: 13,

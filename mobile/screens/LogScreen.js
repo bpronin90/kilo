@@ -954,6 +954,16 @@ export function LogScreen({
     ? deloadEditor.isSaving
     : currentEditor.isSaving;
 
+  // #880 revised body: pending-cloud-convergence for whichever note is
+  // active in the shared editor card. The deload editor is outside this
+  // issue's Allowed Files and does not track convergence, so it stays
+  // `false` there rather than guessing.
+  const activePendingConvergence = deloadEditor.deloadMode === 'edit'
+    ? false
+    : otherEditor.editingNoteId
+      ? otherEditor.pendingConvergence
+      : currentEditor.pendingConvergence;
+
   return (
     <>
       <ScreenShell
@@ -1132,6 +1142,8 @@ export function LogScreen({
                 onToggleEditingWeek={otherEditor.handleToggleEditingWeek}
                 editingIsSaving={otherEditor.noteIsSaving}
                 editingSaveError={otherEditor.saveError}
+                editingSaveSuccess={otherEditor.saveSuccess}
+                editingPendingConvergence={otherEditor.pendingConvergence}
                 onSaveEdit={otherEditor.handleDoneOther}
                 onCancelEdit={otherEditor.handleCancelRecoveryEdit}
                 pendingSourceJump={otherEditor.pendingSourceJump}
@@ -1281,6 +1293,7 @@ export function LogScreen({
           isSaving={activeIsSaving}
           saveSuccess={activeSaveSuccess}
           saveError={activeSaveError}
+          pendingConvergence={activePendingConvergence}
           editingNoteId={otherEditor.editingNoteId}
           isEditingDeloadNote={otherEditor.isEditingDeloadNote}
           editingTitle={otherEditor.editingTitle}

@@ -14,6 +14,9 @@ import {
   computeWeeksIn,
 } from '../../lib/data';
 import { loadRecoveryExcludedNoteIds } from '../../hooks/entries/recoveryBlockHooks';
+import { subscribeDirtyQueue, getDirtyRecords, SYNC_TABLES } from '../../storage/syncQueue';
+import { subscribeSyncState, getSyncState, SYNC_PHASE, SYNC_STATUS } from '../../storage/syncRecovery';
+import { getStorageMode, STORAGE_MODES } from '../../storage/entries';
 import { AUTOSAVE_DEBOUNCE_MS, DELOAD_NOTE_PREFIX } from '../../lib/LogScreenHelpers';
 import { buildDayGroups } from './logScreenHelpers';
 import {
@@ -32,6 +35,65 @@ const DRAFT_DEBOUNCE_MS = 400;
 
 function currentDraftKey(currentId) {
   return currentId ? `current:${currentId}` : 'current:new';
+}
+
+// Pending-cloud-convergence state (#880 revised body). Deliberately NOT a
+// network check — there is no network-detection infrastructure in this app,
+// and a network probe would not be evidence of convergence anyway (a device
+// can be online with a failed/backed-up queue, or briefly offline with
+// nothing pending). Derived from two existing, already-authoritative
+// sources: the sync queue's own dirty record for THIS note
+// (`getDirtyRecords`/`subscribeDirtyQueue`), and `syncRecovery`'s
+// SYNC_STATUS for the SYNC phase (`FAILED` means the last pass could not
+// push/pull, so anything queued is stuck until retry). A note with no dirty
+// record and no sync failure has nothing left to converge — including every
+// note on a local-only (never signed in) device, where nothing is ever
+// enqueued in the first place.
+//
+// Kept local to this file (and its `useLogOtherRoutineEditor.js` twin)
+// rather than in the shared `workoutNoteHooks.js` module: that module is
+// already imported by `recoveryBlockHooks.js`, which both editor hooks also
+// import — a top-level import of syncQueue/syncRecovery added to
+// workoutNoteHooks.js completed a circular-import cycle that left an
+// unrelated hook (`useRecoveryBlockLifecycle`) partially initialized in some
+// test orderings. Leaf-level duplication here avoids that cycle entirely.
+function useNoteConvergencePending(noteId) {
+  const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    // Local-only mode never enqueues anything (writeVia only calls through
+    // to the cloud adapter's enqueue path in cloud mode — see
+    // hooks/entries/storageMode.js), so a local-only device can never have a
+    // dirty record for any note; skip the async read/subscribe entirely
+    // rather than paying for (and awaiting) a check whose answer is always
+    // "nothing pending". This is the overwhelmingly common case.
+    if (!noteId || getStorageMode() !== STORAGE_MODES.CLOUD) {
+      setPending(false);
+      return undefined;
+    }
+    let cancelled = false;
+    const recompute = async () => {
+      let dirty = [];
+      try {
+        dirty = await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES);
+      } catch {
+        dirty = [];
+      }
+      const isDirty = dirty.some((r) => r?.id === noteId);
+      const syncFailed = getSyncState()[SYNC_PHASE.SYNC]?.status === SYNC_STATUS.FAILED;
+      if (!cancelled) setPending(isDirty || syncFailed);
+    };
+    recompute();
+    const unsubDirty = subscribeDirtyQueue(recompute);
+    const unsubSync = subscribeSyncState(recompute);
+    return () => {
+      cancelled = true;
+      unsubDirty();
+      unsubSync();
+    };
+  }, [noteId]);
+
+  return pending;
 }
 
 function isValidActiveWeek(value) {
@@ -86,6 +148,10 @@ export function useLogCurrentRoutineEditor({
   readScrollRef,
 }) {
   const [mode, setMode] = useState('read');
+  // #880 revised body: pending-cloud-convergence, derived from the sync
+  // queue/recovery state — never a network check. `null` while the note is
+  // brand-new (no id, nothing could be enqueued for it yet).
+  const pendingConvergence = useNoteConvergencePending(currentId || null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
@@ -675,11 +741,18 @@ export function useLogCurrentRoutineEditor({
 
   // Restores a cheap local draft into the live editor on opening the editor
   // (covers foreground/restart: the app process may have been killed with an
-  // unsaved draft still on disk). Only trusted when its `baseUpdatedAt`
+  // unsaved draft still on disk). Auto-applied ONLY when its `baseUpdatedAt`
   // matches the canonical note's `updated_at` this editor is opening on (or
-  // `null`, for a note that has none yet) — a mismatch means the canonical
-  // record moved on since the draft was written (e.g. a cloud merge), and the
-  // draft must never silently overwrite it (#880 acceptance).
+  // `null`, for a note that has none yet).
+  //
+  // #880 revised body (reversal): a mismatch means the canonical record moved
+  // on while the user had unsaved text — that text is precisely the
+  // interrupted work this issue exists to protect. A mismatched draft is
+  // therefore NEVER auto-applied and NEVER deleted here; canonical content is
+  // shown instead, and the draft stays stored and recoverable until the user
+  // explicitly discards/reverts, or a later successful save supersedes it.
+  // (An earlier version of this code cleared the draft on mismatch — that was
+  // itself the data-loss bug this rule now forbids.)
   const restoreCurrentDraftIfSafe = async () => {
     const expectedId = currentIdRef.current;
     const canonicalUpdatedAt = currentNoteRef.current?.updated_at ?? null;
@@ -689,10 +762,7 @@ export function useLogCurrentRoutineEditor({
     // The context may have changed while this read was in flight (editor
     // closed, or a different note opened).
     if (currentIdRef.current !== expectedId || modeRef.current !== 'edit') return;
-    if (draft.baseUpdatedAt !== canonicalUpdatedAt) {
-      clearWorkoutNoteDraft(key).catch(() => {});
-      return;
-    }
+    if (draft.baseUpdatedAt !== canonicalUpdatedAt) return; // retained, not deleted
     const draftText = draft.raw_text || '';
     const draftTitle = draft.title || '';
     if (draftText === workoutNoteTextRef.current && draftTitle === workoutNoteTitleRef.current) return;
@@ -1073,13 +1143,30 @@ export function useLogCurrentRoutineEditor({
     }
   };
 
+  // #880 revised body, BLOCKER 1: `Saved` is a claim about one specific
+  // {title, raw_text} snapshot and must stop being displayed the instant the
+  // live editor no longer shows that exact snapshot — during the debounce
+  // window, while an older write is still in flight, or on overlapping
+  // writes. `lastSavedCurrentTextRef`/`TitleRef` already record exactly the
+  // {title, raw_text} the most recent successful save actually persisted
+  // (set only when that save resolves); comparing them against the LIVE
+  // values on every render — not just at the moment the save resolved — is
+  // what closes the gap where a completed save's "Saved on device" flash
+  // would otherwise keep showing for up to its 2s timeout even after the
+  // user typed something new.
+  const liveTextMatchesLastSave =
+    workoutNoteText === lastSavedCurrentTextRef.current &&
+    workoutNoteTitle === lastSavedCurrentTitleRef.current;
+  const boundSaveSuccess = saveSuccess && liveTextMatchesLastSave ? saveSuccess : '';
+
   return {
     mode,
     isSaving,
     saveError,
     setSaveError,
-    saveSuccess,
+    saveSuccess: boundSaveSuccess,
     setSaveSuccess,
+    pendingConvergence,
     originalNoteState,
     setOriginalNoteState,
     roughFlaggedNames,

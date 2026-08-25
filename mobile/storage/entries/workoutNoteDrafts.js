@@ -21,7 +21,10 @@
 // Deliberately its own storage key, separate from WORKOUT_NOTE_KEY /
 // WORKOUT_NOTES_KEY: a draft is disposable scratch state, not part of the
 // canonical note list, and must never be picked up by backup/restore,
-// export, or sync as if it were real note data.
+// export, or sync as if it were real note data. The key stays `kilo_`
+// prefixed on purpose (#880 revised body) so `purgeLocalData` in
+// `localDataOwner.js` still wipes it on an account switch, exactly like every
+// other kilo-prefixed key.
 //
 // Every draft lives inside ONE shared JSON map under a single storage key, so
 // every mutation — a save for one context, a clear for another — goes through
@@ -32,7 +35,22 @@
 // same time, or a draft-write timer racing a cleanup) can both read the same
 // map and the later whole-map write silently resurrects whatever the other
 // call deleted or overwrites whatever the other call wrote.
+//
+// Ownership stamp (#880 revised body). `purgeLocalData` already clears this
+// key on an account switch, but only AFTER it runs — there is a window
+// between a new account signing in and that purge completing where a stale
+// draft, if restored blind, could hand one account's just-typed text to
+// another. Every draft is stamped with `getLocalDataOwner()` at write time,
+// and `loadWorkoutNoteDraft` refuses to return a draft whose stamped owner
+// does not exactly match the CURRENT owner — enforced inside the read itself,
+// not left to each caller, so cross-account restoration is structurally
+// impossible rather than merely unlikely. `unknown` never matches a real
+// userId (see localDataOwner.js's own contract), so it is rejected by the
+// same equality check with no special-casing. Sign-out deliberately does NOT
+// clear drafts here: local history (drafts included) is retained on sign-out
+// and still belongs to that user, exactly like the rest of local storage.
 import { secureStorage as AsyncStorage } from '../secureStorage';
+import { getLocalDataOwner } from './localDataOwner';
 
 const WORKOUT_NOTE_DRAFTS_KEY = 'kilo_workout_note_drafts_v1';
 
@@ -48,31 +66,44 @@ function parseDraftMap(raw) {
   }
 }
 
-// contextKey identifies WHICH editor context a draft belongs to, e.g.
-// `current:<id>` / `other:<id>` for an existing note, or `current:new` /
-// `other:new` for an editor open on a not-yet-saved note. Restoring a draft
-// under the wrong key (or the wrong note id) is exactly the "attaches to the
-// wrong context" failure the acceptance criteria forbid, so callers must
-// always pass the same key they used to save.
+// contextKey identifies WHICH editor context a draft belongs to: editor
+// context (current-routine / other-note / recovery) PLUS note identity
+// together, e.g. `current:<id>` / `other:<id>` for an existing note, or
+// `current:new` / `other:new` for an editor open on a not-yet-saved note.
+// Restoring a draft under the wrong key (or the wrong note id) is exactly the
+// "attaches to the wrong context" failure the acceptance criteria forbid, so
+// callers must always pass the same key they used to save.
 export async function saveWorkoutNoteDraft(contextKey, { title = '', raw_text = '', baseUpdatedAt = null } = {}) {
   if (!contextKey) return;
+  const owner = await getLocalDataOwner();
   await AsyncStorage.updateItem(WORKOUT_NOTE_DRAFTS_KEY, (current) => {
     const drafts = parseDraftMap(current);
     drafts[contextKey] = {
       title,
       raw_text,
       baseUpdatedAt,
+      owner,
       savedAt: new Date().toISOString(),
     };
     return JSON.stringify(drafts);
   });
 }
 
+// Returns the draft for `contextKey` only when it belongs to the CURRENT
+// local data owner. A draft stamped for a different owner (or written before
+// this concept existed, i.e. `owner` is absent) is treated as absent — never
+// returned, never offered to a caller to restore. This is the structural
+// half of the account-transition defence; `purgeLocalData` remains the other
+// half (it deletes the whole table outright on a switch).
 export async function loadWorkoutNoteDraft(contextKey) {
   if (!contextKey) return null;
   const raw = await AsyncStorage.getItem(WORKOUT_NOTE_DRAFTS_KEY);
   const drafts = parseDraftMap(raw);
-  return drafts[contextKey] || null;
+  const draft = drafts[contextKey];
+  if (!draft) return null;
+  const owner = await getLocalDataOwner();
+  if (draft.owner !== owner) return null;
+  return draft;
 }
 
 export async function clearWorkoutNoteDraft(contextKey) {
@@ -110,7 +141,10 @@ export async function clearWorkoutNoteDraftIfMatches(contextKey, { title = '', r
 // Account transition (sign-in/sign-out) and "drop everything" recovery paths
 // must not leave a stale draft that could later attach to an unrelated
 // note/account. Clears the whole table rather than trying to enumerate every
-// live context key.
+// live context key. NOT called on ordinary sign-out (#880 revised body):
+// local history, drafts included, is deliberately retained for that user.
+// Reserved for the same "drop everything" path `purgeLocalData` itself is
+// used for.
 export async function clearAllWorkoutNoteDrafts() {
   await AsyncStorage.removeItem(WORKOUT_NOTE_DRAFTS_KEY);
 }

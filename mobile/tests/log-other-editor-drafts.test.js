@@ -105,7 +105,9 @@ describe('useLogOtherRoutineEditor — draft restore wiring (#880 / PR #882 find
     expect(ref.current.editingText).toBe('Walk 30min\nStretch 10min');
   });
 
-  test('never applies a stale draft (baseUpdatedAt predates canonical) when opened via handleEditViewedNote', async () => {
+  // #880 revised body (reversal): a revision mismatch must NEVER delete the
+  // draft. It stays stored and recoverable.
+  test('never auto-applies a stale draft, but RETAINS it, when opened via handleEditViewedNote', async () => {
     const staleBase = '2026-07-01T00:00:00.000Z';
     await saveWorkoutNoteDraft('other:note-1', {
       title: 'Leg Day (stale draft)',
@@ -121,7 +123,9 @@ describe('useLogOtherRoutineEditor — draft restore wiring (#880 / PR #882 find
 
     expect(ref.current.editingText).not.toBe('STALE');
     expect(ref.current.editingText).toBe('Squat 5x5 (updated elsewhere)');
-    expect(await loadWorkoutNoteDraft('other:note-1')).toBeNull();
+    const retained = await loadWorkoutNoteDraft('other:note-1');
+    expect(retained).not.toBeNull();
+    expect(retained.raw_text).toBe('STALE');
   });
 
   // The deload-section entry point (handleOpenOtherNote) already had restore

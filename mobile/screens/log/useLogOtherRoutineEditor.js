@@ -10,6 +10,9 @@ import {
   DEFAULT_1K_EXERCISES,
 } from '../../lib/data';
 import { DELOAD_NOTE_PREFIX, AUTOSAVE_DEBOUNCE_MS } from '../../lib/LogScreenHelpers';
+import { subscribeDirtyQueue, getDirtyRecords, SYNC_TABLES } from '../../storage/syncQueue';
+import { subscribeSyncState, getSyncState, SYNC_PHASE, SYNC_STATUS } from '../../storage/syncRecovery';
+import { getStorageMode, STORAGE_MODES } from '../../storage/entries';
 import { buildDayGroups } from './logScreenHelpers';
 import {
   saveWorkoutNoteDraft,
@@ -29,6 +32,47 @@ const DRAFT_DEBOUNCE_MS = 400;
 function otherDraftKey(editingNoteId) {
   if (!editingNoteId) return null;
   return editingNoteId === 'new' ? 'other:new' : `other:${editingNoteId}`;
+}
+
+// Pending-cloud-convergence state (#880 revised body). See the identical
+// helper — and the note on why it is duplicated per-file rather than shared
+// via workoutNoteHooks.js (a circular-import hazard) — in
+// useLogCurrentRoutineEditor.js.
+function useNoteConvergencePending(noteId) {
+  const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    // See useLogCurrentRoutineEditor.js's identical helper: local-only mode
+    // never enqueues anything, so skip the async read/subscribe entirely
+    // rather than paying for (and awaiting) a check whose answer is always
+    // "nothing pending".
+    if (!noteId || getStorageMode() !== STORAGE_MODES.CLOUD) {
+      setPending(false);
+      return undefined;
+    }
+    let cancelled = false;
+    const recompute = async () => {
+      let dirty = [];
+      try {
+        dirty = await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES);
+      } catch {
+        dirty = [];
+      }
+      const isDirty = dirty.some((r) => r?.id === noteId);
+      const syncFailed = getSyncState()[SYNC_PHASE.SYNC]?.status === SYNC_STATUS.FAILED;
+      if (!cancelled) setPending(isDirty || syncFailed);
+    };
+    recompute();
+    const unsubDirty = subscribeDirtyQueue(recompute);
+    const unsubSync = subscribeSyncState(recompute);
+    return () => {
+      cancelled = true;
+      unsubDirty();
+      unsubSync();
+    };
+  }, [noteId]);
+
+  return pending;
 }
 
 function isValidActiveWeek(value) {
@@ -142,6 +186,12 @@ export function useLogOtherRoutineEditor({
   editorScrollRef,
 }) {
   const [editingNoteId, setEditingNoteId] = useState(null);
+  // #880 revised body: pending-cloud-convergence for the note currently open
+  // in this editor (never a network check). `null` for 'new' — nothing could
+  // be enqueued for a note with no id yet.
+  const pendingConvergence = useNoteConvergencePending(
+    editingNoteId && editingNoteId !== 'new' ? editingNoteId : null
+  );
   // Which surface opened the current editingNoteId session (#841): 'recovery'
   // when the Recovery block's own inline editor is driving it, null (or any
   // other value) for every other entry point. LogScreen reads this to decide
@@ -525,20 +575,23 @@ export function useLogOtherRoutineEditor({
   // note that had none), and the context must still be the one the caller
   // opened — this call is fire-and-forget from a state setter, and the user
   // can close the editor (or open a different note) before the read
-  // completes. A draft whose base predates the canonical note it is being
-  // offered against belongs to content already superseded (e.g. by a cloud
-  // sync merge) and must never silently overwrite newer canonical text — it
-  // is discarded instead.
+  // completes.
+  //
+  // #880 revised body (reversal): a draft whose base predates the canonical
+  // note is NEVER auto-applied over newer canonical text — but it is also
+  // NEVER deleted here. That text is the interrupted work this issue exists
+  // to protect; canonical content is shown instead, and the draft stays
+  // stored and recoverable until the user explicitly discards/reverts it, or
+  // a later successful save supersedes it. (An earlier version of this code
+  // cleared the draft on mismatch — that was itself the data-loss bug this
+  // rule now forbids.)
   const restoreOtherDraftIfCurrent = async (expectedId, canonicalUpdatedAt) => {
     const key = otherDraftKey(expectedId);
     if (!key) return;
     const draft = await loadWorkoutNoteDraft(key).catch(() => null);
     if (!draft) return;
     if (editingNoteIdRef.current !== expectedId) return;
-    if (draft.baseUpdatedAt !== canonicalUpdatedAt) {
-      clearWorkoutNoteDraft(key).catch(() => {});
-      return;
-    }
+    if (draft.baseUpdatedAt !== canonicalUpdatedAt) return; // retained, not deleted
     const draftText = draft.raw_text || '';
     const draftTitle = draft.title || '';
     if (draftText === editingFullTextRef.current && draftTitle === editingTitleRef.current) return;
@@ -1166,9 +1219,22 @@ export function useLogOtherRoutineEditor({
     }
   };
 
+  // #880 revised body, BLOCKER 1: same binding as the current-routine editor
+  // — `Saved!` is a claim about the exact {title, raw_text} the most recent
+  // successful save persisted (`lastSavedTextRef`/`TitleRef`), and must stop
+  // showing the instant the LIVE text (`editingFullText`/`editingTitle`, the
+  // full underlying text the save actually operates on — not just the
+  // currently-projected A/B half) no longer matches it, not only at the
+  // moment the save resolved.
+  const liveOtherTextMatchesLastSave =
+    editingFullText === lastSavedTextRef.current &&
+    editingTitle === lastSavedTitleRef.current;
+  const boundOtherSaveSuccess = saveSuccess && liveOtherTextMatchesLastSave ? saveSuccess : '';
+
   return {
     editingNoteId,
     setEditingNoteId,
+    pendingConvergence,
     editingSource,
     editingTitle,
     setEditingTitle,
@@ -1177,7 +1243,7 @@ export function useLogOtherRoutineEditor({
     noteIsSaving,
     saveError,
     setSaveError,
-    saveSuccess,
+    saveSuccess: boundOtherSaveSuccess,
     setSaveSuccess,
     originalNoteState,
     setOriginalNoteState,

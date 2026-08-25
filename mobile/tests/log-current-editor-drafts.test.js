@@ -48,7 +48,7 @@ function renderHook(props) {
   return { ref, tree, rerender: (next) => act(() => tree.update(React.createElement(Probe, next))) };
 }
 
-async function flush(times = 3) {
+async function flush(times = 8) {
   for (let i = 0; i < times; i++) {
     // eslint-disable-next-line no-await-in-loop
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
@@ -89,8 +89,12 @@ function makeBaseProps(overrides = {}) {
 // move the value the NEXT render sees — mirroring how the real LogScreen
 // component holds workoutNoteText/Title in its own useState.
 function makeLiveProps(overrides = {}) {
-  const props = makeBaseProps(overrides);
-  const state = { text: overrides.workoutNoteText ?? '', title: overrides.workoutNoteTitle ?? '' };
+  // workoutNoteText/Title seed `state` below, not `makeBaseProps`'s object —
+  // that object already defines them as getter-only accessor properties, and
+  // merging plain values of the same name into it throws.
+  const { workoutNoteText: seedText, workoutNoteTitle: seedTitle, ...baseOverrides } = overrides;
+  const props = makeBaseProps(baseOverrides);
+  const state = { text: seedText ?? '', title: seedTitle ?? '' };
   // Stable jest.fn instances, shared across every build() — otherwise
   // assertions against `live.props.setWorkoutNoteText` would target a
   // different mock than the one the hook actually calls after a rerender.
@@ -179,7 +183,12 @@ describe('useLogCurrentRoutineEditor — durable drafts (#880)', () => {
     expect(live.props.setWorkoutNoteTitle).toHaveBeenCalledWith('Push Day (draft)');
   });
 
-  test('discards (never applies) a draft whose baseUpdatedAt predates the canonical note (stale/conflicting draft)', async () => {
+  // #880 revised body (reversal): a revision mismatch must NEVER delete the
+  // draft — that text is the interrupted work this issue exists to protect.
+  // It is never auto-applied over newer canonical content, but it stays
+  // stored and recoverable until an explicit discard/revert or a superseding
+  // successful save.
+  test('never auto-applies a stale draft, but RETAINS it (does not delete) on a revision mismatch', async () => {
     const staleNote = { id: 'note-1', title: 'Push Day', raw_text: 'Bench 3x5', updated_at: '2026-08-01T00:00:00.000Z' };
     await saveWorkoutNoteDraft('current:note-1', {
       title: 'Push Day (draft)',
@@ -195,10 +204,13 @@ describe('useLogCurrentRoutineEditor — durable drafts (#880)', () => {
     await act(async () => { ref.current.enterCurrentEditor(); });
     await flush();
 
-    // The stale draft must never have been applied to the live editor.
+    // The stale draft must never have been applied to the live editor —
+    // canonical content is shown by default.
     expect(live.props.setWorkoutNoteText).not.toHaveBeenCalledWith('STALE TEXT FROM AN OLDER VERSION');
-    // And it is cleared so it cannot be offered again.
-    expect(await loadWorkoutNoteDraft('current:note-1')).toBeNull();
+    // But it MUST still be there afterward, recoverable, not deleted.
+    const retained = await loadWorkoutNoteDraft('current:note-1');
+    expect(retained).not.toBeNull();
+    expect(retained.raw_text).toBe('STALE TEXT FROM AN OLDER VERSION');
   });
 
   test('a save-in-flight race never deletes text typed after the snapshot was taken (regression: PR #882 finding 2)', async () => {
@@ -341,6 +353,152 @@ describe('useLogCurrentRoutineEditor — durable drafts (#880)', () => {
     expect(await loadWorkoutNoteDraft('current:note-1')).toBeNull();
   });
 
+  // #880 revised body — BLOCKER 2 regression coverage: a stale/conflicting
+  // draft must be retained (not deleted) on a revision mismatch, and stay
+  // recoverable until EXPLICIT discard/revert clears it.
+  test('a mismatched (retained) draft is cleared by explicit discard/revert, not by the mismatch itself', async () => {
+    const note = { id: 'note-1', title: 'Push Day', raw_text: 'Bench 3x5', updated_at: '2026-08-01T00:00:00.000Z' };
+    await saveWorkoutNoteDraft('current:note-1', {
+      title: 'stale',
+      raw_text: 'STALE TEXT',
+      baseUpdatedAt: '2026-07-01T00:00:00.000Z', // predates the note above
+    });
+    const live = makeLiveProps({ currentId: 'note-1', currentNote: note, notes: [note] });
+    const { ref } = renderHook(live.build());
+
+    await act(async () => { ref.current.enterCurrentEditor(); });
+    await flush();
+    // Retained, not deleted, by opening the editor.
+    expect(await loadWorkoutNoteDraft('current:note-1')).not.toBeNull();
+
+    act(() => { ref.current.handleUndoCurrent(); });
+    await act(async () => { await pressDestructiveAlertButton(); });
+    await flush();
+
+    // NOW it is gone — cleared by the explicit discard, not by the earlier
+    // mismatch.
+    expect(await loadWorkoutNoteDraft('current:note-1')).toBeNull();
+  });
+
+  // #880 revised body — BLOCKER 2: a mismatched draft is naturally superseded
+  // once the user resumes editing (based on canonical content) and saves —
+  // the cheap draft-write pipeline overwrites the same context key with the
+  // fresh session's content on every keystroke, so by the time a save
+  // succeeds there is nothing stale left to protect.
+  test('a mismatched (retained) draft is superseded once the user edits canonical content again and saves', async () => {
+    const note = { id: 'note-1', title: 'Push Day', raw_text: 'Bench 3x5', updated_at: '2026-08-01T00:00:00.000Z' };
+    await saveWorkoutNoteDraft('current:note-1', {
+      title: 'stale',
+      raw_text: 'STALE TEXT',
+      baseUpdatedAt: '2026-07-01T00:00:00.000Z',
+    });
+    const update = jest.fn(async (id, patch) => ({ id, title: patch.title, raw_text: patch.raw_text }));
+    const live = makeLiveProps({ currentId: 'note-1', currentNote: note, notes: [note], update });
+    const { ref, rerender } = renderHook(live.build());
+
+    await act(async () => { ref.current.enterCurrentEditor(); });
+    await flush();
+    // Canonical content shown — the stale draft was never applied.
+    expect(live.state.text).toBe('');
+
+    // The editor actually opens on canonical text via LogScreen's own state
+    // (out of this hook's control in production); simulate that here, then
+    // the user edits further.
+    live.state.text = 'Bench 3x5\nRow 3x8';
+    rerender(live.build());
+    await act(async () => { jest.advanceTimersByTime(500); });
+    await flush();
+
+    await act(async () => { await ref.current.handleSave(); });
+    await flush();
+
+    expect(update).toHaveBeenCalled();
+    expect(await loadWorkoutNoteDraft('current:note-1')).toBeNull();
+  });
+
+  // #880 revised body — BLOCKER 1: `Saved` is bound to the exact snapshot it
+  // describes and must never show for text that has since diverged from it.
+  describe('Saved is bound to an exact text snapshot (BLOCKER 1)', () => {
+    test('Saved never shows for text typed after a completed save, even inside the old success-banner window', async () => {
+      const note = { id: 'note-1', title: 'Push Day', raw_text: 'Bench 3x5', updated_at: '2026-08-01T00:00:00.000Z' };
+      const update = jest.fn(async (id, patch) => ({ id, title: patch.title, raw_text: patch.raw_text }));
+      const live = makeLiveProps({ currentId: 'note-1', currentNote: note, notes: [note], update, workoutNoteTitle: 'Push Day', workoutNoteText: 'Bench 3x5' });
+      const { ref, rerender } = renderHook(live.build());
+      act(() => { ref.current.enterCurrentEditor(); });
+
+      // An explicit (non-autosave) save shows "Saved on device".
+      await act(async () => { await ref.current.handleSave(); });
+      await flush();
+      rerender(live.build());
+      expect(ref.current.saveSuccess).toBe('Saved on device');
+
+      // The user immediately types more, well inside the 2s success-banner
+      // window.
+      live.state.text = 'Bench 3x5\nRow 3x8';
+      rerender(live.build());
+
+      // The banner must be gone the instant the live text no longer matches
+      // what was actually saved — not still showing "Saved on device" for
+      // text that was never saved.
+      expect(ref.current.saveSuccess).toBe('');
+    });
+
+    test('an older in-flight write resolving after newer text is visible does not show Saved', async () => {
+      const note = { id: 'note-1', title: 'Push Day', raw_text: 'Bench 3x5', updated_at: '2026-08-01T00:00:00.000Z' };
+      let resolveUpdate;
+      const update = jest.fn(() => new Promise((resolve) => { resolveUpdate = resolve; }));
+      const live = makeLiveProps({ currentId: 'note-1', currentNote: note, notes: [note], update, workoutNoteTitle: 'Push Day', workoutNoteText: 'Bench 3x5' });
+      const { ref, rerender } = renderHook(live.build());
+      act(() => { ref.current.enterCurrentEditor(); });
+
+      let savePromise;
+      act(() => { savePromise = ref.current.handleSave(); });
+      // Let the save's internal chain progress up to (and pause at) the
+      // `await update(...)` call, mirroring the working save-in-flight-race
+      // test above.
+      await flush(4);
+
+      // Newer text arrives while that save is still in flight.
+      live.state.text = 'Bench 3x5\nRow 3x8 (typed during save)';
+      rerender(live.build());
+      expect(ref.current.saveSuccess).toBe('');
+
+      // The OLDER write now resolves.
+      await act(async () => {
+        resolveUpdate({ id: 'note-1', title: 'Push Day', raw_text: 'Bench 3x5' });
+        await savePromise;
+      });
+      await flush();
+      rerender(live.build());
+
+      // It must NOT have produced a Saved banner for the newer, unsaved text.
+      expect(ref.current.saveSuccess).toBe('');
+    });
+
+    test('typing during the debounce window never shows a stale Saved for the earlier text', async () => {
+      const note = { id: 'note-1', title: 'Push Day', raw_text: 'Bench 3x5', updated_at: '2026-08-01T00:00:00.000Z' };
+      const update = jest.fn(async (id, patch) => ({ id, title: patch.title, raw_text: patch.raw_text }));
+      const live = makeLiveProps({ currentId: 'note-1', currentNote: note, notes: [note], update, workoutNoteTitle: 'Push Day', workoutNoteText: 'Bench 3x5' });
+      const { ref, rerender } = renderHook(live.build());
+      act(() => { ref.current.enterCurrentEditor(); });
+
+      await act(async () => { await ref.current.handleSave(); });
+      await flush();
+      rerender(live.build());
+      expect(ref.current.saveSuccess).toBe('Saved on device');
+
+      // Type again, then let a debounce window pass WITHOUT a new save
+      // completing (autosave hasn't fired yet — still well inside
+      // AUTOSAVE_DEBOUNCE_MS).
+      live.state.text = 'Bench 3x5\nOHP 3x5';
+      rerender(live.build());
+      act(() => { jest.advanceTimersByTime(400); });
+      rerender(live.build());
+
+      expect(ref.current.saveSuccess).toBe('');
+    });
+  });
+
   // Before/after rapid-typing measurement the issue's Verification list asks
   // for. Uses a 20-keystroke burst, each 30ms apart (well inside both the
   // 400ms draft debounce and the 800ms AUTOSAVE_DEBOUNCE_MS), against an
@@ -365,8 +523,15 @@ describe('useLogCurrentRoutineEditor — durable drafts (#880)', () => {
     expect(update).not.toHaveBeenCalled();
 
     // Let both debounces (400ms draft, 800ms autosave) elapse from the last
-    // keystroke.
-    await act(async () => { jest.advanceTimersByTime(900); });
+    // keystroke, interleaving fake-timer advances with real microtask
+    // draining so the draft write's own async storage-lock chain and the
+    // autosave's (longer) chain both fully settle in the right order.
+    for (let i = 0; i < 10; i++) {
+      // eslint-disable-next-line no-await-in-loop
+      await act(async () => { jest.advanceTimersByTime(150); });
+      // eslint-disable-next-line no-await-in-loop
+      await flush(2);
+    }
     await flush();
 
     // AFTER #880: exactly one expensive save call for the whole burst — the

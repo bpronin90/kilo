@@ -78,6 +78,16 @@ function OtherRoutineHarness(props) {
 }
 
 describe('LogScreenEditorCard — first-save "Saving…" state (#880 / PR #882 finding 4)', () => {
+  // Every mounted tree is unmounted afterward — an un-unmounted tree keeps
+  // its effects (and any timers) live past the end of the test, which has
+  // been observed to disturb hook-order-sensitive state in an unrelated
+  // module when other suites render LogScreen later in the same run.
+  let roots = [];
+  afterEach(() => {
+    roots.forEach((root) => renderer.act(() => root.unmount()));
+    roots = [];
+  });
+
   test('a brand-new CURRENT note shows "Saving…" on the Save button while its first save is in flight', () => {
     let root;
     renderer.act(() => {
@@ -85,6 +95,7 @@ describe('LogScreenEditorCard — first-save "Saving…" state (#880 / PR #882 f
         <CurrentRoutineHarness initialText="Day 1\nSquat 5x5" isSaving noteIsSaving={false} />
       );
     });
+    roots.push(root);
     const button = findSaveButton(root.root);
     expect(button).toBeTruthy();
     expect(button.props.title).toBe('Saving…');
@@ -98,6 +109,7 @@ describe('LogScreenEditorCard — first-save "Saving…" state (#880 / PR #882 f
         <CurrentRoutineHarness initialText="Day 1\nSquat 5x5" isSaving={false} noteIsSaving={false} />
       );
     });
+    roots.push(root);
     const button = findSaveButton(root.root);
     expect(button.props.title).toBe('Save');
     expect(button.props.disabled).toBe(false);
@@ -110,6 +122,7 @@ describe('LogScreenEditorCard — first-save "Saving…" state (#880 / PR #882 f
         <OtherRoutineHarness initialText="Day 1\nSquat 5x5" isSaving={false} noteIsSaving />
       );
     });
+    roots.push(root);
     const button = findSaveButton(root.root);
     expect(button).toBeTruthy();
     expect(button.props.title).toBe('Saving…');

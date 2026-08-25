@@ -6,6 +6,11 @@ import {
   clearWorkoutNoteDraftIfMatches,
   clearAllWorkoutNoteDrafts,
 } from '../storage/entries/workoutNoteDrafts';
+import {
+  setLocalDataOwner,
+  OWNER_UNCLAIMED,
+  OWNER_UNKNOWN,
+} from '../storage/entries/localDataOwner';
 
 // ── cheap local drafts (#880) ────────────────────────────────────────────────
 //
@@ -188,6 +193,60 @@ describe('workout note drafts', () => {
         expect(draft).not.toBeNull();
         expect(draft.raw_text).toBe(`text-${i}`);
       });
+    });
+  });
+
+  describe('owner stamp (#880 revised body: cross-account restoration must be structurally impossible)', () => {
+    test('a draft written under one owner is invisible to a different current owner', async () => {
+      await setLocalDataOwner('user-a');
+      await saveWorkoutNoteDraft('current:note-1', { title: 'A', raw_text: 'text-a' });
+
+      await setLocalDataOwner('user-b');
+      expect(await loadWorkoutNoteDraft('current:note-1')).toBeNull();
+    });
+
+    test('a draft is visible again once the SAME owner is current again', async () => {
+      await setLocalDataOwner('user-a');
+      await saveWorkoutNoteDraft('current:note-1', { title: 'A', raw_text: 'text-a' });
+
+      await setLocalDataOwner('user-b');
+      expect(await loadWorkoutNoteDraft('current:note-1')).toBeNull();
+
+      await setLocalDataOwner('user-a');
+      const draft = await loadWorkoutNoteDraft('current:note-1');
+      expect(draft).not.toBeNull();
+      expect(draft.raw_text).toBe('text-a');
+    });
+
+    test('unclaimed and unknown owners are distinct — a draft from one is invisible under the other', async () => {
+      await setLocalDataOwner(OWNER_UNCLAIMED);
+      await saveWorkoutNoteDraft('current:note-1', { title: 'A', raw_text: 'unclaimed-text' });
+
+      await setLocalDataOwner(OWNER_UNKNOWN);
+      expect(await loadWorkoutNoteDraft('current:note-1')).toBeNull();
+    });
+
+    test('unknown never matches a real userId, even one literally named "unknown" is not special-cased away', async () => {
+      await setLocalDataOwner(OWNER_UNKNOWN);
+      await saveWorkoutNoteDraft('current:note-1', { title: 'A', raw_text: 'unknown-owner-text' });
+
+      // A real account signs in — must never see the 'unknown'-owned draft.
+      await setLocalDataOwner('real-user-id');
+      expect(await loadWorkoutNoteDraft('current:note-1')).toBeNull();
+    });
+
+    test('every draft is stamped with the owner active at write time', async () => {
+      await setLocalDataOwner('user-a');
+      await saveWorkoutNoteDraft('current:note-1', { title: 'A', raw_text: 'text-a' });
+      const draft = await loadWorkoutNoteDraft('current:note-1');
+      expect(draft.owner).toBe('user-a');
+    });
+
+    test('clearing (successful save / discard / deletion) still works across owners by exact key, unaffected by the stamp', async () => {
+      await setLocalDataOwner('user-a');
+      await saveWorkoutNoteDraft('current:note-1', { title: 'A', raw_text: 'text-a' });
+      await clearWorkoutNoteDraft('current:note-1');
+      expect(await loadWorkoutNoteDraft('current:note-1')).toBeNull();
     });
   });
 });
