@@ -25,7 +25,9 @@ const VALIDATION_DEBOUNCE_MS = 1000;
 const EDITOR_INPUT_VERTICAL_PADDING = 14;
 
 // #886: and the horizontal inset of the same box — border included — so the
-// measuring mirror below wraps at exactly the width the input wraps at.
+// measuring mirror below wraps at exactly the width the input wraps at. Both
+// are applied to `styles.input` itself (#888), so the mirror's width math and
+// the box it describes cannot drift apart.
 const EDITOR_INPUT_HORIZONTAL_PADDING = 14;
 const EDITOR_INPUT_BORDER_WIDTH = 1;
 const EDITOR_INPUT_TEXT_INSET = (EDITOR_INPUT_HORIZONTAL_PADDING + EDITOR_INPUT_BORDER_WIDTH) * 2;
@@ -1195,9 +1197,9 @@ const createStyles = (colors) => StyleSheet.create({
   input: {
     backgroundColor: colors.inputBackground,
     borderRadius: 16,
-    borderWidth: 1,
+    borderWidth: EDITOR_INPUT_BORDER_WIDTH,
     borderColor: colors.inputBorder,
-    paddingHorizontal: 14,
+    paddingHorizontal: EDITOR_INPUT_HORIZONTAL_PADDING,
     paddingVertical: EDITOR_INPUT_VERTICAL_PADDING,
     fontSize: 16,
     color: colors.text,
