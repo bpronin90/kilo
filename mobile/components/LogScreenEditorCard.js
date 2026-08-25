@@ -568,6 +568,12 @@ export function LogScreenEditorCard({
   const sourceJumpTimerRef = useRef(null);
   const sourceJumpMirrorRef = useRef(null);
   const mountedRef = useRef(true);
+  // Which placement pass owns the surface. A native `measureLayout` callback
+  // cannot be recalled once issued, so cancelling is not enough on its own:
+  // every callback checks this generation and a superseded one goes inert
+  // rather than reporting an offset for an exercise the user has moved on
+  // from, or overwriting the live pass's mirror (PR #887 review).
+  const sourceJumpPassRef = useRef(0);
   // The invisible mirror of the note's own text, rendered only while a jump
   // is being placed. `null` the rest of the time, so nothing measures or
   // lays out a second copy of a long note during ordinary editing.
@@ -586,6 +592,7 @@ export function LogScreenEditorCard({
   };
   useEffect(() => () => {
     mountedRef.current = false;
+    sourceJumpPassRef.current += 1;
     cancelSourceJumpMeasure();
   }, []);
 
@@ -615,11 +622,14 @@ export function LogScreenEditorCard({
   // that release is also what clears `pendingSourceJump`.
   const _reportSourceJumpPlacement = (token, targetOffset, text) => {
     // A newer jump supersedes any measurement still in flight for an older
-    // one, so the older one can never land its offset after this one's.
+    // one: what is cancellable is cancelled, and the generation bump makes
+    // whatever is already in native's hands inert when it comes back.
     cancelSourceJumpMeasure();
+    const pass = (sourceJumpPassRef.current += 1);
+    const isCurrent = () => sourceJumpPassRef.current === pass;
     let reported = false;
     const report = (placement) => {
-      if (reported) return;
+      if (reported || !isCurrent()) return;
       reported = true;
       cancelSourceJumpMeasure();
       onSourceJumpApplied?.(placement);
@@ -640,6 +650,7 @@ export function LogScreenEditorCard({
         input.measureLayout(
           container,
           (_x, inputY, inputWidth, inputHeight) => {
+            if (!isCurrent()) return;
             if (!(inputHeight > 0) || !(inputWidth > EDITOR_INPUT_TEXT_INSET)) {
               // Layout has not settled yet — the editor surface is
               // `display: none` right up to the frame it opens on.

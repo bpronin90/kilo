@@ -748,6 +748,47 @@ describe('LogScreenEditorCard: pendingSourceJump handoff (#881 PR #883 review)',
     expect(mirrorMounted(root)).toBe(false);
   });
 
+  // PR #887 review: a native `measureLayout` callback cannot be recalled once
+  // issued, so cancelling the frame and the timeout is not enough on its own.
+  test('#886: a superseded jump\'s late measurement can never land its offset', () => {
+    const base = buildElement({ activeEditText: LONG_NOTE, currentMode: 'edit' });
+    let component;
+    act(() => { component = TestRenderer.create(base.element); });
+    mounted.push(component);
+    const root = component.root;
+    const input = root.findAllByType(TextInput)
+      .find(node => node.props.multiline && node.props.value === LONG_NOTE);
+    // Hold each measurement open so the two passes can be interleaved.
+    const answer = [];
+    input.instance.measureLayout = (_rel, onSuccess) => { answer.push(onSuccess); };
+    layOutSurface(root);
+
+    const superseded = LONG_NOTE.indexOf('-Exercise 3');
+    const current = LONG_NOTE.indexOf('-Exercise 30');
+    const deliver = (target, token) => {
+      act(() => {
+        component.update(buildElement(jumpProps(LONG_NOTE, target, token), base.handlers).element);
+      });
+      settleJump();
+    };
+    deliver(superseded, 'stale-1');
+    deliver(current, 'stale-2');
+    expect(answer).toHaveLength(2);
+
+    // The first, superseded measurement answers late.
+    act(() => { answer[0](0, INPUT_Y, INPUT_WIDTH, INPUT_HEIGHT); });
+    expect(base.handlers.onSourceJumpApplied).not.toHaveBeenCalled();
+    expect(mirrorMounted(root)).toBe(false);
+
+    // The live one still lands, on its own exercise.
+    act(() => { answer[1](0, INPUT_Y, INPUT_WIDTH, INPUT_HEIGHT); });
+    const split = unwrappedRows(LONG_NOTE, current);
+    layOutMirror(root, split.above, split.below);
+    expect(base.handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
+    expect(base.handlers.onSourceJumpApplied.mock.calls[0][0].y)
+      .toBeCloseTo(expectedPlacementY(split.above, split.below), 5);
+  });
+
   test('#886: a measure that never answers still releases the jump, with no placement to scroll to', () => {
     const target = LONG_NOTE.indexOf('-Exercise 12');
     const { handlers } = armJump(LONG_NOTE, target, 'silent', () => {});
