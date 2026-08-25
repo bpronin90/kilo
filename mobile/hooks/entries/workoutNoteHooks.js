@@ -5,7 +5,7 @@ import { reconcileWorkoutReminder } from '../../lib/reminderScheduler';
 import { maybeSyncCloud, readVia, writeVia } from './storageMode';
 import { safeNotify } from './shared';
 import { markStartupPhase } from '../../storage/entries/startupTiming';
-import { clearWorkoutNoteDraft } from '../../storage/entries/workoutNoteDrafts';
+import { clearWorkoutNoteDraftsForNote } from '../../storage/entries/workoutNoteDrafts';
 
 // NOTE (#880 revised body): pending-cloud-convergence state deliberately
 // lives in each editor hook (useLogCurrentRoutineEditor.js /
@@ -136,8 +136,7 @@ export function useWorkoutNotes() {
     // Deterministic cleanup on note deletion (#880): a deleted note's local
     // draft — under either editor's context key — must never resurrect the
     // note's text on a later restore.
-    clearWorkoutNoteDraft(`current:${id}`).catch(() => {});
-    clearWorkoutNoteDraft(`other:${id}`).catch(() => {});
+    clearWorkoutNoteDraftsForNote(id).catch(() => {});
     notifyWorkoutNotes();
   }, [currentId]);
 

@@ -1,9 +1,8 @@
 // Regression coverage for PR #882 review finding 4 (P2): a brand-new note's
 // FIRST save — the longest-running, non-autosaved path — used to show only a
-// disabled "Save" button with no indication anything was happening, because
-// the `isSaving`/`noteIsSaving` "Saving…" branch only applied to the
-// already-has-an-id case. The Save button itself must now say "Saving…"
-// while that first save is in flight.
+// disabled "Save" button with no indication anything was happening. The
+// reserved status region now carries one non-duplicated "Saving…" label while
+// the button remains a stable Save action.
 
 import React from 'react';
 import renderer from 'react-test-renderer';
@@ -88,44 +87,70 @@ describe('LogScreenEditorCard — first-save "Saving…" state (#880 / PR #882 f
     roots = [];
   });
 
-  test('a brand-new CURRENT note shows "Saving…" on the Save button while its first save is in flight', () => {
+  const savingLabels = (root) => root.findAll(
+    (node) => node.type === 'Text' && node.props.children === 'Saving…',
+  );
+
+  test('a brand-new CURRENT note shows one "Saving…" status while its first save is in flight', () => {
     let root;
     renderer.act(() => {
       root = renderer.create(
-        <CurrentRoutineHarness initialText="Day 1\nSquat 5x5" isSaving noteIsSaving={false} />
+        <CurrentRoutineHarness initialText="Day 1\nSquat 5x5" isSaving noteIsSaving={false} saveStatus="saving" />
       );
     });
     roots.push(root);
     const button = findSaveButton(root.root);
     expect(button).toBeTruthy();
-    expect(button.props.title).toBe('Saving…');
+    expect(button.props.title).toBe('Save');
     expect(button.props.disabled).toBe(true);
+    expect(savingLabels(root.root)).toHaveLength(1);
   });
 
   test('a brand-new CURRENT note shows "Save" (not "Saving…") when idle', () => {
     let root;
     renderer.act(() => {
       root = renderer.create(
-        <CurrentRoutineHarness initialText="Day 1\nSquat 5x5" isSaving={false} noteIsSaving={false} />
+        <CurrentRoutineHarness initialText="Day 1\nSquat 5x5" isSaving={false} noteIsSaving={false} saveStatus={null} />
       );
     });
     roots.push(root);
     const button = findSaveButton(root.root);
     expect(button.props.title).toBe('Save');
     expect(button.props.disabled).toBe(false);
+    expect(savingLabels(root.root)).toHaveLength(0);
   });
 
-  test('a brand-new OTHER note shows "Saving…" on the Save button while its first save is in flight', () => {
+  test('an older in-flight write disables Save but cannot claim Saving… for newer visible text', () => {
     let root;
     renderer.act(() => {
       root = renderer.create(
-        <OtherRoutineHarness initialText="Day 1\nSquat 5x5" isSaving={false} noteIsSaving />
+        <CurrentRoutineHarness
+          initialText="newer visible text"
+          isSaving
+          noteIsSaving={false}
+          saveStatus={null}
+        />
+      );
+    });
+    roots.push(root);
+    const button = findSaveButton(root.root);
+    expect(button.props.title).toBe('Save');
+    expect(button.props.disabled).toBe(true);
+    expect(savingLabels(root.root)).toHaveLength(0);
+  });
+
+  test('a brand-new OTHER note shows one "Saving…" status while its first save is in flight', () => {
+    let root;
+    renderer.act(() => {
+      root = renderer.create(
+        <OtherRoutineHarness initialText="Day 1\nSquat 5x5" isSaving={false} noteIsSaving saveStatus="saving" />
       );
     });
     roots.push(root);
     const button = findSaveButton(root.root);
     expect(button).toBeTruthy();
-    expect(button.props.title).toBe('Saving…');
+    expect(button.props.title).toBe('Save');
     expect(button.props.disabled).toBe(true);
+    expect(savingLabels(root.root)).toHaveLength(1);
   });
 });

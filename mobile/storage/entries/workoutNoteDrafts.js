@@ -1,54 +1,7 @@
-// Cheap, independent local drafts for the workout-note editors (#880).
-//
-// The existing autosave path (useLogCurrentRoutineEditor's debounced
-// handleSave) is expensive: it re-parses the whole note, derives analytics,
-// skip data, and session check-ins, and — in cloud mode — enqueues a sync
-// write. That cost is why it only fires on a multi-second debounce and, for a
-// brand-new note with no id yet, does not fire at all until the user taps
-// Save. An interruption (background, crash, kill) before that first explicit
-// save silently loses the whole new routine.
-//
-// This module is the cheap side of that split: a single JSON.stringify of
-// {title, raw_text} keyed by editor context, written on its own short
-// debounce and flushed immediately on backgrounding. It never parses,
-// derives, or touches the network, so it is safe to persist far more often
-// than the real save. It is a local safety net only — every draft is
-// attached to a `baseUpdatedAt` snapshot of the canonical note (or `null` for
-// a brand-new note) so a restore can refuse to overwrite canonical content
-// that has moved on since the draft was written (e.g. a newer edit synced
-// from another device).
-//
-// Deliberately its own storage key, separate from WORKOUT_NOTE_KEY /
-// WORKOUT_NOTES_KEY: a draft is disposable scratch state, not part of the
-// canonical note list, and must never be picked up by backup/restore,
-// export, or sync as if it were real note data. The key stays `kilo_`
-// prefixed on purpose (#880 revised body) so `purgeLocalData` in
-// `localDataOwner.js` still wipes it on an account switch, exactly like every
-// other kilo-prefixed key.
-//
-// Every draft lives inside ONE shared JSON map under a single storage key, so
-// every mutation — a save for one context, a clear for another — goes through
-// `secureStorage.updateItem`, which holds the read/transform/write under its
-// storage lock (#880 review). A plain getItem()-then-setItem() pair (the
-// original implementation) is not atomic: two concurrent mutations (e.g.
-// `useWorkoutNotes.remove` clearing `current:<id>` and `other:<id>` at the
-// same time, or a draft-write timer racing a cleanup) can both read the same
-// map and the later whole-map write silently resurrects whatever the other
-// call deleted or overwrites whatever the other call wrote.
-//
-// Ownership stamp (#880 revised body). `purgeLocalData` already clears this
-// key on an account switch, but only AFTER it runs — there is a window
-// between a new account signing in and that purge completing where a stale
-// draft, if restored blind, could hand one account's just-typed text to
-// another. Every draft is stamped with `getLocalDataOwner()` at write time,
-// and `loadWorkoutNoteDraft` refuses to return a draft whose stamped owner
-// does not exactly match the CURRENT owner — enforced inside the read itself,
-// not left to each caller, so cross-account restoration is structurally
-// impossible rather than merely unlikely. `unknown` never matches a real
-// userId (see localDataOwner.js's own contract), so it is rejected by the
-// same equality check with no special-casing. Sign-out deliberately does NOT
-// clear drafts here: local history (drafts included) is retained on sign-out
-// and still belongs to that user, exactly like the rest of local storage.
+// Cheap, device-local workout-note drafts (#880). Drafts live outside the
+// canonical note table, backup payload, parser, derivation, and sync pipeline.
+// The kilo_ prefix intentionally keeps them inside purgeLocalData's account-
+// transition wipe.
 import { secureStorage as AsyncStorage } from '../secureStorage';
 import { getLocalDataOwner } from './localDataOwner';
 
@@ -57,94 +10,229 @@ const WORKOUT_NOTE_DRAFTS_KEY = 'kilo_workout_note_drafts_v1';
 function parseDraftMap(raw) {
   try {
     const parsed = raw ? JSON.parse(raw) : null;
-    return parsed && typeof parsed === 'object' ? parsed : {};
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
   } catch {
-    // A corrupt or unreadable draft table is scratch state, not the
-    // canonical note — treat it as empty (and let the next write replace it)
-    // rather than surfacing an error the user cannot act on.
     return {};
   }
 }
 
-// contextKey identifies WHICH editor context a draft belongs to: editor
-// context (current-routine / other-note / recovery) PLUS note identity
-// together, e.g. `current:<id>` / `other:<id>` for an existing note, or
-// `current:new` / `other:new` for an editor open on a not-yet-saved note.
-// Restoring a draft under the wrong key (or the wrong note id) is exactly the
-// "attaches to the wrong context" failure the acceptance criteria forbid, so
-// callers must always pass the same key they used to save.
-export async function saveWorkoutNoteDraft(contextKey, { title = '', raw_text = '', baseUpdatedAt = null } = {}) {
+function isDraft(value) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    && typeof value.title === 'string' && typeof value.raw_text === 'string';
+}
+
+// The original unmerged implementation stored one draft directly at each
+// context key. Accept that shape so rebased/dev installs migrate in place.
+function normalizeBucket(value) {
+  if (isDraft(value)) return { active: value, retained: [] };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { active: null, retained: [] };
+  }
+  return {
+    active: isDraft(value.active) ? value.active : null,
+    retained: Array.isArray(value.retained) ? value.retained.filter(isDraft) : [],
+  };
+}
+
+function sameRevision(a, b) {
+  return a?.baseUpdatedAt === b?.baseUpdatedAt && a?.owner === b?.owner;
+}
+
+function sameSnapshot(a, b) {
+  return a?.title === b?.title && a?.raw_text === b?.raw_text;
+}
+
+function retainOnce(retained, draft) {
+  if (!draft) return retained;
+  if (retained.some((item) => sameRevision(item, draft) && sameSnapshot(item, draft))) {
+    return retained;
+  }
+  return [...retained, draft];
+}
+
+function newestFirst(a, b) {
+  return String(b?.savedAt || '').localeCompare(String(a?.savedAt || ''));
+}
+
+function removeOwnerFromBucket(bucket, owner) {
+  return {
+    active: bucket.active?.owner === owner ? null : bucket.active,
+    retained: bucket.retained.filter((draft) => draft.owner !== owner),
+  };
+}
+
+function bucketIsEmpty(bucket) {
+  return !bucket.active && bucket.retained.length === 0;
+}
+
+// contextKey is editor context + note identity: current:<id|new>,
+// other:<id|new>, or recovery:<id>. A revision change archives the previous
+// active draft instead of overwriting it. preserveExisting is used when a
+// deliberate new-note seed must not replace an older interrupted new draft
+// that happens to share the null revision sentinel.
+export async function saveWorkoutNoteDraft(
+  contextKey,
+  { title = '', raw_text = '', baseUpdatedAt = null } = {},
+  { preserveExisting = false } = {},
+) {
   if (!contextKey) return;
   const owner = await getLocalDataOwner();
+  const nextDraft = {
+    title,
+    raw_text,
+    baseUpdatedAt,
+    owner,
+    savedAt: new Date().toISOString(),
+  };
   await AsyncStorage.updateItem(WORKOUT_NOTE_DRAFTS_KEY, (current) => {
     const drafts = parseDraftMap(current);
-    drafts[contextKey] = {
-      title,
-      raw_text,
-      baseUpdatedAt,
-      owner,
-      savedAt: new Date().toISOString(),
-    };
+    const sequence = Number.isInteger(drafts.__nextSequence) ? drafts.__nextSequence : 1;
+    nextDraft.sequence = sequence;
+    drafts.__nextSequence = sequence + 1;
+    const bucket = normalizeBucket(drafts[contextKey]);
+    if (bucket.active && (
+      preserveExisting
+      || (!sameRevision(bucket.active, nextDraft) && !sameSnapshot(bucket.active, nextDraft))
+    )) {
+      bucket.retained = retainOnce(bucket.retained, bucket.active);
+    }
+    bucket.active = nextDraft;
+    drafts[contextKey] = bucket;
     return JSON.stringify(drafts);
   });
 }
 
-// Returns the draft for `contextKey` only when it belongs to the CURRENT
-// local data owner. A draft stamped for a different owner (or written before
-// this concept existed, i.e. `owner` is absent) is treated as absent — never
-// returned, never offered to a caller to restore. This is the structural
-// half of the account-transition defence; `purgeLocalData` remains the other
-// half (it deletes the whole table outright on a switch).
-export async function loadWorkoutNoteDraft(contextKey) {
-  if (!contextKey) return null;
-  const raw = await AsyncStorage.getItem(WORKOUT_NOTE_DRAFTS_KEY);
-  const drafts = parseDraftMap(raw);
-  const draft = drafts[contextKey];
-  if (!draft) return null;
-  const owner = await getLocalDataOwner();
-  if (draft.owner !== owner) return null;
-  return draft;
+// Establishes an ordering boundary before a canonical save starts. A later
+// successful cleanup may retire conflicts that existed before this checkpoint,
+// while preserving a different draft written after it (typing during flight).
+export async function markWorkoutNoteDraftSaveStart() {
+  let checkpoint = null;
+  await AsyncStorage.updateItem(WORKOUT_NOTE_DRAFTS_KEY, (current) => {
+    const drafts = parseDraftMap(current);
+    checkpoint = Number.isInteger(drafts.__nextSequence) ? drafts.__nextSequence : 1;
+    drafts.__nextSequence = checkpoint + 1;
+    return JSON.stringify(drafts);
+  });
+  return checkpoint;
 }
 
+// Load only drafts stamped for the current local owner. When baseUpdatedAt is
+// supplied, return the newest exact-revision match; stale revisions remain on
+// disk but are never auto-applied over newer canonical text.
+export async function loadWorkoutNoteDraft(contextKey, options = {}) {
+  if (!contextKey) return null;
+  const owner = await getLocalDataOwner();
+  const raw = await AsyncStorage.getItem(WORKOUT_NOTE_DRAFTS_KEY);
+  const bucket = normalizeBucket(parseDraftMap(raw)[contextKey]);
+  const candidates = [bucket.active, ...bucket.retained]
+    .filter((draft) => draft?.owner === owner)
+    .sort(newestFirst);
+  const hasRevision = Object.prototype.hasOwnProperty.call(options, 'baseUpdatedAt');
+  if (!hasRevision) return candidates[0] || null;
+  return candidates.find((draft) => draft.baseUpdatedAt === options.baseUpdatedAt) || null;
+}
+
+// Focused inspection surface for recovery/storage tests. It is owner-filtered
+// for the same reason as loadWorkoutNoteDraft; callers can never enumerate a
+// different account's retained text.
+export async function loadWorkoutNoteDrafts(contextKey) {
+  if (!contextKey) return [];
+  const owner = await getLocalDataOwner();
+  const raw = await AsyncStorage.getItem(WORKOUT_NOTE_DRAFTS_KEY);
+  const bucket = normalizeBucket(parseDraftMap(raw)[contextKey]);
+  return [bucket.active, ...bucket.retained]
+    .filter((draft) => draft?.owner === owner)
+    .sort(newestFirst);
+}
+
+// Explicit discard/revert clears this owner's whole context, including any
+// retained conflict. Foreign-owner entries are neither returned nor mutated.
 export async function clearWorkoutNoteDraft(contextKey) {
   if (!contextKey) return;
+  const owner = await getLocalDataOwner();
   await AsyncStorage.updateItem(WORKOUT_NOTE_DRAFTS_KEY, (current) => {
     const drafts = parseDraftMap(current);
-    if (!(contextKey in drafts)) return null; // no-op: nothing to rewrite
-    delete drafts[contextKey];
+    if (!(contextKey in drafts)) return null;
+    const bucket = removeOwnerFromBucket(normalizeBucket(drafts[contextKey]), owner);
+    if (bucketIsEmpty(bucket)) delete drafts[contextKey];
+    else drafts[contextKey] = bucket;
     return JSON.stringify(drafts);
   });
 }
 
-// Compare-and-clear: removes the draft for `contextKey` only if it still
-// matches the exact {title, raw_text} snapshot that was just saved (#880
-// review). A save's success handler snapshots the text it saved at the
-// START of the write; if the user kept typing while that write was in
-// flight, the cheap draft timer can persist those NEWER keystrokes before
-// the save resolves. An unconditional clear at that point would delete text
-// the real autosave has not saved yet — silent data loss on a crash before
-// the next autosave. Checking under the same storage-lock transform as the
-// delete itself (rather than a separate loadWorkoutNoteDraft + clear) also
-// closes the TOCTOU window between the compare and the write.
-export async function clearWorkoutNoteDraftIfMatches(contextKey, { title = '', raw_text = '' } = {}) {
+// Successful saves remove only drafts that still equal the exact snapshot the
+// write started with. Newer typing and unrelated retained conflicts survive.
+export async function clearWorkoutNoteDraftIfMatches(
+  contextKey,
+  { title = '', raw_text = '' } = {},
+) {
   if (!contextKey) return;
+  const owner = await getLocalDataOwner();
+  const snapshot = { title, raw_text };
   await AsyncStorage.updateItem(WORKOUT_NOTE_DRAFTS_KEY, (current) => {
     const drafts = parseDraftMap(current);
-    const draft = drafts[contextKey];
-    if (!draft) return null; // no-op: nothing to rewrite
-    if (draft.title !== title || draft.raw_text !== raw_text) return null; // newer draft — keep it
-    delete drafts[contextKey];
+    if (!(contextKey in drafts)) return null;
+    const bucket = normalizeBucket(drafts[contextKey]);
+    if (bucket.active?.owner === owner && sameSnapshot(bucket.active, snapshot)) {
+      bucket.active = null;
+    }
+    bucket.retained = bucket.retained.filter(
+      (draft) => draft.owner !== owner || !sameSnapshot(draft, snapshot),
+    );
+    if (bucketIsEmpty(bucket)) delete drafts[contextKey];
+    else drafts[contextKey] = bucket;
     return JSON.stringify(drafts);
   });
 }
 
-// Account transition (sign-in/sign-out) and "drop everything" recovery paths
-// must not leave a stale draft that could later attach to an unrelated
-// note/account. Clears the whole table rather than trying to enumerate every
-// live context key. NOT called on ordinary sign-out (#880 revised body):
-// local history, drafts included, is deliberately retained for that user.
-// Reserved for the same "drop everything" path `purgeLocalData` itself is
-// used for.
+// Called only after canonical persistence succeeds. It retires drafts that
+// predate the save attempt (including retained revision conflicts) and the
+// exact saved snapshot. A different draft written after the checkpoint is the
+// user's newer in-flight typing and must survive.
+export async function clearWorkoutNoteDraftsSupersededBySave(
+  contextKey,
+  checkpoint,
+  { title = '', raw_text = '' } = {},
+) {
+  if (!contextKey) return;
+  const owner = await getLocalDataOwner();
+  const snapshot = { title, raw_text };
+  const superseded = (draft) => draft?.owner === owner && (
+    sameSnapshot(draft, snapshot)
+    || (Number.isInteger(checkpoint) && (draft.sequence ?? 0) < checkpoint)
+  );
+  await AsyncStorage.updateItem(WORKOUT_NOTE_DRAFTS_KEY, (current) => {
+    const drafts = parseDraftMap(current);
+    if (!(contextKey in drafts)) return null;
+    const bucket = normalizeBucket(drafts[contextKey]);
+    if (superseded(bucket.active)) bucket.active = null;
+    bucket.retained = bucket.retained.filter((draft) => !superseded(draft));
+    if (bucketIsEmpty(bucket)) delete drafts[contextKey];
+    else drafts[contextKey] = bucket;
+    return JSON.stringify(drafts);
+  });
+}
+
+// Note deletion removes exactly this owner's current/other/Recovery contexts
+// in one locked transform, never a sibling note or a foreign owner's drafts.
+export async function clearWorkoutNoteDraftsForNote(noteId) {
+  if (!noteId) return;
+  const owner = await getLocalDataOwner();
+  const contextKeys = [`current:${noteId}`, `other:${noteId}`, `recovery:${noteId}`];
+  await AsyncStorage.updateItem(WORKOUT_NOTE_DRAFTS_KEY, (current) => {
+    const drafts = parseDraftMap(current);
+    let touched = false;
+    for (const contextKey of contextKeys) {
+      if (!(contextKey in drafts)) continue;
+      const bucket = removeOwnerFromBucket(normalizeBucket(drafts[contextKey]), owner);
+      if (bucketIsEmpty(bucket)) delete drafts[contextKey];
+      else drafts[contextKey] = bucket;
+      touched = true;
+    }
+    return touched ? JSON.stringify(drafts) : null;
+  });
+}
+
 export async function clearAllWorkoutNoteDrafts() {
   await AsyncStorage.removeItem(WORKOUT_NOTE_DRAFTS_KEY);
 }

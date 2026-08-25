@@ -5,9 +5,23 @@ import { AppState } from 'react-native';
 
 import { useLogCurrentRoutineEditor } from '../screens/log/useLogCurrentRoutineEditor';
 import { Alert } from '../lib/platformAlert';
+import * as Storage from '../storage/entries';
+import {
+  SYNC_TABLES,
+  enqueueDirty,
+  getDirtyRecords,
+  clearDirty,
+} from '../storage/syncQueue';
+import {
+  SYNC_PHASE,
+  markFailed,
+  markComplete,
+  resetPhase,
+} from '../storage/syncRecovery';
 import {
   saveWorkoutNoteDraft,
   loadWorkoutNoteDraft,
+  loadWorkoutNoteDrafts,
 } from '../storage/entries/workoutNoteDrafts';
 
 // performRevertCurrent is only reachable through the confirmation Alert
@@ -118,6 +132,8 @@ function makeLiveProps(overrides = {}) {
 describe('useLogCurrentRoutineEditor — durable drafts (#880)', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
+    Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
+    resetPhase(SYNC_PHASE.SYNC);
     jest.useFakeTimers();
     jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     AppState.addEventListener.mockClear();
@@ -127,6 +143,7 @@ describe('useLogCurrentRoutineEditor — durable drafts (#880)', () => {
     mountedTrees.forEach((tree) => act(() => tree.unmount()));
     mountedTrees = [];
     jest.useRealTimers();
+    Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
     Alert.alert.mockRestore();
   });
 
@@ -381,10 +398,9 @@ describe('useLogCurrentRoutineEditor — durable drafts (#880)', () => {
   });
 
   // #880 revised body — BLOCKER 2: a mismatched draft is naturally superseded
-  // once the user resumes editing (based on canonical content) and saves —
-  // the cheap draft-write pipeline overwrites the same context key with the
-  // fresh session's content on every keystroke, so by the time a save
-  // succeeds there is nothing stale left to protect.
+  // once the user resumes editing (based on canonical content) and saves.
+  // Typing must not do that cleanup early: the stale conflict and the fresh
+  // session coexist until canonical persistence succeeds.
   test('a mismatched (retained) draft is superseded once the user edits canonical content again and saves', async () => {
     const note = { id: 'note-1', title: 'Push Day', raw_text: 'Bench 3x5', updated_at: '2026-08-01T00:00:00.000Z' };
     await saveWorkoutNoteDraft('current:note-1', {
@@ -408,6 +424,11 @@ describe('useLogCurrentRoutineEditor — durable drafts (#880)', () => {
     rerender(live.build());
     await act(async () => { jest.advanceTimersByTime(500); });
     await flush();
+
+    const beforeSave = await loadWorkoutNoteDrafts('current:note-1');
+    expect(beforeSave.map((draft) => draft.raw_text)).toEqual(
+      expect.arrayContaining(['STALE TEXT', 'Bench 3x5\nRow 3x8']),
+    );
 
     await act(async () => { await ref.current.handleSave(); });
     await flush();
@@ -457,11 +478,13 @@ describe('useLogCurrentRoutineEditor — durable drafts (#880)', () => {
       // `await update(...)` call, mirroring the working save-in-flight-race
       // test above.
       await flush(4);
+      expect(ref.current.saveStatus).toBe('saving');
 
       // Newer text arrives while that save is still in flight.
       live.state.text = 'Bench 3x5\nRow 3x8 (typed during save)';
       rerender(live.build());
       expect(ref.current.saveSuccess).toBe('');
+      expect(ref.current.saveStatus).toBeNull();
 
       // The OLDER write now resolves.
       await act(async () => {
@@ -497,6 +520,54 @@ describe('useLogCurrentRoutineEditor — durable drafts (#880)', () => {
 
       expect(ref.current.saveSuccess).toBe('');
     });
+  });
+
+  test('an open editor follows queue, retry failure, and storage-mode convergence changes', async () => {
+    const note = {
+      id: 'note-1',
+      title: 'Push Day',
+      raw_text: 'Bench 3x5',
+      updated_at: '2026-08-01T00:00:00.000Z',
+    };
+    const live = makeLiveProps({
+      currentId: note.id,
+      currentNote: note,
+      notes: [note],
+      workoutNoteTitle: note.title,
+      workoutNoteText: note.raw_text,
+    });
+    const { ref, rerender } = renderHook(live.build());
+    act(() => { ref.current.enterCurrentEditor(); });
+    expect(ref.current.pendingConvergence).toBe(false);
+
+    // The editor stays mounted across sign-in/cloud activation. A parent
+    // render re-evaluates mode, and subsequent queue/recovery notifications
+    // continue updating this same editor instance.
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    rerender(live.build());
+    await flush();
+    expect(ref.current.pendingConvergence).toBe(false);
+
+    await act(async () => {
+      await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, { id: note.id, ...note });
+    });
+    await flush();
+    expect(ref.current.pendingConvergence).toBe(true);
+    expect(ref.current.saveStatus).toBe('pending');
+
+    const dirty = await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES);
+    await act(async () => { await clearDirty(SYNC_TABLES.WORKOUT_NOTES, dirty); });
+    await flush();
+    expect(ref.current.pendingConvergence).toBe(false);
+
+    act(() => { markFailed(SYNC_PHASE.SYNC, new Error('retry later')); });
+    await flush();
+    expect(ref.current.pendingConvergence).toBe(true);
+    expect(ref.current.saveStatus).toBe('pending');
+
+    act(() => { markComplete(SYNC_PHASE.SYNC); });
+    await flush();
+    expect(ref.current.pendingConvergence).toBe(false);
   });
 
   // Before/after rapid-typing measurement the issue's Verification list asks

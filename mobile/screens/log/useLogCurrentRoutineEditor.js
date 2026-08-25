@@ -24,6 +24,8 @@ import {
   loadWorkoutNoteDraft,
   clearWorkoutNoteDraft,
   clearWorkoutNoteDraftIfMatches,
+  clearWorkoutNoteDraftsSupersededBySave,
+  markWorkoutNoteDraftSaveStart,
 } from '../../storage/entries/workoutNoteDrafts';
 
 // See useLogOtherRoutineEditor.js for why this is much shorter than
@@ -59,31 +61,39 @@ function currentDraftKey(currentId) {
 // test orderings. Leaf-level duplication here avoids that cycle entirely.
 function useNoteConvergencePending(noteId) {
   const [pending, setPending] = useState(false);
+  const storageMode = getStorageMode();
 
   useEffect(() => {
-    // Local-only mode never enqueues anything (writeVia only calls through
-    // to the cloud adapter's enqueue path in cloud mode — see
-    // hooks/entries/storageMode.js), so a local-only device can never have a
-    // dirty record for any note; skip the async read/subscribe entirely
-    // rather than paying for (and awaiting) a check whose answer is always
-    // "nothing pending". This is the overwhelmingly common case.
-    if (!noteId || getStorageMode() !== STORAGE_MODES.CLOUD) {
+    if (!noteId) {
       setPending(false);
       return undefined;
     }
     let cancelled = false;
+    let recomputeVersion = 0;
     const recompute = async () => {
-      let dirty = [];
+      const version = ++recomputeVersion;
+      if (getStorageMode() !== STORAGE_MODES.CLOUD) {
+        if (!cancelled && version === recomputeVersion) setPending(false);
+        return;
+      }
+      let dirty;
+      let dirtyReadFailed = false;
       try {
         dirty = await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES);
       } catch {
         dirty = [];
+        dirtyReadFailed = true;
       }
       const isDirty = dirty.some((r) => r?.id === noteId);
       const syncFailed = getSyncState()[SYNC_PHASE.SYNC]?.status === SYNC_STATUS.FAILED;
-      if (!cancelled) setPending(isDirty || syncFailed);
+      if (!cancelled && version === recomputeVersion) {
+        setPending(dirtyReadFailed || isDirty || syncFailed);
+      }
     };
     recompute();
+    // Subscribe in local mode too. A sign-in can switch storage mode while an
+    // editor remains mounted; the ensuing sync-state/queue event must start
+    // convergence tracking without requiring the editor to be reopened.
     const unsubDirty = subscribeDirtyQueue(recompute);
     const unsubSync = subscribeSyncState(recompute);
     return () => {
@@ -91,9 +101,13 @@ function useNoteConvergencePending(noteId) {
       unsubDirty();
       unsubSync();
     };
-  }, [noteId]);
+  }, [noteId, storageMode]);
 
   return pending;
+}
+
+function snapshotMatches(snapshot, title, rawText) {
+  return !!snapshot && snapshot.title === title && snapshot.raw_text === rawText;
 }
 
 function isValidActiveWeek(value) {
@@ -169,6 +183,8 @@ export function useLogCurrentRoutineEditor({
   const readScrollYRef = useRef(0);
   const autosaveCurrentTimerRef = useRef(null);
   const saveCurrentInFlightRef = useRef(null);
+  const savingCurrentSnapshotRef = useRef(null);
+  const lastSavedCurrentIdRef = useRef(null);
   const lastSavedCurrentTextRef = useRef(null);
   const lastSavedCurrentTitleRef = useRef(null);
   const pendingActiveWeekRef = useRef(null);
@@ -189,15 +205,46 @@ export function useLogCurrentRoutineEditor({
   // Cheap local draft (#880), independent of the expensive autosave timer
   // above.
   const draftCurrentTimerRef = useRef(null);
+  const draftBaseUpdatedAtRef = useRef(currentNote?.updated_at ?? null);
+  const draftNoteIdOverrideRef = useRef(null);
+  const preserveExistingDraftRef = useRef(false);
+  const lastDraftWriteSignatureRef = useRef(null);
+  const draftRestoreTokenRef = useRef(0);
   const modeRef = useRef(mode);
   modeRef.current = mode;
 
   const writeCurrentDraftNow = () => {
-    saveWorkoutNoteDraft(currentDraftKey(currentIdRef.current), {
+    const key = currentDraftKey(draftNoteIdOverrideRef.current ?? currentIdRef.current);
+    const draft = {
       title: workoutNoteTitleRef.current,
       raw_text: workoutNoteTextRef.current,
-      baseUpdatedAt: currentNoteRef.current?.updated_at ?? null,
-    }).catch(() => {});
+      baseUpdatedAt: draftBaseUpdatedAtRef.current,
+    };
+    const preserveExisting = preserveExistingDraftRef.current;
+    const signature = JSON.stringify([
+      key,
+      draft.baseUpdatedAt,
+      draft.title,
+      draft.raw_text,
+      preserveExisting,
+    ]);
+    if (lastDraftWriteSignatureRef.current === signature) return;
+    lastDraftWriteSignatureRef.current = signature;
+    saveWorkoutNoteDraft(key, draft, { preserveExisting }).then(() => {
+      if (preserveExisting) preserveExistingDraftRef.current = false;
+    }).catch(() => {
+      if (lastDraftWriteSignatureRef.current === signature) {
+        lastDraftWriteSignatureRef.current = null;
+      }
+    });
+  };
+
+  // A pending async restore must yield to any real editor interaction. This is
+  // what keeps restoration passive: it can never rewrite a focused value and
+  // thereby move the caret or selection after the user has started editing.
+  const cancelPendingDraftRestore = () => {
+    draftRestoreTokenRef.current += 1;
+    preserveExistingDraftRef.current = true;
   };
 
   // Check-in gates, held in a ref for the same reason as the values above:
@@ -211,6 +258,12 @@ export function useLogCurrentRoutineEditor({
     () => (isValidActiveWeek(currentNote?.activeWeek) ? currentNote.activeWeek : null)
   );
   const previousNoteIdentityRef = useRef(noteIdentity);
+
+  useEffect(() => {
+    if (draftNoteIdOverrideRef.current && currentId === draftNoteIdOverrideRef.current) {
+      draftNoteIdOverrideRef.current = null;
+    }
+  }, [currentId]);
 
   // Universal-skip counter: how many not-yet-removed 'Skip week' presses this
   // note has. Persisted inside skip_markers (same single update as raw_text,
@@ -420,6 +473,8 @@ export function useLogCurrentRoutineEditor({
     if (!currentNote) return workoutNoteTitle.trim() !== '' || workoutNoteText.trim() !== '';
     return workoutNoteTitle !== (currentNote.title || '') || workoutNoteText !== currentNote.raw_text;
   }, [currentNote, workoutNoteTitle, workoutNoteText]);
+  const hasUnsavedCurrentRef = useRef(hasUnsavedCurrent);
+  hasUnsavedCurrentRef.current = hasUnsavedCurrent;
 
   // Debounced autosave for the current (existing) note while in edit mode.
   // New notes (no currentId) require an explicit first save to get an ID.
@@ -443,7 +498,7 @@ export function useLogCurrentRoutineEditor({
   // including a brand-new note (`currentId` is null) — the exact gap the
   // debounced autosave above deliberately does not cover.
   useEffect(() => {
-    if (mode !== 'edit') return;
+    if (mode !== 'edit' || !hasUnsavedCurrent) return;
     if (draftCurrentTimerRef.current) clearTimeout(draftCurrentTimerRef.current);
     draftCurrentTimerRef.current = setTimeout(() => {
       draftCurrentTimerRef.current = null;
@@ -456,7 +511,7 @@ export function useLogCurrentRoutineEditor({
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workoutNoteText, workoutNoteTitle, mode, currentId]);
+  }, [workoutNoteText, workoutNoteTitle, mode, currentId, hasUnsavedCurrent]);
 
   // Flush the pending draft immediately on backgrounding instead of waiting
   // out the debounce.
@@ -467,7 +522,7 @@ export function useLogCurrentRoutineEditor({
         clearTimeout(draftCurrentTimerRef.current);
         draftCurrentTimerRef.current = null;
       }
-      if (modeRef.current === 'edit') writeCurrentDraftNow();
+      if (modeRef.current === 'edit' && hasUnsavedCurrentRef.current) writeCurrentDraftNow();
     });
     return () => sub.remove();
   }, []);
@@ -491,6 +546,7 @@ export function useLogCurrentRoutineEditor({
   }, []);
 
   const handleCurrentTextChange = (newText) => {
+    cancelPendingDraftRestore();
     if (!hasABWeeks || !currentId) {
       setWorkoutNoteText(newText);
       return;
@@ -561,12 +617,20 @@ export function useLogCurrentRoutineEditor({
     const snapshotText = textToSave;
     const snapshotTitle = workoutNoteTitle;
     const run = async () => {
+      savingCurrentSnapshotRef.current = {
+        noteId: savedForId || 'new',
+        title: snapshotTitle,
+        raw_text: snapshotText,
+      };
       setIsSaving(true);
       setSaveError('');
       setSaveSuccess('');
+      // Start the draft ordering boundary before canonical persistence, but do
+      // not put the cheap local bookkeeping on the user's save critical path.
+      const draftCheckpointPromise = markWorkoutNoteDraftSaveStart().catch(() => null);
       try {
       let result = null;
-      const titleToSave = workoutNoteTitle || 'Untitled Routine';
+      const titleToSave = snapshotTitle || 'Untitled Routine';
       const { sections: savedSections } = parseWorkoutNote(textToSave);
       const explicitTrackedNames = listTrackedLifts(trackedLifts);
       const defaultNames = getDefaultTrackedNames();
@@ -634,48 +698,83 @@ export function useLogCurrentRoutineEditor({
           ...activeWeekPatch,
         });
       } else {
-        result = await add(titleToSave, workoutNoteText);
+        result = await add(titleToSave, snapshotText);
+        savingCurrentSnapshotRef.current.noteId = result.id;
+        draftNoteIdOverrideRef.current = result.id;
         await selectCurrent(result.id);
         if (result) {
-          await update(result.id, {
+          result = await update(result.id, {
             ...classificationsPatch,
             skip_markers,
             attendance_flags,
             ...activeWeekPatch,
-          });
+          }) || result;
         }
       }
 
       if (result) {
+        const identityUnchanged = savedForId
+          ? currentIdRef.current === savedForId
+          : currentIdRef.current == null || currentIdRef.current === result.id;
         // Commit the counter only after the write actually persisted, so a
         // failed save leaves the advisory flag in sync with the stored text.
-        universalSkipCountRef.current = resolvedUniversalSkipCount;
-        lastSavedCurrentTextRef.current = snapshotText;
-        lastSavedCurrentTitleRef.current = snapshotTitle;
+        if (identityUnchanged) {
+          savingCurrentSnapshotRef.current.noteId = result.id || savedForId;
+          universalSkipCountRef.current = resolvedUniversalSkipCount;
+          lastSavedCurrentIdRef.current = result.id || savedForId;
+          // A fulfilled mutation proves the submitted payload durable. Bind
+          // status/Done convergence to that exact payload rather than to an
+          // incidental or partial return shape from the storage adapter.
+          lastSavedCurrentTextRef.current = snapshotText;
+          lastSavedCurrentTitleRef.current = titleToSave;
+          draftBaseUpdatedAtRef.current = result.updated_at ?? draftBaseUpdatedAtRef.current;
+          if (!savedForId && result.id) draftNoteIdOverrideRef.current = result.id;
+        }
         const contentUnchanged =
-          (overrideText != null ? overrideText : workoutNoteTextRef.current) === snapshotText &&
+          workoutNoteTextRef.current === snapshotText &&
           workoutNoteTitleRef.current === snapshotTitle;
-        const identityUnchanged = !savedForId || currentIdRef.current === savedForId;
         if (contentUnchanged && identityUnchanged) {
           setWorkoutNoteTitle(result.title || '');
           setWorkoutNoteText(result.raw_text || '');
           if (!autosave) setSaveSuccess('Saved on device');
         }
-        // Deterministic cleanup after a successful save (#880): clear both
-        // the pre-save draft key ('current:new' for a note's first save) and
-        // the post-save key, in case a cheap-draft write already landed
-        // under the real id before this save resolved. Compare-and-clear
-        // ONLY (#880 review): if the user kept typing while this write was
-        // in flight, the 400ms draft timer can have persisted text NEWER
-        // than `snapshotText`/`snapshotTitle` before the save resolved. An
-        // unconditional clear would delete those newer, not-yet-autosaved
-        // keystrokes — losing them on a crash before the next autosave.
+        // Successful-save cleanup retires the saved snapshot and conflicts
+        // that predate the save checkpoint. A different draft written after
+        // that boundary is newer in-flight typing and survives.
         {
+          const draftCheckpoint = await draftCheckpointPromise;
           const preKey = currentDraftKey(savedForId);
-          const snapshot = { title: snapshotTitle, raw_text: snapshotText };
-          clearWorkoutNoteDraftIfMatches(preKey, snapshot).catch(() => {});
-          if (!savedForId && result?.id) {
-            clearWorkoutNoteDraftIfMatches(currentDraftKey(result.id), snapshot).catch(() => {});
+          const postKey = currentDraftKey(result.id || savedForId);
+          const savedSnapshot = { title: snapshotTitle, raw_text: snapshotText };
+          await clearWorkoutNoteDraftsSupersededBySave(
+            preKey,
+            draftCheckpoint,
+            savedSnapshot,
+          ).catch(() => {});
+          if (postKey !== preKey) {
+            await clearWorkoutNoteDraftsSupersededBySave(
+              postKey,
+              draftCheckpoint,
+              savedSnapshot,
+            ).catch(() => {});
+          }
+
+          // If typing continued while this write was in flight, rebase that
+          // live draft onto the revision the write just created. Leaving it
+          // stamped with the older revision would retain the bytes but refuse
+          // to auto-restore them after a crash — a subtler form of data loss.
+          const latestSnapshot = {
+            title: workoutNoteTitleRef.current,
+            raw_text: workoutNoteTextRef.current,
+          };
+          if (identityUnchanged && !snapshotMatches(latestSnapshot, snapshotTitle, snapshotText)) {
+            await saveWorkoutNoteDraft(postKey, {
+              ...latestSnapshot,
+              baseUpdatedAt: result.updated_at ?? null,
+            }).catch(() => {});
+            if (postKey !== preKey) {
+              await clearWorkoutNoteDraftIfMatches(preKey, latestSnapshot).catch(() => {});
+            }
           }
         }
         return true;
@@ -725,19 +824,38 @@ export function useLogCurrentRoutineEditor({
     }, Platform.OS === 'ios' ? 250 : 150);
   };
 
-  const enterCurrentEditor = () => {
+  const openCurrentEditor = ({ restoreDraft }) => {
     const scrollY = readScrollYRef.current;
+    const expectedId = currentIdRef.current;
+    const canonicalUpdatedAt = currentNoteRef.current?.updated_at ?? null;
+    const expectedTitle = workoutNoteTitleRef.current;
+    const expectedText = workoutNoteTextRef.current;
+    draftBaseUpdatedAtRef.current = canonicalUpdatedAt;
+    preserveExistingDraftRef.current = !restoreDraft;
+    const restoreToken = draftRestoreTokenRef.current + 1;
+    draftRestoreTokenRef.current = restoreToken;
     setOriginalNoteState({
       title: workoutNoteTitle,
       text: workoutNoteText,
       activeWeek: effectiveActiveWeek,
     });
+    modeRef.current = 'edit';
     setMode('edit');
     requestAnimationFrame(() => {
       editorScrollRef.current?.scrollTo({ y: scrollY, animated: false });
     });
-    restoreCurrentDraftIfSafe();
+    if (restoreDraft) {
+      restoreCurrentDraftIfSafe({
+        expectedId,
+        canonicalUpdatedAt,
+        expectedTitle,
+        expectedText,
+        restoreToken,
+      });
+    }
   };
+
+  const enterCurrentEditor = () => openCurrentEditor({ restoreDraft: true });
 
   // Restores a cheap local draft into the live editor on opening the editor
   // (covers foreground/restart: the app process may have been killed with an
@@ -753,16 +871,20 @@ export function useLogCurrentRoutineEditor({
   // explicitly discards/reverts, or a later successful save supersedes it.
   // (An earlier version of this code cleared the draft on mismatch — that was
   // itself the data-loss bug this rule now forbids.)
-  const restoreCurrentDraftIfSafe = async () => {
-    const expectedId = currentIdRef.current;
-    const canonicalUpdatedAt = currentNoteRef.current?.updated_at ?? null;
+  const restoreCurrentDraftIfSafe = async ({
+    expectedId,
+    canonicalUpdatedAt,
+    expectedTitle,
+    expectedText,
+    restoreToken,
+  }) => {
     const key = currentDraftKey(expectedId);
-    const draft = await loadWorkoutNoteDraft(key).catch(() => null);
+    const draft = await loadWorkoutNoteDraft(key, { baseUpdatedAt: canonicalUpdatedAt }).catch(() => null);
     if (!draft) return;
-    // The context may have changed while this read was in flight (editor
-    // closed, or a different note opened).
+    if (draftRestoreTokenRef.current !== restoreToken) return;
     if (currentIdRef.current !== expectedId || modeRef.current !== 'edit') return;
-    if (draft.baseUpdatedAt !== canonicalUpdatedAt) return; // retained, not deleted
+    if ((currentNoteRef.current?.updated_at ?? null) !== canonicalUpdatedAt) return;
+    if (workoutNoteTitleRef.current !== expectedTitle || workoutNoteTextRef.current !== expectedText) return;
     const draftText = draft.raw_text || '';
     const draftTitle = draft.title || '';
     if (draftText === workoutNoteTextRef.current && draftTitle === workoutNoteTitleRef.current) return;
@@ -787,7 +909,7 @@ export function useLogCurrentRoutineEditor({
     if (anchor.weekIndex !== weekIndex) return;
     const range = resolveExerciseSourceAnchor(anchor, { noteId: currentId, weekIndex, sliceText: activeEditText });
     if (!range) return;
-    if (mode !== 'edit') enterCurrentEditor();
+    if (mode !== 'edit') openCurrentEditor({ restoreDraft: false });
     setPendingSourceJump({
       start: range.end,
       end: range.end,
@@ -1154,10 +1276,33 @@ export function useLogCurrentRoutineEditor({
   // what closes the gap where a completed save's "Saved on device" flash
   // would otherwise keep showing for up to its 2s timeout even after the
   // user typed something new.
-  const liveTextMatchesLastSave =
-    workoutNoteText === lastSavedCurrentTextRef.current &&
-    workoutNoteTitle === lastSavedCurrentTitleRef.current;
-  const boundSaveSuccess = saveSuccess && liveTextMatchesLastSave ? saveSuccess : '';
+  const liveEditorNoteId = currentId || draftNoteIdOverrideRef.current || 'new';
+  const liveMatchesSavingSnapshot = isSaving
+    && savingCurrentSnapshotRef.current?.noteId === liveEditorNoteId
+    && snapshotMatches(
+      savingCurrentSnapshotRef.current,
+      workoutNoteTitle,
+      workoutNoteText,
+    );
+  const liveMatchesLastSave = lastSavedCurrentIdRef.current === liveEditorNoteId && snapshotMatches(
+    { title: lastSavedCurrentTitleRef.current, raw_text: lastSavedCurrentTextRef.current },
+    workoutNoteTitle,
+    workoutNoteText,
+  );
+  const liveMatchesCanonical = currentNote?.id === liveEditorNoteId && snapshotMatches(
+    { title: currentNote.title || '', raw_text: currentNote.raw_text || '' },
+    workoutNoteTitle,
+    workoutNoteText,
+  );
+  const liveIsLocallyDurable = liveMatchesLastSave || liveMatchesCanonical;
+  const boundSaveSuccess = saveSuccess && liveIsLocallyDurable ? saveSuccess : '';
+  const saveStatus = liveMatchesSavingSnapshot
+    ? 'saving'
+    : liveIsLocallyDurable && pendingConvergence
+      ? 'pending'
+      : boundSaveSuccess
+        ? 'saved'
+        : null;
 
   return {
     mode,
@@ -1167,6 +1312,8 @@ export function useLogCurrentRoutineEditor({
     saveSuccess: boundSaveSuccess,
     setSaveSuccess,
     pendingConvergence,
+    saveStatus,
+    cancelPendingDraftRestore,
     originalNoteState,
     setOriginalNoteState,
     roughFlaggedNames,

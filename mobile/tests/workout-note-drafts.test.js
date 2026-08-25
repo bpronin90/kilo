@@ -2,8 +2,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   saveWorkoutNoteDraft,
   loadWorkoutNoteDraft,
+  loadWorkoutNoteDrafts,
   clearWorkoutNoteDraft,
   clearWorkoutNoteDraftIfMatches,
+  clearWorkoutNoteDraftsSupersededBySave,
+  markWorkoutNoteDraftSaveStart,
   clearAllWorkoutNoteDrafts,
 } from '../storage/entries/workoutNoteDrafts';
 import {
@@ -77,6 +80,74 @@ describe('workout note drafts', () => {
     const draft = await loadWorkoutNoteDraft('current:new');
     expect(draft.title).toBe('v2');
     expect(draft.raw_text).toBe('second');
+  });
+
+  test('a new canonical revision retains the conflicting draft while later typing gets its own active slot', async () => {
+    await saveWorkoutNoteDraft('other:note-1', {
+      title: 'Interrupted',
+      raw_text: 'stale work',
+      baseUpdatedAt: 'revision-a',
+    });
+    await saveWorkoutNoteDraft('other:note-1', {
+      title: 'Canonical edit',
+      raw_text: 'new work',
+      baseUpdatedAt: 'revision-b',
+    });
+
+    const drafts = await loadWorkoutNoteDrafts('other:note-1');
+    expect(drafts.map((draft) => draft.raw_text)).toEqual(
+      expect.arrayContaining(['stale work', 'new work']),
+    );
+    expect(await loadWorkoutNoteDraft('other:note-1', { baseUpdatedAt: 'revision-a' }))
+      .toMatchObject({ raw_text: 'stale work' });
+    expect(await loadWorkoutNoteDraft('other:note-1', { baseUpdatedAt: 'revision-b' }))
+      .toMatchObject({ raw_text: 'new work' });
+  });
+
+  test('Recovery and ordinary-other contexts for the same note never restore one another', async () => {
+    await saveWorkoutNoteDraft('other:note-1', { title: 'Routine', raw_text: 'ordinary' });
+    await saveWorkoutNoteDraft('recovery:note-1', { title: 'Recovery', raw_text: 'recovery' });
+    expect((await loadWorkoutNoteDraft('other:note-1')).raw_text).toBe('ordinary');
+    expect((await loadWorkoutNoteDraft('recovery:note-1')).raw_text).toBe('recovery');
+  });
+
+  test('a source-jump or focus-cancelled restore can preserve a same-revision draft before typing', async () => {
+    await saveWorkoutNoteDraft('current:note-1', {
+      title: 'Interrupted', raw_text: 'draft text', baseUpdatedAt: 'revision-a',
+    });
+    await saveWorkoutNoteDraft(
+      'current:note-1',
+      { title: 'Canonical', raw_text: 'typed after jump', baseUpdatedAt: 'revision-a' },
+      { preserveExisting: true },
+    );
+    const drafts = await loadWorkoutNoteDrafts('current:note-1');
+    expect(drafts.map((draft) => draft.raw_text)).toEqual(
+      expect.arrayContaining(['draft text', 'typed after jump']),
+    );
+  });
+
+  test('successful-save cleanup retires pre-save conflicts but preserves later in-flight typing', async () => {
+    await saveWorkoutNoteDraft('current:note-1', {
+      title: 'Old conflict',
+      raw_text: 'interrupted',
+      baseUpdatedAt: 'revision-a',
+    });
+    const checkpoint = await markWorkoutNoteDraftSaveStart();
+    await saveWorkoutNoteDraft('current:note-1', {
+      title: 'Live',
+      raw_text: 'typed after save began',
+      baseUpdatedAt: 'revision-b',
+    });
+
+    await clearWorkoutNoteDraftsSupersededBySave(
+      'current:note-1',
+      checkpoint,
+      { title: 'Canonical', raw_text: 'snapshot being saved' },
+    );
+
+    const drafts = await loadWorkoutNoteDrafts('current:note-1');
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0].raw_text).toBe('typed after save began');
   });
 
   test('a corrupt draft table is treated as empty rather than throwing', async () => {
@@ -216,6 +287,18 @@ describe('workout note drafts', () => {
       const draft = await loadWorkoutNoteDraft('current:note-1');
       expect(draft).not.toBeNull();
       expect(draft.raw_text).toBe('text-a');
+    });
+
+    test('one owner writing or clearing a shared context cannot destroy another owner\'s retained draft', async () => {
+      await setLocalDataOwner('user-a');
+      await saveWorkoutNoteDraft('current:note-1', { title: 'A', raw_text: 'text-a' });
+      await setLocalDataOwner('user-b');
+      await saveWorkoutNoteDraft('current:note-1', { title: 'B', raw_text: 'text-b' });
+      await clearWorkoutNoteDraft('current:note-1');
+      expect(await loadWorkoutNoteDraft('current:note-1')).toBeNull();
+
+      await setLocalDataOwner('user-a');
+      expect(await loadWorkoutNoteDraft('current:note-1')).toMatchObject({ raw_text: 'text-a' });
     });
 
     test('unclaimed and unknown owners are distinct — a draft from one is invisible under the other', async () => {

@@ -122,7 +122,8 @@ export function LogRecoverySection({
   // useLogOtherRoutineEditor instance (`editingSource === 'recovery'` is
   // just one entry point into it).
   editingSaveSuccess = '',
-  editingPendingConvergence = false,
+  editingSaveStatus = null,
+  onEditorInteraction,
   onSaveEdit,
   onCancelEdit,
   // #881 (F10a §4/§6): a double-tapped exercise's resolved source jump,
@@ -704,7 +705,11 @@ export function LogRecoverySection({
                             <View style={styles.inlineEditor}>
                               <TextInput
                                 value={editingTitle}
-                                onChangeText={onChangeEditingTitle}
+                                onChangeText={(next) => {
+                                  onEditorInteraction?.();
+                                  onChangeEditingTitle?.(next);
+                                }}
+                                onFocus={onEditorInteraction}
                                 placeholder="Routine Name"
                                 placeholderTextColor={colors.textMuted}
                                 autoCorrect={false}
@@ -716,7 +721,11 @@ export function LogRecoverySection({
                               <TextInput
                                 ref={recoveryEditingTextInputRef}
                                 value={editingText}
-                                onChangeText={onChangeEditingText}
+                                onChangeText={(next) => {
+                                  onEditorInteraction?.();
+                                  onChangeEditingText?.(next);
+                                }}
+                                onFocus={onEditorInteraction}
                                 placeholder="Workout note…"
                                 placeholderTextColor={colors.textMuted}
                                 multiline
@@ -735,9 +744,8 @@ export function LogRecoverySection({
                                 <Text style={styles.errorBannerText}>{editingSaveError}</Text>
                               ) : null}
                               <SaveStatusRegion
-                                isSaving={editingIsSaving}
-                                saveSuccess={editingSaveSuccess}
-                                pendingConvergence={editingPendingConvergence}
+                                status={editingSaveStatus}
+                                savedLabel={editingSaveSuccess || undefined}
                               />
                               <View style={styles.weekNoteActions}>
                                 {editingHasABWeeks && (
@@ -765,7 +773,7 @@ export function LogRecoverySection({
                                   accessibilityState={{ disabled: editingIsSaving }}
                                 >
                                   <Text style={styles.inlineSwitchButtonText}>
-                                    {editingIsSaving ? 'Saving…' : 'Save'}
+                                    Save
                                   </Text>
                                 </Pressable>
                               </View>

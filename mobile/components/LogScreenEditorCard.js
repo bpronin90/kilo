@@ -218,58 +218,45 @@ function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
   });
 }
 
-// Save-state region shared by the full-screen editor card and Recovery's
-// own inline editor (#880 revised body — Recovery renders its own editor and
-// does not inherit this card's status region, so it must reuse this exact
-// component rather than a parallel implementation with different semantics).
-//
-// Three possible labels, in priority order:
-//   Saving…        — a write for this note is in flight right now.
-//   Saved / <text> — the caller's own success text (e.g. "Saved on device",
-//                    "Saved!"); local durability, never downgraded by an
-//                    unconfirmed cloud upload.
-//   Not yet synced — locally durable, but the sync queue still has this note
-//                    dirty or the last sync pass failed. Derived upstream
-//                    from syncQueue/syncRecovery, never a network probe —
-//                    this component only renders whatever `pendingConvergence`
-//                    it is handed.
-//
-// Non-interference (#880 revised body): the outer View reserves a fixed
-// minHeight regardless of which (or no) label is showing, so text appearing,
-// changing, or disappearing never reflows the editor or moves a control
-// under the user's finger. The Text itself only ever gets
-// `accessibilityLiveRegion="polite"` — it is never focusable and never calls
-// any focus API, so it cannot steal or move focus, and it renders no
-// pressable, so there is nothing here for the user to tap.
-//
-// Announcements fire on state TRANSITIONS only, debounced: `displayedLabel`
-// only adopts a new raw label after it has held steady for
-// SAVE_STATUS_ANNOUNCE_DEBOUNCE_MS, so a rapid Saving…→Saved flip (a fast
-// local write) collapses into a single eventual update/announcement instead
-// of two. The FIRST label a mount computes is applied immediately (no lag on
-// initial mount) because `useState(computeSaveStatusLabel(...))` seeds
-// `displayedLabel` with it directly — only SUBSEQUENT changes are debounced.
+// Shared visual status for the full-screen and Recovery editors. The hooks
+// compute `status` only while the live {title, raw_text} still matches the
+// snapshot described by it. Rendering is immediate; only the accessibility
+// announcement is debounced. Delaying the visible label would leave a stale
+// "Saved" claim on screen after the user typed, violating the exact-snapshot
+// contract.
 const SAVE_STATUS_ANNOUNCE_DEBOUNCE_MS = 220;
 
-export function computeSaveStatusLabel({ isSaving, saveSuccess, pendingConvergence }) {
-  if (isSaving) return 'Saving…';
-  if (saveSuccess) return saveSuccess;
-  if (pendingConvergence) return 'Not yet synced';
+export function computeSaveStatusLabel({ status, savedLabel = 'Saved on device' }) {
+  if (status === 'saving') return 'Saving…';
+  if (status === 'saved') return savedLabel;
+  if (status === 'pending') return 'Saved on device · Not yet synced';
   return '';
 }
 
-export function SaveStatusRegion({ isSaving, saveSuccess, pendingConvergence, style, testID }) {
+export function SaveStatusRegion({ status, savedLabel, style, testID }) {
   const styles = useThemedStyles(createStyles);
-  const rawLabel = computeSaveStatusLabel({ isSaving, saveSuccess, pendingConvergence });
-  const [displayedLabel, setDisplayedLabel] = useState(rawLabel);
+  const label = computeSaveStatusLabel({ status, savedLabel });
   const timerRef = useRef(null);
+  const mountedRef = useRef(false);
+  const previousLabelRef = useRef(label);
 
   useEffect(() => {
-    if (rawLabel === displayedLabel) return undefined;
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      previousLabelRef.current = label;
+      return undefined;
+    }
+    if (label === previousLabelRef.current) return undefined;
+    previousLabelRef.current = label;
     if (timerRef.current) clearTimeout(timerRef.current);
+    if (!label) return undefined;
+    // Capture the native function while the effect is active. Besides making
+    // the callback independent of later module teardown, this avoids touching
+    // React Native's lazy export getter from a delayed callback.
+    const announce = AccessibilityInfo.announceForAccessibility;
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
-      setDisplayedLabel(rawLabel);
+      announce?.(label);
     }, SAVE_STATUS_ANNOUNCE_DEBOUNCE_MS);
     return () => {
       if (timerRef.current) {
@@ -277,8 +264,7 @@ export function SaveStatusRegion({ isSaving, saveSuccess, pendingConvergence, st
         timerRef.current = null;
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rawLabel]);
+  }, [label]);
 
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -288,9 +274,13 @@ export function SaveStatusRegion({ isSaving, saveSuccess, pendingConvergence, st
     <View style={[styles.saveStatusRegion, style]} testID={testID}>
       <Text
         style={styles.autosaveIndicator}
-        accessibilityLiveRegion="polite"
+        accessibilityLiveRegion="none"
+        accessible={!!label}
+        accessibilityLabel={label || undefined}
+        numberOfLines={1}
+        ellipsizeMode="tail"
       >
-        {displayedLabel || ''}
+        {label || '\u00a0'}
       </Text>
     </View>
   );
@@ -304,7 +294,8 @@ export function LogScreenEditorCard({
   isSaving,
   saveSuccess,
   saveError,
-  pendingConvergence,
+  saveStatus,
+  onEditorInteraction,
   editingNoteId,
   isEditingDeloadNote,
   editingTitle,
@@ -627,7 +618,11 @@ export function LogScreenEditorCard({
             {!isEditingDeloadNote && (
               <TextInput
                 value={editingNoteId ? editingTitle : workoutNoteTitle}
-                onChangeText={editingNoteId ? setEditingTitle : setWorkoutNoteTitle}
+                onChangeText={(next) => {
+                  onEditorInteraction?.();
+                  (editingNoteId ? setEditingTitle : setWorkoutNoteTitle)(next);
+                }}
+                onFocus={onEditorInteraction}
                 placeholder="Routine Name (e.g. Push Day)"
                 placeholderTextColor={colors.textMuted}
                 autoCorrect={false}
@@ -812,10 +807,12 @@ export function LogScreenEditorCard({
               ref={editorInputRef}
               value={editorText}
               onChangeText={(next) => {
+                onEditorInteraction?.();
                 setSeedSelection(null);
                 setProblemSelectionRequest(null);
                 setEditorText(next);
               }}
+              onFocus={onEditorInteraction}
               selection={problemSelectionRequest ?? seedSelection ?? undefined}
               selectionColor={colors.accent}
               onSelectionChange={() => {
@@ -880,17 +877,12 @@ export function LogScreenEditorCard({
               // with no indication of what it's doing.
               <Button
                 onPress={editingNoteId ? handleSaveOtherNote : handleSave}
-                title={(editingNoteId ? noteIsSaving : isSaving) ? 'Saving…' : 'Save'}
+                title="Save"
                 disabled={editingNoteId ? noteIsSaving : isSaving}
                 style={styles.saveButton}
               />
-            ) : (
-              <SaveStatusRegion
-                isSaving={editingNoteId ? noteIsSaving : isSaving}
-                saveSuccess={saveSuccess}
-                pendingConvergence={pendingConvergence}
-              />
-            )}
+            ) : null}
+            <SaveStatusRegion status={saveStatus} savedLabel={saveSuccess || undefined} />
             {/* A failed write must be visible where the write was asked for.
                 Without this the `Save & Switch` save-failure path (#745 Part 6
                 P6) was silent, which reads as a cancelled adoption rather than

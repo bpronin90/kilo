@@ -90,7 +90,7 @@ describe('useLogOtherRoutineEditor — draft restore wiring (#880 / PR #882 find
 
   test('restores a draft when opening a Recovery note via Edit (handleEditRecoveryViewedNote)', async () => {
     const note = { id: 'note-2', title: 'Recovery Week 1', raw_text: 'Walk 30min', updated_at: '2026-08-05T00:00:00.000Z' };
-    await saveWorkoutNoteDraft('other:note-2', {
+    await saveWorkoutNoteDraft('recovery:note-2', {
       title: 'Recovery Week 1',
       raw_text: 'Walk 30min\nStretch 10min',
       baseUpdatedAt: note.updated_at,
