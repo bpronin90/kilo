@@ -77,6 +77,10 @@ export function LogPreviousRoutines({
   handleEditViewedNote,
   handleDeleteRoutine,
   handleCreateRoutine,
+  // #881: exercise source-jump wiring, straight through to
+  // WorkoutContentRenderer — a no-op gesture whenever any of these is null.
+  viewingActiveText,
+  onExerciseSourceJump,
   recoveryWeekNumberByNoteId = {},
   expanded = false,
   onToggleExpanded,
@@ -213,6 +217,10 @@ export function LogPreviousRoutines({
                       <WorkoutContentRenderer
                         dayGroups={viewingNoteDayGroups}
                         emptyText="No exercises to display."
+                        sourceNoteId={viewingNoteId}
+                        sourceWeekIndex={viewingHasABWeeks && viewingEffectiveWeek === 'B' ? 1 : 0}
+                        sourceSliceText={viewingActiveText}
+                        onExercisePress={onExerciseSourceJump}
                       />
                     </Pressable>
                     <View style={styles.inlineActions}>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Alert } from '../../lib/platformAlert';
-import { parseWorkoutNote } from '../../lib/parser';
+import { parseWorkoutNote, resolveExerciseSourceAnchor } from '../../lib/parser';
 import { deriveSessionAlignmentIssue } from '../../lib/parser/sessions.js';
 import {
   findMatchingExerciseNames,
@@ -97,6 +97,10 @@ function useNoteViewer(notes) {
     viewingEffectiveWeek,
     viewingActiveWeek,
     setViewingActiveWeek,
+    // #881: the exact raw-text slice `viewingNoteDayGroups` was built from —
+    // needed as the `sliceText` a rendered exercise's source anchor is both
+    // built against and later resolved against.
+    viewingActiveText,
   };
 }
 
@@ -376,6 +380,36 @@ export function useLogOtherRoutineEditor({
   };
   const handleEditViewedNote = makeHandleEditViewedNote(routineViewer, null);
   const handleEditRecoveryViewedNote = makeHandleEditViewedNote(recoveryViewer, 'recovery');
+
+  // #881 (F10a §2/§6): resolves a double-tapped exercise's source anchor
+  // against the viewer's CURRENT live slice and — only on success — opens
+  // the same editor `handleEditViewedNote`/`handleEditRecoveryViewedNote`
+  // already open, then leaves a one-shot collapsed-caret request behind for
+  // whichever surface (shared card or Recovery's own inline editor) is
+  // about to render the matching note/text. A discarded/stale anchor never
+  // opens anything and never touches `pendingSourceJump`.
+  const [pendingSourceJump, setPendingSourceJump] = useState(null);
+  const clearPendingSourceJump = () => setPendingSourceJump(null);
+  const resolveAndOpenSourceJump = (viewer, source) => (anchor) => {
+    const note = viewer.viewingNote;
+    if (!note || !anchor || anchor.noteId !== note.id) return;
+    const weekIndex = viewer.viewingHasABWeeks && viewer.viewingEffectiveWeek === 'B' ? 1 : 0;
+    if (anchor.weekIndex !== weekIndex) return;
+    const range = resolveExerciseSourceAnchor(anchor, { noteId: note.id, weekIndex, sliceText: viewer.viewingActiveText });
+    if (!range) return;
+    makeHandleEditViewedNote(viewer, source)();
+    setPendingSourceJump({
+      start: range.end,
+      end: range.end,
+      editingNoteId: note.id,
+      currentMode: null,
+      expectedText: viewer.viewingActiveText,
+      source,
+      token: `${Date.now()}-${Math.random()}`,
+    });
+  };
+  const handleRoutineExerciseSourceJump = resolveAndOpenSourceJump(routineViewer, null);
+  const handleRecoveryExerciseSourceJump = resolveAndOpenSourceJump(recoveryViewer, 'recovery');
 
   const handleOpenOtherNote = (other) => {
     setEditingNoteId(other.id);
@@ -1026,6 +1060,13 @@ export function useLogOtherRoutineEditor({
     handleViewRecoveryNote,
     handleEditRecoveryViewedNote,
     handleCancelRecoveryEdit,
+    // #881 exercise source-jump wiring
+    pendingSourceJump,
+    clearPendingSourceJump,
+    handleRoutineExerciseSourceJump,
+    handleRecoveryExerciseSourceJump,
+    viewingActiveText: routineViewer.viewingActiveText,
+    recoveryViewingActiveText: recoveryViewer.viewingActiveText,
     deloadEditDate,
     // Wrapped so any UI-driven change marks the date as explicitly touched
     // (#764 feedback fix 2) — a title-/text-only edit must never fall into

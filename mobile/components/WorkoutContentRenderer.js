@@ -1,10 +1,18 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, AnnotationNote, UnparsedRow, NoteParseError, SET_ROW_FONT_SIZE } from './UI';
 import { useThemedStyles } from '../theme/ThemeContext';
 import { normalizeLiftName } from '../lib/data';
 import { useWeightUnit } from '../lib/unitPreference';
 import { formatLiftWeightValue } from '../lib/units';
+import { buildExerciseSourceAnchor } from '../lib/parser';
+
+// #881 (F10a §5): the recognizer window for the exercise-name double-tap
+// gesture that jumps to raw source. Deliberately separate from the note-body
+// double-tap-to-edit gesture (useLogCurrentRoutineEditor's own 300ms window)
+// — the two are wired to different Pressables and never compete for the same
+// touch, but keeping the same window keeps the feel consistent.
+const SOURCE_JUMP_DOUBLE_TAP_MS = 300;
 
 // Compact set-line grouping (#843), mirroring UI.js's SetLine algorithm but
 // rendered at Recovery's compact type scale (13/muted/600) instead of
@@ -85,9 +93,42 @@ export function WorkoutContentRenderer({
   // note's content never competes with the card that hosts it. Routine
   // rendering (every other caller) is unaffected — this defaults to false.
   compact = false,
+  // #881 (F10a/F10b): source-jump wiring. All four are optional — omitting
+  // any of them (Deload views, or a surface not yet wired) simply means no
+  // double-tap anchor is ever built and `onExercisePress` is never called,
+  // so the gesture is a strict no-op there. `sourceSliceText` MUST be the
+  // exact raw-text slice that was parsed to build `dayGroups`, since the
+  // anchor's staleness fingerprint is a hash of it.
+  sourceNoteId = null,
+  sourceWeekIndex = 0,
+  sourceSliceText = null,
+  onExercisePress = null,
 }) {
   const styles = useThemedStyles(createStyles);
   const unit = useWeightUnit();
+  const sourceJumpEnabled = sourceNoteId != null && sourceSliceText != null && typeof onExercisePress === 'function';
+  // Manual double-tap detector (F10a §5): a plain onPress on a selectable
+  // Text does not disturb native long-press/selection, so a single tap stays
+  // a no-op exactly as before this feature existed. Keyed per rendered
+  // exercise occurrence rather than per gesture instance, since this
+  // component re-renders on every keystroke elsewhere on screen.
+  const lastTapRef = useRef({});
+  const handleNamePress = (key, anchor) => {
+    if (!sourceJumpEnabled || !anchor) return;
+    const now = Date.now();
+    const last = lastTapRef.current[key] || 0;
+    if (now - last < SOURCE_JUMP_DOUBLE_TAP_MS) {
+      lastTapRef.current[key] = 0;
+      onExercisePress(anchor);
+    } else {
+      lastTapRef.current[key] = now;
+    }
+  };
+  // Running counter across every section in document order — matches
+  // parseWorkoutNote's own `sections` index for the slice `dayGroups` was
+  // built from, since buildDayGroups only ever groups adjacent same-heading
+  // sections and never reorders or drops any (F10a §1's `sectionIndex`).
+  let sectionCounter = 0;
   return (
     <>
       {noteError ? <NoteParseError message={noteError} /> : null}
@@ -105,7 +146,9 @@ export function WorkoutContentRenderer({
               {group.heading}
             </WorkoutHeading>
           )}
-          {group.sections.map((section, si) => (
+          {group.sections.map((section, si) => {
+            const sectionIndex = sectionCounter++;
+            return (
             <View key={`section-${gi}-${si}`}>
               {section.subheading && (
                 <WorkoutSubheading selectable={true}>{section.subheading}</WorkoutSubheading>
@@ -121,6 +164,21 @@ export function WorkoutContentRenderer({
                 const isTracked = !!trackedLifts[exNormName];
                 const isFlagged = !isDeload && roughNoteId === currentId && roughFlaggedNames.has(exNormName);
                 const ExerciseWrap = compact ? View : ExerciseBlock;
+                // #881: built fresh per exercise occurrence from the exact
+                // parse that produced this render — never from the exercise
+                // name alone (F10a §1).
+                const sourceAnchor = sourceJumpEnabled
+                  ? buildExerciseSourceAnchor({
+                    noteId: sourceNoteId,
+                    weekIndex: sourceWeekIndex,
+                    sliceText: sourceSliceText,
+                    sectionIndex,
+                    exerciseOrdinal: ei,
+                    exercise: ex,
+                  })
+                  : null;
+                const namePressKey = `${gi}-${si}-${ei}`;
+                const onNamePress = sourceAnchor ? () => handleNamePress(namePressKey, sourceAnchor) : undefined;
                 const exerciseWrapProps = compact
                   ? { style: styles.compactExerciseBlock }
                   : {
@@ -128,12 +186,19 @@ export function WorkoutContentRenderer({
                     isTracked: trackingEnabled ? isTracked : undefined,
                     onToggleTrack: trackingEnabled ? () => onToggleTrack(ex.name) : undefined,
                     selectable: true,
+                    onNamePress,
                   };
                 return (
                   <View key={`ex-${gi}-${si}-${ei}`} style={isFlagged ? styles.flaggedExercise : null}>
                     <ExerciseWrap {...exerciseWrapProps}>
                       {compact && (
-                        <Text selectable={true} style={styles.compactExerciseName}>{ex.name}</Text>
+                        <Text
+                          selectable={true}
+                          style={styles.compactExerciseName}
+                          onPress={onNamePress}
+                        >
+                          {ex.name}
+                        </Text>
                       )}
                       {(() => {
                         const items = [];
@@ -254,7 +319,8 @@ export function WorkoutContentRenderer({
                 );
               })}
             </View>
-          ))}
+            );
+          })}
         </View>
       ))}
       {!dayGroups.length && !noteError && (

@@ -260,6 +260,14 @@ export function LogScreenEditorCard({
   handleRevertEdit,
   currentMode,
   editingEffectiveWeek,
+  // #881 (F10a §4/§6): a double-tapped exercise's resolved source jump,
+  // reusing this card's existing one-shot `problemSelectionRequest`
+  // scaffolding rather than a parallel mechanism. `null` unless the pending
+  // jump targets THIS surface (current editor or a non-Recovery other note)
+  // — LogScreen filters out a Recovery-sourced jump before it ever reaches
+  // this prop, since Recovery applies its own equivalent locally.
+  pendingSourceJump = null,
+  onSourceJumpApplied,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -305,6 +313,24 @@ export function LogScreenEditorCard({
   }, [editingNoteId, deloadMode]);
   const editorText = editingNoteId ? editingText : activeEditText;
   const setEditorText = editingNoteId ? setEditingText : handleCurrentTextChange;
+
+  // #881 (F10a §4): applies a resolved exercise source jump as a one-shot
+  // collapsed caret via the existing `problemSelectionRequest` scaffolding,
+  // gated on the editor having actually mounted with the matching session
+  // (editingNoteId) and the exact target text loaded — never focusing ahead
+  // of that, which is what caused #865's selection race. Runs after the
+  // identity-reset effect above, so a same-commit note switch + jump lands
+  // the caret rather than immediately clearing it.
+  useEffect(() => {
+    if (!pendingSourceJump) return;
+    if (pendingSourceJump.editingNoteId !== editingNoteId) return;
+    if (pendingSourceJump.editingNoteId == null && currentMode !== pendingSourceJump.currentMode) return;
+    if (editorText !== pendingSourceJump.expectedText) return;
+    setProblemSelectionRequest({ start: pendingSourceJump.start, end: pendingSourceJump.end });
+    editorInputRef.current?.focus();
+    onSourceJumpApplied?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingSourceJump, editingNoteId, currentMode, editorText]);
   const handleInsertSeedExample = () => {
     setEditorText(WORKOUT_SEED_EXAMPLE_TEXT);
     setSeedSelection({ start: WORKOUT_SEED_EXAMPLE_TEXT.length, end: WORKOUT_SEED_EXAMPLE_TEXT.length });
