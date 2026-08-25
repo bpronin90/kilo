@@ -329,4 +329,331 @@ describe('WorkoutContentRenderer exercise double-tap (F10a §5, §7 9-10)', () =
     const range = resolveExerciseSourceAnchor(anchor, { noteId: 'recovery-note', weekIndex: 0, sliceText: text });
     expect(text.slice(range.start, range.end)).toBe('-Bench Press');
   });
+
+  test('11. a single accessibility activation triggers the jump directly, without a second tap (PR #883 review)', async () => {
+    const { AccessibilityInfo } = require('react-native');
+    const original = AccessibilityInfo.isScreenReaderEnabled;
+    AccessibilityInfo.isScreenReaderEnabled = jest.fn(() => Promise.resolve(true));
+    try {
+      const parsed = parseWorkoutNote(text);
+      const onExercisePress = jest.fn();
+      let renderer;
+      await act(async () => {
+        renderer = TestRenderer.create(
+          React.createElement(WorkoutContentRenderer, {
+            dayGroups: buildDayGroups(parsed.sections),
+            sourceNoteId: 'n1', sourceWeekIndex: 0, sourceSliceText: text, onExercisePress,
+          })
+        );
+        await Promise.resolve();
+      });
+      const nameText = findExerciseNameText(renderer, 'Bench Press');
+      act(() => { nameText.props.onPress(); });
+      expect(onExercisePress).toHaveBeenCalledTimes(1);
+    } finally {
+      AccessibilityInfo.isScreenReaderEnabled = original;
+    }
+  });
+
+  test('a single ordinary tap still requires the second tap when no screen reader is running', () => {
+    const parsed = parseWorkoutNote(text);
+    const onExercisePress = jest.fn();
+    const renderer = renderWithDayGroups(parsed.sections, {
+      sourceNoteId: 'n1', sourceWeekIndex: 0, sourceSliceText: text, onExercisePress,
+    });
+    const nameText = findExerciseNameText(renderer, 'Bench Press');
+    act(() => { nameText.props.onPress(); });
+    expect(onExercisePress).not.toHaveBeenCalled();
+  });
+});
+
+// ── Shared-editor and Recovery-inline handoff (F10a §4/§6) ─────────────────
+//
+// `pendingSourceJump` reuses each surface's existing one-shot forced-
+// selection scaffolding (LogScreenEditorCard's `problemSelectionRequest`,
+// #863/#865; LogRecoverySection's local equivalent). These tests exercise
+// that wiring directly at the component level: collapsed caret, one-shot
+// release, non-destructive first keystroke, and inert no-navigation when
+// the jump doesn't target the surface currently mounted.
+describe('LogScreenEditorCard: pendingSourceJump handoff (#881 PR #883 review)', () => {
+  const { LogScreenEditorCard } = require('../components/LogScreenEditorCard');
+
+  function buildElement(overrides = {}) {
+    const handlers = {
+      handleSaveDeload: jest.fn(),
+      handleCurrentTextChange: jest.fn(),
+      handleSaveOtherNote: jest.fn(),
+      handleSave: jest.fn(),
+      handleSwitchCurrent: jest.fn(),
+      handleDeleteDeloadNoteFromEditor: jest.fn(),
+      handleDeleteRoutine: jest.fn(),
+      setDeloadEditText: jest.fn(),
+      setEditingTitle: jest.fn(),
+      setWorkoutNoteTitle: jest.fn(),
+      setDeloadEditDate: jest.fn(),
+      setShowDeloadDatePicker: jest.fn(),
+      setDeloadEditOrdinal: jest.fn(),
+      setEditingText: jest.fn(),
+      onSourceJumpApplied: jest.fn(),
+    };
+    return {
+      element: React.createElement(LogScreenEditorCard, {
+        deloadMode: 'read',
+        deloadEditText: '',
+        isSaving: false,
+        saveSuccess: false,
+        editingNoteId: null,
+        isEditingDeloadNote: false,
+        workoutNoteTitle: 'Test',
+        editingTitle: '',
+        editingDeloadHasLinkedRecord: false,
+        deloadEditDate: '',
+        deloadEditOrdinal: '',
+        showDeloadDatePicker: false,
+        editingNote: null,
+        editingText: '',
+        activeEditText: '',
+        currentId: null,
+        currentMode: 'edit',
+        editingEffectiveWeek: null,
+        ...handlers,
+        ...overrides,
+      }),
+      handlers,
+    };
+  }
+
+  const mounted = [];
+  afterEach(() => {
+    act(() => { mounted.forEach(c => c.unmount()); });
+    mounted.length = 0;
+  });
+
+  function renderEditor(overrides = {}) {
+    const { element, handlers } = buildElement(overrides);
+    let component;
+    act(() => { component = TestRenderer.create(element); });
+    mounted.push(component);
+    return { root: component.root, handlers };
+  }
+
+  function findNoteInput(root, value) {
+    return root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === value);
+  }
+
+  test('a resolved jump on the current-routine editor lands a collapsed caret at the target', () => {
+    const text = ['Monday', '-Bench Press', '135 5,5,5'].join('\n');
+    const { root, handlers } = renderEditor({
+      activeEditText: text,
+      currentMode: 'edit',
+      pendingSourceJump: {
+        start: text.indexOf('135'), end: text.indexOf('135'),
+        editingNoteId: null, currentMode: 'edit', expectedText: text, source: null, token: 't1',
+      },
+    });
+    const input = findNoteInput(root, text);
+    expect(input.props.selection).toEqual({ start: text.indexOf('135'), end: text.indexOf('135') });
+    expect(handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
+  });
+
+  test('a resolved jump on a non-current (other-routine) editor lands the same way, keyed by editingNoteId', () => {
+    const text = ['Monday', '-Squat', '225 5'].join('\n');
+    const { root, handlers } = renderEditor({
+      editingNoteId: 'other-note',
+      editingText: text,
+      pendingSourceJump: {
+        start: text.indexOf('-Squat'), end: text.indexOf('-Squat'),
+        editingNoteId: 'other-note', currentMode: 'edit', expectedText: text, source: null, token: 't2',
+      },
+    });
+    const input = findNoteInput(root, text);
+    expect(input.props.selection).toEqual({ start: text.indexOf('-Squat'), end: text.indexOf('-Squat') });
+    expect(handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
+  });
+
+  test('one-shot release: the forced selection clears itself without a second application', () => {
+    jest.useFakeTimers();
+    try {
+      const text = ['Monday', '-Bench Press', '135 5,5,5'].join('\n');
+      const { root, handlers } = renderEditor({
+        activeEditText: text,
+        currentMode: 'edit',
+        pendingSourceJump: {
+          start: text.indexOf('-Bench'), end: text.indexOf('-Bench'),
+          editingNoteId: null, currentMode: 'edit', expectedText: text, source: null, token: 't3',
+        },
+      });
+      expect(findNoteInput(root, text).props.selection).toEqual({
+        start: text.indexOf('-Bench'), end: text.indexOf('-Bench'),
+      });
+      act(() => { jest.runOnlyPendingTimers(); });
+      expect(findNoteInput(root, text).props.selection).toBeUndefined();
+      expect(handlers.onSourceJumpApplied).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('non-destructive first keystroke: typing right after the jump lands reaches the handler unmodified', () => {
+    const text = ['Monday', '-Bench Press', '135 5,5,5'].join('\n');
+    const { root, handlers } = renderEditor({
+      activeEditText: text,
+      currentMode: 'edit',
+      pendingSourceJump: {
+        start: text.indexOf('135'), end: text.indexOf('135'),
+        editingNoteId: null, currentMode: 'edit', expectedText: text, source: null, token: 't4',
+      },
+    });
+    const input = findNoteInput(root, text);
+    const typed = text + 'x';
+    act(() => { input.props.onChangeText(typed); });
+    expect(handlers.handleCurrentTextChange).toHaveBeenCalledWith(typed);
+  });
+
+  test('inert: a jump whose expectedText no longer matches the live text does not open a selection', () => {
+    const text = ['Monday', '-Bench Press', '135 5,5,5'].join('\n');
+    const mutated = text + '\n-Row\n40 10';
+    const { root, handlers } = renderEditor({
+      activeEditText: mutated,
+      currentMode: 'edit',
+      pendingSourceJump: {
+        start: text.indexOf('135'), end: text.indexOf('135'),
+        editingNoteId: null, currentMode: 'edit', expectedText: text, source: null, token: 't5',
+      },
+    });
+    const input = findNoteInput(root, mutated);
+    expect(input.props.selection).toBeUndefined();
+    expect(handlers.onSourceJumpApplied).not.toHaveBeenCalled();
+  });
+
+  test('inert: a jump targeting a different note/mode never touches this surface', () => {
+    const text = ['Monday', '-Bench Press', '135 5,5,5'].join('\n');
+    const { root, handlers } = renderEditor({
+      activeEditText: text,
+      currentMode: 'edit',
+      pendingSourceJump: {
+        start: 0, end: 0,
+        editingNoteId: 'some-other-note', currentMode: 'edit', expectedText: text, source: null, token: 't6',
+      },
+    });
+    const input = findNoteInput(root, text);
+    expect(input.props.selection).toBeUndefined();
+    expect(handlers.onSourceJumpApplied).not.toHaveBeenCalled();
+  });
+});
+
+describe('LogRecoverySection: pendingSourceJump inline handoff (#881 PR #883 review)', () => {
+  const { LogRecoverySection } = require('../components/LogRecoverySection');
+
+  const BLOCK = {
+    id: 'rb881', baseline_note_id: 'baseline', baseline_note_title: 'Push Day',
+    started_at: '2026-05-01T00:00:00.000Z', completed_at: null, deleted_at: null,
+  };
+  const WEEK = {
+    id: 'rw881', block_id: 'rb881', note_id: 'weeknote', week_number: 1,
+    completed_at: null, deleted_at: null,
+  };
+
+  const mounted = [];
+  afterEach(() => {
+    act(() => { mounted.forEach(c => c.unmount()); });
+    mounted.length = 0;
+  });
+
+  function renderSection(text, overrides = {}) {
+    const onSourceJumpApplied = jest.fn();
+    const WEEK_NOTE = { id: 'weeknote', title: 'Recovery Week Note', raw_text: text };
+    let component;
+    act(() => {
+      component = TestRenderer.create(
+        React.createElement(LogRecoverySection, {
+          blocks: [BLOCK], weeks: [WEEK], notes: [WEEK_NOTE],
+          viewingNoteId: 'weeknote', viewingNote: WEEK_NOTE,
+          editingNoteId: 'weeknote', editingTitle: 'Recovery Week Note', editingText: text,
+          onSourceJumpApplied,
+          ...overrides,
+        })
+      );
+    });
+    mounted.push(component);
+    return { root: component.root, onSourceJumpApplied };
+  }
+
+  function findEditingTextInput(root) {
+    return root.findAll(n => n.props?.accessibilityLabel === 'Recovery note text')[0];
+  }
+
+  test('a resolved recovery jump lands a collapsed caret in the inline editor', () => {
+    const text = ['Monday', '-Band Pull Apart', '15,15,15'].join('\n');
+    const { root, onSourceJumpApplied } = renderSection(text, {
+      pendingSourceJump: {
+        start: text.indexOf('-Band'), end: text.indexOf('-Band'),
+        editingNoteId: 'weeknote', expectedText: text, source: 'recovery', token: 'r1',
+      },
+    });
+    const input = findEditingTextInput(root);
+    expect(input.props.selection).toEqual({ start: text.indexOf('-Band'), end: text.indexOf('-Band') });
+    expect(onSourceJumpApplied).toHaveBeenCalledTimes(1);
+  });
+
+  test('one-shot release: the recovery selection clears itself', () => {
+    jest.useFakeTimers();
+    try {
+      const text = ['Monday', '-Band Pull Apart', '15,15,15'].join('\n');
+      const { root } = renderSection(text, {
+        pendingSourceJump: {
+          start: text.indexOf('-Band'), end: text.indexOf('-Band'),
+          editingNoteId: 'weeknote', expectedText: text, source: 'recovery', token: 'r2',
+        },
+      });
+      expect(findEditingTextInput(root).props.selection).toBeTruthy();
+      act(() => { jest.runOnlyPendingTimers(); });
+      expect(findEditingTextInput(root).props.selection).toBeUndefined();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('non-destructive first keystroke: typing right after the jump lands reaches onChangeEditingText unmodified', () => {
+    const text = ['Monday', '-Band Pull Apart', '15,15,15'].join('\n');
+    const onChangeEditingText = jest.fn();
+    const { root } = renderSection(text, {
+      onChangeEditingText,
+      pendingSourceJump: {
+        start: text.indexOf('-Band'), end: text.indexOf('-Band'),
+        editingNoteId: 'weeknote', expectedText: text, source: 'recovery', token: 'r3',
+      },
+    });
+    const input = findEditingTextInput(root);
+    const typed = text + 'x';
+    act(() => { input.props.onChangeText(typed); });
+    expect(onChangeEditingText).toHaveBeenCalledWith(typed);
+  });
+
+  test('inert: a non-recovery-sourced jump never applies to this surface', () => {
+    const text = ['Monday', '-Band Pull Apart', '15,15,15'].join('\n');
+    const { root, onSourceJumpApplied } = renderSection(text, {
+      pendingSourceJump: {
+        start: text.indexOf('-Band'), end: text.indexOf('-Band'),
+        editingNoteId: 'weeknote', expectedText: text, source: null, token: 'r4',
+      },
+    });
+    const input = findEditingTextInput(root);
+    expect(input.props.selection).toBeUndefined();
+    expect(onSourceJumpApplied).not.toHaveBeenCalled();
+  });
+
+  test('inert: a stale expectedText mismatch never opens a selection', () => {
+    const text = ['Monday', '-Band Pull Apart', '15,15,15'].join('\n');
+    const mutated = text + '\n-Curl\n20 10';
+    const { root, onSourceJumpApplied } = renderSection(mutated, {
+      pendingSourceJump: {
+        start: text.indexOf('-Band'), end: text.indexOf('-Band'),
+        editingNoteId: 'weeknote', expectedText: text, source: 'recovery', token: 'r5',
+      },
+    });
+    const input = findEditingTextInput(root);
+    expect(input.props.selection).toBeUndefined();
+    expect(onSourceJumpApplied).not.toHaveBeenCalled();
+  });
 });

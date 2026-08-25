@@ -1,5 +1,5 @@
-import React, { useRef } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, StyleSheet, Text, View } from 'react-native';
 import { WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, AnnotationNote, UnparsedRow, NoteParseError, SET_ROW_FONT_SIZE } from './UI';
 import { useThemedStyles } from '../theme/ThemeContext';
 import { normalizeLiftName } from '../lib/data';
@@ -98,7 +98,7 @@ export function WorkoutContentRenderer({
   // double-tap anchor is ever built and `onExercisePress` is never called,
   // so the gesture is a strict no-op there. `sourceSliceText` MUST be the
   // exact raw-text slice that was parsed to build `dayGroups`, since the
-  // anchor's staleness fingerprint is a hash of it.
+  // anchor's staleness gate is this exact string, captured verbatim.
   sourceNoteId = null,
   sourceWeekIndex = 0,
   sourceSliceText = null,
@@ -113,8 +113,29 @@ export function WorkoutContentRenderer({
   // exercise occurrence rather than per gesture instance, since this
   // component re-renders on every keystroke elsewhere on screen.
   const lastTapRef = useRef({});
+  // #881 PR #883 review (P2): a screen reader's "double-tap to activate"
+  // gesture is delivered to RN as a single onPress, so the two-press
+  // detector below would consume it as only the first half of a jump and
+  // never fire. While a screen reader is running, treat every activation
+  // as the jump directly — the detector still gates ordinary touch input.
+  const [screenReaderEnabled, setScreenReaderEnabled] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    AccessibilityInfo.isScreenReaderEnabled().then(enabled => {
+      if (mounted) setScreenReaderEnabled(enabled);
+    });
+    const sub = AccessibilityInfo.addEventListener('screenReaderChanged', setScreenReaderEnabled);
+    return () => {
+      mounted = false;
+      sub.remove();
+    };
+  }, []);
   const handleNamePress = (key, anchor) => {
     if (!sourceJumpEnabled || !anchor) return;
+    if (screenReaderEnabled) {
+      onExercisePress(anchor);
+      return;
+    }
     const now = Date.now();
     const last = lastTapRef.current[key] || 0;
     if (now - last < SOURCE_JUMP_DOUBLE_TAP_MS) {

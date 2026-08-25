@@ -21,9 +21,12 @@ export { parseWorkoutEntry } from './parser/workoutEntry.js';
 // exact text match — never a stored character offset trusted across edits.
 import { parseWorkoutNote as _parseWorkoutNoteForSourceAnchor } from './parser/workoutNote.js';
 
-// Cheap non-cryptographic fingerprint of an exact raw-text slice. Used only
-// as a staleness gate (sliceRevision) — never as content identity, and never
-// itself sufficient to resolve an anchor (see resolveExerciseSourceAnchor).
+// Cheap non-cryptographic fingerprint of an exact raw-text slice. Not used
+// for the staleness gate itself (a hash can collide, letting mutated text
+// pass as unchanged and mis-dereference the positional tuple — see #881
+// PR #883 review); resolveExerciseSourceAnchor gates on the captured slice
+// text directly instead. Kept for callers that want a cheap change signal
+// where an exact-match false negative is acceptable.
 export function hashSourceSlice(text) {
   const str = text || '';
   let h = 0;
@@ -65,7 +68,13 @@ export function buildExerciseSourceAnchor({ noteId, weekIndex, sliceText, sectio
   return {
     noteId,
     weekIndex,
-    sliceRevision: hashSourceSlice(sliceText),
+    // Captured verbatim, not hashed — this is the staleness gate
+    // (resolveExerciseSourceAnchor compares it against the slice text at
+    // resolution time with `===`). A hash can collide on changed content
+    // and let a stale anchor dereference the wrong occurrence; an exact
+    // string is the only sound gate. Cheap to hold: every anchor built for
+    // the same render shares one reference to the same string instance.
+    sliceSnapshot: sliceText,
     sectionIndex,
     exerciseOrdinal,
     headerLine: exercise.header_line,
@@ -76,14 +85,14 @@ export function buildExerciseSourceAnchor({ noteId, weekIndex, sliceText, sectio
 // Resolves an anchor back to a raw-text character range (F10a §2/§3),
 // re-parsing `sliceText` fresh rather than trusting any stored offset.
 // Returns null — "stale, do nothing" — whenever noteId, weekIndex, or the
-// exact slice text (sliceRevision) fail to match, or the positional lookup
-// or header-text invariant fails. The positional tuple (sectionIndex/
+// exact captured slice text fail to match, or the positional lookup or
+// header-text invariant fails. The positional tuple (sectionIndex/
 // exerciseOrdinal) is never dereferenced until every gate above it passes.
 export function resolveExerciseSourceAnchor(anchor, { noteId, weekIndex, sliceText }) {
   if (!anchor) return null;
   if (anchor.noteId !== noteId) return null;
   if (anchor.weekIndex !== weekIndex) return null;
-  if (anchor.sliceRevision !== hashSourceSlice(sliceText)) return null;
+  if (anchor.sliceSnapshot !== sliceText) return null;
   const parsed = _parseWorkoutNoteForSourceAnchor(sliceText);
   if (!parsed.ok) return null;
   const section = parsed.sections[anchor.sectionIndex];
