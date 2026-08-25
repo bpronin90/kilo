@@ -954,6 +954,20 @@ export function LogScreen({
     ? deloadEditor.isSaving
     : currentEditor.isSaving;
 
+  const activeSaveStatus = deloadEditor.deloadMode === 'edit'
+    ? deloadEditor.isSaving
+      ? 'saving'
+      : deloadEditor.saveSuccess
+        ? 'saved'
+        : null
+    : otherEditor.editingNoteId
+      ? otherEditor.saveStatus
+      : currentEditor.saveStatus;
+
+  const activeEditorInteraction = otherEditor.editingNoteId
+    ? otherEditor.cancelPendingDraftRestore
+    : currentEditor.cancelPendingDraftRestore;
+
   return (
     <>
       <ScreenShell
@@ -1132,6 +1146,9 @@ export function LogScreen({
                 onToggleEditingWeek={otherEditor.handleToggleEditingWeek}
                 editingIsSaving={otherEditor.noteIsSaving}
                 editingSaveError={otherEditor.saveError}
+                editingSaveSuccess={otherEditor.saveSuccess}
+                editingSaveStatus={otherEditor.saveStatus}
+                onEditorInteraction={otherEditor.cancelPendingDraftRestore}
                 onSaveEdit={otherEditor.handleDoneOther}
                 onCancelEdit={otherEditor.handleCancelRecoveryEdit}
                 pendingSourceJump={otherEditor.pendingSourceJump}
@@ -1281,6 +1298,8 @@ export function LogScreen({
           isSaving={activeIsSaving}
           saveSuccess={activeSaveSuccess}
           saveError={activeSaveError}
+          saveStatus={activeSaveStatus}
+          onEditorInteraction={activeEditorInteraction}
           editingNoteId={otherEditor.editingNoteId}
           isEditingDeloadNote={otherEditor.isEditingDeloadNote}
           editingTitle={otherEditor.editingTitle}

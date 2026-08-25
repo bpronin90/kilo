@@ -1289,9 +1289,9 @@ describe('Log web edit path: explicit edit control is wired (#314)', () => {
   });
 
   test('enterCurrentEditor performs a single-press editor entry (no double-tap gate)', () => {
-    // The explicit handler must set edit mode directly, unlike handleNoteBodyPress
-    // which is gated behind a 300ms double-tap window.
-    expect(src).toMatch(/const\s+enterCurrentEditor\s*=\s*\(\)\s*=>\s*\{[\s\S]*?setMode\('edit'\)/);
+    // The explicit handler enters through the normal draft-restoring path,
+    // unlike handleNoteBodyPress which is gated behind a double-tap window.
+    expect(src).toMatch(/const\s+enterCurrentEditor\s*=\s*\(\)\s*=>\s*openCurrentEditor\(\{\s*restoreDraft:\s*true\s*\}\)/);
   });
 
   test('LogScreen forwards enterCurrentEditor to the active routine card', () => {

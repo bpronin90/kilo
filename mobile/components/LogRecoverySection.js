@@ -34,6 +34,12 @@ import {
 } from '../hooks/entries/recoveryBlockHooks';
 import { RECOVERY_INCLUSION_HELP } from './RecoveryInclusionToggle';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
+// #880 revised body: Recovery renders its own inline editor and does not
+// inherit LogScreenEditorCard's status region, so it reuses the exact same
+// component — same Saving…/Saved/Not-yet-synced semantics, same reserved
+// layout space, same debounced-announcement behavior — rather than a
+// parallel implementation that could silently drift from it.
+import { SaveStatusRegion } from './LogScreenEditorCard';
 export { RECOVERY_INCLUSION_LABEL } from './RecoveryInclusionToggle';
 
 // A week whose `note_id` is null, or names a note that is not in the notebook,
@@ -111,6 +117,13 @@ export function LogRecoverySection({
   onToggleEditingWeek,
   editingIsSaving = false,
   editingSaveError = '',
+  // #880 revised body: the same durable-save state the shared editor card
+  // shows (Saved / Not yet synced), sourced from the SAME
+  // useLogOtherRoutineEditor instance (`editingSource === 'recovery'` is
+  // just one entry point into it).
+  editingSaveSuccess = '',
+  editingSaveStatus = null,
+  onEditorInteraction,
   onSaveEdit,
   onCancelEdit,
   // #881 (F10a §4/§6): a double-tapped exercise's resolved source jump,
@@ -692,7 +705,11 @@ export function LogRecoverySection({
                             <View style={styles.inlineEditor}>
                               <TextInput
                                 value={editingTitle}
-                                onChangeText={onChangeEditingTitle}
+                                onChangeText={(next) => {
+                                  onEditorInteraction?.();
+                                  onChangeEditingTitle?.(next);
+                                }}
+                                onFocus={onEditorInteraction}
                                 placeholder="Routine Name"
                                 placeholderTextColor={colors.textMuted}
                                 autoCorrect={false}
@@ -704,7 +721,11 @@ export function LogRecoverySection({
                               <TextInput
                                 ref={recoveryEditingTextInputRef}
                                 value={editingText}
-                                onChangeText={onChangeEditingText}
+                                onChangeText={(next) => {
+                                  onEditorInteraction?.();
+                                  onChangeEditingText?.(next);
+                                }}
+                                onFocus={onEditorInteraction}
                                 placeholder="Workout note…"
                                 placeholderTextColor={colors.textMuted}
                                 multiline
@@ -722,6 +743,10 @@ export function LogRecoverySection({
                               {editingSaveError ? (
                                 <Text style={styles.errorBannerText}>{editingSaveError}</Text>
                               ) : null}
+                              <SaveStatusRegion
+                                status={editingSaveStatus}
+                                savedLabel={editingSaveSuccess || undefined}
+                              />
                               <View style={styles.weekNoteActions}>
                                 {editingHasABWeeks && (
                                   <ABSegment
@@ -748,7 +773,7 @@ export function LogRecoverySection({
                                   accessibilityState={{ disabled: editingIsSaving }}
                                 >
                                   <Text style={styles.inlineSwitchButtonText}>
-                                    {editingIsSaving ? 'Saving…' : 'Save'}
+                                    Save
                                   </Text>
                                 </Pressable>
                               </View>

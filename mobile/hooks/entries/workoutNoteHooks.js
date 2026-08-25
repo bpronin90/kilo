@@ -5,6 +5,21 @@ import { reconcileWorkoutReminder } from '../../lib/reminderScheduler';
 import { maybeSyncCloud, readVia, writeVia } from './storageMode';
 import { safeNotify } from './shared';
 import { markStartupPhase } from '../../storage/entries/startupTiming';
+import { clearWorkoutNoteDraftsForNote } from '../../storage/entries/workoutNoteDrafts';
+
+// NOTE (#880 revised body): pending-cloud-convergence state deliberately
+// lives in each editor hook (useLogCurrentRoutineEditor.js /
+// useLogOtherRoutineEditor.js) instead of here. This module is already
+// imported by recoveryBlockHooks.js (`reloadWorkoutNotes`, below), and both
+// of the editor hooks import THIS module already (for other reasons) —
+// adding a new top-level import here of `../../storage/syncQueue` /
+// `../../storage/syncRecovery` completed a circular-import cycle
+// (recoveryBlockHooks.js -> workoutNoteHooks.js -> syncRecovery.js, while
+// recoveryBlockHooks.js already imports syncRecovery.js directly too) that
+// left `useRecoveryBlockLifecycle` partially initialized in some test
+// orderings, throwing inside an unrelated `useCallback`'s dependency check.
+// Keeping the convergence hook local to the two editor-only call sites (leaf
+// modules nothing else imports) avoids the cycle entirely.
 
 export const DELOAD_NOTE_PREFIX = 'Deload · ';
 
@@ -118,6 +133,10 @@ export function useWorkoutNotes() {
     if (id === currentId) {
       await Storage.clearCurrentWorkoutId();
     }
+    // Deterministic cleanup on note deletion (#880): a deleted note's local
+    // draft — under either editor's context key — must never resurrect the
+    // note's text on a later restore.
+    clearWorkoutNoteDraftsForNote(id).catch(() => {});
     notifyWorkoutNotes();
   }, [currentId]);
 

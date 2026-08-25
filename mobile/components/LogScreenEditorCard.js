@@ -218,6 +218,74 @@ function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
   });
 }
 
+// Shared visual status for the full-screen and Recovery editors. The hooks
+// compute `status` only while the live {title, raw_text} still matches the
+// snapshot described by it. Rendering is immediate; only the accessibility
+// announcement is debounced. Delaying the visible label would leave a stale
+// "Saved" claim on screen after the user typed, violating the exact-snapshot
+// contract.
+const SAVE_STATUS_ANNOUNCE_DEBOUNCE_MS = 220;
+
+export function computeSaveStatusLabel({ status, savedLabel = 'Saved on device' }) {
+  if (status === 'saving') return 'Saving…';
+  if (status === 'saved') return savedLabel;
+  if (status === 'pending') return 'Saved on device · Not yet synced';
+  return '';
+}
+
+export function SaveStatusRegion({ status, savedLabel, style, testID }) {
+  const styles = useThemedStyles(createStyles);
+  const label = computeSaveStatusLabel({ status, savedLabel });
+  const timerRef = useRef(null);
+  const mountedRef = useRef(false);
+  const previousLabelRef = useRef(label);
+
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      previousLabelRef.current = label;
+      return undefined;
+    }
+    if (label === previousLabelRef.current) return undefined;
+    previousLabelRef.current = label;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (!label) return undefined;
+    // Capture the native function while the effect is active. Besides making
+    // the callback independent of later module teardown, this avoids touching
+    // React Native's lazy export getter from a delayed callback.
+    const announce = AccessibilityInfo.announceForAccessibility;
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      announce?.(label);
+    }, SAVE_STATUS_ANNOUNCE_DEBOUNCE_MS);
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [label]);
+
+  useEffect(() => () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }, []);
+
+  return (
+    <View style={[styles.saveStatusRegion, style]} testID={testID}>
+      <Text
+        style={styles.autosaveIndicator}
+        accessibilityLiveRegion="none"
+        accessible={!!label}
+        accessibilityLabel={label || undefined}
+        numberOfLines={1}
+        ellipsizeMode="tail"
+      >
+        {label || '\u00a0'}
+      </Text>
+    </View>
+  );
+}
+
 export function LogScreenEditorCard({
   deloadMode,
   deloadEditText,
@@ -226,6 +294,8 @@ export function LogScreenEditorCard({
   isSaving,
   saveSuccess,
   saveError,
+  saveStatus,
+  onEditorInteraction,
   editingNoteId,
   isEditingDeloadNote,
   editingTitle,
@@ -548,7 +618,11 @@ export function LogScreenEditorCard({
             {!isEditingDeloadNote && (
               <TextInput
                 value={editingNoteId ? editingTitle : workoutNoteTitle}
-                onChangeText={editingNoteId ? setEditingTitle : setWorkoutNoteTitle}
+                onChangeText={(next) => {
+                  onEditorInteraction?.();
+                  (editingNoteId ? setEditingTitle : setWorkoutNoteTitle)(next);
+                }}
+                onFocus={onEditorInteraction}
                 placeholder="Routine Name (e.g. Push Day)"
                 placeholderTextColor={colors.textMuted}
                 autoCorrect={false}
@@ -733,10 +807,12 @@ export function LogScreenEditorCard({
               ref={editorInputRef}
               value={editorText}
               onChangeText={(next) => {
+                onEditorInteraction?.();
                 setSeedSelection(null);
                 setProblemSelectionRequest(null);
                 setEditorText(next);
               }}
+              onFocus={onEditorInteraction}
               selection={problemSelectionRequest ?? seedSelection ?? undefined}
               selectionColor={colors.accent}
               onSelectionChange={() => {
@@ -794,15 +870,19 @@ export function LogScreenEditorCard({
               </Pressable>
             )}
             {(editingNoteId === 'new' || (!editingNoteId && !currentId)) ? (
+              // #880 review: a brand-new note's FIRST save is exactly the
+              // non-autosaved, longest-running path (full parse + derive +
+              // possible cloud enqueue, with nothing cached yet), so it must
+              // show the in-flight state too — not just a disabled button
+              // with no indication of what it's doing.
               <Button
                 onPress={editingNoteId ? handleSaveOtherNote : handleSave}
                 title="Save"
                 disabled={editingNoteId ? noteIsSaving : isSaving}
                 style={styles.saveButton}
               />
-            ) : saveSuccess ? (
-              <Text style={styles.autosaveIndicator} accessibilityLiveRegion="polite">{saveSuccess}</Text>
             ) : null}
+            <SaveStatusRegion status={saveStatus} savedLabel={saveSuccess || undefined} />
             {/* A failed write must be visible where the write was asked for.
                 Without this the `Save & Switch` save-failure path (#745 Part 6
                 P6) was silent, which reads as a cancelled adoption rather than
@@ -1055,6 +1135,15 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'right',
     marginTop: 8,
+  },
+  // Fixed height regardless of whether a label is showing (#880 revised
+  // body, non-interference): 12px font + 8px marginTop from
+  // autosaveIndicator above, rounded up — so the region's own height never
+  // changes as its text appears, changes, or clears, and nothing below it in
+  // the card ever reflows.
+  saveStatusRegion: {
+    minHeight: 28,
+    justifyContent: 'center',
   },
   saveErrorText: {
     fontSize: 13,
