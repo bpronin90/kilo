@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.117.0 - 2026-08-25
+
+- Issue #881: Double-tap a rendered exercise to jump straight to its exact spot in the raw note editor.
+
+## 0.116.0 - 2026-08-25
+
+- Issue #880: Added a cheap, independent local draft for the workout-note editors (current, existing-other, new, and Recovery) so ordinary backgrounding or an interruption before the first explicit save no longer silently loses a new or in-progress routine. A draft only auto-restores when it matches the note's last-known revision; on a mismatch the canonical text is shown and the draft is kept, recoverable, until it is explicitly discarded or superseded by a save. Drafts are stamped with the local data owner so one account can never restore another's draft. The editor (and, in the Recovery tab, its own inline editor) now shows a truthful "Saving…" state while a save is actually in flight, a "Saved" state bound to the exact text that was saved (never shown for text that has since changed), and a "Not yet synced" state when the note has records pending in the sync queue or the last sync failed.
+
 ## 0.115.0 - 2026-08-23
 
 - Issue #872: You can now record why a Recovery block started — an optional line of your own ("torn hamstring", "8 weeks off") entered when you start the block and editable afterwards, either from Manage block on Log or straight from the Recovery evidence card in Analytics, including on a block you have already finished. It appears beside the block on Log and on the Recovery evidence and completed-block history in Analytics. It is optional everywhere, changes nothing about how recovery weeks are compared or counted, and blocks started before this update simply have none.
