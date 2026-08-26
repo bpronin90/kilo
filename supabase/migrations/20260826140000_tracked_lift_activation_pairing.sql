@@ -26,14 +26,26 @@
 -- an injury, or a routine switch is still tracked, and auto-untracking would
 -- destroy the explicit intent the flag exists to carry.
 --
--- Residual, stated rather than papered over: a legacy device that untracks,
--- logs, and retracks entirely OFFLINE pushes only the final state, in which the
--- flag is true again and nothing is orphaned. That coalesced case is invisible
--- in the row and is not caught here. It degrades the same way the contract's
--- documented equal-witness residual does — an anchor that is older than the user
--- intended, always inside that exercise's own history, never a cross-movement
--- comparison — and it clears on that exercise's next toggle from any
--- watermark-aware client.
+-- Residual, owner-accepted as a normative amendment to #893 (decision comment
+-- 5427060885, proposal 5426951126). A legacy device that untracks, logs, and
+-- retracks the same exercise with no intervening sync does not merely arrive
+-- late — it emits NOTHING. user_health_profile is a diff-tracked singleton and
+-- diffAgainstBaseline compares each field by stableStringify against the last
+-- server-confirmed baseline (mobile/storage/syncQueue.js:1125-1131,1205), so an
+-- untrack followed by a retrack of the same key returns tracked_lifts byte-
+-- identical to that baseline and the row is never dirty. No write reaches this
+-- table, so this trigger never fires, updated_at never advances, and nothing
+-- stored beside the records can disagree with anything. The interruption is not
+-- late evidence; it is no evidence.
+--
+-- Accepted because it is bounded exactly as the #892 equal-witness residual is:
+-- it cannot create a cross-movement comparison, the boundary always lands inside
+-- that exercise's own history, capability metrics are unaffected, and it clears
+-- on that exercise's next toggle from any watermark-aware client. What must stay
+-- true is the line above it: every path in which the untracked state DOES reach
+-- the account — any push whose tracked_lifts omits the exercise, which is what
+-- an ordinary sync between the untrack and the retrack produces — is closed
+-- here.
 
 create or replace function kilo.prune_orphan_tracked_lift_activations()
   returns trigger
