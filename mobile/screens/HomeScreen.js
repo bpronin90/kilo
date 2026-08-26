@@ -801,6 +801,24 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
                     </View>
                   ))}
                 </View>
+                {/* #894: the three counts above only cover a fully classified
+                    tracked span (progressing/steady/regressing) — a freshly
+                    opened span (#893) or inherited catalog/pre-#893 tracking
+                    contributes to neither bucket, so a 0/0/0 row would
+                    otherwise read as "nothing classifiable" rather than
+                    "still building history". Newly-tracked takes priority
+                    when both apply: it names a concrete next action. */}
+                {dashboardData.weeklySummary.newlyTrackedCount > 0 ? (
+                  <Text style={styles.classifCaption}>
+                    {dashboardData.weeklySummary.newlyTrackedCount === 1
+                      ? '1 exercise in its first tracked session — log another to see a trend'
+                      : `${dashboardData.weeklySummary.newlyTrackedCount} exercises in their first tracked session — log another to see a trend`}
+                  </Text>
+                ) : dashboardData.weeklySummary.hasInheritedTracking ? (
+                  <Text style={styles.classifCaption}>
+                    Includes exercises tracked before this update, using full history
+                  </Text>
+                ) : null}
               </View>
             )}
 
@@ -1223,6 +1241,12 @@ const createStyles = (colors) => StyleSheet.create({
     textAlign: 'center',
     // No fixed lineHeight: a scaled-up label must grow its own line box rather
     // than overflow a 14px one.
+  },
+  classifCaption: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 8,
+    fontStyle: 'italic',
   },
   heroFooter: {
     alignItems: 'center',

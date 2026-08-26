@@ -69,9 +69,10 @@ function setup({ entries = [], hookOverrides = {}, featureToggles = {} } = {}) {
     ...featureToggles,
   });
   useEntries.useWeightEntries.mockReturnValue({ entries, loading: false, error: null });
-  useEntries.useTrackedLifts.mockReturnValue({ 
-    trackedLifts: hookOverrides.trackedLifts || {}, 
-    loading: false 
+  useEntries.useTrackedLifts.mockReturnValue({
+    trackedLifts: hookOverrides.trackedLifts || {},
+    activations: hookOverrides.trackedLiftActivations || {},
+    loading: false
   });
   useEntries.useWorkoutNotes.mockReturnValue({
     notes: [],
@@ -889,6 +890,76 @@ describe('AnalyticsScreen empty state copy — no tracked exercises', () => {
     expect(hasText(root, 'Tap Track on any exercise')).toBe(true);
     // Old copy mentioning "bookmark" must be absent
     expect(hasText(root, 'bookmark')).toBe(false);
+    // #894: the empty state must also say logging alone doesn't track, using
+    // the exact Track / Tracked labels.
+    expect(hasText(root, "Logging alone doesn't track it")).toBe(true);
+  });
+});
+
+// ── #894: inherited vs. newly tracked Progressive Overload rows ─────────────
+
+describe('AnalyticsScreen Progressive Overload — tracking-state captions (#894)', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  function setupOneRow({ signal, trackedLiftActivations }) {
+    const currentNote = {
+      id: 'n1',
+      raw_text: 'Monday\n+ lifting\n1. bench press',
+    };
+    jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
+      signals: [signal],
+      nameDisplayMap: new Map([['bench press', 'Bench Press']]),
+      repDropOffFlags: {},
+      perDaySignals: {},
+    });
+    return setup({
+      hookOverrides: {
+        currentNote,
+        trackedLifts: { 'bench press': true },
+        trackedLiftActivations,
+      },
+    });
+  }
+
+  test('a tracked exercise with no activation record reads as inherited, not explicitly selected', () => {
+    // #893: absent from the activations map means legacy boolean-only tracked
+    // state or a catalog `po: true` default — never an explicit Track tap.
+    const component = setupOneRow({
+      signal: { name: 'Bench Press', latest_pr: 225, kilo_max: 200, latest_top_weight: 185, overload_trend: 'up' },
+      trackedLiftActivations: {},
+    });
+    expect(hasText(component.root, 'Inherited tracking')).toBe(true);
+  });
+
+  test('an explicitly tracked exercise mid-classification shows no inherited/first-session caption', () => {
+    const component = setupOneRow({
+      signal: { name: 'Bench Press', latest_pr: 225, kilo_max: 200, latest_top_weight: 185, overload_trend: 'up' },
+      trackedLiftActivations: { 'bench press': { anchor: 3, at: '2026-01-01T00:00:00Z', witness: null } },
+    });
+    expect(hasText(component.root, 'Inherited tracking')).toBe(false);
+    expect(hasText(component.root, 'New tracked span')).toBe(false);
+  });
+
+  test('a freshly opened tracked span reports the fresh-span state without hiding historical capability metrics', () => {
+    // #893: overload_trend 'first_session' means the span holds no comparison
+    // yet; latest_pr/kilo_max/latest_top_weight are still full-history values.
+    const component = setupOneRow({
+      signal: { name: 'Bench Press', latest_pr: 225, kilo_max: 200, latest_top_weight: 185, overload_trend: 'first_session' },
+      trackedLiftActivations: { 'bench press': { anchor: 12, at: '2026-05-01T00:00:00Z', witness: { headings: [], sessions: '' } } },
+    });
+    const root = component.root;
+    expect(hasText(root, 'New tracked span')).toBe(true);
+    // The historical capability numbers must still be on screen.
+    expect(hasText(root, '225')).toBe(true);
+    expect(hasText(root, '185')).toBe(true);
+  });
+
+  test('a row with no capability data yet gets no caption clutter beyond the existing dash', () => {
+    const component = setupOneRow({
+      signal: { name: 'Bench Press', latest_pr: null, kilo_max: null, latest_top_weight: null, overload_trend: null },
+      trackedLiftActivations: {},
+    });
+    expect(hasText(component.root, 'Inherited tracking')).toBe(false);
   });
 });
 

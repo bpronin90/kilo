@@ -223,6 +223,53 @@ function hasText(root, needle) {
   }).length > 0;
 }
 
+// #894: Home must be able to tell "nothing classifiable" apart from "freshly
+// tracked, still building history" and from "tracked before #893 shipped, no
+// activation record" — otherwise a 0/0/0 Progress row reads the same in both
+// very different situations.
+describe('deriveHomeDashboardData — tracking-state summary (#894)', () => {
+  const NOTE_A = { id: 'a', raw_text: '-Bench Press\n135 5' };
+  const NOTE_B = { id: 'b', raw_text: '-Bench Press\n140 5' };
+
+  function buildSections() {
+    const sectionsA = parseWorkoutNote(NOTE_A.raw_text).sections;
+    const sectionsB = parseWorkoutNote(NOTE_B.raw_text).sections;
+    return { allSections: [...sectionsA, ...sectionsB], noteSectionsList: [sectionsA, sectionsB] };
+  }
+
+  test('a freshly opened tracked span (anchor at the full logged count) is counted as newly tracked', () => {
+    const { allSections, noteSectionsList } = buildSections();
+    const result = deriveHomeDashboardData({
+      weightEntries: [],
+      workoutNote: NOTE_B,
+      weightGoal: null,
+      allSections,
+      noteSectionsList,
+      trackedLifts: { 'bench press': true },
+      trackedLiftActivations: {
+        'bench press': { anchor: 2, at: '2026-05-01T00:00:00Z', witness: { headings: [], sessions: '' } },
+      },
+    });
+    expect(result.weeklySummary.newlyTrackedCount).toBe(1);
+    expect(result.weeklySummary.hasInheritedTracking).toBe(false);
+  });
+
+  test('a tracked exercise with no activation record is reported as inherited, not newly tracked', () => {
+    const { allSections, noteSectionsList } = buildSections();
+    const result = deriveHomeDashboardData({
+      weightEntries: [],
+      workoutNote: NOTE_B,
+      weightGoal: null,
+      allSections,
+      noteSectionsList,
+      trackedLifts: { 'bench press': true },
+      trackedLiftActivations: {},
+    });
+    expect(result.weeklySummary.newlyTrackedCount).toBe(0);
+    expect(result.weeklySummary.hasInheritedTracking).toBe(true);
+  });
+});
+
 describe('HomeScreen — hydration gating (issue #442)', () => {
   beforeEach(() => jest.clearAllMocks());
 
