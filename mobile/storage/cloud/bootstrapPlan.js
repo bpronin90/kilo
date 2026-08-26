@@ -394,7 +394,7 @@ function buildDeloadHistoryRows(snapshot, userId) {
 // server still mirrors them back onto user_profile for older clients; after the
 // contract migration those columns are gone and this is the only place they exist.
 function buildUserHealthProfileRow(snapshot, userId) {
-  const { currentWorkoutId, fatigueMultiplier, trackedLifts, deloadNote } = snapshot;
+  const { currentWorkoutId, fatigueMultiplier, trackedLifts, trackedLiftActivations, deloadNote } = snapshot;
   const note = deloadNote || {};
 
   return {
@@ -402,6 +402,8 @@ function buildUserHealthProfileRow(snapshot, userId) {
     current_workout_note_id: currentWorkoutId ?? null,
     fatigue_multiplier: fatigueMultiplier ?? null,
     tracked_lifts: trackedLifts ?? {},
+    // #893: uploaded beside the flags on the same consent-gated health row.
+    tracked_lift_activations: trackedLiftActivations ?? {},
     current_deload_note_raw_text: note.raw_text ?? null,
     current_deload_note_saved_at: note.saved_at ?? null,
     current_deload_note_updated_at: note.updated_at ?? null,

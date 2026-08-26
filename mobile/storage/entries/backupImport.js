@@ -38,6 +38,9 @@ import {
   saveDeloadModeEnabled,
   loadTrackedLifts,
   saveTrackedLifts,
+  loadTrackedLiftActivations,
+  saveTrackedLiftActivations,
+  normalizeTrackedLiftActivations,
   loadWorkoutCollapsed,
   saveWorkoutCollapsed,
 } from './settings';
@@ -250,6 +253,7 @@ export async function buildCloudExport({ account = null, includeEmail = false } 
     fatigueTrackingEnabled,
     deloadModeEnabled,
     trackedLifts,
+    trackedLiftActivations,
     deloadNote,
     logCurrentCollapsed,
   ] = await Promise.all([
@@ -259,6 +263,7 @@ export async function buildCloudExport({ account = null, includeEmail = false } 
     loadFatigueTrackingEnabled(),
     loadDeloadModeEnabled(),
     loadTrackedLifts(),
+    loadTrackedLiftActivations(),
     loadDeloadNote(),
     loadWorkoutCollapsed(),
   ]);
@@ -278,6 +283,11 @@ export async function buildCloudExport({ account = null, includeEmail = false } 
       current_workout_id: base.current_workout_id,
       current_deload_note: deloadNote,
       tracked_lifts: trackedLifts,
+      // #893: a sibling field, never folded into tracked_lifts. An older build
+      // restoring this file ignores the unknown field and keeps every flag,
+      // where a non-boolean value inside tracked_lifts would have been dropped
+      // by its own importer and silently untracked the exercise.
+      tracked_lift_activations: trackedLiftActivations,
       ui_state: { log_current_collapsed: logCurrentCollapsed },
       feature_toggles: {
         weight_date_edit_enabled: weightDateEditEnabled,
@@ -324,6 +334,13 @@ export async function hydrateProfileFromCloud(profileRow, featureTogglesRow) {
       !Array.isArray(profileRow.tracked_lifts)
     ) {
       await saveTrackedLifts(profileRow.tracked_lifts);
+    }
+    if (
+      profileRow.tracked_lift_activations &&
+      typeof profileRow.tracked_lift_activations === 'object' &&
+      !Array.isArray(profileRow.tracked_lift_activations)
+    ) {
+      await saveTrackedLiftActivations(profileRow.tracked_lift_activations);
     }
     if (profileRow.ui_state && typeof profileRow.ui_state === 'object') {
       await saveWorkoutCollapsed(!!profileRow.ui_state.log_current_collapsed);
@@ -885,6 +902,28 @@ function validateCloudBlock(cloud) {
         return { ok: false, error: `Invalid backup: cloud.tracked_lifts.${lift} must be a boolean` };
     }
   }
+  if (cloud.tracked_lift_activations != null) {
+    const a = cloud.tracked_lift_activations;
+    if (typeof a !== 'object' || Array.isArray(a))
+      return { ok: false, error: 'Invalid backup: cloud.tracked_lift_activations must be an object or null' };
+    for (const [lift, record] of Object.entries(a)) {
+      if (record == null || typeof record !== 'object' || Array.isArray(record))
+        return { ok: false, error: `Invalid backup: cloud.tracked_lift_activations.${lift} must be an object` };
+      if (!Number.isInteger(record.anchor) || record.anchor < 0)
+        return { ok: false, error: `Invalid backup: cloud.tracked_lift_activations.${lift}.anchor must be a non-negative integer` };
+      if (record.at != null && typeof record.at !== 'string')
+        return { ok: false, error: `Invalid backup: cloud.tracked_lift_activations.${lift}.at must be a string` };
+      if (record.witness != null) {
+        const w = record.witness;
+        if (typeof w !== 'object' || Array.isArray(w))
+          return { ok: false, error: `Invalid backup: cloud.tracked_lift_activations.${lift}.witness must be an object or null` };
+        if (!Array.isArray(w.headings) || w.headings.some(h => h !== null && typeof h !== 'string'))
+          return { ok: false, error: `Invalid backup: cloud.tracked_lift_activations.${lift}.witness.headings must be an array of strings` };
+        if (typeof w.sessions !== 'string')
+          return { ok: false, error: `Invalid backup: cloud.tracked_lift_activations.${lift}.witness.sessions must be a string` };
+      }
+    }
+  }
   if (cloud.ui_state != null) {
     if (typeof cloud.ui_state !== 'object' || Array.isArray(cloud.ui_state))
       return { ok: false, error: 'Invalid backup: cloud.ui_state must be an object or null' };
@@ -940,6 +979,16 @@ async function restoreCloudBlock(cloud) {
       if (typeof value === 'boolean') tracked[lift] = value;
     }
     await saveTrackedLifts(tracked);
+  }
+
+  // #893. Restored through the same normalizer the local loader uses, so a
+  // record that survives validation but not the shape check degrades to legacy
+  // full-history behavior rather than moving a progression boundary. An older
+  // backup simply has no such field and leaves the local records untouched.
+  if (cloud.tracked_lift_activations != null) {
+    await saveTrackedLiftActivations(
+      normalizeTrackedLiftActivations(cloud.tracked_lift_activations),
+    );
   }
 
   if (cloud.ui_state != null && typeof cloud.ui_state.log_current_collapsed === 'boolean') {

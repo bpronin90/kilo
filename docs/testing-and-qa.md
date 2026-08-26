@@ -468,9 +468,9 @@ Coverage in `mobile/tests/startup-read-coalescing.test.js`:
   hydration reads and the shell's own, so invalidating there would put the two
   gating reads back at the end of the queue;
 - mounting every tab's real hook set plus the shell reads the notebook, weight
-  table, current-routine pointer, tracked lifts and weight goal once each, and
-  both gating reads are issued inside the initial mount burst rather than
-  appended after every other tab's hydration.
+  table, current-routine pointer, tracked lifts, tracked-lift activations
+  (#893) and weight goal once each, and both gating reads are issued inside the
+  initial mount burst rather than appended after every other tab's hydration.
 
 Verified to fail with the fix disabled: reverting `getItem()` to its
 uncoalesced form fails four of the six tests (the two that pin the

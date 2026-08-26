@@ -58,7 +58,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     error: weightError,
     refresh: refreshWeightEntries,
   } = useWeightEntries();
-  const { trackedLifts, loading: loadingTracked } = useTrackedLifts();
+  const { trackedLifts, activations: trackedLiftActivations, loading: loadingTracked } = useTrackedLifts();
   const { history: deloadHistory } = useDeloadHistory();
   const { fatigueTrackingEnabled, deloadModeEnabled } = useFeatureToggles();
   // Same authoritative Recovery snapshot the Log screen renders from (#716).
@@ -307,8 +307,8 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   const noteExerciseNames = useMemo(() => deriveNoteExerciseNames(parsedSections.currentSections), [parsedSections]);
 
   const analytics = useMemo(
-    () => deriveAnalytics(parsedSections, trackedLifts, oneKSelections, multiplier),
-    [parsedSections, trackedLifts, oneKSelections, multiplier]
+    () => deriveAnalytics(parsedSections, trackedLifts, oneKSelections, multiplier, trackedLiftActivations),
+    [parsedSections, trackedLifts, oneKSelections, multiplier, trackedLiftActivations]
   );
 
   const groupedSignals = useMemo(

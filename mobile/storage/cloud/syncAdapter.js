@@ -802,6 +802,10 @@ const USER_HEALTH_PROFILE_FIELDS = Object.freeze([
   'current_workout_note_id',
   'fatigue_multiplier',
   'tracked_lifts',
+  // Tracked-span activation records (#893). They ride the SAME row as the flags
+  // they belong to, so the two can never desynchronize: whole-row LWW resolves a
+  // conflict for both at once, exactly as it did for the flags alone.
+  'tracked_lift_activations',
   // Active in-progress deload (issue #498). Health data, so gated with the row.
   'current_deload_note_raw_text',
   'current_deload_note_saved_at',
@@ -893,11 +897,12 @@ async function applyUserProfile(mergedList) {
 // user_health_profile --------------------------------------------------------
 
 async function buildUserHealthProfileRecords() {
-  const [currentWorkoutId, fatigueMultiplier, trackedLifts, deloadNote] =
+  const [currentWorkoutId, fatigueMultiplier, trackedLifts, trackedLiftActivations, deloadNote] =
     await Promise.all([
       Storage.loadCurrentWorkoutId(),
       Storage.loadFatigueMultiplier(),
       Storage.loadTrackedLifts(),
+      Storage.loadTrackedLiftActivations(),
       loadDeloadNote(),
     ]);
   const note = deloadNote || {};
@@ -907,6 +912,7 @@ async function buildUserHealthProfileRecords() {
       current_workout_note_id: currentWorkoutId ?? null,
       fatigue_multiplier: fatigueMultiplier ?? null,
       tracked_lifts: trackedLifts ?? {},
+      tracked_lift_activations: trackedLiftActivations ?? {},
       current_deload_note_raw_text: note.raw_text ?? null,
       current_deload_note_saved_at: note.saved_at ?? null,
       current_deload_note_updated_at: note.updated_at ?? null,
@@ -939,6 +945,24 @@ async function applyUserHealthProfile(mergedList) {
     const local = await Storage.loadTrackedLifts();
     if (stableStringify(local) !== stableStringify(row.tracked_lifts)) {
       await Storage.saveTrackedLifts(row.tracked_lifts);
+    }
+  }
+
+  // #893. Applied independently of the flags above rather than nested under
+  // them: an older build pushes this row with no such column, so the pulled
+  // winner legitimately carries `undefined` here while carrying real flags, and
+  // that must leave the local records alone — not clear them. A present-but-empty
+  // object IS a real value (every activation retired or untracked) and is
+  // applied. Normalized on the way in, because this crossed a trust boundary.
+  if (
+    row.tracked_lift_activations &&
+    typeof row.tracked_lift_activations === 'object' &&
+    !Array.isArray(row.tracked_lift_activations)
+  ) {
+    const next = Storage.normalizeTrackedLiftActivations(row.tracked_lift_activations);
+    const local = await Storage.loadTrackedLiftActivations();
+    if (stableStringify(local) !== stableStringify(next)) {
+      await Storage.saveTrackedLiftActivations(next);
     }
   }
 

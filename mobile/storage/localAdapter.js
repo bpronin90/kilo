@@ -83,6 +83,8 @@ export const localAdapter = {
   // ── tracked lifts + collapsed state ─────────────────────────────────────
   loadTrackedLifts: (...args) => Storage.loadTrackedLifts(...args),
   saveTrackedLifts: (...args) => Storage.saveTrackedLifts(...args),
+  loadTrackedLiftActivations: (...args) => Storage.loadTrackedLiftActivations(...args),
+  saveTrackedLiftActivations: (...args) => Storage.saveTrackedLiftActivations(...args),
   loadWorkoutCollapsed: (...args) => Storage.loadWorkoutCollapsed(...args),
   saveWorkoutCollapsed: (...args) => Storage.saveWorkoutCollapsed(...args),
 

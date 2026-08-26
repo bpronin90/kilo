@@ -162,6 +162,8 @@ export function useLogCurrentRoutineEditor({
   currentNote,
   notes,
   trackedLifts,
+  trackedLiftActivations,
+  reconcileTrackedLiftActivations,
   update,
   add,
   selectCurrent,
@@ -695,8 +697,36 @@ export function useLogCurrentRoutineEditor({
           }),
           ...(currentId ? [] : savedSections),
         ];
-        const { classifications } = deriveWorkoutNoteAnalytics(allSections, trackedNames);
+        const { classifications } = deriveWorkoutNoteAnalytics(allSections, trackedNames, undefined, trackedLiftActivations);
         classificationsPatch = { exercise_classifications: classifications };
+
+        // Tracked-span retirement and stale-anchor repair (#893). This is the
+        // ONE place either is written.
+        //
+        // The population here is deliberately NOT `allSections` above: this list
+        // is unfiltered, so a movement that appears only inside a recovery week
+        // whose block opts out of ordinary analytics is present, not absent, and
+        // is never retired for sitting outside that boundary.
+        //
+        // It still sits inside the `recoveryBoundaryKnown` guard, for the same
+        // reason the classification write does: a failed boundary read means the
+        // population is UNKNOWN, and "could not read" must never be acted on as
+        // "the movement is gone". The next successful save repairs it.
+        //
+        // Awaited, but never allowed to fail the save: the user's text is
+        // already committed above, and losing a note over an analytics
+        // bookkeeping write would be far worse than a stale record that the next
+        // save fixes.
+        const unfilteredSections = [
+          ...notes.flatMap(n => {
+            const text = n.id === currentId ? textToSave : n.raw_text;
+            return text ? parseWorkoutNote(text).sections : [];
+          }),
+          ...(currentId ? [] : savedSections),
+        ];
+        if (reconcileTrackedLiftActivations) {
+          await reconcileTrackedLiftActivations(unfilteredSections).catch(() => {});
+        }
       }
       const { exercise_skips, day_skips, attendance_flags } = deriveSkipData(savedSections);
       const resolvedUniversalSkipCount = Math.max(

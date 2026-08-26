@@ -99,6 +99,11 @@ const UPSERT_COLUMNS = Object.freeze({
     'current_workout_note_id',
     'fatigue_multiplier',
     'tracked_lifts',
+    // Tracked-span activation records (#893). A sibling column, deliberately not
+    // folded into tracked_lifts: an older build round-trips this row without
+    // ever naming this column, so its tracked_lifts stay intact and it simply
+    // keeps legacy full-history progression.
+    'tracked_lift_activations',
     'current_deload_note_raw_text',
     'current_deload_note_saved_at',
     'current_deload_note_updated_at',

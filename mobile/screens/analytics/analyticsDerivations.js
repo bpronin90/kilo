@@ -48,7 +48,11 @@ export function deriveNoteExerciseNames(currentSections) {
   return [...new Set(names)].filter(isStrengthExerciseName);
 }
 
-export function deriveAnalytics(parsedSections, trackedLifts, oneKSelections, multiplier) {
+// `activations` (#893) are the tracked-lift activation records. Threaded into
+// both derivations below rather than resolved separately in each, so the
+// weighted signals, the per-day signals and the non-weighted arrows on one card
+// cannot disagree about where the tracked span starts.
+export function deriveAnalytics(parsedSections, trackedLifts, oneKSelections, multiplier, activations = null) {
   const { allSections, currentSections, noteSectionsList } = parsedSections;
   // Fall back to allSections for legacy callers that don't supply signalSections.
   const signalSections = parsedSections.signalSections || allSections;
@@ -61,8 +65,8 @@ export function deriveAnalytics(parsedSections, trackedLifts, oneKSelections, mu
     name => namesInCurrent.has(normalizeExerciseKey(name))
   );
 
-  const { signals, nameDisplayMap, perDaySignals } = deriveWorkoutNoteAnalytics(signalSections, visibleTrackedNames, multiplier);
-  const nonWeightedMetrics = deriveNonWeightedTrackedExerciseMetrics(signalSections, visibleTrackedNames);
+  const { signals, nameDisplayMap, perDaySignals } = deriveWorkoutNoteAnalytics(signalSections, visibleTrackedNames, multiplier, activations);
+  const nonWeightedMetrics = deriveNonWeightedTrackedExerciseMetrics(signalSections, visibleTrackedNames, activations);
   const oneK = derive1kTotalFromSectionsList(noteSectionsList || [], oneKSelections);
   const oneKSeries = derive1kTotalSeriesFromSectionsList(noteSectionsList || [], oneKSelections);
 

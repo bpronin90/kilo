@@ -34,7 +34,7 @@ import { Alert } from '../lib/platformAlert';
 import { LogEmptyState } from '../components/LogEmptyState';
 import { ScreenShell } from '../components/ScreenShell';
 import { Button, Card, ErrorBanner } from '../components/UI';
-import { countWorkoutSessionsFromSections } from '../lib/parser';
+import { countWorkoutSessionsFromSections, parseWorkoutNote, normalizeExerciseKey } from '../lib/parser';
 import {
   deriveFirstUseState,
   pickAdoptableRoutine,
@@ -118,7 +118,7 @@ export function LogScreen({
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { notes, currentId, currentNote, deloadNotes, loading: notesLoading, error: notesError, refresh: refreshNotes, selectCurrent, update, add, remove } = useWorkoutNotes();
-  const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
+  const { trackedLifts, activations: trackedLiftActivations, toggle: toggleTrackedLift, reconcileActivations: reconcileTrackedLiftActivations } = useTrackedLifts();
   const { note: deloadNote, loading: deloadLoading, save: saveDeloadNote, clear: clearDeloadNote } = useDeloadNote();
   const { history: deloadHistory, completeDeload, deleteDeload, deleteDeloadNote, updateDeload } = useDeloadHistory();
   const { fatigueTrackingEnabled, deloadModeEnabled } = useFeatureToggles();
@@ -310,6 +310,8 @@ export function LogScreen({
     currentNote,
     notes,
     trackedLifts,
+    trackedLiftActivations,
+    reconcileTrackedLiftActivations,
     update,
     add,
     selectCurrent,
@@ -843,8 +845,26 @@ export function LogScreen({
   };
 
   const handleToggleTrack = async (name) => {
-    const key = normalizeLiftName(name);
-    await toggleTrackedLift(key);
+    // #893/#892: the storage key is the CANONICAL exercise key, not the plain
+    // normalized name. `iso row` and `Hammer Strength Iso Row` are one movement,
+    // and the analytics population has always resolved them that way — writing
+    // the raw normalized name left the flag under a key half the app could not
+    // find, and would leave an activation record stranded beside it.
+    const key = normalizeExerciseKey(name) || normalizeLiftName(name);
+    // The population the activation anchor is counted in: the WHOLE notebook,
+    // unfiltered, with the live editor text standing in for the current note so
+    // a session typed seconds ago is not missed. It is deliberately the same
+    // population the save-boundary reconcile uses, and a superset of every
+    // ordinary-analytics population — so the anchor can never come out too
+    // small and admit an entry from the untracked gap. Where a render surface
+    // sees fewer sessions than that (Analytics excludes deloads; both surfaces
+    // exclude opted-out recovery weeks) it clamps in memory and reads
+    // `First session` until its own count catches up.
+    const activationSections = notes.flatMap(n => {
+      const text = n.id === currentId ? workoutNoteText : n.raw_text;
+      return text ? parseWorkoutNote(text).sections : [];
+    });
+    await toggleTrackedLift(key, activationSections);
   };
 
   const headerRight = !otherEditor.editingNoteId && hasContent && currentEditor.mode === 'edit' && (

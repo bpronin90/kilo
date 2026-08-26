@@ -402,7 +402,7 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { goal: weightGoal, loading: goalLoading, error: goalError, refresh: refreshGoal } = useWeightGoal();
-  const { trackedLifts, loading: trackedLiftsLoading, error: trackedLiftsError, refresh: refreshTrackedLifts } = useTrackedLifts();
+  const { trackedLifts, activations: trackedLiftActivations, loading: trackedLiftsLoading, error: trackedLiftsError, refresh: refreshTrackedLifts } = useTrackedLifts();
   const unit = useWeightUnit();
 
   // The shell owns the weight/note reads and reports their failure through
@@ -495,8 +495,8 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   );
 
   const dashboardData = useMemo(
-    () => deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, trackedLifts }),
-    [weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, trackedLifts]
+    () => deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, trackedLifts, trackedLiftActivations }),
+    [weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, trackedLifts, trackedLiftActivations]
   );
 
   const weekTone = getSessionTone(dashboardData.sessionCount);
