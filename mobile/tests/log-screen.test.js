@@ -13,7 +13,8 @@ jest.mock('expo-updates', () => ({
   fetchUpdateAsync: jest.fn(),
   reloadAsync: jest.fn(),
 }));
-import { parseWorkoutNote, applyWeekSkipToText, weeksSinceLastDeload, sessionsSinceLastDeload } from '../lib/parser';
+import { parseWorkoutNote, applyWeekSkipToText, weeksSinceLastDeload, sessionsSinceLastDeload, deriveWorkoutAnalytics, normalizeExerciseKey } from '../lib/parser';
+import { loggedSessionUnits } from '../lib/parser/analytics';
 import { removeWeekSkipFromText, MAX_RAW_TEXT_LENGTH } from '../lib/parser/workoutNote.js';
 import { deriveRoutineStatus } from '../lib/data';
 
@@ -1485,6 +1486,113 @@ function ControlledLogScreen(props) {
     />
   );
 }
+
+// ── Track activation population (#893, PR #895 review finding 1) ─────────────
+//
+// The anchor is counted over the routines the user actually has. A brand-new
+// routine has no id and no entry in `notes` yet its Track action is live, so if
+// its text is not appended explicitly the population comes out empty, the anchor
+// is 0, and every session already typed into that routine stays inside the "new"
+// trend — the exact comparison the watermark exists to prevent.
+describe('the population a Track activation is anchored in (#893)', () => {
+  let toggle;
+
+  function setup({ notes, currentId, currentNote }) {
+    jest.clearAllMocks();
+    toggle = jest.fn().mockResolvedValue({});
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes,
+      currentId,
+      currentNote,
+      deloadNotes: [],
+      loading: false,
+      error: null,
+      refresh: jest.fn(),
+      selectCurrent: jest.fn(),
+      update: jest.fn().mockResolvedValue({}),
+      add: jest.fn(),
+      remove: jest.fn(),
+    });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: {}, activations: {}, toggle, reconcileActivations: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({ note: null, loading: false, save: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({ history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn() });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+    useEntries.useUserProfile.mockReturnValue({ profile: null, save: jest.fn(), loading: false, clear: jest.fn() });
+  }
+
+  // The handler LogScreen hands the renderer, reached through the rendered tree
+  // rather than reconstructed, so this exercises the real wiring.
+  function pressTrack(component, exerciseName) {
+    const handler = component.root
+      .findAll((n) => typeof n.props?.onToggleTrack === 'function')
+      .map((n) => n.props.onToggleTrack)[0];
+    expect(handler).toBeTruthy();
+    render.act(() => { handler(exerciseName); });
+  }
+
+  function loggedSessionCount(sections, name) {
+    const { exercises } = deriveWorkoutAnalytics(sections);
+    const key = normalizeExerciseKey(name);
+    const ex = exercises.find((e) => normalizeExerciseKey(e.name) === key);
+    return ex ? loggedSessionUnits(ex.occurrences).length : 0;
+  }
+
+  test('a saved routine anchors on the sessions already in it', () => {
+    const raw = 'Monday\n-Bench\n225 5\n235 5\n245 5';
+    const note = { id: 'note1', title: 'Routine A', raw_text: raw, saved_at: '2026-06-01T12:00:00.000Z' };
+    setup({ notes: [note], currentId: 'note1', currentNote: note });
+
+    let component;
+    render.act(() => {
+      component = render.create(<ControlledLogScreen workoutNoteText={raw} initialText={raw} />);
+    });
+    pressTrack(component, 'Bench');
+
+    expect(toggle).toHaveBeenCalledTimes(1);
+    const [key, sections] = toggle.mock.calls[0];
+    expect(key).toBe('bench');
+    expect(loggedSessionCount(sections, 'Bench')).toBe(3);
+  });
+
+  test('a routine with no current id anchors on its live text, not on nothing', () => {
+    const raw = 'Monday\n-Bench\n225 5\n235 5\n245 5';
+    // `currentId` is null and no item in `notes` carries this text, yet the
+    // read-mode active-routine card still offers Track.
+    const other = { id: 'other', title: 'Old Routine', raw_text: 'Friday\n-Curl\n30 10', saved_at: '2026-05-01T12:00:00.000Z' };
+    setup({ notes: [other], currentId: null, currentNote: null });
+
+    let component;
+    render.act(() => {
+      component = render.create(<ControlledLogScreen workoutNoteText={raw} initialText={raw} />);
+    });
+    pressTrack(component, 'Bench');
+
+    expect(toggle).toHaveBeenCalledTimes(1);
+    const [, sections] = toggle.mock.calls[0];
+    // Before the fix this was 0: the live text matched no note, so the anchor
+    // excluded nothing and all three sessions stayed inside the new trend.
+    expect(loggedSessionCount(sections, 'Bench')).toBe(3);
+    // The other routine in the notebook is still part of the population.
+    expect(loggedSessionCount(sections, 'Curl')).toBe(1);
+  });
+
+  test('the live text is counted once, not twice, when the routine IS saved', () => {
+    // The current note's text is already substituted in the notes pass, so
+    // appending it again would double every session and over-anchor the span.
+    const raw = 'Monday\n-Bench\n225 5\n235 5';
+    const note = { id: 'note1', title: 'Routine A', raw_text: raw, saved_at: '2026-06-01T12:00:00.000Z' };
+    setup({ notes: [note], currentId: 'note1', currentNote: note });
+
+    let component;
+    render.act(() => {
+      component = render.create(<ControlledLogScreen workoutNoteText={raw} initialText={raw} />);
+    });
+    pressTrack(component, 'Bench');
+
+    const [, sections] = toggle.mock.calls[0];
+    expect(loggedSessionCount(sections, 'Bench')).toBe(2);
+  });
+});
 
 describe('active deload deletion (#560)', () => {
   let alertSpy;

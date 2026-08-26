@@ -1,6 +1,6 @@
 import { deriveWorkoutAnalytics, normalizeExerciseKey } from '../parser.js';
 import { normalizeLiftName } from './exerciseCatalog.js';
-import { _occurrenceEntries } from './workoutAnalytics.js';
+import { _occurrenceEntries, resolveTrackedLiftAnchors } from './workoutAnalytics.js';
 
 // ── Non-weighted tracked-exercise card metrics ────────────────────────────────
 
@@ -35,11 +35,17 @@ function _detectExerciseClass(sets) {
 // Consumers must branch on exercise_class; only the fields for the detected
 // class are present. Weighted exercises (any added/assisting load) are excluded.
 // }
-export function deriveNonWeightedTrackedExerciseMetrics(sections, exerciseNames) {
+// `activations` (#893) are the tracked-lift activation records. AVG and BEST are
+// capability readings of the latest session and stay historical; only the arrow
+// is a progression signal, so only the arrow moves with the watermark — the
+// prior-session search starts at the anchor, and a span holding one session or
+// fewer reads as `dash`, the same "no comparison yet" the first session shows.
+export function deriveNonWeightedTrackedExerciseMetrics(sections, exerciseNames, activations = null) {
   if (!sections || !exerciseNames || exerciseNames.length === 0) return {};
 
   const { exercises } = deriveWorkoutAnalytics(sections);
   const byKey = new Map(exercises.map(ex => [normalizeExerciseKey(ex.name), ex]));
+  const anchors = resolveTrackedLiftAnchors(sections, activations);
   const result = {};
 
   for (const name of exerciseNames) {
@@ -53,6 +59,11 @@ export function deriveNonWeightedTrackedExerciseMetrics(sections, exerciseNames)
       .filter(se => !se.skipped && !se.unparsed && se.sets && se.sets.length > 0);
 
     if (loggedSessions.length === 0) continue;
+
+    // The anchor indexes this exact list — it is the normative logged-session
+    // list the watermark is defined in.
+    const anchor = Math.min(anchors[key] ?? 0, loggedSessions.length);
+    const trackedCount = loggedSessions.length - anchor;
 
     const latestSets = loggedSessions[loggedSessions.length - 1].sets;
     const exerciseClass = _detectExerciseClass(latestSets);
@@ -68,12 +79,12 @@ export function deriveNonWeightedTrackedExerciseMetrics(sections, exerciseNames)
       const best_set_reps = Math.max(...latestSets.map(s => s.rep_count || 0)) || null;
 
       let priorAvg = null;
-      for (let i = sessionAvgs.length - 2; i >= 0; i--) {
+      for (let i = sessionAvgs.length - 2; i >= anchor; i--) {
         if (sessionAvgs[i] > 0) { priorAvg = sessionAvgs[i]; break; }
       }
 
       const reps_arrow = avg_reps === null ? null
-        : loggedSessions.length === 1 || priorAvg === null ? 'dash'
+        : trackedCount <= 1 || priorAvg === null ? 'dash'
         : latestAvg > priorAvg ? 'up'
         : latestAvg < priorAvg ? 'down'
         : 'flat';
@@ -89,12 +100,12 @@ export function deriveNonWeightedTrackedExerciseMetrics(sections, exerciseNames)
       const best_hold = Math.max(...latestSets.map(s => s.duration_seconds || 0)) || null;
 
       let priorAvg = null;
-      for (let i = sessionAvgs.length - 2; i >= 0; i--) {
+      for (let i = sessionAvgs.length - 2; i >= anchor; i--) {
         if (sessionAvgs[i] > 0) { priorAvg = sessionAvgs[i]; break; }
       }
 
       const hold_arrow = avg_hold === null ? null
-        : loggedSessions.length === 1 || priorAvg === null ? 'dash'
+        : trackedCount <= 1 || priorAvg === null ? 'dash'
         : latestAvg > priorAvg ? 'up'
         : latestAvg < priorAvg ? 'down'
         : 'flat';

@@ -21,7 +21,7 @@ import TestRenderer from 'react-test-renderer';
 import * as Storage from '../storage/entries';
 import { createDeviceStorage } from '../storage/secureStorage';
 import { setStorageMode, STORAGE_MODES } from '../storage/entries/storageMode';
-import { WORKOUT_NOTES_KEY, WEIGHT_KEY, CURRENT_WORKOUT_ID_KEY, TRACKED_LIFTS_KEY, WEIGHT_GOAL_KEY } from '../storage/entries/keys';
+import { WORKOUT_NOTES_KEY, WEIGHT_KEY, CURRENT_WORKOUT_ID_KEY, TRACKED_LIFTS_KEY, TRACKED_LIFT_ACTIVATIONS_KEY, WEIGHT_GOAL_KEY } from '../storage/entries/keys';
 
 const { useWeightEntries, useWeightGoal, useArchivedWeightGoals } = require('../hooks/entries/weightHooks');
 const { useWorkoutNotes } = require('../hooks/entries/workoutNoteHooks');
@@ -245,6 +245,11 @@ describe('cold-start hydration reads each device key once (#818)', () => {
     expect(readsByKey[WEIGHT_KEY]).toBe(1);
     expect(readsByKey[TRACKED_LIFTS_KEY]).toBe(1);
     expect(readsByKey[WEIGHT_GOAL_KEY]).toBe(1);
+    // #893 added a second key to useTrackedLifts(). Pinned here because three
+    // mounted instances reading it is exactly the shape #818 removed, and a
+    // regression would cost three device round trips plus three AES-GCM
+    // decrypts on every cold start.
+    expect(readsByKey[TRACKED_LIFT_ACTIVATIONS_KEY]).toBe(1);
   });
 
   it('the shell reads that gate Home first paint join the tabs read instead of queueing behind it', async () => {

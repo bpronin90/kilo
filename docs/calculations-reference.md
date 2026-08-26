@@ -24,6 +24,8 @@ If an exercise has mixed legacy and current history, plain rows still count. Exa
 
 For each tracked exercise, takes the last 3 session entries (newest last) and compares the two most recent logged (non-skipped) sessions.
 
+Only sessions inside your **current tracked span** are considered — see [Tracked Lifts](#tracked-lifts). Turning Track on starts that span, so sessions logged before it are not classified and are never compared against your first newly tracked session. That applies the first time you track an exercise as well as to any later re-track.
+
 | Condition | Classification | Display |
 |-----------|---------------|---------|
 | Latest session's top weight is higher than prior | Progressing | ↑ Progressing |
@@ -38,6 +40,8 @@ For each tracked exercise, takes the last 3 session entries (newest last) and co
 Total reps means the sum of all reps performed at the top weight. For example, 125 lb for sets of 5, 5, 5 = 15 total reps. Next session 125 lb for 6, 6, 4 = 16 total reps → Progressing.
 
 Classifications are derived on save from all workout notes aggregated together, then stored on the note object as `exercise_classifications`.
+
+Exercises that were already tracked before this update, and the ones Kilo tracks by default that you have never toggled, have no recorded span yet — they keep being classified over their whole history until the next time you turn Track on for them.
 
 ### Skip Markers
 
@@ -113,7 +117,22 @@ The result is rounded to the nearest integer. This is a fatigue-adjusted average
 
 Derived on read — recomputed on the Analytics screen render.
 
+Kilo Max uses your **whole history** for that exercise. Unlike Trend and the Progressing/Steady/Regressing status, it is not limited to the current tracked span — what you have lifted is still what you have lifted, so re-tracking an exercise never resets it. The same is true of Est. Max and Best Set.
+
 **Example:** Squat sets: 225×5 (Epley 262), 225×4 (Epley 255), 225×3 (Epley 247). Average = 254.7. × 1.07 = 272.5 → Kilo Max = 273.
+
+### Trend
+
+> Where you see it: Analytics screen — per-exercise arrow, and the Progressing / Steady / Regressing counts on Home
+
+Compares your two most recent logged sessions of an exercise and reports the direction: heavier top weight is up, lighter is down, and the same top weight falls back to total reps at that weight before reading as flat. A multi-day exercise gets a per-day arrow from that day's own sessions.
+
+Like Exercise Classifications, Trend reads only the **current tracked span**. Two consequences are worth knowing:
+
+- The first session after you track an exercise shows **First session** rather than an arrow. There is nothing yet to compare it to, which is the point — the comparison restarts with your intent.
+- Sessions logged while the exercise was untracked never become the "previous session" for that comparison.
+
+Derived on read — recomputed on every Home and Analytics render, from the same tracked span both screens use, so the two never disagree.
 
 ### Weekly Summary
 
@@ -365,6 +384,32 @@ A toggle map stored in AsyncStorage under `kilo_tracked_lifts`. Controls which e
 
 The save path unions default tracked names (exercises in the catalog marked with `po: true`) with any user-toggled names to produce the full tracked names list.
 
+Tracking is always manual and explicit. Kilo never tracks an exercise for you and never infers that you meant to.
+
+#### The tracked span
+
+Turning Track on opens a **tracked span**: from that point forward is the period Kilo treats as intentional training on that exercise. Every time you turn Track on it opens a new span — including the very first time. If the exercise already had logged sessions, those sessions sit before the span rather than inside it. Turning Track off closes the span, and turning Track on again opens a fresh one rather than resuming the old.
+
+What the span changes, and what it does not:
+
+| | Scoped to the current span | Uses your whole history |
+|---|---|---|
+| Trend (↑ ↔ ↓) | ✓ | |
+| Progressing / Steady / Regressing | ✓ | |
+| Reps and hold arrows on non-weighted exercises | ✓ | |
+| Est. Max | | ✓ |
+| Kilo Max | | ✓ |
+| Best Set | | ✓ |
+
+So tracking — or re-tracking — an exercise leaves your capability numbers exactly where they were while progression starts at **First session**. That is deliberate: sessions you logged while an exercise was untracked were not part of a tracked effort, and comparing your first intentional session against one of them would describe progress you did not make.
+
+Two behaviors follow from tracking being explicit:
+
+- **Renaming an exercise ends its span.** Kilo does not guess that a renamed movement is the same one — within a handwritten note there is no way to tell a rename from a substitution once the original is gone. Track the new name to start a fresh span.
+- **Removing an exercise from your routine does not untrack it.** An exercise out of your routine for a deload, an injury, or a routine switch stays tracked; only you turn Track off.
+
+**Exercises tracked before this update.** An exercise that was already tracked — including the ones Kilo tracks by default that you have never toggled — has no recorded span, so it keeps using its whole history exactly as it always has. That lasts until you turn Track on for it again, which opens a span from that point like any other activation. (Turning Track off simply stops Kilo monitoring the exercise; it opens no span.)
+
 ### 1k Exercise Selections
 
 > Where you see it: Home screen — 1k Club Progress card configuration
@@ -378,6 +423,9 @@ Maps each of the three 1k slots (bench, squat, deadlift) to a specific exercise 
 | Question | Answer |
 |----------|--------|
 | What does "Weeks In" mean? | The depth of your deepest exercise history, including skipped sessions and legacy plain-row history. It measures how far into the current routine you are. |
+| Why does my exercise say "First session" when I have months of history? | Because you just turned Track on, which starts a new tracked span. Progression restarts from that point so the first session you log with intent is not compared against one you logged while the exercise was untracked. Your Est. Max, Kilo Max, and Best Set are untouched and still reflect your whole history. |
+| I re-tracked an exercise and my trend disappeared. Did I lose my history? | No. Nothing is deleted. Only the trend comparison restarts; it comes back as soon as you log a second session in the new span. |
+| Why did my trend reset after I renamed an exercise? | A rename ends the tracked span, because Kilo cannot tell a renamed exercise from a different one you swapped in. Turn Track on for the new name to start a fresh span. Your logged history stays where it is. |
 | Why does my classification say Steady when I feel like I'm progressing? | Classifications compare total reps at your top weight between your two most recent logged sessions. If you increased reps on some sets but decreased on others such that the total stayed the same, it reads as Steady. |
 | What triggers a session check-in? | Saving a session where tracked exercises show a rough pattern: unusually many skips, a whole skipped day, sets losing 3+ reps vs your last session at the same weight, or an intra-session rep collapse at your heaviest weight. The app highlights the affected exercises and asks how the session went. |
 | How is my 1k total calculated? | It sums the estimated 1-rep max (Epley formula) of your three selected compound lifts. If any of the three has no logged data, the total shows as "—". |
@@ -397,9 +445,9 @@ Maps each of the three 1k slots (bench, squat, deadlift) to a specific exercise 
 | Lifecycle | Items |
 |-----------|-------|
 | **Derived on save** (stored on note) | exercise_classifications, skip_markers, attendance_flags |
-| **Derived on read** (recomputed each render) | Weeks In, 1k Total, Kilo Max, Weight Trends, Weight Pace, Weekly Summary shaping, Goal calculations, session check-in detection, return-to-baseline comparison |
+| **Derived on read** (recomputed each render) | Weeks In, 1k Total, Kilo Max, Trend, Weight Trends, Weight Pace, Weekly Summary shaping, Goal calculations, session check-in detection, return-to-baseline comparison |
 | **Frozen once** (captured at creation, never rewritten) | recovery-block baseline snapshot |
-| **Global persisted** (own AsyncStorage key) | tracked lifts map |
+| **Global persisted** (own AsyncStorage key) | tracked lifts map, tracked-span activation records |
 | **Persisted on note** (user-set) | one_k_exercises, raw_text, session_checkins (check-in responses) |
 
 ---

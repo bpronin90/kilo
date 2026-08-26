@@ -1,6 +1,10 @@
 export {
   loadTrackedLifts,
   saveTrackedLifts,
+  loadTrackedLiftActivations,
+  saveTrackedLiftActivations,
+  normalizeTrackedLiftActivations,
+  pruneTrackedLiftActivations,
   loadWorkoutCollapsed,
   saveWorkoutCollapsed,
   loadFatigueMultiplier,

@@ -9,6 +9,12 @@ export const WEIGHT_DATE_EDIT_KEY = 'kilo_weight_date_edit_enabled';
 export const WORKOUT_DELOAD_NOTE_KEY = 'kilo_workout_deload_note';
 export const WORKOUT_DELOAD_HISTORY_KEY = 'kilo_workout_deload_history';
 export const TRACKED_LIFTS_KEY = 'kilo_tracked_lifts';
+// Tracked-span activation records (#893). A SIBLING of TRACKED_LIFTS_KEY, never
+// folded into its value: backupImport hard-filters that map to booleans, so an
+// already-installed older build importing a new backup would silently untrack
+// every exercise. A separate key has no such interaction — an old build simply
+// never reads it.
+export const TRACKED_LIFT_ACTIVATIONS_KEY = 'kilo_tracked_lift_activations';
 export const COLLAPSED_STATE_KEY = 'kilo_log_current_collapsed';
 export const USER_PROFILE_KEY = 'kilo_user_profile';
 export const DELOAD_DATE_EDIT_KEY = 'kilo_deload_date_edit_enabled';

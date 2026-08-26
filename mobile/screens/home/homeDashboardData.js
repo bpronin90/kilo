@@ -151,7 +151,7 @@ export function useHomeRecoverySummary(notes) {
 // still fully readable. Its `exercise_classifications` are the save-time cache
 // written by useLogCurrentRoutineEditor, which derives them from the same
 // filtered population.
-export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, trackedLifts }) {
+export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, trackedLifts, trackedLiftActivations }) {
   let oneK = null;
   let sections = null;
 
@@ -178,7 +178,11 @@ export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal
   const visibleTrackedNames = globallyTracked.filter(
     name => namesInCurrent.has(normalizeExerciseKey(name))
   );
-  const { signals, perDaySignals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames);
+  // #893: the activation records go to every progression derivation on this
+  // screen, and Analytics passes the same records to its own — so the two
+  // surfaces classify the same tracked population against the same boundary
+  // rather than each inventing one.
+  const { signals, perDaySignals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames, undefined, trackedLiftActivations);
   const counts = deriveOverloadCounts(sections, signals, perDaySignals);
 
   // #854/R5: recompute exercise_classifications live from allSections instead
@@ -193,7 +197,7 @@ export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal
     ...defaultNames,
     ...globallyTracked.filter(n => !normalizedDefaults.has(normalizeLiftName(n))),
   ];
-  const { classifications: liveClassifications } = deriveWorkoutNoteAnalytics(allSections, allTrackedNames);
+  const { classifications: liveClassifications } = deriveWorkoutNoteAnalytics(allSections, allTrackedNames, undefined, trackedLiftActivations);
 
   const weeklySummary = computeWeeklySummary(sections, workoutNote, liveClassifications);
   weeklySummary.classifications = counts;

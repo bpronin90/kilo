@@ -492,6 +492,36 @@ current-routine switches without any per-routine migration step; only 1K slot
 selections are rolled from one routine note to another when the user accepts
 the switch prompt.
 
+Since #893, a Track activation also records WHEN that span opened. `useTrackedLifts()`
+mints an activation record beside the flag on every false-to-true toggle and deletes
+both together on untrack, so the two can never diverge. The record's `anchor` is the
+exercise's logged-session count at that moment, counted in one normative list defined
+in `lib/parser/analytics.js`:
+
+```
+occurrences.flatMap(_occurrenceEntries)
+  .filter(se => !se.skipped && !se.unparsed && se.sets?.length > 0)
+```
+
+Every progression consumer — the weighted signal, the per-day signal, the
+Progressing/Steady/Regressing classification, and the non-weighted reps/hold arrow —
+drops units below that ordinal, so they cannot land on different boundaries. Capability
+metrics (Est. Max, Kilo Max, Best Set) ignore the anchor entirely and keep using all
+eligible history, which is why retracking restores them immediately while the trend
+restarts at `First session`.
+
+The record's `witness` (the activation-time headings plus a literal serialization of the
+opening sessions) is a verification token, not an identity: identity is the canonical
+name key alone. A mismatch RETIRES the watermark — the record is deleted, the Track flag
+is untouched, and the exercise falls back to legacy full-history behavior — but a
+watermark is never reassigned. Retirement and the stale-anchor repair are writes, and they
+happen at exactly one place: the note-save boundary in `useLogCurrentRoutineEditor`, over
+the UNFILTERED note population, and only when the recovery boundary is known. Render paths
+stay pure — they apply the anchor with an in-memory clamp and never write. The one
+uncovered path, documented and bounded, is a same-save substitution whose opening history
+and headings are byte-identical; the boundary then still lands inside the substitute's own
+history, so no cross-movement comparison is possible, and the next untrack clears it.
+
 ## Parse-to-Persistence Flow
 
 ```
@@ -690,7 +720,8 @@ chip is gone; nothing in the active path produces or reads `rep_drop_off_flags`.
 | `kilo_fatigue_multiplier` | Persisted native fatigue-multiplier number |
 | `kilo_weigh_in_reminder` | Optional local daily weigh-in reminder settings (`enabled`, `hour`, `minute`) |
 | `kilo_workout_reminder` | Optional local workout-day nudge settings (`enabled`, `hour`, `minute`, `fallbackWeekdays`) |
-| `kilo_tracked_lifts` | JSON object keyed by normalized lift name for global Track toggles |
+| `kilo_tracked_lifts` | JSON object keyed by canonical exercise key for global Track toggles. Keys are canonicalized at an exercise's next toggle, so a legacy alias key stays readable until then |
+| `kilo_tracked_lift_activations` | JSON object keyed by canonical exercise key holding the tracked-span activation record for each currently tracked exercise (`anchor`, `at`, `witness`). A sibling of `kilo_tracked_lifts`, never folded into it; a record never outlives the flag it belongs to, and a flag with no record is legacy boolean-only state that keeps full-history progression |
 | `kilo_user_profile` | Optional native calorie-profile object with `height_cm`, `date_of_birth`, `sex`, `activity_level`, and `saved_at` |
 | `kilo_workout_sessions` | Legacy JSON array of native structured workout sessions, retained only as a migration source |
 | `kilo_workout_notes` | JSON array of titled native workout note documents, including persisted `tracked_exercises`, `one_k_exercises`, `exercise_classifications`, `skip_markers`, `attendance_flags`, and `session_checkins` fields; legacy entries may still carry stale `rep_drop_off_flags`. Never carries parser output: a `derived_sections` field is stripped on every write and purged once from older notebooks (#813) |
@@ -1037,8 +1068,28 @@ After bootstrap, ongoing cloud reconciliation covers eleven table contracts:
 `recovery_block_weeks`, `user_profile`, `user_health_profile`,
 `feature_toggles`, `weight_goal`, `deload_history`, and `fatigue_checkins`.
 Ordinary account settings remain in `user_profile`; current routine, fatigue
-multiplier, tracked lifts, and the active generated deload reconcile through the
-consent-gated `user_health_profile`. `fatigue_checkins` is derived
+multiplier, tracked lifts, tracked-span activation records, and the active
+generated deload reconcile through the consent-gated `user_health_profile`. The
+activation records ride the same row as the flags they belong to, so whole-row
+LWW resolves both at once and they cannot desynchronize; they are deliberately
+absent from the expand-phase `user_profile` mirror, which exists for clients
+predating the #487 split and can read no such field.
+
+One pairing invariant holds across every path: an activation record exists ONLY
+for a currently tracked key. A watermark-aware client maintains it by
+construction — untrack deletes flag and record in one write — but an older build
+cannot, because its upsert names `tracked_lifts` and not the activations column,
+so Postgres preserves the stored records across its untrack. A trigger on
+`kilo.user_health_profile` (`prune_orphan_tracked_lift_activations`) drops
+orphaned records at the moment such a write lands, which is the only place the
+intermediate untracked state is observable; the mobile sync, backup-restore and
+bootstrap paths apply the same prune locally. Without it, a legacy
+untrack/log/retrack would hand back a record whose witness still matched the
+unchanged opening history, reviving the abandoned span with every gap session
+inside it. A backup restore goes further and treats flags and records as one
+authoritative fact: a boolean-only backup restores an empty record map, so its
+flags get the documented legacy full-history behavior rather than inheriting
+boundaries minted against later local state. `fatigue_checkins` is derived
 deterministically from converged `workout_notes.session_checkins` and
 never applies pulled projection rows back to canonical notes. The five
 collections enqueue dirty rows at write time or through the baseline

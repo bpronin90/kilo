@@ -3,6 +3,7 @@ import { AccessibilityInfo, StyleSheet, Text, View } from 'react-native';
 import { WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, AnnotationNote, UnparsedRow, NoteParseError, SET_ROW_FONT_SIZE } from './UI';
 import { useThemedStyles } from '../theme/ThemeContext';
 import { normalizeLiftName } from '../lib/data';
+import { normalizeExerciseKey } from '../lib/parser';
 import { useWeightUnit } from '../lib/unitPreference';
 import { formatLiftWeightValue } from '../lib/units';
 import { buildExerciseSourceAnchor } from '../lib/parser';
@@ -181,8 +182,14 @@ export function WorkoutContentRenderer({
               ))}
               {section.exercises.map((ex, ei) => {
                 const exNormName = normalizeLiftName(ex.name);
+                // #893/#892: `Tracked` reads the CANONICAL key the toggle now
+                // writes, with the plain normalized name kept as a fallback so a
+                // flag stored by an older build still lights its own pip. Without
+                // this, tapping Track under one alias left the other alias's
+                // heading showing `Track` for the same movement.
+                const exCanonicalKey = normalizeExerciseKey(ex.name) || exNormName;
                 const trackingEnabled = !isDeload && typeof onToggleTrack === 'function';
-                const isTracked = !!trackedLifts[exNormName];
+                const isTracked = !!(trackedLifts[exCanonicalKey] || trackedLifts[exNormName]);
                 const isFlagged = !isDeload && roughNoteId === currentId && roughFlaggedNames.has(exNormName);
                 const ExerciseWrap = compact ? View : ExerciseBlock;
                 // #881: built fresh per exercise occurrence from the exact
