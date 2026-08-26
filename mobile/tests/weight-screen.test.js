@@ -208,7 +208,17 @@ describe('WeightScreen edit and delete correction flows', () => {
     expect(hasText(root, 'Editing entry')).toBe(true);
     const inputs = root.findAll(n => n.type === 'TextInput');
     expect(inputs[0].props.value).toBe('185');
-    expect(inputs[1].props.value).toBe('morning');
+
+    // The note field is a secondary disclosure row (#897); its value is
+    // discoverable in the collapsed row and editable once revealed.
+    expect(hasText(root, 'Note · morning')).toBe(true);
+    const noteToggle = root.findAllByProps({ testID: 'weight-edit-note-toggle' })
+      .find(t => typeof t.props.onPress === 'function');
+    render.act(() => {
+      noteToggle.props.onPress();
+    });
+    const inputsAfterToggle = root.findAll(n => n.type === 'TextInput');
+    expect(inputsAfterToggle[1].props.value).toBe('morning');
   });
 
   test('edit submit persists corrected weight, exits editing mode, and refreshes the row', async () => {
@@ -333,6 +343,44 @@ describe('WeightScreen edit and delete correction flows', () => {
     // The weight edit made while the date row was open is preserved.
     const inputsAfter = root.findAll(n => n.type === 'TextInput');
     expect(inputsAfter[0].props.value).toBe('190');
+  });
+
+  // #897: a same-day weigh-in must require interaction only with the weight
+  // field and Save weigh-in. Note and Date are secondary disclosure rows,
+  // collapsed by default, with no full-size control on screen until tapped.
+  test('a new-entry weigh-in shows only the weight field and Save by default, with Note/Date collapsed', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    const root = component.root;
+
+    // The weight TextInput is on screen; the Note field is not rendered
+    // until its disclosure row is tapped.
+    expect(root.findByProps({ placeholder: '185.0' })).toBeTruthy();
+    expect(root.findAll(n => n.props && n.props.placeholder === 'Morning, fasted').length).toBe(0);
+    expect(findPressableByText(root, 'Save weigh-in')).toBeTruthy();
+
+    // Both secondary controls are present but collapsed, discoverable via
+    // their compact rows.
+    expect(hasText(root, 'Note · None')).toBe(true);
+    expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Note').length).toBe(0);
+    expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Weigh-in date').length).toBe(0);
+
+    // Tapping the Note row reveals the field and does not disturb the date row.
+    const noteToggle = root.findAllByProps({ testID: 'weight-new-note-toggle' })
+      .find(t => typeof t.props.onPress === 'function');
+    render.act(() => { noteToggle.props.onPress(); });
+    const noteInput = root.findByProps({ accessibilityLabel: 'Note' });
+    render.act(() => { noteInput.props.onChangeText('morning'); });
+    expect(hasText(root, 'Note · morning')).toBe(true);
+
+    const doneBtn = root.findByProps({ accessibilityLabel: 'Done adding note' });
+    render.act(() => { doneBtn.props.onPress(); });
+    expect(hasText(root, 'Note · morning')).toBe(true);
+    expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Note').length).toBe(0);
   });
 
   // Issue #596 (review follow-up): a rapid double-press on "Save weigh-in"
