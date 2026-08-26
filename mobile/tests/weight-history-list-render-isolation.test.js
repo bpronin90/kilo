@@ -1,16 +1,20 @@
 // Large weight-history remap isolation (#592, follow-up to measured #572
-// claim 10): WeightHistoryList is a child of WeightScreen, which owns the
-// Weight/Note text-input shell state. Before this fix, every keystroke in
-// those fields re-rendered WeightScreen and re-created WeightHistoryList's
-// element with fresh props, causing the expanded list to remap its entire
-// entries array on every keystroke — expensive at the ~1,000-entry scale a
-// long-tenured user can reach.
+// claim 10; defaults updated for #898). WeightHistoryList is a child of
+// WeightScreen, which owns the Weight/Note text-input shell state. Before the
+// #592 fix, every keystroke in those fields re-rendered WeightScreen and
+// re-created WeightHistoryList's element with fresh props, causing the
+// expanded list to remap its entire entries array on every keystroke —
+// expensive at the ~1,000-entry scale a long-tenured user can reach. #898
+// additionally made the panel collapsed by default and windowed the expanded
+// list (HISTORY_WINDOW_SIZE) so expanding never maps the full entries array.
 //
 // This test renders the real WeightHistoryList with a representative
 // 1,000-entry fixture, counts how many times its row-mapping body actually
-// runs, and proves that re-rendering the parent with an unrelated prop change
-// (simulating a sibling shell keystroke) does not remap the list, while an
-// actual entries change still does.
+// runs, and proves that: the collapsed default maps nothing; expanding maps
+// only one window, not all 1,000; re-rendering the parent with an unrelated
+// prop change (simulating a sibling shell keystroke) does not remap the
+// list; and an actual entries change still remaps the currently visible
+// window.
 
 import React from 'react';
 import renderer from 'react-test-renderer';
@@ -81,8 +85,33 @@ function Harness({ entries, severityFn, unrelatedTick }) {
 Harness.handleEditEntry = () => {};
 Harness.handleDelete = () => {};
 
-describe('WeightHistoryList render isolation on a 1,000-entry fixture (#592)', () => {
-  test('expanding the list renders every row exactly once', () => {
+// Rows shown per expand step, mirrored from WeightHistoryList's own
+// HISTORY_WINDOW_SIZE constant (not exported, so kept in sync here).
+const HISTORY_WINDOW_SIZE = 50;
+
+function expandHistory(component) {
+  const expandBtn = component.root.findByProps({ accessibilityLabel: 'Expand history' });
+  renderer.act(() => { expandBtn.props.onPress(); });
+}
+
+function showMore(component) {
+  const showMoreBtn = component.root.findByProps({ testID: 'weight-history-show-more' });
+  renderer.act(() => { showMoreBtn.props.onPress(); });
+}
+
+describe('WeightHistoryList render isolation on a 1,000-entry fixture (#592, #898)', () => {
+  test('the collapsed default maps no rows', () => {
+    const severityFn = makeCountingSeverity();
+    renderer.act(() => {
+      renderer.create(
+        <Harness entries={ENTRIES_1000} severityFn={severityFn} unrelatedTick={0} />
+      );
+    });
+
+    expect(severityFn).not.toHaveBeenCalled();
+  });
+
+  test('expanding the list maps only one window, not every row', () => {
     const severityFn = makeCountingSeverity();
     let component;
     renderer.act(() => {
@@ -91,9 +120,25 @@ describe('WeightHistoryList render isolation on a 1,000-entry fixture (#592)', (
       );
     });
 
-    // WeightHistoryList starts expanded by default (collapsed=false), so the
-    // initial render already maps every row.
-    expect(severityFn).toHaveBeenCalledTimes(ENTRIES_1000.length);
+    expandHistory(component);
+
+    expect(severityFn).toHaveBeenCalledTimes(HISTORY_WINDOW_SIZE);
+  });
+
+  test('"Show more" grows the mapped window without dumping the full 1,000 rows', () => {
+    const severityFn = makeCountingSeverity();
+    let component;
+    renderer.act(() => {
+      component = renderer.create(
+        <Harness entries={ENTRIES_1000} severityFn={severityFn} unrelatedTick={0} />
+      );
+    });
+    expandHistory(component);
+    severityFn.mockClear();
+
+    showMore(component);
+
+    expect(severityFn).toHaveBeenCalledTimes(HISTORY_WINDOW_SIZE * 2);
   });
 
   test('re-rendering the parent with unchanged entries/callbacks does not remap the list', () => {
@@ -104,7 +149,8 @@ describe('WeightHistoryList render isolation on a 1,000-entry fixture (#592)', (
         <Harness entries={ENTRIES_1000} severityFn={severityFn} unrelatedTick={0} />
       );
     });
-    expect(severityFn).toHaveBeenCalledTimes(ENTRIES_1000.length);
+    expandHistory(component);
+    expect(severityFn).toHaveBeenCalledTimes(HISTORY_WINDOW_SIZE);
     severityFn.mockClear();
 
     // Same entries array reference, same stable callbacks — only the parent's
@@ -120,7 +166,7 @@ describe('WeightHistoryList render isolation on a 1,000-entry fixture (#592)', (
     expect(severityFn).not.toHaveBeenCalled();
   });
 
-  test('an actual entries change still remaps the list', () => {
+  test('an actual entries change still remaps the currently visible window', () => {
     const severityFn = makeCountingSeverity();
     let component;
     renderer.act(() => {
@@ -128,6 +174,7 @@ describe('WeightHistoryList render isolation on a 1,000-entry fixture (#592)', (
         <Harness entries={ENTRIES_1000} severityFn={severityFn} unrelatedTick={0} />
       );
     });
+    expandHistory(component);
     severityFn.mockClear();
 
     const updatedEntries = [...ENTRIES_1000, {
@@ -145,6 +192,6 @@ describe('WeightHistoryList render isolation on a 1,000-entry fixture (#592)', (
       );
     });
 
-    expect(severityFn).toHaveBeenCalledTimes(updatedEntries.length);
+    expect(severityFn).toHaveBeenCalledTimes(HISTORY_WINDOW_SIZE);
   });
 });

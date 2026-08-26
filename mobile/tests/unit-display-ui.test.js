@@ -88,12 +88,20 @@ describe('WeightHistoryList unit display', () => {
     goalInfo: null,
   };
 
+  // WeightHistoryList is collapsed by default (#898); expand to see rows.
+  async function expandHistory(component) {
+    await act(async () => {
+      component.root.findByProps({ accessibilityLabel: 'Expand history' }).props.onPress();
+    });
+  }
+
   test('kg mode converts row values and the change delta', async () => {
     setWeightUnitPreference('kg');
     let component;
     await act(async () => {
       component = renderer.create(<WeightHistoryList {...baseProps} />);
     });
+    await expandHistory(component);
     const texts = allTexts(component.root);
     expect(texts).toContain('84.0 kg'); // 185.2 lb
     expect(texts).toContain('84.5 kg'); // 186.4 lb → 84.5496 → one decimal
@@ -105,6 +113,7 @@ describe('WeightHistoryList unit display', () => {
     await act(async () => {
       component = renderer.create(<WeightHistoryList {...baseProps} />);
     });
+    await expandHistory(component);
     const texts = allTexts(component.root);
     expect(texts).toContain('185.2 lb');
     expect(texts).toContain('-1.2');
