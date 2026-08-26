@@ -176,3 +176,43 @@ describe('HelpScreen consumes the shared WorkoutSyntaxReference (#584)', () => {
     }
   });
 });
+
+// #894: the App Guide is the one place that must spell out the tracked-span
+// contract using the exact shipped Track / Tracked labels — a screen-reader
+// or sighted user hunting for "Track" in the guide must find that word, not a
+// paraphrase (ui-design-rules §11).
+describe('HelpScreen — Track / Tracked terminology explains the tracked span (#894)', () => {
+  function renderedText(root) {
+    return renderedStrings(root).join(' ');
+  }
+
+  test('states that logging alone does not track an exercise', () => {
+    let component;
+    render.act(() => {
+      component = render.create(<HelpScreen onBack={jest.fn()} />);
+    });
+    const text = renderedText(component.root);
+    expect(text).toContain('Track / Tracked');
+    expect(text).toMatch(/logging it alone never does/);
+  });
+
+  test('states that every explicit Track opens a fresh span while Est./Kilo Max/best set stay historical', () => {
+    let component;
+    render.act(() => {
+      component = render.create(<HelpScreen onBack={jest.fn()} />);
+    });
+    const text = renderedText(component.root);
+    expect(text).toMatch(/opens a fresh progression span/);
+    expect(text).toContain('First session');
+    expect(text).toMatch(/Est\. Max, Kilo Max, and best set keep showing your full history/);
+  });
+
+  test('states that inherited catalog/legacy tracked state was not an explicit selection', () => {
+    let component;
+    render.act(() => {
+      component = render.create(<HelpScreen onBack={jest.fn()} />);
+    });
+    const text = renderedText(component.root);
+    expect(text).toMatch(/catalog default or an earlier version of the app/);
+  });
+});

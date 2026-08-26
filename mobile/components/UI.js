@@ -240,10 +240,20 @@ export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabl
             text-selection behavior are unchanged. */}
         <Text selectable={selectable} style={styles.exerciseName} onPress={onNamePress}>{name}</Text>
         {(onToggleTrack || disabledTrack) && (
-          <TrackContainer 
+          <TrackContainer
             onPress={disabledTrack ? null : onToggleTrack}
             disabled={disabledTrack}
+            accessibilityRole={disabledTrack ? undefined : 'button'}
             accessibilityState={disabledTrack ? { disabled: true } : undefined}
+            // #894: label matches the visible text exactly (ui-design-rules
+            // §11); the hint is what a screen-reader user can't see from the
+            // one-word label alone — logging doesn't track, and tracking
+            // always opens a fresh progression span (#893), even on a
+            // re-track.
+            accessibilityLabel={disabledTrack ? undefined : (isTracked ? 'Tracked' : 'Track')}
+            accessibilityHint={disabledTrack ? undefined : (isTracked
+              ? 'Removes this exercise from Progressive Overload'
+              : 'Adds this exercise to Progressive Overload and starts a new tracked span')}
             style={[
               styles.trackToggle,
               isTracked ? styles.trackToggleActive : null,

@@ -26,6 +26,7 @@ import {
   DEFAULT_1K_EXERCISES,
   deriveWorkoutNoteAnalytics,
   deriveOverloadCounts,
+  deriveNonWeightedTrackedExerciseMetrics,
   computeWeeklySummary,
   getDefaultTrackedNames,
   normalizeLiftName,
@@ -142,6 +143,63 @@ export function useHomeRecoverySummary(notes) {
   }, [activeBlock, weeks, notes, ready, loading, stale, retryRecovery]);
 }
 
+// #894: mirrors deriveOverloadCounts' own per-appearance iteration
+// (lib/data/workoutAnalytics.js) but counts rows in a freshly opened tracked
+// span — a `first_session` weighted trend, or a non-weighted 'dash' arrow
+// with capability data present — rather than progressing/stalled/regressing.
+//
+// Review finding (#896): `first_session`/`dash` alone is not enough. An
+// INHERITED exercise (no activation record — #893 legacy/catalog state) with
+// exactly one comparable historical session reports the identical
+// `first_session`/'dash' state, because there is nothing prior to compare
+// against either. Only a row backed by a live activation record is an
+// EXPLICIT fresh span; requiring `trackedLiftActivations` here is what keeps
+// this bucket from double-claiming rows `hasInheritedTracking` already
+// explains.
+//
+// Non-weighted exercises (Bike, Plank, ...) never get an `overload_trend` at
+// all — `deriveWorkoutNoteAnalytics`'s signals cover strength movements only,
+// and their fresh-span state lives in `nonWeightedMetrics`'s arrow instead
+// (mirroring how AnalyticsScreen reads `nw` alongside `sig` per row). Without
+// folding that in, an explicitly tracked non-weighted exercise in its first
+// span had a live activation (so not "inherited") but no counted row either,
+// leaving Home's summary silently blank for it.
+function countNewlyTrackedRows(sections, signals, perDaySignals, nonWeightedMetrics, trackedLiftActivations) {
+  const sigMap = new Map((signals || []).map(s => [normalizeExerciseKey(s.name), s]));
+  let count = 0;
+  (sections || []).forEach(sec => {
+    sec.exercises.forEach(ex => {
+      const key = normalizeExerciseKey(ex.name);
+      const hasActivation = !!trackedLiftActivations?.[key];
+      if (!hasActivation) return;
+
+      // `nonWeightedMetrics` only ever gets an entry for an exercise its own
+      // class detection resolved to reps-only/time-based (weighted and
+      // unclassifiable exercises are skipped inside that derivation) — so its
+      // presence is what actually tells the two kinds of row apart. `sigMap`
+      // is NOT a reliable signal on its own: deriveProgressionSignals returns
+      // an `absent` placeholder (overload_trend: null) for every tracked name
+      // that isn't strength-eligible, so a non-weighted exercise always has a
+      // (useless) sig entry too — checking sig first would shadow the real nw
+      // state below with that placeholder's null trend.
+      const nw = nonWeightedMetrics?.[normalizeLiftName(ex.name)];
+      if (nw) {
+        const arrow = nw.exercise_class === 'reps_only' ? nw.reps_arrow : nw.hold_arrow;
+        const hasData = nw.exercise_class === 'reps_only' ? nw.avg_reps != null : nw.avg_hold != null;
+        if (hasData && arrow === 'dash') count++;
+        return;
+      }
+
+      const sig = sigMap.get(key);
+      if (!sig) return;
+      const dayRow = perDaySignals?.[key]?.[sec.heading];
+      const rowTrend = dayRow?.overload_trend ?? sig.overload_trend;
+      if (rowTrend === 'first_session') count++;
+    });
+  });
+  return count;
+}
+
 // `allSections` / `noteSectionsList` are the AGGREGATED note populations and
 // arrive already filtered by `useHomeNormalNotes` above. Nothing here re-derives
 // that decision, so Home cannot disagree with the other surfaces.
@@ -184,6 +242,17 @@ export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal
   // rather than each inventing one.
   const { signals, perDaySignals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames, undefined, trackedLiftActivations);
   const counts = deriveOverloadCounts(sections, signals, perDaySignals);
+  // #894: same visible tracked population, split by whether it has an
+  // explicit activation record (#893) — presence means an explicit Track
+  // tap opened this span; absence means inherited catalog/pre-#893 state
+  // that is still running on legacy full-history progression. Non-weighted
+  // exercises need their own metrics derivation (#896 review) — signals only
+  // ever cover strength movements.
+  const nonWeightedMetrics = deriveNonWeightedTrackedExerciseMetrics(allSections, visibleTrackedNames, trackedLiftActivations);
+  const newlyTrackedCount = countNewlyTrackedRows(sections, signals, perDaySignals, nonWeightedMetrics, trackedLiftActivations);
+  const hasInheritedTracking = visibleTrackedNames.some(
+    name => !trackedLiftActivations?.[normalizeExerciseKey(name)]
+  );
 
   // #854/R5: recompute exercise_classifications live from allSections instead
   // of trusting the note's save-time cache, so a note saved under an older
@@ -201,6 +270,8 @@ export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal
 
   const weeklySummary = computeWeeklySummary(sections, workoutNote, liveClassifications);
   weeklySummary.classifications = counts;
+  weeklySummary.newlyTrackedCount = newlyTrackedCount;
+  weeklySummary.hasInheritedTracking = hasInheritedTracking;
 
   const sessionCount = countWorkoutSessionsFromSections(sections || []);
 

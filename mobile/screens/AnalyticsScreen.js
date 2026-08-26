@@ -31,6 +31,29 @@ import { AnalyticsOverviewCard } from '../components/AnalyticsOverviewCard';
 import { CrossDayComparison, formatOverload } from '../components/AnalyticsCrossDayComparison';
 import { AnalyticsRecoverySection } from '../components/AnalyticsRecoverySection';
 import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
+import { normalizeExerciseKey } from '../lib/parser';
+
+// #894: a Progressive Overload row's trend can look "stuck" for two very
+// different reasons the icon alone can't tell apart — a movement inherited as
+// tracked with no activation record (#893 legacy/catalog state, full history)
+// versus a movement whose tracked span just opened (an activation record
+// exists, but the span itself holds no comparison yet). Only these two states
+// get a caption; a fully classified row (up/flat/down) needs no explanation,
+// and a row with no capability data at all is already self-explanatory via
+// the dash. `hasActivation` alone can't distinguish "just tracked" from
+// "tracked a while ago, still building history" — `rowTrend === 'first_session'`
+// (or the non-weighted 'dash' arrow) is what actually means "no comparison in
+// this span yet", so the two conditions are checked together.
+function describePoRowState({ hasActivation, isFirstSpanSession, hasCapabilityData }) {
+  if (!hasCapabilityData) return null;
+  if (isFirstSpanSession) {
+    return hasActivation
+      ? 'New tracked span — Est./Kilo/Best above stay historical'
+      : 'First session';
+  }
+  if (!hasActivation) return 'Inherited tracking — full history';
+  return null;
+}
 
 // The one section id that needs no measurement: "the top of Analytics" (#770).
 // `Full history and insights` on Home requests it, and it is what makes that
@@ -708,11 +731,26 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
                       const rowIsBodyweight = dayRow ? dayRow.is_bodyweight : sig.is_bodyweight;
                       const nw = analytics.nonWeightedMetrics?.[normName];
 
+                      // #894: `trackedLiftActivations` is keyed by the same
+                      // canonical key WorkoutContentRenderer's Track control
+                      // writes to (#893) — presence of a record is what makes
+                      // this an EXPLICIT tracked span, not inherited state.
+                      const hasActivation = !!(trackedLiftActivations || {})[normalizeExerciseKey(sig.name)];
+                      const nwArrow = nw ? (nw.exercise_class === 'reps_only' ? nw.reps_arrow : nw.hold_arrow) : null;
+                      const hasCapabilityData = nw
+                        ? (nw.exercise_class === 'reps_only' ? nw.avg_reps != null : nw.avg_hold != null)
+                        : (rowPr != null || sig.kilo_max != null || rowTopWeight != null);
+                      const isFirstSpanSession = nw ? nwArrow === 'dash' : rowTrend === 'first_session';
+                      const poCaption = describePoRowState({ hasActivation, isFirstSpanSession, hasCapabilityData });
+
                       return (
                         <View key={normName + sig.currentDayHeading} style={[styles.signalRow, styles.signalRowBorder]}>
                           <View style={styles.signalNameRow}>
                             <Text style={styles.signalName}>{analytics.nameDisplayMap?.get(normName) || sig.name}</Text>
                           </View>
+                          {poCaption && (
+                            <Text style={styles.trackingCaption}>{poCaption}</Text>
+                          )}
 
                           {nw ? (
                             <View style={styles.signalMetricsGrid}>
@@ -785,7 +823,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       ) : (
         <View key="empty-tracked" style={styles.emptyTracked}>
           <Text style={styles.emptyText}>
-            Tap Track on any exercise in your note to track it here.
+            Tap Track on any exercise in your note to track it here. Logging alone doesn't track it — Track / Tracked is the only control that does.
           </Text>
           <Pressable
             testID="analytics-empty-log-link"
@@ -1005,6 +1043,12 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 12,
     color: colors.textMuted,
     marginTop: 6,
+    fontStyle: 'italic',
+  },
+  trackingCaption: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginBottom: 8,
     fontStyle: 'italic',
   },
   emptySearch: {

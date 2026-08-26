@@ -3407,6 +3407,26 @@ describe('WorkoutContentRenderer: per-mode parity with main', () => {
     );
     expect(trackNodes.length).toBeGreaterThan(0);
   });
+
+  // #894: the accessible label must match the visible "Track"/"Tracked" text
+  // exactly (ui-design-rules §11), and the hint tells a screen-reader user what
+  // a sighted user reads visually elsewhere — that tapping it starts a fresh
+  // tracked span (#893), even on a re-track.
+  test('Track control carries an accessible label matching its visible text, plus a hint', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <WorkoutContentRenderer dayGroups={liftingDayGroups} onToggleTrack={jest.fn()} />
+      );
+    });
+    const root = component.root;
+    const toggle = root.findAll(
+      n => typeof n.props?.onPress === 'function' && n.props?.accessibilityLabel === 'Track'
+    )[0];
+    expect(toggle).toBeDefined();
+    expect(toggle.props.accessibilityRole).toBe('button');
+    expect(toggle.props.accessibilityHint).toMatch(/starts a new tracked span/);
+  });
 });
 
 // #615: render read-view marks and comments from the canonical { mark, comments }

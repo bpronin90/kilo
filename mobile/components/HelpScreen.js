@@ -38,7 +38,7 @@ export function HelpScreen({ onBack }) {
         </View>
         <View style={styles.tabRow}>
           <Text style={styles.tabName}>Log</Text>
-          <Text style={styles.tabDesc}>Write your workouts as free-form text notes. Kilo parses exercises, sets, reps, and weight automatically. Tap any parsed exercise to see details or mark it as tracked. Also contains Deload: when deload mode is enabled in Settings, you can log and review planned deload weeks from within the Log tab.</Text>
+          <Text style={styles.tabDesc}>Write your workouts as free-form text notes. Kilo parses exercises, sets, reps, and weight automatically. Each parsed exercise shows a Track / Tracked control — logging an exercise does not track it by itself. Also contains Deload: when deload mode is enabled in Settings, you can log and review planned deload weeks from within the Log tab.</Text>
         </View>
         <View style={styles.tabRow}>
           <Text style={styles.tabName}>Weight</Text>
@@ -115,8 +115,8 @@ export function HelpScreen({ onBack }) {
           <Text style={styles.termDesc}>Your combined estimated 1RM across Squat, Bench, and Deadlift. The goal is to reach a {oneKTotalLabel} total. Shown on the Home screen.</Text>
         </View>
         <View style={styles.termRow}>
-          <Text style={styles.termLabel}>Tracked</Text>
-          <Text style={styles.termDesc}>An exercise you've marked for Analytics monitoring. Tracked exercises appear in the Progressive Overload section showing current Est. Max, Kilo Max, best set, and progress trend.</Text>
+          <Text style={styles.termLabel}>Track / Tracked</Text>
+          <Text style={styles.termDesc}>The inline control next to a parsed exercise in Log. Tapping Track (it then reads Tracked) is the only way an exercise joins the Progressive Overload section — logging it alone never does. Each explicit Track tap, including the very first one, opens a fresh progression span from that point: Progressing / Steady / Regressing restarts and shows First session until enough newly tracked sessions exist, while Est. Max, Kilo Max, and best set keep showing your full history. Untracking removes an exercise; tracking it again restores that historical Est. Max, Kilo Max, and best set immediately but opens another fresh span. Some exercises may already show Tracked from a catalog default or an earlier version of the app — those keep full-history progress with no restart until the next time you tap Track.</Text>
         </View>
         <View style={styles.termRow}>
           <Text style={styles.termLabel}>Fatigue</Text>
