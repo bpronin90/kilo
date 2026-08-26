@@ -949,11 +949,20 @@ async function applyUserHealthProfile(mergedList) {
   }
 
   // #893. Applied independently of the flags above rather than nested under
-  // them: an older build pushes this row with no such column, so the pulled
-  // winner legitimately carries `undefined` here while carrying real flags, and
-  // that must leave the local records alone — not clear them. A present-but-empty
-  // object IS a real value (every activation retired or untracked) and is
-  // applied. Normalized on the way in, because this crossed a trust boundary.
+  // them: a server predating the column serves the pulled winner with no such
+  // field, so `undefined` here means "this row cannot speak to the records" and
+  // must leave the local ones alone — not clear them. A present-but-empty object
+  // IS a real value (every activation retired or untracked) and is applied.
+  // Normalized on the way in, because this crossed a trust boundary.
+  //
+  // The prune below then runs UNCONDITIONALLY, against whatever flags this
+  // device now holds. That is the half an older build cannot do for itself: its
+  // upsert names `tracked_lifts` and not this column, so Postgres PRESERVES the
+  // stored records across its untrack and the pulled row comes back carrying a
+  // record for a key that is no longer tracked. Dropping it here is what stops a
+  // later retrack from resuming the abandoned span with every gap session inside
+  // it. A watermark-aware writer never trips this: it deletes flag and record
+  // together, so there is nothing orphaned to drop.
   if (
     row.tracked_lift_activations &&
     typeof row.tracked_lift_activations === 'object' &&
@@ -964,6 +973,13 @@ async function applyUserHealthProfile(mergedList) {
     if (stableStringify(local) !== stableStringify(next)) {
       await Storage.saveTrackedLiftActivations(next);
     }
+  }
+
+  const flags = await Storage.loadTrackedLifts();
+  const records = await Storage.loadTrackedLiftActivations();
+  const pruned = Storage.pruneTrackedLiftActivations(flags, records);
+  if (stableStringify(pruned) !== stableStringify(records)) {
+    await Storage.saveTrackedLiftActivations(pruned);
   }
 
   // Active deload (issue #498). A null raw_text is a cleared deload; removing the

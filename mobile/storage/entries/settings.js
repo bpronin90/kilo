@@ -76,6 +76,30 @@ export function normalizeTrackedLiftActivations(raw) {
   return out;
 }
 
+// The pairing invariant: a record exists ONLY for a currently tracked key.
+//
+// A watermark-aware client maintains this by construction — untrack deletes the
+// flag and the record in one write — so this is a no-op for anything it wrote.
+// It exists for the writers that CANNOT maintain it: an older build upserts
+// `tracked_lifts` without naming the activations column, so the stored records
+// survive its untrack untouched. Left alone, a later retrack would find that
+// stale record still matching an unchanged opening history and silently resume
+// the abandoned span, pulling every session logged during the gap back into the
+// trend.
+//
+// Enforced wherever flags arrive from outside this device (cloud pull, backup
+// restore, bootstrap hydrate), and mirrored authoritatively by a trigger on the
+// health table so a legacy write is invalidated at the moment it lands rather
+// than only on the next device that happens to read it.
+export function pruneTrackedLiftActivations(trackedLifts, activations) {
+  const flags = trackedLifts || {};
+  const out = {};
+  for (const [key, record] of Object.entries(activations || {})) {
+    if (flags[key]) out[key] = record;
+  }
+  return out;
+}
+
 export async function loadTrackedLiftActivations() {
   try {
     const raw = await AsyncStorage.getItem(TRACKED_LIFT_ACTIVATIONS_KEY);

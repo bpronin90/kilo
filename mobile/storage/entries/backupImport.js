@@ -41,6 +41,7 @@ import {
   loadTrackedLiftActivations,
   saveTrackedLiftActivations,
   normalizeTrackedLiftActivations,
+  pruneTrackedLiftActivations,
   loadWorkoutCollapsed,
   saveWorkoutCollapsed,
 } from './settings';
@@ -335,12 +336,22 @@ export async function hydrateProfileFromCloud(profileRow, featureTogglesRow) {
     ) {
       await saveTrackedLifts(profileRow.tracked_lifts);
     }
+    // #893: pruned to the flags restored just above, so a downloaded row whose
+    // records outlived their Track flags cannot seed a boundary onto this
+    // device. (This path only runs on a clean/empty device, so there is nothing
+    // local to lose either way — it is paired for the same reason the backup
+    // path is: a flag map and its records are one fact.)
     if (
       profileRow.tracked_lift_activations &&
       typeof profileRow.tracked_lift_activations === 'object' &&
       !Array.isArray(profileRow.tracked_lift_activations)
     ) {
-      await saveTrackedLiftActivations(profileRow.tracked_lift_activations);
+      await saveTrackedLiftActivations(
+        pruneTrackedLiftActivations(
+          await loadTrackedLifts(),
+          normalizeTrackedLiftActivations(profileRow.tracked_lift_activations),
+        ),
+      );
     }
     if (profileRow.ui_state && typeof profileRow.ui_state === 'object') {
       await saveWorkoutCollapsed(!!profileRow.ui_state.log_current_collapsed);
@@ -973,21 +984,39 @@ async function restoreCloudBlock(cloud) {
     if (Object.keys(profile).length > 0) await saveUserProfile(profile);
   }
 
+  // #893: flags and records are restored as ONE authoritative pair.
+  //
+  // A restore replaces the flag map and the note history outright, so leaving
+  // the device's existing records in place would attach them to a routine they
+  // were never measured against — a boundary minted from later local state,
+  // shown as fact, and not corrected until some future save happens to retire
+  // it. A boolean-only backup, written before this field existed, therefore
+  // restores an EMPTY record map: its flags get the documented legacy
+  // full-history behavior, which is what that backup actually described.
+  //
+  // Records that are present are taken through the same normalizer the local
+  // loader uses, then pruned to the restored flags, so a payload that pairs a
+  // record with an untracked key cannot install one.
   if (cloud.tracked_lifts != null) {
     const tracked = {};
     for (const [lift, value] of Object.entries(cloud.tracked_lifts)) {
       if (typeof value === 'boolean') tracked[lift] = value;
     }
     await saveTrackedLifts(tracked);
-  }
-
-  // #893. Restored through the same normalizer the local loader uses, so a
-  // record that survives validation but not the shape check degrades to legacy
-  // full-history behavior rather than moving a progression boundary. An older
-  // backup simply has no such field and leaves the local records untouched.
-  if (cloud.tracked_lift_activations != null) {
     await saveTrackedLiftActivations(
-      normalizeTrackedLiftActivations(cloud.tracked_lift_activations),
+      pruneTrackedLiftActivations(
+        tracked,
+        normalizeTrackedLiftActivations(cloud.tracked_lift_activations ?? {}),
+      ),
+    );
+  } else if (cloud.tracked_lift_activations != null) {
+    // Records without flags: nothing authoritative to pair them to, so they are
+    // pruned against whatever this device already has.
+    await saveTrackedLiftActivations(
+      pruneTrackedLiftActivations(
+        await loadTrackedLifts(),
+        normalizeTrackedLiftActivations(cloud.tracked_lift_activations),
+      ),
     );
   }
 

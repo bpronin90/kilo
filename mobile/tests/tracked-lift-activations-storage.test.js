@@ -78,12 +78,37 @@ function makeFakeCloud() {
     },
   };
 
+  // Models `kilo.prune_orphan_tracked_lift_activations`, the BEFORE trigger on
+  // kilo.user_health_profile. Every write to that table goes through it on the
+  // real server, so the fake has to as well — otherwise a legacy write here
+  // would leave the row in a state Postgres will not hold.
+  function pruneOrphans(row) {
+    const records = row.tracked_lift_activations;
+    if (!records || typeof records !== 'object' || Array.isArray(records)) return row;
+    const flags = row.tracked_lifts && typeof row.tracked_lifts === 'object' ? row.tracked_lifts : {};
+    const kept = {};
+    for (const [key, value] of Object.entries(records)) if (flags[key]) kept[key] = value;
+    return { ...row, tracked_lift_activations: kept };
+  }
+
   return {
     transport,
     dropColumn: () => { dropActivationsColumn = true; },
     remoteRows: (table) => [...tables[table].values()],
     liveRemoteRows: (table) => [...tables[table].values()].filter((r) => !isTombstone(r)),
     seedRemote: (table, row) => tables[table].set(row.id, row),
+    // An OLDER build's upsert: it names `tracked_lifts` and not the activations
+    // column, so Postgres preserves whatever records the row already held —
+    // which is the whole reason the trigger exists.
+    legacyUpsertHealth: (trackedLifts, updatedAt) => {
+      const table = SYNC_TABLES.USER_HEALTH_PROFILE;
+      const existing = tables[table].get('self') || { id: 'self' };
+      tables[table].set('self', pruneOrphans({
+        ...existing,
+        tracked_lifts: trackedLifts,
+        updated_at: updatedAt,
+      }));
+    },
   };
 }
 
@@ -261,6 +286,117 @@ describe('cloud sync', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// The pairing invariant against a legacy client (PR #895 review, finding 2)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// An older build's upsert names `tracked_lifts` and not the activations column,
+// so Postgres PRESERVES the stored records across its untrack instead of
+// clearing them. The pulled row then carries a record for a key that is no
+// longer tracked, and a later retrack would find that record still matching an
+// unchanged opening history — reviving the abandoned span with every session
+// logged during the gap inside it.
+
+describe('legacy clients cannot revive an abandoned span', () => {
+  test('a record whose key is no longer tracked is dropped on pull', async () => {
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    await Storage.saveTrackedLifts({ squat: true, bench: true });
+    await Storage.saveTrackedLiftActivations({ squat: RECORD, bench: RECORD });
+    await sync();
+
+    // The legacy device untracks squat. Its upsert does not name the
+    // activations column, so the server row keeps squat's record.
+    cloud.seedRemote(SYNC_TABLES.USER_HEALTH_PROFILE, {
+      id: 'self',
+      tracked_lifts: { bench: true },
+      tracked_lift_activations: { squat: RECORD, bench: RECORD },
+      updated_at: '2099-01-01T00:00:00.000Z',
+    });
+    await sync();
+
+    const records = await Storage.loadTrackedLiftActivations();
+    expect(records.squat).toBeUndefined();
+    expect(records.bench).toEqual(RECORD);
+    expect(await Storage.loadTrackedLifts()).toEqual({ bench: true });
+  });
+
+  test('the full untrack / log / retrack sequence starts the new span fresh', async () => {
+    // The reported defect, end to end. This device pulls ONCE, at the end — so
+    // it never observes the intermediate untracked state, and no client-side
+    // check could tell the revived span from a legitimate one. The invalidation
+    // has to happen where the untrack actually lands, which is the server.
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    await Storage.saveTrackedLifts({ squat: true });
+    await Storage.saveTrackedLiftActivations({ squat: RECORD });
+    await sync();
+
+    // 1. Legacy untrack. 2. Sessions logged while untracked. 3. Legacy retrack.
+    cloud.legacyUpsertHealth({}, '2099-01-01T00:00:00.000Z');
+    cloud.legacyUpsertHealth({ squat: true }, '2099-06-01T00:00:00.000Z');
+
+    await sync();
+
+    // Without the trigger the row would still carry the old record, its witness
+    // would still match the unchanged opening history, and every gap session
+    // would enter the "new" trend. squat comes back tracked with no record
+    // instead: documented legacy full-history behavior until its next real
+    // toggle from a watermark-aware client.
+    expect(await Storage.loadTrackedLifts()).toEqual({ squat: true });
+    expect(await Storage.loadTrackedLiftActivations()).toEqual({});
+  });
+
+  test('a legacy toggle of some OTHER exercise leaves an untouched span alone', async () => {
+    // The prune is per key, so an unrelated legacy write must not cost a good
+    // watermark. This is the false positive a map-level "flags changed but
+    // records did not" heuristic would have produced.
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    await Storage.saveTrackedLifts({ squat: true });
+    await Storage.saveTrackedLiftActivations({ squat: RECORD });
+    await sync();
+
+    cloud.legacyUpsertHealth({ squat: true, bench: true }, '2099-01-01T00:00:00.000Z');
+    await sync();
+
+    expect(await Storage.loadTrackedLifts()).toEqual({ squat: true, bench: true });
+    expect(await Storage.loadTrackedLiftActivations()).toEqual({ squat: RECORD });
+  });
+
+  test('a consistent pulled row is left exactly as it arrived', async () => {
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    cloud.seedRemote(SYNC_TABLES.USER_HEALTH_PROFILE, {
+      id: 'self',
+      tracked_lifts: { squat: true, bench: true },
+      tracked_lift_activations: { squat: RECORD },
+      updated_at: '2099-01-01T00:00:00.000Z',
+    });
+    await sync();
+
+    // bench is tracked with no record — ordinary legacy boolean-only state, and
+    // the prune must not read that as something to clean up.
+    expect(await Storage.loadTrackedLiftActivations()).toEqual({ squat: RECORD });
+    expect(await Storage.loadTrackedLifts()).toEqual({ squat: true, bench: true });
+  });
+
+  test('an old server that omits the column still cannot leave an orphan behind', async () => {
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    await Storage.saveTrackedLifts({ squat: true });
+    await Storage.saveTrackedLiftActivations({ squat: RECORD });
+    await sync();
+
+    // No activations column at all (a server predating the migration), and the
+    // flags say squat is gone. The absent column must not clear the records
+    // wholesale — but the orphan it leaves behind must still go.
+    cloud.seedRemote(SYNC_TABLES.USER_HEALTH_PROFILE, {
+      id: 'self',
+      tracked_lifts: {},
+      updated_at: '2099-01-01T00:00:00.000Z',
+    });
+    await sync();
+
+    expect(await Storage.loadTrackedLiftActivations()).toEqual({});
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Bootstrap
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -342,6 +478,37 @@ describe('backup export and import', () => {
     // every value here is still a boolean.
     expect(Object.values(payload.cloud.tracked_lifts).every(v => typeof v === 'boolean')).toBe(true);
     expect(payload.cloud.tracked_lifts).toEqual({ squat: true, bench: true });
+  });
+
+  test('a REPLACE from a boolean-only backup clears stale local records (finding 3)', async () => {
+    // The device already holds a record minted against its own, later state.
+    // The restore replaces the flags and the note history outright, so leaving
+    // that record in place would attach a boundary to a routine it was never
+    // measured against and show it as fact until some future save retired it.
+    await Storage.saveTrackedLifts({ squat: true });
+    await Storage.saveTrackedLiftActivations({ squat: RECORD });
+
+    const legacyBackup = await buildCloudExport();
+    delete legacyBackup.cloud.tracked_lift_activations;
+    legacyBackup.cloud.tracked_lifts = { squat: true, bench: true };
+
+    const result = await importBackup(legacyBackup, IMPORT_MODES.REPLACE);
+    expect(result.ok).toBe(true);
+    expect(await Storage.loadTrackedLifts()).toEqual({ squat: true, bench: true });
+    // Both flags get the documented legacy full-history behavior, which is what
+    // that backup actually described.
+    expect(await Storage.loadTrackedLiftActivations()).toEqual({});
+  });
+
+  test('a restored record for an untracked key cannot be installed', async () => {
+    await Storage.saveTrackedLifts({ squat: true });
+    const payload = await buildCloudExport();
+    payload.cloud.tracked_lifts = { bench: true };
+    payload.cloud.tracked_lift_activations = { squat: RECORD, bench: RECORD };
+
+    const result = await importBackup(payload, IMPORT_MODES.REPLACE);
+    expect(result.ok).toBe(true);
+    expect(await Storage.loadTrackedLiftActivations()).toEqual({ bench: RECORD });
   });
 
   test('a tampered record is rejected by validation rather than written', async () => {

@@ -76,11 +76,18 @@ export function useTrackedLifts() {
     };
   }, [refresh]);
 
+  // Bulk flag write. It carries the pairing invariant too (#893): a key this
+  // drops loses its record in the same write, so no record can outlive the flag
+  // it belongs to and be inherited by a later retrack.
   const save = useCallback(async (nextTrackedLifts) => {
     trackedLiftsPromise = trackedLiftsPromise.then(async () => {
+      const nextActivations = Storage.pruneTrackedLiftActivations(nextTrackedLifts, currentActivations);
       currentTrackedLifts = nextTrackedLifts;
+      currentActivations = nextActivations;
       setTrackedLifts(nextTrackedLifts);
+      setActivations(nextActivations);
       await Storage.saveTrackedLifts(nextTrackedLifts);
+      await Storage.saveTrackedLiftActivations(nextActivations);
       notifyTrackedLifts();
       return nextTrackedLifts;
     });

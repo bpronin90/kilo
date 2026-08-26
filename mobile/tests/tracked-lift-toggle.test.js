@@ -165,6 +165,23 @@ describe('the Track toggle', () => {
     expect(await Storage.loadTrackedLifts()).toEqual({ bench: true });
   });
 
+  test('a legacy flag map keeps every record whose key is still tracked when save() prunes', async () => {
+    const ref = renderHook();
+    await flush();
+    await act(async () => { await ref.current.toggle('bench', HISTORY); });
+    await flush();
+
+    // Dropping a different key must not disturb bench's record; dropping bench
+    // must take its record with it, so nothing can outlive its flag.
+    await act(async () => { await ref.current.save({ bench: true, squat: true }); });
+    await flush();
+    expect((await Storage.loadTrackedLiftActivations()).bench.anchor).toBe(3);
+
+    await act(async () => { await ref.current.save({ squat: true }); });
+    await flush();
+    expect(await Storage.loadTrackedLiftActivations()).toEqual({});
+  });
+
   test('the reconcile persists a stale-anchor repair so the span does not re-clamp forever', async () => {
     const ref = renderHook();
     await flush();

@@ -860,10 +860,19 @@ export function LogScreen({
     // sees fewer sessions than that (Analytics excludes deloads; both surfaces
     // exclude opted-out recovery weeks) it clamps in memory and reads
     // `First session` until its own count catches up.
-    const activationSections = notes.flatMap(n => {
-      const text = n.id === currentId ? workoutNoteText : n.raw_text;
-      return text ? parseWorkoutNote(text).sections : [];
-    });
+    //
+    // A brand-new routine has no `currentId` and no item in `notes`, yet the
+    // active-routine card still offers Track. Its live text is appended
+    // explicitly for that case — the same thing the save path does — because
+    // without it the population comes out empty, the anchor is 0, and every
+    // session already typed into that routine stays inside the new trend.
+    const activationSections = [
+      ...notes.flatMap(n => {
+        const text = n.id === currentId ? workoutNoteText : n.raw_text;
+        return text ? parseWorkoutNote(text).sections : [];
+      }),
+      ...(currentId || !workoutNoteText ? [] : parseWorkoutNote(workoutNoteText).sections),
+    ];
     await toggleTrackedLift(key, activationSections);
   };
 
