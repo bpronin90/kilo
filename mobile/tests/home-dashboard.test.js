@@ -268,6 +268,48 @@ describe('deriveHomeDashboardData — tracking-state summary (#894)', () => {
     expect(result.weeklySummary.newlyTrackedCount).toBe(0);
     expect(result.weeklySummary.hasInheritedTracking).toBe(true);
   });
+
+  // #896 review finding 1: an inherited exercise (no activation record) with
+  // exactly one comparable historical session ALSO reports overload_trend
+  // 'first_session' — there is nothing prior to compare against either way.
+  // Without requiring a live activation, that row double-counted as "newly
+  // tracked" instead of "inherited", and newlyTrackedCount's render priority
+  // over hasInheritedTracking then showed the wrong explanation.
+  test('a single-session inherited exercise (no activation) is never counted as newly tracked', () => {
+    const onlyNote = { id: 'a', raw_text: '-Bench Press\n135 5' };
+    const { sections } = parseWorkoutNote(onlyNote.raw_text);
+    const result = deriveHomeDashboardData({
+      weightEntries: [],
+      workoutNote: onlyNote,
+      weightGoal: null,
+      allSections: sections,
+      trackedLifts: { 'bench press': true },
+      trackedLiftActivations: {},
+    });
+    expect(result.weeklySummary.newlyTrackedCount).toBe(0);
+    expect(result.weeklySummary.hasInheritedTracking).toBe(true);
+  });
+
+  // #896 review finding 2: a non-weighted tracked exercise (reps-only/
+  // time-based) never gets an `overload_trend` — deriveWorkoutNoteAnalytics's
+  // signals cover strength movements only — so its fresh-span state has to be
+  // read from deriveNonWeightedTrackedExerciseMetrics's arrow instead.
+  test('an explicitly tracked non-weighted exercise in its first span is counted as newly tracked', () => {
+    const onlyNote = { id: 'a', raw_text: '-Pull-up\n8,8,7' };
+    const { sections } = parseWorkoutNote(onlyNote.raw_text);
+    const result = deriveHomeDashboardData({
+      weightEntries: [],
+      workoutNote: onlyNote,
+      weightGoal: null,
+      allSections: sections,
+      trackedLifts: { 'pull-up': true },
+      trackedLiftActivations: {
+        'pull-up': { anchor: 0, at: '2026-05-01T00:00:00Z', witness: null },
+      },
+    });
+    expect(result.weeklySummary.newlyTrackedCount).toBe(1);
+    expect(result.weeklySummary.hasInheritedTracking).toBe(false);
+  });
 });
 
 describe('HomeScreen — hydration gating (issue #442)', () => {
