@@ -12197,6 +12197,13 @@ describe('current-routine source jump landing (#886)', () => {
     return lines.join('\n');
   })();
 
+  // #888: how far below the top edge a landed exercise header is parked.
+  // Stated here rather than imported, so a change to the product constant has
+  // to be a deliberate change to what these tests assert. Roughly one raw row
+  // — enough not to sit flush against the edge, and no more; 96 put the
+  // header a whole exercise block down the screen.
+  const TOP_GAP = 24;
+
   const mounted = [];
   beforeEach(() => { jest.useFakeTimers(); });
   afterEach(() => {
@@ -12297,9 +12304,9 @@ describe('current-routine source jump landing (#886)', () => {
     editorScrollTo.mockClear();
 
     render.act(() => { getHook().clearPendingSourceJump({ y: 1600 }); });
-    // Parked below the top edge, so the header reads as placed rather than
-    // clipped against it.
-    expect(editorScrollTo).toHaveBeenCalledWith({ y: 1600 - 96, animated: false });
+    // Parked just below the top edge, so the header reads as placed rather
+    // than clipped against it — and not a whole block further down (#888).
+    expect(editorScrollTo).toHaveBeenCalledWith({ y: 1600 - TOP_GAP, animated: false });
     expect(getHook().pendingSourceJump).toBeNull();
   });
 
@@ -12309,7 +12316,7 @@ describe('current-routine source jump landing (#886)', () => {
     flushFrames();
     editorScrollTo.mockClear();
 
-    render.act(() => { getHook().clearPendingSourceJump({ y: 30 }); });
+    render.act(() => { getHook().clearPendingSourceJump({ y: TOP_GAP / 2 }); });
     expect(editorScrollTo).toHaveBeenCalledWith({ y: 0, animated: false });
   });
 
@@ -12335,7 +12342,7 @@ describe('current-routine source jump landing (#886)', () => {
     expect(getHook().mode).toBe('read');
     editorScrollTo.mockClear();
 
-    // The editor scroll view is still mounted at 1504 from the first jump.
+    // The editor scroll view is still mounted at the first jump's offset.
     scrollToRead(getHook, 640);
     render.act(() => { getHook().handleExerciseSourceJump(anchorFor(LONG_NOTE, 'Exercise 25')); });
     flushFrames();
@@ -12343,7 +12350,7 @@ describe('current-routine source jump landing (#886)', () => {
     expect(editorScrollTo).not.toHaveBeenCalledWith({ y: 640, animated: false });
 
     render.act(() => { getHook().clearPendingSourceJump({ y: 1600 }); });
-    expect(editorScrollTo).toHaveBeenLastCalledWith({ y: 1504, animated: false });
+    expect(editorScrollTo).toHaveBeenLastCalledWith({ y: 1600 - TOP_GAP, animated: false });
   });
 
   test('after leaving the editor, a jump to a DIFFERENT exercise lands on that one', async () => {
@@ -12362,7 +12369,7 @@ describe('current-routine source jump landing (#886)', () => {
     );
     editorScrollTo.mockClear();
     render.act(() => { getHook().clearPendingSourceJump({ y: 360 }); });
-    expect(editorScrollTo).toHaveBeenCalledWith({ y: 360 - 96, animated: false });
+    expect(editorScrollTo).toHaveBeenCalledWith({ y: 360 - TOP_GAP, animated: false });
   });
 
   test('a jump taken while already editing does not re-park the editor at the top', () => {
@@ -12377,6 +12384,6 @@ describe('current-routine source jump landing (#886)', () => {
     expect(editorScrollTo).not.toHaveBeenCalled();
 
     render.act(() => { getHook().clearPendingSourceJump({ y: 900 }); });
-    expect(editorScrollTo).toHaveBeenCalledWith({ y: 804, animated: false });
+    expect(editorScrollTo).toHaveBeenCalledWith({ y: 900 - TOP_GAP, animated: false });
   });
 });

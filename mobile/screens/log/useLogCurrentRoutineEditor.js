@@ -36,10 +36,16 @@ import {
 const DRAFT_DEBOUNCE_MS = 400;
 
 // #886: how far below the top of the editor viewport a source-jumped exercise
-// header is parked. Enough breathing room to show the line above it (so the
-// landing reads as "here", not "cut off at the edge") while keeping the
-// exercise and its first set rows clear of the keyboard.
-const SOURCE_JUMP_TOP_GAP = 96;
+// header is parked — enough that it does not sit flush against the edge, and
+// no more. About one raw row at the editor's 16pt text.
+//
+// #888: was 96, which is 4-5 rows — a header plus its set rows, i.e. a whole
+// exercise block. Device verification of #886 duly reported the jump landing
+// about one exercise above its target, consistently. That consistency was the
+// diagnosis: a measurement error grows with source depth and varies between
+// jumps, so a fixed one-directional offset had to be a constant, and this is
+// the only constant in that path.
+const SOURCE_JUMP_TOP_GAP = 24;
 
 function currentDraftKey(currentId) {
   return currentId ? `current:${currentId}` : 'current:new';
