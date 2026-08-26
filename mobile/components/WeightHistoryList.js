@@ -55,6 +55,7 @@ const createHistoryPanel = (colors) => StyleSheet.create({
     paddingLeft: HISTORY_ROW_PAD_H,
     paddingRight: 0,
     paddingVertical: 10,
+    minHeight: 44,
     backgroundColor: colors.subtleBg,
   },
   headerRowBordered: {

@@ -1482,6 +1482,53 @@ describe('WeightHistoryList disclosure triangle convention (#393)', () => {
     });
     expect(JSON.stringify(component.toJSON())).toContain('0 entries');
   });
+
+  // #898 44dp verification: the collapsed header is the sole tap target for a
+  // brand-new account (0 entries), so it must itself clear the 44dp minimum
+  // rather than relying on multi-line summary content to pad it out.
+  test('the collapsed header toggle meets the 44dp minimum touch target even with 0 entries', () => {
+    useEntries.useWeightEntries.mockReturnValue({ entries: [], remove: jest.fn(), update: jest.fn() });
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    const toggle = component.root.findByProps({ accessibilityLabel: 'Expand history' });
+    const flat = StyleSheet.flatten(toggle.props.style);
+    expect(flat.minHeight).toBeGreaterThanOrEqual(44);
+  });
+
+  // #898 large-text verification: the collapsed summary and "Show more"
+  // control must not opt out of the OS text-scaling that large-text settings
+  // rely on.
+  test('collapsed summary and Show more text scale with the OS large-text setting', () => {
+    const manyEntries = Array.from({ length: 60 }, (_, i) => ({
+      id: `e${i}`,
+      date: `2026-0${(i % 9) + 1}-01`,
+      logged_at: `2026-0${(i % 9) + 1}-01T08:00:00Z`,
+      weight_value: 180 + i,
+      note: '',
+    }));
+    useEntries.useWeightEntries.mockReturnValue({ entries: manyEntries, remove: jest.fn(), update: jest.fn() });
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    const root = component.root;
+    const summaryText = root.findByProps({ accessibilityLabel: 'Expand history' })
+      .findAllByType('Text')[0];
+    expect(summaryText.props.allowFontScaling).not.toBe(false);
+
+    render.act(() => {
+      root.findByProps({ accessibilityLabel: 'Expand history' }).props.onPress();
+    });
+    const showMoreBtn = root.findByProps({ testID: 'weight-history-show-more' });
+    const showMoreText = showMoreBtn.findByType('Text');
+    expect(showMoreText.props.allowFontScaling).not.toBe(false);
+  });
 });
 
 describe('WeightHistoryList date range cancel does not commit sentinel date (#394)', () => {
