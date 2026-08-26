@@ -161,9 +161,24 @@ describe('WeightScreen edit and delete correction flows', () => {
     useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
   });
 
+  // WeightHistoryList is collapsed by default (#898); expand it once so a
+  // row's content is on screen before searching for it.
+  const expandHistoryIfCollapsed = (root) => {
+    const expandBtn = root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'Expand history'
+    )[0];
+    if (expandBtn) render.act(() => { expandBtn.props.onPress(); });
+  };
+
   // Walk up from each Text node containing `text` and return the first one
-  // whose ancestor chain has a node with onPress.
+  // whose ancestor chain has a node with onPress. History rows only exist
+  // once expanded, and the collapsed summary can itself contain a row's
+  // weight text (e.g. "Latest: 185 lb") behind the header's own toggle
+  // Pressable, so expansion always runs first rather than as a fallback —
+  // otherwise a summary-text match would resolve to the collapse toggle
+  // instead of the intended row.
   const findPressableByText = (root, text) => {
+    expandHistoryIfCollapsed(root);
     const matches = root.findAll(n => {
       if (n.type !== 'Text') return false;
       const children = n.props.children;
@@ -180,14 +195,18 @@ describe('WeightScreen edit and delete correction flows', () => {
     return null;
   };
 
-  const hasText = (root, text) =>
-    root.findAll(n => {
+  const hasText = (root, text) => {
+    const check = () => root.findAll(n => {
       if (n.type !== 'Text') return false;
       const flat = Array.isArray(n.props.children)
         ? n.props.children.join('')
         : String(n.props.children ?? '');
       return flat.includes(text);
     }).length > 0;
+    if (check()) return true;
+    expandHistoryIfCollapsed(root);
+    return check();
+  };
 
   test('tapping a history row loads both weight and note into the form in editing mode', () => {
     let component;
@@ -1410,28 +1429,105 @@ describe('WeightHistoryList disclosure triangle convention (#393)', () => {
     useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
   });
 
-  test('toggle button shows expand-more when history is expanded (default)', () => {
+  // #898: the panel now opens collapsed to a latest/count summary so a
+  // growing history doesn't dominate the daily Weight surface by default.
+  test('toggle button shows expand-less when history is collapsed (default)', () => {
     let component;
     render.act(() => {
       component = render.create(
         <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
       );
     });
-    const toggleBtn = component.root.findByProps({ accessibilityLabel: 'Collapse history' });
+    const toggleBtn = component.root.findByProps({ accessibilityLabel: 'Expand history' });
     expect(toggleBtn).toBeTruthy();
   });
 
-  test('toggle button shows Expand history label after collapsing', () => {
+  test('toggle button shows Collapse history label after expanding', () => {
     let component;
     render.act(() => {
       component = render.create(
         <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
       );
     });
-    const toggleBtn = component.root.findByProps({ accessibilityLabel: 'Collapse history' });
+    const toggleBtn = component.root.findByProps({ accessibilityLabel: 'Expand history' });
     render.act(() => { toggleBtn.props.onPress(); });
-    const expandBtn = component.root.findByProps({ accessibilityLabel: 'Expand history' });
-    expect(expandBtn).toBeTruthy();
+    const collapseBtn = component.root.findByProps({ accessibilityLabel: 'Collapse history' });
+    expect(collapseBtn).toBeTruthy();
+  });
+
+  test('collapsed default shows a latest/count summary instead of the row', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    const root = component.root;
+    const flat = JSON.stringify(component.toJSON());
+    expect(flat).toContain('1 entry');
+    expect(flat).toContain('Latest:');
+    expect(flat).toContain('185');
+    // The full row grid (with its per-row delete affordance) is not mapped
+    // in the collapsed default.
+    expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Delete weight entry').length).toBe(0);
+  });
+
+  test('an empty history shows a "0 entries" summary in the collapsed default', () => {
+    useEntries.useWeightEntries.mockReturnValue({ entries: [], remove: jest.fn(), update: jest.fn() });
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    expect(JSON.stringify(component.toJSON())).toContain('0 entries');
+  });
+
+  // #898 44dp verification: the collapsed header is the sole tap target for a
+  // brand-new account (0 entries), so it must itself clear the 44dp minimum
+  // rather than relying on multi-line summary content to pad it out.
+  test('the collapsed header toggle meets the 44dp minimum touch target even with 0 entries', () => {
+    useEntries.useWeightEntries.mockReturnValue({ entries: [], remove: jest.fn(), update: jest.fn() });
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    const toggle = component.root.findByProps({ accessibilityLabel: 'Expand history' });
+    const flat = StyleSheet.flatten(toggle.props.style);
+    expect(flat.minHeight).toBeGreaterThanOrEqual(44);
+  });
+
+  // #898 large-text verification: the collapsed summary and "Show more"
+  // control must not opt out of the OS text-scaling that large-text settings
+  // rely on.
+  test('collapsed summary and Show more text scale with the OS large-text setting', () => {
+    const manyEntries = Array.from({ length: 60 }, (_, i) => ({
+      id: `e${i}`,
+      date: `2026-0${(i % 9) + 1}-01`,
+      logged_at: `2026-0${(i % 9) + 1}-01T08:00:00Z`,
+      weight_value: 180 + i,
+      note: '',
+    }));
+    useEntries.useWeightEntries.mockReturnValue({ entries: manyEntries, remove: jest.fn(), update: jest.fn() });
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    const root = component.root;
+    const summaryText = root.findByProps({ accessibilityLabel: 'Expand history' })
+      .findAllByType('Text')[0];
+    expect(summaryText.props.allowFontScaling).not.toBe(false);
+
+    render.act(() => {
+      root.findByProps({ accessibilityLabel: 'Expand history' }).props.onPress();
+    });
+    const showMoreBtn = root.findByProps({ testID: 'weight-history-show-more' });
+    const showMoreText = showMoreBtn.findByType('Text');
+    expect(showMoreText.props.allowFontScaling).not.toBe(false);
   });
 });
 

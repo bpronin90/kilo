@@ -281,6 +281,10 @@ describe('WeightScreen', () => {
     ];
     const component = setup(null, entries);
     const root = component.root;
+    // Weight History is collapsed by default (#898); expand to see the row.
+    render.act(() => {
+      root.findByProps({ accessibilityLabel: 'Expand history' }).props.onPress();
+    });
 
     expect(findText(root, '05-20-2026')).toBeTruthy();
     expect(findText(root, '185.0 lb')).toBeTruthy();
@@ -320,6 +324,10 @@ describe('WeightScreen', () => {
       ];
       const component = setup(goal, entries);
       const root = component.root;
+      // Weight History is collapsed by default (#898); expand to see the rows.
+      render.act(() => {
+        root.findByProps({ accessibilityLabel: 'Expand history' }).props.onPress();
+      });
 
       const texts = root.findAllByType('Text');
       const historyDeltaTexts = texts.filter(isHistoryDeltaText);
@@ -349,6 +357,10 @@ describe('WeightScreen', () => {
       ];
       const component = setup(goal, entries);
       const root = component.root;
+      // Weight History is collapsed by default (#898); expand to see the rows.
+      render.act(() => {
+        root.findByProps({ accessibilityLabel: 'Expand history' }).props.onPress();
+      });
 
       const texts = root.findAllByType('Text');
       const historyDeltaTexts = texts.filter(isHistoryDeltaText);
@@ -784,27 +796,11 @@ describe('WeightScreen', () => {
         const component = setup(null, entries);
         const root = component.root;
 
-        // Expanded by default: the filter icon is present but From/To are hidden.
+        // Collapsed by default (#898): the filter icon is present, From/To
+        // controls and the summary line are as expected.
         expect(root.findAllByProps({ accessibilityLabel: 'Filter by date range' }).length).toBeGreaterThan(0);
         expect(root.findAllByProps({ accessibilityLabel: 'From date' }).length).toBe(0);
         expect(root.findAllByProps({ accessibilityLabel: 'To date' }).length).toBe(0);
-
-        // Tapping the filter icon reveals the From/To controls.
-        const filterBtn = root.findByProps({ accessibilityLabel: 'Filter by date range' });
-        render.act(() => { filterBtn.props.onPress(); });
-        expect(root.findAllByProps({ accessibilityLabel: 'From date' }).length).toBeGreaterThan(0);
-        expect(root.findAllByProps({ accessibilityLabel: 'To date' }).length).toBeGreaterThan(0);
-
-        // Tapping it again hides them.
-        render.act(() => { filterBtn.props.onPress(); });
-        expect(root.findAllByProps({ accessibilityLabel: 'From date' }).length).toBe(0);
-
-        // Collapsed: filter icon REMAINS visible; From/To controls are hidden;
-        // the summary line is present.
-        const toggle = root.findByProps({ accessibilityLabel: 'Collapse history' });
-        render.act(() => { toggle.props.onPress(); });
-        expect(root.findAllByProps({ accessibilityLabel: 'Filter by date range' }).length).toBeGreaterThan(0);
-        expect(root.findAllByProps({ accessibilityLabel: 'From date' }).length).toBe(0);
         expect(hasTextSafe(root, 'Latest:')).toBe(true);
 
         // Tapping the collapsed-state filter icon expands the panel and shows From/To.
@@ -813,6 +809,23 @@ describe('WeightScreen', () => {
         expect(root.findAllByProps({ accessibilityLabel: 'From date' }).length).toBeGreaterThan(0);
         expect(root.findAllByProps({ accessibilityLabel: 'To date' }).length).toBeGreaterThan(0);
         expect(root.findAllByProps({ accessibilityLabel: 'Collapse history' }).length).toBeGreaterThan(0);
+
+        // Tapping the filter icon again (now expanded) hides From/To.
+        const filterBtn = root.findByProps({ accessibilityLabel: 'Filter by date range' });
+        render.act(() => { filterBtn.props.onPress(); });
+        expect(root.findAllByProps({ accessibilityLabel: 'From date' }).length).toBe(0);
+
+        // Tapping it a third time reveals them again, still expanded.
+        render.act(() => { filterBtn.props.onPress(); });
+        expect(root.findAllByProps({ accessibilityLabel: 'From date' }).length).toBeGreaterThan(0);
+        expect(root.findAllByProps({ accessibilityLabel: 'To date' }).length).toBeGreaterThan(0);
+
+        // Re-collapsing: filter icon REMAINS visible; From/To controls hide.
+        const toggle = root.findByProps({ accessibilityLabel: 'Collapse history' });
+        render.act(() => { toggle.props.onPress(); });
+        expect(root.findAllByProps({ accessibilityLabel: 'Filter by date range' }).length).toBeGreaterThan(0);
+        expect(root.findAllByProps({ accessibilityLabel: 'From date' }).length).toBe(0);
+        expect(hasTextSafe(root, 'Latest:')).toBe(true);
       });
     });
 
@@ -915,8 +928,15 @@ describe('WeightScreen', () => {
         { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 190, note: '' },
       ];
 
+      // Weight History is collapsed by default (#898); expand it to assert on rows.
+      const expandWeightHistory = (root) => {
+        const toggle = root.findByProps({ accessibilityLabel: 'Expand history' });
+        render.act(() => { toggle.props.onPress(); });
+      };
+
       test('column labels use fontSize 11 matching Trends label hierarchy', () => {
         const component = setup(null, entries);
+        expandWeightHistory(component.root);
         const colLabel = component.root.findAllByType('Text').find(t => {
           const children = t.props.children;
           return (Array.isArray(children) ? children.join('') : String(children ?? '')) === 'Weight';
@@ -928,6 +948,7 @@ describe('WeightScreen', () => {
 
       test('row weight values use the shared value typography 20/700 (#411)', () => {
         const component = setup(null, entries);
+        expandWeightHistory(component.root);
         const weightNode = component.root.findAllByType('Text').find(t => {
           const children = t.props.children;
           const text = Array.isArray(children) ? children.join('') : String(children ?? '');
@@ -942,9 +963,8 @@ describe('WeightScreen', () => {
       // at a larger-than-13px size, consistent with the Goal History summary.
       test('collapsed summary renders the latest weight in bold above 13px (#409)', () => {
         const component = setup(null, entries);
+        // Collapsed by default (#898) — no toggle needed.
         const root = component.root;
-        const toggle = root.findByProps({ accessibilityLabel: 'Collapse history' });
-        render.act(() => { toggle.props.onPress(); });
 
         const weightNode = root.findAllByType('Text').find(t => {
           const children = t.props.children;
@@ -980,9 +1000,7 @@ describe('WeightScreen', () => {
         const component = setup(null, entries);
         const root = component.root;
 
-        // Collapse the Weight History list.
-        const toggle = root.findByProps({ accessibilityLabel: 'Collapse history' });
-        render.act(() => { toggle.props.onPress(); });
+        // Collapsed by default (#898) — no toggle needed.
 
         // Summary includes the most recent entry's weight and date.
         expect(hasTextSafe(root, '190')).toBe(true);
@@ -1093,11 +1111,14 @@ describe('WeightScreen', () => {
     ];
 
     // Render both panels expanded so their equivalent elements are visible.
+    // Both default to collapsed (#407 H-5, #898).
     const renderBoth = () => {
       const component = setup(null, entries, archived);
       const root = component.root;
-      const expand = root.findByProps({ accessibilityLabel: 'Expand goal history' });
-      render.act(() => { expand.props.onPress(); });
+      const expandGoal = root.findByProps({ accessibilityLabel: 'Expand goal history' });
+      render.act(() => { expandGoal.props.onPress(); });
+      const expandWeight = root.findByProps({ accessibilityLabel: 'Expand history' });
+      render.act(() => { expandWeight.props.onPress(); });
       return root;
     };
 
@@ -1177,11 +1198,9 @@ describe('WeightScreen', () => {
     });
 
     test('collapsed summary lines share identical base typography across both panels', () => {
-      // Goal History is collapsed by default; collapse Weight History too.
+      // Both panels are collapsed by default (#407 H-5, #898).
       const component = setup(null, entries, archived);
       const root = component.root;
-      const collapseWeight = root.findByProps({ accessibilityLabel: 'Collapse history' });
-      render.act(() => { collapseWeight.props.onPress(); });
 
       // Two-line collapsed summary: find the "Latest:" text node in each panel.
       // Both panels render their "Latest:" line as a separate Text node (summaryLatest).
@@ -1222,14 +1241,15 @@ describe('WeightScreen', () => {
         return (Array.isArray(c) ? c.join('') : String(c ?? '')) === text;
       });
 
-      // Expanded by default: the Change/Date column labels are present.
-      expect(findLabel('Change')).toBe(true);
+      // Collapsed by default (#898): column-header chrome is gone (only the
+      // summary line remains).
+      expect(findLabel('Change')).toBe(false);
 
-      const toggle = root.findByProps({ accessibilityLabel: 'Collapse history' });
+      const toggle = root.findByProps({ accessibilityLabel: 'Expand history' });
       render.act(() => { toggle.props.onPress(); });
 
-      // Collapsed: column-header chrome is gone (only the summary line remains).
-      expect(findLabel('Change')).toBe(false);
+      // Expanded: the Change/Date column labels are present.
+      expect(findLabel('Change')).toBe(true);
     });
   });
 

@@ -34,6 +34,13 @@ const HISTORY_SUMMARY_EMPHASIS_WEIGHT = '900';
 const HISTORY_SUMMARY_COUNT_SIZE = 12;
 const HISTORY_SUMMARY_COUNT_WEIGHT = '600';
 
+// Rows shown per expand step (#898). A long-tenured account can reach ~1,000
+// weight entries; mapping all of them the moment the panel is expanded would
+// just move the "dominates the daily surface" problem from load time to tap
+// time. Windowing keeps each expand step cheap while full history stays
+// reachable via repeated "Show more" taps.
+const HISTORY_WINDOW_SIZE = 50;
+
 const createHistoryPanel = (colors) => StyleSheet.create({
   card: {
     backgroundColor: colors.card,
@@ -48,6 +55,7 @@ const createHistoryPanel = (colors) => StyleSheet.create({
     paddingLeft: HISTORY_ROW_PAD_H,
     paddingRight: 0,
     paddingVertical: 10,
+    minHeight: 44,
     backgroundColor: colors.subtleBg,
   },
   headerRowBordered: {
@@ -233,7 +241,11 @@ function WeightHistoryListImpl({
   const styles = useThemedStyles(createStyles);
   const s = useThemedStyles(createHistoryPanel);
   const unit = useWeightUnit();
-  const [collapsed, setCollapsed] = useState(false);
+  // Collapsed by default (#898): the daily Weight surface should open on a
+  // latest/count summary, not a fully mapped history that grows unbounded
+  // with tenure. Expanding reveals a windowed slice (see HISTORY_WINDOW_SIZE).
+  const [collapsed, setCollapsed] = useState(true);
+  const [windowSize, setWindowSize] = useState(HISTORY_WINDOW_SIZE);
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
@@ -273,6 +285,7 @@ function WeightHistoryListImpl({
   const toggleDateFilter = () => {
     if (collapsed) {
       setCollapsed(false);
+      setWindowSize(HISTORY_WINDOW_SIZE);
       setShowDateFilter(true);
       return;
     }
@@ -287,13 +300,26 @@ function WeightHistoryListImpl({
     setShowDateFilter(false);
   };
 
+  // Re-expanding always starts from the first window so a long session of
+  // collapse/expand cycling never leaves a huge window size stuck open.
+  const toggleCollapsed = () => {
+    setCollapsed(c => {
+      const expanding = c === true;
+      if (expanding) setWindowSize(HISTORY_WINDOW_SIZE);
+      return !c;
+    });
+  };
+
+  const visibleEntries = filteredEntries.slice(0, windowSize);
+  const remainingCount = filteredEntries.length - visibleEntries.length;
+
   return (
     <View style={s.card}>
       {/* Header row IS the column-header / summary row. In expanded state the
           filter icon groups with Date; in collapsed state it stays in the
           trailing control cell because no Date header is visible. */}
       <Pressable
-        onPress={() => setCollapsed(c => !c)}
+        onPress={toggleCollapsed}
         accessibilityRole="button"
         accessibilityLabel={collapsed ? 'Expand history' : 'Collapse history'}
         style={[s.headerRow, !collapsed && s.headerRowBordered]}
@@ -434,7 +460,7 @@ function WeightHistoryListImpl({
         />
       )}
 
-      {!collapsed && filteredEntries.map((entry, index) => {
+      {!collapsed && visibleEntries.map((entry, index) => {
         const nextEntry = filteredEntries[index + 1];
         const delta = nextEntry ? entry.weight_value - nextEntry.weight_value : null;
         let severity = getWeightDeltaSeverity(delta);
@@ -442,7 +468,10 @@ function WeightHistoryListImpl({
           if (goalInfo.direction === 'loss' && delta < 0) severity = 'normal';
           else if (goalInfo.direction === 'gain' && delta > 0) severity = 'normal';
         }
-        const isLast = index === filteredEntries.length - 1;
+        // Only the last row of the whole card (no "Show more" row beneath it)
+        // drops its bottom border; the last row of a window keeps it so the
+        // affordance below reads as a distinct trailing row.
+        const isLast = index === visibleEntries.length - 1 && remainingCount === 0;
         const isActive = editingId === entry.id;
 
         return (
@@ -502,6 +531,23 @@ function WeightHistoryListImpl({
           </View>
         );
       })}
+
+      {!collapsed && remainingCount > 0 && (
+        <Pressable
+          onPress={() => setWindowSize(w => w + HISTORY_WINDOW_SIZE)}
+          style={({ pressed }) => [
+            styles.loadMoreRow,
+            pressed && styles.loadMorePressed,
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Show more weight entries"
+          testID="weight-history-show-more"
+        >
+          <Text style={styles.loadMoreText}>
+            {`Show more (${remainingCount} remaining)`}
+          </Text>
+        </Pressable>
+      )}
 
       {!collapsed && filteredEntries.length === 0 && entries.length === 0 && (
         <Text style={styles.emptyText}>No weight entries yet.</Text>
@@ -610,5 +656,20 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.textMuted,
     paddingVertical: 32,
     fontSize: 15,
+  },
+  loadMoreRow: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+  },
+  loadMorePressed: {
+    backgroundColor: colors.chipBackground,
+    opacity: 0.8,
+  },
+  loadMoreText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.accent,
   },
 });
