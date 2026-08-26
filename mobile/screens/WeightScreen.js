@@ -118,6 +118,30 @@ function DateEntryField({ value, onChangeDate, a11yLabel }) {
   );
 }
 
+// Compact, discoverable "Note · <value>" secondary row (#897). Mirrors
+// DateDisclosureRow below: the full Note field never occupies the default
+// same-day weigh-in layout, so logging weight requires only the weight field
+// and Save. Tapping the row reveals the TextInput; tapping again (or Done)
+// collapses it without discarding whatever was typed.
+function NoteDisclosureRow({ value, open, onToggle, testID }) {
+  const styles = useThemedStyles(createStyles);
+  const trimmed = (value || '').trim();
+  const displayValue = trimmed || 'None';
+  return (
+    <Pressable
+      testID={testID}
+      onPress={onToggle}
+      style={styles.dateDisclosureRow}
+      accessibilityRole="button"
+      accessibilityLabel={`Note, ${displayValue}`}
+      accessibilityHint={open ? 'Hide the note field' : 'Add or edit a note'}
+      accessibilityState={{ expanded: open }}
+    >
+      <Text style={styles.dateDisclosureText} numberOfLines={1}>{`Note · ${displayValue}`}</Text>
+    </Pressable>
+  );
+}
+
 // Compact, discoverable "Date · <value>" secondary row (#764). Sits below the
 // primary Save/Update action so the full date control never occupies the
 // default high-frequency layout — tapping it reveals the existing
@@ -179,6 +203,11 @@ export function WeightScreen({
   // was opened for.
   const [newDateFieldOpen, setNewDateFieldOpen] = useState(false);
   const [editDateFieldOpen, setEditDateFieldOpen] = useState(false);
+  // Reveal state for the compact "Note · <value>" secondary row (#897), same
+  // collapse-independently-and-close-on-cancel/submit contract as the date
+  // rows above: a same-day weigh-in never needs the Note field on screen.
+  const [newNoteFieldOpen, setNewNoteFieldOpen] = useState(false);
+  const [editNoteFieldOpen, setEditNoteFieldOpen] = useState(false);
   const [goalHistoryCollapsed, setGoalHistoryCollapsed] = useState(true);
   const scrollRef = useRef(null);
 
@@ -336,6 +365,7 @@ export function WeightScreen({
     setWeightNote(entry.note || '');
     setEditDate(entry.date);
     setEditDateFieldOpen(false);
+    setEditNoteFieldOpen(false);
     scrollRef.current?.scrollTo({ x: 0, y: 0, animated: true });
   }, [unit, setWeightValue, setWeightNote]);
 
@@ -346,6 +376,7 @@ export function WeightScreen({
     setWeightNote('');
     setEditDate('');
     setEditDateFieldOpen(false);
+    setEditNoteFieldOpen(false);
   }, [setWeightValue, setWeightNote]);
 
   const handleDelete = useCallback((id) => {
@@ -404,6 +435,7 @@ export function WeightScreen({
           setNewEntryDate(localDateToday());
           setNewEntryDateTouched(false);
           setNewDateFieldOpen(false);
+          setNewNoteFieldOpen(false);
         }
       }
     } finally {
@@ -464,14 +496,6 @@ export function WeightScreen({
           keyboardType="decimal-pad"
           style={styles.input}
         />
-        <Text style={styles.inputLabel}>Note</Text>
-        <TextInput
-          value={weightNote}
-          onChangeText={setWeightNote}
-          placeholder="Morning, fasted"
-          placeholderTextColor={colors.textMuted}
-          style={styles.input}
-        />
         <Button
           onPress={handleSubmit}
           title={editingId ? "Update entry" : "Save weigh-in"}
@@ -479,6 +503,32 @@ export function WeightScreen({
         />
         {!editingId && (
           <>
+            <NoteDisclosureRow
+              testID="weight-new-note-toggle"
+              value={weightNote}
+              open={newNoteFieldOpen}
+              onToggle={() => setNewNoteFieldOpen(o => !o)}
+            />
+            {newNoteFieldOpen && (
+              <>
+                <Text style={styles.inputLabel}>Note</Text>
+                <TextInput
+                  value={weightNote}
+                  onChangeText={setWeightNote}
+                  placeholder="Morning, fasted"
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.input}
+                  accessibilityLabel="Note"
+                />
+                <Pressable
+                  onPress={() => setNewNoteFieldOpen(false)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Done adding note"
+                >
+                  <Text style={styles.cancelText}>Done</Text>
+                </Pressable>
+              </>
+            )}
             <DateDisclosureRow
               testID="weight-new-date-toggle"
               value={newEntryDate}
@@ -509,6 +559,32 @@ export function WeightScreen({
         )}
         {editingId && (
           <>
+            <NoteDisclosureRow
+              testID="weight-edit-note-toggle"
+              value={weightNote}
+              open={editNoteFieldOpen}
+              onToggle={() => setEditNoteFieldOpen(o => !o)}
+            />
+            {editNoteFieldOpen && (
+              <>
+                <Text style={styles.inputLabel}>Note</Text>
+                <TextInput
+                  value={weightNote}
+                  onChangeText={setWeightNote}
+                  placeholder="Morning, fasted"
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.input}
+                  accessibilityLabel="Note"
+                />
+                <Pressable
+                  onPress={() => setEditNoteFieldOpen(false)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Done editing note"
+                >
+                  <Text style={styles.cancelText}>Done</Text>
+                </Pressable>
+              </>
+            )}
             <DateDisclosureRow
               testID="weight-edit-date-toggle"
               value={editDate}
