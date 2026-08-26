@@ -15,6 +15,7 @@ import {
 } from '../lib/data/workoutAnalytics';
 import { deriveNonWeightedTrackedExerciseMetrics } from '../lib/data/nonWeightedMetrics';
 import { normalizeExerciseKey } from '../lib/parser';
+import { getDefaultTrackedNames } from '../lib/data/exerciseCatalog';
 
 const parse = (text) => parseWorkoutNote(text).sections;
 const anchorsFor = (sections, activations) => resolveTrackedLiftAnchors(sections, activations);
@@ -262,6 +263,20 @@ describe('watermark semantics', () => {
     expect(anchorsFor(sections, {})).toEqual({});
     const sig = deriveProgressionSignals(sections, ['Bench'], anchorsFor(sections, {})).exercises[0];
     expect(sig.progression_status).toBe('improved');
+  });
+
+  test("a catalog default the user never toggled keeps full history", () => {
+    // Catalog `po: true` names are tracked without an explicit activation, so
+    // they are not activations at all and get no record — the same standing as
+    // legacy boolean-only state. docs/calculations-reference.md makes this claim
+    // to users, so it is pinned here rather than left implicit.
+    const sections = parse('Tuesday\n-Squat\n315 5\n325 5\n335 5');
+    expect(getDefaultTrackedNames().map(n => normalizeExerciseKey(n))).toContain('squat');
+    const anchors = anchorsFor(sections, {});
+    expect(anchors['squat']).toBeUndefined();
+    const sig = deriveProgressionSignals(sections, ['Squat'], anchors).exercises[0];
+    expect(sig.progression_status).toBe('improved');
+    expect(sig.prior_pr).toBeCloseTo(epleyPR(325, 5));
   });
 
   test('a reps-only exercise lands on the same boundary from the same anchor', () => {

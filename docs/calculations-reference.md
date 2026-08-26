@@ -24,7 +24,7 @@ If an exercise has mixed legacy and current history, plain rows still count. Exa
 
 For each tracked exercise, takes the last 3 session entries (newest last) and compares the two most recent logged (non-skipped) sessions.
 
-Only sessions inside your **current tracked span** are considered — see [Tracked Lifts](#tracked-lifts). If you untracked an exercise, logged some sessions, and tracked it again, those in-between sessions are not classified and are never compared against your first newly tracked session.
+Only sessions inside your **current tracked span** are considered — see [Tracked Lifts](#tracked-lifts). Turning Track on starts that span, so sessions logged before it are not classified and are never compared against your first newly tracked session. That applies the first time you track an exercise as well as to any later re-track.
 
 | Condition | Classification | Display |
 |-----------|---------------|---------|
@@ -41,7 +41,7 @@ Total reps means the sum of all reps performed at the top weight. For example, 1
 
 Classifications are derived on save from all workout notes aggregated together, then stored on the note object as `exercise_classifications`.
 
-An exercise that has never been untracked and re-tracked is unaffected: its span covers its whole history, exactly as before.
+Exercises that were already tracked before this update, and the ones Kilo tracks by default that you have never toggled, have no recorded span yet — they keep being classified over their whole history until the next time you turn Track on for them.
 
 ### Skip Markers
 
@@ -388,7 +388,7 @@ Tracking is always manual and explicit. Kilo never tracks an exercise for you an
 
 #### The tracked span
 
-Turning Track on opens a **tracked span**: from that moment forward is the period Kilo treats as intentional training on that exercise. Turning Track off closes it, and turning Track on again opens a new one rather than resuming the old.
+Turning Track on opens a **tracked span**: from that point forward is the period Kilo treats as intentional training on that exercise. Every time you turn Track on it opens a new span — including the very first time. If the exercise already had logged sessions, those sessions sit before the span rather than inside it. Turning Track off closes the span, and turning Track on again opens a fresh one rather than resuming the old.
 
 What the span changes, and what it does not:
 
@@ -401,14 +401,14 @@ What the span changes, and what it does not:
 | Kilo Max | | ✓ |
 | Best Set | | ✓ |
 
-So re-tracking an exercise gives your capability numbers back immediately while progression starts over at **First session**. That is deliberate: sessions you logged while an exercise was untracked were not part of a tracked effort, and comparing your first intentional session against one of them would describe progress you did not make.
+So tracking — or re-tracking — an exercise leaves your capability numbers exactly where they were while progression starts at **First session**. That is deliberate: sessions you logged while an exercise was untracked were not part of a tracked effort, and comparing your first intentional session against one of them would describe progress you did not make.
 
 Two behaviors follow from tracking being explicit:
 
 - **Renaming an exercise ends its span.** Kilo does not guess that a renamed movement is the same one — within a handwritten note there is no way to tell a rename from a substitution once the original is gone. Track the new name to start a fresh span.
 - **Removing an exercise from your routine does not untrack it.** An exercise out of your routine for a deload, an injury, or a routine switch stays tracked; only you turn Track off.
 
-An exercise you have never untracked and re-tracked behaves exactly as it always has: its span is its whole history.
+**Exercises tracked before this update.** An exercise that was already tracked — including the ones Kilo tracks by default that you have never toggled — has no recorded span, so it keeps using its whole history exactly as it always has. That lasts until you turn Track on for it again, which opens a span from that point like any other activation. (Turning Track off simply stops Kilo monitoring the exercise; it opens no span.)
 
 ### 1k Exercise Selections
 
