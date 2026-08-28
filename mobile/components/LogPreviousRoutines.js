@@ -118,7 +118,7 @@ export function LogPreviousRoutines({
           accessibilityLabel="New routine"
         >
           <MaterialIcons name="add" size={16} color={colors.accent} accessible={false} />
-          <Text style={styles.newRoutineButtonText}>New routine</Text>
+          <Text style={styles.newRoutineButtonText} accessible={false}>New routine</Text>
         </Pressable>
       </View>
 
@@ -288,11 +288,16 @@ const createStyles = (colors) => StyleSheet.create({
   },
   // The persistent `New routine` control (#843): a sibling of the section
   // title, visible whether the collection below is expanded or collapsed.
+  // #905, owner-authorized: the fixed 38dp height becomes a 44dp minimum so the
+  // control clears the interaction-target floor (ui-design-rules §15). Padding,
+  // radius, border, gap, and type are unchanged, and the width is untouched, so
+  // the row still reads as the same button 6dp taller. A `hitSlop` would be
+  // clipped at `topRow`'s bounds, which this button's own height defines.
   newRoutineButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    height: 38,
+    minHeight: 44,
     paddingHorizontal: 12,
     borderRadius: 10,
     borderWidth: 1,
