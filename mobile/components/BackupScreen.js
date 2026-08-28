@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { Platform, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, Platform, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Alert } from '../lib/platformAlert';
 import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle, Button } from './UI';
@@ -75,7 +75,12 @@ async function readNewestBackupFile() {
   return { read: true, json, name: newest.name };
 }
 
-export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount }) {
+// The one section of Data & Backup a typed navigation intent can land on
+// (#903), named here rather than in the shell: App.js validates an intent's
+// shape, and this screen owns which of its own sections are addressable.
+const CLOUD_SYNC_ANCHOR = 'cloud-sync';
+
+export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, navAnchor = null, navAnchorKey = 0 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const scrollRef = useRef(null);
@@ -86,6 +91,57 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount }
   const [cloudExportStatus, setCloudExportStatus] = useState('');
   const [dangerBusy, setDangerBusy] = useState(false);
   const [dangerStatus, setDangerStatus] = useState('');
+
+  // Anchored arrival (#903). Cloud Sync Recovery is the last section before the
+  // Danger Zone, so an intent that names it lands below the fold — the user is
+  // shown Export and Import instead of the panel they asked for. The request is
+  // recorded here and fulfilled by the panel's own layout: on a fresh mount
+  // nothing has measured the panel yet, so scrolling immediately would either
+  // no-op or use a stale offset.
+  const cloudSyncOffsetRef = useRef(null);
+  const pendingAnchorRef = useRef(null);
+  const appliedAnchorKeyRef = useRef(0);
+
+  function scrollToCloudSync(y) {
+    pendingAnchorRef.current = null;
+    scrollRef.current?.scrollTo({ y, animated: true });
+    // Announced, never focused. The user may already be part-way through
+    // something on this screen — a paste in the Import field, a screen-reader
+    // cursor resting on a control — and moving accessibility focus would take
+    // that over. A polite announcement says where the screen has moved and
+    // leaves the interaction in progress alone.
+    AccessibilityInfo.announceForAccessibility?.('Cloud Sync');
+  }
+
+  // Keyed off the shell's monotonic intent key (#718), so asking for Cloud Sync
+  // twice in a row re-applies both times, while an ordinary re-render never
+  // re-scrolls. An anchorless intent, and manual navigation here (which carries
+  // no key at all), clear any pending request rather than moving the viewport.
+  useEffect(() => {
+    if (navAnchorKey === appliedAnchorKeyRef.current) return;
+    appliedAnchorKeyRef.current = navAnchorKey;
+    if (navAnchor !== CLOUD_SYNC_ANCHOR) {
+      pendingAnchorRef.current = null;
+      return;
+    }
+    pendingAnchorRef.current = CLOUD_SYNC_ANCHOR;
+    // A repeat request already knows where the panel is and lands at once.
+    const y = cloudSyncOffsetRef.current;
+    if (y != null) scrollToCloudSync(y);
+  }, [navAnchor, navAnchorKey]);
+
+  // Signed out, or in a build without cloud accounts, the panel is not rendered
+  // and this never fires: the request simply stays pending and the intent is a
+  // no-op, which is the correct outcome — there is no Cloud Sync to show.
+  function handleCloudSyncLayout(e) {
+    const { y } = e.nativeEvent.layout;
+    const known = cloudSyncOffsetRef.current;
+    if (known != null && Math.abs(known - y) < 1) return;
+    cloudSyncOffsetRef.current = y;
+    // Only a still-pending request scrolls: once the user has landed, a later
+    // reflow of the same panel must not yank them back to it.
+    if (pendingAnchorRef.current === CLOUD_SYNC_ANCHOR) scrollToCloudSync(y);
+  }
 
   // Server-held account data export (moved from AccountLifecycle, #822 —
   // Account is identity-only now). Distinct from CloudSyncRecovery's own
@@ -385,10 +441,16 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount }
               </Text>
             ) : null}
           </Card>
-          <CloudSyncRecovery
-            user={auth.user}
-            onConsentDismiss={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
-          />
+          {/* Wrapped only to give the panel a measurable position for #903's
+              anchored arrival. Section order and spacing are unchanged: the
+              wrapper takes the panel's place as a direct child of the shell's
+              content column. */}
+          <View onLayout={handleCloudSyncLayout}>
+            <CloudSyncRecovery
+              user={auth.user}
+              onConsentDismiss={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+            />
+          </View>
         </>
       )}
 

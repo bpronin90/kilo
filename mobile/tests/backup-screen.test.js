@@ -17,7 +17,7 @@
 
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
-import { Alert, Platform, Share } from 'react-native';
+import { AccessibilityInfo, Alert, Platform, Share } from 'react-native';
 import { BackupScreen } from '../components/BackupScreen';
 
 // BackupScreen requires this lazily (a static import that failed to resolve
@@ -81,6 +81,10 @@ jest.mock('../components/ScreenShell', () => {
 import { StorageAccessFramework as SAF } from 'expo-file-system/legacy';
 // eslint-disable-next-line import/first
 import { CloudSyncRecovery } from '../screens/more/CloudSyncRecovery';
+// The other half of #903's path: MoreScreen forwards the intent's anchor into
+// the real BackupScreen below. Imported after the mocks above, like the rest.
+// eslint-disable-next-line import/first
+import { MoreScreen } from '../screens/MoreScreen';
 
 let mockSyncRecovery;
 let mockPendingSyncIntent;
@@ -573,5 +577,178 @@ describe('BackupScreen Danger Zone', () => {
     const wipeBtn = signedIn.root.findByProps({ accessibilityLabel: 'Sign out and wipe device data' });
     act(() => { wipeBtn.props.onPress(); });
     expect(lastAlert.title).toBe('Sign Out and Wipe Device Data');
+  });
+});
+
+// Cloud Sync anchored arrival (#903). A `{ kind: 'subview', view: 'backup',
+// anchor: 'cloud-sync' }` intent has to land the user on the Cloud Sync
+// Recovery panel, which sits below Export and Import and is therefore off
+// screen on a plain arrival. BackupScreen records the request and fulfills it
+// from the panel's own layout; MoreScreen is what forwards the anchor to it.
+describe('BackupScreen Cloud Sync anchor (#903)', () => {
+  const SIGNED_IN = {
+    configured: true, loading: false, signedIn: true, user: { id: 'u1', email: 'a@test.com' },
+  };
+  const CLOUD_SYNC_Y = 812;
+
+  let announce;
+  beforeEach(() => {
+    // Already a jest.fn() in the react-native preset, so spyOn hands back that
+    // shared mock rather than a fresh one — clear it or calls accumulate
+    // across tests.
+    announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => {});
+    announce.mockClear();
+  });
+
+  // The wrapper that measures the panel's position in the scroll column.
+  function layoutCloudSyncPanel(tree, y = CLOUD_SYNC_Y) {
+    const wrapper = tree.root.findByType(CloudSyncRecovery).parent;
+    act(() => { wrapper.props.onLayout({ nativeEvent: { layout: { y } } }); });
+  }
+
+  test('an anchored intent scrolls to the panel once it has been measured', async () => {
+    const tree = renderScreen({ auth: SIGNED_IN, navAnchor: 'cloud-sync', navAnchorKey: 1 });
+    await flush();
+
+    // Nothing is measured on a fresh mount, so the request is still pending and
+    // must not have guessed at an offset.
+    expect(mockScreenScrollTo).not.toHaveBeenCalled();
+
+    layoutCloudSyncPanel(tree);
+
+    expect(mockScreenScrollTo).toHaveBeenCalledWith({ y: CLOUD_SYNC_Y, animated: true });
+    // Announced, not focused: an interaction already in progress keeps focus.
+    expect(announce).toHaveBeenCalledWith('Cloud Sync');
+  });
+
+  test('a later reflow of the same panel does not yank the user back to it', async () => {
+    const tree = renderScreen({ auth: SIGNED_IN, navAnchor: 'cloud-sync', navAnchorKey: 1 });
+    await flush();
+    layoutCloudSyncPanel(tree);
+    mockScreenScrollTo.mockClear();
+
+    layoutCloudSyncPanel(tree, CLOUD_SYNC_Y + 120);
+
+    expect(mockScreenScrollTo).not.toHaveBeenCalled();
+  });
+
+  test('an anchorless intent, and ordinary manual navigation, do not scroll', async () => {
+    const anchorless = renderScreen({ auth: SIGNED_IN, navAnchor: null, navAnchorKey: 4 });
+    await flush();
+    layoutCloudSyncPanel(anchorless);
+    expect(mockScreenScrollTo).not.toHaveBeenCalled();
+
+    // Manual navigation carries no intent at all: key 0 is "never requested".
+    const manual = renderScreen({ auth: SIGNED_IN });
+    await flush();
+    layoutCloudSyncPanel(manual);
+    expect(mockScreenScrollTo).not.toHaveBeenCalled();
+    expect(announce).not.toHaveBeenCalled();
+  });
+
+  test('a repeated identical intent re-applies under its later key', async () => {
+    const tree = renderScreen({ auth: SIGNED_IN, navAnchor: 'cloud-sync', navAnchorKey: 1 });
+    await flush();
+    layoutCloudSyncPanel(tree);
+    expect(mockScreenScrollTo).toHaveBeenCalledTimes(1);
+
+    // Same logical target, so only the shell's monotonic key can carry the
+    // second request — and the panel's offset is already known, so it lands
+    // without waiting for another layout.
+    act(() => {
+      tree.update(
+        React.createElement(BackupScreen, {
+          onBack: jest.fn(),
+          onExport: jest.fn(),
+          onImport: jest.fn(),
+          auth: SIGNED_IN,
+          navAnchor: 'cloud-sync',
+          navAnchorKey: 2,
+        }),
+      );
+    });
+
+    expect(mockScreenScrollTo).toHaveBeenCalledTimes(2);
+    expect(mockScreenScrollTo).toHaveBeenLastCalledWith({ y: CLOUD_SYNC_Y, animated: true });
+  });
+
+  test('signed out there is no panel, so the intent is a safe no-op', async () => {
+    const tree = renderScreen({
+      auth: { configured: true, loading: false, signedIn: false },
+      navAnchor: 'cloud-sync',
+      navAnchorKey: 1,
+    });
+    await flush();
+
+    expect(tree.root.findAllByType(CloudSyncRecovery).length).toBe(0);
+    expect(mockScreenScrollTo).not.toHaveBeenCalled();
+    expect(announce).not.toHaveBeenCalled();
+  });
+});
+
+// MoreScreen is the half of #903 that forwards the anchor: App.js's typed
+// intent reaches it, and Data & Backup is the sub-view that owns the anchor.
+// Rendered here with the real BackupScreen so the whole path — intent in,
+// viewport moved — is exercised end to end.
+describe('MoreScreen forwards the Cloud Sync anchor (#903)', () => {
+  const SIGNED_IN = {
+    configured: true, loading: false, signedIn: true, user: { id: 'u1', email: 'a@test.com' },
+  };
+
+  function renderMore(props = {}) {
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(MoreScreen, { auth: SIGNED_IN, ...props }));
+    });
+    return tree;
+  }
+
+  function layoutCloudSyncPanel(tree, y = 812) {
+    const wrapper = tree.root.findByType(CloudSyncRecovery).parent;
+    act(() => { wrapper.props.onLayout({ nativeEvent: { layout: { y } } }); });
+  }
+
+  function pressMenuRow(tree, label) {
+    act(() => { tree.root.findByProps({ accessibilityLabel: label }).props.onPress(); });
+  }
+
+  test('an anchored intent opens Data & Backup and lands on the Cloud Sync panel', async () => {
+    const tree = renderMore({ navSubviewView: 'backup', navSubviewAnchor: 'cloud-sync', navSubviewKey: 1 });
+    await flush();
+
+    layoutCloudSyncPanel(tree);
+
+    expect(mockScreenScrollTo).toHaveBeenCalledWith({ y: 812, animated: true });
+  });
+
+  test('the anchor is consumed once per key: walking back in by hand does not replay it', async () => {
+    const tree = renderMore({ navSubviewView: 'backup', navSubviewAnchor: 'cloud-sync', navSubviewKey: 1 });
+    await flush();
+    layoutCloudSyncPanel(tree);
+    expect(mockScreenScrollTo).toHaveBeenCalledTimes(1);
+    mockScreenScrollTo.mockClear();
+
+    // Back to the menu and into Data & Backup again, with the shell's key
+    // unchanged — this is ordinary manual navigation and must not scroll.
+    act(() => { tree.root.findByProps({ children: '← Back' }).props.onPress(); });
+    pressMenuRow(tree, 'Data and Backup');
+    await flush();
+    layoutCloudSyncPanel(tree);
+
+    expect(mockScreenScrollTo).not.toHaveBeenCalled();
+  });
+
+  test('an anchor minted for another sub-view is never applied here', async () => {
+    // Account is a legitimate anchored destination in the contract; its anchor
+    // must not travel to Data & Backup when the user opens it themselves.
+    const tree = renderMore({ navSubviewView: 'account', navSubviewAnchor: 'cloud-sync', navSubviewKey: 3 });
+    await flush();
+
+    act(() => { tree.root.findByProps({ children: '← Back' }).props.onPress(); });
+    pressMenuRow(tree, 'Data and Backup');
+    await flush();
+    layoutCloudSyncPanel(tree);
+
+    expect(mockScreenScrollTo).not.toHaveBeenCalled();
   });
 });

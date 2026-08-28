@@ -54,16 +54,18 @@ export function MoreScreen({
     }
   }, [auth?.passwordRecovery, auth?.recoveryError]);
 
+  // The anchor of the intent currently being served, republished to the
+  // sub-view that owns it (#903). Held as state, not a ref, because the
+  // sub-screen has to re-render to see it, and carried together with the view
+  // it addressed so an anchor minted for one sub-view can never be applied by
+  // another. Cleared by every manual navigation below: a consumed intent must
+  // not replay when the user walks back into the same sub-view themselves.
+  const [subviewIntent, setSubviewIntent] = useState({ view: null, anchor: null, key: 0 });
+
   // Typed sub-view navigation intent (#718). Keyed so a repeated request for a
   // sub-view the user has since left still re-applies, and consumed exactly
   // once per key so an unrelated re-render never re-opens it. 0 is the shell's
   // initial key, i.e. "no intent has ever been issued".
-  //
-  // `navSubviewAnchor` is accepted by the contract (e.g. More > Account > Cloud
-  // Sync) but not consumed yet: no sub-screen exposes an anchor/scroll-to
-  // target today, and AccountScreen is out of scope here. Anchored intents
-  // therefore land on the right sub-view rather than being rejected, and the
-  // anchor becomes meaningful when a sub-screen gains one.
   const appliedSubviewKeyRef = useRef(0);
   useEffect(() => {
     if (navSubviewKey === appliedSubviewKeyRef.current) return;
@@ -73,7 +75,20 @@ export function MoreScreen({
     // on the menu.
     if (!navSubviewView || !NAV_SUBVIEWS.has(navSubviewView)) return;
     setActiveView(navSubviewView);
-  }, [navSubviewKey, navSubviewView]);
+    // Published for anchorless intents too: a `null` anchor under a fresh key
+    // is what tells the sub-view this arrival is an ordinary one and must not
+    // move the viewport.
+    setSubviewIntent({ view: navSubviewView, anchor: navSubviewAnchor || null, key: navSubviewKey });
+  }, [navSubviewKey, navSubviewView, navSubviewAnchor]);
+
+  // Every navigation the user makes by hand goes through here, so it also
+  // retires whatever intent was last served. Without that, a sub-screen the
+  // user re-enters from the menu would remount still holding the shell's old
+  // intent key and replay its anchored arrival.
+  function showView(view) {
+    setSubviewIntent({ view: null, anchor: null, key: 0 });
+    setActiveView(view);
+  }
 
   const inSubView = activeView !== 'menu';
 
@@ -89,7 +104,7 @@ export function MoreScreen({
 
     onOwnsBackChange?.(true);
     const unregister = registerBackConsumer?.(() => {
-      setActiveView('menu');
+      showView('menu');
       return true;
     });
 
@@ -100,21 +115,23 @@ export function MoreScreen({
   }, [isActive, inSubView, registerBackConsumer, onOwnsBackChange]);
 
   if (activeView === 'help') {
-    return <HelpScreen onBack={() => setActiveView('menu')} />;
+    return <HelpScreen onBack={() => showView('menu')} />;
   }
 
   if (activeView === 'about') {
-    return <AboutScreen onBack={() => setActiveView('menu')} />;
+    return <AboutScreen onBack={() => showView('menu')} />;
   }
 
   if (activeView === 'backup') {
     return (
       <BackupScreen
-        onBack={() => setActiveView('menu')}
+        onBack={() => showView('menu')}
         onExport={onExport}
         onImport={onImport}
         auth={auth}
-        onGoToAccount={() => setActiveView('account')}
+        onGoToAccount={() => showView('account')}
+        navAnchor={subviewIntent.view === 'backup' ? subviewIntent.anchor : null}
+        navAnchorKey={subviewIntent.view === 'backup' ? subviewIntent.key : 0}
       />
     );
   }
@@ -122,7 +139,7 @@ export function MoreScreen({
   if (activeView === 'settings') {
     return (
       <SettingsScreen
-        onBack={() => setActiveView('menu')}
+        onBack={() => showView('menu')}
         multiplier={fatigueMultiplier}
         onUpdate={onUpdateFatigueMultiplier}
       />
@@ -130,22 +147,22 @@ export function MoreScreen({
   }
 
   if (activeView === 'profile') {
-    return <ProfileScreen onBack={() => setActiveView('menu')} />;
+    return <ProfileScreen onBack={() => showView('menu')} />;
   }
 
   if (activeView === 'account') {
-    return <AccountScreen auth={auth} onBack={() => setActiveView('menu')} />;
+    return <AccountScreen auth={auth} onBack={() => showView('menu')} />;
   }
 
   return (
     <ScreenShell title="More" subtitle="Settings, help, and your data.">
       <SectionTitle>Preferences</SectionTitle>
       <View style={styles.list}>
-        <Pressable style={styles.menuItem} onPress={() => setActiveView('profile')} accessibilityRole="button" accessibilityLabel="User Profile">
+        <Pressable style={styles.menuItem} onPress={() => showView('profile')} accessibilityRole="button" accessibilityLabel="User Profile">
           <Text style={styles.menuItemText}>User Profile</Text>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
-        <Pressable style={styles.menuItem} onPress={() => setActiveView('settings')} accessibilityRole="button" accessibilityLabel="Settings">
+        <Pressable style={styles.menuItem} onPress={() => showView('settings')} accessibilityRole="button" accessibilityLabel="Settings">
           <Text style={styles.menuItemText}>Settings</Text>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
@@ -153,14 +170,14 @@ export function MoreScreen({
 
       <SectionTitle>Account & Data</SectionTitle>
       <View style={styles.list}>
-        <Pressable style={[styles.menuItem, styles.menuItemRisky]} onPress={() => setActiveView('account')} accessibilityRole="button" accessibilityLabel="Account">
+        <Pressable style={[styles.menuItem, styles.menuItemRisky]} onPress={() => showView('account')} accessibilityRole="button" accessibilityLabel="Account">
           <View style={styles.menuCopy}>
             <Text style={styles.menuItemText}>Account</Text>
             <Text style={styles.menuItemHelp}>Sign-in & cloud account</Text>
           </View>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
-        <Pressable style={[styles.menuItem, styles.menuItemRisky]} onPress={() => setActiveView('backup')} accessibilityRole="button" accessibilityLabel="Data and Backup">
+        <Pressable style={[styles.menuItem, styles.menuItemRisky]} onPress={() => showView('backup')} accessibilityRole="button" accessibilityLabel="Data and Backup">
           <View style={styles.menuCopy}>
             <Text style={styles.menuItemText}>Data & Backup</Text>
             <Text style={styles.menuItemHelp}>Local & cloud backup</Text>
@@ -171,11 +188,11 @@ export function MoreScreen({
 
       <SectionTitle>Help & Support</SectionTitle>
       <View style={styles.list}>
-        <Pressable style={styles.menuItem} onPress={() => setActiveView('help')} accessibilityRole="button" accessibilityLabel="App Guide">
+        <Pressable style={styles.menuItem} onPress={() => showView('help')} accessibilityRole="button" accessibilityLabel="App Guide">
           <Text style={styles.menuItemText}>App Guide</Text>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
-        <Pressable style={styles.menuItem} onPress={() => setActiveView('about')} accessibilityRole="button" accessibilityLabel="About Kilo">
+        <Pressable style={styles.menuItem} onPress={() => showView('about')} accessibilityRole="button" accessibilityLabel="About Kilo">
           <Text style={styles.menuItemText}>About Kilo</Text>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
