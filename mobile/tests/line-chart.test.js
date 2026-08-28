@@ -366,6 +366,88 @@ describe('LineChart — point selection is perceivable and operable (#906)', () 
     expect(() => component.root.findByProps({ testID: 'line-chart-select-hint' })).toThrow();
   });
 
+  describe('web keyboard traversal (#906 review)', () => {
+    // Expo web renders the adjustable role as a slider, so the same traversal
+    // has to be reachable from the keyboard, not just from pointer coordinates
+    // and native accessibility actions.
+    function keyDown(component, key) {
+      const event = { nativeEvent: { key }, preventDefault: jest.fn() };
+      act(() => {
+        component.root
+          .findByProps({ accessibilityRole: 'adjustable' })
+          .props.onKeyDown(event);
+      });
+      return event;
+    }
+
+    test('arrow keys move the selection: right/up next, left/down previous', () => {
+      const onSelect = jest.fn();
+      const component = mountChart({ data: series, onSelect, hideHeader: true });
+
+      keyDown(component, 'ArrowLeft'); // enters at the point already drawn
+      expect(onSelect).toHaveBeenLastCalledWith(series[2]);
+      keyDown(component, 'ArrowLeft');
+      expect(onSelect).toHaveBeenLastCalledWith(series[1]);
+      keyDown(component, 'ArrowDown');
+      expect(onSelect).toHaveBeenLastCalledWith(series[0]);
+      keyDown(component, 'ArrowRight');
+      expect(onSelect).toHaveBeenLastCalledWith(series[1]);
+      keyDown(component, 'ArrowUp');
+      expect(onSelect).toHaveBeenLastCalledWith(series[2]);
+    });
+
+    test('keyboard traversal announces the same value the swipe path does', () => {
+      const component = mountChart({ data: series, onSelect: jest.fn(), hideHeader: true });
+      keyDown(component, 'ArrowLeft');
+      keyDown(component, 'ArrowLeft');
+      expect(plot(component).props.accessibilityValue).toEqual({ text: 'Selected, Tue, 105 lb' });
+    });
+
+    test('keyboard traversal clamps at both ends', () => {
+      const onSelect = jest.fn();
+      const component = mountChart({ data: series, onSelect, hideHeader: true });
+      for (let i = 0; i < 5; i += 1) keyDown(component, 'ArrowLeft');
+      expect(onSelect).toHaveBeenLastCalledWith(series[0]);
+      for (let i = 0; i < 5; i += 1) keyDown(component, 'ArrowRight');
+      expect(onSelect).toHaveBeenLastCalledWith(series[2]);
+    });
+
+    test('Escape clears, since a keyboard cannot re-tap the selected point', () => {
+      const onSelect = jest.fn();
+      const component = mountChart({ data: series, onSelect, hideHeader: true });
+      keyDown(component, 'ArrowLeft');
+      onSelect.mockClear();
+      keyDown(component, 'Escape');
+      expect(onSelect).toHaveBeenLastCalledWith(null);
+      expect(plot(component).props.accessibilityValue).toEqual({ text: 'Latest, Wed, 110 lb' });
+    });
+
+    test('handled keys suppress the default, unhandled keys are left alone', () => {
+      const component = mountChart({ data: series, onSelect: jest.fn(), hideHeader: true });
+      expect(keyDown(component, 'ArrowRight').preventDefault).toHaveBeenCalled();
+      expect(keyDown(component, 'Escape').preventDefault).toHaveBeenCalled();
+      expect(keyDown(component, 'Tab').preventDefault).not.toHaveBeenCalled();
+
+      // Escape with nothing selected is not ours to consume — Tab-away and
+      // dialog-dismiss behavior must keep working.
+      const fresh = mountChart({ data: series, onSelect: jest.fn(), hideHeader: true });
+      expect(keyDown(fresh, 'Escape').preventDefault).not.toHaveBeenCalled();
+    });
+
+    test('an unhandled key does not move the selection', () => {
+      const onSelect = jest.fn();
+      const component = mountChart({ data: series, onSelect, hideHeader: true });
+      keyDown(component, 'Tab');
+      keyDown(component, 'a');
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    test('a static illustration gets no key handler', () => {
+      const component = mountChart({ data: series });
+      expect(plot(component, 'image').props.onKeyDown).toBeUndefined();
+    });
+  });
+
   test('touch selection still works and still clears on a second tap of the same point', () => {
     const onSelect = jest.fn();
     const component = mountChart({ data: series, onSelect, hideHeader: true });

@@ -148,22 +148,44 @@ export function LineChart({
       ]
     : undefined;
 
+  // The one traversal implementation behind every input path, so a swipe, an
+  // arrow key, and the actions rotor cannot drift apart.
+  const move = (step) => {
+    // Entering the series from "nothing selected" lands on the point already
+    // drawn as current, so the first move announces what is on screen instead
+    // of skipping past it. Subsequent moves step and clamp at the ends.
+    if (selectedIndex === null) {
+      select(displayIndex);
+      return;
+    }
+    select(Math.min(Math.max(selectedIndex + step, 0), data.length - 1));
+  };
+
   const handleAccessibilityAction = (event) => {
     const action = event?.nativeEvent?.actionName;
     if (action === 'clearSelection') {
       select(null);
       return;
     }
-    if (action !== 'increment' && action !== 'decrement') return;
-    // Entering the series from "nothing selected" lands on the point already
-    // drawn as current, so the first swipe announces what is on screen instead
-    // of skipping past it. Subsequent swipes step and clamp at the ends.
-    if (selectedIndex === null) {
-      select(displayIndex);
-      return;
-    }
-    const step = action === 'increment' ? 1 : -1;
-    select(Math.min(Math.max(selectedIndex + step, 0), data.length - 1));
+    if (action === 'increment') move(1);
+    else if (action === 'decrement') move(-1);
+  };
+
+  // Expo web renders the `adjustable` role as a slider, and a slider that only
+  // answers pointer coordinates and native accessibility actions is unreachable
+  // by keyboard (#906 review). Arrow keys drive the same traversal; Escape
+  // clears, because the pointer's "tap the selected point again" has no
+  // keyboard equivalent. Inert on native, where View never emits key events.
+  const handleKeyDown = (event) => {
+    const key = event?.nativeEvent?.key ?? event?.key;
+    let handled = true;
+    if (key === 'ArrowRight' || key === 'ArrowUp') move(1);
+    else if (key === 'ArrowLeft' || key === 'ArrowDown') move(-1);
+    else if (key === 'Escape' && selectedIndex !== null) select(null);
+    else handled = false;
+    // Only for keys we consumed, so the page keeps its normal scrolling and
+    // focus behavior for every other key.
+    if (handled) event?.preventDefault?.();
   };
 
   return (
@@ -217,6 +239,7 @@ export function LineChart({
         }
         accessibilityActions={accessibilityActions}
         onAccessibilityAction={interactive ? handleAccessibilityAction : undefined}
+        onKeyDown={interactive ? handleKeyDown : undefined}
         style={styles.plotRow}
       >
         <Svg testID="line-chart-svg" width={plotWidth || '100%'} height={height}>
