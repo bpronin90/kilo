@@ -225,27 +225,51 @@ describe('Reminder settings controls', () => {
     'Nudge on Sunday',
     'Nudge on Monday',
     'Nudge on Saturday',
-  ])('weekday chip %s presses through a real 44dp box, not a hitSlop', (label) => {
+  ])('weekday chip %s presses through a real box, not a hitSlop', (label) => {
     const chip = pressableByLabel(tree.root, label);
-    expect(chip.props.accessibilityRole).toBe('button');
-    expect(chip.props.accessibilityState).toHaveProperty('selected');
+    // Independently selectable days are a multi-select, so they announce as
+    // checkboxes with a checked state rather than as selected buttons.
+    expect(chip.props.accessibilityRole).toBe('checkbox');
+    expect(chip.props.accessibilityState).toEqual({ checked: expect.any(Boolean) });
     const style = StyleSheet.flatten(chip.props.style);
-    // A hitSlop here would be clipped at the one-circle-tall row's bounds, so
-    // the target is the box itself; the circle inside keeps its 36dp diameter.
+    // A hitSlop here would be clipped at the row's bounds, so the target is
+    // the box itself; the circle inside keeps its 36dp diameter.
     expect(chip.props.hitSlop).toBeUndefined();
-    expect(style.flex).toBe(1);
-    expectTarget(chip);
+    expect(style.height).toBe(MIN_TARGET);
+    expect(style.width).toBe('25%');
   });
 
-  test('the weekday targets are contiguous rather than overlapping', () => {
-    // Equal `flex: 1` shares of one row: adjacent targets touch, so no press
-    // between two circles is lost and none of them claims a neighbour's area.
+  // The row is a four-column grid, so the target width is a quarter of the
+  // card's inner width. Seven 44dp targets across need 308dp and a 320dp
+  // screen offers 252dp, so the grid wraps 4 + 3 instead of shrinking.
+  test.each([320, 375, 448])(
+    'each weekday target clears 44dp in both axes at %idp',
+    (viewportWidth) => {
+      // ScreenShell's content padding is 16 per side; Card's padding is 18.
+      const innerWidth = viewportWidth - 2 * 16 - 2 * 18;
+      const style = StyleSheet.flatten(pressableByLabel(tree.root, 'Nudge on Monday').props.style);
+      const columns = 100 / parseFloat(style.width);
+      expect(innerWidth / columns).toBeGreaterThanOrEqual(MIN_TARGET);
+      expect(style.height).toBeGreaterThanOrEqual(MIN_TARGET);
+    }
+  );
+
+  test('the weekday targets tile the grid rather than overlapping', () => {
     const targets = ['Nudge on Sunday', 'Nudge on Monday', 'Nudge on Saturday']
       .map((label) => StyleSheet.flatten(pressableByLabel(tree.root, label).props.style));
     targets.forEach((style) => {
-      expect(style.flex).toBe(1);
+      // Equal, gapless columns: adjacent targets touch, and none of them
+      // claims area belonging to a neighbour.
+      expect(style.width).toBe('25%');
       expect(style.margin || style.marginHorizontal || 0).toBe(0);
     });
+    const row = tree.root.findAll(
+      (node) => (StyleSheet.flatten(node.props?.style) || {}).flexWrap === 'wrap'
+        && (StyleSheet.flatten(node.props?.style) || {}).flexDirection === 'row',
+      { deep: true }
+    );
+    expect(row.length).toBeGreaterThan(0);
+    expect(StyleSheet.flatten(row[0].props.style).gap).toBeUndefined();
   });
 
   test.each([

@@ -243,8 +243,8 @@ export function ReminderSettingsCard() {
                 key={day.value}
                 style={styles.weekdayTarget}
                 onPress={() => handleToggleWeekday(day.value)}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: selected }}
                 accessibilityLabel={`Nudge on ${day.label}`}
               >
                 <View style={[styles.weekdayChip, selected && styles.weekdayChipSelected]}>
@@ -335,17 +335,18 @@ const createStyles = (colors) => StyleSheet.create({
   },
   weekdayRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
   },
-  // The press target is a real 44dp-tall box that takes an equal share of the
-  // row, with the 36dp circle centered inside it — not a hitSlop, which React
-  // Native clips at the parent's bounds and which would therefore claim height
-  // this one-circle-tall row never had. Seven 44dp-wide boxes do not fit a
-  // 320dp screen's card, so the width is what the row can give (36dp at 320dp,
-  // 44dp from ~384dp up); the boxes are contiguous, so no press between two
-  // circles is lost (#904).
+  // The press target is a real box, not a hitSlop — React Native clips a slop
+  // at the parent's bounds, so it cannot claim height this one-circle-tall row
+  // never had. Seven 44dp-wide targets need 308dp and the card's inner width
+  // is 252dp at 320dp, so the row is a four-column grid that wraps 4 + 3
+  // instead of shrinking below the minimum: every target is a quarter of the
+  // inner width (63dp at 320dp, 77dp at 375dp) by 44dp tall, at every
+  // supported viewport. Targets tile the grid, so they touch without
+  // overlapping and no press between two circles is lost (#904).
   weekdayTarget: {
-    flex: 1,
+    width: '25%',
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',

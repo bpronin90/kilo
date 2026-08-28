@@ -297,6 +297,9 @@ export function ProfileScreen({ onBack }) {
         {Platform.OS === 'web' ? (
           <input
             type="date"
+            // The `Date of Birth` Text above is a plain RN label with no `for`
+            // relationship, so on web the field needs its own accessible name.
+            aria-label="Date of birth"
             value={localProfile?.date_of_birth || ''}
             max={todayDobMax}
             onChange={(e) => {

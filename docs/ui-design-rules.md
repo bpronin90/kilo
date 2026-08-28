@@ -351,14 +351,14 @@ contained in #710, removed in #711).
   box** rather than reaching for `hitSlop`: React Native clips a slop at the
   parent's bounds, so a slop that grows past a one-line-tall row claims a
   target the control never had (the same finding that shaped #757's info
-  button). `ReminderSettingsCard`'s weekday chips keep their 36dp circle inside
-  a 44dp-tall `flex: 1` Pressable, so the targets are contiguous across the row
-  and no press between two circles is lost.
-- **An expanded target may never overlap a neighbour** or a parent disclosure
-  trigger. Targets that touch are fine; targets that overlap steal presses.
-- Seven-across weekday circles are the one place the width minimum is not
-  reachable on a 320dp screen (seven 44dp boxes need 308dp inside a card that
-  offers 252dp). Taking the full row width is the documented ceiling there.
+  button). `ReminderSettingsCard`'s weekday chips keep their 36dp circle
+  centered inside a 44dp-tall grid cell.
+- **A row of fixed-size controls wraps before it shrinks below the minimum.**
+  Seven weekday circles across need 308dp of target and a card offers 252dp at
+  320dp, so that row is a four-column grid (`width: '25%'`, `flexWrap`) that
+  lays out 4 + 3. Fitting one line is never a reason to ship a sub-44dp target.
+- **A target may never overlap a neighbour** or a parent disclosure trigger.
+  Targets that tile or touch are fine; targets that overlap steal presses.
 - **Semantics ship with the target.** An interactive control declares
   `accessibilityRole` (`button`, or `checkbox` for a multi-select chip), an
   accessible name that matches its visible label, and its state —
