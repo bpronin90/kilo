@@ -104,38 +104,119 @@ export function LineChart({
 
   const points = data.map((d, i) => `${getX(i)},${getY(d.value)}`).join(' ');
 
+  const select = (next) => {
+    setSelectedIndex(next);
+    onSelect?.(next !== null ? data[next] : null);
+  };
+
   const handlePress = (evt) => {
     if (!plotWidth) return;
     const { locationX } = evt.nativeEvent;
     const index = Math.round((locationX - effPaddingHorizontal) / (plotWidth - 2 * effPaddingHorizontal) * (data.length - 1));
     if (index >= 0 && index < data.length) {
-      const next = index === selectedIndex ? null : index;
-      setSelectedIndex(next);
-      onSelect?.(next !== null ? data[next] : null);
+      select(index === selectedIndex ? null : index);
     }
   };
 
   const displayIndex = selectedIndex !== null ? selectedIndex : data.length - 1;
   const displayPoint = data[displayIndex];
 
+  // A chart that hands a point back to its caller is a control, not a picture
+  // (#906). Charts with no `onSelect` — the Home sparkline — stay a static
+  // illustration and keep the image role and today's semantics exactly.
+  const interactive = typeof onSelect === 'function';
+
+  // `adjustable` (rather than `button` plus custom actions) is what makes
+  // point traversal a first-class gesture: VoiceOver and TalkBack both map
+  // swipe up/down onto increment/decrement, so the whole series is reachable
+  // while the chart stays a single focus stop — no accessibility element per
+  // point.
+  const pointUnit = displayPoint.unit ? ` ${displayPoint.unit}` : '';
+  const selectionAnnouncement =
+    `${selectedIndex !== null ? 'Selected' : 'Latest'}` +
+    `${displayPoint.label ? `, ${displayPoint.label}` : ''}` +
+    `, ${formatScale(displayPoint.value)}${pointUnit}`;
+
+  const accessibilityActions = interactive
+    ? [
+        { name: 'decrement', label: 'Previous point' },
+        { name: 'increment', label: 'Next point' },
+        // Only offered when there is something to clear. Touch clears by
+        // tapping the selected point again, which no assistive-tech user can
+        // aim at, so clearing needs its own action here.
+        ...(selectedIndex !== null ? [{ name: 'clearSelection', label: 'Clear selection' }] : []),
+      ]
+    : undefined;
+
+  const handleAccessibilityAction = (event) => {
+    const action = event?.nativeEvent?.actionName;
+    if (action === 'clearSelection') {
+      select(null);
+      return;
+    }
+    if (action !== 'increment' && action !== 'decrement') return;
+    // Entering the series from "nothing selected" lands on the point already
+    // drawn as current, so the first swipe announces what is on screen instead
+    // of skipping past it. Subsequent swipes step and clamp at the ends.
+    if (selectedIndex === null) {
+      select(displayIndex);
+      return;
+    }
+    const step = action === 'increment' ? 1 : -1;
+    select(Math.min(Math.max(selectedIndex + step, 0), data.length - 1));
+  };
+
   return (
     <View style={styles.container} onLayout={onLayout}>
-      {!hideHeader && (
+      {/* `hideHeader` suppresses the Latest/Selected readout — callers that set
+          it print their own — but the header slot itself still carries the
+          selection hint, so an interactive chart is never left with no visible
+          cue (#906). A non-interactive chart with hideHeader renders no header
+          at all, exactly as before. */}
+      {(!hideHeader || interactive) && (
         <View style={styles.header}>
-          <Text style={styles.latestLabel}>
-            {selectedIndex !== null ? 'Selected' : 'Latest'}
-          </Text>
-          <Text style={styles.latestValue}>
-            {displayPoint.value}
-            <Text style={styles.unit}>{displayPoint.unit || ''}</Text>
-          </Text>
+          <View style={styles.headerLead}>
+            {!hideHeader && (
+              <Text style={styles.latestLabel}>
+                {selectedIndex !== null ? 'Selected' : 'Latest'}
+              </Text>
+            )}
+            {interactive && (
+              // accessible={false} on purpose: this text describes the touch
+              // gesture, which no assistive-tech user can aim at. The
+              // equivalent instruction for them is the accessibilityHint and
+              // the actions below, so exposing this too would only add a
+              // misleading focus stop.
+              <Text
+                testID="line-chart-select-hint"
+                style={styles.selectHint}
+                accessible={false}
+              >
+                {selectedIndex !== null
+                  ? 'Tap the selected point to clear'
+                  : 'Tap a point to select'}
+              </Text>
+            )}
+          </View>
+          {!hideHeader && (
+            <Text style={styles.latestValue}>
+              {displayPoint.value}
+              <Text style={styles.unit}>{displayPoint.unit || ''}</Text>
+            </Text>
+          )}
         </View>
       )}
 
       <Pressable
         onPress={handlePress}
-        accessibilityRole="image"
+        accessibilityRole={interactive ? 'adjustable' : 'image'}
         accessibilityLabel={chartDescription}
+        accessibilityValue={interactive ? { text: selectionAnnouncement } : undefined}
+        accessibilityHint={
+          interactive ? 'Swipe up or down to move between points.' : undefined
+        }
+        accessibilityActions={accessibilityActions}
+        onAccessibilityAction={interactive ? handleAccessibilityAction : undefined}
         style={styles.plotRow}
       >
         <Svg testID="line-chart-svg" width={plotWidth || '100%'} height={height}>
@@ -247,6 +328,12 @@ const createStyles = (colors) => StyleSheet.create({
     alignItems: 'baseline',
     marginBottom: 8,
   },
+  // Holds the Latest/Selected caption and the selection hint as one left-hand
+  // group so the value stays right-aligned in the same row. Shrinks rather
+  // than pushing the value off-row at large text.
+  headerLead: {
+    flexShrink: 1,
+  },
   latestLabel: {
     fontSize: 12,
     fontWeight: '700',
@@ -263,6 +350,14 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '600',
     color: colors.textMuted,
     marginLeft: 2,
+  },
+  // Low-emphasis by design: it tells the user the chart is operable without
+  // competing with the value it sits beside.
+  selectHint: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textMuted,
+    marginTop: 2,
   },
   noData: {
     textAlign: 'center',

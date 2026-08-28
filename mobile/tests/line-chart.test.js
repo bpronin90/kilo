@@ -218,3 +218,165 @@ describe("LineChart — Home's no-props call path is unchanged", () => {
     expect(pressable.props.accessibilityLabel).toContain('Line chart, 3 points');
   });
 });
+
+describe('LineChart — point selection is perceivable and operable (#906)', () => {
+  const series = [
+    { value: 100, label: 'Mon', unit: 'lb' },
+    { value: 105, label: 'Tue', unit: 'lb' },
+    { value: 110, label: 'Wed', unit: 'lb' },
+  ];
+
+  function plot(component, role = 'adjustable') {
+    return component.root.findByProps({ accessibilityRole: role });
+  }
+
+  function fireAction(component, actionName) {
+    act(() => {
+      plot(component).props.onAccessibilityAction({ nativeEvent: { actionName } });
+    });
+  }
+
+  test('a chart that reports selections is announced as an operable control, not an image', () => {
+    const component = mountChart({ data: series, onSelect: jest.fn(), seriesLabel: 'Weight' });
+    expect(plot(component).props.accessibilityRole).toBe('adjustable');
+    expect(() => component.root.findByProps({ accessibilityRole: 'image' })).toThrow();
+  });
+
+  test('a static illustration keeps the image role and gains no actions', () => {
+    const component = mountChart({ data: series });
+    const image = plot(component, 'image');
+    expect(image.props.accessibilityActions).toBeUndefined();
+    expect(image.props.onAccessibilityAction).toBeUndefined();
+    expect(image.props.accessibilityValue).toBeUndefined();
+  });
+
+  test('accessibilityActions expose previous/next point traversal', () => {
+    const component = mountChart({ data: series, onSelect: jest.fn() });
+    expect(plot(component).props.accessibilityActions).toEqual(
+      expect.arrayContaining([
+        { name: 'decrement', label: 'Previous point' },
+        { name: 'increment', label: 'Next point' },
+      ])
+    );
+  });
+
+  test('the aggregate description stays reachable on an interactive chart', () => {
+    const component = mountChart({ data: series, onSelect: jest.fn(), seriesLabel: 'Weight' });
+    expect(plot(component).props.accessibilityLabel).toBe(
+      'Weight. Line chart, 3 points. Ranges from 100 lb to 110 lb. Starts at 100 lb, ends at 110 lb.'
+    );
+  });
+
+  test('the first traversal lands on the point already drawn as current', () => {
+    const onSelect = jest.fn();
+    const component = mountChart({ data: series, onSelect });
+    expect(plot(component).props.accessibilityValue).toEqual({ text: 'Latest, Wed, 110 lb' });
+
+    fireAction(component, 'decrement');
+    expect(onSelect).toHaveBeenCalledWith(series[2]);
+    expect(plot(component).props.accessibilityValue).toEqual({ text: 'Selected, Wed, 110 lb' });
+  });
+
+  test('performing an action moves the selection and announces that point', () => {
+    const onSelect = jest.fn();
+    const component = mountChart({ data: series, onSelect });
+    fireAction(component, 'decrement'); // enter at Wed
+    fireAction(component, 'decrement');
+    expect(onSelect).toHaveBeenLastCalledWith(series[1]);
+    expect(plot(component).props.accessibilityValue).toEqual({ text: 'Selected, Tue, 105 lb' });
+
+    fireAction(component, 'increment');
+    expect(onSelect).toHaveBeenLastCalledWith(series[2]);
+    expect(plot(component).props.accessibilityValue).toEqual({ text: 'Selected, Wed, 110 lb' });
+  });
+
+  test('traversal clamps at both ends instead of wrapping or going out of range', () => {
+    const onSelect = jest.fn();
+    const component = mountChart({ data: series, onSelect });
+    for (let i = 0; i < 5; i += 1) fireAction(component, 'decrement');
+    expect(onSelect).toHaveBeenLastCalledWith(series[0]);
+    for (let i = 0; i < 5; i += 1) fireAction(component, 'increment');
+    expect(onSelect).toHaveBeenLastCalledWith(series[2]);
+  });
+
+  test('traversal keeps the chart a single element — no focus stop per point', () => {
+    const countRoles = (data) => {
+      const component = mountChart({ data, onSelect: jest.fn(), hideHeader: true });
+      act(() => {
+        component.root
+          .findByProps({ accessibilityRole: 'adjustable' })
+          .props.onAccessibilityAction({ nativeEvent: { actionName: 'decrement' } });
+      });
+      return component.root.findAll(
+        (n) => n.props && typeof n.props.accessibilityRole === 'string'
+      ).length;
+    };
+    const long = Array.from({ length: 12 }, (_, i) => ({ value: 100 + i, label: `D${i}`, unit: 'lb' }));
+    expect(countRoles(long)).toBe(countRoles(series));
+  });
+
+  test('clearing is offered as an action only while something is selected, and clears', () => {
+    const onSelect = jest.fn();
+    const component = mountChart({ data: series, onSelect });
+    expect(plot(component).props.accessibilityActions.map((a) => a.name)).not.toContain(
+      'clearSelection'
+    );
+
+    fireAction(component, 'decrement');
+    expect(plot(component).props.accessibilityActions).toContainEqual({
+      name: 'clearSelection',
+      label: 'Clear selection',
+    });
+
+    fireAction(component, 'clearSelection');
+    expect(onSelect).toHaveBeenLastCalledWith(null);
+    expect(plot(component).props.accessibilityValue).toEqual({ text: 'Latest, Wed, 110 lb' });
+  });
+
+  test('an unknown action is ignored rather than moving the selection', () => {
+    const onSelect = jest.fn();
+    const component = mountChart({ data: series, onSelect });
+    fireAction(component, 'magicTap');
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  test('a visible hint says a point can be selected, and how to clear one', () => {
+    const component = mountChart({ data: series, onSelect: jest.fn(), hideHeader: true });
+    const hint = component.root.findByProps({ testID: 'line-chart-select-hint' });
+    expect(hint.props.children).toBe('Tap a point to select');
+    // Describes a touch gesture, so it must not become a focus stop.
+    expect(hint.props.accessible).toBe(false);
+
+    fireAction(component, 'decrement');
+    expect(
+      component.root.findByProps({ testID: 'line-chart-select-hint' }).props.children
+    ).toBe('Tap the selected point to clear');
+  });
+
+  test('hideHeader still suppresses the Latest/Selected readout while keeping the hint', () => {
+    const component = mountChart({ data: series, onSelect: jest.fn(), hideHeader: true });
+    expect(component.root.findByProps({ testID: 'line-chart-select-hint' })).toBeTruthy();
+    const texts = component.root.findAllByType('Text').map((t) => t.props.children);
+    expect(texts).not.toContain('Latest');
+    expect(texts).not.toContain('Selected');
+  });
+
+  test('a static chart renders no hint at all, so Home is unchanged', () => {
+    const component = mountChart({ data: series, hideHeader: true });
+    expect(() => component.root.findByProps({ testID: 'line-chart-select-hint' })).toThrow();
+  });
+
+  test('touch selection still works and still clears on a second tap of the same point', () => {
+    const onSelect = jest.fn();
+    const component = mountChart({ data: series, onSelect, hideHeader: true });
+    const press = (locationX) => {
+      act(() => {
+        plot(component).props.onPress({ nativeEvent: { locationX } });
+      });
+    };
+    press(10); // left edge → first point
+    expect(onSelect).toHaveBeenLastCalledWith(series[0]);
+    press(10);
+    expect(onSelect).toHaveBeenLastCalledWith(null);
+  });
+});
