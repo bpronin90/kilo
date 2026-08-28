@@ -1,6 +1,6 @@
 # Kilo Zero-Friction and Active Context Roadmap
 
-**Status: Active roadmap; Phases 1 and 2 complete.** Phase 3 is the next delivery
+**Status: Active roadmap; Phases 1–4 complete.** Phase 5 is the next delivery
 phase. This roadmap consolidates the independent UX/friction audits in GitHub
 issues [#849](https://github.com/bpronin90/kilo/issues/849) and
 [#850](https://github.com/bpronin90/kilo/issues/850), the Recovery-state addenda
@@ -632,6 +632,11 @@ training context), #869 (Recovery-aware Home), #870 (Recovery-first Log), #871
 
 # Phase 3 — Make the Cumulative Note Fast to Navigate
 
+**Status:** Complete as of 2026-08-26. Delivered through #881/PR #883
+(exercise-to-source navigation), #880/PR #882 (durable drafts and legible save
+state), and the #886/PR #887 and #888/PR #891 source-jump refinements. #889
+verified the long-note measurement ceiling.
+
 **Phase goal:** preserve Kilo's intentional cumulative long-note model while removing the mechanical cost of hunting for the exact exercise to edit.
 
 **Completion condition:** a mature 200+ line note remains the canonical workout surface, but the user can jump from a rendered exercise directly into its exact raw-text location.
@@ -640,6 +645,7 @@ training context), #869 (Recovery-aware Home), #870 (Recovery-first Log), #871
 
 ## F10a — Specify direct exercise-to-source anchoring
 
+- **Status:** Complete through #881/PR #883.
 - **Suggested title:** `Zero Friction / F10a: specify direct exercise-to-source navigation`
 - **Type:** bounded implementation contract; the product direction is already decided.
 - **Depends on:** F0/F3 contracts stable enough that edit and alignment semantics are known.
@@ -670,6 +676,8 @@ training context), #869 (Recovery-aware Home), #870 (Recovery-first Log), #871
 
 ## F10b — Implement double-tap exercise → exact raw-note location
 
+- **Status:** Complete through #881/PR #883, with landing refinements in
+  #886/PR #887 and #888/PR #891 and long-note verification in #889.
 - **Suggested title:** `Zero Friction / F10b: jump from rendered exercise to its raw source`
 - **Depends on:** F10a.
 - **Goal:** make the long-list design practical at mature note sizes without replacing it.
@@ -686,6 +694,7 @@ training context), #869 (Recovery-aware Home), #870 (Recovery-first Log), #871
 
 ## F11 — Make drafts and save state trustworthy
 
+- **Status:** Complete through #880/PR #882.
 - **Suggested title:** `Zero Friction / F11: make text edits durable and save state legible`
 - **Goal:** survive interruption and reduce uncertainty/churn from silent autosave.
 - **Depends on:** F0 and stable editor semantics.
@@ -702,6 +711,10 @@ training context), #869 (Recovery-aware Home), #870 (Recovery-first Log), #871
 
 # Phase 4 — Make Progressive Overload Semantics Coherent
 
+**Status:** Complete as of 2026-08-26. Delivered through #892 (approved stable
+exercise-identity contract), #893/PR #895 (tracked-span watermark semantics),
+and #894/PR #896 (PO dependency and state explainability).
+
 **Phase goal:** preserve explicit `Track` / `Tracked` intent while making PO behavior understandable and correct across track → untrack → retrack, routine changes, and exercise renames.
 
 **Completion condition:** Kilo never guesses which exercises the user intends to pursue PO on, historical capability remains available, and current progression status never bridges an untracked maintenance/rehab gap.
@@ -710,6 +723,7 @@ training context), #869 (Recovery-aware Home), #870 (Recovery-first Log), #871
 
 ## F12a — Verify and contract stable exercise identity for PO tracking
 
+- **Status:** Complete through #892.
 - **Suggested title:** `Zero Friction / F12a: make tracked-exercise identity safe across routine changes`
 - **Type:** investigation + bounded data contract.
 - **Goal:** establish an identity key stable enough to support the tracking watermark.
@@ -727,6 +741,7 @@ training context), #869 (Recovery-aware Home), #870 (Recovery-first Log), #871
 
 ## F12b — Implement the approved PO tracking watermark semantics
 
+- **Status:** Complete through #893/PR #895.
 - **Suggested title:** `Zero Friction / F12b: scope PO trend to the current tracked span`
 - **Depends on:** F12a.
 - **Owner-approved semantics:**
@@ -753,6 +768,7 @@ training context), #869 (Recovery-aware Home), #870 (Recovery-first Log), #871
 
 ## F13 — Make PO dependency and state legible
 
+- **Status:** Complete through #894/PR #896.
 - **Suggested title:** `Zero Friction / F13: make explicit PO tracking understandable`
 - **Goal:** ensure users understand that PO applies only to exercises they deliberately mark `Track`, without adding new selection UI.
 - **Scope:**
@@ -917,15 +933,12 @@ These decisions are authoritative for this roadmap. Implementation agents must n
 
 # Suggested Execution Order
 
-Phases 1 and 2 are complete. If only the next work is being triaged:
+Phases 1–4 are complete. If only the next work is being triaged:
 
-1. **F10a → F10b — direct exercise-to-source navigation**
-2. **F11 — logging durability/save-state work**
-3. **F12a → F12b → F13 — stable exercise identity + approved PO watermark semantics + discoverability**
-4. **new-user Fatigue/Deload default/discovery task** — bounded Settings/App Guide change
-5. **F14/F15/F16 — high-frequency and secondary cleanup**
-6. **F17 — whole-app visual coherence gate**
-7. **UI Style Audit — separate future roadmap/audit, not implementation under this one**
+1. **new-user Fatigue/Deload default/discovery task** — bounded Settings/App Guide change
+2. **F14/F15/F16 — high-frequency and secondary cleanup**
+3. **F17 — whole-app visual coherence gate**
+4. **UI Style Audit — separate future roadmap/audit, not implementation under this one**
 
 Parallel work must respect the dependency map, overlapping-file checks, and the
 latest merged contracts from completed phases.
