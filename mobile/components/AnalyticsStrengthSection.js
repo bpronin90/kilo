@@ -174,6 +174,7 @@ export function AnalyticsBig3MappingCard({
               style={styles.slotRow}
               onPress={() => handleSlotTap(slot)}
               accessibilityRole="button"
+              accessibilityState={{ expanded: activeSlot === slot }}
               accessibilityLabel={`${SLOT_LABELS[slot]}, ${oneKSelections[slot]}, ${activeSlot === slot ? 'collapse' : 'expand'}`}
             >
               <Text style={styles.slotLabel}>{SLOT_LABELS[slot]}</Text>
@@ -194,8 +195,14 @@ export function AnalyticsBig3MappingCard({
                     key={name}
                     style={[styles.slotOption, oneKSelections[slot] === name && styles.slotOptionSelected]}
                     onPress={() => handleSelectExercise(slot, name)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: oneKSelections[slot] === name }}
+                    accessibilityLabel={`Use ${name} for ${SLOT_LABELS[slot]}`}
                   >
-                    <Text style={[styles.slotOptionText, oneKSelections[slot] === name && styles.slotOptionTextSelected]}>
+                    <Text
+                      style={[styles.slotOptionText, oneKSelections[slot] === name && styles.slotOptionTextSelected]}
+                      accessible={false}
+                    >
                       {name}
                     </Text>
                   </Pressable>
@@ -274,8 +281,10 @@ const createStyles = (colors) => StyleSheet.create({
   },
   oneKItem: {
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 2,
     flex: 1,
+    minHeight: 44,
   },
   oneKItemValue: {
     fontSize: 18,
@@ -300,6 +309,7 @@ const createStyles = (colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
+    minHeight: 44,
   },
   oneKInfoToggleText: {
     fontSize: 12,
@@ -340,6 +350,7 @@ const createStyles = (colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 8,
+    minHeight: 44,
   },
   slotCardTitle: {
     fontSize: 12,
@@ -348,6 +359,9 @@ const createStyles = (colors) => StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: 0,
   },
+  // The slot row and each picker option carry the 44dp minimum in the box: they
+  // stack directly against their neighbours (and the row is the picker's own
+  // disclosure trigger), so a hitSlop would overlap (#904).
   slotRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -355,6 +369,7 @@ const createStyles = (colors) => StyleSheet.create({
     paddingVertical: 10,
     borderTopWidth: 1,
     borderTopColor: colors.cardBorder,
+    minHeight: 44,
   },
   slotLabel: {
     fontSize: 14,
@@ -386,6 +401,8 @@ const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: 14,
     borderBottomWidth: 1,
     borderBottomColor: colors.cardBorder,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   slotOptionSelected: {
     backgroundColor: colors.chipBackground,

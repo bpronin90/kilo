@@ -226,9 +226,17 @@ const createStyles = (colors) => StyleSheet.create({
     borderColor: colors.cardBorder,
     overflow: 'hidden',
   },
+  // Segmented tabs grow to the 44dp minimum target rather than taking a
+  // hitSlop: the toggle sits inline in a settings row with nothing above or
+  // below it, so the taller box is the honest target and matches the
+  // 44dp stepper in the same screen (#904).
   unitTab: {
     paddingHorizontal: 12,
     paddingVertical: 6,
+    minHeight: 44,
+    minWidth: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   unitTabActive: {
     backgroundColor: colors.accent,
@@ -250,6 +258,8 @@ const createStyles = (colors) => StyleSheet.create({
     backgroundColor: 'transparent',
     paddingVertical: 4,
     marginTop: 4,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   resetButtonText: {
     color: colors.textMuted,

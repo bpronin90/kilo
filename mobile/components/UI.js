@@ -441,8 +441,13 @@ export function ErrorBanner({ message, onRetry }) {
     <View style={styles.errorBanner}>
       <Text style={styles.errorBannerText}>{message || 'Failed to load data.'}</Text>
       {onRetry && (
-        <Pressable onPress={onRetry} style={styles.errorBannerRetry}>
-          <Text style={styles.errorBannerRetryText}>Retry</Text>
+        <Pressable
+          onPress={onRetry}
+          style={styles.errorBannerRetry}
+          accessibilityRole="button"
+          accessibilityLabel="Retry"
+        >
+          <Text style={styles.errorBannerRetryText} accessible={false}>Retry</Text>
         </Pressable>
       )}
     </View>
@@ -474,6 +479,10 @@ const createStyles = (colors) => StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
     backgroundColor: colors.cardErrorBg,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   errorBannerRetryText: {
     fontSize: 13,

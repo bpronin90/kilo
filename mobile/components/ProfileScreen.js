@@ -149,8 +149,18 @@ export function ProfileScreen({ onBack }) {
   ];
 
   const headerRight = (
-    <Pressable onPress={handleClearProfile}>
-      <Text style={{ color: colors.error, fontSize: 13, fontWeight: '700', textTransform: 'uppercase' }}>Clear All</Text>
+    <Pressable
+      onPress={handleClearProfile}
+      style={styles.inlineTextAction}
+      accessibilityRole="button"
+      accessibilityLabel="Clear All"
+    >
+      <Text
+        style={{ color: colors.error, fontSize: 13, fontWeight: '700', textTransform: 'uppercase' }}
+        accessible={false}
+      >
+        Clear All
+      </Text>
     </Pressable>
   );
 
@@ -175,14 +185,30 @@ export function ProfileScreen({ onBack }) {
           <Pressable
             style={[styles.toggleButton, localProfile?.sex === 'male' && styles.toggleButtonActive]}
             onPress={() => toggleSex('male')}
+            accessibilityRole="button"
+            accessibilityState={{ selected: localProfile?.sex === 'male' }}
+            accessibilityLabel="Male"
           >
-            <Text style={[styles.toggleButtonText, localProfile?.sex === 'male' && styles.toggleButtonTextActive]}>Male</Text>
+            <Text
+              style={[styles.toggleButtonText, localProfile?.sex === 'male' && styles.toggleButtonTextActive]}
+              accessible={false}
+            >
+              Male
+            </Text>
           </Pressable>
           <Pressable
             style={[styles.toggleButton, localProfile?.sex === 'female' && styles.toggleButtonActive]}
             onPress={() => toggleSex('female')}
+            accessibilityRole="button"
+            accessibilityState={{ selected: localProfile?.sex === 'female' }}
+            accessibilityLabel="Female"
           >
-            <Text style={[styles.toggleButtonText, localProfile?.sex === 'female' && styles.toggleButtonTextActive]}>Female</Text>
+            <Text
+              style={[styles.toggleButtonText, localProfile?.sex === 'female' && styles.toggleButtonTextActive]}
+              accessible={false}
+            >
+              Female
+            </Text>
           </Pressable>
         </View>
 
@@ -191,11 +217,23 @@ export function ProfileScreen({ onBack }) {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <Text style={styles.inputLabel}>Height</Text>
           <View style={styles.unitToggle}>
-            <Pressable onPress={() => setHeightUnit('ft')} style={[styles.unitTab, heightUnit === 'ft' && styles.unitTabActive]}>
-              <Text style={[styles.unitTabText, heightUnit === 'ft' && styles.unitTabTextActive]}>ft/in</Text>
+            <Pressable
+              onPress={() => setHeightUnit('ft')}
+              style={[styles.unitTab, heightUnit === 'ft' && styles.unitTabActive]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: heightUnit === 'ft' }}
+              accessibilityLabel="Enter height in feet and inches"
+            >
+              <Text style={[styles.unitTabText, heightUnit === 'ft' && styles.unitTabTextActive]} accessible={false}>ft/in</Text>
             </Pressable>
-            <Pressable onPress={() => setHeightUnit('cm')} style={[styles.unitTab, heightUnit === 'cm' && styles.unitTabActive]}>
-              <Text style={[styles.unitTabText, heightUnit === 'cm' && styles.unitTabTextActive]}>cm</Text>
+            <Pressable
+              onPress={() => setHeightUnit('cm')}
+              style={[styles.unitTab, heightUnit === 'cm' && styles.unitTabActive]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: heightUnit === 'cm' }}
+              accessibilityLabel="Enter height in centimeters"
+            >
+              <Text style={[styles.unitTabText, heightUnit === 'cm' && styles.unitTabTextActive]} accessible={false}>cm</Text>
             </Pressable>
           </View>
         </View>
@@ -241,14 +279,27 @@ export function ProfileScreen({ onBack }) {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <Text style={styles.inputLabel}>Date of Birth</Text>
           {localProfile?.date_of_birth && (
-            <Pressable onPress={() => updateField('date_of_birth', null)}>
-              <Text style={{ color: colors.error, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' }}>Clear</Text>
+            <Pressable
+              onPress={() => updateField('date_of_birth', null)}
+              style={styles.inlineTextAction}
+              accessibilityRole="button"
+              accessibilityLabel="Clear date of birth"
+            >
+              <Text
+                style={{ color: colors.error, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' }}
+                accessible={false}
+              >
+                Clear
+              </Text>
             </Pressable>
           )}
         </View>
         {Platform.OS === 'web' ? (
           <input
             type="date"
+            // The `Date of Birth` Text above is a plain RN label with no `for`
+            // relationship, so on web the field needs its own accessible name.
+            aria-label="Date of birth"
             value={localProfile?.date_of_birth || ''}
             max={todayDobMax}
             onChange={(e) => {
@@ -260,8 +311,18 @@ export function ProfileScreen({ onBack }) {
           />
         ) : (
           <>
-            <Pressable style={styles.datePickerButton} onPress={() => setShowDatePicker(true)}>
-              <Text style={[styles.datePickerText, !localProfile?.date_of_birth && { color: colors.textMuted }]}>
+            <Pressable
+              style={styles.datePickerButton}
+              onPress={() => setShowDatePicker(true)}
+              accessibilityRole="button"
+              accessibilityLabel={localProfile?.date_of_birth
+                ? `Date of birth, ${localProfile.date_of_birth}`
+                : 'Select date of birth'}
+            >
+              <Text
+                style={[styles.datePickerText, !localProfile?.date_of_birth && { color: colors.textMuted }]}
+                accessible={false}
+              >
                 {localProfile?.date_of_birth || 'Select Date'}
               </Text>
             </Pressable>
@@ -286,6 +347,9 @@ export function ProfileScreen({ onBack }) {
             key={level.id}
             style={[styles.activityCard, localProfile?.activity_level === level.id && styles.activityCardActive]}
             onPress={() => toggleActivity(level.id)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: localProfile?.activity_level === level.id }}
+            accessibilityLabel={`${level.label}. ${level.desc}`}
           >
             <View style={{ flex: 1 }}>
               <Text style={[styles.activityLabel, localProfile?.activity_level === level.id && styles.activityLabelActive]}>
@@ -353,6 +417,17 @@ const createStyles = (colors) => StyleSheet.create({
     textAlign: 'center',
     textTransform: 'uppercase',
   },
+  // Shared by the two right-aligned text actions (header `Clear All`, the
+  // inline `Clear` beside Date of Birth). Both are label-only, so the box
+  // carries the 44dp minimum; `Clear All` sits opposite the 44dp Back button
+  // with room to spare (#904).
+  inlineTextAction: {
+    minHeight: 44,
+    minWidth: 44,
+    paddingHorizontal: 8,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
   toggleRow: {
     flexDirection: 'row',
     gap: 12,
@@ -360,6 +435,8 @@ const createStyles = (colors) => StyleSheet.create({
   toggleButton: {
     flex: 1,
     paddingVertical: 12,
+    minHeight: 44,
+    justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 12,
     borderWidth: 1,
@@ -386,9 +463,16 @@ const createStyles = (colors) => StyleSheet.create({
     borderColor: colors.cardBorder,
     overflow: 'hidden',
   },
+  // Matches the Settings segmented tabs: the box itself grows to the 44dp
+  // minimum, since the toggle sits inline in a row with nothing above or
+  // below it to collide with (#904).
   unitTab: {
     paddingHorizontal: 12,
     paddingVertical: 6,
+    minHeight: 44,
+    minWidth: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   unitTabActive: {
     backgroundColor: colors.accent,

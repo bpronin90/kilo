@@ -192,6 +192,7 @@ const createStyles = (colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    minHeight: 44,
   },
   fatigueSummaryMain: {
     flex: 1,
@@ -316,12 +317,18 @@ const createStyles = (colors) => StyleSheet.create({
     gap: 8,
     paddingLeft: 16,
   },
+  // Grows to the 44dp minimum rather than taking a hitSlop: the chip row wraps
+  // with an 8dp gap, so a slop that large would overlap the next line (#904).
   fatigueChip: {
     borderWidth: 1,
     borderColor: colors.cardBorder,
     borderRadius: 14,
     paddingHorizontal: 10,
     paddingVertical: 5,
+    minHeight: 44,
+    minWidth: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   fatigueChipText: {
     fontSize: 12,
