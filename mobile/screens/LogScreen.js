@@ -880,8 +880,10 @@ export function LogScreen({
     <Pressable
       onPress={currentEditor.handleDoneCurrent}
       style={styles.modeToggle}
+      accessibilityRole="button"
+      accessibilityLabel="Done"
     >
-      <Text style={styles.modeToggleText}>
+      <Text style={styles.modeToggleText} accessible={false}>
         Done
       </Text>
     </Pressable>
@@ -1279,16 +1281,16 @@ export function LogScreen({
           'Edit routine'
         }
         headerRight={
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <View style={styles.editorHeaderActions}>
             {otherEditor.editingNoteId && otherEditor.editingHasABWeeks && (
               <Pressable
                 onPress={otherEditor.handleToggleEditingWeek}
-                style={[styles.modeToggle, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.cardBorder, marginRight: 8 }]}
+                style={[styles.modeToggle, styles.modeToggleOutline]}
                 accessibilityRole="button"
                 accessibilityLabel={`Switch to Week ${otherEditor.editingEffectiveWeek === 'B' ? 'A' : 'B'}`}
                 accessibilityState={{ selected: otherEditor.editingEffectiveWeek === 'B' }}
               >
-                <Text style={[styles.modeToggleText, { color: colors.accent }]}>
+                <Text style={[styles.modeToggleText, { color: colors.accent }]} accessible={false}>
                   Week {otherEditor.editingEffectiveWeek === 'B' ? 'A' : 'B'}
                 </Text>
               </Pressable>
@@ -1296,11 +1298,11 @@ export function LogScreen({
             {otherEditor.editingNoteId && otherEditor.editingHasABWeeks && (
               <Pressable
                 onPress={otherEditor.handleMergeEditingWeeks}
-                style={[styles.modeToggle, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.cardBorder, marginRight: 8 }]}
+                style={[styles.modeToggle, styles.modeToggleOutline]}
                 accessibilityRole="button"
                 accessibilityLabel="Merge Week A and Week B into one routine"
               >
-                <Text style={[styles.modeToggleText, { color: colors.textMuted, fontWeight: '500' }]}>Merge weeks</Text>
+                <Text style={[styles.modeToggleText, { color: colors.textMuted, fontWeight: '500' }]} accessible={false}>Merge weeks</Text>
               </Pressable>
             )}
             <Pressable
@@ -1313,7 +1315,7 @@ export function LogScreen({
               accessibilityLabel="Done"
               accessibilityRole="button"
             >
-              <Text style={styles.modeToggleText}>Done</Text>
+              <Text style={styles.modeToggleText} accessible={false}>Done</Text>
             </Pressable>
           </View>
         }
@@ -1461,11 +1463,49 @@ const createStyles = (colors) => StyleSheet.create({
   skeletonBarWide: {
     width: '75%',
   },
+  // #905, owner-authorized: the chip reaches the 44dp target by reserving
+  // height, not by restyling. Padding, radius, fill, and type are untouched;
+  // `justifyContent` keeps the 14px label optically centered in the taller box,
+  // and the chip's width is unchanged, so the editor header still lays out on
+  // one row. `hitSlop` cannot do this job here — React Native clips a slop at
+  // the parent's bounds and `editorHeaderActions` is only as tall as the chip
+  // itself, so the slop would claim a target the control never had
+  // (ui-design-rules §15, the finding that shaped #904).
   modeToggle: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
     backgroundColor: colors.chipBackground,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  // Extracted verbatim from the two inline objects the Week and Merge chips
+  // carried (#905). Same values; their former `marginRight: 8` moves to the
+  // row's `columnGap` so a wrapped line still ends flush with the row's right
+  // edge instead of 8dp short of it.
+  modeToggleOutline: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  // #905: the editor header holds up to three chips beside a 34px title.
+  // `ScreenShell`'s title group is `flex: 1` (basis 0), so this row is never
+  // asked to give width back and would otherwise run off the right edge once
+  // the chips outgrow the row — at 320dp, or at a large text scale on any
+  // phone. The cap is what lets `flexWrap` engage at all. It is deliberately
+  // loose: at 384dp the cluster measures ~251dp against a ~264dp cap, so the
+  // common case still renders on one row exactly as before, and the wrap is a
+  // safety valve against clipping rather than a layout the user meets daily.
+  // The title truncating to a stem is accepted here — the editor renders the
+  // routine's full name in the card's name field directly below.
+  editorHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    flexWrap: 'wrap',
+    maxWidth: '75%',
+    columnGap: 8,
+    rowGap: 8,
   },
   modeToggleText: {
     fontSize: 14,

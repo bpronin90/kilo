@@ -343,6 +343,17 @@ contained in #710, removed in #711).
 - **Every interactive control presents a ≥44×44dp effective target.** This is a
   floor, not a style: it applies to chips, segmented tabs, text-only actions,
   and disclosure rows alike, not only to the shared `Button`.
+- **One standing exception: the Log tab's `Track` / `Tracked` toggle**
+  (`components/UI.js`, `ExerciseBlock`) stays at its rendered ~23dp box. The
+  owner reviewed it on device under #905 and declined the change: the control
+  repeats once per exercise, so reaching the floor grows every exercise header
+  row by ~21dp — roughly 126dp of added scrolling on a six-exercise routine —
+  and it cannot grow sideways, because the exercise name beside it carries
+  #881's double-tap target and rule 15 forbids overlapping a neighbour. This is
+  a deliberate, owner-held trade, not an oversight and not a precedent: it
+  authorizes nothing else below the floor, and only the owner can extend or
+  revoke it. Every other Log control — the editor's `modeToggle` family and
+  `New routine` — reaches 44dp (#905).
 - **Prefer growing the box:** `minHeight: 44` (plus `minWidth: 44` on a compact
   control) with `justifyContent: 'center'` / `alignItems: 'center'`, so the
   padding and type stay as designed while the box reaches the minimum. This is
