@@ -1272,7 +1272,7 @@ const createStyles = (colors) => StyleSheet.create({
   syntaxHelpButtonText: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.accent,
+    color: colors.accentText,
   },
   // Outlined circled "!" + count (#863), replacing the standing bordered
   // warning block and the always-visible active-problem message with a
@@ -1331,7 +1331,7 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.error,
   },
   validationListRowTextWarning: {
-    color: colors.caution,
+    color: colors.cautionText,
   },
   // The single dismissible bar (#863) for whichever one problem is
   // selected. Renders below the TextInput, not above it, so jumping to a
@@ -1351,7 +1351,7 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.error,
   },
   validationBarTextWarning: {
-    color: colors.caution,
+    color: colors.cautionText,
   },
   validationBarDismiss: {
     minWidth: 44,
@@ -1370,7 +1370,7 @@ const createStyles = (colors) => StyleSheet.create({
     borderColor: colors.cardBorder,
   },
   switchButtonText: {
-    color: colors.accent,
+    color: colors.accentText,
   },
   // Irreversible-action container (#823, ui-design-rules.md §14): groups
   // Delete apart from the routine-management Buttons above it, matching
@@ -1506,7 +1506,7 @@ const createStyles = (colors) => StyleSheet.create({
   dateDisclosureDoneText: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.accent,
+    color: colors.accentText,
     marginBottom: 8,
   },
 });

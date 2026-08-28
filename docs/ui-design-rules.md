@@ -243,12 +243,17 @@ change must work in both palettes. Concrete values live in
   module-level object.
 
 - **Use the semantic token, not the nearest-looking one.** `success`, `caution`,
-  and `error` are *direct status* colors for marks, dots, meter segments, and
-  colored text — dark mode makes them deliberately bright. A *filled* surface
-  that carries a `textLight` label must use its `card*Bg` counterpart instead;
-  a *tinted* surface uses `errorSurface` / `cautionSurface` with the paired ink.
-  Text on an accent fill uses `onAccent`; the shared Button's label uses
-  `buttonLabel`.
+  and `error` are *direct status* colors for marks, dots, and meter segments —
+  dark mode makes them deliberately bright. A *filled* surface that carries a
+  `textLight` label must use its `card*Bg` counterpart instead; a *tinted*
+  surface uses `errorSurface` / `cautionSurface` with the paired ink. Text on an
+  accent fill uses `onAccent`; the shared Button's label uses `buttonLabel`.
+
+- **`accent` and `caution` are mark colors, never text ink (#908).** As
+  light-mode copy they measure 2.68:1 and 2.83:1 against `card`. Any string the
+  user reads uses `accentText` / `cautionText`; fills, strokes, dots, meter
+  segments, chart lines, and icon-substitute glyphs keep `accent` / `caution`.
+  `success` and `error` are already legible as copy and need no counterpart.
 
 - **Any new filled surface + label pairing needs a recorded contrast ratio.**
   Add the measured value to the derived-token table in

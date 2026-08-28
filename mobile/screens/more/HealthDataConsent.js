@@ -142,7 +142,7 @@ const createStyles = (colors) => StyleSheet.create({
   },
   link: {
     fontSize: 15,
-    color: colors.accent,
+    color: colors.accentText,
     textDecorationLine: 'underline',
   },
   affirmRow: {

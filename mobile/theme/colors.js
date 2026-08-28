@@ -52,6 +52,15 @@ export const LightColors = {
   // #d98d42 accent measures only 2.68:1, while #221c17 clears AA at 6.29:1.
   onAccent: '#221c17',
 
+  // Text ink for accent/caution *copy* (#908). The direct `accent` and
+  // `caution` values are mark colors: on light surfaces they measure 2.68:1
+  // and 2.83:1 against `card`, far under AA. These darkened inks carry the
+  // same semantics for anything the user reads. Ratios against
+  // card / background / subtleBg: accentText 5.71 / 5.12 / 5.28,
+  // cautionText 5.68 / 5.10 / 5.26.
+  accentText: '#96571c',
+  cautionText: '#7f6310',
+
   // Tinted (not filled) status surfaces. Labels are `error` and
   // `cautionSurfaceText`: error 5.26:1, caution 4.84:1.
   errorSurface: '#fdeceb',
@@ -106,6 +115,13 @@ export const DarkColors = {
   // Dark ink on the accent reads correctly against a dark shell and, unlike
   // white, is accessible on #d98d42 (7.09:1).
   onAccent: '#100f1a',
+
+  // Text ink for accent/caution copy (#908). Dark mode already clears AA with
+  // the direct mark values, so these keep them unchanged. Ratios against
+  // card / background / subtleBg: accentText 6.23 / 7.09 / 5.24,
+  // cautionText 9.39 / 10.69 / 7.89.
+  accentText: '#d98d42',
+  cautionText: '#f2b94a',
 
   // Tinted status surfaces: error 5.20:1, caution 8.33:1.
   errorSurface: '#3a1f1c',

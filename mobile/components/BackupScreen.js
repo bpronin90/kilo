@@ -508,7 +508,7 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     fontWeight: '600',
-    color: colors.caution ?? colors.error ?? colors.textMuted,
+    color: colors.cautionText ?? colors.error ?? colors.textMuted,
   },
   actionButton: {
     marginTop: 12,

@@ -626,7 +626,7 @@ function BlockEvidence({
                     accessible
                     accessibilityLabel={heroLabel}
                   >
-                    <Text style={[HeroMetric.statPrimary, { color: colors.accent }]}>
+                    <Text style={[HeroMetric.statPrimary, { color: colors.accentText }]}>
                       {`${metCount} of ${totalBaselineExercises}`}
                     </Text>
                     <Text style={styles.heroCaption}>baseline exercises met</Text>
@@ -1056,7 +1056,7 @@ const createStyles = (colors) => StyleSheet.create({
   stateRetryText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.accentText,
   },
   card: {
     gap: 12,
@@ -1109,7 +1109,7 @@ const createStyles = (colors) => StyleSheet.create({
   reasonEditorSaveText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.accentText,
   },
   provenanceText: {
     fontSize: 12,
@@ -1152,7 +1152,7 @@ const createStyles = (colors) => StyleSheet.create({
   backToActiveText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.accentText,
   },
   unavailablePanelText: {
     fontSize: 14,
@@ -1347,7 +1347,7 @@ const createStyles = (colors) => StyleSheet.create({
   metricPercent: {
     fontSize: 13,
     fontWeight: '800',
-    color: colors.caution,
+    color: colors.cautionText,
   },
   metricPercentMet: {
     color: colors.success,

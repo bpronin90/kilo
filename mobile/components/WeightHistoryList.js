@@ -628,7 +628,7 @@ const createStyles = (colors) => StyleSheet.create({
     textAlign: 'center',
   },
   deltaNotable: {
-    color: colors.caution,
+    color: colors.cautionText,
   },
   deltaSpike: {
     color: colors.error,
@@ -670,6 +670,6 @@ const createStyles = (colors) => StyleSheet.create({
   loadMoreText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.accentText,
   },
 });

@@ -501,7 +501,7 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
 
   const weekTone = getSessionTone(dashboardData.sessionCount);
   const weekToneColor = weekTone === 'error' ? colors.error
-    : weekTone === 'warn' ? colors.caution
+    : weekTone === 'warn' ? colors.cautionText
     : weekTone === 'success' ? colors.success
     : null;
 
@@ -852,7 +852,7 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
             const gi = dashboardData.goalInfo;
             const warnings = gi.warnings || [];
             const paceColor = warnings.includes('unrealistic') ? colors.error
-              : warnings.includes('unhealthy') ? colors.caution
+              : warnings.includes('unhealthy') ? colors.cautionText
               : colors.success;
             const modeLabel = gi.direction === 'loss' ? 'Cutting' : gi.direction === 'gain' ? 'Bulking' : 'Maintaining';
             return (
@@ -930,7 +930,7 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
                 <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
               </View>
             </Pressable>
-            <Text style={[styles.oneKHeroValue, { color: lerpColor(colors.accent, colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000)) }]}>
+            <Text style={[styles.oneKHeroValue, { color: lerpColor(colors.accentText, colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000)) }]}>
               {dashboardData.oneK?.total ? `${displayWeight(dashboardData.oneK.total, unit).toFixed(0)}` : '—'}
               <Text style={styles.oneKHeroUnit}> {unit}</Text>
             </Text>
@@ -1018,7 +1018,7 @@ const createStyles = (colors) => StyleSheet.create({
   syncNoticeActionText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.accentText,
   },
   // Static first-paint placeholder bars.
   skeletonCard: {
@@ -1064,7 +1064,7 @@ const createStyles = (colors) => StyleSheet.create({
   // Active-Recovery eyebrow (#869): accent-colored so the hero visibly
   // announces Recovery rather than reading as an ordinary baseline week.
   heroWeekLabelRecovery: {
-    color: colors.accent,
+    color: colors.accentText,
   },
   // The active Recovery note's own title, named directly under the eyebrow so
   // "what is current" answers both the week number and which note that is.
@@ -1128,7 +1128,7 @@ const createStyles = (colors) => StyleSheet.create({
   },
   heroWeightValue: {
     ...HeroMetric.hero,
-    color: colors.accent,
+    color: colors.accentText,
     // Allow the value to give up width inside the row so an enlarged metric on a
     // 320dp screen stays inside the card instead of painting past its edge.
     flexShrink: 1,
@@ -1299,7 +1299,7 @@ const createStyles = (colors) => StyleSheet.create({
     marginTop: 2,
   },
   recoveryHeroValue: {
-    color: colors.accent,
+    color: colors.accentText,
   },
   recoveryHeroCaption: {
     fontSize: 13,
@@ -1373,7 +1373,7 @@ const createStyles = (colors) => StyleSheet.create({
   recoveryActionText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.accentText,
   },
   goalCard: {
     padding: 24,
@@ -1390,7 +1390,7 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.text,
   },
   goalModeAccent: {
-    color: colors.accent,
+    color: colors.accentText,
   },
   goalWeeksText: {
     fontSize: 14,

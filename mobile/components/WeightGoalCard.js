@@ -377,7 +377,7 @@ const createStyles = (colors) => StyleSheet.create({
   goalDisplayValue: {
     fontSize: 28,
     fontWeight: '900',
-    color: colors.accent,
+    color: colors.accentText,
   },
   goalDisplayDateValue: {
     fontSize: 28,
@@ -399,7 +399,7 @@ const createStyles = (colors) => StyleSheet.create({
   goalProgressValue: {
     fontSize: 16,
     fontWeight: '800',
-    color: colors.accent,
+    color: colors.accentText,
   },
   goalProgressLabel: {
     fontSize: 13,
@@ -416,7 +416,7 @@ const createStyles = (colors) => StyleSheet.create({
   goalAheadText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.caution,
+    color: colors.cautionText,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },

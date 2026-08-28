@@ -56,6 +56,22 @@ export function contrastRatio(a, b) {
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
 
+// `subtleBg` is the one surface role that ships as `rgba(...)`, so text drawn
+// on it can only be measured against the composite it actually paints. It is
+// always laid over `card`, which is the deepest surface any of these rows sit
+// on, so that is the base used here (#908).
+export function compositeOver(rgba, baseHex) {
+  const parts = rgba.match(/rgba\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)/);
+  if (!parts) return rgba;
+  const alpha = Number(parts[4]);
+  const base = baseHex.replace('#', '');
+  const channels = [0, 2, 4].map((i) => parseInt(base.slice(i, i + 2), 16));
+  return `#${[1, 2, 3]
+    .map((i) => Math.round(Number(parts[i]) * alpha + channels[i - 1] * (1 - alpha)))
+    .map((v) => v.toString(16).padStart(2, '0'))
+    .join('')}`;
+}
+
 function renderInTheme(element) {
   let component;
   act(() => {
@@ -211,6 +227,29 @@ describe('accessible contrast of themed pairs', () => {
 
   test.each(modes)('%s: on-accent ink clears 4.5:1 against the accent fill', (_mode, colors) => {
     expect(contrastRatio(colors.accent, colors.onAccent)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // #908: `accent`/`caution` are mark colors and fail AA as light-mode copy
+  // (2.68:1 and 2.83:1 on `card`). `accentText`/`cautionText` are the inks any
+  // readable accent or caution string uses instead.
+  test.each(modes)('%s: accent and caution text ink clears 4.5:1 on every surface it lands on', (_mode, colors) => {
+    const surfaces = [colors.card, colors.background, compositeOver(colors.subtleBg, colors.card)];
+    for (const surface of surfaces) {
+      expect(contrastRatio(surface, colors.accentText)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(surface, colors.cautionText)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  test('the light text inks are darker than the mark colors they replace', () => {
+    expect(relativeLuminance(LightColors.accentText))
+      .toBeLessThan(relativeLuminance(LightColors.accent));
+    expect(relativeLuminance(LightColors.cautionText))
+      .toBeLessThan(relativeLuminance(LightColors.caution));
+  });
+
+  test('dark already cleared AA, so its text inks keep the direct mark values', () => {
+    expect(DarkColors.accentText).toBe(DarkColors.accent);
+    expect(DarkColors.cautionText).toBe(DarkColors.caution);
   });
 });
 
