@@ -194,6 +194,7 @@ describe('accessible contrast of themed pairs', () => {
   test.each(modes)('%s: tinted status surfaces clear 4.5:1 with their ink', (_mode, colors) => {
     expect(contrastRatio(colors.errorSurface, colors.error)).toBeGreaterThanOrEqual(4.5);
     expect(contrastRatio(colors.cautionSurface, colors.cautionSurfaceText)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(colors.roughBackground, colors.chipText)).toBeGreaterThanOrEqual(4.5);
   });
 
   test.each(modes)('%s: body and muted text clear 4.5:1 on background and card', (_mode, colors) => {
@@ -208,8 +209,8 @@ describe('accessible contrast of themed pairs', () => {
     }
   });
 
-  test('dark on-accent ink clears 4.5:1 against the accent fill', () => {
-    expect(contrastRatio(DarkColors.accent, DarkColors.onAccent)).toBeGreaterThanOrEqual(4.5);
+  test.each(modes)('%s: on-accent ink clears 4.5:1 against the accent fill', (_mode, colors) => {
+    expect(contrastRatio(colors.accent, colors.onAccent)).toBeGreaterThanOrEqual(4.5);
   });
 });
 

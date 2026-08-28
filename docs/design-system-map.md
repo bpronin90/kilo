@@ -79,7 +79,7 @@ modes. Every ratio below is asserted automatically in
 | `cardCautionBg` | `#7f6310` | `#6b5210` | Filled caution tone, label `textLight` — 5.28:1 / 6.54:1 |
 | `cardErrorBg` | `#b03a2e` | `#8a2f24` | Filled error tone, label `textLight` — 5.59:1 / 7.40:1 |
 | `buttonLabel` | `#faf6f0` | `#100f1a` | Label on the shared Button (background is `text`) — 15.65:1 / 16.81:1 |
-| `onAccent` | `#ffffff` | `#100f1a` | Label on small accent-filled controls (segmented tabs, confirm, checkmarks) — 2.68:1 / 7.09:1 |
+| `onAccent` | `#221c17` | `#100f1a` | Label on small accent-filled controls (segmented tabs, confirm, checkmarks) — 6.29:1 / 7.09:1 |
 | `errorSurface` | `#fdeceb` | `#3a1f1c` | Tinted error surface, label `error` — 5.26:1 / 5.20:1 |
 | `cautionSurface` | `#f7ecd2` | `#2e2717` | Tinted caution surface (fatigue alert) — see `cautionSurfaceText` |
 | `cautionSurfaceText` | `#7f6310` | `#f2b94a` | Ink on `cautionSurface` — 4.84:1 / 8.33:1 |
