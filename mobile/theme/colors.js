@@ -48,8 +48,9 @@ export const LightColors = {
   // #221c17 pill / #faf6f0 label -> 15.65:1.
   buttonLabel: '#faf6f0',
   // Label on small accent-filled controls (segmented-control active item,
-  // confirm affordances). Light mode keeps the shipped white ink.
-  onAccent: '#ffffff',
+  // confirm affordances). Light mode uses the palette `text` ink: white on the
+  // #d98d42 accent measures only 2.68:1, while #221c17 clears AA at 6.29:1.
+  onAccent: '#221c17',
 
   // Tinted (not filled) status surfaces. Labels are `error` and
   // `cautionSurfaceText`: error 5.26:1, caution 4.84:1.
