@@ -499,6 +499,9 @@ const createStyles = (colors) => StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
+  // Both chip sizes grow to the 44dp minimum instead of taking a hitSlop: the
+  // rows wrap with an 8dp gap, so a slop that large would overlap the chip on
+  // the next line (#904).
   chipSub: {
     paddingHorizontal: 12,
     paddingVertical: 5,
@@ -506,6 +509,8 @@ const createStyles = (colors) => StyleSheet.create({
     backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.cardBorder,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   chipSubText: {
     fontSize: 13,
@@ -519,6 +524,8 @@ const createStyles = (colors) => StyleSheet.create({
     backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.cardBorder,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   chipSelected: {
     backgroundColor: colors.chipBackground,

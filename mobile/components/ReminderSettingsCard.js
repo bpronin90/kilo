@@ -241,15 +241,17 @@ export function ReminderSettingsCard() {
             return (
               <Pressable
                 key={day.value}
-                style={[styles.weekdayChip, selected && styles.weekdayChipSelected]}
+                style={styles.weekdayTarget}
                 onPress={() => handleToggleWeekday(day.value)}
                 accessibilityRole="button"
                 accessibilityState={{ selected }}
                 accessibilityLabel={`Nudge on ${day.label}`}
               >
-                <Text style={[styles.weekdayChipText, selected && styles.weekdayChipTextSelected]} accessible={false}>
-                  {day.short}
-                </Text>
+                <View style={[styles.weekdayChip, selected && styles.weekdayChipSelected]}>
+                  <Text style={[styles.weekdayChipText, selected && styles.weekdayChipTextSelected]} accessible={false}>
+                    {day.short}
+                  </Text>
+                </View>
               </Pressable>
             );
           })}
@@ -323,6 +325,8 @@ const createStyles = (colors) => StyleSheet.create({
     borderColor: colors.cardBorder,
     paddingVertical: 10,
     paddingHorizontal: 16,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   timeButtonText: {
     fontSize: 16,
@@ -332,6 +336,19 @@ const createStyles = (colors) => StyleSheet.create({
   weekdayRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+  },
+  // The press target is a real 44dp-tall box that takes an equal share of the
+  // row, with the 36dp circle centered inside it — not a hitSlop, which React
+  // Native clips at the parent's bounds and which would therefore claim height
+  // this one-circle-tall row never had. Seven 44dp-wide boxes do not fit a
+  // 320dp screen's card, so the width is what the row can give (36dp at 320dp,
+  // 44dp from ~384dp up); the boxes are contiguous, so no press between two
+  // circles is lost (#904).
+  weekdayTarget: {
+    flex: 1,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   weekdayChip: {
     width: 36,

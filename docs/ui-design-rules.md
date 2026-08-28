@@ -337,3 +337,35 @@ contained in #710, removed in #711).
   explains it will restore the editor-entry snapshot, including over autosaved
   changes. A control labelled `Cancel` may only open this explicit choice; it
   must never perform the rollback directly (#851).
+
+## 15. Interactive targets: 44dp minimum with complete semantics
+
+- **Every interactive control presents a ≥44×44dp effective target.** This is a
+  floor, not a style: it applies to chips, segmented tabs, text-only actions,
+  and disclosure rows alike, not only to the shared `Button`.
+- **Prefer growing the box:** `minHeight: 44` (plus `minWidth: 44` on a compact
+  control) with `justifyContent: 'center'` / `alignItems: 'center'`, so the
+  padding and type stay as designed while the box reaches the minimum. This is
+  the default because the target then matches what the user sees.
+- **When a control's visual must keep a fixed size, wrap it in a real target
+  box** rather than reaching for `hitSlop`: React Native clips a slop at the
+  parent's bounds, so a slop that grows past a one-line-tall row claims a
+  target the control never had (the same finding that shaped #757's info
+  button). `ReminderSettingsCard`'s weekday chips keep their 36dp circle inside
+  a 44dp-tall `flex: 1` Pressable, so the targets are contiguous across the row
+  and no press between two circles is lost.
+- **An expanded target may never overlap a neighbour** or a parent disclosure
+  trigger. Targets that touch are fine; targets that overlap steal presses.
+- Seven-across weekday circles are the one place the width minimum is not
+  reachable on a 320dp screen (seven 44dp boxes need 308dp inside a card that
+  offers 252dp). Taking the full row width is the documented ceiling there.
+- **Semantics ship with the target.** An interactive control declares
+  `accessibilityRole` (`button`, or `checkbox` for a multi-select chip), an
+  accessible name that matches its visible label, and its state —
+  `selected` for a segmented or toggle choice, `disabled` where the control can
+  be inert, `expanded` on a disclosure trigger, `checked` on a checkbox. Mark
+  the label `Text` inside as `accessible={false}` so the control announces once.
+- Assert the contract per control in the style of
+  `mobile/tests/interaction-target-a11y.test.js`: the flattened
+  `minHeight`/`minWidth`/`hitSlop` plus the role/name/state props, so a later
+  style edit that drops the minimum fails a test rather than shipping.
