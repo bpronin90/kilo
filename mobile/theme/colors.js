@@ -55,11 +55,18 @@ export const LightColors = {
   // Text ink for accent/caution *copy* (#908). The direct `accent` and
   // `caution` values are mark colors: on light surfaces they measure 2.68:1
   // and 2.83:1 against `card`, far under AA. These darkened inks carry the
-  // same semantics for anything the user reads. Ratios against
-  // card / background / subtleBg: accentText 5.71 / 5.12 / 5.28,
-  // cautionText 5.68 / 5.10 / 5.26.
-  accentText: '#96571c',
-  cautionText: '#7f6310',
+  // same semantics for anything the user reads.
+  //
+  // Both are darkened past the obvious `chipText`/`cautionSurfaceText` reuse
+  // because accent and caution copy also lands on `chipBackground` — the
+  // Settings stepper, the Big 3 slot picker's selected row, Recovery's retry
+  // button, Home's sync notice, and the history list's pressed rows. At
+  // `#96571c`/`#7f6310` that pairing measured 4.33:1/4.31:1 (#915 review).
+  //
+  // Ratios against card / background / subtleBg / chipBackground:
+  // accentText 6.60 / 5.92 / 6.11 / 5.00, cautionText 7.04 / 6.32 / 6.51 / 5.34.
+  accentText: '#8a4e15',
+  cautionText: '#6f5510',
 
   // Tinted (not filled) status surfaces. Labels are `error` and
   // `cautionSurfaceText`: error 5.26:1, caution 4.84:1.
@@ -118,8 +125,14 @@ export const DarkColors = {
 
   // Text ink for accent/caution copy (#908). Dark mode already clears AA with
   // the direct mark values, so these keep them unchanged. Ratios against
-  // card / background / subtleBg: accentText 6.23 / 7.09 / 5.24,
-  // cautionText 9.39 / 10.69 / 7.89.
+  // card / background / subtleBg / chipBackground: accentText
+  // 6.23 / 7.09 / 5.24 / 3.54, cautionText 9.39 / 10.69 / 7.89 / 5.33.
+  //
+  // That 3.54:1 is a recorded gap, not a target. Dark `chipBackground` is the
+  // accent at 32% over `card`, so accent-colored copy on it is inherently
+  // low-contrast; the chip's own paired ink is `chipText`. The value is
+  // unchanged from the pre-#908 `accent` and is pinned in
+  // tests/theme-rendering.test.js so it cannot drift further.
   accentText: '#d98d42',
   cautionText: '#f2b94a',
 

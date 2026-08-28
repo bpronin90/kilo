@@ -80,8 +80,8 @@ modes. Every ratio below is asserted automatically in
 | `cardErrorBg` | `#b03a2e` | `#8a2f24` | Filled error tone, label `textLight` — 5.59:1 / 7.40:1 |
 | `buttonLabel` | `#faf6f0` | `#100f1a` | Label on the shared Button (background is `text`) — 15.65:1 / 16.81:1 |
 | `onAccent` | `#221c17` | `#100f1a` | Label on small accent-filled controls (segmented tabs, confirm, checkmarks) — 6.29:1 / 7.09:1 |
-| `accentText` | `#96571c` | `#d98d42` | Accent-colored **copy** on `card` / `background` / `subtleBg` — 5.71:1, 5.12:1, 5.28:1 / 6.23:1, 7.09:1, 5.24:1 |
-| `cautionText` | `#7f6310` | `#f2b94a` | Caution-colored **copy** on `card` / `background` / `subtleBg` — 5.68:1, 5.10:1, 5.26:1 / 9.39:1, 10.69:1, 7.89:1 |
+| `accentText` | `#8a4e15` | `#d98d42` | Accent-colored **copy** on `card` / `background` / `subtleBg` / `chipBackground` — 6.60:1, 5.92:1, 6.11:1, 5.00:1 / 6.23:1, 7.09:1, 5.24:1, *3.54:1* |
+| `cautionText` | `#6f5510` | `#f2b94a` | Caution-colored **copy** on `card` / `background` / `subtleBg` / `chipBackground` — 7.04:1, 6.32:1, 6.51:1, 5.34:1 / 9.39:1, 10.69:1, 7.89:1, 5.33:1 |
 | `errorSurface` | `#fdeceb` | `#3a1f1c` | Tinted error surface, label `error` — 5.26:1 / 5.20:1 |
 | `cautionSurface` | `#f7ecd2` | `#2e2717` | Tinted caution surface (fatigue alert) — see `cautionSurfaceText` |
 | `cautionSurfaceText` | `#7f6310` | `#f2b94a` | Ink on `cautionSurface` — 4.84:1 / 8.33:1 |
@@ -104,11 +104,24 @@ be used as a text `color`: in light mode they measure 2.68:1 and 2.83:1 against
 may draw an `accent` dot beside an `accentText` label. `success` and `error`
 need no equivalent: both already clear AA as light-mode copy.
 
+Both inks are darker than the obvious `chipText` / `cautionSurfaceText` reuse
+because accent and caution copy also lands on `chipBackground`: the Settings
+stepper, the Big 3 slot picker's selected row, Recovery's retry button, Home's
+sync notice, and the weight history list's pressed rows. A new pairing must be
+measured against every surface the string can sit on, pressed states included.
+
 Two call sites keep the mark value on purpose and are not text for this rule:
 the trend glyphs in `AnalyticsCrossDayComparison.js` (`↔` / `—` / `↑` / `↓`,
 which are icon substitutes sitting beside `MaterialIcons` arrows) and the
 outlined `!` + count validation badge in `LogScreenEditorCard.js`, whose glyph
 matches its own ring stroke.
+
+**Known gap:** dark `accentText` on dark `chipBackground` measures 3.54:1. That
+fill is the accent itself at 32% over `card`, so accent-colored copy on it is
+inherently low-contrast; the chip's own paired ink is `chipText` (11.11:1). The
+value is unchanged from the pre-#908 `accent` and is pinned in
+`mobile/tests/theme-rendering.test.js` so it cannot drift further. Light mode
+clears it at 5.00:1.
 
 **Known gap:** `chipText` on `chipBackground` in light mode measures 4.33:1,
 just under AA for normal text. Both values are contractually fixed by the #689

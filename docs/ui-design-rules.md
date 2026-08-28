@@ -254,6 +254,8 @@ change must work in both palettes. Concrete values live in
   user reads uses `accentText` / `cautionText`; fills, strokes, dots, meter
   segments, chart lines, and icon-substitute glyphs keep `accent` / `caution`.
   `success` and `error` are already legible as copy and need no counterpart.
+  Measure a text ink against every surface the string can sit on — a chip fill
+  and a pressed row count, not just the card underneath.
 
 - **Any new filled surface + label pairing needs a recorded contrast ratio.**
   Add the measured value to the derived-token table in
