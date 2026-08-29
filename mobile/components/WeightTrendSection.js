@@ -109,7 +109,7 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.error,
   },
   paceNotable: {
-    color: colors.caution,
+    color: colors.cautionText,
   },
   trendPositive: {
     color: colors.success,

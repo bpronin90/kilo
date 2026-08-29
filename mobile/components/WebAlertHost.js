@@ -109,7 +109,7 @@ const createStyles = (colors) => StyleSheet.create({
   buttonText: {
     fontSize: 15,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.accentText,
   },
   cancelText: {
     color: colors.textMuted,

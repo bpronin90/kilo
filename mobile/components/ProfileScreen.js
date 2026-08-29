@@ -528,7 +528,7 @@ const createStyles = (colors) => StyleSheet.create({
     marginBottom: 2,
   },
   activityLabelActive: {
-    color: colors.accent,
+    color: colors.accentText,
   },
   activityDesc: {
     fontSize: 13,

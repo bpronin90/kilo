@@ -1073,6 +1073,6 @@ const createStyles = (colors) => StyleSheet.create({
   emptyTrackedLinkText: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.accent,
+    color: colors.accentText,
   },
 });

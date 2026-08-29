@@ -56,6 +56,30 @@ export function contrastRatio(a, b) {
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
 
+// `subtleBg` is the one surface role that ships as `rgba(...)`, so text drawn
+// on it can only be measured against the composite it actually paints. It is
+// always laid over `card`, which is the deepest surface any of these rows sit
+// on, so that is the base used here (#908).
+// A hex re-expressed as the same color at `alpha`, so a whole-control opacity
+// fade can be composited with the same helper as a translucent surface role.
+export function withAlpha(hex, alpha) {
+  const raw = hex.replace('#', '');
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(raw.slice(i, i + 2), 16));
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+export function compositeOver(rgba, baseHex) {
+  const parts = rgba.match(/rgba\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)/);
+  if (!parts) return rgba;
+  const alpha = Number(parts[4]);
+  const base = baseHex.replace('#', '');
+  const channels = [0, 2, 4].map((i) => parseInt(base.slice(i, i + 2), 16));
+  return `#${[1, 2, 3]
+    .map((i) => Math.round(Number(parts[i]) * alpha + channels[i - 1] * (1 - alpha)))
+    .map((v) => v.toString(16).padStart(2, '0'))
+    .join('')}`;
+}
+
 function renderInTheme(element) {
   let component;
   act(() => {
@@ -211,6 +235,88 @@ describe('accessible contrast of themed pairs', () => {
 
   test.each(modes)('%s: on-accent ink clears 4.5:1 against the accent fill', (_mode, colors) => {
     expect(contrastRatio(colors.accent, colors.onAccent)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // #908: `accent`/`caution` are mark colors and fail AA as light-mode copy
+  // (2.68:1 and 2.83:1 on `card`). `accentText`/`cautionText` are the inks any
+  // readable accent or caution string uses instead.
+  //
+  // These are every surface accent or caution copy actually lands on. Pressed
+  // states count: the weight history row, its `Load more` row, and the delete
+  // affordance all swap to `chipBackground` while held (#915 review).
+  function textSurfaces(colors) {
+    return {
+      card: colors.card,
+      background: colors.background,
+      subtleBg: compositeOver(colors.subtleBg, colors.card),
+      chipBackground: compositeOver(colors.chipBackground, colors.card),
+    };
+  }
+
+  test.each(modes)('%s: caution text ink clears 4.5:1 on every surface it lands on', (_mode, colors) => {
+    for (const [name, surface] of Object.entries(textSurfaces(colors))) {
+      expect({ name, ok: contrastRatio(surface, colors.cautionText) >= 4.5 })
+        .toEqual({ name, ok: true });
+    }
+  });
+
+  test('light: accent text ink clears 4.5:1 on every surface it lands on', () => {
+    for (const [name, surface] of Object.entries(textSurfaces(LightColors))) {
+      expect({ name, ok: contrastRatio(surface, LightColors.accentText) >= 4.5 })
+        .toEqual({ name, ok: true });
+    }
+  });
+
+  test('dark: accent text ink clears 4.5:1 on card, background, and subtleBg', () => {
+    const { chipBackground, ...surfaces } = textSurfaces(DarkColors);
+    for (const [name, surface] of Object.entries(surfaces)) {
+      expect({ name, ok: contrastRatio(surface, DarkColors.accentText) >= 4.5 })
+        .toEqual({ name, ok: true });
+    }
+  });
+
+  // #915 review: a whole-control `opacity` composites the label *and* its fill
+  // over what is behind them, so a pressed row can fade an ink that clears AA
+  // at rest below it. This pins the arithmetic that removed the 0.8 fade from
+  // `historyRowPressed`/`loadMorePressed` — reintroducing one is not a small
+  // visual tweak.
+  test.each(modes)('%s: an 0.8 pressed fade would drop accent copy under AA', (_mode, colors) => {
+    const chip = compositeOver(colors.chipBackground, colors.card);
+    const fade = (hex) => compositeOver(withAlpha(hex, 0.8), colors.card);
+    const atRest = contrastRatio(chip, colors.accentText);
+    const pressed = contrastRatio(fade(chip), fade(colors.accentText));
+    expect(pressed).toBeLessThan(atRest);
+    expect(pressed).toBeLessThan(4.5);
+  });
+
+  test('light accent copy on a chip clears AA at rest, which the fade undid', () => {
+    const chip = LightColors.chipBackground;
+    const fade = (hex) => compositeOver(withAlpha(hex, 0.8), LightColors.card);
+    expect(contrastRatio(chip, LightColors.accentText)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(fade(chip), fade(LightColors.accentText))).toBeCloseTo(3.4, 1);
+  });
+
+  // Recorded gap, not a target. Dark `chipBackground` is the accent itself at
+  // 32% over `card`, so accent-colored copy on it is inherently low-contrast;
+  // the chip's own paired ink is `chipText` (11.11:1). The value is unchanged
+  // from the pre-#908 `accent` and is pinned here so it cannot drift further
+  // without someone deciding to.
+  test('dark accent copy on the dark chip fill is the one recorded gap', () => {
+    const chip = compositeOver(DarkColors.chipBackground, DarkColors.card);
+    expect(contrastRatio(chip, DarkColors.accentText)).toBeCloseTo(3.54, 2);
+    expect(contrastRatio(chip, DarkColors.chipText)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  test('the light text inks are darker than the mark colors they replace', () => {
+    expect(relativeLuminance(LightColors.accentText))
+      .toBeLessThan(relativeLuminance(LightColors.accent));
+    expect(relativeLuminance(LightColors.cautionText))
+      .toBeLessThan(relativeLuminance(LightColors.caution));
+  });
+
+  test('dark already cleared AA, so its text inks keep the direct mark values', () => {
+    expect(DarkColors.accentText).toBe(DarkColors.accent);
+    expect(DarkColors.cautionText).toBe(DarkColors.caution);
   });
 });
 
@@ -564,6 +670,23 @@ describe('no production surface can hold a stale palette', () => {
       /^const\s+\w+\s*=\s*StyleSheet\.create\(/m.test(fs.readFileSync(f, 'utf8'))
     );
     expect(offenders.map((f) => path.relative(root, f))).toEqual([]);
+  });
+
+  // #915 review: a `Pressed` style that sets a whole-control `opacity` fades
+  // the control's own label along with its fill, so a label that clears AA
+  // unpressed can drop under it while held. Press feedback belongs in the fill
+  // alone. Allowlisted offenders must have no accent/caution ink inside them.
+  test('no pressed style fades its own label except the allowlisted one', () => {
+    const offenders = [];
+    for (const f of files) {
+      const source = fs.readFileSync(f, 'utf8');
+      for (const [, name, body] of source.matchAll(/(\w*[Pp]ressed)\s*:\s*\{([^}]*)\}/g)) {
+        if (/\bopacity\s*:/.test(body)) offenders.push(`${path.relative(root, f)} ${name}`);
+      }
+    }
+    // Its only child is a muted glyph already drawn at 0.5 opacity by design —
+    // no accent or caution ink is inside it, so the fade cannot cross AA.
+    expect(offenders).toEqual(['components/WeightHistoryList.js deleteAffordancePressed']);
   });
 
   test('the Kilo wordmark accent is the only hardcoded color left', () => {

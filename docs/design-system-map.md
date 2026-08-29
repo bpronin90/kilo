@@ -49,7 +49,7 @@ Source: `mobile/theme/colors.js`
 | `background` | `#f7f2ea` | `#100f1a` | Global scroll background |
 | `card` | `#ffffff` | `#1e1c2c` | Card fill (dark keeps a deliberate elevation jump from `background`) |
 | `cardBorder` | `rgba(34,28,23,0.1)` | `rgba(217,141,66,0.28)` | Card stroke, dividers, separators. Uniform 1px on every ordinary card; accent-tinted in dark |
-| `accent` | `#d98d42` | `#d98d42` | Primary brand orange — hero metrics, CTAs, active states |
+| `accent` | `#d98d42` | `#d98d42` | Primary brand orange — fills, strokes, marks, chart lines, active states. **Not for text**; use `accentText` (#908) |
 | `text` | `#221c17` | `#f2f0f7` | Primary text |
 | `textMuted` | `#6b6259` | `#a29fb3` | Secondary/support text |
 | `textLight` | `#faf6f0` | `#f2f0f7` | Text on filled tone surfaces |
@@ -61,7 +61,7 @@ Source: `mobile/theme/colors.js`
 | `chipText` | `#96571c` | `#ffc98a` | Chip/badge text |
 | `success` | `#4a7c44` | `#7ed968` | Green — direct status marks and text |
 | `error` | `#b03a2e` | `#f2705c` | Red — direct status marks and text |
-| `caution` | `#c98f1a` | `#f2b94a` | Yellow — direct status marks and text |
+| `caution` | `#c98f1a` | `#f2b94a` | Yellow — direct status marks, dots, meter segments. **Not for text**; use `cautionText` (#908) |
 | `divider` | `rgba(31,26,23,0.05)` | `rgba(255,255,255,0.08)` | Subtle separator overlay |
 | `subtleBg` | `rgba(34,28,23,0.04)` | `rgba(255,255,255,0.06)` | Very subtle tinted background — history/column header rows |
 | `panelBackground` | `#ffffff` | `#1e1c2c` | Panel/section background |
@@ -80,6 +80,8 @@ modes. Every ratio below is asserted automatically in
 | `cardErrorBg` | `#b03a2e` | `#8a2f24` | Filled error tone, label `textLight` — 5.59:1 / 7.40:1 |
 | `buttonLabel` | `#faf6f0` | `#100f1a` | Label on the shared Button (background is `text`) — 15.65:1 / 16.81:1 |
 | `onAccent` | `#221c17` | `#100f1a` | Label on small accent-filled controls (segmented tabs, confirm, checkmarks) — 6.29:1 / 7.09:1 |
+| `accentText` | `#8a4e15` | `#d98d42` | Accent-colored **copy** on `card` / `background` / `subtleBg` / `chipBackground` — 6.60:1, 5.92:1, 6.11:1, 5.00:1 / 6.23:1, 7.09:1, 5.24:1, *3.54:1* |
+| `cautionText` | `#6f5510` | `#f2b94a` | Caution-colored **copy** on `card` / `background` / `subtleBg` / `chipBackground` — 7.04:1, 6.32:1, 6.51:1, 5.34:1 / 9.39:1, 10.69:1, 7.89:1, 5.33:1 |
 | `errorSurface` | `#fdeceb` | `#3a1f1c` | Tinted error surface, label `error` — 5.26:1 / 5.20:1 |
 | `cautionSurface` | `#f7ecd2` | `#2e2717` | Tinted caution surface (fatigue alert) — see `cautionSurfaceText` |
 | `cautionSurfaceText` | `#7f6310` | `#f2b94a` | Ink on `cautionSurface` — 4.84:1 / 8.33:1 |
@@ -91,9 +93,35 @@ modes. Every ratio below is asserted automatically in
 The `card*Bg` tokens are used only for *filled* tone surfaces (UI.js
 Card/StatCard tone variants, trend badges, pace badges, error banners). The
 direct `success`/`caution`/`error`/`accent` values are for status marks, dots,
-meter segments, and colored text — dark mode intentionally uses the brighter
-supplied values there, which is exactly why they cannot back a `textLight`
-label.
+meter segments, strokes, and chart lines — dark mode intentionally uses the
+brighter supplied values there, which is exactly why they cannot back a
+`textLight` label.
+
+**Text vs. mark (#908).** `accent` and `caution` are *mark* colors and must not
+be used as a text `color`: in light mode they measure 2.68:1 and 2.83:1 against
+`card`, well under AA. Anything the user reads uses `accentText` /
+`cautionText` instead. The split is by role, not by component — the same screen
+may draw an `accent` dot beside an `accentText` label. `success` and `error`
+need no equivalent: both already clear AA as light-mode copy.
+
+Both inks are darker than the obvious `chipText` / `cautionSurfaceText` reuse
+because accent and caution copy also lands on `chipBackground`: the Settings
+stepper, the Big 3 slot picker's selected row, Recovery's retry button, Home's
+sync notice, and the weight history list's pressed rows. A new pairing must be
+measured against every surface the string can sit on, pressed states included.
+
+Two call sites keep the mark value on purpose and are not text for this rule:
+the trend glyphs in `AnalyticsCrossDayComparison.js` (`↔` / `—` / `↑` / `↓`,
+which are icon substitutes sitting beside `MaterialIcons` arrows) and the
+outlined `!` + count validation badge in `LogScreenEditorCard.js`, whose glyph
+matches its own ring stroke.
+
+**Known gap:** dark `accentText` on dark `chipBackground` measures 3.54:1. That
+fill is the accent itself at 32% over `card`, so accent-colored copy on it is
+inherently low-contrast; the chip's own paired ink is `chipText` (11.11:1). The
+value is unchanged from the pre-#908 `accent` and is pinned in
+`mobile/tests/theme-rendering.test.js` so it cannot drift further. Light mode
+clears it at 5.00:1.
 
 **Known gap:** `chipText` on `chipBackground` in light mode measures 4.33:1,
 just under AA for normal text. Both values are contractually fixed by the #689
@@ -305,7 +333,7 @@ banner already uses; only a real failure takes the error surface.
 | Action row | flexDirection / flexWrap | `row` / `wrap` |
 | | columnGap / rowGap | `16` / `4` |
 | Action (`Retry sync`, `Open Cloud Sync`) | minHeight | `44` (no fixed `height`) |
-| Action label | fontSize / fontWeight / color | `13` / `700` / `colors.accent` |
+| Action label | fontSize / fontWeight / color | `13` / `700` / `colors.accentText` |
 
 `Retry sync` renders only for the failed notice. Both actions are ≥44dp and the
 row wraps, so an enlarged label at 320dp drops to a second line rather than
@@ -418,7 +446,7 @@ regresses after being met is `rebuilding` again, not a new state.
 | | color | `colors.text` |
 | Week eyebrow | fontSize / fontWeight / color | `11` / `700` / `colors.textMuted` |
 | | textTransform / letterSpacing | `uppercase` / `0.5` |
-| Result figure | style / color | `HeroMetric.statSecondary` (24/900) / `colors.accent` |
+| Result figure | style / color | `HeroMetric.statSecondary` (24/900) / `colors.accentText` |
 | Result caption | fontSize / color | `13` / `colors.textMuted` |
 | Fallback status | fontSize / fontWeight / color | `16` / `700` / `colors.text` |
 | Category divider | borderTopWidth / color / paddingTop / marginTop | `1` / `colors.cardBorder` / `14` / `12` |
@@ -429,7 +457,7 @@ regresses after being met is `rebuilding` again, not a new state.
 | | textTransform / letterSpacing | `uppercase` / `0.5` |
 | Status line | fontSize / color | `13` / `colors.textMuted` (no fixed `lineHeight`) |
 | `Retry recovery` | minHeight | `44` (no fixed `height`) |
-| | label fontSize / fontWeight / color | `13` / `700` / `colors.accent` |
+| | label fontSize / fontWeight / color | `13` / `700` / `colors.accentText` |
 
 No element in the card declares a fixed `height` or `lineHeight`, so every line
 grows with the user's text size; the `Recovery` handoff remains the card's only
@@ -460,7 +488,7 @@ already use and that is owned by `App.js`.
 | Hero content | padding | `24` all, `32` top (badge clearance) | `886-887` |
 | **Weight value** | fontSize | **`48`** | `899` |
 | | fontWeight | `800` | `900` |
-| | color | **`colors.accent`** | `901` |
+| | color | **`colors.accentText`** | `901` |
 | Weight placeholder | fontSize | `48` | `905` |
 | | color | `colors.textMuted` | `907` |
 | Weight unit "lb" | fontSize | `20` | `911` |
@@ -485,7 +513,7 @@ already use and that is owned by `App.js`.
 | | margin | `marginHorizontal: -24` (full-bleed) | `955` |
 | Insights link text | fontSize | `13` | `968` |
 | | fontWeight | `700` | `969` |
-| | color | `colors.accent` | `970` |
+| | color | `colors.accentText` | `970` |
 | Insights chevron SVG | stroke | `colors.accent` | `147` |
 
 ### Weight Goal Card
@@ -496,7 +524,7 @@ already use and that is owned by `App.js`.
 | Card borderRadius | `24` | | `973` |
 | Direction text ("Cutting"/"Bulking") | fontSize | `18` | `983` |
 | | fontWeight | `700` | `984` |
-| | color | dynamic: `colors.success` (gain), `colors.accent` (loss), `colors.textMuted` (maintain) | `159-163` |
+| | color | dynamic: `colors.success` (gain), `colors.accentText` (loss), `colors.textMuted` (maintain) | `159-163` |
 | Weeks text | fontSize | `14` | `992` |
 | | fontWeight | `700` | `993` |
 | | color | `colors.text` | `994` |
@@ -542,7 +570,7 @@ got the identical treatment for the same reason.
 | | color | `colors.textMuted` | |
 | Hero total value | fontSize | `48` (`HeroMetric.hero`) | `1153` |
 | | fontWeight | `900` (`HeroMetric.hero`) | `1153` |
-| | color | `colors.accent` lerped toward `colors.success` as progress nears 1000 (inline override, always applied — `oneKHeroValue`'s own `colors.text` is never seen, `729`) | `1153` |
+| | color | `colors.accentText` lerped toward `colors.success` as progress nears 1000 (inline override, always applied — `oneKHeroValue`'s own `colors.text` is never seen, `729`) | `1153` |
 | Hero unit | fontSize | `16` | `1157` |
 | | color | `colors.textMuted` | `1157` |
 | Progress bar | height | `8` | `1165` |
@@ -609,7 +637,7 @@ ordinary empty state carrying its own next action. See `ui-design-rules.md` §8.
 | | textTransform | `uppercase` | `367` |
 | Weight value | fontSize | `32` | `372` |
 | | fontWeight | `900` | `373` |
-| | color | `colors.accent` | `374` |
+| | color | `colors.accentText` | `374` |
 | Chart | height | `100` | `166` |
 | Pace badge | borderRadius | `12` | `379` |
 | | text fontSize | `12` | `387` |
@@ -632,7 +660,7 @@ ordinary empty state carrying its own next action. See `ui-design-rules.md` §8.
 | | color | `colors.textMuted` | `421` |
 | Total value | fontSize | `48` | `424` |
 | | fontWeight | `900` | `425` |
-| | color | `colors.accent` | `426` |
+| | color | `colors.accentText` | `426` |
 | Breakdown divider | borderTopWidth `1` / `colors.cardBorder`, paddingTop `16` | | `433-436` |
 | Breakdown value | fontSize | `18` | `443` |
 | | fontWeight | `700` | `444` |
@@ -670,7 +698,7 @@ disclosure → provenance**, and both disclosures start collapsed.
 | Element | Property | Value |
 |---|---|---|
 | Identity caption | fontSize / weight | `13` / `700`, `textMuted` — `Week N · {routine}`, or `Baseline: {routine}` before any week is logged |
-| Hero count | style | `HeroMetric.statPrimary`, `colors.accent` — `X of Y`, never a composite score |
+| Hero count | style | `HeroMetric.statPrimary`, `colors.accentText` — `X of Y`, never a composite score |
 | Hero caption | fontSize / weight | `13` / `600`, uppercase, `letterSpacing: 0.5`, `textMuted` |
 | Hero/summary group | accessibility | `accessible` + `accessibilityLabel` + `accessibilityLiveRegion="polite"` so a week change is announced without scrolling |
 | Summary line | fontSize | `13`, `textMuted` — `Week N · <non-zero states>` |
@@ -767,7 +795,7 @@ Sources: `mobile/screens/WeightScreen.js`, `mobile/components/UI.js`,
 |---|---|---|---|
 | Goal value (target weight) | fontSize | `28` | `WeightGoalCard.js:352` |
 | | fontWeight | `900` | `WeightGoalCard.js:353` |
-| | color | `colors.accent` | `WeightGoalCard.js:354` |
+| | color | `colors.accentText` | `WeightGoalCard.js:354` |
 | Goal value (target date) | fontSize | `28` | `WeightGoalCard.js:357` |
 | | fontWeight | `900` | `WeightGoalCard.js:358` |
 | | color | `colors.text` | `WeightGoalCard.js:359` |

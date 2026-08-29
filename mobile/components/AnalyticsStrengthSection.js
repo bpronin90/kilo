@@ -40,7 +40,7 @@ export function AnalyticsStrengthSection({
           ) : (
             <>
               <Text style={styles.oneKLabel}>1K Progress</Text>
-              <Text style={[styles.oneKValue, { color: lerpColor(colors.accent, colors.success, Math.min(1, (displayOneK.total || 0) / oneKTarget)) }]}>
+              <Text style={[styles.oneKValue, { color: lerpColor(colors.accentText, colors.success, Math.min(1, (displayOneK.total || 0) / oneKTarget)) }]}>
                 {displayOneK.total.toFixed(0)}<Text style={styles.oneKUnit}> {unit}</Text>
               </Text>
 
@@ -413,7 +413,7 @@ const createStyles = (colors) => StyleSheet.create({
   },
   slotOptionTextSelected: {
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.accentText,
   },
   slotEmpty: {
     fontSize: 13,

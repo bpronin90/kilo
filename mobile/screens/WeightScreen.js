@@ -859,7 +859,7 @@ const createStyles = (colors) => StyleSheet.create({
   editingTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.accentText,
     textTransform: 'uppercase',
   },
   cancelText: {

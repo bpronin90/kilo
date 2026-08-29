@@ -214,7 +214,7 @@ const createStyles = (colors) => StyleSheet.create({
   chartEmptyActionText: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.accent,
+    color: colors.accentText,
   },
   weightHeader: {
     flexDirection: 'row',
@@ -231,7 +231,7 @@ const createStyles = (colors) => StyleSheet.create({
   weightValueLarge: {
     fontSize: 32,
     fontWeight: '800',
-    color: colors.accent,
+    color: colors.accentText,
   },
   weightUnit: {
     fontSize: 16,

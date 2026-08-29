@@ -571,9 +571,12 @@ function WeightHistoryListImpl({
 export const WeightHistoryList = React.memo(WeightHistoryListImpl);
 
 const createStyles = (colors) => StyleSheet.create({
+  // The `chipBackground` fill is the whole press feedback. A `View` opacity
+  // here would fade the row's own text along with it — at 0.8 the `notable`
+  // delta composited to 3.49:1, under AA, even though the unfaded ink clears
+  // it at 5.34:1 (#915 review).
   historyRowPressed: {
     backgroundColor: colors.chipBackground,
-    opacity: 0.8,
   },
   dateFilterRow: {
     flexDirection: 'row',
@@ -628,7 +631,7 @@ const createStyles = (colors) => StyleSheet.create({
     textAlign: 'center',
   },
   deltaNotable: {
-    color: colors.caution,
+    color: colors.cautionText,
   },
   deltaSpike: {
     color: colors.error,
@@ -663,13 +666,14 @@ const createStyles = (colors) => StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 12,
   },
+  // Same as `historyRowPressed`: the fill alone carries the press, so the
+  // label is not faded below AA (3.40:1 light / 2.86:1 dark at 0.8).
   loadMorePressed: {
     backgroundColor: colors.chipBackground,
-    opacity: 0.8,
   },
   loadMoreText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.accentText,
   },
 });

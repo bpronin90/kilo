@@ -864,20 +864,22 @@ describe('AnalyticsRecoverySection — light/dark appearance', () => {
     return component;
   }
 
-  test('the hero value renders in the accent token for both light and dark palettes', () => {
+  // #908 moved the hero value off the `accent` mark color onto the readable
+  // `accentText` ink; dark keeps the same value, light darkens to clear AA.
+  test('the hero value renders in the accent text token for both light and dark palettes', () => {
     const b = block();
     const w = week(1, 'note-w1');
     const n = note('note-w1', BASELINE_TEXT);
 
     const lightComponent = setupWithColors(LightColors, { blocks: [b], weeks: [w], notes: [n] });
     const lightHero = lightComponent.root.findAll(
-      inst => Array.isArray(inst.props.style) && inst.props.style.some(s => s && s.color === LightColors.accent)
+      inst => Array.isArray(inst.props.style) && inst.props.style.some(s => s && s.color === LightColors.accentText)
     );
     expect(lightHero.length).toBeGreaterThan(0);
 
     const darkComponent = setupWithColors(DarkColors, { blocks: [b], weeks: [w], notes: [n] });
     const darkHero = darkComponent.root.findAll(
-      inst => Array.isArray(inst.props.style) && inst.props.style.some(s => s && s.color === DarkColors.accent)
+      inst => Array.isArray(inst.props.style) && inst.props.style.some(s => s && s.color === DarkColors.accentText)
     );
     expect(darkHero.length).toBeGreaterThan(0);
     expect(hasText(darkComponent.root, '2 of 2')).toBe(true);

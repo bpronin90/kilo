@@ -180,7 +180,7 @@ const createStyles = (colors) => StyleSheet.create({
   termLabel: {
     fontSize: 15,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.accentText,
     marginBottom: 2,
   },
   termDesc: {

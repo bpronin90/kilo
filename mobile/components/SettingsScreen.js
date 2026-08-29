@@ -205,7 +205,7 @@ const createStyles = (colors) => StyleSheet.create({
   stepperText: {
     fontSize: 20,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.accentText,
   },
   stepperValueContainer: {
     width: 60,
