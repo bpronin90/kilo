@@ -1,0 +1,220 @@
+// Profile writes must not fail silently (#909).
+//
+// Two flows, both of which used to swallow a rejected write:
+//   - the Settings weight-unit selector, which caught and discarded the
+//     saveProfile rejection, leaving the tab claiming a persisted choice that
+//     reverts on the next launch;
+//   - the Profile screen's destructive `Clear All`, which awaited clearAll()
+//     with no catch at all — an unhandled rejection, no report, and a screen
+//     that stays populated.
+//
+// These tests drive the real screens with a rejecting hook and assert what the
+// user can actually see and reach: the in-place report, a retry that does not
+// require switching units and back, a session preference that is not rolled
+// back, and an unchanged success path.
+
+import React from 'react';
+import renderer, { act } from 'react-test-renderer';
+
+jest.mock('@expo/vector-icons/MaterialIcons', () => ({ __esModule: true, default: () => null }), { virtual: true });
+
+jest.mock('@react-native-community/datetimepicker', () => {
+  const ReactLocal = require('react');
+  const { View } = require('react-native');
+  return function MockDateTimePicker(props) {
+    return ReactLocal.createElement(View, props);
+  };
+});
+
+// The reminder card's storage/scheduler dependencies are irrelevant here.
+jest.mock('../components/ReminderSettingsCard', () => ({ ReminderSettingsCard: () => null }));
+
+jest.mock('../lib/platformAlert', () => ({ Alert: { alert: jest.fn() } }));
+
+const mockSaveProfile = jest.fn();
+const mockClearProfile = jest.fn();
+const mockProfileState = { profile: { display_name: 'Ben', sex: 'male' }, loading: false };
+
+jest.mock('../hooks/useEntries', () => ({
+  useFeatureToggles: () => ({
+    fatigueTrackingEnabled: true,
+    deloadModeEnabled: false,
+    setFatigueTrackingEnabled: jest.fn(),
+    setDeloadModeEnabled: jest.fn(),
+  }),
+  useUserProfile: () => ({
+    profile: mockProfileState.profile,
+    loading: mockProfileState.loading,
+    save: mockSaveProfile,
+    clear: mockClearProfile,
+  }),
+}));
+
+import { Alert } from '../lib/platformAlert';
+import { SettingsScreen } from '../components/SettingsScreen';
+import { ProfileScreen } from '../components/ProfileScreen';
+import { getWeightUnit, __resetWeightUnitForTests } from '../lib/unitPreference';
+
+beforeEach(() => {
+  __resetWeightUnitForTests();
+  mockSaveProfile.mockReset().mockResolvedValue({});
+  mockClearProfile.mockReset().mockResolvedValue(undefined);
+  mockProfileState.profile = { display_name: 'Ben', sex: 'male' };
+  mockProfileState.loading = false;
+  Alert.alert.mockReset();
+});
+
+function allTexts(root) {
+  return root.findAllByType('Text').map((t) => {
+    const c = t.props.children;
+    return Array.isArray(c) ? c.join('') : String(c ?? '');
+  });
+}
+
+function pressableByLabel(root, label) {
+  return root.findAll((n) => n.props?.accessibilityLabel === label && typeof n.props?.onPress === 'function')[0];
+}
+
+async function renderSettings() {
+  let component;
+  await act(async () => {
+    component = renderer.create(
+      <SettingsScreen onBack={() => {}} multiplier={1.07} onUpdate={() => {}} />
+    );
+  });
+  return component;
+}
+
+async function press(node) {
+  await act(async () => {
+    await node.props.onPress();
+  });
+}
+
+describe('Settings weight unit — failed save is reported in place', () => {
+  test('a rejected save reports the failure next to the control and says the choice is session-only', async () => {
+    mockSaveProfile.mockRejectedValue(new Error('offline'));
+    const component = await renderSettings();
+
+    await press(pressableByLabel(component.root, 'Show weights in kilograms'));
+
+    const message = allTexts(component.root).find((t) => t.startsWith("Couldn't save the weight unit"));
+    expect(message).toBeDefined();
+    expect(message).toContain('kg applies for this session');
+    expect(message).toContain('will revert the next time you open the app');
+  });
+
+  test('the session preference is not rolled back and the selected tab still matches it', async () => {
+    mockSaveProfile.mockRejectedValue(new Error('offline'));
+    const component = await renderSettings();
+
+    await press(pressableByLabel(component.root, 'Show weights in kilograms'));
+
+    expect(getWeightUnit()).toBe('kg');
+    const kgTab = pressableByLabel(component.root, 'Show weights in kilograms');
+    expect(kgTab.props.accessibilityState.selected).toBe(true);
+  });
+
+  test('Retry is reachable from the report and re-attempts the same unit', async () => {
+    mockSaveProfile.mockRejectedValue(new Error('offline'));
+    const component = await renderSettings();
+    await press(pressableByLabel(component.root, 'Show weights in kilograms'));
+
+    mockSaveProfile.mockReset().mockResolvedValue({});
+    await press(pressableByLabel(component.root, 'Retry'));
+
+    expect(mockSaveProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ unit_system: 'metric' })
+    );
+    expect(allTexts(component.root).some((t) => t.startsWith("Couldn't save the weight unit"))).toBe(false);
+    expect(getWeightUnit()).toBe('kg');
+  });
+
+  test('re-tapping the already-selected tab retries, without switching to the other unit first', async () => {
+    mockSaveProfile.mockRejectedValue(new Error('offline'));
+    const component = await renderSettings();
+    await press(pressableByLabel(component.root, 'Show weights in kilograms'));
+    expect(mockSaveProfile).toHaveBeenCalledTimes(1);
+
+    await press(pressableByLabel(component.root, 'Show weights in kilograms'));
+
+    expect(mockSaveProfile).toHaveBeenCalledTimes(2);
+    expect(mockSaveProfile).toHaveBeenLastCalledWith(
+      expect.objectContaining({ unit_system: 'metric' })
+    );
+  });
+
+  test('a successful save reports nothing, and re-tapping the selected tab stays a no-op', async () => {
+    const component = await renderSettings();
+
+    await press(pressableByLabel(component.root, 'Show weights in kilograms'));
+    expect(mockSaveProfile).toHaveBeenCalledTimes(1);
+    expect(allTexts(component.root).some((t) => t.startsWith("Couldn't save the weight unit"))).toBe(false);
+
+    await press(pressableByLabel(component.root, 'Show weights in kilograms'));
+    expect(mockSaveProfile).toHaveBeenCalledTimes(1);
+  });
+
+  test('switching to the other unit after a failure persists that unit and clears the report', async () => {
+    mockSaveProfile.mockRejectedValue(new Error('offline'));
+    const component = await renderSettings();
+    await press(pressableByLabel(component.root, 'Show weights in kilograms'));
+
+    mockSaveProfile.mockReset().mockResolvedValue({});
+    await press(pressableByLabel(component.root, 'Show weights in pounds'));
+
+    expect(mockSaveProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ unit_system: 'imperial' })
+    );
+    expect(getWeightUnit()).toBe('lb');
+    expect(allTexts(component.root).some((t) => t.startsWith("Couldn't save the weight unit"))).toBe(false);
+  });
+});
+
+describe('Profile Clear All — failed clear is reported and changes nothing', () => {
+  async function renderProfile() {
+    let component;
+    await act(async () => {
+      component = renderer.create(<ProfileScreen onBack={() => {}} />);
+    });
+    return component;
+  }
+
+  // `Clear All` opens a confirm; the destructive button's onPress is the flow
+  // under test.
+  function confirmClear() {
+    const [, , buttons] = Alert.alert.mock.calls[0];
+    return buttons.find((b) => b.text === 'Clear All');
+  }
+
+  test('a rejected clear reports the failure, leaves the profile on screen, and does not reject', async () => {
+    mockClearProfile.mockRejectedValue(new Error('storage failure'));
+    const component = await renderProfile();
+
+    await press(pressableByLabel(component.root, 'Clear All'));
+    const confirm = confirmClear();
+    await act(async () => {
+      // Resolving rather than rejecting is the point: the old code let this
+      // escape as an unhandled rejection.
+      await expect(confirm.onPress()).resolves.toBeUndefined();
+    });
+
+    expect(Alert.alert).toHaveBeenCalledWith('Error', 'Failed to clear profile.');
+    expect(pressableByLabel(component.root, 'Male').props.accessibilityState.selected).toBe(true);
+    expect(getWeightUnit()).toBe('lb');
+  });
+
+  test('a successful clear empties the screen and resets the display unit', async () => {
+    const component = await renderProfile();
+
+    await press(pressableByLabel(component.root, 'Clear All'));
+    await act(async () => {
+      await confirmClear().onPress();
+    });
+
+    expect(mockClearProfile).toHaveBeenCalled();
+    expect(Alert.alert).toHaveBeenCalledTimes(1); // only the confirm
+    expect(pressableByLabel(component.root, 'Male').props.accessibilityState.selected).toBe(false);
+    expect(getWeightUnit()).toBe('lb');
+  });
+});

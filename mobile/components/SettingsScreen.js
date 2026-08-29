@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { ScreenShell } from './ScreenShell';
-import { Card, SectionTitle, Button } from './UI';
+import { Card, SectionTitle, Button, ErrorBanner } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { useFeatureToggles, useUserProfile } from '../hooks/useEntries';
 import { ReminderSettingsCard } from './ReminderSettingsCard';
@@ -22,20 +22,42 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
   const { profile, save: saveProfile, loading: profileLoading } = useUserProfile();
   const weightUnit = useWeightUnit();
   const unitControlsDisabled = !!profileLoading;
+  const [unitSaveFailed, setUnitSaveFailed] = useState(false);
+  const [unitSaving, setUnitSaving] = useState(false);
 
-  const handleSelectUnit = async (nextUnit) => {
-    if (unitControlsDisabled) return;
-    if (nextUnit === weightUnit) return;
-    // Update the in-memory preference first so every surface re-renders
-    // immediately, then persist unit_system on the local profile (the cloud
-    // bootstrap promotion round-trips it for signed-in users).
+  // Update the in-memory preference first so every surface re-renders
+  // immediately, then persist unit_system on the local profile (the cloud
+  // bootstrap promotion round-trips it for signed-in users).
+  //
+  // A failed write is reported in place rather than swallowed (#909). The
+  // session preference is deliberately *not* rolled back — every surface has
+  // already repainted and the user asked for this unit — but the banner below
+  // the control says plainly that the choice is not saved, so the app never
+  // claims a durable change it does not have.
+  const persistUnit = async (nextUnit) => {
+    setUnitSaving(true);
     setWeightUnitPreference(nextUnit);
     try {
       await saveProfile({ ...(profile || {}), unit_system: unitSystemFromUnit(nextUnit) });
+      setUnitSaveFailed(false);
     } catch {
-      // Preference still applies for this session; profile save failures are
-      // non-fatal and will be retried the next time the selector is used.
+      setUnitSaveFailed(true);
+    } finally {
+      setUnitSaving(false);
     }
+  };
+
+  const handleSelectUnit = (nextUnit) => {
+    if (unitControlsDisabled || unitSaving) return undefined;
+    // Re-tapping the tab that is already selected retries an outstanding
+    // failure; with nothing outstanding it stays a no-op.
+    if (nextUnit === weightUnit && !unitSaveFailed) return undefined;
+    return persistUnit(nextUnit);
+  };
+
+  const handleRetryUnitSave = () => {
+    if (unitControlsDisabled || unitSaving) return undefined;
+    return persistUnit(weightUnit);
   };
   const handleIncrement = () => onUpdate(Math.min(2.0, Math.round((multiplier + 0.01) * 100) / 100));
   const handleDecrement = () => onUpdate(Math.max(1, Math.round((multiplier - 0.01) * 100) / 100));
@@ -134,6 +156,15 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
             </Pressable>
           </View>
         </View>
+        {/* Sits inside the Units card, directly under the control it is about,
+            so the failure is read next to the tab that is now lying about
+            being persisted (#909). Card's own gap supplies the spacing. */}
+        {unitSaveFailed && (
+          <ErrorBanner
+            message={`Couldn't save the weight unit. ${weightUnit} applies for this session but will revert the next time you open the app.`}
+            onRetry={handleRetryUnitSave}
+          />
+        )}
       </Card>
 
       <SectionTitle>Advanced</SectionTitle>

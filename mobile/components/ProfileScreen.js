@@ -62,7 +62,15 @@ export function ProfileScreen({ onBack }) {
     Alert.alert('Clear Profile', 'Are you sure you want to clear all profile data?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Clear All', style: 'destructive', onPress: async () => {
-        await clearAll();
+        // Same shape as handleSave: a rejected write is reported and leaves the
+        // screen exactly as it was, instead of producing an unhandled rejection
+        // and a silently unchanged profile (#909).
+        try {
+          await clearAll();
+        } catch (e) {
+          Alert.alert('Error', 'Failed to clear profile.');
+          return;
+        }
         // Clearing the profile removes unit_system, so the display preference
         // falls back to the lb default (#441).
         setWeightUnitPreference('lb');
