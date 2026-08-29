@@ -6,7 +6,7 @@ import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { useFeatureToggles, useUserProfile } from '../hooks/useEntries';
 import { ReminderSettingsCard } from './ReminderSettingsCard';
 import { useWeightUnit, setWeightUnitPreference } from '../lib/unitPreference';
-import { unitSystemFromUnit } from '../lib/units';
+import { unitFromUnitSystem, unitSystemFromUnit } from '../lib/units';
 
 // Appearance choices, in the order the segmented control renders them (#689).
 const APPEARANCE_OPTIONS = [
@@ -15,6 +15,23 @@ const APPEARANCE_OPTIONS = [
   { value: 'system', label: 'System', a11yLabel: 'Follow the device appearance' },
 ];
 
+// The unit whose write failed, held at module scope rather than in screen state
+// because MoreScreen unmounts SettingsScreen the moment the user leaves it. The
+// in-memory preference outlives that unmount, so the report about it has to as
+// well — otherwise returning to Settings shows a tab that silently claims to be
+// persisted again (#909).
+//
+// It deliberately does NOT survive an app restart: hydration re-reads
+// unit_system from the profile on launch, so the preference and the stored
+// value already agree by then.
+let lastFailedUnitSave = null;
+
+// Test-only reset for the module-scoped failure above, mirroring
+// unitPreference's __resetWeightUnitForTests.
+export function __resetUnitSaveStateForTests() {
+  lastFailedUnitSave = null;
+}
+
 export function SettingsScreen({ onBack, multiplier, onUpdate }) {
   const styles = useThemedStyles(createStyles);
   const { preference: appearance, setPreference: setAppearance } = useTheme();
@@ -22,8 +39,32 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
   const { profile, save: saveProfile, loading: profileLoading } = useUserProfile();
   const weightUnit = useWeightUnit();
   const unitControlsDisabled = !!profileLoading;
-  const [unitSaveFailed, setUnitSaveFailed] = useState(false);
+  // Seeded from module scope so an unsaved choice is still reported after the
+  // user leaves Settings and comes back.
+  const [failedUnitSave, setFailedUnitSave] = useState(lastFailedUnitSave);
   const [unitSaving, setUnitSaving] = useState(false);
+
+  // What is actually on disk. `useUserProfile` only advances `profile` on a
+  // successful write, and re-reads it from storage on mount, so this stays the
+  // durable truth across a remount.
+  const persistedUnit = unitFromUnitSystem(profile?.unit_system);
+
+  // Report only a choice that both failed to write AND still differs from what
+  // is stored. The mismatch is what makes the "reverts on next launch" claim
+  // true: failing to write `lb` when `lb` is already the stored value changes
+  // nothing the user needs to know about, so it says nothing (#909 review).
+  // Requiring the failure too keeps a sync-pulled unit_system (syncAdapter
+  // merges one straight into the profile) from being misreported as a failed
+  // save.
+  const unitSaveFailed = !profileLoading
+    && !unitSaving
+    && failedUnitSave === weightUnit
+    && weightUnit !== persistedUnit;
+
+  const rememberFailedUnitSave = (unit) => {
+    lastFailedUnitSave = unit;
+    setFailedUnitSave(unit);
+  };
 
   // Update the in-memory preference first so every surface re-renders
   // immediately, then persist unit_system on the local profile (the cloud
@@ -39,9 +80,9 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
     setWeightUnitPreference(nextUnit);
     try {
       await saveProfile({ ...(profile || {}), unit_system: unitSystemFromUnit(nextUnit) });
-      setUnitSaveFailed(false);
+      rememberFailedUnitSave(null);
     } catch {
-      setUnitSaveFailed(true);
+      rememberFailedUnitSave(nextUnit);
     } finally {
       setUnitSaving(false);
     }
@@ -161,7 +202,7 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
             being persisted (#909). Card's own gap supplies the spacing. */}
         {unitSaveFailed && (
           <ErrorBanner
-            message={`Couldn't save the weight unit. ${weightUnit} applies for this session but will revert the next time you open the app.`}
+            message={`Couldn't save the weight unit. ${weightUnit} applies for this session, but the app will open in ${persistedUnit} until this saves.`}
             onRetry={handleRetryUnitSave}
           />
         )}

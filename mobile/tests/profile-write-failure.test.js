@@ -35,6 +35,20 @@ const mockSaveProfile = jest.fn();
 const mockClearProfile = jest.fn();
 const mockProfileState = { profile: { display_name: 'Ben', sex: 'male' }, loading: false };
 
+// The real useUserProfile advances `profile` to the saved record on success and
+// leaves it untouched on rejection. The screen's "is this actually stored?"
+// check reads that field, so the mock has to behave the same way.
+function resolveSave() {
+  mockSaveProfile.mockReset().mockImplementation(async (next) => {
+    mockProfileState.profile = { ...next };
+    return mockProfileState.profile;
+  });
+}
+
+function rejectSave() {
+  mockSaveProfile.mockReset().mockRejectedValue(new Error('offline'));
+}
+
 jest.mock('../hooks/useEntries', () => ({
   useFeatureToggles: () => ({
     fatigueTrackingEnabled: true,
@@ -51,16 +65,17 @@ jest.mock('../hooks/useEntries', () => ({
 }));
 
 import { Alert } from '../lib/platformAlert';
-import { SettingsScreen } from '../components/SettingsScreen';
+import { SettingsScreen, __resetUnitSaveStateForTests } from '../components/SettingsScreen';
 import { ProfileScreen } from '../components/ProfileScreen';
 import { getWeightUnit, __resetWeightUnitForTests } from '../lib/unitPreference';
 
 beforeEach(() => {
   __resetWeightUnitForTests();
-  mockSaveProfile.mockReset().mockResolvedValue({});
-  mockClearProfile.mockReset().mockResolvedValue(undefined);
-  mockProfileState.profile = { display_name: 'Ben', sex: 'male' };
+  __resetUnitSaveStateForTests();
+  mockProfileState.profile = { display_name: 'Ben', sex: 'male', unit_system: 'imperial' };
   mockProfileState.loading = false;
+  resolveSave();
+  mockClearProfile.mockReset().mockResolvedValue(undefined);
   Alert.alert.mockReset();
 });
 
@@ -91,21 +106,27 @@ async function press(node) {
   });
 }
 
+const REPORT_PREFIX = "Couldn't save the weight unit";
+
+function unitReport(component) {
+  return allTexts(component.root).find((t) => t.startsWith(REPORT_PREFIX));
+}
+
 describe('Settings weight unit — failed save is reported in place', () => {
-  test('a rejected save reports the failure next to the control and says the choice is session-only', async () => {
-    mockSaveProfile.mockRejectedValue(new Error('offline'));
+  test('a rejected save reports the failure next to the control, naming both the session unit and the stored one', async () => {
+    rejectSave();
     const component = await renderSettings();
 
     await press(pressableByLabel(component.root, 'Show weights in kilograms'));
 
-    const message = allTexts(component.root).find((t) => t.startsWith("Couldn't save the weight unit"));
+    const message = unitReport(component);
     expect(message).toBeDefined();
     expect(message).toContain('kg applies for this session');
-    expect(message).toContain('will revert the next time you open the app');
+    expect(message).toContain('the app will open in lb until this saves');
   });
 
   test('the session preference is not rolled back and the selected tab still matches it', async () => {
-    mockSaveProfile.mockRejectedValue(new Error('offline'));
+    rejectSave();
     const component = await renderSettings();
 
     await press(pressableByLabel(component.root, 'Show weights in kilograms'));
@@ -116,22 +137,22 @@ describe('Settings weight unit — failed save is reported in place', () => {
   });
 
   test('Retry is reachable from the report and re-attempts the same unit', async () => {
-    mockSaveProfile.mockRejectedValue(new Error('offline'));
+    rejectSave();
     const component = await renderSettings();
     await press(pressableByLabel(component.root, 'Show weights in kilograms'));
 
-    mockSaveProfile.mockReset().mockResolvedValue({});
+    resolveSave();
     await press(pressableByLabel(component.root, 'Retry'));
 
     expect(mockSaveProfile).toHaveBeenCalledWith(
       expect.objectContaining({ unit_system: 'metric' })
     );
-    expect(allTexts(component.root).some((t) => t.startsWith("Couldn't save the weight unit"))).toBe(false);
+    expect(unitReport(component)).toBeUndefined();
     expect(getWeightUnit()).toBe('kg');
   });
 
   test('re-tapping the already-selected tab retries, without switching to the other unit first', async () => {
-    mockSaveProfile.mockRejectedValue(new Error('offline'));
+    rejectSave();
     const component = await renderSettings();
     await press(pressableByLabel(component.root, 'Show weights in kilograms'));
     expect(mockSaveProfile).toHaveBeenCalledTimes(1);
@@ -149,25 +170,74 @@ describe('Settings weight unit — failed save is reported in place', () => {
 
     await press(pressableByLabel(component.root, 'Show weights in kilograms'));
     expect(mockSaveProfile).toHaveBeenCalledTimes(1);
-    expect(allTexts(component.root).some((t) => t.startsWith("Couldn't save the weight unit"))).toBe(false);
+    expect(unitReport(component)).toBeUndefined();
 
     await press(pressableByLabel(component.root, 'Show weights in kilograms'));
     expect(mockSaveProfile).toHaveBeenCalledTimes(1);
   });
 
   test('switching to the other unit after a failure persists that unit and clears the report', async () => {
-    mockSaveProfile.mockRejectedValue(new Error('offline'));
+    rejectSave();
     const component = await renderSettings();
     await press(pressableByLabel(component.root, 'Show weights in kilograms'));
 
-    mockSaveProfile.mockReset().mockResolvedValue({});
+    resolveSave();
     await press(pressableByLabel(component.root, 'Show weights in pounds'));
 
     expect(mockSaveProfile).toHaveBeenCalledWith(
       expect.objectContaining({ unit_system: 'imperial' })
     );
     expect(getWeightUnit()).toBe('lb');
-    expect(allTexts(component.root).some((t) => t.startsWith("Couldn't save the weight unit"))).toBe(false);
+    expect(unitReport(component)).toBeUndefined();
+  });
+});
+
+// Both cases below come from the #909 review of af745361.
+describe('Settings weight unit — the report tracks what is stored, not one screen mount', () => {
+  test('leaving and re-entering Settings still reports the unsaved unit, and re-tapping it retries', async () => {
+    rejectSave();
+    const first = await renderSettings();
+    await press(pressableByLabel(first.root, 'Show weights in kilograms'));
+    expect(unitReport(first)).toBeDefined();
+
+    // MoreScreen unmounts SettingsScreen on Back; the module-level preference
+    // survives, so the report about it has to survive too.
+    await act(async () => { first.unmount(); });
+    const second = await renderSettings();
+
+    expect(getWeightUnit()).toBe('kg');
+    expect(unitReport(second)).toBeDefined();
+
+    resolveSave();
+    await press(pressableByLabel(second.root, 'Show weights in kilograms'));
+    expect(mockSaveProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ unit_system: 'metric' })
+    );
+    expect(unitReport(second)).toBeUndefined();
+  });
+
+  test('failing to write the unit that is already stored promises no reversion', async () => {
+    rejectSave();
+    const component = await renderSettings();
+    // lb is what is stored; go to kg (fails), then back to lb (also fails).
+    await press(pressableByLabel(component.root, 'Show weights in kilograms'));
+    expect(unitReport(component)).toBeDefined();
+
+    await press(pressableByLabel(component.root, 'Show weights in pounds'));
+
+    // The write failed, but lb is the stored value: nothing will revert, so
+    // there is nothing to claim.
+    expect(getWeightUnit()).toBe('lb');
+    expect(unitReport(component)).toBeUndefined();
+  });
+
+  test('a profile whose stored unit was never written by this screen is not misreported as a failed save', async () => {
+    // e.g. syncAdapter merging a pulled unit_system straight into the profile.
+    mockProfileState.profile = { display_name: 'Ben', unit_system: 'metric' };
+    const component = await renderSettings();
+
+    expect(getWeightUnit()).toBe('lb');
+    expect(unitReport(component)).toBeUndefined();
   });
 });
 
