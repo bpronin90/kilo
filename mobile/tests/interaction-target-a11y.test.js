@@ -47,6 +47,19 @@ jest.mock('../storage/entries', () => ({
   saveWorkoutReminder: jest.fn(async () => {}),
 }));
 
+// LogRecoverySection calls `useRecoveryBlockLifecycle` at render for the two
+// single-field writes it owns (inclusion, reason). Neither is exercised here,
+// so the hook is stubbed rather than dragging recovery storage into a
+// target-geometry test. The two message constants come from the same module.
+jest.mock('../hooks/entries/recoveryBlockHooks', () => ({
+  RECOVERY_STALE_MESSAGE: 'Recovery may be out of date.',
+  RECOVERY_UNVERIFIED_MESSAGE: 'Recovery could not be read.',
+  useRecoveryBlockLifecycle: () => ({
+    setIncludeInNormalAnalytics: jest.fn(),
+    setBlockReason: jest.fn(),
+  }),
+}));
+
 jest.mock('../lib/reminderScheduler', () => ({
   remindersSupported: jest.fn(() => true),
   requestReminderPermission: jest.fn(async () => true),
@@ -66,6 +79,7 @@ import { ReminderSettingsCard } from '../components/ReminderSettingsCard';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { AnalyticsFatigueCard } from '../components/AnalyticsFatigueCard';
 import { AnalyticsBig3MappingCard } from '../components/AnalyticsStrengthSection';
+import { LogRecoverySection } from '../components/LogRecoverySection';
 import { formatCheckInDate } from '../lib/AnalyticsScreenHelpers';
 
 const MIN_TARGET = 44;
@@ -395,5 +409,113 @@ describe('Big 3 mapping rows', () => {
     const other = pressableByLabel(tree.root, 'Use Back Squat for Bench');
     expect(other.props.accessibilityState).toEqual({ selected: false });
     expectTarget(other);
+  });
+});
+
+// Issue 921: Recovery's two expanded-note controls used to sit below the floor
+// — `Edit note` at a fixed 36dp with no slop, and the A/B segment at 32dp with
+// a `hitSlop` of 6 that never applied, because `noteSurfaceHeader` is an
+// unsized row the segment itself was the tallest child of. Both now present a
+// real >=44x44dp box, and neither declares a fixed `height`, so a later style
+// edit that reintroduces either failure fails here.
+describe('Recovery expanded-note controls', () => {
+  const note = {
+    id: 'note-ab',
+    title: 'AB Week',
+    raw_text: 'Monday\n+Lifting\n-Bench\n135 5,5,5',
+  };
+  const block = {
+    id: 'rb-921',
+    baseline_note_id: 'baseline',
+    baseline_note_title: 'Legs Day',
+    started_at: '2026-01-01T00:00:00.000Z',
+    completed_at: null,
+    deleted_at: null,
+  };
+  const week = {
+    id: 'rw-921',
+    block_id: block.id,
+    note_id: note.id,
+    week_number: 1,
+    completed_at: null,
+    deleted_at: null,
+  };
+
+  async function renderExpandedNote() {
+    return renderTree(
+      <LogRecoverySection
+        blocks={[block]}
+        weeks={[week]}
+        notes={[note]}
+        viewingNoteId={note.id}
+        viewingNote={note}
+        viewingNoteDayGroups={[{ heading: 'Monday', sections: [] }]}
+        viewingHasABWeeks
+        viewingEffectiveWeek="A"
+        onViewNote={() => {}}
+        onEditNote={() => {}}
+        onToggleViewingWeek={() => {}}
+      />
+    );
+  }
+
+  test('Edit note clears the target from its own box and can still grow with text', async () => {
+    const tree = await renderExpandedNote();
+    const edit = pressableByLabel(tree.root, 'Edit');
+    expect(edit.props.accessibilityRole).toBe('button');
+    expect(edit.props.hitSlop).toBeUndefined();
+    expectTarget(edit, { width: true });
+
+    const style = StyleSheet.flatten(edit.props.style) || {};
+    expect(style.height).toBeUndefined();
+    expect(style.minHeight).toBe(MIN_TARGET);
+    // The outlined treatment the control has carried since #843 is unchanged.
+    expect(style.borderWidth).toBe(1);
+    expect(style.borderRadius).toBe(10);
+  });
+
+  test('the A/B segment presses through a real 44dp box around its 32dp visual', async () => {
+    const tree = await renderExpandedNote();
+    const segment = pressableByLabel(tree.root, 'Switch to Week B');
+    expect(segment.props.accessibilityRole).toBe('button');
+    expect(segment.props.accessibilityState).toEqual({ selected: false });
+    // The target is the box, never a slop React Native would clip at
+    // `noteSurfaceHeader`'s bounds.
+    expect(segment.props.hitSlop).toBeUndefined();
+    expectTarget(segment, { width: true });
+
+    const targetStyle = StyleSheet.flatten(segment.props.style) || {};
+    expect(targetStyle.height).toBeUndefined();
+
+    // The visual inside it still reads at its designed 32dp, by `minHeight` so
+    // it grows with the user's text scale rather than clipping the letters.
+    const visuals = segment.findAll((node) => {
+      if (typeof node.type !== 'string') return false;
+      const style = StyleSheet.flatten(node.props?.style) || {};
+      return style.minHeight === 32 && style.flexDirection === 'row';
+    }, { deep: true });
+    expect(visuals).toHaveLength(1);
+    expect(StyleSheet.flatten(visuals[0].props.style).height).toBeUndefined();
+  });
+
+  test('the segment reports the selected half it would switch away from', async () => {
+    const tree = await renderTree(
+      <LogRecoverySection
+        blocks={[block]}
+        weeks={[week]}
+        notes={[note]}
+        viewingNoteId={note.id}
+        viewingNote={note}
+        viewingNoteDayGroups={[{ heading: 'Monday', sections: [] }]}
+        viewingHasABWeeks
+        viewingEffectiveWeek="B"
+        onViewNote={() => {}}
+        onEditNote={() => {}}
+        onToggleViewingWeek={() => {}}
+      />
+    );
+    const segment = pressableByLabel(tree.root, 'Switch to Week A');
+    expect(segment.props.accessibilityState).toEqual({ selected: true });
+    expectTarget(segment, { width: true });
   });
 });

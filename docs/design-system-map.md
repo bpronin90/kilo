@@ -853,7 +853,11 @@ Routines panel and restores individually rounded non-current routine cards
 (see Consequences below). #918 is a further owner-authorized exception,
 scoped to text `color` values ONLY, that moves every string the user reads off
 the `accent` mark value onto `accentText` / `chipAccentText` across the Log
-tab, `RecoveryBlockEndModal.js`, and `WorkoutSubheading` in `UI.js`.
+tab, `RecoveryBlockEndModal.js`, and `WorkoutSubheading` in `UI.js`. #921 is a
+further owner-authorized exception, scoped to the effective target geometry of
+exactly two controls in `LogRecoverySection.js` — `Edit note` and the A/B
+segment — and to nothing else: no color, type, spacing, rail, or row-height
+value in the Recovery card changes with it.
 
 The Current routine card remains locked. #843 and #847 do not authorize
 touching it at all; #918 reaches exactly one property on it —
@@ -1055,13 +1059,19 @@ Consequences to preserve:
   unavailable`; a completed row's name gains `, completed`). The expanded body
   is inset in a card-colored, 14px-radius bordered surface with an uppercase
   accent kicker on the left and the Recovery `A`/`B` segment (replacing the
-  former `Week A/B` pill; 32px visual height, documented sub-44dp exception)
+  former `Week A/B` pill; a 32px visual centered in a real 44×44dp target box,
+  so the header row is 44dp tall — **not** a sub-44dp exception, and **not** a
+  `hitSlop`, which #921 removed because `noteSurfaceHeader` clipped it)
   above the content it governs. Note content renders via
   `WorkoutContentRenderer`'s `compact` prop (exercise 14/700; sets
   13/muted/600) — Routine rendering elsewhere stays full-scale. The one
-  expanded-note action is a single 36px outlined `Edit note` control
-  (`accessibilityLabel="Edit"`, unchanged), opening the shared inline editor
-  (#841) on the exact note and A/B half being viewed.
+  expanded-note action is a single outlined `Edit note` control
+  (`accessibilityLabel="Edit"`, unchanged) at `minHeight: 44` since #921, with
+  its 13px label, 1px outline, and 10px radius unchanged, opening the shared
+  inline editor (#841) on the exact note and A/B half being viewed. Neither
+  this control nor the A/B segment declares a fixed `height`, so both grow
+  with the user's text scale (`ui-design-rules.md` §15, which holds the single
+  authoritative sub-44dp exception list — this map records none of its own).
 - **`Manage block` is a sibling card, not a disclosure inside the active card
   (#843, superseding #789's in-card placement).** Its trigger is **never**
   disabled — a locked user can still open it and see why each row is

@@ -11452,18 +11452,28 @@ describe('LogRecoverySection: inline recovery-note editing (#841)', () => {
     expect(textInput(root).props.value).toBe(weekBText);
   });
 
-  // #843 gives the two controls distinct treatments — one 36px outlined
-  // `Edit note` control and a 32px A/B segment — rather than matching pill
-  // styling, so this pins each control's own documented metric instead of
-  // symmetry between them.
-  test('Edit note is a 36px outlined control and the A/B segment is 32px', () => {
+  // #843 gives the two controls distinct treatments — an outlined `Edit note`
+  // control and a 32dp A/B segment — rather than matching pill styling, so
+  // this pins each control's own documented metric instead of symmetry
+  // between them. #921 raised both to the 44dp interaction floor without
+  // changing either treatment: `Edit note` grew its own box, and the segment
+  // kept its 32dp visual inside a real 44dp target box. Neither declares a
+  // fixed `height` any more, so both grow with the user's text scale; the
+  // per-control target contract itself lives in
+  // `interaction-target-a11y.test.js`.
+  test('Edit note is an outlined 44dp control and the A/B segment keeps a 32dp visual in a 44dp box', () => {
     const root = renderInline();
     const editBtn = byLabel(root, 'Edit');
     const weekPill = byLabel(root, 'Switch to Week A');
     const flat = (n) => Object.assign({}, ...(Array.isArray(n.props.style) ? n.props.style : [n.props.style]).filter(Boolean));
-    expect(flat(editBtn).height).toBe(36);
+    expect(flat(editBtn).height).toBeUndefined();
+    expect(flat(editBtn).minHeight).toBe(44);
     expect(flat(editBtn).borderWidth).toBe(1);
-    expect(flat(weekPill).height).toBe(32);
+    expect(flat(weekPill).height).toBeUndefined();
+    expect(flat(weekPill).minHeight).toBe(44);
+    const visual = weekPill.findAll(n => typeof n.type === 'string' && flat(n).minHeight === 32)[0];
+    expect(visual).toBeTruthy();
+    expect(flat(visual).height).toBeUndefined();
   });
 
   test('Save calls through to the owner and returns the block to read mode without collapsing the week', () => {
