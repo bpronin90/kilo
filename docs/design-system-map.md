@@ -841,7 +841,7 @@ Source: `mobile/screens/LogScreen.js`, and the extracted
 `LogScreenEditorCard.js`. The Log style lock spans all of these, not
 `LogScreen.js` alone.
 
-Style lock header at lines 1-7 (`mobile/screens/LogScreen.js`): do not change
+Style lock header at lines 1-46 (`mobile/screens/LogScreen.js`): do not change
 Log styling unless the repo owner explicitly asks. The authorized layout
 exceptions for #710 and #711 are enumerated in that same header block. #843
 is a further owner-authorized exception (the Recovery/Routine redesign
@@ -850,8 +850,15 @@ below), scoped to `styles.tabToggle` in `LogScreen.js` plus
 `LogPreviousRoutines.js`. #847 is a further owner-authorized exception,
 scoped to `LogPreviousRoutines.js` alone, that removes #843's enclosing More
 Routines panel and restores individually rounded non-current routine cards
-(see Consequences below). The Current routine card remains locked — neither
-#843 nor #847 authorizes touching it.
+(see Consequences below). #918 is a further owner-authorized exception,
+scoped to text `color` values ONLY, that moves every string the user reads off
+the `accent` mark value onto `accentText` / `chipAccentText` across the Log
+tab, `RecoveryBlockEndModal.js`, and `WorkoutSubheading` in `UI.js`.
+
+The Current routine card remains locked. #843 and #847 do not authorize
+touching it at all; #918 reaches exactly one property on it —
+`currentNoteTitle`'s ink — and nothing else about that card. No exception to
+date changes any size, weight, spacing, layout, fill, or border value on it.
 
 ### Action hierarchy (#711)
 

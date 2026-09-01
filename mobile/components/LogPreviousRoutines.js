@@ -22,6 +22,12 @@
 //
 // #847 owner-authorized exception to the Log tab's style lock, scoped to this
 // file. The Current routine card remains locked.
+//
+// #918 owner-authorized exception, scoped to text `color` values only:
+// `newRoutineButtonText` and `switchButtonText` take `colors.accentText`, and
+// `inlineSwitchButtonText` — which sits on a `chipBackground` fill — takes
+// `colors.chipAccentText`. The `accent` mark uses here (the `New routine` plus
+// glyph) are unchanged.
 import React, { useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';

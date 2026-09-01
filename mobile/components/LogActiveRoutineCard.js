@@ -3,6 +3,14 @@
 // action lives in the one action strip directly under it. The header stays a
 // press target for collapse/expand; it hosts no controls of its own, so a
 // header can never win a width fight with its own title.
+//
+// This is the Current routine card, which the Log tab's style lock
+// (`screens/LogScreen.js` lines 1-46) holds tighter than the rest of the tab:
+// #843 and #847 explicitly do NOT authorize touching it. The one exception is
+// #918, scoped to text `color` values only — `currentNoteTitle` and
+// `skipWeekStatusText` take `colors.accentText`, and `inlineSwitchButtonText`,
+// which sits on a `chipBackground` fill, takes `colors.chipAccentText`. The
+// card's 4px `accent` border and every other value here remain locked.
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card } from './UI';

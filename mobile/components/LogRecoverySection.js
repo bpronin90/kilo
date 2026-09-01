@@ -15,6 +15,14 @@
 // to this file plus RecoveryBlockEndModal.js and LogPreviousRoutines.js. The
 // Current routine card remains locked. `End recovery block` now opens
 // `RecoveryBlockEndModal` (owned by LogScreen) instead of `Alert.alert`.
+//
+// #918 owner-authorized exception, scoped to text `color` values only:
+// `noteSurfaceKicker`, `editNoteButtonText`, and `reasonEditorSaveText` take
+// `colors.accentText`; `inlineSwitchButtonText`, `abSegmentText`, and
+// `pendingRetryText` sit on a `chipBackground` fill and take
+// `colors.chipAccentText`. Every mark use of `accent` in this file — the
+// primary button's fill, `abSegmentItemActive`, the current-week rail and
+// tint, the edit glyph — is unchanged.
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
