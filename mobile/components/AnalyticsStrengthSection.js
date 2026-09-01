@@ -411,9 +411,11 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 14,
     color: colors.text,
   },
+  // Selected rows take `slotOptionSelected`'s `chipBackground` fill, so the
+  // label needs the chip's own accent ink (#923) rather than `accentText`.
   slotOptionTextSelected: {
     fontWeight: '700',
-    color: colors.accentText,
+    color: colors.chipAccentText,
   },
   slotEmpty: {
     fontSize: 13,

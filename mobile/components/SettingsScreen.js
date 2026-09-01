@@ -274,10 +274,12 @@ const createStyles = (colors) => StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.chipBackground,
   },
+  // `chipAccentText` (#923): the glyphs always sit on `stepperButton`'s
+  // `chipBackground` fill, where `accentText` measures 3.54:1 in dark mode.
   stepperText: {
     fontSize: 20,
     fontWeight: '700',
-    color: colors.accentText,
+    color: colors.chipAccentText,
   },
   stepperValueContainer: {
     width: 60,

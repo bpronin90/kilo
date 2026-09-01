@@ -671,9 +671,11 @@ const createStyles = (colors) => StyleSheet.create({
   loadMorePressed: {
     backgroundColor: colors.chipBackground,
   },
+  // The press swaps the row to `chipBackground`, so the label takes the chip's
+  // accent ink (#923) — `accentText` reads 3.54:1 on that fill in dark mode.
   loadMoreText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.accentText,
+    color: colors.chipAccentText,
   },
 });
