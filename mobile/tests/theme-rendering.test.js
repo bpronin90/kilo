@@ -267,6 +267,9 @@ describe('accessible contrast of themed pairs', () => {
     }
   });
 
+  // `chipBackground` is excluded on purpose: since #918 and #923 no shipping
+  // surface puts `accentText` on a chip fill in any state, so the pairing is
+  // unused rather than tolerated. `chipAccentText` is the ink there.
   test('dark: accent text ink clears 4.5:1 on card, background, and subtleBg', () => {
     const { chipBackground, ...surfaces } = textSurfaces(DarkColors);
     for (const [name, surface] of Object.entries(surfaces)) {
@@ -279,7 +282,9 @@ describe('accessible contrast of themed pairs', () => {
   // over what is behind them, so a pressed row can fade an ink that clears AA
   // at rest below it. This pins the arithmetic that removed the 0.8 fade from
   // `historyRowPressed`/`loadMorePressed` — reintroducing one is not a small
-  // visual tweak.
+  // visual tweak. It still holds for `loadMoreText` after #923 moved it to
+  // `chipAccentText`: light mode's `chipAccentText` is `accentText`'s own value,
+  // so the faded light pairing measured here is that label's exactly.
   test.each(modes)('%s: an 0.8 pressed fade would drop accent copy under AA', (_mode, colors) => {
     const chip = compositeOver(colors.chipBackground, colors.card);
     const fade = (hex) => compositeOver(withAlpha(hex, 0.8), colors.card);
@@ -296,14 +301,16 @@ describe('accessible contrast of themed pairs', () => {
     expect(contrastRatio(fade(chip), fade(LightColors.accentText))).toBeCloseTo(3.4, 1);
   });
 
-  // Recorded gap, not a target. Dark `chipBackground` is the accent itself at
-  // 32% over `card`, so accent-colored copy on it is inherently low-contrast;
-  // the chip's own paired ink is `chipText` (11.11:1). The value is unchanged
-  // from the pre-#908 `accent` and is pinned here so it cannot drift further
-  // without someone deciding to.
-  test('dark accent copy on the dark chip fill is the one recorded gap', () => {
+  // Repurposed from the retired #908 gap note (#923). Dark `chipBackground` is
+  // the accent itself at 32% over `card`, so `accentText` on it is inherently
+  // low-contrast. That is no longer a tolerated gap — it is the reason
+  // `chipAccentText` exists and the reason no shipping surface pairs the two.
+  // The number stays pinned so the shortfall cannot quietly widen, and so a
+  // future author reaching for `accentText` on a chip sees why not.
+  test('accentText is measurably unfit for the dark chip fill', () => {
     const chip = compositeOver(DarkColors.chipBackground, DarkColors.card);
     expect(contrastRatio(chip, DarkColors.accentText)).toBeCloseTo(3.54, 2);
+    expect(contrastRatio(chip, DarkColors.chipAccentText)).toBeGreaterThanOrEqual(4.5);
     expect(contrastRatio(chip, DarkColors.chipText)).toBeGreaterThanOrEqual(4.5);
   });
 
@@ -343,6 +350,33 @@ describe('accessible contrast of themed pairs', () => {
     const chip = compositeOver(colors.chipBackground, colors.card);
     expect(contrastRatio(chip, colors.chipAccentText)).toBeGreaterThanOrEqual(4.5);
     expect(contrastRatio(colors.background, colors.chipAccentText)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // #923: the five surfaces outside the Log tab that still put accent copy on a
+  // chip fill — Settings' stepper glyphs and Recovery's `Retry recovery` always,
+  // the Big 3 slot picker's selected row and the weight history `Load more` row
+  // only in their triggering state, and Home's sync-notice actions. All five now
+  // take `chipAccentText`, which clears the composited chip fill in both modes.
+  test.each(modes)('%s: chip-filled accent copy clears AA on the composited chip fill', (_mode, colors) => {
+    const chip = compositeOver(colors.chipBackground, colors.card);
+    expect(contrastRatio(chip, colors.chipAccentText)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // Home's sync notice is the one dual-fill site: `syncNoticeCard` is
+  // `chipBackground` while a sync is pending and `syncNoticeCardFailed` swaps to
+  // `errorSurface`, with the same action label on both. One ink covers both —
+  // measured rather than assumed, since `errorSurface` is paired with `error`.
+  test('the sync-notice action ink clears AA on both of its fills, in both modes', () => {
+    expect(contrastRatio(LightColors.chipBackground, LightColors.chipAccentText))
+      .toBeCloseTo(5.00, 2);
+    expect(contrastRatio(LightColors.errorSurface, LightColors.chipAccentText))
+      .toBeCloseTo(5.78, 2);
+    expect(contrastRatio(
+      compositeOver(DarkColors.chipBackground, DarkColors.card),
+      DarkColors.chipAccentText,
+    )).toBeCloseTo(6.31, 2);
+    expect(contrastRatio(DarkColors.errorSurface, DarkColors.chipAccentText))
+      .toBeCloseTo(10.03, 2);
   });
 
   test('the light text inks are darker than the mark colors they replace', () => {

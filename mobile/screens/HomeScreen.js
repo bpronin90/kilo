@@ -1015,10 +1015,14 @@ const createStyles = (colors) => StyleSheet.create({
     minHeight: 44,
     justifyContent: 'center',
   },
+  // Dual-surface (#923): the same label renders on `syncNoticeCard`'s
+  // `chipBackground` and on `syncNoticeCardFailed`'s `errorSurface`.
+  // `chipAccentText` clears AA on both in both modes (5.00/6.31 on the chip,
+  // 5.78/10.03 on the error surface), so one ink serves both states.
   syncNoticeActionText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.accentText,
+    color: colors.chipAccentText,
   },
   // Static first-paint placeholder bars.
   skeletonCard: {
