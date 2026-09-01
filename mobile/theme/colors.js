@@ -62,9 +62,13 @@ export const LightColors = {
   // Settings stepper, the Big 3 slot picker's selected row, Recovery's retry
   // button, Home's sync notice, and the history list's pressed rows. At
   // `#96571c`/`#7f6310` that pairing measured 4.33:1/4.31:1 (#915 review).
+  // Those five accent strings carry `chipAccentText` as of #923 — whose light
+  // value is this one — while caution copy still meets the chip directly.
   //
-  // Ratios against card / background / subtleBg / chipBackground:
-  // accentText 6.60 / 5.92 / 6.11 / 5.00, cautionText 7.04 / 6.32 / 6.51 / 5.34.
+  // Ratios against card / background / subtleBg:
+  // accentText 6.60 / 5.92 / 6.11, cautionText 7.04 / 6.32 / 6.51.
+  // `cautionText` also clears `chipBackground` at 5.34; accent copy that can
+  // land on a chip fill uses `chipAccentText` instead, in both modes.
   accentText: '#8a4e15',
   cautionText: '#6f5510',
 
@@ -135,20 +139,23 @@ export const DarkColors = {
 
   // Text ink for accent/caution copy (#908). Dark mode already clears AA with
   // the direct mark values, so these keep them unchanged. Ratios against
-  // card / background / subtleBg / chipBackground: accentText
-  // 6.23 / 7.09 / 5.24 / 3.54, cautionText 9.39 / 10.69 / 7.89 / 5.33.
+  // card / background / subtleBg: accentText 6.23 / 7.09 / 5.24,
+  // cautionText 9.39 / 10.69 / 7.89 — the latter also clears `chipBackground`
+  // at 5.33.
   //
-  // That 3.54:1 is a recorded gap, not a target. Dark `chipBackground` is the
-  // accent at 32% over `card`, so accent-colored copy on it is inherently
-  // low-contrast; the chip's own paired ink is `chipText`. The value is
-  // unchanged from the pre-#908 `accent` and is pinned in
-  // tests/theme-rendering.test.js so it cannot drift further.
+  // `accentText` must not be used on `chipBackground`: it measures 3.54:1
+  // there, because that fill is the accent itself at 32% over `card`, so
+  // accent-colored copy on it is inherently low-contrast. Chip-filled accent
+  // copy takes `chipAccentText` below. As of #923 no shipping surface pairs
+  // the two, so this is a boundary on the token rather than a gap the app
+  // ships; the 3.54:1 stays pinned in tests/theme-rendering.test.js to record
+  // why the pairing is unavailable.
   accentText: '#d98d42',
   cautionText: '#f2b94a',
 
   // Accent copy that can land on a `chipBackground` fill in any state (#918).
-  // `accentText`'s 3.54:1 on that fill is the recorded gap above, so chip-filled
-  // accent copy uses this lighter warm orange instead. No new color: it is
+  // `accentText`'s 3.54:1 on that fill is the shortfall described above, so
+  // chip-filled accent copy uses this lighter warm orange. No new color: it is
   // `chipText`'s own dark value, which is the ink the chip is already paired
   // with — recombined into an accent-copy role that also clears every other
   // surface, so a string that is only *sometimes* on a chip can carry it
