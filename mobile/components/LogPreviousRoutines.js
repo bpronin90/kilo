@@ -306,7 +306,7 @@ const createStyles = (colors) => StyleSheet.create({
   newRoutineButtonText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.accentText,
   },
   // Lightweight collection disclosure (#847): compact text plus glyph, muted
   // ink, 44dp target — no bordered panel or tinted bar of its own, matching
@@ -370,7 +370,7 @@ const createStyles = (colors) => StyleSheet.create({
   inlineSwitchButtonText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.chipAccentText,
   },
   currentNoteContent: {
     paddingHorizontal: 24,
@@ -397,6 +397,6 @@ const createStyles = (colors) => StyleSheet.create({
     borderColor: colors.cardBorder,
   },
   switchButtonText: {
-    color: colors.accent,
+    color: colors.accentText,
   },
 });

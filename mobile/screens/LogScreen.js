@@ -1290,7 +1290,7 @@ export function LogScreen({
                 accessibilityLabel={`Switch to Week ${otherEditor.editingEffectiveWeek === 'B' ? 'A' : 'B'}`}
                 accessibilityState={{ selected: otherEditor.editingEffectiveWeek === 'B' }}
               >
-                <Text style={[styles.modeToggleText, { color: colors.accent }]} accessible={false}>
+                <Text style={[styles.modeToggleText, { color: colors.chipAccentText }]} accessible={false}>
                   Week {otherEditor.editingEffectiveWeek === 'B' ? 'A' : 'B'}
                 </Text>
               </Pressable>
@@ -1510,7 +1510,7 @@ const createStyles = (colors) => StyleSheet.create({
   modeToggleText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.chipAccentText,
   },
   // Neutral navigation strip (#843), restyled from the former accent-filled
   // toggle: a subtle background and card border rather than a chip surface,
@@ -1568,7 +1568,7 @@ const createStyles = (colors) => StyleSheet.create({
   recoveryStartRowText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.accentText,
   },
   // Secondary `Reopen recovery block: {baseline title}` entry point (#839):
   // same outline-row shape as Start, but `textMuted` ink keeps it visibly

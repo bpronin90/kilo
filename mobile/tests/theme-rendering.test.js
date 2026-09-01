@@ -307,6 +307,44 @@ describe('accessible contrast of themed pairs', () => {
     expect(contrastRatio(chip, DarkColors.chipText)).toBeGreaterThanOrEqual(4.5);
   });
 
+  // #918: Log, its modals, and `WorkoutSubheading` moved every accent-colored
+  // string off the mark value. Strings that stay clear of the chip fill take
+  // `accentText`; the seven that can land on `chipBackground` in some state
+  // take `chipAccentText`, which is the ink that clears AA on that fill in
+  // *both* modes — the gap pinned directly above is why `accentText` cannot.
+  test.each(modes)('%s: chip accent text ink clears 4.5:1 on every surface, chip fill included', (_mode, colors) => {
+    for (const [name, surface] of Object.entries(textSurfaces(colors))) {
+      expect({ name, ok: contrastRatio(surface, colors.chipAccentText) >= 4.5 })
+        .toEqual({ name, ok: true });
+    }
+  });
+
+  test('chipAccentText clears the chip fill by a recorded margin in both modes', () => {
+    expect(contrastRatio(LightColors.chipBackground, LightColors.chipAccentText))
+      .toBeCloseTo(5.00, 2);
+    expect(contrastRatio(
+      compositeOver(DarkColors.chipBackground, DarkColors.card),
+      DarkColors.chipAccentText,
+    )).toBeCloseTo(6.31, 2);
+  });
+
+  // No new color was invented: each half is an already-approved #689/#908
+  // value, recombined so one role name clears AA on the chip in both modes.
+  test('chipAccentText recombines approved values rather than adding one', () => {
+    expect(LightColors.chipAccentText).toBe(LightColors.accentText);
+    expect(DarkColors.chipAccentText).toBe(DarkColors.chipText);
+  });
+
+  // The two dual-surface strings (#918): `modeToggleText` renders on the
+  // `modeToggle` chip fill and, as `modeToggleOutline`, transparent over
+  // `background`; `optionCurrent` renders on `optionRow`'s `background` and on
+  // `optionRowSelected`'s `chipBackground`. Both must clear AA on both.
+  test.each(modes)('%s: the dual-surface accent strings clear AA on both of their surfaces', (_mode, colors) => {
+    const chip = compositeOver(colors.chipBackground, colors.card);
+    expect(contrastRatio(chip, colors.chipAccentText)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(colors.background, colors.chipAccentText)).toBeGreaterThanOrEqual(4.5);
+  });
+
   test('the light text inks are darker than the mark colors they replace', () => {
     expect(relativeLuminance(LightColors.accentText))
       .toBeLessThan(relativeLuminance(LightColors.accent));

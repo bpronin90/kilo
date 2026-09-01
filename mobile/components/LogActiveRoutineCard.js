@@ -218,7 +218,7 @@ const createStyles = (colors) => StyleSheet.create({
   currentNoteTitle: {
     fontSize: 24,
     fontWeight: '800',
-    color: colors.accent,
+    color: colors.accentText,
   },
   otherNoteSub: {
     fontSize: 12,
@@ -258,7 +258,7 @@ const createStyles = (colors) => StyleSheet.create({
   inlineSwitchButtonText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.chipAccentText,
   },
   currentNoteContent: {
     paddingHorizontal: 24,
@@ -304,7 +304,7 @@ const createStyles = (colors) => StyleSheet.create({
   },
   skipWeekStatusText: {
     fontSize: 11,
-    color: colors.accent,
+    color: colors.accentText,
     marginBottom: 8,
     marginTop: -4,
   },

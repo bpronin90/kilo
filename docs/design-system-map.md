@@ -82,6 +82,7 @@ modes. Every ratio below is asserted automatically in
 | `onAccent` | `#221c17` | `#100f1a` | Label on small accent-filled controls (segmented tabs, confirm, checkmarks) — 6.29:1 / 7.09:1 |
 | `accentText` | `#8a4e15` | `#d98d42` | Accent-colored **copy** on `card` / `background` / `subtleBg` / `chipBackground` — 6.60:1, 5.92:1, 6.11:1, 5.00:1 / 6.23:1, 7.09:1, 5.24:1, *3.54:1* |
 | `cautionText` | `#6f5510` | `#f2b94a` | Caution-colored **copy** on `card` / `background` / `subtleBg` / `chipBackground` — 7.04:1, 6.32:1, 6.51:1, 5.34:1 / 9.39:1, 10.69:1, 7.89:1, 5.33:1 |
+| `chipAccentText` | `#8a4e15` | `#ffc98a` | Accent-colored **copy** that can land on a `chipBackground` fill in any state (#918) — `card` / `background` / `subtleBg` / `chipBackground` — 6.60:1, 5.92:1, 6.11:1, 5.00:1 / 11.11:1, 12.64:1, 9.33:1, 6.31:1 |
 | `errorSurface` | `#fdeceb` | `#3a1f1c` | Tinted error surface, label `error` — 5.26:1 / 5.20:1 |
 | `cautionSurface` | `#f7ecd2` | `#2e2717` | Tinted caution surface (fatigue alert) — see `cautionSurfaceText` |
 | `cautionSurfaceText` | `#7f6310` | `#f2b94a` | Ink on `cautionSurface` — 4.84:1 / 8.33:1 |
@@ -122,6 +123,16 @@ inherently low-contrast; the chip's own paired ink is `chipText` (11.11:1). The
 value is unchanged from the pre-#908 `accent` and is pinned in
 `mobile/tests/theme-rendering.test.js` so it cannot drift further. Light mode
 clears it at 5.00:1.
+
+`chipAccentText` is the ink for **new** chip-filled accent copy — it clears AA on
+that fill in both modes (5.00:1 / 6.31:1), and on every other text surface too,
+so a string that sits on a chip in only *some* state carries it in all of them.
+It invents no color: light is `accentText`'s light value, dark is `chipText`'s
+dark value. The five sites that still ship `accentText` on a `chipBackground`
+fill — `SettingsScreen.js` `stepperText`, `AnalyticsStrengthSection.js`
+`slotOptionTextSelected`, `AnalyticsRecoverySection.js` `stateRetryText`,
+`WeightHistoryList.js` `loadMoreText` (pressed), and `HomeScreen.js`
+`syncNoticeActionText` — are pre-existing and are contracted in #923.
 
 **Known gap:** `chipText` on `chipBackground` in light mode measures 4.33:1,
 just under AA for normal text. Both values are contractually fixed by the #689
@@ -1108,7 +1119,7 @@ Consequences to preserve:
 |---|---|---|---|
 | Current note title | fontSize | `24` | `LogActiveRoutineCard.js` |
 | | fontWeight | `800` | `LogActiveRoutineCard.js` |
-| | color | `colors.accent` | `LogActiveRoutineCard.js` |
+| | color | `colors.accentText` (#918) | `LogActiveRoutineCard.js` |
 | Current routine card | borderWidth | `4`, `colors.accent` on all sides | `LogActiveRoutineCard.js` |
 | | padding | `0` | `LogActiveRoutineCard.js` |
 | Other note title | fontSize | `17` | `LogPreviousRoutines.js:337` |
@@ -1120,14 +1131,14 @@ Consequences to preserve:
 | | textTransform | `capitalize` | UI.js:645 |
 | WorkoutSubheading (UI.js) | fontSize | `14` | UI.js:655 |
 | | fontWeight | `700` | UI.js:656 |
-| | color | `colors.accent` | UI.js:657 |
+| | color | `colors.accentText` (#918) | UI.js:657 |
 | | textTransform | `uppercase` | UI.js:658 |
 | Exercise name (UI.js) | fontSize | `17` | UI.js:678 |
 | | fontWeight | `700` | UI.js:679 |
 | Set row font size (UI.js) | fontSize | `14` (`SET_ROW_FONT_SIZE`) | UI.js:8 |
 | Mode toggle ("Done") | fontSize | `14` | `LogScreen.js:744` |
 | | fontWeight | `700` | `LogScreen.js:745` |
-| | color | `colors.accent` | `LogScreen.js:746` |
+| | color | `colors.chipAccentText` (#918 — sits on the chip fill) | `LogScreen.js:746` |
 | | bg | `colors.chipBackground` | `LogScreen.js:741` |
 | | borderRadius | `12` | `LogScreen.js:740` |
 | Input field | fontSize | `16` | `LogScreenEditorCard.js:626` |
@@ -1236,7 +1247,7 @@ Four different sizes for the same role (metadata label above a value). The `10px
 | Home | Weight value, sparkline, CTA text, CTA chevron, 1K total, wordmark SVG |
 | Analytics | Weight value, 1K total, pace badge bg, loading spinners |
 | Weight | Goal display values, save button bg, edit title, delta notable |
-| Log | Current note title, subheadings, mode toggle, switch/create buttons |
+| Log | Current routine card border, the primary-action fill, A/B active segment, dots and glyphs. Its **copy** — current note title, subheadings, mode toggle, switch/create buttons — moved to `accentText` / `chipAccentText` in #918 |
 
 Home has the highest orange density — 6 distinct elements. The wordmark is fixed (brand), but the remaining 5 compete for attention inside a single scroll view.
 
