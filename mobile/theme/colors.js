@@ -68,6 +68,16 @@ export const LightColors = {
   accentText: '#8a4e15',
   cautionText: '#6f5510',
 
+  // Accent copy that can land on a `chipBackground` fill in any state (#918).
+  // Light mode already clears AA there with `accentText`, so this is the same
+  // value; the token exists because dark mode needs a different one and a
+  // string must carry one role name across both palettes. No new color: this
+  // half is `accentText`'s own light value.
+  //
+  // Ratios against card / background / subtleBg / chipBackground:
+  // 6.60 / 5.92 / 6.11 / 5.00.
+  chipAccentText: '#8a4e15',
+
   // Tinted (not filled) status surfaces. Labels are `error` and
   // `cautionSurfaceText`: error 5.26:1, caution 4.84:1.
   errorSurface: '#fdeceb',
@@ -135,6 +145,18 @@ export const DarkColors = {
   // tests/theme-rendering.test.js so it cannot drift further.
   accentText: '#d98d42',
   cautionText: '#f2b94a',
+
+  // Accent copy that can land on a `chipBackground` fill in any state (#918).
+  // `accentText`'s 3.54:1 on that fill is the recorded gap above, so chip-filled
+  // accent copy uses this lighter warm orange instead. No new color: it is
+  // `chipText`'s own dark value, which is the ink the chip is already paired
+  // with — recombined into an accent-copy role that also clears every other
+  // surface, so a string that is only *sometimes* on a chip can carry it
+  // everywhere.
+  //
+  // Ratios against card / background / subtleBg / chipBackground:
+  // 11.11 / 12.64 / 9.33 / 6.31.
+  chipAccentText: '#ffc98a',
 
   // Tinted status surfaces: error 5.20:1, caution 8.33:1.
   errorSurface: '#3a1f1c',

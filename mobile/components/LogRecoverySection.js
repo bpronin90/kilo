@@ -15,6 +15,14 @@
 // to this file plus RecoveryBlockEndModal.js and LogPreviousRoutines.js. The
 // Current routine card remains locked. `End recovery block` now opens
 // `RecoveryBlockEndModal` (owned by LogScreen) instead of `Alert.alert`.
+//
+// #918 owner-authorized exception, scoped to text `color` values only:
+// `noteSurfaceKicker`, `editNoteButtonText`, and `reasonEditorSaveText` take
+// `colors.accentText`; `inlineSwitchButtonText`, `abSegmentText`, and
+// `pendingRetryText` sit on a `chipBackground` fill and take
+// `colors.chipAccentText`. Every mark use of `accent` in this file — the
+// primary button's fill, `abSegmentItemActive`, the current-week rail and
+// tint, the edit glyph — is unchanged.
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -1287,7 +1295,7 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
-    color: colors.accent,
+    color: colors.accentText,
   },
   weekNoteBody: {},
   // The inline recovery-note editor (#841): a compact title + text pair, no
@@ -1343,7 +1351,7 @@ const createStyles = (colors) => StyleSheet.create({
   inlineSwitchButtonText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.chipAccentText,
   },
   // The one expanded-note action (#843): a 36px outlined `Edit note` control.
   editNoteButton: {
@@ -1360,7 +1368,7 @@ const createStyles = (colors) => StyleSheet.create({
   editNoteButtonText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.accentText,
   },
   // The Recovery A/B segment (#843): 32px visual height, documented exception
   // to the 44dp floor — hitSlop closes most of the gap, matching the same
@@ -1385,7 +1393,7 @@ const createStyles = (colors) => StyleSheet.create({
   abSegmentText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.chipAccentText,
   },
   abSegmentTextActive: {
     color: colors.onAccent,
@@ -1539,7 +1547,7 @@ const createStyles = (colors) => StyleSheet.create({
   reasonEditorSaveText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.accentText,
   },
   // On-demand inclusion help toggle (#843 review), matching
   // `RecoveryInclusionToggle`'s own info-button box: a real 44dp target, not
@@ -1578,6 +1586,6 @@ const createStyles = (colors) => StyleSheet.create({
   pendingRetryText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.chipAccentText,
   },
 });
