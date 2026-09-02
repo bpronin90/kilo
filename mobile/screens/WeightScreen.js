@@ -479,8 +479,13 @@ export function WeightScreen({
         {editingId && (
           <View style={styles.editingHeader}>
             <Text style={styles.editingTitle}>Editing entry</Text>
-            <Pressable onPress={cancelEdit}>
-              <Text style={styles.cancelText}>Cancel</Text>
+            <Pressable
+              onPress={cancelEdit}
+              style={styles.editorActionTarget}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel"
+            >
+              <Text style={styles.cancelText} accessible={false} importantForAccessibility="no">Cancel</Text>
             </Pressable>
           </View>
         )}
@@ -522,10 +527,11 @@ export function WeightScreen({
                 />
                 <Pressable
                   onPress={() => setNewNoteFieldOpen(false)}
+                  style={styles.editorActionTarget}
                   accessibilityRole="button"
                   accessibilityLabel="Done adding note"
                 >
-                  <Text style={styles.cancelText}>Done</Text>
+                  <Text style={styles.cancelText} accessible={false} importantForAccessibility="no">Done</Text>
                 </Pressable>
               </>
             )}
@@ -548,10 +554,11 @@ export function WeightScreen({
                 />
                 <Pressable
                   onPress={() => setNewDateFieldOpen(false)}
+                  style={styles.editorActionTarget}
                   accessibilityRole="button"
                   accessibilityLabel="Done changing weigh-in date"
                 >
-                  <Text style={styles.cancelText}>Done</Text>
+                  <Text style={styles.cancelText} accessible={false} importantForAccessibility="no">Done</Text>
                 </Pressable>
               </>
             )}
@@ -578,10 +585,11 @@ export function WeightScreen({
                 />
                 <Pressable
                   onPress={() => setEditNoteFieldOpen(false)}
+                  style={styles.editorActionTarget}
                   accessibilityRole="button"
                   accessibilityLabel="Done editing note"
                 >
-                  <Text style={styles.cancelText}>Done</Text>
+                  <Text style={styles.cancelText} accessible={false} importantForAccessibility="no">Done</Text>
                 </Pressable>
               </>
             )}
@@ -601,10 +609,11 @@ export function WeightScreen({
                 />
                 <Pressable
                   onPress={() => setEditDateFieldOpen(false)}
+                  style={styles.editorActionTarget}
                   accessibilityRole="button"
                   accessibilityLabel="Done changing entry date"
                 >
-                  <Text style={styles.cancelText}>Done</Text>
+                  <Text style={styles.cancelText} accessible={false} importantForAccessibility="no">Done</Text>
                 </Pressable>
               </>
             )}
@@ -867,6 +876,17 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '600',
     color: colors.textMuted,
     padding: 4,
+  },
+  // Issue 919: the editing-header Cancel and the four "Done" disclosure
+  // actions are text-only controls. ui-design-rules.md §15 says grow the box
+  // rather than reach for hitSlop (React Native clips a slop at the parent's
+  // bounds), so each carries its own >=44x44dp target while cancelText keeps
+  // its designed 14/600 type and 4dp padding.
+  editorActionTarget: {
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   pickerText: {
     fontSize: 16,

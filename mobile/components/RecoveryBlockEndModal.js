@@ -338,7 +338,7 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
-    color: colors.accent,
+    color: colors.chipAccentText,
   },
   optionCopy: {
     fontSize: 12,

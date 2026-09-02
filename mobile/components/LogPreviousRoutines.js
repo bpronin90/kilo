@@ -22,6 +22,12 @@
 //
 // #847 owner-authorized exception to the Log tab's style lock, scoped to this
 // file. The Current routine card remains locked.
+//
+// #918 owner-authorized exception, scoped to text `color` values only:
+// `newRoutineButtonText` and `switchButtonText` take `colors.accentText`, and
+// `inlineSwitchButtonText` — which sits on a `chipBackground` fill — takes
+// `colors.chipAccentText`. The `accent` mark uses here (the `New routine` plus
+// glyph) are unchanged.
 import React, { useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -306,7 +312,7 @@ const createStyles = (colors) => StyleSheet.create({
   newRoutineButtonText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.accentText,
   },
   // Lightweight collection disclosure (#847): compact text plus glyph, muted
   // ink, 44dp target — no bordered panel or tinted bar of its own, matching
@@ -370,7 +376,7 @@ const createStyles = (colors) => StyleSheet.create({
   inlineSwitchButtonText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.chipAccentText,
   },
   currentNoteContent: {
     paddingHorizontal: 24,
@@ -397,6 +403,6 @@ const createStyles = (colors) => StyleSheet.create({
     borderColor: colors.cardBorder,
   },
   switchButtonText: {
-    color: colors.accent,
+    color: colors.accentText,
   },
 });

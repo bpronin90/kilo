@@ -360,7 +360,11 @@ contained in #710, removed in #711).
   a deliberate, owner-held trade, not an oversight and not a precedent: it
   authorizes nothing else below the floor, and only the owner can extend or
   revoke it. Every other Log control — the editor's `modeToggle` family and
-  `New routine` — reaches 44dp (#905).
+  `New routine` (#905), and Recovery's `Edit note` control and `A`/`B` segment
+  (#921) — reaches 44dp. This list is the whole list:
+  `docs/design-system-map.md` records no sub-44dp exception of its own, and a
+  control the map describes at a smaller visual size (Recovery's 32dp segment)
+  is stating its visual, not its target.
 - **Prefer growing the box:** `minHeight: 44` (plus `minWidth: 44` on a compact
   control) with `justifyContent: 'center'` / `alignItems: 'center'`, so the
   padding and type stay as designed while the box reaches the minimum. This is
@@ -370,7 +374,16 @@ contained in #710, removed in #711).
   parent's bounds, so a slop that grows past a one-line-tall row claims a
   target the control never had (the same finding that shaped #757's info
   button). `ReminderSettingsCard`'s weekday chips keep their 36dp circle
-  centered inside a 44dp-tall grid cell.
+  centered inside a 44dp-tall grid cell, and Recovery's `A`/`B` segment keeps
+  its 32dp visual inside a 44×44dp box for the same reason: its own `hitSlop`
+  of 6 was clipped by `noteSurfaceHeader`, an unsized flex row the 32dp
+  segment itself was the tallest child of, so the slop had nothing to expand
+  into and the effective target stayed 32dp (#921).
+- **A control that must keep a size uses `minHeight`, never `height`.** A fixed
+  `height` freezes the control at the default text scale, so its label clips
+  instead of growing when the user enlarges type. Recovery's `Edit note`
+  control and A/B segment both dropped `height` for `minHeight` under #921;
+  Home's Recovery card holds the same line for every line of copy in it.
 - **A row of fixed-size controls wraps before it shrinks below the minimum.**
   Seven weekday circles across need 308dp of target and a card offers 252dp at
   320dp, so that row is a four-column grid (`width: '25%'`, `flexWrap`) that

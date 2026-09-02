@@ -25,7 +25,25 @@
 // redesign: `styles.tabToggle` and its item styles below are restyled to a
 // neutral navigation strip; `LogRecoverySection.js`, `RecoveryBlockEndModal.js`
 // (new), and `LogPreviousRoutines.js` carry their own approved redesign. The
-// Current routine card remains locked. No other styling exception is authorized.
+// Current routine card remains locked.
+//
+// Authorized exception (#918), the owner-authorized accessibility fix, scoped
+// to text `color` values ONLY: every string the user reads moves off the
+// `colors.accent` mark value, which measures 2.03:1-2.68:1 as light-mode ink
+// against an AA floor of 4.5:1. Strings clear of a chip fill take
+// `colors.accentText`; the seven that can land on `chipBackground` in any state
+// take `colors.chipAccentText`, added by that issue. This covers the `styles`
+// block here, `WorkoutSubheading` in `components/UI.js`, and the Log-tab
+// components `LogActiveRoutineCard.js`, `LogPreviousRoutines.js`,
+// `LogDeloadSection.js`, `LogRecoverySection.js`, and
+// `RecoveryBlockEndModal.js`. It reaches `currentNoteTitle` on the Current
+// routine card, which #843 otherwise locks — the title's ink, and nothing else
+// about that card. No size, weight, spacing, layout, fill, or border value
+// changes, and every mark use of `accent` (fills, borders, dots, rails, icon
+// glyphs) is untouched. Ratios are recorded in `docs/design-system-map.md` and
+// asserted in `mobile/tests/theme-rendering.test.js`.
+//
+// No other styling exception is authorized.
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -1290,7 +1308,7 @@ export function LogScreen({
                 accessibilityLabel={`Switch to Week ${otherEditor.editingEffectiveWeek === 'B' ? 'A' : 'B'}`}
                 accessibilityState={{ selected: otherEditor.editingEffectiveWeek === 'B' }}
               >
-                <Text style={[styles.modeToggleText, { color: colors.accent }]} accessible={false}>
+                <Text style={[styles.modeToggleText, { color: colors.chipAccentText }]} accessible={false}>
                   Week {otherEditor.editingEffectiveWeek === 'B' ? 'A' : 'B'}
                 </Text>
               </Pressable>
@@ -1510,7 +1528,7 @@ const createStyles = (colors) => StyleSheet.create({
   modeToggleText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.chipAccentText,
   },
   // Neutral navigation strip (#843), restyled from the former accent-filled
   // toggle: a subtle background and card border rather than a chip surface,
@@ -1568,7 +1586,7 @@ const createStyles = (colors) => StyleSheet.create({
   recoveryStartRowText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.accentText,
   },
   // Secondary `Reopen recovery block: {baseline title}` entry point (#839):
   // same outline-row shape as Start, but `textMuted` ink keeps it visibly

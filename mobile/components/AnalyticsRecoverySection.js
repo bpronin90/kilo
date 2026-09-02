@@ -1053,10 +1053,12 @@ const createStyles = (colors) => StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.cardBorder,
   },
+  // Always on `stateRetryButton`'s `chipBackground` fill, so it takes the
+  // chip's accent ink (#923).
   stateRetryText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.accentText,
+    color: colors.chipAccentText,
   },
   card: {
     gap: 12,

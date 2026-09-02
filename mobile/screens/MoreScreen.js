@@ -1,8 +1,9 @@
 import React, { useState, useLayoutEffect, useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { ScreenShell } from '../components/ScreenShell';
 import { SectionTitle } from '../components/UI';
-import { useThemedStyles } from '../theme/ThemeContext';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 import { HelpScreen } from '../components/HelpScreen';
 import { AboutScreen } from '../components/AboutScreen';
@@ -36,6 +37,7 @@ export function MoreScreen({
   navSubviewAnchor = null,
   navSubviewKey = 0,
 }) {
+  const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const [activeView, setActiveView] = useState('menu');
 
@@ -160,29 +162,29 @@ export function MoreScreen({
       <View style={styles.list}>
         <Pressable style={styles.menuItem} onPress={() => showView('profile')} accessibilityRole="button" accessibilityLabel="User Profile">
           <Text style={styles.menuItemText}>User Profile</Text>
-          <Text style={styles.menuItemChevron} accessible={false}>→</Text>
+          <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
         </Pressable>
         <Pressable style={styles.menuItem} onPress={() => showView('settings')} accessibilityRole="button" accessibilityLabel="Settings">
           <Text style={styles.menuItemText}>Settings</Text>
-          <Text style={styles.menuItemChevron} accessible={false}>→</Text>
+          <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
         </Pressable>
       </View>
 
       <SectionTitle>Account & Data</SectionTitle>
       <View style={styles.list}>
-        <Pressable style={[styles.menuItem, styles.menuItemRisky]} onPress={() => showView('account')} accessibilityRole="button" accessibilityLabel="Account">
+        <Pressable style={styles.menuItem} onPress={() => showView('account')} accessibilityRole="button" accessibilityLabel="Account">
           <View style={styles.menuCopy}>
             <Text style={styles.menuItemText}>Account</Text>
             <Text style={styles.menuItemHelp}>Sign-in & cloud account</Text>
           </View>
-          <Text style={styles.menuItemChevron} accessible={false}>→</Text>
+          <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
         </Pressable>
-        <Pressable style={[styles.menuItem, styles.menuItemRisky]} onPress={() => showView('backup')} accessibilityRole="button" accessibilityLabel="Data and Backup">
+        <Pressable style={styles.menuItem} onPress={() => showView('backup')} accessibilityRole="button" accessibilityLabel="Data and Backup">
           <View style={styles.menuCopy}>
             <Text style={styles.menuItemText}>Data & Backup</Text>
             <Text style={styles.menuItemHelp}>Local & cloud backup</Text>
           </View>
-          <Text style={styles.menuItemChevron} accessible={false}>→</Text>
+          <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
         </Pressable>
       </View>
 
@@ -190,11 +192,11 @@ export function MoreScreen({
       <View style={styles.list}>
         <Pressable style={styles.menuItem} onPress={() => showView('help')} accessibilityRole="button" accessibilityLabel="App Guide">
           <Text style={styles.menuItemText}>App Guide</Text>
-          <Text style={styles.menuItemChevron} accessible={false}>→</Text>
+          <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
         </Pressable>
         <Pressable style={styles.menuItem} onPress={() => showView('about')} accessibilityRole="button" accessibilityLabel="About Kilo">
           <Text style={styles.menuItemText}>About Kilo</Text>
-          <Text style={styles.menuItemChevron} accessible={false}>→</Text>
+          <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
         </Pressable>
       </View>
     </ScreenShell>
@@ -207,6 +209,7 @@ const createStyles = (colors) => StyleSheet.create({
   },
   menuItem: {
     flexDirection: 'row',
+    minHeight: 44,
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: colors.card,
@@ -214,11 +217,6 @@ const createStyles = (colors) => StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     borderColor: colors.cardBorder,
-  },
-  // Rows that lead to consequential (cloud, destructive) actions: a themed
-  // border tint signals risk before tapping in, alongside the subtitle copy.
-  menuItemRisky: {
-    borderColor: colors.error,
   },
   menuCopy: {
     flex: 1,
@@ -232,12 +230,5 @@ const createStyles = (colors) => StyleSheet.create({
   menuItemHelp: {
     fontSize: 13,
     color: colors.textMuted,
-  },
-  menuItemChevron: {
-    fontSize: 18,
-    color: colors.textMuted,
-    fontWeight: '700',
-    flexShrink: 0,
-    marginLeft: 12,
   },
 });

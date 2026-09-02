@@ -1405,6 +1405,7 @@ describe('ongoing profile/toggles/goal/deload sync (issue #489)', () => {
     await Storage.saveFatigueMultiplier(1.15);
     await Storage.saveUserProfile({ display_name: 'Ben', unit_system: 'lb' });
     await Storage.saveWeightDateEditEnabled(true);
+    await Storage.saveFatigueTrackingEnabled(true);
     await Storage.saveDeloadModeEnabled(false);
     await Storage.saveWeightGoal({
       target_weight: 175,

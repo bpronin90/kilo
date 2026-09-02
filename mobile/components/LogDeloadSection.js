@@ -397,7 +397,7 @@ const createStyles = (colors) => StyleSheet.create({
   currentNoteTitle: {
     fontSize: 24,
     fontWeight: '800',
-    color: colors.accent,
+    color: colors.accentText,
   },
   otherNoteSub: {
     fontSize: 12,
@@ -422,7 +422,7 @@ const createStyles = (colors) => StyleSheet.create({
     borderColor: colors.cardBorder,
   },
   generateButtonText: {
-    color: colors.accent,
+    color: colors.accentText,
   },
   deloadEmpty: {
     marginTop: 40,
@@ -463,7 +463,7 @@ const createStyles = (colors) => StyleSheet.create({
     borderColor: colors.cardBorder,
   },
   switchButtonText: {
-    color: colors.accent,
+    color: colors.accentText,
   },
   ordinalOverlay: {
     flex: 1,

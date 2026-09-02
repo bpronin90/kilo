@@ -80,8 +80,9 @@ modes. Every ratio below is asserted automatically in
 | `cardErrorBg` | `#b03a2e` | `#8a2f24` | Filled error tone, label `textLight` — 5.59:1 / 7.40:1 |
 | `buttonLabel` | `#faf6f0` | `#100f1a` | Label on the shared Button (background is `text`) — 15.65:1 / 16.81:1 |
 | `onAccent` | `#221c17` | `#100f1a` | Label on small accent-filled controls (segmented tabs, confirm, checkmarks) — 6.29:1 / 7.09:1 |
-| `accentText` | `#8a4e15` | `#d98d42` | Accent-colored **copy** on `card` / `background` / `subtleBg` / `chipBackground` — 6.60:1, 5.92:1, 6.11:1, 5.00:1 / 6.23:1, 7.09:1, 5.24:1, *3.54:1* |
+| `accentText` | `#8a4e15` | `#d98d42` | Accent-colored **copy** on `card` / `background` / `subtleBg` — 6.60:1, 5.92:1, 6.11:1 / 6.23:1, 7.09:1, 5.24:1. Never on a chip fill: use `chipAccentText` |
 | `cautionText` | `#6f5510` | `#f2b94a` | Caution-colored **copy** on `card` / `background` / `subtleBg` / `chipBackground` — 7.04:1, 6.32:1, 6.51:1, 5.34:1 / 9.39:1, 10.69:1, 7.89:1, 5.33:1 |
+| `chipAccentText` | `#8a4e15` | `#ffc98a` | Accent-colored **copy** that can land on a `chipBackground` fill in any state (#918, #923) — `card` / `background` / `subtleBg` / `chipBackground` / `errorSurface` — 6.60:1, 5.92:1, 6.11:1, 5.00:1, 5.78:1 / 11.11:1, 12.64:1, 9.33:1, 6.31:1, 10.03:1 |
 | `errorSurface` | `#fdeceb` | `#3a1f1c` | Tinted error surface, label `error` — 5.26:1 / 5.20:1 |
 | `cautionSurface` | `#f7ecd2` | `#2e2717` | Tinted caution surface (fatigue alert) — see `cautionSurfaceText` |
 | `cautionSurfaceText` | `#7f6310` | `#f2b94a` | Ink on `cautionSurface` — 4.84:1 / 8.33:1 |
@@ -109,6 +110,8 @@ because accent and caution copy also lands on `chipBackground`: the Settings
 stepper, the Big 3 slot picker's selected row, Recovery's retry button, Home's
 sync notice, and the weight history list's pressed rows. A new pairing must be
 measured against every surface the string can sit on, pressed states included.
+Those five accent strings now carry `chipAccentText` rather than `accentText`
+(#923); the rule that produced the darker inks still governs `cautionText`.
 
 Two call sites keep the mark value on purpose and are not text for this rule:
 the trend glyphs in `AnalyticsCrossDayComparison.js` (`↔` / `—` / `↑` / `↓`,
@@ -116,12 +119,27 @@ which are icon substitutes sitting beside `MaterialIcons` arrows) and the
 outlined `!` + count validation badge in `LogScreenEditorCard.js`, whose glyph
 matches its own ring stroke.
 
-**Known gap:** dark `accentText` on dark `chipBackground` measures 3.54:1. That
-fill is the accent itself at 32% over `card`, so accent-colored copy on it is
-inherently low-contrast; the chip's own paired ink is `chipText` (11.11:1). The
-value is unchanged from the pre-#908 `accent` and is pinned in
-`mobile/tests/theme-rendering.test.js` so it cannot drift further. Light mode
-clears it at 5.00:1.
+**`chipAccentText` is the ink for accent copy on a chip fill.** Not just for new
+work: as of #923 no shipping surface pairs `accentText` with `chipBackground` in
+any state, so the former "dark `accentText` on `chipBackground` 3.54:1" gap is
+retired rather than tolerated. `chipAccentText` clears AA on that fill in both
+modes (5.00:1 / 6.31:1) and on every other text surface too, so a string that
+sits on a chip in only *some* state carries it in all of them. It invents no
+color: light is `accentText`'s light value, dark is `chipText`'s dark value.
+
+The 3.54:1 measurement is still pinned in `mobile/tests/theme-rendering.test.js`,
+repurposed — it now records why `accentText` is unfit for that fill rather than a
+gap the app ships. The five surfaces migrated in #923 are `SettingsScreen.js`
+`stepperText`, `AnalyticsStrengthSection.js` `slotOptionTextSelected` (selected),
+`AnalyticsRecoverySection.js` `stateRetryText`, `WeightHistoryList.js`
+`loadMoreText` (pressed), and `HomeScreen.js` `syncNoticeActionText`.
+
+That last one is the only dual-fill site: the sync notice paints
+`chipBackground` while a sync is pending and `errorSurface` once it fails, with
+the same action label on both. `chipAccentText` was measured against both rather
+than assumed — 5.78:1 light / 10.03:1 dark on `errorSurface` — so one ink covers
+both states. The notice's *title* still switches to `error` on failure; only the
+action label is shared.
 
 **Known gap:** `chipText` on `chipBackground` in light mode measures 4.33:1,
 just under AA for normal text. Both values are contractually fixed by the #689
@@ -130,9 +148,9 @@ approved palette, so this is recorded rather than adjusted; dark mode is fine at
 
 ### Hardcoded Color Leaks (not in colors.js)
 
-| File | Line | Value | Used For |
+| File | Reference | Value | Used For |
 |---|---|---|---|
-| `HomeScreen.js` | `35, 39` | `#FF5C00` | KiloWordmark SVG accents (brand mark, intentionally fixed in both modes) |
+| `HomeScreen.js` | KiloWordmark SVG | `#FF5C00` | KiloWordmark SVG accents (brand mark, intentionally fixed in both modes) |
 
 This is now the complete list: every other visual color in the migrated
 production surfaces resolves through a palette token.
@@ -252,6 +270,80 @@ state and provides it to every `ScreenShell` via `TabBarLayoutContext`, which
 adds it to the shared 24px gap and the bottom inset for scroll clearance.
 `SafeAreaProvider` is owned by `mobile/App.js`; `ScreenShell` consumes only
 the bottom inset so existing top spacing is unchanged.
+
+---
+
+## More Screen
+
+Source: `mobile/screens/MoreScreen.js`, `mobile/components/SettingsScreen.js`,
+`mobile/components/ProfileScreen.js`, `mobile/components/AboutScreen.js`,
+`mobile/components/BackupScreen.js`, `mobile/components/HelpScreen.js`, and
+`mobile/screens/more/`.
+
+More is a menu of quiet, individually actionable rows. The rows are grouped by
+`SectionTitle` into **Preferences** (User Profile, Settings), **Account & Data**
+(Account, Data & Backup), and **Help & Support** (App Guide, About Kilo). Rows
+with supporting copy put a 13px `colors.textMuted` help line below the label;
+all rows end with a 20px muted `MaterialIcons` `chevron-right` disclosure.
+
+| Element | Property | Value |
+|---|---|---|
+| Menu list | gap | `12` |
+| Menu row | background / border / radius | `colors.card` / 1px `colors.cardBorder` / `24` |
+| Menu row | padding / minimum height | `20` / `44` |
+| Main label | fontSize / fontWeight / color | `17` / `600` / `colors.text` |
+| Help line | fontSize / color | `13` / `colors.textMuted` |
+| Disclosure | icon / size / color | `chevron-right` / `20` / `colors.textMuted` |
+
+The top-level destinations Settings, Profile, About, Backup, Help, and Account
+are `ScreenShell` views that receive `onBack={() => showView('menu')}` from
+`MoreScreen`. The remaining listed surfaces are nested ownership details, not
+More-menu destinations: `AccountScreen` renders `AccountLifecycle` and
+`LegalLinks` inline; `BackupScreen` renders `CloudSyncRecovery` inline; and
+`CloudSyncRecovery` owns the inline `HealthDataConsent` step. A recovery session
+in `AccountScreen` renders the separate `SetNewPasswordScreen`, which has its
+own `ScreenShell` and receives Account's `onBack` callback. These nested
+components remain part of their parent flows rather than adding rows to the
+top-level menu.
+
+Settings' Appearance and Units controls, and Profile's height unit control, use
+the shared `unitTab` segmented convention: inline 44dp targets with 12px
+horizontal and 6px vertical padding, 12px/700 labels, muted inactive ink, and
+the active accent treatment. Settings' fatigue multiplier is a 44dp stepper
+(`borderRadius: 12`) with decrement/value/increment controls. Irreversible
+Account and Backup actions stay in the error-tinted, bordered 24px-radius
+**Danger Zone** containers owned by those screens, as required by
+`docs/ui-design-rules.md` §14.
+
+## Modal System
+
+Sources: `PlateCalculatorModal.js`, `WorkoutSyntaxModal.js`,
+`RecoveryBlockStartModal.js`, `RecoveryBlockWeekModal.js`,
+`RecoveryBlockEndModal.js`, `SessionCheckInModal.js`, and `WebAlertHost.js`.
+
+The six sheet modals share a local implementation of this shell (duplicated in
+each file, not yet a shared component):
+
+| Element | Value |
+|---|---|
+| Scrim | `colors.overlay` |
+| Sheet | `colors.card`, `borderRadius: 20` |
+| Header | row, `paddingHorizontal: 20`, 1px `colors.cardBorder` bottom |
+| Title | `fontSize: 17` |
+| Close control | `✕`, `fontSize: 16`, `colors.textMuted`, `padding: 4`, `hitSlop={12}` |
+| Error banner | `colors.cardErrorBg`, `borderRadius: 10` |
+| Field fill | `colors.inputBackground` (via `createInputStyle(colors)`) |
+| Option row | `borderRadius: 12`, section `padding: 20` |
+
+`WebAlertHost.js` is intentionally the alert exception rather than a sheet:
+it uses a `borderRadius: 16` card with `padding: 20` inside a `padding: 24`
+overlay and has no header row. The sheet close control reaches the 44dp
+effective target through `hitSlop={12}` inside the padded header; the 20px row
+padding keeps that slop unclipped. This is a deliberate local compliance choice
+to the §15 target rule, not a general replacement for a real 44dp control box.
+Accessible names are specific where useful: `Close plate calculator` and
+`Close workout syntax help`; the four recovery/check-in sheet close controls
+use the concise name `Close` (Session Check-In also exposes a separate `Back`).
 
 ---
 
@@ -404,7 +496,7 @@ region (`home-recovery-analytics`, a single `accessible` node), in this order:
   exists (`Baseline captured. No week logged yet.`): there is nothing to name,
   and `Week 1` would be invented.
 - **Result** — the one hero figure, `X of Y` in `HeroMetric.statSecondary` /
-  `colors.accent`, with a `baseline exercises met` caption beside it. Exactly
+  `colors.accentText`, with a `baseline exercises met` caption beside it. Exactly
   one of the result or a fallback occupies this slot, never both, and a
   fallback prints no count at all rather than `0 of 0`. Baseline
   unavailable/unsupported takes precedence over a missing/unreadable note,
@@ -808,6 +900,27 @@ Sources: `mobile/screens/WeightScreen.js`, `mobile/components/UI.js`,
 | Derived row value | fontSize | `16` | `WeightGoalCard.js:412` |
 | | fontWeight | `700` | `WeightGoalCard.js:413` |
 
+### Editor Actions (#919)
+
+The Weight tab's text-only editor actions each own a **44×44dp target from
+their own box**, never a `hitSlop` — `ui-design-rules.md` §15 (React Native
+clips a slop at a one-line row's bounds). Type, weight, color, and the input
+card's 16px rhythm are unchanged; only the tap box grew.
+
+| Control | Property | Value | Source |
+|---|---|---|---|
+| Editing-header `Cancel`, note/date `Done` (×4) | minHeight / minWidth | `44` / `44` (`justifyContent` + `alignItems` `center`) | `WeightScreen.js` `editorActionTarget`; label 14 / 600 stays on `cancelText` |
+| | accessibilityRole / Label | `button` / `"Cancel"` (header), `"Done …"` (each disclosure) | header `Cancel` gained both in #919 |
+| Goal `Edit` / `Archive` / `Clear` chip (5 sites) | minHeight / minWidth | `44` / `44` (`center` / `center`) | `WeightGoalCard.js` `goalActionChip`; 13 / 700 label, 12 / 6 padding unchanged |
+| | accessibilityRole / Label | `button` / visible label | added in #919 |
+| Goal-editor `Cancel` | minHeight / minWidth | `44` / `44` (`center` / `center`) | `WeightGoalCard.js` `goalCancelTarget`; 14 / 600 label stays on `goalActionText` |
+| | accessibilityRole / Label | `button` / `"Cancel"` | added in #919 |
+| Every one of the above | label `Text` | `accessible={false} importantForAccessibility="no"` | §15: the named parent announces once, not twice with its child |
+
+Guarded by the `Weight entry controls` and `Weight goal editor actions` blocks
+in `mobile/tests/interaction-target-a11y.test.js`, which assert the flattened
+target plus the parent role/name **and** `accessible === false` on the label.
+
 ### History List / Goal History
 
 Both now use the **Shared History-Panel System** (see that section above) —
@@ -830,7 +943,7 @@ Source: `mobile/screens/LogScreen.js`, and the extracted
 `LogScreenEditorCard.js`. The Log style lock spans all of these, not
 `LogScreen.js` alone.
 
-Style lock header at lines 1-7 (`mobile/screens/LogScreen.js`): do not change
+Style lock header at lines 1-46 (`mobile/screens/LogScreen.js`): do not change
 Log styling unless the repo owner explicitly asks. The authorized layout
 exceptions for #710 and #711 are enumerated in that same header block. #843
 is a further owner-authorized exception (the Recovery/Routine redesign
@@ -839,8 +952,19 @@ below), scoped to `styles.tabToggle` in `LogScreen.js` plus
 `LogPreviousRoutines.js`. #847 is a further owner-authorized exception,
 scoped to `LogPreviousRoutines.js` alone, that removes #843's enclosing More
 Routines panel and restores individually rounded non-current routine cards
-(see Consequences below). The Current routine card remains locked — neither
-#843 nor #847 authorizes touching it.
+(see Consequences below). #918 is a further owner-authorized exception,
+scoped to text `color` values ONLY, that moves every string the user reads off
+the `accent` mark value onto `accentText` / `chipAccentText` across the Log
+tab, `RecoveryBlockEndModal.js`, and `WorkoutSubheading` in `UI.js`. #921 is a
+further owner-authorized exception, scoped to the effective target geometry of
+exactly two controls in `LogRecoverySection.js` — `Edit note` and the A/B
+segment — and to nothing else: no color, type, spacing, rail, or row-height
+value in the Recovery card changes with it.
+
+The Current routine card remains locked. #843 and #847 do not authorize
+touching it at all; #918 reaches exactly one property on it —
+`currentNoteTitle`'s ink — and nothing else about that card. No exception to
+date changes any size, weight, spacing, layout, fill, or border value on it.
 
 ### Action hierarchy (#711)
 
@@ -876,7 +1000,7 @@ Consequences to preserve:
   entirely (#843, #847, superseding #756/#836's in-header placement).**
   `More Routines · {count}` IS the section's `SectionTitle` now — always
   visible, expanded or collapsed, never repeated or hidden by the
-  disclosure's own state — and a sibling 38px outlined `New routine` control
+  disclosure's own state — and a sibling 44dp outlined `New routine` control
   (icon + visible label, this section's ONE create-routine affordance) sits
   beside it in the same header row.
 - **More Routines is a collapsed-by-default disclosure (#724), and since #847
@@ -1037,13 +1161,19 @@ Consequences to preserve:
   unavailable`; a completed row's name gains `, completed`). The expanded body
   is inset in a card-colored, 14px-radius bordered surface with an uppercase
   accent kicker on the left and the Recovery `A`/`B` segment (replacing the
-  former `Week A/B` pill; 32px visual height, documented sub-44dp exception)
+  former `Week A/B` pill; a 32px visual centered in a real 44×44dp target box,
+  so the header row is 44dp tall — **not** a sub-44dp exception, and **not** a
+  `hitSlop`, which #921 removed because `noteSurfaceHeader` clipped it)
   above the content it governs. Note content renders via
   `WorkoutContentRenderer`'s `compact` prop (exercise 14/700; sets
   13/muted/600) — Routine rendering elsewhere stays full-scale. The one
-  expanded-note action is a single 36px outlined `Edit note` control
-  (`accessibilityLabel="Edit"`, unchanged), opening the shared inline editor
-  (#841) on the exact note and A/B half being viewed.
+  expanded-note action is a single outlined `Edit note` control
+  (`accessibilityLabel="Edit"`, unchanged) at `minHeight: 44` since #921, with
+  its 13px label, 1px outline, and 10px radius unchanged, opening the shared
+  inline editor (#841) on the exact note and A/B half being viewed. Neither
+  this control nor the A/B segment declares a fixed `height`, so both grow
+  with the user's text scale (`ui-design-rules.md` §15, which holds the single
+  authoritative sub-44dp exception list — this map records none of its own).
 - **`Manage block` is a sibling card, not a disclosure inside the active card
   (#843, superseding #789's in-card placement).** Its trigger is **never**
   disabled — a locked user can still open it and see why each row is
@@ -1108,7 +1238,7 @@ Consequences to preserve:
 |---|---|---|---|
 | Current note title | fontSize | `24` | `LogActiveRoutineCard.js` |
 | | fontWeight | `800` | `LogActiveRoutineCard.js` |
-| | color | `colors.accent` | `LogActiveRoutineCard.js` |
+| | color | `colors.accentText` (#918) | `LogActiveRoutineCard.js` |
 | Current routine card | borderWidth | `4`, `colors.accent` on all sides | `LogActiveRoutineCard.js` |
 | | padding | `0` | `LogActiveRoutineCard.js` |
 | Other note title | fontSize | `17` | `LogPreviousRoutines.js:337` |
@@ -1120,14 +1250,14 @@ Consequences to preserve:
 | | textTransform | `capitalize` | UI.js:645 |
 | WorkoutSubheading (UI.js) | fontSize | `14` | UI.js:655 |
 | | fontWeight | `700` | UI.js:656 |
-| | color | `colors.accent` | UI.js:657 |
+| | color | `colors.accentText` (#918) | UI.js:657 |
 | | textTransform | `uppercase` | UI.js:658 |
 | Exercise name (UI.js) | fontSize | `17` | UI.js:678 |
 | | fontWeight | `700` | UI.js:679 |
 | Set row font size (UI.js) | fontSize | `14` (`SET_ROW_FONT_SIZE`) | UI.js:8 |
 | Mode toggle ("Done") | fontSize | `14` | `LogScreen.js:744` |
 | | fontWeight | `700` | `LogScreen.js:745` |
-| | color | `colors.accent` | `LogScreen.js:746` |
+| | color | `colors.chipAccentText` (#918 — sits on the chip fill) | `LogScreen.js:746` |
 | | bg | `colors.chipBackground` | `LogScreen.js:741` |
 | | borderRadius | `12` | `LogScreen.js:740` |
 | Input field | fontSize | `16` | `LogScreenEditorCard.js:626` |
@@ -1236,7 +1366,7 @@ Four different sizes for the same role (metadata label above a value). The `10px
 | Home | Weight value, sparkline, CTA text, CTA chevron, 1K total, wordmark SVG |
 | Analytics | Weight value, 1K total, pace badge bg, loading spinners |
 | Weight | Goal display values, save button bg, edit title, delta notable |
-| Log | Current note title, subheadings, mode toggle, switch/create buttons |
+| Log | Current routine card border, the primary-action fill, A/B active segment, dots and glyphs. Its **copy** — current note title, subheadings, mode toggle, switch/create buttons — moved to `accentText` / `chipAccentText` in #918 |
 
 Home has the highest orange density — 6 distinct elements. The wordmark is fixed (brand), but the remaining 5 compete for attention inside a single scroll view.
 

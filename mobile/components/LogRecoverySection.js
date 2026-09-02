@@ -15,6 +15,25 @@
 // to this file plus RecoveryBlockEndModal.js and LogPreviousRoutines.js. The
 // Current routine card remains locked. `End recovery block` now opens
 // `RecoveryBlockEndModal` (owned by LogScreen) instead of `Alert.alert`.
+//
+// #918 owner-authorized exception, scoped to text `color` values only:
+// `noteSurfaceKicker`, `editNoteButtonText`, and `reasonEditorSaveText` take
+// `colors.accentText`; `inlineSwitchButtonText`, `abSegmentText`, and
+// `pendingRetryText` sit on a `chipBackground` fill and take
+// `colors.chipAccentText`. Every mark use of `accent` in this file — the
+// primary button's fill, `abSegmentItemActive`, the current-week rail and
+// tint, the edit glyph — is unchanged.
+//
+// #921 owner-authorized exception, scoped to the effective target geometry of
+// exactly two controls: `editNoteButton` and the A/B segment. Both were
+// sub-44dp — the segment's `hitSlop` never applied, because React Native
+// clips a slop at the parent's bounds and `noteSurfaceHeader` was only as
+// tall as the 32dp segment itself. `Edit note` now grows its own box to
+// `minHeight: 44`; the segment keeps its 32dp visual inside a real 44dp
+// target box (`ui-design-rules.md` §15), the same shape
+// `ReminderSettingsCard`'s weekday chips use. Neither declares a fixed
+// `height` any more, so both grow with the user's text scale. No color, type,
+// spacing, rail, or row-height value in this card changes.
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -787,10 +806,9 @@ export function LogRecoverySection({
                                 {/* The Recovery `A`/`B` segment (#843), replacing
                                     the pill: it changes which week you are
                                     READING, not a routine-lifecycle action, and
-                                    sits above the content it governs. 32px
-                                    visual height with hitSlop closing the gap to
-                                    the 44dp touch floor — the design's
-                                    documented exception. */}
+                                    sits above the content it governs. Its 32dp
+                                    visual sits inside a real 44dp target box
+                                    (#921), so this header row is 44dp tall. */}
                                 {viewingHasABWeeks && (
                                   <ABSegment
                                     styles={styles}
@@ -817,8 +835,10 @@ export function LogRecoverySection({
                               </Pressable>
                               <View style={styles.weekNoteActions}>
                                 {/* The card's single expanded-note action
-                                    (#843): one 36px outlined `Edit note`
-                                    control. Enters the SAME inline editor
+                                    (#843): one outlined `Edit note` control,
+                                    raised to the 44dp floor in #921 with its
+                                    13px label and outline unchanged. Enters
+                                    the SAME inline editor
                                     above; it never navigates to the shared
                                     full-screen Routine editor (see LogScreen's
                                     `editingSource === 'recovery'` gate). */}
@@ -1145,22 +1165,31 @@ export function LogRecoverySection({
 // the former `Week A`/`Week B` pill. Keeps the exact role/label/selected
 // state the pill had — this changes which week is being READ, not a
 // lifecycle action.
+//
+// The PRESSABLE is the target box (#921), not the visual. The segment's 32dp
+// visual is unchanged, but it is now a child of a `minHeight: 44` /
+// `minWidth: 44` box rather than the press target itself. The former
+// `hitSlop` of 6 is gone because it never worked: `noteSurfaceHeader` is an
+// unsized flex row whose height was set by this 32dp segment, so React Native
+// clipped the slop at the parent's bounds and the effective target stayed
+// 32dp — exactly the failure `ui-design-rules.md` §15 names.
 function ABSegment({ styles, colors, effectiveWeek, onToggle }) {
   const isB = effectiveWeek === 'B';
   return (
     <Pressable
       onPress={onToggle}
-      style={styles.abSegment}
-      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+      style={styles.abSegmentTarget}
       accessibilityRole="button"
       accessibilityLabel={`Switch to Week ${isB ? 'A' : 'B'}`}
       accessibilityState={{ selected: isB }}
     >
-      <View style={[styles.abSegmentItem, !isB && styles.abSegmentItemActive]}>
-        <Text style={[styles.abSegmentText, !isB && styles.abSegmentTextActive]}>A</Text>
-      </View>
-      <View style={[styles.abSegmentItem, isB && styles.abSegmentItemActive]}>
-        <Text style={[styles.abSegmentText, isB && styles.abSegmentTextActive]}>B</Text>
+      <View style={styles.abSegment}>
+        <View style={[styles.abSegmentItem, !isB && styles.abSegmentItemActive]}>
+          <Text style={[styles.abSegmentText, !isB && styles.abSegmentTextActive]}>A</Text>
+        </View>
+        <View style={[styles.abSegmentItem, isB && styles.abSegmentItemActive]}>
+          <Text style={[styles.abSegmentText, isB && styles.abSegmentTextActive]}>B</Text>
+        </View>
       </View>
     </Pressable>
   );
@@ -1287,7 +1316,7 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
-    color: colors.accent,
+    color: colors.accentText,
   },
   weekNoteBody: {},
   // The inline recovery-note editor (#841): a compact title + text pair, no
@@ -1343,15 +1372,20 @@ const createStyles = (colors) => StyleSheet.create({
   inlineSwitchButtonText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.chipAccentText,
   },
-  // The one expanded-note action (#843): a 36px outlined `Edit note` control.
+  // The one expanded-note action (#843), at the 44dp floor since #921: the
+  // box grows, the 13px label / 1px outline / 10px radius do not. `minHeight`
+  // rather than `height`, so the control still grows with the user's text
+  // scale (`ui-design-rules.md` §15).
   editNoteButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    height: 36,
+    minHeight: 44,
+    minWidth: 44,
     paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.cardBorder,
@@ -1360,14 +1394,24 @@ const createStyles = (colors) => StyleSheet.create({
   editNoteButtonText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.accentText,
   },
-  // The Recovery A/B segment (#843): 32px visual height, documented exception
-  // to the 44dp floor — hitSlop closes most of the gap, matching the same
-  // exception pattern the former pill already used.
+  // The A/B segment's real target (#921): the visual keeps its 32dp height,
+  // so the press box is a separate 44×44dp wrapper around it — §15's
+  // "wrap it in a real target box rather than reaching for `hitSlop`", the
+  // same shape `ReminderSettingsCard`'s weekday chips use.
+  abSegmentTarget: {
+    minHeight: 44,
+    minWidth: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // The Recovery A/B segment's visual (#843): 32dp tall, unchanged. `minHeight`
+  // rather than `height` since #921, so it grows with the user's text scale
+  // instead of clipping the letters at large sizes.
   abSegment: {
     flexDirection: 'row',
-    height: 32,
+    minHeight: 32,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.cardBorder,
@@ -1385,7 +1429,7 @@ const createStyles = (colors) => StyleSheet.create({
   abSegmentText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.chipAccentText,
   },
   abSegmentTextActive: {
     color: colors.onAccent,
@@ -1539,7 +1583,7 @@ const createStyles = (colors) => StyleSheet.create({
   reasonEditorSaveText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.accentText,
   },
   // On-demand inclusion help toggle (#843 review), matching
   // `RecoveryInclusionToggle`'s own info-button box: a real 44dp target, not
@@ -1578,6 +1622,6 @@ const createStyles = (colors) => StyleSheet.create({
   pendingRetryText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.accent,
+    color: colors.chipAccentText,
   },
 });

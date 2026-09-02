@@ -46,7 +46,7 @@ export function HelpScreen({ onBack }) {
         </View>
         <View style={styles.tabRow}>
           <Text style={styles.tabName}>Analytics</Text>
-          <Text style={styles.tabDesc}>Weight trend charts (7-day and 30-day rolling averages) and a combined Big 3 progress total for mapped squat, bench, and deadlift exercises with enough complete logged cycles. Progressive Overload metric rows for tracked exercises show current Est. Max, Kilo Max, best set, and progress trend. Optional fatigue check-in data is included when fatigue tracking is enabled.</Text>
+          <Text style={styles.tabDesc}>Weight trend charts (7-day and 30-day rolling averages) and a combined Big 3 progress total for mapped squat, bench, and deadlift exercises with enough complete logged cycles. Progressive Overload metric rows for tracked exercises show current Est. Max, Kilo Max, best set, and progress trend. Optional fatigue check-in data is included when fatigue tracking is enabled in Settings.</Text>
         </View>
         <View style={[styles.tabRow, { marginBottom: 0 }]}>
           <Text style={styles.tabName}>More</Text>
@@ -132,7 +132,7 @@ export function HelpScreen({ onBack }) {
         </View>
         <View style={[styles.termRow, { marginBottom: 0 }]}>
           <Text style={styles.termLabel}>Deload</Text>
-          <Text style={styles.termDesc}>A planned period of reduced training volume and intensity used to recover from accumulated fatigue. Generated automatically from your routine when deload mode is enabled.</Text>
+          <Text style={styles.termDesc}>A planned period of reduced training volume and intensity used to recover from accumulated fatigue. Generated automatically from your routine when deload mode is enabled in Settings.</Text>
         </View>
       </Card>
     </ScreenShell>

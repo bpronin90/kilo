@@ -11,7 +11,12 @@ import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 import { StyleSheet } from 'react-native';
 
-jest.mock('@expo/vector-icons/MaterialIcons', () => ({ __esModule: true, default: () => null }), { virtual: true });
+// Not a virtual mock: the module exists on disk (MoreScreen and WeightScreen
+// import it for real), and a `{ virtual: true }` registration here leaks the
+// stub into the next suite in the Jest worker — it broke
+// session-checkin-modal's `n.type === 'MaterialIcons'` lookup once #919's
+// WeightScreen import reshuffled the shard order.
+jest.mock('@expo/vector-icons/MaterialIcons', () => ({ __esModule: true, default: () => null }));
 
 jest.mock('@react-native-community/datetimepicker', () => {
   const ReactLocal = require('react');
@@ -22,6 +27,10 @@ jest.mock('@react-native-community/datetimepicker', () => {
 });
 
 const mockUserProfile = { profile: { display_name: 'Ben' }, loading: false };
+// Issue 919: the Weight entry block drives the real WeightScreen, so its two
+// entry hooks are stubbed here. `mockWeightState` lets each test seed the
+// entries list and goal the screen reads.
+const mockWeightState = { entries: [], goal: null };
 jest.mock('../hooks/useEntries', () => ({
   useFeatureToggles: () => ({
     fatigueTrackingEnabled: true,
@@ -35,6 +44,43 @@ jest.mock('../hooks/useEntries', () => ({
     loading: mockUserProfile.loading,
     clear: jest.fn().mockResolvedValue(undefined),
   }),
+  useWeightEntries: () => ({
+    entries: mockWeightState.entries,
+    remove: jest.fn().mockResolvedValue(undefined),
+    update: jest.fn().mockResolvedValue(true),
+    loading: false,
+    error: null,
+    refresh: jest.fn(),
+  }),
+  useWeightGoal: () => ({
+    goal: mockWeightState.goal,
+    loading: false,
+    error: null,
+    refresh: jest.fn(),
+    save: jest.fn().mockResolvedValue(undefined),
+    clear: jest.fn().mockResolvedValue(undefined),
+    archiveGoal: jest.fn().mockResolvedValue(undefined),
+  }),
+}));
+
+jest.mock('../hooks/entries/weightHooks', () => ({
+  useArchivedWeightGoals: () => ({ archivedGoals: [], loading: false, refresh: jest.fn() }),
+}));
+
+// `useWeightUnit`'s real implementation kicks off an async profile hydration on
+// subscribe; in a geometry test that promise resolves after the file finishes
+// and leaks act() work into the next suite in the Jest worker (the #679 class
+// of contamination). The hook is pinned to 'lb' so WeightScreen renders
+// synchronously with no pending work; every other export stays real.
+jest.mock('../lib/unitPreference', () => ({
+  ...jest.requireActual('../lib/unitPreference'),
+  useWeightUnit: () => 'lb',
+}));
+
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  getItem: jest.fn(async () => null),
+  setItem: jest.fn(async () => {}),
+  removeItem: jest.fn(async () => {}),
 }));
 
 // SettingsScreen mounts the real ReminderSettingsCard, so its storage and
@@ -45,6 +91,19 @@ jest.mock('../storage/entries', () => ({
   loadWorkoutReminder: jest.fn(async () => ({ enabled: true, hour: 17, minute: 0, fallbackWeekdays: [2] })),
   saveWeighInReminder: jest.fn(async () => {}),
   saveWorkoutReminder: jest.fn(async () => {}),
+}));
+
+// LogRecoverySection calls `useRecoveryBlockLifecycle` at render for the two
+// single-field writes it owns (inclusion, reason). Neither is exercised here,
+// so the hook is stubbed rather than dragging recovery storage into a
+// target-geometry test. The two message constants come from the same module.
+jest.mock('../hooks/entries/recoveryBlockHooks', () => ({
+  RECOVERY_STALE_MESSAGE: 'Recovery may be out of date.',
+  RECOVERY_UNVERIFIED_MESSAGE: 'Recovery could not be read.',
+  useRecoveryBlockLifecycle: () => ({
+    setIncludeInNormalAnalytics: jest.fn(),
+    setBlockReason: jest.fn(),
+  }),
 }));
 
 jest.mock('../lib/reminderScheduler', () => ({
@@ -59,13 +118,27 @@ jest.mock('../lib/reminderScheduler', () => ({
   })),
 }));
 
+// Issue 920: the More menu rows are asserted against the real MoreScreen.
+// Only the sub-views it imports but never renders at the menu are stubbed;
+// SettingsScreen and ProfileScreen stay real because this file already
+// exercises them above.
+jest.mock('../components/HelpScreen', () => ({ HelpScreen: () => null }));
+jest.mock('../components/AboutScreen', () => ({ AboutScreen: () => null }));
+jest.mock('../components/BackupScreen', () => ({ BackupScreen: () => null }));
+jest.mock('../screens/more/AccountScreen', () => ({ AccountScreen: () => null }));
+jest.mock('../screens/more/AccountLifecycle', () => ({ AccountLifecycle: () => null }));
+
 import { ErrorBanner } from '../components/UI';
+import { MoreScreen } from '../screens/MoreScreen';
 import { SettingsScreen } from '../components/SettingsScreen';
 import { ProfileScreen } from '../components/ProfileScreen';
 import { ReminderSettingsCard } from '../components/ReminderSettingsCard';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { AnalyticsFatigueCard } from '../components/AnalyticsFatigueCard';
 import { AnalyticsBig3MappingCard } from '../components/AnalyticsStrengthSection';
+import { LogRecoverySection } from '../components/LogRecoverySection';
+import { WeightScreen } from '../screens/WeightScreen';
+import { WeightGoalCard } from '../components/WeightGoalCard';
 import { formatCheckInDate } from '../lib/AnalyticsScreenHelpers';
 
 const MIN_TARGET = 44;
@@ -395,5 +468,369 @@ describe('Big 3 mapping rows', () => {
     const other = pressableByLabel(tree.root, 'Use Back Squat for Bench');
     expect(other.props.accessibilityState).toEqual({ selected: false });
     expectTarget(other);
+  });
+});
+
+// Issue 921: Recovery's two expanded-note controls used to sit below the floor
+// — `Edit note` at a fixed 36dp with no slop, and the A/B segment at 32dp with
+// a `hitSlop` of 6 that never applied, because `noteSurfaceHeader` is an
+// unsized row the segment itself was the tallest child of. Both now present a
+// real >=44x44dp box, and neither declares a fixed `height`, so a later style
+// edit that reintroduces either failure fails here.
+describe('Recovery expanded-note controls', () => {
+  const note = {
+    id: 'note-ab',
+    title: 'AB Week',
+    raw_text: 'Monday\n+Lifting\n-Bench\n135 5,5,5',
+  };
+  const block = {
+    id: 'rb-921',
+    baseline_note_id: 'baseline',
+    baseline_note_title: 'Legs Day',
+    started_at: '2026-01-01T00:00:00.000Z',
+    completed_at: null,
+    deleted_at: null,
+  };
+  const week = {
+    id: 'rw-921',
+    block_id: block.id,
+    note_id: note.id,
+    week_number: 1,
+    completed_at: null,
+    deleted_at: null,
+  };
+
+  async function renderExpandedNote() {
+    return renderTree(
+      <LogRecoverySection
+        blocks={[block]}
+        weeks={[week]}
+        notes={[note]}
+        viewingNoteId={note.id}
+        viewingNote={note}
+        viewingNoteDayGroups={[{ heading: 'Monday', sections: [] }]}
+        viewingHasABWeeks
+        viewingEffectiveWeek="A"
+        onViewNote={() => {}}
+        onEditNote={() => {}}
+        onToggleViewingWeek={() => {}}
+      />
+    );
+  }
+
+  test('Edit note clears the target from its own box and can still grow with text', async () => {
+    const tree = await renderExpandedNote();
+    const edit = pressableByLabel(tree.root, 'Edit');
+    expect(edit.props.accessibilityRole).toBe('button');
+    expect(edit.props.hitSlop).toBeUndefined();
+    expectTarget(edit, { width: true });
+
+    const style = StyleSheet.flatten(edit.props.style) || {};
+    expect(style.height).toBeUndefined();
+    expect(style.minHeight).toBe(MIN_TARGET);
+    // The outlined treatment the control has carried since #843 is unchanged.
+    expect(style.borderWidth).toBe(1);
+    expect(style.borderRadius).toBe(10);
+  });
+
+  test('the A/B segment presses through a real 44dp box around its 32dp visual', async () => {
+    const tree = await renderExpandedNote();
+    const segment = pressableByLabel(tree.root, 'Switch to Week B');
+    expect(segment.props.accessibilityRole).toBe('button');
+    expect(segment.props.accessibilityState).toEqual({ selected: false });
+    // The target is the box, never a slop React Native would clip at
+    // `noteSurfaceHeader`'s bounds.
+    expect(segment.props.hitSlop).toBeUndefined();
+    expectTarget(segment, { width: true });
+
+    const targetStyle = StyleSheet.flatten(segment.props.style) || {};
+    expect(targetStyle.height).toBeUndefined();
+
+    // The visual inside it still reads at its designed 32dp, by `minHeight` so
+    // it grows with the user's text scale rather than clipping the letters.
+    const visuals = segment.findAll((node) => {
+      if (typeof node.type !== 'string') return false;
+      const style = StyleSheet.flatten(node.props?.style) || {};
+      return style.minHeight === 32 && style.flexDirection === 'row';
+    }, { deep: true });
+    expect(visuals).toHaveLength(1);
+    expect(StyleSheet.flatten(visuals[0].props.style).height).toBeUndefined();
+  });
+
+  test('the segment reports the selected half it would switch away from', async () => {
+    const tree = await renderTree(
+      <LogRecoverySection
+        blocks={[block]}
+        weeks={[week]}
+        notes={[note]}
+        viewingNoteId={note.id}
+        viewingNote={note}
+        viewingNoteDayGroups={[{ heading: 'Monday', sections: [] }]}
+        viewingHasABWeeks
+        viewingEffectiveWeek="B"
+        onViewNote={() => {}}
+        onEditNote={() => {}}
+        onToggleViewingWeek={() => {}}
+      />
+    );
+    const segment = pressableByLabel(tree.root, 'Switch to Week A');
+    expect(segment.props.accessibilityState).toEqual({ selected: true });
+    expectTarget(segment, { width: true });
+  });
+});
+
+// Issue 920: the six More menu rows now carry the shared MaterialIcons chevron
+// (no text arrow), no `colors.error` border, and an explicit 44dp floor. The
+// row is a full-width control, so only its height is asserted; the chevron is
+// hidden from the screen reader, so each row still announces its name once.
+describe('More menu rows', () => {
+  const ROW_LABELS = [
+    'User Profile',
+    'Settings',
+    'Account',
+    'Data and Backup',
+    'App Guide',
+    'About Kilo',
+  ];
+
+  let tree;
+  beforeEach(async () => {
+    tree = await renderTree(<MoreScreen isActive={false} />);
+  });
+
+  test.each(ROW_LABELS)('row %s declares the 44dp floor with its button role and name', (label) => {
+    const row = pressableByLabel(tree.root, label);
+    expect(row.props.accessibilityRole).toBe('button');
+    expect(row.props.accessibilityLabel).toBe(label);
+    const style = StyleSheet.flatten(row.props.style) || {};
+    expect(style.minHeight).toBe(MIN_TARGET);
+    expectTarget(row);
+  });
+
+  test('the two former "risky" rows share the neutral border of the other four', () => {
+    const neutral = StyleSheet.flatten(pressableByLabel(tree.root, 'User Profile').props.style);
+    expect(neutral.borderWidth).toBe(1);
+    ['Account', 'Data and Backup'].forEach((label) => {
+      const style = StyleSheet.flatten(pressableByLabel(tree.root, label).props.style) || {};
+      expect(style.borderWidth).toBe(1);
+      // Same shared cardBorder token as every other card, not colors.error.
+      expect(style.borderColor).toBe(neutral.borderColor);
+    });
+  });
+
+  test('no navigation affordance renders a text arrow', () => {
+    const arrows = tree.root.findAll(
+      (node) => typeof node.props?.children === 'string' && node.props.children.includes('\u2192'),
+      { deep: true }
+    );
+    expect(arrows).toHaveLength(0);
+  });
+});
+
+// Issue 919: nine text-only editor actions on the Weight tab used to sit below
+// the §15 floor across eleven render sites. On WeightScreen the `cancelText`
+// family (the editing-header `Cancel` plus the four disclosure `Done`s) backed
+// bare Pressables with no target box at all, and the header `Cancel` shipped no
+// role or name. On WeightGoalCard the `goalActionChip` (`Edit` / `Archive` /
+// `Clear`, five sites) and the goal-editor `Cancel` reached for a `hitSlop`
+// §15 says a one-line row clips. Each now owns a real >=44x44dp box from its
+// own style — asserted as the flattened minHeight/minWidth so a later style
+// edit fails here rather than shipping a 27dp tap area — with the two `Cancel`s
+// gaining `accessibilityRole="button"` and a name matching their visible label.
+function pressableByTestId(root, testID) {
+  const matches = root.findAll(
+    (node) => node.props?.testID === testID && typeof node.props?.onPress === 'function',
+    { deep: true }
+  );
+  if (matches.length === 0) throw new Error(`no pressable with testID "${testID}"`);
+  return matches[0];
+}
+
+function pressableContainingText(root, substr) {
+  const matches = root.findAll(
+    (node) => typeof node.props?.onPress === 'function'
+      && node.findAll((n) => {
+        const c = n.props?.children;
+        const flat = Array.isArray(c) ? c.join('') : String(c ?? '');
+        return flat.includes(substr);
+      }, { deep: true }).length > 0,
+    { deep: true }
+  );
+  if (matches.length === 0) throw new Error(`no pressable containing "${substr}"`);
+  return matches[matches.length - 1];
+}
+
+function expectOwnBox(node) {
+  const style = StyleSheet.flatten(node.props.style) || {};
+  expect(node.props.hitSlop).toBeUndefined();
+  expect(style.minHeight).toBe(MIN_TARGET);
+  expect(style.minWidth).toBe(MIN_TARGET);
+  expectTarget(node, { width: true });
+}
+
+// §15: the visible label `Text` inside a named control is marked
+// `accessible={false}` so the control announces once, not twice.
+function expectLabelSilenced(node, visibleText) {
+  const labels = node.findAll((n) => {
+    const c = n.props?.children;
+    const flat = Array.isArray(c) ? c.join('') : String(c ?? '');
+    return flat === visibleText;
+  }, { deep: true });
+  expect(labels.length).toBeGreaterThan(0);
+  labels.forEach((label) => expect(label.props.accessible).toBe(false));
+}
+
+// WeightScreen / WeightGoalCard trees are unmounted after every test so no
+// pending effect survives into the next suite in the worker.
+const weightTrees = [];
+async function renderWeightTree(element) {
+  const tree = await renderTree(element);
+  weightTrees.push(tree);
+  return tree;
+}
+async function unmountWeightTrees() {
+  await act(async () => {
+    weightTrees.splice(0).forEach((tree) => tree.unmount());
+  });
+}
+
+describe('Weight entry controls', () => {
+  const WEIGHT_PROPS = {
+    weightValue: '',
+    setWeightValue: () => {},
+    weightNote: '',
+    setWeightNote: () => {},
+    onSaveWeight: () => {},
+    errorMessage: '',
+    saving: false,
+    isActive: true,
+  };
+
+  afterEach(async () => {
+    await unmountWeightTrees();
+    mockWeightState.entries = [];
+    mockWeightState.goal = null;
+  });
+
+  test('the two new-entry disclosure "Done" actions clear the floor from their own box', async () => {
+    const tree = await renderWeightTree(<WeightScreen {...WEIGHT_PROPS} />);
+
+    await act(async () => {
+      pressableByTestId(tree.root, 'weight-new-note-toggle').props.onPress();
+      pressableByTestId(tree.root, 'weight-new-date-toggle').props.onPress();
+    });
+
+    [['Done adding note'], ['Done changing weigh-in date']].forEach(([label]) => {
+      const done = pressableByLabel(tree.root, label);
+      expect(done.props.accessibilityRole).toBe('button');
+      expect(done.props.accessibilityLabel).toBe(label);
+      expectOwnBox(done);
+      expectLabelSilenced(done, 'Done');
+    });
+  });
+
+  test('the editing-header Cancel and the two edit disclosure "Done" actions clear the floor', async () => {
+    mockWeightState.entries = [{
+      id: 'e1',
+      date: '2026-05-24',
+      logged_at: '2026-05-24T08:00:00Z',
+      weight_value: 185,
+      weight_unit: 'lb',
+      note: '',
+    }];
+    const tree = await renderWeightTree(<WeightScreen {...WEIGHT_PROPS} />);
+
+    // History is collapsed by default; expand it, then tap the row to enter
+    // editing mode so the header and edit-path disclosures render.
+    await act(async () => {
+      pressableByLabel(tree.root, 'Expand history').props.onPress();
+    });
+    await act(async () => {
+      pressableContainingText(tree.root, '185').props.onPress();
+    });
+
+    const cancel = pressableByLabel(tree.root, 'Cancel');
+    expect(cancel.props.accessibilityRole).toBe('button');
+    expect(cancel.props.accessibilityLabel).toBe('Cancel');
+    expectOwnBox(cancel);
+    expectLabelSilenced(cancel, 'Cancel');
+
+    await act(async () => {
+      pressableByTestId(tree.root, 'weight-edit-note-toggle').props.onPress();
+      pressableByTestId(tree.root, 'weight-edit-date-toggle').props.onPress();
+    });
+
+    [['Done editing note'], ['Done changing entry date']].forEach(([label]) => {
+      const done = pressableByLabel(tree.root, label);
+      expect(done.props.accessibilityRole).toBe('button');
+      expect(done.props.accessibilityLabel).toBe(label);
+      expectOwnBox(done);
+      expectLabelSilenced(done, 'Done');
+    });
+  });
+});
+
+describe('Weight goal editor actions', () => {
+  const GOAL = { target_weight: 180, target_date: '2026-12-01', start_weight: 200 };
+  const GOAL_PROPS = {
+    goal: GOAL,
+    goalEditing: false,
+    goalTargetWeight: '180',
+    goalTargetDate: '2026-12-01',
+    goalStartWeight: '200',
+    setGoalTargetWeight: () => {},
+    setGoalStartWeight: () => {},
+    goalError: '',
+    showDatePicker: false,
+    setShowDatePicker: () => {},
+    handleSaveGoal: () => {},
+    handleClearGoal: () => {},
+    handleArchiveGoal: () => {},
+    startEditGoal: () => {},
+    cancelEditGoal: () => {},
+    onDateChange: () => {},
+    pickerDate: new Date('2026-12-01'),
+    goalInfo: null,
+    calorieEstimate: null,
+    currentWeight: 190,
+    isGoalMet: false,
+    aheadOfSchedule: false,
+  };
+
+  afterEach(async () => {
+    await unmountWeightTrees();
+  });
+
+  test('the goal-met header exposes Edit and Archive at the floor from their own box', async () => {
+    const tree = await renderWeightTree(<WeightGoalCard {...GOAL_PROPS} isGoalMet />);
+    ['Edit', 'Archive'].forEach((label) => {
+      const chip = pressableByLabel(tree.root, label);
+      expect(chip.props.accessibilityRole).toBe('button');
+      expect(chip.props.accessibilityLabel).toBe(label);
+      expectOwnBox(chip);
+      expectLabelSilenced(chip, label);
+    });
+  });
+
+  test('the overdue in-progress header exposes Edit, Archive and Clear at the floor', async () => {
+    const tree = await renderWeightTree(
+      <WeightGoalCard {...GOAL_PROPS} goalInfo={{ isOverdue: true, weeks_remaining: 0, required_weekly_pace: null }} />
+    );
+    ['Edit', 'Archive', 'Clear'].forEach((label) => {
+      const chip = pressableByLabel(tree.root, label);
+      expect(chip.props.accessibilityRole).toBe('button');
+      expect(chip.props.accessibilityLabel).toBe(label);
+      expectOwnBox(chip);
+      expectLabelSilenced(chip, label);
+    });
+  });
+
+  test('the goal-editor Cancel clears the floor and announces itself', async () => {
+    const tree = await renderWeightTree(<WeightGoalCard {...GOAL_PROPS} goalEditing />);
+    const cancel = pressableByLabel(tree.root, 'Cancel');
+    expect(cancel.props.accessibilityRole).toBe('button');
+    expect(cancel.props.accessibilityLabel).toBe('Cancel');
+    expectOwnBox(cancel);
+    expectLabelSilenced(cancel, 'Cancel');
   });
 });
