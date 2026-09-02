@@ -25,15 +25,19 @@ export function formatTrendCue(currentValue, priorValue) {
 
 export function buildTrendSections(trends, paceInfo, unit = 'lb') {
   const paceLevel = paceInfo ? paceInfo.level : null;
+  // The elapsed span rides as its own caption, not concatenated into the value:
+  // the Today trend column is narrow and single-line, so a joined string would
+  // tail-ellipsize the period away and defeat the point of showing it.
   const paceValue = trends.paceFlag
-    ? `${trends.paceFlag === 'gain' ? '↑ Gaining' : '↓ Losing'} · ${formatPaceElapsed(paceInfo?.elapsedDays)}`
+    ? (trends.paceFlag === 'gain' ? '↑ Gaining' : '↓ Losing')
     : '-';
+  const paceCaption = trends.paceFlag ? formatPaceElapsed(paceInfo?.elapsedDays) : null;
   return [
     {
       title: 'Today',
       col1: { label: 'Current', value: formatTrendValue(trends.currentWeight, unit) },
       col2: { label: 'Vs Previous', value: formatTrendDeltaValue(trends.currentWeight, trends.priorDayWeight, unit) },
-      col3: { label: 'Trend', value: paceValue },
+      col3: { label: 'Trend', value: paceValue, caption: paceCaption },
       paceLevel,
     },
     {
