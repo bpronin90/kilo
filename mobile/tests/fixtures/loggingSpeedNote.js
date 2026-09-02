@@ -3,10 +3,12 @@
 // Two canonical-text workout notes that stand in for an established user's
 // real data when walking the three representative logging tasks:
 //
-//   PPL_CUMULATIVE_NOTE  - a 3-day Push/Pull/Legs cumulative note, one exercise
-//                          block per lift with ~11 prior logged sessions each,
-//                          ~180 lines. Drives T1 (full push session) and
-//                          T2 (single-lift touch-up).
+//   PPL_CUMULATIVE_NOTE  - a 3-day Push/Pull/Legs cumulative note, 5 lifts per
+//                          day (15 total), one exercise block per lift with
+//                          exactly 12 prior logged sessions each -> 180 logged
+//                          session rows, the "180-line, 12-prior-session"
+//                          fixed fixture approved in #575 §8. Drives T1 (full
+//                          push session) and T2 (single-lift touch-up).
 //   AB_ROUTINE_NOTE      - a 2-day A/B routine (Upper/Lower, alternating weeks)
 //                          with a `---` week separator. Drives T3 (A/B Week B
 //                          day).
@@ -79,7 +81,10 @@ function dayBlock(heading, lifts, priorSessions) {
 
 // ── PPL cumulative note ──────────────────────────────────────────────────────
 
-export const PPL_PRIOR_SESSIONS_PER_LIFT = 11;
+// #575 §8: "a 180-line, 12-prior-session, 3-day PPL cumulative note". With
+// 5 lifts per day across 3 days (15 lifts), 12 prior sessions per lift is
+// exactly 180 logged session rows.
+export const PPL_PRIOR_SESSIONS_PER_LIFT = 12;
 
 export const PPL_CUMULATIVE_NOTE = [
   dayBlock('Monday', PUSH_LIFTS, PPL_PRIOR_SESSIONS_PER_LIFT),
@@ -138,5 +143,8 @@ export const T3_WEEK_B_ROWS = [
 export const FIXTURE_META = {
   pplLineCount: PPL_CUMULATIVE_NOTE.split('\n').length,
   pplLiftCount: PUSH_LIFTS.length + PULL_LIFTS.length + LEG_LIFTS.length,
+  // 15 lifts x 12 prior sessions = 180 logged session rows: the "180-line,
+  // 12-prior-session" fixture from #575 §8.
+  pplSessionRows: (PUSH_LIFTS.length + PULL_LIFTS.length + LEG_LIFTS.length) * PPL_PRIOR_SESSIONS_PER_LIFT,
   abLineCount: AB_ROUTINE_NOTE.split('\n').length,
 };

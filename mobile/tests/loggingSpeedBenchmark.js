@@ -19,6 +19,8 @@ import { parseWorkoutNote } from '../lib/parser';
 import {
   PPL_CUMULATIVE_NOTE,
   AB_ROUTINE_NOTE,
+  PPL_PRIOR_SESSIONS_PER_LIFT,
+  AB_PRIOR_SESSIONS_PER_LIFT,
   T1_PUSH_ROWS,
   T2_TOUCHUP_LIFT,
   T2_TOUCHUP_ROW,
@@ -52,9 +54,24 @@ export const ACTION_COST_SECONDS = {
 
 // Sub-rates used to build per-exercise steps. Kept named so the model is
 // auditable rather than a pile of literals.
-const SCROLL_GESTURES_PER_EXERCISE = 1.5; // scrolls to bring a block's last row into view in a ~180-line note
 const CARET_FIX_RATE = 0.7; // fraction of end-of-line multiline caret taps that need a correction
 const REPEAT_ADJUST_KEYS = 3; // keystrokes to tweak a pre-filled "repeat last set" row
+
+// Note lines visible above the raised keyboard in the editor on a low-end
+// phone. Forward scrolling to bring an exercise block's last logged row into
+// view scales with how deep the block is: a block is `1 header + N prior
+// session rows`, so deeper history (more prior sessions) costs more scroll
+// gestures per exercise. At the #575 §8 fixture depth (12 prior sessions ->
+// 13-line block) this yields ~1.4, matching #575 §1's "~1.5" estimate.
+const EDITOR_VISIBLE_NOTE_LINES = 9;
+
+function round1(n) {
+  return Math.round(n * 10) / 10;
+}
+
+function forwardScrollPerExercise(priorSessions) {
+  return round1((1 + priorSessions) / EDITOR_VISIBLE_NOTE_LINES);
+}
 
 // GBoard keeps the digit/symbol plane active while the user scrolls and moves
 // the caret within the same focused multiline input, so the switch into that
@@ -109,7 +126,8 @@ function step(label, counts) {
 }
 
 // Locate an exercise block and put the caret at the end of its last row.
-function positionCaretStep(exerciseName, flow) {
+// `priorSessions` is the block's logged-history depth (drives forward scroll).
+function positionCaretStep(exerciseName, flow, priorSessions) {
   if (flow.caretNav === 'nextPrev') {
     // #939: one tap on Next/Previous; the editor auto-scrolls the target into
     // view and places the caret. No visual search, no caret correction.
@@ -117,7 +135,7 @@ function positionCaretStep(exerciseName, flow) {
   }
   return step(`Locate "${exerciseName}", scroll its last row into view, tap to place caret`, {
     SCAN: 1,
-    SCROLL: SCROLL_GESTURES_PER_EXERCISE,
+    SCROLL: forwardScrollPerExercise(priorSessions),
     TAP: 1,
     CARET_FIX: CARET_FIX_RATE,
   });
@@ -176,7 +194,7 @@ function walkT1(flow) {
   const planeSetup = keyboardPlaneSetupStep(flow);
   if (planeSetup) steps.push(planeSetup);
   names.forEach((name, i) => {
-    steps.push(positionCaretStep(name, flow));
+    steps.push(positionCaretStep(name, flow, PPL_PRIOR_SESSIONS_PER_LIFT));
     steps.push(enterRowStep(name, T1_PUSH_ROWS[i], flow));
   });
   steps.push(returnToHeaderStep('T1'));
@@ -190,7 +208,7 @@ function walkT2(flow) {
   const steps = [step('Tap Edit on the current-routine card -> editor opens, caret at end of note', { TAP: 1 })];
   const planeSetup = keyboardPlaneSetupStep(flow);
   if (planeSetup) steps.push(planeSetup);
-  steps.push(positionCaretStep(T2_TOUCHUP_LIFT, flow));
+  steps.push(positionCaretStep(T2_TOUCHUP_LIFT, flow, PPL_PRIOR_SESSIONS_PER_LIFT));
   steps.push(enterRowStep(T2_TOUCHUP_LIFT, T2_TOUCHUP_ROW, flow));
   steps.push(returnToHeaderStep('T2'));
   steps.push(step('Tap Done', { TAP: 1 }));
@@ -215,7 +233,7 @@ function walkT3(flow) {
   const planeSetup = keyboardPlaneSetupStep(flow);
   if (planeSetup) steps.push(planeSetup);
   names.forEach((name, i) => {
-    steps.push(positionCaretStep(name, flow));
+    steps.push(positionCaretStep(name, flow, AB_PRIOR_SESSIONS_PER_LIFT));
     steps.push(enterRowStep(name, T3_WEEK_B_ROWS[i], flow));
   });
   steps.push(returnToHeaderStep('T3'));
@@ -247,10 +265,6 @@ export function elapsedSeconds(counts) {
   return ACTION_KINDS.reduce((sum, k) => sum + counts[k] * ACTION_COST_SECONDS[k], 0);
 }
 
-function round1(n) {
-  return Math.round(n * 10) / 10;
-}
-
 export function measureTask(task, flow = BASELINE_FLOW) {
   const steps = task.walk(flow);
   const counts = tally(steps);
@@ -275,7 +289,8 @@ export function runBenchmark(flow = BASELINE_FLOW) {
 
 export const ASSUMPTIONS = [
   'Device class: low-end Android with GBoard, one-handed.',
-  'Fixture: ~180-line 3-day PPL cumulative note (`PPL_CUMULATIVE_NOTE`), ~11 prior sessions per lift; A/B routine (`AB_ROUTINE_NOTE`) with a `---` week separator.',
+  'Fixture: the #575 §8 "180-line, 12-prior-session" 3-day PPL cumulative note (`PPL_CUMULATIVE_NOTE`) - 15 lifts, 12 prior sessions each = 180 logged session rows; A/B routine (`AB_ROUTINE_NOTE`), 6 prior sessions per lift, with a `---` week separator.',
+  'Forward scroll to reach an exercise scales with its block depth (1 header + N prior session rows) over ~9 visible editor lines; ~1.4 per exercise at the 12-session PPL depth, ~0.8 at the 6-session A/B depth.',
   'Editor keyboard is the default alphabetic multiline field; autoCorrect / autoCapitalize / spellCheck are off.',
   'One key per literal character, comma counted once. The digit/symbol plane is entered once per editor session (GBoard keeps it active across scroll/caret moves), not per row.',
   'Done is LogScreen `headerRight`, rendered inside ScreenShell\'s non-sticky ScrollView, so each task ends with a scroll back up to the header to tap Done.',

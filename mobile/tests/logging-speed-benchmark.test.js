@@ -38,25 +38,30 @@ function byId(results, id) {
 // ── 1. Fixture sanity ───────────────────────────────────────────────────────
 
 describe('benchmark fixtures parse clean under the real grammar', () => {
-  test('PPL_CUMULATIVE_NOTE is a well-formed ~180-line 3-day cumulative note', () => {
+  test('PPL_CUMULATIVE_NOTE is the #575 §8 "180-line, 12-prior-session" 3-day note', () => {
     const parsed = parseWorkoutNote(PPL_CUMULATIVE_NOTE);
     expect(parsed.ok).not.toBe(false);
     expect(parsed.problems).toEqual([]);
 
-    const lineCount = PPL_CUMULATIVE_NOTE.split('\n').length;
-    expect(lineCount).toBe(FIXTURE_META.pplLineCount);
-    expect(lineCount).toBeGreaterThanOrEqual(170);
-    expect(lineCount).toBeLessThanOrEqual(195);
-
     const allLifts = parsed.sections.flatMap((s) => s.exercises);
     expect(allLifts).toHaveLength(FIXTURE_META.pplLiftCount);
-    expect(FIXTURE_META.pplLiftCount).toBe(15);
+    expect(FIXTURE_META.pplLiftCount).toBe(15); // 5 lifts x 3 days, per #575 §1
 
-    // Every lift carries its logged history, so caret navigation and scanning
-    // are exercised against real depth.
+    // #575 §8's fixed fixture: 12 prior sessions per lift, so 15 x 12 = 180
+    // logged session rows. Note depth is a real input to the SCROLL model.
+    expect(PPL_PRIOR_SESSIONS_PER_LIFT).toBe(12);
     for (const lift of allLifts) {
-      expect(lift.session_entries).toHaveLength(PPL_PRIOR_SESSIONS_PER_LIFT);
+      expect(lift.session_entries).toHaveLength(12);
     }
+    const loggedRows = allLifts.reduce((n, l) => n + l.session_entries.length, 0);
+    expect(loggedRows).toBe(180);
+    expect(FIXTURE_META.pplSessionRows).toBe(180);
+
+    // Full file line count is locked (180 logged rows + 15 exercise headers +
+    // 3 day headings + blank separators).
+    const lineCount = PPL_CUMULATIVE_NOTE.split('\n').length;
+    expect(lineCount).toBe(FIXTURE_META.pplLineCount);
+    expect(lineCount).toBe(201);
   });
 
   test('the Push day has exactly the five lifts T1 logs', () => {
@@ -126,23 +131,23 @@ describe('current-main baseline action counts and elapsed time', () => {
 
   test('T1 - full push session', () => {
     const r = byId(results, 'T1');
-    expect(r.counts).toEqual({ TAP: 7, KEY: 54, SCROLL: 10.5, SCAN: 5, CARET_FIX: 3.5 });
-    expect(r.totalActions).toBeCloseTo(80);
-    expect(r.elapsedSeconds).toBeCloseTo(52.9);
+    expect(r.counts).toEqual({ TAP: 7, KEY: 54, SCROLL: 10, SCAN: 5, CARET_FIX: 3.5 });
+    expect(r.totalActions).toBeCloseTo(79.5);
+    expect(r.elapsedSeconds).toBeCloseTo(52.3);
   });
 
   test('T2 - single-lift touch-up', () => {
     const r = byId(results, 'T2');
-    expect(r.counts).toEqual({ TAP: 3, KEY: 11, SCROLL: 5.5, SCAN: 1, CARET_FIX: 0.7 });
-    expect(r.totalActions).toBeCloseTo(21.2);
-    expect(r.elapsedSeconds).toBeCloseTo(15.7);
+    expect(r.counts).toEqual({ TAP: 3, KEY: 11, SCROLL: 5.4, SCAN: 1, CARET_FIX: 0.7 });
+    expect(r.totalActions).toBeCloseTo(21.1);
+    expect(r.elapsedSeconds).toBeCloseTo(15.6);
   });
 
   test('T3 - A/B Week B day', () => {
     const r = byId(results, 'T3');
-    expect(r.counts).toEqual({ TAP: 6, KEY: 42, SCROLL: 9, SCAN: 4, CARET_FIX: 2.8 });
-    expect(r.totalActions).toBeCloseTo(63.8);
-    expect(r.elapsedSeconds).toBeCloseTo(42.8);
+    expect(r.counts).toEqual({ TAP: 6, KEY: 42, SCROLL: 6.2, SCAN: 4, CARET_FIX: 2.8 });
+    expect(r.totalActions).toBeCloseTo(61);
+    expect(r.elapsedSeconds).toBeCloseTo(39.4);
   });
 
   test('elapsed time equals the sum of action-cost products', () => {

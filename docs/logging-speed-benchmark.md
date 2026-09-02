@@ -44,7 +44,14 @@ One discrete user action or attention unit each:
 Elapsed time is exactly `Σ(count × cost)`. It deliberately **excludes**
 recall/decision latency (deciding what to log), which is not one of the five
 action kinds. Fractional counts are averages (e.g. `CARET_FIX 0.7` = 70 % of
-end-of-line multiline taps need a correction; `SCROLL 1.5` per exercise).
+end-of-line multiline taps need a correction).
+
+Forward scroll to reach an exercise (`forwardScrollPerExercise`) scales with the
+block's depth: a block is `1 header + N prior session rows`, spread over ~9
+visible editor lines, so `SCROLL ≈ (1 + N) / 9` per exercise. At the #575 §8
+fixture depth (12 prior sessions) that is ~1.4, matching #575 §1's "~1.5"; at the
+A/B note's 6-session depth it is ~0.8. Prior-session depth is therefore a real
+input to the SCROLL baseline.
 
 Keystrokes to type one session row (`keyCostForRow`): one actual keypress per
 literal character, comma included and counted once. There is **no** per-row
@@ -64,9 +71,12 @@ scroll applies to the auto-scrolling `nextPrev` variant too.
 ## Recorded assumptions
 
 - Device class: low-end Android with GBoard, one-handed.
-- Fixture: 186-line 3-day Push/Pull/Legs cumulative note (`PPL_CUMULATIVE_NOTE`),
-  11 prior sessions per lift, 15 lifts; 122-line A/B routine (`AB_ROUTINE_NOTE`),
-  Upper/Lower, 6 prior sessions per lift, with a `---` week separator.
+- Fixture: the #575 §8 **"180-line, 12-prior-session"** 3-day Push/Pull/Legs
+  cumulative note (`PPL_CUMULATIVE_NOTE`) — 15 lifts (5 per day), **12 prior
+  sessions per lift = 180 logged session rows**; the file is 201 lines
+  (180 rows + 15 exercise headers + 3 day headings + 3 blank separators). Also a
+  122-line A/B routine (`AB_ROUTINE_NOTE`), Upper/Lower, 6 prior sessions per
+  lift, with a `---` week separator.
 - Editor keyboard is the default alphabetic multiline field; autoCorrect /
   autoCapitalize / spellCheck are off.
 - One key per literal character, comma counted once; the digit/symbol plane is
@@ -98,9 +108,9 @@ them here.
 
 | Task | TAP | KEY | SCROLL | SCAN | CARET-FIX | Total actions | Elapsed (s) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| T1 — full push session | 7 | 54 | 10.5 | 5 | 3.5 | **80.0** | **52.9** |
-| T2 — single-lift touch-up | 3 | 11 | 5.5 | 1 | 0.7 | **21.2** | **15.7** |
-| T3 — A/B Week B day | 6 | 42 | 9 | 4 | 2.8 | **63.8** | **42.8** |
+| T1 — full push session | 7 | 54 | 10.0 | 5 | 3.5 | **79.5** | **52.3** |
+| T2 — single-lift touch-up | 3 | 11 | 5.4 | 1 | 0.7 | **21.1** | **15.6** |
+| T3 — A/B Week B day | 6 | 42 | 6.2 | 4 | 2.8 | **61.0** | **39.4** |
 
 Where the cost is: caret positioning and scroll navigation in a long note
 (`SCAN + SCROLL + TAP + CARET_FIX`, per exercise, plus the return scroll to
@@ -109,10 +119,12 @@ Where the cost is: caret positioning and scroll navigation in a long note
 switch, not one per row). Expressing the sets themselves is not the bottleneck.
 
 Reconciliation with #575 §8: that report estimated T1 ≈ 80 actions, T2 18–24,
-T3 ≈ 62. This model computes **T1 80.0 / T2 21.2 / T3 63.8** — all within the
-report's ranges. (An earlier revision of this model inflated T1 to 86.0 by
-charging a plane switch per row and adding a fractional comma surcharge; both
-were corrected per Codex review on PR #942.)
+T3 ≈ 62. This model computes **T1 79.5 / T2 21.1 / T3 61.0** — all within the
+report's ranges, on the approved 180-row / 12-prior-session fixture. (Earlier
+revisions used an 11-session fixture and charged a plane switch per row plus a
+fractional comma surcharge; corrected per Codex and review feedback on PR #942 —
+the 12-session fixture deepens each block, which is why T1/T2 SCROLL rose
+slightly and T3 SCROLL fell, tracking the shallower 6-session A/B note.)
 
 ## Rerunning after a logging-workflow change
 
@@ -136,7 +148,7 @@ These deltas now reflect **session-level** keyboard state, not per-row: the #938
 keypad removes only the one session plane switch (−1 KEY per task), and the
 residual `SCROLL` is the return-to-`Done` fling that #939's auto-scroll does not
 eliminate. On this model #938 + #939 cut T1 by ~21 % of total actions
-(80.0 → 63.0) — short of #575's ≥ 30 % target, though `SCAN + CARET_FIX` on T1
+(79.5 → 63.0) — short of #575's ≥ 30 % target, though `SCAN + CARET_FIX` on T1
 does fall 100 % (8.5 → 0). The gap is the signal to weigh the gated
 repeat-last-set option (`repeatLastSet: true`) or a sticky editor header.
 
