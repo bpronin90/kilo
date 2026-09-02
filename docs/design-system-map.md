@@ -328,7 +328,7 @@ each file, not yet a shared component):
 | Close control | `✕`, `fontSize: 16`, `colors.textMuted`, `padding: 4`, `hitSlop={12}` |
 | Error banner | `colors.cardErrorBg`, `borderRadius: 10` |
 | Field fill | `colors.background` |
-| Option row | `borderRadius: 14`, section `padding: 20` |
+| Option row | `borderRadius: 12`, section `padding: 20` |
 
 `WebAlertHost.js` is intentionally the alert exception rather than a sheet:
 it uses a `borderRadius: 16` card with `padding: 20` inside a `padding: 24`
