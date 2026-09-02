@@ -56,6 +56,21 @@ const SCROLL_GESTURES_PER_EXERCISE = 1.5; // scrolls to bring a block's last row
 const CARET_FIX_RATE = 0.7; // fraction of end-of-line multiline caret taps that need a correction
 const REPEAT_ADJUST_KEYS = 3; // keystrokes to tweak a pre-filled "repeat last set" row
 
+// GBoard keeps the digit/symbol plane active while the user scrolls and moves
+// the caret within the same focused multiline input, so the switch into that
+// plane is paid once per editor session, not once per row.
+const PLANE_SWITCH_KEYS = 1;
+
+// `Done` is LogScreen's `headerRight`; ScreenShell renders that header as the
+// first child *inside* its non-sticky ScrollView (the current-routine editor
+// passes no `stickyHeaderIndices`). After scrolling down the note to place
+// carets, the user must fling back up to the header to tap Done. Coarse
+// return flings, keyed to how deep in the note the last caret work ended:
+//   T1 - Push is the first day (~top third)        -> 3
+//   T2 - touch-up lift is on the last day (~3/4)   -> 4
+//   T3 - Week B target day sits past the midpoint  -> 3
+const RETURN_TO_HEADER_SCROLLS = { T1: 3, T2: 4, T3: 3 };
+
 // ── Flow configuration ──────────────────────────────────────────────────────
 //
 // The baseline is current `main`. Each later logging-workflow issue flips one
@@ -74,18 +89,15 @@ export function makeFlow(overrides = {}) {
 
 // ── Cost primitives ─────────────────────────────────────────────────────────
 
-// Keystrokes to type one session row (e.g. "225 5,5,5").
-//  - baseline alphabetic multiline keyboard: one key per character, plus one
-//    switch into the digit/symbol plane, plus a secondary reach per comma.
-//  - keypad flow (#938): dedicated digit / comma / space / newline keys, so
-//    one key per character and no plane switching.
-export function keyCostForRow(rowText, { keypad = false } = {}) {
-  const chars = rowText.length;
-  if (keypad) return chars;
-  const planeSwitch = /[0-9]/.test(rowText) ? 1 : 0;
-  const commas = (rowText.match(/,/g) || []).length;
-  const commaReach = commas * 0.5;
-  return chars + planeSwitch + commaReach;
+// Keystrokes to type one session row (e.g. "225 5,5,5"): one actual keypress
+// per literal character, comma included. No plane-switch term here - the
+// digit/symbol plane is entered once per editor session (see
+// `keyboardPlaneSetupStep`), not re-entered per row, and GBoard keeps it
+// active across the scroll/caret moves between rows. The #938 keypad flow
+// changes nothing about the per-character count; its only KEY saving is
+// removing that one session-level plane switch.
+export function keyCostForRow(rowText) {
+  return rowText.length;
 }
 
 function emptyCounts() {
@@ -111,6 +123,22 @@ function positionCaretStep(exerciseName, flow) {
   });
 }
 
+// One-time step: bring the keyboard onto the digit/symbol plane for the whole
+// editor session. The #938 keypad flow removes it (dedicated digit keys).
+function keyboardPlaneSetupStep(flow) {
+  if (flow.keypad) return null;
+  return step('Switch keyboard to the digit/symbol plane (once for the editor session)', {
+    KEY: PLANE_SWITCH_KEYS,
+  });
+}
+
+// Scroll back up to the non-sticky header to reach Done.
+function returnToHeaderStep(taskId) {
+  return step('Scroll back up to the header to reach Done', {
+    SCROLL: RETURN_TO_HEADER_SCROLLS[taskId],
+  });
+}
+
 // Add today's working row for one exercise.
 function enterRowStep(exerciseName, rowText, flow) {
   if (flow.repeatLastSet) {
@@ -122,7 +150,7 @@ function enterRowStep(exerciseName, rowText, flow) {
     });
   }
   return step(`New line + type "${rowText}" for "${exerciseName}"`, {
-    KEY: 1 + keyCostForRow(rowText, { keypad: flow.keypad }),
+    KEY: 1 + keyCostForRow(rowText),
   });
 }
 
@@ -145,10 +173,13 @@ function walkT1(flow) {
     throw new Error(`T1 fixture drift: ${names.length} push lifts vs ${T1_PUSH_ROWS.length} rows`);
   }
   const steps = [step('Tap Edit on the current-routine card -> editor opens, caret at end of note', { TAP: 1 })];
+  const planeSetup = keyboardPlaneSetupStep(flow);
+  if (planeSetup) steps.push(planeSetup);
   names.forEach((name, i) => {
     steps.push(positionCaretStep(name, flow));
     steps.push(enterRowStep(name, T1_PUSH_ROWS[i], flow));
   });
+  steps.push(returnToHeaderStep('T1'));
   steps.push(step('Tap Done (autosave already fired; Done re-saves + runs check-in detection)', { TAP: 1 }));
   return steps;
 }
@@ -156,12 +187,13 @@ function walkT1(flow) {
 // T2 - single-lift touch-up: open the editor, add one row to a single lift
 // ~two-thirds down the note, exit.
 function walkT2(flow) {
-  const steps = [
-    step('Tap Edit on the current-routine card -> editor opens, caret at end of note', { TAP: 1 }),
-    positionCaretStep(T2_TOUCHUP_LIFT, flow),
-    enterRowStep(T2_TOUCHUP_LIFT, T2_TOUCHUP_ROW, flow),
-    step('Tap Done', { TAP: 1 }),
-  ];
+  const steps = [step('Tap Edit on the current-routine card -> editor opens, caret at end of note', { TAP: 1 })];
+  const planeSetup = keyboardPlaneSetupStep(flow);
+  if (planeSetup) steps.push(planeSetup);
+  steps.push(positionCaretStep(T2_TOUCHUP_LIFT, flow));
+  steps.push(enterRowStep(T2_TOUCHUP_LIFT, T2_TOUCHUP_ROW, flow));
+  steps.push(returnToHeaderStep('T2'));
+  steps.push(step('Tap Done', { TAP: 1 }));
   return steps;
 }
 
@@ -180,10 +212,13 @@ function walkT3(flow) {
   const steps = [
     step('Tap Edit on the current-routine card -> editor opens on the active week (Week B)', { TAP: 1 }),
   ];
+  const planeSetup = keyboardPlaneSetupStep(flow);
+  if (planeSetup) steps.push(planeSetup);
   names.forEach((name, i) => {
     steps.push(positionCaretStep(name, flow));
     steps.push(enterRowStep(name, T3_WEEK_B_ROWS[i], flow));
   });
+  steps.push(returnToHeaderStep('T3'));
   steps.push(step('Tap Done', { TAP: 1 }));
   return steps;
 }
@@ -242,6 +277,8 @@ export const ASSUMPTIONS = [
   'Device class: low-end Android with GBoard, one-handed.',
   'Fixture: ~180-line 3-day PPL cumulative note (`PPL_CUMULATIVE_NOTE`), ~11 prior sessions per lift; A/B routine (`AB_ROUTINE_NOTE`) with a `---` week separator.',
   'Editor keyboard is the default alphabetic multiline field; autoCorrect / autoCapitalize / spellCheck are off.',
+  'One key per literal character, comma counted once. The digit/symbol plane is entered once per editor session (GBoard keeps it active across scroll/caret moves), not per row.',
+  'Done is LogScreen `headerRight`, rendered inside ScreenShell\'s non-sticky ScrollView, so each task ends with a scroll back up to the header to tap Done.',
   'The user logs exactly one working row per exercise; no parse errors are introduced.',
   'Autosave has already fired at idle before Done; Done is a re-save + check-in detection tap.',
   'Elapsed time = Σ(action count × per-action cost); recall/decision latency is excluded.',

@@ -46,10 +46,20 @@ recall/decision latency (deciding what to log), which is not one of the five
 action kinds. Fractional counts are averages (e.g. `CARET_FIX 0.7` = 70 % of
 end-of-line multiline taps need a correction; `SCROLL 1.5` per exercise).
 
-Keystrokes to type one session row (`keyCostForRow`): one key per character, plus
-one switch into the digit/symbol plane, plus `0.5` per comma for the secondary
-reach on the alphabetic keyboard. The #938 keypad flow removes the plane switch
-and the comma reach (one key per character only).
+Keystrokes to type one session row (`keyCostForRow`): one actual keypress per
+literal character, comma included and counted once. There is **no** per-row
+plane-switch or comma surcharge — GBoard keeps the digit/symbol plane active
+while the user scrolls and moves the caret within the same focused multiline
+input, so the switch onto that plane is charged **once per editor session**
+(`PLANE_SWITCH_KEYS`, a discrete step), not once per row. The #938 keypad flow's
+only KEY saving is removing that single session-level plane switch.
+
+`Done` is `LogScreen`'s `headerRight`; `ScreenShell` renders that header as the
+first child inside its **non-sticky** `ScrollView` (the current-routine editor
+passes no `stickyHeaderIndices`). Every task therefore ends with a scroll back up
+to the header to reach `Done` (`RETURN_TO_HEADER_SCROLLS`: T1 3, T2 4, T3 3
+coarse return flings, keyed to how deep the last caret work ended). This return
+scroll applies to the auto-scrolling `nextPrev` variant too.
 
 ## Recorded assumptions
 
@@ -59,6 +69,10 @@ and the comma reach (one key per character only).
   Upper/Lower, 6 prior sessions per lift, with a `---` week separator.
 - Editor keyboard is the default alphabetic multiline field; autoCorrect /
   autoCapitalize / spellCheck are off.
+- One key per literal character, comma counted once; the digit/symbol plane is
+  entered once per editor session, not per row.
+- `Done` scrolls away with the note (non-sticky header), so each task ends with a
+  scroll back up to the header.
 - The user logs exactly one working row per exercise; no parse errors are
   introduced.
 - Autosave has already fired at idle before Done; Done is a re-save + check-in
@@ -84,20 +98,21 @@ them here.
 
 | Task | TAP | KEY | SCROLL | SCAN | CARET-FIX | Total actions | Elapsed (s) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| T1 — full push session | 7 | 63 | 7.5 | 5 | 3.5 | **86.0** | **52.9** |
-| T2 — single-lift touch-up | 3 | 12 | 1.5 | 1 | 0.7 | **18.2** | **11.3** |
-| T3 — A/B Week B day | 6 | 49 | 6 | 4 | 2.8 | **67.8** | **42.0** |
+| T1 — full push session | 7 | 54 | 10.5 | 5 | 3.5 | **80.0** | **52.9** |
+| T2 — single-lift touch-up | 3 | 11 | 5.5 | 1 | 0.7 | **21.2** | **15.7** |
+| T3 — A/B Week B day | 6 | 42 | 9 | 4 | 2.8 | **63.8** | **42.8** |
 
-Where the cost is: caret positioning in a long note (`SCAN + SCROLL + TAP +
-CARET_FIX`, repeated per exercise) is ~24 % of T1's actions and the bulk of the
-attention cost; keyboard-plane toggling on all-numeric rows is the other large
-share of `KEY`. Expressing the sets themselves is not the bottleneck.
+Where the cost is: caret positioning and scroll navigation in a long note
+(`SCAN + SCROLL + TAP + CARET_FIX`, per exercise, plus the return scroll to
+`Done`) is ~30 % of T1's actions and the bulk of the attention cost; the rest is
+`KEY`, which is now almost entirely literal characters (one session-level plane
+switch, not one per row). Expressing the sets themselves is not the bottleneck.
 
-Reconciliation with #575 §8: that report estimated T1 ≈ 80 actions from an
-assumed ~8-character row. This model computes **86.0** from the fixture's actual
-rows (avg ~9.4 characters) with an explicit plane-switch + comma-reach surcharge —
-agreement within ~8 %. T2 (18–24 → 18.2) and T3 (≈62 → 67.8) likewise land in
-the report's ranges.
+Reconciliation with #575 §8: that report estimated T1 ≈ 80 actions, T2 18–24,
+T3 ≈ 62. This model computes **T1 80.0 / T2 21.2 / T3 63.8** — all within the
+report's ranges. (An earlier revision of this model inflated T1 to 86.0 by
+charging a plane switch per row and adding a fractional comma surcharge; both
+were corrected per Codex review on PR #942.)
 
 ## Rerunning after a logging-workflow change
 
@@ -113,9 +128,17 @@ which change produced it. Illustrative projection for #938 + #939 combined
 
 | Task | TAP | KEY | SCROLL | SCAN | CARET-FIX | Total actions | Elapsed (s) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| T1 | 7 | 53 | 0 | 0 | 0 | 60.0 | 25.4 |
-| T2 | 3 | 10 | 0 | 0 | 0 | 13.0 | 5.8 |
-| T3 | 6 | 41 | 0 | 0 | 0 | 47.0 | 20.0 |
+| T1 | 7 | 53 | 3 | 0 | 0 | 63.0 | 29.0 |
+| T2 | 3 | 10 | 4 | 0 | 0 | 17.0 | 10.6 |
+| T3 | 6 | 41 | 3 | 0 | 0 | 50.0 | 23.6 |
+
+These deltas now reflect **session-level** keyboard state, not per-row: the #938
+keypad removes only the one session plane switch (−1 KEY per task), and the
+residual `SCROLL` is the return-to-`Done` fling that #939's auto-scroll does not
+eliminate. On this model #938 + #939 cut T1 by ~21 % of total actions
+(80.0 → 63.0) — short of #575's ≥ 30 % target, though `SCAN + CARET_FIX` on T1
+does fall 100 % (8.5 → 0). The gap is the signal to weigh the gated
+repeat-last-set option (`repeatLastSet: true`) or a sticky editor header.
 
 ## #575 targets (yardstick, not asserted here)
 

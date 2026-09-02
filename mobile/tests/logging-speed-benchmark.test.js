@@ -103,10 +103,19 @@ describe('action taxonomy is fixed', () => {
     }
   });
 
-  test('keyCostForRow: alphabetic plane pays a plane switch + comma reach; keypad does not', () => {
-    // "225 5,5,5" = 9 chars, +1 plane switch, +2 commas x 0.5
-    expect(keyCostForRow('225 5,5,5')).toBeCloseTo(11);
-    expect(keyCostForRow('225 5,5,5', { keypad: true })).toBe(9);
+  test('keyCostForRow is one keypress per literal character, comma counted once', () => {
+    // "225 5,5,5" = 2 2 5 <space> 5 , 5 , 5 = 9 keypresses. No plane-switch or
+    // comma surcharge here - the plane switch is a once-per-session step.
+    expect(keyCostForRow('225 5,5,5')).toBe(9);
+    expect(keyCostForRow('55 12,12,12')).toBe(11);
+  });
+
+  test('the #938 keypad flow saves exactly one KEY per task: the session plane switch', () => {
+    for (const id of ['T1', 'T2', 'T3']) {
+      const base = byId(runBenchmark(BASELINE_FLOW), id);
+      const keypad = byId(runBenchmark(makeFlow({ label: 'keypad', keypad: true })), id);
+      expect(base.counts.KEY - keypad.counts.KEY).toBe(1);
+    }
   });
 });
 
@@ -117,23 +126,23 @@ describe('current-main baseline action counts and elapsed time', () => {
 
   test('T1 - full push session', () => {
     const r = byId(results, 'T1');
-    expect(r.counts).toEqual({ TAP: 7, KEY: 63, SCROLL: 7.5, SCAN: 5, CARET_FIX: 3.5 });
-    expect(r.totalActions).toBeCloseTo(86);
+    expect(r.counts).toEqual({ TAP: 7, KEY: 54, SCROLL: 10.5, SCAN: 5, CARET_FIX: 3.5 });
+    expect(r.totalActions).toBeCloseTo(80);
     expect(r.elapsedSeconds).toBeCloseTo(52.9);
   });
 
   test('T2 - single-lift touch-up', () => {
     const r = byId(results, 'T2');
-    expect(r.counts).toEqual({ TAP: 3, KEY: 12, SCROLL: 1.5, SCAN: 1, CARET_FIX: 0.7 });
-    expect(r.totalActions).toBeCloseTo(18.2);
-    expect(r.elapsedSeconds).toBeCloseTo(11.3);
+    expect(r.counts).toEqual({ TAP: 3, KEY: 11, SCROLL: 5.5, SCAN: 1, CARET_FIX: 0.7 });
+    expect(r.totalActions).toBeCloseTo(21.2);
+    expect(r.elapsedSeconds).toBeCloseTo(15.7);
   });
 
   test('T3 - A/B Week B day', () => {
     const r = byId(results, 'T3');
-    expect(r.counts).toEqual({ TAP: 6, KEY: 49, SCROLL: 6, SCAN: 4, CARET_FIX: 2.8 });
-    expect(r.totalActions).toBeCloseTo(67.8);
-    expect(r.elapsedSeconds).toBeCloseTo(42);
+    expect(r.counts).toEqual({ TAP: 6, KEY: 42, SCROLL: 9, SCAN: 4, CARET_FIX: 2.8 });
+    expect(r.totalActions).toBeCloseTo(63.8);
+    expect(r.elapsedSeconds).toBeCloseTo(42.8);
   });
 
   test('elapsed time equals the sum of action-cost products', () => {
