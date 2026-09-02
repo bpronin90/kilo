@@ -1,7 +1,8 @@
 # Kilo Zero-Friction and Active Context Roadmap
 
-**Status: Complete; Phases 1–5 and F17 are complete.** This roadmap consolidates
-the independent UX/friction audits in GitHub
+**Status: Active roadmap; Phases 1–5 and F14–F17 are complete.** The roadmap
+remains active pending the new-user Fatigue/Deload defaults and discovery task
+from D3. This roadmap consolidates the independent UX/friction audits in GitHub
 issues [#849](https://github.com/bpronin90/kilo/issues/849) and
 [#850](https://github.com/bpronin90/kilo/issues/850), the Recovery-state addenda
 posted to those threads, and the owner decisions made while reconciling them.
@@ -785,7 +786,10 @@ and #894/PR #896 (PO dependency and state explainability).
 
 These are important but should not preempt correctness, active-context, or core logging work.
 
-**Status: Complete; all Phase 5 work, including the F17 whole-app visual coherence gate, is complete.**
+**Status: Complete; F14–F17 and all other Phase 5 work, including the F17
+whole-app visual coherence gate, are complete. The overall roadmap remains
+active only for the unimplemented D3 new-user Fatigue/Deload defaults and
+discovery task; #867 is separately scoped and does not block Phase 5.**
 
 ---
 
