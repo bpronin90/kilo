@@ -572,11 +572,22 @@ describe('computeWeightTrends', () => {
     expect(computeWeightTrends(entries, REF).paceFlag).toBeNull();
   });
 
-  test('falls back to 30-day window for pace when 7-day has only one entry', () => {
-    // May 15 in 7-day window, Apr 20 only in 30-day; pace computed from 30-day
+  test('no pace flag when the two most recent dates are more than 7 days apart (#941)', () => {
+    // May 15 and Apr 20 are 25 calendar days apart. A large delta spread across
+    // a long logging gap is not an alarming day-to-day pace, so no flag.
     const entries = [
       { date: '2026-05-15', weight_value: 194 },
       { date: '2026-04-20', weight_value: 187 },
+    ];
+    const result = computeWeightTrends(entries, REF);
+    expect(result.paceFlag).toBeNull();
+  });
+
+  test('pace flag downgrades a spike to a direction-only flag across a 4-7 day gap (#941)', () => {
+    // 5-day gap, +7 lb: spike magnitude, but reported as a plain gain direction.
+    const entries = [
+      { date: '2026-05-15', weight_value: 194 },
+      { date: '2026-05-10', weight_value: 187 },
     ];
     const result = computeWeightTrends(entries, REF);
     expect(result.paceFlag).toBe('gain');

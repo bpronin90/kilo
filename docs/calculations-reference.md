@@ -253,7 +253,7 @@ Computes rolling averages from weight entries (sorted newest-first):
 
 - **7-day average:** mean of all entries within the last 7 calendar days (days 0–6 ago, inclusive).
 - **30-day average:** mean of all entries within the last 30 calendar days (days 0–29 ago, inclusive).
-- **Pace flag:** compares the two most recent entries by date. Classifies the absolute difference.
+- **Pace flag:** pre-averages entries by local date, then compares the two most recent dates. Classifies the absolute difference, taking the elapsed calendar-day gap into account (see [Weight Pace](#weight-pace)).
 
 **Trend summary** extends this with prior-window comparisons:
 - **Prior 7-day average:** mean of entries from days 7–13 ago (for week-over-week comparison).
@@ -265,9 +265,15 @@ The current and prior windows are adjacent, inclusive, and non-overlapping: curr
 
 ### Weight Pace
 
-> Where you see it: Weight-change warnings
+> Where you see it: Weight screen trends row, Analytics weight card badge
 
-Classifies the day-to-day weight change between the two most recent entries:
+All weight-change entries are first **pre-averaged by local calendar date**, so
+several weigh-ins on one day collapse to their mean before anything is compared.
+The change is then measured between the mean of the most recent date and the mean
+of the date before it. This is the single canonical classification every pace
+consumer runs through.
+
+Magnitude thresholds (applied to the absolute change, in lb):
 
 | Absolute change | Level |
 |-----------------|-------|
@@ -276,6 +282,21 @@ Classifies the day-to-day weight change between the two most recent entries:
 | ≥ 2.3 lb | spike |
 
 Direction is `gain` or `loss` based on sign.
+
+**Elapsed-day awareness.** The whole-calendar-day gap between the two dates
+(DST-safe) adjusts the result:
+
+| Elapsed days | Effect |
+|--------------|--------|
+| 1 – 3 | Normal thresholds above. |
+| 4 – 7 | A `spike` is downgraded to `notable`; a `notable` stays `notable`. |
+| 8+ | No pace flag — the dates are too far apart to read a day-to-day pace. |
+
+This keeps a large delta spread across a long logging gap from raising an
+alarming badge, and keeps a same-day weigh-in swing from doing the same.
+
+Pace copy states the elapsed span in words ("day-over-day", "over 5 days") so the
+period is legible without relying on the badge color.
 
 ### Rolling Average Series
 

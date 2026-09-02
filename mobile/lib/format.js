@@ -1,5 +1,10 @@
 import { formatLiftWeightValue } from './units';
-import { WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD } from './data/weightGoal';
+import { WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, classifyWeightPace } from './data/weightGoal';
+
+// Canonical weight-pace classification lives in the data layer; re-exported here
+// so existing format consumers keep a single import site. See
+// mobile/lib/data/weightGoal.js for the elapsed-day rules.
+export { classifyWeightPace };
 
 export function formatDate(isoString) {
   if (!isoString) return '';
@@ -65,14 +70,13 @@ export function formatSessionClassification(label) {
   }
 }
 
-// Classify a weight delta (today − yesterday) into a pace flag.
-// Returns null when the change is within normal range.
-// Returns { direction: 'gain'|'loss', level: 'notable'|'spike' } otherwise.
-export function classifyWeightPace(delta) {
-  if (delta === null || delta === undefined) return null;
-  const abs = Math.abs(delta);
-  if (abs < WEIGHT_PACE_NOTABLE_THRESHOLD) return null;
-  return { direction: delta > 0 ? 'gain' : 'loss', level: abs >= WEIGHT_PACE_SPIKE_THRESHOLD ? 'spike' : 'notable' };
+// Human-readable elapsed span for a pace flag, so a badge or label states the
+// period in words instead of leaving it to color alone.
+// elapsedDays is the whole calendar-day gap between the two compared weigh-in
+// dates; null or 1 reads as consecutive days.
+export function formatPaceElapsed(elapsedDays) {
+  if (elapsedDays == null || elapsedDays <= 1) return 'day-over-day';
+  return `over ${elapsedDays} days`;
 }
 
 export function formatDuration(seconds) {

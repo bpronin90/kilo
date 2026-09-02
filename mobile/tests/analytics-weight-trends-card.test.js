@@ -191,3 +191,33 @@ describe('AnalyticsWeightTrendsCard — selected date state', () => {
     expect(hasText(root, '84 kg')).toBe(false);
   });
 });
+
+describe('AnalyticsWeightTrendsCard — pace badge elapsed period (#941)', () => {
+  test('spike badge names the elapsed span alongside the fast-change label', () => {
+    const component = setup({
+      weightSummary: {
+        ...BASE_SUMMARY,
+        paceFlag: 'gain',
+        paceLevel: 'spike',
+        paceElapsedDays: 1,
+      },
+    });
+    const root = component.root;
+    expect(hasText(root, '↑ Gaining fast')).toBe(true);
+    expect(hasText(root, 'day-over-day')).toBe(true);
+  });
+
+  test('multi-day notable badge names the number of days', () => {
+    const component = setup({
+      weightSummary: {
+        ...BASE_SUMMARY,
+        paceFlag: 'loss',
+        paceLevel: 'notable',
+        paceElapsedDays: 5,
+      },
+    });
+    const root = component.root;
+    expect(hasText(root, '↓ Losing fast')).toBe(true);
+    expect(hasText(root, 'over 5 days')).toBe(true);
+  });
+});
