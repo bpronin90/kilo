@@ -11,7 +11,12 @@ import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 import { StyleSheet } from 'react-native';
 
-jest.mock('@expo/vector-icons/MaterialIcons', () => ({ __esModule: true, default: () => null }), { virtual: true });
+// Not a virtual mock: the module exists on disk (MoreScreen and WeightScreen
+// import it for real), and a `{ virtual: true }` registration here leaks the
+// stub into the next suite in the Jest worker — it broke
+// session-checkin-modal's `n.type === 'MaterialIcons'` lookup once #919's
+// WeightScreen import reshuffled the shard order.
+jest.mock('@expo/vector-icons/MaterialIcons', () => ({ __esModule: true, default: () => null }));
 
 jest.mock('@react-native-community/datetimepicker', () => {
   const ReactLocal = require('react');
@@ -60,6 +65,22 @@ jest.mock('../hooks/useEntries', () => ({
 
 jest.mock('../hooks/entries/weightHooks', () => ({
   useArchivedWeightGoals: () => ({ archivedGoals: [], loading: false, refresh: jest.fn() }),
+}));
+
+// `useWeightUnit`'s real implementation kicks off an async profile hydration on
+// subscribe; in a geometry test that promise resolves after the file finishes
+// and leaks act() work into the next suite in the Jest worker (the #679 class
+// of contamination). The hook is pinned to 'lb' so WeightScreen renders
+// synchronously with no pending work; every other export stays real.
+jest.mock('../lib/unitPreference', () => ({
+  ...jest.requireActual('../lib/unitPreference'),
+  useWeightUnit: () => 'lb',
+}));
+
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  getItem: jest.fn(async () => null),
+  setItem: jest.fn(async () => {}),
+  removeItem: jest.fn(async () => {}),
 }));
 
 // SettingsScreen mounts the real ReminderSettingsCard, so its storage and
@@ -647,6 +668,20 @@ function expectOwnBox(node) {
   expectTarget(node, { width: true });
 }
 
+// WeightScreen / WeightGoalCard trees are unmounted after every test so no
+// pending effect survives into the next suite in the worker.
+const weightTrees = [];
+async function renderWeightTree(element) {
+  const tree = await renderTree(element);
+  weightTrees.push(tree);
+  return tree;
+}
+async function unmountWeightTrees() {
+  await act(async () => {
+    weightTrees.splice(0).forEach((tree) => tree.unmount());
+  });
+}
+
 describe('Weight entry controls', () => {
   const WEIGHT_PROPS = {
     weightValue: '',
@@ -659,13 +694,14 @@ describe('Weight entry controls', () => {
     isActive: true,
   };
 
-  afterEach(() => {
+  afterEach(async () => {
+    await unmountWeightTrees();
     mockWeightState.entries = [];
     mockWeightState.goal = null;
   });
 
   test('the two new-entry disclosure "Done" actions clear the floor from their own box', async () => {
-    const tree = await renderTree(<WeightScreen {...WEIGHT_PROPS} />);
+    const tree = await renderWeightTree(<WeightScreen {...WEIGHT_PROPS} />);
 
     await act(async () => {
       pressableByTestId(tree.root, 'weight-new-note-toggle').props.onPress();
@@ -689,7 +725,7 @@ describe('Weight entry controls', () => {
       weight_unit: 'lb',
       note: '',
     }];
-    const tree = await renderTree(<WeightScreen {...WEIGHT_PROPS} />);
+    const tree = await renderWeightTree(<WeightScreen {...WEIGHT_PROPS} />);
 
     // History is collapsed by default; expand it, then tap the row to enter
     // editing mode so the header and edit-path disclosures render.
@@ -746,8 +782,12 @@ describe('Weight goal editor actions', () => {
     aheadOfSchedule: false,
   };
 
+  afterEach(async () => {
+    await unmountWeightTrees();
+  });
+
   test('the goal-met header exposes Edit and Archive at the floor from their own box', async () => {
-    const tree = await renderTree(<WeightGoalCard {...GOAL_PROPS} isGoalMet />);
+    const tree = await renderWeightTree(<WeightGoalCard {...GOAL_PROPS} isGoalMet />);
     ['Edit', 'Archive'].forEach((label) => {
       const chip = pressableByLabel(tree.root, label);
       expect(chip.props.accessibilityRole).toBe('button');
@@ -757,7 +797,7 @@ describe('Weight goal editor actions', () => {
   });
 
   test('the overdue in-progress header exposes Edit, Archive and Clear at the floor', async () => {
-    const tree = await renderTree(
+    const tree = await renderWeightTree(
       <WeightGoalCard {...GOAL_PROPS} goalInfo={{ isOverdue: true, weeks_remaining: 0, required_weekly_pace: null }} />
     );
     ['Edit', 'Archive', 'Clear'].forEach((label) => {
@@ -769,7 +809,7 @@ describe('Weight goal editor actions', () => {
   });
 
   test('the goal-editor Cancel clears the floor and announces itself', async () => {
-    const tree = await renderTree(<WeightGoalCard {...GOAL_PROPS} goalEditing />);
+    const tree = await renderWeightTree(<WeightGoalCard {...GOAL_PROPS} goalEditing />);
     const cancel = pressableByLabel(tree.root, 'Cancel');
     expect(cancel.props.accessibilityRole).toBe('button');
     expect(cancel.props.accessibilityLabel).toBe('Cancel');
