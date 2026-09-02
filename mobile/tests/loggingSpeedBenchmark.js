@@ -80,13 +80,32 @@ const PLANE_SWITCH_KEYS = 1;
 
 // `Done` is LogScreen's `headerRight`; ScreenShell renders that header as the
 // first child *inside* its non-sticky ScrollView (the current-routine editor
-// passes no `stickyHeaderIndices`). After scrolling down the note to place
-// carets, the user must fling back up to the header to tap Done. Coarse
-// return flings, keyed to how deep in the note the last caret work ended:
-//   T1 - Push is the first day (~top third)        -> 3
-//   T2 - touch-up lift is on the last day (~3/4)   -> 4
-//   T3 - Week B target day sits past the midpoint  -> 3
-const RETURN_TO_HEADER_SCROLLS = { T1: 3, T2: 4, T3: 3 };
+// passes no `stickyHeaderIndices`). After scrolling down the editor text to
+// place carets, the user must fling back up to the header to tap Done.
+const RETURN_FLING_LINES = 20; // editor lines a coarse upward fling covers on the way back to the header
+
+// T1 and T2 edit the plain PPL note (not an A/B routine), which the editor
+// renders whole. Their return counts are keyed to how deep the last caret work
+// lands in that full note: Push day ends ~line 67 (-> 3); the T2 touch-up lift
+// is on the last day, ~line 160, eased to a single long fling (-> 4).
+const RETURN_TO_HEADER_SCROLLS = { T1: 3, T2: 4 };
+
+// T3 edits an A/B routine. The current-routine editor's `TextInput` shows ONLY
+// the active-week slice - `useLogCurrentRoutineEditor.js`'s `activeEditText`
+// returns `lines.slice(sepIdx + 1)` (everything after `---`) when Week B is
+// active - so the user never scrolls through Week A. Derive T3's return scroll
+// from that visible slice: the Week B target day is the first day in the slice,
+// its heading + 4 exercise blocks end ~line 31, +1 for the appended row.
+function weekBReturnScroll() {
+  const lines = AB_ROUTINE_NOTE.split('\n');
+  const sepIdx = lines.findIndex((l) => l.trim() === '---');
+  const slice = lines.slice(sepIdx + 1); // exactly what the editor renders for Week B
+  const dayIdx = slice.findIndex((l) => l.trim().toLowerCase().startsWith(T3_WEEK_B_DAY.toLowerCase()));
+  let end = dayIdx;
+  while (end + 1 < slice.length && slice[end + 1].trim() !== '') end += 1;
+  const caretLine = end + 1 /* 0-based -> 1-based */ + 1 /* the row T3 appends */;
+  return round1(caretLine / RETURN_FLING_LINES);
+}
 
 // ── Flow configuration ──────────────────────────────────────────────────────
 //
@@ -150,10 +169,15 @@ function keyboardPlaneSetupStep(flow) {
   });
 }
 
-// Scroll back up to the non-sticky header to reach Done.
+// Scroll back up to the non-sticky header to reach Done. T3 is scoped to the
+// visible Week B slice (see `weekBReturnScroll`); T1/T2 span the full PPL note.
+function returnScrollCount(taskId) {
+  return taskId === 'T3' ? weekBReturnScroll() : RETURN_TO_HEADER_SCROLLS[taskId];
+}
+
 function returnToHeaderStep(taskId) {
   return step('Scroll back up to the header to reach Done', {
-    SCROLL: RETURN_TO_HEADER_SCROLLS[taskId],
+    SCROLL: returnScrollCount(taskId),
   });
 }
 
@@ -293,7 +317,7 @@ export const ASSUMPTIONS = [
   'Forward scroll to reach an exercise scales with its block depth (1 header + N prior session rows) over ~9 visible editor lines; ~1.4 per exercise at the 12-session PPL depth, ~0.8 at the 6-session A/B depth.',
   'Editor keyboard is the default alphabetic multiline field; autoCorrect / autoCapitalize / spellCheck are off.',
   'One key per literal character, comma counted once. The digit/symbol plane is entered once per editor session (GBoard keeps it active across scroll/caret moves), not per row.',
-  'Done is LogScreen `headerRight`, rendered inside ScreenShell\'s non-sticky ScrollView, so each task ends with a scroll back up to the header to tap Done.',
+  'Done is LogScreen `headerRight`, rendered inside ScreenShell\'s non-sticky ScrollView, so each task ends with a scroll back up to the header to tap Done. T1/T2 span the full PPL note; T3 is scoped to the visible Week B slice only (the editor `activeEditText` shows just the lines after `---`), so T3\'s return scroll is ~1.6, not the ~3 a full-A/B-note assumption gives.',
   'The user logs exactly one working row per exercise; no parse errors are introduced.',
   'Autosave has already fired at idle before Done; Done is a re-save + check-in detection tap.',
   'Elapsed time = Σ(action count × per-action cost); recall/decision latency is excluded.',

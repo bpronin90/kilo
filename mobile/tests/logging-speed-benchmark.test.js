@@ -93,6 +93,15 @@ describe('benchmark fixtures parse clean under the real grammar', () => {
         expect(lift.session_entries).toHaveLength(AB_PRIOR_SESSIONS_PER_LIFT);
       }
     }
+
+    // The current-routine editor renders only the post-`---` slice for Week B
+    // (useLogCurrentRoutineEditor.js `activeEditText`). T3's return-scroll cost
+    // is derived from this slice's length, so lock it.
+    const noteLines = AB_ROUTINE_NOTE.split('\n');
+    const sepIdx = noteLines.findIndex((l) => l.trim() === '---');
+    const weekBSlice = noteLines.slice(sepIdx + 1);
+    expect(weekBSlice.length).toBe(61);
+    expect(weekBSlice.length).toBeLessThan(noteLines.length / 2 + 1); // strictly the active-week half, not the whole doc
   });
 });
 
@@ -143,11 +152,13 @@ describe('current-main baseline action counts and elapsed time', () => {
     expect(r.elapsedSeconds).toBeCloseTo(15.6);
   });
 
-  test('T3 - A/B Week B day', () => {
+  test('T3 - A/B Week B day (scroll scoped to the visible Week B slice)', () => {
     const r = byId(results, 'T3');
-    expect(r.counts).toEqual({ TAP: 6, KEY: 42, SCROLL: 6.2, SCAN: 4, CARET_FIX: 2.8 });
-    expect(r.totalActions).toBeCloseTo(61);
-    expect(r.elapsedSeconds).toBeCloseTo(39.4);
+    // SCROLL = 4 x 0.8 forward + 1.6 return, the return derived from the
+    // 61-line Week B slice the editor actually renders, not the full A/B note.
+    expect(r.counts).toEqual({ TAP: 6, KEY: 42, SCROLL: 4.8, SCAN: 4, CARET_FIX: 2.8 });
+    expect(r.totalActions).toBeCloseTo(59.6);
+    expect(r.elapsedSeconds).toBeCloseTo(37.8);
   });
 
   test('elapsed time equals the sum of action-cost products', () => {

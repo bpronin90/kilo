@@ -64,9 +64,21 @@ only KEY saving is removing that single session-level plane switch.
 `Done` is `LogScreen`'s `headerRight`; `ScreenShell` renders that header as the
 first child inside its **non-sticky** `ScrollView` (the current-routine editor
 passes no `stickyHeaderIndices`). Every task therefore ends with a scroll back up
-to the header to reach `Done` (`RETURN_TO_HEADER_SCROLLS`: T1 3, T2 4, T3 3
-coarse return flings, keyed to how deep the last caret work ended). This return
-scroll applies to the auto-scrolling `nextPrev` variant too.
+to the header to reach `Done`. This return scroll applies to the auto-scrolling
+`nextPrev` variant too.
+
+- **T1, T2** edit the plain PPL note, which the editor renders whole:
+  `RETURN_TO_HEADER_SCROLLS` = T1 3, T2 4 coarse return flings, keyed to how deep
+  the last caret work landed in the full note (Push day ~line 67; the T2 lift on
+  the last day ~line 160).
+- **T3** edits an A/B routine. The current-routine editor's `TextInput` shows
+  **only the active-week slice** — `useLogCurrentRoutineEditor.js`'s
+  `activeEditText` returns the lines after `---` when Week B is active — so the
+  user never scrolls through Week A. T3's return scroll is derived from that
+  **61-line Week B slice** (`weekBReturnScroll`): the Week B target day is the
+  first day in the slice, its heading + 4 exercise blocks end ~line 31, so
+  `round1(31 / 20)` = **1.6** flings (vs. the 3 an earlier revision wrongly
+  scaled off the full 122-line A/B document).
 
 ## Recorded assumptions
 
@@ -110,7 +122,10 @@ them here.
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | T1 — full push session | 7 | 54 | 10.0 | 5 | 3.5 | **79.5** | **52.3** |
 | T2 — single-lift touch-up | 3 | 11 | 5.4 | 1 | 0.7 | **21.1** | **15.6** |
-| T3 — A/B Week B day | 6 | 42 | 6.2 | 4 | 2.8 | **61.0** | **39.4** |
+| T3 — A/B Week B day | 6 | 42 | 4.8 | 4 | 2.8 | **59.6** | **37.8** |
+
+T3's `SCROLL` is `4 × 0.8` forward + `1.6` return, the return derived from the
+61-line Week B slice the editor actually shows (not the full 122-line A/B note).
 
 Where the cost is: caret positioning and scroll navigation in a long note
 (`SCAN + SCROLL + TAP + CARET_FIX`, per exercise, plus the return scroll to
@@ -119,12 +134,13 @@ Where the cost is: caret positioning and scroll navigation in a long note
 switch, not one per row). Expressing the sets themselves is not the bottleneck.
 
 Reconciliation with #575 §8: that report estimated T1 ≈ 80 actions, T2 18–24,
-T3 ≈ 62. This model computes **T1 79.5 / T2 21.1 / T3 61.0** — all within the
+T3 ≈ 62. This model computes **T1 79.5 / T2 21.1 / T3 59.6** — all within the
 report's ranges, on the approved 180-row / 12-prior-session fixture. (Earlier
-revisions used an 11-session fixture and charged a plane switch per row plus a
-fractional comma surcharge; corrected per Codex and review feedback on PR #942 —
-the 12-session fixture deepens each block, which is why T1/T2 SCROLL rose
-slightly and T3 SCROLL fell, tracking the shallower 6-session A/B note.)
+revisions used an 11-session fixture, charged a plane switch per row plus a
+fractional comma surcharge, and scaled T3's return scroll off the whole A/B
+document; corrected per Codex and review feedback on PR #942. The 12-session
+fixture deepens each PPL block — hence T1/T2 SCROLL up slightly — while T3 is
+scoped to the shorter visible Week B slice.)
 
 ## Rerunning after a logging-workflow change
 
@@ -142,7 +158,7 @@ which change produced it. Illustrative projection for #938 + #939 combined
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | T1 | 7 | 53 | 3 | 0 | 0 | 63.0 | 29.0 |
 | T2 | 3 | 10 | 4 | 0 | 0 | 17.0 | 10.6 |
-| T3 | 6 | 41 | 3 | 0 | 0 | 50.0 | 23.6 |
+| T3 | 6 | 41 | 1.6 | 0 | 0 | 48.6 | 21.9 |
 
 These deltas now reflect **session-level** keyboard state, not per-row: the #938
 keypad removes only the one session plane switch (−1 KEY per task), and the
