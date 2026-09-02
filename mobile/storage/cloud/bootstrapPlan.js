@@ -211,8 +211,8 @@ function buildFeatureTogglesRow(snapshot, userId) {
     user_id: userId,
     weight_date_edit_enabled: !!snapshot.weightDateEditEnabled,
     deload_date_edit_enabled: !!snapshot.deloadDateEditEnabled,
-    fatigue_tracking_enabled: snapshot.fatigueTrackingEnabled !== false,
-    deload_mode_enabled: snapshot.deloadModeEnabled !== false,
+    fatigue_tracking_enabled: !!snapshot.fatigueTrackingEnabled,
+    deload_mode_enabled: !!snapshot.deloadModeEnabled,
     updated_at: new Date().toISOString(),
   };
 }
