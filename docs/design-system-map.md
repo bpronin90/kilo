@@ -295,11 +295,16 @@ all rows end with a 20px muted `MaterialIcons` `chevron-right` disclosure.
 | Help line | fontSize / color | `13` / `colors.textMuted` |
 | Disclosure | icon / size / color | `chevron-right` / `20` / `colors.textMuted` |
 
-Each destination is a back-header subscreen in `ScreenShell`, passing
-`onBack={() => showView('menu')}`: Settings, Profile, About, Backup, Help,
-Account, and the Account children Account Lifecycle, Cloud Sync Recovery, Health
-Data Consent, Legal Links, and Set New Password. The nested Account children
-remain part of the Account flow rather than adding rows to the top-level menu.
+The top-level destinations Settings, Profile, About, Backup, Help, and Account
+are `ScreenShell` views that receive `onBack={() => showView('menu')}` from
+`MoreScreen`. The remaining listed surfaces are nested ownership details, not
+More-menu destinations: `AccountScreen` renders `AccountLifecycle` and
+`LegalLinks` inline; `BackupScreen` renders `CloudSyncRecovery` inline; and
+`CloudSyncRecovery` owns the inline `HealthDataConsent` step. A recovery session
+in `AccountScreen` renders the separate `SetNewPasswordScreen`, which has its
+own `ScreenShell` and receives Account's `onBack` callback. These nested
+components remain part of their parent flows rather than adding rows to the
+top-level menu.
 
 Settings' Appearance and Units controls, and Profile's height unit control, use
 the shared `unitTab` segmented convention: inline 44dp targets with 12px
@@ -327,7 +332,7 @@ each file, not yet a shared component):
 | Title | `fontSize: 17` |
 | Close control | `✕`, `fontSize: 16`, `colors.textMuted`, `padding: 4`, `hitSlop={12}` |
 | Error banner | `colors.cardErrorBg`, `borderRadius: 10` |
-| Field fill | `colors.background` |
+| Field fill | `colors.inputBackground` (via `createInputStyle(colors)`) |
 | Option row | `borderRadius: 12`, section `padding: 20` |
 
 `WebAlertHost.js` is intentionally the alert exception rather than a sheet:
