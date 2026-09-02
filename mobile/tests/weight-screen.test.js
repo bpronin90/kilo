@@ -3,6 +3,7 @@ import render from 'react-test-renderer';
 import { Alert, StyleSheet } from 'react-native';
 import { WeightScreen } from '../screens/WeightScreen';
 import { TrendSection } from '../components/WeightTrendSection';
+import { buildTrendSections } from '../lib/WeightScreenHelpers';
 import { LightColors } from '../theme/colors';
 import * as useEntries from '../hooks/useEntries';
 import * as weightHooks from '../hooks/entries/weightHooks';
@@ -2166,5 +2167,89 @@ describe('Weight retry does not flash a verified-empty state (#737 review)', () 
 
     expect(hasText(component, 'Could not load your weight goal.')).toBe(false);
     expect(hasText(component, 'Weight History')).toBe(true);
+  });
+});
+
+// ── buildTrendSections — pace copy names the elapsed period (#941) ────────────
+
+describe('buildTrendSections pace copy', () => {
+  const baseTrends = {
+    currentWeight: 190, priorDayWeight: 185,
+    avg7: 188, priorAvg7: 186, avg30: 187, priorAvg30: 185,
+  };
+
+  test('day-over-day spike keeps the direction value and the period as a separate caption', () => {
+    const sections = buildTrendSections(
+      { ...baseTrends, paceFlag: 'gain' },
+      { direction: 'gain', level: 'spike', elapsedDays: 1 },
+    );
+    // Value stays a short direction cue; the elapsed span is its own field so it
+    // does not get tail-ellipsized out of the narrow single-line trend column.
+    expect(sections[0].col3.value).toBe('↑ Gaining');
+    expect(sections[0].col3.caption).toBe('day-over-day');
+    expect(sections[0].paceLevel).toBe('spike');
+  });
+
+  test('multi-day gap names the elapsed span in the caption', () => {
+    const sections = buildTrendSections(
+      { ...baseTrends, paceFlag: 'loss' },
+      { direction: 'loss', level: 'notable', elapsedDays: 5 },
+    );
+    expect(sections[0].col3.value).toBe('↓ Losing');
+    expect(sections[0].col3.caption).toBe('over 5 days');
+    expect(sections[0].paceLevel).toBe('notable');
+  });
+
+  test('no pace flag falls back to a dash with no caption and no pace level', () => {
+    const sections = buildTrendSections({ ...baseTrends, paceFlag: null }, null);
+    expect(sections[0].col3.value).toBe('-');
+    expect(sections[0].col3.caption).toBeNull();
+    expect(sections[0].paceLevel).toBeNull();
+  });
+});
+
+describe('TrendSection pace caption rendering (#941)', () => {
+  const renderSection = (props) => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <TrendSection
+          title="Today"
+          col1={{ label: 'Current', value: '190.0 lb' }}
+          col2={{ label: 'Vs Previous', value: '+5.0 lb' }}
+          col3={{ label: 'Trend', value: '↑ Gaining', caption: 'over 5 days' }}
+          paceLevel="notable"
+          {...props}
+        />
+      );
+    });
+    return component.root;
+  };
+
+  const textNodes = (root) =>
+    root.findAllByType('Text').map((n) => String(n.props.children ?? '').trim());
+
+  test('the elapsed period renders as its own Text node, not embedded in the value', () => {
+    const nodes = textNodes(renderSection());
+    // The period is a standalone node — legible even though the value node is
+    // single-line and right-aligned in a narrow column.
+    expect(nodes).toContain('over 5 days');
+    expect(nodes).toContain('↑ Gaining');
+    // The value node itself is exactly the direction cue, with no period tail.
+    expect(nodes.some((t) => t === '↑ Gaining · over 5 days')).toBe(false);
+  });
+
+  test('the caption Text is not clamped to a single line', () => {
+    const root = renderSection();
+    const caption = root
+      .findAllByType('Text')
+      .find((n) => String(n.props.children ?? '').trim() === 'over 5 days');
+    expect(caption.props.numberOfLines).toBeUndefined();
+  });
+
+  test('no caption node when col3.caption is absent', () => {
+    const nodes = textNodes(renderSection({ col3: { label: 'Trend', value: '→ Stable' } }));
+    expect(nodes).toContain('→ Stable');
+    expect(nodes).not.toContain('over 5 days');
   });
 });
