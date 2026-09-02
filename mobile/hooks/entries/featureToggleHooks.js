@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import * as Storage from '../../storage/entries';
 import { safeNotify } from './shared';
 
-const DEFAULT_FEATURE_TOGGLES = { fatigueTrackingEnabled: true, deloadModeEnabled: true };
+const DEFAULT_FEATURE_TOGGLES = { fatigueTrackingEnabled: false, deloadModeEnabled: false };
 let currentFeatureToggles = { ...DEFAULT_FEATURE_TOGGLES };
 let featureToggleListeners = [];
 const notifyFeatureToggles = () => safeNotify(featureToggleListeners);

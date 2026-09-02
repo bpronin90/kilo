@@ -171,9 +171,9 @@ export async function saveDeloadDateEditEnabled(enabled) {
 export async function loadFatigueTrackingEnabled() {
   try {
     const raw = await AsyncStorage.getItem(FATIGUE_TRACKING_KEY);
-    return raw == null ? true : JSON.parse(raw);
+    return raw == null ? false : JSON.parse(raw);
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -213,9 +213,9 @@ export async function saveWorkoutReminder(settings) {
 export async function loadDeloadModeEnabled() {
   try {
     const raw = await AsyncStorage.getItem(DELOAD_MODE_KEY);
-    return raw == null ? true : JSON.parse(raw);
+    return raw == null ? false : JSON.parse(raw);
   } catch {
-    return true;
+    return false;
   }
 }
 

@@ -333,18 +333,26 @@ describe('weight date edit setting', () => {
 });
 
 describe('fatigue tracking feature toggle', () => {
-  test('defaults to true (enabled) when not set', async () => {
+  test('defaults to false (off) when not set (#934)', async () => {
     const val = await loadFatigueTrackingEnabled();
-    expect(val).toBe(true);
+    expect(val).toBe(false);
   });
 
-  test('saves and loads the disabled state', async () => {
+  test('fails closed to false when the read throws (#934)', async () => {
+    AsyncStorage.getItem.mockImplementationOnce(() =>
+      Promise.reject(new Error('storage unavailable')),
+    );
+    const val = await loadFatigueTrackingEnabled();
+    expect(val).toBe(false);
+  });
+
+  test('preserves an explicitly stored disabled state', async () => {
     await saveFatigueTrackingEnabled(false);
     const val = await loadFatigueTrackingEnabled();
     expect(val).toBe(false);
   });
 
-  test('saves and loads the enabled state', async () => {
+  test('preserves an explicitly stored enabled state', async () => {
     await saveFatigueTrackingEnabled(true);
     const val = await loadFatigueTrackingEnabled();
     expect(val).toBe(true);
@@ -352,18 +360,26 @@ describe('fatigue tracking feature toggle', () => {
 });
 
 describe('deload mode feature toggle', () => {
-  test('defaults to true (enabled) when not set', async () => {
+  test('defaults to false (off) when not set (#934)', async () => {
     const val = await loadDeloadModeEnabled();
-    expect(val).toBe(true);
+    expect(val).toBe(false);
   });
 
-  test('saves and loads the disabled state', async () => {
+  test('fails closed to false when the read throws (#934)', async () => {
+    AsyncStorage.getItem.mockImplementationOnce(() =>
+      Promise.reject(new Error('storage unavailable')),
+    );
+    const val = await loadDeloadModeEnabled();
+    expect(val).toBe(false);
+  });
+
+  test('preserves an explicitly stored disabled state', async () => {
     await saveDeloadModeEnabled(false);
     const val = await loadDeloadModeEnabled();
     expect(val).toBe(false);
   });
 
-  test('saves and loads the enabled state', async () => {
+  test('preserves an explicitly stored enabled state', async () => {
     await saveDeloadModeEnabled(true);
     const val = await loadDeloadModeEnabled();
     expect(val).toBe(true);
@@ -830,7 +846,7 @@ describe('buildCloudExport — local backup parity plus cloud-only fields', () =
     expect(payload.cloud.feature_toggles).toEqual({
       weight_date_edit_enabled: true,
       deload_date_edit_enabled: false,
-      fatigue_tracking_enabled: true,
+      fatigue_tracking_enabled: false,
       deload_mode_enabled: false,
     });
   });

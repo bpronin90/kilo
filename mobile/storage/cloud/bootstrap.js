@@ -229,8 +229,8 @@ export async function isLocalDataEmpty() {
   const hasNonDefaultToggles =
     snapshot.weightDateEditEnabled === true ||
     snapshot.deloadDateEditEnabled === true ||
-    snapshot.fatigueTrackingEnabled === false ||
-    snapshot.deloadModeEnabled === false;
+    snapshot.fatigueTrackingEnabled === true ||
+    snapshot.deloadModeEnabled === true;
   const hasNonDefaultMultiplier =
     snapshot.fatigueMultiplier != null &&
     Number(snapshot.fatigueMultiplier) !== DEFAULT_FATIGUE_MULTIPLIER;
