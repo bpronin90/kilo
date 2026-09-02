@@ -1,5 +1,85 @@
 # Changelog
 
+## 0.118.17 - 2026-09-02
+
+- Issue #934: Fatigue tracking and Deload mode now start OFF on a fresh install. Turn either on any time from Settings; if you already set them, your choice is unchanged.
+
+## 0.118.16 - 2026-09-02
+
+- Issue #925: Updated the mobile app's build-tooling dependencies to a patched Browserslist release, closing two high-severity advisories in the transitive dependency used to target supported browsers during builds. No app behavior changes.
+
+## 0.118.15 - 2026-09-02
+
+- Issue #923: Fixed low-contrast accent labels in Dark mode on the Settings fatigue stepper, the Big 3 slot picker's selected row, Recovery's retry button, the weight history "Load more" row while held, and Home's sync notice.
+
+## 0.118.14 - 2026-09-02
+
+- Issue #921: Recovery's `Edit note` control and its `A`/`B` week segment now present a full 44dp tap target and grow with the device text size, instead of a 36dp button and a 32dp segment whose extra touch area was silently clipped away.
+
+## 0.118.13 - 2026-09-02
+
+- Issue #920: Aligned the More tab's navigation rows with the rest of the app: the six rows now use the shared chevron icon instead of a one-off text arrow, and the Account and Data & Backup rows no longer carry an error-red border reserved for irreversible actions.
+
+## 0.118.12 - 2026-09-02
+
+- Issue #919: The Weight tab's text-only editor actions — the editing-header Cancel, the four note/date "Done" links, and the goal card's Edit / Archive / Clear / Cancel controls — now present a full 44×44dp touch target, and both Cancel controls announce themselves to the screen reader.
+
+## 0.118.11 - 2026-09-02
+
+- Issue #918: Accent-colored text on the Log tab, its modals, and workout day subheadings now uses an accessible ink in every theme. Bright orange stays on fills, borders, icons, and dots.
+
+## 0.118.10 - 2026-08-29
+
+- Issue #909: Profile writes no longer fail silently. If saving the Settings weight unit fails, the Units card now says so directly under the control — the choice still applies for the session, but the message names the unit the app will open in until the save succeeds, and offers a Retry you can reach without switching units and back. The report survives leaving and re-entering Settings, and only appears when the displayed unit really does differ from the stored one. A failed `Clear All` on the User Profile screen now reports the error and leaves the profile untouched instead of doing nothing at all.
+
+## 0.118.9 - 2026-08-29
+
+- Issue #908: Accent- and caution-colored text now uses a darker ink in light mode, so labels like the note editor's parser warnings, the weight goal pace copy, and Home's accent actions meet the AA 4.5:1 contrast target instead of the 2.7:1 they measured before. Dark mode is unchanged.
+
+## 0.118.8 - 2026-08-29
+
+- Issue #907: Labels on accent-filled controls in light mode — the Settings appearance and unit tabs, selected recovery week chips, profile toggles, and modal confirm affordances — now use dark ink that clears the 4.5:1 AA contrast target instead of white ink at 2.68:1.
+
+## 0.118.7 - 2026-08-29
+
+- Issue #906: Charts that support point selection now announce as an operable control with previous/next point actions, so a screen reader can reach every point, and a low-emphasis hint above the plot says a point can be tapped and how to clear it. On web, arrow keys move between points and Escape clears the selection.
+
+## 0.118.6 - 2026-08-29
+
+- Issue #905: Log's editor-header controls and `New routine` now present a 44dp tap target, the read-view `Done` announces itself as a button, and the editor header wraps instead of pushing a control off the screen edge at small widths or large text sizes.
+
+## 0.118.5 - 2026-08-29
+
+- Issue #904: Buttons, chips, and toggles outside the Log tab — the error banner's Retry, the Appearance and unit selectors, the profile toggles and Clear All, the reminder weekday and time controls, the check-in chips, and the Analytics fatigue and Big 3 rows — are now at least 44dp tall and wide, and announce their role, name, and selected state to VoiceOver and TalkBack. The workout-day picker lays its seven days out as a four-column grid so each day is a full-size target, and each day now announces as a checkbox you can tick independently.
+
+## 0.118.4 - 2026-08-29
+
+- Issue #903: Following a Cloud Sync prompt now lands on the Cloud Sync panel itself in More > Data & Backup, instead of opening that screen at the top with the panel below Export and Import. Opening Data & Backup any other way is unchanged.
+
+## 0.118.3 - 2026-08-29
+
+- Issue #898: Weight History now opens collapsed to a latest-value/count summary instead of mapping every entry, so a long-tenured account's history no longer dominates the daily Weight surface. Expanding reveals entries in windows of 50, with a "Show more" control to reach the rest — full history, date filtering, editing, and deletion all remain reachable.
+
+## 0.118.2 - 2026-08-29
+
+- Issue #897: Logging a same-day weigh-in now only requires the weight field and Save weigh-in. The optional Note and Date controls moved to compact "Note · " and "Date · " rows below Save — still one tap away, still fully editable when correcting a history entry, just no longer on screen by default.
+
+## 0.118.1 - 2026-08-29
+
+- Issue #894: Progressive Overload now explains itself. Analytics rows say when an exercise is tracked from a catalog default or an earlier version of the app (full history, not something you explicitly selected) versus in a freshly opened tracked span (First session, with Est. Max, Kilo Max, and Best Set still showing full history). Home's Exercise Progress summary adds the same distinction when nothing is classifiable yet. The empty state and App Guide now spell out that logging alone never tracks an exercise — only the Track / Tracked control does.
+
+## 0.118.0 - 2026-08-29
+
+- Issue #893: Trend and the Progressing/Steady/Regressing status now cover only the current tracked span. Untracking an exercise and tracking it again starts progression fresh at First session, so entries logged while it was untracked no longer skew the new trend. Est. Max, Kilo Max, and Best Set still use your full history.
+
+## 0.117.2 - 2026-08-29
+
+- Issue #888: Double-tapping an exercise now lands on that exercise rather than roughly one exercise block below it.
+
+## 0.117.1 - 2026-08-29
+
+- Issue #886: Double-tapping an exercise in the current routine now opens the raw editor with that exercise in view, including on repeat jumps and deep in a long note.
+
 ## 0.117.0 - 2026-08-25
 
 - Issue #881: Double-tap a rendered exercise to jump straight to its exact spot in the raw note editor.
