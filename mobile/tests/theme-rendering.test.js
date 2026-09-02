@@ -877,4 +877,18 @@ describe('Settings Appearance control', () => {
 
     expect(option(component, 'light').props.accessibilityState.selected).toBe(true);
   });
+
+  // #934 — Fatigue tracking and Deload mode default OFF, but both stay
+  // discoverable as ordinary Settings switches with no nag or prompt.
+  test('keeps the Fatigue tracking and Deload mode switches discoverable and off by default', () => {
+    const component = renderSettings();
+
+    const fatigue = component.root.findByProps({ accessibilityLabel: 'Fatigue tracking' });
+    const deload = component.root.findByProps({ accessibilityLabel: 'Deload mode' });
+
+    expect(fatigue.props.value).toBe(false);
+    expect(deload.props.value).toBe(false);
+    expect(typeof fatigue.props.onValueChange).toBe('function');
+    expect(typeof deload.props.onValueChange).toBe('function');
+  });
 });

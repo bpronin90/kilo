@@ -850,8 +850,8 @@ function isDefaultFeatureToggles(record) {
   return (
     record.weight_date_edit_enabled === false &&
     record.deload_date_edit_enabled === false &&
-    record.fatigue_tracking_enabled === true &&
-    record.deload_mode_enabled === true
+    record.fatigue_tracking_enabled === false &&
+    record.deload_mode_enabled === false
   );
 }
 
@@ -1035,8 +1035,8 @@ async function buildFeatureToggleRecords() {
       id: SINGLETON_SYNC_ID,
       weight_date_edit_enabled: !!weightDateEdit,
       deload_date_edit_enabled: !!deloadDateEdit,
-      fatigue_tracking_enabled: fatigueTracking !== false,
-      deload_mode_enabled: deloadMode !== false,
+      fatigue_tracking_enabled: !!fatigueTracking,
+      deload_mode_enabled: !!deloadMode,
     },
   ];
 }
