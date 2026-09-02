@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.118.17 - 2026-09-02
+
+- Issue #934: Fatigue tracking and Deload mode now start OFF on a fresh install. Turn either on any time from Settings; if you already set them, your choice is unchanged.
+
+## 0.118.16 - 2026-09-02
+
+- Issue #925: Updated the mobile app's build-tooling dependencies to a patched Browserslist release, closing two high-severity advisories in the transitive dependency used to target supported browsers during builds. No app behavior changes.
+
+## 0.118.15 - 2026-09-02
+
+- Issue #923: Fixed low-contrast accent labels in Dark mode on the Settings fatigue stepper, the Big 3 slot picker's selected row, Recovery's retry button, the weight history "Load more" row while held, and Home's sync notice.
+
+## 0.118.14 - 2026-09-02
+
+- Issue #921: Recovery's `Edit note` control and its `A`/`B` week segment now present a full 44dp tap target and grow with the device text size, instead of a 36dp button and a 32dp segment whose extra touch area was silently clipped away.
+
+## 0.118.13 - 2026-09-02
+
+- Issue #920: Aligned the More tab's navigation rows with the rest of the app: the six rows now use the shared chevron icon instead of a one-off text arrow, and the Account and Data & Backup rows no longer carry an error-red border reserved for irreversible actions.
+
+## 0.118.12 - 2026-09-02
+
+- Issue #919: The Weight tab's text-only editor actions — the editing-header Cancel, the four note/date "Done" links, and the goal card's Edit / Archive / Clear / Cancel controls — now present a full 44×44dp touch target, and both Cancel controls announce themselves to the screen reader.
+
+## 0.118.11 - 2026-09-02
+
+- Issue #918: Accent-colored text on the Log tab, its modals, and workout day subheadings now uses an accessible ink in every theme. Bright orange stays on fills, borders, icons, and dots.
+
 ## 0.118.10 - 2026-08-29
 
 - Issue #909: Profile writes no longer fail silently. If saving the Settings weight unit fails, the Units card now says so directly under the control — the choice still applies for the session, but the message names the unit the app will open in until the save succeeds, and offers a Retry you can reach without switching units and back. The report survives leaving and re-entering Settings, and only appears when the displayed unit really does differ from the stored one. A failed `Clear All` on the User Profile screen now reports the error and leaves the profile untouched instead of doing nothing at all.
