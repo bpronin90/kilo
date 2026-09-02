@@ -1,4 +1,4 @@
-import { classifyWeightPace, getWeightDeltaSeverity, formatDelta, formatDate } from '../lib/format';
+import { classifyWeightPace, formatPaceElapsed, getWeightDeltaSeverity, formatDelta, formatDate } from '../lib/format';
 
 // ── formatDate ────────────────────────────────────────────────────────────────
 
@@ -51,41 +51,79 @@ describe('classifyWeightPace', () => {
   });
 
   test('returns notable gain for 1.6 lb increase', () => {
-    expect(classifyWeightPace(1.6)).toEqual({ direction: 'gain', level: 'notable' });
+    expect(classifyWeightPace(1.6)).toEqual({ direction: 'gain', level: 'notable', elapsedDays: null });
   });
 
   test('returns notable loss for 1.6 lb decrease', () => {
-    expect(classifyWeightPace(-1.6)).toEqual({ direction: 'loss', level: 'notable' });
+    expect(classifyWeightPace(-1.6)).toEqual({ direction: 'loss', level: 'notable', elapsedDays: null });
   });
 
   test('returns notable for delta between 1.5 and 2.3 (e.g. 2.2)', () => {
-    expect(classifyWeightPace(2.2)).toEqual({ direction: 'gain', level: 'notable' });
-    expect(classifyWeightPace(-2.2)).toEqual({ direction: 'loss', level: 'notable' });
+    expect(classifyWeightPace(2.2)).toEqual({ direction: 'gain', level: 'notable', elapsedDays: null });
+    expect(classifyWeightPace(-2.2)).toEqual({ direction: 'loss', level: 'notable', elapsedDays: null });
   });
 
   test('returns spike gain for 2.4 lb increase', () => {
-    expect(classifyWeightPace(2.4)).toEqual({ direction: 'gain', level: 'spike' });
+    expect(classifyWeightPace(2.4)).toEqual({ direction: 'gain', level: 'spike', elapsedDays: null });
   });
 
   test('returns spike loss for 2.4 lb decrease', () => {
-    expect(classifyWeightPace(-2.4)).toEqual({ direction: 'loss', level: 'spike' });
+    expect(classifyWeightPace(-2.4)).toEqual({ direction: 'loss', level: 'spike', elapsedDays: null });
   });
 
   test('returns spike for large deltas (e.g. 5 lb)', () => {
-    expect(classifyWeightPace(5)).toEqual({ direction: 'gain', level: 'spike' });
-    expect(classifyWeightPace(-5)).toEqual({ direction: 'loss', level: 'spike' });
+    expect(classifyWeightPace(5)).toEqual({ direction: 'gain', level: 'spike', elapsedDays: null });
+    expect(classifyWeightPace(-5)).toEqual({ direction: 'loss', level: 'spike', elapsedDays: null });
   });
 
   // boundary at exactly 1.5
   test('returns notable for delta exactly at 1.5 lb boundary', () => {
-    expect(classifyWeightPace(1.5)).toEqual({ direction: 'gain', level: 'notable' });
-    expect(classifyWeightPace(-1.5)).toEqual({ direction: 'loss', level: 'notable' });
+    expect(classifyWeightPace(1.5)).toEqual({ direction: 'gain', level: 'notable', elapsedDays: null });
+    expect(classifyWeightPace(-1.5)).toEqual({ direction: 'loss', level: 'notable', elapsedDays: null });
   });
 
   // boundary at exactly 2.3
   test('returns spike for delta exactly at 2.3 lb boundary', () => {
-    expect(classifyWeightPace(2.3)).toEqual({ direction: 'gain', level: 'spike' });
-    expect(classifyWeightPace(-2.3)).toEqual({ direction: 'loss', level: 'spike' });
+    expect(classifyWeightPace(2.3)).toEqual({ direction: 'gain', level: 'spike', elapsedDays: null });
+    expect(classifyWeightPace(-2.3)).toEqual({ direction: 'loss', level: 'spike', elapsedDays: null });
+  });
+
+  // ── elapsed calendar-day awareness (#941) ─────────────────────────────────
+
+  test('normal thresholds hold through 3 elapsed days', () => {
+    expect(classifyWeightPace(2.5, 1)).toEqual({ direction: 'gain', level: 'spike', elapsedDays: 1 });
+    expect(classifyWeightPace(2.5, 3)).toEqual({ direction: 'gain', level: 'spike', elapsedDays: 3 });
+    expect(classifyWeightPace(1.8, 3)).toEqual({ direction: 'gain', level: 'notable', elapsedDays: 3 });
+  });
+
+  test('spike downgrades to notable after 3 elapsed days (through day 7)', () => {
+    expect(classifyWeightPace(3.0, 4)).toEqual({ direction: 'gain', level: 'notable', elapsedDays: 4 });
+    expect(classifyWeightPace(-3.0, 7)).toEqual({ direction: 'loss', level: 'notable', elapsedDays: 7 });
+  });
+
+  test('notable stays notable after 3 elapsed days', () => {
+    expect(classifyWeightPace(1.8, 6)).toEqual({ direction: 'gain', level: 'notable', elapsedDays: 6 });
+  });
+
+  test('returns no pace flag after 7 elapsed days regardless of magnitude', () => {
+    expect(classifyWeightPace(8.0, 8)).toBeNull();
+    expect(classifyWeightPace(-8.0, 30)).toBeNull();
+    expect(classifyWeightPace(1.6, 8)).toBeNull();
+  });
+});
+
+// ── formatPaceElapsed ────────────────────────────────────────────────────────
+
+describe('formatPaceElapsed', () => {
+  test('reads as day-over-day for null, 0, or 1 day', () => {
+    expect(formatPaceElapsed(null)).toBe('day-over-day');
+    expect(formatPaceElapsed(0)).toBe('day-over-day');
+    expect(formatPaceElapsed(1)).toBe('day-over-day');
+  });
+
+  test('names the span for multi-day gaps', () => {
+    expect(formatPaceElapsed(2)).toBe('over 2 days');
+    expect(formatPaceElapsed(5)).toBe('over 5 days');
   });
 });
 

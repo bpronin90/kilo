@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { Card, SectionTitle, LineChart } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { useWeightUnit } from '../lib/unitPreference';
+import { formatPaceElapsed } from '../lib/format';
 
 // One insufficient-data treatment for both charts (#821). It replaces the bare
 // "Not enough data", which named no threshold and offered nothing to do about
@@ -86,6 +87,7 @@ export function AnalyticsWeightTrendsCard({
       avg30: p30 ? `${p30.value.toFixed(1)} ${unit}` : '—',
       paceFlag: null,
       paceLevel: null,
+      paceElapsedDays: null,
       selectedDate: label,
     };
   }, [selectedPoint, weightSummary, byLabel7, byLabel30, unit]);
@@ -109,6 +111,7 @@ export function AnalyticsWeightTrendsCard({
               <Text style={styles.paceText}>
                 {display.paceFlag === 'gain' ? '↑ Gaining fast' : '↓ Losing fast'}
               </Text>
+              <Text style={styles.pacePeriodText}>{formatPaceElapsed(display.paceElapsedDays)}</Text>
             </View>
           )}
         </View>
@@ -256,6 +259,14 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     color: colors.textLight,
+  },
+  // States the elapsed span in words so the badge does not lean on color alone.
+  pacePeriodText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textLight,
+    textAlign: 'right',
+    marginTop: 1,
   },
   weightFooter: {
     flexDirection: 'row',

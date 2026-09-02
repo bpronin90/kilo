@@ -1,4 +1,4 @@
-import { formatDelta } from './format';
+import { formatDelta, formatPaceElapsed } from './format';
 import { displayWeight } from './units';
 
 export function localDateToday() {
@@ -23,13 +23,17 @@ export function formatTrendCue(currentValue, priorValue) {
   return '→ Stable';
 }
 
-export function buildTrendSections(trends, paceLevel, unit = 'lb') {
+export function buildTrendSections(trends, paceInfo, unit = 'lb') {
+  const paceLevel = paceInfo ? paceInfo.level : null;
+  const paceValue = trends.paceFlag
+    ? `${trends.paceFlag === 'gain' ? '↑ Gaining' : '↓ Losing'} · ${formatPaceElapsed(paceInfo?.elapsedDays)}`
+    : '-';
   return [
     {
       title: 'Today',
       col1: { label: 'Current', value: formatTrendValue(trends.currentWeight, unit) },
       col2: { label: 'Vs Previous', value: formatTrendDeltaValue(trends.currentWeight, trends.priorDayWeight, unit) },
-      col3: { label: 'Trend', value: trends.paceFlag ? (trends.paceFlag === 'gain' ? '↑ Gaining' : '↓ Losing') : '-' },
+      col3: { label: 'Trend', value: paceValue },
       paceLevel,
     },
     {

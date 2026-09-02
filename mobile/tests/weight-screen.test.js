@@ -3,6 +3,7 @@ import render from 'react-test-renderer';
 import { Alert, StyleSheet } from 'react-native';
 import { WeightScreen } from '../screens/WeightScreen';
 import { TrendSection } from '../components/WeightTrendSection';
+import { buildTrendSections } from '../lib/WeightScreenHelpers';
 import { LightColors } from '../theme/colors';
 import * as useEntries from '../hooks/useEntries';
 import * as weightHooks from '../hooks/entries/weightHooks';
@@ -2166,5 +2167,38 @@ describe('Weight retry does not flash a verified-empty state (#737 review)', () 
 
     expect(hasText(component, 'Could not load your weight goal.')).toBe(false);
     expect(hasText(component, 'Weight History')).toBe(true);
+  });
+});
+
+// ── buildTrendSections — pace copy names the elapsed period (#941) ────────────
+
+describe('buildTrendSections pace copy', () => {
+  const baseTrends = {
+    currentWeight: 190, priorDayWeight: 185,
+    avg7: 188, priorAvg7: 186, avg30: 187, priorAvg30: 185,
+  };
+
+  test('day-over-day spike states the period in words, not just color', () => {
+    const sections = buildTrendSections(
+      { ...baseTrends, paceFlag: 'gain' },
+      { direction: 'gain', level: 'spike', elapsedDays: 1 },
+    );
+    expect(sections[0].col3.value).toBe('↑ Gaining · day-over-day');
+    expect(sections[0].paceLevel).toBe('spike');
+  });
+
+  test('multi-day gap names the elapsed span', () => {
+    const sections = buildTrendSections(
+      { ...baseTrends, paceFlag: 'loss' },
+      { direction: 'loss', level: 'notable', elapsedDays: 5 },
+    );
+    expect(sections[0].col3.value).toBe('↓ Losing · over 5 days');
+    expect(sections[0].paceLevel).toBe('notable');
+  });
+
+  test('no pace flag falls back to a dash with no pace level', () => {
+    const sections = buildTrendSections({ ...baseTrends, paceFlag: null }, null);
+    expect(sections[0].col3.value).toBe('-');
+    expect(sections[0].paceLevel).toBeNull();
   });
 });

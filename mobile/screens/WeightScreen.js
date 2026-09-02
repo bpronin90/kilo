@@ -263,7 +263,7 @@ export function WeightScreen({
 
   const {
     trendSummary: trends,
-    paceLevel,
+    paceInfo,
     goalInfo: rawGoalInfo,
     calorieEstimate,
   } = useMemo(
@@ -313,7 +313,7 @@ export function WeightScreen({
     };
   }, [rawGoalInfo, goalForm.goalEditing, goalForm.goalTargetDate, goal?.target_date]);
 
-  const trendSections = useMemo(() => buildTrendSections(trends, paceLevel, unit), [trends, paceLevel, unit]);
+  const trendSections = useMemo(() => buildTrendSections(trends, paceInfo, unit), [trends, paceInfo, unit]);
 
   const isGoalMet = useMemo(() => {
     const [y, m, d] = today.split('-').map(Number);

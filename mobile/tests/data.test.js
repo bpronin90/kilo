@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics, computeBMR, computeTDEE, ageFromDateOfBirth, isProfileComplete, ACTIVITY_MULTIPLIERS, computeCalorieEstimate, computeWeightGoal, computeWeightRollingAverageSeries, deriveNonWeightedTrackedExerciseMetrics, derive1kTotal, derive1kTotalSeries, derive1kTotalSeriesFromSectionsList, derive1kTotalFromSectionsList, deriveSessionCheckIn, deriveCheckInHistory, findMatchingExerciseNames, rolloverOneKExercises, DEFAULT_1K_EXERCISES } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeWeightPaceInfo, classifyWeightPace, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics, computeBMR, computeTDEE, ageFromDateOfBirth, isProfileComplete, ACTIVITY_MULTIPLIERS, computeCalorieEstimate, computeWeightGoal, computeWeightRollingAverageSeries, deriveNonWeightedTrackedExerciseMetrics, derive1kTotal, derive1kTotalSeries, derive1kTotalSeriesFromSectionsList, derive1kTotalFromSectionsList, deriveSessionCheckIn, deriveCheckInHistory, findMatchingExerciseNames, rolloverOneKExercises, DEFAULT_1K_EXERCISES } from '../lib/data';
 import { parseWorkoutNote } from '../lib/parser';
 
 
@@ -2221,6 +2221,142 @@ describe('WEIGHT_PACE thresholds', () => {
       { date: '2026-05-19', weight_value: 185.0 },
     ];
     expect(computeWeightPaceLevel(entries)).toBe('notable');
+  });
+});
+
+// ── same-date and elapsed-day aware pace (#941) ───────────────────────────────
+
+describe('weight pace — same-date aggregation', () => {
+  // Prior date 185.00; the most recent date holds two weigh-ins whose raw
+  // intra-day swing is +3.30 lb (a spike), but whose mean sits only +0.97 lb
+  // above the prior date once aggregated — below the 1.5 lb notable threshold.
+  const sameDaySwing = [
+    { date: '2026-05-20', weight_value: 185.00 },
+    { date: '2026-05-21', weight_value: 184.32 },
+    { date: '2026-05-21', weight_value: 187.62 },
+  ];
+
+  test('same-day weigh-ins are pre-averaged by local date before comparison', () => {
+    // Raw most-recent-two comparison would read +3.30 lb → a spike-magnitude delta.
+    expect(187.62 - 184.32).toBeCloseTo(3.30, 5);
+    expect(classifyWeightPace(3.30, 1).level).toBe('spike');
+    // After date aggregation the delta is +0.97 lb → no pace flag.
+    expect((187.62 + 184.32) / 2 - 185.00).toBeCloseTo(0.97, 5);
+    expect(computeWeightPaceInfo(sameDaySwing)).toBeNull();
+    expect(computeWeightPaceLevel(sameDaySwing)).toBeNull();
+    expect(computeWeightTrends(sameDaySwing).paceFlag).toBeNull();
+  });
+
+  test('aggregation is order-independent', () => {
+    const shuffled = [sameDaySwing[1], sameDaySwing[0], sameDaySwing[2]];
+    expect(computeWeightPaceInfo(shuffled)).toBeNull();
+  });
+
+  test('same-day mean that still clears the threshold keeps a flag with elapsedDays 1', () => {
+    const entries = [
+      { date: '2026-05-20', weight_value: 185.0 },
+      { date: '2026-05-21', weight_value: 186.0 },
+      { date: '2026-05-21', weight_value: 189.0 }, // mean 187.5 → +2.5 lb
+    ];
+    expect(computeWeightPaceInfo(entries)).toEqual({ direction: 'gain', level: 'spike', elapsedDays: 1 });
+  });
+});
+
+describe('weight pace — elapsed calendar days', () => {
+  test('normal thresholds hold through a 3-day gap', () => {
+    const entries = [
+      { date: '2026-05-24', weight_value: 187.6 },
+      { date: '2026-05-21', weight_value: 185.0 }, // +2.6 lb over 3 days
+    ];
+    expect(computeWeightPaceInfo(entries)).toEqual({ direction: 'gain', level: 'spike', elapsedDays: 3 });
+    expect(computeWeightPaceLevel(entries)).toBe('spike');
+  });
+
+  test('spike downgrades to notable when the gap exceeds 3 days', () => {
+    const entries = [
+      { date: '2026-05-25', weight_value: 190.0 },
+      { date: '2026-05-20', weight_value: 185.0 }, // +5.0 lb over 5 days
+    ];
+    expect(computeWeightPaceInfo(entries)).toEqual({ direction: 'gain', level: 'notable', elapsedDays: 5 });
+    expect(computeWeightPaceLevel(entries)).toBe('notable');
+    expect(computeWeightTrends(entries).paceFlag).toBe('gain');
+  });
+
+  test('notable stays notable across an irregular multi-day gap', () => {
+    const entries = [
+      { date: '2026-05-27', weight_value: 183.2 },
+      { date: '2026-05-20', weight_value: 185.0 }, // -1.8 lb over 7 days
+    ];
+    expect(computeWeightPaceInfo(entries)).toEqual({ direction: 'loss', level: 'notable', elapsedDays: 7 });
+  });
+
+  test('no pace flag once the gap exceeds 7 days, however large the delta', () => {
+    const entries = [
+      { date: '2026-06-05', weight_value: 178.0 },
+      { date: '2026-05-20', weight_value: 185.0 }, // -7.0 lb over 16 days
+    ];
+    expect(computeWeightPaceInfo(entries)).toBeNull();
+    expect(computeWeightPaceLevel(entries)).toBeNull();
+    expect(computeWeightTrends(entries).paceFlag).toBeNull();
+  });
+});
+
+describe('weight pace — DST-safe elapsed count', () => {
+  // US DST springs forward on 2026-03-08. calendarDaysBetween must count whole
+  // calendar dates, so the elapsed span is unaffected by the lost hour.
+  test('2-day gap straddling spring-forward counts as 2 elapsed days', () => {
+    const entries = [
+      { date: '2026-03-09', weight_value: 187.5 },
+      { date: '2026-03-07', weight_value: 185.0 }, // +2.5 lb, 2 days across DST
+    ];
+    expect(computeWeightPaceInfo(entries)).toEqual({ direction: 'gain', level: 'spike', elapsedDays: 2 });
+  });
+
+  test('DST does not push a 4-day gap under the 3-day normal window', () => {
+    const entries = [
+      { date: '2026-03-10', weight_value: 190.0 },
+      { date: '2026-03-06', weight_value: 185.0 }, // +5.0 lb, 4 days across DST
+    ];
+    expect(computeWeightPaceInfo(entries)).toEqual({ direction: 'gain', level: 'notable', elapsedDays: 4 });
+  });
+});
+
+describe('weight pace — classification runs in canonical lb space', () => {
+  // Entries are always stored in lb; display unit never reaches the classifier.
+  // A 1.5 kg/day swing (~3.31 lb) is a spike in lb space; a 0.5 kg/day swing
+  // (~1.10 lb) stays below the notable threshold. Same numbers, either display unit.
+  test('lb-space delta drives the flag regardless of display unit', () => {
+    const bigSwingLb = [
+      { date: '2026-05-21', weight_value: 185.0 + 1.5 * 2.20462 },
+      { date: '2026-05-20', weight_value: 185.0 },
+    ];
+    const smallSwingLb = [
+      { date: '2026-05-21', weight_value: 185.0 + 0.5 * 2.20462 },
+      { date: '2026-05-20', weight_value: 185.0 },
+    ];
+    expect(computeWeightPaceInfo(bigSwingLb)).toMatchObject({ direction: 'gain', level: 'spike', elapsedDays: 1 });
+    expect(computeWeightPaceInfo(smallSwingLb)).toBeNull();
+  });
+});
+
+describe('deriveWeightGoalAnalytics — paceInfo', () => {
+  test('exposes the canonical pace read alongside paceLevel', () => {
+    const entries = [
+      { date: '2026-05-25', weight_value: 190.0 },
+      { date: '2026-05-20', weight_value: 185.0 }, // +5 lb over 5 days
+    ];
+    const result = deriveWeightGoalAnalytics(entries, null, {}, new Date('2026-05-26T12:00:00'));
+    expect(result.paceInfo).toEqual({ direction: 'gain', level: 'notable', elapsedDays: 5 });
+    expect(result.paceLevel).toBe('notable');
+  });
+
+  test('paceInfo is null when there is no notable movement', () => {
+    const entries = [
+      { date: '2026-05-21', weight_value: 185.2 },
+      { date: '2026-05-20', weight_value: 185.0 },
+    ];
+    const result = deriveWeightGoalAnalytics(entries, null, {}, new Date('2026-05-22T12:00:00'));
+    expect(result.paceInfo).toBeNull();
   });
 });
 
