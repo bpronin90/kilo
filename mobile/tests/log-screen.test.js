@@ -6314,6 +6314,284 @@ describe('LogScreenEditorCard quiet on-demand problem list (#863)', () => {
       jest.useRealTimers();
     }
   });
+
+  // #867. Every test above observes the one-render `selection` PROP, which is
+  // only the fallback path and proves nothing about what a device applied:
+  // RN 0.81's `useTextInputStateSynchronization` forwards a controlled
+  // selection to native ONLY when the requested range differs from the last
+  // range it pushed or native reported, so a passing prop assertion is
+  // compatible with native receiving no command at all. That is how two
+  // selection-lifecycle implementations passed CI and changed nothing on the
+  // device (#865/#866). These tests assert on the native commands instead.
+  describe('native selection commands and a non-displacing problem list (#867)', () => {
+    // RN 0.81's TextInput instance exposes `focus()` and
+    // `setSelection(start, end)`; the latter dispatches `setTextAndSelection`
+    // straight to native with a null text, unconditionally. React Native's own
+    // jest mock ships the first and omits the second, so these tests install
+    // the missing command and record both.
+    const nativeCalls = [];
+    let restoreTextInput = () => {};
+    beforeEach(() => {
+      const proto = require('react-native').TextInput.prototype;
+      const originalFocus = proto.focus;
+      const hadSetSelection = Object.prototype.hasOwnProperty.call(proto, 'setSelection');
+      const originalSetSelection = proto.setSelection;
+      nativeCalls.length = 0;
+      proto.focus = function () { nativeCalls.push(['focus']); };
+      proto.setSelection = function (start, end) { nativeCalls.push(['setSelection', start, end]); };
+      restoreTextInput = () => {
+        proto.focus = originalFocus;
+        if (hadSetSelection) proto.setSelection = originalSetSelection;
+        else delete proto.setSelection;
+      };
+    });
+    afterEach(() => { restoreTextInput(); });
+
+    function findNoteInput(root, text) {
+      return root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === text);
+    }
+
+    function toggleList(root) {
+      render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
+    }
+
+    function layOutToolRow(root, height) {
+      render.act(() => {
+        findByTestID(root, 'editor-tool-row').props.onLayout({ nativeEvent: { layout: { height } } });
+      });
+    }
+
+    // The innermost node carrying the testID — the host view whose children
+    // are the tool row, the note, and (when open) the overlay.
+    function findStack(root) {
+      const matches = root.findAll(n => n.props?.testID === 'editor-stack');
+      return matches[matches.length - 1];
+    }
+
+    // The IN-FLOW children of that container. Anything absolutely positioned
+    // is excluded, because it cannot displace the note.
+    function inFlowStackChildStyles(root) {
+      return findStack(root).children
+        .filter(child => typeof child !== 'string')
+        .map(child => findFlatStyle(child))
+        .filter(style => style.position !== 'absolute');
+    }
+
+    test('selecting a syntax problem hands the whole malformed line to native, after focus, and leaves no controlled selection behind', () => {
+      jest.useFakeTimers();
+      try {
+        const text = ['Monday', '-Bench', '135 8,,8'].join('\n');
+        const component = renderEditor({ activeEditText: text });
+        const root = component.root;
+        toggleList(root);
+        render.act(() => { findFirstListRow(root).props.onPress(); });
+
+        const start = 'Monday\n-Bench\n'.length;
+        const end = start + '135 8,,8'.length;
+        // Focus precedes the range: Android paints a selection highlight only
+        // while the input holds focus, and taking focus can move the caret on
+        // its own, so a range applied first would be thrown away.
+        expect(nativeCalls).toEqual([['focus'], ['setSelection', start, end]]);
+
+        // Durable rather than transient: no controlled `selection` was handed
+        // to the input at all, so no later render can release, re-push, or
+        // fight the range native is now holding.
+        expect(findNoteInput(root, text).props.selection).toBeUndefined();
+        render.act(() => { jest.runOnlyPendingTimers(); });
+        expect(findNoteInput(root, text).props.selection).toBeUndefined();
+        expect(nativeCalls).toHaveLength(2);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    test('re-selecting the same problem reissues the identical range, which the controlled prop would have deduplicated away', () => {
+      const text = ['Monday', '-Bench', '135 8,,8'].join('\n');
+      const component = renderEditor({ activeEditText: text });
+      const root = component.root;
+      const start = 'Monday\n-Bench\n'.length;
+      const end = start + '135 8,,8'.length;
+
+      toggleList(root);
+      render.act(() => { findFirstListRow(root).props.onPress(); });
+      toggleList(root);
+      render.act(() => { findFirstListRow(root).props.onPress(); });
+
+      expect(nativeCalls).toEqual([
+        ['focus'], ['setSelection', start, end],
+        ['focus'], ['setSelection', start, end],
+      ]);
+    });
+
+    test('a jump native never acknowledges still cannot be reapplied by a later render', () => {
+      jest.useFakeTimers();
+      try {
+        const text = ['Monday', '-Bench', '135 8,,8', '-Squat', '225 5-8'].join('\n');
+        const component = renderEditor({ activeEditText: text });
+        const root = component.root;
+        toggleList(root);
+        render.act(() => { findListRowByPrefix(root, 'Bench —').props.onPress(); });
+        expect(nativeCalls).toHaveLength(2);
+
+        // iOS applies a JS-driven range without emitting onSelectionChange, so
+        // nothing ever reports it back. Timers and re-renders must still leave
+        // native's selection exactly where it is.
+        render.act(() => { jest.runAllTimers(); });
+        toggleList(root);
+        toggleList(root);
+        render.act(() => { jest.runAllTimers(); });
+
+        expect(nativeCalls).toHaveLength(2);
+        expect(findNoteInput(root, text).props.selection).toBeUndefined();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    test('a caret the user moves after a jump is never pulled back', () => {
+      const text = ['Monday', '-Bench', '135 8,,8', '-Squat', '225 5-8'].join('\n');
+      const component = renderEditor({ activeEditText: text });
+      const root = component.root;
+      toggleList(root);
+      render.act(() => { findListRowByPrefix(root, 'Bench —').props.onPress(); });
+
+      render.act(() => {
+        findNoteInput(root, text).props.onSelectionChange({ nativeEvent: { selection: { start: 0, end: 0 } } });
+      });
+
+      expect(nativeCalls).toHaveLength(2);
+      expect(findNoteInput(root, text).props.selection).toBeUndefined();
+    });
+
+    test('selecting another problem navigates to that row, carrying no range from the earlier one', () => {
+      const text = ['Monday', '-Bench', '135 8,,8', '-Squat', '225 5-8'].join('\n');
+      const component = renderEditor({ activeEditText: text });
+      const root = component.root;
+      toggleList(root);
+      render.act(() => { findListRowByPrefix(root, 'Bench —').props.onPress(); });
+      toggleList(root);
+      render.act(() => { findListRowByPrefix(root, 'Squat —').props.onPress(); });
+
+      const benchStart = 'Monday\n-Bench\n'.length;
+      expect(nativeCalls).toEqual([
+        ['focus'], ['setSelection', benchStart, benchStart + '135 8,,8'.length],
+        ['focus'], ['setSelection', text.indexOf('225 5-8'), text.length],
+      ]);
+    });
+
+    test('a missing-session problem makes exactly one collapsed caret jump to its insertion point', () => {
+      jest.useFakeTimers();
+      try {
+        const text = ['Monday', '-Bench', '- 135 5,5', '- 140 5,5', '-Deadlift', '- 225 5'].join('\n');
+        const component = renderEditor({
+          activeEditText: text,
+          sessionAlignmentIssue: {
+            code: 'uneven_session_entries',
+            message: 'placeholder',
+            affectedExercises: [
+              { name: 'Deadlift', entryCount: 1, sectionIndex: 0, sectionLabel: 'Monday', missingSessionIndexes: [2] },
+            ],
+          },
+        });
+        const root = component.root;
+        toggleList(root);
+        render.act(() => { findFirstListRow(root).props.onPress(); });
+
+        expect(nativeCalls).toEqual([['focus'], ['setSelection', text.length, text.length]]);
+
+        // One intentional jump, and nothing left behind to pin what comes next.
+        render.act(() => { jest.runAllTimers(); });
+        toggleList(root);
+        toggleList(root);
+        expect(nativeCalls).toHaveLength(2);
+        expect(findNoteInput(root, text).props.selection).toBeUndefined();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    test('repeatedly toggling the badge after a jump — and after the user has moved on — issues no focus, selection, or caret command at all', () => {
+      jest.useFakeTimers();
+      try {
+        const text = ['Monday', '-Bench', '135 8,,8', '-Squat', '225 5-8'].join('\n');
+        const component = renderEditor({ activeEditText: text });
+        const root = component.root;
+        layOutToolRow(root, 44);
+        toggleList(root);
+        render.act(() => { findListRowByPrefix(root, 'Squat —').props.onPress(); });
+        render.act(() => { jest.runAllTimers(); });
+
+        // Stands in for the user scrolling away and tapping elsewhere in the
+        // note: native reports a caret of its own, unrelated to the jump.
+        render.act(() => {
+          findNoteInput(root, text).props.onSelectionChange({ nativeEvent: { selection: { start: 3, end: 3 } } });
+        });
+        nativeCalls.length = 0;
+        const settledFlow = inFlowStackChildStyles(root);
+
+        for (let i = 0; i < 6; i++) {
+          toggleList(root);
+          render.act(() => { jest.runAllTimers(); });
+          // The note keeps its exact box on every one of those toggles. As an
+          // in-flow row the list moved it by its own height each time — which
+          // both shifted the page and, on Android, made the platform drag the
+          // caret back on screen.
+          expect(inFlowStackChildStyles(root)).toEqual(settledFlow);
+        }
+
+        expect(nativeCalls).toEqual([]);
+        expect(findNoteInput(root, text).props.selection).toBeUndefined();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    test('the problem list overlays the note instead of displacing it, so opening or closing it changes no layout', () => {
+      const text = ['Monday', '-Bench', '135 8,,8'].join('\n');
+      const component = renderEditor({ activeEditText: text });
+      const root = component.root;
+      layOutToolRow(root, 44);
+
+      const closedFlow = inFlowStackChildStyles(root);
+      const closedChildCount = findStack(root).children.length;
+      expect(closedFlow).toHaveLength(2);
+
+      toggleList(root);
+
+      // The list really is inside the same container as the note…
+      expect(findStack(root).children.length).toBe(closedChildCount + 1);
+      // …but adds nothing to its flow, so the note's box and the page's
+      // content height are identical whether it is open or closed.
+      expect(inFlowStackChildStyles(root)).toEqual(closedFlow);
+
+      const listStyle = findFlatStyle(findByTestID(root, 'editor-validation-list'));
+      expect(listStyle.position).toBe('absolute');
+      expect(listStyle.top).toBe(44 + 8);
+      // Opaque, because it now covers the note rather than pushing it down.
+      expect(listStyle.backgroundColor).toBe(LightColors.card);
+
+      toggleList(root);
+      expect(inFlowStackChildStyles(root)).toEqual(closedFlow);
+      expect(findStack(root).children.length).toBe(closedChildCount);
+    });
+
+    test('the overlay follows the tool row when it wraps at large text, and always ends inside its container', () => {
+      // On Android a child drawn outside its parent's bounds receives no
+      // touches, so the overlay's bottom has to stay inside the tool row +
+      // note stack however tall the tool row grows.
+      const text = ['Monday', '-Bench', '135 8,,8'].join('\n');
+      const component = renderEditor({ activeEditText: text });
+      const root = component.root;
+      layOutToolRow(root, 96);
+      toggleList(root);
+
+      const listStyle = findFlatStyle(findByTestID(root, 'editor-validation-list'));
+      expect(listStyle.position).toBe('absolute');
+      expect(listStyle.top).toBe(96 + 8);
+      const noteStyle = findFlatStyle(findNoteInput(root, text));
+      expect(listStyle.top + listStyle.maxHeight).toBeLessThanOrEqual(96 + 10 + noteStyle.minHeight);
+    });
+  });
 });
 
 describe('LogDeloadSection deload ordinal input has autocorrect disabled', () => {

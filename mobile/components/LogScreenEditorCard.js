@@ -32,6 +32,17 @@ const EDITOR_INPUT_HORIZONTAL_PADDING = 14;
 const EDITOR_INPUT_BORDER_WIDTH = 1;
 const EDITOR_INPUT_TEXT_INSET = (EDITOR_INPUT_HORIZONTAL_PADDING + EDITOR_INPUT_BORDER_WIDTH) * 2;
 
+// #867: the gap between the editor tool row and the problem list that opens
+// under it. The list is an overlay, not an in-flow row (see `validationList`
+// below), so this is its `top` offset from the bottom of the tool row rather
+// than a margin.
+const VALIDATION_LIST_TOP_GAP = 8;
+
+// #867: how far apart the tool row and the note sit inside `editorStack`.
+// Mirrors the surrounding Card's own `gap`, so pulling those two controls into
+// their own positioning context changes no spacing.
+const EDITOR_STACK_GAP = 10;
+
 // #886: how many frames a source jump will wait for the editor surface to
 // finish laying out before giving up on measuring it. The surface is
 // `display: none` until the frame the editor opens on, so the first
@@ -167,6 +178,43 @@ function _insertionOffsetAfterExercise(text, sections, sectionIndex, exerciseNam
   while (i < originalLines.length && originalLines[i] === transformedLines[i]) i++;
   if (i >= originalLines.length) return text.length;
   return originalLines.slice(0, i).join('\n').length + 1;
+}
+
+// #867: hand a JS-driven selection straight to the native input, returning
+// whether the command actually went out.
+//
+// The controlled `selection` prop cannot carry a problem jump reliably. RN
+// 0.81's `useTextInputStateSynchronization` forwards a selection to native
+// ONLY when the requested range differs from `lastNativeSelection` — the last
+// range it pushed or that native reported back. So a range native already
+// holds but no longer SHOWS (focus moved, a relayout collapsed the highlight,
+// the same problem is picked twice) produces no native command at all, and the
+// malformed line is never highlighted (#867 acceptance 1/5/6). Holding the
+// prop instead of releasing it has the opposite failure: every later render
+// re-pushes the range, which is the caret/scroll pinning #865 had to unwind
+// with a timer.
+//
+// The imperative command has neither property. It always reaches native —
+// `TextInput`'s `setSelection` calls `setTextAndSelection` unconditionally,
+// with a null text so the note itself is untouched — and it leaves nothing in
+// React state for a later render to reapply, so opening or closing the problem
+// list cannot move the caret (#867 acceptance 3/4).
+//
+// Renderers that expose no such command fall back to the one-shot controlled
+// prop: react-native-web hands back the DOM `<textarea>` (which does the same
+// job through `setSelectionRange`), and react-test-renderer hands back nothing
+// at all unless a node mock is supplied.
+function _applyNativeSelection(input, range) {
+  if (!input) return false;
+  if (typeof input.setSelection === 'function') {
+    input.setSelection(range.start, range.end);
+    return true;
+  }
+  if (typeof input.setSelectionRange === 'function') {
+    input.setSelectionRange(range.start, range.end);
+    return true;
+  }
+  return false;
 }
 
 // Post-save adoption prompt (#748; #745 Part 4 §A1). Lightweight, non-modal,
@@ -418,11 +466,14 @@ export function LogScreenEditorCard({
   // which note/mode is being edited clears it immediately too.
   const editorInputRef = useRef(null);
   const [seedSelection, setSeedSelection] = useState(null);
-  // Apply a problem jump for one render, then release control so native keeps
-  // the visible selection/caret without badge/list renders reapplying a stale
-  // range. iOS does not emit onSelectionChange for JS-driven selections, so
-  // the timer is the guaranteed completion path; the handler below releases
-  // earlier when native does report any subsequent selection (#865).
+  // Fallback path only (#867). Every problem jump now goes to native through
+  // `_applyNativeSelection`; this controlled one-shot is used solely when the
+  // renderer exposes no imperative selection command. It applies the range for
+  // one render and then releases control so badge/list renders cannot reapply
+  // a stale range. iOS does not emit onSelectionChange for JS-driven
+  // selections, so the timer is the guaranteed completion path; the handler
+  // below releases earlier when native does report any subsequent selection
+  // (#865).
   const [problemSelectionRequest, setProblemSelectionRequest] = useState(null);
   useEffect(() => {
     if (!seedSelection) return undefined;
@@ -440,6 +491,22 @@ export function LogScreenEditorCard({
   }, [editingNoteId, deloadMode]);
   const editorText = editingNoteId ? editingText : activeEditText;
   const setEditorText = editingNoteId ? setEditingText : handleCurrentTextChange;
+
+  // #867: the single way this card moves the note's selection or caret.
+  // Focus first — Android's EditText only paints a selection highlight while
+  // it holds focus, and `onTakeFocus` can move the caret on its own, so the
+  // range has to be applied after the focus command, not before it.
+  const requestEditorSelection = (range) => {
+    const input = editorInputRef.current;
+    input?.focus?.();
+    if (_applyNativeSelection(input, range)) {
+      // Native owns the selection now and no React state describes it, so
+      // nothing a later render does can reapply, release, or fight it.
+      setProblemSelectionRequest(null);
+      return;
+    }
+    setProblemSelectionRequest(range);
+  };
 
   const handleInsertSeedExample = () => {
     setEditorText(WORKOUT_SEED_EXAMPLE_TEXT);
@@ -551,6 +618,10 @@ export function LogScreenEditorCard({
   // exercise cannot be told apart by content alone.
   const [listOpen, setListOpen] = useState(false);
   const [selectedAnchor, setSelectedAnchor] = useState(null);
+  // #867: the tool row's own measured height, which is where the overlaid
+  // problem list starts. Measured rather than assumed because the row's
+  // controls wrap at large text sizes.
+  const [toolRowHeight, setToolRowHeight] = useState(0);
   useEffect(() => {
     setListOpen(false);
     setSelectedAnchor(null);
@@ -724,8 +795,7 @@ export function LogScreenEditorCard({
     if (pendingSourceJump.editingNoteId == null && currentMode !== pendingSourceJump.currentMode) return;
     if (editorText !== pendingSourceJump.expectedText) return;
     appliedSourceJumpTokenRef.current = pendingSourceJump.token;
-    setProblemSelectionRequest({ start: pendingSourceJump.start, end: pendingSourceJump.end });
-    editorInputRef.current?.focus();
+    requestEditorSelection({ start: pendingSourceJump.start, end: pendingSourceJump.end });
     _reportSourceJumpPlacement(pendingSourceJump.token, pendingSourceJump.start, editorText);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingSourceJump, editingNoteId, currentMode, editorText]);
@@ -778,15 +848,14 @@ export function LogScreenEditorCard({
     if (problem.kind === 'syntax') {
       const range = _lineCharRange(debouncedEditorText, problem.line);
       if (!range) return;
-      setProblemSelectionRequest(range);
+      requestEditorSelection(range);
     } else {
       const offset = _insertionOffsetAfterExercise(
         debouncedEditorText, validationParsed.sections, problem.sectionIndex, problem.exerciseName, problem.entryCount
       );
       if (offset == null) return;
-      setProblemSelectionRequest({ start: offset, end: offset });
+      requestEditorSelection({ start: offset, end: offset });
     }
-    editorInputRef.current?.focus();
   };
 
   const handleDismissProblemBar = () => setSelectedAnchor(null);
@@ -971,112 +1040,139 @@ export function LogScreenEditorCard({
                 )}
               </>
             )}
-            <View style={styles.editorToolRow}>
-              <Pressable
-                onPress={() => setSyntaxHelpVisible(true)}
-                style={styles.syntaxHelpButton}
-                accessibilityRole="button"
-                accessibilityLabel="Workout syntax help"
+            {/* #867: the tool row, the note, and the problem list share one
+                positioning context, and the list is an overlay inside it
+                rather than a row between them. Opening or closing the list
+                therefore changes NO layout: the note's position, size, and the
+                page's content height are all identical either way.
+                As an in-flow row it inserted up to ~228dp above the note, which
+                both shifted the note within the page scroll and re-laid out a
+                focused multiline input — and Android answers that relayout by
+                bringing the caret back on screen, dragging the page back to a
+                problem the user had already scrolled away from (#867
+                acceptance 3/4). The overlay stays inside this container's own
+                bounds (its bottom sits at most `toolRow + 228`, against a
+                container at least `toolRow + 260` tall), because on Android a
+                child drawn outside its parent's bounds receives no touches. */}
+            <View style={styles.editorStack} testID="editor-stack">
+              <View
+                style={styles.editorToolRow}
+                testID="editor-tool-row"
+                onLayout={(e) => {
+                  const height = e.nativeEvent.layout.height;
+                  setToolRowHeight(prev => (prev === height ? prev : height));
+                }}
               >
-                <Text style={styles.syntaxHelpButtonText}>Workout syntax help</Text>
-              </Pressable>
-              {validationProblems.length > 0 && (
                 <Pressable
-                  onPress={handleToggleProblemList}
-                  style={styles.validationBadge}
+                  onPress={() => setSyntaxHelpVisible(true)}
+                  style={styles.syntaxHelpButton}
                   accessibilityRole="button"
-                  accessibilityLabel={
-                    `${validationProblems.length} ${validationProblems.length === 1 ? 'problem' : 'problems'}`
-                    + `. ${listOpen ? 'Hide' : 'Show'} problem list.`
-                  }
-                  accessibilityState={{ expanded: listOpen }}
-                  testID="editor-validation-badge"
+                  accessibilityLabel="Workout syntax help"
                 >
-                  <View
-                    style={[
-                      styles.validationBadgeCircle,
-                      { borderColor: validationErrorCount > 0 ? colors.error : colors.caution },
-                    ]}
+                  <Text style={styles.syntaxHelpButtonText}>Workout syntax help</Text>
+                </Pressable>
+                {validationProblems.length > 0 && (
+                  <Pressable
+                    onPress={handleToggleProblemList}
+                    style={styles.validationBadge}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      `${validationProblems.length} ${validationProblems.length === 1 ? 'problem' : 'problems'}`
+                      + `. ${listOpen ? 'Hide' : 'Show'} problem list.`
+                    }
+                    accessibilityState={{ expanded: listOpen }}
+                    testID="editor-validation-badge"
                   >
+                    <View
+                      style={[
+                        styles.validationBadgeCircle,
+                        { borderColor: validationErrorCount > 0 ? colors.error : colors.caution },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.validationBadgeGlyph,
+                          { color: validationErrorCount > 0 ? colors.error : colors.caution },
+                        ]}
+                      >
+                        !
+                      </Text>
+                    </View>
                     <Text
                       style={[
-                        styles.validationBadgeGlyph,
+                        styles.validationBadgeCount,
                         { color: validationErrorCount > 0 ? colors.error : colors.caution },
                       ]}
                     >
-                      !
-                    </Text>
-                  </View>
-                  <Text
-                    style={[
-                      styles.validationBadgeCount,
-                      { color: validationErrorCount > 0 ? colors.error : colors.caution },
-                    ]}
-                  >
-                    {validationProblems.length}
-                  </Text>
-                </Pressable>
-              )}
-            </View>
-            {listOpen && validationProblems.length > 0 && (
-              <ScrollView
-                style={styles.validationList}
-                nestedScrollEnabled
-                keyboardShouldPersistTaps="handled"
-                testID="editor-validation-list"
-              >
-                {validationProblems.map((problem, index) => (
-                  <Pressable
-                    key={problem.id}
-                    onPress={() => handleSelectProblem(problem)}
-                    style={[
-                      styles.validationListRow,
-                      index > 0 && styles.validationListRowDivider,
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityLabel={problem.label}
-                  >
-                    <Text
-                      style={[
-                        styles.validationListRowText,
-                        problem.severity === 'error'
-                          ? styles.validationListRowTextError
-                          : styles.validationListRowTextWarning,
-                      ]}
-                    >
-                      {problem.label}
+                      {validationProblems.length}
                     </Text>
                   </Pressable>
-                ))}
-              </ScrollView>
-            )}
-            <TextInput
-              ref={editorInputRef}
-              value={editorText}
-              onChangeText={(next) => {
-                onEditorInteraction?.();
-                setSeedSelection(null);
-                setProblemSelectionRequest(null);
-                setEditorText(next);
-              }}
-              onFocus={onEditorInteraction}
-              selection={problemSelectionRequest ?? seedSelection ?? undefined}
-              selectionColor={colors.accent}
-              onSelectionChange={() => {
-                if (!problemSelectionRequest) return;
-                // Any event after the request means native selection has
-                // moved or been acknowledged. Yield immediately so a user
-                // caret move can never be forced back to the requested range.
-                setProblemSelectionRequest(null);
-              }}
-              placeholder="e.g.&#10;Monday&#10;+Lifting&#10;-Bench&#10;135 5,5,5"
-              placeholderTextColor={colors.textMuted}
-              multiline
-              autoCorrect={false}
-              autoCapitalize="none"
-              spellCheck={false}
-              style={[styles.input, styles.editorInput]}
-            />
+                )}
+              </View>
+              <TextInput
+                ref={editorInputRef}
+                value={editorText}
+                onChangeText={(next) => {
+                  onEditorInteraction?.();
+                  setSeedSelection(null);
+                  setProblemSelectionRequest(null);
+                  setEditorText(next);
+                }}
+                onFocus={onEditorInteraction}
+                selection={problemSelectionRequest ?? seedSelection ?? undefined}
+                selectionColor={colors.accent}
+                onSelectionChange={() => {
+                  if (!problemSelectionRequest) return;
+                  // Any event after the request means native selection has
+                  // moved or been acknowledged. Yield immediately so a user
+                  // caret move can never be forced back to the requested range.
+                  setProblemSelectionRequest(null);
+                }}
+                placeholder="e.g.&#10;Monday&#10;+Lifting&#10;-Bench&#10;135 5,5,5"
+                placeholderTextColor={colors.textMuted}
+                multiline
+                autoCorrect={false}
+                autoCapitalize="none"
+                spellCheck={false}
+                style={[styles.input, styles.editorInput]}
+              />
+              {/* Rendered after the note so it draws — and takes touches —
+                  above it on both platforms, and offset by the tool row's own
+                  measured height so it opens exactly where an in-flow row
+                  would have, without being one. */}
+              {listOpen && validationProblems.length > 0 && (
+                <ScrollView
+                  style={[styles.validationList, { top: toolRowHeight + VALIDATION_LIST_TOP_GAP }]}
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                  testID="editor-validation-list"
+                >
+                  {validationProblems.map((problem, index) => (
+                    <Pressable
+                      key={problem.id}
+                      onPress={() => handleSelectProblem(problem)}
+                      style={[
+                        styles.validationListRow,
+                        index > 0 && styles.validationListRowDivider,
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={problem.label}
+                    >
+                      <Text
+                        style={[
+                          styles.validationListRowText,
+                          problem.severity === 'error'
+                            ? styles.validationListRowTextError
+                            : styles.validationListRowTextWarning,
+                        ]}
+                      >
+                        {problem.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
             {selectedProblem ? (
               <View
                 style={styles.validationBar}
@@ -1255,6 +1351,12 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 13,
     color: colors.text,
   },
+  // #867: the tool row + note pair, and the positioning context the problem
+  // list overlays them from. `gap` mirrors the surrounding Card's own gap, so
+  // pulling these two controls into their own container changes no spacing.
+  editorStack: {
+    gap: EDITOR_STACK_GAP,
+  },
   // #863: help control and badge share one row, space-between so they sit
   // at opposite edges, and a common minHeight (below) so their baselines
   // align at every supported text size.
@@ -1303,15 +1405,25 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  // Inline, height-limited, internally scrollable problem list (#863),
-  // expanded by tapping the badge. Each row is one problem, in source order,
-  // labeled with human-readable context rather than a line number.
+  // Height-limited, internally scrollable problem list (#863), expanded by
+  // tapping the badge. Each row is one problem, in source order, labeled with
+  // human-readable context rather than a line number.
+  //
+  // #867: an overlay, not an in-flow row. `top` is supplied at the call site
+  // from the tool row's measured height, and the opaque `card` fill (the same
+  // surface it already sat on) is what lets it cover the note rather than
+  // displace it. Nothing about the note's geometry or the page's content
+  // height changes when it opens or closes.
   validationList: {
-    marginTop: 8,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 2,
     maxHeight: 220,
     borderWidth: 1,
     borderColor: colors.cardBorder,
     borderRadius: 12,
+    backgroundColor: colors.card,
   },
   validationListRow: {
     minHeight: 44,
