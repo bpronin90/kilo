@@ -148,9 +148,9 @@ approved palette, so this is recorded rather than adjusted; dark mode is fine at
 
 ### Hardcoded Color Leaks (not in colors.js)
 
-| File | Line | Value | Used For |
+| File | Reference | Value | Used For |
 |---|---|---|---|
-| `HomeScreen.js` | `35, 39` | `#FF5C00` | KiloWordmark SVG accents (brand mark, intentionally fixed in both modes) |
+| `HomeScreen.js` | KiloWordmark SVG | `#FF5C00` | KiloWordmark SVG accents (brand mark, intentionally fixed in both modes) |
 
 This is now the complete list: every other visual color in the migrated
 production surfaces resolves through a palette token.
@@ -270,6 +270,80 @@ state and provides it to every `ScreenShell` via `TabBarLayoutContext`, which
 adds it to the shared 24px gap and the bottom inset for scroll clearance.
 `SafeAreaProvider` is owned by `mobile/App.js`; `ScreenShell` consumes only
 the bottom inset so existing top spacing is unchanged.
+
+---
+
+## More Screen
+
+Source: `mobile/screens/MoreScreen.js`, `mobile/components/SettingsScreen.js`,
+`mobile/components/ProfileScreen.js`, `mobile/components/AboutScreen.js`,
+`mobile/components/BackupScreen.js`, `mobile/components/HelpScreen.js`, and
+`mobile/screens/more/`.
+
+More is a menu of quiet, individually actionable rows. The rows are grouped by
+`SectionTitle` into **Preferences** (User Profile, Settings), **Account & Data**
+(Account, Data & Backup), and **Help & Support** (App Guide, About Kilo). Rows
+with supporting copy put a 13px `colors.textMuted` help line below the label;
+all rows end with a 20px muted `MaterialIcons` `chevron-right` disclosure.
+
+| Element | Property | Value |
+|---|---|---|
+| Menu list | gap | `12` |
+| Menu row | background / border / radius | `colors.card` / 1px `colors.cardBorder` / `24` |
+| Menu row | padding / minimum height | `20` / `44` |
+| Main label | fontSize / fontWeight / color | `17` / `600` / `colors.text` |
+| Help line | fontSize / color | `13` / `colors.textMuted` |
+| Disclosure | icon / size / color | `chevron-right` / `20` / `colors.textMuted` |
+
+The top-level destinations Settings, Profile, About, Backup, Help, and Account
+are `ScreenShell` views that receive `onBack={() => showView('menu')}` from
+`MoreScreen`. The remaining listed surfaces are nested ownership details, not
+More-menu destinations: `AccountScreen` renders `AccountLifecycle` and
+`LegalLinks` inline; `BackupScreen` renders `CloudSyncRecovery` inline; and
+`CloudSyncRecovery` owns the inline `HealthDataConsent` step. A recovery session
+in `AccountScreen` renders the separate `SetNewPasswordScreen`, which has its
+own `ScreenShell` and receives Account's `onBack` callback. These nested
+components remain part of their parent flows rather than adding rows to the
+top-level menu.
+
+Settings' Appearance and Units controls, and Profile's height unit control, use
+the shared `unitTab` segmented convention: inline 44dp targets with 12px
+horizontal and 6px vertical padding, 12px/700 labels, muted inactive ink, and
+the active accent treatment. Settings' fatigue multiplier is a 44dp stepper
+(`borderRadius: 12`) with decrement/value/increment controls. Irreversible
+Account and Backup actions stay in the error-tinted, bordered 24px-radius
+**Danger Zone** containers owned by those screens, as required by
+`docs/ui-design-rules.md` §14.
+
+## Modal System
+
+Sources: `PlateCalculatorModal.js`, `WorkoutSyntaxModal.js`,
+`RecoveryBlockStartModal.js`, `RecoveryBlockWeekModal.js`,
+`RecoveryBlockEndModal.js`, `SessionCheckInModal.js`, and `WebAlertHost.js`.
+
+The six sheet modals share a local implementation of this shell (duplicated in
+each file, not yet a shared component):
+
+| Element | Value |
+|---|---|
+| Scrim | `colors.overlay` |
+| Sheet | `colors.card`, `borderRadius: 20` |
+| Header | row, `paddingHorizontal: 20`, 1px `colors.cardBorder` bottom |
+| Title | `fontSize: 17` |
+| Close control | `✕`, `fontSize: 16`, `colors.textMuted`, `padding: 4`, `hitSlop={12}` |
+| Error banner | `colors.cardErrorBg`, `borderRadius: 10` |
+| Field fill | `colors.inputBackground` (via `createInputStyle(colors)`) |
+| Option row | `borderRadius: 12`, section `padding: 20` |
+
+`WebAlertHost.js` is intentionally the alert exception rather than a sheet:
+it uses a `borderRadius: 16` card with `padding: 20` inside a `padding: 24`
+overlay and has no header row. The sheet close control reaches the 44dp
+effective target through `hitSlop={12}` inside the padded header; the 20px row
+padding keeps that slop unclipped. This is a deliberate local compliance choice
+to the §15 target rule, not a general replacement for a real 44dp control box.
+Accessible names are specific where useful: `Close plate calculator` and
+`Close workout syntax help`; the four recovery/check-in sheet close controls
+use the concise name `Close` (Session Check-In also exposes a separate `Back`).
 
 ---
 
@@ -422,7 +496,7 @@ region (`home-recovery-analytics`, a single `accessible` node), in this order:
   exists (`Baseline captured. No week logged yet.`): there is nothing to name,
   and `Week 1` would be invented.
 - **Result** — the one hero figure, `X of Y` in `HeroMetric.statSecondary` /
-  `colors.accent`, with a `baseline exercises met` caption beside it. Exactly
+  `colors.accentText`, with a `baseline exercises met` caption beside it. Exactly
   one of the result or a fallback occupies this slot, never both, and a
   fallback prints no count at all rather than `0 of 0`. Baseline
   unavailable/unsupported takes precedence over a missing/unreadable note,
@@ -926,7 +1000,7 @@ Consequences to preserve:
   entirely (#843, #847, superseding #756/#836's in-header placement).**
   `More Routines · {count}` IS the section's `SectionTitle` now — always
   visible, expanded or collapsed, never repeated or hidden by the
-  disclosure's own state — and a sibling 38px outlined `New routine` control
+  disclosure's own state — and a sibling 44dp outlined `New routine` control
   (icon + visible label, this section's ONE create-routine affordance) sits
   beside it in the same header row.
 - **More Routines is a collapsed-by-default disclosure (#724), and since #847
