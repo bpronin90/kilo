@@ -145,10 +145,10 @@ export function WeightGoalCard({
               <Text style={styles.goalMetBadge}>Goal Met!</Text>
               <View style={styles.goalHeaderActions}>
                 <Pressable onPress={() => handleArchiveGoal(currentWeight)} style={[styles.goalActionChip, styles.goalArchiveChip]} accessibilityRole="button" accessibilityLabel="Archive">
-                  <Text style={[styles.goalActionChipText, styles.goalArchiveText]}>Archive</Text>
+                  <Text style={[styles.goalActionChipText, styles.goalArchiveText]} accessible={false} importantForAccessibility="no">Archive</Text>
                 </Pressable>
                 <Pressable onPress={startEditGoal} style={styles.goalActionChip} accessibilityRole="button" accessibilityLabel="Edit">
-                  <Text style={styles.goalActionChipText}>Edit</Text>
+                  <Text style={styles.goalActionChipText} accessible={false} importantForAccessibility="no">Edit</Text>
                 </Pressable>
               </View>
             </View>
@@ -157,14 +157,14 @@ export function WeightGoalCard({
             <View style={styles.goalHeaderActions}>
               {goalInfo?.isOverdue && (
                 <Pressable onPress={() => handleArchiveGoal(currentWeight)} style={[styles.goalActionChip, styles.goalArchiveChip]} accessibilityRole="button" accessibilityLabel="Archive">
-                  <Text style={[styles.goalActionChipText, styles.goalArchiveText]}>Archive</Text>
+                  <Text style={[styles.goalActionChipText, styles.goalArchiveText]} accessible={false} importantForAccessibility="no">Archive</Text>
                 </Pressable>
               )}
               <Pressable onPress={startEditGoal} style={styles.goalActionChip} accessibilityRole="button" accessibilityLabel="Edit">
-                <Text style={styles.goalActionChipText}>Edit</Text>
+                <Text style={styles.goalActionChipText} accessible={false} importantForAccessibility="no">Edit</Text>
               </Pressable>
               <Pressable onPress={handleClearGoal} style={styles.goalActionChip} accessibilityRole="button" accessibilityLabel="Clear">
-                <Text style={[styles.goalActionChipText, styles.goalClearText]}>Clear</Text>
+                <Text style={[styles.goalActionChipText, styles.goalClearText]} accessible={false} importantForAccessibility="no">Clear</Text>
               </Pressable>
             </View>
           )}
@@ -175,7 +175,7 @@ export function WeightGoalCard({
               accessibilityRole="button"
               accessibilityLabel="Cancel"
             >
-              <Text style={styles.goalActionText}>Cancel</Text>
+              <Text style={styles.goalActionText} accessible={false} importantForAccessibility="no">Cancel</Text>
             </Pressable>
           )}
         </View>

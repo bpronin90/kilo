@@ -485,7 +485,7 @@ export function WeightScreen({
               accessibilityRole="button"
               accessibilityLabel="Cancel"
             >
-              <Text style={styles.cancelText}>Cancel</Text>
+              <Text style={styles.cancelText} accessible={false} importantForAccessibility="no">Cancel</Text>
             </Pressable>
           </View>
         )}
@@ -531,7 +531,7 @@ export function WeightScreen({
                   accessibilityRole="button"
                   accessibilityLabel="Done adding note"
                 >
-                  <Text style={styles.cancelText}>Done</Text>
+                  <Text style={styles.cancelText} accessible={false} importantForAccessibility="no">Done</Text>
                 </Pressable>
               </>
             )}
@@ -558,7 +558,7 @@ export function WeightScreen({
                   accessibilityRole="button"
                   accessibilityLabel="Done changing weigh-in date"
                 >
-                  <Text style={styles.cancelText}>Done</Text>
+                  <Text style={styles.cancelText} accessible={false} importantForAccessibility="no">Done</Text>
                 </Pressable>
               </>
             )}
@@ -589,7 +589,7 @@ export function WeightScreen({
                   accessibilityRole="button"
                   accessibilityLabel="Done editing note"
                 >
-                  <Text style={styles.cancelText}>Done</Text>
+                  <Text style={styles.cancelText} accessible={false} importantForAccessibility="no">Done</Text>
                 </Pressable>
               </>
             )}
@@ -613,7 +613,7 @@ export function WeightScreen({
                   accessibilityRole="button"
                   accessibilityLabel="Done changing entry date"
                 >
-                  <Text style={styles.cancelText}>Done</Text>
+                  <Text style={styles.cancelText} accessible={false} importantForAccessibility="no">Done</Text>
                 </Pressable>
               </>
             )}

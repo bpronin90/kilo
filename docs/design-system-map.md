@@ -841,9 +841,11 @@ card's 16px rhythm are unchanged; only the tap box grew.
 | | accessibilityRole / Label | `button` / visible label | added in #919 |
 | Goal-editor `Cancel` | minHeight / minWidth | `44` / `44` (`center` / `center`) | `WeightGoalCard.js` `goalCancelTarget`; 14 / 600 label stays on `goalActionText` |
 | | accessibilityRole / Label | `button` / `"Cancel"` | added in #919 |
+| Every one of the above | label `Text` | `accessible={false} importantForAccessibility="no"` | §15: the named parent announces once, not twice with its child |
 
 Guarded by the `Weight entry controls` and `Weight goal editor actions` blocks
-in `mobile/tests/interaction-target-a11y.test.js`.
+in `mobile/tests/interaction-target-a11y.test.js`, which assert the flattened
+target plus the parent role/name **and** `accessible === false` on the label.
 
 ### History List / Goal History
 

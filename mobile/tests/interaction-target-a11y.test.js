@@ -668,6 +668,18 @@ function expectOwnBox(node) {
   expectTarget(node, { width: true });
 }
 
+// §15: the visible label `Text` inside a named control is marked
+// `accessible={false}` so the control announces once, not twice.
+function expectLabelSilenced(node, visibleText) {
+  const labels = node.findAll((n) => {
+    const c = n.props?.children;
+    const flat = Array.isArray(c) ? c.join('') : String(c ?? '');
+    return flat === visibleText;
+  }, { deep: true });
+  expect(labels.length).toBeGreaterThan(0);
+  labels.forEach((label) => expect(label.props.accessible).toBe(false));
+}
+
 // WeightScreen / WeightGoalCard trees are unmounted after every test so no
 // pending effect survives into the next suite in the worker.
 const weightTrees = [];
@@ -713,6 +725,7 @@ describe('Weight entry controls', () => {
       expect(done.props.accessibilityRole).toBe('button');
       expect(done.props.accessibilityLabel).toBe(label);
       expectOwnBox(done);
+      expectLabelSilenced(done, 'Done');
     });
   });
 
@@ -740,6 +753,7 @@ describe('Weight entry controls', () => {
     expect(cancel.props.accessibilityRole).toBe('button');
     expect(cancel.props.accessibilityLabel).toBe('Cancel');
     expectOwnBox(cancel);
+    expectLabelSilenced(cancel, 'Cancel');
 
     await act(async () => {
       pressableByTestId(tree.root, 'weight-edit-note-toggle').props.onPress();
@@ -751,6 +765,7 @@ describe('Weight entry controls', () => {
       expect(done.props.accessibilityRole).toBe('button');
       expect(done.props.accessibilityLabel).toBe(label);
       expectOwnBox(done);
+      expectLabelSilenced(done, 'Done');
     });
   });
 });
@@ -793,6 +808,7 @@ describe('Weight goal editor actions', () => {
       expect(chip.props.accessibilityRole).toBe('button');
       expect(chip.props.accessibilityLabel).toBe(label);
       expectOwnBox(chip);
+      expectLabelSilenced(chip, label);
     });
   });
 
@@ -805,6 +821,7 @@ describe('Weight goal editor actions', () => {
       expect(chip.props.accessibilityRole).toBe('button');
       expect(chip.props.accessibilityLabel).toBe(label);
       expectOwnBox(chip);
+      expectLabelSilenced(chip, label);
     });
   });
 
@@ -814,5 +831,6 @@ describe('Weight goal editor actions', () => {
     expect(cancel.props.accessibilityRole).toBe('button');
     expect(cancel.props.accessibilityLabel).toBe('Cancel');
     expectOwnBox(cancel);
+    expectLabelSilenced(cancel, 'Cancel');
   });
 });
