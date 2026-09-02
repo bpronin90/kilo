@@ -72,7 +72,18 @@ jest.mock('../lib/reminderScheduler', () => ({
   })),
 }));
 
+// Issue 920: the More menu rows are asserted against the real MoreScreen.
+// Only the sub-views it imports but never renders at the menu are stubbed;
+// SettingsScreen and ProfileScreen stay real because this file already
+// exercises them above.
+jest.mock('../components/HelpScreen', () => ({ HelpScreen: () => null }));
+jest.mock('../components/AboutScreen', () => ({ AboutScreen: () => null }));
+jest.mock('../components/BackupScreen', () => ({ BackupScreen: () => null }));
+jest.mock('../screens/more/AccountScreen', () => ({ AccountScreen: () => null }));
+jest.mock('../screens/more/AccountLifecycle', () => ({ AccountLifecycle: () => null }));
+
 import { ErrorBanner } from '../components/UI';
+import { MoreScreen } from '../screens/MoreScreen';
 import { SettingsScreen } from '../components/SettingsScreen';
 import { ProfileScreen } from '../components/ProfileScreen';
 import { ReminderSettingsCard } from '../components/ReminderSettingsCard';
@@ -517,5 +528,53 @@ describe('Recovery expanded-note controls', () => {
     const segment = pressableByLabel(tree.root, 'Switch to Week A');
     expect(segment.props.accessibilityState).toEqual({ selected: true });
     expectTarget(segment, { width: true });
+  });
+});
+
+// Issue 920: the six More menu rows now carry the shared MaterialIcons chevron
+// (no text arrow), no `colors.error` border, and an explicit 44dp floor. The
+// row is a full-width control, so only its height is asserted; the chevron is
+// hidden from the screen reader, so each row still announces its name once.
+describe('More menu rows', () => {
+  const ROW_LABELS = [
+    'User Profile',
+    'Settings',
+    'Account',
+    'Data and Backup',
+    'App Guide',
+    'About Kilo',
+  ];
+
+  let tree;
+  beforeEach(async () => {
+    tree = await renderTree(<MoreScreen isActive={false} />);
+  });
+
+  test.each(ROW_LABELS)('row %s declares the 44dp floor with its button role and name', (label) => {
+    const row = pressableByLabel(tree.root, label);
+    expect(row.props.accessibilityRole).toBe('button');
+    expect(row.props.accessibilityLabel).toBe(label);
+    const style = StyleSheet.flatten(row.props.style) || {};
+    expect(style.minHeight).toBe(MIN_TARGET);
+    expectTarget(row);
+  });
+
+  test('the two former "risky" rows share the neutral border of the other four', () => {
+    const neutral = StyleSheet.flatten(pressableByLabel(tree.root, 'User Profile').props.style);
+    expect(neutral.borderWidth).toBe(1);
+    ['Account', 'Data and Backup'].forEach((label) => {
+      const style = StyleSheet.flatten(pressableByLabel(tree.root, label).props.style) || {};
+      expect(style.borderWidth).toBe(1);
+      // Same shared cardBorder token as every other card, not colors.error.
+      expect(style.borderColor).toBe(neutral.borderColor);
+    });
+  });
+
+  test('no navigation affordance renders a text arrow', () => {
+    const arrows = tree.root.findAll(
+      (node) => typeof node.props?.children === 'string' && node.props.children.includes('\u2192'),
+      { deep: true }
+    );
+    expect(arrows).toHaveLength(0);
   });
 });
