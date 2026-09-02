@@ -144,10 +144,10 @@ export function WeightGoalCard({
             <View style={styles.goalHeaderMet}>
               <Text style={styles.goalMetBadge}>Goal Met!</Text>
               <View style={styles.goalHeaderActions}>
-                <Pressable onPress={() => handleArchiveGoal(currentWeight)} hitSlop={12} style={[styles.goalActionChip, styles.goalArchiveChip]}>
+                <Pressable onPress={() => handleArchiveGoal(currentWeight)} style={[styles.goalActionChip, styles.goalArchiveChip]} accessibilityRole="button" accessibilityLabel="Archive">
                   <Text style={[styles.goalActionChipText, styles.goalArchiveText]}>Archive</Text>
                 </Pressable>
-                <Pressable onPress={startEditGoal} hitSlop={12} style={styles.goalActionChip}>
+                <Pressable onPress={startEditGoal} style={styles.goalActionChip} accessibilityRole="button" accessibilityLabel="Edit">
                   <Text style={styles.goalActionChipText}>Edit</Text>
                 </Pressable>
               </View>
@@ -156,20 +156,25 @@ export function WeightGoalCard({
           {!goalEditing && !isGoalMet && (
             <View style={styles.goalHeaderActions}>
               {goalInfo?.isOverdue && (
-                <Pressable onPress={() => handleArchiveGoal(currentWeight)} hitSlop={12} style={[styles.goalActionChip, styles.goalArchiveChip]}>
+                <Pressable onPress={() => handleArchiveGoal(currentWeight)} style={[styles.goalActionChip, styles.goalArchiveChip]} accessibilityRole="button" accessibilityLabel="Archive">
                   <Text style={[styles.goalActionChipText, styles.goalArchiveText]}>Archive</Text>
                 </Pressable>
               )}
-              <Pressable onPress={startEditGoal} hitSlop={12} style={styles.goalActionChip}>
+              <Pressable onPress={startEditGoal} style={styles.goalActionChip} accessibilityRole="button" accessibilityLabel="Edit">
                 <Text style={styles.goalActionChipText}>Edit</Text>
               </Pressable>
-              <Pressable onPress={handleClearGoal} hitSlop={12} style={styles.goalActionChip}>
+              <Pressable onPress={handleClearGoal} style={styles.goalActionChip} accessibilityRole="button" accessibilityLabel="Clear">
                 <Text style={[styles.goalActionChipText, styles.goalClearText]}>Clear</Text>
               </Pressable>
             </View>
           )}
           {goalEditing && (
-            <Pressable onPress={cancelEditGoal} hitSlop={8}>
+            <Pressable
+              onPress={cancelEditGoal}
+              style={styles.goalCancelTarget}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel"
+            >
               <Text style={styles.goalActionText}>Cancel</Text>
             </Pressable>
           )}
@@ -330,11 +335,26 @@ const createStyles = (colors) => StyleSheet.create({
   goalArchiveText: {
     color: colors.textLight,
   },
+  // Issue 919: Edit / Archive / Clear goal are text-only chips in a one-line
+  // row. ui-design-rules.md §15 says a hitSlop cannot rescue that shape (React
+  // Native clips it at the row's bounds), so the chip owns a >=44x44dp target
+  // while its 13/700 label and 12/6 padding stay as designed.
   goalActionChip: {
     backgroundColor: colors.chipBackground,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  // The goal-editor Cancel, same §15 floor without the chip's fill.
+  goalCancelTarget: {
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   goalActionChipText: {
     fontSize: 13,

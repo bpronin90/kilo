@@ -1253,10 +1253,11 @@ describe('WeightScreen', () => {
     });
   });
 
-  // Goal action chips are visually compact; they expose an enlarged hitSlop so
-  // the effective touch target meets the 44px minimum without changing their
-  // visual size (#404).
-  describe('goal action chip touch targets (#404)', () => {
+  // Goal action chips are visually compact. #404 first met the 44px minimum
+  // with an enlarged hitSlop; #919 replaced that with a real >=44x44dp box on
+  // `goalActionChip` itself (ui-design-rules.md §15: React Native clips a slop
+  // at the one-line row's bounds), keeping the 13/700 label and 12/6 padding.
+  describe('goal action chip touch targets (#404, #919)', () => {
     const findPressableByText = (root, text) => {
       const matches = root.findAll(n => {
         if (n.type !== 'Text') return false;
@@ -1274,29 +1275,31 @@ describe('WeightScreen', () => {
       return null;
     };
 
-    test('Edit and Clear chips expose an enlarged hitSlop when a goal is in progress', () => {
+    const expectOwnBox = (chip) => {
+      expect(chip).toBeTruthy();
+      expect(chip.props.hitSlop).toBeUndefined();
+      const style = StyleSheet.flatten(chip.props.style) || {};
+      expect(style.minHeight).toBe(44);
+      expect(style.minWidth).toBe(44);
+    };
+
+    test('Edit and Clear chips press through a real 44x44 box when a goal is in progress', () => {
       const goal = { target_weight: 175, target_date: '2026-09-01', start_weight: 200 };
       const entries = [
         { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 185, note: '' },
       ];
       const component = setup(goal, entries);
-      const editChip = findPressableByText(component.root, 'Edit');
-      const clearChip = findPressableByText(component.root, 'Clear');
-      expect(editChip).toBeTruthy();
-      expect(clearChip).toBeTruthy();
-      expect(editChip.props.hitSlop).toBe(12);
-      expect(clearChip.props.hitSlop).toBe(12);
+      expectOwnBox(findPressableByText(component.root, 'Edit'));
+      expectOwnBox(findPressableByText(component.root, 'Clear'));
     });
 
-    test('Archive chip exposes an enlarged hitSlop when a goal is met', () => {
+    test('Archive chip presses through a real 44x44 box when a goal is met', () => {
       const goal = { target_weight: 175, target_date: '2026-05-24', start_weight: 200 };
       const entries = [
         { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 174, note: '' },
       ];
       const component = setup(goal, entries);
-      const archiveChip = findPressableByText(component.root, 'Archive');
-      expect(archiveChip).toBeTruthy();
-      expect(archiveChip.props.hitSlop).toBe(12);
+      expectOwnBox(findPressableByText(component.root, 'Archive'));
     });
   });
 

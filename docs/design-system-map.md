@@ -826,6 +826,25 @@ Sources: `mobile/screens/WeightScreen.js`, `mobile/components/UI.js`,
 | Derived row value | fontSize | `16` | `WeightGoalCard.js:412` |
 | | fontWeight | `700` | `WeightGoalCard.js:413` |
 
+### Editor Actions (#919)
+
+The Weight tab's text-only editor actions each own a **44×44dp target from
+their own box**, never a `hitSlop` — `ui-design-rules.md` §15 (React Native
+clips a slop at a one-line row's bounds). Type, weight, color, and the input
+card's 16px rhythm are unchanged; only the tap box grew.
+
+| Control | Property | Value | Source |
+|---|---|---|---|
+| Editing-header `Cancel`, note/date `Done` (×4) | minHeight / minWidth | `44` / `44` (`justifyContent` + `alignItems` `center`) | `WeightScreen.js` `editorActionTarget`; label 14 / 600 stays on `cancelText` |
+| | accessibilityRole / Label | `button` / `"Cancel"` (header), `"Done …"` (each disclosure) | header `Cancel` gained both in #919 |
+| Goal `Edit` / `Archive` / `Clear` chip (5 sites) | minHeight / minWidth | `44` / `44` (`center` / `center`) | `WeightGoalCard.js` `goalActionChip`; 13 / 700 label, 12 / 6 padding unchanged |
+| | accessibilityRole / Label | `button` / visible label | added in #919 |
+| Goal-editor `Cancel` | minHeight / minWidth | `44` / `44` (`center` / `center`) | `WeightGoalCard.js` `goalCancelTarget`; 14 / 600 label stays on `goalActionText` |
+| | accessibilityRole / Label | `button` / `"Cancel"` | added in #919 |
+
+Guarded by the `Weight entry controls` and `Weight goal editor actions` blocks
+in `mobile/tests/interaction-target-a11y.test.js`.
+
 ### History List / Goal History
 
 Both now use the **Shared History-Panel System** (see that section above) —

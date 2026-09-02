@@ -22,6 +22,10 @@ jest.mock('@react-native-community/datetimepicker', () => {
 });
 
 const mockUserProfile = { profile: { display_name: 'Ben' }, loading: false };
+// Issue 919: the Weight entry block drives the real WeightScreen, so its two
+// entry hooks are stubbed here. `mockWeightState` lets each test seed the
+// entries list and goal the screen reads.
+const mockWeightState = { entries: [], goal: null };
 jest.mock('../hooks/useEntries', () => ({
   useFeatureToggles: () => ({
     fatigueTrackingEnabled: true,
@@ -35,6 +39,27 @@ jest.mock('../hooks/useEntries', () => ({
     loading: mockUserProfile.loading,
     clear: jest.fn().mockResolvedValue(undefined),
   }),
+  useWeightEntries: () => ({
+    entries: mockWeightState.entries,
+    remove: jest.fn().mockResolvedValue(undefined),
+    update: jest.fn().mockResolvedValue(true),
+    loading: false,
+    error: null,
+    refresh: jest.fn(),
+  }),
+  useWeightGoal: () => ({
+    goal: mockWeightState.goal,
+    loading: false,
+    error: null,
+    refresh: jest.fn(),
+    save: jest.fn().mockResolvedValue(undefined),
+    clear: jest.fn().mockResolvedValue(undefined),
+    archiveGoal: jest.fn().mockResolvedValue(undefined),
+  }),
+}));
+
+jest.mock('../hooks/entries/weightHooks', () => ({
+  useArchivedWeightGoals: () => ({ archivedGoals: [], loading: false, refresh: jest.fn() }),
 }));
 
 // SettingsScreen mounts the real ReminderSettingsCard, so its storage and
@@ -91,6 +116,8 @@ import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { AnalyticsFatigueCard } from '../components/AnalyticsFatigueCard';
 import { AnalyticsBig3MappingCard } from '../components/AnalyticsStrengthSection';
 import { LogRecoverySection } from '../components/LogRecoverySection';
+import { WeightScreen } from '../screens/WeightScreen';
+import { WeightGoalCard } from '../components/WeightGoalCard';
 import { formatCheckInDate } from '../lib/AnalyticsScreenHelpers';
 
 const MIN_TARGET = 44;
@@ -576,5 +603,176 @@ describe('More menu rows', () => {
       { deep: true }
     );
     expect(arrows).toHaveLength(0);
+  });
+});
+
+// Issue 919: nine text-only editor actions on the Weight tab used to sit below
+// the §15 floor across eleven render sites. On WeightScreen the `cancelText`
+// family (the editing-header `Cancel` plus the four disclosure `Done`s) backed
+// bare Pressables with no target box at all, and the header `Cancel` shipped no
+// role or name. On WeightGoalCard the `goalActionChip` (`Edit` / `Archive` /
+// `Clear`, five sites) and the goal-editor `Cancel` reached for a `hitSlop`
+// §15 says a one-line row clips. Each now owns a real >=44x44dp box from its
+// own style — asserted as the flattened minHeight/minWidth so a later style
+// edit fails here rather than shipping a 27dp tap area — with the two `Cancel`s
+// gaining `accessibilityRole="button"` and a name matching their visible label.
+function pressableByTestId(root, testID) {
+  const matches = root.findAll(
+    (node) => node.props?.testID === testID && typeof node.props?.onPress === 'function',
+    { deep: true }
+  );
+  if (matches.length === 0) throw new Error(`no pressable with testID "${testID}"`);
+  return matches[0];
+}
+
+function pressableContainingText(root, substr) {
+  const matches = root.findAll(
+    (node) => typeof node.props?.onPress === 'function'
+      && node.findAll((n) => {
+        const c = n.props?.children;
+        const flat = Array.isArray(c) ? c.join('') : String(c ?? '');
+        return flat.includes(substr);
+      }, { deep: true }).length > 0,
+    { deep: true }
+  );
+  if (matches.length === 0) throw new Error(`no pressable containing "${substr}"`);
+  return matches[matches.length - 1];
+}
+
+function expectOwnBox(node) {
+  const style = StyleSheet.flatten(node.props.style) || {};
+  expect(node.props.hitSlop).toBeUndefined();
+  expect(style.minHeight).toBe(MIN_TARGET);
+  expect(style.minWidth).toBe(MIN_TARGET);
+  expectTarget(node, { width: true });
+}
+
+describe('Weight entry controls', () => {
+  const WEIGHT_PROPS = {
+    weightValue: '',
+    setWeightValue: () => {},
+    weightNote: '',
+    setWeightNote: () => {},
+    onSaveWeight: () => {},
+    errorMessage: '',
+    saving: false,
+    isActive: true,
+  };
+
+  afterEach(() => {
+    mockWeightState.entries = [];
+    mockWeightState.goal = null;
+  });
+
+  test('the two new-entry disclosure "Done" actions clear the floor from their own box', async () => {
+    const tree = await renderTree(<WeightScreen {...WEIGHT_PROPS} />);
+
+    await act(async () => {
+      pressableByTestId(tree.root, 'weight-new-note-toggle').props.onPress();
+      pressableByTestId(tree.root, 'weight-new-date-toggle').props.onPress();
+    });
+
+    [['Done adding note'], ['Done changing weigh-in date']].forEach(([label]) => {
+      const done = pressableByLabel(tree.root, label);
+      expect(done.props.accessibilityRole).toBe('button');
+      expect(done.props.accessibilityLabel).toBe(label);
+      expectOwnBox(done);
+    });
+  });
+
+  test('the editing-header Cancel and the two edit disclosure "Done" actions clear the floor', async () => {
+    mockWeightState.entries = [{
+      id: 'e1',
+      date: '2026-05-24',
+      logged_at: '2026-05-24T08:00:00Z',
+      weight_value: 185,
+      weight_unit: 'lb',
+      note: '',
+    }];
+    const tree = await renderTree(<WeightScreen {...WEIGHT_PROPS} />);
+
+    // History is collapsed by default; expand it, then tap the row to enter
+    // editing mode so the header and edit-path disclosures render.
+    await act(async () => {
+      pressableByLabel(tree.root, 'Expand history').props.onPress();
+    });
+    await act(async () => {
+      pressableContainingText(tree.root, '185').props.onPress();
+    });
+
+    const cancel = pressableByLabel(tree.root, 'Cancel');
+    expect(cancel.props.accessibilityRole).toBe('button');
+    expect(cancel.props.accessibilityLabel).toBe('Cancel');
+    expectOwnBox(cancel);
+
+    await act(async () => {
+      pressableByTestId(tree.root, 'weight-edit-note-toggle').props.onPress();
+      pressableByTestId(tree.root, 'weight-edit-date-toggle').props.onPress();
+    });
+
+    [['Done editing note'], ['Done changing entry date']].forEach(([label]) => {
+      const done = pressableByLabel(tree.root, label);
+      expect(done.props.accessibilityRole).toBe('button');
+      expect(done.props.accessibilityLabel).toBe(label);
+      expectOwnBox(done);
+    });
+  });
+});
+
+describe('Weight goal editor actions', () => {
+  const GOAL = { target_weight: 180, target_date: '2026-12-01', start_weight: 200 };
+  const GOAL_PROPS = {
+    goal: GOAL,
+    goalEditing: false,
+    goalTargetWeight: '180',
+    goalTargetDate: '2026-12-01',
+    goalStartWeight: '200',
+    setGoalTargetWeight: () => {},
+    setGoalStartWeight: () => {},
+    goalError: '',
+    showDatePicker: false,
+    setShowDatePicker: () => {},
+    handleSaveGoal: () => {},
+    handleClearGoal: () => {},
+    handleArchiveGoal: () => {},
+    startEditGoal: () => {},
+    cancelEditGoal: () => {},
+    onDateChange: () => {},
+    pickerDate: new Date('2026-12-01'),
+    goalInfo: null,
+    calorieEstimate: null,
+    currentWeight: 190,
+    isGoalMet: false,
+    aheadOfSchedule: false,
+  };
+
+  test('the goal-met header exposes Edit and Archive at the floor from their own box', async () => {
+    const tree = await renderTree(<WeightGoalCard {...GOAL_PROPS} isGoalMet />);
+    ['Edit', 'Archive'].forEach((label) => {
+      const chip = pressableByLabel(tree.root, label);
+      expect(chip.props.accessibilityRole).toBe('button');
+      expect(chip.props.accessibilityLabel).toBe(label);
+      expectOwnBox(chip);
+    });
+  });
+
+  test('the overdue in-progress header exposes Edit, Archive and Clear at the floor', async () => {
+    const tree = await renderTree(
+      <WeightGoalCard {...GOAL_PROPS} goalInfo={{ isOverdue: true, weeks_remaining: 0, required_weekly_pace: null }} />
+    );
+    ['Edit', 'Archive', 'Clear'].forEach((label) => {
+      const chip = pressableByLabel(tree.root, label);
+      expect(chip.props.accessibilityRole).toBe('button');
+      expect(chip.props.accessibilityLabel).toBe(label);
+      expectOwnBox(chip);
+    });
+  });
+
+  test('the goal-editor Cancel clears the floor and announces itself', async () => {
+    const tree = await renderTree(<WeightGoalCard {...GOAL_PROPS} goalEditing />);
+    const cancel = pressableByLabel(tree.root, 'Cancel');
+    expect(cancel.props.accessibilityRole).toBe('button');
+    expect(cancel.props.accessibilityLabel).toBe('Cancel');
+    expectOwnBox(cancel);
   });
 });
