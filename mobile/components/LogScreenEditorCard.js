@@ -8,7 +8,6 @@ import { formatDate } from '../lib/format';
 import { parseWorkoutNote, applyWeekSkipToText } from '../lib/parser';
 import { WorkoutSyntaxModal } from './WorkoutSyntaxModal';
 import { WORKOUT_SEED_EXAMPLE_TEXT } from './WorkoutSyntaxReference';
-import { WorkoutNoteKeypad, insertKeypadKey } from './WorkoutNoteKeypad';
 
 // #863: how long to wait after the last keystroke before recomputing the
 // problem list. Separate from AUTOSAVE_DEBOUNCE_MS — validation is a pure
@@ -476,24 +475,11 @@ export function LogScreenEditorCard({
   // below releases earlier when native does report any subsequent selection
   // (#865).
   const [problemSelectionRequest, setProblemSelectionRequest] = useState(null);
-  // #938: whether the workout-note input currently holds focus (gates the
-  // numeric/symbol accessory row), the last selection native reported for it
-  // (where a keypad tap inserts), and a one-shot forced caret applied right
-  // after an insert — same set-once / release-on-next-render lifecycle as
-  // `seedSelection`, so a stale range can never be re-pinned.
-  const [noteFocused, setNoteFocused] = useState(false);
-  const editorSelectionRef = useRef({ start: 0, end: 0 });
-  const [keypadSelection, setKeypadSelection] = useState(null);
   useEffect(() => {
     if (!seedSelection) return undefined;
     const timer = setTimeout(() => setSeedSelection(null), 0);
     return () => clearTimeout(timer);
   }, [seedSelection]);
-  useEffect(() => {
-    if (!keypadSelection) return undefined;
-    const timer = setTimeout(() => setKeypadSelection(null), 0);
-    return () => clearTimeout(timer);
-  }, [keypadSelection]);
   useEffect(() => {
     if (!problemSelectionRequest) return undefined;
     const timer = setTimeout(() => setProblemSelectionRequest(null), 0);
@@ -502,38 +488,9 @@ export function LogScreenEditorCard({
   useEffect(() => {
     setSeedSelection(null);
     setProblemSelectionRequest(null);
-    setKeypadSelection(null);
   }, [editingNoteId, deloadMode]);
-  // #938 review: hide the accessory row only on a deload-mode switch, which
-  // swaps the whole editor branch and unmounts the note input WITHOUT a
-  // guaranteed `onBlur`. Not on an `editingNoteId` change: a brand-new
-  // routine's first save swaps its temporary `'new'` id for the durable one
-  // while the same `TextInput` stays mounted and (under the shell's
-  // `keyboardShouldPersistTaps="handled"`) still focused, with no fresh
-  // `onFocus` to restore the row — so resetting here would wrongly hide it.
-  useEffect(() => {
-    setNoteFocused(false);
-  }, [deloadMode]);
   const editorText = editingNoteId ? editingText : activeEditText;
   const setEditorText = editingNoteId ? setEditingText : handleCurrentTextChange;
-
-  // #938: apply a keypad key as the exact canonical insertion a hardware
-  // keystroke would make at the current selection, routed through the same
-  // `setEditorText` / `onEditorInteraction` path as typing so autosave,
-  // validation, A/B-week, and parsing are unaffected. Focus is reasserted so
-  // the row stays up for the next tap.
-  const handleKeypadKey = (key) => {
-    onEditorInteraction?.();
-    setSeedSelection(null);
-    setProblemSelectionRequest(null);
-    const { text: nextText, selection } = insertKeypadKey(
-      editorText, editorSelectionRef.current, key
-    );
-    setEditorText(nextText);
-    editorSelectionRef.current = selection;
-    setKeypadSelection(selection);
-    editorInputRef.current?.focus?.();
-  };
 
   // #867: the single way this card moves the note's selection or caret.
   // Focus first — Android's EditText only paints a selection highlight while
@@ -542,11 +499,6 @@ export function LogScreenEditorCard({
   const requestEditorSelection = (range) => {
     const input = editorInputRef.current;
     input?.focus?.();
-    // #938 review: keep the keypad's insertion point in sync with a
-    // programmatic jump. iOS emits no `onSelectionChange` for a JS-driven
-    // selection, so without this the next keypad key would insert at the last
-    // range native reported (initially offset 0), not the caret just placed.
-    editorSelectionRef.current = { start: range.start, end: range.end };
     if (_applyNativeSelection(input, range)) {
       // Native owns the selection now and no React state describes it, so
       // nothing a later render does can reapply, release, or fight it.
@@ -558,11 +510,7 @@ export function LogScreenEditorCard({
 
   const handleInsertSeedExample = () => {
     setEditorText(WORKOUT_SEED_EXAMPLE_TEXT);
-    const caret = { start: WORKOUT_SEED_EXAMPLE_TEXT.length, end: WORKOUT_SEED_EXAMPLE_TEXT.length };
-    setSeedSelection(caret);
-    // #938 review: same reason as `requestEditorSelection` — keep the keypad
-    // ref current when the caret is placed programmatically.
-    editorSelectionRef.current = caret;
+    setSeedSelection({ start: WORKOUT_SEED_EXAMPLE_TEXT.length, end: WORKOUT_SEED_EXAMPLE_TEXT.length });
     editorInputRef.current?.focus();
   };
 
@@ -678,7 +626,6 @@ export function LogScreenEditorCard({
     setListOpen(false);
     setSelectedAnchor(null);
     setProblemSelectionRequest(null);
-    setKeypadSelection(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorIdentity]);
 
@@ -1169,21 +1116,12 @@ export function LogScreenEditorCard({
                   onEditorInteraction?.();
                   setSeedSelection(null);
                   setProblemSelectionRequest(null);
-                  setKeypadSelection(null);
                   setEditorText(next);
                 }}
-                onFocus={() => {
-                  onEditorInteraction?.();
-                  setNoteFocused(true);
-                }}
-                onBlur={() => setNoteFocused(false)}
-                selection={problemSelectionRequest ?? seedSelection ?? keypadSelection ?? undefined}
+                onFocus={onEditorInteraction}
+                selection={problemSelectionRequest ?? seedSelection ?? undefined}
                 selectionColor={colors.accent}
-                onSelectionChange={(e) => {
-                  // #938: keep the last native selection so a keypad tap knows
-                  // where to insert.
-                  const sel = e?.nativeEvent?.selection;
-                  if (sel) editorSelectionRef.current = sel;
+                onSelectionChange={() => {
                   if (!problemSelectionRequest) return;
                   // Any event after the request means native selection has
                   // moved or been acknowledged. Yield immediately so a user
@@ -1235,14 +1173,6 @@ export function LogScreenEditorCard({
                 </ScrollView>
               )}
             </View>
-            {/* #938: numeric/symbol accessory row — present only while the
-                workout-note input above holds focus, directly under it. */}
-            <WorkoutNoteKeypad
-              visible={noteFocused}
-              onKeyPress={handleKeypadKey}
-              style={styles.noteKeypad}
-              testID="workout-note-keypad"
-            />
             {selectedProblem ? (
               <View
                 style={styles.validationBar}
@@ -1426,10 +1356,6 @@ const createStyles = (colors) => StyleSheet.create({
   // pulling these two controls into their own container changes no spacing.
   editorStack: {
     gap: EDITOR_STACK_GAP,
-  },
-  // #938: sits directly beneath the note, matching the stack's own gap.
-  noteKeypad: {
-    marginTop: EDITOR_STACK_GAP,
   },
   // #863: help control and badge share one row, space-between so they sit
   // at opposite edges, and a common minHeight (below) so their baselines

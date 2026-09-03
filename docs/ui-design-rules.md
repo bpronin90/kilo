@@ -400,20 +400,3 @@ contained in #710, removed in #711).
   `mobile/tests/interaction-target-a11y.test.js`: the flattened
   `minHeight`/`minWidth`/`hitSlop` plus the role/name/state props, so a later
   style edit that drops the minimum fails a test rather than shipping.
-
-## 16. Editor input accessory rows
-
-- An accessory row that supplies keys to a text input (`WorkoutNoteKeypad.js`,
-  #938) is an ordinary in-flow row, **not** an `InputAccessoryView`: that API is
-  iOS-only, so a plain row is the only way both platforms behave alike.
-- It is shown **only while its target input holds focus** — gated on the input's
-  own `onFocus`/`onBlur`, never left standing — and it must not change the
-  input's `keyboardType` or any other keyboard behavior.
-- Each key is a §15 target (`44 x 44dp`, `button` role, an accessible name that
-  states the action such as `Insert comma`, glyph `Text` marked
-  `accessible={false}`).
-- A key press must produce the **exact** text change the equivalent hardware
-  keystroke would at the current selection — replace the selection, collapse the
-  caret after the inserted string — and route it through the same text-change
-  path as typing so autosave, validation, and parsing see no difference. Keep
-  that insertion in one shared pure helper when more than one editor uses it.

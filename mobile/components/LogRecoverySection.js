@@ -59,7 +59,6 @@ import { WorkoutContentRenderer } from './WorkoutContentRenderer';
 // layout space, same debounced-announcement behavior — rather than a
 // parallel implementation that could silently drift from it.
 import { SaveStatusRegion } from './LogScreenEditorCard';
-import { WorkoutNoteKeypad, insertKeypadKey } from './WorkoutNoteKeypad';
 export { RECOVERY_INCLUSION_LABEL } from './RecoveryInclusionToggle';
 
 // A week whose `note_id` is null, or names a note that is not in the notebook,
@@ -267,39 +266,11 @@ export function LogRecoverySection({
     const timer = setTimeout(() => setRecoverySelectionRequest(null), 0);
     return () => clearTimeout(timer);
   }, [recoverySelectionRequest]);
-
-  // #938: numeric/symbol accessory row parity for the Recovery inline editor.
-  // `recoveryNoteFocused` gates the row; `recoveryEditingSelectionRef` holds
-  // the last native selection so a key inserts at the caret. The shared
-  // `insertKeypadKey` makes the insertion byte-identical to the full-screen
-  // editor's, and the one-shot `recoverySelectionRequest` (already wired to
-  // this input's `selection` prop) places the caret after it.
-  const [recoveryNoteFocused, setRecoveryNoteFocused] = useState(false);
-  const recoveryEditingSelectionRef = useRef({ start: 0, end: 0 });
-  useEffect(() => {
-    if (!editingNoteId) setRecoveryNoteFocused(false);
-  }, [editingNoteId]);
-  const handleRecoveryKeypadKey = (key) => {
-    onEditorInteraction?.();
-    const { text: nextText, selection } = insertKeypadKey(
-      editingText, recoveryEditingSelectionRef.current, key
-    );
-    onChangeEditingText?.(nextText);
-    recoveryEditingSelectionRef.current = selection;
-    setRecoverySelectionRequest(selection);
-    recoveryEditingTextInputRef.current?.focus?.();
-  };
   useEffect(() => {
     if (!pendingSourceJump || pendingSourceJump.source !== 'recovery') return;
     if (pendingSourceJump.editingNoteId !== editingNoteId) return;
     if (pendingSourceJump.expectedText !== editingText) return;
-    const caret = { start: pendingSourceJump.start, end: pendingSourceJump.end };
-    setRecoverySelectionRequest(caret);
-    // #938 review: keep the keypad's insertion point in sync with the jump.
-    // iOS emits no `onSelectionChange` for a JS-driven selection, so without
-    // this the first keypad key would edit the previous range, not the caret
-    // the source jump just placed.
-    recoveryEditingSelectionRef.current = caret;
+    setRecoverySelectionRequest({ start: pendingSourceJump.start, end: pendingSourceJump.end });
     recoveryEditingTextInputRef.current?.focus();
     onSourceJumpApplied?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -773,11 +744,7 @@ export function LogRecoverySection({
                                   onEditorInteraction?.();
                                   onChangeEditingText?.(next);
                                 }}
-                                onFocus={() => {
-                                  onEditorInteraction?.();
-                                  setRecoveryNoteFocused(true);
-                                }}
-                                onBlur={() => setRecoveryNoteFocused(false)}
+                                onFocus={onEditorInteraction}
                                 placeholder="Workout note…"
                                 placeholderTextColor={colors.textMuted}
                                 multiline
@@ -787,19 +754,10 @@ export function LogRecoverySection({
                                 style={styles.inlineEditorTextInput}
                                 accessibilityLabel="Recovery note text"
                                 selection={recoverySelectionRequest ?? undefined}
-                                onSelectionChange={(e) => {
-                                  const sel = e?.nativeEvent?.selection;
-                                  if (sel) recoveryEditingSelectionRef.current = sel;
+                                onSelectionChange={() => {
                                   if (!recoverySelectionRequest) return;
                                   setRecoverySelectionRequest(null);
                                 }}
-                              />
-                              {/* #938: numeric/symbol accessory row, shown only
-                                  while the note above is focused. */}
-                              <WorkoutNoteKeypad
-                                visible={recoveryNoteFocused}
-                                onKeyPress={handleRecoveryKeypadKey}
-                                testID="recovery-note-keypad"
                               />
                               {editingSaveError ? (
                                 <Text style={styles.errorBannerText}>{editingSaveError}</Text>
