@@ -24,8 +24,12 @@ export const makeWorkoutNoteItem = _catalog.makeWorkoutNoteItem;
 // weightGoal
 export const WEIGHT_PACE_NOTABLE_THRESHOLD = _weightGoal.WEIGHT_PACE_NOTABLE_THRESHOLD;
 export const WEIGHT_PACE_SPIKE_THRESHOLD = _weightGoal.WEIGHT_PACE_SPIKE_THRESHOLD;
+export const WEIGHT_PACE_NORMAL_MAX_DAYS = _weightGoal.WEIGHT_PACE_NORMAL_MAX_DAYS;
+export const WEIGHT_PACE_STALE_DAYS = _weightGoal.WEIGHT_PACE_STALE_DAYS;
+export const classifyWeightPace = _weightGoal.classifyWeightPace;
 export const computeWeightTrends = _weightGoal.computeWeightTrends;
 export const computeWeightPaceLevel = _weightGoal.computeWeightPaceLevel;
+export const computeWeightPaceInfo = _weightGoal.computeWeightPaceInfo;
 export const computeWeightTrendSummary = _weightGoal.computeWeightTrendSummary;
 export const computeWeightGoal = _weightGoal.computeWeightGoal;
 export const ACTIVITY_MULTIPLIERS = _weightGoal.ACTIVITY_MULTIPLIERS;

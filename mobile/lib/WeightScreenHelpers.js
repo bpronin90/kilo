@@ -1,4 +1,4 @@
-import { formatDelta } from './format';
+import { formatDelta, formatPaceElapsed } from './format';
 import { displayWeight } from './units';
 
 export function localDateToday() {
@@ -23,13 +23,21 @@ export function formatTrendCue(currentValue, priorValue) {
   return '→ Stable';
 }
 
-export function buildTrendSections(trends, paceLevel, unit = 'lb') {
+export function buildTrendSections(trends, paceInfo, unit = 'lb') {
+  const paceLevel = paceInfo ? paceInfo.level : null;
+  // The elapsed span rides as its own caption, not concatenated into the value:
+  // the Today trend column is narrow and single-line, so a joined string would
+  // tail-ellipsize the period away and defeat the point of showing it.
+  const paceValue = trends.paceFlag
+    ? (trends.paceFlag === 'gain' ? '↑ Gaining' : '↓ Losing')
+    : '-';
+  const paceCaption = trends.paceFlag ? formatPaceElapsed(paceInfo?.elapsedDays) : null;
   return [
     {
       title: 'Today',
       col1: { label: 'Current', value: formatTrendValue(trends.currentWeight, unit) },
       col2: { label: 'Vs Previous', value: formatTrendDeltaValue(trends.currentWeight, trends.priorDayWeight, unit) },
-      col3: { label: 'Trend', value: trends.paceFlag ? (trends.paceFlag === 'gain' ? '↑ Gaining' : '↓ Losing') : '-' },
+      col3: { label: 'Trend', value: paceValue, caption: paceCaption },
       paceLevel,
     },
     {

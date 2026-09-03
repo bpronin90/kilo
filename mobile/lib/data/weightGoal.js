@@ -3,6 +3,12 @@
 export const WEIGHT_PACE_NOTABLE_THRESHOLD = 1.5; // lb — delta at or above this triggers a notable flag
 export const WEIGHT_PACE_SPIKE_THRESHOLD   = 2.3; // lb — delta at or above this upgrades to spike
 
+// Elapsed calendar-day boundaries for pace classification.
+// Through this many days the normal same-window thresholds apply unchanged.
+export const WEIGHT_PACE_NORMAL_MAX_DAYS = 3;
+// Past this many days the two compared dates are too far apart to read a pace.
+export const WEIGHT_PACE_STALE_DAYS = 7;
+
 // Calendar-date helpers shared by the trend-window calculations.
 // Windows are defined by local calendar date, not by fixed 86,400,000 ms
 // offsets, so a DST transition inside a window never shifts a boundary onto
@@ -27,11 +33,67 @@ export function calendarDaysBetween(startStr, endStr) {
   return Math.round((Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / 86400000);
 }
 
-function _classifyWeightPaceDelta(delta) {
+// Canonical weight-pace classification. Every pace consumer routes through this.
+//
+// delta:       mean weight on the most recent local date minus mean weight on
+//              the prior local date, in lb (the sign carries direction).
+// elapsedDays: whole calendar days between those two dates. Omit or pass null
+//              when the span is unknown; the normal thresholds then apply.
+//
+// Returns { direction: 'gain'|'loss', level: 'notable'|'spike', elapsedDays }
+// or null when the movement is within the normal range.
+//
+//   - elapsedDays <= 3: normal thresholds (notable at 1.5 lb, spike at 2.3 lb).
+//   - 3 < elapsedDays <= 7: a spike-magnitude delta is downgraded to 'notable',
+//     since the change had several days to accumulate.
+//   - elapsedDays > 7: no pace flag — the dates are too far apart to compare.
+export function classifyWeightPace(delta, elapsedDays = null) {
   if (delta === null || delta === undefined) return null;
   const abs = Math.abs(delta);
   if (abs < WEIGHT_PACE_NOTABLE_THRESHOLD) return null;
-  return { direction: delta > 0 ? 'gain' : 'loss', level: abs >= WEIGHT_PACE_SPIKE_THRESHOLD ? 'spike' : 'notable' };
+  if (elapsedDays != null && elapsedDays > WEIGHT_PACE_STALE_DAYS) return null;
+  let level = abs >= WEIGHT_PACE_SPIKE_THRESHOLD ? 'spike' : 'notable';
+  if (elapsedDays != null && elapsedDays > WEIGHT_PACE_NORMAL_MAX_DAYS && level === 'spike') {
+    level = 'notable';
+  }
+  return { direction: delta > 0 ? 'gain' : 'loss', level, elapsedDays: elapsedDays ?? null };
+}
+
+// Aggregate raw entries to one mean weight per local calendar date, newest date
+// first. Same-day weigh-ins collapse to their mean here, so an intra-day swing
+// never drives the pace comparison.
+function _meanWeightByLocalDate(entries) {
+  const buckets = new Map();
+  for (const e of entries) {
+    const b = buckets.get(e.date);
+    if (b) { b.sum += e.weight_value; b.count += 1; }
+    else buckets.set(e.date, { sum: e.weight_value, count: 1 });
+  }
+  return [...buckets.entries()]
+    .map(([date, { sum, count }]) => ({ date, weight_value: sum / count }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+// Delta and elapsed calendar days between the two most recent local dates.
+// Returns null when fewer than two distinct dates are present.
+function _recentDatePace(entries) {
+  if (!entries || entries.length === 0) return null;
+  const byDate = _meanWeightByLocalDate(entries);
+  if (byDate.length < 2) return null;
+  const [recent, prior] = byDate;
+  return {
+    delta: recent.weight_value - prior.weight_value,
+    elapsedDays: calendarDaysBetween(prior.date, recent.date),
+  };
+}
+
+// Canonical pace read for the two most recent weigh-in dates.
+// entries: { date: 'YYYY-MM-DD', weight_value: number }; order does not matter.
+// Returns { direction, level, elapsedDays } or null.
+export function computeWeightPaceInfo(entries) {
+  const recent = _recentDatePace(entries);
+  if (!recent) return null;
+  return classifyWeightPace(recent.delta, recent.elapsedDays);
 }
 
 // Compute 7-day and 30-day rolling weight averages and a pace flag.
@@ -53,27 +115,20 @@ export function computeWeightTrends(entries, referenceDate = new Date()) {
   const avg7  = mean(w7);
   const avg30 = mean(w30);
 
-  let paceFlag = null;
-  if (entries.length >= 2) {
-    // Sort by date so backdated entries logged out of order don't flip the delta.
-    const byDate = [...entries].sort((a, b) => b.date.localeCompare(a.date));
-    const delta = byDate[0].weight_value - byDate[1].weight_value;
-    const classified = _classifyWeightPaceDelta(delta);
-    paceFlag = classified ? classified.direction : null;
-  }
+  // Pace direction from the canonical classification: entries are pre-averaged
+  // by local date and the elapsed calendar-day gap is taken into account.
+  const paceInfo = computeWeightPaceInfo(entries);
+  const paceFlag = paceInfo ? paceInfo.direction : null;
 
   return { avg7, avg30, paceFlag };
 }
 
-// Return the severity level of the pace flag for the two most recent entries.
+// Return the severity level of the pace flag for the two most recent dates.
 // entries must contain { date: 'YYYY-MM-DD', weight_value: number }; order does not matter.
-// Returns 'notable' | 'spike' | null.
+// Returns 'notable' | 'spike' | null. Thin wrapper over computeWeightPaceInfo.
 export function computeWeightPaceLevel(entries) {
-  if (!entries || entries.length < 2) return null;
-  const byDate = [...entries].sort((a, b) => b.date.localeCompare(a.date));
-  const delta = byDate[0].weight_value - byDate[1].weight_value;
-  const classified = _classifyWeightPaceDelta(delta);
-  return classified ? classified.level : null;
+  const info = computeWeightPaceInfo(entries);
+  return info ? info.level : null;
 }
 
 // Compute full trend summary including prior-window averages for comparison.
@@ -361,6 +416,7 @@ export function isGoalMet(goal, currentWeight, referenceDate = new Date()) {
 // Returns:
 //   trendSummary:    { avg7, avg30, paceFlag, priorAvg7, priorAvg30, currentWeight, priorDayWeight }
 //   paceLevel:       'notable' | 'spike' | null
+//   paceInfo:        { direction, level, elapsedDays } | null — canonical pace read (carries the elapsed span for copy)
 //   rollingSeries:   { value, label, unit }[] — 7-day rolling average per weigh-in date
 //   rollingSeries30: { value, label, unit }[] — 30-day rolling average per weigh-in date
 //   goalInfo:        { direction, weeks_remaining, required_weekly_pace, warnings } | null
@@ -375,7 +431,8 @@ export function deriveWeightGoalAnalytics(entries, goal, editState = {}, referen
 
   const safeEntries = entries || [];
   const trendSummary = computeWeightTrendSummary(safeEntries, referenceDate);
-  const paceLevel = computeWeightPaceLevel(safeEntries);
+  const paceInfo = computeWeightPaceInfo(safeEntries);
+  const paceLevel = paceInfo ? paceInfo.level : null;
   const rollingSeries = computeWeightRollingAverageSeries(safeEntries, 7);
   const rollingSeries30 = computeWeightRollingAverageSeries(safeEntries, 30, 30);
 
@@ -395,5 +452,5 @@ export function deriveWeightGoalAnalytics(entries, goal, editState = {}, referen
     }
   }
 
-  return { trendSummary, paceLevel, rollingSeries, rollingSeries30, goalInfo, calorieEstimate };
+  return { trendSummary, paceLevel, paceInfo, rollingSeries, rollingSeries30, goalInfo, calorieEstimate };
 }

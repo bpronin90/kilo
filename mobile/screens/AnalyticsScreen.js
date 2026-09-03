@@ -293,7 +293,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   }
 
   // null goal: Analytics renders trend data only, not goal-relative info
-  const { trendSummary: weightTrends, paceLevel: weightPaceLevel, rollingSeries, rollingSeries30 } = useMemo(
+  const { trendSummary: weightTrends, paceLevel: weightPaceLevel, paceInfo: weightPaceInfo, rollingSeries, rollingSeries30 } = useMemo(
     () => deriveWeightGoalAnalytics(weightEntries, null),
     [weightEntries]
   );
@@ -304,7 +304,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
 
   const weightSummary = useMemo(() => {
     if (weightEntries.length === 0) {
-      return { latestWeightValue: '—', showUnit: false, weightCount: '0', avg7: '—', avg30: '—', paceFlag: null, paceLevel: null };
+      return { latestWeightValue: '—', showUnit: false, weightCount: '0', avg7: '—', avg30: '—', paceFlag: null, paceLevel: null, paceElapsedDays: null };
     }
     return {
       latestWeightValue: weightTrends.currentWeight !== null ? formatBodyweightValue(weightTrends.currentWeight, unit) : '—',
@@ -314,8 +314,9 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       avg30: weightTrends.avg30 !== null ? `${displayWeight(weightTrends.avg30, unit).toFixed(1)} ${unit}` : '—',
       paceFlag: weightTrends.paceFlag,
       paceLevel: weightPaceLevel,
+      paceElapsedDays: weightPaceInfo ? weightPaceInfo.elapsedDays : null,
     };
-  }, [weightEntries.length, weightTrends, weightPaceLevel, unit]);
+  }, [weightEntries.length, weightTrends, weightPaceLevel, weightPaceInfo, unit]);
 
   const oneKSelections = useMemo(() => ({
     ...DEFAULT_1K_EXERCISES,

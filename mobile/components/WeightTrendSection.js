@@ -56,6 +56,11 @@ export function TrendSection({ title, col1, col2, col3, isLast, paceLevel, goalD
           <Text style={[styles.trendValue, styles.trendTextEnd, col3ColorStyle]} numberOfLines={1}>
             {col3.value}
           </Text>
+          {!!col3.caption && (
+            <Text style={[styles.trendCaption, styles.trendTextEnd, col3ColorStyle]}>
+              {col3.caption}
+            </Text>
+          )}
         </View>
       </View>
     </View>
@@ -97,6 +102,14 @@ const createStyles = (colors) => StyleSheet.create({
   trendValue: {
     ...HeroMetric.statTertiary,
     color: colors.text,
+  },
+  // Secondary caption under the pace value (e.g. "over 5 days"). Its own line so
+  // the elapsed span stays readable in the narrow trend column instead of being
+  // truncated off the end of the value string.
+  trendCaption: {
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 2,
   },
   trendLabel: {
     fontSize: 11,
