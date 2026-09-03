@@ -2467,6 +2467,98 @@ describe('computeWeightTrendSummary', () => {
   });
 });
 
+// ── computeWeightTrendSummary — date-averaged Today comparison (#947) ──────────
+//
+// recentDateWeight / priorDateWeight are the two most recent distinct local-date
+// averages — the pair the pace cue is classified from — so the Today row never
+// pairs a raw intra-day delta with a date-averaged pace direction. currentWeight
+// / priorDayWeight stay raw for goal math and Analytics.
+
+describe('computeWeightTrendSummary — recentDateWeight / priorDateWeight (#947)', () => {
+  const REF = new Date('2026-05-21T12:00:00');
+
+  test('newest date with multiple weigh-ins exposes the date mean, not a raw entry', () => {
+    const entries = [
+      { date: '2026-05-21', weight_value: 184.32 },
+      { date: '2026-05-21', weight_value: 187.62 }, // mean 185.97
+      { date: '2026-05-20', weight_value: 185.00 },
+    ];
+    const s = computeWeightTrendSummary(entries, REF);
+    expect(s.recentDateWeight).toBeCloseTo(185.97, 5);
+    expect(s.priorDateWeight).toBe(185.00);
+    // Raw pair still reflects the latest logged reading for goal/Analytics use.
+    expect(s.currentWeight).toBe(184.32);
+    expect(s.priorDayWeight).toBe(187.62);
+  });
+
+  test('a large raw intra-day delta collapses to the modest date-mean delta', () => {
+    const entries = [
+      { date: '2026-05-21', weight_value: 189.0 },
+      { date: '2026-05-21', weight_value: 185.0 }, // mean 187.0
+      { date: '2026-05-20', weight_value: 186.0 },
+    ];
+    const s = computeWeightTrendSummary(entries, REF);
+    // Raw latest-two delta would be +4.0; the date-mean delta is +1.0.
+    expect(s.currentWeight - s.priorDayWeight).toBeCloseTo(4.0, 5);
+    expect(s.recentDateWeight - s.priorDateWeight).toBeCloseTo(1.0, 5);
+  });
+
+  test('date means can point the opposite way from the raw latest-two pair', () => {
+    const entries = [
+      { date: '2026-05-21', weight_value: 185.0 },
+      { date: '2026-05-21', weight_value: 190.0 }, // mean 187.5
+      { date: '2026-05-20', weight_value: 186.0 },
+    ];
+    const s = computeWeightTrendSummary(entries, REF);
+    expect(s.currentWeight - s.priorDayWeight).toBeLessThan(0); // raw: 185 − 190 = −5
+    expect(s.recentDateWeight - s.priorDateWeight).toBeGreaterThan(0); // means: 187.5 − 186 = +1.5
+  });
+
+  test('single-reading dates keep parity with the raw pair', () => {
+    const entries = [
+      { date: '2026-05-19', weight_value: 183.0 },
+      { date: '2026-05-20', weight_value: 185.0 },
+      { date: '2026-05-21', weight_value: 186.0 },
+    ];
+    const s = computeWeightTrendSummary(entries, REF);
+    expect(s.recentDateWeight).toBe(s.currentWeight);
+    expect(s.recentDateWeight).toBe(186.0);
+    expect(s.priorDateWeight).toBe(s.priorDayWeight);
+    expect(s.priorDateWeight).toBe(185.0);
+  });
+
+  test('priorDateWeight is null with only one distinct date even when it has several readings', () => {
+    const entries = [
+      { date: '2026-05-21', weight_value: 185.0 },
+      { date: '2026-05-21', weight_value: 187.0 },
+    ];
+    const s = computeWeightTrendSummary(entries, REF);
+    expect(s.recentDateWeight).toBe(186.0);
+    expect(s.priorDateWeight).toBeNull();
+  });
+
+  test('recentDateWeight and priorDateWeight are null when there are no entries', () => {
+    const s = computeWeightTrendSummary([], REF);
+    expect(s.recentDateWeight).toBeNull();
+    expect(s.priorDateWeight).toBeNull();
+  });
+
+  test('the two most recent distinct dates are picked across a DST spring-forward', () => {
+    // US DST springs forward 2026-03-08; the two newest distinct dates straddle
+    // it. Date bucketing keys off the calendar-date string, so the lost hour
+    // never merges or reorders the dates.
+    const entries = [
+      { date: '2026-03-09', weight_value: 186.0 },
+      { date: '2026-03-09', weight_value: 188.0 }, // mean 187.0
+      { date: '2026-03-07', weight_value: 185.0 },
+      { date: '2026-03-01', weight_value: 190.0 },
+    ];
+    const s = computeWeightTrendSummary(entries, new Date('2026-03-09T12:00:00'));
+    expect(s.recentDateWeight).toBe(187.0);
+    expect(s.priorDateWeight).toBe(185.0);
+  });
+});
+
 // ── REPEATED_WEEKDAY_SKIP_SESSION_WINDOW ──────────────────────────────────────
 
 describe('REPEATED_WEEKDAY_SKIP_SESSION_WINDOW', () => {

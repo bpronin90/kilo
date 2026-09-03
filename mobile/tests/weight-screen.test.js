@@ -2175,6 +2175,7 @@ describe('Weight retry does not flash a verified-empty state (#737 review)', () 
 describe('buildTrendSections pace copy', () => {
   const baseTrends = {
     currentWeight: 190, priorDayWeight: 185,
+    recentDateWeight: 190, priorDateWeight: 185,
     avg7: 188, priorAvg7: 186, avg30: 187, priorAvg30: 185,
   };
 
@@ -2205,6 +2206,79 @@ describe('buildTrendSections pace copy', () => {
     expect(sections[0].col3.value).toBe('-');
     expect(sections[0].col3.caption).toBeNull();
     expect(sections[0].paceLevel).toBeNull();
+  });
+});
+
+// ── buildTrendSections — Today row aligns delta with the date-averaged pace (#947)
+//
+// A day with multiple weigh-ins must not show a raw intra-day delta beside a
+// date-averaged pace direction. The Today row reads the two most recent distinct
+// local-date averages (recentDateWeight / priorDateWeight), exactly what the pace
+// cue is classified from.
+describe('buildTrendSections Today row — date-averaged comparison (#947)', () => {
+  const base = {
+    currentWeight: 189.0, priorDayWeight: 185.0,
+    recentDateWeight: 187.0, priorDateWeight: 186.0,
+    avg7: 188, priorAvg7: 186, avg30: 187, priorAvg30: 185,
+    paceFlag: null,
+  };
+
+  test('Vs Previous delta uses the date averages, not the raw latest entries', () => {
+    const sections = buildTrendSections(base, null);
+    // Raw latest two entries would read 189.0 − 185.0 = +4.0.
+    // Date averages read 187.0 − 186.0 = +1.0, matching the pace basis.
+    expect(sections[0].col2.value).toBe('+1.0');
+    expect(sections[0].col1.value).toBe('187.0 lb');
+  });
+
+  test('a large raw intra-day swing cannot contradict a no-flag pace cue', () => {
+    // Two weigh-ins on the newest date (mean 187.0) vs a prior date at 186.0:
+    // raw delta would be a spike-magnitude +4.0, but the mean delta is +1.0 and
+    // draws no pace flag — so the delta must not read as a spike either.
+    const sections = buildTrendSections(base, null);
+    expect(sections[0].col2.value).toBe('+1.0');
+    expect(sections[0].col3.value).toBe('-');
+  });
+
+  test('a contradictory raw direction is replaced by the date-averaged direction', () => {
+    // Raw latest entry is below the raw prior (−), yet the date means move up (+).
+    const contradictory = {
+      ...base,
+      currentWeight: 184.0, priorDayWeight: 188.0, // raw: −4.0
+      recentDateWeight: 187.5, priorDateWeight: 186.0, // means: +1.5
+      paceFlag: 'gain',
+    };
+    const sections = buildTrendSections(contradictory, { direction: 'gain', level: 'notable', elapsedDays: 1 });
+    expect(sections[0].col2.value).toBe('+1.5');
+    expect(sections[0].col3.value).toBe('↑ Gaining');
+  });
+
+  test('single-reading dates keep the raw behavior (values equal the raw pair)', () => {
+    const single = {
+      ...base,
+      currentWeight: 186.4, priorDayWeight: 185.0,
+      recentDateWeight: 186.4, priorDateWeight: 185.0,
+    };
+    const sections = buildTrendSections(single, null);
+    expect(sections[0].col1.value).toBe('186.4 lb');
+    expect(sections[0].col2.value).toBe('+1.4');
+  });
+
+  test('kg display converts the date-averaged delta', () => {
+    const sections = buildTrendSections(base, null, 'kg');
+    // (187.0 − 186.0) lb = 1.0 lb ≈ 0.5 kg.
+    expect(sections[0].col1.value).toBe('84.8 kg');
+    expect(sections[0].col2.value).toBe('+0.5');
+  });
+
+  test('a single distinct date leaves Vs Previous with no comparison', () => {
+    const oneDate = {
+      ...base,
+      recentDateWeight: 187.0, priorDateWeight: null,
+    };
+    const sections = buildTrendSections(oneDate, null);
+    expect(sections[0].col1.value).toBe('187.0 lb');
+    expect(sections[0].col2.value).toBe('-');
   });
 });
 
