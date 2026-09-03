@@ -258,8 +258,9 @@ Computes rolling averages from weight entries (sorted newest-first):
 **Trend summary** extends this with prior-window comparisons:
 - **Prior 7-day average:** mean of entries from days 7–13 ago (for week-over-week comparison).
 - **Prior 30-day average:** mean of entries from days 30–59 ago.
-- **Current weight:** most recent entry value.
+- **Current weight:** most recent entry value. Feeds goal math, the Home weight display, and Analytics.
 - **Prior day weight:** second most recent entry value.
+- **Recent date weight / prior date weight:** the two most recent distinct local-date **averages** — the same pair the pace flag is classified from. The Weight screen **Today** row (`Current` and `Vs Previous`) reads these, so a day with several weigh-ins shows one date-averaged delta beside the date-averaged pace direction rather than a raw intra-day swing. On single-reading dates these equal current weight / prior day weight.
 
 The current and prior windows are adjacent, inclusive, and non-overlapping: current 7-day (0–6) is followed by prior 7-day (7–13), and current 30-day (0–29) is followed by prior 30-day (30–59).
 

@@ -34,9 +34,13 @@ export function buildTrendSections(trends, paceInfo, unit = 'lb') {
   const paceCaption = trends.paceFlag ? formatPaceElapsed(paceInfo?.elapsedDays) : null;
   return [
     {
+      // The Today row compares the two most recent distinct local-date averages —
+      // the same pair the pace cue is classified from — so a day with multiple
+      // weigh-ins can't show a raw intra-day delta next to a date-averaged pace
+      // direction. Single-reading dates make these equal to the raw values.
       title: 'Today',
-      col1: { label: 'Current', value: formatTrendValue(trends.currentWeight, unit) },
-      col2: { label: 'Vs Previous', value: formatTrendDeltaValue(trends.currentWeight, trends.priorDayWeight, unit) },
+      col1: { label: 'Current', value: formatTrendValue(trends.recentDateWeight, unit) },
+      col2: { label: 'Vs Previous', value: formatTrendDeltaValue(trends.recentDateWeight, trends.priorDateWeight, unit) },
       col3: { label: 'Trend', value: paceValue, caption: paceCaption },
       paceLevel,
     },

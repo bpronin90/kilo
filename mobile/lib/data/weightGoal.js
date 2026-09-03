@@ -132,8 +132,15 @@ export function computeWeightPaceLevel(entries) {
 }
 
 // Compute full trend summary including prior-window averages for comparison.
-// Extends computeWeightTrends with priorAvg7, priorAvg30, currentWeight, and priorDayWeight.
+// Extends computeWeightTrends with priorAvg7, priorAvg30, currentWeight,
+// priorDayWeight, recentDateWeight, and priorDateWeight.
 // entries must be sorted newest-first with { date: 'YYYY-MM-DD', weight_value: number }.
+//
+// currentWeight / priorDayWeight are raw entry values (latest logged reading) and
+// feed goal math, Analytics, and Home. recentDateWeight / priorDateWeight are the
+// two most recent distinct local-date averages — the same pair the pace cue is
+// classified from — so the Today comparison never mixes a raw intra-day delta
+// with a date-averaged pace direction.
 export function computeWeightTrendSummary(entries, referenceDate = new Date()) {
   const base = computeWeightTrends(entries, referenceDate);
   const refStr = localDateStr(referenceDate);
@@ -151,13 +158,16 @@ export function computeWeightTrendSummary(entries, referenceDate = new Date()) {
   const prior7Entries  = entries.filter(e => e.date >= prior7Start  && e.date <= prior7End);
   const prior30Entries = entries.filter(e => e.date >= prior30Start && e.date <= prior30End);
   const byDate = [...entries].sort((a, b) => b.date.localeCompare(a.date));
+  const meansByDate = _meanWeightByLocalDate(entries);
 
   return {
     ...base,
-    priorAvg7:      mean(prior7Entries),
-    priorAvg30:     mean(prior30Entries),
-    currentWeight:  byDate[0]?.weight_value ?? null,
-    priorDayWeight: byDate[1]?.weight_value ?? null,
+    priorAvg7:       mean(prior7Entries),
+    priorAvg30:      mean(prior30Entries),
+    currentWeight:   byDate[0]?.weight_value ?? null,
+    priorDayWeight:  byDate[1]?.weight_value ?? null,
+    recentDateWeight: meansByDate[0]?.weight_value ?? null,
+    priorDateWeight:  meansByDate[1]?.weight_value ?? null,
   };
 }
 
@@ -414,7 +424,7 @@ export function isGoalMet(goal, currentWeight, referenceDate = new Date()) {
 // profile: optional user profile object for TDEE-based calorie estimate
 //
 // Returns:
-//   trendSummary:    { avg7, avg30, paceFlag, priorAvg7, priorAvg30, currentWeight, priorDayWeight }
+//   trendSummary:    { avg7, avg30, paceFlag, priorAvg7, priorAvg30, currentWeight, priorDayWeight, recentDateWeight, priorDateWeight }
 //   paceLevel:       'notable' | 'spike' | null
 //   paceInfo:        { direction, level, elapsedDays } | null — canonical pace read (carries the elapsed span for copy)
 //   rollingSeries:   { value, label, unit }[] — 7-day rolling average per weigh-in date
