@@ -219,6 +219,55 @@ describe('exportWorkoutsCsv', () => {
     expect(order).toEqual(['b1', 'z1', 'z2', 'a1']);
   });
 
+  // PR #949 review findings — three silent-data-loss regressions.
+  describe('review-finding regressions (#578)', () => {
+    test('a partially skipped set group ("80 4,-") exports the skip as is_skipped, not a fabricated zero-rep set', () => {
+      const raw = ['Monday', '-Bench', '- 80 4,-'].join('\n');
+      const note = { id: 'n1', title: 'R', isCurrent: true, raw_text: raw };
+      const objs = rowsAsObjects(exportWorkoutsCsv([note]), WORKOUT_CSV_COLUMNS);
+      const sets = objs.filter((o) => o.record_kind === 'set');
+      expect(sets).toHaveLength(2);
+      expect(sets[0]).toMatchObject({ set_ordinal: '1', rep_count: '4', weight_value_lb: '80', is_skipped: '' });
+      expect(sets[1]).toMatchObject({ set_ordinal: '2', is_skipped: 'true', rep_count: '', weight_value_lb: '' });
+    });
+
+    test('a bare preserved integer with no governing declaration ("8") is not dropped', () => {
+      const raw = ['Monday', '-Bench', '8'].join('\n');
+      const note = { id: 'n1', title: 'R', isCurrent: true, raw_text: raw };
+      const objs = rowsAsObjects(exportWorkoutsCsv([note]), WORKOUT_CSV_COLUMNS);
+      const unparsed = byKind(objs, 'unparsed');
+      expect(unparsed).toHaveLength(1);
+      expect(unparsed[0].session_index).toBe('1');
+      expect(unparsed[0].raw_unparsed_text).toBe('8');
+    });
+
+    test('a bare malformed line interleaves at its true position among real session_entries', () => {
+      const raw = ['Monday', '-Bench', '- 100 5', '8', '- 105 5'].join('\n');
+      const note = { id: 'n1', title: 'R', isCurrent: true, raw_text: raw };
+      const objs = rowsAsObjects(exportWorkoutsCsv([note]), WORKOUT_CSV_COLUMNS);
+      const rows = objs.filter((o) => ['set', 'unparsed'].includes(o.record_kind));
+      expect(rows.map((r) => [r.record_kind, r.session_index])).toEqual([
+        ['set', '1'],
+        ['unparsed', '2'],
+        ['set', '3'],
+      ]);
+    });
+
+    test('a rejected parse (missing-space row before any exercise) is preserved as a note-level unparsed record, not an empty routine', () => {
+      const note = { id: 'n1', title: 'Broken', isCurrent: true, raw_text: '-230 5' };
+      const objs = rowsAsObjects(exportWorkoutsCsv([note]), WORKOUT_CSV_COLUMNS);
+      expect(byKind(objs, 'routine')).toHaveLength(1);
+      expect(byKind(objs, 'section')).toHaveLength(0);
+      const unparsed = byKind(objs, 'unparsed');
+      expect(unparsed).toHaveLength(1);
+      // Leading apostrophe is the documented spreadsheet-trigger neutralization
+      // ("-..." starts with a trigger character) — not data loss.
+      expect(unparsed[0].raw_unparsed_text).toBe("'-230 5");
+      expect(unparsed[0].annotation_scope).toBe('note');
+      expect(unparsed[0].annotation_text.length).toBeGreaterThan(0);
+    });
+  });
+
   test('identical input produces byte-identical output across repeated calls', () => {
     const notes = [{ id: 'n1', title: 'R', isCurrent: true, raw_text: 'Monday\n-Bench\n- 100 5' }];
     expect(exportWorkoutsCsv(notes)).toBe(exportWorkoutsCsv(notes));

@@ -92,6 +92,13 @@ function sectionDateEvidence(section, sessionCount) {
   return { date: headingDate, origin: 'dated_heading' };
 }
 
+// Counts real (session_entries-only) positions, deliberately not the merged
+// session_entries+unparsed_positions sequence buildNoteRows exports per
+// exercise: the single-session dated-heading date rule only ever fires for
+// the common, unambiguous case, and inflating this count by a bare
+// malformed/preserved line would only ever make that rule MORE conservative
+// (fall back to empty), never wrongly assign a date — an acceptable, narrow
+// approximation, not a silent-loss risk.
 function sectionMaxSessionCount(section) {
   let max = 0;
   for (const exercise of section.exercises) {
@@ -114,6 +121,30 @@ function buildNoteRows(note, routine) {
   });
 
   const parsed = parseWorkoutNote(note.raw_text || '');
+
+  // A rejected parse (PR #949 review finding) — e.g. a missing-space set row
+  // like "-230 5" before any exercise header — returns `ok: false` with an
+  // EMPTY `sections` array. Falling through to the loop below would silently
+  // export routine metadata only, with nothing to show the note actually had
+  // content: the exact silent-data-loss shape this whole export exists to
+  // avoid. The full original raw_text is preserved verbatim (never
+  // re-attempted, never guessed at) as one note-level unparsed record, with
+  // the parser's own rejection reason carried alongside it.
+  if (!parsed.ok) {
+    rows.push({
+      ...emptyRow(),
+      record_kind: 'unparsed',
+      routine_id: routine.id,
+      routine_title: routine.title,
+      is_current_routine: String(routine.isCurrent),
+      is_unparsed: 'true',
+      raw_unparsed_text: note.raw_text || '',
+      annotation_scope: 'note',
+      annotation_text: parsed.error || 'This routine could not be parsed.',
+    });
+    return rows;
+  }
+
   const sections = parsed.sections || [];
 
   sections.forEach((section, sectionIdx) => {
@@ -164,7 +195,31 @@ function buildNoteRows(note, routine) {
       };
       rows.push({ ...emptyRow(), ...exerciseBase });
 
-      const entries = exercise.session_entries || [];
+      // Merge session_entries with exercise.unparsed_positions (PR #949
+      // review finding). A bare line with no leading "- " that fails to
+      // parse or is a preserved bare integer (mobile/lib/parser/workoutNote.js
+      // lines 344-352) is stored ONLY in unparsed_positions, never added to
+      // session_entries — so walking session_entries alone silently drops a
+      // visible, authored line. Each unparsed_positions record carries `pos`,
+      // the session_entries length at the moment it was encountered, which is
+      // exactly where it sits in raw_text order: interleave it immediately
+      // before session_entries[pos]. Every one of these still occupies a real
+      // authored position, so it gets its own session_index in the merged,
+      // continuously-numbered sequence below — never silently omitted, never
+      // merged into a neighboring real entry's row.
+      const positionalUnparsed = exercise.unparsed_positions || [];
+      const merged = [];
+      let nextPositionalIdx = 0;
+      const sessionEntries = exercise.session_entries || [];
+      for (let pos = 0; pos <= sessionEntries.length; pos++) {
+        while (nextPositionalIdx < positionalUnparsed.length && positionalUnparsed[nextPositionalIdx].pos === pos) {
+          const p = positionalUnparsed[nextPositionalIdx];
+          merged.push({ skipped: false, raw: p.raw, sets: [], unparsed: true, error: p.error ?? null, category: p.category ?? null });
+          nextPositionalIdx++;
+        }
+        if (pos < sessionEntries.length) merged.push(sessionEntries[pos]);
+      }
+      const entries = merged;
       entries.forEach((entry, entryIdx) => {
         const sessionIndex = entryIdx + 1;
         const rowBase = {
@@ -194,6 +249,24 @@ function buildNoteRows(note, routine) {
             rows.push({ ...emptyRow(), ...rowBase });
           } else {
             sets.forEach((set, setIdx) => {
+              // A comma-separated set group can mix logged sets with an
+              // individual skip ("80 4,-"): parseWorkoutRow marks that set
+              // `skipped: true, rep_count: 0` (PR #949 review finding). `0`
+              // is not a real zero-rep set — it is the parser's placeholder
+              // for "no attempt" — so a skipped set exports exactly like the
+              // whole-entry skip above: is_skipped=true, every numeric field
+              // blank, never a fabricated zero.
+              if (set.skipped) {
+                rows.push({
+                  ...emptyRow(),
+                  ...rowBase,
+                  record_kind: 'set',
+                  set_ordinal: String(setIdx + 1),
+                  history_set_ordinal: set.set_index != null ? String(set.set_index) : '',
+                  is_skipped: 'true',
+                });
+                return;
+              }
               const authoredUnit = set.converted_from_kg ? 'kg' : 'lb';
               const authoredValue = set.converted_from_kg ? set.kg_value : set.weight_value;
               rows.push({
