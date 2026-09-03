@@ -503,8 +503,17 @@ export function LogScreenEditorCard({
     setSeedSelection(null);
     setProblemSelectionRequest(null);
     setKeypadSelection(null);
-    setNoteFocused(false);
   }, [editingNoteId, deloadMode]);
+  // #938 review: hide the accessory row only on a deload-mode switch, which
+  // swaps the whole editor branch and unmounts the note input WITHOUT a
+  // guaranteed `onBlur`. Not on an `editingNoteId` change: a brand-new
+  // routine's first save swaps its temporary `'new'` id for the durable one
+  // while the same `TextInput` stays mounted and (under the shell's
+  // `keyboardShouldPersistTaps="handled"`) still focused, with no fresh
+  // `onFocus` to restore the row — so resetting here would wrongly hide it.
+  useEffect(() => {
+    setNoteFocused(false);
+  }, [deloadMode]);
   const editorText = editingNoteId ? editingText : activeEditText;
   const setEditorText = editingNoteId ? setEditingText : handleCurrentTextChange;
 
@@ -533,6 +542,11 @@ export function LogScreenEditorCard({
   const requestEditorSelection = (range) => {
     const input = editorInputRef.current;
     input?.focus?.();
+    // #938 review: keep the keypad's insertion point in sync with a
+    // programmatic jump. iOS emits no `onSelectionChange` for a JS-driven
+    // selection, so without this the next keypad key would insert at the last
+    // range native reported (initially offset 0), not the caret just placed.
+    editorSelectionRef.current = { start: range.start, end: range.end };
     if (_applyNativeSelection(input, range)) {
       // Native owns the selection now and no React state describes it, so
       // nothing a later render does can reapply, release, or fight it.
@@ -544,7 +558,11 @@ export function LogScreenEditorCard({
 
   const handleInsertSeedExample = () => {
     setEditorText(WORKOUT_SEED_EXAMPLE_TEXT);
-    setSeedSelection({ start: WORKOUT_SEED_EXAMPLE_TEXT.length, end: WORKOUT_SEED_EXAMPLE_TEXT.length });
+    const caret = { start: WORKOUT_SEED_EXAMPLE_TEXT.length, end: WORKOUT_SEED_EXAMPLE_TEXT.length };
+    setSeedSelection(caret);
+    // #938 review: same reason as `requestEditorSelection` — keep the keypad
+    // ref current when the caret is placed programmatically.
+    editorSelectionRef.current = caret;
     editorInputRef.current?.focus();
   };
 

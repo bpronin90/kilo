@@ -12,6 +12,7 @@ import {
 } from '../components/WorkoutNoteKeypad';
 import { LogScreenEditorCard } from '../components/LogScreenEditorCard';
 import { LogRecoverySection } from '../components/LogRecoverySection';
+import { WORKOUT_SEED_EXAMPLE_TEXT } from '../components/WorkoutSyntaxReference';
 
 jest.mock('@react-native-community/datetimepicker', () => {
   const ReactMock = require('react');
@@ -222,6 +223,59 @@ describe('LogScreenEditorCard: numeric/symbol accessory row', () => {
     act(() => { findNoteInput(root.root).props.onFocus(); });
     expect(findNoteInput(root.root).props.keyboardType).toBeUndefined();
   });
+
+  // #938 review: a programmatic caret placement that emits no
+  // `onSelectionChange` (iOS behavior for the seed-example / problem-jump
+  // paths) must still leave the keypad inserting at the visible caret.
+  test('a key inserts at a programmatically placed caret (seed example)', () => {
+    const onText = jest.fn();
+    const root = mount(<CurrentRoutineHarness initialText={''} onText={onText} />);
+    const seed = root.root.findAll(
+      (n) => n.props?.accessibilityLabel === 'Insert example workout note'
+    )[0];
+    act(() => { seed.props.onPress(); });
+    act(() => { findNoteInput(root.root).props.onFocus(); });
+
+    pressKey(root.root, 'Insert asterisk');
+    expect(onText).toHaveBeenLastCalledWith(`${WORKOUT_SEED_EXAMPLE_TEXT}*`);
+  });
+
+  // #938 review: a new routine's first save swaps its temporary `'new'` id for
+  // the durable one while the same focused TextInput stays mounted, with no
+  // fresh onFocus — the row must not vanish.
+  test('the row survives the note id changing under a still-focused input', () => {
+    function IdSwapHarness({ editingNoteId }) {
+      const [text, setText] = React.useState('Monday\n+Lifting');
+      return (
+        <LogScreenEditorCard
+          deloadMode={null}
+          isEditingDeloadNote={false}
+          editingNoteId={editingNoteId}
+          currentId={null}
+          activeEditText=""
+          handleCurrentTextChange={noop}
+          editingText={text}
+          setEditingText={setText}
+          workoutNoteTitle=""
+          setWorkoutNoteTitle={noop}
+          editingTitle="Backlog"
+          setEditingTitle={noop}
+          handleSave={noop}
+          handleSaveOtherNote={noop}
+          handleSwitchCurrent={noop}
+          handleDeleteRoutine={noop}
+          handleDeleteDeloadNoteFromEditor={noop}
+          handleRevertEdit={noop}
+        />
+      );
+    }
+    const root = mount(<IdSwapHarness editingNoteId="new" />);
+    act(() => { findNoteInput(root.root).props.onFocus(); });
+    expect(keypadKeys(root.root)).toHaveLength(15);
+
+    act(() => { root.update(<IdSwapHarness editingNoteId="routine_123" />); });
+    expect(keypadKeys(root.root)).toHaveLength(15);
+  });
 });
 
 // ── LogRecoverySection parity ─────────────────────────────────────────────
@@ -276,5 +330,25 @@ describe('LogRecoverySection: numeric/symbol accessory row parity', () => {
     act(() => { input.props.onSelectionChange({ nativeEvent: { selection: { start: 1, end: 1 } } }); });
     pressKey(root, 'Insert comma');
     expect(onChangeEditingText).toHaveBeenLastCalledWith('x,y');
+  });
+
+  // #938 review: a Recovery source jump places the caret with no
+  // `onSelectionChange` on iOS — the keypad must still insert there.
+  test('a key inserts at a source-jump caret', () => {
+    const text = 'Monday\n-Bench\n95 5,5,5';
+    const at = text.indexOf('-Bench');
+    const { root, onChangeEditingText } = renderRecovery({
+      editingText: text,
+      pendingSourceJump: {
+        start: at, end: at, editingNoteId: 'weeknote',
+        expectedText: text, source: 'recovery', token: 'sj1',
+      },
+      onSourceJumpApplied: noop,
+    });
+    act(() => { findRecoveryNoteInput(root).props.onFocus(); });
+    pressKey(root, 'Insert comma');
+    expect(onChangeEditingText).toHaveBeenLastCalledWith(
+      `${text.slice(0, at)},${text.slice(at)}`
+    );
   });
 });

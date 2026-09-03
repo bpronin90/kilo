@@ -293,7 +293,13 @@ export function LogRecoverySection({
     if (!pendingSourceJump || pendingSourceJump.source !== 'recovery') return;
     if (pendingSourceJump.editingNoteId !== editingNoteId) return;
     if (pendingSourceJump.expectedText !== editingText) return;
-    setRecoverySelectionRequest({ start: pendingSourceJump.start, end: pendingSourceJump.end });
+    const caret = { start: pendingSourceJump.start, end: pendingSourceJump.end };
+    setRecoverySelectionRequest(caret);
+    // #938 review: keep the keypad's insertion point in sync with the jump.
+    // iOS emits no `onSelectionChange` for a JS-driven selection, so without
+    // this the first keypad key would edit the previous range, not the caret
+    // the source jump just placed.
+    recoveryEditingSelectionRef.current = caret;
     recoveryEditingTextInputRef.current?.focus();
     onSourceJumpApplied?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
