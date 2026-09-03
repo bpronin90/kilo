@@ -12,13 +12,14 @@ export function AnalyticsStrengthSection({
   handleStrengthLayout,
   isNotesLoading,
   oneK,
+  oneKCanonical,
   oneKChartData,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const [selectedSeriesPoint, setSelectedSeriesPoint] = useState(null);
   const [oneKInfoExpanded, setOneKInfoExpanded] = useState(false);
-  const [plateWeight, setPlateWeight] = useState(null);
+  const [plateWeightLb, setPlateWeightLb] = useState(null);
 
   // oneK and oneKChartData arrive already converted into display space by
   // AnalyticsScreen. The 1,000 lb club threshold stays lb-defined; only its
@@ -29,6 +30,21 @@ export function AnalyticsStrengthSection({
   const displayOneK = selectedSeriesPoint
     ? { total: selectedSeriesPoint.value, bench: selectedSeriesPoint.bench, squat: selectedSeriesPoint.squat, deadlift: selectedSeriesPoint.deadlift }
     : oneK;
+
+  // #577: the plate calculator needs the CANONICAL lb figure, never the
+  // display-converted `displayOneK` value above — back-converting an
+  // already-rounded kg display number reintroduces a precision/unit bug.
+  // `oneKCanonical` (steady state) and each chart point's `*Lb` fields
+  // (selected-point state) are threaded in by AnalyticsScreen for exactly
+  // this purpose.
+  const canonicalOneK = selectedSeriesPoint
+    ? {
+      total: selectedSeriesPoint.valueLb,
+      bench: selectedSeriesPoint.benchLb,
+      squat: selectedSeriesPoint.squatLb,
+      deadlift: selectedSeriesPoint.deadliftLb,
+    }
+    : oneKCanonical;
 
   return (
     <View onLayout={handleStrengthLayout} style={styles.strengthSection}>
@@ -50,14 +66,14 @@ export function AnalyticsStrengthSection({
 
               <View style={styles.oneKBreakdown}>
                 {[
-                  { key: 'squat', label: 'Squats', value: displayOneK.squat },
-                  { key: 'bench', label: 'Bench', value: displayOneK.bench },
-                  { key: 'deadlift', label: 'Deadlifts', value: displayOneK.deadlift },
+                  { key: 'squat', label: 'Squats', value: displayOneK.squat, weightLb: canonicalOneK?.squat },
+                  { key: 'bench', label: 'Bench', value: displayOneK.bench, weightLb: canonicalOneK?.bench },
+                  { key: 'deadlift', label: 'Deadlifts', value: displayOneK.deadlift, weightLb: canonicalOneK?.deadlift },
                 ].map(item => (
                   <Pressable
                     key={item.key}
-                    style={styles.oneKItem}
-                    onPress={item.value ? () => setPlateWeight(Math.round(item.value)) : null}
+                    style={[styles.oneKItem, item.value ? styles.oneKItemTappable : null]}
+                    onPress={item.value && item.weightLb ? () => setPlateWeightLb(item.weightLb) : null}
                     accessibilityRole={item.value ? 'button' : undefined}
                     accessibilityLabel={item.value ? `Show plate loading for ${item.label} at ${item.value.toFixed(0)} pounds` : undefined}
                   >
@@ -125,9 +141,9 @@ export function AnalyticsStrengthSection({
       )}
 
       <PlateCalculatorModal
-        visible={plateWeight != null}
-        weight={plateWeight}
-        onClose={() => setPlateWeight(null)}
+        visible={plateWeightLb != null}
+        weightLb={plateWeightLb}
+        onClose={() => setPlateWeightLb(null)}
       />
     </View>
   );
@@ -285,6 +301,14 @@ const createStyles = (colors) => StyleSheet.create({
     gap: 2,
     flex: 1,
     minHeight: 44,
+  },
+  // #577: visible tappable cue matching the set-row plate-calculator
+  // affordance (UI.js's setWeightTappable), so both entry points read the
+  // same way.
+  oneKItemTappable: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.textMuted,
+    borderStyle: 'dashed',
   },
   oneKItemValue: {
     fontSize: 18,

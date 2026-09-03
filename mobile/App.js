@@ -45,6 +45,7 @@ import { PRODUCT_MEASUREMENT_EVENTS, recordProductMeasurement } from './lib/prod
 import { migrateSensitiveDeviceData } from './storage/secureStorage';
 import { makeWeightEntry } from './lib/data';
 import { reconcileWorkoutReminder, installForegroundHandler } from './lib/reminderScheduler';
+import { useRestTimer } from './hooks/useRestTimer';
 import { buildCloudExport, importBackup, getStorageMode, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed } from './storage/entries';
 import { markStartupPhase } from './storage/entries/startupTiming';
 import { purgePersistedDerivedSections } from './storage/entries/derivedCachePurge';
@@ -325,6 +326,12 @@ function AppShell({ onDeviceDataWiped }) {
       console.error('[App] Failed to purge persisted derived note caches:', e);
     });
   }, []);
+
+  // App.js owns the single mounted rest-timer controller and its sole
+  // AppState subscription (#577) — hydration, cold-start/foreground
+  // reconciliation, and the tick all live inside this one hook instance so
+  // no screen/editor component can create a competing listener.
+  const restTimer = useRestTimer();
 
   const { isUpdatePending } = useUpdates();
 
@@ -844,6 +851,13 @@ function AppShell({ onDeviceDataWiped }) {
             navNoteKey={logNoteTargetKey}
             navRecoveryNoteId={logRecoveryTarget ? logRecoveryTarget.noteId : null}
             navRecoveryKey={logRecoveryTargetKey}
+            restTimerIsRunning={restTimer.isRunning}
+            restTimerRemainingMs={restTimer.remainingMs}
+            restTimerJustElapsed={restTimer.justElapsed}
+            restTimerBackgroundAlertAvailable={restTimer.backgroundAlertAvailable}
+            onStartRestTimer={restTimer.start}
+            onCancelRestTimer={restTimer.cancel}
+            onDismissRestTimerDone={restTimer.dismissDone}
           />
         </View>
         <View

@@ -20,6 +20,13 @@ import {
 
 const ANDROID_CHANNEL_ID = 'kilo-reminders';
 
+// Rest-timer notification kind (#577). Defined here (not in reminders.js)
+// since the rest timer is deliberately decoupled from REMINDER_KIND's
+// weigh-in/workout reminder state — this is only the tag used to select the
+// per-kind foreground-suppression branch below and, in restTimerScheduler.js,
+// to cancel only the rest timer's own scheduled notification.
+export const REST_TIMER_KIND = 'rest-timer';
+
 function getNotificationsModule() {
   // Lazy require keeps expo-notifications out of the app's startup import
   // graph; it is only loaded when a reminder toggle is actually used.
@@ -33,16 +40,52 @@ export function remindersSupported() {
   return Platform.OS !== 'web';
 }
 
+// Published by App.js's single AppState subscription (#577) so the shared
+// notification handler below can suppress a foregrounded rest-timer banner
+// without installing its own listener. Defaults to true (foreground) so an
+// early notification delivered before App.js's first effect runs is never
+// mis-suppressed as background.
+let appIsActive = true;
+export function setNotificationHandlerAppActive(active) {
+  appIsActive = !!active;
+}
+
 let prepared = false;
+
+// Test-only reset (mirrors __resetWorkoutReminderReconciliationForTests
+// below) so a test can force prepareNotifications to reinstall the handler
+// and observe the exact function passed to setNotificationHandler.
+export function __resetNotificationHandlerPreparedForTests() {
+  prepared = false;
+}
+
 async function prepareNotifications(Notifications) {
   if (prepared) return;
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: false,
-      shouldSetBadge: false,
-    }),
+    // #577 review: a rest-timer notification arriving while the app is in
+    // the foreground must NOT show an OS banner — the in-app countdown UI
+    // is the canonical "time's up" surface there, and showing both would be
+    // a redundant/contradictory duplicate. Every other kind (weigh-in,
+    // workout) is completely unaffected: this branch only special-cases
+    // REST_TIMER_KIND, so existing reminder foreground behavior is
+    // byte-for-byte unchanged.
+    handleNotification: async ({ request }) => {
+      const kind = request?.content?.data?.kind;
+      if (kind === REST_TIMER_KIND && appIsActive) {
+        return {
+          shouldShowBanner: false,
+          shouldShowList: false,
+          shouldPlaySound: false,
+          shouldSetBadge: false,
+        };
+      }
+      return {
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+      };
+    },
   });
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
@@ -85,7 +128,10 @@ export async function cancelReminders(kind) {
   await Promise.all(ids.map((id) => Notifications.cancelScheduledNotificationAsync(id)));
 }
 
-async function scheduleRequests(requests) {
+// Exported for restTimerScheduler.js (#577) — the rest timer schedules a
+// single one-off notification through the exact same expo-notifications call
+// path reminders use, rather than duplicating it.
+export async function scheduleRequests(requests) {
   if (requests.length === 0) return;
   const Notifications = getNotificationsModule();
   await prepareNotifications(Notifications);

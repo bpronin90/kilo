@@ -86,6 +86,7 @@ import { RecoveryBlockStartModal } from '../components/RecoveryBlockStartModal';
 import { RecoveryBlockWeekModal } from '../components/RecoveryBlockWeekModal';
 import { RecoveryBlockEndModal } from '../components/RecoveryBlockEndModal';
 import { LogRecoverySection } from '../components/LogRecoverySection';
+import { RestTimerBanner } from '../components/RestTimerBanner';
 
 import { useLogCurrentRoutineEditor } from './log/useLogCurrentRoutineEditor';
 import { useLogOtherRoutineEditor } from './log/useLogOtherRoutineEditor';
@@ -132,6 +133,13 @@ export function LogScreen({
   navNoteKey = 0,
   navRecoveryNoteId = null,
   navRecoveryKey = 0,
+  restTimerIsRunning = false,
+  restTimerRemainingMs = 0,
+  restTimerJustElapsed = false,
+  restTimerBackgroundAlertAvailable = true,
+  onStartRestTimer,
+  onCancelRestTimer,
+  onDismissRestTimerDone,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -1405,6 +1413,16 @@ export function LogScreen({
           onSourceJumpApplied={otherEditor.editingNoteId ? otherEditor.clearPendingSourceJump : currentEditor.clearPendingSourceJump}
         />
       </ScreenShell>
+      <RestTimerBanner
+        isRunning={restTimerIsRunning}
+        remainingMs={restTimerRemainingMs}
+        justElapsed={restTimerJustElapsed}
+        backgroundAlertAvailable={restTimerBackgroundAlertAvailable}
+        onCancel={onCancelRestTimer}
+        onDismissDone={onDismissRestTimerDone}
+        onStart={onStartRestTimer}
+        showStart={!otherEditor.editingNoteId && currentEditor.mode === 'edit'}
+      />
       <SessionCheckInModal
         // Gated on the toggle exactly as the Analytics one is. The hook's
         // withdrawal transition already clears the prompt when the toggle goes

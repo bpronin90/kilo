@@ -10,11 +10,15 @@ import {
   COLLAPSED_STATE_KEY,
   WEIGH_IN_REMINDER_KEY,
   WORKOUT_REMINDER_KEY,
+  PLATE_CALCULATOR_PROFILE_KEY,
+  REST_TIMER_KEY,
 } from './keys';
 import {
   normalizeWeighInReminder,
   normalizeWorkoutReminder,
 } from '../../lib/reminders';
+import { normalizePlateCalculatorProfile } from '../../lib/plateMath';
+import { normalizeRestTimerRecord } from '../../lib/restTimer';
 
 export async function loadTrackedLifts() {
   try {
@@ -221,4 +225,47 @@ export async function loadDeloadModeEnabled() {
 
 export async function saveDeloadModeEnabled(enabled) {
   await AsyncStorage.setItem(DELOAD_MODE_KEY, JSON.stringify(enabled));
+}
+
+// Plate-calculator equipment profile (#577): bar weight + finite per-side
+// plate inventory, kept independently per unit. See lib/plateMath.js for
+// normalization/defaults.
+export async function loadPlateCalculatorProfile() {
+  try {
+    const raw = await AsyncStorage.getItem(PLATE_CALCULATOR_PROFILE_KEY);
+    return normalizePlateCalculatorProfile(raw ? JSON.parse(raw) : null);
+  } catch {
+    return normalizePlateCalculatorProfile(null);
+  }
+}
+
+export async function savePlateCalculatorProfile(profile) {
+  await AsyncStorage.setItem(
+    PLATE_CALCULATOR_PROFILE_KEY,
+    JSON.stringify(normalizePlateCalculatorProfile(profile))
+  );
+}
+
+// Rest timer (#577): the single active timer, or null when none is running.
+// See lib/restTimer.js for normalization/validation.
+export async function loadRestTimerState() {
+  try {
+    const raw = await AsyncStorage.getItem(REST_TIMER_KEY);
+    return raw ? normalizeRestTimerRecord(JSON.parse(raw)) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveRestTimerState(record) {
+  if (record == null) {
+    await AsyncStorage.removeItem(REST_TIMER_KEY);
+    return;
+  }
+  const normalized = normalizeRestTimerRecord(record);
+  if (normalized == null) {
+    await AsyncStorage.removeItem(REST_TIMER_KEY);
+    return;
+  }
+  await AsyncStorage.setItem(REST_TIMER_KEY, JSON.stringify(normalized));
 }

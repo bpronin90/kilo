@@ -408,10 +408,21 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     // recovery-filtered note population or the markers would slide.
     const boundaries = deriveRoutineStartBoundaries(parsedSections.normalNotes, oneKSelections);
     const series = deriveOneKChartData(analytics.oneKSeries, boundaries);
-    if (unit !== 'kg') return series;
+    // #577: carry the canonical-lb figures alongside the display-space ones
+    // on every point (both unit modes) so a plate-calculator tap on a
+    // selected chart point can read the exact canonical value instead of
+    // reconverting an already-rounded display number.
+    const withCanonical = series.map((p) => ({
+      ...p,
+      valueLb: p.value,
+      benchLb: p.bench,
+      squatLb: p.squat,
+      deadliftLb: p.deadlift,
+    }));
+    if (unit !== 'kg') return withCanonical;
     // Display-space conversion for kg (#441): per-lift breakdown values ride
     // along with each point, so convert them alongside the plotted total.
-    return series.map((p) => ({
+    return withCanonical.map((p) => ({
       ...p,
       value: Math.round(lbToKg(p.value)),
       unit: 'kg',
@@ -622,6 +633,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
         handleStrengthLayout={handleStrengthLayout}
         isNotesLoading={isNotesLoading}
         oneK={displayOneK}
+        oneKCanonical={analytics.oneK}
         oneKChartData={oneKChartData}
       />
     ) : null,

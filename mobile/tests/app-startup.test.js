@@ -14,6 +14,27 @@ jest.mock('../lib/reminderScheduler', () => {
     // this suite only exercises the foreground-handler install path, so a
     // no-op stub is enough to keep that unrelated effect from throwing.
     reconcileWorkoutReminder: jest.fn(async () => ({ workout: { enabled: false }, inferredWeekdays: [] })),
+    // App.js also mounts the rest-timer controller (#577), which imports
+    // these from reminderScheduler.js; this suite doesn't exercise timer
+    // behavior, so no-op stubs are enough to keep that unrelated hook from
+    // throwing during render.
+    REST_TIMER_KIND: 'rest-timer',
+    remindersSupported: jest.fn(() => true),
+    requestReminderPermission: jest.fn(async () => false),
+    cancelReminders: jest.fn(async () => {}),
+    scheduleRequests: jest.fn(async () => {}),
+    setNotificationHandlerAppActive: jest.fn(),
+  };
+});
+
+jest.mock('../storage/entries', () => {
+  const actual = jest.requireActual('../storage/entries');
+  return {
+    ...actual,
+    // Rest-timer persistence (#577): stub to "no timer" so useRestTimer's
+    // cold-start reconciliation resolves quietly during this startup suite.
+    loadRestTimerState: jest.fn(async () => null),
+    saveRestTimerState: jest.fn(async () => {}),
   };
 });
 
