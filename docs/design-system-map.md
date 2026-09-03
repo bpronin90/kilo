@@ -959,11 +959,7 @@ tab, `RecoveryBlockEndModal.js`, and `WorkoutSubheading` in `UI.js`. #921 is a
 further owner-authorized exception, scoped to the effective target geometry of
 exactly two controls in `LogRecoverySection.js` — `Edit note` and the A/B
 segment — and to nothing else: no color, type, spacing, rail, or row-height
-value in the Recovery card changes with it. #938 is a further owner-authorized
-exception that adds one new element — the workout-note editor's numeric/symbol
-accessory row (`WorkoutNoteKeypad.js`, described under Action hierarchy below) —
-to `LogScreenEditorCard.js` and `LogRecoverySection.js`, and changes nothing
-about the existing editor inputs beyond adding `onBlur`/selection tracking.
+value in the Recovery card changes with it.
 
 The Current routine card remains locked. #843 and #847 do not authorize
 touching it at all; #918 reaches exactly one property on it —
@@ -1237,20 +1233,6 @@ Consequences to preserve:
 - Relocated controls keep their existing style objects — the pill
   (`inlineSwitchButton`, `minHeight: 44`) and the shared `Button` variants
   (`switchButton` / `deleteButton`) are unchanged.
-- **Workout-note numeric/symbol accessory row (`WorkoutNoteKeypad.js`, #938).**
-  A horizontally scrolling row of one-tap keys — `1`–`0`, then space, `,`, `-`,
-  `*`, and a `↵` newline — rendered by `LogScreenEditorCard.js` (directly under
-  the note, inside the card) and by `LogRecoverySection.js`'s inline editor, and
-  **only while that note input holds focus** (`onFocus`/`onBlur` gate it). Each
-  key is a `44 x 44dp` `button` target with an `Insert <name>` accessible name
-  and its glyph `Text` marked `accessible={false}`. A tap calls the shared
-  `insertKeypadKey(text, selection, key)` pure helper, which performs the exact
-  canonical insertion a hardware keystroke would at the current selection, then
-  routes the result through the same text-change and one-shot caret path as
-  typing — so autosave, validation, A/B-week, and the parser are untouched, and
-  the input's `keyboardType` never changes. Not an `InputAccessoryView`: a plain
-  in-flow row so both platforms behave alike. No read-view entry surface is
-  added.
 
 | Element | Property | Value | Line |
 |---|---|---|---|
