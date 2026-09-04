@@ -21,6 +21,26 @@ import { ACTIVE_TRAINING_STATUS } from '../../lib/data/activeTrainingContext';
 // `currentSections` is deliberately NOT filtered: it is the routine the user is
 // looking at, not an aggregate, and a recovery week must stay readable and
 // editable while excluded.
+// #577 (Contract 3): tags each note's own sections with that note's
+// identity BEFORE flattening, so a caller that later flattens several
+// notes' sections together (deriveTrackedPROccurrences, via
+// deriveWorkoutAnalytics' pass-through) can still trace any one section
+// back to its source note — a heading/subheading string alone is not
+// unique across notes. Pure, additive-only (every existing field on the
+// section object is preserved unchanged); does not alter
+// deriveParsedSections or any existing Analytics semantics, and is not
+// called from deriveParsedSections itself.
+export function tagNoteSections(notes) {
+  return (notes || []).flatMap((n, noteOrdinal) =>
+    getNoteSections(n).map((s, sectionOrdinal) => ({
+      ...s,
+      __noteId: n?.id ?? 'current:new',
+      __noteOrdinal: noteOrdinal,
+      __sectionOrdinal: sectionOrdinal,
+    }))
+  );
+}
+
 export function deriveParsedSections(notes, currentNote, excludedNoteIds = null) {
   const normalNotes = filterNotesForNormalAnalytics(notes || [], excludedNoteIds);
   const noteSectionsList = normalNotes.map(n => getNoteSections(n));

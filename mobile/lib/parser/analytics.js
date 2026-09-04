@@ -88,7 +88,19 @@ export function deriveWorkoutAnalytics(sections) {
   const byName = new Map();
 
   for (const section of sections) {
-    const { heading, subheading, kind, exercises } = section;
+    // #577 (Contract 3, strictly scoped addition): a caller MAY tag a
+    // section with __noteId/__noteOrdinal/__sectionOrdinal before calling
+    // this function (see lib/data/workoutAnalytics.js's
+    // deriveTrackedPROccurrences) so each occurrence can be traced back to
+    // the exact note/section it came from — needed because sections from
+    // multiple notes get flattened into one array before this function ever
+    // sees them, and a heading/subheading string is not unique across
+    // notes. These three fields are passed through UNCHANGED onto every
+    // occurrence built from this section; they are absent (undefined) for
+    // every existing caller that does not tag its sections, so grouping,
+    // filtering, and PR/max computation below are completely unaffected —
+    // this is pure pass-through, not a new derivation.
+    const { heading, subheading, kind, exercises, __noteId, __noteOrdinal, __sectionOrdinal } = section;
     for (const ex of exercises) {
       const key = normalizeExerciseKey(ex.name);
       if (!byName.has(key)) {
@@ -104,7 +116,7 @@ export function deriveWorkoutAnalytics(sections) {
       // applied below, only to this function's own PR calculation, and at
       // the specific strength-aggregate call sites in workoutAnalytics.js —
       // never by blanking the shared occurrence data itself.
-      derived.occurrences.push({ heading, subheading, kind, rows: ex.rows, sets: ex.sets, unparsed_rows: ex.unparsed_rows, session_entries: ex.session_entries });
+      derived.occurrences.push({ heading, subheading, kind, rows: ex.rows, sets: ex.sets, unparsed_rows: ex.unparsed_rows, session_entries: ex.session_entries, __noteId, __noteOrdinal, __sectionOrdinal });
       for (const s of ex.sets) derived.sets.push(s);
       for (const r of ex.rows) derived.rows.push(r);
       for (const u of ex.unparsed_rows) derived.unparsed_rows.push(u);

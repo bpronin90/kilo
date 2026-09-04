@@ -1,4 +1,4 @@
-import { deriveWorkoutAnalytics, normalizeExerciseKey, deriveProgressionSignals, derivePerDaySignals } from '../parser.js';
+import { deriveWorkoutAnalytics, normalizeExerciseKey, deriveProgressionSignals, derivePerDaySignals, epleyPR } from '../parser.js';
 // #893: imported from the parser module directly rather than through the
 // compatibility barrel — these are the watermark primitives, and the barrel is
 // the public parser surface, not an internal one.
@@ -770,4 +770,90 @@ export function deriveCheckInHistory(notes) {
   }
 
   return { list, rough, ok, pending, summary: { roughTotal: rough.length, okTotal: ok.length, pendingTotal: pending.length, top_reason } };
+}
+
+// ── PR-moment canonical occurrence helper (#577 Contract 3) ────────────────
+//
+// Thin, pure derivation reusing the SAME primitives Analytics itself uses
+// for watermark/comparability (deriveWorkoutAnalytics, resolveTrackedLiftAnchors,
+// _occurrenceEntries, sliceEntriesFromAnchor) — no reimplemented filtering,
+// no second PR definition. `sections` must already be tagged with
+// __noteId/__noteOrdinal/__sectionOrdinal on each section object (see
+// tagNoteSections in screens/analytics/analyticsDerivations.js) — those tags
+// pass through deriveWorkoutAnalytics onto each occurrence unchanged (the
+// #577-authorized, strictly-scoped addition there), and this helper re-stamps
+// them onto every returned per-set entry so a caller can trace a PR
+// candidate back to its exact note/section/occurrence/set, never colliding
+// with an identically-headed section in a different note.
+//
+// Returns a flat array of
+//   { exerciseKey, noteId, noteOrdinal, sectionOrdinal, occurrenceOrdinal,
+//     setOrdinal, weight_value, rep_count, skipped, kind, epley }
+// ordered by (occurrenceOrdinal, setOrdinal) within each exercise, ready for
+// lib/prMoment.js's positional frontier comparison. Warmup-kind occurrences
+// and non-strength exercise names are excluded entirely — matching
+// deriveWorkoutAnalytics'/deriveTrackedPRs' own R3 exclusion — but a
+// warmup occurrence's logged-session count still advances the anchor
+// ordinal it's cut against, exactly as it does for every other Analytics
+// consumer of the watermark (sliceEntriesFromAnchor operates on the
+// unfiltered entries list; the warmup filter is applied strictly after the
+// anchor cut, never before).
+export function deriveTrackedPROccurrences(sections, trackedNames, activations = null) {
+  const uniqueNames = [...new Set(trackedNames || [])];
+  if (uniqueNames.length === 0) return [];
+
+  const { exercises } = deriveWorkoutAnalytics(sections || []);
+  const anchors = resolveTrackedLiftAnchors(sections || [], activations);
+  const byKey = new Map(exercises.map((ex) => [normalizeExerciseKey(ex.name), ex]));
+
+  const results = [];
+  for (const name of uniqueNames) {
+    if (!isStrengthExerciseName(name)) continue;
+    const key = normalizeExerciseKey(name);
+    const ex = byKey.get(key);
+    if (!ex) continue;
+
+    // Flatten every occurrence's session units (session_entries/rows/sets
+    // fallback — exactly _occurrenceEntries' existing logic), re-stamping
+    // this helper's own coordinates onto each unit since _occurrenceEntries
+    // itself is not authorized to change and does not carry them.
+    const entries = ex.occurrences.flatMap((occ, occurrenceOrdinal) =>
+      _occurrenceEntries(occ).map((unit) => ({
+        ...unit,
+        __noteId: occ.__noteId,
+        __noteOrdinal: occ.__noteOrdinal,
+        __sectionOrdinal: occ.__sectionOrdinal,
+        __occurrenceOrdinal: occurrenceOrdinal,
+      }))
+    );
+
+    const anchor = anchors[key] || 0;
+    // Same watermark primitive every other Analytics comparability consumer
+    // uses — cuts on the unfiltered (warmup-inclusive) ordinal, exactly
+    // matching how the anchor was itself counted at Track-toggle time.
+    const sliced = sliceEntriesFromAnchor(entries, anchor);
+    const comparable = sliced.filter((u) => u.kind !== 'warmup');
+
+    for (const unit of comparable) {
+      (unit.sets || []).forEach((set, setOrdinal) => {
+        if (set.skipped) return;
+        const epley = epleyPR(set.weight_value, set.rep_count);
+        results.push({
+          exerciseKey: key,
+          noteId: unit.__noteId,
+          noteOrdinal: unit.__noteOrdinal,
+          sectionOrdinal: unit.__sectionOrdinal,
+          occurrenceOrdinal: unit.__occurrenceOrdinal,
+          setOrdinal,
+          weight_value: set.weight_value,
+          rep_count: set.rep_count,
+          skipped: false,
+          kind: unit.kind,
+          epley,
+        });
+      });
+    }
+  }
+
+  return results;
 }

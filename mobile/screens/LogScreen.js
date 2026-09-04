@@ -87,6 +87,7 @@ import { RecoveryBlockWeekModal } from '../components/RecoveryBlockWeekModal';
 import { RecoveryBlockEndModal } from '../components/RecoveryBlockEndModal';
 import { LogRecoverySection } from '../components/LogRecoverySection';
 import { RestTimerBanner } from '../components/RestTimerBanner';
+import { PRMomentBanner } from '../components/PRMomentBanner';
 
 import { useLogCurrentRoutineEditor } from './log/useLogCurrentRoutineEditor';
 import { useLogOtherRoutineEditor } from './log/useLogOtherRoutineEditor';
@@ -1428,6 +1429,11 @@ export function LogScreen({
         showStart={!otherEditor.editingNoteId && currentEditor.mode === 'edit'}
         startOnly
       />
+      {/* #577 (Contract 3): top-level, beside SessionCheckInModal, outside
+          the editor card branch — Done switching read/edit mode cannot
+          unmount it. Independent of the rest-timer banner above; both may
+          be visible together. */}
+      <PRMomentBanner moment={currentEditor.prMoment} onDismiss={currentEditor.clearPRMoment} />
       <SessionCheckInModal
         // Gated on the toggle exactly as the Analytics one is. The hook's
         // withdrawal transition already clears the prompt when the toggle goes

@@ -14,6 +14,10 @@ import {
   computeWeeksIn,
 } from '../../lib/data';
 import { loadRecoveryExcludedNoteIds } from '../../hooks/entries/recoveryBlockHooks';
+import { filterNotesForNormalAnalytics } from '../../lib/data/recoveryAnalyticsFilter';
+import { tagNoteSections } from '../analytics/analyticsDerivations';
+import { deriveTrackedPROccurrences } from '../../lib/data/workoutAnalytics';
+import { detectPRMoment } from '../../lib/prMoment';
 import { subscribeDirtyQueue, getDirtyRecords, SYNC_TABLES } from '../../storage/syncQueue';
 import { subscribeSyncState, getSyncState, SYNC_PHASE, SYNC_STATUS } from '../../storage/syncRecovery';
 import { getStorageMode, STORAGE_MODES } from '../../storage/entries';
@@ -184,6 +188,21 @@ export function useLogCurrentRoutineEditor({
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
   const [originalNoteState, setOriginalNoteState] = useState(null);
+  // #577 (Contract 3): the RELEASED PR-moment banner state — set only from
+  // handleDoneCurrent's successful exit, never from autosave. pendingPRRef
+  // holds the latest COMPUTED-but-not-yet-released candidate (refreshed on
+  // every successful save, autosave included); consumedPRKeysRef tracks
+  // exercise keys already celebrated for the CURRENT editor baseline so a
+  // repeated Done cannot re-celebrate the same candidate. Both reset
+  // whenever a new editor baseline begins (originalNoteState changes) —
+  // see the effect below.
+  const [prMoment, setPrMoment] = useState(null);
+  const pendingPRRef = useRef(null);
+  const consumedPRKeysRef = useRef(new Set());
+  useEffect(() => {
+    pendingPRRef.current = null;
+    consumedPRKeysRef.current = new Set();
+  }, [originalNoteState]);
   const [roughFlaggedNames, setRoughFlaggedNames] = useState(new Set());
   const [roughSessionIndex, setRoughSessionIndex] = useState(null);
   const [roughNoteId, setRoughNoteId] = useState(null);
@@ -504,6 +523,9 @@ export function useLogCurrentRoutineEditor({
     autosaveCurrentTimerRef.current = setTimeout(async () => {
       autosaveCurrentTimerRef.current = null;
       await handleSave({ autosave: true });
+      // #577: autosave COMPUTES the pending PR candidate but never displays
+      // it — only handleDoneCurrent releases it to the UI.
+      await computePendingPRCandidate();
     }, AUTOSAVE_DEBOUNCE_MS);
     return () => {
       if (autosaveCurrentTimerRef.current) {
@@ -606,6 +628,54 @@ export function useLogCurrentRoutineEditor({
       activeWeekAuthorityRef.current = previousAuthority;
       setLocalActiveWeek(previous);
       throw err;
+    }
+  };
+
+  // #577 (Contract 3): recompute the pending (not-yet-released) PR-moment
+  // candidate against the SAME aggregate, recovery-filtered/deload-excluded
+  // population Analytics uses. Called after every successful save (autosave
+  // included) so the candidate always reflects the exact snapshot that was
+  // actually persisted — never a later render value — but it is stored in a
+  // ref, not surfaced as UI, until handleDoneCurrent explicitly releases it.
+  //
+  // Reads the recovery-exclusion boundary FRESH from storage on every call
+  // (loadRecoveryExcludedNoteIds, not a possibly-stale hook snapshot) so a
+  // Done release always revalidates against current state rather than
+  // trusting a computation from minutes earlier. Any failure here (a
+  // storage read, a malformed note elsewhere) is swallowed — PR-moment
+  // detection must never block or corrupt the actual save flow.
+  const computePendingPRCandidate = async () => {
+    if (!currentId || !originalNoteState) {
+      pendingPRRef.current = null;
+      return;
+    }
+    try {
+      const excludedNoteIds = await loadRecoveryExcludedNoteIds();
+      const otherNotes = (notes || []).filter((n) => n.id !== currentId);
+      const eligibleOther = filterNotesForNormalAnalytics(otherNotes, excludedNoteIds)
+        .filter((n) => !n.title?.startsWith(DELOAD_NOTE_PREFIX));
+      const taggedOther = tagNoteSections(eligibleOther);
+
+      const tagOwnSections = (rawText) => {
+        const { sections } = parseWorkoutNote(rawText || '');
+        return sections.map((s, sectionOrdinal) => ({
+          ...s,
+          __noteId: currentId,
+          __noteOrdinal: -1,
+          __sectionOrdinal: sectionOrdinal,
+        }));
+      };
+
+      const afterText = lastSavedCurrentTextRef.current ?? workoutNoteTextRef.current;
+      const afterSections = [...taggedOther, ...tagOwnSections(afterText)];
+      const beforeSections = [...taggedOther, ...tagOwnSections(originalNoteState.text)];
+
+      const trackedNames = listTrackedLifts(trackedLifts);
+      const beforeEntries = deriveTrackedPROccurrences(beforeSections, trackedNames, trackedLiftActivations);
+      const afterEntries = deriveTrackedPROccurrences(afterSections, trackedNames, trackedLiftActivations);
+      pendingPRRef.current = detectPRMoment(beforeEntries, afterEntries, currentId, consumedPRKeysRef.current);
+    } catch {
+      pendingPRRef.current = null;
     }
   };
 
@@ -1101,9 +1171,23 @@ export function useLogCurrentRoutineEditor({
         if (!ok) return;
       }
     }
+    // #577: Done is the SOLE release gate — even when hasUnsavedCurrent was
+    // already false because autosave completed minutes earlier, still
+    // recompute right here (fresh recovery-boundary read, fresh aggregate)
+    // rather than trusting a possibly-stale earlier computation, then
+    // release the latest valid result. Never fires from autosave, revert,
+    // a failed save (returned above), or exiting/abandoning without Done.
+    await computePendingPRCandidate();
+    if (pendingPRRef.current) {
+      setPrMoment(pendingPRRef.current);
+      consumedPRKeysRef.current.add(pendingPRRef.current.exerciseKey);
+      pendingPRRef.current = null;
+    }
     _runCheckInDetection();
     exitCurrentEditor();
   };
+
+  const clearPRMoment = () => setPrMoment(null);
 
   const performRevertCurrent = async () => {
     if (!currentId) {
@@ -1400,6 +1484,8 @@ export function useLogCurrentRoutineEditor({
     saveStatus,
     cancelPendingDraftRestore,
     originalNoteState,
+    prMoment,
+    clearPRMoment,
     setOriginalNoteState,
     roughFlaggedNames,
     roughSessionIndex,
