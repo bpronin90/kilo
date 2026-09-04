@@ -1,11 +1,16 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 import { RestTimerBanner } from '../components/RestTimerBanner';
+import { PRMomentBanner } from '../components/PRMomentBanner';
 import { ThemeProvider } from '../theme/ThemeContext';
 
 jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
   __esModule: true,
   default: jest.fn(() => 'light'),
+}));
+
+jest.mock('../lib/unitPreference', () => ({
+  useWeightUnit: () => 'lb',
 }));
 
 function renderBanner(props) {
@@ -87,5 +92,71 @@ describe('RestTimerBanner style prop — tab-bar/safe-area clearance (#577 revie
   test('an idle mount (nothing rendered) never reserves the clearance space', () => {
     const tree = renderBanner({ isRunning: false, remainingMs: 0, justElapsed: false, backgroundAlertAvailable: true, showStart: false, style: { marginBottom: 88 } });
     expect(tree.toJSON()).toBeNull();
+  });
+
+  // #577: the Log-screen startOnly instance renders the idle "start" row
+  // (isRunning/justElapsed both false, showStart true) — the very state that
+  // was left uncovered by the tests above, which only exercised style on the
+  // running/done states. LogScreen.js omitted the style prop on this
+  // instance entirely, leaving the start row uncleared behind the absolute
+  // bottom TabBar; this pins that the row honors the same clearance contract.
+  test('the Log-screen start row (startOnly, showStart) applies the clearance style', () => {
+    const tree = renderBanner({ isRunning: false, remainingMs: 0, justElapsed: false, backgroundAlertAvailable: true, showStart: true, startOnly: true, style: { marginBottom: 88 } });
+    const json = tree.toJSON();
+    expect(json).not.toBeNull();
+    const style = Array.isArray(json.props.style) ? Object.assign({}, ...json.props.style) : json.props.style;
+    expect(style.marginBottom).toBe(88);
+  });
+});
+
+// #951 review (Codex): when a PR moment is also visible, LogScreen.js gave
+// both the start row and PRMomentBanner below it the full clearance margin,
+// so the two stacked into a large blank gap above the tab bar instead of a
+// single reserved clearance. LogScreen.js now zeroes the start row's margin
+// whenever a PR moment is present, since PRMomentBanner (rendered below it)
+// carries the clearance in that case. These tests pin that combined
+// contract by mounting both banners the way LogScreen.js wires them.
+describe('RestTimerBanner + PRMomentBanner combined clearance (#951 review)', () => {
+  function renderBoth({ prMoment, clearance = 88 }) {
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <ThemeProvider>
+          <>
+            <RestTimerBanner
+              isRunning={false}
+              remainingMs={0}
+              justElapsed={false}
+              backgroundAlertAvailable
+              showStart
+              startOnly
+              style={{ marginBottom: prMoment ? 0 : clearance }}
+            />
+            <PRMomentBanner moment={prMoment} onDismiss={() => {}} style={{ marginBottom: clearance }} />
+          </>
+        </ThemeProvider>
+      );
+    });
+    return tree;
+  }
+
+  function marginBottomOf(node) {
+    if (!node) return 0;
+    const style = Array.isArray(node.props.style) ? Object.assign({}, ...node.props.style) : node.props.style;
+    return style?.marginBottom ?? 0;
+  }
+
+  test('only the PR banner reserves clearance when both are visible — no stacked gap', () => {
+    const tree = renderBoth({ prMoment: { weight_value: 225, rep_count: 5 } });
+    const [startRow, prBanner] = tree.toJSON();
+    expect(marginBottomOf(startRow)).toBe(0);
+    expect(marginBottomOf(prBanner)).toBe(88);
+  });
+
+  test('the start row alone still reserves clearance when no PR moment is present', () => {
+    const tree = renderBoth({ prMoment: null });
+    const json = tree.toJSON();
+    const startRow = Array.isArray(json) ? json[0] : json;
+    expect(marginBottomOf(startRow)).toBe(88);
   });
 });
