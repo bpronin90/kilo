@@ -5,9 +5,23 @@ import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle, Button } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { CloudSyncRecovery } from '../screens/more/CloudSyncRecovery';
+import { loadWorkoutNotes, loadWeightEntriesRaw } from '../storage/entries';
+import { exportWorkoutsCsv, exportWeightCsv } from '../lib/interoperability/kiloCsv';
 
 function backupFileName() {
   return `kilo-backup-${new Date().toISOString().slice(0, 10)}`;
+}
+
+// Issue #578 (comment 5530857840, "Kilo exports"): CSV is interoperability,
+// never backup — a separate file per collection, never combined with the
+// JSON backup's single-file shape. BackupScreen reads storage directly
+// (loadWorkoutNotes/loadWeightEntriesRaw) rather than receiving CSV data
+// through a prop, unlike the JSON `onExport` prop: threading a new prop
+// through App.js -> MoreScreen.js -> BackupScreen would touch
+// mobile/screens/MoreScreen.js, which is outside this stage's Allowed Files.
+function csvFileName(kind) {
+  const date = new Date().toISOString().slice(0, 10);
+  return `kilo-${kind}-${date}`;
 }
 
 // Write the export to a user-chosen folder via the Storage Access Framework.
@@ -41,6 +55,21 @@ async function writeExportFile(json) {
     'application/json',
   );
   await StorageAccessFramework.writeAsStringAsync(uri, json);
+  return { written: true, uri };
+}
+
+// Same Android SAF write path as writeExportFile, for a CSV artifact rather
+// than the JSON backup. `kind` is 'workouts' or 'weight'.
+async function writeCsvExportFile(csvText, kind) {
+  const StorageAccessFramework = loadStorageAccessFramework();
+  const permission = await StorageAccessFramework.requestDirectoryPermissionsAsync();
+  if (!permission.granted) return { written: false, reason: 'cancelled' };
+  const uri = await StorageAccessFramework.createFileAsync(
+    permission.directoryUri,
+    csvFileName(kind),
+    'text/csv',
+  );
+  await StorageAccessFramework.writeAsStringAsync(uri, csvText);
   return { written: true, uri };
 }
 
@@ -272,6 +301,57 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
     );
   };
 
+  // Issue #578: builds one CSV artifact (workouts or weight) and writes/shares
+  // it via the same Android-file/Share fallback pattern shareExport already
+  // uses. Reads storage directly rather than through onExport — see the
+  // `csvFileName` comment above for why. Never throws to the caller; a build
+  // or write failure lands in `status` like every other action on this screen.
+  const shareCsvExport = async (kind) => {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const csvText = kind === 'workouts'
+        ? exportWorkoutsCsv(await loadWorkoutNotes())
+        : exportWeightCsv(await loadWeightEntriesRaw());
+
+      if (Platform.OS === 'android') {
+        try {
+          const saved = await writeCsvExportFile(csvText, kind);
+          if (saved.written) {
+            setStatus({ ok: true, message: 'CSV saved to the folder you chose.' });
+            return;
+          }
+          // Same reasoning as shareExport: declining the folder picker must
+          // not end the export — fall through to the share sheet.
+        } catch (e) {
+          console.error('[BackupScreen] CSV file export failed, falling back to share:', e);
+        }
+      }
+
+      await Share.share({ message: csvText });
+    } catch (e) {
+      console.error('[BackupScreen] CSV export threw:', e);
+      setStatus({ ok: false, message: e?.message ? `Export failed: ${e.message}` : 'Export failed.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Issue #578 "Goal": CSV is interoperability, never backup or sync, and the
+  // export must disclose loss, that files are unencrypted, and that
+  // processing stays on-device before anything leaves the device.
+  const handleExportCsv = (kind) => {
+    if (busy) return;
+    Alert.alert(
+      'CSV is not a backup',
+      'CSV export is for moving your data into other tools — it drops recovery history, deload/fatigue data, tracked-lift activation state, and deleted-record history, and most sessions have no recoverable calendar date. Use Export Local Backup to preserve everything. This file is also unencrypted and processed entirely on this device.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Export anyway', style: 'destructive', onPress: () => shareCsvExport(kind) },
+      ],
+    );
+  };
+
   // Actually parses and applies the import, replacing all local data. Only
   // reached after the user has confirmed the irreversible replace (see
   // handleImport).
@@ -369,6 +449,22 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
           This file is unencrypted. Anyone you share or save it with can read your data.
         </Text>
         <Button title="Export Local Backup" onPress={handleExport} disabled={busy} style={styles.actionButton} />
+        <Text style={styles.helpText}>
+          Export your data as CSV to use it in other tools. This is not a backup — it loses recovery,
+          deload/fatigue, and deleted-record history, and most dates.
+        </Text>
+        <Button
+          title="Export Workouts CSV"
+          onPress={() => handleExportCsv('workouts')}
+          disabled={busy}
+          style={styles.actionButton}
+        />
+        <Button
+          title="Export Weight CSV"
+          onPress={() => handleExportCsv('weight')}
+          disabled={busy}
+          style={styles.actionButton}
+        />
       </Card>
 
       <SectionTitle>Import</SectionTitle>
