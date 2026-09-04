@@ -1,3 +1,4 @@
+import { Buffer } from 'buffer';
 import { parseWorkoutRow, parseHeaderDeclaration } from './workoutRow.js';
 
 // Upper bound on untrusted note text fed to the per-line parser. Real workout
@@ -14,6 +15,59 @@ const _SESSION_ENTRY_RE = /^-\s+(.+)/;
 const _EXERCISE_NUMBERED_RE = /^(\d+[a-z]?)\.\s+(.+)/i;
 const _EXERCISE_CORE_RE = /^Core:\s+(.+)/i;
 const _DELOAD_RE = /^([^:+\d-][^:]*?):\s+(\d+(?:\.\d+)?)\s+lbs?\s+(\d+)x(\d+)\s*$/i;
+const _IMPORT_EXERCISE_RE = /^-@import-exercise\s+(.+)$/;
+const _IMPORT_RECORD_RE = /^-\s+@import-record(?:\s+(.*))?$/;
+const _IMPORT_NOTE_RE = /^--\s+@import-note(?:\s+(.*))?$/;
+const _IMPORT_PAYLOAD_MAX_LENGTH = 50000;
+
+class ImportRecordError extends Error {}
+
+function _importError(message) {
+  throw new ImportRecordError(`Invalid imported workout record: ${message}`);
+}
+
+function _decodeBase64UrlJson(encoded) {
+  if (!encoded || encoded.length > _IMPORT_PAYLOAD_MAX_LENGTH) _importError(encoded ? 'payload is too large.' : 'payload is empty.');
+  if (!/^[A-Za-z0-9_-]+$/.test(encoded)) _importError('payload is not unpadded base64url.');
+  const padded = encoded.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - encoded.length % 4) % 4);
+  const bytes = Buffer.from(padded, 'base64');
+  const canonical = bytes.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  if (canonical !== encoded) _importError('payload is not valid base64url.');
+  const text = bytes.toString('utf8');
+  if (!Buffer.from(text, 'utf8').equals(bytes)) _importError('payload is not valid UTF-8.');
+  let value;
+  try { value = JSON.parse(text); }
+  catch { _importError('payload is not valid JSON.'); }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) _importError('payload must be an object.');
+  return value;
+}
+
+function _validateImportRecord(value) {
+  if (value.v !== 1 || !['performed', 'unparsed'].includes(value.kind)) _importError('unsupported record schema.');
+  if (!Number.isInteger(value.rowOrdinal) || value.rowOrdinal < 0) _importError('record rowOrdinal is invalid.');
+  if (value.sets != null) {
+    if (!Array.isArray(value.sets)) _importError('record sets must be an array.');
+    for (const set of value.sets) {
+      if (!set || typeof set !== 'object' || Array.isArray(set)) _importError('record set is invalid.');
+      for (const key of ['rep_count', 'weight_value', 'duration_seconds']) {
+        if (set[key] != null && (!Number.isFinite(set[key]) || set[key] < 0)) _importError(`record ${key} is invalid.`);
+      }
+      if (set.weight_unit != null && !['lb', 'kg'].includes(set.weight_unit)) _importError('record weight_unit is invalid.');
+    }
+  }
+  return value;
+}
+
+function _validateImportNote(value) {
+  const scopes = ['performed_row', 'skipped_row', 'unparsed_row', 'section'];
+  if (value.v !== 1 || !scopes.includes(value.scope) || typeof value.text !== 'string') _importError('unsupported annotation schema.');
+  if (!Number.isInteger(value.sectionOrdinal) || value.sectionOrdinal < 0) _importError('annotation sectionOrdinal is invalid.');
+  if (value.scope !== 'section') {
+    if (!Number.isInteger(value.exerciseOrdinal) || value.exerciseOrdinal < 0) _importError('annotation exerciseOrdinal is invalid.');
+    if (!Number.isInteger(value.targetOrdinal) || value.targetOrdinal < 0) _importError('annotation targetOrdinal is invalid.');
+  }
+  return value;
+}
 
 // #854/G7b: a bare prose line typed directly as a set row, not through "-- ".
 function _proseAsSetRowMessage() {
@@ -89,6 +143,7 @@ export function parseWorkoutNote(noteText) {
     };
   }
 
+  try {
   const sections = [];
   let currentDay = null;
   let currentSection = null;
@@ -144,6 +199,67 @@ export function parseWorkoutNote(noteText) {
     const lineNumber = lineIdx + 1;
     const trimmed = rawLine.trim();
     if (!trimmed) continue;
+
+    const importExerciseMatch = _IMPORT_EXERCISE_RE.exec(trimmed);
+    if (trimmed.startsWith('-@import-exercise') && !importExerciseMatch) _importError('exercise name is empty.');
+    if (importExerciseMatch) {
+      let name;
+      try { name = JSON.parse(importExerciseMatch[1]); }
+      catch { _importError('exercise name is not valid JSON.'); }
+      if (typeof name !== 'string' || name.length === 0 || name.length > 20000) _importError('exercise name is invalid.');
+      startExercise(name, trimmed);
+      currentExercise.header_line = lineNumber;
+      currentExercise.imported = true;
+      continue;
+    }
+
+    const importRecordMatch = _IMPORT_RECORD_RE.exec(trimmed);
+    if (importRecordMatch) {
+      if (!currentExercise) _importError('record has no exercise.');
+      const record = _validateImportRecord(_decodeBase64UrlJson(importRecordMatch[1]));
+      const expectedOrdinal = currentExercise.session_entries.length;
+      if (record.rowOrdinal !== expectedOrdinal) _importError(`record rowOrdinal ${record.rowOrdinal} does not match ${expectedOrdinal}.`);
+      const sets = (record.sets || []).map((set, index) => _makeSet(
+        index + 1,
+        set.rep_count ?? null,
+        set.weight_value ?? null,
+        set.weight_unit ?? null,
+      )).map((set, index) => ({ ...set, duration_seconds: record.sets[index].duration_seconds ?? null }));
+      const entry = { skipped: false, raw: trimmed, sets, imported: true, import_record: record };
+      if (record.kind === 'unparsed') {
+        entry.unparsed = true;
+        currentExercise.unparsed_rows.push(record.prose || trimmed);
+      } else if (sets.length) {
+        currentExercise.rows.push({ raw: trimmed, sets });
+      }
+      currentExercise.session_entries.push(entry);
+      continue;
+    }
+
+    const importNoteMatch = _IMPORT_NOTE_RE.exec(trimmed);
+    if (importNoteMatch) {
+      const annotation = _validateImportNote(_decodeBase64UrlJson(importNoteMatch[1]));
+      if (annotation.scope === 'section') {
+        if (currentSection) flushSection();
+        ensureSection();
+        if (sections.length !== annotation.sectionOrdinal) _importError('section annotation coordinates do not resolve.');
+        if (!currentSection.import_annotations) currentSection.import_annotations = [];
+        currentSection.import_annotations.push(annotation);
+      } else {
+        if (sections.length !== annotation.sectionOrdinal || !currentSection || !currentExercise) _importError('annotation section coordinates do not resolve.');
+        if (currentSection.exercises.length !== annotation.exerciseOrdinal) _importError('annotation exercise coordinates do not resolve.');
+        const matching = currentExercise.session_entries.filter(entry => (
+          annotation.scope === 'skipped_row' ? entry.skipped
+            : annotation.scope === 'unparsed_row' ? entry.unparsed
+              : !entry.skipped && !entry.unparsed
+        ));
+        const target = matching[annotation.targetOrdinal];
+        if (!target) _importError('annotation target coordinates do not resolve.');
+        if (!target.import_annotations) target.import_annotations = [];
+        target.import_annotations.push(annotation);
+      }
+      continue;
+    }
 
     if (trimmed === '-') {
       if (currentExercise) {
@@ -366,6 +482,10 @@ export function parseWorkoutNote(noteText) {
 
   flushSection();
   return { ok: true, sections, weekBStartIndex, problems };
+  } catch (error) {
+    if (!(error instanceof ImportRecordError)) throw error;
+    return { ok: false, error: error.message, sections: [], weekBStartIndex: null, problems: [] };
+  }
 }
 
 // Shared line-classifier for the skip-week transforms below: matches the

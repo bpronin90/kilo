@@ -125,6 +125,59 @@ export async function saveWorkoutNoteItem(note) {
   await writeNotebook(list);
 }
 
+function defaultImportId() {
+  return `import_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+}
+
+// Writes an already parsed/validated import as brand-new notebook notes. This
+// deliberately never reads the notebook for merge/deduplication and never
+// changes current-routine selection. `writeNote` is injectable for cloud mode
+// and for precise partial-failure reporting in callers/tests.
+export async function saveFreshImportedWorkoutNotes(noteDrafts, {
+  writeNote = saveWorkoutNoteItem,
+  idFactory = defaultImportId,
+  now = () => new Date().toISOString(),
+} = {}) {
+  if (!Array.isArray(noteDrafts) || noteDrafts.length === 0) throw new Error('Import requires at least one workout note.');
+  // Validate the complete batch before the first durable write.
+  noteDrafts.forEach((draft, index) => {
+    if (!draft || typeof draft.raw_text !== 'string' || !draft.raw_text) throw new Error(`Imported note ${index + 1} is invalid.`);
+  });
+  const confirmed = [];
+  for (let index = 0; index < noteDrafts.length; index++) {
+    const draft = noteDrafts[index];
+    const timestamp = now();
+    const note = {
+      id: idFactory(),
+      title: draft.title || 'Imported workout',
+      raw_text: draft.raw_text,
+      saved_at: timestamp,
+      updated_at: timestamp,
+      tracked_exercises: [],
+      isCurrent: false,
+    };
+    try {
+      await writeNote(note);
+      confirmed.push({ index, id: note.id, status: 'confirmed' });
+    } catch (error) {
+      return {
+        ok: false,
+        confirmed,
+        unconfirmed: { index, id: note.id, status: 'unconfirmed', message: error?.message || String(error) },
+        remaining: noteDrafts.length - index - 1,
+        warning: 'The failing note may have been created. Inspect routines before retrying; repeat imports create another complete set.',
+      };
+    }
+  }
+  return {
+    ok: true,
+    confirmed,
+    unconfirmed: null,
+    remaining: 0,
+    warning: 'Repeat imports create another complete set.',
+  };
+}
+
 export async function deleteWorkoutNoteItem(id) {
   const list = await readNotebook();
   await writeNotebook(list.filter(n => n.id !== id));
