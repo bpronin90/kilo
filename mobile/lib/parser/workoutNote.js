@@ -1,5 +1,6 @@
 import { Buffer } from 'buffer';
 import { parseWorkoutRow, parseHeaderDeclaration } from './workoutRow.js';
+import { kgMarkerToLb } from '../units.js';
 
 // Upper bound on untrusted note text fed to the per-line parser. Real workout
 // notes are at most a few KB; this cap (~200KB, thousands of lines) sits far
@@ -219,12 +220,20 @@ export function parseWorkoutNote(noteText) {
       const record = _validateImportRecord(_decodeBase64UrlJson(importRecordMatch[1]));
       const expectedOrdinal = currentExercise.session_entries.length;
       if (record.rowOrdinal !== expectedOrdinal) _importError(`record rowOrdinal ${record.rowOrdinal} does not match ${expectedOrdinal}.`);
-      const sets = (record.sets || []).map((set, index) => _makeSet(
-        index + 1,
-        set.rep_count ?? null,
-        set.weight_value ?? null,
-        set.weight_unit ?? null,
-      )).map((set, index) => ({ ...set, duration_seconds: record.sets[index].duration_seconds ?? null }));
+      const setOffset = currentExercise.rows.reduce((sum, row) => sum + row.sets.length, 0);
+      const sets = (record.sets || []).map((sourceSet, index) => {
+        const authoredKg = sourceSet.weight_unit === 'kg' && sourceSet.weight_value != null;
+        return {
+          ..._makeSet(
+            setOffset + index + 1,
+            sourceSet.rep_count ?? null,
+            authoredKg ? kgMarkerToLb(sourceSet.weight_value) : (sourceSet.weight_value ?? null),
+            sourceSet.weight_value == null ? null : 'lb',
+          ),
+          duration_seconds: sourceSet.duration_seconds ?? null,
+          ...(authoredKg ? { converted_from_kg: true, kg_value: sourceSet.weight_value } : null),
+        };
+      });
       const entry = { skipped: false, raw: trimmed, sets, imported: true, import_record: record };
       if (record.kind === 'unparsed') {
         entry.unparsed = true;

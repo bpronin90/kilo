@@ -1169,6 +1169,21 @@ describe('parseWorkoutNote — reserved import grammar (#952)', () => {
     expect(result.ok).toBe(true);
     expect(result.sections[0].exercises[0].name).toBe(name);
     expect(result.sections[0].exercises[0].session_entries[0].import_record.kind).toBe('performed');
+    expect(result.sections[0].exercises[0].session_entries[0].sets[0]).toMatchObject({
+      weight_value: kgMarkerToLb(100),
+      weight_unit: 'lb',
+      converted_from_kg: true,
+      kg_value: 100,
+    });
+  });
+
+  test('continues set indices across multiple imported performed rows', () => {
+    const first = encode({ kind: 'performed', rowOrdinal: 0, sets: [{ rep_count: 5, weight_value: 80, weight_unit: 'lb' }, { rep_count: 5, weight_value: 80, weight_unit: 'lb' }], v: 1 });
+    const second = encode({ kind: 'performed', rowOrdinal: 1, sets: [{ rep_count: 3, weight_value: 90, weight_unit: 'lb' }, { rep_count: 3, weight_value: 90, weight_unit: 'lb' }], v: 1 });
+    const parsed = parseWorkoutNote(`-@import-exercise "Bench"\n- @import-record ${first}\n- @import-record ${second}`);
+    const exercise = parsed.sections[0].exercises[0];
+    expect(exercise.session_entries.flatMap(entry => entry.sets).map(set => set.set_index)).toEqual([1, 2, 3, 4]);
+    expect(exercise.sets.map(set => set.set_index)).toEqual([1, 2, 3, 4]);
   });
 
   test('attaches annotations by typed ordinal across intervening row kinds', () => {
