@@ -1,3 +1,5 @@
+import { Buffer } from 'buffer';
+
 // Shared CSV dialect: writer + spreadsheet-safety escaping.
 //
 // Issue #578 (comment 5530857840, "CSV dialect" and "Reversible spreadsheet
@@ -98,3 +100,105 @@ export function writeCsvDocument(columns, rows, freeTextColumns) {
 }
 
 export const CSV_ROW_TERMINATOR = ROW_TERMINATOR;
+
+export const CSV_MAX_BYTES = 10 * 1024 * 1024;
+export const CSV_MAX_ROWS = 100000;
+
+function decodeCsvInput(input, maxBytes) {
+  if (typeof input === 'string') {
+    if (Buffer.byteLength(input, 'utf8') > maxBytes) throw new Error(`CSV exceeds ${maxBytes} bytes.`);
+    if (input.includes('\0')) throw new Error('CSV contains a NUL character.');
+    return input;
+  }
+  if (!(input instanceof Uint8Array)) throw new TypeError('CSV input must be a string or Uint8Array.');
+  if (input.byteLength > maxBytes) throw new Error(`CSV exceeds ${maxBytes} bytes.`);
+  const bytes = Buffer.from(input);
+  const decoded = bytes.toString('utf8');
+  if (!Buffer.from(decoded, 'utf8').equals(bytes)) throw new Error('CSV is not valid UTF-8.');
+  if (decoded.includes('\0')) throw new Error('CSV contains a NUL character.');
+  return decoded;
+}
+
+function parseCsvRows(text, maxRows) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let quoted = false;
+  let closedQuote = false;
+
+  function finishField() { row.push(field); field = ''; closedQuote = false; }
+  function finishRow() {
+    finishField();
+    rows.push(row);
+    row = [];
+    if (rows.length > maxRows + 1) throw new Error(`CSV exceeds ${maxRows} data rows.`);
+  }
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else { quoted = false; closedQuote = true; }
+      } else field += ch;
+      continue;
+    }
+    if (closedQuote && ch !== ',' && ch !== '\r' && ch !== '\n') {
+      throw new Error('CSV contains characters after a closing quote.');
+    }
+    if (ch === '"') {
+      if (field.length !== 0 || closedQuote) throw new Error('CSV contains a malformed quote.');
+      quoted = true;
+    } else if (ch === ',') finishField();
+    else if (ch === '\r' || ch === '\n') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      finishRow();
+    } else field += ch;
+  }
+  if (quoted) throw new Error('CSV contains an unterminated quoted field.');
+  if (row.length || field.length || closedQuote || (text.length > 0 && text[text.length - 1] === ',')) finishRow();
+  return rows;
+}
+
+function normalizeHeader(value) {
+  return value.replace(/^\uFEFF/, '').replace(/^[\t ]+|[\t ]+$/g, '').toLocaleLowerCase('en-US');
+}
+
+// Parses and validates the entire document before returning any rows. Aliases
+// maps canonical names to exact, case-insensitive source spellings.
+export function parseCsvDocument(input, { aliases = {}, required = [], maxBytes = CSV_MAX_BYTES, maxRows = CSV_MAX_ROWS } = {}) {
+  let text = decodeCsvInput(input, maxBytes);
+  if (text.startsWith('\uFEFF')) text = text.slice(1);
+  if (text.includes('\uFEFF')) throw new Error('CSV may contain a BOM only at the beginning.');
+  const parsedRows = parseCsvRows(text, maxRows);
+  const allRows = parsedRows.length ? [parsedRows[0], ...parsedRows.slice(1).filter(row => !(row.length === 1 && row[0] === ''))] : [];
+  if (allRows.length === 0) throw new Error('CSV has no header row.');
+  const header = allRows[0];
+  const normalized = header.map(normalizeHeader);
+  if (new Set(normalized).size !== normalized.length) throw new Error('CSV has duplicate normalized headers.');
+  for (let i = 1; i < allRows.length; i++) {
+    if (allRows[i].length !== header.length) throw new Error(`CSV row ${i + 1} has ${allRows[i].length} cells; expected ${header.length}.`);
+  }
+
+  const claimed = new Map();
+  const indexOwners = new Map();
+  for (const [canonical, names] of Object.entries(aliases)) {
+    const candidates = [canonical, ...(Array.isArray(names) ? names : [names])].map(normalizeHeader);
+    const indexes = normalized.flatMap((name, index) => candidates.includes(name) ? [index] : []);
+    if (indexes.length > 1) throw new Error(`CSV resolves multiple headers to "${canonical}".`);
+    if (indexes.length === 1) {
+      const owner = indexOwners.get(indexes[0]);
+      if (owner) throw new Error(`CSV header "${header[indexes[0]]}" ambiguously resolves to "${owner}" and "${canonical}".`);
+      claimed.set(canonical, indexes[0]);
+      indexOwners.set(indexes[0], canonical);
+    }
+  }
+  for (const name of required) if (!claimed.has(name)) throw new Error(`CSV is missing required header "${name}".`);
+  const usedIndexes = new Set(claimed.values());
+  return {
+    header,
+    rows: allRows.slice(1),
+    columns: Object.fromEntries(claimed),
+    unusedColumns: header.filter((_, index) => !usedIndexes.has(index)),
+  };
+}

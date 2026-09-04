@@ -1159,6 +1159,67 @@ describe('parseWorkoutNote — basics', () => {
   });
 });
 
+describe('parseWorkoutNote — reserved import grammar (#952)', () => {
+  const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+
+  test('preserves exact adversarial exercise names without normalizing suffixes', () => {
+    const name = 'Bench @2 | 3x5 * "PR" / -- fake comment\r\nUnicode 🏋️';
+    const record = encode({ kind: 'performed', rowOrdinal: 0, sets: [{ rep_count: 5, weight_value: 100, weight_unit: 'kg' }], v: 1 });
+    const result = parseWorkoutNote(`-@import-exercise ${JSON.stringify(name)}\n- @import-record ${record}`);
+    expect(result.ok).toBe(true);
+    expect(result.sections[0].exercises[0].name).toBe(name);
+    expect(result.sections[0].exercises[0].session_entries[0].import_record.kind).toBe('performed');
+    expect(result.sections[0].exercises[0].session_entries[0].sets[0]).toMatchObject({
+      weight_value: kgMarkerToLb(100),
+      weight_unit: 'lb',
+      converted_from_kg: true,
+      kg_value: 100,
+    });
+  });
+
+  test('continues set indices across multiple imported performed rows', () => {
+    const first = encode({ kind: 'performed', rowOrdinal: 0, sets: [{ rep_count: 5, weight_value: 80, weight_unit: 'lb' }, { rep_count: 5, weight_value: 80, weight_unit: 'lb' }], v: 1 });
+    const second = encode({ kind: 'performed', rowOrdinal: 1, sets: [{ rep_count: 3, weight_value: 90, weight_unit: 'lb' }, { rep_count: 3, weight_value: 90, weight_unit: 'lb' }], v: 1 });
+    const parsed = parseWorkoutNote(`-@import-exercise "Bench"\n- @import-record ${first}\n- @import-record ${second}`);
+    const exercise = parsed.sections[0].exercises[0];
+    expect(exercise.session_entries.flatMap(entry => entry.sets).map(set => set.set_index)).toEqual([1, 2, 3, 4]);
+    expect(exercise.sets.map(set => set.set_index)).toEqual([1, 2, 3, 4]);
+  });
+
+  test('attaches annotations by typed ordinal across intervening row kinds', () => {
+    const performed = encode({ kind: 'performed', rowOrdinal: 0, sets: [], v: 1 });
+    const unparsed = encode({ kind: 'unparsed', prose: 'source text', rowOrdinal: 2, v: 1 });
+    const note = encode({ exerciseOrdinal: 0, scope: 'performed_row', sectionOrdinal: 0, targetOrdinal: 0, text: 'exact target', v: 1 });
+    const parsed = parseWorkoutNote(`-@import-exercise "Bench"\n- @import-record ${performed}\n-\n- @import-record ${unparsed}\n-- @import-note ${note}`);
+    expect(parsed.sections[0].exercises[0].session_entries.map(e => [e.skipped, e.unparsed])).toEqual([[false, undefined], [true, undefined], [false, true]]);
+    expect(parsed.sections[0].exercises[0].session_entries[0].import_annotations[0].text).toBe('exact target');
+  });
+
+  test('resolves section, skipped-row, and unparsed-row scopes independently', () => {
+    const unparsed = encode({ kind: 'unparsed', prose: 'raw', rowOrdinal: 1, v: 1 });
+    const sectionNote = encode({ scope: 'section', sectionOrdinal: 0, text: 'section', v: 1 });
+    const skipNote = encode({ exerciseOrdinal: 0, scope: 'skipped_row', sectionOrdinal: 0, targetOrdinal: 0, text: 'skip', v: 1 });
+    const rawNote = encode({ exerciseOrdinal: 0, scope: 'unparsed_row', sectionOrdinal: 0, targetOrdinal: 0, text: 'raw note', v: 1 });
+    const parsed = parseWorkoutNote(`-- @import-note ${sectionNote}\n-@import-exercise "Bench"\n-\n- @import-record ${unparsed}\n-- @import-note ${skipNote}\n-- @import-note ${rawNote}`);
+    expect(parsed.sections[0].import_annotations[0].text).toBe('section');
+    expect(parsed.sections[0].exercises[0].session_entries[0].import_annotations[0].text).toBe('skip');
+    expect(parsed.sections[0].exercises[0].session_entries[1].import_annotations[0].text).toBe('raw note');
+  });
+
+  test.each([
+    '-@import-exercise',
+    '-@import-exercise nope',
+    '- @import-record',
+    '- @import-record !!!',
+    `-@import-exercise "Bench"\n- @import-record ${encode({ kind: 'other', rowOrdinal: 0, v: 1 })}`,
+    `-@import-exercise "Bench"\n-- @import-note ${encode({ scope: 'performed_row', sectionOrdinal: 0, exerciseOrdinal: 0, targetOrdinal: 0, text: 'x', v: 1 })}`,
+    `-@import-exercise "Bench"\n- @import-record ${Buffer.from([0xff]).toString('base64url')}`,
+    `-@import-exercise "Bench"\n- @import-record ${'a'.repeat(50001)}`,
+  ])('fails visibly instead of falling through: %s', (text) => {
+    expect(parseWorkoutNote(text)).toMatchObject({ ok: false, sections: [], error: expect.stringMatching(/Invalid imported workout record/) });
+  });
+});
+
 describe('parseWorkoutNote — day headings', () => {
   test('detects weekday heading', () => {
     const r = parseWorkoutNote('Monday\n-Squat 4x6-8\n135 5,5');
