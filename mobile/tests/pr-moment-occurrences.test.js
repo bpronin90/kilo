@@ -91,3 +91,79 @@ describe('tagNoteSections', () => {
     expect(tagged[0]).toHaveProperty('exercises');
   });
 });
+
+// #577 gap fix: adversarial/stale activation fixtures, matching
+// resolveTrackedLiftAnchors' own (unverified, clamp-only) read-side
+// behavior exactly — deriveTrackedPROccurrences must never diverge from it.
+describe('deriveTrackedPROccurrences — activation/watermark edge cases', () => {
+  test('an anchor larger than the logged-session count clamps to that count rather than excluding everything', () => {
+    const sections = tag('-Bench\n135 5\n145 5\n155 5'); // 3 logged sessions
+    const activations = { bench: { anchor: 100, at: '2024-01-01T00:00:00.000Z' } };
+    const clamped = deriveTrackedPROccurrences(sections, ['Bench'], activations);
+    // Clamp to 3 means "drop the first 3" -> nothing left, not an error and
+    // not "drop nothing" — matches resolveTrackedLiftAnchors' own
+    // Math.min(raw, loggedSessionUnits(...).length) clamp.
+    expect(clamped).toEqual([]);
+  });
+
+  test('a non-positive or non-integer anchor is treated as no watermark (full history)', () => {
+    const sections = tag('-Bench\n135 5\n145 5');
+    for (const anchor of [0, -5, 1.5, 'not-a-number', null]) {
+      const activations = { bench: { anchor, at: '2024-01-01T00:00:00.000Z' } };
+      const entries = deriveTrackedPROccurrences(sections, ['Bench'], activations);
+      expect(entries.length).toBe(2);
+    }
+  });
+
+  test('a malformed activations map (not an object, or a record missing required fields) never throws — treated as no watermark', () => {
+    const sections = tag('-Bench\n135 5');
+    expect(() => deriveTrackedPROccurrences(sections, ['Bench'], null)).not.toThrow();
+    expect(() => deriveTrackedPROccurrences(sections, ['Bench'], undefined)).not.toThrow();
+    expect(() => deriveTrackedPROccurrences(sections, ['Bench'], 'garbage')).not.toThrow();
+    expect(() => deriveTrackedPROccurrences(sections, ['Bench'], { bench: 'garbage' })).not.toThrow();
+    expect(deriveTrackedPROccurrences(sections, ['Bench'], { bench: 'garbage' }).length).toBe(1);
+  });
+
+  test('an activation record for an exercise absent from this population contributes no anchor and no error', () => {
+    const sections = tag('-Bench\n135 5');
+    const activations = { squat: { anchor: 5, at: '2024-01-01T00:00:00.000Z' } };
+    const entries = deriveTrackedPROccurrences(sections, ['Bench'], activations);
+    expect(entries.length).toBe(1);
+  });
+
+  test('an anchor of exactly the logged-session count excludes all prior history, matching the resolver boundary exactly', () => {
+    const sections = tag('-Bench\n135 5\n145 5\n155 5'); // 3 sessions
+    const activations = { bench: { anchor: 3, at: '2024-01-01T00:00:00.000Z' } };
+    expect(deriveTrackedPROccurrences(sections, ['Bench'], activations)).toEqual([]);
+  });
+
+  test('an anchor of count-minus-one keeps exactly the most recent session', () => {
+    const sections = tag('-Bench\n135 5\n145 5\n155 5');
+    const activations = { bench: { anchor: 2, at: '2024-01-01T00:00:00.000Z' } };
+    const entries = deriveTrackedPROccurrences(sections, ['Bench'], activations);
+    expect(entries.length).toBe(1);
+    expect(entries[0].weight_value).toBe(155);
+  });
+
+  test('a duplicate activation record for the same canonical key (case/whitespace variants) resolves via the newest `at`, matching _dedupeByCanonicalKey', () => {
+    const sections = tag('-Bench\n135 5\n145 5\n155 5');
+    const activations = {
+      Bench: { anchor: 1, at: '2024-01-01T00:00:00.000Z' },
+      bench: { anchor: 2, at: '2024-06-01T00:00:00.000Z' }, // newer — wins
+    };
+    const entries = deriveTrackedPROccurrences(sections, ['Bench'], activations);
+    expect(entries.length).toBe(1);
+    expect(entries[0].weight_value).toBe(155);
+  });
+});
+
+// #577 gap fix: boundary-unready suppression at the caller level (the
+// contract's "if the boundary is not ready at Done, suppress for that
+// Done" requirement) is implemented as a blanket try/catch in
+// useLogCurrentRoutineEditor.js's computePendingPRCandidate around the
+// whole aggregate-build/detection pipeline — any failure there, including a
+// recovery-boundary read failure, yields no candidate rather than a
+// possibly-wrong one. That behavior is exercised at the hook level in
+// pr-moment-editor.test.js; this file only covers the pure derivation
+// layer, which has no "readiness" concept of its own (deriveParsedSections
+// itself has none either — readiness is a hook-level/render concept).

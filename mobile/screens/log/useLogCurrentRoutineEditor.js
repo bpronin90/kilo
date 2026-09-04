@@ -649,6 +649,17 @@ export function useLogCurrentRoutineEditor({
       pendingPRRef.current = null;
       return;
     }
+    // #577 gap fix: an A/B active-week switch mid-session changes which
+    // half of the note's raw text `parseWorkoutNote` actually reads (see
+    // `effectiveActiveWeek`/`applyWeekSkipToText` above) — the baseline and
+    // "current" content would no longer be describing the same week, so any
+    // frontier/fingerprint comparison between them would be meaningless.
+    // Treated exactly like a note switch: reset the pending candidate and
+    // never attempt a cross-week comparison.
+    if (originalNoteState.activeWeek !== effectiveActiveWeek) {
+      pendingPRRef.current = null;
+      return;
+    }
     try {
       const excludedNoteIds = await loadRecoveryExcludedNoteIds();
       const otherNotes = (notes || []).filter((n) => n.id !== currentId);
@@ -666,9 +677,25 @@ export function useLogCurrentRoutineEditor({
         }));
       };
 
+      // #577 gap fix: for an A/B note, only the ACTIVE week's own text is
+      // comparable — the two halves are different content sharing one raw
+      // string, exactly like activeEditText slices above for the live
+      // editor. Comparing the full raw text (both weeks concatenated) would
+      // let an edit to the INACTIVE week's half masquerade as new work on
+      // the active one. The earlier activeWeek-mismatch guard above already
+      // proves baseline and current describe the SAME week, so slicing both
+      // by that one shared week is safe.
+      const sliceActiveWeek = (rawText) => {
+        if (!hasABWeeks) return rawText;
+        const lines = (rawText || '').split('\n');
+        const sepIdx = lines.findIndex((l) => l.trim() === '---');
+        if (sepIdx === -1) return rawText;
+        return effectiveActiveWeek === 'B' ? lines.slice(sepIdx + 1).join('\n') : lines.slice(0, sepIdx).join('\n');
+      };
+
       const afterText = lastSavedCurrentTextRef.current ?? workoutNoteTextRef.current;
-      const afterSections = [...taggedOther, ...tagOwnSections(afterText)];
-      const beforeSections = [...taggedOther, ...tagOwnSections(originalNoteState.text)];
+      const afterSections = [...taggedOther, ...tagOwnSections(sliceActiveWeek(afterText))];
+      const beforeSections = [...taggedOther, ...tagOwnSections(sliceActiveWeek(originalNoteState.text))];
 
       const trackedNames = listTrackedLifts(trackedLifts);
       const beforeEntries = deriveTrackedPROccurrences(beforeSections, trackedNames, trackedLiftActivations);
