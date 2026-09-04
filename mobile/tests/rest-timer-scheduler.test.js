@@ -101,6 +101,19 @@ describe('cancelRestTimer', () => {
     await cancelRestTimer();
     expect(mockStore).toBeNull();
   });
+
+  // #577 review (Codex, post-freeze) finding 2: native notification cleanup
+  // must be best-effort — persistence is already authoritative and already
+  // cleared by the time cleanup runs. A rejected native cancel must never
+  // propagate and strand the caller (useRestTimer.cancel() couldn't reach
+  // its own setRecord(null) on a rejection here, showing an apparently
+  // still-running timer despite storage already being empty).
+  test('resolves (does not reject) and still clears storage when the native cancel lookup rejects', async () => {
+    await startRestTimer({ durationSec: 60 });
+    mockNotifications.getAllScheduledNotificationsAsync.mockRejectedValueOnce(new Error('native cancel lookup failed'));
+    await expect(cancelRestTimer()).resolves.toBeUndefined();
+    expect(mockStore).toBeNull();
+  });
 });
 
 describe('reconcileRestTimer', () => {
@@ -141,6 +154,20 @@ describe('reconcileRestTimer', () => {
     const { record, justElapsed } = await reconcileRestTimer();
     expect(record).toBeNull();
     expect(justElapsed).toBe(false);
+    expect(mockStore).toBeNull();
+  });
+
+  // #577 review (Codex, post-freeze) finding 2: a rejected native cancel
+  // during elapsed-record cleanup must not abort reconciliation — storage
+  // is already cleared by that point, and the caller (useRestTimer's
+  // reconcile()) still needs the resolved { record, justElapsed } result to
+  // update its own state correctly.
+  test('a rejected native cancel during elapsed cleanup does not abort reconciliation', async () => {
+    const nowMs = Date.now();
+    mockStore = { version: 1, timerId: 't1', startedAtMs: nowMs - 2000, durationSec: 1, endsAtMs: nowMs - 1000, exerciseLabel: null, notificationId: null };
+    mockNotifications.getAllScheduledNotificationsAsync.mockRejectedValueOnce(new Error('native cancel lookup failed'));
+    const result = await reconcileRestTimer({ wasActiveWhenElapsed: true });
+    expect(result.justElapsed).toBe(true);
     expect(mockStore).toBeNull();
   });
 });

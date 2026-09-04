@@ -1,5 +1,5 @@
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
-import React, { useCallback, useState, useRef, useEffect } from 'react';
+import React, { useCallback, useContext, useState, useRef, useEffect } from 'react';
 import { Keyboard, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, StyleSheet, Text, View, BackHandler, StatusBar } from 'react-native';
 import { Alert } from './lib/platformAlert';
 import { WebAlertHost } from './components/WebAlertHost';
@@ -10,8 +10,8 @@ import { ThemeProvider, useTheme, useThemedStyles } from './theme/ThemeContext';
 import { TabBar } from './components/TabBar';
 import { Button } from './components/UI';
 import { ScrollContext } from './components/ScreenShell';
-import { TabBarLayoutContext, TAB_BAR_HEIGHT_FALLBACK } from './components/TabBarLayout';
-import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
+import { TabBarLayoutContext, TAB_BAR_HEIGHT_FALLBACK, TAB_BAR_VISUAL_GAP } from './components/TabBarLayout';
+import { SafeAreaProvider, SafeAreaInsetsContext, initialWindowMetrics } from 'react-native-safe-area-context';
 
 import { HomeScreen } from './screens/HomeScreen';
 import { MoreScreen } from './screens/MoreScreen';
@@ -255,6 +255,17 @@ function AppShell({ onDeviceDataWiped }) {
   const [moreSubviewTarget, setMoreSubviewTarget] = useState(null); // { kind: 'subview', view, anchor } | null
   const [moreSubviewTargetKey, setMoreSubviewTargetKey] = useState(0);
   const [tabBarHeight, setTabBarHeight] = useState(TAB_BAR_HEIGHT_FALLBACK);
+  // #577 review: the floating TabBar is `position: absolute`, so a normal-
+  // flow sibling rendered near the bottom of the screen (the rest-timer
+  // banner) does not automatically get pushed above it — it can sit behind
+  // the bar's own footprint, or behind the bottom safe-area/home-indicator
+  // zone on inset devices, hiding its Cancel/Dismiss controls. Reuse the
+  // EXACT clearance ScreenShell already reserves for scrollable content
+  // (measured tabBarHeight + the shared visual gap + the bottom safe-area
+  // inset) rather than a hardcoded number, so it always tracks the real
+  // rendered bar.
+  const { bottom: bottomSafeAreaInset = 0 } = useContext(SafeAreaInsetsContext) || {};
+  const restTimerBannerClearance = tabBarHeight + TAB_BAR_VISUAL_GAP + bottomSafeAreaInset;
   const scrollListeners = useRef(new Set());
   const isScrollingRef = useRef(false);
   const scrollTimeout = useRef(null);
@@ -974,7 +985,12 @@ function AppShell({ onDeviceDataWiped }) {
             entire subtree (including anything it renders) whenever another
             tab is active, and the OS notification is deliberately suppressed
             while the app is foregrounded on ANY tab, so this in-app surface
-            is the only alert the user gets in that case. */}
+            is the only alert the user gets in that case.
+            #577 review: wrapped with the same tab-bar/safe-area clearance
+            ScreenShell reserves, so the floating (position: absolute)
+            TabBar — or the bottom safe area / home indicator on inset
+            devices — can never cover the banner or its Cancel/Dismiss
+            controls. */}
         <RestTimerBanner
           isRunning={restTimer.isRunning}
           remainingMs={restTimer.remainingMs}
@@ -984,6 +1000,7 @@ function AppShell({ onDeviceDataWiped }) {
           onDismissDone={restTimer.dismissDone}
           onStart={restTimer.start}
           showStart={false}
+          style={{ marginBottom: restTimerBannerClearance }}
         />
         <TabBar
           tabs={TABS}

@@ -33,6 +33,10 @@ export function RestTimerBanner({
   onStart,
   showStart = false,
   startOnly = false,
+  // #577 review: applied to the root View only when something actually
+  // renders, so a caller reserving tab-bar/safe-area clearance (App.js)
+  // never consumes that space while the component is idle (returns null).
+  style,
 }) {
   const styles = useThemedStyles(createStyles);
   if (startOnly) {
@@ -43,7 +47,7 @@ export function RestTimerBanner({
 
   if (!isRunning && !justElapsed && showStart) {
     return (
-      <View style={styles.banner} accessibilityRole="summary">
+      <View style={[styles.banner, style]} accessibilityRole="summary">
         <Text style={styles.startLabel}>Rest timer</Text>
         {DURATION_PRESETS_SEC.map((sec) => (
           <Pressable
@@ -62,7 +66,7 @@ export function RestTimerBanner({
   }
 
   return (
-    <View style={styles.banner} accessibilityRole="summary">
+    <View style={[styles.banner, style]} accessibilityRole="summary">
       {isRunning ? (
         <>
           <Text style={styles.countdown}>{formatCountdown(remainingMs)}</Text>

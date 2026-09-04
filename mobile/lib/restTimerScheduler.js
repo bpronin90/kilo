@@ -85,12 +85,33 @@ export async function startRestTimer({ durationSec, exerciseLabel = null }) {
   });
 }
 
+// #577 review (Codex, post-freeze): native notification cleanup is
+// BEST-EFFORT only — persistence (Storage.saveRestTimerState) is always the
+// authoritative source of truth and is already updated by the time this is
+// called. A rejected getAllScheduledNotificationsAsync/cancelScheduledNotificationAsync
+// call must never propagate: previously it did, which left
+// useRestTimer.cancel() unable to reach its own setRecord(null) call (an
+// apparently-still-running timer despite cleared storage) and could abort
+// reconcileRestTimer's elapsed-record handling entirely.
+async function cancelRestTimerNotificationBestEffort() {
+  if (!remindersSupported()) return;
+  try {
+    await cancelReminders(REST_TIMER_KIND);
+  } catch {
+    // Best-effort: a stale native schedule left behind by a failed cancel
+    // is not visible to the user (the OS never delivers it once its own
+    // trigger time has passed for an already-cleared timer, and a FRESH
+    // timer's own start always cancels-then-reschedules), and is not worth
+    // stranding the UI or an in-flight reconciliation pass over.
+  }
+}
+
 // Cancels the current timer (if any): clears persisted state and any
 // scheduled rest-timer notification.
 export async function cancelRestTimer() {
   return serialize(async () => {
     await Storage.saveRestTimerState(null);
-    if (remindersSupported()) await cancelReminders(REST_TIMER_KIND);
+    await cancelRestTimerNotificationBestEffort();
   });
 }
 
@@ -116,7 +137,7 @@ export async function reconcileRestTimer({ wasActiveWhenElapsed = false } = {}) 
     // recently AND the caller says it was suppressed-while-active; a cold
     // start finding an already-long-elapsed record never replays anything.
     await Storage.saveRestTimerState(null);
-    if (remindersSupported()) await cancelReminders(REST_TIMER_KIND);
+    await cancelRestTimerNotificationBestEffort();
     return { record, justElapsed: wasActiveWhenElapsed && elapsedRecently(record) };
   });
 }

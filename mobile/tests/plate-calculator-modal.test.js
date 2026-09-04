@@ -102,3 +102,86 @@ describe('PlateCalculatorModal — switching units discards an in-progress edit 
     act(() => { root.unmount(); });
   });
 });
+
+// #577 review (Codex, post-freeze) finding 3: Save must normalize ONCE and
+// use the same result for both component state and persistence — never
+// publish the raw, unvalidated draft to state while persistence
+// independently normalizes a second time.
+describe('PlateCalculatorModal — Save normalizes once, before both state and persistence (user item 3 / Codex finding 3)', () => {
+  async function openAndEnterEdit() {
+    mockLoad.mockResolvedValue(defaultPlateCalculatorProfile());
+    let root;
+    await act(async () => {
+      root = renderer.create(
+        <ThemeProvider>
+          <PlateCalculatorModal visible weightLb={225} onClose={() => {}} />
+        </ThemeProvider>
+      );
+    });
+    await flush();
+    const editLinkText = findByText(root.root, 'Edit lb bar')[0];
+    let editLinkPressable = editLinkText.parent;
+    while (editLinkPressable && typeof editLinkPressable.props.onPress !== 'function') {
+      editLinkPressable = editLinkPressable.parent;
+    }
+    act(() => { editLinkPressable.props.onPress(); });
+    return root;
+  }
+
+  test('an empty bar-weight field (Number("") === 0, invalid) normalizes to the SAME default in both state and the persisted save', async () => {
+    mockSave.mockClear();
+    const root = await openAndEnterEdit();
+
+    const barInput = root.root.find((n) => n.props.accessibilityLabel === 'Bar weight in lb');
+    act(() => { barInput.props.onChangeText(''); });
+    const saveText = findByText(root.root, 'Save')[0];
+    let saveBtn = saveText.parent;
+    while (saveBtn && typeof saveBtn.props.onPress !== 'function') saveBtn = saveBtn.parent;
+    act(() => { saveBtn.props.onPress(); });
+
+    expect(mockSave).toHaveBeenCalledTimes(1);
+    const persisted = mockSave.mock.calls[0][0];
+    const defaults = defaultPlateCalculatorProfile();
+    // Invalid input normalizes to the hard default bar weight — and,
+    // critically, the SAME value the modal now displays.
+    expect(persisted.profiles.lb.barWeight).toBe(defaults.profiles.lb.barWeight);
+    expect(findByText(root.root, `${defaults.profiles.lb.barWeight}`).length).toBeGreaterThan(0);
+
+    act(() => { root.unmount(); });
+  });
+
+  test('an excessive plate count normalizes identically in state and the persisted save (falls back to the default inventory, not a mismatched raw value)', async () => {
+    mockSave.mockClear();
+    const root = await openAndEnterEdit();
+
+    // The default lb profile's largest plate (45) accepts a count input;
+    // set it to something far beyond MAX_COUNT_PER_SIZE (50).
+    const countInput = root.root.find((n) => n.props.accessibilityLabel === '45 lb plates available per side');
+    act(() => { countInput.props.onChangeText('999'); });
+    const saveText = findByText(root.root, 'Save')[0];
+    let saveBtn = saveText.parent;
+    while (saveBtn && typeof saveBtn.props.onPress !== 'function') saveBtn = saveBtn.parent;
+    act(() => { saveBtn.props.onPress(); });
+
+    expect(mockSave).toHaveBeenCalledTimes(1);
+    const persisted = mockSave.mock.calls[0][0];
+    const defaults = defaultPlateCalculatorProfile();
+    // The whole inventory list is invalid (one entry exceeds
+    // MAX_COUNT_PER_SIZE) and falls back to the default lb inventory —
+    // identically in both what was saved and what the modal now shows.
+    expect(persisted.profiles.lb.platesPerSide).toEqual(defaults.profiles.lb.platesPerSide);
+    // Re-open the edit form and confirm the DISPLAYED draft (seeded from
+    // component state, not re-read from storage) also reflects the
+    // fallback default — proving state and persistence agree, not just
+    // that persistence alone was correct.
+    const editLinkAgain = findByText(root.root, 'Edit lb bar')[0];
+    let editBtnAgain = editLinkAgain.parent;
+    while (editBtnAgain && typeof editBtnAgain.props.onPress !== 'function') editBtnAgain = editBtnAgain.parent;
+    act(() => { editBtnAgain.props.onPress(); });
+    const reopenedCountInput = root.root.find((n) => n.props.accessibilityLabel === '45 lb plates available per side');
+    const defaultCount45 = defaults.profiles.lb.platesPerSide.find((p) => p.size === 45).count;
+    expect(reopenedCountInput.props.value).toBe(String(defaultCount45));
+
+    act(() => { root.unmount(); });
+  });
+});

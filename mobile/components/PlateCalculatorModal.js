@@ -5,6 +5,7 @@ import {
   computePlateLoad,
   formatPlateWeight,
   defaultPlateCalculatorProfile,
+  normalizePlateCalculatorProfile,
 } from '../lib/plateMath';
 import { lbToKg } from '../lib/units';
 import { loadPlateCalculatorProfile, savePlateCalculatorProfile } from '../storage/entries';
@@ -90,16 +91,31 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
   };
 
   const saveEdit = () => {
-    const barWeight = Number(draft.barWeight);
-    const platesPerSide = draft.platesPerSide
-      .map((p) => ({ size: p.size, count: Number(p.count) }))
-      .filter((p) => Number.isInteger(p.count) && p.count >= 0);
-    const nextProfile = {
+    // #577 review (Codex, post-freeze): normalize ONCE, through the exact
+    // same normalizePlateCalculatorProfile() the persistence layer already
+    // uses, and use that single result for BOTH component state and the
+    // save call — never publish the raw, unvalidated draft to state while
+    // persistence independently normalizes a second time. Before this fix
+    // an empty bar field (`Number('') === 0`, invalid) or an excessive
+    // count could leave the open modal showing state that differed from
+    // what was actually persisted (and from what reappears after
+    // reopening) — normalizePlateCalculatorProfile's existing
+    // reject-and-fall-back-to-default behavior on an invalid field now
+    // applies identically to what the user sees immediately and to what is
+    // stored.
+    const rawCandidate = {
       ...profile,
-      profiles: { ...profile.profiles, [unit]: { barWeight, platesPerSide } },
+      profiles: {
+        ...profile.profiles,
+        [unit]: {
+          barWeight: Number(draft.barWeight),
+          platesPerSide: draft.platesPerSide.map((p) => ({ size: p.size, count: Number(p.count) })),
+        },
+      },
     };
-    setProfile(nextProfile);
-    savePlateCalculatorProfile(nextProfile).catch(() => {});
+    const normalized = normalizePlateCalculatorProfile(rawCandidate);
+    setProfile(normalized);
+    savePlateCalculatorProfile(normalized).catch(() => {});
     setDraft(null);
     setEditing(false);
   };

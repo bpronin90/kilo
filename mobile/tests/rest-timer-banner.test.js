@@ -61,3 +61,31 @@ describe('RestTimerBanner startOnly (#950 review P1)', () => {
     expect(JSON.stringify(tree.toJSON())).not.toContain('Background alert unavailable');
   });
 });
+
+// #577 review (Codex, post-freeze) finding 1: App.js applies a `style`
+// (bottom margin reserving tab-bar + safe-area clearance, matching
+// ScreenShell's own pattern) to RestTimerBanner's root View — but only
+// while the banner actually renders something, so idle mounts never
+// consume that space. These tests pin the prop contract App.js's fix
+// relies on.
+describe('RestTimerBanner style prop — tab-bar/safe-area clearance (#577 review)', () => {
+  test('a style prop is applied to the root view while running', () => {
+    const tree = renderBanner({ isRunning: true, remainingMs: 5000, justElapsed: false, backgroundAlertAvailable: true, showStart: false, style: { marginBottom: 88 } });
+    const json = tree.toJSON();
+    expect(json).not.toBeNull();
+    const style = Array.isArray(json.props.style) ? Object.assign({}, ...json.props.style) : json.props.style;
+    expect(style.marginBottom).toBe(88);
+  });
+
+  test('a style prop is applied to the root view while showing the done banner', () => {
+    const tree = renderBanner({ isRunning: false, remainingMs: 0, justElapsed: true, backgroundAlertAvailable: true, showStart: false, style: { marginBottom: 88 } });
+    const json = tree.toJSON();
+    const style = Array.isArray(json.props.style) ? Object.assign({}, ...json.props.style) : json.props.style;
+    expect(style.marginBottom).toBe(88);
+  });
+
+  test('an idle mount (nothing rendered) never reserves the clearance space', () => {
+    const tree = renderBanner({ isRunning: false, remainingMs: 0, justElapsed: false, backgroundAlertAvailable: true, showStart: false, style: { marginBottom: 88 } });
+    expect(tree.toJSON()).toBeNull();
+  });
+});
