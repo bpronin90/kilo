@@ -798,6 +798,17 @@ export function deriveCheckInHistory(notes) {
 // consumer of the watermark (sliceEntriesFromAnchor operates on the
 // unfiltered entries list; the warmup filter is applied strictly after the
 // anchor cut, never before).
+// #577 review (Codex, post-freeze): callers that only need a RESTRICTED
+// section population for their own purposes (e.g. one A/B week's own text)
+// must still call this with the FULL, unrestricted population to resolve
+// and cut the tracked-lift activation anchor/watermark correctly, then
+// restrict the RETURNED entries afterward (e.g. by their `sectionOrdinal`)
+// — never call this directly with an already-restricted population. Doing
+// so would resolve/cut the anchor against a population smaller than the
+// one it was recorded against, clamping a legitimate anchor down and/or
+// dropping sessions the anchor never meant to exclude. See
+// useLogCurrentRoutineEditor.js's computePendingPRCandidate for the actual
+// resolve-full-then-restrict pattern.
 export function deriveTrackedPROccurrences(sections, trackedNames, activations = null) {
   const uniqueNames = [...new Set(trackedNames || [])];
   if (uniqueNames.length === 0) return [];
@@ -834,8 +845,21 @@ export function deriveTrackedPROccurrences(sections, trackedNames, activations =
     const sliced = sliceEntriesFromAnchor(entries, anchor);
     const comparable = sliced.filter((u) => u.kind !== 'warmup');
 
+    // setOrdinal must be a running count across the WHOLE occurrence, not
+    // reset per session unit — an occurrence can hold several logged rows
+    // (session_entries), and resetting to 0 for each one lets a set
+    // appended in a LATER row collide with (and sort ahead of) an existing
+    // set in an EARLIER row of the same occurrence, which the frontier
+    // comparison in lib/prMoment.js then misreads as an ambiguous
+    // historical edit rather than a legitimate append. Incremented for
+    // every set regardless of skipped status, so ordinal position is
+    // stable independent of what gets filtered below.
+    const setOrdinalByOccurrence = new Map();
     for (const unit of comparable) {
-      (unit.sets || []).forEach((set, setOrdinal) => {
+      const occurrenceOrdinal = unit.__occurrenceOrdinal;
+      (unit.sets || []).forEach((set) => {
+        const setOrdinal = setOrdinalByOccurrence.get(occurrenceOrdinal) ?? 0;
+        setOrdinalByOccurrence.set(occurrenceOrdinal, setOrdinal + 1);
         if (set.skipped) return;
         const epley = epleyPR(set.weight_value, set.rep_count);
         results.push({
@@ -843,7 +867,7 @@ export function deriveTrackedPROccurrences(sections, trackedNames, activations =
           noteId: unit.__noteId,
           noteOrdinal: unit.__noteOrdinal,
           sectionOrdinal: unit.__sectionOrdinal,
-          occurrenceOrdinal: unit.__occurrenceOrdinal,
+          occurrenceOrdinal,
           setOrdinal,
           weight_value: set.weight_value,
           rep_count: set.rep_count,

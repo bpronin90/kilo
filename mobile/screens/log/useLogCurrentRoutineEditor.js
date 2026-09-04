@@ -677,29 +677,53 @@ export function useLogCurrentRoutineEditor({
         }));
       };
 
-      // #577 gap fix: for an A/B note, only the ACTIVE week's own text is
-      // comparable — the two halves are different content sharing one raw
-      // string, exactly like activeEditText slices above for the live
-      // editor. Comparing the full raw text (both weeks concatenated) would
-      // let an edit to the INACTIVE week's half masquerade as new work on
-      // the active one. The earlier activeWeek-mismatch guard above already
-      // proves baseline and current describe the SAME week, so slicing both
-      // by that one shared week is safe.
-      const sliceActiveWeek = (rawText) => {
-        if (!hasABWeeks) return rawText;
-        const lines = (rawText || '').split('\n');
-        const sepIdx = lines.findIndex((l) => l.trim() === '---');
-        if (sepIdx === -1) return rawText;
-        return effectiveActiveWeek === 'B' ? lines.slice(sepIdx + 1).join('\n') : lines.slice(0, sepIdx).join('\n');
+      // #577 review (Codex, post-freeze): the activation anchor/watermark
+      // must be RESOLVED AND CUT against the FULL, UNSLICED Analytics
+      // population — every note's complete content, both A/B halves when
+      // the note has them — never a week-restricted slice. An anchor was
+      // recorded against the exercise's total logged-session count at
+      // Track-toggle time; resolving or cutting it against only the active
+      // week's own (smaller) session list clamps the anchor down and/or
+      // drops sessions the anchor never meant to exclude, including a
+      // legitimate new PR, until enough new active-week sessions replace
+      // the omitted inactive ones. `deriveTrackedPROccurrences` called with
+      // the full, unrestricted section list already does
+      // exactly this correctly — resolve, then sliceEntriesFromAnchor over
+      // the true, correctly-ordered full sequence.
+      const afterText = lastSavedCurrentTextRef.current ?? workoutNoteTextRef.current;
+      const fullAfterSections = [...taggedOther, ...tagOwnSections(afterText)];
+      const fullBeforeSections = [...taggedOther, ...tagOwnSections(originalNoteState.text)];
+      const trackedNames = listTrackedLifts(trackedLifts);
+      const fullAfterEntries = deriveTrackedPROccurrences(fullAfterSections, trackedNames, trackedLiftActivations);
+      const fullBeforeEntries = deriveTrackedPROccurrences(fullBeforeSections, trackedNames, trackedLiftActivations);
+
+      // Frontier comparison itself still runs on the ACTIVE week's own
+      // occurrences only — the two A/B halves are different content
+      // sharing one raw string, and the inactive half's text is provably
+      // unchanged during one active-week editing session (the earlier
+      // activeWeek-mismatch guard above already proves baseline and
+      // current describe the same active week; handleCurrentTextChange
+      // only ever edits the active slice and splices the inactive one back
+      // untouched). Restricting AFTER the anchor cut — by filtering the
+      // already-correctly-watermarked full entries down to just the
+      // current note's sections at or after/before the week boundary —
+      // keeps each entry's occurrenceOrdinal/setOrdinal exactly as the
+      // full-population pass assigned them (sections are always emitted
+      // week-A-then-week-B, so this filter is a stable, order-preserving
+      // subsequence, never a renumbering), which the frontier's
+      // occurrenceOrdinal-sorted walk in lib/prMoment.js depends on.
+      const restrictToActiveWeek = (entries, rawText) => {
+        if (!hasABWeeks) return entries;
+        const { weekBStartIndex } = parseWorkoutNote(rawText || '');
+        if (weekBStartIndex == null) return entries;
+        return entries.filter((e) => (
+          e.noteId !== currentId
+          || (effectiveActiveWeek === 'B' ? e.sectionOrdinal >= weekBStartIndex : e.sectionOrdinal < weekBStartIndex)
+        ));
       };
 
-      const afterText = lastSavedCurrentTextRef.current ?? workoutNoteTextRef.current;
-      const afterSections = [...taggedOther, ...tagOwnSections(sliceActiveWeek(afterText))];
-      const beforeSections = [...taggedOther, ...tagOwnSections(sliceActiveWeek(originalNoteState.text))];
-
-      const trackedNames = listTrackedLifts(trackedLifts);
-      const beforeEntries = deriveTrackedPROccurrences(beforeSections, trackedNames, trackedLiftActivations);
-      const afterEntries = deriveTrackedPROccurrences(afterSections, trackedNames, trackedLiftActivations);
+      const afterEntries = restrictToActiveWeek(fullAfterEntries, afterText);
+      const beforeEntries = restrictToActiveWeek(fullBeforeEntries, originalNoteState.text);
       pendingPRRef.current = detectPRMoment(beforeEntries, afterEntries, currentId, consumedPRKeysRef.current);
     } catch {
       pendingPRRef.current = null;

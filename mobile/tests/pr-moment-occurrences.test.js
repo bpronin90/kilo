@@ -1,6 +1,7 @@
 import { parseWorkoutNote } from '../lib/parser';
 import { deriveTrackedPROccurrences } from '../lib/data/workoutAnalytics';
 import { tagNoteSections } from '../screens/analytics/analyticsDerivations';
+import { detectPRMoment } from '../lib/prMoment';
 
 function tag(text, noteId = 'n1') {
   const { sections } = parseWorkoutNote(text);
@@ -167,3 +168,99 @@ describe('deriveTrackedPROccurrences — activation/watermark edge cases', () =>
 // pr-moment-editor.test.js; this file only covers the pure derivation
 // layer, which has no "readiness" concept of its own (deriveParsedSections
 // itself has none either — readiness is a hook-level/render concept).
+
+// #577 review (Codex, post-freeze) — finding 2: setOrdinal must be a
+// running count across a WHOLE occurrence, not reset per logged row
+// (session unit), or an appended row's set can collide with an earlier
+// row's set at the same ordinal and get misread as a historical edit.
+describe('deriveTrackedPROccurrences — set ordinal stability across multiple rows in one occurrence (#577 review)', () => {
+  test('two logged rows in the same occurrence get non-colliding, source-ordered setOrdinals', () => {
+    // One occurrence (single section, single exercise), two separate
+    // logged rows: "135 5,5" (2 sets) then "200 5" (1 set) appended after.
+    const sections = tag('-Bench\n135 5,5\n200 5');
+    const entries = deriveTrackedPROccurrences(sections, ['Bench']);
+    expect(entries.length).toBe(3);
+    // Exactly the reviewer's example: must NOT be [0, 1, 0].
+    expect(entries.map((e) => e.setOrdinal)).toEqual([0, 1, 2]);
+    expect(entries.map((e) => e.weight_value)).toEqual([135, 135, 200]);
+  });
+
+  test('the exact reviewer scenario: appending 200 5 after 135 5,5 is a legitimate PR, not a suppressed historical edit', () => {
+    const before = deriveTrackedPROccurrences(tag('-Bench\n135 5,5'), ['Bench']);
+    const after = deriveTrackedPROccurrences(tag('-Bench\n135 5,5\n200 5'), ['Bench']);
+    const result = detectPRMoment(before, after, 'n1');
+    expect(result).not.toBeNull();
+    expect(result.weight_value).toBe(200);
+  });
+});
+
+// #577 review (Codex, post-freeze) — finding 1: the tracked-lift
+// activation anchor must be resolved against the FULL (both A/B halves)
+// population, never a week-restricted slice, or a legitimate anchor gets
+// clamped down to the smaller active-only session count and
+// sliceEntriesFromAnchor then drops everything, including a real PR.
+describe('deriveTrackedPROccurrences — activation anchor resolved against the full population, not a restricted slice (#577 review)', () => {
+  test('an anchor recorded while the OTHER (inactive) half held logged sessions is not clamped down by resolving against only the active half', () => {
+    // Full note: week A has 1 Bench session, week B has 3 — 4 total. An
+    // anchor of 2 (recorded when the exercise had 2 total logged sessions)
+    // must resolve to 2 against the FULL 4-session population, not be
+    // clamped to 1 by looking only at week A's own session count.
+    const weekA = '-Bench\n135 5';
+    const weekB = '-Bench\n100 5\n110 5\n120 5';
+    const fullText = `${weekA}\n---\n${weekB}`;
+    const fullSections = tag(fullText);
+    const activations = { bench: { anchor: 2, at: '2024-01-01T00:00:00.000Z' } };
+
+    // Resolving against the FULL population correctly keeps the last 2 of
+    // the 4 logged sessions (both from week B) — this is the "resolve
+    // against the full Analytics population" step the fix performs.
+    const fullEntries = deriveTrackedPROccurrences(fullSections, ['Bench'], activations);
+    expect(fullEntries.map((e) => e.weight_value)).toEqual([110, 120]);
+
+    // Resolving against ONLY week A's session (the pre-fix bug) would
+    // clamp the anchor to 1 and, on a 1-entry list, drop everything —
+    // demonstrating the exact failure mode the fix avoids.
+    const weekAOnlySections = tag(weekA);
+    const weekAOnlyEntries = deriveTrackedPROccurrences(weekAOnlySections, ['Bench'], activations);
+    expect(weekAOnlyEntries).toEqual([]); // the bug this fix works around, confirmed still true of the raw primitive
+  });
+
+  test('end-to-end reproduction: a genuine appended PR in the ACTIVE week (B) survives when the anchor is resolved+cut against the full population, and is silently lost by the old active-only-restricted approach', () => {
+    // Week A (inactive) has 2 sessions; week B (active) has 3, soon 4 after
+    // an appended PR. anchor=3 was recorded when the exercise had 3 total
+    // logged sessions.
+    const weekA = '-Bench\n90 5\n135 5';
+    const weekBBefore = '-Bench\n100 5\n110 5\n120 5';
+    const weekBAfter = '-Bench\n100 5\n110 5\n120 5\n999 5';
+    const activations = { bench: { anchor: 3, at: '2024-01-01T00:00:00.000Z' } };
+
+    // FIX (matches useLogCurrentRoutineEditor.js's computePendingPRCandidate):
+    // resolve+cut against the FULL population, restrict to active week (B)
+    // afterward via sectionOrdinal.
+    const fullBefore = tag(`${weekA}\n---\n${weekBBefore}`);
+    const fullAfter = tag(`${weekA}\n---\n${weekBAfter}`);
+    const { weekBStartIndex } = parseWorkoutNote(`${weekA}\n---\n${weekBBefore}`);
+    const restrictToB = (entries) => entries.filter((e) => e.sectionOrdinal >= weekBStartIndex);
+
+    const fixedBefore = restrictToB(deriveTrackedPROccurrences(fullBefore, ['Bench'], activations));
+    const fixedAfter = restrictToB(deriveTrackedPROccurrences(fullAfter, ['Bench'], activations));
+    expect(fixedBefore.map((e) => e.weight_value)).toEqual([110, 120]); // 90 and 100 fall before the anchor cut
+    expect(fixedAfter.map((e) => e.weight_value)).toEqual([110, 120, 999]);
+
+    const fixedResult = detectPRMoment(fixedBefore, fixedAfter, 'n1');
+    expect(fixedResult).not.toBeNull();
+    expect(fixedResult.weight_value).toBe(999);
+
+    // OLD (buggy) approach: resolve+cut directly against the ACTIVE-ONLY
+    // (week B alone) sliced population — the anchor is applied to a list
+    // that no longer contains week A's sessions, over-cutting by exactly
+    // week A's count and silently losing the legitimate PR.
+    const activeOnlyBefore = tag(weekBBefore);
+    const activeOnlyAfter = tag(weekBAfter);
+    const buggyBefore = deriveTrackedPROccurrences(activeOnlyBefore, ['Bench'], activations);
+    const buggyAfter = deriveTrackedPROccurrences(activeOnlyAfter, ['Bench'], activations);
+    expect(buggyBefore).toEqual([]); // over-cut: the whole active-only list is consumed
+    const buggyResult = detectPRMoment(buggyBefore, buggyAfter, 'n1');
+    expect(buggyResult).toBeNull(); // the exact suppression bug the fix resolves
+  });
+});

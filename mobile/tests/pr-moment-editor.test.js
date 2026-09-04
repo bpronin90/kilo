@@ -32,7 +32,7 @@ afterEach(() => {
   );
 });
 
-function makeHarness({ raw, note = {}, updateImpl, notes: notesOverride } = {}) {
+function makeHarness({ raw, note = {}, updateImpl, notes: notesOverride, trackedLiftActivations = {} } = {}) {
   const update = jest.fn().mockImplementation(
     updateImpl || (async (_id, patch) => ({
       id: 'note1',
@@ -55,7 +55,7 @@ function makeHarness({ raw, note = {}, updateImpl, notes: notesOverride } = {}) 
       currentNote,
       notes: notesOverride || [currentNote],
       trackedLifts: { bench: true },
-      trackedLiftActivations: {},
+      trackedLiftActivations,
       reconcileTrackedLiftActivations: jest.fn(async () => {}),
       update,
       add: jest.fn(),
@@ -165,5 +165,30 @@ describe('A/B active-week mid-session switch (#577 gap fix)', () => {
     await h.setText(`${weekB}\n---\n${weekA}`); // only week A's (active) text changes
     await h.done();
     expect(h.get().hook.prMoment).not.toBeNull();
+  });
+});
+
+describe('A/B activation anchor resolved against the full population (#577 review, Codex post-freeze)', () => {
+  test('a new active-week (B) PR still celebrates when the anchor was recorded against the full A+B population', async () => {
+    // Week A (inactive) has 2 sessions; week B (active) has 3, soon 4
+    // after an appended PR. anchor=3 was recorded when the exercise had 3
+    // total logged sessions. Resolving+cutting against only week B's own
+    // (active-only) sliced text — the pre-fix behavior — over-cuts by
+    // exactly week A's 2-session count and silently drops the appended PR;
+    // resolving+cutting against the full population first (this fix) does
+    // not. See pr-moment-occurrences.test.js's pure-function reproduction
+    // of the same numbers for the byte-for-byte before/after entries this
+    // is built on.
+    const weekA = '-Bench\n90 5\n135 5';
+    const weekB = '-Bench\n100 5\n110 5\n120 5';
+    const raw = `${weekA}\n---\n${weekB}`;
+    const activations = { bench: { anchor: 3, at: '2024-01-01T00:00:00.000Z' } };
+    const h = makeHarness({ raw, note: { activeWeek: 'B' }, trackedLiftActivations: activations });
+    await h.enter();
+    expect(h.get().hook.effectiveActiveWeek).toBe('B');
+    await h.setText(`${weekA}\n---\n-Bench\n100 5\n110 5\n120 5\n999 5`); // append to week B only
+    await h.done();
+    expect(h.get().hook.prMoment).not.toBeNull();
+    expect(h.get().hook.prMoment.weight_value).toBe(999);
   });
 });
