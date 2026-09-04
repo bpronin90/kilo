@@ -9,7 +9,7 @@ import { useWeightUnit } from '../lib/unitPreference';
 // mode cannot unmount it. Never claims modal authorization, never suppresses
 // the fatigue check-in modal, and coexists with the rest-timer banner —
 // each has fully independent close/state ownership.
-export function PRMomentBanner({ moment, onDismiss }) {
+export function PRMomentBanner({ moment, onDismiss, style }) {
   const styles = useThemedStyles(createStyles);
   const unit = useWeightUnit();
   if (!moment) return null;
@@ -19,7 +19,7 @@ export function PRMomentBanner({ moment, onDismiss }) {
     : null;
 
   return (
-    <View style={styles.banner} accessibilityRole="summary">
+    <View style={[styles.banner, style]} accessibilityRole="summary">
       <Text style={styles.text}>
         New PR{weightLabel ? ` — ${weightLabel}` : ''}
       </Text>

@@ -68,7 +68,6 @@ function validatePlatesPerSide(list) {
     const { size, count } = entry;
     if (!isPositiveFiniteWithinBound(size, MAX_PLATE_SIZE) || !isExactMinorUnit(size)) return null;
     if (!Number.isInteger(count) || count < 0 || count > MAX_COUNT_PER_SIZE) return null;
-    if (count === 0) continue;
     const key = toMinorUnits(size);
     bySize.set(key, (bySize.get(key) || 0) + count);
   }

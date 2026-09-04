@@ -288,6 +288,35 @@ describe('normalizePlateCalculatorProfile', () => {
       expect(p.count).toBeLessThanOrEqual(MAX_COUNT_PER_SIZE);
     }
   });
+
+  test('preserves explicit zero-count denominations, including an all-zero inventory', () => {
+    const defaults = defaultPlateCalculatorProfile();
+    const raw = {
+      ...defaults,
+      profiles: {
+        ...defaults.profiles,
+        kg: {
+          barWeight: 20,
+          platesPerSide: defaults.profiles.kg.platesPerSide.map((plate) => ({
+            ...plate,
+            count: 0,
+          })),
+        },
+      },
+    };
+
+    const normalized = normalizePlateCalculatorProfile(raw);
+    expect(normalized.profiles.kg.platesPerSide).toEqual(raw.profiles.kg.platesPerSide);
+
+    const load = computePlateLoad({
+      totalWeight: 100,
+      barWeight: normalized.profiles.kg.barWeight,
+      platesPerSide: normalized.profiles.kg.platesPerSide,
+    });
+    expect(load.valid).toBe(true);
+    expect(load.plates).toEqual([]);
+    expect(load.remainder).toBe(40);
+  });
 });
 
 describe('formatPlateWeight', () => {

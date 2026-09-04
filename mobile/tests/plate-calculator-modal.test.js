@@ -1,5 +1,6 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
+import { KeyboardAvoidingView, ScrollView } from 'react-native';
 import { PlateCalculatorModal } from '../components/PlateCalculatorModal';
 import { ThemeProvider } from '../theme/ThemeContext';
 import { defaultPlateCalculatorProfile } from '../lib/plateMath';
@@ -181,6 +182,53 @@ describe('PlateCalculatorModal — Save normalizes once, before both state and p
     const reopenedCountInput = root.root.find((n) => n.props.accessibilityLabel === '45 lb plates available per side');
     const defaultCount45 = defaults.profiles.lb.platesPerSide.find((p) => p.size === 45).count;
     expect(reopenedCountInput.props.value).toBe(String(defaultCount45));
+
+    act(() => { root.unmount(); });
+  });
+
+  test('saving zero for every denomination preserves an editable empty inventory', async () => {
+    mockSave.mockClear();
+    const root = await openAndEnterEdit();
+
+    const countInputs = root.root.findAll((n) => (
+      typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.endsWith('plates available per side')
+    ));
+    expect(countInputs.length).toBeGreaterThan(0);
+    act(() => {
+      countInputs.forEach((input) => input.props.onChangeText('0'));
+    });
+
+    const saveText = findByText(root.root, 'Save')[0];
+    let saveBtn = saveText.parent;
+    while (saveBtn && typeof saveBtn.props.onPress !== 'function') saveBtn = saveBtn.parent;
+    act(() => { saveBtn.props.onPress(); });
+
+    const persisted = mockSave.mock.calls[0][0];
+    expect(persisted.profiles.lb.platesPerSide.every((plate) => plate.count === 0)).toBe(true);
+
+    const editLinkAgain = findByText(root.root, 'Edit lb bar')[0];
+    let editBtnAgain = editLinkAgain.parent;
+    while (editBtnAgain && typeof editBtnAgain.props.onPress !== 'function') editBtnAgain = editBtnAgain.parent;
+    act(() => { editBtnAgain.props.onPress(); });
+    const reopenedInputs = root.root.findAll((n) => (
+      typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.endsWith('plates available per side')
+    ));
+    expect(reopenedInputs.every((input) => input.props.value === '0')).toBe(true);
+
+    act(() => { root.unmount(); });
+  });
+
+  test('keeps the inventory actions reachable with a keyboard-avoiding scroll container', async () => {
+    const root = await openAndEnterEdit();
+
+    expect(root.root.findAllByType(KeyboardAvoidingView)).toHaveLength(1);
+    const editScroll = root.root.findAllByType(ScrollView);
+    expect(editScroll).toHaveLength(1);
+    expect(editScroll[0].props.keyboardShouldPersistTaps).toBe('handled');
+    expect(findByText(root.root, 'Save')).toHaveLength(1);
+    expect(findByText(root.root, 'Cancel')).toHaveLength(1);
 
     act(() => { root.unmount(); });
   });

@@ -1,5 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useThemedStyles } from '../theme/ThemeContext';
 import {
   computePlateLoad,
@@ -132,7 +142,11 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-      <View style={styles.overlay} pointerEvents="box-none">
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        pointerEvents="box-none"
+      >
         <View style={styles.sheet} onStartShouldSetResponder={() => true}>
           <View style={styles.header}>
             <Text style={styles.title}>
@@ -218,7 +232,11 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
           )}
 
           {editing && (
-            <View style={styles.body}>
+            <ScrollView
+              style={styles.editScroll}
+              contentContainerStyle={styles.body}
+              keyboardShouldPersistTaps="handled"
+            >
               <View style={styles.row}>
                 <Text style={styles.rowLabel}>Bar weight ({unit})</Text>
                 <TextInput
@@ -256,10 +274,10 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
                   <Text style={[styles.editActionText, styles.editActionTextPrimary]}>Save</Text>
                 </Pressable>
               </View>
-            </View>
+            </ScrollView>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -334,6 +352,9 @@ const createStyles = (colors) => StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 20,
     gap: 10,
+  },
+  editScroll: {
+    maxHeight: '70%',
   },
   row: {
     flexDirection: 'row',
