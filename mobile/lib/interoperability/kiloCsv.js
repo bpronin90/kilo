@@ -92,17 +92,45 @@ function sectionDateEvidence(section, sessionCount) {
   return { date: headingDate, origin: 'dated_heading' };
 }
 
-// Counts real (session_entries-only) positions, deliberately not the merged
-// session_entries+unparsed_positions sequence buildNoteRows exports per
-// exercise: the single-session dated-heading date rule only ever fires for
-// the common, unambiguous case, and inflating this count by a bare
-// malformed/preserved line would only ever make that rule MORE conservative
-// (fall back to empty), never wrongly assign a date — an acceptable, narrow
-// approximation, not a silent-loss risk.
+// Merges one exercise's session_entries with its unparsed_positions into the
+// single sequence buildNoteRows exports (issue #578, PR #949 review — a bare
+// line with no leading "- " that fails to parse or is a preserved bare
+// integer is stored ONLY in unparsed_positions, mobile/lib/parser/workoutNote.js
+// lines 344-352, never added to session_entries). Each unparsed_positions
+// record carries `pos`, the session_entries length at the moment it was
+// encountered — exactly where it sits in raw_text order — so it interleaves
+// immediately before session_entries[pos]. This is the SINGLE source of the
+// merged sequence: sectionMaxSessionCount below and buildNoteRows's row loop
+// both call it, so the date-eligibility count and the exported row count can
+// never again disagree the way review comment 5534430002 caught (a section
+// with one real entry plus one positional-unparsed row was previously
+// exported as 2 positions while counted as 1 for date eligibility, wrongly
+// letting the single-session dated-heading rule apply to both).
+function mergeExerciseEntries(exercise) {
+  const positionalUnparsed = exercise.unparsed_positions || [];
+  const sessionEntries = exercise.session_entries || [];
+  const merged = [];
+  let nextPositionalIdx = 0;
+  for (let pos = 0; pos <= sessionEntries.length; pos++) {
+    while (nextPositionalIdx < positionalUnparsed.length && positionalUnparsed[nextPositionalIdx].pos === pos) {
+      const p = positionalUnparsed[nextPositionalIdx];
+      merged.push({ skipped: false, raw: p.raw, sets: [], unparsed: true, error: p.error ?? null, category: p.category ?? null });
+      nextPositionalIdx++;
+    }
+    if (pos < sessionEntries.length) merged.push(sessionEntries[pos]);
+  }
+  return merged;
+}
+
+// Counts the same merged (session_entries + unparsed_positions) sequence
+// buildNoteRows actually exports per exercise, so the single-session
+// dated-heading date rule (sectionDateEvidence) is eligible only when the
+// section truly exports one position — never when a positional-unparsed row
+// pushes the real exported count to two or more.
 function sectionMaxSessionCount(section) {
   let max = 0;
   for (const exercise of section.exercises) {
-    const count = (exercise.session_entries || []).length;
+    const count = mergeExerciseEntries(exercise).length;
     if (count > max) max = count;
   }
   return max;
@@ -195,31 +223,12 @@ function buildNoteRows(note, routine) {
       };
       rows.push({ ...emptyRow(), ...exerciseBase });
 
-      // Merge session_entries with exercise.unparsed_positions (PR #949
-      // review finding). A bare line with no leading "- " that fails to
-      // parse or is a preserved bare integer (mobile/lib/parser/workoutNote.js
-      // lines 344-352) is stored ONLY in unparsed_positions, never added to
-      // session_entries — so walking session_entries alone silently drops a
-      // visible, authored line. Each unparsed_positions record carries `pos`,
-      // the session_entries length at the moment it was encountered, which is
-      // exactly where it sits in raw_text order: interleave it immediately
-      // before session_entries[pos]. Every one of these still occupies a real
-      // authored position, so it gets its own session_index in the merged,
-      // continuously-numbered sequence below — never silently omitted, never
-      // merged into a neighboring real entry's row.
-      const positionalUnparsed = exercise.unparsed_positions || [];
-      const merged = [];
-      let nextPositionalIdx = 0;
-      const sessionEntries = exercise.session_entries || [];
-      for (let pos = 0; pos <= sessionEntries.length; pos++) {
-        while (nextPositionalIdx < positionalUnparsed.length && positionalUnparsed[nextPositionalIdx].pos === pos) {
-          const p = positionalUnparsed[nextPositionalIdx];
-          merged.push({ skipped: false, raw: p.raw, sets: [], unparsed: true, error: p.error ?? null, category: p.category ?? null });
-          nextPositionalIdx++;
-        }
-        if (pos < sessionEntries.length) merged.push(sessionEntries[pos]);
-      }
-      const entries = merged;
+      // Every one of these merged positions still occupies a real authored
+      // position, so it gets its own session_index in the continuously-
+      // numbered sequence below — never silently omitted, never merged into
+      // a neighboring real entry's row. See mergeExerciseEntries above for
+      // why this is the same sequence sectionMaxSessionCount already counted.
+      const entries = mergeExerciseEntries(exercise);
       entries.forEach((entry, entryIdx) => {
         const sessionIndex = entryIdx + 1;
         const rowBase = {

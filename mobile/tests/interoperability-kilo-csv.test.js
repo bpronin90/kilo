@@ -253,6 +253,25 @@ describe('exportWorkoutsCsv', () => {
       ]);
     });
 
+    // Review comment 5534430002: sectionMaxSessionCount previously counted
+    // only session_entries, disagreeing with the merged sequence buildNoteRows
+    // actually exports (session_entries + unparsed_positions) — so a dated
+    // section holding one real entry plus one positional-unparsed row was
+    // miscounted as 1 session and got the heading date on BOTH positions,
+    // even though the contract permits dated_heading only for exactly one
+    // exported session.
+    test('a dated heading with one real row and one positional-unparsed row does not get a date (two exported positions, not one)', () => {
+      const raw = ['Wednesday 2026-01-07', '-Deadlift', '- 405 3', '8'].join('\n');
+      const note = { id: 'n1', title: 'R', isCurrent: true, raw_text: raw };
+      const objs = rowsAsObjects(exportWorkoutsCsv([note]), WORKOUT_CSV_COLUMNS);
+      const positions = objs.filter((o) => ['set', 'unparsed'].includes(o.record_kind));
+      expect(positions).toHaveLength(2);
+      for (const p of positions) {
+        expect(p.source_date).toBe('');
+        expect(p.source_date_origin).toBe('');
+      }
+    });
+
     test('a rejected parse (missing-space row before any exercise) is preserved as a note-level unparsed record, not an empty routine', () => {
       const note = { id: 'n1', title: 'Broken', isCurrent: true, raw_text: '-230 5' };
       const objs = rowsAsObjects(exportWorkoutsCsv([note]), WORKOUT_CSV_COLUMNS);
