@@ -53,8 +53,27 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
   });
 
   const setUnit = (nextUnit) => {
-    setProfile((p) => ({ ...p, activeUnit: nextUnit }));
-    savePlateCalculatorProfile({ ...profile, activeUnit: nextUnit }).catch(() => {});
+    if (nextUnit === unit) return;
+    // #577 review: the unit toggle is reachable while an inventory edit is
+    // in progress (it renders above, not inside, the editing branch below).
+    // `draft` is seeded from the OLD unit's profile in startEdit() and is
+    // never re-seeded on a unit switch, so an edit left open across a
+    // switch and then Saved would write the OLD unit's numeric bar/plate
+    // values into the NEW unit's profile slot — e.g. a "45" bar weight
+    // typed while in lb mode landing in profiles.kg as 45 kg. Switching
+    // units always discards any in-progress (unsaved) edit rather than
+    // carrying it across, matching "switching unit loads that unit's own
+    // saved/default profile" — it never mixes the two.
+    setEditing(false);
+    setDraft(null);
+    // Functional update avoids the closure-captured `profile` from this
+    // render going stale relative to any edit that just committed via
+    // setProfile in the same interaction.
+    setProfile((p) => {
+      const next = { ...p, activeUnit: nextUnit };
+      savePlateCalculatorProfile(next).catch(() => {});
+      return next;
+    });
   };
 
   const startEdit = () => {

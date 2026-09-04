@@ -72,6 +72,36 @@ describe('SetLine unit display', () => {
     expect(texts).toContain('BW');
     expect(texts.some((t) => t.includes('lb'))).toBe(false);
   });
+
+  // User-reported item 4: "Kilogram values being announced as pounds."
+  // Confirmed defect: the plate-calculator tap's accessibilityLabel
+  // hardcoded "pounds" regardless of display preference, so a kg-displayed
+  // weight ("102.1 kg" on screen) was announced to a screen reader as
+  // "pounds." Fixed: the label now uses the same value/unit shown visually.
+  test('the plate-calculator tap announces kilograms, not pounds, when displaying in kg (user item 4)', async () => {
+    setWeightUnitPreference('kg');
+    let component;
+    await act(async () => {
+      component = renderer.create(<SetLine sets={sets} />);
+    });
+    const pressable = component.root.findAll(
+      (n) => typeof n.props.accessibilityLabel === 'string' && n.props.accessibilityLabel.startsWith('Show plate loading')
+    )[0];
+    expect(pressable).toBeTruthy();
+    expect(pressable.props.accessibilityLabel).toBe('Show plate loading for 102.1 kilograms');
+    expect(pressable.props.accessibilityLabel).not.toContain('pounds');
+  });
+
+  test('the plate-calculator tap still announces pounds when displaying in lb', async () => {
+    let component;
+    await act(async () => {
+      component = renderer.create(<SetLine sets={sets} />);
+    });
+    const pressable = component.root.findAll(
+      (n) => typeof n.props.accessibilityLabel === 'string' && n.props.accessibilityLabel.startsWith('Show plate loading')
+    )[0];
+    expect(pressable.props.accessibilityLabel).toBe('Show plate loading for 225 pounds');
+  });
 });
 
 describe('WeightHistoryList unit display', () => {

@@ -73,12 +73,25 @@ describe('startRestTimer', () => {
     expect(mockStore.notificationScheduled).toBe(true);
   });
 
-  test('a rejected native schedule call leaves notificationScheduled: false rather than throwing', async () => {
+  test('a rejected native schedule call resolves with the persisted record (notificationScheduled: false) rather than rejecting', async () => {
+    // #577 review (Codex, post-freeze): startRestTimer must never reject —
+    // the record is already durably persisted before scheduling is
+    // attempted, and useRestTimer.js's start() only calls setRecord(r)
+    // after awaiting this promise, so a rejection here previously hid an
+    // already-persisted, already-running timer from the UI entirely.
     mockNotifications.scheduleNotificationAsync.mockRejectedValueOnce(new Error('native schedule failed'));
-    await expect(startRestTimer({ durationSec: 60 })).rejects.toThrow('native schedule failed');
-    // The record was persisted before the failed schedule attempt, so it
-    // still reflects the pre-schedule (false) state — never a false "true".
+    const record = await startRestTimer({ durationSec: 60 });
+    expect(record).toBeTruthy();
+    expect(record.notificationScheduled).toBe(false);
+    expect(mockStore).toBeTruthy();
     expect(mockStore.notificationScheduled).toBe(false);
+  });
+
+  test('a rejected cancelReminders or requestReminderPermission call also resolves with the persisted record rather than rejecting', async () => {
+    mockNotifications.getAllScheduledNotificationsAsync.mockRejectedValueOnce(new Error('cancel read failed'));
+    const record = await startRestTimer({ durationSec: 60 });
+    expect(record).toBeTruthy();
+    expect(record.notificationScheduled).toBe(false);
   });
 });
 

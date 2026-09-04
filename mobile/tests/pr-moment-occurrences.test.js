@@ -264,3 +264,35 @@ describe('deriveTrackedPROccurrences — activation anchor resolved against the 
     expect(buggyResult).toBeNull(); // the exact suppression bug the fix resolves
   });
 });
+
+// #577 review (Codex, post-freeze), finding 7 — the current note must stay
+// in its notebook position for the anchor cut, never be forced to the end.
+describe('current note kept in its notebook position for the anchor cut, not forced to the end (#577 review)', () => {
+  test('a pre-tracking session in the current note is correctly excluded when the note stays in its true (non-last) position, but wrongly retained if forced to the end', () => {
+    // True notebook order: current note FIRST, other note SECOND.
+    // anchor=1 (recorded when the exercise had exactly 1 total logged
+    // session — that session being the current note's own pre-tracking
+    // "5"). In true position, that lone early session is the one the
+    // anchor correctly excludes.
+    const currentRaw = '-Bench\n5 5';
+    const otherRaw = '-Bench\n50 5\n60 5\n70 5';
+    const activations = { bench: { anchor: 1, at: '2024-01-01T00:00:00.000Z' } };
+
+    // FIX: build sections preserving true note order (current first),
+    // exactly like useLogCurrentRoutineEditor.js's buildFullSections.
+    const currentSections = tag(currentRaw, 'note1').map((s) => ({ ...s, __noteOrdinal: 0 }));
+    const otherSections = tag(otherRaw, 'noteX').map((s, i) => ({ ...s, __sectionOrdinal: i, __noteOrdinal: 1 }));
+    const correctOrder = [...currentSections, ...otherSections];
+    const correctEntries = deriveTrackedPROccurrences(correctOrder, ['Bench'], activations);
+    const correctCurrentEntries = correctEntries.filter((e) => e.noteId === 'note1');
+    expect(correctCurrentEntries).toEqual([]); // correctly excluded — it's pre-tracking history
+
+    // OLD (buggy): current note's sections stripped out and appended AFTER
+    // every other note, regardless of true position.
+    const buggyOrder = [...otherSections, ...currentSections];
+    const buggyEntries = deriveTrackedPROccurrences(buggyOrder, ['Bench'], activations);
+    const buggyCurrentEntries = buggyEntries.filter((e) => e.noteId === 'note1');
+    expect(buggyCurrentEntries.length).toBe(1); // wrongly retained by the reordering bug
+    expect(buggyCurrentEntries[0].weight_value).toBe(5);
+  });
+});

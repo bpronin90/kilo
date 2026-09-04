@@ -15,7 +15,6 @@ import {
 } from '../../lib/data';
 import { loadRecoveryExcludedNoteIds } from '../../hooks/entries/recoveryBlockHooks';
 import { filterNotesForNormalAnalytics } from '../../lib/data/recoveryAnalyticsFilter';
-import { tagNoteSections } from '../analytics/analyticsDerivations';
 import { deriveTrackedPROccurrences } from '../../lib/data/workoutAnalytics';
 import { detectPRMoment } from '../../lib/prMoment';
 import { subscribeDirtyQueue, getDirtyRecords, SYNC_TABLES } from '../../storage/syncQueue';
@@ -649,6 +648,19 @@ export function useLogCurrentRoutineEditor({
       pendingPRRef.current = null;
       return;
     }
+    // #577 review (Codex-and-user, post-freeze): the deload-exclusion
+    // filter (matching deriveParsedSections' own signalSections logic) was
+    // only ever applied to OTHER notes (`eligibleOther` below) — the
+    // CURRENT note's own content was always included even when the note
+    // being edited IS itself a deload note, letting a deload session
+    // produce a PR celebration despite the contract's "deload-titled
+    // signal notes excluded" requirement. A deload note's own edits never
+    // produce a candidate at all now.
+    const currentTitle = lastSavedCurrentTitleRef.current ?? workoutNoteTitleRef.current;
+    if (isDeloadTitle(currentTitle) || isDeloadTitle(originalNoteState.title)) {
+      pendingPRRef.current = null;
+      return;
+    }
     // #577 gap fix: an A/B active-week switch mid-session changes which
     // half of the note's raw text `parseWorkoutNote` actually reads (see
     // `effectiveActiveWeek`/`applyWeekSkipToText` above) — the baseline and
@@ -662,20 +674,31 @@ export function useLogCurrentRoutineEditor({
     }
     try {
       const excludedNoteIds = await loadRecoveryExcludedNoteIds();
-      const otherNotes = (notes || []).filter((n) => n.id !== currentId);
-      const eligibleOther = filterNotesForNormalAnalytics(otherNotes, excludedNoteIds)
+      // #577 review (Codex, post-freeze): the eligible note list must
+      // preserve the SAME order Analytics itself uses — filterNotesForNormalAnalytics
+      // called on the full `notes` array, not on `notes` with the current
+      // note first removed and its sections appended at the very end. The
+      // activation anchor is positional in notebook order
+      // (resolveTrackedLiftAnchors/deriveWorkoutAnalytics count occurrences
+      // in section-list order), so forcing the current note's sections to
+      // the tail — regardless of where it actually sits — could cut
+      // sessions from a different note than Analytics does, producing the
+      // wrong tracked span and either suppressing or falsely announcing a
+      // PR. The current note's live (before/after) content now replaces
+      // its own entry IN PLACE, preserving every other note's position.
+      const eligibleNotes = filterNotesForNormalAnalytics(notes || [], excludedNoteIds)
         .filter((n) => !n.title?.startsWith(DELOAD_NOTE_PREFIX));
-      const taggedOther = tagNoteSections(eligibleOther);
 
-      const tagOwnSections = (rawText) => {
-        const { sections } = parseWorkoutNote(rawText || '');
+      const buildFullSections = (ownRawText) => eligibleNotes.flatMap((n, noteOrdinal) => {
+        const isCurrent = n.id === currentId;
+        const { sections } = parseWorkoutNote((isCurrent ? ownRawText : n.raw_text) || '');
         return sections.map((s, sectionOrdinal) => ({
           ...s,
-          __noteId: currentId,
-          __noteOrdinal: -1,
+          __noteId: isCurrent ? currentId : n.id,
+          __noteOrdinal: noteOrdinal,
           __sectionOrdinal: sectionOrdinal,
         }));
-      };
+      });
 
       // #577 review (Codex, post-freeze): the activation anchor/watermark
       // must be RESOLVED AND CUT against the FULL, UNSLICED Analytics
@@ -691,8 +714,8 @@ export function useLogCurrentRoutineEditor({
       // exactly this correctly — resolve, then sliceEntriesFromAnchor over
       // the true, correctly-ordered full sequence.
       const afterText = lastSavedCurrentTextRef.current ?? workoutNoteTextRef.current;
-      const fullAfterSections = [...taggedOther, ...tagOwnSections(afterText)];
-      const fullBeforeSections = [...taggedOther, ...tagOwnSections(originalNoteState.text)];
+      const fullAfterSections = buildFullSections(afterText);
+      const fullBeforeSections = buildFullSections(originalNoteState.text);
       const trackedNames = listTrackedLifts(trackedLifts);
       const fullAfterEntries = deriveTrackedPROccurrences(fullAfterSections, trackedNames, trackedLiftActivations);
       const fullBeforeEntries = deriveTrackedPROccurrences(fullBeforeSections, trackedNames, trackedLiftActivations);

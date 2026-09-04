@@ -75,7 +75,10 @@ export function AnalyticsStrengthSection({
                     style={[styles.oneKItem, item.value ? styles.oneKItemTappable : null]}
                     onPress={item.value && item.weightLb ? () => setPlateWeightLb(item.weightLb) : null}
                     accessibilityRole={item.value ? 'button' : undefined}
-                    accessibilityLabel={item.value ? `Show plate loading for ${item.label} at ${item.value.toFixed(0)} pounds` : undefined}
+                    // #577 review: `item.value` is display-space (it can be
+                    // kg under a metric preference) — this used to always
+                    // say "pounds," announcing a kg figure as pounds.
+                    accessibilityLabel={item.value ? `Show plate loading for ${item.label} at ${item.value.toFixed(0)} ${unit === 'kg' ? 'kilograms' : 'pounds'}` : undefined}
                   >
                     <Text style={styles.oneKItemValue}>{item.value?.toFixed(0) || '—'}</Text>
                     <Text style={styles.oneKItemLabel}>{item.label}</Text>

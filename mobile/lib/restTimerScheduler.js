@@ -52,21 +52,36 @@ export async function startRestTimer({ durationSec, exerciseLabel = null }) {
     const record = startTimerRecord({ durationSec, exerciseLabel });
     await Storage.saveRestTimerState(record);
     if (!remindersSupported()) return record;
-    await cancelReminders(REST_TIMER_KIND);
-    const granted = await requestReminderPermission();
-    if (!granted) return record;
-    const current = await Storage.loadRestTimerState();
-    if (!current || current.timerId !== record.timerId) return record; // superseded while awaiting permission
-    await scheduleRequests(buildNotificationRequest(record));
-    // #950 review (P2): only NOW — after permission was actually granted and
-    // the schedule call actually ran — is a background alert genuinely
-    // available for this timer. Persist that truth with the record so
-    // RestTimerBanner's "Background alert unavailable" warning reflects
-    // reality (permission denied, not-askable, or a rejected schedule call)
-    // rather than merely "this platform generally supports notifications."
-    const scheduled = { ...record, notificationScheduled: true };
-    await Storage.saveRestTimerState(scheduled);
-    return scheduled;
+    // #577 review (Codex, post-freeze): a failure anywhere in the
+    // cancel/permission/schedule chain below must never reject this
+    // function — the record is ALREADY durably persisted above, and per
+    // this feature's own contract a scheduling failure "never blocks the
+    // countdown." Before this fix, an uncaught rejection here propagated
+    // out of startRestTimer, which meant useRestTimer.js's start() never
+    // reached its own setRecord(r) call — the timer kept running in
+    // storage but vanished from the UI until the next unrelated
+    // reconciliation pass. Every failure path below falls back to
+    // returning the persisted (unscheduled) record instead.
+    try {
+      await cancelReminders(REST_TIMER_KIND);
+      const granted = await requestReminderPermission();
+      if (!granted) return record;
+      const current = await Storage.loadRestTimerState();
+      if (!current || current.timerId !== record.timerId) return record; // superseded while awaiting permission
+      await scheduleRequests(buildNotificationRequest(record));
+      // Only NOW — after permission was actually granted and the schedule
+      // call actually ran — is a background alert genuinely available for
+      // this timer. Persist that truth with the record so
+      // RestTimerBanner's "Background alert unavailable" warning reflects
+      // reality (permission denied, not-askable, or a rejected schedule
+      // call) rather than merely "this platform generally supports
+      // notifications."
+      const scheduled = { ...record, notificationScheduled: true };
+      await Storage.saveRestTimerState(scheduled);
+      return scheduled;
+    } catch {
+      return record;
+    }
   });
 }
 

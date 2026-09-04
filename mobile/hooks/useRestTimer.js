@@ -25,8 +25,18 @@ export function useRestTimer() {
 
   const reconcile = useCallback(async (wasActiveWhenElapsed) => {
     const { record: r, justElapsed: elapsed } = await reconcileRestTimer({ wasActiveWhenElapsed });
-    setRecord(r);
-    setRemaining(remainingMs(r));
+    // #577 review (Codex, post-freeze): reconcileRestTimer returns the
+    // ELAPSED record purely for informational/logging purposes even when
+    // it has already cleared storage and decided NOT to surface a banner
+    // (justElapsed: false — process-was-away or long-stale cases). Storing
+    // that record into hook state used to start the foreground-tick effect
+    // below, which immediately recomputes 0ms remaining and flips
+    // justElapsed to true itself — duplicating the OS alert on return to
+    // the app, and replaying a completion up to 24h old on a cold launch.
+    // Only a genuinely still-running record may ever enter state here.
+    const stillRunning = r && !isElapsed(r) ? r : null;
+    setRecord(stillRunning);
+    setRemaining(remainingMs(stillRunning));
     if (elapsed) setJustElapsed(true);
   }, []);
 

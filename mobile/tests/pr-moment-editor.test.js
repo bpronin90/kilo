@@ -192,3 +192,61 @@ describe('A/B activation anchor resolved against the full population (#577 revie
     expect(h.get().hook.prMoment.weight_value).toBe(999);
   });
 });
+
+describe('current note stays in its notebook position, not appended last (#577 review, Codex post-freeze)', () => {
+  test('appending a set to a note that is NOT last in `notes` still resolves the correct exercise coordinates end to end', async () => {
+    // notes = [currentNote, otherNote] — the current note is FIRST, not
+    // last. The old (buggy) code stripped it out of `notes` and appended
+    // its sections after every OTHER note, moving its true position later
+    // regardless of where it actually sits — corrupting the anchor cut's
+    // positional meaning for whichever note ends up displaced. This drives
+    // the same pipeline the hook actually uses (buildFullSections via
+    // computePendingPRCandidate) end to end and confirms a genuine append
+    // to the (non-last) current note still resolves to that note's own
+    // coordinates and celebrates correctly.
+    const raw = '-Bench\n135 5';
+    const currentNoteRef = { id: 'note1', title: 'Routine', raw_text: raw };
+    const otherNote = { id: 'noteX', title: 'Other', raw_text: '-Squat\n225 5\n235 5\n245 5' };
+    const h = makeHarness({ raw, notes: [currentNoteRef, otherNote] });
+    await h.enter();
+    await h.setText('-Bench\n135 5\n200 5');
+    await h.done();
+    expect(h.get().hook.prMoment).not.toBeNull();
+    expect(h.get().hook.prMoment.weight_value).toBe(200);
+  });
+});
+
+// #577 review (Codex, post-freeze), finding 7 — direct mechanism-level
+// reproduction (see pr-moment-occurrences.test.js's pure-function test of
+// the same numbers): the activation anchor is positional across the WHOLE
+// note population, so which note's sessions the anchor consumes depends on
+// each note's TRUE position, not on where it happens to land after
+// filtering. Verified via the pure `deriveTrackedPROccurrences` composition
+// in pr-moment-occurrences.test.js ("current note kept in its notebook
+// position for the anchor cut, not forced to the end").
+
+// User-reported item 3: "Deload notes triggering PR celebrations."
+// Confirmed defect: the deload-exclusion filter (matching
+// deriveParsedSections' own signalSections logic) was only ever applied to
+// OTHER notes — the CURRENT note's own content was always included even
+// when the note being edited IS itself a deload note. Fixed: a deload note
+// (current title, or its baseline title) now never produces a candidate.
+describe('deload notes never trigger a PR celebration (user item 3)', () => {
+  test('editing a deload-titled note and appending a new best never celebrates', async () => {
+    const raw = '-Bench\n135 5';
+    const h = makeHarness({ raw, note: { title: 'Deload · Week 3', activeWeek: null } });
+    await h.enter();
+    await h.setText('-Bench\n135 5\n999 5');
+    await h.done();
+    expect(h.get().hook.prMoment).toBeNull();
+  });
+
+  test('an ordinary (non-deload) note still celebrates normally, confirming the guard is scoped to deload notes only', async () => {
+    const raw = '-Bench\n135 5';
+    const h = makeHarness({ raw, note: { title: 'Push Day', activeWeek: null } });
+    await h.enter();
+    await h.setText('-Bench\n135 5\n999 5');
+    await h.done();
+    expect(h.get().hook.prMoment).not.toBeNull();
+  });
+});

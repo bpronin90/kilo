@@ -326,8 +326,16 @@ export function SetLine({ sets, selectable, mark }) {
               accessibilityRole="button"
               accessibilityLabel={
                 group.convertedFromKg
+                  // Describes provenance in the units actually typed/parsed
+                  // (canonical lb, converted from an explicit kg marker) —
+                  // independent of the display-unit preference, matching
+                  // the visible "(40kg)" parenthetical.
                   ? `Show plate loading for ${group.weight} pounds, converted from ${group.kgValue} kilograms`
-                  : `Show plate loading for ${group.weight} pounds`
+                  // #577 review: this used to hardcode "pounds" even when
+                  // displaying in kg — a kg value would be visually shown
+                  // ("88 kg") but announced as "88 pounds". Must match the
+                  // same display unit/value shown on screen.
+                  : `Show plate loading for ${formatLiftWeightValue(group.weight, unit)} ${unit === 'kg' ? 'kilograms' : 'pounds'}`
               }
             >
               {/* #852: a converted group's "(40kg)" suffix is part of the

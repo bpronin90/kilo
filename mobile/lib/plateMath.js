@@ -198,57 +198,70 @@ function bestPlateCombination(targetMinor, normalizedPlates) {
   const cap = Math.min(targetMinor, totalAvailableMinor);
   if (cap <= 0) return { plates: [], usedMinor: 0 };
 
-  // dp[s] = minimum plate count to reach sum s exactly (Infinity if
-  // unreachable). lastSize[s] = the plate size whose inclusion produced
-  // dp[s]'s current (best) value, for backtracking. Processing normalizedPlates
-  // in its existing largest-first order, and never overwriting on a tie
-  // (`< `, not `<=`), makes the larger size win any tie already reachable by
-  // an earlier (larger) size — the required stable larger-plate-first
-  // tie-break.
-  const dp = new Array(cap + 1).fill(Infinity);
-  dp[0] = 0;
-  const lastSize = new Array(cap + 1).fill(null);
+  const items = normalizedPlates
+    .map(({ size, count }) => ({ size, sizeMinor: toMinorUnits(size), count }))
+    .filter((it) => it.sizeMinor <= cap && it.count > 0);
 
-  for (const { size, count } of normalizedPlates) {
-    const sizeMinor = toMinorUnits(size);
-    if (sizeMinor > cap) continue;
-    // One descending 0/1-style relaxation pass per available unit of this
-    // plate size — repeating it `count` times (each pass reusing the
-    // previous pass's fully-updated array) is the standard technique for
-    // bounded-quantity knapsack: it allows up to `count` total uses of this
-    // size across the whole DP while each individual pass still respects
-    // "at most one more use," so the persisted dp values — and any
-    // backtrack through lastSize — can never exceed the true inventory cap.
+  // #950 review (Codex, post-freeze): the previous version kept a single
+  // flat `lastSize` array shared across every plate type's relaxation
+  // passes. A cell's predecessor recorded there could be silently
+  // overwritten by an UNRELATED later pass improving that same cell for a
+  // different reason, so backtracking through it could reuse a plate size
+  // more times than its configured count — e.g. 265 lb / 45 lb bar /
+  // {45:2, 25:4, 10:1} was reported as two 45s plus two 10s despite only
+  // one 10 existing.
+  //
+  // Fix: one dp row PER DISTINCT SIZE, each derived exactly once from the
+  // row before it and never mutated afterward (`prev` is read-only; `cur`
+  // is `prev`'s own private copy). Since a row is only ever written while
+  // it is being built and read-only forever after, no later size's
+  // processing can retroactively corrupt an earlier size's row — the
+  // "immutable predecessor" the fix requires. Reconstruction then walks
+  // rows in reverse; for each size it tries every valid quantity from its
+  // own count down to 0 (cheap — bounded by MAX_COUNT_PER_SIZE) and takes
+  // the first that reconciles the row's value with the row before it, so
+  // it can never claim more of a size than that row's own relaxation
+  // (itself correctly bounded by `count` sequential passes) actually used.
+  const rows = [new Float64Array(cap + 1).fill(Infinity)];
+  rows[0][0] = 0;
+  for (const { sizeMinor, count } of items) {
+    const prev = rows[rows.length - 1];
+    const cur = prev.slice();
     for (let k = 0; k < count; k++) {
       for (let s = cap; s >= sizeMinor; s--) {
-        const candidate = dp[s - sizeMinor] + 1;
-        if (candidate < dp[s]) {
-          dp[s] = candidate;
-          lastSize[s] = size;
-        }
+        const candidate = cur[s - sizeMinor] + 1;
+        if (candidate < cur[s]) cur[s] = candidate;
       }
     }
+    rows.push(cur);
   }
 
+  const finalRow = rows[rows.length - 1];
   let bestSum = 0;
   for (let s = cap; s >= 0; s--) {
-    if (dp[s] < Infinity) {
+    if (finalRow[s] < Infinity) {
       bestSum = s;
       break;
     }
   }
 
-  const counts = new Map();
+  const plates = [];
   let s = bestSum;
-  while (s > 0 && lastSize[s] != null) {
-    const size = lastSize[s];
-    counts.set(size, (counts.get(size) || 0) + 1);
-    s -= toMinorUnits(size);
+  for (let i = items.length - 1; i >= 0; i--) {
+    const { size, sizeMinor, count } = items[i];
+    const prev = rows[i];
+    const cur = rows[i + 1];
+    const maxQ = Math.min(count, Math.floor(s / sizeMinor));
+    for (let q = maxQ; q >= 0; q--) {
+      const remainder = s - q * sizeMinor;
+      if (prev[remainder] + q === cur[s]) {
+        if (q > 0) plates.push({ size, count: q });
+        s = remainder;
+        break;
+      }
+    }
   }
-
-  const plates = [...counts.entries()]
-    .sort((a, b) => b[0] - a[0])
-    .map(([size, count]) => ({ size, count }));
+  plates.sort((a, b) => b.size - a.size);
 
   return { plates, usedMinor: bestSum };
 }

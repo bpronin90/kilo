@@ -192,6 +192,37 @@ describe('computePlateLoad', () => {
     expect(load.remainder).toBe(0);
   });
 
+  // #577 review (Codex, post-freeze): a shared, mutable `lastSize`
+  // backtrack array let a later relaxation overwrite the predecessor an
+  // earlier cell's reconstruction depended on, so the backtrack could
+  // claim more of a plate size than its configured count.
+  test('265 lb / 45 lb bar / {45:2, 25:4, 10:1} never reports more 10s than the one available (the exact review-reported case)', () => {
+    const load = computePlateLoad({
+      totalWeight: 265,
+      barWeight: 45,
+      platesPerSide: [{ size: 45, count: 2 }, { size: 25, count: 4 }, { size: 10, count: 1 }],
+    });
+    // perSideTarget = 110. The only exact (remainder-0) combination
+    // respecting the inventory is 4×25 + 1×10 = 110; the previously
+    // reported bug was two 45s plus two 10s (only one 10 exists).
+    expect(load.valid).toBe(true);
+    expect(load.remainder).toBe(0);
+    const tenCount = load.plates.find((p) => p.size === 10)?.count || 0;
+    expect(tenCount).toBeLessThanOrEqual(1);
+    expect(load.plates).toEqual([{ size: 25, count: 4 }, { size: 10, count: 1 }]);
+  });
+
+  test('the fix never reports more of ANY size than its configured inventory, across a range of adversarial targets', () => {
+    const platesPerSide = [{ size: 45, count: 2 }, { size: 25, count: 4 }, { size: 10, count: 1 }, { size: 5, count: 3 }];
+    const inventory = new Map(platesPerSide.map((p) => [p.size, p.count]));
+    for (let totalWeight = 46; totalWeight <= 400; totalWeight += 7) {
+      const load = computePlateLoad({ totalWeight, barWeight: 45, platesPerSide });
+      for (const p of load.plates) {
+        expect(p.count).toBeLessThanOrEqual(inventory.get(p.size));
+      }
+    }
+  });
+
   test('a finite inventory with no exact loading still minimizes the remainder (not just greedy-first-fit)', () => {
     // perSideTarget = 52. {45:1} alone leaves 7. {25:2}=50 leaves 2 — a
     // smaller remainder than greedy's 45-first pick, even though neither is
