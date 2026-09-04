@@ -88,4 +88,18 @@ describe('RestTimerBanner style prop — tab-bar/safe-area clearance (#577 revie
     const tree = renderBanner({ isRunning: false, remainingMs: 0, justElapsed: false, backgroundAlertAvailable: true, showStart: false, style: { marginBottom: 88 } });
     expect(tree.toJSON()).toBeNull();
   });
+
+  // #577: the Log-screen startOnly instance renders the idle "start" row
+  // (isRunning/justElapsed both false, showStart true) — the very state that
+  // was left uncovered by the tests above, which only exercised style on the
+  // running/done states. LogScreen.js omitted the style prop on this
+  // instance entirely, leaving the start row uncleared behind the absolute
+  // bottom TabBar; this pins that the row honors the same clearance contract.
+  test('the Log-screen start row (startOnly, showStart) applies the clearance style', () => {
+    const tree = renderBanner({ isRunning: false, remainingMs: 0, justElapsed: false, backgroundAlertAvailable: true, showStart: true, startOnly: true, style: { marginBottom: 88 } });
+    const json = tree.toJSON();
+    expect(json).not.toBeNull();
+    const style = Array.isArray(json.props.style) ? Object.assign({}, ...json.props.style) : json.props.style;
+    expect(style.marginBottom).toBe(88);
+  });
 });

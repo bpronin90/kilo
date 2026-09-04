@@ -1433,6 +1433,7 @@ export function LogScreen({
         onStart={onStartRestTimer}
         showStart={!otherEditor.editingNoteId && currentEditor.mode === 'edit'}
         startOnly
+        style={{ marginBottom: bottomBannerClearance }}
       />
       {/* #577 (Contract 3): top-level, beside SessionCheckInModal, outside
           the editor card branch — Done switching read/edit mode cannot
