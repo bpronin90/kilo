@@ -141,31 +141,128 @@ export function computePlateLoad(totalWeightOrOptions, barWeightArg = BAR_WEIGHT
   }
 
   const perSideTarget = (totalWeight - barWeight) / 2;
-  let remainingMinor = toMinorUnits(perSideTarget);
+  const targetMinor = toMinorUnits(perSideTarget);
 
-  const plates = [];
-  for (const { size, count } of normalizedPlates) {
-    const sizeMinor = toMinorUnits(size);
-    const maxByRemaining = Math.floor(remainingMinor / sizeMinor);
-    const use = Math.min(count, maxByRemaining);
-    if (use > 0) {
-      plates.push({ size, count: use });
-      remainingMinor -= use * sizeMinor;
-    }
-  }
+  const { plates, usedMinor } = bestPlateCombination(targetMinor, normalizedPlates);
 
   return {
     ...base,
     perSideTarget,
     plates,
-    remainder: remainingMinor / MINOR_UNIT_SCALE,
+    remainder: (targetMinor - usedMinor) / MINOR_UNIT_SCALE,
   };
 }
 
+// #950 review (P2): greedy descending selection does not minimize the
+// remainder for a finite/editable inventory — e.g. a 145 lb target against a
+// 45 lb bar with a per-side inventory of {45:1, 25:2} has an EXACT two-25
+// loading, but greedy picks the 45 first and reports 5 lb unloadable.
+// Finds the combination that minimizes the remainder first (maximizes the
+// loaded sum), then minimizes total plate count, with a stable larger-
+// plate-first tie-break — via a bounded 0/1-knapsack-style DP (each plate
+// unit is its own relaxation pass, so the per-size `count` cap is respected
+// exactly; see the `k` loop below).
+//
+// Bounded for adversarial input: REMAINDER_SEARCH_CAP_MINOR caps the DP
+// array size regardless of how large a validated (but still huge) target
+// is, so runtime/memory never scale unboundedly. A target beyond that cap —
+// far past any real per-side loading — degrades to the previous greedy
+// selection rather than hanging; this is a documented, deliberately rare
+// fallback, not the common path.
+const REMAINDER_SEARCH_CAP_MINOR = 200000; // 2,000 lb/kg per side — covers any real loading, including extreme edge cases within MAX_WEIGHT
+
+function greedyPlateSelection(targetMinor, normalizedPlates) {
+  let remaining = targetMinor;
+  const plates = [];
+  for (const { size, count } of normalizedPlates) {
+    const sizeMinor = toMinorUnits(size);
+    const use = Math.min(count, Math.floor(remaining / sizeMinor));
+    if (use > 0) {
+      plates.push({ size, count: use });
+      remaining -= use * sizeMinor;
+    }
+  }
+  return { plates, usedMinor: targetMinor - remaining };
+}
+
+function bestPlateCombination(targetMinor, normalizedPlates) {
+  if (targetMinor <= 0) return { plates: [], usedMinor: 0 };
+
+  const totalAvailableMinor = normalizedPlates.reduce(
+    (sum, p) => sum + toMinorUnits(p.size) * p.count,
+    0
+  );
+  if (targetMinor > REMAINDER_SEARCH_CAP_MINOR) {
+    return greedyPlateSelection(targetMinor, normalizedPlates);
+  }
+  const cap = Math.min(targetMinor, totalAvailableMinor);
+  if (cap <= 0) return { plates: [], usedMinor: 0 };
+
+  // dp[s] = minimum plate count to reach sum s exactly (Infinity if
+  // unreachable). lastSize[s] = the plate size whose inclusion produced
+  // dp[s]'s current (best) value, for backtracking. Processing normalizedPlates
+  // in its existing largest-first order, and never overwriting on a tie
+  // (`< `, not `<=`), makes the larger size win any tie already reachable by
+  // an earlier (larger) size — the required stable larger-plate-first
+  // tie-break.
+  const dp = new Array(cap + 1).fill(Infinity);
+  dp[0] = 0;
+  const lastSize = new Array(cap + 1).fill(null);
+
+  for (const { size, count } of normalizedPlates) {
+    const sizeMinor = toMinorUnits(size);
+    if (sizeMinor > cap) continue;
+    // One descending 0/1-style relaxation pass per available unit of this
+    // plate size — repeating it `count` times (each pass reusing the
+    // previous pass's fully-updated array) is the standard technique for
+    // bounded-quantity knapsack: it allows up to `count` total uses of this
+    // size across the whole DP while each individual pass still respects
+    // "at most one more use," so the persisted dp values — and any
+    // backtrack through lastSize — can never exceed the true inventory cap.
+    for (let k = 0; k < count; k++) {
+      for (let s = cap; s >= sizeMinor; s--) {
+        const candidate = dp[s - sizeMinor] + 1;
+        if (candidate < dp[s]) {
+          dp[s] = candidate;
+          lastSize[s] = size;
+        }
+      }
+    }
+  }
+
+  let bestSum = 0;
+  for (let s = cap; s >= 0; s--) {
+    if (dp[s] < Infinity) {
+      bestSum = s;
+      break;
+    }
+  }
+
+  const counts = new Map();
+  let s = bestSum;
+  while (s > 0 && lastSize[s] != null) {
+    const size = lastSize[s];
+    counts.set(size, (counts.get(size) || 0) + 1);
+    s -= toMinorUnits(size);
+  }
+
+  const plates = [...counts.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([size, count]) => ({ size, count }));
+
+  return { plates, usedMinor: bestSum };
+}
+
 // Formats a plate weight for display, dropping trailing ".0".
+// #950 review (P2): a standard 1.25 kg plate was being rounded to one
+// decimal ("1.3 kg"), misidentifying the denomination. Round to hundredths
+// (matching the hundredths-of-a-unit precision the rest of this module
+// already uses — MINOR_UNIT_SCALE) and drop only genuinely trailing zeros,
+// so "45" stays "45", "2.5" stays "2.5", and "1.25" now stays "1.25".
 export function formatPlateWeight(value) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '';
-  return String(Math.round(value * 10) / 10);
+  const hundredths = Math.round(value * MINOR_UNIT_SCALE) / MINOR_UNIT_SCALE;
+  return String(hundredths);
 }
 
 // ── Persisted equipment profile (#577) ──────────────────────────────────

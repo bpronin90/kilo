@@ -34,16 +34,19 @@ describe('computePlateLoad', () => {
     expect(computePlateLoad(135).plates).toEqual([{ size: 45, count: 1 }]);
   });
 
-  test('uses every plate size when needed (220 → 45+25+10+5+2.5 per side)', () => {
+  test('220 loads exactly with the minimal plate count (#950 review: bounded optimizer, not greedy)', () => {
+    // perSideTarget = 87.5. The old greedy-descending algorithm happened to
+    // land on 45+25+10+5+2.5 (5 plates); the bounded-search optimizer finds
+    // a DIFFERENT 5-plate exact combination (25×3+10+2.5) — both are valid,
+    // exact, minimal-count loadings for an unlimited inventory. What matters
+    // is optimality (remainder 0, no plate-count regression), not which of
+    // several equally-optimal combinations is chosen.
     const load = computePlateLoad(220);
-    expect(load.plates).toEqual([
-      { size: 45, count: 1 },
-      { size: 25, count: 1 },
-      { size: 10, count: 1 },
-      { size: 5, count: 1 },
-      { size: 2.5, count: 1 },
-    ]);
     expect(load.remainder).toBe(0);
+    const totalPlates = load.plates.reduce((n, p) => n + p.count, 0);
+    expect(totalPlates).toBe(5);
+    const loaded = load.plates.reduce((sum, p) => sum + p.size * p.count, 0);
+    expect(loaded).toBe(87.5);
   });
 
   test('exact bar weight is an empty bar', () => {
@@ -164,15 +167,58 @@ describe('computePlateLoad', () => {
     }).valid).toBe(false); // exceeds MAX_DISTINCT_SIZES
   });
 
-  test('legacy positional call (no platesPerSide) keeps unlimited-count pre-#577 behavior', () => {
+  test('legacy positional call (no platesPerSide) still loads exactly with unlimited inventory', () => {
+    // Same optimizer, same result as the object-shape call above — the
+    // legacy call path is not a different code path, only a different
+    // argument shape (see the "220 loads exactly" test for why an exact
+    // plate-array match isn't asserted here).
     const load = computePlateLoad(220, 45);
-    expect(load.plates).toEqual([
-      { size: 45, count: 1 },
-      { size: 25, count: 1 },
-      { size: 10, count: 1 },
-      { size: 5, count: 1 },
-      { size: 2.5, count: 1 },
-    ]);
+    expect(load.remainder).toBe(0);
+    const loaded = load.plates.reduce((sum, p) => sum + p.size * p.count, 0);
+    expect(loaded).toBe(87.5);
+  });
+
+  // ── #950 review (P2): bounded optimizer over a finite inventory ────────
+  test('145 lb / 45 lb bar / {45:1, 25:2} per side has an exact two-25 loading (the exact review-reported case)', () => {
+    const load = computePlateLoad({
+      totalWeight: 145,
+      barWeight: 45,
+      platesPerSide: [{ size: 45, count: 1 }, { size: 25, count: 2 }],
+    });
+    // perSideTarget = 50. Greedy picks the 45 first (leaving 5 unloadable);
+    // the optimizer must find the exact 25+25 = 50 loading instead.
+    expect(load.valid).toBe(true);
+    expect(load.plates).toEqual([{ size: 25, count: 2 }]);
+    expect(load.remainder).toBe(0);
+  });
+
+  test('a finite inventory with no exact loading still minimizes the remainder (not just greedy-first-fit)', () => {
+    // perSideTarget = 52. {45:1} alone leaves 7. {25:2}=50 leaves 2 — a
+    // smaller remainder than greedy's 45-first pick, even though neither is
+    // exact.
+    const load = computePlateLoad({
+      totalWeight: 149,
+      barWeight: 45,
+      platesPerSide: [{ size: 45, count: 1 }, { size: 25, count: 2 }],
+    });
+    expect(load.remainder).toBe(2);
+    expect(load.plates).toEqual([{ size: 25, count: 2 }]);
+  });
+
+  test('a target far beyond the bounded search cap degrades to greedy rather than hanging', () => {
+    // Documented fallback: an implausibly large per-side target (well past
+    // any real loading, but still under MAX_WEIGHT) skips the DP search and
+    // falls back to greedy selection so runtime stays bounded regardless of
+    // input. perSideTarget = 4977.5 units here, well past
+    // REMAINDER_SEARCH_CAP_MINOR (2,000 units).
+    const load = computePlateLoad({
+      totalWeight: 10000,
+      barWeight: 45,
+      platesPerSide: [{ size: 45, count: 50 }],
+    });
+    expect(load.valid).toBe(true);
+    expect(load.plates).toEqual([{ size: 45, count: 50 }]); // greedy still uses everything available
+    expect(load.remainder).toBeCloseTo(2727.5, 6);
   });
 });
 
@@ -221,7 +267,16 @@ describe('formatPlateWeight', () => {
 
   test('keeps one decimal for fractional plates', () => {
     expect(formatPlateWeight(2.5)).toBe('2.5');
-    expect(formatPlateWeight(1.25)).toBe('1.3');
+  });
+
+  // #950 review (P2): a 1.25 kg plate must read as "1.25", not round to
+  // "1.3" and misidentify the denomination.
+  test('preserves two decimals for a standard 1.25 kg plate instead of rounding to one', () => {
+    expect(formatPlateWeight(1.25)).toBe('1.25');
+  });
+
+  test('drops a genuinely trailing zero at two decimals (e.g. 1.20 → 1.2)', () => {
+    expect(formatPlateWeight(1.2)).toBe('1.2');
   });
 
   test('returns empty string for non-numeric input', () => {

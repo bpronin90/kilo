@@ -91,7 +91,17 @@ export function useRestTimer() {
     remainingMs: remaining,
     isRunning: !!record && !isElapsed(record),
     justElapsed,
-    backgroundAlertAvailable: remindersSupported(),
+    // #950 review (P2): while a timer is active, this must reflect whether a
+    // background alert was ACTUALLY scheduled for THIS timer (permission
+    // granted + the schedule call succeeded — record.notificationScheduled,
+    // set by restTimerScheduler.startRestTimer/persisted with the record),
+    // not merely whether the platform generally supports notifications.
+    // Denied permission, "can't ask again", or a rejected native schedule
+    // call all correctly read as unavailable here. Before any timer has ever
+    // started there is no record yet, so remindersSupported() is used only
+    // as a platform-capability hint (RestTimerBanner never shows this
+    // warning outside a running timer anyway).
+    backgroundAlertAvailable: record ? !!record.notificationScheduled : remindersSupported(),
     start,
     cancel,
     dismissDone,

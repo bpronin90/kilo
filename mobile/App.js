@@ -46,6 +46,7 @@ import { migrateSensitiveDeviceData } from './storage/secureStorage';
 import { makeWeightEntry } from './lib/data';
 import { reconcileWorkoutReminder, installForegroundHandler } from './lib/reminderScheduler';
 import { useRestTimer } from './hooks/useRestTimer';
+import { RestTimerBanner } from './components/RestTimerBanner';
 import { buildCloudExport, importBackup, getStorageMode, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed } from './storage/entries';
 import { markStartupPhase } from './storage/entries/startupTiming';
 import { purgePersistedDerivedSections } from './storage/entries/derivedCachePurge';
@@ -967,6 +968,23 @@ function AppShell({ onDeviceDataWiped }) {
           )}
           <View style={styles.content}>{renderContent()}</View>
         </KeyboardAvoidingView>
+        {/* #950 review (P1): mounted at the app-shell level, NOT inside
+            MemoLogScreen, so timer completion is visible regardless of which
+            tab is active — the per-tab View wrappers hide MemoLogScreen's
+            entire subtree (including anything it renders) whenever another
+            tab is active, and the OS notification is deliberately suppressed
+            while the app is foregrounded on ANY tab, so this in-app surface
+            is the only alert the user gets in that case. */}
+        <RestTimerBanner
+          isRunning={restTimer.isRunning}
+          remainingMs={restTimer.remainingMs}
+          justElapsed={restTimer.justElapsed}
+          backgroundAlertAvailable={restTimer.backgroundAlertAvailable}
+          onCancel={restTimer.cancel}
+          onDismissDone={restTimer.dismissDone}
+          onStart={restTimer.start}
+          showStart={false}
+        />
         <TabBar
           tabs={TABS}
           activeTab={activeTab}

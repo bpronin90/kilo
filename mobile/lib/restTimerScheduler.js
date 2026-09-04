@@ -58,7 +58,15 @@ export async function startRestTimer({ durationSec, exerciseLabel = null }) {
     const current = await Storage.loadRestTimerState();
     if (!current || current.timerId !== record.timerId) return record; // superseded while awaiting permission
     await scheduleRequests(buildNotificationRequest(record));
-    return record;
+    // #950 review (P2): only NOW — after permission was actually granted and
+    // the schedule call actually ran — is a background alert genuinely
+    // available for this timer. Persist that truth with the record so
+    // RestTimerBanner's "Background alert unavailable" warning reflects
+    // reality (permission denied, not-askable, or a rejected schedule call)
+    // rather than merely "this platform generally supports notifications."
+    const scheduled = { ...record, notificationScheduled: true };
+    await Storage.saveRestTimerState(scheduled);
+    return scheduled;
   });
 }
 

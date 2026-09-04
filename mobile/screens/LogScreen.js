@@ -1413,6 +1413,10 @@ export function LogScreen({
           onSourceJumpApplied={otherEditor.editingNoteId ? otherEditor.clearPendingSourceJump : currentEditor.clearPendingSourceJump}
         />
       </ScreenShell>
+      {/* #950 review (P1): only the idle start row here — the countdown/
+          done surface is mounted once at the app-shell level (App.js) so it
+          stays visible when the user leaves the Log tab while a timer is
+          running. */}
       <RestTimerBanner
         isRunning={restTimerIsRunning}
         remainingMs={restTimerRemainingMs}
@@ -1422,6 +1426,7 @@ export function LogScreen({
         onDismissDone={onDismissRestTimerDone}
         onStart={onStartRestTimer}
         showStart={!otherEditor.editingNoteId && currentEditor.mode === 'edit'}
+        startOnly
       />
       <SessionCheckInModal
         // Gated on the toggle exactly as the Analytics one is. The hook's

@@ -17,6 +17,12 @@ const DURATION_PRESETS_SEC = [60, 90, 120, 180];
 // idle start row (the current editor session is in edit mode, i.e. there is
 // a working set to rest after); it never renders while a timer is already
 // running or just finished.
+// `startOnly` renders just the idle start row (or nothing while a timer is
+// already running/just finished) — used for the contextual instance mounted
+// inside the Log editor, next to where sets are logged. The countdown/done
+// surface itself is mounted once at the app-shell level (#950 review P1) so
+// it stays visible on every tab, not only Log — `startOnly` keeps the two
+// instances from ever rendering the same countdown/done UI twice.
 export function RestTimerBanner({
   isRunning,
   remainingMs,
@@ -26,9 +32,14 @@ export function RestTimerBanner({
   onDismissDone,
   onStart,
   showStart = false,
+  startOnly = false,
 }) {
   const styles = useThemedStyles(createStyles);
-  if (!isRunning && !justElapsed && !showStart) return null;
+  if (startOnly) {
+    if (isRunning || justElapsed || !showStart) return null;
+  } else if (!isRunning && !justElapsed && !showStart) {
+    return null;
+  }
 
   if (!isRunning && !justElapsed && showStart) {
     return (

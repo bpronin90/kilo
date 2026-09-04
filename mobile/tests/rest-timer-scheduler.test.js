@@ -56,6 +56,30 @@ describe('startRestTimer', () => {
     expect(record).toBeTruthy();
     expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
   });
+
+  // #950 review (P2): notificationScheduled must reflect the ACTUAL
+  // permission/scheduling outcome, not merely platform support, so
+  // RestTimerBanner's "Background alert unavailable" warning is accurate.
+  test('denied permission is reflected as notificationScheduled: false on the returned/persisted record', async () => {
+    mockNotifications.getPermissionsAsync.mockResolvedValue({ granted: false, canAskAgain: false });
+    const record = await startRestTimer({ durationSec: 60 });
+    expect(record.notificationScheduled).toBe(false);
+    expect(mockStore.notificationScheduled).toBe(false);
+  });
+
+  test('granted permission and a successful schedule call set notificationScheduled: true', async () => {
+    const record = await startRestTimer({ durationSec: 60 });
+    expect(record.notificationScheduled).toBe(true);
+    expect(mockStore.notificationScheduled).toBe(true);
+  });
+
+  test('a rejected native schedule call leaves notificationScheduled: false rather than throwing', async () => {
+    mockNotifications.scheduleNotificationAsync.mockRejectedValueOnce(new Error('native schedule failed'));
+    await expect(startRestTimer({ durationSec: 60 })).rejects.toThrow('native schedule failed');
+    // The record was persisted before the failed schedule attempt, so it
+    // still reflects the pre-schedule (false) state — never a false "true".
+    expect(mockStore.notificationScheduled).toBe(false);
+  });
 });
 
 describe('cancelRestTimer', () => {

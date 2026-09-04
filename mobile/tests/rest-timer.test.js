@@ -50,15 +50,19 @@ describe('normalizeRestTimerRecord', () => {
   });
 
   test('a valid record round-trips', () => {
-    const record = { version: 1, timerId: 'x', startedAtMs: nowMs, durationSec: 60, endsAtMs: nowMs + 60000, exerciseLabel: 'Bench', notificationId: 'n1' };
+    const record = { version: 1, timerId: 'x', startedAtMs: nowMs, durationSec: 60, endsAtMs: nowMs + 60000, exerciseLabel: 'Bench', notificationId: 'n1', notificationScheduled: true };
     expect(normalizeRestTimerRecord(record, nowMs)).toEqual(record);
   });
 
-  test('missing exerciseLabel/notificationId normalize to null rather than throwing', () => {
+  test('missing exerciseLabel/notificationId/notificationScheduled normalize to null/false rather than throwing', () => {
     const record = { version: 1, timerId: 'x', startedAtMs: nowMs, durationSec: 60, endsAtMs: nowMs + 60000 };
     const normalized = normalizeRestTimerRecord(record, nowMs);
     expect(normalized.exerciseLabel).toBeNull();
     expect(normalized.notificationId).toBeNull();
+    // #950 review (P2): a record with no explicit `notificationScheduled: true`
+    // must normalize to false, never true — this is what
+    // RestTimerBanner's "Background alert unavailable" warning keys off.
+    expect(normalized.notificationScheduled).toBe(false);
   });
 });
 

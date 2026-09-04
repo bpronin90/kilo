@@ -34,6 +34,13 @@ export function startTimerRecord({ durationSec, exerciseLabel = null, nowMs = Da
     endsAtMs,
     exerciseLabel,
     notificationId: null,
+    // #950 review (P2): whether a background OS notification was actually
+    // scheduled for THIS timer (permission granted + schedule succeeded) —
+    // not merely whether the platform supports scheduling one at all. This
+    // is what RestTimerBanner's "Background alert unavailable" warning must
+    // reflect, and it is persisted with the record so a resumed/cold-started
+    // timer still reports its true alert status, not a re-guessed default.
+    notificationScheduled: false,
   };
 }
 
@@ -43,7 +50,7 @@ export function startTimerRecord({ durationSec, exerciseLabel = null, nowMs = Da
 // garbage state.
 export function normalizeRestTimerRecord(raw, nowMs = Date.now()) {
   if (!raw || typeof raw !== 'object') return null;
-  const { version, timerId, startedAtMs, durationSec, endsAtMs, exerciseLabel, notificationId } = raw;
+  const { version, timerId, startedAtMs, durationSec, endsAtMs, exerciseLabel, notificationId, notificationScheduled } = raw;
   if (version !== RECORD_VERSION) return null;
   if (typeof timerId !== 'string' || timerId.length === 0) return null;
   if (!isFiniteNumber(startedAtMs) || !isFiniteNumber(durationSec) || !isFiniteNumber(endsAtMs)) return null;
@@ -59,6 +66,7 @@ export function normalizeRestTimerRecord(raw, nowMs = Date.now()) {
     endsAtMs,
     exerciseLabel: typeof exerciseLabel === 'string' ? exerciseLabel : null,
     notificationId: typeof notificationId === 'string' ? notificationId : null,
+    notificationScheduled: notificationScheduled === true,
   };
 }
 
