@@ -1433,7 +1433,12 @@ export function LogScreen({
         onStart={onStartRestTimer}
         showStart={!otherEditor.editingNoteId && currentEditor.mode === 'edit'}
         startOnly
-        style={{ marginBottom: bottomBannerClearance }}
+        // #951 review: only the bottommost visible banner reserves the
+        // clearance — PRMomentBanner renders below this one in the flow, so
+        // when it's also showing, it alone carries the margin. Otherwise the
+        // two clearances would stack into a large blank gap above the tab
+        // bar whenever both banners are visible together.
+        style={{ marginBottom: currentEditor.prMoment ? 0 : bottomBannerClearance }}
       />
       {/* #577 (Contract 3): top-level, beside SessionCheckInModal, outside
           the editor card branch — Done switching read/edit mode cannot
