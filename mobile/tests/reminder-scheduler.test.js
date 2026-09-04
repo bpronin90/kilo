@@ -29,6 +29,9 @@ const {
   reconcileWorkoutReminder,
   __resetWorkoutReminderReconciliationForTests,
   installForegroundHandler,
+  setNotificationHandlerAppActive,
+  REST_TIMER_KIND,
+  __resetNotificationHandlerPreparedForTests,
 } = require('../lib/reminderScheduler');
 
 function setActiveNote(note) {
@@ -492,5 +495,50 @@ describe('reconcileWorkoutReminder (#590)', () => {
       .map((c) => c[0].trigger.weekday)
       .filter((weekday) => weekday != null);
     expect(weekdays).toContain(6);
+  });
+});
+
+// #577: foreground suppression is scoped to REST_TIMER_KIND only — every
+// existing weigh-in/workout assertion above must keep passing unmodified,
+// which is the regression guard for this addition.
+describe('foreground notification suppression (#577)', () => {
+  async function getHandlerResult(kind, active) {
+    __resetNotificationHandlerPreparedForTests();
+    setNotificationHandlerAppActive(active);
+    await installForegroundHandler();
+    const { handleNotification } = mockNotifications.setNotificationHandler.mock.calls[0][0];
+    return handleNotification({ request: { content: { data: { kind } } } });
+  }
+
+  test('a rest-timer notification is suppressed while the app is active', async () => {
+    const result = await getHandlerResult(REST_TIMER_KIND, true);
+    expect(result).toEqual({
+      shouldShowBanner: false,
+      shouldShowList: false,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+    });
+  });
+
+  test('a rest-timer notification shows normally while the app is backgrounded', async () => {
+    const result = await getHandlerResult(REST_TIMER_KIND, false);
+    expect(result).toEqual({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+    });
+  });
+
+  test('weigh-in/workout kinds are unaffected by app-active state', async () => {
+    const activeResult = await getHandlerResult('weigh-in-reminder', true);
+    const inactiveResult = await getHandlerResult('workout-reminder', false);
+    expect(activeResult).toEqual({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+    });
+    expect(inactiveResult).toEqual(activeResult);
   });
 });

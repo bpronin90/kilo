@@ -39,7 +39,24 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 jest.mock('../lib/reminderScheduler', () => ({
   installForegroundHandler: jest.fn().mockResolvedValue(undefined),
   reconcileWorkoutReminder: jest.fn().mockResolvedValue(undefined),
+  // App.js also mounts the rest-timer controller (#577); this suite doesn't
+  // exercise timer behavior, so no-op stubs keep that unrelated hook quiet.
+  REST_TIMER_KIND: 'rest-timer',
+  remindersSupported: jest.fn(() => true),
+  requestReminderPermission: jest.fn().mockResolvedValue(false),
+  cancelReminders: jest.fn().mockResolvedValue(undefined),
+  scheduleRequests: jest.fn().mockResolvedValue(undefined),
+  setNotificationHandlerAppActive: jest.fn(),
 }));
+
+jest.mock('../storage/entries/settings', () => {
+  const actual = jest.requireActual('../storage/entries/settings');
+  return {
+    ...actual,
+    loadRestTimerState: jest.fn().mockResolvedValue(null),
+    saveRestTimerState: jest.fn().mockResolvedValue(undefined),
+  };
+});
 
 jest.mock('../screens/HomeScreen', () => {
   const React = require('react');

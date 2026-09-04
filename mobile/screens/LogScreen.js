@@ -45,8 +45,9 @@
 //
 // No other styling exception is authorized.
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useContext, useState, useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Alert } from '../lib/platformAlert';
 import { LogEmptyState } from '../components/LogEmptyState';
@@ -86,6 +87,9 @@ import { RecoveryBlockStartModal } from '../components/RecoveryBlockStartModal';
 import { RecoveryBlockWeekModal } from '../components/RecoveryBlockWeekModal';
 import { RecoveryBlockEndModal } from '../components/RecoveryBlockEndModal';
 import { LogRecoverySection } from '../components/LogRecoverySection';
+import { RestTimerBanner } from '../components/RestTimerBanner';
+import { PRMomentBanner } from '../components/PRMomentBanner';
+import { TabBarLayoutContext, TAB_BAR_VISUAL_GAP } from '../components/TabBarLayout';
 
 import { useLogCurrentRoutineEditor } from './log/useLogCurrentRoutineEditor';
 import { useLogOtherRoutineEditor } from './log/useLogOtherRoutineEditor';
@@ -132,9 +136,19 @@ export function LogScreen({
   navNoteKey = 0,
   navRecoveryNoteId = null,
   navRecoveryKey = 0,
+  restTimerIsRunning = false,
+  restTimerRemainingMs = 0,
+  restTimerJustElapsed = false,
+  restTimerBackgroundAlertAvailable = true,
+  onStartRestTimer,
+  onCancelRestTimer,
+  onDismissRestTimerDone,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
+  const { bottom: bottomInset = 0 } = useContext(SafeAreaInsetsContext) || {};
+  const { tabBarHeight } = useContext(TabBarLayoutContext);
+  const bottomBannerClearance = tabBarHeight + TAB_BAR_VISUAL_GAP + bottomInset;
   const { notes, currentId, currentNote, deloadNotes, loading: notesLoading, error: notesError, refresh: refreshNotes, selectCurrent, update, add, remove } = useWorkoutNotes();
   const { trackedLifts, activations: trackedLiftActivations, toggle: toggleTrackedLift, reconcileActivations: reconcileTrackedLiftActivations } = useTrackedLifts();
   const { note: deloadNote, loading: deloadLoading, save: saveDeloadNote, clear: clearDeloadNote } = useDeloadNote();
@@ -1405,6 +1419,30 @@ export function LogScreen({
           onSourceJumpApplied={otherEditor.editingNoteId ? otherEditor.clearPendingSourceJump : currentEditor.clearPendingSourceJump}
         />
       </ScreenShell>
+      {/* #950 review (P1): only the idle start row here — the countdown/
+          done surface is mounted once at the app-shell level (App.js) so it
+          stays visible when the user leaves the Log tab while a timer is
+          running. */}
+      <RestTimerBanner
+        isRunning={restTimerIsRunning}
+        remainingMs={restTimerRemainingMs}
+        justElapsed={restTimerJustElapsed}
+        backgroundAlertAvailable={restTimerBackgroundAlertAvailable}
+        onCancel={onCancelRestTimer}
+        onDismissDone={onDismissRestTimerDone}
+        onStart={onStartRestTimer}
+        showStart={!otherEditor.editingNoteId && currentEditor.mode === 'edit'}
+        startOnly
+      />
+      {/* #577 (Contract 3): top-level, beside SessionCheckInModal, outside
+          the editor card branch — Done switching read/edit mode cannot
+          unmount it. Independent of the rest-timer banner above; both may
+          be visible together. */}
+      <PRMomentBanner
+        moment={currentEditor.prMoment}
+        onDismiss={currentEditor.clearPRMoment}
+        style={{ marginBottom: bottomBannerClearance }}
+      />
       <SessionCheckInModal
         // Gated on the toggle exactly as the Analytics one is. The hook's
         // withdrawal transition already clears the prompt when the toggle goes

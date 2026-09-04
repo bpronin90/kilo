@@ -14,6 +14,9 @@ import {
   computeWeeksIn,
 } from '../../lib/data';
 import { loadRecoveryExcludedNoteIds } from '../../hooks/entries/recoveryBlockHooks';
+import { filterNotesForNormalAnalytics } from '../../lib/data/recoveryAnalyticsFilter';
+import { deriveTrackedPROccurrences } from '../../lib/data/workoutAnalytics';
+import { detectPRMoment } from '../../lib/prMoment';
 import { subscribeDirtyQueue, getDirtyRecords, SYNC_TABLES } from '../../storage/syncQueue';
 import { subscribeSyncState, getSyncState, SYNC_PHASE, SYNC_STATUS } from '../../storage/syncRecovery';
 import { getStorageMode, STORAGE_MODES } from '../../storage/entries';
@@ -184,6 +187,21 @@ export function useLogCurrentRoutineEditor({
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
   const [originalNoteState, setOriginalNoteState] = useState(null);
+  // #577 (Contract 3): the RELEASED PR-moment banner state — set only from
+  // handleDoneCurrent's successful exit, never from autosave. pendingPRRef
+  // holds the latest COMPUTED-but-not-yet-released candidate (refreshed on
+  // every successful save, autosave included); consumedPRKeysRef tracks
+  // exercise keys already celebrated for the CURRENT editor baseline so a
+  // repeated Done cannot re-celebrate the same candidate. Both reset
+  // whenever a new editor baseline begins (originalNoteState changes) —
+  // see the effect below.
+  const [prMoment, setPrMoment] = useState(null);
+  const pendingPRRef = useRef(null);
+  const consumedPRKeysRef = useRef(new Set());
+  useEffect(() => {
+    pendingPRRef.current = null;
+    consumedPRKeysRef.current = new Set();
+  }, [originalNoteState]);
   const [roughFlaggedNames, setRoughFlaggedNames] = useState(new Set());
   const [roughSessionIndex, setRoughSessionIndex] = useState(null);
   const [roughNoteId, setRoughNoteId] = useState(null);
@@ -504,6 +522,9 @@ export function useLogCurrentRoutineEditor({
     autosaveCurrentTimerRef.current = setTimeout(async () => {
       autosaveCurrentTimerRef.current = null;
       await handleSave({ autosave: true });
+      // #577: autosave COMPUTES the pending PR candidate but never displays
+      // it — only handleDoneCurrent releases it to the UI.
+      await computePendingPRCandidate();
     }, AUTOSAVE_DEBOUNCE_MS);
     return () => {
       if (autosaveCurrentTimerRef.current) {
@@ -606,6 +627,129 @@ export function useLogCurrentRoutineEditor({
       activeWeekAuthorityRef.current = previousAuthority;
       setLocalActiveWeek(previous);
       throw err;
+    }
+  };
+
+  // #577 (Contract 3): recompute the pending (not-yet-released) PR-moment
+  // candidate against the SAME aggregate, recovery-filtered/deload-excluded
+  // population Analytics uses. Called after every successful save (autosave
+  // included) so the candidate always reflects the exact snapshot that was
+  // actually persisted — never a later render value — but it is stored in a
+  // ref, not surfaced as UI, until handleDoneCurrent explicitly releases it.
+  //
+  // Reads the recovery-exclusion boundary FRESH from storage on every call
+  // (loadRecoveryExcludedNoteIds, not a possibly-stale hook snapshot) so a
+  // Done release always revalidates against current state rather than
+  // trusting a computation from minutes earlier. Any failure here (a
+  // storage read, a malformed note elsewhere) is swallowed — PR-moment
+  // detection must never block or corrupt the actual save flow.
+  const computePendingPRCandidate = async () => {
+    if (!currentId || !originalNoteState) {
+      pendingPRRef.current = null;
+      return;
+    }
+    // #577 review (Codex-and-user, post-freeze): the deload-exclusion
+    // filter (matching deriveParsedSections' own signalSections logic) was
+    // only ever applied to OTHER notes (`eligibleOther` below) — the
+    // CURRENT note's own content was always included even when the note
+    // being edited IS itself a deload note, letting a deload session
+    // produce a PR celebration despite the contract's "deload-titled
+    // signal notes excluded" requirement. A deload note's own edits never
+    // produce a candidate at all now.
+    const currentTitle = lastSavedCurrentTitleRef.current ?? workoutNoteTitleRef.current;
+    if (isDeloadTitle(currentTitle) || isDeloadTitle(originalNoteState.title)) {
+      pendingPRRef.current = null;
+      return;
+    }
+    // #577 gap fix: an A/B active-week switch mid-session changes which
+    // half of the note's raw text `parseWorkoutNote` actually reads (see
+    // `effectiveActiveWeek`/`applyWeekSkipToText` above) — the baseline and
+    // "current" content would no longer be describing the same week, so any
+    // frontier/fingerprint comparison between them would be meaningless.
+    // Treated exactly like a note switch: reset the pending candidate and
+    // never attempt a cross-week comparison.
+    if (originalNoteState.activeWeek !== effectiveActiveWeek) {
+      pendingPRRef.current = null;
+      return;
+    }
+    try {
+      const excludedNoteIds = await loadRecoveryExcludedNoteIds();
+      // #577 review (Codex, post-freeze): the eligible note list must
+      // preserve the SAME order Analytics itself uses — filterNotesForNormalAnalytics
+      // called on the full `notes` array, not on `notes` with the current
+      // note first removed and its sections appended at the very end. The
+      // activation anchor is positional in notebook order
+      // (resolveTrackedLiftAnchors/deriveWorkoutAnalytics count occurrences
+      // in section-list order), so forcing the current note's sections to
+      // the tail — regardless of where it actually sits — could cut
+      // sessions from a different note than Analytics does, producing the
+      // wrong tracked span and either suppressing or falsely announcing a
+      // PR. The current note's live (before/after) content now replaces
+      // its own entry IN PLACE, preserving every other note's position.
+      const eligibleNotes = filterNotesForNormalAnalytics(notes || [], excludedNoteIds)
+        .filter((n) => !n.title?.startsWith(DELOAD_NOTE_PREFIX));
+
+      const buildFullSections = (ownRawText) => eligibleNotes.flatMap((n, noteOrdinal) => {
+        const isCurrent = n.id === currentId;
+        const { sections } = parseWorkoutNote((isCurrent ? ownRawText : n.raw_text) || '');
+        return sections.map((s, sectionOrdinal) => ({
+          ...s,
+          __noteId: isCurrent ? currentId : n.id,
+          __noteOrdinal: noteOrdinal,
+          __sectionOrdinal: sectionOrdinal,
+        }));
+      });
+
+      // #577 review (Codex, post-freeze): the activation anchor/watermark
+      // must be RESOLVED AND CUT against the FULL, UNSLICED Analytics
+      // population — every note's complete content, both A/B halves when
+      // the note has them — never a week-restricted slice. An anchor was
+      // recorded against the exercise's total logged-session count at
+      // Track-toggle time; resolving or cutting it against only the active
+      // week's own (smaller) session list clamps the anchor down and/or
+      // drops sessions the anchor never meant to exclude, including a
+      // legitimate new PR, until enough new active-week sessions replace
+      // the omitted inactive ones. `deriveTrackedPROccurrences` called with
+      // the full, unrestricted section list already does
+      // exactly this correctly — resolve, then sliceEntriesFromAnchor over
+      // the true, correctly-ordered full sequence.
+      const afterText = lastSavedCurrentTextRef.current ?? workoutNoteTextRef.current;
+      const fullAfterSections = buildFullSections(afterText);
+      const fullBeforeSections = buildFullSections(originalNoteState.text);
+      const trackedNames = listTrackedLifts(trackedLifts);
+      const fullAfterEntries = deriveTrackedPROccurrences(fullAfterSections, trackedNames, trackedLiftActivations);
+      const fullBeforeEntries = deriveTrackedPROccurrences(fullBeforeSections, trackedNames, trackedLiftActivations);
+
+      // Frontier comparison itself still runs on the ACTIVE week's own
+      // occurrences only — the two A/B halves are different content
+      // sharing one raw string, and the inactive half's text is provably
+      // unchanged during one active-week editing session (the earlier
+      // activeWeek-mismatch guard above already proves baseline and
+      // current describe the same active week; handleCurrentTextChange
+      // only ever edits the active slice and splices the inactive one back
+      // untouched). Restricting AFTER the anchor cut — by filtering the
+      // already-correctly-watermarked full entries down to just the
+      // current note's sections at or after/before the week boundary —
+      // keeps each entry's occurrenceOrdinal/setOrdinal exactly as the
+      // full-population pass assigned them (sections are always emitted
+      // week-A-then-week-B, so this filter is a stable, order-preserving
+      // subsequence, never a renumbering), which the frontier's
+      // occurrenceOrdinal-sorted walk in lib/prMoment.js depends on.
+      const restrictToActiveWeek = (entries, rawText) => {
+        if (!hasABWeeks) return entries;
+        const { weekBStartIndex } = parseWorkoutNote(rawText || '');
+        if (weekBStartIndex == null) return entries;
+        return entries.filter((e) => (
+          e.noteId !== currentId
+          || (effectiveActiveWeek === 'B' ? e.sectionOrdinal >= weekBStartIndex : e.sectionOrdinal < weekBStartIndex)
+        ));
+      };
+
+      const afterEntries = restrictToActiveWeek(fullAfterEntries, afterText);
+      const beforeEntries = restrictToActiveWeek(fullBeforeEntries, originalNoteState.text);
+      pendingPRRef.current = detectPRMoment(beforeEntries, afterEntries, currentId, consumedPRKeysRef.current);
+    } catch {
+      pendingPRRef.current = null;
     }
   };
 
@@ -1101,9 +1245,23 @@ export function useLogCurrentRoutineEditor({
         if (!ok) return;
       }
     }
+    // #577: Done is the SOLE release gate — even when hasUnsavedCurrent was
+    // already false because autosave completed minutes earlier, still
+    // recompute right here (fresh recovery-boundary read, fresh aggregate)
+    // rather than trusting a possibly-stale earlier computation, then
+    // release the latest valid result. Never fires from autosave, revert,
+    // a failed save (returned above), or exiting/abandoning without Done.
+    await computePendingPRCandidate();
+    if (pendingPRRef.current) {
+      setPrMoment(pendingPRRef.current);
+      consumedPRKeysRef.current.add(pendingPRRef.current.exerciseKey);
+      pendingPRRef.current = null;
+    }
     _runCheckInDetection();
     exitCurrentEditor();
   };
+
+  const clearPRMoment = () => setPrMoment(null);
 
   const performRevertCurrent = async () => {
     if (!currentId) {
@@ -1400,6 +1558,8 @@ export function useLogCurrentRoutineEditor({
     saveStatus,
     cancelPendingDraftRestore,
     originalNoteState,
+    prMoment,
+    clearPRMoment,
     setOriginalNoteState,
     roughFlaggedNames,
     roughSessionIndex,

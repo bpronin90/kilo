@@ -1,0 +1,252 @@
+import React from 'react';
+import render from 'react-test-renderer';
+import { useLogCurrentRoutineEditor } from '../screens/log/useLogCurrentRoutineEditor';
+
+jest.mock('../lib/platformAlert', () => ({ Alert: { alert: jest.fn() } }));
+
+// Real module by default; individual tests swap loadRecoveryExcludedNoteIds
+// to a rejecting mock to exercise the "boundary unready" suppression path
+// without breaking the (independent) save path's own recovery-boundary read.
+jest.mock('../hooks/entries/recoveryBlockHooks', () => {
+  const actual = jest.requireActual('../hooks/entries/recoveryBlockHooks');
+  return { ...actual, loadRecoveryExcludedNoteIds: jest.fn(actual.loadRecoveryExcludedNoteIds) };
+});
+// eslint-disable-next-line import/first
+import { loadRecoveryExcludedNoteIds } from '../hooks/entries/recoveryBlockHooks';
+
+// Hook-level integration coverage for #577 Contract 3's two previously-open
+// gaps: A/B active-week mid-session handling, and the PR-moment pipeline
+// exercised end to end through the real hook (not just the pure
+// lib/prMoment.js/deriveTrackedPROccurrences unit tests).
+
+const mounted = [];
+afterEach(() => {
+  render.act(() => { mounted.forEach((c) => c.unmount()); });
+  mounted.length = 0;
+  jest.clearAllMocks();
+  // mockRejectedValue (sticky, unlike -Once) must not bleed into later
+  // tests — clearAllMocks resets call history but not a configured
+  // resolved/rejected implementation.
+  loadRecoveryExcludedNoteIds.mockImplementation(
+    jest.requireActual('../hooks/entries/recoveryBlockHooks').loadRecoveryExcludedNoteIds
+  );
+});
+
+function makeHarness({ raw, note = {}, updateImpl, notes: notesOverride, trackedLiftActivations = {} } = {}) {
+  const update = jest.fn().mockImplementation(
+    updateImpl || (async (_id, patch) => ({
+      id: 'note1',
+      title: patch.title || 'Routine',
+      raw_text: patch.raw_text !== undefined ? patch.raw_text : raw,
+      activeWeek: patch.activeWeek !== undefined ? patch.activeWeek : undefined,
+    }))
+  );
+  let latest = null;
+
+  function Harness({ currentNote }) {
+    const [text, setText] = React.useState(raw);
+    const [title, setTitle] = React.useState('Routine');
+    const hook = useLogCurrentRoutineEditor({
+      workoutNoteText: text,
+      setWorkoutNoteText: setText,
+      workoutNoteTitle: title,
+      setWorkoutNoteTitle: setTitle,
+      currentId: 'note1',
+      currentNote,
+      notes: notesOverride || [currentNote],
+      trackedLifts: { bench: true },
+      trackedLiftActivations,
+      reconcileTrackedLiftActivations: jest.fn(async () => {}),
+      update,
+      add: jest.fn(),
+      selectCurrent: jest.fn(),
+      fatigueTrackingEnabled: false,
+      onCheckInPrompt: jest.fn(),
+      notesLoading: false,
+      notesError: null,
+      otherModalOwnsScreen: false,
+      editorScrollRef: { current: { scrollTo: jest.fn() } },
+      readScrollRef: { current: { scrollTo: jest.fn() } },
+    });
+    latest = { hook, setText, setTitle };
+    return null;
+  }
+
+  const initialNote = { id: 'note1', title: 'Routine', raw_text: raw, ...note };
+  let root;
+  render.act(() => {
+    root = render.create(<Harness currentNote={initialNote} />);
+    mounted.push(root);
+  });
+
+  return {
+    get: () => latest,
+    update,
+    enter: async () => { await render.act(async () => { latest.hook.enterCurrentEditor(); }); },
+    setText: async (v) => { await render.act(async () => { latest.setText(v); }); },
+    toggleWeek: async () => { await render.act(async () => { await latest.hook.handleToggleWeek(); }); },
+    done: async () => { await render.act(async () => { await latest.hook.handleDoneCurrent(); }); },
+  };
+}
+
+describe('PR-moment pipeline through the real hook (#577)', () => {
+  test('appending a set that beats the prior best celebrates after Done', async () => {
+    const raw = '-Bench\n135 5';
+    const h = makeHarness({ raw });
+    await h.enter();
+    await h.setText('-Bench\n135 5\n200 5');
+    await h.done();
+    expect(h.get().hook.prMoment).not.toBeNull();
+    expect(h.get().hook.prMoment.exerciseKey).toBeTruthy();
+    expect(h.get().hook.prMoment.weight_value).toBe(200);
+  });
+
+  test('autosave (without Done) never surfaces prMoment', async () => {
+    const raw = '-Bench\n135 5';
+    const h = makeHarness({ raw });
+    await h.enter();
+    // handleCurrentTextChange isn't exercised here — a plain setText plus a
+    // manual save call stands in for "autosave completed" without going
+    // through Done, which is the property under test: compute != display.
+    await h.setText('-Bench\n135 5\n200 5');
+    await render.act(async () => { await h.get().hook.handleSave({ autosave: true }); });
+    expect(h.get().hook.prMoment).toBeNull();
+  });
+
+  test('an unready/failed recovery-boundary read suppresses the celebration for that Done (never a guess)', async () => {
+    const raw = '-Bench\n135 5';
+    const h = makeHarness({ raw });
+    await h.enter();
+    await h.setText('-Bench\n135 5\n200 5');
+    // Both handleSave's own (independently-tolerant) boundary read and
+    // computePendingPRCandidate's must see the failure — mockRejectedValue
+    // (not -Once) so it applies regardless of call order between the two.
+    loadRecoveryExcludedNoteIds.mockRejectedValue(new Error('boundary read failed'));
+    await h.done();
+    expect(h.get().hook.prMoment).toBeNull();
+  });
+
+  test('dismissing a released PR moment clears it', async () => {
+    const raw = '-Bench\n135 5';
+    const h = makeHarness({ raw });
+    await h.enter();
+    await h.setText('-Bench\n135 5\n200 5');
+    await h.done();
+    expect(h.get().hook.prMoment).not.toBeNull();
+    render.act(() => { h.get().hook.clearPRMoment(); });
+    expect(h.get().hook.prMoment).toBeNull();
+  });
+});
+
+describe('A/B active-week mid-session switch (#577 gap fix)', () => {
+  const weekA = '-Bench\n135 5';
+  const weekB = '-Bench\n135 5\n200 5';
+  const raw = `${weekA}\n---\n${weekB}`;
+
+  test('switching the active week mid-session suppresses that Done — no cross-week comparison', async () => {
+    const h = makeHarness({ raw, note: { activeWeek: 'A' } });
+    await h.enter();
+    expect(h.get().hook.hasABWeeks).toBe(true);
+    expect(h.get().hook.effectiveActiveWeek).toBe('A');
+
+    await h.toggleWeek();
+    expect(h.get().hook.effectiveActiveWeek).toBe('B');
+
+    await h.done();
+    // Week B's own text (135 5, 200 5) would read as a real PR if compared
+    // against week A's baseline (135 5) — but baseline and current no
+    // longer describe the same week, so it must never celebrate.
+    expect(h.get().hook.prMoment).toBeNull();
+  });
+
+  test('staying on the same active week through Done still celebrates normally', async () => {
+    const h = makeHarness({ raw: `${weekA}\n---\n${weekA}`, note: { activeWeek: 'A' } });
+    await h.enter();
+    await h.setText(`${weekB}\n---\n${weekA}`); // only week A's (active) text changes
+    await h.done();
+    expect(h.get().hook.prMoment).not.toBeNull();
+  });
+});
+
+describe('A/B activation anchor resolved against the full population (#577 review, Codex post-freeze)', () => {
+  test('a new active-week (B) PR still celebrates when the anchor was recorded against the full A+B population', async () => {
+    // Week A (inactive) has 2 sessions; week B (active) has 3, soon 4
+    // after an appended PR. anchor=3 was recorded when the exercise had 3
+    // total logged sessions. Resolving+cutting against only week B's own
+    // (active-only) sliced text — the pre-fix behavior — over-cuts by
+    // exactly week A's 2-session count and silently drops the appended PR;
+    // resolving+cutting against the full population first (this fix) does
+    // not. See pr-moment-occurrences.test.js's pure-function reproduction
+    // of the same numbers for the byte-for-byte before/after entries this
+    // is built on.
+    const weekA = '-Bench\n90 5\n135 5';
+    const weekB = '-Bench\n100 5\n110 5\n120 5';
+    const raw = `${weekA}\n---\n${weekB}`;
+    const activations = { bench: { anchor: 3, at: '2024-01-01T00:00:00.000Z' } };
+    const h = makeHarness({ raw, note: { activeWeek: 'B' }, trackedLiftActivations: activations });
+    await h.enter();
+    expect(h.get().hook.effectiveActiveWeek).toBe('B');
+    await h.setText(`${weekA}\n---\n-Bench\n100 5\n110 5\n120 5\n999 5`); // append to week B only
+    await h.done();
+    expect(h.get().hook.prMoment).not.toBeNull();
+    expect(h.get().hook.prMoment.weight_value).toBe(999);
+  });
+});
+
+describe('current note stays in its notebook position, not appended last (#577 review, Codex post-freeze)', () => {
+  test('appending a set to a note that is NOT last in `notes` still resolves the correct exercise coordinates end to end', async () => {
+    // notes = [currentNote, otherNote] — the current note is FIRST, not
+    // last. The old (buggy) code stripped it out of `notes` and appended
+    // its sections after every OTHER note, moving its true position later
+    // regardless of where it actually sits — corrupting the anchor cut's
+    // positional meaning for whichever note ends up displaced. This drives
+    // the same pipeline the hook actually uses (buildFullSections via
+    // computePendingPRCandidate) end to end and confirms a genuine append
+    // to the (non-last) current note still resolves to that note's own
+    // coordinates and celebrates correctly.
+    const raw = '-Bench\n135 5';
+    const currentNoteRef = { id: 'note1', title: 'Routine', raw_text: raw };
+    const otherNote = { id: 'noteX', title: 'Other', raw_text: '-Squat\n225 5\n235 5\n245 5' };
+    const h = makeHarness({ raw, notes: [currentNoteRef, otherNote] });
+    await h.enter();
+    await h.setText('-Bench\n135 5\n200 5');
+    await h.done();
+    expect(h.get().hook.prMoment).not.toBeNull();
+    expect(h.get().hook.prMoment.weight_value).toBe(200);
+  });
+});
+
+// #577 review (Codex, post-freeze), finding 7 — direct mechanism-level
+// reproduction (see pr-moment-occurrences.test.js's pure-function test of
+// the same numbers): the activation anchor is positional across the WHOLE
+// note population, so which note's sessions the anchor consumes depends on
+// each note's TRUE position, not on where it happens to land after
+// filtering. Verified via the pure `deriveTrackedPROccurrences` composition
+// in pr-moment-occurrences.test.js ("current note kept in its notebook
+// position for the anchor cut, not forced to the end").
+
+// User-reported item 3: "Deload notes triggering PR celebrations."
+// Confirmed defect: the deload-exclusion filter (matching
+// deriveParsedSections' own signalSections logic) was only ever applied to
+// OTHER notes — the CURRENT note's own content was always included even
+// when the note being edited IS itself a deload note. Fixed: a deload note
+// (current title, or its baseline title) now never produces a candidate.
+describe('deload notes never trigger a PR celebration (user item 3)', () => {
+  test('editing a deload-titled note and appending a new best never celebrates', async () => {
+    const raw = '-Bench\n135 5';
+    const h = makeHarness({ raw, note: { title: 'Deload · Week 3', activeWeek: null } });
+    await h.enter();
+    await h.setText('-Bench\n135 5\n999 5');
+    await h.done();
+    expect(h.get().hook.prMoment).toBeNull();
+  });
+
+  test('an ordinary (non-deload) note still celebrates normally, confirming the guard is scoped to deload notes only', async () => {
+    const raw = '-Bench\n135 5';
+    const h = makeHarness({ raw, note: { title: 'Push Day', activeWeek: null } });
+    await h.enter();
+    await h.setText('-Bench\n135 5\n999 5');
+    await h.done();
+    expect(h.get().hook.prMoment).not.toBeNull();
+  });
+});

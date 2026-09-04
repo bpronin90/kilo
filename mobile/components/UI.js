@@ -279,7 +279,7 @@ export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabl
 
 export function SetLine({ sets, selectable, mark }) {
   const styles = useThemedStyles(createStyles);
-  const [plateWeight, setPlateWeight] = useState(null);
+  const [plateTarget, setPlateTarget] = useState(null);
   const unit = useWeightUnit();
   if (!sets || sets.length === 0) return null;
 
@@ -318,13 +318,24 @@ export function SetLine({ sets, selectable, mark }) {
         <View key={i} style={styles.setGroup}>
           {group.weight ? (
             <Pressable
-              onPress={() => setPlateWeight(group.weight)}
+              onPress={() => setPlateTarget({
+                weightLb: group.weight,
+                authoredKg: group.convertedFromKg ? group.kgValue : null,
+              })}
               hitSlop={6}
               accessibilityRole="button"
               accessibilityLabel={
                 group.convertedFromKg
+                  // Describes provenance in the units actually typed/parsed
+                  // (canonical lb, converted from an explicit kg marker) —
+                  // independent of the display-unit preference, matching
+                  // the visible "(40kg)" parenthetical.
                   ? `Show plate loading for ${group.weight} pounds, converted from ${group.kgValue} kilograms`
-                  : `Show plate loading for ${group.weight} pounds`
+                  // #577 review: this used to hardcode "pounds" even when
+                  // displaying in kg — a kg value would be visually shown
+                  // ("88 kg") but announced as "88 pounds". Must match the
+                  // same display unit/value shown on screen.
+                  : `Show plate loading for ${formatLiftWeightValue(group.weight, unit)} ${unit === 'kg' ? 'kilograms' : 'pounds'}`
               }
             >
               {/* #852: a converted group's "(40kg)" suffix is part of the
@@ -333,8 +344,11 @@ export function SetLine({ sets, selectable, mark }) {
                   every case, exactly as before #852 (several tests match on
                   `typeof children === 'string'`), and the parenthetical
                   already reads as an annotation without needing its own
-                  font treatment. */}
-              <Text selectable={selectable} style={styles.setWeight}>
+                  font treatment. #577: a dotted underline is the visible
+                  "this is tappable" cue — plain color/weight alone read as
+                  inert text (review finding), and the underline degrades
+                  fine as a border in every theme without relying on color. */}
+              <Text selectable={selectable} style={[styles.setWeight, styles.setWeightTappable]}>
                 {group.convertedFromKg
                   ? `${formatLiftWeightValue(group.weight, unit)} ${unit} (${group.kgValue}kg)`
                   : `${formatLiftWeightValue(group.weight, unit)} ${unit}`}
@@ -356,9 +370,10 @@ export function SetLine({ sets, selectable, mark }) {
         </Text>
       ) : null}
       <PlateCalculatorModal
-        visible={plateWeight != null}
-        weight={plateWeight}
-        onClose={() => setPlateWeight(null)}
+        visible={plateTarget != null}
+        weightLb={plateTarget?.weightLb ?? null}
+        authoredKg={plateTarget?.authoredKg ?? null}
+        onClose={() => setPlateTarget(null)}
       />
     </View>
   );
@@ -803,6 +818,12 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: SET_ROW_FONT_SIZE,
     fontWeight: '600',
     color: colors.textMuted,
+  },
+  // #577: visible tappable cue for the plate-calculator affordance.
+  setWeightTappable: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.textMuted,
+    borderStyle: 'dashed',
   },
   setReps: {
     fontSize: SET_ROW_FONT_SIZE,

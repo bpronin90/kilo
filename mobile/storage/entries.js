@@ -21,6 +21,10 @@ export {
   saveWeighInReminder,
   loadWorkoutReminder,
   saveWorkoutReminder,
+  loadPlateCalculatorProfile,
+  savePlateCalculatorProfile,
+  loadRestTimerState,
+  saveRestTimerState,
 } from './entries/settings';
 
 export {

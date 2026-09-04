@@ -29,3 +29,12 @@ export const RECOVERY_BLOCK_WEEKS_KEY = 'kilo_recovery_block_weeks';
 // sync table, is not exported in a backup, and is versioned in the key itself
 // so an older build's records are never silently reinterpreted.
 export const RECOVERY_OPERATION_JOURNAL_KEY = 'kilo_recovery_operation_journal_v1';
+// Device-local plate-calculator equipment profile (#577): bar weight + finite
+// per-side plate inventory, kept independently per unit (lb/kg). Not synced,
+// not part of JSON backup — it describes this device's gym equipment, not
+// workout history.
+export const PLATE_CALCULATOR_PROFILE_KEY = 'kilo_plate_calculator_profile';
+// Device-local rest timer (#577): the single active timer's wall-clock end
+// time and its scheduled notification id. Not synced, not part of JSON
+// backup — it is transient device utility state, not health history.
+export const REST_TIMER_KEY = 'kilo_rest_timer';

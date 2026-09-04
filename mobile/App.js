@@ -1,5 +1,5 @@
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
-import React, { useCallback, useState, useRef, useEffect } from 'react';
+import React, { useCallback, useContext, useState, useRef, useEffect } from 'react';
 import { Keyboard, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, StyleSheet, Text, View, BackHandler, StatusBar } from 'react-native';
 import { Alert } from './lib/platformAlert';
 import { WebAlertHost } from './components/WebAlertHost';
@@ -10,8 +10,8 @@ import { ThemeProvider, useTheme, useThemedStyles } from './theme/ThemeContext';
 import { TabBar } from './components/TabBar';
 import { Button } from './components/UI';
 import { ScrollContext } from './components/ScreenShell';
-import { TabBarLayoutContext, TAB_BAR_HEIGHT_FALLBACK } from './components/TabBarLayout';
-import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
+import { TabBarLayoutContext, TAB_BAR_HEIGHT_FALLBACK, TAB_BAR_VISUAL_GAP } from './components/TabBarLayout';
+import { SafeAreaProvider, SafeAreaInsetsContext, initialWindowMetrics } from 'react-native-safe-area-context';
 
 import { HomeScreen } from './screens/HomeScreen';
 import { MoreScreen } from './screens/MoreScreen';
@@ -45,6 +45,8 @@ import { PRODUCT_MEASUREMENT_EVENTS, recordProductMeasurement } from './lib/prod
 import { migrateSensitiveDeviceData } from './storage/secureStorage';
 import { makeWeightEntry } from './lib/data';
 import { reconcileWorkoutReminder, installForegroundHandler } from './lib/reminderScheduler';
+import { useRestTimer } from './hooks/useRestTimer';
+import { RestTimerBanner } from './components/RestTimerBanner';
 import { buildCloudExport, importBackup, getStorageMode, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed } from './storage/entries';
 import { markStartupPhase } from './storage/entries/startupTiming';
 import { purgePersistedDerivedSections } from './storage/entries/derivedCachePurge';
@@ -253,6 +255,17 @@ function AppShell({ onDeviceDataWiped }) {
   const [moreSubviewTarget, setMoreSubviewTarget] = useState(null); // { kind: 'subview', view, anchor } | null
   const [moreSubviewTargetKey, setMoreSubviewTargetKey] = useState(0);
   const [tabBarHeight, setTabBarHeight] = useState(TAB_BAR_HEIGHT_FALLBACK);
+  // #577 review: the floating TabBar is `position: absolute`, so a normal-
+  // flow sibling rendered near the bottom of the screen (the rest-timer
+  // banner) does not automatically get pushed above it — it can sit behind
+  // the bar's own footprint, or behind the bottom safe-area/home-indicator
+  // zone on inset devices, hiding its Cancel/Dismiss controls. Reuse the
+  // EXACT clearance ScreenShell already reserves for scrollable content
+  // (measured tabBarHeight + the shared visual gap + the bottom safe-area
+  // inset) rather than a hardcoded number, so it always tracks the real
+  // rendered bar.
+  const { bottom: bottomSafeAreaInset = 0 } = useContext(SafeAreaInsetsContext) || {};
+  const restTimerBannerClearance = tabBarHeight + TAB_BAR_VISUAL_GAP + bottomSafeAreaInset;
   const scrollListeners = useRef(new Set());
   const isScrollingRef = useRef(false);
   const scrollTimeout = useRef(null);
@@ -325,6 +338,12 @@ function AppShell({ onDeviceDataWiped }) {
       console.error('[App] Failed to purge persisted derived note caches:', e);
     });
   }, []);
+
+  // App.js owns the single mounted rest-timer controller and its sole
+  // AppState subscription (#577) — hydration, cold-start/foreground
+  // reconciliation, and the tick all live inside this one hook instance so
+  // no screen/editor component can create a competing listener.
+  const restTimer = useRestTimer();
 
   const { isUpdatePending } = useUpdates();
 
@@ -844,6 +863,13 @@ function AppShell({ onDeviceDataWiped }) {
             navNoteKey={logNoteTargetKey}
             navRecoveryNoteId={logRecoveryTarget ? logRecoveryTarget.noteId : null}
             navRecoveryKey={logRecoveryTargetKey}
+            restTimerIsRunning={restTimer.isRunning}
+            restTimerRemainingMs={restTimer.remainingMs}
+            restTimerJustElapsed={restTimer.justElapsed}
+            restTimerBackgroundAlertAvailable={restTimer.backgroundAlertAvailable}
+            onStartRestTimer={restTimer.start}
+            onCancelRestTimer={restTimer.cancel}
+            onDismissRestTimerDone={restTimer.dismissDone}
           />
         </View>
         <View
@@ -953,6 +979,29 @@ function AppShell({ onDeviceDataWiped }) {
           )}
           <View style={styles.content}>{renderContent()}</View>
         </KeyboardAvoidingView>
+        {/* #950 review (P1): mounted at the app-shell level, NOT inside
+            MemoLogScreen, so timer completion is visible regardless of which
+            tab is active — the per-tab View wrappers hide MemoLogScreen's
+            entire subtree (including anything it renders) whenever another
+            tab is active, and the OS notification is deliberately suppressed
+            while the app is foregrounded on ANY tab, so this in-app surface
+            is the only alert the user gets in that case.
+            #577 review: wrapped with the same tab-bar/safe-area clearance
+            ScreenShell reserves, so the floating (position: absolute)
+            TabBar — or the bottom safe area / home indicator on inset
+            devices — can never cover the banner or its Cancel/Dismiss
+            controls. */}
+        <RestTimerBanner
+          isRunning={restTimer.isRunning}
+          remainingMs={restTimer.remainingMs}
+          justElapsed={restTimer.justElapsed}
+          backgroundAlertAvailable={restTimer.backgroundAlertAvailable}
+          onCancel={restTimer.cancel}
+          onDismissDone={restTimer.dismissDone}
+          onStart={restTimer.start}
+          showStart={false}
+          style={{ marginBottom: restTimerBannerClearance }}
+        />
         <TabBar
           tabs={TABS}
           activeTab={activeTab}
