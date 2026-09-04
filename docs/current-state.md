@@ -40,6 +40,17 @@ The app supports local backup export and import. Account deletion separately
 offers the user a choice to keep the on-device copy or wipe it; sign-out also
 offers an explicit device-wipe path.
 
+Data & Backup also offers CSV export of workout and weight history
+(`mobile/lib/interoperability/csv.js`, `mobile/lib/interoperability/kiloCsv.js`)
+for moving data into other tools. CSV is interoperability, never backup or
+sync: it is one-way (Kilo has no CSV importer), excludes tombstones, Recovery
+records, deload/fatigue state, weight goals, profile, feature toggles,
+sync/cloud metadata, and tracked-lift activation records, and most sessions
+have no recoverable calendar date (only a single-session dated section
+heading is representable evidence today). JSON backup remains the only
+lossless recovery format. One-shot import from Strong, Hevy, or FitNotes CSV
+exports is a separate, not-yet-implemented follow-up (issue #578).
+
 ## Accounts and Cloud Sync
 
 Supabase is optional. Cloud-aware mode requires both

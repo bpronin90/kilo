@@ -33,6 +33,17 @@ jest.mock('expo-file-system/legacy', () => ({
   },
 }));
 
+// Issue #578: BackupScreen reads CSV export data directly from storage
+// (rather than through a prop, see the comment on `csvFileName` in
+// BackupScreen.js), so these tests control what that read returns without
+// touching real AsyncStorage.
+const mockLoadWorkoutNotes = jest.fn();
+const mockLoadWeightEntriesRaw = jest.fn();
+jest.mock('../storage/entries', () => ({
+  loadWorkoutNotes: (...args) => mockLoadWorkoutNotes(...args),
+  loadWeightEntriesRaw: (...args) => mockLoadWeightEntriesRaw(...args),
+}));
+
 // The Cloud section (#822) mounts the real CloudSyncRecovery when signed in;
 // these mirror the mocks account-lifecycle-ui.test.js uses so it mounts
 // deterministically without hitting a real Supabase client.
@@ -117,6 +128,8 @@ beforeEach(() => {
   mockSyncRecovery = makeSyncRecovery();
   mockPendingSyncIntent = jest.fn().mockResolvedValue({ hasPending: false });
   mockScreenScrollTo.mockClear();
+  mockLoadWorkoutNotes.mockReset().mockResolvedValue([]);
+  mockLoadWeightEntriesRaw.mockReset().mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -397,6 +410,117 @@ describe('BackupScreen file export/import (Android)', () => {
 
     expect(SAF.readAsStringAsync).not.toHaveBeenCalled();
     expect(statusMatches(tree, /No Kilo backup found in that folder\./)).toBe(true);
+  });
+});
+
+// Issue #578: CSV export buttons. CSV is interoperability, never backup — a
+// separate confirmation ("CSV is not a backup") gates it, distinct from the
+// JSON export's "Export is unencrypted" Alert, and it reuses the same
+// Android-file/Share-fallback mechanics `shareExport` already established.
+describe('BackupScreen CSV export (#578)', () => {
+  const originalOS = Platform.OS;
+
+  beforeEach(() => {
+    Platform.OS = 'android';
+    SAF.requestDirectoryPermissionsAsync.mockReset();
+    SAF.createFileAsync.mockReset();
+    SAF.writeAsStringAsync.mockReset();
+    jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' });
+  });
+
+  afterEach(() => {
+    Platform.OS = originalOS;
+  });
+
+  async function confirmCsvExport(tree, buttonTitle) {
+    const btn = findButton(tree, buttonTitle);
+    act(() => {
+      btn.props.onPress();
+    });
+    expect(lastAlert.title).toBe('CSV is not a backup');
+    await act(async () => {
+      await alertButton('Export anyway').onPress();
+    });
+  }
+
+  test('Export Workouts CSV requires the not-a-backup confirmation before reading storage', () => {
+    const tree = renderScreen();
+    const btn = findButton(tree, 'Export Workouts CSV');
+    act(() => {
+      btn.props.onPress();
+    });
+    expect(lastAlert.title).toBe('CSV is not a backup');
+    expect(mockLoadWorkoutNotes).not.toHaveBeenCalled();
+  });
+
+  test('confirming Export Workouts CSV writes a file built from live notes', async () => {
+    mockLoadWorkoutNotes.mockResolvedValue([
+      { id: 'n1', title: 'Push Day', isCurrent: true, raw_text: 'Monday\n-Bench\n- 100 5' },
+    ]);
+    SAF.requestDirectoryPermissionsAsync.mockResolvedValue({ granted: true, directoryUri: 'content://tree/dl' });
+    SAF.createFileAsync.mockResolvedValue('content://tree/dl/kilo-workouts-2026-09-03');
+    SAF.writeAsStringAsync.mockResolvedValue(undefined);
+
+    const tree = renderScreen();
+    await confirmCsvExport(tree, 'Export Workouts CSV');
+
+    expect(mockLoadWorkoutNotes).toHaveBeenCalled();
+    expect(SAF.createFileAsync).toHaveBeenCalledWith(
+      'content://tree/dl',
+      expect.stringContaining('kilo-workouts-'),
+      'text/csv',
+    );
+    const written = SAF.writeAsStringAsync.mock.calls[0][1];
+    expect(written).toContain('routine_title');
+    expect(written).toContain('Push Day');
+    expect(Share.share).not.toHaveBeenCalled();
+    expect(statusMatches(tree, /CSV saved to the folder you chose\./)).toBe(true);
+  });
+
+  test('confirming Export Weight CSV writes a file built from weight entries', async () => {
+    mockLoadWeightEntriesRaw.mockResolvedValue([
+      { id: 'w1', entry_type: 'weight', date: '2026-01-01', logged_at: '2026-01-01T08:00:00.000Z', weight_value: 180, note: '' },
+    ]);
+    SAF.requestDirectoryPermissionsAsync.mockResolvedValue({ granted: true, directoryUri: 'content://tree/dl' });
+    SAF.createFileAsync.mockResolvedValue('content://tree/dl/kilo-weight-2026-09-03');
+    SAF.writeAsStringAsync.mockResolvedValue(undefined);
+
+    const tree = renderScreen();
+    await confirmCsvExport(tree, 'Export Weight CSV');
+
+    expect(mockLoadWeightEntriesRaw).toHaveBeenCalled();
+    expect(mockLoadWorkoutNotes).not.toHaveBeenCalled();
+    expect(SAF.createFileAsync).toHaveBeenCalledWith(
+      'content://tree/dl',
+      expect.stringContaining('kilo-weight-'),
+      'text/csv',
+    );
+    const written = SAF.writeAsStringAsync.mock.calls[0][1];
+    expect(written).toContain('weight_value_lb');
+    expect(written).toContain('180');
+  });
+
+  test('cancelling the folder picker falls back to the share sheet for CSV too', async () => {
+    mockLoadWorkoutNotes.mockResolvedValue([]);
+    SAF.requestDirectoryPermissionsAsync.mockResolvedValue({ granted: false });
+
+    const tree = renderScreen();
+    await confirmCsvExport(tree, 'Export Workouts CSV');
+
+    expect(Share.share).toHaveBeenCalledWith({ message: expect.stringContaining('routine_title') });
+    expect(SAF.writeAsStringAsync).not.toHaveBeenCalled();
+  });
+
+  test('Cancel on the CSV disclosure Alert never reads storage', () => {
+    const tree = renderScreen();
+    const btn = findButton(tree, 'Export Weight CSV');
+    act(() => {
+      btn.props.onPress();
+    });
+    act(() => {
+      alertButton('Cancel').onPress?.();
+    });
+    expect(mockLoadWeightEntriesRaw).not.toHaveBeenCalled();
   });
 });
 
