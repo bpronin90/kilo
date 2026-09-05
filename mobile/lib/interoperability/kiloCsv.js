@@ -149,15 +149,46 @@ function mergeExerciseEntries(exercise) {
 // the skip and dropped the authored explanation entirely.
 //
 // `unparsed_rows` is otherwise a MIRROR, not a separate store: every other push
-// to it (lines 240, 342, 443, 450, 471, 477) has a matching session_entries or
-// unparsed_positions push that already exports. Emitting the whole array would
-// duplicate those rows. A leading `--` is the exact discriminator — the parser
-// routes an attachable `--` into `annotation.comments` instead, so a `--` string
-// in `unparsed_rows` is always and only an orphaned comment.
+// to it (workoutNote.js lines 240, 342, 443, 450, 471, 477) has a matching
+// session_entries or unparsed_positions push that already exports. Emitting the
+// whole array would duplicate those rows.
+//
+// A leading `--` alone is NOT a safe discriminator (PR #965 review): the import
+// path at workoutNote.js:237-244 copies arbitrary `record.prose` into
+// unparsed_rows while ALSO pushing the entry to session_entries, so imported
+// prose beginning with `--` would export twice and lose its first two dashes.
+// The same hazard exists wherever a mirrored row's own text can begin with `--`.
+//
+// So subtract the exact strings the mirrored sites contribute — as a multiset,
+// consuming one occurrence per match so a genuine duplicate comment is not
+// swallowed by an unrelated identical mirrored row — and treat only what
+// survives as orphaned. That is exhaustive over the push sites rather than
+// dependent on what the text happens to look like.
 function orphanedExerciseComments(exercise) {
-  return (exercise.unparsed_rows || [])
-    .filter(raw => typeof raw === 'string' && raw.trimStart().startsWith('--'))
-    .map(raw => raw.trimStart().slice(2).trim());
+  const mirrored = [];
+  for (const entry of exercise.session_entries || []) {
+    if (!entry || !entry.unparsed) continue;
+    // Mirrors the parser's own choice of what it pushed: the import path uses
+    // `record.prose || trimmed`, every other unparsed entry uses its raw text.
+    const prose = entry.imported && entry.import_record ? entry.import_record.prose : null;
+    mirrored.push(prose || entry.raw || '');
+  }
+  for (const positional of exercise.unparsed_positions || []) {
+    mirrored.push((positional && positional.raw) || '');
+  }
+
+  const orphans = [];
+  for (const raw of exercise.unparsed_rows || []) {
+    if (typeof raw !== 'string') continue;
+    const mirrorIdx = mirrored.indexOf(raw);
+    if (mirrorIdx !== -1) {
+      mirrored.splice(mirrorIdx, 1);
+      continue;
+    }
+    const text = raw.trimStart();
+    if (text.startsWith('--')) orphans.push(text.slice(2).trim());
+  }
+  return orphans;
 }
 
 // Counts the same merged (session_entries + unparsed_positions) sequence

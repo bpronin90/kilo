@@ -350,6 +350,36 @@ describe('exportWorkoutsCsv', () => {
       expect(byKind(objs, 'session')).toHaveLength(1);
     });
 
+    test('imported unparsed prose beginning with -- exports once, unaltered (PR #965 review)', () => {
+      // workoutNote.js:237-244 copies arbitrary `record.prose` into
+      // unparsed_rows AND pushes the entry to session_entries. A `--` prefix
+      // filter alone would export it twice and strip its leading dashes.
+      const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+      const record = encode({ kind: 'unparsed', prose: '--- Evil', rowOrdinal: 0, v: 1 });
+      const raw = `-@import-exercise "Bench"\n- @import-record ${record}`;
+      const note = { id: 'n1', title: 'R', isCurrent: true, raw_text: raw };
+      const objs = rowsAsObjects(exportWorkoutsCsv([note]), WORKOUT_CSV_COLUMNS);
+
+      const scoped = byKind(objs, 'annotation').filter((o) => o.annotation_scope === 'exercise');
+      expect(scoped).toHaveLength(0);
+
+      const unparsed = byKind(objs, 'unparsed');
+      expect(unparsed).toHaveLength(1);
+      expect(unparsed[0].raw_unparsed_text).not.toBe('- Evil');
+    });
+
+    test('an orphaned comment is still exported when the exercise also has imported rows', () => {
+      const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+      const record = encode({ kind: 'unparsed', prose: '--- Evil', rowOrdinal: 0, v: 1 });
+      const raw = `-@import-exercise "Bench"\n- @import-record ${record}\n-- real orphan`;
+      const note = { id: 'n1', title: 'R', isCurrent: true, raw_text: raw };
+      const objs = rowsAsObjects(exportWorkoutsCsv([note]), WORKOUT_CSV_COLUMNS);
+
+      const scoped = byKind(objs, 'annotation').filter((o) => o.annotation_scope === 'exercise');
+      expect(scoped).toHaveLength(1);
+      expect(scoped[0].annotation_text).toBe('real orphan');
+    });
+
     test('a comment attached to a performed row still exports once, as performed_row', () => {
       // The attachable path routes into `annotation.comments` and never into
       // `unparsed_rows`, so it must not gain a second exercise-scoped row.
