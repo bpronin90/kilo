@@ -35,6 +35,7 @@ import { Button, Card, SectionTitle } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { localDate } from '../lib/LogScreenHelpers';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
+import { shareRoutine } from '../lib/interoperability/routineShare';
 
 // A routine row's date has exactly one meaning: the day the routine was created
 // (#775). It used to read `updated_at`, which is the sync conflict cursor
@@ -90,6 +91,9 @@ export function LogPreviousRoutines({
   recoveryWeekNumberByNoteId = {},
   expanded = false,
   onToggleExpanded,
+  // #954 Share Routine. Injectable only so tests can observe the composed
+  // payload; the app uses the module's own notice-then-share flow.
+  onShareRoutine,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -105,6 +109,14 @@ export function LogPreviousRoutines({
     } else {
       viewingNoteLastTapRef.current = now;
     }
+  };
+
+  // The stored routine body, byte-for-byte — never the active-week slice the
+  // viewer renders, so a shared A/B routine carries both halves (#954).
+  const handleShareRoutine = (note) => {
+    const payload = { title: note?.title, rawText: note?.raw_text || '' };
+    if (onShareRoutine) onShareRoutine(payload);
+    else shareRoutine(payload);
   };
 
   const routineCount = otherNotes.length;
@@ -254,6 +266,13 @@ export function LogPreviousRoutines({
                       <Button
                         onPress={handleEditViewedNote}
                         title="Edit routine"
+                        style={styles.switchButton}
+                        textStyle={styles.switchButtonText}
+                      />
+                      <Button
+                        onPress={() => handleShareRoutine(viewingNote)}
+                        title="Share routine"
+                        accessibilityLabel={`Share routine ${viewingNote?.title || 'Untitled Routine'}`}
                         style={styles.switchButton}
                         textStyle={styles.switchButtonText}
                       />

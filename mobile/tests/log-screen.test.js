@@ -1299,6 +1299,14 @@ describe('Log web edit path: explicit edit control is wired (#314)', () => {
     expect(src).toMatch(/enterCurrentEditor=\{(?:currentEditor\.)?enterCurrentEditor\}/);
   });
 
+  // #954: sharing must be byte-for-byte, and `activeEditText` is only the
+  // active week's slice of an A/B routine (useLogCurrentRoutineEditor.js).
+  // LogScreen therefore has to hand the card the FULL stored body; without
+  // this prop an A/B current routine silently shares half of itself.
+  test('LogScreen forwards the full routine body to the active card for sharing', () => {
+    expect(src).toMatch(/routineRawText=\{workoutNoteText\}/);
+  });
+
   test('active routine card renders an explicit Edit control bound to enterCurrentEditor', () => {
     // LogActiveRoutineCard exposes a single-press "Edit" button (web-usable path)
     // separate from the double-tap body handler.
@@ -3822,7 +3830,7 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     expect(wrapRows.length).toBeGreaterThan(0);
 
     const pills = findStyled(root, s => s.minHeight === 44);
-    expect(pills.length).toBe(3); // Edit + Week A/B + Skip week/Remove skip (#823: 44dp floor)
+    expect(pills.length).toBe(4); // Edit + Week A/B + Share + Skip week/Remove skip (#823: 44dp floor; #954 adds Share)
     for (const pill of pills) {
       const style = flatStyle(pill);
       expect(style.justifyContent).toBe('center');
