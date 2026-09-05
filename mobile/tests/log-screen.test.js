@@ -1299,6 +1299,14 @@ describe('Log web edit path: explicit edit control is wired (#314)', () => {
     expect(src).toMatch(/enterCurrentEditor=\{(?:currentEditor\.)?enterCurrentEditor\}/);
   });
 
+  // #954: sharing must be byte-for-byte, and `activeEditText` is only the
+  // active week's slice of an A/B routine (useLogCurrentRoutineEditor.js).
+  // LogScreen therefore has to hand the card the FULL stored body; without
+  // this prop an A/B current routine silently shares half of itself.
+  test('LogScreen forwards the full routine body to the active card for sharing', () => {
+    expect(src).toMatch(/routineRawText=\{workoutNoteText\}/);
+  });
+
   test('active routine card renders an explicit Edit control bound to enterCurrentEditor', () => {
     // LogActiveRoutineCard exposes a single-press "Edit" button (web-usable path)
     // separate from the double-tap body handler.

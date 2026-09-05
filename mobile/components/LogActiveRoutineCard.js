@@ -53,13 +53,11 @@ export function LogActiveRoutineCard({
   // it never reads as the thing actually being trained right now (Recovery
   // already owns that role).
   baselinePaused = false,
-  // #954 Share Routine. The text shared is the routine body exactly as
-  // stored — `routineRawText` when the screen supplies the full note body,
-  // otherwise `activeEditText`, which IS the full body for a routine with no
-  // A/B weeks and the active week's slice for one that has them. Sharing the
-  // week you are looking at is the honest reading of the visible card; a
-  // future change that wants both halves passes `routineRawText` without
-  // touching this control.
+  // #954 Share Routine. `routineRawText` is the FULL stored routine body —
+  // both A/B halves and the `---` separator — which is what byte preservation
+  // requires. `activeEditText` is only ever the active week's slice for an A/B
+  // routine (useLogCurrentRoutineEditor.js), so it is a last-resort fallback
+  // for a caller that supplies no body, not the intended source.
   routineRawText,
   onShareRoutine,
 }) {

@@ -3,9 +3,12 @@
 // The point of every assertion here is one property: what leaves the device is
 // the envelope plus the routine body EXACTLY as stored, and nothing else.
 
+import fs from 'fs';
+import path from 'path';
 import React from 'react';
 import render from 'react-test-renderer';
-import { Alert, Share } from 'react-native';
+import { Share } from 'react-native';
+import { Alert } from '../lib/platformAlert';
 import {
   ROUTINE_SHARE_HEADER,
   ROUTINE_SHARE_NOTICE_BODY,
@@ -179,6 +182,18 @@ describe('shareRoutine: notice before the platform share', () => {
     expect(() => alert.mock.calls[0][2][1].onPress()).not.toThrow();
   });
 
+  // #721/#954 review: a direct `import { Alert } from 'react-native'` here is
+  // dead on web for a multi-button dialog, which would silently kill the
+  // notice AND the share behind it. The repo-wide guard lives in
+  // platform-alert.test.js; this is the local, module-specific one.
+  test('the notice goes through lib/platformAlert, never react-native Alert', () => {
+    const source = fs.readFileSync(path.join(__dirname, '../lib/interoperability/routineShare.js'), 'utf8');
+    for (const match of source.matchAll(/import \{([^}]*)\} from ['"]react-native['"]/g)) {
+      expect(match[1].split(',').map(n => n.trim())).not.toContain('Alert');
+    }
+    expect(source).toMatch(/from '\.\.\/platformAlert'/);
+  });
+
   test('the default flow uses the platform Alert and Share', () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     const shareSpy = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' });
@@ -224,7 +239,9 @@ describe('Share Routine is reachable from the current and saved routines', () =>
     expect(onShareRoutine).toHaveBeenCalledWith({ title: 'Current', rawText: ROUTINE });
   });
 
-  test('an explicit routineRawText wins over the active-week slice', () => {
+  // The A/B regression: `activeEditText` is Week A only, so a card that shared
+  // it would drop Week B and the `---` separator from an A/B routine.
+  test('an A/B current routine shares both halves, not the viewed week', () => {
     const onShareRoutine = jest.fn();
     let component;
     render.act(() => {
@@ -253,6 +270,10 @@ describe('Share Routine is reachable from the current and saved routines', () =>
     const share = pressableByLabel(component.root, 'Share routine');
     render.act(() => { share.props.onPress({ stopPropagation: jest.fn() }); });
     expect(onShareRoutine).toHaveBeenCalledWith({ title: 'Current', rawText: AB_ROUTINE });
+    const shared = parseRoutineShareText(buildRoutineShareText(onShareRoutine.mock.calls[0][0])).body;
+    expect(shared).toBe(AB_ROUTINE);
+    expect(shared).toContain('\n---\n');
+    expect(shared).toContain('-Squat'); // Week B, which activeEditText omits
   });
 
   test('a saved routine shares its full stored body, not the viewed week', () => {

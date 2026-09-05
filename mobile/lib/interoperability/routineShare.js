@@ -25,7 +25,12 @@
 // This is export only. The strip side exists so the round trip is provable in
 // tests today, and so #581's Stage 2 import flow can reuse it unchanged.
 
-import { Alert, Share } from 'react-native';
+// `Alert` comes from lib/platformAlert, never from react-native directly: the
+// RN web Alert silently no-ops for multi-button dialogs, so a direct import
+// would make the pre-share notice — and therefore sharing itself — dead on
+// web (#721; guarded by tests/platform-alert.test.js).
+import { Share } from 'react-native';
+import { Alert } from '../platformAlert';
 
 export const ROUTINE_SHARE_MARKER = '#kilo-routine';
 export const ROUTINE_SHARE_VERSION = 'v1';

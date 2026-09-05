@@ -1173,6 +1173,9 @@ export function LogScreen({
                 currentId={currentId}
                 roughFlaggedNames={currentEditor.roughFlaggedNames}
                 activeEditText={currentEditor.activeEditText}
+                // #954: the full stored body, not the active-week slice, so a
+                // shared A/B routine carries both halves byte-for-byte.
+                routineRawText={workoutNoteText}
                 onExerciseSourceJump={currentEditor.handleExerciseSourceJump}
                 recoveryWeekNumber={currentRecoveryWeekNumber}
                 baselinePaused={currentIsPausedBaseline}
