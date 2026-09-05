@@ -432,6 +432,46 @@ Two behaviors follow from tracking being explicit:
 
 **Exercises tracked before this update.** An exercise that was already tracked — including the ones Kilo tracks by default that you have never toggled — has no recorded span, so it keeps using its whole history exactly as it always has. That lasts until you turn Track on for it again, which opens a span from that point like any other activation. (Turning Track off simply stops Kilo monitoring the exercise; it opens no span.)
 
+### Progression Suggestions
+
+> Where you see it: nowhere yet — the setting is stored and the rules are derivable, but no screen renders a suggestion.
+
+An opt-in, **default-off** toggle stored in AsyncStorage under `kilo_progression_suggestions_enabled`. Like Fatigue Tracking and Deload Mode, it is off until you turn it on, and turning it off later leaves your data untouched.
+
+The rules live in `mobile/lib/data/progressionSuggestions.js` as pure derivations over an already-parsed note. Every record separates three things:
+
+| Field | What it holds |
+|---|---|
+| `evidence` | Only what you actually logged: classification, the two compared sessions' weights and reps, how many sessions were skipped, and whether a compared set was typed in kg |
+| `heuristic` | What the rule proposes to do with that evidence — or `null` when nothing is proposed |
+| `explanation` | Deterministic text built from the two above |
+
+#### Double progression
+
+A suggestion needs a rep range **you declared in the header** (`-Bench Press: 3x8-10`). Kilo never infers or invents a range; an exercise with no declared range gets no suggestion, only a note saying so.
+
+The rule fires when your last two non-skipped logged sessions are classified `stalled` at the same top weight and every working set at that weight already reached the top of your range. The proposal is the same plate increment the deload generator uses — 2.5 lb when any logged weight is not a multiple of 5, otherwise 5 lb — with the target reps reset to the bottom of your range.
+
+Your declared set count is part of the target. `3x8-10` logged as two sets of 10 reached the rep ceiling on the sets you did but never completed the third, so no weight jump is proposed — and the ceiling has to be reached in **both** compared sessions, on every working set, not just the best one.
+
+It does not fire when reps are still climbing at the same weight, when the top of the range has not been reached, when a session came in under the declared set count, or when there are fewer than two non-skipped logged sessions.
+
+**Bodyweight movements** never get a weight proposal. When a reps-only exercise holds equal total reps across the last two sessions and every working set in both sessions is at the top of the declared range, the suggestion is more reps, a slower tempo, or a harder variation.
+
+#### Units and skips
+
+Weight is always compared canonically in pounds — a `100kg` entry was already converted at parse time, so it compares exactly like a bare pound entry. The originally typed kg value is surfaced in the sentence only so you can cross-check it; it never changes whether a comparison happens.
+
+Skipped weeks are excluded from the comparison entirely, and the explanation says so only when a skip actually sat **between** the two compared sessions — an older skip elsewhere in the exercise's history is not claimed.
+
+Warmup sections never take part. A warmup-kind occurrence contributes no compared session and no suggestion, exactly as it contributes nothing to your Progressing / Steady / Regressing classification, so a suggestion always describes your working sets.
+
+#### What suggestions never do
+
+- They never rewrite your note. This layer produces records only; nothing in it touches note text.
+- While an active Recovery block covers an exercise, that exercise gets no suggestion at all — Recovery has its own lifecycle and reason.
+- Language stays conditional ("consider"), and no explanation makes a medical, injury, or readiness claim.
+
 ### 1k Exercise Selections
 
 > Where you see it: Home screen — 1k Club Progress card configuration
