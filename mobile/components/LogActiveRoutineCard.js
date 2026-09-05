@@ -16,6 +16,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card } from './UI';
 import { useThemedStyles } from '../theme/ThemeContext';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
+import { shareRoutine } from '../lib/interoperability/routineShare';
 
 export function LogActiveRoutineCard({
   workoutNoteTitle,
@@ -52,8 +53,22 @@ export function LogActiveRoutineCard({
   // it never reads as the thing actually being trained right now (Recovery
   // already owns that role).
   baselinePaused = false,
+  // #954 Share Routine. The text shared is the routine body exactly as
+  // stored — `routineRawText` when the screen supplies the full note body,
+  // otherwise `activeEditText`, which IS the full body for a routine with no
+  // A/B weeks and the active week's slice for one that has them. Sharing the
+  // week you are looking at is the honest reading of the visible card; a
+  // future change that wants both halves passes `routineRawText` without
+  // touching this control.
+  routineRawText,
+  onShareRoutine,
 }) {
   const styles = useThemedStyles(createStyles);
+  const handleShareRoutine = () => {
+    const payload = { title: workoutNoteTitle, rawText: routineRawText ?? activeEditText };
+    if (onShareRoutine) onShareRoutine(payload);
+    else shareRoutine(payload);
+  };
   const identityLabel = baselinePaused ? 'Baseline routine · paused' : 'Current routine';
   // An explicit accessibilityLabel on an accessible ancestor replaces the label VoiceOver
   // would otherwise derive from its Text descendants (#738 review) — so the routine title,
@@ -131,6 +146,17 @@ export function LogActiveRoutineCard({
                   </Text>
                 </Pressable>
               )}
+              {/* #954: the same pill form as its neighbours, in the one action
+                  strip — no new surface, no layout change. */}
+              <Pressable
+                onPress={(e) => { e.stopPropagation(); handleShareRoutine(); }}
+                style={styles.inlineSwitchButton}
+                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                accessibilityRole="button"
+                accessibilityLabel="Share routine"
+              >
+                <Text style={styles.inlineSwitchButtonText}>Share</Text>
+              </Pressable>
             </View>
             {/* One skip control, never two (#711). Previously both rendered and
                 `canUnskipWeek` only dimmed `Remove skip` to opacity 0.4 over
