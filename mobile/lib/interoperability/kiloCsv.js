@@ -400,6 +400,28 @@ function buildNoteRows(note, routine) {
   return rows;
 }
 
+// Compares two strings by Unicode code point (issue #964). JavaScript's `<`
+// and `>` compare UTF-16 code UNITS, which is not the same order: an astral
+// character (U+10000 and above) is stored as a surrogate pair whose lead unit
+// is U+D800-U+DBFF, so it compares BELOW every private-use and other BMP
+// character from U+E000 up. Relational operators therefore sort U+10000 before
+// U+E000, the exact inversion of code-point order.
+//
+// Iterating with `for...of` yields whole code points rather than code units,
+// so surrogate pairs are compared as the single characters they represent.
+function compareCodePoints(a, b) {
+  const aPoints = Array.from(a);
+  const bPoints = Array.from(b);
+  const shared = Math.min(aPoints.length, bPoints.length);
+  for (let i = 0; i < shared; i++) {
+    const aPoint = aPoints[i].codePointAt(0);
+    const bPoint = bPoints[i].codePointAt(0);
+    if (aPoint !== bPoint) return aPoint < bPoint ? -1 : 1;
+  }
+  if (aPoints.length !== bPoints.length) return aPoints.length < bPoints.length ? -1 : 1;
+  return 0;
+}
+
 // Deterministic ordering (issue #578 "Kilo exports"): current-first, then
 // NFC-normalized title compared by explicit Unicode code-point order (never
 // `localeCompare`, whose collation varies by runtime/locale), then exact id
@@ -408,11 +430,11 @@ function compareRoutines(a, b) {
   if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
   const titleA = (a.title || '').normalize('NFC');
   const titleB = (b.title || '').normalize('NFC');
-  if (titleA < titleB) return -1;
-  if (titleA > titleB) return 1;
-  if (a.id < b.id) return -1;
-  if (a.id > b.id) return 1;
-  return 0;
+  const byTitle = compareCodePoints(titleA, titleB);
+  if (byTitle !== 0) return byTitle;
+  // Ids are Kilo-generated ASCII, where code-unit and code-point order agree;
+  // routed through the same comparator so one rule governs the whole sort.
+  return compareCodePoints(String(a.id ?? ''), String(b.id ?? ''));
 }
 
 // Exports every live (non-tombstoned) notebook note as one CSV document.
