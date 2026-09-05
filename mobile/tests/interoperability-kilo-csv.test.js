@@ -291,6 +291,78 @@ describe('exportWorkoutsCsv', () => {
     const notes = [{ id: 'n1', title: 'R', isCurrent: true, raw_text: 'Monday\n-Bench\n- 100 5' }];
     expect(exportWorkoutsCsv(notes)).toBe(exportWorkoutsCsv(notes));
   });
+
+  // Issue #963: the parser's deload branch builds `{ sets, session_entries: [] }`,
+  // so the merged sequence was empty and every set row was silently dropped.
+  describe('deload sets (issue #963)', () => {
+    test('a deload exercise exports its sets with weight, reps, count and units intact', () => {
+      const note = { id: 'n1', title: 'R', isCurrent: true, raw_text: 'Monday\nDeadlift: 315 lbs 3x5' };
+      const objs = rowsAsObjects(exportWorkoutsCsv([note]), WORKOUT_CSV_COLUMNS);
+
+      expect(byKind(objs, 'exercise')).toHaveLength(1);
+
+      const sets = byKind(objs, 'set');
+      expect(sets).toHaveLength(3);
+      expect(sets.map((s) => s.set_ordinal)).toEqual(['1', '2', '3']);
+      for (const set of sets) {
+        expect(set.weight_value_lb).toBe('315');
+        expect(set.rep_count).toBe('5');
+        expect(set.authored_unit).toBe('lb');
+        expect(set.authored_value).toBe('315');
+      }
+    });
+
+    test('an ordinary exercise is not duplicated by the deload fallback', () => {
+      // `flushExercise()` assigns `exercise.sets` on every exercise, so the
+      // fallback must key off an empty merged sequence, not off `sets` existing.
+      const note = { id: 'n1', title: 'R', isCurrent: true, raw_text: 'Monday\n-Bench\n- 100 5\n- 105 5' };
+      const objs = rowsAsObjects(exportWorkoutsCsv([note]), WORKOUT_CSV_COLUMNS);
+
+      expect(byKind(objs, 'exercise')).toHaveLength(1);
+      const sets = byKind(objs, 'set');
+      expect(sets).toHaveLength(2);
+      expect(sets.map((s) => s.weight_value_lb)).toEqual(['100', '105']);
+    });
+
+    test('a deload exercise alongside an ordinary one exports both without cross-contamination', () => {
+      const raw = ['Monday', '-Bench', '- 100 5', 'Deadlift: 315 lbs 3x5'].join('\n');
+      const note = { id: 'n1', title: 'R', isCurrent: true, raw_text: raw };
+      const objs = rowsAsObjects(exportWorkoutsCsv([note]), WORKOUT_CSV_COLUMNS);
+
+      expect(byKind(objs, 'exercise')).toHaveLength(2);
+      expect(byKind(objs, 'set')).toHaveLength(4); // 1 bench + 3 deload
+    });
+  });
+
+  // Issue #963: a `--` comment that cannot attach to a preceding performed
+  // entry lands only in `unparsed_rows`, which the exporter never read.
+  describe('orphaned exercise comments (issue #963)', () => {
+    test('a comment following a skip is exported rather than dropped', () => {
+      const raw = ['Monday', '-Bench', '-', '-- knee pain'].join('\n');
+      const note = { id: 'n1', title: 'R', isCurrent: true, raw_text: raw };
+      const objs = rowsAsObjects(exportWorkoutsCsv([note]), WORKOUT_CSV_COLUMNS);
+
+      const scoped = byKind(objs, 'annotation').filter((o) => o.annotation_scope === 'exercise');
+      expect(scoped).toHaveLength(1);
+      expect(scoped[0].annotation_text).toBe('knee pain');
+      expect(scoped[0].exercise_name).toBe('Bench');
+      expect(scoped[0].session_index).toBe('');
+      expect(byKind(objs, 'session')).toHaveLength(1);
+    });
+
+    test('a comment attached to a performed row still exports once, as performed_row', () => {
+      // The attachable path routes into `annotation.comments` and never into
+      // `unparsed_rows`, so it must not gain a second exercise-scoped row.
+      const raw = ['Monday', '-Bench', '- 100 5', '-- felt strong'].join('\n');
+      const note = { id: 'n1', title: 'R', isCurrent: true, raw_text: raw };
+      const objs = rowsAsObjects(exportWorkoutsCsv([note]), WORKOUT_CSV_COLUMNS);
+
+      const annotations = byKind(objs, 'annotation');
+      expect(annotations).toHaveLength(1);
+      expect(annotations[0].annotation_scope).toBe('performed_row');
+      expect(annotations[0].row_comments).toContain('felt strong');
+    });
+  });
 });
 
 describe('exportWeightCsv', () => {

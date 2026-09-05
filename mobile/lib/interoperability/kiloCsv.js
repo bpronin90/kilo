@@ -119,7 +119,45 @@ function mergeExerciseEntries(exercise) {
     }
     if (pos < sessionEntries.length) merged.push(sessionEntries[pos]);
   }
+
+  // Deload exercises (issue #963) are the one shape the parser builds with sets
+  // but no session_entries: mobile/lib/parser/workoutNote.js's `_DELOAD_RE`
+  // branch pushes `{ rows: [...], sets: dlSets, session_entries: [] }` directly,
+  // never routing through the per-row session_entries path. Without this the
+  // merged sequence is empty, the row loop emits zero session and zero set rows,
+  // and `Deadlift: 315 lbs 3x5` exports an exercise row whose weight, reps and
+  // set count are silently gone — the loss #578's "preserve ... sets ... where
+  // representable" criterion forbids.
+  //
+  // Guarded on the merged sequence being empty rather than on `sets` being
+  // present, because `flushExercise()` assigns `exercise.sets` on EVERY
+  // exercise (the flattened union of `rows`). An ordinary exercise with sets
+  // always has the session_entries that produced them, so it never reaches
+  // here and its existing rows are unchanged.
+  const exerciseSets = exercise.sets || [];
+  if (merged.length === 0 && exerciseSets.length > 0) {
+    merged.push({ skipped: false, raw: exercise.raw_header || '', sets: exerciseSets });
+  }
+
   return merged;
+}
+
+// The `--` comments the parser could not attach to a preceding performed entry
+// (mobile/lib/parser/workoutNote.js:305-320 — the else branch taken when the
+// last entry is skipped or unparsed, or no entry precedes it). Those land in
+// `unparsed_rows` and nowhere else, so `-Bench` / `-` / `-- knee pain` exported
+// the skip and dropped the authored explanation entirely.
+//
+// `unparsed_rows` is otherwise a MIRROR, not a separate store: every other push
+// to it (lines 240, 342, 443, 450, 471, 477) has a matching session_entries or
+// unparsed_positions push that already exports. Emitting the whole array would
+// duplicate those rows. A leading `--` is the exact discriminator — the parser
+// routes an attachable `--` into `annotation.comments` instead, so a `--` string
+// in `unparsed_rows` is always and only an orphaned comment.
+function orphanedExerciseComments(exercise) {
+  return (exercise.unparsed_rows || [])
+    .filter(raw => typeof raw === 'string' && raw.trimStart().startsWith('--'))
+    .map(raw => raw.trimStart().slice(2).trim());
 }
 
 // Counts the same merged (session_entries + unparsed_positions) sequence
@@ -310,6 +348,21 @@ function buildNoteRows(note, routine) {
           }
         }
       });
+
+      // Exercise-scoped, not a session position: these carry no session_index
+      // and are deliberately excluded from sectionMaxSessionCount, so adding
+      // them cannot change single-session dated-heading eligibility.
+      for (const comment of orphanedExerciseComments(exercise)) {
+        rows.push({
+          ...emptyRow(),
+          ...exerciseBase,
+          record_kind: 'annotation',
+          annotation_scope: 'exercise',
+          source_date: sectionDate,
+          source_date_origin: sectionDateOrigin,
+          annotation_text: comment,
+        });
+      }
     });
   });
 
