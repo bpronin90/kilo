@@ -219,6 +219,44 @@ describe('exportWorkoutsCsv', () => {
     expect(order).toEqual(['b1', 'z1', 'z2', 'a1']);
   });
 
+  // Issue #964: relational string comparison is UTF-16 code-UNIT order. An
+  // astral character's lead surrogate (U+D800-U+DBFF) compares below every BMP
+  // character from U+E000 up, inverting the documented code-point contract.
+  describe('code-point routine ordering (issue #964)', () => {
+    test('U+E000 sorts before U+10000', () => {
+      const notes = [
+        { id: 'a1', title: '\u{10000}', isCurrent: false, raw_text: '' },
+        { id: 'a2', title: '\u{E000}', isCurrent: false, raw_text: '' },
+      ];
+      const objs = rowsAsObjects(exportWorkoutsCsv(notes), WORKOUT_CSV_COLUMNS);
+      expect(byKind(objs, 'routine').map((r) => r.routine_id)).toEqual(['a2', 'a1']);
+
+      // Guards the exact inversion: naive `<` would have ordered these a1, a2.
+      expect('\u{10000}' < '\u{E000}').toBe(true);
+    });
+
+    test('a shared prefix falls through to the longer title, by code point', () => {
+      const notes = [
+        { id: 'a1', title: 'Push\u{10000}', isCurrent: false, raw_text: '' },
+        { id: 'a2', title: 'Push', isCurrent: false, raw_text: '' },
+        { id: 'a3', title: 'Push\u{E000}', isCurrent: false, raw_text: '' },
+      ];
+      const objs = rowsAsObjects(exportWorkoutsCsv(notes), WORKOUT_CSV_COLUMNS);
+      expect(byKind(objs, 'routine').map((r) => r.routine_id)).toEqual(['a2', 'a3', 'a1']);
+    });
+
+    test('ordering stays deterministic and ASCII behaviour is unchanged', () => {
+      const notes = [
+        { id: 'c1', title: 'banana', isCurrent: false, raw_text: '' },
+        { id: 'c2', title: 'Apple', isCurrent: false, raw_text: '' },
+        { id: 'c3', title: 'apple', isCurrent: false, raw_text: '' },
+      ];
+      const objs = rowsAsObjects(exportWorkoutsCsv(notes), WORKOUT_CSV_COLUMNS);
+      // Uppercase 'A' (U+0041) precedes lowercase 'a' (U+0061) by code point.
+      expect(byKind(objs, 'routine').map((r) => r.routine_id)).toEqual(['c2', 'c3', 'c1']);
+    });
+  });
+
   // PR #949 review findings — three silent-data-loss regressions.
   describe('review-finding regressions (#578)', () => {
     test('a partially skipped set group ("80 4,-") exports the skip as is_skipped, not a fabricated zero-rep set', () => {
