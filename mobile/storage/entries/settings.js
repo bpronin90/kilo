@@ -5,6 +5,7 @@ import {
   DELOAD_DATE_EDIT_KEY,
   FATIGUE_TRACKING_KEY,
   DELOAD_MODE_KEY,
+  PROGRESSION_SUGGESTIONS_KEY,
   TRACKED_LIFTS_KEY,
   TRACKED_LIFT_ACTIVATIONS_KEY,
   COLLAPSED_STATE_KEY,
@@ -225,6 +226,23 @@ export async function loadDeloadModeEnabled() {
 
 export async function saveDeloadModeEnabled(enabled) {
   await AsyncStorage.setItem(DELOAD_MODE_KEY, JSON.stringify(enabled));
+}
+
+// Progression suggestions (#958). Same shape and default-off posture as
+// fatigue tracking and deload mode: an unset key, a null value, or unreadable
+// storage all read as `false`, so a suggestion surface can never appear for a
+// user who has not deliberately turned it on.
+export async function loadProgressionSuggestionsEnabled() {
+  try {
+    const raw = await AsyncStorage.getItem(PROGRESSION_SUGGESTIONS_KEY);
+    return raw == null ? false : JSON.parse(raw);
+  } catch {
+    return false;
+  }
+}
+
+export async function saveProgressionSuggestionsEnabled(enabled) {
+  await AsyncStorage.setItem(PROGRESSION_SUGGESTIONS_KEY, JSON.stringify(enabled));
 }
 
 // Plate-calculator equipment profile (#577): bar weight + finite per-side

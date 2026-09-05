@@ -20,6 +20,9 @@ export const USER_PROFILE_KEY = 'kilo_user_profile';
 export const DELOAD_DATE_EDIT_KEY = 'kilo_deload_date_edit_enabled';
 export const FATIGUE_TRACKING_KEY = 'kilo_fatigue_tracking_enabled';
 export const DELOAD_MODE_KEY = 'kilo_deload_mode_enabled';
+// Opt-in progression suggestions (#958). Default-off like fatigue tracking and
+// deload mode: no suggestion surface exists for a user who has not enabled it.
+export const PROGRESSION_SUGGESTIONS_KEY = 'kilo_progression_suggestions_enabled';
 export const WEIGH_IN_REMINDER_KEY = 'kilo_weigh_in_reminder';
 export const WORKOUT_REMINDER_KEY = 'kilo_workout_reminder';
 export const RECOVERY_BLOCKS_KEY = 'kilo_recovery_blocks';
