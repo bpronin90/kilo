@@ -462,7 +462,9 @@ It does not fire when reps are still climbing at the same weight, when the top o
 
 Weight is always compared canonically in pounds — a `100kg` entry was already converted at parse time, so it compares exactly like a bare pound entry. The originally typed kg value is surfaced in the sentence only so you can cross-check it; it never changes whether a comparison happens.
 
-Skipped weeks are excluded from the comparison entirely, and the explanation says so when a skip sat between the compared sessions.
+Skipped weeks are excluded from the comparison entirely, and the explanation says so only when a skip actually sat **between** the two compared sessions — an older skip elsewhere in the exercise's history is not claimed.
+
+Warmup sections never take part. A warmup-kind occurrence contributes no compared session and no suggestion, exactly as it contributes nothing to your Progressing / Steady / Regressing classification, so a suggestion always describes your working sets.
 
 #### What suggestions never do
 

@@ -1,6 +1,6 @@
 import { deriveWorkoutAnalytics, normalizeExerciseKey } from '../parser.js';
 import { parseExerciseHeader } from '../parser/deloadGenerator.js';
-import { deriveProgressionSignals, loggedSessionUnits, _occurrenceEntries } from '../parser/analytics.js';
+import { deriveProgressionSignals, _occurrenceEntries } from '../parser/analytics.js';
 import { classifyExerciseSessions } from './workoutAnalytics.js';
 import { isBlockActive } from './recoveryBlocks.js';
 
@@ -104,6 +104,13 @@ export function isExerciseUnderActiveRecovery(name, recoveryBlocks) {
   return false;
 }
 
+// The same logged-session unit `loggedSessionUnits` defines in
+// lib/parser/analytics.js, applied here to an already warmup-filtered entry
+// list so the positional skip window below can be read off the same walk.
+function _isLoggedSessionUnit(entry) {
+  return !!entry && !entry.skipped && !entry.unparsed && !!entry.sets && entry.sets.length > 0;
+}
+
 function _topWeight(sets) {
   const weighted = (sets || []).filter(
     s => s.weight_value != null && s.weight_value > 0 && s.rep_count != null && s.rep_count > 0
@@ -187,17 +194,27 @@ export function deriveProgressionSuggestion(sections, name, options = {}) {
 
   const exercise = _findExercise(sections, name);
   const occurrences = exercise ? exercise.occurrences : [];
-  const logged = loggedSessionUnits(occurrences);
-  const skipped_sessions = occurrences
+  // A warmup-kind occurrence never contributes to a progression signal: both
+  // `classifyExerciseSessions` (`kind !== 'warmup'`) and `_buildComparable`
+  // (`occ.kind === 'warmup'` → no comparable unit) already drop it. This module
+  // has to walk the SAME list, or the classification would describe the working
+  // sets while the compared sessions were the warmups — and the suggestion
+  // would propose adding plates to a warmup load.
+  const entries = occurrences
     .flatMap(occ => _occurrenceEntries(occ))
-    .filter(entry => entry && entry.skipped).length;
+    .filter(entry => entry && entry.kind !== 'warmup');
+  const loggedPositions = [];
+  for (let i = 0; i < entries.length; i++) {
+    if (_isLoggedSessionUnit(entries[i])) loggedPositions.push(i);
+  }
+  const logged = loggedPositions.map(i => entries[i]);
 
   const insufficient = _record({
     name,
     kind: PROGRESSION_SUGGESTION_KINDS.NONE,
     suggested: false,
     reason: PROGRESSION_SUGGESTION_REASONS.INSUFFICIENT_HISTORY,
-    evidence: _emptyEvidence({ rep_range, sessions_compared: logged.length, skipped_sessions }),
+    evidence: _emptyEvidence({ rep_range, sessions_compared: logged.length, skipped_sessions: 0 }),
     heuristic: null,
     explanation:
       `Not enough logged history yet ${EM_DASH} need at least ${MIN_SESSIONS_FOR_COMPARISON} non-skipped sessions to compare.`,
@@ -210,6 +227,13 @@ export function deriveProgressionSuggestion(sections, name, options = {}) {
 
   const latest = logged[logged.length - 1];
   const prior = logged[logged.length - 2];
+  // Only skips that sit BETWEEN the two compared sessions are part of this
+  // comparison. A skip earlier in the exercise's history was never crossed by
+  // it, and claiming otherwise would describe a week the comparison never
+  // touched.
+  const skipped_sessions = entries
+    .slice(loggedPositions[loggedPositions.length - 2] + 1, loggedPositions[loggedPositions.length - 1])
+    .filter(entry => entry.skipped).length;
   const latestTop = _topWeight(latest.sets);
   const priorTop = _topWeight(prior.sets);
 

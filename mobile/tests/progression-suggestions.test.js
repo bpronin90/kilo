@@ -235,6 +235,56 @@ describe('the declared target must actually be met (#968 review)', () => {
   });
 });
 
+describe('warmup occurrences and skip windows (#968 second review)', () => {
+  test('a warmup section never becomes a compared session', () => {
+    // The working sets stall at 135 lb; the warmup rows at 45 lb must not
+    // become `latest`/`prior`, or the rule would propose loading the warmup.
+    const note = [
+      '+LIFTING',
+      '-Bench Press: 3x8-10',
+      '135 10,10,10',
+      '135 10,10,10',
+      '+WARMUP',
+      '-Bench Press: 3x8-10',
+      '45 10,10,10',
+      '45 10,10,10',
+    ].join('\n');
+    const rec = suggest(note, 'Bench Press');
+    expect(rec.evidence.classification).toBe('stalled');
+    expect(rec.evidence.top_weight).toBe(135);
+    expect(rec.suggested).toBe(true);
+    expect(rec.heuristic.suggested_weight).toBe(140);
+    expect(rec.explanation).toContain('135 lb');
+    expect(rec.explanation).not.toContain('45 lb');
+    expect(rec.explanation).not.toContain('50 lb');
+  });
+
+  test('a skip outside the compared window is not claimed as crossed', () => {
+    const note = [
+      '-Bench Press: 3x8-10',
+      '135 10,10,10',
+      '-',
+      '135 10,10,10',
+      '135 10,10,10',
+      '135 10,10,10',
+    ].join('\n');
+    const rec = suggest(note, 'Bench Press');
+    expect(rec.suggested).toBe(true);
+    expect(rec.evidence.skipped_sessions).toBe(0);
+    expect(rec.explanation).not.toMatch(/Skipped weeks/);
+    expect(rec.explanation).toBe(
+      'Your last 2 logged sessions both hit 3x10 at 135 lb — the top of your 8–10 rep target. Consider 140 lb for 3x8 next time.',
+    );
+  });
+
+  test('a skip inside the compared window is still called out', () => {
+    const note = ['-Bench Press: 3x8-10', '135 10,10,10', '-', '135 10,10,10'].join('\n');
+    const rec = suggest(note, 'Bench Press');
+    expect(rec.evidence.skipped_sessions).toBe(1);
+    expect(rec.explanation).toMatch(/^Skipped weeks aren't counted/);
+  });
+});
+
 describe('no declared rep range', () => {
   test('never invents a range', () => {
     const note = ['-Bench Press', '135 10,10,10', '135 10,10,10'].join('\n');
