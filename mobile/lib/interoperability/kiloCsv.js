@@ -119,7 +119,76 @@ function mergeExerciseEntries(exercise) {
     }
     if (pos < sessionEntries.length) merged.push(sessionEntries[pos]);
   }
+
+  // Deload exercises (issue #963) are the one shape the parser builds with sets
+  // but no session_entries: mobile/lib/parser/workoutNote.js's `_DELOAD_RE`
+  // branch pushes `{ rows: [...], sets: dlSets, session_entries: [] }` directly,
+  // never routing through the per-row session_entries path. Without this the
+  // merged sequence is empty, the row loop emits zero session and zero set rows,
+  // and `Deadlift: 315 lbs 3x5` exports an exercise row whose weight, reps and
+  // set count are silently gone — the loss #578's "preserve ... sets ... where
+  // representable" criterion forbids.
+  //
+  // Guarded on the merged sequence being empty rather than on `sets` being
+  // present, because `flushExercise()` assigns `exercise.sets` on EVERY
+  // exercise (the flattened union of `rows`). An ordinary exercise with sets
+  // always has the session_entries that produced them, so it never reaches
+  // here and its existing rows are unchanged.
+  const exerciseSets = exercise.sets || [];
+  if (merged.length === 0 && exerciseSets.length > 0) {
+    merged.push({ skipped: false, raw: exercise.raw_header || '', sets: exerciseSets });
+  }
+
   return merged;
+}
+
+// The `--` comments the parser could not attach to a preceding performed entry
+// (mobile/lib/parser/workoutNote.js:305-320 — the else branch taken when the
+// last entry is skipped or unparsed, or no entry precedes it). Those land in
+// `unparsed_rows` and nowhere else, so `-Bench` / `-` / `-- knee pain` exported
+// the skip and dropped the authored explanation entirely.
+//
+// `unparsed_rows` is otherwise a MIRROR, not a separate store: every other push
+// to it (workoutNote.js lines 240, 342, 443, 450, 471, 477) has a matching
+// session_entries or unparsed_positions push that already exports. Emitting the
+// whole array would duplicate those rows.
+//
+// A leading `--` alone is NOT a safe discriminator (PR #965 review): the import
+// path at workoutNote.js:237-244 copies arbitrary `record.prose` into
+// unparsed_rows while ALSO pushing the entry to session_entries, so imported
+// prose beginning with `--` would export twice and lose its first two dashes.
+// The same hazard exists wherever a mirrored row's own text can begin with `--`.
+//
+// So subtract the exact strings the mirrored sites contribute — as a multiset,
+// consuming one occurrence per match so a genuine duplicate comment is not
+// swallowed by an unrelated identical mirrored row — and treat only what
+// survives as orphaned. That is exhaustive over the push sites rather than
+// dependent on what the text happens to look like.
+function orphanedExerciseComments(exercise) {
+  const mirrored = [];
+  for (const entry of exercise.session_entries || []) {
+    if (!entry || !entry.unparsed) continue;
+    // Mirrors the parser's own choice of what it pushed: the import path uses
+    // `record.prose || trimmed`, every other unparsed entry uses its raw text.
+    const prose = entry.imported && entry.import_record ? entry.import_record.prose : null;
+    mirrored.push(prose || entry.raw || '');
+  }
+  for (const positional of exercise.unparsed_positions || []) {
+    mirrored.push((positional && positional.raw) || '');
+  }
+
+  const orphans = [];
+  for (const raw of exercise.unparsed_rows || []) {
+    if (typeof raw !== 'string') continue;
+    const mirrorIdx = mirrored.indexOf(raw);
+    if (mirrorIdx !== -1) {
+      mirrored.splice(mirrorIdx, 1);
+      continue;
+    }
+    const text = raw.trimStart();
+    if (text.startsWith('--')) orphans.push(text.slice(2).trim());
+  }
+  return orphans;
 }
 
 // Counts the same merged (session_entries + unparsed_positions) sequence
@@ -310,6 +379,21 @@ function buildNoteRows(note, routine) {
           }
         }
       });
+
+      // Exercise-scoped, not a session position: these carry no session_index
+      // and are deliberately excluded from sectionMaxSessionCount, so adding
+      // them cannot change single-session dated-heading eligibility.
+      for (const comment of orphanedExerciseComments(exercise)) {
+        rows.push({
+          ...emptyRow(),
+          ...exerciseBase,
+          record_kind: 'annotation',
+          annotation_scope: 'exercise',
+          source_date: sectionDate,
+          source_date_origin: sectionDateOrigin,
+          annotation_text: comment,
+        });
+      }
     });
   });
 
