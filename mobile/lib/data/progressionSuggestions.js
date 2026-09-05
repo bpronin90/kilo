@@ -236,8 +236,21 @@ export function deriveProgressionSuggestion(sections, name, options = {}) {
       latest_best_reps: bestReps,
     });
 
+    // The ceiling must be reached in BOTH compared sessions, and reached by
+    // every working set — the WORST set at `repHi`, not the best. Equal total
+    // reps alone is not the ceiling: 13,13,10 and 12,12,12 hold the same total
+    // while the earlier session never hit the top of the range on every set.
+    // The declared set count is part of the target too, so a session short of
+    // it has not completed the range the user declared.
+    const declaredSets = rep_range.sets;
     const atCeiling =
-      signal.progression_status === 'held' && bestReps != null && bestReps >= repHi;
+      signal.progression_status === 'held' &&
+      latestReps.length > 0 &&
+      priorReps.length > 0 &&
+      Math.min(...latestReps) >= repHi &&
+      Math.min(...priorReps) >= repHi &&
+      (declaredSets == null ||
+        (latestReps.length >= declaredSets && priorReps.length >= declaredSets));
     if (!atCeiling) {
       return _record({
         name,
@@ -265,7 +278,7 @@ export function deriveProgressionSuggestion(sections, name, options = {}) {
         unit: null,
       },
       explanation:
-        `Your last ${MIN_SESSIONS_FOR_COMPARISON} sessions both hit ${latestReps.length}x${bestReps} ${EM_DASH} the top of your ${_range(repLo, repHi)} rep target. Kilo won't suggest a weight for a bodyweight movement ${EM_DASH} consider more reps past ${repHi}, a slower tempo, or a harder variation.`,
+        `Your last ${MIN_SESSIONS_FOR_COMPARISON} sessions both hit ${declaredSets ?? latestReps.length}x${Math.min(...latestReps)} ${EM_DASH} the top of your ${_range(repLo, repHi)} rep target. Kilo won't suggest a weight for a bodyweight movement ${EM_DASH} consider more reps past ${repHi}, a slower tempo, or a harder variation.`,
     });
   }
 
@@ -316,18 +329,30 @@ export function deriveProgressionSuggestion(sections, name, options = {}) {
         : null,
   });
 
+  // The declared set count is part of the declared target: `3x8-10` logged as
+  // `135 10,10` reached the rep ceiling on the sets that were done but never
+  // completed the third one, so the range was not finished and no weight jump
+  // is proposed. When the header declares no set count, the sets actually
+  // logged are the only target there is.
+  const declaredSets = rep_range.sets;
   const atCeiling =
     classification === 'stalled' &&
     latestTop === priorTop &&
     latest_reps.length > 0 &&
     prior_reps.length > 0 &&
     Math.min(...latest_reps) >= repHi &&
-    Math.min(...prior_reps) >= repHi;
+    Math.min(...prior_reps) >= repHi &&
+    (declaredSets == null ||
+      (latest_reps.length >= declaredSets && prior_reps.length >= declaredSets));
 
   if (!atCeiling) {
     const sameWeight = latestTop === priorTop;
-    const explanation =
-      classification === 'progressing' && sameWeight
+    const shortOfDeclaredSets =
+      declaredSets != null &&
+      (latest_reps.length < declaredSets || prior_reps.length < declaredSets);
+    const explanation = shortOfDeclaredSets
+      ? `Your last ${MIN_SESSIONS_FOR_COMPARISON} logged sessions came in under your declared ${declaredSets} working sets at ${_formatWeight(latestTop)} lb ${EM_DASH} no change suggested until the full ${declaredSets}x${_range(repLo, repHi)} target is met.`
+      : classification === 'progressing' && sameWeight
         ? `You added a rep since last time (${_totalReps(prior.sets)}${ARROW}${_totalReps(latest.sets)} reps @ ${_formatWeight(latestTop)} lb) but haven't hit the top of your ${_range(repLo, repHi)} target yet ${EM_DASH} no change suggested.`
         : `Your last ${MIN_SESSIONS_FOR_COMPARISON} logged sessions haven't hit the top of your ${_range(repLo, repHi)} target at the same weight yet ${EM_DASH} no change suggested.`;
     return _record({
@@ -343,7 +368,7 @@ export function deriveProgressionSuggestion(sections, name, options = {}) {
 
   const increment = inferIncrement(exercise ? exercise.sets : []);
   const suggested_weight = latestTop + increment;
-  const setCount = latest_reps.length;
+  const setCount = declaredSets ?? latest_reps.length;
   const repsHit = Math.min(...latest_reps);
   const kgNote = evidence.kg_entry
     ? evidence.kg_entry.side === 'latest'

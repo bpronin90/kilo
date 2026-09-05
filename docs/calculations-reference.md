@@ -452,9 +452,11 @@ A suggestion needs a rep range **you declared in the header** (`-Bench Press: 3x
 
 The rule fires when your last two non-skipped logged sessions are classified `stalled` at the same top weight and every working set at that weight already reached the top of your range. The proposal is the same plate increment the deload generator uses — 2.5 lb when any logged weight is not a multiple of 5, otherwise 5 lb — with the target reps reset to the bottom of your range.
 
-It does not fire when reps are still climbing at the same weight, when the top of the range has not been reached, or when there are fewer than two non-skipped logged sessions.
+Your declared set count is part of the target. `3x8-10` logged as two sets of 10 reached the rep ceiling on the sets you did but never completed the third, so no weight jump is proposed — and the ceiling has to be reached in **both** compared sessions, on every working set, not just the best one.
 
-**Bodyweight movements** never get a weight proposal. When a reps-only exercise holds equal total reps across the last two sessions and its best set is at the top of the declared range, the suggestion is more reps, a slower tempo, or a harder variation.
+It does not fire when reps are still climbing at the same weight, when the top of the range has not been reached, when a session came in under the declared set count, or when there are fewer than two non-skipped logged sessions.
+
+**Bodyweight movements** never get a weight proposal. When a reps-only exercise holds equal total reps across the last two sessions and every working set in both sessions is at the top of the declared range, the suggestion is more reps, a slower tempo, or a harder variation.
 
 #### Units and skips
 

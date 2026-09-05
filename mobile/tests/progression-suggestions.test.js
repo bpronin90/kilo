@@ -197,6 +197,44 @@ describe('#580 fixture 8 — regressing lift is evidence, not a suggestion', () 
   });
 });
 
+describe('the declared target must actually be met (#968 review)', () => {
+  test('a bodyweight prior session below the ceiling does not fire, even at equal total reps', () => {
+    // 13,13,10 and 12,12,12 both total 36 reps, so the signal is `held` and the
+    // latest BEST set is 12 — but the prior session never hit 12 on every set,
+    // so the approved "both hit 3x12" claim would be false.
+    const note = ['-Pull-ups: 3x8-12', '13,13,10', '12,12,12'].join('\n');
+    const rec = suggest(note, 'Pull-ups');
+    expect(rec.evidence.progression_status).toBe('held');
+    expect(rec.evidence.is_bodyweight).toBe(true);
+    expect(rec.suggested).toBe(false);
+    expect(rec.kind).toBe(PROGRESSION_SUGGESTION_KINDS.NONE);
+    expect(rec.reason).toBe(PROGRESSION_SUGGESTION_REASONS.BELOW_CEILING);
+    expect(rec.heuristic).toBeNull();
+    expect(rec.explanation).not.toMatch(/both hit/);
+  });
+
+  test('a weighted session short of the declared set count does not fire', () => {
+    // `3x8-10` logged as two sets of 10 classifies as stalled at the rep
+    // ceiling, but the third declared working set was never completed.
+    const note = ['-Bench Press: 3x8-10', '135 10,10', '135 10,10'].join('\n');
+    const rec = suggest(note, 'Bench Press');
+    expect(rec.evidence.classification).toBe('stalled');
+    expect(rec.evidence.latest_reps).toEqual([10, 10]);
+    expect(rec.evidence.rep_range).toEqual({ lo: 8, hi: 10, sets: 3 });
+    expect(rec.suggested).toBe(false);
+    expect(rec.reason).toBe(PROGRESSION_SUGGESTION_REASONS.BELOW_CEILING);
+    expect(rec.heuristic).toBeNull();
+    expect(rec.explanation).toBe(
+      'Your last 2 logged sessions came in under your declared 3 working sets at 135 lb — no change suggested until the full 3x8–10 target is met.',
+    );
+  });
+
+  test('completing the declared sets at the ceiling still fires', () => {
+    const note = ['-Bench Press: 3x8-10', '135 10,10,10', '135 10,10,10'].join('\n');
+    expect(suggest(note, 'Bench Press').suggested).toBe(true);
+  });
+});
+
 describe('no declared rep range', () => {
   test('never invents a range', () => {
     const note = ['-Bench Press', '135 10,10,10', '135 10,10,10'].join('\n');
