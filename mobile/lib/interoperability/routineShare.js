@@ -22,8 +22,10 @@
 // stores. `buildRoutineShareText` takes exactly two content inputs (title and
 // rawText) for that reason; there is no note object to over-read.
 //
-// This is export only. The strip side exists so the round trip is provable in
-// tests today, and so #581's Stage 2 import flow can reuse it unchanged.
+// The strip side is what #581's Stage 2 import flow (#955) consumes, unchanged:
+// `parseRoutineShareText` recovers the body, and `analyzeRoutineImportText`
+// below turns that body into the preview/validation verdict the import screen
+// renders. Import writes nothing here — it only ever describes the paste.
 
 // `Alert` comes from lib/platformAlert, never from react-native directly: the
 // RN web Alert silently no-ops for multi-button dialogs, so a direct import
@@ -31,6 +33,7 @@
 // web (#721; guarded by tests/platform-alert.test.js).
 import { Share } from 'react-native';
 import { Alert } from '../platformAlert';
+import { parseWorkoutNote } from '../parser';
 
 export const ROUTINE_SHARE_MARKER = '#kilo-routine';
 export const ROUTINE_SHARE_VERSION = 'v1';
@@ -127,6 +130,95 @@ export function parseRoutineShareText(text) {
   // body and stays there, so the body is returned as written.
   if (lines[index] != null && lines[index].trim() === '') index += 1;
   return { hasEnvelope: true, version, title, exportedAt, body: lines.slice(index).join('\n') };
+}
+
+export const ROUTINE_IMPORT_EMPTY_MESSAGE =
+  'Paste a routine to preview it before you import it.';
+export const ROUTINE_IMPORT_NO_EXERCISES_MESSAGE =
+  'No exercises were found in this text, so there is nothing to import. '
+  + 'Check that you pasted the whole routine.';
+export const ROUTINE_IMPORT_UNKNOWN_VERSION_MESSAGE =
+  'This routine was shared by a newer version of Kilo. '
+  + 'Anything this version does not understand is shown below exactly as it was written.';
+
+function countExercises(sections) {
+  let count = 0;
+  for (const section of sections || []) count += (section.exercises || []).length;
+  return count;
+}
+
+/**
+ * Describe a pasted routine: what the envelope claimed, what the body parses
+ * to, and whether it may be imported at all.
+ *
+ * Import is a read-only inspection of text the user pasted, so this function
+ * writes nothing and reads nothing — it takes the pasted string and returns a
+ * verdict. The screen renders `sections` through the same
+ * `WorkoutContentRenderer` the Routine tab already uses, so an imported
+ * routine previews exactly as it will read once saved.
+ *
+ * Two conditions block import, and only these two:
+ *   - the body could not be parsed at all (`parsed.ok === false`, i.e. the
+ *     text is over `MAX_RAW_TEXT_LENGTH` or the parser threw);
+ *   - the body parsed but contains zero exercises, so saving it would create
+ *     an empty routine.
+ *
+ * Line-level `problems` are surfaced but deliberately NOT blocking. They are
+ * ordinary syntax errors in individual set rows, the note grammar preserves
+ * those lines verbatim, and the editor lets you save a routine that has them —
+ * so blocking here would make it impossible to re-import a routine Kilo itself
+ * exported, which is a data-loss outcome, not a safety one.
+ *
+ * @param {string} text  Raw pasted text, enveloped or bare.
+ */
+export function analyzeRoutineImportText(text) {
+  const envelope = parseRoutineShareText(text);
+  const body = envelope.body;
+  const isBlank = body.trim() === '';
+  // An unrecognized version is informational only: `parseRoutineShareText`
+  // already degraded a future envelope to a best-effort body, and the body is
+  // still just note text, so the preview and the import both proceed.
+  const unknownVersion = envelope.hasEnvelope && envelope.version !== ROUTINE_SHARE_VERSION;
+  const parsed = parseWorkoutNote(body);
+  const sections = parsed.sections || [];
+  const exerciseCount = countExercises(sections);
+
+  const notices = [];
+  if (unknownVersion) {
+    notices.push({ severity: 'info', message: ROUTINE_IMPORT_UNKNOWN_VERSION_MESSAGE });
+  }
+  if (!isBlank && parsed.ok === false) {
+    notices.push({ severity: 'error', message: parsed.error });
+  } else if (!isBlank && exerciseCount === 0) {
+    notices.push({ severity: 'error', message: ROUTINE_IMPORT_NO_EXERCISES_MESSAGE });
+  }
+  const problems = parsed.problems || [];
+  if (problems.length > 0) {
+    notices.push({
+      severity: 'warning',
+      message: `${problems.length} line${problems.length === 1 ? '' : 's'} could not be read as sets. `
+        + 'They are kept exactly as written and you can fix them after importing.',
+    });
+  }
+
+  return {
+    isBlank,
+    hasEnvelope: envelope.hasEnvelope,
+    version: envelope.version,
+    unknownVersion,
+    // The envelope title is a suggestion for the import screen's title field,
+    // never an identity: import always creates a new routine, so a title that
+    // collides with an existing one is not a conflict to resolve.
+    envelopeTitle: envelope.title,
+    exportedAt: envelope.exportedAt,
+    body,
+    parsed,
+    sections,
+    problems,
+    exerciseCount,
+    notices,
+    canImport: !isBlank && parsed.ok !== false && exerciseCount > 0,
+  };
 }
 
 /**

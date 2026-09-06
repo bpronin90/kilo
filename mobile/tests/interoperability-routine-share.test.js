@@ -152,6 +152,17 @@ describe('routine share envelope', () => {
   });
 });
 
+describe('export feeds import (#955)', () => {
+  test('what Share as Text produces is exactly what Import previews and saves', () => {
+    const { analyzeRoutineImportText } = require('../lib/interoperability/routineShare');
+    const shared = buildRoutineShareText({ title: 'Upper/Lower A', rawText: AB_ROUTINE });
+    const analysis = analyzeRoutineImportText(shared);
+    expect(analysis.canImport).toBe(true);
+    expect(analysis.body).toBe(AB_ROUTINE);
+    expect(analysis.envelopeTitle).toBe('Upper/Lower A');
+  });
+});
+
 describe('shareRoutine: notice before the platform share', () => {
   test('the notice precedes sharing and cancelling shares nothing', () => {
     const alert = jest.fn();

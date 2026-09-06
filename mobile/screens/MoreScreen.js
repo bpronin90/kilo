@@ -10,6 +10,7 @@ import { AboutScreen } from '../components/AboutScreen';
 import { BackupScreen } from '../components/BackupScreen';
 import { SettingsScreen } from '../components/SettingsScreen';
 import { ProfileScreen } from '../components/ProfileScreen';
+import { RoutineImportScreen } from '../components/RoutineImportScreen';
 import { AccountScreen } from './more/AccountScreen';
 
 export { AccountScreen } from './more/AccountScreen';
@@ -22,7 +23,7 @@ export { AccountLifecycle } from './more/AccountLifecycle';
 // view model. 'menu' is deliberately absent: "navigate to the More menu" is
 // just an ordinary More tab press, and accepting it as a target would let a
 // stray intent yank the user out of a sub-view they are already using.
-const NAV_SUBVIEWS = new Set(['help', 'about', 'backup', 'settings', 'profile', 'account']);
+const NAV_SUBVIEWS = new Set(['help', 'about', 'backup', 'settings', 'profile', 'account', 'import-routine']);
 
 export function MoreScreen({
   isActive = true,
@@ -31,6 +32,7 @@ export function MoreScreen({
   onOwnsBackChange,
   onExport,
   onImport,
+  onCreateRoutineFromImport,
   fatigueMultiplier,
   onUpdateFatigueMultiplier,
   navSubviewView = null,
@@ -138,6 +140,15 @@ export function MoreScreen({
     );
   }
 
+  if (activeView === 'import-routine') {
+    return (
+      <RoutineImportScreen
+        onBack={() => showView('menu')}
+        onCreateRoutine={onCreateRoutineFromImport}
+      />
+    );
+  }
+
   if (activeView === 'settings') {
     return (
       <SettingsScreen
@@ -183,6 +194,17 @@ export function MoreScreen({
           <View style={styles.menuCopy}>
             <Text style={styles.menuItemText}>Data & Backup</Text>
             <Text style={styles.menuItemHelp}>Local & cloud backup</Text>
+          </View>
+          <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
+        </Pressable>
+        {/* Routine import (#955) lives beside Data & Backup rather than on the
+            Log tab: it is a data-entry surface, not part of training, and
+            keeping it here is what makes it unmistakable that it creates a new
+            routine instead of touching the one you are currently running. */}
+        <Pressable style={styles.menuItem} onPress={() => showView('import-routine')} accessibilityRole="button" accessibilityLabel="Import Routine">
+          <View style={styles.menuCopy}>
+            <Text style={styles.menuItemText}>Import Routine</Text>
+            <Text style={styles.menuItemHelp}>Paste a shared routine</Text>
           </View>
           <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
         </Pressable>

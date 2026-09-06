@@ -709,6 +709,18 @@ function AppShell({ onDeviceDataWiped }) {
 
   const handleExport = useCallback(() => buildExportPayload(buildCloudExport), []);
 
+  // Routine import (#955): exactly one write, `add`, which mints a fresh note
+  // id and never touches the current-routine pointer. Deliberately NOT routed
+  // through `update`/`selectCurrent` — a pasted routine can therefore neither
+  // overwrite an existing note (by id or by a colliding title) nor become the
+  // routine the user is training on. Adoption stays the Log tab's existing
+  // post-save prompt (#748). Memoized so MemoMoreScreen's prop identity is
+  // stable across unrelated shell renders, like the callbacks above it.
+  const handleCreateRoutineFromImport = useCallback(
+    (title, rawText) => noteHook.add(title, rawText),
+    [noteHook.add],
+  );
+
   const handleImport = useCallback(async (payload) => {
     // Import has a local contract and a cloud contract (#526), and this is the
     // seam that knows which one applies. Passing the active storage mode through
@@ -921,6 +933,7 @@ function AppShell({ onDeviceDataWiped }) {
             onNavigate={handleTabPress}
             onExport={handleExport}
             onImport={handleImport}
+            onCreateRoutineFromImport={handleCreateRoutineFromImport}
             fatigueMultiplier={fatigueMultiplier}
             onUpdateFatigueMultiplier={handleUpdateFatigueMultiplier}
             // Flattened for the same memoization reason as MemoLogScreen above.
