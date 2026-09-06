@@ -13,7 +13,7 @@
 // Parsing/validation lives in lib/interoperability/routineShare.js
 // (`analyzeRoutineImportText`); this file only renders that verdict.
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScreenShell } from './ScreenShell';
 import { Button, Card, SectionTitle, useInputStyle } from './UI';
@@ -44,6 +44,10 @@ export function RoutineImportScreen({ onBack, onCreateRoutine }) {
   const [savedTitle, setSavedTitle] = useState('');
 
   const [previewWeek, setPreviewWeek] = useState('A');
+  // Live mirror of `pasted` so the save resolution can compare against what is
+  // on screen NOW without re-entering a state updater to find out.
+  const pastedRef = useRef(pasted);
+  pastedRef.current = pasted;
 
   const analysis = useMemo(
     () => analyzeRoutineImportText(pasted, previewWeek),
@@ -72,7 +76,6 @@ export function RoutineImportScreen({ onBack, onCreateRoutine }) {
   const handleImport = async () => {
     if (!analysis.canImport || saving) return;
     const pastedAtPress = pasted;
-    const titleAtPress = title;
     setError('');
     setSaving(true);
     try {
@@ -82,11 +85,17 @@ export function RoutineImportScreen({ onBack, onCreateRoutine }) {
       const saved = title.trim();
       await onCreateRoutine?.(saved, savedBody);
       setSavedTitle(saved || 'Untitled Routine');
-      // Clear only what was actually saved. The fields stay editable during an
-      // awaited save, so a user who pasted the NEXT routine while this one was
-      // in flight must not have those edits wiped by its completion.
-      setPasted((current) => (current === pastedAtPress ? '' : current));
-      setTitle((current) => (current === titleAtPress ? '' : current));
+      // The fields stay editable during an awaited save, so a user who pasted
+      // the NEXT routine while this one was in flight must not have those
+      // edits wiped by its completion. The PASTE alone decides that — it is
+      // the identity of what is on screen — and both fields are then cleared
+      // or both kept together. Deciding per field would clear a new routine's
+      // title just because it happens to match the one just saved (PR #971
+      // review, round 2).
+      if (pastedRef.current === pastedAtPress) {
+        setPasted('');
+        setTitle('');
+      }
     } catch (e) {
       console.warn('[RoutineImportScreen] import failed', e);
       setError(IMPORT_FAILED_MESSAGE);

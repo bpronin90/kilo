@@ -323,6 +323,37 @@ describe('PR #971 review findings', () => {
     expect(onCreateRoutine).toHaveBeenCalledWith('First', ROUTINE);
   });
 
+  test('finding 3 (round 2): a same-titled routine pasted mid-save keeps BOTH its body and title', async () => {
+    // The paste alone decides whether the fields are cleared. Deciding per
+    // field erased the new routine's title whenever it matched the saved one's.
+    let release;
+    const onCreateRoutine = jest.fn(() => new Promise((resolve) => { release = resolve; }));
+    const { root } = mount(onCreateRoutine);
+    paste(root, buildRoutineShareText({ title: 'Same', rawText: ROUTINE }));
+    act(() => {
+      buttonByLabel(root, 'Create new routine from pasted text').props.onPress();
+    });
+
+    const next = buildRoutineShareText({ title: 'Same', rawText: 'Tuesday\n-Overhead Press\n- 95 5' });
+    paste(root, next);
+    await act(async () => {
+      release({ id: 'wn_first' });
+    });
+
+    expect(byTestId(root, 'routine-import-paste')[0].props.value).toBe(next);
+    expect(byTestId(root, 'routine-import-title')[0].props.value).toBe('Same');
+  });
+
+  test('finding 3 (round 2): an untouched screen still clears both fields after a save', async () => {
+    const { root } = mount();
+    paste(root, buildRoutineShareText({ title: 'Same', rawText: ROUTINE }));
+    await act(async () => {
+      buttonByLabel(root, 'Create new routine from pasted text').props.onPress();
+    });
+    expect(byTestId(root, 'routine-import-paste')[0].props.value).toBe('');
+    expect(byTestId(root, 'routine-import-title').length).toBe(0);
+  });
+
   test('finding 1: a failed save does not claim the routine was not created', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     const { root } = mount(jest.fn().mockRejectedValue(new Error('sync enqueue failed')));
