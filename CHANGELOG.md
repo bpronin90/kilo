@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.123.2 - 2026-09-05
+
+- Issue #964: Fixed routine ordering in CSV export. Titles now sort by Unicode code point. Previously they were compared as UTF-16 code units, which placed emoji and other astral characters before private-use and other high BMP characters instead of after them.
+
+## 0.123.1 - 2026-09-05
+
+- Issue #963: Fixed CSV export silently dropping data: deload exercises such as `Deadlift: 315 lbs 3x5` now export their sets with weight, reps, and set count intact, and a `--` comment written after a skipped or unparsed row is now exported instead of being discarded.
+
+## 0.123.0 - 2026-09-05
+
+- Issue #954: Added Share Routine to the current routine card and every saved routine, so a routine can be sent to anyone as portable plain text. The share carries only the routine title, the export date, and the routine body exactly as written — never your weight history, fatigue or recovery data, or account info — and a notice says so before anything is shared.
+
+## 0.122.0 - 2026-09-05
+
+- Issue #952: Added a safe, bounded foundation for importing workout CSV data.
+
+## 0.121.4 - 2026-09-05
+
+- Issue #947: The Weight screen Today comparison is now internally consistent when a date has multiple weigh-ins: the "Vs Previous" delta and the pace cue both describe the two most recent date-averaged values, so an intra-day swing can no longer show a large raw delta next to a calmer date-averaged pace direction. Single-reading dates are unchanged, and raw weight history stays intact.
+
+## 0.121.3 - 2026-09-05
+
+- Issue #945: Removed the workout-note keypad accessory row after on-device use showed it added clutter without practical logging benefit.
+
+## 0.121.2 - 2026-09-05
+
+- Issue #941: Weight pace badges now average multiple weigh-ins on the same day before comparing, downgrade or drop the flag when the last two weigh-ins are days apart, and spell out the elapsed period ("day-over-day", "over 5 days") instead of leaning on color alone.
+
+## 0.121.1 - 2026-09-05
+
+- Issue #867: Selecting a problem in the Log editor now reliably highlights the whole malformed line, and opening or closing the `!` problem list no longer moves the note away from where you scrolled it.
+
+## 0.121.0 - 2026-09-05
+
+- Issue #578: Added CSV export for workouts and weight history under Data & Backup, for moving your data into other tools. CSV is interoperability, never a backup — it drops recovery, deload/fatigue, tracked-lift, and deleted-record history, and most sessions have no recoverable calendar date. JSON backup remains the only lossless recovery format.
+
+## 0.120.1 - 2026-09-05
+
+- Issue #577: Fixed the idle rest-timer "start" row on the Log screen being hidden behind the floating bottom tab bar (and the bottom safe-area inset on notched devices). It now reserves the same tab-bar/safe-area clearance already applied to the running/done timer surface and the PR-moment banner.
+
+## 0.120.0 - 2026-09-05
+
+- Issue #577: Added a lightweight PR celebration: logging a new estimated best on a tracked strength lift now shows a dismissible banner after Done, using the same recovery-filtered analytics population Analytics itself uses, and never for historical edits, skipped/warmup work, or ties.
+
+## 0.119.0 - 2026-09-05
+
+- Issue #577: Added an optional background-safe rest timer next to the current-routine editor, and made the plate calculator visibly tappable with lb/kg bar and finite plate-inventory support (independent, editable equipment profiles per unit).
+
 ## 0.118.17 - 2026-09-02
 
 - Issue #934: Fatigue tracking and Deload mode now start OFF on a fresh install. Turn either on any time from Settings; if you already set them, your choice is unchanged.
