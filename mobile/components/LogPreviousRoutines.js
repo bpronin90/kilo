@@ -28,7 +28,7 @@
 // `inlineSwitchButtonText` — which sits on a `chipBackground` fill — takes
 // `colors.chipAccentText`. The `accent` mark uses here (the `New routine` plus
 // glyph) are unchanged.
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Button, Card, SectionTitle } from './UI';
@@ -36,6 +36,7 @@ import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { localDate } from '../lib/LogScreenHelpers';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
 import { shareRoutine } from '../lib/interoperability/routineShare';
+import { RoutineShareModal } from './RoutineShareCard';
 
 // A routine row's date has exactly one meaning: the day the routine was created
 // (#775). It used to read `updated_at`, which is the sync conflict cursor
@@ -97,6 +98,7 @@ export function LogPreviousRoutines({
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
+  const [imageShare, setImageShare] = useState(null);
   const toggleExpanded = () => onToggleExpanded?.();
   // Double-tap the viewed routine body to open it in the editor (matches main).
   const viewingNoteLastTapRef = useRef(0);
@@ -124,6 +126,7 @@ export function LogPreviousRoutines({
 
   return (
     <View style={styles.previousRoutines}>
+      {imageShare && <RoutineShareModal {...imageShare} onClose={() => setImageShare(null)} />}
       {/* The count and the create-routine affordance sit outside the
           disclosure entirely (#843) — both are visible whether the
           collection below is expanded or collapsed. */}
@@ -273,6 +276,13 @@ export function LogPreviousRoutines({
                         onPress={() => handleShareRoutine(viewingNote)}
                         title="Share routine"
                         accessibilityLabel={`Share routine ${viewingNote?.title || 'Untitled Routine'}`}
+                        style={styles.switchButton}
+                        textStyle={styles.switchButtonText}
+                      />
+                      <Button
+                        onPress={() => setImageShare({ title: viewingNote?.title, rawText: viewingNote?.raw_text || '' })}
+                        title="Share as Image"
+                        accessibilityLabel={`Share routine ${viewingNote?.title || 'Untitled Routine'} as image`}
                         style={styles.switchButton}
                         textStyle={styles.switchButtonText}
                       />
