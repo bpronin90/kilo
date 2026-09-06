@@ -141,6 +141,24 @@ export const ROUTINE_IMPORT_UNKNOWN_VERSION_MESSAGE =
   'This routine was shared by a newer version of Kilo. '
   + 'Anything this version does not understand is shown below exactly as it was written.';
 
+/**
+ * Split raw routine text on a standalone `---` week separator and return the
+ * requested half (or the text unchanged when there is no separator).
+ *
+ * This is the single implementation of the A/B split for reading: the routine
+ * editors import it (`screens/log/useLogOtherRoutineEditor.js`) and so does the
+ * import preview, so a pasted A/B routine is previewed exactly as the Routine
+ * tab will read it back. It lives here rather than in a screen module because
+ * it is pure text handling with no React or storage dependency.
+ */
+export function sliceRoutineWeekText(fullText, week) {
+  const lines = (fullText || '').split('\n');
+  const sepIdx = lines.findIndex(l => l.trim() === '---');
+  if (sepIdx === -1) return fullText || '';
+  if (week === 'B') return lines.slice(sepIdx + 1).join('\n');
+  return lines.slice(0, sepIdx).join('\n');
+}
+
 function countExercises(sections) {
   let count = 0;
   for (const section of sections || []) count += (section.exercises || []).length;
@@ -169,9 +187,16 @@ function countExercises(sections) {
  * so blocking here would make it impossible to re-import a routine Kilo itself
  * exported, which is a data-loss outcome, not a safety one.
  *
+ * An A/B routine (a body containing a standalone `---` week separator) is
+ * analyzed one week at a time, under `week`, because that is how the Routine
+ * tab reads a saved routine back. Previewing both halves concatenated would
+ * show the user a routine that does not exist anywhere in the app. The whole
+ * body is still what gets saved — `week` selects the PREVIEW, never the write.
+ *
  * @param {string} text  Raw pasted text, enveloped or bare.
+ * @param {'A'|'B'=} week  Which half of an A/B routine to preview. Default 'A'.
  */
-export function analyzeRoutineImportText(text) {
+export function analyzeRoutineImportText(text, week = 'A') {
   const envelope = parseRoutineShareText(text);
   const body = envelope.body;
   const isBlank = body.trim() === '';
@@ -179,20 +204,30 @@ export function analyzeRoutineImportText(text) {
   // already degraded a future envelope to a best-effort body, and the body is
   // still just note text, so the preview and the import both proceed.
   const unknownVersion = envelope.hasEnvelope && envelope.version !== ROUTINE_SHARE_VERSION;
-  const parsed = parseWorkoutNote(body);
+  // The full body decides IMPORTABILITY (an A/B routine whose week A is empty
+  // is still a real routine), while the selected week decides what the preview
+  // renders.
+  const fullParsed = parseWorkoutNote(body);
+  const hasABWeeks = (fullParsed.weekBStartIndex ?? null) !== null;
+  const effectiveWeek = hasABWeeks ? (week === 'B' ? 'B' : 'A') : null;
+  const previewText = hasABWeeks ? sliceRoutineWeekText(body, effectiveWeek) : body;
+  const parsed = hasABWeeks ? parseWorkoutNote(previewText) : fullParsed;
   const sections = parsed.sections || [];
-  const exerciseCount = countExercises(sections);
+  const exerciseCount = countExercises(fullParsed.sections || []);
 
   const notices = [];
   if (unknownVersion) {
     notices.push({ severity: 'info', message: ROUTINE_IMPORT_UNKNOWN_VERSION_MESSAGE });
   }
-  if (!isBlank && parsed.ok === false) {
-    notices.push({ severity: 'error', message: parsed.error });
+  // Blocking and problem reporting read the FULL body, never the previewed
+  // week: what gets saved is the whole routine, so a defect in week B must
+  // block and be reported even while week A is on screen.
+  if (!isBlank && fullParsed.ok === false) {
+    notices.push({ severity: 'error', message: fullParsed.error });
   } else if (!isBlank && exerciseCount === 0) {
     notices.push({ severity: 'error', message: ROUTINE_IMPORT_NO_EXERCISES_MESSAGE });
   }
-  const problems = parsed.problems || [];
+  const problems = fullParsed.problems || [];
   if (problems.length > 0) {
     notices.push({
       severity: 'warning',
@@ -212,12 +247,18 @@ export function analyzeRoutineImportText(text) {
     envelopeTitle: envelope.title,
     exportedAt: envelope.exportedAt,
     body,
-    parsed,
+    // `parsed` describes the full body (what will be saved); `sections` is the
+    // previewed week (what is on screen). For a non-A/B routine they are the
+    // same parse.
+    parsed: fullParsed,
+    hasABWeeks,
+    effectiveWeek,
+    previewText,
     sections,
     problems,
     exerciseCount,
     notices,
-    canImport: !isBlank && parsed.ok !== false && exerciseCount > 0,
+    canImport: !isBlank && fullParsed.ok !== false && exerciseCount > 0,
   };
 }
 

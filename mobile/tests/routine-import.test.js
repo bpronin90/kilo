@@ -265,6 +265,114 @@ describe('RoutineImportScreen: save is always a create', () => {
   });
 });
 
+describe('PR #971 review findings', () => {
+  function mount(onCreateRoutine = jest.fn().mockResolvedValue({ id: 'wn_new' })) {
+    let tree;
+    act(() => {
+      tree = render.create(
+        <RoutineImportScreen onBack={() => {}} onCreateRoutine={onCreateRoutine} />
+      );
+    });
+    return { tree, root: tree.root, onCreateRoutine };
+  }
+  function paste(root, text) {
+    act(() => {
+      byTestId(root, 'routine-import-paste')[0].props.onChangeText(text);
+    });
+  }
+  const AB_ROUTINE = `${ROUTINE}\n---\nMonday\n-Squat\n- 225 5`;
+
+  test('finding 2: replacing a titled envelope with untitled text clears the stale title', () => {
+    const { root, onCreateRoutine } = mount();
+    paste(root, buildRoutineShareText({ title: 'Upper/Lower A', rawText: ROUTINE }));
+    expect(byTestId(root, 'routine-import-title')[0].props.value).toBe('Upper/Lower A');
+
+    // A different routine, with no title of its own, must not inherit the last one's.
+    paste(root, 'Tuesday\n-Overhead Press\n- 95 5');
+    expect(byTestId(root, 'routine-import-title')[0].props.value).toBe('');
+  });
+
+  test('finding 2: a name the user typed survives further edits to the same paste', () => {
+    const { root } = mount();
+    paste(root, buildRoutineShareText({ title: 'Upper/Lower A', rawText: ROUTINE }));
+    act(() => {
+      byTestId(root, 'routine-import-title')[0].props.onChangeText('My Version');
+    });
+    paste(root, buildRoutineShareText({ title: 'Upper/Lower A', rawText: `${ROUTINE}\n-Row\n- 95 8` }));
+    expect(byTestId(root, 'routine-import-title')[0].props.value).toBe('My Version');
+  });
+
+  test('finding 3: a slow save never wipes the next routine pasted while it was in flight', async () => {
+    let release;
+    const onCreateRoutine = jest.fn(() => new Promise((resolve) => { release = resolve; }));
+    const { root } = mount(onCreateRoutine);
+    paste(root, buildRoutineShareText({ title: 'First', rawText: ROUTINE }));
+
+    act(() => {
+      buttonByLabel(root, 'Create new routine from pasted text').props.onPress();
+    });
+    // The user pastes the next routine before the first save resolves.
+    const next = 'Tuesday\n-Overhead Press\n- 95 5';
+    paste(root, next);
+    await act(async () => {
+      release({ id: 'wn_first' });
+    });
+
+    expect(byTestId(root, 'routine-import-paste')[0].props.value).toBe(next);
+    expect(onCreateRoutine).toHaveBeenCalledTimes(1);
+    expect(onCreateRoutine).toHaveBeenCalledWith('First', ROUTINE);
+  });
+
+  test('finding 1: a failed save does not claim the routine was not created', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const { root } = mount(jest.fn().mockRejectedValue(new Error('sync enqueue failed')));
+    paste(root, buildRoutineShareText({ title: 'T', rawText: ROUTINE }));
+    await act(async () => {
+      buttonByLabel(root, 'Create new routine from pasted text').props.onPress();
+    });
+    const messages = root.findAll(n => typeof n.type === 'string' && typeof n.props.children === 'string')
+      .map(n => n.props.children);
+    const failure = messages.find(m => m.startsWith('Something went wrong while saving.'));
+    expect(failure).toBeDefined();
+    expect(failure).toContain('may still have been created');
+    expect(messages.some(m => m.includes('Nothing was changed'))).toBe(false);
+    warn.mockRestore();
+  });
+
+  test('finding 4: an A/B routine previews one week at a time but saves both', async () => {
+    const a = analyzeRoutineImportText(AB_ROUTINE);
+    expect(a.hasABWeeks).toBe(true);
+    expect(a.effectiveWeek).toBe('A');
+    expect(a.previewText).toBe(ROUTINE);
+    expect(analyzeRoutineImportText(AB_ROUTINE, 'B').previewText).toBe('Monday\n-Squat\n- 225 5');
+    // Both weeks count toward importability, and the whole body is what saves.
+    expect(a.exerciseCount).toBe(4);
+    expect(a.body).toBe(AB_ROUTINE);
+
+    const { root, onCreateRoutine } = mount();
+    paste(root, AB_ROUTINE);
+    // The preview starts on Week A behind the same Week switch the Routine tab uses.
+    expect(buttonByLabel(root, 'Preview Week B')).toBeDefined();
+    act(() => {
+      buttonByLabel(root, 'Preview Week B').props.onPress();
+    });
+    expect(buttonByLabel(root, 'Preview Week A')).toBeDefined();
+
+    await act(async () => {
+      buttonByLabel(root, 'Create new routine from pasted text').props.onPress();
+    });
+    expect(onCreateRoutine).toHaveBeenCalledWith('', AB_ROUTINE);
+  });
+
+  test('a defect in week B blocks import even while week A is previewed', () => {
+    // Week A alone has exercises; the block/report decision must read the whole body.
+    const a = analyzeRoutineImportText('Monday\n-Bench Press\n- 135 5\n---\nMonday\n-Squat\n- 225 x y z');
+    expect(a.effectiveWeek).toBe('A');
+    expect(a.problems.length).toBeGreaterThan(0);
+    expect(a.notices.some(n => n.severity === 'warning')).toBe(true);
+  });
+});
+
 describe('MoreScreen wiring', () => {
   test('Import Routine opens the import screen with the create-only callback', () => {
     const onCreateRoutineFromImport = jest.fn();

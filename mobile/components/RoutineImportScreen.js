@@ -14,7 +14,7 @@
 // (`analyzeRoutineImportText`); this file only renders that verdict.
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, TextInput } from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScreenShell } from './ScreenShell';
 import { Button, Card, SectionTitle, useInputStyle } from './UI';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
@@ -25,8 +25,14 @@ import {
   analyzeRoutineImportText,
 } from '../lib/interoperability/routineShare';
 
+// Deliberately does NOT claim nothing was written. `add` performs a local write
+// and then enqueues the cloud sync, and only the second half can fail on its
+// own, so a failure here genuinely can leave the routine created. Telling the
+// user to check before retrying is the honest instruction; a blind retry mints
+// a second note id and would duplicate the routine.
 const IMPORT_FAILED_MESSAGE =
-  'Could not save the imported routine. Nothing was changed — try again.';
+  'Something went wrong while saving. The routine may still have been created — '
+  + 'check Log › Routines before trying again.';
 
 export function RoutineImportScreen({ onBack, onCreateRoutine }) {
   const styles = useThemedStyles(createStyles);
@@ -37,35 +43,50 @@ export function RoutineImportScreen({ onBack, onCreateRoutine }) {
   const [error, setError] = useState('');
   const [savedTitle, setSavedTitle] = useState('');
 
-  const analysis = useMemo(() => analyzeRoutineImportText(pasted), [pasted]);
+  const [previewWeek, setPreviewWeek] = useState('A');
+
+  const analysis = useMemo(
+    () => analyzeRoutineImportText(pasted, previewWeek),
+    [pasted, previewWeek],
+  );
   const dayGroups = useMemo(() => buildDayGroups(analysis.sections), [analysis.sections]);
 
   // The title field follows the envelope's `#title:` line. Keyed on the
-  // envelope title itself, so it re-seeds when a different routine is pasted
-  // and stays put — including when the user has renamed it — while they keep
-  // editing the same paste. An envelope with no title never clears a name the
-  // user typed.
+  // envelope title itself, so it re-seeds only when the pasted routine's title
+  // actually changes: a name the user typed survives further edits to the same
+  // paste, while replacing a titled envelope with untitled text CLEARS the
+  // field rather than saving the new routine under the old one's name.
   useEffect(() => {
-    if (analysis.envelopeTitle) setTitle(analysis.envelopeTitle);
+    setTitle(analysis.envelopeTitle || '');
   }, [analysis.envelopeTitle]);
 
   const handlePasteChange = (next) => {
     setSavedTitle('');
     setError('');
     setPasted(next);
+    // A fresh paste is a different routine; keep the preview on the week the
+    // Routine tab shows a newly saved routine on.
+    setPreviewWeek('A');
   };
 
   const handleImport = async () => {
     if (!analysis.canImport || saving) return;
+    const pastedAtPress = pasted;
+    const titleAtPress = title;
     setError('');
     setSaving(true);
     try {
       // The BODY, not the pasted text: the envelope is transport, never
       // routine content, so it must not end up inside the saved note.
-      await onCreateRoutine?.(title.trim(), analysis.body);
-      setSavedTitle(title.trim() || 'Untitled Routine');
-      setPasted('');
-      setTitle('');
+      const savedBody = analysis.body;
+      const saved = title.trim();
+      await onCreateRoutine?.(saved, savedBody);
+      setSavedTitle(saved || 'Untitled Routine');
+      // Clear only what was actually saved. The fields stay editable during an
+      // awaited save, so a user who pasted the NEXT routine while this one was
+      // in flight must not have those edits wiped by its completion.
+      setPasted((current) => (current === pastedAtPress ? '' : current));
+      setTitle((current) => (current === titleAtPress ? '' : current));
     } catch (e) {
       console.warn('[RoutineImportScreen] import failed', e);
       setError(IMPORT_FAILED_MESSAGE);
@@ -135,6 +156,20 @@ export function RoutineImportScreen({ onBack, onCreateRoutine }) {
             ) : null}
           </Card>
           <Card>
+            {/* An A/B routine is previewed one week at a time, behind the same
+                Week switch the Routine tab uses, because that is how the saved
+                routine will be read back. Both weeks are saved either way. */}
+            {analysis.hasABWeeks ? (
+              <View style={styles.weekRow}>
+                <Text style={styles.mutedText}>Week {analysis.effectiveWeek}</Text>
+                <Button
+                  onPress={() => setPreviewWeek(analysis.effectiveWeek === 'B' ? 'A' : 'B')}
+                  title={`Show Week ${analysis.effectiveWeek === 'B' ? 'A' : 'B'}`}
+                  style={styles.weekButton}
+                  accessibilityLabel={`Preview Week ${analysis.effectiveWeek === 'B' ? 'A' : 'B'}`}
+                />
+              </View>
+            ) : null}
             <WorkoutContentRenderer
               dayGroups={dayGroups}
               emptyText="No exercises to display."
@@ -189,6 +224,17 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 14,
     color: colors.error,
     lineHeight: 20,
+  },
+  weekRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    gap: 12,
+  },
+  weekButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
   },
   footnote: {
     fontSize: 13,
