@@ -1,7 +1,7 @@
 import { deriveWorkoutAnalytics, normalizeExerciseKey } from '../parser.js';
 import { parseExerciseHeader } from '../parser/deloadGenerator.js';
 import { deriveProgressionSignals, _occurrenceEntries } from '../parser/analytics.js';
-import { classifyExerciseSessions } from './workoutAnalytics.js';
+import { classifyExerciseSessions } from '../parser/analytics.js';
 import { isBlockActive } from './recoveryBlocks.js';
 
 // ── Progression suggestions (#958, stage 1 of #580) ───────────────────────────
