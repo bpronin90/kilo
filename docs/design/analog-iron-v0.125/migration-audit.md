@@ -161,7 +161,9 @@ present; native appearance, System preference, keyboard, controls, and startup
 are not a verified end-to-end dark implementation. This is a source/config
 finding, **not an observation from an installed binary**. The foundation child
 must reconcile native appearance and rebuild where required; screen owners
-handle their own control styling. Do not merely switch the config to automatic
+handle their own control styling under the common contract's native control
+appearance rule, and D2 enforces it by presence check rather than leaving it to
+device vigilance. Do not merely switch the config to automatic
 and declare explicit Light/Dark/System synchronized. Evidence:
 `mobile/theme/ThemeContext.js`, `mobile/app.config.js`,
 `mobile/tests/theme-preference.test.js`, `mobile/tests/theme-rendering.test.js`.
@@ -268,6 +270,21 @@ but none of the listed PRs is automatically unfrozen by this document.
   applicable S/G inventory entry, source callback, data value, state distinction
   and workflow. No parser/data/storage/backend changes, new navigation, generic
   card UI, decorative red, faux-technical copy or sub-11px mobile text.
+- **Behavior-change escalation:** behavior is fixed; only appearance changes.
+  If a card cannot meet the visual target without altering behavior, state,
+  timing, ordering, copy meaning or a data value, it **stops and escalates to the
+  owner for explicit written approval** before proceeding. It does not resolve the
+  conflict in either direction on its own and does not silently choose a visual
+  compromise. Record every such escalation and its disposition in the card's
+  handoff. A reference image is never sufficient authority for a behavior change.
+- **Native control appearance:** the native-appearance findings above are owned
+  here, not by D1, whose write set cannot reach these callsites. Any card whose
+  Allowed Files contain a `TextInput` sets `keyboardAppearance` from the resolved
+  theme; a `Switch` sets `trackColor`/`thumbColor` from tokens; a
+  `DateTimePicker` sets `themeVariant`. This binds D5, D7, D9, D12, D13, D14 and
+  D15 on the callsites named in the native dark-mode section. Adding a
+  theme-driven appearance prop to an existing control is an appearance change;
+  altering what a control does is a behavior change and escalates.
 - **Allowed Files:** each card's exact list below is its exclusive write set.
   Tests named only under Verification are read/run dependencies, not additional
   write permission. No screen card edits the foundation or shared files. A need
@@ -386,7 +403,11 @@ checking for each touched presentation file, not just added lines. Initially
 untouched legacy files are reported as migration debt; provide an explicit
 whole-program mode for final verification. Token definitions, numeric icon/SVG
 geometry, native config assets, tests, documentation quotes and user input are
-not mistaken for authored UI violations. Use parsing/fixtures to cover aliases,
+not mistaken for authored UI violations. Assert **presence** as well as absence:
+flag a `TextInput` without `keyboardAppearance`, a `Switch` without
+`trackColor`/`thumbColor`, and a `DateTimePicker` without `themeVariant`, because
+an omitted prop is structurally invisible to a forbidden-pattern scan and would
+otherwise reach release behind manual device vigilance alone. Use parsing/fixtures to cover aliases,
 style arrays and common expressions; manual review still verifies semantic red
 usage and AA. Do not edit screen files or a per-stage mutable allowlist.
 
