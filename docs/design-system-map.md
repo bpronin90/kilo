@@ -9,6 +9,13 @@ The approved target for the Analog Iron & Newsprint migration is documented in
 that migration lands, this map continues to describe the current implementation;
 the handoff directory describes the approved destination.
 
+The [repo-grounded migration audit and child issue drafts](design/analog-iron-v0.125/migration-audit.md)
+inventory current routes, states and shared components, record reference conflicts
+and unresolved tokens, and assign disjoint implementation stages. The audit also
+qualifies native appearance: the JavaScript palette wiring described below does
+not establish end-to-end native dark mode while `mobile/app.json` requests light
+appearance and native controls lack an application-wide appearance bridge.
+
 For the design rules derived from these patterns, see
 `docs/ui-design-rules.md`. This document records implementation; it does not own
 product history or issue chronology.
