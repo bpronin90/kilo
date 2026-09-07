@@ -531,6 +531,55 @@ before/after samples in both storage modes on a physical Android device, and
 that remains outstanding — see the device procedure under the #809 section
 above for how to take them.
 
+### Home first-paint read overlap (#984)
+
+#818 removed the duplicate reads; the survivors still queued. Every operation
+shared one strictly serial FIFO at the storage boundary, so the eight
+**distinct** keys Home's four-term first-paint gate depends on — weight goal,
+tracked lifts, tracked-lift activations, recovery blocks, recovery block weeks,
+notebook, current-routine pointer, weight table — executed one after another
+even though none depends on another. Driving the real cold-start hook fan-out
+against the AsyncStorage jest mock and recording the read order confirms this:
+twelve reads, strictly sequential, with all eight gating reads inside the first
+eight positions.
+
+The boundary now uses a readers/writer discipline. Writes stay totally ordered
+and exclusive; reads admitted between two writes overlap. The gate is
+untouched.
+
+Coverage in `mobile/tests/home-first-paint-concurrency.test.js`:
+
+- reads of different keys run concurrently (high-water mark of in-flight
+  backing reads, plus wall clock under an injected per-read latency);
+- concurrent reads of ONE key still resolve from a single decrypt (#818);
+- no read is ever in flight while a write runs, in either direction, and a read
+  enqueued before a write still resolves the pre-write value;
+- a pending read is still not shared across `removeItem`, `updateItem`, or a
+  device wipe;
+- a **failed** read neither wedges the boundary nor rejects the next write —
+  the barrier a write awaits holds every admitted read, so a rejecting entry
+  there would take every later operation down with it;
+- writes remain totally ordered with respect to each other;
+- all four terms of Home's `isLoading` gate still resolve independently, and
+  the launch still issues one read per key.
+
+**Measurement.** With the real encrypted path (`forceEncryption: true`) and a
+fixed injected per-read device latency, reading the eight gating keys on a
+desktop x86 core: 175 ms before / 34 ms after at 20 ms per read (5.1x), and
+53 ms before / 28 ms after at 5 ms per read. The residual is the AES-GCM
+decrypt itself, which runs on the JS thread and does **not** parallelize — this
+change overlaps the native round trips, not the CPU. The split was measured
+directly on a 12.9 KB notebook payload: 0.57 ms AES-GCM decrypt against a
+6.35 ms end-to-end read.
+
+**No physical-device wall-clock timing was captured for this change.** The
+acceptance criteria ask for force-stopped cold-launch `[startup]` traces before
+and after on a real installed development client with populated data, plus
+owner sign-off across Home's populated/empty/source-error and Recovery
+open/stale states. Both remain outstanding; see the device procedure under the
+#809 section above for how to take them. The injected-latency numbers above
+isolate the I/O component only and are not a substitute.
+
 Operational production checks are not automated test inventory:
 
 - Auth-provider, CAPTCHA, SMTP, OAuth, policy-link, and throttle verification

@@ -76,7 +76,13 @@ export function createDeviceStorage({
   const encryptValues = platformOS !== 'web'
     && (forceEncryption || process.env.NODE_ENV !== 'test');
   let keyPromise = null;
-  let operationTail = Promise.resolve();
+  // The write barrier every later operation is ordered behind (#984). Always a
+  // settled-or-settling promise that never rejects, so a failed write cannot
+  // wedge the boundary.
+  let writeTail = Promise.resolve();
+  // Reads admitted after the current `writeTail` and not yet finished. A write
+  // waits for these before it runs; see withReadLock/withWriteLock below.
+  let activeReads = new Set();
   let dataGeneration = 0;
   // In-flight reads, keyed by storage key (#818). See coalescedRead below.
   const pendingReads = new Map();
@@ -144,12 +150,48 @@ export function createDeviceStorage({
     }
   }
 
-  // Serialize persistence operations so a lazy migration cannot overwrite a
-  // newer write, and an explicit wipe cannot race an autosave/sync write that
-  // would otherwise recreate sensitive data after the confirmation completes.
-  function withStorageLock(operation) {
-    const next = operationTail.catch(() => {}).then(operation);
-    operationTail = next;
+  // Readers/writer discipline over the device store (#984).
+  //
+  // Persistence operations used to share ONE strictly serial FIFO. That is more
+  // ordering than correctness needs, and it is what dominates the cold launch:
+  // the four sources Home gates its first paint on read eight DIFFERENT keys,
+  // none of which depends on another, so first paint waited on the SUM of eight
+  // native round trips plus eight AES-GCM decrypts instead of overlapping the
+  // round trips. #818 removed the DUPLICATE reads (twenty down to twelve); the
+  // survivors still queued.
+  //
+  // What the single queue actually exists to guarantee is read-vs-write
+  // ordering, and that is preserved exactly:
+  //
+  //   - a write waits for every read already admitted, and every read or write
+  //     enqueued after it waits for the write, so a lazy in-read plaintext
+  //     migration still cannot overwrite a newer write, and a wipe still cannot
+  //     race an autosave/sync write that would recreate sensitive data;
+  //   - reads admitted between two writes run concurrently with each other.
+  //     They cannot observe each other: coalescedRead already guarantees at most
+  //     one in-flight read per key, so concurrent readers touch strictly
+  //     disjoint keys, and each still resolves the same pre-write snapshot its
+  //     old FIFO position would have handed it.
+  //
+  // Writes therefore keep their total order and their exclusivity; only the
+  // read-behind-read waiting is removed.
+  function withReadLock(operation) {
+    // Captured at enqueue time, not execution time — the same rule
+    // invalidatePendingRead relies on: this read is ordered behind exactly the
+    // writes that were already enqueued when the caller asked.
+    const read = writeTail.then(operation);
+    // Tracked in its non-rejecting form so a failed read can neither wedge nor
+    // reject the barrier a later write awaits.
+    const tracked = read.catch(() => {});
+    activeReads.add(tracked);
+    tracked.then(() => { activeReads.delete(tracked); });
+    return read;
+  }
+
+  function withWriteLock(operation) {
+    const barrier = Promise.all([writeTail, ...activeReads]);
+    const next = barrier.then(operation);
+    writeTail = next.catch(() => {});
     return next;
   }
 
@@ -160,7 +202,7 @@ export function createDeviceStorage({
   // after the destructive operation completes.
   function withMutationLock(operation, invalidatedResult) {
     const scheduledGeneration = dataGeneration;
-    return withStorageLock(() => (
+    return withWriteLock(() => (
       scheduledGeneration === dataGeneration ? operation() : invalidatedResult
     ));
   }
@@ -188,10 +230,13 @@ export function createDeviceStorage({
   // over: the notebook, the weight table, the current-routine pointer and the
   // tracked lifts were each read three times, the weight goal twice. Every one
   // of those is a native round trip plus a full AES-GCM decrypt of the whole
-  // payload, and withStorageLock serializes them, so they do not overlap — they
-  // queue. Worse, child effects run before the parent's, so the shell's own
-  // note/weight reads (the two that gate Home's first paint) were enqueued
-  // LAST, behind every duplicate the four hidden tabs had already queued.
+  // payload, and at the time every operation shared one strictly serial queue,
+  // so they did not overlap — they queued. Worse, child effects run before the
+  // parent's, so the shell's own note/weight reads (the two that gate Home's
+  // first paint) were enqueued LAST, behind every duplicate the four hidden
+  // tabs had already queued. (#984 removed the read-behind-read queueing that
+  // sentence describes; the coalescing below is still what keeps each key to
+  // one decrypt.)
   //
   // Sharing one in-flight read per key removes the duplicate decrypt and moves
   // the shell's reads to the front of that queue at the same time, because they
@@ -205,7 +250,7 @@ export function createDeviceStorage({
       return inFlight;
     }
     recordStartupStorageRead(false);
-    const read = withStorageLock(() => getItemUnlocked(key));
+    const read = withReadLock(() => getItemUnlocked(key));
     pendingReads.set(key, read);
     // Only clear the entry if it is still this read's: an intervening mutation
     // may already have dropped it, and a later caller may already have started
@@ -247,7 +292,10 @@ export function createDeviceStorage({
       return withMutationLock(() => backingStore.removeItem(key));
     },
     getAllKeys() {
-      return withStorageLock(() => backingStore.getAllKeys());
+      // Deliberately still exclusive rather than a concurrent reader. It is the
+      // input to the wipe/ownership scans, never to Home's launch path, so
+      // nothing is gained by relaxing it and the stronger barrier is free.
+      return withWriteLock(() => backingStore.getAllKeys());
     },
     multiSet(pairs) {
       for (const [key] of pairs) invalidatePendingRead(key);
@@ -289,7 +337,7 @@ export function createDeviceStorage({
       // Discarding the key changes what every stored envelope decrypts to (it
       // stops decrypting at all), so no pending read may be shared across it.
       invalidateAllPendingReads();
-      return withStorageLock(async () => {
+      return withWriteLock(async () => {
         if (!encryptValues) return;
         requireNativePrimitives();
         await secureStore.deleteItemAsync(DEVICE_KEY_NAME);
@@ -298,7 +346,7 @@ export function createDeviceStorage({
     },
     wipeKiloData() {
       invalidateAllPendingReads();
-      return withStorageLock(async () => {
+      return withWriteLock(async () => {
         dataGeneration += 1;
         const keys = await backingStore.getAllKeys();
         const kiloKeys = keys.filter((key) => key.startsWith('kilo_'));
