@@ -11,11 +11,46 @@ Start the Expo app:
 npm run mobile:start
 ```
 
-Open the QR code in Expo Go, or launch Android directly:
+Launch Android directly:
 
 ```sh
 npm run mobile:android
 ```
+
+### Development client (on-device live loop)
+
+**Expo Go cannot load this project.** The app targets Expo SDK 54 while Expo Go
+ships only the current SDK's runtime, and `@sentry/react-native` — imported
+unconditionally in `mobile/lib/errorReporting.js` — is not available in Expo Go.
+`expo-updates` is inert there and `expo-notifications` is degraded. A prior SDK
+upgrade attempt was reverted (see the `preview-2` / `preview-3` notes in
+`mobile/app.config.js`), so raising the SDK to reach Expo Go is not an option.
+
+Use the development client instead. Build it once:
+
+```sh
+cd mobile && eas build --profile development --platform android
+```
+
+Install the resulting APK, then start Metro against it:
+
+```sh
+cd mobile && npx expo start --dev-client
+```
+
+Saved edits reload on device immediately, with all real native modules present.
+No `eas update` publish step is involved; the client connects directly to the
+local Metro server.
+
+The development build uses its own identity — `com.benpronin.kilo.dev`, shown as
+**Kilo Dev** — so it installs alongside the preview app rather than replacing it.
+Preview and production identifiers are unchanged. Keep both installed: the
+development client is for iteration, the preview build remains the surface for
+the [Installable Preview Smoke Checklist](#installable-preview-smoke-checklist).
+
+Adding `expo-dev-client` was a native change, so `PREVIEW_RUNTIME` moved to
+`preview-7`. Existing `preview-6` installs will not receive new OTA bundles and
+must be replaced with one fresh preview build.
 
 For a standalone installable Android APK that does not depend on a running dev
 machine, use the EAS build flow documented in `docs/phone-runbook.md`.

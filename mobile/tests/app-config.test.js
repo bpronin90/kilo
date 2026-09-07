@@ -22,13 +22,73 @@ describe('app config', () => {
 
     const result = configFactory({ config: { plugins: [] } });
 
-    expect(result.runtimeVersion).toBe('preview-6');
+    expect(result.runtimeVersion).toBe('preview-7');
   });
 
   test('uses the appVersion runtime policy for production builds', () => {
     const configFactory = require('../app.config.js');
 
     const result = configFactory({ config: { plugins: [] } });
+
+    expect(result.runtimeVersion).toEqual({ policy: 'appVersion' });
+  });
+
+  // #980: the development client installs alongside preview/production instead of
+  // replacing it, so only APP_ENV=development may carry the suffixed identifiers.
+  const SHIPPING_CONFIG = {
+    name: 'Kilo',
+    plugins: [],
+    ios: { bundleIdentifier: 'com.benpronin.kilo', supportsTablet: true },
+    android: { package: 'com.benpronin.kilo', allowBackup: false },
+  };
+
+  test('suffixes the app identity for development builds', () => {
+    process.env.APP_ENV = 'development';
+    const configFactory = require('../app.config.js');
+
+    const result = configFactory({ config: SHIPPING_CONFIG });
+
+    expect(result.name).toBe('Kilo Dev');
+    expect(result.ios.bundleIdentifier).toBe('com.benpronin.kilo.dev');
+    expect(result.android.package).toBe('com.benpronin.kilo.dev');
+  });
+
+  test('preserves unrelated ios and android config when suffixing development identity', () => {
+    process.env.APP_ENV = 'development';
+    const configFactory = require('../app.config.js');
+
+    const result = configFactory({ config: SHIPPING_CONFIG });
+
+    expect(result.ios.supportsTablet).toBe(true);
+    expect(result.android.allowBackup).toBe(false);
+  });
+
+  test('leaves preview identity untouched', () => {
+    process.env.APP_ENV = 'preview';
+    const configFactory = require('../app.config.js');
+
+    const result = configFactory({ config: SHIPPING_CONFIG });
+
+    expect(result.name).toBe('Kilo');
+    expect(result.ios.bundleIdentifier).toBe('com.benpronin.kilo');
+    expect(result.android.package).toBe('com.benpronin.kilo');
+  });
+
+  test('leaves production identity untouched', () => {
+    const configFactory = require('../app.config.js');
+
+    const result = configFactory({ config: SHIPPING_CONFIG });
+
+    expect(result.name).toBe('Kilo');
+    expect(result.ios.bundleIdentifier).toBe('com.benpronin.kilo');
+    expect(result.android.package).toBe('com.benpronin.kilo');
+  });
+
+  test('does not apply the preview runtime override to development builds', () => {
+    process.env.APP_ENV = 'development';
+    const configFactory = require('../app.config.js');
+
+    const result = configFactory({ config: SHIPPING_CONFIG });
 
     expect(result.runtimeVersion).toEqual({ policy: 'appVersion' });
   });
