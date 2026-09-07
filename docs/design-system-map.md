@@ -4,6 +4,11 @@ Status: current implementation map. Use this document to locate visual tokens,
 shared components, and established screen treatments. The active code is
 authoritative for exact values.
 
+The approved target for the Analog Iron & Newsprint migration is documented in
+[`docs/design/analog-iron-v0.125/`](design/analog-iron-v0.125/README.md). Until
+that migration lands, this map continues to describe the current implementation;
+the handoff directory describes the approved destination.
+
 For the design rules derived from these patterns, see
 `docs/ui-design-rules.md`. This document records implementation; it does not own
 product history or issue chronology.
