@@ -281,8 +281,7 @@ but none of the listed PRs is automatically unfrozen by this document.
   here, not by D1, whose write set cannot reach these callsites. Any card whose
   Allowed Files contain a `TextInput` sets `keyboardAppearance` from the resolved
   theme; a `Switch` sets `trackColor`/`thumbColor` from tokens; a
-  `DateTimePicker` sets `themeVariant`. This binds D5, D7, D9, D12, D13, D14 and
-  D15 on the callsites named in the native dark-mode section. Adding a
+  `DateTimePicker` sets `themeVariant`. This binds D5, D7, D9, D10, D12 and D14 on the callsites named in the native dark-mode section. Adding a
   theme-driven appearance prop to an existing control is an appearance change;
   altering what a control does is a behavior change and escalates.
 - **Allowed Files:** each card's exact list below is its exclusive write set.
@@ -600,39 +599,60 @@ archived goal, large text, empty/filter-empty/load-more history and offline save
 **Order:** after D5; D0 chart/color decision is required even though new chart
 functionality is excluded.
 
-### D10 — Plate Calculator migration
+### D10 — Secondary surfaces migration
 
-**Goal:** apply the calculator/sheet visual language to the existing tapped-load
-and per-unit equipment workflow.
+**Goal:** apply the visual language to the six small, mutually independent
+surfaces that no other card owns: Plate Calculator, More menu, Profile, Set New
+Password, App Guide and About. Consolidated from the separate D10/D11/D13/D15/
+D17/D18 drafts on owner direction; their files never overlapped each other, so
+one card preserves disjointness while collapsing six device passes into one.
 
 **Allowed Files:** `mobile/components/PlateCalculatorModal.js`,
-`mobile/tests/plate-calculator-modal.test.js`.
+`mobile/tests/plate-calculator-modal.test.js`, `mobile/screens/MoreScreen.js`,
+`mobile/tests/app-navigation.test.js`, `mobile/components/ProfileScreen.js`,
+`mobile/tests/profile-write-failure.test.js`,
+`mobile/screens/more/SetNewPasswordScreen.js`,
+`mobile/components/HelpScreen.js`, `mobile/components/AboutScreen.js`,
+`mobile/tests/about-screen.test.js`.
 
-**Acceptance criteria:** migrate all type/geometry/input states; preserve empty/
-below-bar/invalid/remainder cases, authored-kg precision, inventory edits, per-unit
-defaults and unit-switch discard behavior. An optional sleeve illustration uses
-only existing computed counts; no target editor, bar preset invention, fake
-sync badge, math/persistence fix or Apply to Log Row.
+**Acceptance criteria:** complete local typography/geometry on all six surfaces.
 
-**Verification:** allowed test plus `mobile/tests/plate-math.test.js` unchanged.
-Device sign-off: tap lb and kg-authored sets, switch units during edit, save/
-cancel/reset inventory, limited inventory/remainder, keyboard and close/Back.
-**Order:** after D5; shared SetLine entry is already migrated by D3.
+- *Plate Calculator:* preserve empty/below-bar/invalid/remainder cases,
+  authored-kg precision, inventory edits, per-unit defaults and unit-switch
+  discard. An optional sleeve illustration uses only existing computed counts;
+  no target editor, bar preset invention, fake sync badge, math/persistence fix
+  or Apply to Log Row.
+- *More menu:* preserve all six entries, labels, callback routes, repeated
+  anchor handling, subview Back and password-recovery entry. No Settings
+  replacement tab and no #971 import route.
+- *Profile:* migrate text/decimal inputs, date picker and selected controls;
+  preserve optional values, ft/in/cm conversion, DOB clear, activity options,
+  save success/error and clear confirmation.
+- *Set New Password:* retain valid/invalid recovery-link branches, validation,
+  busy/error/success and return to sign-in. Preserve callbacks and password
+  semantics; no deep-link redesign. Security-sensitive scoped review applies.
+- *App Guide:* keep every guide section, example, unit and local/cloud
+  explanation. Shared syntax reference stays D3-owned; preserve scroll/Back.
+- *About:* preserve real version, attribution, legal links and OTA
+  diagnostics/check/result/error/restart. No fabricated spec IDs or screenshot
+  version.
 
-### D11 — More menu migration
+The common contract's native control appearance rule applies here for Profile's
+date picker and the Profile/Set New Password text and secure inputs.
 
-**Goal:** restyle the menu on open canvas while preserving S9 navigation.
-
-**Allowed Files:** `mobile/screens/MoreScreen.js`, `mobile/tests/app-navigation.test.js`.
-
-**Acceptance criteria:** complete local type/radius/border sweep; preserve all
-six entries, labels, callback routes, repeated anchor handling, subview Back and
-password-recovery entry. No Settings replacement tab or #971 import route.
-
-**Verification:** allowed test and `mobile/tests/app-shell-back.test.js`.
-Device sign-off: visit all six subviews and return, switch away/back, repeat
-Cloud Sync anchor and use hardware Back with large menu text. **Order:** after D5;
-individual subviews may still have legacy local styles until their owner lands.
+**Verification:** `mobile/tests/plate-calculator-modal.test.js`,
+`mobile/tests/app-navigation.test.js`, `mobile/tests/profile-write-failure.test.js`,
+`mobile/tests/about-screen.test.js`, plus unchanged
+`mobile/tests/plate-math.test.js`, `mobile/tests/app-shell-back.test.js`,
+`mobile/tests/unit-display-ui.test.js`, `mobile/tests/account-lifecycle-ui.test.js`,
+`mobile/tests/auth-session.test.js` and
+`mobile/tests/workout-syntax-reference.test.js`. Device sign-off, one pass across
+all six: tapped lb/kg sets with a unit switch mid-edit and inventory save/cancel;
+all six More subviews and hardware Back; empty and existing Profile with both
+height inputs, DOB clear and failure/retry; valid and expired recovery entry with
+a mismatch error; full guide scroll; About update/check/failure. Both themes and
+large text throughout. **Order:** after D14, since Set New Password follows the
+consent/lifecycle shell; the other five need only D5.
 
 ### D12 — Settings and Reminders migration
 
@@ -652,21 +672,6 @@ and `mobile/tests/theme-preference.test.js`. Device sign-off: OS/app appearance
 combinations, unit-save failure/remount/retry, features off/on, native times,
 permission denied, fallback days and large text. **Order:** after D5; consumes
 D1 native bridge without reopening its files.
-
-### D13 — Profile migration
-
-**Goal:** apply the form treatment to S11 without changing biometric semantics.
-
-**Allowed Files:** `mobile/components/ProfileScreen.js`,
-`mobile/tests/profile-write-failure.test.js`.
-
-**Acceptance criteria:** migrate local typography/geometry, text/decimal inputs,
-date picker and selected controls; preserve optional values, ft/in/cm conversion,
-DOB clear, activity options, save success/error and clear confirmation.
-
-**Verification:** allowed test plus `mobile/tests/unit-display-ui.test.js`.
-Device sign-off: empty/existing profile, both height inputs, DOB/clear, failure/
-retry, clear confirmation and keyboard/large-text layout. **Order:** after D5.
 
 ### D14 — Account, consent and lifecycle presentation
 
@@ -692,22 +697,6 @@ challenge expiry/retry and consent, then deletion keep/wipe confirmations using
 disposable fixtures. **Order:** after D5; D15 owns the separate reset component,
 D16 owns Cloud Sync/Backup consumers of the consent component.
 
-### D15 — Set New Password migration
-
-**Goal:** apply the form treatment to S13's recovery-only surface.
-
-**Allowed Files:** `mobile/screens/more/SetNewPasswordScreen.js`.
-
-**Acceptance criteria:** migrate local typography/geometry/secure inputs; retain
-valid/invalid recovery-link branches, validation, busy/error/success and return
-to sign-in. Preserve callbacks and password semantics; no deep-link redesign.
-
-**Verification:** run `mobile/tests/account-lifecycle-ui.test.js` and
-`mobile/tests/auth-session.test.js` unchanged; security-sensitive scoped review.
-Device sign-off: valid and expired recovery entry, mismatch/error, keyboard at
-large text and successful return. **Order:** after D14 in the suggested sequence;
-its shared shell/consent prerequisites are already available.
-
 ### D16 — Data & Backup and Cloud Sync migration
 
 **Goal:** migrate S15/S16 with explicit local/cloud and destructive boundaries.
@@ -730,33 +719,19 @@ withdrawal, file and pasted import error, export status and dangerous confirmati
 with disposable data; supplemental web file/dialog pass. **Order:** after D14's
 shared consent presentation; no dependency on #973 calculations or #971 import.
 
-### D17 — App Guide migration
+### D18 — Read-only program completeness check
 
-**Goal:** restyle S17 documentation as readable open sections.
+**Goal:** verify every exclusive owner completed its slice. This card restyles
+nothing; About moved to D10 when the secondary surfaces were consolidated.
 
-**Allowed Files:** `mobile/components/HelpScreen.js`.
+**Allowed Files:** none. This card writes no product code. Findings are reported
+to the owning card, never edited under this one.
 
-**Acceptance criteria:** complete local typography/geometry without dropping
-guide sections, examples, units or local/cloud explanations. Shared syntax
-reference remains D3-owned; preserve scroll/Back and real terminology.
+**Acceptance criteria:** D2's whole-program mode passes, and a read-only
+comparison of every S0–S18 inventory row against the landed child handoffs shows
+an owner and a recorded device sign-off for each. Any failure in another owner's
+file is reported to that owner.
 
-**Verification:** `mobile/tests/workout-syntax-reference.test.js` unchanged and
-focused visual-rule check. Device sign-off: full guide scroll, syntax examples,
-large text and Back in both themes. **Order:** after D5; D3 syntax prerequisite.
-
-### D18 — About migration and read-only program completeness check
-
-**Goal:** restyle S18 and verify all exclusive owners have completed their slices.
-
-**Allowed Files:** `mobile/components/AboutScreen.js`, `mobile/tests/about-screen.test.js`.
-
-**Acceptance criteria:** complete local typography/geometry; preserve real version,
-attribution, legal links, OTA diagnostics/check/result/error/restart. No fabricated
-spec IDs or screenshot version. Final whole-program scan must pass; a failure in
-another owner's file is reported to that owner, not edited under this card.
-
-**Verification:** allowed test, D2's whole-program mode and read-only comparison
-of all S0–S18 rows against the landed child handoffs. Device sign-off: About
-update/check/failure states and Back in both themes; owner confirms every child
-has its own recorded device sign-off. **Order:** last in the proposed sequence;
+**Verification:** D2 whole-program scan plus the read-only inventory comparison.
+Owner confirms every child has its own recorded device sign-off. **Order:** last;
 this is verification of the migration, not authority to merge, close or release.

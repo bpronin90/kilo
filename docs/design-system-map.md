@@ -9,6 +9,10 @@ The approved target for the Analog Iron & Newsprint migration is documented in
 that migration lands, this map continues to describe the current implementation;
 the handoff directory describes the approved destination.
 
+Scheduling for that migration lives in the
+[Prelaunch and Redesign Roadmap](prelaunch-redesign-roadmap.md), which defers the
+whole program until after `1.0.0` ships.
+
 The [repo-grounded migration audit and child issue drafts](design/analog-iron-v0.125/migration-audit.md)
 inventory current routes, states and shared components, record reference conflicts
 and unresolved tokens, and assign disjoint implementation stages. The audit also
