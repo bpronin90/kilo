@@ -347,6 +347,18 @@ available-weight mapping including the requested 800, loading/fallback behavior,
 and native/hosted control exceptions. Obtain owner approval; unresolved values
 remain blockers, never guessed defaults.
 
+**Owner decision recorded 2026-09-07 — chart roles.** Chart strokes, point
+markers and axis marks use a **neutral ink** role in both themes: dark iron on
+newsprint in light, warm off-white on iron in dark. **Vermilion is never a
+chart's ordinary series colour**; it appears in a chart only to mark an
+exceptional or execution state, consistent with the program-wide rule that red
+is never decoration. `LineChart`'s `color` prop keeps its current contract but
+its default stops resolving to a red accent. Any chart showing more than one
+series must distinguish them by **more than colour** (dash pattern or marker
+shape). D0 transcribes this into the handoff spec files and still owes the exact
+light/dark values, the selected-vs-unselected marker fills at AA against real
+backgrounds, and the remaining font/native-control decisions.
+
 **Verification:** inspect `mobile/theme/colors.js`,
 `mobile/components/LineChart.js`, `mobile/components/AnalyticsStrengthSection.js`,
 `mobile/components/AnalyticsWeightTrendsCard.js` against the decisions; check
