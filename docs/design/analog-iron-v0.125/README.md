@@ -14,6 +14,12 @@ functionality, behavior, state, navigation, data, and workflows.
 - The PNG files are representative visual states. They do not authorize
   removing or inventing functionality, and unshown states must extend the same
   tokens and component rules.
+- Known screenshot artifacts are not implementation instructions. The dark
+  exports contain stale light-mode red (`#D92D20`) and narrow-width text
+  wrapping, clipping, or overlap; implementations must use the dark
+  `accentRed` token and responsive row sizing from the written rules instead.
+  The clipped chart label in `stats-light.png` is likewise a non-authoritative
+  copy/layout artifact; preserve the real product label and render it legibly.
 - Straightforward Kilo terminology is mandatory. Faux-technical copy visible in
   a reference image is not approved product copy. In particular, do not carry
   forward labels such as `SETTINGS LEDGER`, `LEDGER #8402`,
@@ -51,9 +57,17 @@ The implementation uses these supplied values:
   is 24px and desktop outer margin is 32px.
 - Radius is 0px by default and never exceeds 2px.
 - Dividers are continuous 1px hairlines. Use `borderHairline` for ordinary
-  separation and the solid/high-contrast border roles only for active or
-  focused structure.
+  separation. The dark `borderSolid` role is a distinct 1.5px structural frame
+  for cards, active containers, and button strokes; use solid/high-contrast
+  roles only for active or focused structure.
 - Elevation is flat: no shadows, glass, blur, or decorative gradients.
 - Vermilion red is reserved for execution and exceptional states, not
   decoration.
 
+## Deferred chart-color contract
+
+The blue-gray chart fills visible in `stats-light.png` and the trend-line colors
+visible in `weight-light.png` do not have approved semantic tokens or dark-mode
+counterparts in this handoff. Do not sample the screenshots or invent values.
+The #978 audit must assign this gap to a dedicated child issue and resolve the
+chart-color contract before either Stats or Weight migrates.
