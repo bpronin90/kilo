@@ -101,7 +101,8 @@ function buildInstrumentedStorage({ readDelayMs = 0 } = {}) {
 
 describe('device-storage reads overlap instead of queueing (#984)', () => {
   it('runs reads of different keys concurrently', async () => {
-    const { storage, counters } = buildInstrumentedStorage({ readDelayMs: 5 });
+    const readDelayMs = 50;
+    const { storage, counters } = buildInstrumentedStorage({ readDelayMs });
     const keys = ['kilo_weight_goal', 'kilo_tracked_lifts', 'kilo_recovery_blocks', 'kilo_workout_notes'];
     for (const key of keys) {
       // eslint-disable-next-line no-await-in-loop
@@ -112,9 +113,14 @@ describe('device-storage reads overlap instead of queueing (#984)', () => {
     const elapsed = Date.now() - started;
 
     expect(results).toEqual(keys.map((key) => `${key}-value`));
-    // The whole point: four independent keys cost about ONE read's latency, not
-    // four. Bounded generously so this pins the shape, not the machine.
-    expect(elapsed).toBeLessThan(4 * 5);
+    // `maxConcurrent` is the deterministic proof that the four independent keys
+    // overlapped rather than queued. The wall-clock check is only a coarse
+    // backstop: with a 50ms injected per-read cost a fully serial FIFO would
+    // spend at least readDelayMs * keys.length (200ms) plus fixed warm-up;
+    // concurrent reads finish in roughly one read's latency plus that same
+    // warm-up, comfortably under the serial floor. Do not tighten this toward
+    // one read's latency — that pins the machine, not the shape (#999).
+    expect(elapsed).toBeLessThan(readDelayMs * keys.length);
     expect(counters.maxConcurrent).toBe(4);
   });
 
