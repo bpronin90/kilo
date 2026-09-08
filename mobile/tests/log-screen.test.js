@@ -3189,8 +3189,8 @@ describe('A/B week for non-current routines: viewing projection and per-note per
   test('a create whose cloud enqueue failed is retried through add() with the identical payload, never a new id (#997)', async () => {
     // #997: useWorkoutNotes.add does the local write and then awaits the cloud
     // enqueue, which can reject on its own after the note already landed. The
-    // note store makes the create id-stable by reusing the pending note on a
-    // retry with the same payload — but only if the Log editor re-submits the
+    // cloud adapter makes the create id-stable via a durable pending-create
+    // marker keyed on the payload — but only if the Log editor re-submits the
     // SAME (title, body). A retry that regenerated the title/text, or fell
     // through to update() against a half-known id, would defeat that.
     const add = jest.fn()

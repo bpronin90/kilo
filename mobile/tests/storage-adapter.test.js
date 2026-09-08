@@ -191,6 +191,8 @@ describe('screens must not import Supabase directly', () => {
 });
 
 describe('workout-note add is id-stable after a partial cloud write (#997)', () => {
+  const AsyncStorage = require('@react-native-async-storage/async-storage').default
+    || require('@react-native-async-storage/async-storage');
   const { useWorkoutNotes } = require('../hooks/entries/workoutNoteHooks');
   const storageMode = require('../hooks/entries/storageMode');
   const syncQueue = require('../storage/syncQueue');
@@ -202,12 +204,14 @@ describe('workout-note add is id-stable after a partial cloud write (#997)', () 
 
   let tree;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     setStorageMode(STORAGE_MODES.CLOUD);
     // The initial cloud sync the hook kicks off on mount is not what this test
     // exercises; keep it inert and offline.
     jest.spyOn(storageMode, 'maybeSyncCloud').mockResolvedValue(false);
     jest.spyOn(reminderScheduler, 'reconcileWorkoutReminder').mockResolvedValue();
+    // A clean slate: no notes, no dirty queue, no stranded-create markers.
+    if (AsyncStorage.clear) await AsyncStorage.clear();
   });
 
   afterEach(() => {
@@ -225,49 +229,83 @@ describe('workout-note add is id-stable after a partial cloud write (#997)', () 
     act(() => {
       tree = renderer.create(React.createElement(Probe));
     });
-    return ref;
+    return { ref, unmount: () => act(() => tree.unmount()) };
   }
 
-  it('retrying an add whose local write landed but whose cloud enqueue failed reuses the id', async () => {
+  // Reject only the FIRST enqueue, so the create's local write lands with no
+  // pending upload intent; every later enqueue runs for real.
+  function failFirstEnqueue() {
     const realEnqueue = syncQueue.enqueueDirty;
-    let enqueueCalls = 0;
+    let calls = 0;
     jest.spyOn(syncQueue, 'enqueueDirty').mockImplementation((table, record) => {
-      enqueueCalls += 1;
-      if (enqueueCalls === 1) {
-        return Promise.reject(new Error('cloud enqueue offline'));
-      }
+      calls += 1;
+      if (calls === 1) return Promise.reject(new Error('cloud enqueue offline'));
       return realEnqueue(table, record);
     });
+  }
 
-    const notes = mountNotes();
-
-    // First attempt: the local write lands, the cloud enqueue rejects, and
-    // `add` propagates that failure to the caller.
+  async function strandACreate(add) {
     await act(async () => {
-      await expect(notes.current.add(TITLE, BODY)).rejects.toThrow('cloud enqueue offline');
+      await expect(add(TITLE, BODY)).rejects.toThrow('cloud enqueue offline');
     });
-
-    const stranded = (await loadWorkoutNotes()).filter((n) => n.title === TITLE);
-    expect(stranded).toHaveLength(1);
-    const strandedId = stranded[0].id;
-    const dirtyAfterFail = (await syncQueue.getDirtyRecords(syncQueue.SYNC_TABLES.WORKOUT_NOTES))
+    const rows = (await loadWorkoutNotes()).filter((n) => n.title === TITLE);
+    expect(rows).toHaveLength(1);
+    const strandedId = rows[0].id;
+    const dirty = (await syncQueue.getDirtyRecords(syncQueue.SYNC_TABLES.WORKOUT_NOTES))
       .filter((r) => r.id === strandedId);
-    expect(dirtyAfterFail).toHaveLength(0);
+    expect(dirty).toHaveLength(0);
+    return strandedId;
+  }
 
-    // Retry with the identical payload: it must complete the original create,
-    // not mint a second note.
+  async function expectCompletedCreate(strandedId) {
+    const rows = (await loadWorkoutNotes()).filter((n) => n.title === TITLE);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe(strandedId);
+    const dirty = (await syncQueue.getDirtyRecords(syncQueue.SYNC_TABLES.WORKOUT_NOTES))
+      .filter((r) => r.id === strandedId);
+    expect(dirty).toHaveLength(1);
+  }
+
+  it('a retry on the same hook instance completes the original create instead of duplicating', async () => {
+    failFirstEnqueue();
+    const { ref } = mountNotes();
+
+    const strandedId = await strandACreate(ref.current.add);
+
     let created;
-    await act(async () => {
-      created = await notes.current.add(TITLE, BODY);
-    });
+    await act(async () => { created = await ref.current.add(TITLE, BODY); });
     expect(created.id).toBe(strandedId);
+    await expectCompletedCreate(strandedId);
+  });
 
-    const afterRetry = (await loadWorkoutNotes()).filter((n) => n.title === TITLE);
-    expect(afterRetry).toHaveLength(1);
-    expect(afterRetry[0].id).toBe(strandedId);
+  it('a retry after the hook remounts (app restart) still reuses the id — the marker is durable', async () => {
+    failFirstEnqueue();
+    const first = mountNotes();
 
-    const dirtyAfterRetry = (await syncQueue.getDirtyRecords(syncQueue.SYNC_TABLES.WORKOUT_NOTES))
-      .filter((r) => r.id === strandedId);
-    expect(dirtyAfterRetry).toHaveLength(1);
+    const strandedId = await strandACreate(first.ref.current.add);
+    first.unmount();
+
+    // A fresh hook instance has no in-memory state carried over; only the
+    // persisted pending-create marker links the retry to the stranded row.
+    const second = mountNotes();
+    let created;
+    await act(async () => { created = await second.ref.current.add(TITLE, BODY); });
+    expect(created.id).toBe(strandedId);
+    await expectCompletedCreate(strandedId);
+  });
+
+  it('a genuinely new create with the same payload after the first one completed gets its own id', async () => {
+    const { ref } = mountNotes();
+
+    let firstNote;
+    await act(async () => { firstNote = await ref.current.add(TITLE, BODY); });
+    // First create synced cleanly, so its marker is retired; an identical
+    // routine created later is a separate routine, not a retry.
+    let secondNote;
+    await act(async () => { secondNote = await ref.current.add(TITLE, BODY); });
+
+    expect(secondNote.id).not.toBe(firstNote.id);
+    const rows = (await loadWorkoutNotes()).filter((n) => n.title === TITLE);
+    expect(rows).toHaveLength(2);
   });
 });

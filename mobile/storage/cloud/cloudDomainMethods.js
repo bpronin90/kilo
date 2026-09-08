@@ -1,9 +1,11 @@
 import * as Storage from '../entries';
+import { readList, writeList } from '../entries/jsonStorage';
 import {
   SYNC_TABLES,
   stampWrite,
   stampTombstone,
   isTombstone,
+  isServerRow,
   getClientId,
   enqueueDirty,
   getDirtyRecords,
@@ -72,15 +74,101 @@ export async function loadWorkoutNotes() {
   return list.filter((n) => !isTombstone(n));
 }
 
+// Device-local, unsynced, versioned in the key: markers for a create whose
+// local row has landed but whose cloud enqueue has not yet succeeded (#997).
+// `saveWorkoutNoteItem` writes the row and THEN awaits `enqueueDirty`, and the
+// enqueue can reject on its own — leaving a note on the device with no pending
+// upload intent. A caller that retries `add` mints a fresh id, so without a
+// durable correlation the retry creates a duplicate; this marker is that
+// correlation, keyed on the create payload so it survives an app restart and is
+// dropped the moment the enqueue succeeds. Not a sync table, never exported.
+const PENDING_WORKOUT_NOTE_CREATES_KEY = 'kilo_pending_workout_note_creates_v1';
+const PENDING_WORKOUT_NOTE_CREATES_CAP = 20;
+
+function workoutNoteCreateSignature(note) {
+  return JSON.stringify([note?.title ?? '', note?.raw_text ?? '']);
+}
+
+async function readPendingWorkoutNoteCreates() {
+  try {
+    const list = await readList(PENDING_WORKOUT_NOTE_CREATES_KEY);
+    return list.filter((e) => e && typeof e.sig === 'string' && e.id != null);
+  } catch {
+    // A corrupt or unreadable marker store must never block a create.
+    return [];
+  }
+}
+
+async function writePendingWorkoutNoteCreates(list) {
+  try {
+    await writeList(
+      PENDING_WORKOUT_NOTE_CREATES_KEY,
+      list.slice(-PENDING_WORKOUT_NOTE_CREATES_CAP),
+    );
+  } catch {
+    // Best-effort: failing to persist the marker only costs id-stability on a
+    // later retry, which is strictly better than failing the create itself.
+  }
+}
+
+async function rememberPendingWorkoutNoteCreate(sig, id) {
+  const list = await readPendingWorkoutNoteCreates();
+  const rest = list.filter((e) => e.sig !== sig && e.id !== id);
+  await writePendingWorkoutNoteCreates([...rest, { sig, id }]);
+}
+
+async function forgetPendingWorkoutNoteCreate(id) {
+  const list = await readPendingWorkoutNoteCreates();
+  const next = list.filter((e) => e.id !== id);
+  if (next.length !== list.length) await writePendingWorkoutNoteCreates(next);
+}
+
+// Resolve the id a `saveWorkoutNoteItem` create should actually use. When a
+// prior attempt for this exact payload stranded a row locally without an
+// enqueue, reuse that row's id so the retry COMPLETES the original create
+// instead of adding a second note. A prior row that has since synced (came back
+// from the server, or is sitting in the dirty queue) is not stranded — the
+// marker is stale, so drop it and let this be a genuinely new create.
+async function resolveWorkoutNoteCreateId(note, list) {
+  const sig = workoutNoteCreateSignature(note);
+  const pending = await readPendingWorkoutNoteCreates();
+  const marker = pending.find((e) => e.sig === sig);
+  if (marker) {
+    const priorRow = list.find((n) => n.id === marker.id);
+    const dirty = await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES);
+    const priorProgressed =
+      !priorRow ||
+      isTombstone(priorRow) ||
+      isServerRow(priorRow) ||
+      dirty.some((r) => r?.id === marker.id);
+    if (!priorProgressed) return marker.id;
+    await forgetPendingWorkoutNoteCreate(marker.id);
+  }
+  await rememberPendingWorkoutNoteCreate(sig, note.id);
+  return note.id;
+}
+
 export async function saveWorkoutNoteItem(note) {
   const clientId = await getClientId();
-  const stamped = stampWrite(note, clientId);
   const list = await Storage.loadWorkoutNotesRaw();
+
+  // Only a create — an id not already present — can strand a duplicate. An
+  // update/retry that already carries an existing id goes straight through.
+  const isCreate = !list.some((n) => n.id === note.id);
+  const target = isCreate
+    ? { ...note, id: await resolveWorkoutNoteCreateId(note, list) }
+    : note;
+
+  const stamped = stampWrite(target, clientId);
   const idx = list.findIndex((n) => n.id === stamped.id);
   if (idx >= 0) list[idx] = stamped;
   else list.push(stamped);
   await Storage.replaceWorkoutNotesRaw(list);
   await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, stamped);
+
+  // The enqueue is durable now, so the create is complete: retire its marker.
+  if (isCreate) await forgetPendingWorkoutNoteCreate(stamped.id);
+  return stamped;
 }
 
 // Idempotent by construction (#696). The recovery operation journal replays
