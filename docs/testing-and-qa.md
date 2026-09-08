@@ -107,6 +107,31 @@ supabase db reset --local --no-seed
 node scripts/run-pgtap-suite.mjs
 ```
 
+A third `shared-deno` job runs the shared Edge Function module tests on every
+pull request and every push to `main`. It installs Deno and executes all three
+`supabase/functions/_shared/*.test.ts` files (`security-event`, `rate-limit`,
+and `health-data-scope`) in one `deno test` invocation. The permissions are the
+minimum the current suite needs: `--allow-import` for the remote `deno.land`
+standard-library import and `--allow-read` for the migration-directory reads
+that `health-data-scope.test.ts` performs; `--no-check` and `--no-lock` keep the
+suite's established invocation. The rate-limit cases assert event
+classification behaviorally — they drive `rateLimitAllowed` through a recording
+client double and inspect the `record_security_event` RPC it receives, so an
+exhausted bucket is proven to emit the subject-attributed
+`ratelimit.ip_blocked` / `ratelimit.user_blocked` throttle event while a limiter
+outage emits only a subjectless `ratelimit.unavailable` (denied under the `deny`
+policy, allowed under `allow`). No test greps implementation or endpoint source
+to reach that verdict.
+
+Run the same shared-module suite locally with Deno installed:
+
+```sh
+deno test --no-check --no-lock --allow-import --allow-read \
+  supabase/functions/_shared/security-event.test.ts \
+  supabase/functions/_shared/rate-limit.test.ts \
+  supabase/functions/_shared/health-data-scope.test.ts
+```
+
 Every PR additionally requires the `review disposition accepted` status for
 its exact current head SHA. The trusted evaluator in
 `scripts/review-disposition.mjs` reads current-head implementation metadata and
