@@ -138,6 +138,19 @@ refresh-verification tests run with:
 node --test scripts/review-disposition.test.mjs
 ```
 
+### Security-critical changes
+
+Changes that can materially affect authentication, authorization, RLS and
+policies, server functions/APIs, secrets, health data, encryption/storage,
+account deletion/export, abuse controls, update delivery, or deployment
+security follow the [Security-critical change review](security-review.md)
+policy. The PR must identify its security impact and, when critical, retain an
+explicit human security sign-off bound to the full current head SHA before the
+change is eligible for release. A new head invalidates that sign-off and
+requires renewal. This is an additional review lens, not a replacement for
+ordinary review or the required automated security, database, dependency, and
+migration checks.
+
 GitHub Actions also runs the migration drift check via
 `.github/workflows/migration-drift.yml`, and it is a **required pre-merge
 status check on `main`** (job `merged migrations are applied to the live
