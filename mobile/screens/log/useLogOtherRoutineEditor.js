@@ -14,6 +14,7 @@ import { subscribeDirtyQueue, getDirtyRecords, SYNC_TABLES } from '../../storage
 import { subscribeSyncState, getSyncState, SYNC_PHASE, SYNC_STATUS } from '../../storage/syncRecovery';
 import { getStorageMode, STORAGE_MODES } from '../../storage/entries';
 import { buildDayGroups } from './logScreenHelpers';
+import { sliceRoutineWeekText } from '../../lib/interoperability/routineShare';
 import {
   saveWorkoutNoteDraft,
   loadWorkoutNoteDraft,
@@ -99,13 +100,12 @@ function isValidActiveWeek(value) {
 // slicing used by the current-routine editor (useLogCurrentRoutineEditor's
 // activeEditText/handleCurrentTextChange) so non-current A/B notes behave
 // identically.
-function sliceActiveWeekText(fullText, week) {
-  const lines = (fullText || '').split('\n');
-  const sepIdx = lines.findIndex(l => l.trim() === '---');
-  if (sepIdx === -1) return fullText || '';
-  if (week === 'B') return lines.slice(sepIdx + 1).join('\n');
-  return lines.slice(0, sepIdx).join('\n');
-}
+//
+// The implementation moved to lib/interoperability/routineShare.js (#955) so
+// the import preview splits a pasted A/B routine with the exact same rule this
+// editor reads it back with, instead of a second copy that can drift. The local
+// name is kept because every call site below reads better with it.
+const sliceActiveWeekText = sliceRoutineWeekText;
 
 function spliceActiveWeekText(fullText, week, newActiveText) {
   const lines = (fullText || '').split('\n');

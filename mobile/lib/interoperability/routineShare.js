@@ -22,8 +22,10 @@
 // stores. `buildRoutineShareText` takes exactly two content inputs (title and
 // rawText) for that reason; there is no note object to over-read.
 //
-// This is export only. The strip side exists so the round trip is provable in
-// tests today, and so #581's Stage 2 import flow can reuse it unchanged.
+// The strip side is what #581's Stage 2 import flow (#955) consumes, unchanged:
+// `parseRoutineShareText` recovers the body, and `analyzeRoutineImportText`
+// below turns that body into the preview/validation verdict the import screen
+// renders. Import writes nothing here — it only ever describes the paste.
 
 // `Alert` comes from lib/platformAlert, never from react-native directly: the
 // RN web Alert silently no-ops for multi-button dialogs, so a direct import
@@ -130,6 +132,136 @@ export function parseRoutineShareText(text) {
   // body and stays there, so the body is returned as written.
   if (lines[index] != null && lines[index].trim() === '') index += 1;
   return { hasEnvelope: true, version, title, exportedAt, body: lines.slice(index).join('\n') };
+}
+
+export const ROUTINE_IMPORT_EMPTY_MESSAGE =
+  'Paste a routine to preview it before you import it.';
+export const ROUTINE_IMPORT_NO_EXERCISES_MESSAGE =
+  'No exercises were found in this text, so there is nothing to import. '
+  + 'Check that you pasted the whole routine.';
+export const ROUTINE_IMPORT_UNKNOWN_VERSION_MESSAGE =
+  'This routine was shared by a newer version of Kilo. '
+  + 'Anything this version does not understand is shown below exactly as it was written.';
+
+/**
+ * Split raw routine text on a standalone `---` week separator and return the
+ * requested half (or the text unchanged when there is no separator).
+ *
+ * This is the single implementation of the A/B split for reading: the routine
+ * editors import it (`screens/log/useLogOtherRoutineEditor.js`) and so does the
+ * import preview, so a pasted A/B routine is previewed exactly as the Routine
+ * tab will read it back. It lives here rather than in a screen module because
+ * it is pure text handling with no React or storage dependency.
+ */
+export function sliceRoutineWeekText(fullText, week) {
+  const lines = (fullText || '').split('\n');
+  const sepIdx = lines.findIndex(l => l.trim() === '---');
+  if (sepIdx === -1) return fullText || '';
+  if (week === 'B') return lines.slice(sepIdx + 1).join('\n');
+  return lines.slice(0, sepIdx).join('\n');
+}
+
+function countExercises(sections) {
+  let count = 0;
+  for (const section of sections || []) count += (section.exercises || []).length;
+  return count;
+}
+
+/**
+ * Describe a pasted routine: what the envelope claimed, what the body parses
+ * to, and whether it may be imported at all.
+ *
+ * Import is a read-only inspection of text the user pasted, so this function
+ * writes nothing and reads nothing — it takes the pasted string and returns a
+ * verdict. The screen renders `sections` through the same
+ * `WorkoutContentRenderer` the Routine tab already uses, so an imported
+ * routine previews exactly as it will read once saved.
+ *
+ * Two conditions block import, and only these two:
+ *   - the body could not be parsed at all (`parsed.ok === false`, i.e. the
+ *     text is over `MAX_RAW_TEXT_LENGTH` or the parser threw);
+ *   - the body parsed but contains zero exercises, so saving it would create
+ *     an empty routine.
+ *
+ * Line-level `problems` are surfaced but deliberately NOT blocking. They are
+ * ordinary syntax errors in individual set rows, the note grammar preserves
+ * those lines verbatim, and the editor lets you save a routine that has them —
+ * so blocking here would make it impossible to re-import a routine Kilo itself
+ * exported, which is a data-loss outcome, not a safety one.
+ *
+ * An A/B routine (a body containing a standalone `---` week separator) is
+ * analyzed one week at a time, under `week`, because that is how the Routine
+ * tab reads a saved routine back. Previewing both halves concatenated would
+ * show the user a routine that does not exist anywhere in the app. The whole
+ * body is still what gets saved — `week` selects the PREVIEW, never the write.
+ *
+ * @param {string} text  Raw pasted text, enveloped or bare.
+ * @param {'A'|'B'=} week  Which half of an A/B routine to preview. Default 'A'.
+ */
+export function analyzeRoutineImportText(text, week = 'A') {
+  const envelope = parseRoutineShareText(text);
+  const body = envelope.body;
+  const isBlank = body.trim() === '';
+  // An unrecognized version is informational only: `parseRoutineShareText`
+  // already degraded a future envelope to a best-effort body, and the body is
+  // still just note text, so the preview and the import both proceed.
+  const unknownVersion = envelope.hasEnvelope && envelope.version !== ROUTINE_SHARE_VERSION;
+  // The full body decides IMPORTABILITY (an A/B routine whose week A is empty
+  // is still a real routine), while the selected week decides what the preview
+  // renders.
+  const fullParsed = parseWorkoutNote(body);
+  const hasABWeeks = (fullParsed.weekBStartIndex ?? null) !== null;
+  const effectiveWeek = hasABWeeks ? (week === 'B' ? 'B' : 'A') : null;
+  const previewText = hasABWeeks ? sliceRoutineWeekText(body, effectiveWeek) : body;
+  const parsed = hasABWeeks ? parseWorkoutNote(previewText) : fullParsed;
+  const sections = parsed.sections || [];
+  const exerciseCount = countExercises(fullParsed.sections || []);
+
+  const notices = [];
+  if (unknownVersion) {
+    notices.push({ severity: 'info', message: ROUTINE_IMPORT_UNKNOWN_VERSION_MESSAGE });
+  }
+  // Blocking and problem reporting read the FULL body, never the previewed
+  // week: what gets saved is the whole routine, so a defect in week B must
+  // block and be reported even while week A is on screen.
+  if (!isBlank && fullParsed.ok === false) {
+    notices.push({ severity: 'error', message: fullParsed.error });
+  } else if (!isBlank && exerciseCount === 0) {
+    notices.push({ severity: 'error', message: ROUTINE_IMPORT_NO_EXERCISES_MESSAGE });
+  }
+  const problems = fullParsed.problems || [];
+  if (problems.length > 0) {
+    notices.push({
+      severity: 'warning',
+      message: `${problems.length} line${problems.length === 1 ? '' : 's'} could not be read as sets. `
+        + 'They are kept exactly as written and you can fix them after importing.',
+    });
+  }
+
+  return {
+    isBlank,
+    hasEnvelope: envelope.hasEnvelope,
+    version: envelope.version,
+    unknownVersion,
+    // The envelope title is a suggestion for the import screen's title field,
+    // never an identity: import always creates a new routine, so a title that
+    // collides with an existing one is not a conflict to resolve.
+    envelopeTitle: envelope.title,
+    exportedAt: envelope.exportedAt,
+    body,
+    // `parsed` describes the full body (what will be saved); `sections` is the
+    // previewed week (what is on screen). For a non-A/B routine they are the
+    // same parse.
+    parsed: fullParsed,
+    hasABWeeks,
+    effectiveWeek,
+    previewText,
+    sections,
+    problems,
+    exerciseCount,
+    notices,
+    canImport: !isBlank && fullParsed.ok !== false && exerciseCount > 0,
+  };
 }
 
 /**
