@@ -2,8 +2,9 @@
 
 This runbook is Kilo's lightweight operating process for vulnerabilities and
 security incidents. It complements the [security-critical change review](security-review.md),
-[backend activation](backend-activation.md), and [phone/release runbook](phone-runbook.md);
-those documents remain authoritative for their detailed controls.
+[security monitoring](security-monitoring.md), [backend activation](backend-activation.md),
+and [phone/release runbook](phone-runbook.md); those documents remain
+authoritative for their detailed controls.
 
 ## Intake and first response
 
@@ -28,6 +29,9 @@ Intake sources are:
 - the PR, weekly, and scheduled dependency checks in `.github/workflows/audit.yml`,
   run by `npm run audit` / `scripts/audit-gate.mjs` for the root and `mobile`
   workspaces;
+- the hourly production security-event monitor in
+  `.github/workflows/security-event-monitor.yml`, whose thresholds, event
+  catalog, and evidence are described in [Security Monitoring](security-monitoring.md);
 - Dependabot and GitHub security/dependency reports;
 - external researcher, vendor, or user reports; and
 - weaknesses found during development, review, monitoring, deployment, or
@@ -113,6 +117,10 @@ flow and downgrade after evidence is preserved.
 1. **Identify and preserve.** Record the reporter, UTC timestamps, affected
    versions/builds, indicators, relevant alerts/logs, and a hash or location for
    preserved evidence. Avoid copying secrets or health data into the record.
+   Start from the investigation runbook in
+   [Security Monitoring](security-monitoring.md): the security-event log is
+   retained for 90 days, while Supabase's platform logs are retained for days,
+   so pull anything needed from the platform log promptly.
 2. **Triage and declare.** Assign severity, roles, affected surfaces, exposure
    window, and a communications decision. Critical/high reports get an explicit
    owner and next update time.
@@ -121,7 +129,10 @@ flow and downgrade after evidence is preserved.
    rollback; and preserve evidence before destructive cleanup where practical.
 4. **Eradicate and remediate.** Remove the vulnerable code/configuration,
    revoke unauthorized access, rotate affected credentials, patch dependencies,
-   and add regression coverage or monitoring that detects recurrence.
+   and add regression coverage or monitoring that detects recurrence. When the
+   failure was not visible to the existing monitors, add or adjust a
+   security-event and its threshold in
+   [Security Monitoring](security-monitoring.md) as part of the fix.
 5. **Recover.** Restore only from a known-good artifact or backup, re-enable
    access in stages, validate authentication/RLS and health-data boundaries, and
    watch logs and error reporting for recurrence.
@@ -146,6 +157,10 @@ ticket or use a suspected credential to investigate.
 - **Sentry/telemetry:** rotate a credential only when evidence requires it,
   preserve event IDs and timestamps, and check that diagnostic payloads contain
   no unexpected sensitive data.
+- **Security-event log:** correlate by `subject_digest` and `context.request_id`
+  per [Security Monitoring](security-monitoring.md). Never delete rows to clear
+  an alert; the log is append-only and is the evidence the investigation runs
+  on. Widen a monitor threshold with a recorded rationale instead.
 - **GitHub, EAS/store, deployment, and signing:** revoke tokens, rotate keys,
   restrict repository/provider access, stop a compromised workflow or channel,
   invalidate affected artifacts where supported, and rebuild from a known-good

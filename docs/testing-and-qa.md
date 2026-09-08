@@ -151,6 +151,30 @@ requires renewal. This is an additional review lens, not a replacement for
 ordinary review or the required automated security, database, dependency, and
 migration checks.
 
+### Production security monitoring
+
+`.github/workflows/security-event-monitor.yml` runs
+`scripts/check-security-events.mjs` hourly against the live project and alerts
+on any critical security event, on auth-failure volume and spread, on throttle
+volume, on failed privileged operations, and on a retention sweep that has
+stopped running. Findings are exit 1; a run that cannot reach the database is
+exit 2 and a failed monitor, never a green one.
+
+Its offline contract suite runs on any pull request that touches the monitor,
+the recorder, the migration, or the workflow:
+
+```sh
+npm run test:security-events
+node scripts/check-security-events.mjs --dry-run
+```
+
+Those cover redaction, every threshold boundary, the 0/1/2 exit discipline, and
+the agreement between the TypeScript and SQL copies of the event catalog and
+context allow-list. The database side --- catalog enforcement, server-derived
+severity, context sanitization, access control, the ingest cap, and retention
+--- is `supabase/tests/security-events.test.sql`, run by the `database-security`
+job. The full contract lives in [Security Monitoring](security-monitoring.md).
+
 GitHub Actions also runs the migration drift check via
 `.github/workflows/migration-drift.yml`, and it is a **required pre-merge
 status check on `main`** (job `merged migrations are applied to the live
@@ -300,7 +324,7 @@ Coverage is organized by boundary:
 | Auth, consent, and account lifecycle | auth-session, health-consent, consent-gate, account-lifecycle, Turnstile, and bounded-write suites |
 | Screen and component contracts | app shell, Home, Log, Weight, Analytics, More sub-screen, theme, navigation, and modal suites |
 | Notifications and diagnostics | reminders, scheduler, app-update, and error-reporting suites |
-| Repository tooling | Node tests beside review, changelog, migration, deployment, monitoring, and security-delivery scripts |
+| Repository tooling | Node tests beside review, changelog, migration, deployment, monitoring, security-event, and security-delivery scripts |
 | Database security and concurrency | planned SQL tests under `supabase/tests/` |
 | Shared Edge Function contracts | tests beside `supabase/functions/_shared/` and focused deployment scripts |
 
