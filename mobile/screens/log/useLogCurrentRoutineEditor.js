@@ -30,6 +30,11 @@ import {
   clearWorkoutNoteDraftsSupersededBySave,
   markWorkoutNoteDraftSaveStart,
 } from '../../storage/entries/workoutNoteDrafts';
+import {
+  ensureWorkoutNoteCreationAttempt,
+  loadWorkoutNoteCreationAttempt,
+  clearWorkoutNoteCreationAttempt,
+} from '../../storage/entries/workoutNoteCreationAttempts';
 
 // See useLogOtherRoutineEditor.js for why this is much shorter than
 // AUTOSAVE_DEBOUNCE_MS (#880): the write is cheap (no parse/derive/cloud
@@ -53,6 +58,13 @@ const SOURCE_JUMP_TOP_GAP = 24;
 function currentDraftKey(currentId) {
   return currentId ? `current:${currentId}` : 'current:new';
 }
+
+// The one caller context this editor creates notes in (#997). A create here is
+// always the current-routine editor's brand-new note — no currentId yet — so
+// one durable slot covers it, and the attempt token in that slot outlives an
+// app restart. Distinct from `currentDraftKey`'s 'current:new' draft key: this
+// store holds create-attempt protocol state, not text.
+const CURRENT_CREATE_ATTEMPT_KEY = 'current:new';
 
 // Pending-cloud-convergence state (#880 revised body). Deliberately NOT a
 // network check — there is no network-detection infrastructure in this app,
@@ -245,6 +257,31 @@ export function useLogCurrentRoutineEditor({
   const draftRestorePendingRef = useRef(false);
   const modeRef = useRef(mode);
   modeRef.current = mode;
+
+  // Durable creation-attempt token for this editor's new-note create (#997).
+  // Minted before the create, RETAINED when the create fails (a cloud enqueue
+  // can reject after the row is already on the device), restored on mount so a
+  // retry after an app restart still completes the original note, and cleared
+  // only once the create has fully succeeded. The ref is the session's live
+  // copy — a retry in this session reuses it directly — and
+  // `ensureWorkoutNoteCreationAttempt` is the durable authority behind it: an
+  // atomic get-or-mint against the stored slot, so a save that runs before the
+  // restore lands still continues the unfinished attempt rather than starting a
+  // second one.
+  const createAttemptTokenRef = useRef(null);
+  useEffect(() => {
+    let cancelled = false;
+    loadWorkoutNoteCreationAttempt(CURRENT_CREATE_ATTEMPT_KEY)
+      .then((token) => {
+        // Never overwrite a token this session already minted: the restore is
+        // asynchronous and a save can start before it lands.
+        if (!cancelled && token && !createAttemptTokenRef.current) {
+          createAttemptTokenRef.current = token;
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const writeCurrentDraftNow = () => {
     const key = currentDraftKey(draftNoteIdOverrideRef.current ?? currentIdRef.current);
@@ -890,7 +927,20 @@ export function useLogCurrentRoutineEditor({
           ...activeWeekPatch,
         });
       } else {
-        result = await add(titleToSave, snapshotText);
+        // Id-stable create (#997): persist the attempt token BEFORE the create,
+        // and clear it only after the create has fully succeeded. A failed
+        // create leaves the token in place, so the next Save — this session or
+        // after a restart, with the title or body edited or not — completes the
+        // same note instead of adding a second one.
+        const attemptToken = createAttemptTokenRef.current
+          || await ensureWorkoutNoteCreationAttempt(CURRENT_CREATE_ATTEMPT_KEY).catch(() => null);
+        if (attemptToken) createAttemptTokenRef.current = attemptToken;
+        result = await add(titleToSave, snapshotText, { attemptToken });
+        if (attemptToken) {
+          createAttemptTokenRef.current = null;
+          await clearWorkoutNoteCreationAttempt(CURRENT_CREATE_ATTEMPT_KEY, attemptToken)
+            .catch(() => {});
+        }
         savingCurrentSnapshotRef.current.noteId = result.id;
         draftNoteIdOverrideRef.current = result.id;
         await selectCurrent(result.id);

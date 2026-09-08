@@ -709,15 +709,22 @@ function AppShell({ onDeviceDataWiped }) {
 
   const handleExport = useCallback(() => buildExportPayload(buildCloudExport), []);
 
-  // Routine import (#955): exactly one write, `add`, which mints a fresh note
-  // id and never touches the current-routine pointer. Deliberately NOT routed
-  // through `update`/`selectCurrent` — a pasted routine can therefore neither
-  // overwrite an existing note (by id or by a colliding title) nor become the
-  // routine the user is training on. Adoption stays the Log tab's existing
-  // post-save prompt (#748). Memoized so MemoMoreScreen's prop identity is
-  // stable across unrelated shell renders, like the callbacks above it.
+  // Routine import (#955): exactly one write, `add`, which creates a note and
+  // never touches the current-routine pointer. Deliberately NOT routed through
+  // `update`/`selectCurrent` — a pasted routine can therefore neither overwrite
+  // an existing note (by id or by a colliding title) nor become the routine the
+  // user is training on. Adoption stays the Log tab's existing post-save prompt
+  // (#748). Memoized so MemoMoreScreen's prop identity is stable across
+  // unrelated shell renders, like the callbacks above it.
+  //
+  // The third argument is passed straight through (#997): it carries the import
+  // screen's durable per-attempt creation token, which is what lets a retry
+  // after a failed cloud enqueue complete THAT import's routine under its
+  // original id instead of creating a second one. This wiring only forwards it —
+  // the token's lifecycle (mint, retain on failure, restore after a restart,
+  // clear on success) belongs to RoutineImportScreen.
   const handleCreateRoutineFromImport = useCallback(
-    (title, rawText) => noteHook.add(title, rawText),
+    (title, rawText, options) => noteHook.add(title, rawText, options),
     [noteHook.add],
   );
 

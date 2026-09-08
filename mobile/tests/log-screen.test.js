@@ -3133,7 +3133,9 @@ describe('A/B week for non-current routines: viewing projection and per-note per
 
     expect(add).toHaveBeenCalledWith(
       'Untitled Routine',
-      'MONDAY — Push\n-DB Bench Press 3x8\n---\nMONDAY — Home\n-DB Floor Press 3x8'
+      'MONDAY — Push\n-DB Bench Press 3x8\n---\nMONDAY — Home\n-DB Floor Press 3x8',
+      // The durable creation-attempt token every new-note create now carries (#997).
+      { attemptToken: expect.any(String) }
     );
     // The follow-up persistence call, and never a currentId change.
     expect(update).toHaveBeenCalledWith('new1', { activeWeek: 'B' });
@@ -3182,7 +3184,9 @@ describe('A/B week for non-current routines: viewing projection and per-note per
 
     await render.act(async () => { await latest.hook.handleSaveOtherNote(); });
 
-    expect(add).toHaveBeenCalledWith('Plain', 'MONDAY\n-Squat 3x5');
+    expect(add).toHaveBeenCalledWith('Plain', 'MONDAY\n-Squat 3x5', {
+      attemptToken: expect.any(String),
+    });
     expect(update).not.toHaveBeenCalled();
   });
 });
@@ -13030,6 +13034,253 @@ describe('Log interaction targets and header scaling (#905)', () => {
       // Pinning the type would keep the row on one line by making the control
       // unreadable at the user's chosen size; the row wraps instead.
       expect(label.props.allowFontScaling).not.toBe(false);
+    });
+  });
+});
+
+// ── id-stable new-note creates (#997) ────────────────────────────────────────
+//
+// Both Log editors create routines through `add`, which in cloud mode writes
+// the local row and only then awaits the cloud enqueue — so a rejection can
+// follow a routine that already exists on the device. What these tests pin is
+// the CALLER half of the protocol: each editor mints a durable per-attempt
+// creation token before the create, retains it when the create fails, restores
+// it after an app restart, passes it to `add`, and clears it only once the
+// create has fully succeeded. Editing the title or the body before retrying
+// must not change the attempt; a genuinely new routine must always get a new
+// token, byte-identical text or not.
+describe('Log editors: durable creation-attempt tokens for new notes (#997)', () => {
+  const { useLogCurrentRoutineEditor } = require('../screens/log/useLogCurrentRoutineEditor');
+  const { useLogOtherRoutineEditor } = require('../screens/log/useLogOtherRoutineEditor');
+  const {
+    loadWorkoutNoteCreationAttempt,
+  } = require('../storage/entries/workoutNoteCreationAttempts');
+  const AsyncStorageMock = require('@react-native-async-storage/async-storage');
+
+  let trees = [];
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    await AsyncStorageMock.clear();
+  });
+
+  afterEach(() => {
+    trees.forEach((tree) => render.act(() => { tree.unmount(); }));
+    trees = [];
+  });
+
+  const CURRENT_TEXT = 'Monday\n+Lifting\n-Bench Press\n135 5,5,5';
+
+  function mountCurrentEditor(overrides = {}) {
+    const ref = { current: null };
+    function Probe(props) {
+      ref.current = useLogCurrentRoutineEditor(props);
+      return null;
+    }
+    const base = {
+      workoutNoteText: CURRENT_TEXT,
+      setWorkoutNoteText: jest.fn(),
+      workoutNoteTitle: 'Fresh Routine',
+      setWorkoutNoteTitle: jest.fn(),
+      currentId: null,
+      currentNote: null,
+      notes: [],
+      trackedLifts: [],
+      update: jest.fn(async () => false),
+      add: jest.fn(async () => ({ id: 'wn_created' })),
+      selectCurrent: jest.fn(async () => {}),
+      fatigueTrackingEnabled: false,
+      onCheckInPrompt: jest.fn(),
+      notesLoading: false,
+      notesError: null,
+      otherModalOwnsScreen: false,
+      editorScrollRef: { current: { scrollTo: jest.fn() } },
+      readScrollRef: { current: { scrollTo: jest.fn() } },
+      ...overrides,
+    };
+    let tree;
+    render.act(() => { tree = render.create(<Probe {...base} />); });
+    trees.push(tree);
+    return {
+      ref,
+      rerender: (next) => render.act(() => {
+        tree.update(<Probe {...{ ...base, ...next }} />);
+      }),
+    };
+  }
+
+  function mountOtherEditor(overrides = {}) {
+    const ref = { current: null };
+    function Probe(props) {
+      ref.current = useLogOtherRoutineEditor(props);
+      return null;
+    }
+    const base = {
+      notes: [],
+      currentId: null,
+      currentNote: null,
+      deloadHistory: [],
+      update: jest.fn(async () => false),
+      add: jest.fn(async () => ({ id: 'wn_created' })),
+      remove: jest.fn(),
+      selectCurrent: jest.fn(async () => {}),
+      updateDeload: jest.fn(),
+      deleteDeloadNote: jest.fn(),
+      autosaveCurrentTimerRef: { current: null },
+      handleSave: jest.fn(),
+      currentEditorMode: 'read',
+      hasUnsavedCurrent: false,
+      editorScrollRef: { current: { scrollTo: jest.fn() } },
+      ...overrides,
+    };
+    let tree;
+    render.act(() => { tree = render.create(<Probe {...base} />); });
+    trees.push(tree);
+    return { ref };
+  }
+
+  function attemptTokenOfCall(add, index) {
+    const options = add.mock.calls[index][2];
+    return options && options.attemptToken;
+  }
+
+  describe('the current-routine editor', () => {
+    test('a failed create keeps its token; an edited retry reuses it and success retires it', async () => {
+      const add = jest.fn()
+        .mockRejectedValueOnce(new Error('enqueue failed'))
+        .mockResolvedValue({ id: 'wn_created' });
+      const editor = mountCurrentEditor({ add });
+
+      let ok;
+      await render.act(async () => { ok = await editor.ref.current.handleSave(); });
+      expect(ok).toBe(false);
+      expect(add).toHaveBeenCalledTimes(1);
+      const token = attemptTokenOfCall(add, 0);
+      expect(typeof token).toBe('string');
+      expect(token).not.toHaveLength(0);
+      // Durable, not merely in-memory: this is what a restart reads back.
+      await expect(loadWorkoutNoteCreationAttempt('current:new')).resolves.toBe(token);
+
+      // The user fixes the name AND the text before pressing Save again. Same
+      // attempt: only the token decides that, never the payload.
+      editor.rerender({
+        add,
+        workoutNoteTitle: 'Renamed Routine',
+        workoutNoteText: `${CURRENT_TEXT}\n140 5,5,5`,
+      });
+      await render.act(async () => { ok = await editor.ref.current.handleSave(); });
+      expect(ok).toBe(true);
+      expect(add).toHaveBeenCalledTimes(2);
+      expect(attemptTokenOfCall(add, 1)).toBe(token);
+      expect(add.mock.calls[1][0]).toBe('Renamed Routine');
+      expect(add.mock.calls[1][1]).toBe(`${CURRENT_TEXT}\n140 5,5,5`);
+
+      // Only a fully successful create retires the attempt.
+      await expect(loadWorkoutNoteCreationAttempt('current:new')).resolves.toBeNull();
+    });
+
+    test('the next create mints a new token even with byte-identical title and body', async () => {
+      const add = jest.fn(async () => ({ id: 'wn_created' }));
+      const editor = mountCurrentEditor({ add });
+
+      await render.act(async () => { await editor.ref.current.handleSave(); });
+      await render.act(async () => { await editor.ref.current.handleSave(); });
+
+      expect(add).toHaveBeenCalledTimes(2);
+      expect(add.mock.calls[0][0]).toBe(add.mock.calls[1][0]);
+      expect(add.mock.calls[0][1]).toBe(add.mock.calls[1][1]);
+      expect(attemptTokenOfCall(add, 1)).not.toBe(attemptTokenOfCall(add, 0));
+    });
+
+    test('a retry after an app restart completes the same attempt', async () => {
+      const failing = jest.fn().mockRejectedValue(new Error('enqueue failed'));
+      const first = mountCurrentEditor({ add: failing });
+      await render.act(async () => { await first.ref.current.handleSave(); });
+      const token = attemptTokenOfCall(failing, 0);
+
+      // Restart: every mounted instance is gone; only storage survives.
+      trees.forEach((tree) => render.act(() => { tree.unmount(); }));
+      trees = [];
+      await expect(loadWorkoutNoteCreationAttempt('current:new')).resolves.toBe(token);
+
+      const add = jest.fn(async () => ({ id: 'wn_created' }));
+      const restarted = mountCurrentEditor({ add, workoutNoteTitle: 'Edited After Restart' });
+      await render.act(async () => { await restarted.ref.current.handleSave(); });
+
+      expect(attemptTokenOfCall(add, 0)).toBe(token);
+      await expect(loadWorkoutNoteCreationAttempt('current:new')).resolves.toBeNull();
+    });
+  });
+
+  describe('the other-routine editor', () => {
+    async function openNewNote(editor, seed) {
+      await render.act(async () => { editor.ref.current.handleCreateRoutine(seed); });
+    }
+
+    test('a failed create keeps its token; an edited retry reuses it and success retires it', async () => {
+      const add = jest.fn()
+        .mockRejectedValueOnce(new Error('enqueue failed'))
+        .mockResolvedValue({ id: 'wn_created' });
+      const editor = mountOtherEditor({ add });
+      await openNewNote(editor, { title: 'Backlog A', text: 'Monday\n-Row\n95 8,8,8' });
+
+      let ok;
+      await render.act(async () => { ok = await editor.ref.current.handleSaveOtherNote(); });
+      expect(ok).toBe(false);
+      expect(add).toHaveBeenCalledTimes(1);
+      const token = attemptTokenOfCall(add, 0);
+      expect(typeof token).toBe('string');
+      await expect(loadWorkoutNoteCreationAttempt('other:new')).resolves.toBe(token);
+
+      // Edit both fields, then retry. Still the same create.
+      await render.act(async () => {
+        editor.ref.current.setEditingTitle('Backlog A (fixed)');
+        editor.ref.current.setEditingText('Monday\n-Row\n105 8,8,8');
+      });
+      await render.act(async () => { ok = await editor.ref.current.handleSaveOtherNote(); });
+      expect(ok).toBe(true);
+      expect(add).toHaveBeenCalledTimes(2);
+      expect(attemptTokenOfCall(add, 1)).toBe(token);
+      expect(add.mock.calls[1][0]).toBe('Backlog A (fixed)');
+      expect(add.mock.calls[1][1]).toBe('Monday\n-Row\n105 8,8,8');
+
+      await expect(loadWorkoutNoteCreationAttempt('other:new')).resolves.toBeNull();
+    });
+
+    test('the next new note mints a new token even with byte-identical title and body', async () => {
+      const add = jest.fn(async () => ({ id: 'wn_created' }));
+      const editor = mountOtherEditor({ add });
+      const seed = { title: 'Same Name', text: 'Monday\n-Row\n95 8,8,8' };
+
+      await openNewNote(editor, seed);
+      await render.act(async () => { await editor.ref.current.handleSaveOtherNote(); });
+      await openNewNote(editor, seed);
+      await render.act(async () => { await editor.ref.current.handleSaveOtherNote(); });
+
+      expect(add).toHaveBeenCalledTimes(2);
+      expect(add.mock.calls[0][0]).toBe(add.mock.calls[1][0]);
+      expect(add.mock.calls[0][1]).toBe(add.mock.calls[1][1]);
+      expect(attemptTokenOfCall(add, 1)).not.toBe(attemptTokenOfCall(add, 0));
+    });
+
+    test('a retry after an app restart completes the same attempt', async () => {
+      const failing = jest.fn().mockRejectedValue(new Error('enqueue failed'));
+      const first = mountOtherEditor({ add: failing });
+      await openNewNote(first, { title: 'Interrupted', text: 'Monday\n-Squat\n225 5,5,5' });
+      await render.act(async () => { await first.ref.current.handleSaveOtherNote(); });
+      const token = attemptTokenOfCall(failing, 0);
+
+      trees.forEach((tree) => render.act(() => { tree.unmount(); }));
+      trees = [];
+      await expect(loadWorkoutNoteCreationAttempt('other:new')).resolves.toBe(token);
+
+      const add = jest.fn(async () => ({ id: 'wn_created' }));
+      const restarted = mountOtherEditor({ add });
+      await openNewNote(restarted, { title: 'Interrupted (fixed)', text: 'Monday\n-Squat\n235 5,5,5' });
+      await render.act(async () => { await restarted.ref.current.handleSaveOtherNote(); });
+
+      expect(attemptTokenOfCall(add, 0)).toBe(token);
+      await expect(loadWorkoutNoteCreationAttempt('other:new')).resolves.toBeNull();
     });
   });
 });

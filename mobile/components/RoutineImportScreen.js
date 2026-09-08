@@ -4,9 +4,12 @@
 // it, then — and only then — press one explicit action that creates a NEW
 // routine. There is no merge, no overwrite, no "update the routine with this
 // title", and no adoption. `onCreateRoutine` is wired in App.js straight to the
-// note store's `add`, which mints a fresh id and never touches the current-routine
+// note store's `add`, which creates a note and never touches the current-routine
 // pointer, so importing can neither replace what you are training on nor edit a
-// routine you already have. A user with no current routine still adopts through
+// routine you already have. The one id it may reuse is this screen's OWN
+// unfinished create, correlated by the durable attempt token below (#997), so a
+// retry finishes that import instead of duplicating it. A user with no current
+// routine still adopts through
 // the existing post-save prompt on the Log tab (#748) — this screen deliberately
 // offers no shortcut around it.
 //
@@ -24,15 +27,28 @@ import {
   ROUTINE_IMPORT_EMPTY_MESSAGE,
   analyzeRoutineImportText,
 } from '../lib/interoperability/routineShare';
+import {
+  ensureWorkoutNoteCreationAttempt,
+  loadWorkoutNoteCreationAttempt,
+  clearWorkoutNoteCreationAttempt,
+} from '../storage/entries/workoutNoteCreationAttempts';
 
-// Deliberately does NOT claim nothing was written. `add` performs a local write
-// and then enqueues the cloud sync, and only the second half can fail on its
-// own, so a failure here genuinely can leave the routine created. Telling the
-// user to check before retrying is the honest instruction; a blind retry mints
-// a second note id and would duplicate the routine.
+// This screen's caller context in the durable creation-attempt store (#997).
+// Importing has exactly one create path, so one slot covers it, and the token
+// it holds outlives an app restart.
+const IMPORT_CREATE_ATTEMPT_KEY = 'import';
+
+// Still does NOT claim nothing was written: `add` performs a local write and
+// then enqueues the cloud sync, and only the second half can fail on its own,
+// so a failure here genuinely can leave the routine on the device. What changed
+// with #997 is that retrying is now safe — the create carries a durable
+// per-attempt token, so pressing the button again finishes THIS import under
+// the same routine instead of saving a second copy of it. Editing the title or
+// the pasted text first is fine; it is still the same attempt.
 const IMPORT_FAILED_MESSAGE =
-  'Something went wrong while saving. The routine may still have been created — '
-  + 'check Log › Routines before trying again.';
+  'Something went wrong while saving. The routine may already be on this device — '
+  + 'press Create new routine again to finish this import. Retrying will not '
+  + 'create a duplicate.';
 
 export function RoutineImportScreen({ onBack, onCreateRoutine }) {
   const styles = useThemedStyles(createStyles);
@@ -48,6 +64,26 @@ export function RoutineImportScreen({ onBack, onCreateRoutine }) {
   // on screen NOW without re-entering a state updater to find out.
   const pastedRef = useRef(pasted);
   pastedRef.current = pasted;
+
+  // Durable creation-attempt token for this import (#997). Minted before the
+  // create, retained when the create fails, restored on mount so a retry after
+  // an app restart completes the original routine, and cleared only once the
+  // create has fully succeeded — which is what makes the next import of an
+  // identically titled, byte-identical routine a genuinely new routine.
+  const createAttemptTokenRef = useRef(null);
+  useEffect(() => {
+    let cancelled = false;
+    loadWorkoutNoteCreationAttempt(IMPORT_CREATE_ATTEMPT_KEY)
+      .then((token) => {
+        // The restore is asynchronous; never overwrite a token this session
+        // already minted.
+        if (!cancelled && token && !createAttemptTokenRef.current) {
+          createAttemptTokenRef.current = token;
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const analysis = useMemo(
     () => analyzeRoutineImportText(pasted, previewWeek),
@@ -83,7 +119,17 @@ export function RoutineImportScreen({ onBack, onCreateRoutine }) {
       // routine content, so it must not end up inside the saved note.
       const savedBody = analysis.body;
       const saved = title.trim();
-      await onCreateRoutine?.(saved, savedBody);
+      const attemptToken = createAttemptTokenRef.current
+        || await ensureWorkoutNoteCreationAttempt(IMPORT_CREATE_ATTEMPT_KEY).catch(() => null);
+      if (attemptToken) createAttemptTokenRef.current = attemptToken;
+      await onCreateRoutine?.(saved, savedBody, { attemptToken });
+      // Only a fully successful create retires the attempt. A throw above skips
+      // this and leaves the token durable for the retry.
+      if (attemptToken) {
+        createAttemptTokenRef.current = null;
+        await clearWorkoutNoteCreationAttempt(IMPORT_CREATE_ATTEMPT_KEY, attemptToken)
+          .catch(() => {});
+      }
       setSavedTitle(saved || 'Untitled Routine');
       // The fields stay editable during an awaited save, so a user who pasted
       // the NEXT routine while this one was in flight must not have those

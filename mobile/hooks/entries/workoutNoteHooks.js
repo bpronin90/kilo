@@ -6,6 +6,7 @@ import { maybeSyncCloud, readVia, writeVia } from './storageMode';
 import { safeNotify } from './shared';
 import { markStartupPhase } from '../../storage/entries/startupTiming';
 import { clearWorkoutNoteDraftsForNote } from '../../storage/entries/workoutNoteDrafts';
+import { claimWorkoutNoteCreationAttemptId } from '../../storage/entries/workoutNoteCreationAttempts';
 
 // NOTE (#880 revised body): pending-cloud-convergence state deliberately
 // lives in each editor hook (useLogCurrentRoutineEditor.js /
@@ -111,8 +112,47 @@ export function useWorkoutNotes() {
   const currentNote = notes.find(n => n.id === currentId) ?? null;
   const deloadNotes = notes.filter(n => n.title?.startsWith(DELOAD_NOTE_PREFIX));
 
-  const add = useCallback(async (title, raw_text = '') => {
-    const note = makeWorkoutNoteItem({ title, raw_text });
+  // #997: `add` mints an id, does the local write, and then awaits the cloud
+  // enqueue — and in cloud mode `saveWorkoutNoteItem` can reject on the enqueue
+  // alone, after the note has already landed locally. A caller that retried
+  // (routine import, either Log editor's new-note save) created a second note
+  // under a fresh id and duplicated the routine.
+  //
+  // `attemptToken` is the caller's explicit, durable per-attempt creation token
+  // (storage/entries/workoutNoteCreationAttempts.js). It — never the payload —
+  // is the correlation key, so a retry that edited the title or the body still
+  // completes the SAME create, while a genuinely new routine mints a new token
+  // and always gets its own id, byte-identical text or not. Claiming the id is
+  // one atomic get-or-set: the first attempt binds the id it minted and every
+  // retry carrying that token is handed the same id back.
+  //
+  // A caller with no token keeps the previous behavior exactly — a fresh id per
+  // call — so no other create path changes shape.
+  const add = useCallback(async (title, raw_text = '', { attemptToken = null } = {}) => {
+    const minted = makeWorkoutNoteItem({ title, raw_text });
+    let note = minted;
+    if (attemptToken) {
+      const noteId = await claimWorkoutNoteCreationAttemptId(attemptToken, minted.id);
+      if (noteId && noteId !== minted.id) {
+        // A retry: complete the ORIGINAL create under its own id, carrying the
+        // latest submitted payload so an edit made before retrying persists.
+        // The stranded row is updated in place rather than rebuilt, so nothing
+        // the first attempt wrote (or a later reconciliation pass stamped) is
+        // dropped. If that row is gone — deleted while the create was stranded
+        // — the create still completes under the attempt's id, which is what
+        // leaves exactly one live note either way.
+        const list = await readVia('loadWorkoutNotes', Storage.loadWorkoutNotes);
+        const existing = list.find(n => n.id === noteId);
+        note = existing
+          ? {
+            ...existing,
+            title: minted.title,
+            raw_text: minted.raw_text,
+            updated_at: minted.updated_at,
+          }
+          : { ...minted, id: noteId };
+      }
+    }
     await writeVia('saveWorkoutNoteItem', Storage.saveWorkoutNoteItem, note);
     notifyWorkoutNotes();
     return note;
