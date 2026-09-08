@@ -11,6 +11,9 @@
 import fs from 'fs';
 import path from 'path';
 
+import React from 'react';
+import renderer, { act } from 'react-test-renderer';
+
 import {
   getStorageMode,
   setStorageMode,
@@ -184,5 +187,87 @@ describe('screens must not import Supabase directly', () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('workout-note add is id-stable after a partial cloud write (#997)', () => {
+  const { useWorkoutNotes } = require('../hooks/entries/workoutNoteHooks');
+  const storageMode = require('../hooks/entries/storageMode');
+  const syncQueue = require('../storage/syncQueue');
+  const reminderScheduler = require('../lib/reminderScheduler');
+  const { loadWorkoutNotes } = require('../storage/cloud/cloudDomainMethods');
+
+  const TITLE = 'Retry Routine #997';
+  const BODY = 'MONDAY\n-Squat 3x5';
+
+  let tree;
+
+  beforeEach(() => {
+    setStorageMode(STORAGE_MODES.CLOUD);
+    // The initial cloud sync the hook kicks off on mount is not what this test
+    // exercises; keep it inert and offline.
+    jest.spyOn(storageMode, 'maybeSyncCloud').mockResolvedValue(false);
+    jest.spyOn(reminderScheduler, 'reconcileWorkoutReminder').mockResolvedValue();
+  });
+
+  afterEach(() => {
+    if (tree) act(() => tree.unmount());
+    tree = null;
+    jest.restoreAllMocks();
+  });
+
+  function mountNotes() {
+    const ref = { current: null };
+    function Probe() {
+      ref.current = useWorkoutNotes();
+      return null;
+    }
+    act(() => {
+      tree = renderer.create(React.createElement(Probe));
+    });
+    return ref;
+  }
+
+  it('retrying an add whose local write landed but whose cloud enqueue failed reuses the id', async () => {
+    const realEnqueue = syncQueue.enqueueDirty;
+    let enqueueCalls = 0;
+    jest.spyOn(syncQueue, 'enqueueDirty').mockImplementation((table, record) => {
+      enqueueCalls += 1;
+      if (enqueueCalls === 1) {
+        return Promise.reject(new Error('cloud enqueue offline'));
+      }
+      return realEnqueue(table, record);
+    });
+
+    const notes = mountNotes();
+
+    // First attempt: the local write lands, the cloud enqueue rejects, and
+    // `add` propagates that failure to the caller.
+    await act(async () => {
+      await expect(notes.current.add(TITLE, BODY)).rejects.toThrow('cloud enqueue offline');
+    });
+
+    const stranded = (await loadWorkoutNotes()).filter((n) => n.title === TITLE);
+    expect(stranded).toHaveLength(1);
+    const strandedId = stranded[0].id;
+    const dirtyAfterFail = (await syncQueue.getDirtyRecords(syncQueue.SYNC_TABLES.WORKOUT_NOTES))
+      .filter((r) => r.id === strandedId);
+    expect(dirtyAfterFail).toHaveLength(0);
+
+    // Retry with the identical payload: it must complete the original create,
+    // not mint a second note.
+    let created;
+    await act(async () => {
+      created = await notes.current.add(TITLE, BODY);
+    });
+    expect(created.id).toBe(strandedId);
+
+    const afterRetry = (await loadWorkoutNotes()).filter((n) => n.title === TITLE);
+    expect(afterRetry).toHaveLength(1);
+    expect(afterRetry[0].id).toBe(strandedId);
+
+    const dirtyAfterRetry = (await syncQueue.getDirtyRecords(syncQueue.SYNC_TABLES.WORKOUT_NOTES))
+      .filter((r) => r.id === strandedId);
+    expect(dirtyAfterRetry).toHaveLength(1);
   });
 });

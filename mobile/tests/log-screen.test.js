@@ -3185,6 +3185,60 @@ describe('A/B week for non-current routines: viewing projection and per-note per
     expect(add).toHaveBeenCalledWith('Plain', 'MONDAY\n-Squat 3x5');
     expect(update).not.toHaveBeenCalled();
   });
+
+  test('a create whose cloud enqueue failed is retried through add() with the identical payload, never a new id (#997)', async () => {
+    // #997: useWorkoutNotes.add does the local write and then awaits the cloud
+    // enqueue, which can reject on its own after the note already landed. The
+    // note store makes the create id-stable by reusing the pending note on a
+    // retry with the same payload — but only if the Log editor re-submits the
+    // SAME (title, body). A retry that regenerated the title/text, or fell
+    // through to update() against a half-known id, would defeat that.
+    const add = jest.fn()
+      .mockRejectedValueOnce(new Error('cloud enqueue offline'))
+      .mockResolvedValueOnce({ id: 'stable-1', title: 'Plain', raw_text: 'MONDAY\n-Squat 3x5', activeWeek: null });
+    const update = jest.fn();
+    let latest = null;
+    function Harness({ notes }) {
+      const hook = useLogOtherRoutineEditor({
+        notes,
+        currentId: 'current1',
+        currentNote: { id: 'current1', raw_text: 'x' },
+        deloadHistory: [],
+        update,
+        add,
+        remove: jest.fn(),
+        selectCurrent: jest.fn(),
+        updateDeload: jest.fn(),
+        deleteDeloadNote: jest.fn(),
+        autosaveCurrentTimerRef: { current: null },
+        handleSave: jest.fn(),
+        currentEditorMode: 'read',
+        hasUnsavedCurrent: false,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+      });
+      latest = { hook };
+      return null;
+    }
+
+    render.act(() => { render.create(<Harness notes={[]} />); });
+    render.act(() => { latest.hook.handleCreateRoutine(); });
+    render.act(() => { latest.hook.setEditingTitle('Plain'); });
+    render.act(() => { latest.hook.setEditingText('MONDAY\n-Squat 3x5'); });
+
+    // First save: the cloud enqueue fails, so the create rejects. The editor
+    // swallows it into saveError and stays on the unsaved 'new' note.
+    await render.act(async () => { await latest.hook.handleSaveOtherNote(); });
+    expect(latest.hook.editingNoteId).toBe('new');
+
+    // Retry with no edits in between: the same create, resubmitted verbatim.
+    await render.act(async () => { await latest.hook.handleSaveOtherNote(); });
+
+    expect(add).toHaveBeenCalledTimes(2);
+    expect(add).toHaveBeenNthCalledWith(1, 'Plain', 'MONDAY\n-Squat 3x5');
+    expect(add).toHaveBeenNthCalledWith(2, 'Plain', 'MONDAY\n-Squat 3x5');
+    expect(update).not.toHaveBeenCalled();
+    expect(latest.hook.editingNoteId).toBe('stable-1');
+  });
 });
 
 describe('LogScreen editor header: editing-week toggle for non-current A/B notes (#687 review feedback)', () => {

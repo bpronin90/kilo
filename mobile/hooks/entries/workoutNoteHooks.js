@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import * as Storage from '../../storage/entries';
 import { makeWorkoutNoteItem } from '../../lib/data';
 import { reconcileWorkoutReminder } from '../../lib/reminderScheduler';
@@ -111,9 +111,25 @@ export function useWorkoutNotes() {
   const currentNote = notes.find(n => n.id === currentId) ?? null;
   const deloadNotes = notes.filter(n => n.title?.startsWith(DELOAD_NOTE_PREFIX));
 
+  // #997: `add` mints an id, does the local write, and then awaits the cloud
+  // enqueue — and in cloud mode `saveWorkoutNoteItem` can reject on the enqueue
+  // alone, after the note has already landed locally. A caller that retries
+  // (routine import, the Log editor save path) must COMPLETE that create —
+  // reuse the id and retry the enqueue, which is idempotent by id — instead of
+  // minting a second note. Hold the pending item until the whole write
+  // resolves, keyed on the create payload so an unrelated `add` never adopts a
+  // stranded note. Not durable across a full remount, which is enough: every
+  // retrying caller stays mounted between attempts.
+  const pendingAddRef = useRef(null);
   const add = useCallback(async (title, raw_text = '') => {
-    const note = makeWorkoutNoteItem({ title, raw_text });
+    const prior = pendingAddRef.current;
+    const note =
+      prior && prior.title === title && prior.raw_text === raw_text
+        ? prior.note
+        : makeWorkoutNoteItem({ title, raw_text });
+    pendingAddRef.current = { title, raw_text, note };
     await writeVia('saveWorkoutNoteItem', Storage.saveWorkoutNoteItem, note);
+    pendingAddRef.current = null;
     notifyWorkoutNotes();
     return note;
   }, []);
