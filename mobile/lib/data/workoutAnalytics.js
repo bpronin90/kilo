@@ -4,6 +4,7 @@ import { deriveWorkoutAnalytics, normalizeExerciseKey, deriveProgressionSignals,
 // the public parser surface, not an internal one.
 import {
   _occurrenceEntries,
+  classifyExerciseSessions,
   loggedSessionUnits,
   sliceEntriesFromAnchor,
 } from '../parser/analytics.js';
@@ -11,6 +12,8 @@ import { normalizeLiftName, isStrengthExerciseName } from './exerciseCatalog.js'
 import { computeWeeksIn } from './routineStatus.js';
 import { deriveSkipData } from './skipData.js';
 import { computeKiloMax, getKiloFatigueMultiplier } from './fatigue.js';
+import { deriveProgressionSuggestions, isExerciseUnderActiveRecovery } from './progressionSuggestions.js';
+import { deriveDeloadReentry } from '../parser/deloadHistory.js';
 
 // ── Tracked-span activation records (#893 / F12a contract revision 3) ────────
 //
@@ -202,87 +205,7 @@ export function reconcileTrackedLiftActivations(sections, activations) {
 
 // ── Per-exercise session classification ───────────────────────────────────────
 
-function _totalRepsAtWeight(sets, weight) {
-  return sets.filter(s => s.weight_value === weight).reduce((sum, s) => sum + s.rep_count, 0);
-}
-
-// #893: the implementation moved down into lib/parser/analytics.js so the
-// tracked-span watermark can count exactly the units the signal builders
-// consume. Re-exported here unchanged — oneK, recoveryBlocks, recoveryAnalytics
-// and nonWeightedMetrics still import it from this module.
-export { _occurrenceEntries };
-
-function _topWeight(sets) {
-  const weighted = sets.filter(s => s.weight_value != null && s.weight_value > 0 && s.rep_count != null && s.rep_count > 0);
-  if (weighted.length === 0) return null;
-  return Math.max(...weighted.map(s => s.weight_value));
-}
-
-// Classify one exercise given its full session_entries list (newest last).
-// Returns 'progressing' | 'stalled' | 'regressing' | 'inconsistent' | null
-function _classifyEntries(allEntries) {
-  const window = allEntries.slice(-3);
-  const logged = window.filter(se => !se.skipped && !se.unparsed && se.sets && _topWeight(se.sets) !== null);
-  if (logged.length === 0) return null;
-  if (logged.length === 1) {
-    return window.some(se => se.skipped) ? 'inconsistent' : 'initial';
-  }
-
-  const latest = logged[logged.length - 1];
-  const prior = logged[logged.length - 2];
-  const latestTop = _topWeight(latest.sets);
-  const priorTop = _topWeight(prior.sets);
-
-  if (latestTop < priorTop) return 'regressing';
-  if (latestTop > priorTop) return 'progressing';
-
-  // Same top weight: compare total reps at top weight
-  const latestTotal = _totalRepsAtWeight(latest.sets, latestTop);
-  const priorTotal = _totalRepsAtWeight(prior.sets, priorTop);
-  if (latestTotal > priorTotal) return 'progressing';
-  if (latestTotal < priorTotal) return 'regressing';
-
-  // Same top weight and same total reps: check distribution
-  const latestReps = latest.sets.filter(s => s.weight_value === latestTop).map(s => s.rep_count).sort((a, b) => a - b);
-  const priorReps = prior.sets.filter(s => s.weight_value === priorTop).map(s => s.rep_count).sort((a, b) => a - b);
-  if (JSON.stringify(latestReps) === JSON.stringify(priorReps)) return 'stalled';
-
-  return null;
-}
-
-// Classify session trends for all tracked exercises.
-// sections: output of parseWorkoutNote(noteText).sections
-// trackedNames: string[] of exercise names to classify
-// anchors: optional { [canonicalKey]: anchor } from resolveTrackedLiftAnchors
-// Returns { [normalizedName]: 'progressing'|'stalled'|'regressing'|'inconsistent'|null }
-export function classifyExerciseSessions(sections, trackedNames, anchors = null) {
-  const { exercises } = deriveWorkoutAnalytics(sections);
-  const byKey = new Map(exercises.map(ex => [normalizeExerciseKey(ex.name), ex]));
-  const result = {};
-  for (const name of trackedNames) {
-    const normName = normalizeLiftName(name);
-    const key = normalizeExerciseKey(name);
-    const ex = byKey.get(key);
-    if (!ex) { result[normName] = null; continue; }
-    // #854/R3: progressing/stalled/regressing is a strength-specific
-    // signal — a cardio-named exercise never gets one, and a warmup-kind
-    // entry never contributes to it, without discarding the exercise's
-    // underlying occurrence data (other consumers still read it intact).
-    //
-    // #893: the watermark cut runs on the UNFILTERED entry list, before the
-    // warmup filter, because the anchor counts positions in that list. It is a
-    // classification — a progression signal — so it obeys the watermark; the
-    // capability metrics elsewhere on the same card do not.
-    const anchor = anchors?.[key] ?? 0;
-    const allEntries = isStrengthExerciseName(ex.name)
-      ? sliceEntriesFromAnchor(ex.occurrences.flatMap(occ => _occurrenceEntries(occ)), anchor)
-          .filter(e => e.kind !== 'warmup')
-      : [];
-    const classification = _classifyEntries(allEntries);
-    result[normName] = classification;
-  }
-  return result;
-}
+export { _occurrenceEntries, classifyExerciseSessions };
 
 // ── Rep drop-off flag ─────────────────────────────────────────────────────────
 
@@ -611,7 +534,7 @@ export function deriveSignals(sections, trackedNames, multiplier = getKiloFatigu
 //   skipData:        { exercise_skips, day_skips, attendance_flags }
 //   signals:         exercise[] — progression signals for trackedNames
 //   nameDisplayMap:  Map<normalizedName, displayName> — last-seen user-typed casing
-export function deriveWorkoutNoteAnalytics(sections, trackedNames, multiplier, activations = null) {
+export function deriveWorkoutNoteAnalytics(sections, trackedNames, multiplier, activations = null, options = {}) {
   const _multiplier = multiplier !== undefined ? multiplier : getKiloFatigueMultiplier();
   if (!sections) {
     const emptyClassif = Object.fromEntries((trackedNames || []).map(n => [normalizeLiftName(n), null]));
@@ -623,6 +546,8 @@ export function deriveWorkoutNoteAnalytics(sections, trackedNames, multiplier, a
       nameDisplayMap: new Map(),
       perDaySignals: {},
       anchors: {},
+      progressionSuggestions: [],
+      reentry: {},
     };
   }
   const nameDisplayMap = new Map();
@@ -630,6 +555,32 @@ export function deriveWorkoutNoteAnalytics(sections, trackedNames, multiplier, a
     nameDisplayMap.set(normalizeExerciseKey(e.name), e.name);
   }));
   const anchors = resolveTrackedLiftAnchors(sections, activations);
+  const reentry = deriveDeloadReentry(sections, options.deloadHistory, options.sourceNoteId);
+  const byKey = new Map(deriveWorkoutAnalytics(sections).exercises.map(ex => [normalizeExerciseKey(ex.name), ex]));
+  for (const key of Object.keys(reentry)) {
+    if (!(trackedNames || []).some(name => normalizeExerciseKey(name) === key)
+      || isExerciseUnderActiveRecovery(key, options.recoveryBlocks)) delete reentry[key];
+    // A newer tracking activation can exclude even this first return session.
+    // Count its position in the normative (warmup-inclusive) anchor population.
+    else if (anchors[key]) {
+      const exercise = byKey.get(key);
+      const units = loggedSessionUnits(exercise.occurrences);
+      const lastWorkingIndex = units.reduce((last, entry, index) => entry.kind !== 'warmup' ? index : last, -1);
+      if (anchors[key] > lastWorkingIndex) delete reentry[key];
+    }
+  }
+  const progressionSuggestions = deriveProgressionSuggestions(sections, trackedNames || [], {
+    anchors, recoveryBlocks: options.recoveryBlocks,
+  }).map(suggestion => {
+    const context = reentry[normalizeExerciseKey(suggestion.name)];
+    if (!context) return suggestion;
+    return {
+      ...suggestion,
+      kind: 're_entry', suggested: false, reason: 'post_deload_reentry',
+      evidence: { ...suggestion.evidence, reentry: context },
+      heuristic: null, explanation: context.explanation,
+    };
+  });
   return {
     weeksIn: computeWeeksIn(sections),
     classifications: classifyExerciseSessions(sections, trackedNames, anchors),
@@ -638,6 +589,8 @@ export function deriveWorkoutNoteAnalytics(sections, trackedNames, multiplier, a
     nameDisplayMap,
     perDaySignals: derivePerDaySignals(sections, trackedNames, anchors),
     anchors,
+    progressionSuggestions,
+    reentry,
   };
 }
 

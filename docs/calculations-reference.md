@@ -472,6 +472,37 @@ Warmup sections never take part. A warmup-kind occurrence contributes no compare
 - While an active Recovery block covers an exercise, that exercise gets no suggestion at all — Recovery has its own lifecycle and reason.
 - Language stays conditional ("consider"), and no explanation makes a medical, injury, or readiness claim.
 
+#### Analytics evidence and re-entry context
+
+The analytics derivation now returns the same progression suggestion records
+alongside its existing classifications. It passes the current tracked-span
+boundary and supplied active Recovery blocks to the rules. Bodyweight evidence
+continues to mean reps; its analytics field named `latest_top_weight` must never
+be read as a load.
+
+Prospective deload records can carry an additive, versioned pre-deload context.
+The pure builders capture the source routine's working weights before the
+deload and record a separate per-exercise boundary at completion. Work logged
+during the deload is therefore not counted as a return. No historical record is
+rewritten and no baseline is guessed from a rounded deload load.
+
+When supplied with that context, analytics can identify the first subsequent
+working session from the same source routine as re-entry. It reports both the
+recorded pre-deload load and the current load, suppresses a conflicting weight
+increase suggestion, and leaves existing historical classifications and
+capability calculations intact. A second working session resumes ordinary
+suggestion rules. Skips and warmups do not count as the return. Active Recovery
+and a newer tracked-span boundary suppress this context.
+
+Missing or legacy context, a different source routine, a changed boundary
+session, or an unknown context version produces no re-entry label. These are
+evidence limitations, not zero-weight baselines.
+
+**Integration status:** the builders and analytics reader are implemented;
+generation/completion persistence and its sync/backup round trip are not wired.
+Those writers fall outside #959's listed edit scope. Current app records
+therefore do not yet acquire this context, and no screen renders it.
+
 ### 1k Exercise Selections
 
 > Where you see it: Home screen — 1k Club Progress card configuration
