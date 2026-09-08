@@ -18,6 +18,17 @@
 // table directly.
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.108.2'
+import { recordSecurityEvent, type SecurityEventSource } from './security-event.ts'
+
+// Who the bucket is throttling, for the security event a rejection produces.
+// Passed in rather than parsed back out of the bucket string: the bucket embeds
+// a raw IP or user id, and re-deriving identity by splitting it would make the
+// event's subject depend on a naming convention instead of on the caller.
+export interface RateLimitSubject {
+  type: 'ip' | 'user'
+  value: string
+  requestId?: string
+}
 
 type RateLimitClient = SupabaseClient<any, any, any, any, any>
 
@@ -31,26 +42,80 @@ export type RateLimitFailurePolicy = 'allow' | 'deny'
 // Logs deliberately contain no bucket or database message. Buckets embed raw IP
 // addresses or user UUIDs, and an upstream error may echo RPC arguments. The
 // bounded PostgREST error code is sufficient for operational aggregation.
+//
+// This function, not the caller, decides which security event a rejection is.
+//
+// That placement is the fix for a real defect: under the `deny` policy a limiter
+// OUTAGE and an EXHAUSTED BUCKET both return false, so a caller recording its
+// own `ratelimit.*_blocked` event on a false return logged a quota throttle
+// during a database outage. The result was an audit trail that blamed the caller
+// for the server's failure, and a throttle-volume alert that spiked on the very
+// incident the `ratelimit.unavailable` event was supposed to isolate. Only this
+// function can tell the two apart, so only this function classifies them:
+//
+//   outage    -> `ratelimit.unavailable` (critical), no subject. The bucket
+//                embeds a raw IP or user id, and the outage is a server
+//                condition rather than a property of whoever called during it.
+//   exhausted -> `ratelimit.ip_blocked` / `ratelimit.user_blocked` (warning),
+//                attributed to `subject`.
+//
+// Both `source` and `subject` are optional so the existing unit tests can call
+// this without a database double for the security log; every production call
+// site passes both. Recording is best-effort and never changes the returned
+// decision.
 export async function rateLimitAllowed(
   admin: RateLimitClient,
   bucket: string,
   max: number,
   windowMs: number,
   failurePolicy: RateLimitFailurePolicy,
+  source?: SecurityEventSource,
+  subject?: RateLimitSubject,
 ): Promise<boolean> {
   const { data, error } = await admin.rpc('rate_limit_check', {
     p_bucket: bucket,
     p_max: max,
     p_window_ms: windowMs,
   })
+
   if (error) {
     console.error('rate_limit_check failed', {
       failurePolicy,
       code: typeof error.code === 'string' ? error.code : 'unknown',
     })
+    if (source) {
+      await recordSecurityEvent(admin, {
+        name: 'ratelimit.unavailable',
+        source,
+        outcome: failurePolicy === 'allow' ? 'allowed' : 'denied',
+        subjectType: 'none',
+        context: {
+          reason: 'limiter_unavailable',
+          code: typeof error.code === 'string' ? error.code : undefined,
+        },
+      })
+    }
     return failurePolicy === 'allow'
   }
-  return data === true
+
+  const allowed = data === true
+
+  if (!allowed && source && subject) {
+    await recordSecurityEvent(admin, {
+      name: subject.type === 'ip' ? 'ratelimit.ip_blocked' : 'ratelimit.user_blocked',
+      source,
+      outcome: 'denied',
+      subjectType: subject.type,
+      subject: subject.value,
+      context: {
+        status: 429,
+        reason: subject.type === 'ip' ? 'ip_throttle' : 'user_throttle',
+        request_id: subject.requestId,
+      },
+    })
+  }
+
+  return allowed
 }
 
 // Refund the most recent hit for a bucket. Used when a post-auth operation fails

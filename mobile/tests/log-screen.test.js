@@ -1,6 +1,7 @@
 import React from 'react';
 import render from 'react-test-renderer';
 import { LogScreen } from '../screens/LogScreen';
+import { LogActiveRoutineCard } from '../components/LogActiveRoutineCard';
 import { LogPreviousRoutines } from '../components/LogPreviousRoutines';
 import { LogEmptyState } from '../components/LogEmptyState';
 import { MoreScreen } from '../screens/MoreScreen';
@@ -337,9 +338,9 @@ describe('deload_session_ordinal: ordinal-based sessions-since-deload (#284)', (
 });
 
 // ── deload ordinal prompt: prefill and editability contract (#284) ────────────
-// LogScreen cannot be rendered in this test environment. These source-level
-// assertions prove the behavioral contract: prefill formula, editable input,
-// and correct forwarding to completeDeload.
+// These legacy source-level assertions check the prefill formula, editable
+// input, and forwarding to completeDeload. Rendered screen coverage uses the
+// ControlledLogScreen harness below.
 
 const fs = require('fs');
 const path = require('path');
@@ -1299,14 +1300,6 @@ describe('Log web edit path: explicit edit control is wired (#314)', () => {
     expect(src).toMatch(/enterCurrentEditor=\{(?:currentEditor\.)?enterCurrentEditor\}/);
   });
 
-  // #954: sharing must be byte-for-byte, and `activeEditText` is only the
-  // active week's slice of an A/B routine (useLogCurrentRoutineEditor.js).
-  // LogScreen therefore has to hand the card the FULL stored body; without
-  // this prop an A/B current routine silently shares half of itself.
-  test('LogScreen forwards the full routine body to the active card for sharing', () => {
-    expect(src).toMatch(/routineRawText=\{workoutNoteText\}/);
-  });
-
   test('active routine card renders an explicit Edit control bound to enterCurrentEditor', () => {
     // LogActiveRoutineCard exposes a single-press "Edit" button (web-usable path)
     // separate from the double-tap body handler.
@@ -1494,6 +1487,40 @@ function ControlledLogScreen(props) {
     />
   );
 }
+
+describe('current routine share wiring (#969)', () => {
+  test.each(['A', 'B'])('the rendered card receives the full stored body while Week %s is active', (activeWeek) => {
+    jest.clearAllMocks();
+    const raw = 'Monday\n-Bench Press\n135 5,5,5\n---\nTuesday\n-Squat\n225 5,5,5\n';
+    const note = { id: 'ab-routine', title: 'A/B Routine', raw_text: raw, activeWeek };
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [note], currentId: note.id, currentNote: note, deloadNotes: [],
+      loading: false, error: null, refresh: jest.fn(), selectCurrent: jest.fn(),
+      update: jest.fn(), add: jest.fn(), remove: jest.fn(),
+    });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: {}, activations: {}, toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({ note: null, loading: false, save: jest.fn(), clear: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(),
+      deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+    useEntries.useUserProfile.mockReturnValue({ profile: null, save: jest.fn(), loading: false, clear: jest.fn() });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen initialText={note.raw_text} />); });
+    try {
+      const card = component.root.findByType(LogActiveRoutineCard);
+      expect(card.props.hasABWeeks).toBe(true);
+      expect(card.props.effectiveActiveWeek).toBe(activeWeek);
+      expect(card.props.activeEditText).not.toContain('---');
+      expect(card.props.activeEditText).toContain(activeWeek === 'A' ? 'Bench Press' : 'Squat');
+      expect(card.props.routineRawText).toBe(note.raw_text);
+    } finally {
+      render.act(() => { component.unmount(); });
+    }
+  });
+});
 
 // ── Track activation population (#893, PR #895 review finding 1) ─────────────
 //
@@ -3830,7 +3857,7 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     expect(wrapRows.length).toBeGreaterThan(0);
 
     const pills = findStyled(root, s => s.minHeight === 44);
-    expect(pills.length).toBe(4); // Edit + Week A/B + Share + Skip week/Remove skip (#823: 44dp floor; #954 adds Share)
+    expect(pills.length).toBe(5); // Edit + Week A/B + Share + Share as Image + Skip week/Remove skip
     for (const pill of pills) {
       const style = flatStyle(pill);
       expect(style.justifyContent).toBe('center');

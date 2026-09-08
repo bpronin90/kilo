@@ -13,6 +13,7 @@
     "audit": "node scripts/audit-gate.mjs",
     "test:deploy-kilo-functions": "node scripts/deploy-kilo-functions.test.mjs",
     "test:health-deletion-monitor": "node scripts/health-deletion-monitor.test.mjs",
+    "test:security-events": "node scripts/security-event-monitor.test.mjs",
     "test:health-deletion-e2e": "node scripts/test-health-deletion-e2e.mjs",
     "test:audit-gate": "node --test scripts/audit-gate.test.mjs",
     "check:changes": "node scripts/changelog-fragments.mjs check",

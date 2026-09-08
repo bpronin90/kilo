@@ -188,6 +188,72 @@ alert: the user was told their erasure had started and is still waiting on it.
    `kilo.complete_health_deletion_job` refuses to advance to `withdrawn` while
    any scoped row remains, so a `complete` job is itself the erasure proof.
 
+## Security Event Monitor
+
+The health-deletion monitor above watches one queue. This one watches the
+server's security decisions.
+
+`.github/workflows/security-event-monitor.yml` runs
+`scripts/check-security-events.mjs` hourly, against a deliberately wider
+90-minute window, reading
+`kilo.security_event_monitor_snapshot(interval)`, added by
+`supabase/migrations/20260908120000_security_event_log.sql`. The accessor
+returns windowed counts by event name, severity, and outcome, a distinct-subject
+count per event, and retention health -- aggregates only, with no subject
+digest, no context, and no row identity.
+
+The monitor exists because the underlying signal used to be invisible by
+construction. A rejected token, a throttled caller, a fail-closed rate limiter,
+and a failed account deletion each produced a `console.error` line inside a
+Supabase Edge Function log: retained for days, not queryable as events, with no
+threshold behind it, on the same channel as ordinary operational noise. Kilo
+could prevent those failures and could respond to one it was told about, but
+could not detect one.
+
+`kilo.security_events` is the durable half. The Edge Functions write to it
+through `supabase/functions/_shared/security-event.ts` on a fixed catalog of
+twelve events. Severity is derived server-side from the event name, so a caller
+cannot downgrade its own event; the subject is a salted digest rather than a raw
+user id or IP, so one actor can be followed across endpoints while the log names
+nobody; and context is an allow-list of bounded scalars, so no message, header,
+token, or health value can be stored even by a caller that sends one. Ingest is
+capped per event name per minute -- serialized by a transaction-scoped advisory
+lock, the same idiom `kilo.rate_limit_check` uses, so the bound holds under
+concurrency instead of being overshot by however many isolates raced -- because
+several of these events fire on requests the server is *rejecting* and their
+volume is therefore chosen by the caller.
+
+`service_role` holds `select` on the table and nothing else: that is the
+documented investigation path, and `BYPASSRLS` alone would not have granted it.
+
+The window overlaps the schedule on purpose: each run examines only the minutes
+before its own start, so a window tiled to an hourly cron left a permanent hole
+whenever GitHub delayed two consecutive runs more than an hour apart. Scheduled
+runs are also exempt from `cancel-in-progress` for the same reason.
+
+Retention is 90 days, swept daily by the `security-event-purge` pg_cron entry --
+long enough that an incident found weeks later still has evidence, short enough
+that the log is not an indefinite behavioural record. The sweep is monitored two
+ways, because the symptoms differ: a missing or inactive cron entry is one
+finding, and rows surviving past the period while the entry still looks active
+is another.
+
+Exit codes are `0` no finding, `1` a real production security finding, and `2`
+the check could not run. As with the health-deletion monitor, missing
+credentials are exit 2 and a **failed** monitor, never a green one, and a
+`credentialless run exits 2, never green` job asserts that on every change.
+
+**Out-of-band configuration.** The migration creates the `kilo_security_monitor`
+role and its single grant (`execute` on the accessor, and nothing else). The
+production role credential and session-pooler URL are provisioned out of band
+and are never committed. The URL is stored as the
+`SUPABASE_SECURITY_MONITOR_URL` repository secret, and the hourly production
+monitor is active.
+
+The event catalog, the redaction contract, retention and access rules,
+thresholds, and the investigation runbook live in
+[Security Monitoring](security-monitoring.md).
+
 ## OTA Update Delivery
 
 Preview and production builds receive compatible JavaScript and bundled-asset
@@ -232,7 +298,12 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
 - `mobile/storage/secureStorage.js` is the native health/training persistence
   boundary. It encrypts every `kilo_` AsyncStorage value with AES-256-GCM and a
   device key held in SecureStore, authenticates each storage key as associated
-  data, and serializes migration, read/write, and confirmed wipe operations.
+  data, and orders migration, read/write, and confirmed wipe operations under a
+  readers/writer discipline: writes stay totally ordered and exclusive, while
+  reads admitted between two writes run concurrently with each other (#984).
+  Reads of distinct keys have no data dependency, so the cold launch overlaps
+  their native round trips instead of paying their sum; the AES-GCM decrypts
+  themselves still run on the JS thread and are unaffected.
   A successful wipe advances an app-shell generation that remounts every
   always-mounted tab, discarding hydrated domain state and unsaved health-data
   input before success is reported. If a post-sign-out or post-account-delete
@@ -258,9 +329,12 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   that arrived before any operation that could change that key was enqueued:
   `setItem`/`removeItem`/`updateItem`/`multiSet`/`multiRemove` drop the pending
   entry for the keys they touch, and `clearDeviceKey`/`wipeKiloData` drop all
-  of them, at enqueue time rather than at execution time. Because the operation
-  queue is FIFO, a coalesced caller therefore always receives exactly the value
-  its own read would have returned from the same queue position. The one-time
+  of them, at enqueue time rather than at execution time. A read is likewise
+  bound at enqueue time to exactly the writes already enqueued when its caller
+  asked, and concurrent readers touch strictly disjoint keys (coalescing allows
+  at most one in-flight read per key), so a coalesced caller still always
+  receives exactly the value its own read would have returned from the same
+  position in the old FIFO. The one-time
   plaintext migration deliberately does not invalidate: it re-encodes values
   that are already there and cannot change what any key decrypts to. Web
   retains browser storage semantics, where client-side key storage would not
@@ -308,7 +382,14 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   shell's own `useWeightEntries`/`useWorkoutNotes` reads — the two Home's
   `loading` prop is gated on — used to be enqueued behind every duplicate the
   four hidden tabs had already queued, and now land on the read a tab already
-  started.
+  started. The eight distinct keys Home's four-term first-paint gate depends on
+  (weight goal, tracked lifts, tracked-lift activations, recovery blocks,
+  recovery block weeks, notebook, current-routine pointer, weight table) are
+  then issued as one overlapping batch rather than one after another (#984).
+  The gate itself is unchanged: `loading || goalLoading || trackedLiftsLoading
+  || !recoveryBoundaryReady` still holds the skeleton until every one of those
+  sources has resolved, because `recoveryBoundaryReady` is a correctness
+  boundary (#699), not a cosmetic one.
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
   modules, now exposes the note-derived analytics contract used by downstream
   native workout analytics work, and centralizes exercise alias resolution in

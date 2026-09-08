@@ -31,9 +31,11 @@
 // RN web Alert silently no-ops for multi-button dialogs, so a direct import
 // would make the pre-share notice — and therefore sharing itself — dead on
 // web (#721; guarded by tests/platform-alert.test.js).
-import { Share } from 'react-native';
+import { Platform, Share } from 'react-native';
 import { Alert } from '../platformAlert';
-import { parseWorkoutNote } from '../parser';
+import { parseWorkoutNote } from '../parser/workoutNote';
+import { parseExerciseHeader } from '../parser/deloadGenerator';
+import { parseHeaderDeclaration } from '../parser/workoutRow';
 
 export const ROUTINE_SHARE_MARKER = '#kilo-routine';
 export const ROUTINE_SHARE_VERSION = 'v1';
@@ -289,4 +291,89 @@ export function shareRoutine({ title, rawText, exportedAt } = {}, deps = {}) {
       },
     ],
   );
+}
+
+// Image sharing has a separate allowlist. Never send a note or parsed section
+// object to the renderer: those objects also hold annotations and raw rows.
+export function buildRoutineShareSummary({ title, rawText, includeNumbers = false } = {}) {
+  const parsed = parseWorkoutNote(String(rawText ?? ''));
+  const sections = parsed.ok ? parsed.sections : [];
+  return {
+    title: normalizeTitleLine(title) || 'Untitled Routine',
+    sections: sections.map((section, index) => ({
+      week: parsed.weekBStartIndex == null ? null : (index < parsed.weekBStartIndex ? 'A' : 'B'),
+      heading: section.heading || null,
+      subheading: section.subheading || null,
+      exercises: (section.exercises || []).map(exercise => {
+        const declaration = parseExerciseHeader(exercise.raw_header);
+        // A `2x60s` header parses as `2` sets of `60` under parseExerciseHeader,
+        // which cannot tell a timed hold from a rep range. Ask the row grammar
+        // whether the declaration is timed so the numbers below stay honest.
+        const timed = parseHeaderDeclaration(exercise.raw_header)?.type === 'duration';
+        const latest = (exercise.rows || []).filter(row => row.sets?.length).slice(-1)[0];
+        const item = {
+          name: exercise.name,
+          setCount: declaration?.sets ?? latest?.sets.length ?? null,
+        };
+        if (includeNumbers) {
+          const declaredRange = declaration ? { lo: declaration.repLo, hi: declaration.repHi } : null;
+          item.repRange = timed ? null : declaredRange;
+          // Only timed declarations get a hold range; a rep exercise keeps its
+          // established `{ name, setCount, repRange, latestSets }` shape.
+          if (timed) item.holdRange = declaredRange;
+          item.latestSets = (latest?.sets || []).map(set => ({
+            reps: set.rep_count ?? null,
+            weight: set.weight_value ?? null,
+            unit: set.weight_unit ?? null,
+            // Timed holds carry seconds, not reps; only surface the key when the
+            // row actually logged one so a rep-only set keeps its old shape.
+            ...(set.duration_seconds != null ? { holdSeconds: set.duration_seconds } : null),
+          })).filter(set => set.reps != null || set.weight != null || set.holdSeconds != null);
+        }
+        return item;
+      }),
+    })).filter(section => section.exercises.length > 0),
+  };
+}
+
+// Capture only the redacted preview, never the surrounding routine screen.
+// Load native modules at the point of use so a missing module in an older
+// installed build cannot break the independent text-share action.
+export async function shareRoutineImage(view, deps = {}) {
+  const platform = deps.platform ?? Platform.OS;
+  if (platform === 'web') {
+    // view-shot 4's wrapper calls findNodeHandle, which RN Web no longer
+    // supports. Capture the actual DOM ref with its web rasterizer directly.
+    const capture = deps.capture || (async target => {
+      const module = require('html2canvas');
+      const html2canvas = module.default || module;
+      const canvas = await html2canvas(target.current || target, { logging: false });
+      return canvas.toDataURL('image/png');
+    });
+    const uri = await capture(view, { format: 'png', result: 'data-uri' });
+    if (!uri.startsWith('data:image/png;base64,')) throw new Error('Image capture failed');
+    if (deps.download) deps.download(uri);
+    else {
+      const link = document.createElement('a');
+      link.href = uri;
+      link.download = 'kilo-routine.png';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+    return;
+  }
+  const captureModule = deps.capture ? deps : require('react-native-view-shot');
+  const capture = deps.capture || captureModule.captureRef;
+  const sharing = deps.share ? deps : require('expo-sharing');
+  const available = deps.available || sharing.isAvailableAsync;
+  if (!await available()) throw new Error('Image sharing is unavailable');
+  const share = deps.share || sharing.shareAsync;
+  const release = deps.release || captureModule.releaseCapture;
+  const uri = await capture(view, { format: 'png', result: 'tmpfile' });
+  try {
+    await share(uri, { mimeType: 'image/png', UTI: 'public.png', dialogTitle: 'Share routine image' });
+  } finally {
+    release(uri);
+  }
 }

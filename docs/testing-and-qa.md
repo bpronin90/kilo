@@ -11,11 +11,46 @@ Start the Expo app:
 npm run mobile:start
 ```
 
-Open the QR code in Expo Go, or launch Android directly:
+Launch Android directly:
 
 ```sh
 npm run mobile:android
 ```
+
+### Development client (on-device live loop)
+
+**Expo Go cannot load this project.** The app targets Expo SDK 54 while Expo Go
+ships only the current SDK's runtime, and `@sentry/react-native` — imported
+unconditionally in `mobile/lib/errorReporting.js` — is not available in Expo Go.
+`expo-updates` is inert there and `expo-notifications` is degraded. A prior SDK
+upgrade attempt was reverted (see the `preview-2` / `preview-3` notes in
+`mobile/app.config.js`), so raising the SDK to reach Expo Go is not an option.
+
+Use the development client instead. Build it once:
+
+```sh
+cd mobile && eas build --profile development --platform android
+```
+
+Install the resulting APK, then start Metro against it:
+
+```sh
+cd mobile && npx expo start --dev-client
+```
+
+Saved edits reload on device immediately, with all real native modules present.
+No `eas update` publish step is involved; the client connects directly to the
+local Metro server.
+
+The development build uses its own identity — `com.benpronin.kilo.dev`, shown as
+**Kilo Dev** — so it installs alongside the preview app rather than replacing it.
+Preview and production identifiers are unchanged. Keep both installed: the
+development client is for iteration, the preview build remains the surface for
+the [Installable Preview Smoke Checklist](#installable-preview-smoke-checklist).
+
+Adding `expo-dev-client` was a native change, so `PREVIEW_RUNTIME` moved to
+`preview-7`. Existing `preview-6` installs will not receive new OTA bundles and
+must be replaced with one fresh preview build.
 
 For a standalone installable Android APK that does not depend on a running dev
 machine, use the EAS build flow documented in `docs/phone-runbook.md`.
@@ -72,6 +107,31 @@ supabase db reset --local --no-seed
 node scripts/run-pgtap-suite.mjs
 ```
 
+A third `shared-deno` job runs the shared Edge Function module tests on every
+pull request and every push to `main`. It installs Deno and executes all three
+`supabase/functions/_shared/*.test.ts` files (`security-event`, `rate-limit`,
+and `health-data-scope`) in one `deno test` invocation. The permissions are the
+minimum the current suite needs: `--allow-import` for the remote `deno.land`
+standard-library import and `--allow-read` for the migration-directory reads
+that `health-data-scope.test.ts` performs; `--no-check` and `--no-lock` keep the
+suite's established invocation. The rate-limit cases assert event
+classification behaviorally — they drive `rateLimitAllowed` through a recording
+client double and inspect the `record_security_event` RPC it receives, so an
+exhausted bucket is proven to emit the subject-attributed
+`ratelimit.ip_blocked` / `ratelimit.user_blocked` throttle event while a limiter
+outage emits only a subjectless `ratelimit.unavailable` (denied under the `deny`
+policy, allowed under `allow`). No test greps implementation or endpoint source
+to reach that verdict.
+
+Run the same shared-module suite locally with Deno installed:
+
+```sh
+deno test --no-check --no-lock --allow-import --allow-read \
+  supabase/functions/_shared/security-event.test.ts \
+  supabase/functions/_shared/rate-limit.test.ts \
+  supabase/functions/_shared/health-data-scope.test.ts
+```
+
 Every PR additionally requires the `review disposition accepted` status for
 its exact current head SHA. The trusted evaluator in
 `scripts/review-disposition.mjs` reads current-head implementation metadata and
@@ -102,6 +162,43 @@ refresh-verification tests run with:
 ```sh
 node --test scripts/review-disposition.test.mjs
 ```
+
+### Security-critical changes
+
+Changes that can materially affect authentication, authorization, RLS and
+policies, server functions/APIs, secrets, health data, encryption/storage,
+account deletion/export, abuse controls, update delivery, or deployment
+security follow the [Security-critical change review](security-review.md)
+policy. The PR must identify its security impact and, when critical, retain an
+explicit human security sign-off bound to the full current head SHA before the
+change is eligible for release. A new head invalidates that sign-off and
+requires renewal. This is an additional review lens, not a replacement for
+ordinary review or the required automated security, database, dependency, and
+migration checks.
+
+### Production security monitoring
+
+`.github/workflows/security-event-monitor.yml` runs
+`scripts/check-security-events.mjs` hourly against the live project and alerts
+on any critical security event, on auth-failure volume and spread, on throttle
+volume, on failed privileged operations, and on a retention sweep that has
+stopped running. Findings are exit 1; a run that cannot reach the database is
+exit 2 and a failed monitor, never a green one.
+
+Its offline contract suite runs on any pull request that touches the monitor,
+the recorder, the migration, or the workflow:
+
+```sh
+npm run test:security-events
+node scripts/check-security-events.mjs --dry-run
+```
+
+Those cover redaction, every threshold boundary, the 0/1/2 exit discipline, and
+the agreement between the TypeScript and SQL copies of the event catalog and
+context allow-list. The database side --- catalog enforcement, server-derived
+severity, context sanitization, access control, the ingest cap, and retention
+--- is `supabase/tests/security-events.test.sql`, run by the `database-security`
+job. The full contract lives in [Security Monitoring](security-monitoring.md).
 
 GitHub Actions also runs the migration drift check via
 `.github/workflows/migration-drift.yml`, and it is a **required pre-merge
@@ -252,7 +349,7 @@ Coverage is organized by boundary:
 | Auth, consent, and account lifecycle | auth-session, health-consent, consent-gate, account-lifecycle, Turnstile, and bounded-write suites |
 | Screen and component contracts | app shell, Home, Log, Weight, Analytics, More sub-screen, theme, navigation, and modal suites |
 | Notifications and diagnostics | reminders, scheduler, app-update, and error-reporting suites |
-| Repository tooling | Node tests beside review, changelog, migration, deployment, monitoring, and security-delivery scripts |
+| Repository tooling | Node tests beside review, changelog, migration, deployment, monitoring, security-event, and security-delivery scripts |
 | Database security and concurrency | planned SQL tests under `supabase/tests/` |
 | Shared Edge Function contracts | tests beside `supabase/functions/_shared/` and focused deployment scripts |
 
@@ -495,6 +592,55 @@ captured for this change**; the acceptance criteria ask for force-stopped
 before/after samples in both storage modes on a physical Android device, and
 that remains outstanding — see the device procedure under the #809 section
 above for how to take them.
+
+### Home first-paint read overlap (#984)
+
+#818 removed the duplicate reads; the survivors still queued. Every operation
+shared one strictly serial FIFO at the storage boundary, so the eight
+**distinct** keys Home's four-term first-paint gate depends on — weight goal,
+tracked lifts, tracked-lift activations, recovery blocks, recovery block weeks,
+notebook, current-routine pointer, weight table — executed one after another
+even though none depends on another. Driving the real cold-start hook fan-out
+against the AsyncStorage jest mock and recording the read order confirms this:
+twelve reads, strictly sequential, with all eight gating reads inside the first
+eight positions.
+
+The boundary now uses a readers/writer discipline. Writes stay totally ordered
+and exclusive; reads admitted between two writes overlap. The gate is
+untouched.
+
+Coverage in `mobile/tests/home-first-paint-concurrency.test.js`:
+
+- reads of different keys run concurrently (high-water mark of in-flight
+  backing reads, plus wall clock under an injected per-read latency);
+- concurrent reads of ONE key still resolve from a single decrypt (#818);
+- no read is ever in flight while a write runs, in either direction, and a read
+  enqueued before a write still resolves the pre-write value;
+- a pending read is still not shared across `removeItem`, `updateItem`, or a
+  device wipe;
+- a **failed** read neither wedges the boundary nor rejects the next write —
+  the barrier a write awaits holds every admitted read, so a rejecting entry
+  there would take every later operation down with it;
+- writes remain totally ordered with respect to each other;
+- all four terms of Home's `isLoading` gate still resolve independently, and
+  the launch still issues one read per key.
+
+**Measurement.** With the real encrypted path (`forceEncryption: true`) and a
+fixed injected per-read device latency, reading the eight gating keys on a
+desktop x86 core: 175 ms before / 34 ms after at 20 ms per read (5.1x), and
+53 ms before / 28 ms after at 5 ms per read. The residual is the AES-GCM
+decrypt itself, which runs on the JS thread and does **not** parallelize — this
+change overlaps the native round trips, not the CPU. The split was measured
+directly on a 12.9 KB notebook payload: 0.57 ms AES-GCM decrypt against a
+6.35 ms end-to-end read.
+
+**No physical-device wall-clock timing was captured for this change.** The
+acceptance criteria ask for force-stopped cold-launch `[startup]` traces before
+and after on a real installed development client with populated data, plus
+owner sign-off across Home's populated/empty/source-error and Recovery
+open/stale states. Both remain outstanding; see the device procedure under the
+#809 section above for how to take them. The injected-latency numbers above
+isolate the I/O component only and are not a substitute.
 
 Operational production checks are not automated test inventory:
 

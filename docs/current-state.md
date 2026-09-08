@@ -81,6 +81,10 @@ reappearing.
 - Health-data consent, withdrawal, export, deletion, evidence retention, and
   purge monitoring follow the contracts linked from
   [the documentation index](README.md).
+- Server-owned endpoints record classified, pseudonymized security events with
+  a 90-day retention period; production alerting and the investigation runbook
+  live in [Security Monitoring](security-monitoring.md). The production security
+  monitor is credentialed and scheduled to run hourly.
 
 ## Runtime and Distribution
 
@@ -132,6 +136,7 @@ release status and [Beta Tester Guide](tester-guide.md) for participant steps.
 | UI rules and current visual implementation | [UI Design Rules](ui-design-rules.md) and [Design System Map](design-system-map.md) |
 | Supabase schema policy | [Backend Schema](backend-schema.md) |
 | Supabase and Auth operations | [Backend Activation](backend-activation.md) |
+| Production security monitoring and audit trail | [Security Monitoring](security-monitoring.md) |
 | Health-data consent | [Health-Data Consent](health-data-consent.md) |
 | Optional product measurement | [Product Measurement](product-measurement.md) |
 | Build and device procedures | [Phone Runbook](phone-runbook.md) |

@@ -8,3 +8,18 @@ Issue: #000
 ## Verification
 
 <!-- Commands and manual checks performed. -->
+
+## Security impact
+
+<!-- Select one: security-critical / not security-critical. If uncertain,
+     select security-critical and explain the boundary considered. -->
+Impact: [choose one: security-critical / not security-critical]
+
+<!-- Required for security-critical changes. Complete the checklist in
+     docs/security-review.md and record the human review outcome. The SHA must
+     be the full 40-character current PR head. -->
+Reviewed head SHA: [required for security-critical changes]
+Security assumptions/findings: none
+Accepted risk: none
+Human security reviewer: not applicable
+Security sign-off: not applicable

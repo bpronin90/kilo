@@ -55,3 +55,21 @@ jobs:
 
       - name: Run every pgTAP security test without skips or aborts
         run: node scripts/run-pgtap-suite.mjs
+
+  shared-deno:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.x
+
+      - name: Run shared Edge Function module tests
+        run: >
+          deno test --no-check --no-lock --allow-import --allow-read
+          supabase/functions/_shared/security-event.test.ts
+          supabase/functions/_shared/rate-limit.test.ts
+          supabase/functions/_shared/health-data-scope.test.ts

@@ -1,5 +1,5 @@
 import { normalizeExerciseKey, _canonicalizeName } from './exerciseNames.js';
-import { isStrengthExerciseName } from '../data/exerciseCatalog.js';
+import { isStrengthExerciseName, normalizeLiftName } from '../data/exerciseCatalog.js';
 
 export function epleyPR(weight, reps) {
   if (!weight || !reps || weight <= 0 || reps <= 0) return null;
@@ -409,5 +409,82 @@ export function derivePerDaySignals(sections, trackedNames, anchors = null) {
     result[normalizeExerciseKey(name)] = dayMap;
   }
 
+  return result;
+}
+
+// Shared classification primitive for analytics and progression suggestions.
+function _totalRepsAtWeight(sets, weight) {
+  return sets.filter(s => s.weight_value === weight).reduce((sum, s) => sum + s.rep_count, 0);
+}
+
+function _topWeight(sets) {
+  const weighted = sets.filter(s => s.weight_value != null && s.weight_value > 0 && s.rep_count != null && s.rep_count > 0);
+  if (weighted.length === 0) return null;
+  return Math.max(...weighted.map(s => s.weight_value));
+}
+
+// Classify one exercise given its full session_entries list (newest last).
+// Returns 'progressing' | 'stalled' | 'regressing' | 'inconsistent' | null
+function _classifyEntries(allEntries) {
+  const window = allEntries.slice(-3);
+  const logged = window.filter(se => !se.skipped && !se.unparsed && se.sets && _topWeight(se.sets) !== null);
+  if (logged.length === 0) return null;
+  if (logged.length === 1) {
+    return window.some(se => se.skipped) ? 'inconsistent' : 'initial';
+  }
+
+  const latest = logged[logged.length - 1];
+  const prior = logged[logged.length - 2];
+  const latestTop = _topWeight(latest.sets);
+  const priorTop = _topWeight(prior.sets);
+
+  if (latestTop < priorTop) return 'regressing';
+  if (latestTop > priorTop) return 'progressing';
+
+  // Same top weight: compare total reps at top weight
+  const latestTotal = _totalRepsAtWeight(latest.sets, latestTop);
+  const priorTotal = _totalRepsAtWeight(prior.sets, priorTop);
+  if (latestTotal > priorTotal) return 'progressing';
+  if (latestTotal < priorTotal) return 'regressing';
+
+  // Same top weight and same total reps: check distribution
+  const latestReps = latest.sets.filter(s => s.weight_value === latestTop).map(s => s.rep_count).sort((a, b) => a - b);
+  const priorReps = prior.sets.filter(s => s.weight_value === priorTop).map(s => s.rep_count).sort((a, b) => a - b);
+  if (JSON.stringify(latestReps) === JSON.stringify(priorReps)) return 'stalled';
+
+  return null;
+}
+
+// Classify session trends for all tracked exercises.
+// sections: output of parseWorkoutNote(noteText).sections
+// trackedNames: string[] of exercise names to classify
+// anchors: optional { [canonicalKey]: anchor } from resolveTrackedLiftAnchors
+// Returns { [normalizedName]: 'progressing'|'stalled'|'regressing'|'inconsistent'|null }
+export function classifyExerciseSessions(sections, trackedNames, anchors = null) {
+  const { exercises } = deriveWorkoutAnalytics(sections);
+  const byKey = new Map(exercises.map(ex => [normalizeExerciseKey(ex.name), ex]));
+  const result = {};
+  for (const name of trackedNames) {
+    const normName = normalizeLiftName(name);
+    const key = normalizeExerciseKey(name);
+    const ex = byKey.get(key);
+    if (!ex) { result[normName] = null; continue; }
+    // #854/R3: progressing/stalled/regressing is a strength-specific
+    // signal — a cardio-named exercise never gets one, and a warmup-kind
+    // entry never contributes to it, without discarding the exercise's
+    // underlying occurrence data (other consumers still read it intact).
+    //
+    // #893: the watermark cut runs on the UNFILTERED entry list, before the
+    // warmup filter, because the anchor counts positions in that list. It is a
+    // classification — a progression signal — so it obeys the watermark; the
+    // capability metrics elsewhere on the same card do not.
+    const anchor = anchors?.[key] ?? 0;
+    const allEntries = isStrengthExerciseName(ex.name)
+      ? sliceEntriesFromAnchor(ex.occurrences.flatMap(occ => _occurrenceEntries(occ)), anchor)
+          .filter(e => e.kind !== 'warmup')
+      : [];
+    const classification = _classifyEntries(allEntries);
+    result[normName] = classification;
+  }
   return result;
 }
