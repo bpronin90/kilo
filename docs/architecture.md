@@ -232,7 +232,12 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
 - `mobile/storage/secureStorage.js` is the native health/training persistence
   boundary. It encrypts every `kilo_` AsyncStorage value with AES-256-GCM and a
   device key held in SecureStore, authenticates each storage key as associated
-  data, and serializes migration, read/write, and confirmed wipe operations.
+  data, and orders migration, read/write, and confirmed wipe operations under a
+  readers/writer discipline: writes stay totally ordered and exclusive, while
+  reads admitted between two writes run concurrently with each other (#984).
+  Reads of distinct keys have no data dependency, so the cold launch overlaps
+  their native round trips instead of paying their sum; the AES-GCM decrypts
+  themselves still run on the JS thread and are unaffected.
   A successful wipe advances an app-shell generation that remounts every
   always-mounted tab, discarding hydrated domain state and unsaved health-data
   input before success is reported. If a post-sign-out or post-account-delete
@@ -258,9 +263,12 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   that arrived before any operation that could change that key was enqueued:
   `setItem`/`removeItem`/`updateItem`/`multiSet`/`multiRemove` drop the pending
   entry for the keys they touch, and `clearDeviceKey`/`wipeKiloData` drop all
-  of them, at enqueue time rather than at execution time. Because the operation
-  queue is FIFO, a coalesced caller therefore always receives exactly the value
-  its own read would have returned from the same queue position. The one-time
+  of them, at enqueue time rather than at execution time. A read is likewise
+  bound at enqueue time to exactly the writes already enqueued when its caller
+  asked, and concurrent readers touch strictly disjoint keys (coalescing allows
+  at most one in-flight read per key), so a coalesced caller still always
+  receives exactly the value its own read would have returned from the same
+  position in the old FIFO. The one-time
   plaintext migration deliberately does not invalidate: it re-encodes values
   that are already there and cannot change what any key decrypts to. Web
   retains browser storage semantics, where client-side key storage would not
@@ -308,7 +316,14 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   shell's own `useWeightEntries`/`useWorkoutNotes` reads — the two Home's
   `loading` prop is gated on — used to be enqueued behind every duplicate the
   four hidden tabs had already queued, and now land on the read a tab already
-  started.
+  started. The eight distinct keys Home's four-term first-paint gate depends on
+  (weight goal, tracked lifts, tracked-lift activations, recovery blocks,
+  recovery block weeks, notebook, current-routine pointer, weight table) are
+  then issued as one overlapping batch rather than one after another (#984).
+  The gate itself is unchanged: `loading || goalLoading || trackedLiftsLoading
+  || !recoveryBoundaryReady` still holds the skeleton until every one of those
+  sources has resolved, because `recoveryBoundaryReady` is a correctness
+  boundary (#699), not a cosmetic one.
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
   modules, now exposes the note-derived analytics contract used by downstream
   native workout analytics work, and centralizes exercise alias resolution in

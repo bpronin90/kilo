@@ -11,11 +11,46 @@ Start the Expo app:
 npm run mobile:start
 ```
 
-Open the QR code in Expo Go, or launch Android directly:
+Launch Android directly:
 
 ```sh
 npm run mobile:android
 ```
+
+### Development client (on-device live loop)
+
+**Expo Go cannot load this project.** The app targets Expo SDK 54 while Expo Go
+ships only the current SDK's runtime, and `@sentry/react-native` — imported
+unconditionally in `mobile/lib/errorReporting.js` — is not available in Expo Go.
+`expo-updates` is inert there and `expo-notifications` is degraded. A prior SDK
+upgrade attempt was reverted (see the `preview-2` / `preview-3` notes in
+`mobile/app.config.js`), so raising the SDK to reach Expo Go is not an option.
+
+Use the development client instead. Build it once:
+
+```sh
+cd mobile && eas build --profile development --platform android
+```
+
+Install the resulting APK, then start Metro against it:
+
+```sh
+cd mobile && npx expo start --dev-client
+```
+
+Saved edits reload on device immediately, with all real native modules present.
+No `eas update` publish step is involved; the client connects directly to the
+local Metro server.
+
+The development build uses its own identity — `com.benpronin.kilo.dev`, shown as
+**Kilo Dev** — so it installs alongside the preview app rather than replacing it.
+Preview and production identifiers are unchanged. Keep both installed: the
+development client is for iteration, the preview build remains the surface for
+the [Installable Preview Smoke Checklist](#installable-preview-smoke-checklist).
+
+Adding `expo-dev-client` was a native change, so `PREVIEW_RUNTIME` moved to
+`preview-7`. Existing `preview-6` installs will not receive new OTA bundles and
+must be replaced with one fresh preview build.
 
 For a standalone installable Android APK that does not depend on a running dev
 machine, use the EAS build flow documented in `docs/phone-runbook.md`.
@@ -495,6 +530,55 @@ captured for this change**; the acceptance criteria ask for force-stopped
 before/after samples in both storage modes on a physical Android device, and
 that remains outstanding — see the device procedure under the #809 section
 above for how to take them.
+
+### Home first-paint read overlap (#984)
+
+#818 removed the duplicate reads; the survivors still queued. Every operation
+shared one strictly serial FIFO at the storage boundary, so the eight
+**distinct** keys Home's four-term first-paint gate depends on — weight goal,
+tracked lifts, tracked-lift activations, recovery blocks, recovery block weeks,
+notebook, current-routine pointer, weight table — executed one after another
+even though none depends on another. Driving the real cold-start hook fan-out
+against the AsyncStorage jest mock and recording the read order confirms this:
+twelve reads, strictly sequential, with all eight gating reads inside the first
+eight positions.
+
+The boundary now uses a readers/writer discipline. Writes stay totally ordered
+and exclusive; reads admitted between two writes overlap. The gate is
+untouched.
+
+Coverage in `mobile/tests/home-first-paint-concurrency.test.js`:
+
+- reads of different keys run concurrently (high-water mark of in-flight
+  backing reads, plus wall clock under an injected per-read latency);
+- concurrent reads of ONE key still resolve from a single decrypt (#818);
+- no read is ever in flight while a write runs, in either direction, and a read
+  enqueued before a write still resolves the pre-write value;
+- a pending read is still not shared across `removeItem`, `updateItem`, or a
+  device wipe;
+- a **failed** read neither wedges the boundary nor rejects the next write —
+  the barrier a write awaits holds every admitted read, so a rejecting entry
+  there would take every later operation down with it;
+- writes remain totally ordered with respect to each other;
+- all four terms of Home's `isLoading` gate still resolve independently, and
+  the launch still issues one read per key.
+
+**Measurement.** With the real encrypted path (`forceEncryption: true`) and a
+fixed injected per-read device latency, reading the eight gating keys on a
+desktop x86 core: 175 ms before / 34 ms after at 20 ms per read (5.1x), and
+53 ms before / 28 ms after at 5 ms per read. The residual is the AES-GCM
+decrypt itself, which runs on the JS thread and does **not** parallelize — this
+change overlaps the native round trips, not the CPU. The split was measured
+directly on a 12.9 KB notebook payload: 0.57 ms AES-GCM decrypt against a
+6.35 ms end-to-end read.
+
+**No physical-device wall-clock timing was captured for this change.** The
+acceptance criteria ask for force-stopped cold-launch `[startup]` traces before
+and after on a real installed development client with populated data, plus
+owner sign-off across Home's populated/empty/source-error and Recovery
+open/stale states. Both remain outstanding; see the device procedure under the
+#809 section above for how to take them. The injected-latency numbers above
+isolate the I/O component only and are not a substitute.
 
 Operational production checks are not automated test inventory:
 
