@@ -49,6 +49,9 @@ import { corsHeaders } from '../_shared/cors.ts'
 import { extractToken } from '../_shared/auth.ts'
 import { clientIp, rateLimitAllowed } from '../_shared/rate-limit.ts'
 import { deleteHealthData } from '../_shared/health-data-scope.ts'
+import { recordSecurityEvent, requestId } from '../_shared/security-event.ts'
+
+const SECURITY_SOURCE = 'health-data-delete' as const
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
@@ -78,7 +81,10 @@ interface DeletionJob {
 // Delete one job's scoped data and settle the job. A failure is recorded on the
 // job (bounded, message-only) and left for the cron retry rather than thrown: one
 // user's wedged purge must not stop the queue from draining for everyone else.
-async function processJob(job: DeletionJob): Promise<{ ok: boolean; remaining?: number }> {
+async function processJob(
+  job: DeletionJob,
+  rid: string | undefined,
+): Promise<{ ok: boolean; remaining?: number }> {
   const result = await deleteHealthData(admin, job.user_id)
 
   if (!result.ok) {
@@ -86,6 +92,7 @@ async function processJob(job: DeletionJob): Promise<{ ok: boolean; remaining?: 
       p_job_id: job.id,
       p_error: result.error ?? 'unknown',
     })
+    await recordPurgeOutcome(job, false, rid, 'db_error')
     return { ok: false }
   }
 
@@ -94,11 +101,41 @@ async function processJob(job: DeletionJob): Promise<{ ok: boolean; remaining?: 
   const { data, error } = await admin.rpc('complete_health_deletion_job', { p_job_id: job.id })
   if (error) {
     await admin.rpc('fail_health_deletion_job', { p_job_id: job.id, p_error: error.message })
+    await recordPurgeOutcome(job, false, rid, 'db_error')
     return { ok: false }
   }
 
   const settled = data as { ok: boolean; remaining: number }
-  return { ok: settled?.ok === true, remaining: settled?.remaining }
+  const ok = settled?.ok === true
+  // `remaining > 0` with no error is the case the database refuses to advance:
+  // rows the user was told would be erased are still there.
+  await recordPurgeOutcome(job, ok, rid, ok ? undefined : 'incomplete', settled?.remaining)
+  return { ok, remaining: settled?.remaining }
+}
+
+// One event per job, both directions. Success is the erasure audit trail a
+// regulator-facing deletion needs; failure is what the monitor thresholds on.
+// The job id is deliberately not carried: it is a direct handle to one user's
+// deletion request, and the salted user digest already provides correlation.
+async function recordPurgeOutcome(
+  job: DeletionJob,
+  ok: boolean,
+  rid: string | undefined,
+  reason?: 'db_error' | 'incomplete',
+  remaining?: number,
+): Promise<void> {
+  await recordSecurityEvent(admin, {
+    name: ok ? 'health.purge_succeeded' : 'health.purge_failed',
+    source: SECURITY_SOURCE,
+    outcome: ok ? 'succeeded' : 'failed',
+    subjectType: 'user',
+    subject: job.user_id,
+    context: {
+      reason,
+      count: typeof remaining === 'number' ? remaining : undefined,
+      request_id: rid,
+    },
+  })
 }
 
 serve(async (req) => {
@@ -108,8 +145,19 @@ serve(async (req) => {
     return new Response('ok', { headers: cors })
   }
 
+  // Correlates every event below with the platform log line for this request.
+  const rid = requestId(req)
+
   const token = extractToken(req)
   if (!token) {
+    await recordSecurityEvent(admin, {
+      name: 'auth.token_missing',
+      source: SECURITY_SOURCE,
+      outcome: 'denied',
+      subjectType: 'ip',
+      subject: clientIp(req),
+      context: { status: 401, reason: 'missing_token', request_id: rid },
+    })
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...cors, 'Content-Type': 'application/json' },
@@ -127,6 +175,14 @@ serve(async (req) => {
       const { data, error } = await admin.rpc('claim_health_deletion_job')
       if (error) {
         console.error(`health-data-delete claim failed: ${error.message}`)
+        // Worker mode: the caller is cron, not a person, so there is no subject.
+        await recordSecurityEvent(admin, {
+          name: 'server.error',
+          source: SECURITY_SOURCE,
+          outcome: 'failed',
+          subjectType: 'none',
+          context: { status: 500, reason: 'db_error', code: error.code, request_id: rid },
+        })
         return new Response(JSON.stringify({ error: 'Claim failed.' }), {
           status: 500,
           headers: { ...cors, 'Content-Type': 'application/json' },
@@ -135,7 +191,7 @@ serve(async (req) => {
       const job = data as DeletionJob | null
       if (!job || !job.id) break
 
-      const outcome = await processJob(job)
+      const outcome = await processJob(job, rid)
       processed.push({ job_id: job.id, ok: outcome.ok, remaining: outcome.remaining })
     }
 
@@ -148,7 +204,15 @@ serve(async (req) => {
   // ── user mode ─────────────────────────────────────────────────────────────
 
   const ip = clientIp(req)
-  if (!await rateLimitAllowed(admin, `healthdelete:ip:${ip}`, IP_MAX, IP_WINDOW_MS, 'deny')) {
+  if (!await rateLimitAllowed(admin, `healthdelete:ip:${ip}`, IP_MAX, IP_WINDOW_MS, 'deny', SECURITY_SOURCE)) {
+    await recordSecurityEvent(admin, {
+      name: 'ratelimit.ip_blocked',
+      source: SECURITY_SOURCE,
+      outcome: 'denied',
+      subjectType: 'ip',
+      subject: ip,
+      context: { status: 429, reason: 'ip_throttle', request_id: rid },
+    })
     return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
       status: 429,
       headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '3600' },
@@ -163,13 +227,32 @@ serve(async (req) => {
 
   const { data: { user }, error: authError } = await userClient.auth.getUser()
   if (authError || !user) {
+    // A token that is neither the service-role key nor a valid JWT lands here:
+    // worker mode falls through to the user path by design, so this event also
+    // covers a failed attempt to impersonate the drain worker.
+    await recordSecurityEvent(admin, {
+      name: 'auth.token_rejected',
+      source: SECURITY_SOURCE,
+      outcome: 'denied',
+      subjectType: 'ip',
+      subject: ip,
+      context: { status: 401, reason: 'invalid_token', request_id: rid },
+    })
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...cors, 'Content-Type': 'application/json' },
     })
   }
 
-  if (!await rateLimitAllowed(admin, `healthdelete:user:${user.id}`, USER_MAX, USER_WINDOW_MS, 'deny')) {
+  if (!await rateLimitAllowed(admin, `healthdelete:user:${user.id}`, USER_MAX, USER_WINDOW_MS, 'deny', SECURITY_SOURCE)) {
+    await recordSecurityEvent(admin, {
+      name: 'ratelimit.user_blocked',
+      source: SECURITY_SOURCE,
+      outcome: 'denied',
+      subjectType: 'user',
+      subject: user.id,
+      context: { status: 429, reason: 'user_throttle', request_id: rid },
+    })
     return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
       status: 429,
       headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '3600' },
@@ -189,6 +272,14 @@ serve(async (req) => {
 
   if (jobError) {
     console.error(`health-data-delete job lookup failed: ${jobError.message}`)
+    await recordSecurityEvent(admin, {
+      name: 'server.error',
+      source: SECURITY_SOURCE,
+      outcome: 'failed',
+      subjectType: 'user',
+      subject: user.id,
+      context: { status: 500, reason: 'db_error', code: jobError.code, request_id: rid },
+    })
     return new Response(JSON.stringify({ error: 'Deletion failed.' }), {
       status: 500,
       headers: { ...cors, 'Content-Type': 'application/json' },
@@ -206,7 +297,28 @@ serve(async (req) => {
     })
   }
 
-  const outcome = await processJob(job)
+  // Defense in depth, and the producer of the one event this catalog treats as
+  // critical. The lookup above is already filtered to the verified caller's id
+  // through a service-role client, so a mismatch is unreachable by construction
+  // -- which is exactly why it is worth asserting: if it ever fires, the filter
+  // or the client scoping has regressed and one account is about to erase
+  // another's health data. Fail closed rather than proceed.
+  if (job.user_id !== user.id) {
+    await recordSecurityEvent(admin, {
+      name: 'authz.denied',
+      source: SECURITY_SOURCE,
+      outcome: 'denied',
+      subjectType: 'user',
+      subject: user.id,
+      context: { status: 500, reason: 'subject_mismatch', request_id: rid },
+    })
+    return new Response(JSON.stringify({ error: 'Deletion failed.' }), {
+      status: 500,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    })
+  }
+
+  const outcome = await processJob(job, rid)
 
   if (!outcome.ok) {
     // The job stays queued and cron retries it. The user is told the purge is

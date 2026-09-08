@@ -1,0 +1,145 @@
+name: Security Event Monitor
+
+# Production monitor for Kilo's security signals (#975).
+#
+# Kilo could already PREVENT a large class of security failures and could
+# RESPOND to one it had been told about (docs/security-incident-response.md).
+# It could not NOTICE: every security-relevant server decision existed only as a
+# `console.error` line in a Supabase Edge Function log, retained for days, not
+# queryable as events, with no threshold behind it. This workflow is what
+# notices.
+#
+# It reads kilo.security_event_monitor_snapshot() -- windowed counts by event,
+# severity, and outcome, distinct-subject counts, and retention health -- and
+# alerts on a critical event at any volume, on auth/throttle/failure rates above
+# their thresholds, and on a retention sweep that has stopped running.
+#
+# The schedule is the real monitor. The pull_request jobs exist so a change to
+# the monitor itself cannot silently break it: `security-event-monitor-tests`
+# runs the offline contract suite, and `security-event-monitor-credentialless`
+# proves that a run without credentials exits 2 ("could not check") rather than
+# 0 ("no finding"). A monitor that goes green when it cannot see the database is
+# worse than no monitor.
+on:
+  schedule:
+    # Hourly, matching the monitor's default 60-minute aggregation window, so
+    # consecutive runs tile the timeline rather than overlapping it.
+    - cron: '10 * * * *'
+  workflow_dispatch:
+    inputs:
+      window_minutes:
+        description: 'Override the aggregation window (minutes)'
+        required: false
+        type: string
+  pull_request:
+    paths:
+      - 'scripts/check-security-events.mjs'
+      - 'scripts/security-event-monitor.test.mjs'
+      - 'supabase/functions/_shared/security-event.ts'
+      - 'supabase/migrations/20260908120000_security_event_log.sql'
+      - '.github/workflows/security-event-monitor.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-event-monitor-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security-events:
+    # The actual production monitor. Scheduled and manually runnable.
+    name: production security signals are within thresholds
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+
+      # The monitor shells out to psql. Fail here with a clear message rather
+      # than inside the script if the runner image ever drops the client.
+      - name: Verify psql is available
+        run: psql --version
+
+      - name: Check the production security-event window
+        env:
+          # Least privilege: a dedicated read-only role whose ONLY privilege is
+          # execute on kilo.security_event_monitor_snapshot(interval). It cannot
+          # read the event table, cannot write an event, cannot decrypt a
+          # secret, and reaches no co-tenant schema. See
+          # docs/security-monitoring.md, "Access and least privilege", for the
+          # out-of-band role setup.
+          SUPABASE_SECURITY_MONITOR_URL: ${{ secrets.SUPABASE_SECURITY_MONITOR_URL }}
+          KILO_SECURITY_WINDOW_MINUTES: ${{ inputs.window_minutes }}
+        run: node scripts/check-security-events.mjs
+
+  security-event-monitor-tests:
+    # Offline contract suite: redaction, the 0/1/2 exit-code discipline, every
+    # threshold boundary, and the TypeScript/SQL catalog agreement that the
+    # server-side instrumentation depends on. Never contacts a database or a
+    # real project.
+    name: monitor and instrumentation contract tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+
+      - name: Run the monitor contract tests
+        run: npm run test:security-events
+
+      # Proves the redacted alert format an operator will actually receive,
+      # against a synthetic snapshot that deliberately contains a subject
+      # digest, a user id, an email address, a key, and a JWT. Exits 0 because
+      # it is exercising the format, not the production window.
+      - name: Redacted dry run
+        run: node scripts/check-security-events.mjs --dry-run
+
+  security-event-monitor-credentialless:
+    # The regression guard for the property that matters most: with no
+    # credentials the monitor must exit 2, never 0. If this job ever sees a 0,
+    # the monitor has learned to report a clean security window without looking
+    # at one.
+    name: credentialless run exits 2, never green
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+
+      - name: "Attempt the check without credentials (expected: exit 2, not a pass)"
+        env:
+          # Explicitly empty. Fork pull requests never receive repository
+          # secrets anyway; this makes the same condition deterministic for
+          # same-repository pull requests too.
+          SUPABASE_SECURITY_MONITOR_URL: ''
+        run: |
+          if node scripts/check-security-events.mjs; then
+            echo "::error::Credentialless security-event monitor unexpectedly reported success"
+            exit 1
+          else
+            status=$?
+          fi
+
+          if [ "$status" -eq 2 ]; then
+            echo "::notice::Credentialless security-event monitor correctly exited 2 (could not check)"
+            exit 0
+          fi
+
+          echo "::error::Credentialless security-event monitor failed unexpectedly with exit code $status"
+          exit "$status"

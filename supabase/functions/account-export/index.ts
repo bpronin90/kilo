@@ -37,6 +37,9 @@ import { corsHeaders } from '../_shared/cors.ts'
 import { extractToken } from '../_shared/auth.ts'
 import { clientIp, rateLimitAllowed, rateLimitRefund } from '../_shared/rate-limit.ts'
 import { exportHealthData, LEGACY_HEALTH_COLUMNS } from '../_shared/health-data-scope.ts'
+import { recordSecurityEvent, requestId } from '../_shared/security-event.ts'
+
+const SECURITY_SOURCE = 'account-export' as const
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
@@ -84,9 +87,20 @@ serve(async (req) => {
     return new Response('ok', { headers: cors })
   }
 
+  // Correlates every event below with the platform log line for this request.
+  const rid = requestId(req)
+
   // IP rate check (pre-auth, blocks hammering callers before JWT verification).
   const ip = clientIp(req)
-  if (!await rateLimitAllowed(rlAdmin, `export:ip:${ip}`, IP_MAX, IP_WINDOW_MS, 'deny')) {
+  if (!await rateLimitAllowed(rlAdmin, `export:ip:${ip}`, IP_MAX, IP_WINDOW_MS, 'deny', SECURITY_SOURCE)) {
+    await recordSecurityEvent(rlAdmin, {
+      name: 'ratelimit.ip_blocked',
+      source: SECURITY_SOURCE,
+      outcome: 'denied',
+      subjectType: 'ip',
+      subject: ip,
+      context: { status: 429, reason: 'ip_throttle', request_id: rid },
+    })
     return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
       status: 429,
       headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '600' },
@@ -95,6 +109,16 @@ serve(async (req) => {
 
   const token = extractToken(req)
   if (!token) {
+    // Pre-auth, so the only subject available is the network origin. One of
+    // these is a misconfigured client; a rate of them is a probe.
+    await recordSecurityEvent(rlAdmin, {
+      name: 'auth.token_missing',
+      source: SECURITY_SOURCE,
+      outcome: 'denied',
+      subjectType: 'ip',
+      subject: ip,
+      context: { status: 401, reason: 'missing_token', request_id: rid },
+    })
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...cors, 'Content-Type': 'application/json' },
@@ -111,6 +135,17 @@ serve(async (req) => {
 
   const { data: { user }, error: authError } = await client.auth.getUser()
   if (authError || !user) {
+    // The token is unusable, so there is no verified account to attribute this
+    // to; the IP is the only honest subject. A rising distinct-subject count on
+    // this event is what credential stuffing looks like from here.
+    await recordSecurityEvent(rlAdmin, {
+      name: 'auth.token_rejected',
+      source: SECURITY_SOURCE,
+      outcome: 'denied',
+      subjectType: 'ip',
+      subject: ip,
+      context: { status: 401, reason: 'invalid_token', request_id: rid },
+    })
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...cors, 'Content-Type': 'application/json' },
@@ -121,7 +156,15 @@ serve(async (req) => {
   // failed export attempts refund the bucket so transient errors don't exhaust
   // the user's one-success-per-window allowance.
   const userKey = `export:user:${user.id}`
-  if (!await rateLimitAllowed(rlAdmin, userKey, USER_MAX, USER_WINDOW_MS, 'deny')) {
+  if (!await rateLimitAllowed(rlAdmin, userKey, USER_MAX, USER_WINDOW_MS, 'deny', SECURITY_SOURCE)) {
+    await recordSecurityEvent(rlAdmin, {
+      name: 'ratelimit.user_blocked',
+      source: SECURITY_SOURCE,
+      outcome: 'denied',
+      subjectType: 'user',
+      subject: user.id,
+      context: { status: 429, reason: 'user_throttle', request_id: rid },
+    })
     return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
       status: 429,
       headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '600' },
@@ -145,6 +188,16 @@ serve(async (req) => {
     // Refund the user bucket: a failed export should not spend the quota.
     await rateLimitRefund(rlAdmin, userKey)
     console.error(`account-export query failed: ${firstError}`)
+    // The message stays in the platform log; the event carries only the
+    // classification. firstError is an upstream string and may quote row data.
+    await recordSecurityEvent(rlAdmin, {
+      name: 'server.error',
+      source: SECURITY_SOURCE,
+      outcome: 'failed',
+      subjectType: 'user',
+      subject: user.id,
+      context: { status: 500, reason: 'db_error', request_id: rid },
+    })
     return new Response(JSON.stringify({ error: 'Export failed.' }), {
       status: 500,
       headers: { ...cors, 'Content-Type': 'application/json' },
@@ -169,6 +222,18 @@ serve(async (req) => {
       ...healthResult.data,
     },
   }
+
+  // The audit half of the trail: a full copy of one account's data left the
+  // server. Recorded on success, not on request, so the log says what happened
+  // rather than what was attempted.
+  await recordSecurityEvent(rlAdmin, {
+    name: 'account.export_succeeded',
+    source: SECURITY_SOURCE,
+    outcome: 'succeeded',
+    subjectType: 'user',
+    subject: user.id,
+    context: { status: 200, request_id: rid },
+  })
 
   return new Response(JSON.stringify(payload), {
     status: 200,

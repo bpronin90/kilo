@@ -35,6 +35,7 @@ instead of copying the same contract into several files.
 
 | Document | Owns |
 |----------|------|
+| [Security Monitoring](security-monitoring.md) | Production security-event logging, redaction, retention, access, alerting, and the investigation runbook. |
 | [Security Incident Response](security-incident-response.md) | Vulnerability intake, triage, containment, recovery, security-fix release, and post-incident review. |
 | [Phone Runbook](phone-runbook.md) | WSL/Expo development, EAS builds, device installation, and runtime policy. |
 | [Play Store Readiness](play-store-readiness.md) | Operator-owned Play Console, closed-testing, listing, and Android release status. |

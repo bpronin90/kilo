@@ -18,6 +18,7 @@
 // table directly.
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.108.2'
+import { recordSecurityEvent, type SecurityEventSource } from './security-event.ts'
 
 type RateLimitClient = SupabaseClient<any, any, any, any, any>
 
@@ -31,12 +32,25 @@ export type RateLimitFailurePolicy = 'allow' | 'deny'
 // Logs deliberately contain no bucket or database message. Buckets embed raw IP
 // addresses or user UUIDs, and an upstream error may echo RPC arguments. The
 // bounded PostgREST error code is sufficient for operational aggregation.
+//
+// `source` is optional only so the existing unit tests can call this without a
+// database double for the security log; every production call site passes it.
+// When present, a limiter outage also records `ratelimit.unavailable`, which is
+// the one condition here an operator must hear about: the durable limiter is
+// the abuse control, and while it is unreachable every endpoint is answering on
+// its outage policy rather than on a real quota. The caller cannot detect this
+// itself -- under `deny` an outage and an exhausted bucket both return false.
+//
+// The event carries no subject. The bucket embeds a raw IP or user id, and the
+// outage is a server condition rather than a property of whoever happened to
+// call during it.
 export async function rateLimitAllowed(
   admin: RateLimitClient,
   bucket: string,
   max: number,
   windowMs: number,
   failurePolicy: RateLimitFailurePolicy,
+  source?: SecurityEventSource,
 ): Promise<boolean> {
   const { data, error } = await admin.rpc('rate_limit_check', {
     p_bucket: bucket,
@@ -48,6 +62,18 @@ export async function rateLimitAllowed(
       failurePolicy,
       code: typeof error.code === 'string' ? error.code : 'unknown',
     })
+    if (source) {
+      await recordSecurityEvent(admin, {
+        name: 'ratelimit.unavailable',
+        source,
+        outcome: failurePolicy === 'allow' ? 'allowed' : 'denied',
+        subjectType: 'none',
+        context: {
+          reason: 'limiter_unavailable',
+          code: typeof error.code === 'string' ? error.code : undefined,
+        },
+      })
+    }
     return failurePolicy === 'allow'
   }
   return data === true

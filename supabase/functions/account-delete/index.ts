@@ -42,6 +42,13 @@ import { corsHeaders } from '../_shared/cors.ts'
 import { extractToken } from '../_shared/auth.ts'
 import { clientIp, rateLimitAllowed } from '../_shared/rate-limit.ts'
 import { deleteHealthData } from '../_shared/health-data-scope.ts'
+import {
+  recordSecurityEvent,
+  requestId,
+  type SecurityEventReason,
+} from '../_shared/security-event.ts'
+
+const SECURITY_SOURCE = 'account-delete' as const
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
@@ -85,11 +92,18 @@ async function hmacSubject(userId: string): Promise<string> {
     .join('')
 }
 
+// Distinguishes a missing evidence key (a deployment fault an operator must fix
+// now, because it blocks every deletion) from an ordinary database failure (one
+// user, retryable). Both abort the deletion; only the classification differs,
+// and it is the classification the security log records.
+type ArchiveResult = { ok: true } | { ok: false; reason: SecurityEventReason }
+
 // Replace the account-linked consent ledger with a single evidence-only row.
-// Returns false if the archive could not be written, which ABORTS the deletion:
-// destroying the ledger without leaving the evidence behind would trade one
-// compliance failure (no Art. 7(1) proof) for another, and the user can retry.
-async function archiveConsentEvidence(userId: string): Promise<boolean> {
+// Returns a failure if the archive could not be written, which ABORTS the
+// deletion: destroying the ledger without leaving the evidence behind would
+// trade one compliance failure (no Art. 7(1) proof) for another, and the user
+// can retry.
+async function archiveConsentEvidence(userId: string): Promise<ArchiveResult> {
   const { data: events, error: eventsError } = await rlAdmin
     .from('consent_events')
     .select('event_type, occurred_at, catalog_revision, material_version, copy_sha256')
@@ -98,20 +112,20 @@ async function archiveConsentEvidence(userId: string): Promise<boolean> {
 
   if (eventsError) {
     console.error(`account-delete consent event read failed: ${eventsError.message}`)
-    return false
+    return { ok: false, reason: 'db_error' }
   }
 
   // A user who never reached the consent surface has no consent to demonstrate.
   // Writing an archive row for them would be inventing a record of a decision
   // they never made.
-  if (!events || events.length === 0) return true
+  if (!events || events.length === 0) return { ok: true }
 
   if (!EVIDENCE_KEY_ID || !EVIDENCE_KEY) {
     // Fail closed. Without the key there is no pseudonymization, and the only
     // alternatives are storing the raw user id (which the spec forbids) or losing
     // the evidence entirely.
     console.error('account-delete: evidence key is not configured; refusing to delete')
-    return false
+    return { ok: false, reason: 'evidence_key_missing' }
   }
 
   const { data: state } = await rlAdmin
@@ -132,7 +146,7 @@ async function archiveConsentEvidence(userId: string): Promise<boolean> {
     .upsert({ evidence_key_id: EVIDENCE_KEY_ID }, { onConflict: 'evidence_key_id' })
   if (keyError) {
     console.error(`account-delete evidence key registration failed: ${keyError.message}`)
-    return false
+    return { ok: false, reason: 'db_error' }
   }
 
   const { error: archiveError } = await rlAdmin.from('consent_evidence_archive').insert({
@@ -156,9 +170,9 @@ async function archiveConsentEvidence(userId: string): Promise<boolean> {
 
   if (archiveError) {
     console.error(`account-delete evidence archive failed: ${archiveError.message}`)
-    return false
+    return { ok: false, reason: 'db_error' }
   }
-  return true
+  return { ok: true }
 }
 
 // ---------------------------------------------------------------------------
@@ -170,9 +184,20 @@ serve(async (req) => {
     return new Response('ok', { headers: cors })
   }
 
+  // Correlates every event below with the platform log line for this request.
+  const rid = requestId(req)
+
   // IP rate check (pre-auth, blocks hammering callers before JWT verification).
   const ip = clientIp(req)
-  if (!await rateLimitAllowed(rlAdmin, `delete:ip:${ip}`, IP_MAX, IP_WINDOW_MS, 'deny')) {
+  if (!await rateLimitAllowed(rlAdmin, `delete:ip:${ip}`, IP_MAX, IP_WINDOW_MS, 'deny', SECURITY_SOURCE)) {
+    await recordSecurityEvent(rlAdmin, {
+      name: 'ratelimit.ip_blocked',
+      source: SECURITY_SOURCE,
+      outcome: 'denied',
+      subjectType: 'ip',
+      subject: ip,
+      context: { status: 429, reason: 'ip_throttle', request_id: rid },
+    })
     return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
       status: 429,
       headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '3600' },
@@ -181,6 +206,14 @@ serve(async (req) => {
 
   const token = extractToken(req)
   if (!token) {
+    await recordSecurityEvent(rlAdmin, {
+      name: 'auth.token_missing',
+      source: SECURITY_SOURCE,
+      outcome: 'denied',
+      subjectType: 'ip',
+      subject: ip,
+      context: { status: 401, reason: 'missing_token', request_id: rid },
+    })
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...cors, 'Content-Type': 'application/json' },
@@ -196,6 +229,14 @@ serve(async (req) => {
 
   const { data: { user }, error: authError } = await userClient.auth.getUser()
   if (authError || !user) {
+    await recordSecurityEvent(rlAdmin, {
+      name: 'auth.token_rejected',
+      source: SECURITY_SOURCE,
+      outcome: 'denied',
+      subjectType: 'ip',
+      subject: ip,
+      context: { status: 401, reason: 'invalid_token', request_id: rid },
+    })
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...cors, 'Content-Type': 'application/json' },
@@ -203,7 +244,15 @@ serve(async (req) => {
   }
 
   // Per-user rate check (post-auth).
-  if (!await rateLimitAllowed(rlAdmin, `delete:user:${user.id}`, USER_MAX, USER_WINDOW_MS, 'deny')) {
+  if (!await rateLimitAllowed(rlAdmin, `delete:user:${user.id}`, USER_MAX, USER_WINDOW_MS, 'deny', SECURITY_SOURCE)) {
+    await recordSecurityEvent(rlAdmin, {
+      name: 'ratelimit.user_blocked',
+      source: SECURITY_SOURCE,
+      outcome: 'denied',
+      subjectType: 'user',
+      subject: user.id,
+      context: { status: 429, reason: 'user_throttle', request_id: rid },
+    })
     return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
       status: 429,
       headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '3600' },
@@ -212,7 +261,20 @@ serve(async (req) => {
 
   // 1. Evidence first: the ledger cascades away with the identity, so this is the
   //    last moment it can be preserved.
-  if (!await archiveConsentEvidence(user.id)) {
+  const archive = await archiveConsentEvidence(user.id)
+  if (!archive.ok) {
+    // evidence_key_missing is the one reason here that is a deployment fault
+    // rather than one user's bad luck: it blocks EVERY deletion until an
+    // operator fixes it, and the alert threshold on this event is what turns
+    // that from a silent backlog into a page.
+    await recordSecurityEvent(rlAdmin, {
+      name: 'account.delete_failed',
+      source: SECURITY_SOURCE,
+      outcome: 'failed',
+      subjectType: 'user',
+      subject: user.id,
+      context: { status: 500, reason: archive.reason, request_id: rid },
+    })
     return new Response(JSON.stringify({ error: 'Account deletion failed.' }), {
       status: 500,
       headers: { ...cors, 'Content-Type': 'application/json' },
@@ -227,6 +289,14 @@ serve(async (req) => {
   const healthResult = await deleteHealthData(rlAdmin, user.id)
   if (!healthResult.ok) {
     console.error(`account-delete health deletion failed: ${healthResult.error}`)
+    await recordSecurityEvent(rlAdmin, {
+      name: 'account.delete_failed',
+      source: SECURITY_SOURCE,
+      outcome: 'failed',
+      subjectType: 'user',
+      subject: user.id,
+      context: { status: 500, reason: 'db_error', request_id: rid },
+    })
     return new Response(JSON.stringify({ error: 'Account deletion failed.' }), {
       status: 500,
       headers: { ...cors, 'Content-Type': 'application/json' },
@@ -236,6 +306,16 @@ serve(async (req) => {
   const remaining = Object.values(healthResult.tableCounts).reduce((a, b) => a + b, 0)
   if (remaining > 0) {
     console.error(`account-delete health deletion incomplete: ${remaining} rows remain`)
+    // A health-data boundary failure: rows the account was told would be erased
+    // are still there. count is a bounded integer, so it is safe to carry.
+    await recordSecurityEvent(rlAdmin, {
+      name: 'account.delete_failed',
+      source: SECURITY_SOURCE,
+      outcome: 'failed',
+      subjectType: 'user',
+      subject: user.id,
+      context: { status: 500, reason: 'incomplete', count: remaining, request_id: rid },
+    })
     return new Response(JSON.stringify({ error: 'Account deletion failed.' }), {
       status: 500,
       headers: { ...cors, 'Content-Type': 'application/json' },
@@ -251,6 +331,14 @@ serve(async (req) => {
   const dataError = deleteResults.find(r => r.error)?.error
   if (dataError) {
     console.error(`account-delete app data deletion failed: ${dataError.message}`)
+    await recordSecurityEvent(rlAdmin, {
+      name: 'account.delete_failed',
+      source: SECURITY_SOURCE,
+      outcome: 'failed',
+      subjectType: 'user',
+      subject: user.id,
+      context: { status: 500, reason: 'db_error', code: dataError.code, request_id: rid },
+    })
     return new Response(JSON.stringify({ error: 'Account deletion failed.' }), {
       status: 500,
       headers: { ...cors, 'Content-Type': 'application/json' },
@@ -264,11 +352,33 @@ serve(async (req) => {
   const { error: deleteAuthError } = await rlAdmin.auth.admin.deleteUser(user.id)
   if (deleteAuthError) {
     console.error(`account-delete auth deletion failed: ${deleteAuthError.message}`)
+    // The worst partial state this function can reach: the account's data is
+    // gone but the identity survives. It must be visible to an operator.
+    await recordSecurityEvent(rlAdmin, {
+      name: 'account.delete_failed',
+      source: SECURITY_SOURCE,
+      outcome: 'failed',
+      subjectType: 'user',
+      subject: user.id,
+      context: { status: 500, reason: 'db_error', request_id: rid },
+    })
     return new Response(JSON.stringify({ error: 'Account deletion failed.' }), {
       status: 500,
       headers: { ...cors, 'Content-Type': 'application/json' },
     })
   }
+
+  // Recorded AFTER the identity is gone, deliberately. The digest is salted, so
+  // this row proves an account was deleted without naming which one -- an audit
+  // trail that survives erasure without defeating it.
+  await recordSecurityEvent(rlAdmin, {
+    name: 'account.delete_succeeded',
+    source: SECURITY_SOURCE,
+    outcome: 'succeeded',
+    subjectType: 'user',
+    subject: user.id,
+    context: { status: 200, request_id: rid },
+  })
 
   return new Response(JSON.stringify({ ok: true }), {
     status: 200,

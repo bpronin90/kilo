@@ -84,6 +84,7 @@ The `scripts/` directory contains focused tools for:
 - migration drift detection;
 - Edge Function deployment and verification;
 - health-deletion monitoring and end-to-end verification;
+- production security-event monitoring;
 - audit and static web-export smoke checks.
 
 Use the scripts exposed by the root package manifest instead of copying their
