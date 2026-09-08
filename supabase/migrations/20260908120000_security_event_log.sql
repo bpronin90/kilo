@@ -208,9 +208,25 @@ create index if not exists security_events_subject_occurred_idx
 
 -- Locked down exactly like kilo.rate_limit_hits and
 -- kilo.product_measurement_events: RLS enabled with NO policies, so neither
--- anon nor authenticated can read or write it. Only service_role (BYPASSRLS)
--- and the security-definer functions below ever touch these rows.
+-- anon nor authenticated can read or write it. Only service_role and the
+-- security-definer functions below ever touch these rows.
 alter table kilo.security_events enable row level security;
+
+-- SELECT for service_role, and nothing else.
+--
+-- This is the investigation path docs/security-monitoring.md documents: an
+-- incident responder correlates by subject_digest and context.request_id by
+-- querying this table directly. Without the grant those queries fail with
+-- permission denied -- BYPASSRLS bypasses row policies, not table privileges,
+-- and the custom `kilo` schema has no default-privilege grant for new tables
+-- (see 20260615120000_note_first_schema.sql), so nothing confers it implicitly.
+--
+-- Deliberately SELECT only. INSERT stays behind kilo.record_security_event so
+-- every row is catalogued, classified, digested, and sanitized; UPDATE is
+-- withheld because an audit trail that can be edited is not one; and DELETE is
+-- withheld so the retention sweep is the only thing that removes a row. The
+-- security-definer functions below are unaffected -- they run as their owner.
+grant select on kilo.security_events to service_role;
 
 comment on table kilo.security_events is
   'Append-only production security-event log. Stores no raw user id, IP, token, error text, or health value; subjects are salted digests. 90-day retention, swept by kilo.purge_security_events().';
@@ -422,6 +438,20 @@ begin
   -- 60/minute/event-name over a 90-day retention bounds the worst sustained
   -- case at roughly 7.8M rows per event name, and the realistic case at
   -- approximately zero.
+  --
+  -- The advisory lock is what makes that bound actually hold. Without it the
+  -- count and the insert are not atomic: under READ COMMITTED, N concurrent
+  -- transactions can each observe 59 committed rows before any of them commits,
+  -- and all N then insert -- so a flood spread across Edge Function isolates
+  -- (exactly the shape these events are recorded on) overshoots the cap by the
+  -- concurrency, not by one. Same idiom, and the same reason, as
+  -- kilo.rate_limit_check in 20260622120001_edge_rate_limit.sql: the lock is
+  -- transaction-scoped and keyed by event name, so distinct events never
+  -- contend and the serialized section is one indexed count plus one insert.
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtext('security_event:' || p_event_name)
+  );
+
   select count(*) into v_recent
   from kilo.security_events e
   where e.event_name = p_event_name

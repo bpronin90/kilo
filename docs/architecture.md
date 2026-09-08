@@ -194,7 +194,8 @@ The health-deletion monitor above watches one queue. This one watches the
 server's security decisions.
 
 `.github/workflows/security-event-monitor.yml` runs
-`scripts/check-security-events.mjs` hourly against
+`scripts/check-security-events.mjs` hourly, against a deliberately wider
+90-minute window, reading
 `kilo.security_event_monitor_snapshot(interval)`, added by
 `supabase/migrations/20260908120000_security_event_log.sql`. The accessor
 returns windowed counts by event name, severity, and outcome, a distinct-subject
@@ -216,9 +217,19 @@ cannot downgrade its own event; the subject is a salted digest rather than a raw
 user id or IP, so one actor can be followed across endpoints while the log names
 nobody; and context is an allow-list of bounded scalars, so no message, header,
 token, or health value can be stored even by a caller that sends one. Ingest is
-capped per event name per minute, because several of these events fire on
-requests the server is *rejecting* and their volume is therefore chosen by the
-caller.
+capped per event name per minute -- serialized by a transaction-scoped advisory
+lock, the same idiom `kilo.rate_limit_check` uses, so the bound holds under
+concurrency instead of being overshot by however many isolates raced -- because
+several of these events fire on requests the server is *rejecting* and their
+volume is therefore chosen by the caller.
+
+`service_role` holds `select` on the table and nothing else: that is the
+documented investigation path, and `BYPASSRLS` alone would not have granted it.
+
+The window overlaps the schedule on purpose: each run examines only the minutes
+before its own start, so a window tiled to an hourly cron left a permanent hole
+whenever GitHub delayed two consecutive runs more than an hour apart. Scheduled
+runs are also exempt from `cancel-in-progress` for the same reason.
 
 Retention is 90 days, swept daily by the `security-event-purge` pg_cron entry --
 long enough that an incident found weeks later still has evidence, short enough

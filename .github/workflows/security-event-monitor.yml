@@ -22,8 +22,20 @@ name: Security Event Monitor
 # worse than no monitor.
 on:
   schedule:
-    # Hourly, matching the monitor's default 60-minute aggregation window, so
-    # consecutive runs tile the timeline rather than overlapping it.
+    # Hourly, against a deliberately WIDER 90-minute aggregation window.
+    #
+    # Tiling the window to the schedule (60/60) looked tidy and was wrong:
+    # GitHub delays scheduled runs under load and can drop them entirely, and
+    # each invocation queries only the N minutes preceding its own start. Two
+    # consecutive starts more than 60 minutes apart therefore left the interval
+    # between them permanently unexamined -- a monitoring hole that nothing
+    # reported, which is the exact failure class this workflow exists to close.
+    #
+    # 90 against an hourly schedule gives 30 minutes of jitter tolerance, at the
+    # cost of consecutive runs re-reporting an event in the overlap. A duplicate
+    # finding is cheap; a silent gap is not. See docs/security-monitoring.md for
+    # the residual limit (a run skipped by more than 30 minutes still gaps, and
+    # the durable 90-day log is what makes that recoverable).
     - cron: '10 * * * *'
   workflow_dispatch:
     inputs:
@@ -38,13 +50,23 @@ on:
       - 'supabase/functions/_shared/security-event.ts'
       - 'supabase/migrations/20260908120000_security_event_log.sql'
       - '.github/workflows/security-event-monitor.yml'
+      # The instrumented endpoints and the limiter. security-event-monitor.test.mjs
+      # reads all four directly to assert that each still records the events the
+      # thresholds are written against; without them here, a PR touching only one
+      # endpoint could delete its instrumentation without ever running the guard.
+      - 'supabase/functions/_shared/rate-limit.ts'
+      - 'supabase/functions/account-export/index.ts'
+      - 'supabase/functions/account-delete/index.ts'
+      - 'supabase/functions/health-data-delete/index.ts'
 
 permissions:
   contents: read
 
 concurrency:
   group: security-event-monitor-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Superseding an in-flight PR check is fine; cancelling a scheduled monitor run
+  # is how a gap gets created, which is the thing being guarded against here.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   security-events:
@@ -75,6 +97,7 @@ jobs:
           # docs/security-monitoring.md, "Access and least privilege", for the
           # out-of-band role setup.
           SUPABASE_SECURITY_MONITOR_URL: ${{ secrets.SUPABASE_SECURITY_MONITOR_URL }}
+          # Empty on a scheduled run, so the script's 90-minute default applies.
           KILO_SECURITY_WINDOW_MINUTES: ${{ inputs.window_minutes }}
         run: node scripts/check-security-events.mjs
 

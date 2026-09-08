@@ -19,7 +19,7 @@
 
 begin;
 
-select plan(50);
+select plan(55);
 
 -- ---------------------------------------------------------------------------
 -- Catalog: an unknown value RAISES rather than recording something silent
@@ -262,6 +262,29 @@ select ok(
   not has_table_privilege('anon', 'kilo.security_events', 'select'),
   'anon cannot read the security log'
 );
+-- The documented investigation path in docs/security-monitoring.md queries this
+-- table directly as service_role. BYPASSRLS bypasses row policies, not table
+-- privileges, and the custom kilo schema has no default-privilege grant, so
+-- without an explicit grant those runbook queries fail with permission denied.
+select ok(
+  has_table_privilege('service_role', 'kilo.security_events', 'select'),
+  'service_role can read the log, so the investigation runbook actually works'
+);
+-- Read only. Writes stay behind the RPC so every row is catalogued and
+-- sanitized; there is no update path at all; and the retention sweep is the
+-- only thing that removes a row.
+select ok(
+  not has_table_privilege('service_role', 'kilo.security_events', 'insert'),
+  'service_role cannot bypass the recording RPC to insert a raw row'
+);
+select ok(
+  not has_table_privilege('service_role', 'kilo.security_events', 'update'),
+  'nothing can edit a recorded event — an audit trail that can be edited is not one'
+);
+select ok(
+  not has_table_privilege('service_role', 'kilo.security_events', 'delete'),
+  'only the retention sweep removes rows'
+);
 select ok(
   not has_table_privilege('authenticated', 'kilo.security_events', 'select'),
   'authenticated cannot read the security log'
@@ -351,6 +374,19 @@ select is(
   (select count(*)::int from kilo.security_events where event_name = 'auth.token_missing'),
   60,
   'the refused event added no row'
+);
+
+-- Without serialization the cap does not hold: under READ COMMITTED, N
+-- concurrent transactions can each read 59 committed rows and all insert, so a
+-- flood spread across Edge Function isolates overshoots by the concurrency
+-- rather than by one. A single-session pgTAP file cannot reproduce that
+-- interleaving, so this asserts the mechanism instead -- that the function
+-- takes a transaction-scoped advisory lock keyed by event name before counting.
+select ok(
+  pg_get_functiondef(
+    'kilo.record_security_event(text, text, text, text, text, jsonb)'::regprocedure
+  ) like '%pg_advisory_xact_lock%security_event:%',
+  'the ingest cap is serialized per event name, so the bound actually holds'
 );
 
 -- The cap is per event name, so a flood of one event cannot suppress a

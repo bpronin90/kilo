@@ -68,8 +68,11 @@ server-side, and `supabase/tests/security-events.test.sql` asserts them.
 6. **Best-effort at the call site.** Recording must never change the response a
    user receives. A security log that can fail an export is worse than one that
    misses a row.
-7. **Bounded volume.** Ingest is capped per event name per minute, so an actor
-   who can trigger an event can raise the alarm but cannot fill the table.
+7. **Bounded volume.** Ingest is capped per event name per minute, and the
+   count-and-insert is serialized by a transaction-scoped advisory lock so the
+   bound holds under concurrency rather than being overshot by however many
+   isolates raced. An actor who can trigger an event can raise the alarm but
+   cannot fill the table.
 
 ## Event catalog
 
@@ -166,9 +169,17 @@ another, and only the second catches a sweep that is scheduled but failing.
 | Identity | Can |
 |----------|-----|
 | `anon`, `authenticated` | Nothing. RLS is enabled with no policies, no table grants exist, and neither can execute any of the functions |
-| `service_role` | Record events; read the table directly for an investigation |
+| `service_role` | Record events through the RPC, and `SELECT` the table directly for an investigation — no `INSERT`, `UPDATE`, or `DELETE` |
 | `kilo_security_monitor` | Execute `kilo.security_event_monitor_snapshot(interval)` and nothing else |
 | Nobody | `kilo.security_event_subject_digest(text)`. It is granted to no role at all, so it cannot be used as an oracle to confirm a guessed IP |
+
+`service_role`'s read access is an explicit `grant select`, not a consequence of
+`BYPASSRLS`: that attribute bypasses row policies, never table privileges, and
+the custom `kilo` schema has no default-privilege grant for new tables. The
+write verbs are deliberately withheld even from `service_role` — `INSERT` stays
+behind `kilo.record_security_event` so every row is catalogued, classified,
+digested, and sanitized; there is no `UPDATE` path at all, because an audit trail
+that can be edited is not one; and `DELETE` belongs to the retention sweep alone.
 
 The migration creates the `kilo_security_monitor` role and its single grant, so
 no manual grant step is required. Exactly one action remains for an authorized
@@ -207,8 +218,22 @@ It alerts when any of these is true:
 - the `security-event-purge` cron entry is missing or inactive, or rows have
   survived past the retention period.
 
-The window is `KILO_SECURITY_WINDOW_MINUTES` (default 60, matching the hourly
-schedule so consecutive runs tile the timeline rather than overlapping it).
+The window is `KILO_SECURITY_WINDOW_MINUTES`, and its default of **90 minutes is
+deliberately wider than the hourly schedule**. Each run examines only the N
+minutes before its own start, so a window tiled to the schedule (60 against
+hourly) left a permanent hole whenever two consecutive runs started more than an
+hour apart — and GitHub delays scheduled runs under load, and can drop one
+outright. The 30-minute overlap closes ordinary jitter; consecutive runs then
+re-report an event that falls in the overlap, which is the cheap direction to be
+wrong in. Scheduled runs are also exempt from the workflow's
+`cancel-in-progress`, since cancelling a monitor run is itself a way to create a
+gap.
+
+The residual limit, stated plainly: a run skipped by more than 30 minutes still
+leaves an unexamined interval. What makes that recoverable rather than lost is
+that the events are durable for 90 days — widen the window by hand
+(`KILO_SECURITY_WINDOW_MINUTES=1440`) or query the table directly and the
+evidence is still there. Alert latency degrades; evidence does not.
 
 **Silence is not a finding.** A window with zero events is the ordinary case for
 an application this size. Alerting on quiet would train an operator to ignore
@@ -282,8 +307,9 @@ Start here when the monitor fires, or when
    *what* against the system that owns it.
 
 7. **Never delete rows to clear a finding.** The log is append-only by
-   construction — there is no update path and the only delete path is the
-   retention sweep — and it is the evidence the investigation runs on. Widen a
+   construction — no role holds `UPDATE` or `INSERT` on the table, and the only
+   delete path is the retention sweep — and it is the evidence the investigation
+   runs on. Widen a
    threshold with an env override and record why; do not quiet the source.
 
 ## Verification

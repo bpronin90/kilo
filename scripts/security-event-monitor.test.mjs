@@ -60,7 +60,7 @@ function test(name, fn) {
 }
 
 const DEFAULT_THRESHOLDS = {
-  windowMinutes: 60,
+  windowMinutes: 90,
   maxAuthFailures: 100,
   maxAuthSubjects: 20,
   maxRateLimitBlocks: 200,
@@ -320,6 +320,17 @@ test('an empty log reports no retention finding rather than fabricating one', ()
 });
 
 // --- thresholds ---------------------------------------------------------
+
+test('the default window is wider than the hourly schedule, so jitter cannot open a gap', () => {
+  // A window tiled to the schedule (60/60) leaves the interval between two late
+  // starts permanently unexamined, because each run only ever looks backwards
+  // from its own start time. The overlap is the fix and is load-bearing.
+  assert.ok(
+    DEFAULT_THRESHOLDS.windowMinutes > 60,
+    'the default window must exceed the 60-minute schedule interval',
+  );
+  assert.deepEqual(thresholdsFromEnv({}).windowMinutes, DEFAULT_THRESHOLDS.windowMinutes);
+});
 
 test('thresholdsFromEnv reads overrides and falls back to documented defaults', () => {
   assert.deepEqual(thresholdsFromEnv({}), DEFAULT_THRESHOLDS);

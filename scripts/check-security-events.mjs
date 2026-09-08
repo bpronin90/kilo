@@ -73,7 +73,15 @@ const CONNECTION_ENV = 'SUPABASE_SECURITY_MONITOR_URL';
 // Defaults, all overridable by env so an incident can widen or tighten them
 // without a code change.
 //
-//   WINDOW           60m  matches the accessor's default aggregation window.
+//   WINDOW           90m  DELIBERATELY WIDER than the hourly schedule. Each run
+//                         queries only the N minutes before its own start, and
+//                         GitHub delays scheduled runs under load (and can drop
+//                         one entirely), so a window tiled to the schedule left
+//                         the interval between two late starts permanently
+//                         unexamined. 90 against an hourly cron gives 30 minutes
+//                         of jitter tolerance; consecutive runs re-report an
+//                         event in the overlap, which is the cheap direction to
+//                         be wrong in.
 //   AUTH_FAILURES    100  auth.token_missing + auth.token_rejected in the
 //                         window. Kilo's real traffic produces single digits;
 //                         100 is comfortably above a flapping client and far
@@ -92,7 +100,7 @@ const CONNECTION_ENV = 'SUPABASE_SECURITY_MONITOR_URL';
 //                         the user asked for, so the threshold is deliberately
 //                         low.
 const DEFAULTS = {
-  windowMinutes: 60,
+  windowMinutes: 90,
   maxAuthFailures: 100,
   maxAuthSubjects: 20,
   maxRateLimitBlocks: 200,
@@ -528,7 +536,8 @@ function main() {
   if (alert.healthy) {
     console.log(rendered);
     console.log(
-      `security-events: ok — no finding in the last ${alert.window_minutes}m; ` +
+      `security-events: ok — no finding in the last ${alert.window_minutes}m ` +
+      `(window overlaps the hourly schedule on purpose); ` +
         `retention sweep active and within ${alert.retention_days}d.`,
     );
     process.exit(0);
