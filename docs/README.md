@@ -35,6 +35,7 @@ instead of copying the same contract into several files.
 
 | Document | Owns |
 |----------|------|
+| [Security Incident Response](security-incident-response.md) | Vulnerability intake, triage, containment, recovery, security-fix release, and post-incident review. |
 | [Phone Runbook](phone-runbook.md) | WSL/Expo development, EAS builds, device installation, and runtime policy. |
 | [Play Store Readiness](play-store-readiness.md) | Operator-owned Play Console, closed-testing, listing, and Android release status. |
 | [Beta Tester Guide](tester-guide.md) | Non-technical installation, test, and feedback instructions. |
