@@ -58,6 +58,32 @@ describe('routine image allowlist', () => {
     expect(JSON.stringify(summary)).not.toContain('secret');
   });
 
+  test('timed holds render as seconds, never a rep range or a blank Latest line', () => {
+    const RAW_TIMED = 'Monday\n-Plank: 3x45-60s\n55\n-Wall Sit: 2x30s\n30\n';
+    const plain = buildRoutineShareSummary({ rawText: RAW_TIMED });
+    expect(plain.sections[0].exercises).toEqual([
+      { name: 'Plank', setCount: 3 },
+      { name: 'Wall Sit', setCount: 2 },
+    ]);
+    const summary = buildRoutineShareSummary({ rawText: RAW_TIMED, includeNumbers: true });
+    expect(summary.sections[0].exercises[0]).toEqual({
+      name: 'Plank', setCount: 3, repRange: null, holdRange: { lo: 45, hi: 60 },
+      latestSets: [{ reps: null, weight: null, unit: null, holdSeconds: 55 }],
+    });
+    expect(summary.sections[0].exercises[1]).toEqual({
+      name: 'Wall Sit', setCount: 2, repRange: null, holdRange: { lo: 30, hi: 30 },
+      latestSets: [{ reps: null, weight: null, unit: null, holdSeconds: 30 }],
+    });
+    let component;
+    render.act(() => { component = render.create(<RoutineShareCard summary={summary} />); });
+    const text = content(component.root);
+    expect(text).toContain('45-60s hold');
+    expect(text).toContain('30s hold');
+    expect(text).toContain('Latest: 55s hold');
+    for (const absent of ['60-60', 'reps', 'Latest:  ', 'Latest: ;']) expect(text).not.toContain(absent);
+    render.act(() => component.unmount());
+  });
+
   test.each([null, '', 'not a routine', 'x'.repeat(200001)])('unparseable or empty content has no shareable exercises', rawText => {
     expect(buildRoutineShareSummary({ rawText }).sections).toEqual([]);
   });

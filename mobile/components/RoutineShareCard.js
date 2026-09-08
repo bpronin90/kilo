@@ -5,6 +5,12 @@ import { useThemedStyles } from '../theme/ThemeContext';
 import { LightColors } from '../theme/colors';
 import { buildRoutineShareSummary, shareRoutineImage } from '../lib/interoperability/routineShare';
 
+// A timed hold declares seconds, not reps. Collapse an equal lo/hi to a single
+// value so `2x60s` reads "60s hold", not "60-60s hold".
+function formatHold({ lo, hi }) {
+  return lo === hi ? `${lo}s hold` : `${lo}-${hi}s hold`;
+}
+
 // This view accepts only the allowlisted image model. In particular, it never
 // receives raw_text, annotations, check-ins, Recovery state or analytics.
 export const RoutineShareCard = React.forwardRef(function RoutineShareCard({ summary, onLayout }, ref) {
@@ -24,12 +30,14 @@ export const RoutineShareCard = React.forwardRef(function RoutineShareCard({ sum
               <Text style={styles.detail}>
                 {exercise.setCount == null ? 'Sets not specified' : `${exercise.setCount} ${exercise.setCount === 1 ? 'set' : 'sets'}`}
                 {exercise.repRange ? ` · ${exercise.repRange.lo}-${exercise.repRange.hi} reps` : ''}
+                {exercise.holdRange ? ` · ${formatHold(exercise.holdRange)}` : ''}
               </Text>
               {exercise.latestSets?.length > 0 && (
                 <Text style={styles.detail}>
                   {'Latest: ' + exercise.latestSets.map(set => [
                     set.weight != null ? `${set.weight} ${set.unit || 'lb'}` : null,
                     set.reps != null ? `${set.reps} reps` : null,
+                    set.holdSeconds != null ? `${set.holdSeconds}s hold` : null,
                   ].filter(Boolean).join(' × ')).join('; ')}
                 </Text>
               )}

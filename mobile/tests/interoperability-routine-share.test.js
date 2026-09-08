@@ -21,10 +21,6 @@ import { parseWorkoutNote } from '../lib/parser';
 import { LogActiveRoutineCard } from '../components/LogActiveRoutineCard';
 import { LogPreviousRoutines } from '../components/LogPreviousRoutines';
 
-// Icon font loading is unrelated to sharing and can finish after this suite's
-// renderer has torn down. Keep that platform resource synchronous here.
-jest.mock('@expo/vector-icons/MaterialIcons', () => 'MaterialIcons');
-
 // Canonical grammar: an exercise header is a dash immediately followed by a
 // non-space (`-Bench Press`); set rows are dash-space (`- 135 5`). #581's
 // review caught the spaced-header mistake — these fixtures use the real thing.

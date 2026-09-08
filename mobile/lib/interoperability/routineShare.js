@@ -33,6 +33,7 @@ import { Platform, Share } from 'react-native';
 import { Alert } from '../platformAlert';
 import { parseWorkoutNote } from '../parser/workoutNote';
 import { parseExerciseHeader } from '../parser/deloadGenerator';
+import { parseHeaderDeclaration } from '../parser/workoutRow';
 
 export const ROUTINE_SHARE_MARKER = '#kilo-routine';
 export const ROUTINE_SHARE_VERSION = 'v1';
@@ -173,18 +174,29 @@ export function buildRoutineShareSummary({ title, rawText, includeNumbers = fals
       subheading: section.subheading || null,
       exercises: (section.exercises || []).map(exercise => {
         const declaration = parseExerciseHeader(exercise.raw_header);
+        // A `2x60s` header parses as `2` sets of `60` under parseExerciseHeader,
+        // which cannot tell a timed hold from a rep range. Ask the row grammar
+        // whether the declaration is timed so the numbers below stay honest.
+        const timed = parseHeaderDeclaration(exercise.raw_header)?.type === 'duration';
         const latest = (exercise.rows || []).filter(row => row.sets?.length).slice(-1)[0];
         const item = {
           name: exercise.name,
           setCount: declaration?.sets ?? latest?.sets.length ?? null,
         };
         if (includeNumbers) {
-          item.repRange = declaration ? { lo: declaration.repLo, hi: declaration.repHi } : null;
+          const declaredRange = declaration ? { lo: declaration.repLo, hi: declaration.repHi } : null;
+          item.repRange = timed ? null : declaredRange;
+          // Only timed declarations get a hold range; a rep exercise keeps its
+          // established `{ name, setCount, repRange, latestSets }` shape.
+          if (timed) item.holdRange = declaredRange;
           item.latestSets = (latest?.sets || []).map(set => ({
             reps: set.rep_count ?? null,
             weight: set.weight_value ?? null,
             unit: set.weight_unit ?? null,
-          }));
+            // Timed holds carry seconds, not reps; only surface the key when the
+            // row actually logged one so a rep-only set keeps its old shape.
+            ...(set.duration_seconds != null ? { holdSeconds: set.duration_seconds } : null),
+          })).filter(set => set.reps != null || set.weight != null || set.holdSeconds != null);
         }
         return item;
       }),
