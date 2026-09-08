@@ -83,8 +83,8 @@ reappearing.
   [the documentation index](README.md).
 - Server-owned endpoints record classified, pseudonymized security events with
   a 90-day retention period; production alerting and the investigation runbook
-  live in [Security Monitoring](security-monitoring.md). Alerting requires an
-  operator-provisioned monitor credential.
+  live in [Security Monitoring](security-monitoring.md). The production security
+  monitor is credentialed and scheduled to run hourly.
 
 ## Runtime and Distribution
 
