@@ -43,24 +43,30 @@ security-critical change, the author and human security reviewer should cover:
 6. **Verification:** which focused tests, database/RLS checks, dependency or
    deployment checks, and manual checks support the conclusion?
 
-The reviewer records assumptions, findings, accepted residual risk, and the
-reviewer identity in the PR. A finding must be fixed, explicitly accepted by
-an authorized owner, or block release; silence is not sign-off.
+The reviewer records assumptions, findings, accepted residual risk, reviewer
+identity, review date, and the full 40-character PR head SHA in the PR. A
+finding must be fixed, explicitly accepted by an authorized owner, or block
+release; silence is not sign-off.
 
 ## Sign-off and release
 
 The PR's ordinary review remains the system of record. A security-critical PR
 must have an explicit human security sign-off recorded in its security section
-before it is eligible for release. The sign-off is additional to required CI,
-database-security, dependency-audit, migration-drift, and ordinary review
+before it is eligible for release. The sign-off is valid only when its
+reviewed head SHA exactly matches the current full PR head SHA. Any subsequent
+push invalidates the prior security sign-off; the author must mark it pending
+and obtain a renewed sign-off for the new head. This is additional to required
+CI, database-security, dependency-audit, migration-drift, and ordinary review
 checks; a passing automated check cannot substitute for the human review.
 
 The release operator verifies that sign-off is present for every
-security-critical PR included in the release. If the PR identifies accepted
-risk, the release record must retain that decision and its owner. Changes with
-material uncertainty, novel cryptography, credential/signing-key custody,
-external exposure, or a high-impact privacy/security failure mode should also
-receive specialist or external review before release.
+security-critical PR included in the release, that the impact field contains
+an explicit choice, and that the recorded reviewed head SHA equals the exact
+current head. If the PR identifies accepted risk, the release record must
+retain that decision and its owner. Changes with material uncertainty, novel
+cryptography, credential/signing-key custody, external exposure, or a
+high-impact privacy/security failure mode should also receive specialist or
+external review before release.
 
 ## Keeping the process lightweight
 
