@@ -5,7 +5,6 @@ import {
   stampWrite,
   stampTombstone,
   isTombstone,
-  isServerRow,
   getClientId,
   enqueueDirty,
   getDirtyRecords,
@@ -80,23 +79,39 @@ export async function loadWorkoutNotes() {
 // enqueue can reject on its own — leaving a note on the device with no pending
 // upload intent. A caller that retries `add` mints a fresh id, so without a
 // durable correlation the retry creates a duplicate; this marker is that
-// correlation, keyed on the create payload so it survives an app restart and is
-// dropped the moment the enqueue succeeds. Not a sync table, never exported.
+// correlation, keyed on the create payload so it survives an app restart. It is
+// retired the moment the enqueue succeeds; a marker that outlives that — its
+// row was swept into the queue by a later reconciliation pass before the user
+// retried — is aged out by TTL so it cannot indefinitely hijack a genuinely new
+// routine that happens to have a byte-identical title and body. Not a sync
+// table, never exported.
 const PENDING_WORKOUT_NOTE_CREATES_KEY = 'kilo_pending_workout_note_creates_v1';
 const PENDING_WORKOUT_NOTE_CREATES_CAP = 20;
+const PENDING_WORKOUT_NOTE_CREATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function workoutNoteCreateSignature(note) {
   return JSON.stringify([note?.title ?? '', note?.raw_text ?? '']);
 }
 
 async function readPendingWorkoutNoteCreates() {
+  let raw;
   try {
-    const list = await readList(PENDING_WORKOUT_NOTE_CREATES_KEY);
-    return list.filter((e) => e && typeof e.sig === 'string' && e.id != null);
+    raw = await readList(PENDING_WORKOUT_NOTE_CREATES_KEY);
   } catch {
     // A corrupt or unreadable marker store must never block a create.
     return [];
   }
+  const cutoff = Date.now() - PENDING_WORKOUT_NOTE_CREATE_TTL_MS;
+  const live = raw.filter(
+    (e) =>
+      e &&
+      typeof e.sig === 'string' &&
+      e.id != null &&
+      typeof e.at === 'number' &&
+      e.at >= cutoff,
+  );
+  if (live.length !== raw.length) await writePendingWorkoutNoteCreates(live);
+  return live;
 }
 
 async function writePendingWorkoutNoteCreates(list) {
@@ -114,7 +129,7 @@ async function writePendingWorkoutNoteCreates(list) {
 async function rememberPendingWorkoutNoteCreate(sig, id) {
   const list = await readPendingWorkoutNoteCreates();
   const rest = list.filter((e) => e.sig !== sig && e.id !== id);
-  await writePendingWorkoutNoteCreates([...rest, { sig, id }]);
+  await writePendingWorkoutNoteCreates([...rest, { sig, id, at: Date.now() }]);
 }
 
 async function forgetPendingWorkoutNoteCreate(id) {
@@ -124,24 +139,23 @@ async function forgetPendingWorkoutNoteCreate(id) {
 }
 
 // Resolve the id a `saveWorkoutNoteItem` create should actually use. When a
-// prior attempt for this exact payload stranded a row locally without an
-// enqueue, reuse that row's id so the retry COMPLETES the original create
-// instead of adding a second note. A prior row that has since synced (came back
-// from the server, or is sitting in the dirty queue) is not stranded — the
-// marker is stale, so drop it and let this be a genuinely new create.
+// prior attempt for this exact payload left a live local row behind, reuse that
+// row's id so the retry COMPLETES the original create instead of adding a
+// second note — regardless of whether a reconciliation pass has since swept
+// that row into the sync queue (that is still the same create finishing, not a
+// new one). Only a marker whose row is gone or tombstoned is genuinely stale.
 async function resolveWorkoutNoteCreateId(note, list) {
   const sig = workoutNoteCreateSignature(note);
   const pending = await readPendingWorkoutNoteCreates();
   const marker = pending.find((e) => e.sig === sig);
   if (marker) {
     const priorRow = list.find((n) => n.id === marker.id);
-    const dirty = await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES);
-    const priorProgressed =
-      !priorRow ||
-      isTombstone(priorRow) ||
-      isServerRow(priorRow) ||
-      dirty.some((r) => r?.id === marker.id);
-    if (!priorProgressed) return marker.id;
+    if (priorRow && !isTombstone(priorRow)) {
+      // Refresh the marker's age so an actively-retrying caller never races the
+      // TTL; it is retired for good once this attempt's enqueue succeeds.
+      await rememberPendingWorkoutNoteCreate(sig, marker.id);
+      return marker.id;
+    }
     await forgetPendingWorkoutNoteCreate(marker.id);
   }
   await rememberPendingWorkoutNoteCreate(sig, note.id);

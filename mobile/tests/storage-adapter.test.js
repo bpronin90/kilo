@@ -294,6 +294,25 @@ describe('workout-note add is id-stable after a partial cloud write (#997)', () 
     await expectCompletedCreate(strandedId);
   });
 
+  it('reuses the id even when a reconciliation pass swept the stranded row into the queue before the retry', async () => {
+    failFirstEnqueue();
+    const { ref } = mountNotes();
+
+    const strandedId = await strandACreate(ref.current.add);
+
+    // Simulate the sync engine's unbaselined reconciliation discovering the
+    // stranded local row and enqueueing it before the user gets around to
+    // retrying. The row is now "progressed", but the retry is still the SAME
+    // create finishing — it must not mint a second note.
+    const strandedRow = (await loadWorkoutNotes()).find((n) => n.id === strandedId);
+    await syncQueue.enqueueDirty(syncQueue.SYNC_TABLES.WORKOUT_NOTES, strandedRow);
+
+    let created;
+    await act(async () => { created = await ref.current.add(TITLE, BODY); });
+    expect(created.id).toBe(strandedId);
+    await expectCompletedCreate(strandedId);
+  });
+
   it('a genuinely new create with the same payload after the first one completed gets its own id', async () => {
     const { ref } = mountNotes();
 
@@ -307,5 +326,26 @@ describe('workout-note add is id-stable after a partial cloud write (#997)', () 
     expect(secondNote.id).not.toBe(firstNote.id);
     const rows = (await loadWorkoutNotes()).filter((n) => n.title === TITLE);
     expect(rows).toHaveLength(2);
+  });
+
+  it('an aged-out marker no longer hijacks a later byte-identical routine', async () => {
+    failFirstEnqueue();
+    const { ref } = mountNotes();
+
+    await strandACreate(ref.current.add);
+
+    // Backdate the persisted marker past its TTL, as if the stranded create's
+    // row had been quietly reconciled weeks ago and never manually retried.
+    const MARKER_KEY = 'kilo_pending_workout_note_creates_v1';
+    const markers = JSON.parse(await AsyncStorage.getItem(MARKER_KEY));
+    markers.forEach((m) => { m.at = Date.now() - 30 * 24 * 60 * 60 * 1000; });
+    await AsyncStorage.setItem(MARKER_KEY, JSON.stringify(markers));
+
+    let fresh;
+    await act(async () => { fresh = await ref.current.add(TITLE, BODY); });
+
+    const rows = (await loadWorkoutNotes()).filter((n) => n.title === TITLE);
+    expect(rows).toHaveLength(2);
+    expect(rows.some((n) => n.id === fresh.id)).toBe(true);
   });
 });
