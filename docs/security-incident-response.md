@@ -32,14 +32,18 @@ all facts.
 ## Severity, targets, and exceptions
 
 Severity describes impact and realistic exploitability, not the amount of work
-needed to fix it. The triage owner may raise severity when evidence changes.
+needed to fix it. Separately, the triage owner assigns an explicit priority
+(P0–P3) to every record, based on urgency, exposure, and the response target;
+the owner may raise or lower the default below only with a recorded rationale.
+The record must retain both severity and owner-assigned priority. The triage
+owner may also raise severity when evidence changes.
 
-| Severity | Typical Kilo impact | Acknowledge / triage | Target containment or fix | Escalation |
-| --- | --- | --- | --- | --- |
-| Critical | Active exploitation, exposed signing/service credential, authentication or authorization bypass, material health-data exposure, or release/update integrity compromise | 4 hours | Contain immediately; remediate or disable the affected path within 24 hours | Owner and security decision-maker immediately; maintain an incident bridge until contained |
-| High | Remotely exploitable issue with meaningful user, account, health-data, production-service, or dependency impact, but no confirmed active compromise | 1 business day | 7 calendar days | Escalate if containment is unavailable or the target will slip |
-| Medium | Narrowly exploitable or limited-scope weakness with a credible but bounded impact | 3 business days | 30 calendar days | Escalate on repeated deferral or increasing exposure |
-| Low | Defense-in-depth, low-likelihood, or non-sensitive impact with no practical abuse path | 5 business days | 90 calendar days or the next planned maintenance window | Re-triage if the threat model changes |
+| Severity | Typical Kilo impact | Default owner-assigned priority | Acknowledge / triage | Target containment or fix | Escalation |
+| --- | --- | --- | --- | --- | --- |
+| Critical | Active exploitation, exposed signing/service credential, authentication or authorization bypass, material health-data exposure, or release/update integrity compromise | P0 (owner confirms or records an override) | 4 hours | Contain immediately; remediate or disable the affected path within 24 hours | Owner and security decision-maker immediately; maintain an incident bridge until contained |
+| High | Remotely exploitable issue with meaningful user, account, health-data, production-service, or dependency impact, but no confirmed active compromise | P1 (owner confirms or records an override) | 1 business day | 7 calendar days | Escalate if containment is unavailable or the target will slip |
+| Medium | Narrowly exploitable or limited-scope weakness with a credible but bounded impact | P2 (owner confirms or records an override) | 3 business days | 30 calendar days | Escalate on repeated deferral or increasing exposure |
+| Low | Defense-in-depth, low-likelihood, or non-sensitive impact with no practical abuse path | P3 (owner confirms or records an override) | 5 business days | 90 calendar days or the next planned maintenance window | Re-triage if the threat model changes |
 
 Targets are operating goals, not permission to leave users exposed. The triage
 owner records a rationale for any exception, compensating control, new due date,
