@@ -595,32 +595,35 @@ test('a caller can never set its own severity', () => {
   );
 });
 
+// Every ratelimit.* event is owned by _shared/rate-limit.ts, not by the
+// endpoints: only the limiter can tell an exhausted bucket from an outage, and
+// an endpoint that classified a false return itself logged a quota throttle
+// during a database outage.
 const REQUIRED_EVENTS = {
   'account-export': [
-    'ratelimit.ip_blocked',
     'auth.token_missing',
     'auth.token_rejected',
-    'ratelimit.user_blocked',
     'server.error',
     'account.export_succeeded',
   ],
   'account-delete': [
-    'ratelimit.ip_blocked',
     'auth.token_missing',
     'auth.token_rejected',
-    'ratelimit.user_blocked',
     'account.delete_failed',
     'account.delete_succeeded',
   ],
   'health-data-delete': [
     'auth.token_missing',
     'auth.token_rejected',
-    'ratelimit.ip_blocked',
-    'ratelimit.user_blocked',
     'authz.denied',
     'server.error',
     'health.purge_succeeded',
     'health.purge_failed',
+  ],
+  'rate-limit': [
+    'ratelimit.unavailable',
+    'ratelimit.ip_blocked',
+    'ratelimit.user_blocked',
   ],
 };
 
@@ -635,18 +638,32 @@ for (const [fn, events] of Object.entries(REQUIRED_EVENTS)) {
   });
 }
 
-test('every rate-limit call site can report a limiter outage', () => {
-  // rateLimitAllowed only records ratelimit.unavailable when the caller
-  // identifies itself, and the caller cannot detect the outage any other way:
-  // under the `deny` policy an outage and an exhausted bucket both return false.
+test('every rate-limit call site identifies both its source and its subject', () => {
+  // The limiter records the throttle event, so it needs the source to attribute
+  // it and the subject to name it. A call missing either is silently unlogged:
+  // recording is best-effort, so nothing fails loudly at runtime.
   for (const fn of ['account-export', 'account-delete', 'health-data-delete']) {
     const calls = functionSources[fn].match(/rateLimitAllowed\([^)]*\)/g) ?? [];
     assert.ok(calls.length > 0, `${fn} has no rate-limit call sites`);
     for (const call of calls) {
-      assert.match(call, /SECURITY_SOURCE/, `a rate-limit call in ${fn} cannot report a limiter outage`);
+      assert.match(call, /SECURITY_SOURCE/, `a rate-limit call in ${fn} cannot attribute its event`);
+      assert.match(call, /type: '(ip|user)'/, `a rate-limit call in ${fn} names no subject`);
     }
   }
-  assert.match(functionSources['rate-limit'], /'ratelimit\.unavailable'/);
+});
+
+test('endpoints never classify a rate-limit rejection themselves', () => {
+  // The defect this guards: under the `deny` policy an outage and an exhausted
+  // bucket both return false, so an endpoint recording ratelimit.ip_blocked on
+  // a false return logged a quota throttle during a database outage -- blaming
+  // the caller for the server's failure and spiking the throttle-volume alert
+  // on the very incident ratelimit.unavailable exists to isolate.
+  for (const fn of ['account-export', 'account-delete', 'health-data-delete']) {
+    assert.ok(
+      !functionSources[fn].includes('ratelimit.'),
+      `${fn} classifies a rate-limit rejection itself; only the limiter can`,
+    );
+  }
 });
 
 test('the recorder never logs the subject it sends to the database', () => {

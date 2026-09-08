@@ -189,15 +189,9 @@ serve(async (req) => {
 
   // IP rate check (pre-auth, blocks hammering callers before JWT verification).
   const ip = clientIp(req)
-  if (!await rateLimitAllowed(rlAdmin, `delete:ip:${ip}`, IP_MAX, IP_WINDOW_MS, 'deny', SECURITY_SOURCE)) {
-    await recordSecurityEvent(rlAdmin, {
-      name: 'ratelimit.ip_blocked',
-      source: SECURITY_SOURCE,
-      outcome: 'denied',
-      subjectType: 'ip',
-      subject: ip,
-      context: { status: 429, reason: 'ip_throttle', request_id: rid },
-    })
+  // The limiter records the throttle event itself, because only it can tell an
+  // exhausted bucket from an outage -- both return false under `deny`.
+  if (!await rateLimitAllowed(rlAdmin, `delete:ip:${ip}`, IP_MAX, IP_WINDOW_MS, 'deny', SECURITY_SOURCE, { type: 'ip', value: ip, requestId: rid })) {
     return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
       status: 429,
       headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '3600' },
@@ -244,15 +238,7 @@ serve(async (req) => {
   }
 
   // Per-user rate check (post-auth).
-  if (!await rateLimitAllowed(rlAdmin, `delete:user:${user.id}`, USER_MAX, USER_WINDOW_MS, 'deny', SECURITY_SOURCE)) {
-    await recordSecurityEvent(rlAdmin, {
-      name: 'ratelimit.user_blocked',
-      source: SECURITY_SOURCE,
-      outcome: 'denied',
-      subjectType: 'user',
-      subject: user.id,
-      context: { status: 429, reason: 'user_throttle', request_id: rid },
-    })
+  if (!await rateLimitAllowed(rlAdmin, `delete:user:${user.id}`, USER_MAX, USER_WINDOW_MS, 'deny', SECURITY_SOURCE, { type: 'user', value: user.id, requestId: rid })) {
     return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
       status: 429,
       headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '3600' },

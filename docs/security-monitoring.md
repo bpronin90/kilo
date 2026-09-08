@@ -85,8 +85,8 @@ Severity is assigned by the server.
 | `ratelimit.unavailable` | critical | The durable rate limiter is unreachable, so every throttled endpoint is answering on its outage policy rather than on a real quota |
 | `authz.denied` | critical | A verified subject reached a record that was not theirs. Unreachable by construction; observing it means RLS or an explicit `user_id` filter regressed |
 | `auth.token_rejected` | warning | A presented token failed verification |
-| `ratelimit.ip_blocked` | warning | A pre-auth request was throttled by network origin |
-| `ratelimit.user_blocked` | warning | A post-auth request was throttled by account |
+| `ratelimit.ip_blocked` | warning | A pre-auth request was throttled by network origin because its bucket was exhausted |
+| `ratelimit.user_blocked` | warning | A post-auth request was throttled by account because its bucket was exhausted |
 | `account.delete_failed` | warning | An account deletion aborted — missing evidence key, database failure, or health rows still present |
 | `health.purge_failed` | warning | A consent-withdrawal purge job failed or could not complete |
 | `server.error` | warning | An unexpected server-side failure on a privileged endpoint |
@@ -94,6 +94,14 @@ Severity is assigned by the server.
 | `account.export_succeeded` | info | A full copy of one account's data was returned |
 | `account.delete_succeeded` | info | An account and its data were erased |
 | `health.purge_succeeded` | info | A consent-withdrawal purge completed and the database confirmed the gated set is empty |
+
+All three `ratelimit.*` events are recorded by
+`supabase/functions/_shared/rate-limit.ts`, never by the endpoints. Only the
+limiter can tell an exhausted bucket from an outage — under the `deny` policy
+both return the same rejection — so an endpoint classifying that rejection
+itself would log a quota throttle during a database outage, blaming the caller
+for the server's failure and spiking the throttle-volume alert on the very
+incident `ratelimit.unavailable` exists to isolate.
 
 The `info` events are the audit trail: they exist so that "was this account's
 data ever exported?" has an answer months later, not because one of them is
@@ -274,17 +282,31 @@ Start here when the monitor fires, or when
    so one actor can be followed across endpoints without the log naming anyone:
 
    ```sql
-   -- The shape of the window: who is doing how much of what.
+   -- 1. The shape of the window: who is doing how much of what.
    select event_name, source, outcome, count(*), count(distinct subject_digest)
    from kilo.security_events
    where occurred_at > now() - interval '24 hours'
    group by 1, 2, 3
    order by 4 desc;
 
-   -- Every endpoint one actor touched, in order.
+   -- 2. Rank the actors. This is where the digest for step 3 comes from --
+   --    the aggregate above deliberately never emits one.
+   select subject_digest,
+          count(*) as events,
+          count(distinct event_name) as distinct_events,
+          min(occurred_at) as first_seen,
+          max(occurred_at) as last_seen
+   from kilo.security_events
+   where occurred_at > now() - interval '24 hours'
+     and subject_digest is not null
+   group by subject_digest
+   order by events desc
+   limit 20;
+
+   -- 3. Every endpoint that one actor touched, in order.
    select occurred_at, event_name, source, outcome, context
    from kilo.security_events
-   where subject_digest = '<digest from the query above>'
+   where subject_digest = '<a digest from step 2>'
    order by occurred_at;
    ```
 
