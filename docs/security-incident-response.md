@@ -7,7 +7,17 @@ those documents remain authoritative for their detailed controls.
 
 ## Intake and first response
 
-Any maintainer may open a private report or issue and notify the triage owner.
+External researchers and users must use GitHub's private vulnerability report
+for this public repository: [Report a vulnerability privately](https://github.com/bpronin90/kilo/security/advisories/new)
+(the repository **Security** tab → **Advisories** → **Report a vulnerability**).
+GitHub routes the report to the repository owner/maintainers; `bpronin90`, as
+the repository owner, is the intake owner responsible for acknowledging it,
+assigning the triage owner, and restricting the report to people who need it.
+If GitHub private reporting is unavailable, do not accept sensitive details in
+a public issue; the owner must restore the private route before asking a
+reporter to submit them. Maintainers may use the same private report route for
+internally discovered findings.
+
 Do not put credentials, tokens, exploit details, health data, or unredacted
 personal data in a public issue, PR, log, or chat. Preserve the original report,
 timestamps, affected versions, relevant commit/build IDs, and available logs;
