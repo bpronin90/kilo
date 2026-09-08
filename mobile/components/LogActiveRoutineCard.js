@@ -11,12 +11,13 @@
 // `skipWeekStatusText` take `colors.accentText`, and `inlineSwitchButtonText`,
 // which sits on a `chipBackground` fill, takes `colors.chipAccentText`. The
 // card's 4px `accent` border and every other value here remain locked.
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card } from './UI';
 import { useThemedStyles } from '../theme/ThemeContext';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
 import { shareRoutine } from '../lib/interoperability/routineShare';
+import { RoutineShareModal } from './RoutineShareCard';
 
 export function LogActiveRoutineCard({
   workoutNoteTitle,
@@ -62,6 +63,7 @@ export function LogActiveRoutineCard({
   onShareRoutine,
 }) {
   const styles = useThemedStyles(createStyles);
+  const [imageShare, setImageShare] = useState(null);
   const handleShareRoutine = () => {
     const payload = { title: workoutNoteTitle, rawText: routineRawText ?? activeEditText };
     if (onShareRoutine) onShareRoutine(payload);
@@ -79,6 +81,7 @@ export function LogActiveRoutineCard({
   ].filter(Boolean).join(', ');
   return (
     <View style={styles.mirrorContainer}>
+      {imageShare && <RoutineShareModal {...imageShare} onClose={() => setImageShare(null)} />}
       <Card style={styles.currentRoutineCard}>
         <Pressable
           onPress={toggleCollapsed} // Tapping the header collapses/expands the card body
@@ -154,6 +157,17 @@ export function LogActiveRoutineCard({
                 accessibilityLabel="Share routine"
               >
                 <Text style={styles.inlineSwitchButtonText}>Share</Text>
+              </Pressable>
+              <Pressable
+                onPress={(e) => {
+                  e.stopPropagation();
+                  setImageShare({ title: workoutNoteTitle, rawText: routineRawText ?? activeEditText });
+                }}
+                style={styles.inlineSwitchButton}
+                accessibilityRole="button"
+                accessibilityLabel="Share routine as image"
+              >
+                <Text style={styles.inlineSwitchButtonText}>Share as Image</Text>
               </Pressable>
             </View>
             {/* One skip control, never two (#711). Previously both rendered and

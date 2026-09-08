@@ -16,7 +16,33 @@
 // preview-6: #811 intentionally restores unsigned EAS Update delivery. The
 //   update-client security posture is native configuration, so preview-5
 //   installs remain isolated and require one replacement build.
-const PREVIEW_RUNTIME = 'preview-6';
+// preview-7: #980 adds expo-dev-client for the on-device development loop. It is
+//   a new native module, so preview-6 binaries lack the required native code and
+//   must be replaced with a fresh preview-7 build.
+const PREVIEW_RUNTIME = 'preview-7';
+
+// Development builds install alongside preview/production rather than replacing
+// them (#980). Preview and production share com.benpronin.kilo, so a development
+// build under that identifier would overwrite the owner's working preview
+// install. Only APP_ENV=development gets the suffix; every other environment
+// keeps the shipping identifiers byte-for-byte.
+const DEV_IDENTIFIER_SUFFIX = '.dev';
+const DEV_NAME_SUFFIX = ' Dev';
+
+function applyDevelopmentIdentity(config) {
+  return {
+    ...config,
+    name: `${config.name}${DEV_NAME_SUFFIX}`,
+    ios: {
+      ...config.ios,
+      bundleIdentifier: `${config.ios?.bundleIdentifier}${DEV_IDENTIFIER_SUFFIX}`,
+    },
+    android: {
+      ...config.android,
+      package: `${config.android?.package}${DEV_IDENTIFIER_SUFFIX}`,
+    },
+  };
+}
 
 function appendPlugin(existingPlugins, nextPlugin) {
   const plugins = Array.isArray(existingPlugins) ? existingPlugins : [];
@@ -29,6 +55,7 @@ function appendPlugin(existingPlugins, nextPlugin) {
 
 module.exports = ({ config }) => {
   const isPreview = process.env.APP_ENV === 'preview';
+  const isDevelopment = process.env.APP_ENV === 'development';
   const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
   const sentryOrg = process.env.SENTRY_ORG;
   const sentryProject = process.env.SENTRY_PROJECT;
@@ -44,9 +71,10 @@ module.exports = ({ config }) => {
           },
         ]
       : null;
+  const base = isDevelopment ? applyDevelopmentIdentity(config) : config;
   return {
-    ...config,
-    plugins: sentryPlugin ? appendPlugin(config.plugins, sentryPlugin) : config.plugins,
+    ...base,
+    plugins: sentryPlugin ? appendPlugin(base.plugins, sentryPlugin) : base.plugins,
     runtimeVersion: isPreview ? PREVIEW_RUNTIME : { policy: 'appVersion' },
   };
 };
