@@ -3857,7 +3857,7 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     expect(wrapRows.length).toBeGreaterThan(0);
 
     const pills = findStyled(root, s => s.minHeight === 44);
-    expect(pills.length).toBe(4); // Edit + Week A/B + Share + Skip week/Remove skip (#823: 44dp floor; #954 adds Share)
+    expect(pills.length).toBe(5); // Edit + Week A/B + Share + Share as Image + Skip week/Remove skip
     for (const pill of pills) {
       const style = flatStyle(pill);
       expect(style.justifyContent).toBe('center');
