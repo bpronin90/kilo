@@ -1338,6 +1338,9 @@ export function LogScreen({
                 onMuteProgression={handleMuteProgression}
                 onUnmuteProgression={handleUnmuteProgression}
                 onDismissProgression={handleDismissProgression}
+                // #1010: the production Apply-to-note path — the card forwards
+                // the exact rendered record and surfaces the persisted result.
+                onApplyProgression={currentEditor.handleApplyProgressionSuggestion}
               />
             )}
 

@@ -13874,3 +13874,287 @@ describe('LogScreen — progression-suggestion wiring for the current routine (#
     render.act(() => component.unmount());
   });
 });
+
+// ── #1010: Apply progression suggestion to note — Log production path ──
+describe('LogScreen — progression-suggestion Apply-to-note wiring (#1010)', () => {
+  const { deriveProgressionSuggestion } = require('../lib/data/progressionSuggestions');
+  const settingsStore = require('../storage/entries/settings');
+  const AsyncStorage = require('@react-native-async-storage/async-storage');
+
+  const READY = ['-Bench Press: 3x8-10', '135 10,10,10', '135 10,10,10'].join('\n');
+  const weightedRecord = () =>
+    deriveProgressionSuggestion(parseWorkoutNote(READY).sections, 'Bench Press');
+
+  const baseCardProps = (overrides = {}) => ({
+    workoutNoteTitle: 'My Routine',
+    hasABWeeks: false,
+    effectiveActiveWeek: 'A',
+    handleToggleWeek: jest.fn(),
+    enterCurrentEditor: jest.fn(),
+    handleNoteBodyPress: jest.fn(),
+    handleSkipWeek: jest.fn(),
+    handleUnskipWeek: jest.fn(),
+    canUnskipWeek: false,
+    toggleCollapsed: jest.fn(),
+    isCollapsed: false,
+    dayGroups: [],
+    trackedLifts: {},
+    handleToggleTrack: jest.fn(),
+    roughNoteId: 'n1',
+    currentId: 'n1',
+    roughFlaggedNames: new Set(),
+    activeEditText: '',
+    ...overrides,
+  });
+
+  const mountCard = (overrides) => {
+    let component;
+    render.act(() => {
+      component = render.create(<LogActiveRoutineCard {...baseCardProps(overrides)} />);
+    });
+    return component;
+  };
+
+  const applyButton = (root) =>
+    root.findAll(
+      (n) =>
+        typeof n.props.onPress === 'function' &&
+        n.props.accessibilityLabel === 'Apply the progression suggestion for Bench Press to your note'
+    )[0];
+
+  const statusOf = (root) => {
+    const nodes = root.findAll((n) => n.props.testID === 'log-progression-apply-status');
+    return nodes.length ? nodes[0].props.children : null;
+  };
+
+  const entry = (record) => ({ record, key: 'bench press', instanceId: 'bench press|x' });
+
+  test('no onApplyProgression prop → no Apply control on the card', () => {
+    const component = mountCard({ progressionSuggestions: [entry(weightedRecord())] });
+    expect(applyButton(component.root)).toBeUndefined();
+    render.act(() => component.unmount());
+  });
+
+  test('a bodyweight suggestion with no concrete target exposes no Apply control', () => {
+    const record = deriveProgressionSuggestion(
+      parseWorkoutNote(['-Pull-ups: 3x8-12', '12,12,12', '12,12,12'].join('\n')).sections,
+      'Pull-ups'
+    );
+    const component = mountCard({
+      progressionSuggestions: [{ record, key: 'pull-ups', instanceId: 'pull-ups|x' }],
+      onApplyProgression: jest.fn(),
+    });
+    const anyApply = component.root.findAll(
+      (n) =>
+        typeof n.props.accessibilityLabel === 'string' &&
+        /^Apply the progression suggestion/.test(n.props.accessibilityLabel)
+    );
+    expect(anyApply).toHaveLength(0);
+    render.act(() => component.unmount());
+  });
+
+  test('passes the exact rendered record to the helper and confirms a persisted apply', async () => {
+    const record = weightedRecord();
+    const onApplyProgression = jest.fn().mockResolvedValue({ applied: true, reason: 'inserted' });
+    const component = mountCard({ progressionSuggestions: [entry(record)], onApplyProgression });
+    await render.act(async () => {
+      applyButton(component.root).props.onPress({ stopPropagation: jest.fn() });
+    });
+    expect(onApplyProgression).toHaveBeenCalledTimes(1);
+    expect(onApplyProgression.mock.calls[0][0]).toBe(record);
+    expect(statusOf(component.root)).toBe('Applied — the suggested target was added to your note.');
+    render.act(() => component.unmount());
+  });
+
+  test('a stale / non-applicable result explains that nothing was added', async () => {
+    const onApplyProgression = jest.fn().mockResolvedValue({ applied: false, reason: 'no-change' });
+    const component = mountCard({ progressionSuggestions: [entry(weightedRecord())], onApplyProgression });
+    await render.act(async () => {
+      applyButton(component.root).props.onPress({ stopPropagation: jest.fn() });
+    });
+    expect(statusOf(component.root)).toBe(
+      'This suggestion no longer applies, so nothing was added to your note.'
+    );
+    render.act(() => component.unmount());
+  });
+
+  test('a save-in-flight result asks the user to wait for the current save', async () => {
+    const onApplyProgression = jest
+      .fn()
+      .mockResolvedValue({ applied: false, reason: 'save-in-flight' });
+    const component = mountCard({ progressionSuggestions: [entry(weightedRecord())], onApplyProgression });
+    await render.act(async () => {
+      applyButton(component.root).props.onPress({ stopPropagation: jest.fn() });
+    });
+    expect(statusOf(component.root)).toBe(
+      'Wait for the current save to finish, then try Apply again. Nothing was added.'
+    );
+    render.act(() => component.unmount());
+  });
+
+  test('a save-failed result reports the target could not be saved', async () => {
+    const onApplyProgression = jest
+      .fn()
+      .mockResolvedValue({ applied: false, reason: 'save-failed' });
+    const component = mountCard({ progressionSuggestions: [entry(weightedRecord())], onApplyProgression });
+    await render.act(async () => {
+      applyButton(component.root).props.onPress({ stopPropagation: jest.fn() });
+    });
+    expect(statusOf(component.root)).toBe(
+      'Couldn’t save the change, so the target was not added to your note.'
+    );
+    render.act(() => component.unmount());
+  });
+
+  test('a thrown helper error reports a generic failure without claiming success', async () => {
+    const onApplyProgression = jest.fn().mockRejectedValue(new Error('boom'));
+    const component = mountCard({ progressionSuggestions: [entry(weightedRecord())], onApplyProgression });
+    await render.act(async () => {
+      applyButton(component.root).props.onPress({ stopPropagation: jest.fn() });
+    });
+    expect(statusOf(component.root)).toBe(
+      'Couldn’t apply the suggestion. Nothing was added to your note.'
+    );
+    render.act(() => component.unmount());
+  });
+
+  test('Apply neither mutes nor dismisses; dismiss and mute keep their own handlers', async () => {
+    const onApplyProgression = jest.fn().mockResolvedValue({ applied: true });
+    const onMuteProgression = jest.fn();
+    const onDismissProgression = jest.fn();
+    const component = mountCard({
+      progressionSuggestions: [entry(weightedRecord())],
+      onApplyProgression,
+      onMuteProgression,
+      onDismissProgression,
+    });
+    await render.act(async () => {
+      applyButton(component.root).props.onPress({ stopPropagation: jest.fn() });
+    });
+    expect(onMuteProgression).not.toHaveBeenCalled();
+    expect(onDismissProgression).not.toHaveBeenCalled();
+
+    const byLabel = (label) =>
+      component.root.findAll(
+        (n) => typeof n.props.onPress === 'function' && n.props.accessibilityLabel === label
+      )[0];
+    render.act(() => {
+      byLabel('Mute progression suggestions for Bench Press').props.onPress({ stopPropagation: jest.fn() });
+    });
+    render.act(() => {
+      byLabel('Dismiss the progression suggestion for Bench Press').props.onPress({ stopPropagation: jest.fn() });
+    });
+    expect(onMuteProgression).toHaveBeenCalledTimes(1);
+    expect(onDismissProgression).toHaveBeenCalledTimes(1);
+    render.act(() => component.unmount());
+  });
+
+  test('Apply press isolates propagation from the routine-card body gesture', async () => {
+    const onApplyProgression = jest.fn().mockResolvedValue({ applied: true });
+    const handleNoteBodyPress = jest.fn();
+    const component = mountCard({
+      progressionSuggestions: [entry(weightedRecord())],
+      onApplyProgression,
+      handleNoteBodyPress,
+    });
+    const evt = { stopPropagation: jest.fn() };
+    await render.act(async () => {
+      applyButton(component.root).props.onPress(evt);
+    });
+    expect(evt.stopPropagation).toHaveBeenCalled();
+    expect(handleNoteBodyPress).not.toHaveBeenCalled();
+    render.act(() => component.unmount());
+  });
+
+  test('a second press while the first apply is still running shows the helper retry-later result', async () => {
+    // Faithful to production: the real helper answers a press made while its own
+    // save is in flight with `{ applied: false, reason: 'save-in-flight' }`. The
+    // card must reach the helper on every press and surface that result, not
+    // swallow the second press.
+    let resolveFirst;
+    let call = 0;
+    const onApplyProgression = jest.fn(() => {
+      call += 1;
+      return call === 1
+        ? new Promise((r) => { resolveFirst = r; })
+        : Promise.resolve({ applied: false, reason: 'save-in-flight' });
+    });
+    const component = mountCard({ progressionSuggestions: [entry(weightedRecord())], onApplyProgression });
+    await render.act(async () => {
+      applyButton(component.root).props.onPress({ stopPropagation: jest.fn() });
+      applyButton(component.root).props.onPress({ stopPropagation: jest.fn() });
+    });
+    expect(onApplyProgression).toHaveBeenCalledTimes(2);
+    expect(statusOf(component.root)).toBe(
+      'Wait for the current save to finish, then try Apply again. Nothing was added.'
+    );
+    await render.act(async () => { resolveFirst({ applied: true }); });
+    expect(statusOf(component.root)).toBe('Applied — the suggested target was added to your note.');
+    render.act(() => component.unmount());
+  });
+
+  describe('full LogScreen → LogActiveRoutineCard → ProgressionSuggestionCard path', () => {
+    afterEach(() => {
+      settingsStore.__resetProgressionSuggestionSettingsForTests();
+      AsyncStorage.__store.clear();
+    });
+
+    test('pressing Apply on the rendered card threads the real helper and persists the note', async () => {
+      const note = { id: 'wn_cur', title: 'Routine', raw_text: READY };
+      AsyncStorage.__store.clear();
+      settingsStore.__resetProgressionSuggestionSettingsForTests();
+      await settingsStore.saveProgressionSuggestionsEnabled(true);
+      await settingsStore.hydrateProgressionSuggestionSettings({ force: true });
+
+      jest.clearAllMocks();
+      const updateSpy = jest.fn((id, patch) =>
+        Promise.resolve({ id, title: patch.title, raw_text: patch.raw_text, updated_at: '2026-01-01' })
+      );
+      useEntries.useWorkoutNotes.mockReturnValue({
+        notes: [note], currentId: note.id, currentNote: note, deloadNotes: [],
+        loading: false, error: null, refresh: jest.fn(), selectCurrent: jest.fn(),
+        update: updateSpy, add: jest.fn(), remove: jest.fn(),
+      });
+      useEntries.useTrackedLifts.mockReturnValue({
+        trackedLifts: { 'bench press': true }, activations: {}, toggle: jest.fn(),
+        reconcileActivations: jest.fn().mockResolvedValue(undefined),
+      });
+      useEntries.useDeloadNote.mockReturnValue({ note: null, loading: false, save: jest.fn(), clear: jest.fn() });
+      useEntries.useDeloadHistory.mockReturnValue({
+        history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+      });
+      useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+      useEntries.useUserProfile.mockReturnValue({ profile: null, save: jest.fn(), loading: false, clear: jest.fn() });
+
+      let component;
+      await render.act(async () => {
+        component = render.create(
+          <ControlledLogScreen initialText={note.raw_text} workoutNoteText={note.raw_text} />
+        );
+      });
+
+      const card = component.root.findByType(LogActiveRoutineCard);
+      expect(typeof card.props.onApplyProgression).toBe('function');
+      expect(card.props.progressionSuggestions).toHaveLength(1);
+
+      const applyBtn = component.root.findAll(
+        (n) =>
+          typeof n.props.onPress === 'function' &&
+          typeof n.props.accessibilityLabel === 'string' &&
+          /^Apply the progression suggestion for Bench Press/.test(n.props.accessibilityLabel)
+      )[0];
+      expect(applyBtn).toBeTruthy();
+
+      await render.act(async () => {
+        applyBtn.props.onPress({ stopPropagation: jest.fn() });
+      });
+
+      expect(updateSpy).toHaveBeenCalledTimes(1);
+      expect(updateSpy.mock.calls[0][1].raw_text).toContain('140 8,8,8');
+
+      const status = component.root.findAll((n) => n.props.testID === 'log-progression-apply-status');
+      expect(status[0].props.children).toBe('Applied — the suggested target was added to your note.');
+      render.act(() => component.unmount());
+    });
+  });
+});
