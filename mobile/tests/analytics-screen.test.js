@@ -2796,3 +2796,50 @@ describe('AnalyticsScreen threads the stored currentId into activeTrainingContex
     );
   });
 });
+
+// ── #989: deriveAnalytics threads the post-deload re-entry inputs ─────────────
+describe('deriveAnalytics — post-deload re-entry wiring (#989)', () => {
+  const { captureDeloadWorkingContext, buildDeloadReentryRecord } = require('../lib/parser/deloadHistory');
+  const ROUTINE_AT_DELOAD = '-Bench\n- 185 5,5,5\n- 185 5,5,5\n- 185 5,5,5';
+  const ROUTINE_FIRST_BACK = '-Bench\n- 185 5,5,5\n- 185 5,5,5\n- 185 5,5,5\n- 185 5,5,5';
+
+  const completedRecord = buildDeloadReentryRecord(
+    { id: 'dl_re', completed_at: '2026-06-20T11:00:00.000Z', session_count: 3, note_id: 'wn_dl_re' },
+    captureDeloadWorkingContext(parseWorkoutNote(ROUTINE_AT_DELOAD).sections, 'wn_src'),
+    parseWorkoutNote(ROUTINE_AT_DELOAD).sections,
+  );
+
+  const currentNote = { id: 'wn_src', title: 'Routine', raw_text: ROUTINE_FIRST_BACK, one_k_exercises: null, isCurrent: true };
+  const parsed = () => deriveParsedSections([currentNote], currentNote, null);
+
+  test('labels the first working session back as re_entry', () => {
+    const analytics = deriveAnalytics(parsed(), { bench: true }, {}, 1, null, {
+      deloadHistory: [completedRecord],
+      sourceNoteId: 'wn_src',
+    });
+    expect(analytics.reentry.bench.status).toBe('re_entry');
+    const suggestion = analytics.progressionSuggestions.find(s => String(s.name).toLowerCase() === 'bench');
+    expect(suggestion?.kind).toBe('re_entry');
+  });
+
+  test('an unrelated source id yields no re_entry label', () => {
+    const analytics = deriveAnalytics(parsed(), { bench: true }, {}, 1, null, {
+      deloadHistory: [completedRecord],
+      sourceNoteId: 'wn_other',
+    });
+    expect(analytics.reentry.bench).toBeUndefined();
+  });
+
+  test('legacy deload history yields no re_entry label', () => {
+    const analytics = deriveAnalytics(parsed(), { bench: true }, {}, 1, null, {
+      deloadHistory: [{ id: 'dl_legacy', completed_at: '2026-01-01T00:00:00.000Z', session_count: 3 }],
+      sourceNoteId: 'wn_src',
+    });
+    expect(analytics.reentry.bench).toBeUndefined();
+  });
+
+  test('omitting the deload context is unchanged legacy behavior', () => {
+    const analytics = deriveAnalytics(parsed(), { bench: true }, {}, 1, null);
+    expect(analytics.reentry).toEqual({});
+  });
+});

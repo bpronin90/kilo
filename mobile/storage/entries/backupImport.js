@@ -404,6 +404,38 @@ function validateWeightEntries(entries) {
   return { ok: true };
 }
 
+// #989: the frozen pre-deload working-weight context on a completed record.
+// Additive — a record that predates the field simply omits it. When present it
+// must match the shape the derivation layer writes (version 1); a malformed or
+// unsupported context is rejected here, before any restore write.
+function _isPlainObject(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
+}
+
+function validatePreDeloadContext(ctx) {
+  if (!_isPlainObject(ctx))
+    return { ok: false, error: 'Invalid backup: deload history pre_deload_context must be an object' };
+  if (ctx.version !== 1)
+    return { ok: false, error: `Invalid backup: unsupported deload history pre_deload_context version (${ctx.version})` };
+  if ('source_note_id' in ctx && ctx.source_note_id !== null && typeof ctx.source_note_id !== 'string')
+    return { ok: false, error: 'Invalid backup: deload history pre_deload_context.source_note_id must be a string or null' };
+  if ('exercises' in ctx) {
+    if (!_isPlainObject(ctx.exercises))
+      return { ok: false, error: 'Invalid backup: deload history pre_deload_context.exercises must be an object' };
+    for (const ex of Object.values(ctx.exercises)) {
+      if (!_isPlainObject(ex))
+        return { ok: false, error: 'Invalid backup: deload history pre_deload_context exercise is not an object' };
+      if ('working_weight_lb' in ex && !Number.isFinite(ex.working_weight_lb))
+        return { ok: false, error: 'Invalid backup: deload history pre_deload_context working_weight_lb must be a number' };
+      if ('logged_session_count' in ex && !Number.isInteger(ex.logged_session_count))
+        return { ok: false, error: 'Invalid backup: deload history pre_deload_context logged_session_count must be an integer' };
+      if ('boundary_witness' in ex && typeof ex.boundary_witness !== 'string')
+        return { ok: false, error: 'Invalid backup: deload history pre_deload_context boundary_witness must be a string' };
+    }
+  }
+  return { ok: true };
+}
+
 function validateDeloadHistory(entries) {
   if (!Array.isArray(entries))
     return { ok: false, error: 'Invalid backup: deload_history must be an array' };
@@ -421,6 +453,10 @@ function validateDeloadHistory(entries) {
         return { ok: false, error: 'Invalid backup: deload history entry raw_text must be a string' };
       if (d.raw_text.length > MAX_IMPORT_RAW_TEXT_LENGTH)
         return { ok: false, error: `Invalid backup: deload history raw_text too large (${d.raw_text.length}; limit ${MAX_IMPORT_RAW_TEXT_LENGTH})` };
+    }
+    if ('pre_deload_context' in d) {
+      const ctxCheck = validatePreDeloadContext(d.pre_deload_context);
+      if (!ctxCheck.ok) return ctxCheck;
     }
   }
   return { ok: true };

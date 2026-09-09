@@ -446,3 +446,60 @@ describe('regressions', () => {
     expect(sig.latest_pr).toBeNull();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #989: post-deload re-entry context threaded through the canonical analytics
+// pass (the same deriveWorkoutNoteAnalytics call the save-time classification,
+// Analytics, and Home callers use). The save path persists `classifications`,
+// which the re-entry inputs must never perturb.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('post-deload re-entry wiring (#989)', () => {
+  const { captureDeloadWorkingContext, buildDeloadReentryRecord } = jest.requireActual('../lib/parser/deloadHistory');
+
+  const AT_DELOAD = 'Monday\n-Bench\n185 5,5,5\n185 5,5,5\n185 5,5,5';
+  const FIRST_BACK = AT_DELOAD + '\n185 5,5,5';
+  const LATER = FIRST_BACK + '\n190 5,5,5';
+
+  const completed = buildDeloadReentryRecord(
+    { id: 'dl_re', completed_at: '2026-06-20T11:00:00.000Z', session_count: 3, note_id: 'wn_dl_re' },
+    captureDeloadWorkingContext(parse(AT_DELOAD), 'wn_src'),
+    parse(AT_DELOAD),
+  );
+  const opts = (over) => ({ deloadHistory: [completed], sourceNoteId: 'wn_src', ...over });
+
+  test('labels exactly the first working session back as re_entry', () => {
+    const r = deriveWorkoutNoteAnalytics(parse(FIRST_BACK), ['Bench'], 1.07, null, opts());
+    expect(r.reentry.bench.status).toBe('re_entry');
+  });
+
+  test('a later session past the first one back is not labeled', () => {
+    const r = deriveWorkoutNoteAnalytics(parse(LATER), ['Bench'], 1.07, null, opts());
+    expect(r.reentry.bench).toBeUndefined();
+  });
+
+  test('an unrelated source-routine id is not labeled', () => {
+    const r = deriveWorkoutNoteAnalytics(parse(FIRST_BACK), ['Bench'], 1.07, null, opts({ sourceNoteId: 'wn_other' }));
+    expect(r.reentry.bench).toBeUndefined();
+  });
+
+  test('legacy deload history (no pre_deload_context) is not labeled', () => {
+    const legacy = [{ id: 'dl_legacy', completed_at: '2026-01-01T00:00:00.000Z', session_count: 3 }];
+    const r = deriveWorkoutNoteAnalytics(parse(FIRST_BACK), ['Bench'], 1.07, null, { deloadHistory: legacy, sourceNoteId: 'wn_src' });
+    expect(r.reentry).toEqual({});
+  });
+
+  test('an exercise under active Recovery is excluded from the label', () => {
+    const recoveryBlocks = [{
+      started_at: '2026-06-01T00:00:00.000Z', completed_at: null,
+      baseline: { exercises: [{ key: 'bench' }] },
+    }];
+    const r = deriveWorkoutNoteAnalytics(parse(FIRST_BACK), ['Bench'], 1.07, null, opts({ recoveryBlocks }));
+    expect(r.reentry.bench).toBeUndefined();
+  });
+
+  test('the persisted classifications are identical with and without the re-entry inputs', () => {
+    const withCtx = deriveWorkoutNoteAnalytics(parse(FIRST_BACK), ['Bench'], 1.07, null, opts());
+    const without = deriveWorkoutNoteAnalytics(parse(FIRST_BACK), ['Bench'], 1.07, null);
+    expect(withCtx.classifications).toEqual(without.classifications);
+  });
+});

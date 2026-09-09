@@ -1710,6 +1710,46 @@ describe('ongoing profile/toggles/goal/deload sync (issue #489)', () => {
     expect(pickWinner(z, a)).toBe(z);
   });
 
+  // #989: a completed deload record carrying `pre_deload_context` (frozen
+  // pre-deload working weights + witnessed completion boundary) must survive the
+  // cloud round trip to a second device unchanged, so the derived re-entry label
+  // is identical on both devices.
+  it('carries pre_deload_context to a second device and the re-entry label survives', async () => {
+    const { captureDeloadWorkingContext, buildDeloadReentryRecord, deriveDeloadReentry } = require('../lib/parser/deloadHistory');
+    const { parseWorkoutNote } = require('../lib/parser');
+    const ROUTINE_AT_DELOAD = '-Bench\n- 185 5,5,5\n- 185 5,5,5\n- 185 5,5,5';
+    const ROUTINE_FIRST_BACK = '-Bench\n- 185 5,5,5\n- 185 5,5,5\n- 185 5,5,5\n- 185 5,5,5';
+    const ctx = captureDeloadWorkingContext(parseWorkoutNote(ROUTINE_AT_DELOAD).sections, 'wn_1');
+    const completed = buildDeloadReentryRecord(
+      { ...deloadRecord('dh_re', '2026-06-25'), pre_deload_context: undefined },
+      ctx,
+      parseWorkoutNote(ROUTINE_AT_DELOAD).sections,
+    );
+    expect(completed.pre_deload_context.version).toBe(1);
+
+    await seedDeviceState();
+    await Storage.appendDeloadHistory(completed);
+    await cloudAdapter.sync();
+
+    // Second device, clean install, pulls.
+    await cleanInstall();
+    await cloudAdapter.sync();
+
+    const pulled = (await Storage.loadDeloadHistory()).find((r) => r.id === 'dh_re');
+    expect(pulled.pre_deload_context).toEqual(completed.pre_deload_context);
+
+    const firstBack = parseWorkoutNote(ROUTINE_FIRST_BACK).sections;
+    const reAuthored = deriveDeloadReentry(firstBack, [completed], 'wn_1');
+    const rePulled = deriveDeloadReentry(firstBack, [pulled], 'wn_1');
+    expect(reAuthored.bench?.status).toBe('re_entry');
+    expect(rePulled).toEqual(reAuthored);
+
+    // Idempotent: a second pass does not rewrite the row.
+    await cloudAdapter.sync();
+    expect((await Storage.loadDeloadHistory()).find((r) => r.id === 'dh_re').pre_deload_context)
+      .toEqual(completed.pre_deload_context);
+  });
+
   it('a deleted deload record does not resurrect on the next sync or on the other device', async () => {
     await seedDeviceState();
     await Storage.appendDeloadHistory(deloadRecord('dh_2', '2026-06-27'));

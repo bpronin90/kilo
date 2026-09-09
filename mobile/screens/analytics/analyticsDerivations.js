@@ -72,7 +72,11 @@ export function deriveNoteExerciseNames(currentSections) {
 // both derivations below rather than resolved separately in each, so the
 // weighted signals, the per-day signals and the non-weighted arrows on one card
 // cannot disagree about where the tracked span starts.
-export function deriveAnalytics(parsedSections, trackedLifts, oneKSelections, multiplier, activations = null) {
+// `deloadContext` (#989) carries the post-deload re-entry inputs: the deload
+// history, the stable current-routine id, and the live recovery blocks. Threaded
+// into the one canonical analytics pass so the re-entry label Analytics surfaces
+// agrees with Home and the save-time cache rather than each deriving its own.
+export function deriveAnalytics(parsedSections, trackedLifts, oneKSelections, multiplier, activations = null, deloadContext = {}) {
   const { allSections, currentSections, noteSectionsList } = parsedSections;
   // Fall back to allSections for legacy callers that don't supply signalSections.
   const signalSections = parsedSections.signalSections || allSections;
@@ -85,12 +89,19 @@ export function deriveAnalytics(parsedSections, trackedLifts, oneKSelections, mu
     name => namesInCurrent.has(normalizeExerciseKey(name))
   );
 
-  const { signals, nameDisplayMap, perDaySignals } = deriveWorkoutNoteAnalytics(signalSections, visibleTrackedNames, multiplier, activations);
+  const { signals, nameDisplayMap, perDaySignals, reentry, progressionSuggestions } = deriveWorkoutNoteAnalytics(
+    signalSections, visibleTrackedNames, multiplier, activations,
+    {
+      deloadHistory: deloadContext.deloadHistory,
+      sourceNoteId: deloadContext.sourceNoteId ?? null,
+      recoveryBlocks: deloadContext.recoveryBlocks,
+    },
+  );
   const nonWeightedMetrics = deriveNonWeightedTrackedExerciseMetrics(signalSections, visibleTrackedNames, activations);
   const oneK = derive1kTotalFromSectionsList(noteSectionsList || [], oneKSelections);
   const oneKSeries = derive1kTotalSeriesFromSectionsList(noteSectionsList || [], oneKSelections);
 
-  return { signals, oneK, oneKSeries, nameDisplayMap, perDaySignals, nonWeightedMetrics };
+  return { signals, oneK, oneKSeries, nameDisplayMap, perDaySignals, nonWeightedMetrics, reentry, progressionSuggestions };
 }
 
 const _LEADING_DAY_RE = /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;

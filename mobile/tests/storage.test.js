@@ -1470,6 +1470,7 @@ describe('applyDeloadNoteFromSync (issue #498)', () => {
       raw_text: 'pulled deload',
       saved_at: '2026-06-05T00:00:00.000Z',
       updated_at: '2026-06-06T00:00:00.000Z',
+      working_context: null,
     });
   });
 
@@ -1496,7 +1497,37 @@ describe('applyDeloadNoteFromSync (issue #498)', () => {
       raw_text: 'bare',
       saved_at: null,
       updated_at: null,
+      working_context: null,
     });
+  });
+
+  // #989: working_context is device-local (not part of the deload-note cloud
+  // projection). Sync re-applying the SAME deload text keeps the locally frozen
+  // snapshot; a different deload from another device carries none and clears it.
+  it('keeps a local working_context when the pulled deload text is unchanged', async () => {
+    const { applyDeloadNoteFromSync } = require('../storage/entries/deloadStorage');
+    const ctx = { version: 1, source_note_id: 'wn_src', exercises: { squat: { working_weight_lb: 225, logged_session_count: 4, boundary_witness: '[]' } } };
+    await saveDeloadNote('same deload', ctx);
+    await applyDeloadNoteFromSync({
+      raw_text: 'same deload',
+      saved_at: '2026-06-05T00:00:00.000Z',
+      updated_at: '2026-06-06T00:00:00.000Z',
+    });
+    expect((await loadDeloadNote()).working_context).toEqual(ctx);
+  });
+
+  it('drops a stale working_context when a different deload is pulled', async () => {
+    const { applyDeloadNoteFromSync } = require('../storage/entries/deloadStorage');
+    const ctx = { version: 1, source_note_id: 'wn_src', exercises: {} };
+    await saveDeloadNote('device A deload', ctx);
+    await applyDeloadNoteFromSync({
+      raw_text: 'device B deload',
+      saved_at: '2026-06-05T00:00:00.000Z',
+      updated_at: '2026-06-06T00:00:00.000Z',
+    });
+    const after = await loadDeloadNote();
+    expect(after.raw_text).toBe('device B deload');
+    expect(after.working_context).toBeNull();
   });
 });
 
@@ -2420,6 +2451,31 @@ describe('deload note storage', () => {
     const second = await loadDeloadNote();
     expect(second.saved_at).toBe(first.saved_at);
     expect(second.raw_text).toBe('second');
+  });
+
+  // #989: the frozen generation-time working-weight snapshot rides beside the
+  // active deload. Generation passes it explicitly; a later plain save (a manual
+  // text edit) omits it and MUST keep the existing snapshot rather than clearing
+  // or recomputing it.
+  test('stores a working_context passed at generation and keeps it across a plain save', async () => {
+    const ctx = { version: 1, source_note_id: 'wn_routine', exercises: { bench: { working_weight_lb: 185, logged_session_count: 6, boundary_witness: '[]' } } };
+    await saveDeloadNote('generated deload text', ctx);
+    expect((await loadDeloadNote()).working_context).toEqual(ctx);
+    await saveDeloadNote('generated deload text, hand-tweaked');
+    const after = await loadDeloadNote();
+    expect(after.raw_text).toBe('generated deload text, hand-tweaked');
+    expect(after.working_context).toEqual(ctx);
+  });
+
+  test('defaults working_context to null when none has ever been captured', async () => {
+    await saveDeloadNote('plain deload');
+    expect((await loadDeloadNote()).working_context).toBeNull();
+  });
+
+  test('an explicit null working_context clears a previously captured snapshot', async () => {
+    await saveDeloadNote('deload', { version: 1, source_note_id: 'x', exercises: {} });
+    await saveDeloadNote('deload regenerated from a routine with no working sets', null);
+    expect((await loadDeloadNote()).working_context).toBeNull();
   });
 
   test('clear removes the deload note', async () => {

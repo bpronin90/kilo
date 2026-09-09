@@ -361,6 +361,9 @@ export function LogScreen({
     saveDeloadNote,
     workoutNoteText,
     editorScrollRef,
+    // #989: the stable current-routine id, so a generated deload freezes its
+    // working-weight snapshot keyed to the routine it was built from.
+    currentId,
   });
 
   const otherEditor = useLogOtherRoutineEditor({

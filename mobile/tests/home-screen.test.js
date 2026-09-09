@@ -2311,3 +2311,51 @@ describe('HomeScreen follows the shared active-training context (#869)', () => {
     expect(onNavigate).toHaveBeenCalledWith('Log');
   });
 });
+
+// ── #989: Home and Analytics agree on the post-deload re-entry label ──────────
+describe('post-deload re-entry: Home and Analytics stay consistent (#989)', () => {
+  const { captureDeloadWorkingContext, buildDeloadReentryRecord } = jest.requireActual('../lib/parser/deloadHistory');
+  const { parseWorkoutNote } = jest.requireActual('../lib/parser');
+  const AT_DELOAD = '-Bench\n- 185 5,5,5\n- 185 5,5,5\n- 185 5,5,5';
+  const FIRST_BACK = AT_DELOAD + '\n- 185 5,5,5';
+
+  const completed = buildDeloadReentryRecord(
+    { id: 'dl_re', completed_at: '2026-06-20T11:00:00.000Z', session_count: 3, note_id: 'wn_dl_re' },
+    captureDeloadWorkingContext(parseWorkoutNote(AT_DELOAD).sections, 'wn_src'),
+    parseWorkoutNote(AT_DELOAD).sections,
+  );
+
+  const currentNote = { id: 'wn_src', title: 'Routine', raw_text: FIRST_BACK, one_k_exercises: null };
+  const allSections = parseWorkoutNote(FIRST_BACK).sections;
+
+  test('both surfaces label the first working session back as re_entry', () => {
+    const home = deriveHomeDashboardData({
+      weightEntries: [], workoutNote: currentNote, weightGoal: null,
+      allSections, noteSectionsList: [allSections], trackedLifts: { bench: true },
+      deloadHistory: [completed], sourceNoteId: 'wn_src',
+    });
+
+    const parsedSections = deriveParsedSections([currentNote], currentNote, null);
+    const analytics = deriveAnalytics(parsedSections, { bench: true }, {}, 1.07, null, {
+      deloadHistory: [completed], sourceNoteId: 'wn_src',
+    });
+
+    expect(home.reentry.bench.status).toBe('re_entry');
+    expect(analytics.reentry.bench.status).toBe('re_entry');
+    expect(home.reentry.bench.current_working_weight_lb).toBe(analytics.reentry.bench.current_working_weight_lb);
+  });
+
+  test('neither surface labels it for an unrelated source-routine id', () => {
+    const home = deriveHomeDashboardData({
+      weightEntries: [], workoutNote: currentNote, weightGoal: null,
+      allSections, noteSectionsList: [allSections], trackedLifts: { bench: true },
+      deloadHistory: [completed], sourceNoteId: 'wn_other',
+    });
+    const parsedSections = deriveParsedSections([currentNote], currentNote, null);
+    const analytics = deriveAnalytics(parsedSections, { bench: true }, {}, 1.07, null, {
+      deloadHistory: [completed], sourceNoteId: 'wn_other',
+    });
+    expect(home.reentry.bench).toBeUndefined();
+    expect(analytics.reentry.bench).toBeUndefined();
+  });
+});

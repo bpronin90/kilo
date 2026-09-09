@@ -116,6 +116,11 @@ export const DELOAD_RECORD_JSON_FIELDS = Object.freeze([
   'deload_session_ordinal',
   'generated_at',
   'note_id',
+  // #989: the frozen pre-deload working-weight context on a COMPLETED record.
+  // Carried in record_json (additive — no new column, no schema change); pull
+  // restores it via DELOAD_RECORD_JSON_FIELDS without touching rows that
+  // predate it or dropping unknown local-only keys.
+  'pre_deload_context',
   'session_count',
 ]);
 
