@@ -41,6 +41,13 @@ export function isRenderableProgressionSuggestion(suggestion) {
   if (suggestion.suggested !== true) return false;
   if (suggestion.kind !== 'double_progression' && suggestion.kind !== 'bodyweight_ceiling') return false;
   if (typeof suggestion.explanation !== 'string' || !suggestion.explanation.trim()) return false;
+  // A positive record from the real derivation always carries an exercise
+  // identity, an evidence object, and a heuristic object. A record missing any
+  // of them is malformed — render no card rather than a "This exercise" card
+  // with no observed evidence and no recommendation.
+  if (typeof suggestion.name !== 'string' || !suggestion.name.trim()) return false;
+  if (!suggestion.evidence || typeof suggestion.evidence !== 'object') return false;
+  if (!suggestion.heuristic || typeof suggestion.heuristic !== 'object') return false;
   return true;
 }
 
@@ -123,6 +130,11 @@ export function ProgressionSuggestionCard({
   if (muted) return null;
 
   const name = suggestion.name || 'This exercise';
+  // On the Log surface this card sits inside the note-body Pressable, so a tap
+  // on an action must not also reach `handleNoteBodyPress` (which can complete
+  // the double-tap-to-edit gesture). Stopping propagation is a harmless no-op
+  // on the Analytics surface, where nothing above listens.
+  const stop = (e) => { if (e && typeof e.stopPropagation === 'function') e.stopPropagation(); };
   const recommendation = _recommendationText(suggestion);
   const chips = _evidenceChips(suggestion.evidence);
   const heuristicNote = 'Heuristic suggestion — a conditional prompt from what you logged, not a guaranteed prescription.';
@@ -171,7 +183,7 @@ export function ProgressionSuggestionCard({
 
       <View style={styles.actionRow}>
         <Pressable
-          onPress={onDismiss}
+          onPress={(e) => { stop(e); if (onDismiss) onDismiss(e); }}
           style={styles.actionButton}
           accessibilityRole="button"
           accessibilityLabel={`Dismiss the progression suggestion for ${name}`}
@@ -180,7 +192,7 @@ export function ProgressionSuggestionCard({
           <Text style={styles.actionButtonText}>Dismiss</Text>
         </Pressable>
         <Pressable
-          onPress={onMute}
+          onPress={(e) => { stop(e); if (onMute) onMute(e); }}
           style={styles.actionButton}
           accessibilityRole="button"
           accessibilityState={{ selected: false }}
@@ -205,7 +217,12 @@ export function MutedProgressionRow({ name, onUnmute }) {
         Progression suggestions muted for {name || 'this exercise'}
       </Text>
       <Pressable
-        onPress={onUnmute}
+        onPress={(e) => {
+          // Same isolation as the card actions: on Log this row is inside the
+          // note-body Pressable.
+          if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+          if (onUnmute) onUnmute(e);
+        }}
         style={styles.actionButton}
         accessibilityRole="button"
         accessibilityState={{ selected: true }}

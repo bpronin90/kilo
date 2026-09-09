@@ -355,15 +355,23 @@ export async function loadProgressionSuggestionMutes() {
 
 export async function saveProgressionSuggestionMutes(keys) {
   const normalized = _normalizeMuteKeys(keys);
-  await AsyncStorage.setItem(PROGRESSION_SUGGESTION_MUTES_KEY, JSON.stringify(normalized));
+  // Update the in-memory cache SYNCHRONOUSLY, before awaiting the write, so a
+  // second mutation dispatched in the same tick reads this result rather than
+  // the pre-mutation set. Persisting after is fine: a failed write only means
+  // the mute does not survive a restart, which hydrate reconciles — far better
+  // than a lost update that silently un-mutes an exercise.
   _setProgressionCache({ ..._progressionCache, mutedKeys: normalized });
+  await AsyncStorage.setItem(PROGRESSION_SUGGESTION_MUTES_KEY, JSON.stringify(normalized));
   return normalized;
 }
 
 export async function setProgressionSuggestionMuted(exerciseKey, muted) {
   const key = typeof exerciseKey === 'string' ? exerciseKey.trim() : '';
   if (!key) return _progressionCache.mutedKeys;
-  const current = new Set(await loadProgressionSuggestionMutes());
+  // Read-modify-write against the synchronous cache, never an async storage
+  // read: two rapid `setProgressionSuggestionMuted` calls would both observe
+  // the stale on-disk value and the last write would drop the other key.
+  const current = new Set(_progressionCache.mutedKeys);
   if (muted) current.add(key);
   else current.delete(key);
   return saveProgressionSuggestionMutes([...current]);

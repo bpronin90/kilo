@@ -76,6 +76,14 @@ describe('isRenderableProgressionSuggestion', () => {
     expect(isRenderableProgressionSuggestion({ ...WEIGHTED, explanation: '' })).toBe(false);
     expect(isRenderableProgressionSuggestion({ ...WEIGHTED, explanation: undefined })).toBe(false);
   });
+
+  test('rejects a positive record missing its identity, evidence, or heuristic', () => {
+    expect(isRenderableProgressionSuggestion({ suggested: true, kind: 'double_progression', explanation: 'Advance conditionally.' })).toBe(false);
+    expect(isRenderableProgressionSuggestion({ ...WEIGHTED, name: '' })).toBe(false);
+    expect(isRenderableProgressionSuggestion({ ...WEIGHTED, name: undefined })).toBe(false);
+    expect(isRenderableProgressionSuggestion({ ...WEIGHTED, evidence: null })).toBe(false);
+    expect(isRenderableProgressionSuggestion({ ...WEIGHTED, heuristic: null })).toBe(false);
+  });
 });
 
 describe('progressionSuggestionInstanceId', () => {
@@ -142,17 +150,23 @@ describe('ProgressionSuggestionCard rendering', () => {
     }
   });
 
-  test('fires onMute and onDismiss', async () => {
+  test('fires onMute and onDismiss and stops the press from reaching an ancestor', async () => {
     const onMute = jest.fn();
     const onDismiss = jest.fn();
     const root = await mount(
       <ProgressionSuggestionCard suggestion={WEIGHTED} surface="log" onMute={onMute} onDismiss={onDismiss} />
     );
-    const byLabel = (label) => root.root.find((n) => n.props.accessibilityLabel === label);
-    await act(async () => { byLabel('Mute progression suggestions for Bench Press').props.onPress(); });
-    await act(async () => { byLabel('Dismiss the progression suggestion for Bench Press').props.onPress(); });
+    const byLabel = (label) => root.root.find(
+      (n) => n.props.accessibilityLabel === label && typeof n.props.onPress === 'function'
+    );
+    const muteEvt = { stopPropagation: jest.fn() };
+    const dismissEvt = { stopPropagation: jest.fn() };
+    await act(async () => { byLabel('Mute progression suggestions for Bench Press').props.onPress(muteEvt); });
+    await act(async () => { byLabel('Dismiss the progression suggestion for Bench Press').props.onPress(dismissEvt); });
     expect(onMute).toHaveBeenCalledTimes(1);
     expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(muteEvt.stopPropagation).toHaveBeenCalled();
+    expect(dismissEvt.stopPropagation).toHaveBeenCalled();
   });
 
   test('renders nothing for a muted exercise or a non-renderable record', async () => {

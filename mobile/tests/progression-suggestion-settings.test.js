@@ -72,6 +72,15 @@ describe('progression-suggestion mute set storage (#960)', () => {
     await setProgressionSuggestionMuted('   ', true);
     expect(await loadProgressionSuggestionMutes()).toEqual([]);
   });
+
+  test('two rapid mutes dispatched in the same tick both land (no lost update)', async () => {
+    await hydrateProgressionSuggestionSettings();
+    const a = setProgressionSuggestionMuted('bench press', true);
+    const b = setProgressionSuggestionMuted('squat', true);
+    await Promise.all([a, b]);
+    expect(new Set(await loadProgressionSuggestionMutes())).toEqual(new Set(['bench press', 'squat']));
+    expect(new Set(getProgressionSuggestionSettings().mutedKeys)).toEqual(new Set(['bench press', 'squat']));
+  });
 });
 
 describe('progression-suggestion settings cache + subscription (#960)', () => {
