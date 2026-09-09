@@ -1479,6 +1479,25 @@ export function LogScreen({
         }
         headerRight={
           <View style={styles.editorHeaderActions}>
+            {/* #1006: the idle rest-timer affordance is a compact stopwatch
+                in the editor's header corner, not a full-width row below the
+                editor. It renders nothing outside current-routine edit mode
+                or while a timer is running/just completed, so it adds no
+                header width and reserves no editor or bottom-navigation
+                space; its chooser opens as an out-of-flow dropdown. The
+                running countdown / completion banner stays the single
+                app-shell instance (App.js). */}
+            <RestTimerBanner
+              isRunning={restTimerIsRunning}
+              remainingMs={restTimerRemainingMs}
+              justElapsed={restTimerJustElapsed}
+              backgroundAlertAvailable={restTimerBackgroundAlertAvailable}
+              onCancel={onCancelRestTimer}
+              onDismissDone={onDismissRestTimerDone}
+              onStart={onStartRestTimer}
+              showStart={!otherEditor.editingNoteId && currentEditor.mode === 'edit'}
+              compact
+            />
             {otherEditor.editingNoteId && otherEditor.editingHasABWeeks && (
               <Pressable
                 onPress={otherEditor.handleToggleEditingWeek}
@@ -1584,31 +1603,11 @@ export function LogScreen({
           onSourceJumpApplied={otherEditor.editingNoteId ? otherEditor.clearPendingSourceJump : currentEditor.clearPendingSourceJump}
         />
       </ScreenShell>
-      {/* #950 review (P1): only the idle start row here — the countdown/
-          done surface is mounted once at the app-shell level (App.js) so it
-          stays visible when the user leaves the Log tab while a timer is
-          running. */}
-      <RestTimerBanner
-        isRunning={restTimerIsRunning}
-        remainingMs={restTimerRemainingMs}
-        justElapsed={restTimerJustElapsed}
-        backgroundAlertAvailable={restTimerBackgroundAlertAvailable}
-        onCancel={onCancelRestTimer}
-        onDismissDone={onDismissRestTimerDone}
-        onStart={onStartRestTimer}
-        showStart={!otherEditor.editingNoteId && currentEditor.mode === 'edit'}
-        startOnly
-        // #951 review: only the bottommost visible banner reserves the
-        // clearance — PRMomentBanner renders below this one in the flow, so
-        // when it's also showing, it alone carries the margin. Otherwise the
-        // two clearances would stack into a large blank gap above the tab
-        // bar whenever both banners are visible together.
-        style={{ marginBottom: currentEditor.prMoment ? 0 : bottomBannerClearance }}
-      />
       {/* #577 (Contract 3): top-level, beside SessionCheckInModal, outside
           the editor card branch — Done switching read/edit mode cannot
-          unmount it. Independent of the rest-timer banner above; both may
-          be visible together. */}
+          unmount it. #1006: it is now the only bottom banner in this flow,
+          so it always carries the tab-bar/safe-area clearance exactly once
+          (the compact rest-timer control above reserves none). */}
       <PRMomentBanner
         moment={currentEditor.prMoment}
         onDismiss={currentEditor.clearPRMoment}

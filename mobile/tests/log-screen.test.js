@@ -14158,3 +14158,53 @@ describe('LogScreen — progression-suggestion Apply-to-note wiring (#1010)', ()
     });
   });
 });
+
+// #1006: the idle rest-timer affordance is a compact stopwatch inside the
+// current-routine editor, not a full-width row floating above the tab bar.
+// Pin the wiring so it cannot regress back to a bottom banner that reserves
+// navigation clearance.
+describe('Log rest-timer control is the compact editor stopwatch (#1006)', () => {
+  let src;
+  beforeAll(() => {
+    src = readLogScreenSource();
+  });
+
+  test('the editor rest-timer instance is rendered with the compact prop', () => {
+    expect(src).toMatch(/<RestTimerBanner[^>]*\n(?:[^<]*\n)*?\s*compact\n/);
+  });
+
+  test('it sits in the editor header cluster, not in the editor body flow', () => {
+    const bannerIdx = src.indexOf('<RestTimerBanner');
+    // anchor to the editor ScreenShell specifically (its subtitle is the
+    // literal 'Edit routine'); the read-mode ScreenShell has its own
+    // headerRight earlier in the file.
+    const editorShellIdx = src.indexOf("'Edit routine'");
+    const headerRightIdx = src.indexOf('headerRight={', editorShellIdx);
+    // `keyboardShouldPersistTaps` is the ScreenShell prop immediately after
+    // the headerRight={...} block closes and before its children begin.
+    const headerCloseIdx = src.indexOf('keyboardShouldPersistTaps', headerRightIdx);
+    const editorCardIdx = src.indexOf('<LogScreenEditorCard');
+    expect(headerRightIdx).toBeGreaterThan(-1);
+    // rendered inside the headerRight cluster...
+    expect(bannerIdx).toBeGreaterThan(headerRightIdx);
+    expect(bannerIdx).toBeLessThan(headerCloseIdx);
+    // ...and therefore never a child in the editor body flow
+    expect(headerCloseIdx).toBeLessThan(editorCardIdx);
+  });
+
+  test('the rest-timer element itself reserves no bottom-tab clearance', () => {
+    const el = src.slice(
+      src.indexOf('<RestTimerBanner'),
+      src.indexOf('/>', src.indexOf('<RestTimerBanner')) + 2
+    );
+    expect(el).toContain('compact');
+    expect(el).not.toContain('bottomBannerClearance');
+    expect(el).not.toContain('marginBottom');
+    expect(el).not.toContain('startOnly');
+  });
+
+  test('the running countdown is still the single app-shell instance (not re-added here)', () => {
+    const matches = src.match(/<RestTimerBanner/g) || [];
+    expect(matches).toHaveLength(1);
+  });
+});
