@@ -13786,4 +13786,56 @@ describe('LogScreen — progression-suggestion wiring for the current routine (#
     expect(updateSpy).not.toHaveBeenCalled();
     render.act(() => component.unmount());
   });
+
+  test('holds all suggestions back until the Recovery analytics boundary is verified', async () => {
+    const note = { id: 'wn_cur', title: 'Routine', raw_text: NOTE };
+    await seed(true);
+    mockHooks(note);
+    useEntries.useRecoveryBlockState.mockReturnValue({ blocks: [], weeks: [], loading: true, ready: false });
+    const component = await renderScreen(note);
+    expect(cardOf(component).props.progressionSuggestions).toEqual([]);
+    expect(cardOf(component).props.mutedProgressionRows).toEqual([]);
+    render.act(() => component.unmount());
+  });
+
+  test('drops a recovery-week note that its completed block opted out of ordinary analytics', async () => {
+    // The current routine plus a separate note that also logs Bench Press.
+    // Without the recovery exclusion that extra note would be part of the
+    // last-two-session comparison; opted out, it must not be.
+    const RECOVERY_NOTE = ['-Bench Press: 3x8-10', '95 8,8,8'].join('\n');
+    const note = { id: 'wn_cur', title: 'Routine', raw_text: NOTE };
+    const recoveryNote = { id: 'wn_rec', title: 'Recovery W1', raw_text: RECOVERY_NOTE };
+    await seed(true);
+    jest.clearAllMocks();
+    updateSpy = jest.fn(); addSpy = jest.fn();
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [note, recoveryNote], currentId: note.id, currentNote: note, deloadNotes: [],
+      loading: false, error: null, refresh: jest.fn(), selectCurrent: jest.fn(),
+      update: updateSpy, add: addSpy, remove: jest.fn(),
+    });
+    useEntries.useTrackedLifts.mockReturnValue({
+      trackedLifts: { 'bench press': true }, activations: {}, toggle: jest.fn(), reconcileActivations: jest.fn(),
+    });
+    useEntries.useDeloadNote.mockReturnValue({ note: null, loading: false, save: jest.fn(), clear: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+    useEntries.useUserProfile.mockReturnValue({ profile: null, save: jest.fn(), loading: false, clear: jest.fn() });
+    useEntries.useRecoveryBlockState.mockReturnValue({
+      ready: true,
+      blocks: [{ id: 'rb1', status: 'completed', include_in_normal_analytics: false, deleted_at: null }],
+      weeks: [{ id: 'rw1', block_id: 'rb1', note_id: 'wn_rec', deleted_at: null }],
+    });
+
+    const component = await renderScreen(note);
+    const list = cardOf(component).props.progressionSuggestions;
+    // The still-eligible current-routine suggestion is unchanged: excluding the
+    // opted-out recovery note leaves exactly the two current-routine sessions.
+    expect(list).toHaveLength(1);
+    const pure = deriveProgressionSuggestion(parseWorkoutNote(NOTE).sections, 'Bench Press');
+    expect(list[0].record.explanation).toBe(pure.explanation);
+    expect(list[0].record.evidence).toEqual(pure.evidence);
+    render.act(() => component.unmount());
+  });
 });

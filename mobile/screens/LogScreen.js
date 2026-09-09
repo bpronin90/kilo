@@ -90,6 +90,7 @@ import {
   isEligibleRecoveryWeekNote,
 } from '../hooks/useEntries';
 import { useRecoveryBlockLifecycle } from '../hooks/entries/recoveryBlockHooks';
+import { buildRecoveryAnalyticsFilter } from '../lib/data/recoveryAnalyticsFilter';
 
 import { LogDeloadSection } from '../components/LogDeloadSection';
 import { LogPreviousRoutines } from '../components/LogPreviousRoutines';
@@ -215,6 +216,17 @@ export function LogScreen({
     error: recoveryStateError = null,
     mutationsAllowed: recoveryMutationsAllowed = true,
   } = useRecoveryBlockState() || {};
+
+  // #960: the same authoritative Recovery/normal-analytics boundary Analytics
+  // derives from, built from the snapshot this screen already subscribes to (no
+  // extra hook / storage read). A completed Recovery block that opted out of
+  // ordinary analytics keeps its linked week notes out of Log's suggestion
+  // history, and an unverified boundary (`recoveryReady` still false) holds the
+  // suggestions back rather than deriving from a provisional population.
+  const progressionRecoveryFilter = useMemo(
+    () => buildRecoveryAnalyticsFilter(recoveryBlocks, recoveryWeeks, { ready: recoveryReady }),
+    [recoveryBlocks, recoveryWeeks, recoveryReady],
+  );
   // Product-wide "what am I training now?" context (#868), shared verbatim
   // with Home and Analytics — same authoritative Recovery snapshot as above,
   // resolved at this screen's existing Recovery-state boundary.
@@ -648,7 +660,7 @@ export function LogScreen({
   // sentence all come from the derivation. Off, no current routine, or no
   // history all collapse to an empty list and no card.
   const progressionSuggestionRecords = useMemo(() => {
-    if (!progressionSettings.enabled || !currentId || !hasContent) return [];
+    if (!progressionSettings.enabled || !currentId || !hasContent || !progressionRecoveryFilter.ready) return [];
     let currentSections;
     try {
       currentSections = parseWorkoutNote(workoutNoteText).sections;
@@ -664,6 +676,11 @@ export function LogScreen({
     if (visibleTrackedNames.length === 0) return [];
     const allSections = notes.flatMap(n => {
       if (n.title?.startsWith(DELOAD_NOTE_PREFIX)) return [];
+      // A completed Recovery block that opted out of ordinary analytics takes
+      // its linked week notes out of the suggestion history, exactly as
+      // Analytics' `deriveParsedSections` does. The current routine is never one
+      // of those, so it always stays in.
+      if (n.id !== currentId && progressionRecoveryFilter.isNoteExcluded?.(n.id)) return [];
       const text = n.id === currentId ? workoutNoteText : n.raw_text;
       if (!text) return [];
       try {
@@ -701,6 +718,7 @@ export function LogScreen({
     trackedLiftActivations,
     deloadHistory,
     recoveryBlocks,
+    progressionRecoveryFilter,
   ]);
 
   const mutedProgressionKeys = new Set(progressionSettings.mutedKeys || []);

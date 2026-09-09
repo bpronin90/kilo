@@ -2848,6 +2848,7 @@ describe('deriveAnalytics — post-deload re-entry wiring (#989)', () => {
 describe('AnalyticsScreen — progression-suggestion cards (#960)', () => {
   const settingsStore = require('../storage/entries/settings');
   const AsyncStorage = require('@react-native-async-storage/async-storage');
+  const { ProgressionSuggestionCard } = require('../components/ProgressionSuggestionCard');
 
   // Two eligible weighted double-progression histories in the current routine.
   const NOTE = [
@@ -2878,14 +2879,21 @@ describe('AnalyticsScreen — progression-suggestion cards (#960)', () => {
   });
 
   function cards(root) {
-    return root.findAll(
-      (n) => typeof n.props.testID === 'string' && n.props.testID === 'progression-suggestion-analytics'
-    );
+    return root.findAllByType(ProgressionSuggestionCard);
+  }
+
+  // setup() mounts the screen synchronously; the real useRecoveryAnalyticsFilter
+  // read resolves a tick later and flips `recoveryFilter.ready`, which gates the
+  // suggestion list. Flush it before asserting.
+  async function mountScreen() {
+    const component = setup({ hookOverrides });
+    await render.act(async () => { await Promise.resolve(); });
+    return component;
   }
 
   test('with the setting off, no card and no placeholder renders', async () => {
     await seedEnabled(false);
-    const component = setup({ hookOverrides });
+    const component = await mountScreen();
     expect(cards(component.root)).toHaveLength(0);
     expect(component.root.findAll((n) => n.props.testID === 'analytics-progression-suggestions')).toHaveLength(0);
     expect(hasText(component.root, 'the top of your 8–10 rep target')).toBe(false);
@@ -2893,7 +2901,7 @@ describe('AnalyticsScreen — progression-suggestion cards (#960)', () => {
 
   test('with the setting on, each eligible card renders its evidence, recommendation and heuristic caveat', async () => {
     await seedEnabled(true);
-    const component = setup({ hookOverrides });
+    const component = await mountScreen();
     const rendered = cards(component.root);
     expect(rendered.length).toBe(2);
     expect(hasText(component.root, 'Consider 140 lb for 3x8 next time.')).toBe(true);
@@ -2903,7 +2911,7 @@ describe('AnalyticsScreen — progression-suggestion cards (#960)', () => {
 
   test('muting one exercise suppresses only it and offers an unmute path', async () => {
     await seedEnabled(true, ['bench press']);
-    const component = setup({ hookOverrides });
+    const component = await mountScreen();
     expect(cards(component.root)).toHaveLength(1);
     expect(hasText(component.root, 'Consider 160 lb for 3x8 next time.')).toBe(true);
     expect(hasText(component.root, 'Consider 140 lb for 3x8 next time.')).toBe(false);
@@ -2917,7 +2925,7 @@ describe('AnalyticsScreen — progression-suggestion cards (#960)', () => {
 
   test('dismissing a card hides only that instance for this surface', async () => {
     await seedEnabled(true);
-    const component = setup({ hookOverrides });
+    const component = await mountScreen();
     expect(cards(component.root)).toHaveLength(2);
     const dismiss = component.root.find(
       (n) => n.props.accessibilityLabel === 'Dismiss the progression suggestion for Bench Press'
@@ -2925,5 +2933,43 @@ describe('AnalyticsScreen — progression-suggestion cards (#960)', () => {
     await render.act(async () => { dismiss.props.onPress(); });
     expect(cards(component.root)).toHaveLength(1);
     expect(hasText(component.root, 'Consider 160 lb for 3x8 next time.')).toBe(true);
+  });
+
+  test('holds suggestions back until the Recovery analytics boundary is verified', async () => {
+    const hooks = require('../hooks/entries/recoveryBlockHooks');
+    // Cold start: nothing has verified the Recovery boundary in this process,
+    // and the recovery reads fail while workout notes load fine.
+    hooks._resetRecoveryAnalyticsFilterCache();
+    await seedEnabled(true);
+    AsyncStorage.getItem.mockImplementation((key) => {
+      if (key === 'kilo_progression_suggestions_enabled') return Promise.resolve(JSON.stringify(true));
+      if (key === 'kilo_progression_suggestion_mutes') return Promise.resolve(JSON.stringify([]));
+      if (key === 'kilo_recovery_blocks' || key === 'kilo_recovery_block_weeks') {
+        return Promise.reject(new Error('storage unavailable'));
+      }
+      return Promise.resolve(null);
+    });
+    const component = setup({ hookOverrides });
+    await render.act(async () => { await Promise.resolve(); });
+    expect(cards(component.root)).toHaveLength(0);
+    render.act(() => component.unmount());
+    hooks._resetRecoveryAnalyticsFilterCache();
+  });
+
+  test('the rendered card carries its accessibility identity on a real view', async () => {
+    await seedEnabled(true);
+    const component = await mountScreen();
+    // testID/accessibilityLabel must land on a host View, not just the Card
+    // component boundary that never forwards them.
+    const groups = component.root.findAll(
+      (n) => n.props.testID === 'progression-suggestion-analytics'
+        && n.props.accessible === true
+        && typeof n.type === 'string'
+    );
+    expect(groups.length).toBe(2);
+    for (const g of groups) {
+      expect(g.props.accessibilityLabel).toMatch(/^Progression suggestion for/);
+    }
+    render.act(() => component.unmount());
   });
 });

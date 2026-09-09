@@ -377,7 +377,11 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   // non-renderable records (including the post-deload `re_entry` relabel) all
   // fall out. When the feature is off the list is empty and nothing renders.
   const progressionSuggestionView = useMemo(() => {
-    if (!progressionSettings.enabled) return { visible: [], muted: [] };
+    // Hold everything back until the Recovery analytics boundary is verified: an
+    // unready filter exposes the empty placeholder exclusion set, so a note that
+    // will be excluded once membership resolves could briefly produce a card
+    // here that then disappears or changes.
+    if (!progressionSettings.enabled || !recoveryFilter.ready) return { visible: [], muted: [] };
     const records = Array.isArray(analytics.progressionSuggestions) ? analytics.progressionSuggestions : [];
     const mutedKeys = new Set(progressionSettings.mutedKeys || []);
     const displayMap = analytics.nameDisplayMap;
@@ -400,7 +404,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       visible.push({ record: shown, key, instanceId });
     }
     return { visible, muted };
-  }, [progressionSettings.enabled, progressionSettings.mutedKeys, analytics.progressionSuggestions, analytics.nameDisplayMap, dismissedProgressionIds]);
+  }, [progressionSettings.enabled, recoveryFilter.ready, progressionSettings.mutedKeys, analytics.progressionSuggestions, analytics.nameDisplayMap, dismissedProgressionIds]);
 
   const handleMuteProgression = (key) => {
     setProgressionSuggestionMuted(key, true).catch(() => {});

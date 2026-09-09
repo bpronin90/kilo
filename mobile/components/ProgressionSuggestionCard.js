@@ -147,15 +147,18 @@ export function ProgressionSuggestionCard({
   ].filter(Boolean).join(' ');
 
   return (
-    <Card
-      style={styles.card}
-      // The whole card is one accessible group so a screen reader announces the
-      // exercise, the heuristic caveat, the evidence and the recommendation
-      // together rather than as loose fragments.
-      accessible
-      accessibilityLabel={a11ySummary}
-      testID={`progression-suggestion-${surface}`}
-    >
+    <Card style={styles.card}>
+      {/* `Card` forwards only style/tone/onPress to its native View, so the
+          accessibility identity has to live on a real element inside it. This
+          wrapper makes the whole card one accessible group: a screen reader
+          announces the exercise, the heuristic caveat, the evidence, and the
+          recommendation together rather than as loose fragments. */}
+      <View
+        style={styles.cardBody}
+        accessible
+        accessibilityLabel={a11ySummary}
+        testID={`progression-suggestion-${surface}`}
+      >
       <View style={styles.headerRow}>
         <Text style={styles.exerciseName} numberOfLines={2}>{name}</Text>
         <View style={styles.heuristicBadge} accessible accessibilityLabel="Heuristic suggestion, not guaranteed">
@@ -202,6 +205,7 @@ export function ProgressionSuggestionCard({
           <Text style={styles.actionButtonText}>Mute this exercise</Text>
         </Pressable>
       </View>
+      </View>
     </Card>
   );
 }
@@ -237,6 +241,9 @@ export function MutedProgressionRow({ name, onUnmute }) {
 
 const createStyles = (colors) => StyleSheet.create({
   card: {
+    gap: 8,
+  },
+  cardBody: {
     gap: 8,
   },
   headerRow: {
