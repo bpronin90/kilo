@@ -46,20 +46,19 @@ export async function clearDeloadNote() {
 // would rewrite the row forever. The health-value timestamps here are content, not
 // sync metadata; the sync engine stamps its own updated_at separately.
 export async function applyDeloadNoteFromSync({ raw_text, saved_at, updated_at }) {
-  // #989: working_context is device-local (it is not part of the deload-note
-  // cloud projection). When sync re-applies the SAME deload text, keep the
-  // locally frozen snapshot so a generate -> sync -> complete round on one
-  // device still yields re-entry context; a genuinely different deload arriving
-  // from another device carries no snapshot and clears the stale one.
-  const existing = await loadDeloadNote();
+  // #989: working_context is a DEVICE-LOCAL generation artifact, not part of the
+  // deload-note cloud projection. This path only runs when a remote deload-note
+  // write wins the merge (sync compares normalized timestamps, so a pure format
+  // round-trip never gets here). The winning note is authoritatively not the one
+  // this device generated — identical raw_text is not proof of identity — so the
+  // local snapshot cannot be assumed to describe it and is dropped. The
+  // generating device keeps its snapshot because its own row wins and this path
+  // is not taken there.
   const note = {
     raw_text,
     saved_at: saved_at ?? null,
     updated_at: updated_at ?? null,
-    working_context:
-      existing && existing.raw_text === raw_text
-        ? (existing.working_context ?? null)
-        : null,
+    working_context: null,
   };
   await AsyncStorage.setItem(WORKOUT_DELOAD_NOTE_KEY, JSON.stringify(note));
   return note;

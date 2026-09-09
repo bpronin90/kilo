@@ -1501,10 +1501,13 @@ describe('applyDeloadNoteFromSync (issue #498)', () => {
     });
   });
 
-  // #989: working_context is device-local (not part of the deload-note cloud
-  // projection). Sync re-applying the SAME deload text keeps the locally frozen
-  // snapshot; a different deload from another device carries none and clears it.
-  it('keeps a local working_context when the pulled deload text is unchanged', async () => {
+  // #989: working_context is a device-local generation artifact, not part of the
+  // deload-note cloud projection. This path runs only when a REMOTE deload-note
+  // write wins the merge, so the local snapshot cannot be assumed to describe
+  // the winning note — identical raw_text is not proof of identity — and is
+  // dropped. The generating device keeps its snapshot because its own row wins
+  // and this path is not taken there.
+  it('clears the local working_context when a remote deload-note write wins, even if the text is identical', async () => {
     const { applyDeloadNoteFromSync } = require('../storage/entries/deloadStorage');
     const ctx = { version: 1, source_note_id: 'wn_src', exercises: { squat: { working_weight_lb: 225, logged_session_count: 4, boundary_witness: '[]' } } };
     await saveDeloadNote('same deload', ctx);
@@ -1513,7 +1516,7 @@ describe('applyDeloadNoteFromSync (issue #498)', () => {
       saved_at: '2026-06-05T00:00:00.000Z',
       updated_at: '2026-06-06T00:00:00.000Z',
     });
-    expect((await loadDeloadNote()).working_context).toEqual(ctx);
+    expect((await loadDeloadNote()).working_context).toBeNull();
   });
 
   it('drops a stale working_context when a different deload is pulled', async () => {

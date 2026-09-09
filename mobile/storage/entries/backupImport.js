@@ -419,26 +419,41 @@ function _isPlainObject(v) {
 // working_weight_lb, an integer logged_session_count >= 1, and a string
 // boundary_witness. Anything short of that shape is malformed and must be
 // rejected before restore writes.
-function validatePreDeloadContext(ctx) {
+function _validateDeloadContextShape(ctx, label, { allowNullSourceId }) {
   if (!_isPlainObject(ctx))
-    return { ok: false, error: 'Invalid backup: deload history pre_deload_context must be an object' };
+    return { ok: false, error: `Invalid backup: ${label} must be an object` };
   if (ctx.version !== 1)
-    return { ok: false, error: `Invalid backup: unsupported deload history pre_deload_context version (${ctx.version})` };
-  if (typeof ctx.source_note_id !== 'string' || ctx.source_note_id.length === 0)
-    return { ok: false, error: 'Invalid backup: deload history pre_deload_context.source_note_id must be a non-empty string' };
+    return { ok: false, error: `Invalid backup: unsupported ${label} version (${ctx.version})` };
+  const idOk = allowNullSourceId
+    ? (ctx.source_note_id === null || (typeof ctx.source_note_id === 'string' && ctx.source_note_id.length > 0))
+    : (typeof ctx.source_note_id === 'string' && ctx.source_note_id.length > 0);
+  if (!idOk)
+    return { ok: false, error: `Invalid backup: ${label}.source_note_id must be a non-empty string${allowNullSourceId ? ' or null' : ''}` };
   if (!_isPlainObject(ctx.exercises))
-    return { ok: false, error: 'Invalid backup: deload history pre_deload_context.exercises must be an object' };
+    return { ok: false, error: `Invalid backup: ${label}.exercises must be an object` };
   for (const ex of Object.values(ctx.exercises)) {
     if (!_isPlainObject(ex))
-      return { ok: false, error: 'Invalid backup: deload history pre_deload_context exercise is not an object' };
+      return { ok: false, error: `Invalid backup: ${label} exercise is not an object` };
     if (!Number.isFinite(ex.working_weight_lb) || ex.working_weight_lb <= 0)
-      return { ok: false, error: 'Invalid backup: deload history pre_deload_context working_weight_lb must be a positive number' };
+      return { ok: false, error: `Invalid backup: ${label} working_weight_lb must be a positive number` };
     if (!Number.isInteger(ex.logged_session_count) || ex.logged_session_count < 1)
-      return { ok: false, error: 'Invalid backup: deload history pre_deload_context logged_session_count must be a positive integer' };
+      return { ok: false, error: `Invalid backup: ${label} logged_session_count must be a positive integer` };
     if (typeof ex.boundary_witness !== 'string')
-      return { ok: false, error: 'Invalid backup: deload history pre_deload_context boundary_witness must be a string' };
+      return { ok: false, error: `Invalid backup: ${label} boundary_witness must be a string` };
   }
   return { ok: true };
+}
+
+// A COMPLETED record's pre_deload_context always carries a real source id (the
+// builder omits the whole field otherwise).
+function validatePreDeloadContext(ctx) {
+  return _validateDeloadContextShape(ctx, 'deload history pre_deload_context', { allowNullSourceId: false });
+}
+
+// An ACTIVE deload note's working_context is captured before completion and may
+// predate the routine ever being saved, so its source id can legitimately be null.
+function validateActiveDeloadWorkingContext(ctx) {
+  return _validateDeloadContextShape(ctx, 'cloud.current_deload_note.working_context', { allowNullSourceId: true });
 }
 
 function validateDeloadHistory(entries) {
@@ -997,6 +1012,10 @@ function validateCloudBlock(cloud) {
       return { ok: false, error: 'Invalid backup: cloud.current_deload_note.raw_text must be a string' };
     if (typeof n.raw_text === 'string' && n.raw_text.length > MAX_IMPORT_RAW_TEXT_LENGTH)
       return { ok: false, error: `Invalid backup: cloud.current_deload_note.raw_text too large (${n.raw_text.length}; limit ${MAX_IMPORT_RAW_TEXT_LENGTH})` };
+    if (n.working_context != null) {
+      const ctxCheck = validateActiveDeloadWorkingContext(n.working_context);
+      if (!ctxCheck.ok) return ctxCheck;
+    }
   }
 
   return { ok: true };
@@ -1078,7 +1097,10 @@ async function restoreCloudBlock(cloud) {
   }
 
   if (cloud.current_deload_note != null && typeof cloud.current_deload_note.raw_text === 'string') {
-    await saveDeloadNote(cloud.current_deload_note.raw_text);
+    // #989: carry the frozen generation-time working_context through the restore
+    // so a lossless export/import keeps it; an older backup without the field
+    // passes undefined, which saveDeloadNote treats as "leave as-is".
+    await saveDeloadNote(cloud.current_deload_note.raw_text, cloud.current_deload_note.working_context);
   }
 }
 

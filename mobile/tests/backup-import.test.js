@@ -1239,6 +1239,43 @@ describe('#989 deload pre_deload_context in the backup format', () => {
     }
   });
 
+  it('carries an active deload working_context through a cloud-block restore', async () => {
+    const workingContext = {
+      version: 1,
+      source_note_id: 'wn_src',
+      exercises: { bench: { working_weight_lb: 185, logged_session_count: 3, boundary_witness: '[]' } },
+    };
+    const backup = {
+      ...(await Storage.exportBackup()),
+      cloud: { current_deload_note: { raw_text: 'active deload text', working_context: workingContext } },
+    };
+    const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+    expect(result.ok).toBe(true);
+    const note = await Storage.loadDeloadNote();
+    expect(note.raw_text).toBe('active deload text');
+    expect(note.working_context).toEqual(workingContext);
+  });
+
+  it('accepts a cloud-block working_context whose source_note_id is null', async () => {
+    const backup = {
+      ...(await Storage.exportBackup()),
+      cloud: { current_deload_note: { raw_text: 'x', working_context: { version: 1, source_note_id: null, exercises: {} } } },
+    };
+    const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+    expect(result.ok).toBe(true);
+    expect((await Storage.loadDeloadNote()).working_context).toEqual({ version: 1, source_note_id: null, exercises: {} });
+  });
+
+  it('rejects a malformed cloud-block working_context before writing anything', async () => {
+    const backup = {
+      ...(await Storage.exportBackup()),
+      cloud: { current_deload_note: { raw_text: 'x', working_context: { version: 1, source_note_id: 'wn_src', exercises: { bench: { logged_session_count: 3, boundary_witness: '[]' } } } } },
+    };
+    const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/working_context working_weight_lb must be a positive number/);
+  });
+
   it('accepts a valid v1 context with an empty exercises map', async () => {
     const rec = { id: 'dl_empty', raw_text: 'x', saved_at: '2026-05-01T00:00:00.000Z', completed_at: '2026-05-02T00:00:00.000Z', session_count: 3, pre_deload_context: { version: 1, source_note_id: 'wn_src', exercises: {} } };
     await Storage.appendDeloadHistory(rec);
