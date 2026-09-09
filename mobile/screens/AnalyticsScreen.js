@@ -331,8 +331,15 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   const noteExerciseNames = useMemo(() => deriveNoteExerciseNames(parsedSections.currentSections), [parsedSections]);
 
   const analytics = useMemo(
-    () => deriveAnalytics(parsedSections, trackedLifts, oneKSelections, multiplier, trackedLiftActivations),
-    [parsedSections, trackedLifts, oneKSelections, multiplier, trackedLiftActivations]
+    // #989: the stored current-routine id (not `currentNote?.id`) is the stable
+    // source id a deload snapshot was frozen against; pass it with the deload
+    // history and live recovery blocks so re-entry context resolves here.
+    () => deriveAnalytics(parsedSections, trackedLifts, oneKSelections, multiplier, trackedLiftActivations, {
+      deloadHistory,
+      sourceNoteId: currentId ?? null,
+      recoveryBlocks,
+    }),
+    [parsedSections, trackedLifts, oneKSelections, multiplier, trackedLiftActivations, deloadHistory, currentId, recoveryBlocks]
   );
 
   const groupedSignals = useMemo(

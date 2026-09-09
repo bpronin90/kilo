@@ -404,6 +404,58 @@ function validateWeightEntries(entries) {
   return { ok: true };
 }
 
+// #989: the frozen pre-deload working-weight context on a completed record.
+// Additive — a record that predates the field simply omits it. When present it
+// must match the shape the derivation layer writes (version 1); a malformed or
+// unsupported context is rejected here, before any restore write.
+function _isPlainObject(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
+}
+
+// A persisted `pre_deload_context` is only ever written by buildDeloadReentryRecord
+// (via captureDeloadWorkingContext): version 1, a non-empty string source_note_id
+// (the builder omits the whole field when it has no source id), an `exercises`
+// object (possibly empty), and every per-exercise entry carrying a positive
+// working_weight_lb, an integer logged_session_count >= 1, and a string
+// boundary_witness. Anything short of that shape is malformed and must be
+// rejected before restore writes.
+function _validateDeloadContextShape(ctx, label, { allowNullSourceId }) {
+  if (!_isPlainObject(ctx))
+    return { ok: false, error: `Invalid backup: ${label} must be an object` };
+  if (ctx.version !== 1)
+    return { ok: false, error: `Invalid backup: unsupported ${label} version (${ctx.version})` };
+  const idOk = allowNullSourceId
+    ? (ctx.source_note_id === null || (typeof ctx.source_note_id === 'string' && ctx.source_note_id.length > 0))
+    : (typeof ctx.source_note_id === 'string' && ctx.source_note_id.length > 0);
+  if (!idOk)
+    return { ok: false, error: `Invalid backup: ${label}.source_note_id must be a non-empty string${allowNullSourceId ? ' or null' : ''}` };
+  if (!_isPlainObject(ctx.exercises))
+    return { ok: false, error: `Invalid backup: ${label}.exercises must be an object` };
+  for (const ex of Object.values(ctx.exercises)) {
+    if (!_isPlainObject(ex))
+      return { ok: false, error: `Invalid backup: ${label} exercise is not an object` };
+    if (!Number.isFinite(ex.working_weight_lb) || ex.working_weight_lb <= 0)
+      return { ok: false, error: `Invalid backup: ${label} working_weight_lb must be a positive number` };
+    if (!Number.isInteger(ex.logged_session_count) || ex.logged_session_count < 1)
+      return { ok: false, error: `Invalid backup: ${label} logged_session_count must be a positive integer` };
+    if (typeof ex.boundary_witness !== 'string')
+      return { ok: false, error: `Invalid backup: ${label} boundary_witness must be a string` };
+  }
+  return { ok: true };
+}
+
+// A COMPLETED record's pre_deload_context always carries a real source id (the
+// builder omits the whole field otherwise).
+function validatePreDeloadContext(ctx) {
+  return _validateDeloadContextShape(ctx, 'deload history pre_deload_context', { allowNullSourceId: false });
+}
+
+// An ACTIVE deload note's working_context is captured before completion and may
+// predate the routine ever being saved, so its source id can legitimately be null.
+function validateActiveDeloadWorkingContext(ctx) {
+  return _validateDeloadContextShape(ctx, 'cloud.current_deload_note.working_context', { allowNullSourceId: true });
+}
+
 function validateDeloadHistory(entries) {
   if (!Array.isArray(entries))
     return { ok: false, error: 'Invalid backup: deload_history must be an array' };
@@ -421,6 +473,10 @@ function validateDeloadHistory(entries) {
         return { ok: false, error: 'Invalid backup: deload history entry raw_text must be a string' };
       if (d.raw_text.length > MAX_IMPORT_RAW_TEXT_LENGTH)
         return { ok: false, error: `Invalid backup: deload history raw_text too large (${d.raw_text.length}; limit ${MAX_IMPORT_RAW_TEXT_LENGTH})` };
+    }
+    if ('pre_deload_context' in d) {
+      const ctxCheck = validatePreDeloadContext(d.pre_deload_context);
+      if (!ctxCheck.ok) return ctxCheck;
     }
   }
   return { ok: true };
@@ -956,6 +1012,10 @@ function validateCloudBlock(cloud) {
       return { ok: false, error: 'Invalid backup: cloud.current_deload_note.raw_text must be a string' };
     if (typeof n.raw_text === 'string' && n.raw_text.length > MAX_IMPORT_RAW_TEXT_LENGTH)
       return { ok: false, error: `Invalid backup: cloud.current_deload_note.raw_text too large (${n.raw_text.length}; limit ${MAX_IMPORT_RAW_TEXT_LENGTH})` };
+    if (n.working_context != null) {
+      const ctxCheck = validateActiveDeloadWorkingContext(n.working_context);
+      if (!ctxCheck.ok) return ctxCheck;
+    }
   }
 
   return { ok: true };
@@ -1037,7 +1097,10 @@ async function restoreCloudBlock(cloud) {
   }
 
   if (cloud.current_deload_note != null && typeof cloud.current_deload_note.raw_text === 'string') {
-    await saveDeloadNote(cloud.current_deload_note.raw_text);
+    // #989: carry the frozen generation-time working_context through the restore
+    // so a lossless export/import keeps it; an older backup without the field
+    // passes undefined, which saveDeloadNote treats as "leave as-is".
+    await saveDeloadNote(cloud.current_deload_note.raw_text, cloud.current_deload_note.working_context);
   }
 }
 

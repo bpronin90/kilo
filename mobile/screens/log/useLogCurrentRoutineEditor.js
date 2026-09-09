@@ -19,7 +19,7 @@ import { deriveTrackedPROccurrences } from '../../lib/data/workoutAnalytics';
 import { detectPRMoment } from '../../lib/prMoment';
 import { subscribeDirtyQueue, getDirtyRecords, SYNC_TABLES } from '../../storage/syncQueue';
 import { subscribeSyncState, getSyncState, SYNC_PHASE, SYNC_STATUS } from '../../storage/syncRecovery';
-import { getStorageMode, STORAGE_MODES } from '../../storage/entries';
+import { getStorageMode, STORAGE_MODES, loadDeloadHistory } from '../../storage/entries';
 import { AUTOSAVE_DEBOUNCE_MS, DELOAD_NOTE_PREFIX } from '../../lib/LogScreenHelpers';
 import { buildDayGroups } from './logScreenHelpers';
 import {
@@ -866,6 +866,17 @@ export function useLogCurrentRoutineEditor({
         recoveryBoundaryKnown = false;
       }
 
+      // #989: feed the save-time analytics pass the same post-deload re-entry
+      // inputs Analytics and Home use — the deload history and the stable
+      // current-routine id. A failed read leaves it null: analytics still runs,
+      // just without re-entry context, exactly as before this wiring existed.
+      let deloadHistory = null;
+      try {
+        deloadHistory = await loadDeloadHistory();
+      } catch {
+        deloadHistory = null;
+      }
+
       let classificationsPatch = {};
       if (recoveryBoundaryKnown) {
         // A brand-new note (no currentId) has no id yet, so it cannot hold a
@@ -878,7 +889,7 @@ export function useLogCurrentRoutineEditor({
           }),
           ...(currentId ? [] : savedSections),
         ];
-        const { classifications } = deriveWorkoutNoteAnalytics(allSections, trackedNames, undefined, trackedLiftActivations);
+        const { classifications } = deriveWorkoutNoteAnalytics(allSections, trackedNames, undefined, trackedLiftActivations, { deloadHistory, sourceNoteId: currentId ?? null });
         classificationsPatch = { exercise_classifications: classifications };
 
         // Tracked-span retirement and stale-anchor repair (#893). This is the

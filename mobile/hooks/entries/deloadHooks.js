@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as Storage from '../../storage/entries';
+import { parseWorkoutNote } from '../../lib/parser';
+import { buildDeloadReentryRecord } from '../../lib/parser/deloadHistory';
 import { writeVia } from './storageMode';
 import { safeNotify } from './shared';
 import { DELOAD_NOTE_PREFIX, notifyWorkoutNotes } from './workoutNoteHooks';
@@ -28,8 +30,8 @@ export function useDeloadNote() {
     };
   }, [refresh]);
 
-  const save = useCallback(async (raw_text) => {
-    const saved = await Storage.saveDeloadNote(raw_text);
+  const save = useCallback(async (raw_text, workingContext) => {
+    const saved = await Storage.saveDeloadNote(raw_text, workingContext);
     setNote(saved);
     notifyDeloadNote();
     return saved;
@@ -89,7 +91,7 @@ export function useDeloadHistory() {
       one_k_exercises: null,
       isCurrent: false,
     };
-    const record = {
+    const baseRecord = {
       id: `dl_${dateStr}_${Date.now()}`,
       raw_text: activeNote.raw_text,
       generated_at: activeNote.saved_at,
@@ -99,6 +101,34 @@ export function useDeloadHistory() {
       deload_ordinal_is_count: true,
       note_id: noteId,
     };
+    // #989: witness the completion boundary against the routine the deload was
+    // GENERATED from — identified by the frozen snapshot's source_note_id, not
+    // whichever routine is current now (the user may have switched routines
+    // between generate and complete). A missing snapshot, a source routine that
+    // no longer exists, or a failed read all degrade to the legacy record shape
+    // (buildDeloadReentryRecord returns the record unchanged). Neither input is
+    // mutated; nothing else is retrofitted.
+    const workingContext = activeNote.working_context ?? null;
+    const sourceNoteId = workingContext?.source_note_id ?? null;
+    let completionSections = null;
+    if (sourceNoteId) {
+      try {
+        const allNotes = await Storage.loadWorkoutNotes();
+        const sourceNote = (allNotes || []).find(n => n && n.id === sourceNoteId);
+        if (sourceNote?.raw_text) {
+          completionSections = parseWorkoutNote(sourceNote.raw_text).sections;
+        }
+      } catch {
+        completionSections = null;
+      }
+    }
+    // Only stamp a re-entry context when the generation snapshot AND its source
+    // routine are both in hand; otherwise fall through to the legacy shape.
+    const record = buildDeloadReentryRecord(
+      baseRecord,
+      completionSections ? workingContext : null,
+      completionSections || [],
+    );
     await Storage.appendDeloadHistory(record);
     await writeVia('saveWorkoutNoteItem', Storage.saveWorkoutNoteItem, workoutNote);
     await Storage.clearDeloadNote();

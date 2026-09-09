@@ -1105,3 +1105,184 @@ describe('local-mode replace: unchanged contract', () => {
     expect(await getDirtyRecords(SYNC_TABLES.WEIGHT_ENTRIES)).toHaveLength(0);
   });
 });
+
+// ── #989: post-deload re-entry context round-trips through a JSON backup ───────
+//
+// The completed deload record carries `pre_deload_context` — the frozen
+// pre-deload working weights plus the witnessed completion boundary. A lossless
+// backup must preserve it byte-for-byte so the derived re-entry label survives
+// an export/clear/import cycle; records that predate the field restore
+// unchanged, and a malformed or unsupported context is rejected before any
+// restore write.
+describe('#989 deload pre_deload_context in the backup format', () => {
+  const {
+    captureDeloadWorkingContext,
+    buildDeloadReentryRecord,
+    deriveDeloadReentry,
+  } = require('../lib/parser/deloadHistory');
+  const { parseWorkoutNote } = require('../lib/parser');
+
+  const ROUTINE_AT_DELOAD = '-Bench\n- 185 5,5,5\n- 185 5,5,5\n- 185 5,5,5';
+  const ROUTINE_FIRST_BACK = '-Bench\n- 185 5,5,5\n- 185 5,5,5\n- 185 5,5,5\n- 185 5,5,5';
+
+  function completedReentryRecord() {
+    const ctx = captureDeloadWorkingContext(parseWorkoutNote(ROUTINE_AT_DELOAD).sections, 'wn_src');
+    return buildDeloadReentryRecord(
+      {
+        id: 'dl_reentry',
+        date: '2026-06-20',
+        raw_text: 'deload week',
+        saved_at: '2026-06-20T10:00:00.000Z',
+        completed_at: '2026-06-20T11:00:00.000Z',
+        session_count: 3,
+        note_id: 'wn_dl_reentry',
+      },
+      ctx,
+      parseWorkoutNote(ROUTINE_AT_DELOAD).sections,
+    );
+  }
+
+  it('preserves the context exactly and the derived re-entry label round-trips', async () => {
+    const record = completedReentryRecord();
+    expect(record.pre_deload_context.version).toBe(1);
+    await Storage.appendDeloadHistory(record);
+
+    const backup = await Storage.exportBackup();
+    const before = await Storage.loadDeloadHistory();
+
+    // Clear/replace local state, then import.
+    await Storage.deleteDeloadHistory('dl_reentry');
+    expect(await Storage.loadDeloadHistory()).toEqual([]);
+    const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+    expect(result.ok).toBe(true);
+
+    const after = await Storage.loadDeloadHistory();
+    expect(after).toEqual(before);
+
+    // The label a consumer derives is identical on both sides.
+    const firstBack = parseWorkoutNote(ROUTINE_FIRST_BACK).sections;
+    const reBefore = deriveDeloadReentry(firstBack, before, 'wn_src');
+    const reAfter = deriveDeloadReentry(firstBack, after, 'wn_src');
+    expect(reBefore.bench?.status).toBe('re_entry');
+    expect(reAfter).toEqual(reBefore);
+  });
+
+  it('restores a legacy record with no pre_deload_context unchanged', async () => {
+    const legacy = {
+      id: 'dl_legacy',
+      date: '2026-01-01',
+      raw_text: 'old deload',
+      saved_at: '2026-01-01T00:00:00.000Z',
+      completed_at: '2026-01-02T00:00:00.000Z',
+      session_count: 5,
+      note_id: 'wn_dl_legacy',
+    };
+    await Storage.appendDeloadHistory(legacy);
+    const backup = await Storage.exportBackup();
+    await Storage.deleteDeloadHistory('dl_legacy');
+    const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+    expect(result.ok).toBe(true);
+    const after = await Storage.loadDeloadHistory();
+    expect(after).toEqual([legacy]);
+    expect(after[0]).not.toHaveProperty('pre_deload_context');
+  });
+
+  it('rejects an unsupported context version before writing anything', async () => {
+    await Storage.appendDeloadHistory({ id: 'dl_keep', raw_text: 'keep', saved_at: '2026-05-01T00:00:00.000Z' });
+    const kept = await Storage.loadDeloadHistory();
+
+    const badVersion = {
+      ...completedReentryRecord(),
+      id: 'dl_bad',
+      pre_deload_context: { ...completedReentryRecord().pre_deload_context, version: 2 },
+    };
+    const backup = { ...(await Storage.exportBackup()), deload_history: [...kept, badVersion] };
+    const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/pre_deload_context version/);
+    // Nothing was written: the pre-import local state is intact.
+    expect(await Storage.loadDeloadHistory()).toEqual(kept);
+  });
+
+  it('rejects a non-object context before writing anything', async () => {
+    const kept = await Storage.loadDeloadHistory();
+    const backup = {
+      ...(await Storage.exportBackup()),
+      deload_history: [{ id: 'dl_bad2', raw_text: 'x', saved_at: '2026-05-01T00:00:00.000Z', pre_deload_context: 'nope' }],
+    };
+    const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/pre_deload_context must be an object/);
+    expect(await Storage.loadDeloadHistory()).toEqual(kept);
+  });
+
+  it('rejects a v1 context missing its required fields', async () => {
+    const kept = await Storage.loadDeloadHistory();
+    const cases = [
+      { pre_deload_context: { version: 1 }, re: /source_note_id must be a non-empty string/ },
+      { pre_deload_context: { version: 1, source_note_id: '' }, re: /source_note_id must be a non-empty string/ },
+      { pre_deload_context: { version: 1, source_note_id: 'wn_src' }, re: /exercises must be an object/ },
+      { pre_deload_context: { version: 1, source_note_id: 'wn_src', exercises: { bench: { logged_session_count: 3, boundary_witness: '[]' } } }, re: /working_weight_lb must be a positive number/ },
+      { pre_deload_context: { version: 1, source_note_id: 'wn_src', exercises: { bench: { working_weight_lb: 185, logged_session_count: -1, boundary_witness: '[]' } } }, re: /logged_session_count must be a positive integer/ },
+      { pre_deload_context: { version: 1, source_note_id: 'wn_src', exercises: { bench: { working_weight_lb: 0, logged_session_count: 3, boundary_witness: '[]' } } }, re: /working_weight_lb must be a positive number/ },
+      { pre_deload_context: { version: 1, source_note_id: 'wn_src', exercises: { bench: { working_weight_lb: 185, logged_session_count: 3 } } }, re: /boundary_witness must be a string/ },
+    ];
+    for (const c of cases) {
+      const backup = {
+        ...(await Storage.exportBackup()),
+        deload_history: [{ id: 'dl_bad3', raw_text: 'x', saved_at: '2026-05-01T00:00:00.000Z', ...c }],
+      };
+      const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(c.re);
+      expect(await Storage.loadDeloadHistory()).toEqual(kept);
+    }
+  });
+
+  it('carries an active deload working_context through a cloud-block restore', async () => {
+    const workingContext = {
+      version: 1,
+      source_note_id: 'wn_src',
+      exercises: { bench: { working_weight_lb: 185, logged_session_count: 3, boundary_witness: '[]' } },
+    };
+    const backup = {
+      ...(await Storage.exportBackup()),
+      cloud: { current_deload_note: { raw_text: 'active deload text', working_context: workingContext } },
+    };
+    const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+    expect(result.ok).toBe(true);
+    const note = await Storage.loadDeloadNote();
+    expect(note.raw_text).toBe('active deload text');
+    expect(note.working_context).toEqual(workingContext);
+  });
+
+  it('accepts a cloud-block working_context whose source_note_id is null', async () => {
+    const backup = {
+      ...(await Storage.exportBackup()),
+      cloud: { current_deload_note: { raw_text: 'x', working_context: { version: 1, source_note_id: null, exercises: {} } } },
+    };
+    const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+    expect(result.ok).toBe(true);
+    expect((await Storage.loadDeloadNote()).working_context).toEqual({ version: 1, source_note_id: null, exercises: {} });
+  });
+
+  it('rejects a malformed cloud-block working_context before writing anything', async () => {
+    const backup = {
+      ...(await Storage.exportBackup()),
+      cloud: { current_deload_note: { raw_text: 'x', working_context: { version: 1, source_note_id: 'wn_src', exercises: { bench: { logged_session_count: 3, boundary_witness: '[]' } } } } },
+    };
+    const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/working_context working_weight_lb must be a positive number/);
+  });
+
+  it('accepts a valid v1 context with an empty exercises map', async () => {
+    const rec = { id: 'dl_empty', raw_text: 'x', saved_at: '2026-05-01T00:00:00.000Z', completed_at: '2026-05-02T00:00:00.000Z', session_count: 3, pre_deload_context: { version: 1, source_note_id: 'wn_src', exercises: {} } };
+    await Storage.appendDeloadHistory(rec);
+    const backup = await Storage.exportBackup();
+    await Storage.deleteDeloadHistory('dl_empty');
+    const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+    expect(result.ok).toBe(true);
+    expect((await Storage.loadDeloadHistory()).find(r => r.id === 'dl_empty').pre_deload_context).toEqual({ version: 1, source_note_id: 'wn_src', exercises: {} });
+  });
+});

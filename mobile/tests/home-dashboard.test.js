@@ -428,3 +428,72 @@ describe('HomeScreen — welcome-card example teaches parseable syntax (issue #5
     expect(hasText(component.root, 'Squat: 315x5')).toBe(false);
   });
 });
+
+// ── #989: Home feeds the analytics pass the post-deload re-entry inputs ────────
+describe('deriveHomeDashboardData — post-deload re-entry wiring (#989)', () => {
+  const { captureDeloadWorkingContext, buildDeloadReentryRecord } = require('../lib/parser/deloadHistory');
+  const ROUTINE_AT_DELOAD = '-Bench\n- 185 5,5,5\n- 185 5,5,5\n- 185 5,5,5';
+  const ROUTINE_FIRST_BACK = '-Bench\n- 185 5,5,5\n- 185 5,5,5\n- 185 5,5,5\n- 185 5,5,5';
+
+  const completedRecord = buildDeloadReentryRecord(
+    { id: 'dl_re', completed_at: '2026-06-20T11:00:00.000Z', session_count: 3, note_id: 'wn_dl_re' },
+    captureDeloadWorkingContext(parseWorkoutNote(ROUTINE_AT_DELOAD).sections, 'wn_src'),
+    parseWorkoutNote(ROUTINE_AT_DELOAD).sections,
+  );
+
+  const baseArgs = () => {
+    const note = { id: 'wn_src', raw_text: ROUTINE_FIRST_BACK, one_k_exercises: null };
+    return {
+      weightEntries: [],
+      workoutNote: note,
+      weightGoal: null,
+      allSections: parseWorkoutNote(ROUTINE_FIRST_BACK).sections,
+      trackedLifts: { bench: true },
+    };
+  };
+
+  test('labels the first working session back as re_entry when history + source id are supplied', () => {
+    const result = deriveHomeDashboardData({
+      ...baseArgs(),
+      deloadHistory: [completedRecord],
+      sourceNoteId: 'wn_src',
+    });
+    expect(result.reentry.bench.status).toBe('re_entry');
+  });
+
+  test('does not label re_entry for an unrelated source-routine id', () => {
+    const result = deriveHomeDashboardData({
+      ...baseArgs(),
+      deloadHistory: [completedRecord],
+      sourceNoteId: 'wn_other',
+    });
+    expect(result.reentry.bench).toBeUndefined();
+  });
+
+  test('does not label re_entry from legacy history with no pre_deload_context', () => {
+    const result = deriveHomeDashboardData({
+      ...baseArgs(),
+      deloadHistory: [{ id: 'dl_legacy', completed_at: '2026-01-01T00:00:00.000Z', session_count: 3 }],
+      sourceNoteId: 'wn_src',
+    });
+    expect(result.reentry.bench).toBeUndefined();
+  });
+
+  test('omitting the deload inputs leaves re-entry empty (unchanged legacy behavior)', () => {
+    const result = deriveHomeDashboardData(baseArgs());
+    expect(result.reentry).toEqual({});
+  });
+
+  test('an exercise under an active Recovery block is not labeled', () => {
+    const result = deriveHomeDashboardData({
+      ...baseArgs(),
+      deloadHistory: [completedRecord],
+      sourceNoteId: 'wn_src',
+      recoveryBlocks: [{
+        started_at: '2026-06-01T00:00:00.000Z', completed_at: null,
+        baseline: { exercises: [{ key: 'bench' }] },
+      }],
+    });
+    expect(result.reentry.bench).toBeUndefined();
+  });
+});

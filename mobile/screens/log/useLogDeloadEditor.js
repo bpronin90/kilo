@@ -1,6 +1,7 @@
 import { useState, useRef, useMemo } from 'react';
 import { Alert } from '../../lib/platformAlert';
 import { parseWorkoutNote, generateDeloadNote } from '../../lib/parser';
+import { captureDeloadWorkingContext } from '../../lib/parser/deloadHistory';
 import { buildDayGroups } from './logScreenHelpers';
 
 export function useLogDeloadEditor({
@@ -8,6 +9,7 @@ export function useLogDeloadEditor({
   saveDeloadNote,
   workoutNoteText,
   editorScrollRef,
+  currentId = null,
 }) {
   const [deloadMode, setDeloadMode] = useState('read');
   const [deloadEditText, setDeloadEditText] = useState('');
@@ -110,7 +112,16 @@ export function useLogDeloadEditor({
             return line;
           })
           .join('\n');
-        await saveDeloadNote(formattedRaw);
+        // #989: freeze the current routine's working-weight context at the
+        // moment its deload is generated, keyed to the stable current-routine
+        // id. Regenerating recomputes it; a later manual edit of the generated
+        // text does not (saveDeloadNote keeps the existing snapshot when none is
+        // passed). No workout note or historical record is touched.
+        const workingContext = captureDeloadWorkingContext(
+          parseWorkoutNote(workoutNoteText).sections,
+          currentId ?? null,
+        );
+        await saveDeloadNote(formattedRaw, workingContext);
       } catch {
         setSaveError('Generate failed');
       } finally {

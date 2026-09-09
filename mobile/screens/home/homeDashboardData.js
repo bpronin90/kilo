@@ -209,7 +209,7 @@ function countNewlyTrackedRows(sections, signals, perDaySignals, nonWeightedMetr
 // still fully readable. Its `exercise_classifications` are the save-time cache
 // written by useLogCurrentRoutineEditor, which derives them from the same
 // filtered population.
-export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, trackedLifts, trackedLiftActivations }) {
+export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, trackedLifts, trackedLiftActivations, deloadHistory, sourceNoteId = null, recoveryBlocks }) {
   let oneK = null;
   let sections = null;
 
@@ -240,7 +240,11 @@ export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal
   // screen, and Analytics passes the same records to its own — so the two
   // surfaces classify the same tracked population against the same boundary
   // rather than each inventing one.
-  const { signals, perDaySignals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames, undefined, trackedLiftActivations);
+  // #989: the post-deload re-entry inputs, shared by both analytics passes on
+  // this screen so Home cannot disagree with Analytics or the save-time cache
+  // about the first working session back.
+  const _deloadOptions = { deloadHistory, sourceNoteId: sourceNoteId ?? null, recoveryBlocks };
+  const { signals, perDaySignals, reentry } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames, undefined, trackedLiftActivations, _deloadOptions);
   const counts = deriveOverloadCounts(sections, signals, perDaySignals);
   // #894: same visible tracked population, split by whether it has an
   // explicit activation record (#893) — presence means an explicit Track
@@ -266,7 +270,7 @@ export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal
     ...defaultNames,
     ...globallyTracked.filter(n => !normalizedDefaults.has(normalizeLiftName(n))),
   ];
-  const { classifications: liveClassifications } = deriveWorkoutNoteAnalytics(allSections, allTrackedNames, undefined, trackedLiftActivations);
+  const { classifications: liveClassifications } = deriveWorkoutNoteAnalytics(allSections, allTrackedNames, undefined, trackedLiftActivations, _deloadOptions);
 
   const weeklySummary = computeWeeklySummary(sections, workoutNote, liveClassifications);
   weeklySummary.classifications = counts;
@@ -302,5 +306,6 @@ export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal
     weeklySummary,
     sessionCount,
     goalInfo: sanitizedGoalInfo,
+    reentry,
   };
 }

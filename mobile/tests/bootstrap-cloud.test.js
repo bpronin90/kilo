@@ -690,6 +690,40 @@ describe('deload-history upload allowlist (issue #475)', () => {
     expect(record.record_json).not.toHaveProperty('coach_comment');
   });
 
+  // #989: the frozen pre-deload working-weight context on a completed record is
+  // an allowlisted record_json key — additive, no new column.
+  it('promotes pre_deload_context into record_json', async () => {
+    const preDeloadContext = {
+      version: 1,
+      source_note_id: 'wn_src',
+      exercises: {
+        bench: { working_weight_lb: 185, logged_session_count: 3, boundary_witness: '[[185,5,"lb",null,null]]' },
+      },
+    };
+    await AsyncStorage.setItem(
+      'kilo_workout_deload_history',
+      JSON.stringify([
+        {
+          id: 'dl_reentry',
+          date: '2026-04-01',
+          raw_text: 'deload note',
+          saved_at: '2026-04-01T00:00:00.000Z',
+          completed_at: '2026-04-02T00:00:00.000Z',
+          session_count: 8,
+          note_id: 'wn_dl_r',
+          pre_deload_context: preDeloadContext,
+        },
+      ])
+    );
+
+    const client = makeFakeClient();
+    await bootstrapFromLocal(USER_ID, client);
+
+    const record = client.upsertsByTable.deload_history[0];
+    expect(record.id).toBe('dl_reentry');
+    expect(record.record_json.pre_deload_context).toEqual(preDeloadContext);
+  });
+
   it('sets record_json to null when a deload record has no allowlisted keys', async () => {
     await AsyncStorage.setItem(
       'kilo_workout_deload_history',

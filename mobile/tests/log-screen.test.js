@@ -13494,3 +13494,171 @@ describe('Log editors: durable creation-attempt tokens for new notes (#997)', ()
     });
   });
 });
+
+// ── #989: deload generation freezes working context; completion witnesses it ──
+//
+// Generating a deload calls captureDeloadWorkingContext against the current
+// routine's parsed sections + stable id and stores the frozen snapshot beside
+// the active deload. Completing it calls buildDeloadReentryRecord so the new
+// history record carries pre_deload_context; a missing snapshot degrades to the
+// legacy record shape.
+describe('deload re-entry context capture and completion (#989)', () => {
+  const { useLogDeloadEditor } = require('../screens/log/useLogDeloadEditor');
+  const RealStorage = jest.requireActual('../storage/entries');
+  const { useDeloadHistory: realUseDeloadHistory } = jest.requireActual('../hooks/entries/deloadHooks');
+
+  const ROUTINE_AT_DELOAD = [
+    'Monday',
+    '+LIFTING EXERCISE',
+    '-Bench 3x5',
+    '185 5,5,5',
+    '185 5,5,5',
+    '185 5,5,5',
+  ].join('\n');
+  const ROUTINE_FIRST_BACK = ROUTINE_AT_DELOAD + '\n185 5,5,5';
+
+  let renderer;
+  afterEach(() => {
+    if (renderer) { render.act(() => renderer.unmount()); renderer = null; }
+  });
+
+  async function clearStore() {
+    await require('@react-native-async-storage/async-storage').clear();
+  }
+
+  test('generating a deload passes a v1 working-context snapshot keyed to the current routine id', async () => {
+    await clearStore();
+    const save = jest.fn().mockResolvedValue({});
+    let api = null;
+    function Harness() {
+      api = useLogDeloadEditor({
+        deloadNote: null,
+        saveDeloadNote: save,
+        workoutNoteText: ROUTINE_AT_DELOAD,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+        currentId: 'wn_src',
+      });
+      return null;
+    }
+    render.act(() => { renderer = render.create(<Harness />); });
+    await render.act(async () => { await api.handleGenerateDeload(); });
+
+    expect(save).toHaveBeenCalledTimes(1);
+    const [text, ctx] = save.mock.calls[0];
+    expect(typeof text).toBe('string');
+    expect(ctx).toMatchObject({ version: 1, source_note_id: 'wn_src' });
+    expect(ctx.exercises.bench).toMatchObject({ working_weight_lb: 185 });
+  });
+
+  test('completing a deload writes pre_deload_context witnessed against the current source routine', async () => {
+    await clearStore();
+    const { captureDeloadWorkingContext } = jest.requireActual('../lib/parser/deloadHistory');
+    const { parseWorkoutNote } = jest.requireActual('../lib/parser');
+
+    const frozen = captureDeloadWorkingContext(parseWorkoutNote(ROUTINE_AT_DELOAD).sections, 'wn_src');
+    await RealStorage.saveDeloadNote('Deload week text', frozen);
+    await RealStorage.saveCurrentWorkoutId('wn_src');
+    await RealStorage.saveWorkoutNoteItem({
+      id: 'wn_src', title: 'Routine', raw_text: ROUTINE_AT_DELOAD,
+      saved_at: '2026-06-01T00:00:00.000Z', updated_at: '2026-06-01T00:00:00.000Z',
+      tracked_exercises: [], one_k_exercises: null,
+    });
+
+    let hook = null;
+    function Harness() { hook = realUseDeloadHistory(); return null; }
+    render.act(() => { renderer = render.create(<Harness />); });
+
+    let record;
+    await render.act(async () => {
+      record = await hook.completeDeload({ sessionCount: 3, deloadSessionOrdinal: 1 });
+    });
+
+    expect(record.pre_deload_context).toMatchObject({ version: 1, source_note_id: 'wn_src' });
+    expect(record.pre_deload_context.exercises.bench).toMatchObject({ working_weight_lb: 185 });
+
+    const persisted = await RealStorage.loadDeloadHistory();
+    expect(persisted.find(r => r.id === record.id).pre_deload_context.version).toBe(1);
+  });
+
+  test('completing with no frozen snapshot degrades to the legacy record shape', async () => {
+    await clearStore();
+    await RealStorage.saveDeloadNote('Deload week text'); // no working_context
+    await RealStorage.saveCurrentWorkoutId('wn_src');
+    await RealStorage.saveWorkoutNoteItem({
+      id: 'wn_src', title: 'Routine', raw_text: ROUTINE_AT_DELOAD,
+      saved_at: '2026-06-01T00:00:00.000Z', updated_at: '2026-06-01T00:00:00.000Z',
+      tracked_exercises: [], one_k_exercises: null,
+    });
+
+    let hook = null;
+    function Harness() { hook = realUseDeloadHistory(); return null; }
+    render.act(() => { renderer = render.create(<Harness />); });
+
+    let record;
+    await render.act(async () => {
+      record = await hook.completeDeload({ sessionCount: 3, deloadSessionOrdinal: 1 });
+    });
+    expect(record).not.toHaveProperty('pre_deload_context');
+    expect(record.session_count).toBe(3);
+  });
+
+  test('witnesses against the routine the deload was generated from, not the current routine', async () => {
+    await clearStore();
+    const { captureDeloadWorkingContext } = jest.requireActual('../lib/parser/deloadHistory');
+    const { parseWorkoutNote } = jest.requireActual('../lib/parser');
+
+    // Generated from wn_A (has Bench). The user then switched the current
+    // routine to wn_B (Squat only, no Bench).
+    const frozen = captureDeloadWorkingContext(parseWorkoutNote(ROUTINE_AT_DELOAD).sections, 'wn_A');
+    await RealStorage.saveDeloadNote('Deload week text', frozen);
+    await RealStorage.saveWorkoutNoteItem({
+      id: 'wn_A', title: 'A', raw_text: ROUTINE_AT_DELOAD,
+      saved_at: '2026-06-01T00:00:00.000Z', updated_at: '2026-06-01T00:00:00.000Z',
+      tracked_exercises: [], one_k_exercises: null,
+    });
+    await RealStorage.saveWorkoutNoteItem({
+      id: 'wn_B', title: 'B', raw_text: 'Monday\n+LIFTING EXERCISE\n-Squat 3x5\n315 5,5,5',
+      saved_at: '2026-06-02T00:00:00.000Z', updated_at: '2026-06-02T00:00:00.000Z',
+      tracked_exercises: [], one_k_exercises: null,
+    });
+    await RealStorage.saveCurrentWorkoutId('wn_B');
+
+    let hook = null;
+    function Harness() { hook = realUseDeloadHistory(); return null; }
+    render.act(() => { renderer = render.create(<Harness />); });
+
+    let record;
+    await render.act(async () => {
+      record = await hook.completeDeload({ sessionCount: 3, deloadSessionOrdinal: 1 });
+    });
+
+    expect(record.pre_deload_context.source_note_id).toBe('wn_A');
+    // The boundary came from wn_A's Bench, not wn_B (which has no Bench).
+    expect(record.pre_deload_context.exercises.bench).toMatchObject({ working_weight_lb: 185 });
+    expect(record.pre_deload_context.exercises).not.toHaveProperty('squat');
+  });
+
+  test('degrades to the legacy shape when the snapshot source routine no longer exists', async () => {
+    await clearStore();
+    const { captureDeloadWorkingContext } = jest.requireActual('../lib/parser/deloadHistory');
+    const { parseWorkoutNote } = jest.requireActual('../lib/parser');
+    const frozen = captureDeloadWorkingContext(parseWorkoutNote(ROUTINE_AT_DELOAD).sections, 'wn_gone');
+    await RealStorage.saveDeloadNote('Deload week text', frozen);
+    await RealStorage.saveCurrentWorkoutId('wn_other');
+    await RealStorage.saveWorkoutNoteItem({
+      id: 'wn_other', title: 'Other', raw_text: ROUTINE_AT_DELOAD,
+      saved_at: '2026-06-01T00:00:00.000Z', updated_at: '2026-06-01T00:00:00.000Z',
+      tracked_exercises: [], one_k_exercises: null,
+    });
+
+    let hook = null;
+    function Harness() { hook = realUseDeloadHistory(); return null; }
+    render.act(() => { renderer = render.create(<Harness />); });
+
+    let record;
+    await render.act(async () => {
+      record = await hook.completeDeload({ sessionCount: 3, deloadSessionOrdinal: 1 });
+    });
+    expect(record).not.toHaveProperty('pre_deload_context');
+  });
+});
