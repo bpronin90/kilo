@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card } from './UI';
-import { useThemedStyles } from '../theme/ThemeContext';
+import { switchColors, useTheme, useThemedStyles } from '../theme/ThemeContext';
 import * as Storage from '../storage/entries';
 // Imported directly from the hook module (not the `hooks/useEntries` barrel)
 // so this card's display refresh subscribes to the same add/update/remove/
@@ -48,6 +48,7 @@ const WORKOUT_DAYS_REQUIRED_MESSAGE = 'Pick at least one workout day before enab
 // always-on subscriber already reconciled the same change.
 export function ReminderSettingsCard() {
   const styles = useThemedStyles(createStyles);
+  const { colors } = useTheme();
   const [weighIn, setWeighIn] = useState({ ...DEFAULT_WEIGH_IN_REMINDER });
   const [workout, setWorkout] = useState({ ...DEFAULT_WORKOUT_REMINDER, fallbackWeekdays: [] });
   const [inferredWeekdays, setInferredWeekdays] = useState([]);
@@ -192,6 +193,7 @@ export function ReminderSettingsCard() {
           <Text style={styles.settingHelp}>A daily notification at your chosen time to log your weight</Text>
         </View>
         <Switch
+          {...switchColors(colors)}
           value={!!weighIn.enabled}
           onValueChange={handleWeighInToggle}
           accessibilityLabel="Daily weigh-in reminder"
@@ -212,6 +214,7 @@ export function ReminderSettingsCard() {
           </Pressable>
           {showWeighInPicker && Platform.OS !== 'web' && (
             <DateTimePicker
+              themeVariant={colors.scheme}
               value={pickerValue(weighIn.hour, weighIn.minute)}
               mode="time"
               display="default"
@@ -227,6 +230,7 @@ export function ReminderSettingsCard() {
           <Text style={styles.settingHelp}>{workoutHelp}</Text>
         </View>
         <Switch
+          {...switchColors(colors)}
           value={!!workout.enabled}
           onValueChange={handleWorkoutToggle}
           accessibilityLabel="Workout day nudge"
@@ -270,6 +274,7 @@ export function ReminderSettingsCard() {
           </Pressable>
           {showWorkoutPicker && Platform.OS !== 'web' && (
             <DateTimePicker
+              themeVariant={colors.scheme}
               value={pickerValue(workout.hour, workout.minute)}
               mode="time"
               display="default"

@@ -440,6 +440,7 @@ function WeightHistoryListImpl({
       {/* Native date pickers (hidden until triggered) */}
       {showFromPicker && Platform.OS !== 'web' && (
         <DateTimePicker
+          themeVariant={colors.scheme}
           value={fromDateObj}
           mode="date"
           display="default"
@@ -450,6 +451,7 @@ function WeightHistoryListImpl({
       )}
       {showToPicker && Platform.OS !== 'web' && (
         <DateTimePicker
+          themeVariant={colors.scheme}
           value={toDateObj}
           mode="date"
           display="default"

@@ -188,6 +188,7 @@ export function WeightGoalCard({
             <>
               <Text style={styles.inputLabel}>Current weight ({unit})</Text>
               <TextInput
+                keyboardAppearance={colors.scheme}
                 value={goalStartWeight}
                 onChangeText={setGoalStartWeight}
                 placeholder={unit === 'kg' ? '90.0' : '200.0'}
@@ -199,6 +200,7 @@ export function WeightGoalCard({
           )}
           <Text style={styles.inputLabel}>Target ({unit})</Text>
           <TextInput
+            keyboardAppearance={colors.scheme}
             value={goalTargetWeight}
             onChangeText={setGoalTargetWeight}
             placeholder={unit === 'kg' ? '80.0' : '175.0'}
@@ -230,6 +232,7 @@ export function WeightGoalCard({
               </Pressable>
               {showDatePicker && (
                 <DateTimePicker
+                  themeVariant={colors.scheme}
                   value={pickerDate}
                   mode="date"
                   display="default"

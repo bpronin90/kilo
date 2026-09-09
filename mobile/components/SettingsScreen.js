@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle, Button, ErrorBanner } from './UI';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { switchColors, useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { useFeatureToggles, useUserProfile } from '../hooks/useEntries';
 import { ReminderSettingsCard } from './ReminderSettingsCard';
 import { useWeightUnit, setWeightUnitPreference } from '../lib/unitPreference';
@@ -34,7 +34,7 @@ export function __resetUnitSaveStateForTests() {
 
 export function SettingsScreen({ onBack, multiplier, onUpdate }) {
   const styles = useThemedStyles(createStyles);
-  const { preference: appearance, setPreference: setAppearance } = useTheme();
+  const { colors, preference: appearance, setPreference: setAppearance } = useTheme();
   const { fatigueTrackingEnabled, deloadModeEnabled, setFatigueTrackingEnabled, setDeloadModeEnabled } = useFeatureToggles();
   const { profile, save: saveProfile, loading: profileLoading } = useUserProfile();
   const weightUnit = useWeightUnit();
@@ -115,6 +115,7 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
             <Text style={styles.settingHelp}>Check-in prompt after each session and fatigue charts in Analytics</Text>
           </View>
           <Switch
+            {...switchColors(colors)}
             value={!!fatigueTrackingEnabled}
             onValueChange={setFatigueTrackingEnabled}
             accessibilityLabel="Fatigue tracking"
@@ -127,6 +128,7 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
             <Text style={styles.settingHelp}>Enables deload generation and history in the Log tab</Text>
           </View>
           <Switch
+            {...switchColors(colors)}
             value={!!deloadModeEnabled}
             onValueChange={setDeloadModeEnabled}
             accessibilityLabel="Deload mode"

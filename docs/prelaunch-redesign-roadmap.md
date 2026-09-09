@@ -57,23 +57,22 @@ user excluded from Recovery. A fast Home showing quietly wrong numbers is worse
 than a slow one. Timing instrumentation from #809/#818 already exists; measure
 before changing anything.
 
-### P3. Dark mode: wire it or hide it — **owner decision required**
-Settings currently offers Light/Dark/System and the JavaScript palette honours it,
-but the native layer does not. Verified: `app.json` pins `userInterfaceStyle` to
-light; `expo-system-ui` is absent so Android behavior is unproven; no `TextInput`
-sets `keyboardAppearance`; no `Switch` sets `trackColor`/`thumbColor`; no date
-picker receives `themeVariant`.
+### P3. Dark mode: wire it or hide it — **RESOLVED (2026-09-07)**
+**Owner decision: dark mode ships wired at the native layer in `1.0.0`.**
+Implemented in [#985](https://github.com/bpronin90/kilo/issues/985): `app.json`
+uses `userInterfaceStyle: "automatic"`, `expo-system-ui` is a pinned dependency,
+`ThemeContext` reconciles Light/Dark/System with React Native's `Appearance`,
+and every `TextInput`/`Switch`/`DateTimePicker` in the affected screens now
+receives `keyboardAppearance`/`trackColor`+`thumbColor`/`themeVariant` from the
+resolved theme. iOS-only limitations (Android keyboard appearance, splash and
+adaptive-icon backgrounds) are recorded in that issue rather than faked. The
+Analog Iron redesign still owns the palette retint; this change carries no new
+colours.
 
-Shipping this as-is means dark screens with white keyboards and system-default
-switches — a bug report, not a style complaint. Two honest options:
-
-- **Wire the native layer for `1.0.0`.** Scoped work, no redesign required.
-- **Hide the toggle and ship light-only.** Land dark properly during the redesign,
-  where the same files are being touched anyway.
-
-*Recommendation: hide the toggle for `1.0.0`.* The redesign reopens every one of
-those files, so wiring it twice is waste, and a missing feature is cheaper than a
-broken one.
+Original framing, kept for context: shipping the toggle unwired meant dark
+screens with white keyboards and system-default switches — a bug, not a style
+complaint. The alternative considered was hiding the toggle and landing dark
+during the redesign; the owner chose to wire it now.
 
 ### P4. Security advisories — mostly a paperwork exercise
 Four open Dependabot alerts, and severity overstates the real exposure:
@@ -200,7 +199,8 @@ Order: `D0 → D1 → D2 → D3 → D4 → D5`, then the screen cards, then `D18
   multi-series charts distinguish by more than colour.* D0 still owes exact
   light/dark values, AA marker fills, and font/native-control specifics.
 - **D1** — palette retint, Space Grotesk bundling, type/geometry tokens, native
-  appearance. Absorbs P3 if dark mode was deferred from `1.0.0`.
+  appearance. P3 (dark mode wiring) shipped in `1.0.0` via #985; D1 only
+  retints the palettes it established.
 - **D2** — the anti-pattern checker, including S2's line limit.
 - **D3–D5** — shared primitives, chart, overlays.
 - **Screen cards** — Home, Log (post-split), Analytics, Weight, Settings,
@@ -239,7 +239,7 @@ Two rules bind every card, added after review found them missing:
 
 | # | Decision | Recommendation |
 |---|---|---|
-| P3 | Dark mode in `1.0.0`, or hide the toggle? | Hide; land it in D1 |
+| P3 | Dark mode in `1.0.0`, or hide the toggle? | ~~Hide; land it in D1~~ **Resolved: wired in `1.0.0` (#985)** |
 | P6 | Which of #975/#976/#977 are launch blockers? | #975 and #976 in; #977 after |
 | P8 | Frozen features in `1.0.0`? | No; resume in Phase 4 |
 | P8 | #578 in `1.0.0`? | No |

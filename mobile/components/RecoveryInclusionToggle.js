@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { switchColors, useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 // The exact control label, shared by the active card on Log and every
 // completed-block row on Analytics. Exported so tests assert one string.
@@ -75,6 +75,7 @@ export function RecoveryInclusionToggle({ block, disabled, busy, error, onToggle
           ) : null}
         </View>
         <Switch
+          {...switchColors(colors, { disabled, busy })}
           testID={`recovery-inclusion-switch-${block.id}`}
           value={checked}
           disabled={disabled}
