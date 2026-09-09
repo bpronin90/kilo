@@ -32,6 +32,16 @@ import { CrossDayComparison, formatOverload } from '../components/AnalyticsCross
 import { AnalyticsRecoverySection } from '../components/AnalyticsRecoverySection';
 import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
 import { normalizeExerciseKey } from '../lib/parser';
+import {
+  hydrateProgressionSuggestionSettings,
+  subscribeProgressionSuggestionSettings,
+  getProgressionSuggestionSettings,
+  setProgressionSuggestionMuted,
+} from '../storage/entries/settings';
+import {
+  isRenderableProgressionSuggestion,
+  progressionSuggestionInstanceId,
+} from '../components/ProgressionSuggestionCard';
 
 // #894: a Progressive Overload row's trend can look "stuck" for two very
 // different reasons the icon alone can't tell apart — a movement inherited as
@@ -84,6 +94,24 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   const { trackedLifts, activations: trackedLiftActivations, loading: loadingTracked } = useTrackedLifts();
   const { history: deloadHistory } = useDeloadHistory();
   const { fatigueTrackingEnabled, deloadModeEnabled } = useFeatureToggles();
+
+  // Progression-suggestion UI state (#960). Read from the settings store's
+  // synchronous cache and kept live through its subscription, so a toggle or
+  // mute made on the Log or More tab is reflected here without a remount.
+  // Dismissal is transient and surface-local — it lives only in this screen's
+  // state, keyed on the suggestion instance id, and is never persisted, so
+  // dismissing here never dismisses the Log card.
+  const [progressionSettings, setProgressionSettings] = useState(getProgressionSuggestionSettings);
+  const [dismissedProgressionIds, setDismissedProgressionIds] = useState(() => new Set());
+  useEffect(() => {
+    let active = true;
+    hydrateProgressionSuggestionSettings().catch(() => {});
+    const unsubscribe = subscribeProgressionSuggestionSettings((next) => {
+      if (active) setProgressionSettings(next);
+    });
+    return () => { active = false; unsubscribe(); };
+  }, []);
+
   // Same authoritative Recovery snapshot the Log screen renders from (#716).
   // The hook is backed by one shared store, so while both tabs are mounted they
   // cannot disagree, and `recoveryReady` keeps an unread snapshot from being
@@ -341,6 +369,52 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     }),
     [parsedSections, trackedLifts, oneKSelections, multiplier, trackedLiftActivations, deloadHistory, currentId, recoveryBlocks]
   );
+
+  // #960: the strength surface's progression-suggestion cards. Consumes
+  // `analytics.progressionSuggestions` (the one canonical derivation pass
+  // above) unchanged — evidence, recommendation, and explanation text are the
+  // derivation's, not recomputed here. Off, muted, dismissed, and
+  // non-renderable records (including the post-deload `re_entry` relabel) all
+  // fall out. When the feature is off the list is empty and nothing renders.
+  const progressionSuggestionView = useMemo(() => {
+    if (!progressionSettings.enabled) return { visible: [], muted: [] };
+    const records = Array.isArray(analytics.progressionSuggestions) ? analytics.progressionSuggestions : [];
+    const mutedKeys = new Set(progressionSettings.mutedKeys || []);
+    const displayMap = analytics.nameDisplayMap;
+    const visible = [];
+    const muted = [];
+    for (const record of records) {
+      if (!isRenderableProgressionSuggestion(record)) continue;
+      const key = normalizeExerciseKey(record.name);
+      // The tracked-name list feeding the derivation is already normalized, so
+      // the record's `name` can be lower-cased; present the user's own last-seen
+      // casing instead.
+      const displayName = (displayMap && displayMap.get(key)) || record.name;
+      const shown = { ...record, name: displayName };
+      if (mutedKeys.has(key)) {
+        muted.push({ name: displayName, key });
+        continue;
+      }
+      const instanceId = progressionSuggestionInstanceId(shown, key);
+      if (dismissedProgressionIds.has(instanceId)) continue;
+      visible.push({ record: shown, key, instanceId });
+    }
+    return { visible, muted };
+  }, [progressionSettings.enabled, progressionSettings.mutedKeys, analytics.progressionSuggestions, analytics.nameDisplayMap, dismissedProgressionIds]);
+
+  const handleMuteProgression = (key) => {
+    setProgressionSuggestionMuted(key, true).catch(() => {});
+  };
+  const handleUnmuteProgression = (key) => {
+    setProgressionSuggestionMuted(key, false).catch(() => {});
+  };
+  const handleDismissProgression = (instanceId) => {
+    setDismissedProgressionIds(prev => {
+      const next = new Set(prev);
+      next.add(instanceId);
+      return next;
+    });
+  };
 
   const groupedSignals = useMemo(
     () => deriveGroupedSignals(parsedSections, analytics, searchQuery),
@@ -642,6 +716,11 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
         oneK={displayOneK}
         oneKCanonical={analytics.oneK}
         oneKChartData={oneKChartData}
+        progressionSuggestions={progressionSuggestionView.visible}
+        mutedProgressionRows={progressionSuggestionView.muted}
+        onMuteProgression={handleMuteProgression}
+        onUnmuteProgression={handleUnmuteProgression}
+        onDismissProgression={handleDismissProgression}
       />
     ) : null,
 

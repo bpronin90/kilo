@@ -2843,3 +2843,87 @@ describe('deriveAnalytics — post-deload re-entry wiring (#989)', () => {
     expect(analytics.reentry).toEqual({});
   });
 });
+
+// ── #960: explainable progression-suggestion cards on the strength surface ────
+describe('AnalyticsScreen — progression-suggestion cards (#960)', () => {
+  const settingsStore = require('../storage/entries/settings');
+  const AsyncStorage = require('@react-native-async-storage/async-storage');
+
+  // Two eligible weighted double-progression histories in the current routine.
+  const NOTE = [
+    '-Bench Press: 3x8-10', '135 10,10,10', '135 10,10,10',
+    '-Barbell Row: 3x8-10', '155 10,10,10', '155 10,10,10',
+  ].join('\n');
+  const currentNote = { id: 'wn_cur', title: 'Routine', raw_text: NOTE, one_k_exercises: null, isCurrent: true };
+  const hookOverrides = {
+    notes: [currentNote],
+    currentNote,
+    currentId: 'wn_cur',
+    trackedLifts: { 'bench press': true, 'barbell row': true },
+  };
+
+  async function seedEnabled(enabled, mutedKeys = []) {
+    settingsStore.__resetProgressionSuggestionSettingsForTests();
+    AsyncStorage.getItem.mockImplementation((key) => {
+      if (key === 'kilo_progression_suggestions_enabled') return Promise.resolve(JSON.stringify(!!enabled));
+      if (key === 'kilo_progression_suggestion_mutes') return Promise.resolve(JSON.stringify(mutedKeys));
+      return Promise.resolve(null);
+    });
+    await settingsStore.hydrateProgressionSuggestionSettings({ force: true });
+  }
+
+  afterEach(() => {
+    AsyncStorage.getItem.mockReset();
+    settingsStore.__resetProgressionSuggestionSettingsForTests();
+  });
+
+  function cards(root) {
+    return root.findAll(
+      (n) => typeof n.props.testID === 'string' && n.props.testID === 'progression-suggestion-analytics'
+    );
+  }
+
+  test('with the setting off, no card and no placeholder renders', async () => {
+    await seedEnabled(false);
+    const component = setup({ hookOverrides });
+    expect(cards(component.root)).toHaveLength(0);
+    expect(component.root.findAll((n) => n.props.testID === 'analytics-progression-suggestions')).toHaveLength(0);
+    expect(hasText(component.root, 'the top of your 8–10 rep target')).toBe(false);
+  });
+
+  test('with the setting on, each eligible card renders its evidence, recommendation and heuristic caveat', async () => {
+    await seedEnabled(true);
+    const component = setup({ hookOverrides });
+    const rendered = cards(component.root);
+    expect(rendered.length).toBe(2);
+    expect(hasText(component.root, 'Consider 140 lb for 3x8 next time.')).toBe(true);
+    expect(hasText(component.root, 'Consider 160 lb for 3x8 next time.')).toBe(true);
+    expect(findAllText(component.root).some((t) => /not a guaranteed prescription/i.test(t))).toBe(true);
+  });
+
+  test('muting one exercise suppresses only it and offers an unmute path', async () => {
+    await seedEnabled(true, ['bench press']);
+    const component = setup({ hookOverrides });
+    expect(cards(component.root)).toHaveLength(1);
+    expect(hasText(component.root, 'Consider 160 lb for 3x8 next time.')).toBe(true);
+    expect(hasText(component.root, 'Consider 140 lb for 3x8 next time.')).toBe(false);
+    const unmute = component.root.findAll(
+      (n) => n.props.accessibilityLabel === 'Unmute progression suggestions for Bench Press'
+        && typeof n.props.onPress === 'function'
+    );
+    expect(unmute.length).toBe(1);
+    expect(unmute[0].props.accessibilityRole).toBe('button');
+  });
+
+  test('dismissing a card hides only that instance for this surface', async () => {
+    await seedEnabled(true);
+    const component = setup({ hookOverrides });
+    expect(cards(component.root)).toHaveLength(2);
+    const dismiss = component.root.find(
+      (n) => n.props.accessibilityLabel === 'Dismiss the progression suggestion for Bench Press'
+    );
+    await render.act(async () => { dismiss.props.onPress(); });
+    expect(cards(component.root)).toHaveLength(1);
+    expect(hasText(component.root, 'Consider 160 lb for 3x8 next time.')).toBe(true);
+  });
+});

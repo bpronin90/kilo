@@ -7,6 +7,7 @@ import { lerpColor } from '../lib/AnalyticsScreenHelpers';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight } from '../lib/units';
+import { ProgressionSuggestionCard, MutedProgressionRow } from './ProgressionSuggestionCard';
 
 export function AnalyticsStrengthSection({
   handleStrengthLayout,
@@ -14,6 +15,15 @@ export function AnalyticsStrengthSection({
   oneK,
   oneKCanonical,
   oneKChartData,
+  // #960: explainable progression-suggestion cards for the strength surface.
+  // `progressionSuggestions` arrives already filtered by AnalyticsScreen
+  // (feature on, renderable, not muted, not dismissed); each entry is
+  // `{ record, key, instanceId }`. This section only lays them out.
+  progressionSuggestions = [],
+  mutedProgressionRows = [],
+  onMuteProgression,
+  onUnmuteProgression,
+  onDismissProgression,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -143,6 +153,27 @@ export function AnalyticsStrengthSection({
         </Card>
       )}
 
+      {(progressionSuggestions.length > 0 || mutedProgressionRows.length > 0) && (
+        <View style={styles.progressionSuggestions} testID="analytics-progression-suggestions">
+          {progressionSuggestions.map(({ record, key, instanceId }) => (
+            <ProgressionSuggestionCard
+              key={instanceId}
+              suggestion={record}
+              surface="analytics"
+              onMute={() => onMuteProgression && onMuteProgression(key)}
+              onDismiss={() => onDismissProgression && onDismissProgression(instanceId)}
+            />
+          ))}
+          {mutedProgressionRows.map(row => (
+            <MutedProgressionRow
+              key={row.key}
+              name={row.name}
+              onUnmute={() => onUnmuteProgression && onUnmuteProgression(row.key)}
+            />
+          ))}
+        </View>
+      )}
+
       <PlateCalculatorModal
         visible={plateWeightLb != null}
         weightLb={plateWeightLb}
@@ -240,6 +271,10 @@ export function AnalyticsBig3MappingCard({
 const createStyles = (colors) => StyleSheet.create({
   strengthSection: {
     gap: 16,
+  },
+  // #960: a plain vertical stack of suggestion cards under the 1K panel.
+  progressionSuggestions: {
+    gap: 12,
   },
   oneKCard: {
     padding: 24,

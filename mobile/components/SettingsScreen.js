@@ -1,9 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle, Button, ErrorBanner } from './UI';
 import { switchColors, useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { useFeatureToggles, useUserProfile } from '../hooks/useEntries';
+import {
+  hydrateProgressionSuggestionSettings,
+  subscribeProgressionSuggestionSettings,
+  getProgressionSuggestionSettings,
+  saveProgressionSuggestionsEnabled,
+} from '../storage/entries/settings';
 import { ReminderSettingsCard } from './ReminderSettingsCard';
 import { useWeightUnit, setWeightUnitPreference } from '../lib/unitPreference';
 import { unitFromUnitSystem, unitSystemFromUnit } from '../lib/units';
@@ -36,6 +42,32 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
   const styles = useThemedStyles(createStyles);
   const { colors, preference: appearance, setPreference: setAppearance } = useTheme();
   const { fatigueTrackingEnabled, deloadModeEnabled, setFatigueTrackingEnabled, setDeloadModeEnabled } = useFeatureToggles();
+
+  // Progression suggestions (#960). The persisted global flag from #958 is the
+  // authority and defaults off. It is read through the settings store's
+  // synchronous cache + subscription rather than useFeatureToggles because
+  // #960's Allowed Files scope the settings work to this component and the
+  // settings module. Toggling it here is immediately visible on the Log and
+  // Analytics surfaces, which subscribe to the same store.
+  const [progressionSuggestionsEnabled, setProgressionSuggestionsEnabledState] = useState(
+    () => getProgressionSuggestionSettings().enabled
+  );
+  useEffect(() => {
+    let active = true;
+    hydrateProgressionSuggestionSettings().catch(() => {});
+    const unsubscribe = subscribeProgressionSuggestionSettings((next) => {
+      if (active) setProgressionSuggestionsEnabledState(next.enabled);
+    });
+    return () => { active = false; unsubscribe(); };
+  }, []);
+  const handleToggleProgressionSuggestions = (next) => {
+    // Optimistic: the store notifies subscribers on a successful write, but
+    // reflect the intent immediately so the switch never lags the tap.
+    setProgressionSuggestionsEnabledState(next);
+    saveProgressionSuggestionsEnabled(next).catch(() => {
+      setProgressionSuggestionsEnabledState(getProgressionSuggestionSettings().enabled);
+    });
+  };
   const { profile, save: saveProfile, loading: profileLoading } = useUserProfile();
   const weightUnit = useWeightUnit();
   const unitControlsDisabled = !!profileLoading;
@@ -122,7 +154,7 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
             accessibilityRole="switch"
           />
         </View>
-        <View style={[styles.settingRow, { marginBottom: 0 }]}>
+        <View style={styles.settingRow}>
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>Deload mode</Text>
             <Text style={styles.settingHelp}>Enables deload generation and history in the Log tab</Text>
@@ -132,6 +164,19 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
             value={!!deloadModeEnabled}
             onValueChange={setDeloadModeEnabled}
             accessibilityLabel="Deload mode"
+            accessibilityRole="switch"
+          />
+        </View>
+        <View style={[styles.settingRow, { marginBottom: 0 }]}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Progression suggestions</Text>
+            <Text style={styles.settingHelp}>Explainable, heuristic double-progression prompts in Log and Analytics. Never edits your workout notes.</Text>
+          </View>
+          <Switch
+            {...switchColors(colors)}
+            value={!!progressionSuggestionsEnabled}
+            onValueChange={handleToggleProgressionSuggestions}
+            accessibilityLabel="Progression suggestions"
             accessibilityRole="switch"
           />
         </View>

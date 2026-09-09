@@ -13662,3 +13662,128 @@ describe('deload re-entry context capture and completion (#989)', () => {
     expect(record).not.toHaveProperty('pre_deload_context');
   });
 });
+
+// ── #960: explainable progression-suggestion cards on the Log current routine ──
+describe('LogScreen — progression-suggestion wiring for the current routine (#960)', () => {
+  const settingsStore = require('../storage/entries/settings');
+  const AsyncStorage = require('@react-native-async-storage/async-storage');
+  const { deriveProgressionSuggestion } = require('../lib/data/progressionSuggestions');
+
+  const NOTE = ['-Bench Press: 3x8-10', '135 10,10,10', '135 10,10,10'].join('\n');
+  let updateSpy;
+  let addSpy;
+
+  function mockHooks(note) {
+    jest.clearAllMocks();
+    updateSpy = jest.fn();
+    addSpy = jest.fn();
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [note], currentId: note.id, currentNote: note, deloadNotes: [],
+      loading: false, error: null, refresh: jest.fn(), selectCurrent: jest.fn(),
+      update: updateSpy, add: addSpy, remove: jest.fn(),
+    });
+    useEntries.useTrackedLifts.mockReturnValue({
+      trackedLifts: { 'bench press': true }, activations: {}, toggle: jest.fn(), reconcileActivations: jest.fn(),
+    });
+    useEntries.useDeloadNote.mockReturnValue({ note: null, loading: false, save: jest.fn(), clear: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(),
+      deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+    useEntries.useUserProfile.mockReturnValue({ profile: null, save: jest.fn(), loading: false, clear: jest.fn() });
+  }
+
+  async function seed(enabled, mutedKeys = []) {
+    AsyncStorage.__store.clear();
+    settingsStore.__resetProgressionSuggestionSettingsForTests();
+    if (enabled) await settingsStore.saveProgressionSuggestionsEnabled(true);
+    if (mutedKeys.length) await settingsStore.saveProgressionSuggestionMutes(mutedKeys);
+    await settingsStore.hydrateProgressionSuggestionSettings({ force: true });
+  }
+
+  afterEach(() => {
+    settingsStore.__resetProgressionSuggestionSettingsForTests();
+    AsyncStorage.__store.clear();
+  });
+
+  async function renderScreen(note) {
+    let component;
+    await render.act(async () => {
+      component = render.create(<ControlledLogScreen initialText={note.raw_text} workoutNoteText={note.raw_text} />);
+    });
+    return component;
+  }
+
+  const cardOf = (component) => component.root.findByType(LogActiveRoutineCard);
+
+  test('with the setting off, the card receives no suggestions', async () => {
+    const note = { id: 'wn_cur', title: 'Routine', raw_text: NOTE };
+    await seed(false);
+    mockHooks(note);
+    const component = await renderScreen(note);
+    expect(cardOf(component).props.progressionSuggestions).toEqual([]);
+    expect(cardOf(component).props.mutedProgressionRows).toEqual([]);
+    render.act(() => component.unmount());
+  });
+
+  test('with the setting on, the card receives one eligible suggestion that matches the pure derivation', async () => {
+    const note = { id: 'wn_cur', title: 'Routine', raw_text: NOTE };
+    await seed(true);
+    mockHooks(note);
+    const component = await renderScreen(note);
+    const list = cardOf(component).props.progressionSuggestions;
+    expect(list).toHaveLength(1);
+    expect(list[0].record.name).toBe('Bench Press');
+    expect(list[0].record.suggested).toBe(true);
+
+    const pure = deriveProgressionSuggestion(parseWorkoutNote(NOTE).sections, 'Bench Press');
+    expect(list[0].record.explanation).toBe(pure.explanation);
+    expect(list[0].record.heuristic).toEqual(pure.heuristic);
+    expect(list[0].record.evidence).toEqual(pure.evidence);
+    render.act(() => component.unmount());
+  });
+
+  test('a muted exercise yields no card but an unmute row, and no note seam is touched', async () => {
+    const note = { id: 'wn_cur', title: 'Routine', raw_text: NOTE };
+    await seed(true, ['bench press']);
+    mockHooks(note);
+    const component = await renderScreen(note);
+    expect(cardOf(component).props.progressionSuggestions).toEqual([]);
+    expect(cardOf(component).props.mutedProgressionRows).toEqual([{ name: 'Bench Press', key: 'bench press' }]);
+
+    await render.act(async () => { cardOf(component).props.onUnmuteProgression('bench press'); });
+    expect(await settingsStore.loadProgressionSuggestionMutes()).toEqual([]);
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(addSpy).not.toHaveBeenCalled();
+    render.act(() => component.unmount());
+  });
+
+  test('dismissal is transient and surface-local: it drops the instance without persisting anything', async () => {
+    const note = { id: 'wn_cur', title: 'Routine', raw_text: NOTE };
+    await seed(true);
+    mockHooks(note);
+    const component = await renderScreen(note);
+    const instanceId = cardOf(component).props.progressionSuggestions[0].instanceId;
+
+    await render.act(async () => { cardOf(component).props.onDismissProgression(instanceId); });
+    expect(cardOf(component).props.progressionSuggestions).toEqual([]);
+    expect(await settingsStore.loadProgressionSuggestionMutes()).toEqual([]);
+    expect(await settingsStore.loadProgressionSuggestionsEnabled()).toBe(true);
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(addSpy).not.toHaveBeenCalled();
+    render.act(() => component.unmount());
+  });
+
+  test('muting through the card handler persists the normalized key', async () => {
+    const note = { id: 'wn_cur', title: 'Routine', raw_text: NOTE };
+    await seed(true);
+    mockHooks(note);
+    const component = await renderScreen(note);
+    const { key } = cardOf(component).props.progressionSuggestions[0];
+    await render.act(async () => { cardOf(component).props.onMuteProgression(key); });
+    expect(await settingsStore.loadProgressionSuggestionMutes()).toEqual(['bench press']);
+    expect(updateSpy).not.toHaveBeenCalled();
+    render.act(() => component.unmount());
+  });
+});

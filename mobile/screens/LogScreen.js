@@ -45,7 +45,7 @@
 //
 // No other styling exception is authorized.
 
-import React, { useContext, useState, useEffect, useRef } from 'react';
+import React, { useContext, useState, useEffect, useRef, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -61,7 +61,19 @@ import {
 } from '../lib/guidedEntry';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
-import { normalizeLiftName, listTrackedLifts } from '../lib/data';
+import { normalizeLiftName, listTrackedLifts, deriveWorkoutNoteAnalytics } from '../lib/data';
+import {
+  hydrateProgressionSuggestionSettings,
+  subscribeProgressionSuggestionSettings,
+  getProgressionSuggestionSettings,
+  setProgressionSuggestionMuted,
+} from '../storage/entries/settings';
+import {
+  ProgressionSuggestionCard,
+  MutedProgressionRow,
+  isRenderableProgressionSuggestion,
+  progressionSuggestionInstanceId,
+} from '../components/ProgressionSuggestionCard';
 import { DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
 import { findLiveMembershipForNote, nextWeekNumber, orderedLiveWeeks } from '../lib/data/recoveryBlocks';
 import { compareRecoveryBlocksNewestCompletedFirst } from '../storage/entries/recoveryStorage';
@@ -154,6 +166,28 @@ export function LogScreen({
   const { note: deloadNote, loading: deloadLoading, save: saveDeloadNote, clear: clearDeloadNote } = useDeloadNote();
   const { history: deloadHistory, completeDeload, deleteDeload, deleteDeloadNote, updateDeload } = useDeloadHistory();
   const { fatigueTrackingEnabled, deloadModeEnabled } = useFeatureToggles();
+
+  // Progression-suggestion UI state (#960). The global flag and the per-exercise
+  // mute set are read from the settings store's synchronous cache and kept live
+  // through its subscription, so a toggle or mute made on another mounted tab
+  // takes effect here without a remount. Dismissal is transient and
+  // surface-local: it lives only in this component's state, is keyed on the
+  // suggestion instance id, and is never written to storage.
+  const [progressionSettings, setProgressionSettings] = useState(getProgressionSuggestionSettings);
+  const [dismissedProgressionIds, setDismissedProgressionIds] = useState(() => new Set());
+  useEffect(() => {
+    let active = true;
+    hydrateProgressionSuggestionSettings().catch(() => {});
+    const unsubscribe = subscribeProgressionSuggestionSettings((next) => {
+      if (active) setProgressionSettings(next);
+    });
+    return () => { active = false; unsubscribe(); };
+  }, []);
+  // A fresh read whenever the Log tab becomes active, in case a write happened
+  // while this tab was backgrounded and the notification was missed.
+  useEffect(() => {
+    if (isActive) hydrateProgressionSuggestionSettings({ force: true }).catch(() => {});
+  }, [isActive]);
 
   // Recovery Block start flow (#695). Guarded with `|| {}`/`|| {}` because
   // every other screen test mocks the whole `useEntries` module and most of
@@ -606,6 +640,103 @@ export function LogScreen({
     : [];
 
   const currentRecoveryWeekNumber = currentNote ? (recoveryWeekNumberByNoteId[currentNote.id] ?? null) : null;
+
+  // Progression suggestions for the current-routine surface (#960). Consumes
+  // the existing `deriveWorkoutNoteAnalytics` output — the same pass Analytics
+  // and Home run — over the user's tracked lifts that appear in the current
+  // routine. It recomputes nothing: thresholds, evidence, and the explanation
+  // sentence all come from the derivation. Off, no current routine, or no
+  // history all collapse to an empty list and no card.
+  const progressionSuggestionRecords = useMemo(() => {
+    if (!progressionSettings.enabled || !currentId || !hasContent) return [];
+    let currentSections;
+    try {
+      currentSections = parseWorkoutNote(workoutNoteText).sections;
+    } catch {
+      return [];
+    }
+    const namesInCurrent = new Set(
+      currentSections.flatMap(s => (s.exercises || []).map(e => normalizeExerciseKey(e.name)))
+    );
+    const visibleTrackedNames = listTrackedLifts(trackedLifts).filter(
+      name => namesInCurrent.has(normalizeExerciseKey(name))
+    );
+    if (visibleTrackedNames.length === 0) return [];
+    const allSections = notes.flatMap(n => {
+      if (n.title?.startsWith(DELOAD_NOTE_PREFIX)) return [];
+      const text = n.id === currentId ? workoutNoteText : n.raw_text;
+      if (!text) return [];
+      try {
+        return parseWorkoutNote(text).sections;
+      } catch {
+        return [];
+      }
+    });
+    try {
+      const { progressionSuggestions, nameDisplayMap } = deriveWorkoutNoteAnalytics(
+        allSections,
+        visibleTrackedNames,
+        undefined,
+        trackedLiftActivations,
+        { deloadHistory, sourceNoteId: currentId, recoveryBlocks },
+      );
+      const records = Array.isArray(progressionSuggestions) ? progressionSuggestions : [];
+      // The tracked-name list is normalized, so a record's `name` can be
+      // lower-cased; show the user's own last-seen casing.
+      return records.map(record => {
+        const key = normalizeExerciseKey(record.name);
+        const displayName = (nameDisplayMap && nameDisplayMap.get(key)) || record.name;
+        return displayName === record.name ? record : { ...record, name: displayName };
+      });
+    } catch {
+      return [];
+    }
+  }, [
+    progressionSettings.enabled,
+    currentId,
+    hasContent,
+    workoutNoteText,
+    notes,
+    trackedLifts,
+    trackedLiftActivations,
+    deloadHistory,
+    recoveryBlocks,
+  ]);
+
+  const mutedProgressionKeys = new Set(progressionSettings.mutedKeys || []);
+  const visibleProgressionSuggestions = progressionSuggestionRecords
+    .map(record => ({
+      record,
+      key: normalizeExerciseKey(record.name),
+      instanceId: progressionSuggestionInstanceId(record, normalizeExerciseKey(record.name)),
+    }))
+    .filter(({ record, key, instanceId }) =>
+      isRenderableProgressionSuggestion(record)
+      && !mutedProgressionKeys.has(key)
+      && !dismissedProgressionIds.has(instanceId)
+    );
+
+  // A muted exercise still owns an unmute affordance on this surface, but only
+  // when it has a suggestion the mute is actively hiding — an unmute row for an
+  // exercise with nothing to show would be noise.
+  const mutedProgressionRows = progressionSuggestionRecords
+    .filter(record => isRenderableProgressionSuggestion(record)
+      && mutedProgressionKeys.has(normalizeExerciseKey(record.name)))
+    .map(record => ({ name: record.name, key: normalizeExerciseKey(record.name) }));
+
+  const handleMuteProgression = (key) => {
+    setProgressionSuggestionMuted(key, true).catch(() => {});
+  };
+  const handleUnmuteProgression = (key) => {
+    setProgressionSuggestionMuted(key, false).catch(() => {});
+  };
+  const handleDismissProgression = (instanceId) => {
+    setDismissedProgressionIds(prev => {
+      const next = new Set(prev);
+      next.add(instanceId);
+      return next;
+    });
+  };
 
   const recoveryBlockingMessage = activeRecoveryBlock
     ? `A recovery block baselined from "${activeRecoveryBlock.baseline_note_title || 'Untitled Routine'}" is already active. Complete or delete it before starting another.`
@@ -1182,6 +1313,11 @@ export function LogScreen({
                 onExerciseSourceJump={currentEditor.handleExerciseSourceJump}
                 recoveryWeekNumber={currentRecoveryWeekNumber}
                 baselinePaused={currentIsPausedBaseline}
+                progressionSuggestions={visibleProgressionSuggestions}
+                mutedProgressionRows={mutedProgressionRows}
+                onMuteProgression={handleMuteProgression}
+                onUnmuteProgression={handleUnmuteProgression}
+                onDismissProgression={handleDismissProgression}
               />
             )}
 
