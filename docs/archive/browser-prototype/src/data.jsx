@@ -47,6 +47,7 @@ const RAW_EXERCISES = [
   { id: 'fri_9090', day: 'friday', name: '90/90 hip stretch', cat: 'warmup', po: false, target: '60s' },
   { id: 'bar_dl', day: 'friday', name: 'Light deadlift', cat: 'warmup', po: false, target: '10' },
   { id: 'goblet_calf', day: 'friday', name: 'Goblet Calf Raise', cat: 'accessory', po: true, target: '3×12–15' },
+  { id: 'calf_raise', day: 'tuesday', name: 'Calf Raises', cat: 'accessory', po: true, target: '2×12' },
 ];
 function parseRepRange(target) { const m = (target || '').match(/(\d+)[×x](\d+)(?:[–-](\d+))?/); return m ? { sets: +m[1], repMin: +m[2], repMax: +(m[3] || m[2]) } : { sets: 0, repMin: 0, repMax: 0 }; }
 const KILO_EXERCISES = RAW_EXERCISES.map(e => ({ ...e, ...parseRepRange(e.target), isWarmup: e.cat === 'warmup' || e.cat === 'core' }));
