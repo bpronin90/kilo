@@ -5,6 +5,7 @@
 // unparseable can be saved, and the one save the screen performs is always a
 // CREATE — never an overwrite, a merge, or an adoption.
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React from 'react';
 import render from 'react-test-renderer';
 import { act } from 'react-test-renderer';
@@ -51,6 +52,13 @@ function buttonByLabel(root, label) {
     && n.props.accessibilityLabel === label
     && n.props.accessibilityRole === 'button')[0];
 }
+
+// The screen now keeps a durable creation-attempt token (#997), so every test
+// starts from an empty store — a token left behind by a deliberately failed
+// save must never leak into the next test's create.
+beforeEach(async () => {
+  await AsyncStorage.clear();
+});
 
 describe('analyzeRoutineImportText: what the preview is allowed to claim', () => {
   test('an enveloped export round-trips into a previewable routine', () => {
@@ -207,7 +215,9 @@ describe('RoutineImportScreen: save is always a create', () => {
     });
 
     expect(onCreateRoutine).toHaveBeenCalledTimes(1);
-    expect(onCreateRoutine).toHaveBeenCalledWith('Upper/Lower A', ROUTINE);
+    expect(onCreateRoutine).toHaveBeenCalledWith('Upper/Lower A', ROUTINE, {
+      attemptToken: expect.any(String),
+    });
     // Nothing in the saved text carries the transport envelope.
     expect(onCreateRoutine.mock.calls[0][1]).not.toContain('#kilo-routine');
   });
@@ -223,7 +233,14 @@ describe('RoutineImportScreen: save is always a create', () => {
       });
     }
     expect(onCreateRoutine).toHaveBeenCalledTimes(2);
-    expect(onCreateRoutine.mock.calls[0]).toEqual(onCreateRoutine.mock.calls[1]);
+    // Byte-identical title and body…
+    expect(onCreateRoutine.mock.calls[0].slice(0, 2))
+      .toEqual(onCreateRoutine.mock.calls[1].slice(0, 2));
+    // …and yet a DIFFERENT creation attempt each time (#997): a completed
+    // import retires its token, so the second import can never be folded into
+    // the first one's note id.
+    expect(onCreateRoutine.mock.calls[1][2].attemptToken)
+      .not.toBe(onCreateRoutine.mock.calls[0][2].attemptToken);
   });
 
   test('the user can rename before importing, and the routine body is unaffected', async () => {
@@ -235,7 +252,9 @@ describe('RoutineImportScreen: save is always a create', () => {
     await act(async () => {
       buttonByLabel(root, 'Create new routine from pasted text').props.onPress();
     });
-    expect(onCreateRoutine).toHaveBeenCalledWith('My Version', ROUTINE);
+    expect(onCreateRoutine).toHaveBeenCalledWith('My Version', ROUTINE, {
+      attemptToken: expect.any(String),
+    });
   });
 
   test('a failed save reports the failure and leaves the paste in place to retry', async () => {
@@ -311,6 +330,10 @@ describe('PR #971 review findings', () => {
     act(() => {
       buttonByLabel(root, 'Create new routine from pasted text').props.onPress();
     });
+    // The create is now preceded by the durable attempt-token write (#997), so
+    // let that settle — otherwise the save under test has not started yet and
+    // there is no in-flight write for the next paste to race.
+    await act(async () => {});
     // The user pastes the next routine before the first save resolves.
     const next = 'Tuesday\n-Overhead Press\n- 95 5';
     paste(root, next);
@@ -320,7 +343,9 @@ describe('PR #971 review findings', () => {
 
     expect(byTestId(root, 'routine-import-paste')[0].props.value).toBe(next);
     expect(onCreateRoutine).toHaveBeenCalledTimes(1);
-    expect(onCreateRoutine).toHaveBeenCalledWith('First', ROUTINE);
+    expect(onCreateRoutine).toHaveBeenCalledWith('First', ROUTINE, {
+      attemptToken: expect.any(String),
+    });
   });
 
   test('finding 3 (round 2): a same-titled routine pasted mid-save keeps BOTH its body and title', async () => {
@@ -333,6 +358,10 @@ describe('PR #971 review findings', () => {
     act(() => {
       buttonByLabel(root, 'Create new routine from pasted text').props.onPress();
     });
+
+    // Same as above: let the pre-create token write settle so the save is
+    // genuinely in flight when the next routine is pasted.
+    await act(async () => {});
 
     const next = buildRoutineShareText({ title: 'Same', rawText: 'Tuesday\n-Overhead Press\n- 95 5' });
     paste(root, next);
@@ -365,7 +394,10 @@ describe('PR #971 review findings', () => {
       .map(n => n.props.children);
     const failure = messages.find(m => m.startsWith('Something went wrong while saving.'));
     expect(failure).toBeDefined();
-    expect(failure).toContain('may still have been created');
+    expect(failure).toContain('may already be on this device');
+    // And it now tells the user the honest next step: retrying finishes this
+    // import rather than duplicating it (#997).
+    expect(failure).toContain('will not create a duplicate');
     expect(messages.some(m => m.includes('Nothing was changed'))).toBe(false);
     warn.mockRestore();
   });
@@ -392,7 +424,9 @@ describe('PR #971 review findings', () => {
     await act(async () => {
       buttonByLabel(root, 'Create new routine from pasted text').props.onPress();
     });
-    expect(onCreateRoutine).toHaveBeenCalledWith('', AB_ROUTINE);
+    expect(onCreateRoutine).toHaveBeenCalledWith('', AB_ROUTINE, {
+      attemptToken: expect.any(String),
+    });
   });
 
   test('a defect in week B blocks import even while week A is previewed', () => {
@@ -419,5 +453,314 @@ describe('MoreScreen wiring', () => {
     expect(byTestId(tree.root, 'routine-import-paste').length).toBe(1);
     expect(tree.root.findByType(RoutineImportScreen).props.onCreateRoutine)
       .toBe(onCreateRoutineFromImport);
+  });
+});
+
+// ── id-stable imports (#997) ─────────────────────────────────────────────────
+//
+// `add` writes the local row and only then awaits the cloud enqueue, so a
+// failed import can leave the routine on the device. The screen therefore mints
+// a durable per-attempt creation token before the create, keeps it when the
+// create fails, restores it after an app restart, and clears it only once the
+// create has fully succeeded — which is what makes a retry finish THIS import
+// and the next import a genuinely new routine.
+describe('routine import: durable creation-attempt token (#997)', () => {
+  const creationAttempts = require('../storage/entries/workoutNoteCreationAttempts');
+  const { loadWorkoutNoteCreationAttempt } = creationAttempts;
+
+  function mount(onCreateRoutine) {
+    let tree;
+    act(() => {
+      tree = render.create(
+        <RoutineImportScreen onBack={() => {}} onCreateRoutine={onCreateRoutine} />
+      );
+    });
+    return { tree, root: tree.root };
+  }
+  function paste(root, text) {
+    act(() => {
+      byTestId(root, 'routine-import-paste')[0].props.onChangeText(text);
+    });
+  }
+  async function press(root) {
+    await act(async () => {
+      buttonByLabel(root, 'Create new routine from pasted text').props.onPress();
+    });
+  }
+  const tokenOf = (onCreateRoutine, index) => onCreateRoutine.mock.calls[index][2].attemptToken;
+
+  test('a failed import keeps its token, and an edited retry completes the same attempt', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const onCreateRoutine = jest.fn()
+      .mockRejectedValueOnce(new Error('enqueue failed'))
+      .mockResolvedValue({ id: 'wn_import' });
+    const { root } = mount(onCreateRoutine);
+    paste(root, buildRoutineShareText({ title: 'Shared Plan', rawText: ROUTINE }));
+
+    await press(root);
+    expect(onCreateRoutine).toHaveBeenCalledTimes(1);
+    const token = tokenOf(onCreateRoutine, 0);
+    expect(typeof token).toBe('string');
+    // Durable, so the retry is not merely a same-mount convenience.
+    await expect(loadWorkoutNoteCreationAttempt('import')).resolves.toBe(token);
+    // The paste survives the failure, which is what makes the retry possible.
+    expect(byTestId(root, 'routine-import-paste')[0].props.value)
+      .toBe(buildRoutineShareText({ title: 'Shared Plan', rawText: ROUTINE }));
+
+    // The user renames the routine AND fixes the pasted body, then retries.
+    act(() => {
+      byTestId(root, 'routine-import-title')[0].props.onChangeText('Shared Plan v2');
+    });
+    const editedBody = `${ROUTINE}\n-Chin-Up\n- 0 8`;
+    paste(root, editedBody);
+    act(() => {
+      byTestId(root, 'routine-import-title')[0].props.onChangeText('Shared Plan v2');
+    });
+    await press(root);
+
+    expect(onCreateRoutine).toHaveBeenCalledTimes(2);
+    expect(tokenOf(onCreateRoutine, 1)).toBe(token);
+    expect(onCreateRoutine.mock.calls[1][0]).toBe('Shared Plan v2');
+    expect(onCreateRoutine.mock.calls[1][1]).toBe(editedBody);
+    // A completed import retires its attempt.
+    await expect(loadWorkoutNoteCreationAttempt('import')).resolves.toBeNull();
+    warn.mockRestore();
+  });
+
+  test('a retry after an app restart still completes the original import', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const failing = jest.fn().mockRejectedValue(new Error('enqueue failed'));
+    const first = mount(failing);
+    paste(first.root, buildRoutineShareText({ title: 'Interrupted', rawText: ROUTINE }));
+    await press(first.root);
+    const token = tokenOf(failing, 0);
+
+    // Restart: the screen is gone and only storage survives.
+    act(() => { first.tree.unmount(); });
+    await expect(loadWorkoutNoteCreationAttempt('import')).resolves.toBe(token);
+
+    const onCreateRoutine = jest.fn().mockResolvedValue({ id: 'wn_import' });
+    const second = mount(onCreateRoutine);
+    await act(async () => {});
+    paste(second.root, buildRoutineShareText({ title: 'Interrupted', rawText: ROUTINE }));
+    act(() => {
+      byTestId(second.root, 'routine-import-title')[0].props.onChangeText('Interrupted (renamed)');
+    });
+    await press(second.root);
+
+    expect(tokenOf(onCreateRoutine, 0)).toBe(token);
+    expect(onCreateRoutine.mock.calls[0][0]).toBe('Interrupted (renamed)');
+    await expect(loadWorkoutNoteCreationAttempt('import')).resolves.toBeNull();
+    warn.mockRestore();
+  });
+
+  test('after a successful import, an identical routine imported again is a new attempt', async () => {
+    const onCreateRoutine = jest.fn().mockResolvedValue({ id: 'wn_import' });
+    const shared = buildRoutineShareText({ title: 'Same Plan', rawText: ROUTINE });
+    const { root } = mount(onCreateRoutine);
+
+    paste(root, shared);
+    await press(root);
+    await expect(loadWorkoutNoteCreationAttempt('import')).resolves.toBeNull();
+
+    paste(root, shared);
+    await press(root);
+
+    expect(onCreateRoutine).toHaveBeenCalledTimes(2);
+    expect(onCreateRoutine.mock.calls[0].slice(0, 2))
+      .toEqual(onCreateRoutine.mock.calls[1].slice(0, 2));
+    expect(tokenOf(onCreateRoutine, 1)).not.toBe(tokenOf(onCreateRoutine, 0));
+  });
+
+  test('a token that cannot be persisted fails the import instead of creating an uncorrelated routine', async () => {
+    // Importing without a durable token is the uncorrelated create this exists
+    // to remove, so the import must fail BEFORE the create runs — leaving
+    // nothing on the device for a retry to duplicate.
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const mint = jest.spyOn(creationAttempts, 'ensureWorkoutNoteCreationAttempt')
+      .mockRejectedValue(new Error('device storage unavailable'));
+    const onCreateRoutine = jest.fn().mockResolvedValue({ id: 'wn_import' });
+    const { root } = mount(onCreateRoutine);
+    paste(root, buildRoutineShareText({ title: 'Shared Plan', rawText: ROUTINE }));
+
+    await press(root);
+    expect(onCreateRoutine).not.toHaveBeenCalled();
+    const messages = root.findAll(n => typeof n.type === 'string' && typeof n.props.children === 'string')
+      .map(n => n.props.children);
+    expect(messages.some(m => m.startsWith('Something went wrong while saving.'))).toBe(true);
+    mint.mockRestore();
+    warn.mockRestore();
+  });
+
+  test('a token that cannot be retired fails the import, and the retry completes the same routine', async () => {
+    // Reporting success while the completed attempt is still in the store would
+    // let the NEXT import adopt this routine's note id and overwrite it.
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const retire = jest.spyOn(creationAttempts, 'clearWorkoutNoteCreationAttempt')
+      .mockRejectedValue(new Error('device storage unavailable'));
+    const onCreateRoutine = jest.fn().mockResolvedValue({ id: 'wn_import' });
+    const { root } = mount(onCreateRoutine);
+    const shared = buildRoutineShareText({ title: 'Shared Plan', rawText: ROUTINE });
+    paste(root, shared);
+
+    await press(root);
+    expect(onCreateRoutine).toHaveBeenCalledTimes(1);
+    const token = tokenOf(onCreateRoutine, 0);
+    await expect(loadWorkoutNoteCreationAttempt('import')).resolves.toBe(token);
+    // The paste is still there, and the message says retrying will not duplicate.
+    expect(byTestId(root, 'routine-import-paste')[0].props.value).toBe(shared);
+
+    retire.mockRestore();
+    await press(root);
+    expect(tokenOf(onCreateRoutine, 1)).toBe(token);
+    await expect(loadWorkoutNoteCreationAttempt('import')).resolves.toBeNull();
+    warn.mockRestore();
+  });
+
+  test('a pending attempt is shown, and leaving it makes the next import a new routine', async () => {
+    // The hazard this closes: while an attempt is pending, pressing Create
+    // finishes THAT import, so a user who abandons a failed import and pastes a
+    // different routine would otherwise have the new one written over the old.
+    // The pasted text cannot decide which they meant — an edited retry must stay
+    // the same attempt — so the screen surfaces the unfinished import and lets
+    // the user end it explicitly.
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const onCreateRoutine = jest.fn()
+      .mockRejectedValueOnce(new Error('enqueue failed'))
+      .mockResolvedValue({ id: 'wn_import' });
+    const { root } = mount(onCreateRoutine);
+    paste(root, buildRoutineShareText({ title: 'Routine A', rawText: ROUTINE }));
+    await press(root);
+
+    const firstToken = tokenOf(onCreateRoutine, 0);
+    expect(byTestId(root, 'routine-import-unfinished').length).toBe(1);
+
+    // Explicitly leave it, then import a genuinely different routine.
+    await act(async () => {
+      buttonByLabel(root, 'Leave the unfinished import as it is and start a new import')
+        .props.onPress();
+    });
+    expect(byTestId(root, 'routine-import-unfinished').length).toBe(0);
+    await expect(loadWorkoutNoteCreationAttempt('import')).resolves.toBeNull();
+
+    paste(root, buildRoutineShareText({ title: 'Routine B', rawText: 'Tuesday\n-Overhead Press\n- 95 5' }));
+    await press(root);
+
+    expect(onCreateRoutine).toHaveBeenCalledTimes(2);
+    expect(tokenOf(onCreateRoutine, 1)).not.toBe(firstToken);
+    warn.mockRestore();
+  });
+
+  test('a pending attempt restored after Back/reopen is surfaced, not applied silently', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const failing = jest.fn().mockRejectedValue(new Error('enqueue failed'));
+    const first = mount(failing);
+    paste(first.root, buildRoutineShareText({ title: 'Routine A', rawText: ROUTINE }));
+    await press(first.root);
+    const token = tokenOf(failing, 0);
+    act(() => { first.tree.unmount(); });
+
+    // Back, then reopen Import: the unfinished attempt is visible before the
+    // user does anything, so pressing Create is never a silent overwrite.
+    const onCreateRoutine = jest.fn().mockResolvedValue({ id: 'wn_import' });
+    const second = mount(onCreateRoutine);
+    await act(async () => {});
+    expect(byTestId(second.root, 'routine-import-unfinished').length).toBe(1);
+
+    await act(async () => {
+      buttonByLabel(second.root, 'Leave the unfinished import as it is and start a new import')
+        .props.onPress();
+    });
+    paste(second.root, buildRoutineShareText({ title: 'Routine B', rawText: 'Tuesday\n-Overhead Press\n- 95 5' }));
+    await press(second.root);
+
+    expect(tokenOf(onCreateRoutine, 0)).not.toBe(token);
+    warn.mockRestore();
+  });
+
+  test('a release that cannot be persisted changes nothing and keeps the attempt pending', async () => {
+    // Reporting the attempt released while the durable slot still names it
+    // would claim a boundary that does not exist — the next import would then
+    // complete, and overwrite, the routine the user chose to leave alone.
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const failing = jest.fn().mockRejectedValue(new Error('enqueue failed'));
+    const { root } = mount(failing);
+    paste(root, buildRoutineShareText({ title: 'Routine A', rawText: ROUTINE }));
+    await press(root);
+    const token = tokenOf(failing, 0);
+
+    const release = jest.spyOn(creationAttempts, 'clearWorkoutNoteCreationAttempt')
+      .mockRejectedValue(new Error('device storage unavailable'));
+    await act(async () => {
+      buttonByLabel(root, 'Leave the unfinished import as it is and start a new import')
+        .props.onPress();
+    });
+    release.mockRestore();
+
+    // Still pending, still surfaced, and the failure is reported honestly.
+    await expect(loadWorkoutNoteCreationAttempt('import')).resolves.toBe(token);
+    expect(byTestId(root, 'routine-import-unfinished').length).toBe(1);
+    const messages = root.findAll(n => typeof n.type === 'string' && typeof n.props.children === 'string')
+      .map(n => n.props.children);
+    expect(messages.some(m => m.startsWith('Could not release the unfinished import.'))).toBe(true);
+    warn.mockRestore();
+  });
+
+  test('Create cannot run while a release is still awaiting storage', async () => {
+    // The release is a durable write; until it lands the attempt is still
+    // pending, so a Create started in that window would capture the very token
+    // being retired and could overwrite the routine being left alone.
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const failing = jest.fn().mockRejectedValue(new Error('enqueue failed'));
+    const { root } = mount(failing);
+    paste(root, buildRoutineShareText({ title: 'Routine A', rawText: ROUTINE }));
+    await press(root);
+    const abandoned = tokenOf(failing, 0);
+
+    // Hold the release open, then try to create the next routine on top of it.
+    let finishRelease;
+    const realRelease = creationAttempts.clearWorkoutNoteCreationAttempt;
+    const release = jest.spyOn(creationAttempts, 'clearWorkoutNoteCreationAttempt')
+      .mockImplementation((...args) => new Promise((resolve, reject) => {
+        finishRelease = () => realRelease(...args).then(resolve, reject);
+      }));
+
+    act(() => {
+      buttonByLabel(root, 'Leave the unfinished import as it is and start a new import')
+        .props.onPress();
+    });
+    await act(async () => {});
+    // Create is locked out while the release is in flight: it reports itself
+    // disabled and carries no press handler at all, so the overlapping create
+    // cannot even be started.
+    const createButton = buttonByLabel(root, 'Create new routine from pasted text');
+    expect(createButton.props.accessibilityState.disabled).toBe(true);
+    expect(typeof createButton.props.onPress).not.toBe('function');
+    expect(failing).toHaveBeenCalledTimes(1);
+
+    await act(async () => { await finishRelease(); });
+    release.mockRestore();
+    await expect(loadWorkoutNoteCreationAttempt('import')).resolves.toBeNull();
+
+    // And the next import is a genuinely new routine.
+    const onCreateRoutine = jest.fn().mockResolvedValue({ id: 'wn_import' });
+    const next = mount(onCreateRoutine);
+    await act(async () => {});
+    paste(next.root, buildRoutineShareText({ title: 'Routine B', rawText: 'Tuesday\n-Press\n- 95 5' }));
+    await press(next.root);
+    expect(tokenOf(onCreateRoutine, 0)).not.toBe(abandoned);
+    warn.mockRestore();
+  });
+
+  test('the App.js wiring forwards the token through to the note store', () => {
+    // The shell's handler is a pure pass-through, so its contract is that the
+    // third argument reaches `noteHook.add` untouched — the note store is what
+    // turns the token into an id (see workout-note-creation-attempts.test.js).
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(path.resolve(__dirname, '..', 'App.js'), 'utf8');
+    expect(src).toMatch(
+      /handleCreateRoutineFromImport\s*=\s*useCallback\(\s*\(title,\s*rawText,\s*options\)\s*=>\s*noteHook\.add\(title,\s*rawText,\s*options\)/
+    );
   });
 });

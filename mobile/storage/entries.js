@@ -65,6 +65,17 @@ export {
   setCurrentWorkoutNote,
 } from './entries/workoutNotes';
 
+// Device-local workout-note creation attempts (#997). Protocol state for
+// id-stable creates across a partial cloud write — never a sync table.
+export {
+  ensureWorkoutNoteCreationAttempt,
+  loadWorkoutNoteCreationAttempt,
+  claimWorkoutNoteCreationAttemptId,
+  loadWorkoutNoteCreationAttemptId,
+  clearWorkoutNoteCreationAttempt,
+  clearAllWorkoutNoteCreationAttempts,
+} from './entries/workoutNoteCreationAttempts';
+
 export {
   loadDeloadNote,
   saveDeloadNote,

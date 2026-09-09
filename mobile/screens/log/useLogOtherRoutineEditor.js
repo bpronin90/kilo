@@ -24,6 +24,11 @@ import {
   clearWorkoutNoteDraftsSupersededBySave,
   markWorkoutNoteDraftSaveStart,
 } from '../../storage/entries/workoutNoteDrafts';
+import {
+  ensureWorkoutNoteCreationAttempt,
+  loadWorkoutNoteCreationAttempt,
+  clearWorkoutNoteCreationAttempt,
+} from '../../storage/entries/workoutNoteCreationAttempts';
 
 // Cheap-draft debounce (#880), deliberately much shorter than
 // AUTOSAVE_DEBOUNCE_MS: this write only persists {title, text} to a scratch
@@ -38,6 +43,12 @@ function otherDraftKey(editingNoteId, editingSource = null) {
   if (editingSource === 'recovery') return `recovery:${editingNoteId}`;
   return editingNoteId === 'new' ? 'other:new' : `other:${editingNoteId}`;
 }
+
+// The one caller context this editor creates notes in (#997). Every create here
+// is the `editingNoteId === 'new'` path, which `handleCreateRoutine` always
+// opens with a null `editingSource` (a Recovery-sourced session edits an
+// existing note inline), so one durable slot covers it.
+const OTHER_CREATE_ATTEMPT_KEY = 'other:new';
 
 // Pending-cloud-convergence state (#880 revised body). See the identical
 // helper — and the note on why it is duplicated per-file rather than shared
@@ -293,6 +304,28 @@ export function useLogOtherRoutineEditor({
   const draftRestorePendingRef = useRef(false);
   const notesRef = useRef(notes);
   notesRef.current = notes;
+
+  // Durable creation-attempt token for this editor's new-note create (#997).
+  // Same lifecycle as the current-routine editor's: minted before the create,
+  // retained after a failed one (a cloud enqueue can reject after the row is
+  // already on the device), restored on mount so a retry after an app restart
+  // completes the original note, cleared only on full success. As there, the
+  // ref is this session's live copy and the store's atomic get-or-mint is the
+  // durable authority behind it.
+  const createAttemptTokenRef = useRef(null);
+  useEffect(() => {
+    let cancelled = false;
+    loadWorkoutNoteCreationAttempt(OTHER_CREATE_ATTEMPT_KEY)
+      .then((token) => {
+        // The restore is asynchronous; never overwrite a token this session
+        // already minted.
+        if (!cancelled && token && !createAttemptTokenRef.current) {
+          createAttemptTokenRef.current = token;
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const writeOtherDraftNow = () => {
     const key = otherDraftKey(editingNoteIdRef.current, editingSourceRef.current);
@@ -731,7 +764,24 @@ export function useLogOtherRoutineEditor({
           titleToSave = DELOAD_NOTE_PREFIX + (deloadEditDate || titleToSave);
         }
         if (editingNoteId === 'new') {
-          result = await add(titleToSave, editingFullText);
+          // Id-stable create (#997): the attempt token is durable before the
+          // create and retired only after it fully succeeds, so retrying a
+          // create whose cloud enqueue failed — with the title or body edited,
+          // and even after an app restart — completes the same note instead of
+          // saving a second copy of the routine.
+          //
+          // Neither attempt-store write is swallowed; both sit inside this
+          // function's try/catch so a rejection becomes a failed save. See the
+          // same reasoning spelled out in useLogCurrentRoutineEditor.js:
+          // creating without a durable token is an uncorrelated create, and
+          // leaving a completed attempt in the store would let the next new
+          // routine adopt this note's id and overwrite it.
+          const attemptToken = createAttemptTokenRef.current
+            || await ensureWorkoutNoteCreationAttempt(OTHER_CREATE_ATTEMPT_KEY);
+          createAttemptTokenRef.current = attemptToken;
+          result = await add(titleToSave, editingFullText, { attemptToken });
+          await clearWorkoutNoteCreationAttempt(OTHER_CREATE_ATTEMPT_KEY, attemptToken);
+          createAttemptTokenRef.current = null;
           savingOtherSnapshotRef.current.noteId = result.id;
           editingNoteIdRef.current = result.id;
           setEditingNoteId(result.id);
@@ -939,6 +989,38 @@ export function useLogOtherRoutineEditor({
 
   const performRevertOther = async () => {
     if (editingNoteId === 'new') {
+      // The explicit abandonment boundary for a stranded create (#997 review).
+      // While an attempt is pending, Save finishes THAT create — that is what
+      // makes an edited retry safe — so discarding the new note must also retire
+      // the attempt, or the next new routine authored here would be written over
+      // the stranded one. Which of the two the user means cannot be read off the
+      // text (the contract requires an edited retry to stay the same attempt),
+      // so this destructive, confirmed action is what decides it. The stranded
+      // routine itself is untouched and stays under Routines.
+      //
+      // Retirement is AWAITED, comes FIRST, and its failure aborts the discard
+      // (#997 review, round 3) — clearing the editor while the durable slot
+      // still named the attempt would claim a boundary that does not exist, and
+      // the next routine authored here would overwrite the stranded one. An
+      // in-flight create is awaited first because it may be the very attempt
+      // being retired.
+      if (autosaveOtherTimerRef.current) {
+        clearTimeout(autosaveOtherTimerRef.current);
+        autosaveOtherTimerRef.current = null;
+      }
+      if (saveOtherNoteInFlightRef.current) {
+        await saveOtherNoteInFlightRef.current;
+      }
+      const abandoned = createAttemptTokenRef.current;
+      if (abandoned) {
+        try {
+          await clearWorkoutNoteCreationAttempt(OTHER_CREATE_ATTEMPT_KEY, abandoned);
+        } catch {
+          setSaveError('Could not clear this draft');
+          return false;
+        }
+        createAttemptTokenRef.current = null;
+      }
       setEditingTitle('');
       setEditingFullText('');
       setEditingActiveWeek(null);
