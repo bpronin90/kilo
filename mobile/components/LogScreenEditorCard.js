@@ -911,6 +911,7 @@ export function LogScreenEditorCard({
       {deloadMode === 'edit' ? (
         <Card>
           <TextInput
+            keyboardAppearance={colors.scheme}
             value={deloadEditText}
             onChangeText={setDeloadEditText}
             placeholder="Deload note…"
@@ -933,6 +934,7 @@ export function LogScreenEditorCard({
           <Card>
             {!isEditingDeloadNote && (
               <TextInput
+                keyboardAppearance={colors.scheme}
                 value={editingNoteId ? editingTitle : workoutNoteTitle}
                 onChangeText={(next) => {
                   onEditorInteraction?.();
@@ -992,6 +994,7 @@ export function LogScreenEditorCard({
                     )}
                     <Text style={styles.inputLabel}>Session #</Text>
                     <TextInput
+                      keyboardAppearance={colors.scheme}
                       style={styles.input}
                       value={deloadEditOrdinal}
                       onChangeText={v => setDeloadEditOrdinal(v.replace(/[^0-9]/g, ''))}
@@ -1012,6 +1015,7 @@ export function LogScreenEditorCard({
                     </Pressable>
                     {showDeloadDatePicker && (
                       <DateTimePicker
+                        themeVariant={colors.scheme}
                         value={(() => {
                           if (deloadEditDate) {
                             const [y, m, d] = deloadEditDate.split('-').map(Number);
@@ -1110,6 +1114,7 @@ export function LogScreenEditorCard({
                 )}
               </View>
               <TextInput
+                keyboardAppearance={colors.scheme}
                 ref={editorInputRef}
                 value={editorText}
                 onChangeText={(next) => {

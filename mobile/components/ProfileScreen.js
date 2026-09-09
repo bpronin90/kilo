@@ -250,6 +250,7 @@ export function ProfileScreen({ onBack }) {
           <View style={styles.heightRow}>
             <View style={{ flex: 1, gap: 4 }}>
               <TextInput
+                keyboardAppearance={colors.scheme}
                 style={styles.profileInput}
                 placeholder="ft"
                 keyboardType="numeric"
@@ -260,6 +261,7 @@ export function ProfileScreen({ onBack }) {
             </View>
             <View style={{ flex: 1, gap: 4 }}>
               <TextInput
+                keyboardAppearance={colors.scheme}
                 style={styles.profileInput}
                 placeholder="in"
                 keyboardType="numeric"
@@ -272,6 +274,7 @@ export function ProfileScreen({ onBack }) {
         ) : (
           <View style={{ gap: 4 }}>
             <TextInput
+              keyboardAppearance={colors.scheme}
               style={styles.profileInput}
               placeholder="cm"
               keyboardType="numeric"
@@ -336,6 +339,7 @@ export function ProfileScreen({ onBack }) {
             </Pressable>
             {showDatePicker && (
               <DateTimePicker
+                themeVariant={colors.scheme}
                 value={getDobDate()}
                 mode="date"
                 display="default"

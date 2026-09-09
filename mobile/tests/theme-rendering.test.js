@@ -1,10 +1,15 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
-import { Text, View, useColorScheme } from 'react-native';
+import { Appearance, Text, View, useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { DarkColors, LightColors, paletteForMode } from '../theme/colors';
-import { ThemeProvider, useTheme, useThemedStyles } from '../theme/ThemeContext';
+import {
+  ThemeProvider,
+  switchColors,
+  useTheme,
+  useThemedStyles,
+} from '../theme/ThemeContext';
 import { Button, Card, LineChart, StatCard } from '../components/UI';
 import { SettingsScreen } from '../components/SettingsScreen';
 import {
@@ -890,5 +895,99 @@ describe('Settings Appearance control', () => {
     expect(deload.props.value).toBe(false);
     expect(typeof fatigue.props.onValueChange).toBe('function');
     expect(typeof deload.props.onValueChange).toBe('function');
+  });
+});
+
+describe('native appearance reconciliation (#985)', () => {
+  let setColorScheme;
+
+  beforeEach(() => {
+    setColorScheme = jest
+      .spyOn(Appearance, 'setColorScheme')
+      .mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    setColorScheme.mockRestore();
+  });
+
+  test('an explicit selection pins the native scheme', () => {
+    renderInTheme(<Text>probe</Text>);
+    // System default on mount hands control back to the OS.
+    expect(setColorScheme).toHaveBeenLastCalledWith(null);
+
+    act(() => {
+      setAppearancePreference('dark');
+    });
+    expect(setColorScheme).toHaveBeenLastCalledWith('dark');
+
+    act(() => {
+      setAppearancePreference('light');
+    });
+    expect(setColorScheme).toHaveBeenLastCalledWith('light');
+  });
+
+  test('returning to System unpins the native scheme', () => {
+    renderInTheme(<Text>probe</Text>);
+    act(() => {
+      setAppearancePreference('dark');
+    });
+    expect(setColorScheme).toHaveBeenLastCalledWith('dark');
+
+    act(() => {
+      setAppearancePreference('system');
+    });
+    expect(setColorScheme).toHaveBeenLastCalledWith(null);
+  });
+
+  test('a live OS scheme change under System does not re-pin', () => {
+    renderInTheme(<Text>probe</Text>);
+    setColorScheme.mockClear();
+
+    act(() => {
+      mockUseColorScheme.mockReturnValue('dark');
+      renderInTheme(<Text>probe</Text>);
+    });
+
+    // The effect only depends on the preference, so an OS-driven repaint under
+    // System never calls setColorScheme again with a concrete value.
+    for (const call of setColorScheme.mock.calls) {
+      expect(call[0]).toBe(null);
+    }
+  });
+});
+
+describe('switchColors token mapping (#985)', () => {
+  test('an idle switch uses the accent for the on track', () => {
+    const c = switchColors(LightColors);
+    expect(c.trackColor.true).toBe(LightColors.accent);
+    expect(c.trackColor.false).toBe(LightColors.tabInactive);
+    expect(c.thumbColor).toBe(LightColors.textLight);
+    expect(c.ios_backgroundColor).toBe(LightColors.tabInactive);
+  });
+
+  test('disabled or busy mutes the on track off the accent', () => {
+    expect(switchColors(DarkColors, { disabled: true }).trackColor.true).toBe(
+      DarkColors.textMuted
+    );
+    expect(switchColors(DarkColors, { busy: true }).trackColor.true).toBe(
+      DarkColors.textMuted
+    );
+    expect(switchColors(DarkColors).trackColor.true).toBe(DarkColors.accent);
+  });
+
+  test('every returned value is a real palette token', () => {
+    for (const palette of [LightColors, DarkColors]) {
+      const values = Object.values(palette);
+      const c = switchColors(palette, { disabled: true });
+      for (const v of [
+        c.trackColor.true,
+        c.trackColor.false,
+        c.thumbColor,
+        c.ios_backgroundColor,
+      ]) {
+        expect(values).toContain(v);
+      }
+    }
   });
 });

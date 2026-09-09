@@ -91,6 +91,7 @@ export function SetNewPasswordScreen({ auth, onDone, onBack }) {
         {hasSession ? (
           <>
             <TextInput
+              keyboardAppearance={colors.scheme}
               style={inputStyle}
               placeholder="New password"
               placeholderTextColor={colors.textMuted}
@@ -100,6 +101,7 @@ export function SetNewPasswordScreen({ auth, onDone, onBack }) {
               accessibilityLabel="New Password"
             />
             <TextInput
+              keyboardAppearance={colors.scheme}
               style={inputStyle}
               placeholder="Confirm new password"
               placeholderTextColor={colors.textMuted}

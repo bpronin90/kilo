@@ -289,6 +289,7 @@ export function AccountScreen({ onBack, auth }) {
             local data.
           </Text>
           <TextInput
+            keyboardAppearance={colors.scheme}
             style={inputStyle}
             placeholder="Email"
             placeholderTextColor={colors.textMuted}
@@ -299,6 +300,7 @@ export function AccountScreen({ onBack, auth }) {
             accessibilityLabel="Email"
           />
           <TextInput
+            keyboardAppearance={colors.scheme}
             style={inputStyle}
             placeholder="Password"
             placeholderTextColor={colors.textMuted}

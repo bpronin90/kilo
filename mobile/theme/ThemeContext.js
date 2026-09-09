@@ -15,8 +15,8 @@
 // memoized on `colors`, because StyleSheet.create() captures values at call
 // time and a module-scope sheet could never repaint without a reload.
 
-import React, { createContext, useContext, useMemo } from 'react';
-import { useColorScheme } from 'react-native';
+import React, { createContext, useContext, useEffect, useMemo } from 'react';
+import { Appearance, Platform, useColorScheme } from 'react-native';
 
 import { LightColors, paletteForMode } from './colors';
 import {
@@ -33,6 +33,20 @@ export function resolveThemeMode(preference, systemScheme) {
   return systemScheme === 'dark' ? 'dark' : 'light';
 }
 
+// Reconcile the JS preference with React Native's native `Appearance` (#985).
+// Light/Dark pin the native scheme so keyboards, pickers, switches, alerts and
+// the OS status bar match; System passes `null`, which hands control back to the
+// OS so `useColorScheme()` keeps tracking live light/dark switches. Because
+// `resolveThemeMode` derives the app's mode from the *preference* first and only
+// falls back to the scheme for `system`, pinning the scheme for an explicit
+// choice cannot feed back into the resolved mode. Web has no native appearance
+// layer, so it is skipped.
+function applyNativeAppearance(preference) {
+  if (Platform.OS === 'web') return;
+  const pinned = preference === 'light' || preference === 'dark' ? preference : null;
+  Appearance.setColorScheme(pinned);
+}
+
 const DEFAULT_THEME = {
   preference: DEFAULT_APPEARANCE_PREFERENCE,
   mode: 'light',
@@ -47,6 +61,10 @@ export function ThemeProvider({ children }) {
   const systemScheme = useColorScheme();
   const mode = resolveThemeMode(preference, systemScheme);
 
+  useEffect(() => {
+    applyNativeAppearance(preference);
+  }, [preference]);
+
   const value = useMemo(
     () => ({
       preference,
@@ -58,6 +76,23 @@ export function ThemeProvider({ children }) {
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+}
+
+// Native <Switch> tint from palette roles (#985). iOS renders only the `true`
+// track (thumb stays system white); Android honours every field, so the `false`
+// track and thumb must also read on the dark card. `disabled`/`busy` mute the
+// accent so a pending or locked toggle does not look settled — matching the
+// reduced-emphasis treatment those callsites already apply elsewhere.
+export function switchColors(colors, { disabled = false, busy = false } = {}) {
+  const muted = disabled || busy;
+  return {
+    trackColor: {
+      false: colors.tabInactive,
+      true: muted ? colors.textMuted : colors.accent,
+    },
+    thumbColor: colors.textLight,
+    ios_backgroundColor: colors.tabInactive,
+  };
 }
 
 // { preference, mode, colors, setPreference }

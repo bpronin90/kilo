@@ -22,7 +22,7 @@ describe('app config', () => {
 
     const result = configFactory({ config: { plugins: [] } });
 
-    expect(result.runtimeVersion).toBe('preview-7');
+    expect(result.runtimeVersion).toBe('preview-8');
   });
 
   test('uses the appVersion runtime policy for production builds', () => {
@@ -133,5 +133,18 @@ describe('app config', () => {
     const result = configFactory({ config: { plugins: ['expo-secure-store'] } });
 
     expect(result.plugins).toEqual(['expo-secure-store']);
+  });
+
+  // #985: dark mode is wired at the native layer. `userInterfaceStyle` must let
+  // the OS drive on a cold start (System mode) and `expo-system-ui` must be a
+  // real dependency so the setting actually applies on Android.
+  test('static config lets the OS drive native appearance', () => {
+    const appJson = require('../app.json');
+    expect(appJson.expo.userInterfaceStyle).toBe('automatic');
+  });
+
+  test('expo-system-ui is pinned at an SDK-compatible version', () => {
+    const pkg = require('../package.json');
+    expect(pkg.dependencies['expo-system-ui']).toMatch(/^~6\.0\./);
   });
 });

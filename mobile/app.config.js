@@ -19,7 +19,11 @@
 // preview-7: #980 adds expo-dev-client for the on-device development loop. It is
 //   a new native module, so preview-6 binaries lack the required native code and
 //   must be replaced with a fresh preview-7 build.
-const PREVIEW_RUNTIME = 'preview-7';
+// preview-8: #985 adds expo-system-ui so the Light/Dark/System setting applies at
+//   the native layer (Android especially). It is a new native module and flips
+//   userInterfaceStyle from "light" to "automatic", so preview-7 binaries lack
+//   the required native code and must be replaced with a fresh preview-8 build.
+const PREVIEW_RUNTIME = 'preview-8';
 
 // Development builds install alongside preview/production rather than replacing
 // them (#980). Preview and production share com.benpronin.kilo, so a development

@@ -69,6 +69,7 @@ function toYMD(date) {
 // picker-visibility state so the parent only tracks the YYYY-MM-DD value.
 function DateEntryField({ value, onChangeDate, a11yLabel }) {
   const styles = useThemedStyles(createStyles);
+  const { colors } = useTheme();
   const [showPicker, setShowPicker] = useState(false);
   const dateObj = useMemo(() => {
     if (value) {
@@ -104,6 +105,7 @@ function DateEntryField({ value, onChangeDate, a11yLabel }) {
           </Pressable>
           {showPicker && (
             <DateTimePicker
+              themeVariant={colors.scheme}
               value={dateObj}
               mode="date"
               display="default"
@@ -494,6 +496,7 @@ export function WeightScreen({
         ) : null}
         <Text style={styles.inputLabel}>Weight ({unit})</Text>
         <TextInput
+          keyboardAppearance={colors.scheme}
           value={weightValue}
           onChangeText={setWeightValue}
           placeholder={unit === 'kg' ? '84.0' : '185.0'}
@@ -518,6 +521,7 @@ export function WeightScreen({
               <>
                 <Text style={styles.inputLabel}>Note</Text>
                 <TextInput
+                  keyboardAppearance={colors.scheme}
                   value={weightNote}
                   onChangeText={setWeightNote}
                   placeholder="Morning, fasted"
@@ -576,6 +580,7 @@ export function WeightScreen({
               <>
                 <Text style={styles.inputLabel}>Note</Text>
                 <TextInput
+                  keyboardAppearance={colors.scheme}
                   value={weightNote}
                   onChangeText={setWeightNote}
                   placeholder="Morning, fasted"
