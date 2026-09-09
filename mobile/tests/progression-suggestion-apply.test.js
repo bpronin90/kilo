@@ -109,6 +109,39 @@ describe('applyProgressionSuggestionToNoteText', () => {
     ]);
   });
 
+  test('targets the working occurrence, never a same-named +WARMUP entry', () => {
+    const raw = [
+      '+WARMUP',
+      '-Bench Press',
+      '45 10,10',
+      '+LIFTING',
+      '-Bench Press: 3x8-10',
+      '135 10,10,10',
+      '135 10,10,10',
+    ].join('\n');
+    const result = applyProgressionSuggestionToNoteText(raw, WEIGHTED);
+
+    expect(result.applied).toBe(true);
+    // The heavy target lands under the +LIFTING block, not the warmup one.
+    expect(result.text).toBe(`${raw}\n140 8,8,8`);
+
+    const parsed = parseWorkoutNote(result.text);
+    const warmupBench = parsed.sections[0].exercises[0];
+    const workingBench = parsed.sections[1].exercises[0];
+    expect(parsed.sections[0].kind).toBe('warmup');
+    expect(warmupBench.session_entries).toHaveLength(1); // "45 10,10" untouched
+    expect(workingBench.session_entries).toHaveLength(3);
+    expect(workingBench.session_entries[2].sets.map((s) => s.weight_value)).toEqual([140, 140, 140]);
+  });
+
+  test('a synthesized block, not a warmup insertion, when the only match is a +WARMUP entry', () => {
+    const raw = ['+WARMUP', '-Bench Press', '45 10,10'].join('\n');
+    const result = applyProgressionSuggestionToNoteText(raw, WEIGHTED);
+    expect(result.applied).toBe(true);
+    expect(result.reason).toBe('synthesized');
+    expect(result.text).toBe(`${raw}\n-Bench Press: 3x8-10\n140 8,8,8`);
+  });
+
   test('a repeated apply cannot silently duplicate the target row', () => {
     const raw = READY_LINES.join('\n');
     const once = applyProgressionSuggestionToNoteText(raw, WEIGHTED);
@@ -145,6 +178,18 @@ describe('applyProgressionSuggestionToNoteText', () => {
     expect(result.applied).toBe(false);
     expect(result.reason).toBe('note-too-large');
     expect(result.text).toBe(huge);
+  });
+
+  test('a valid note exactly at the parser limit is not pushed past it', () => {
+    let note = `${[...READY_LINES, ''].join('\n')}`;
+    note += `-- ${'x'.repeat(MAX_RAW_TEXT_LENGTH - note.length - 3)}`;
+    expect(note).toHaveLength(MAX_RAW_TEXT_LENGTH);
+    expect(parseWorkoutNote(note).ok).toBe(true);
+
+    const result = applyProgressionSuggestionToNoteText(note, WEIGHTED);
+    expect(result.applied).toBe(false);
+    expect(result.reason).toBe('note-too-large');
+    expect(result.text).toBe(note); // byte-identical
   });
 
   test('a fractional target weight is written in canonical numeric form and reparses', () => {

@@ -660,6 +660,7 @@ export function applyProgressionSuggestionToNoteText(rawText, suggestion) {
   const name = typeof suggestion.name === 'string' ? suggestion.name.trim() : '';
   if (
     !name ||
+    /[\r\n]/.test(name) ||
     suggestion.suggested !== true ||
     !heuristic || typeof heuristic !== 'object' ||
     heuristic.action !== 'increase_weight' ||
@@ -682,48 +683,68 @@ export function applyProgressionSuggestionToNoteText(rawText, suggestion) {
   // "140 8,8,8".
   const targetRow = `${_formatTargetWeight(heuristic.suggested_weight)} ${Array(setCount).fill(repCount).join(',')}`;
 
+  // Guard the produced text before returning it as applied: an insertion that
+  // pushes a boundary-length note past the parser cap, or that otherwise fails
+  // to reparse, is refused rather than handed back as a successful apply.
+  const finalize = (candidate, reason) => {
+    if (candidate.length > MAX_RAW_TEXT_LENGTH) return unchanged('note-too-large');
+    if (parseWorkoutNote(candidate).ok !== true) return unchanged('would-not-reparse');
+    return { text: candidate, applied: true, reason };
+  };
+
   const parsed = parseWorkoutNote(text);
   if (!parsed.ok) return unchanged('note-unparsable');
 
   const targetKey = normalizeExerciseKey(name);
-  const flags = [];
-  let matchIdx = -1;
-  let matchHeader = null;
-  let matchEntries = null;
+
+  // Pick which occurrence of the exercise the target belongs under. A
+  // double-progression suggestion is predicated on the user's own declared rep
+  // range, so its real home is a non-warmup occurrence that carries a header
+  // declaration. A same-named "+WARMUP" entry (an empty-bar "-Bench Press",
+  // say) must never receive the heavy working row; when there is no usable
+  // working occurrence we synthesize a fresh block instead of polluting one.
   let occ = 0;
+  let bestIdx = -1;
+  let bestRank = 0;
+  let bestEntries = [];
   for (const section of parsed.sections) {
+    const isWarmup = section.kind === 'warmup';
     for (const ex of section.exercises) {
-      const isFirstMatch = matchIdx === -1 && normalizeExerciseKey(ex.name) === targetKey;
-      if (isFirstMatch) {
-        matchIdx = occ;
-        matchHeader = ex.raw_header || '';
-        matchEntries = ex.session_entries || [];
+      if (normalizeExerciseKey(ex.name) === targetKey) {
+        const header = ex.raw_header || '';
+        // Only a real opening header (dash, numbered, or Core) starts a
+        // `currentExercise` in parseWorkoutNote, so only those can host an
+        // appended bare row. A deload line ("Name: 135 lbs 3x5") opens
+        // nothing — appending under it would misfile the row on reparse.
+        const opensExercise =
+          _EXERCISE_DASH_RE.test(header) ||
+          _EXERCISE_NUMBERED_RE.test(header) ||
+          _EXERCISE_CORE_RE.test(header);
+        // 3 = non-warmup, header declares a rep range (the working exercise);
+        // 2 = non-warmup, no declaration; 1 = warmup; 0 = cannot host a row.
+        const rank = !opensExercise ? 0 : isWarmup ? 1 : parseHeaderDeclaration(header) ? 3 : 2;
+        if (rank > bestRank) {
+          bestRank = rank;
+          bestIdx = occ;
+          bestEntries = ex.session_entries || [];
+        }
       }
-      flags.push(isFirstMatch);
       occ++;
     }
   }
 
-  // Only a real opening header (dash, numbered, or Core) starts a
-  // `currentExercise` in parseWorkoutNote, so only those can host an appended
-  // bare row. A deload line ("Name: 135 lbs 3x5") becomes its own exercise but
-  // opens nothing — appending under it would misfile the row on reparse — so
-  // fall through to a synthesized block instead.
-  const canAppend = matchIdx !== -1 && (
-    _EXERCISE_DASH_RE.test(matchHeader) ||
-    _EXERCISE_NUMBERED_RE.test(matchHeader) ||
-    _EXERCISE_CORE_RE.test(matchHeader)
-  );
-
-  if (canAppend) {
+  // Append only into a real non-warmup working occurrence (rank >= 2). A
+  // warmup-only or deload-only match falls through to a synthesized block.
+  if (bestRank >= 2) {
     // Stale / repeated apply: the identical target row is already this
     // exercise's last logged entry. Re-applying must not silently stack a
     // duplicate row.
-    const last = matchEntries[matchEntries.length - 1];
+    const last = bestEntries[bestEntries.length - 1];
     if (last && !last.skipped && (last.raw || '').trim() === targetRow) {
       return unchanged('already-applied');
     }
 
+    const flags = Array.from({ length: occ }, (_unused, i) => i === bestIdx);
     let inserted = false;
     const next = _transformExerciseBlocks(text, flags, (pending, eligible) => {
       if (!eligible || inserted) return;
@@ -735,7 +756,7 @@ export function applyProgressionSuggestionToNoteText(rawText, suggestion) {
       pending.splice(i, 0, targetRow);
     });
     if (!inserted || next === text) return unchanged('no-insertion-point');
-    return { text: next, applied: true, reason: 'appended' };
+    return finalize(next, 'appended');
   }
 
   // No usable exercise in the note: synthesize a new block. The header uses the
@@ -750,5 +771,5 @@ export function applyProgressionSuggestionToNoteText(rawText, suggestion) {
     : `${setCount}x${repCount}`;
   const header = `-${name}: ${declaration}`;
   const prefix = text.length === 0 ? '' : (text.endsWith('\n') ? text : `${text}\n`);
-  return { text: `${prefix}${header}\n${targetRow}`, applied: true, reason: 'synthesized' };
+  return finalize(`${prefix}${header}\n${targetRow}`, 'synthesized');
 }
