@@ -412,26 +412,31 @@ function _isPlainObject(v) {
   return !!v && typeof v === 'object' && !Array.isArray(v);
 }
 
+// A persisted `pre_deload_context` is only ever written by buildDeloadReentryRecord
+// (via captureDeloadWorkingContext): version 1, a non-empty string source_note_id
+// (the builder omits the whole field when it has no source id), an `exercises`
+// object (possibly empty), and every per-exercise entry carrying a positive
+// working_weight_lb, an integer logged_session_count >= 1, and a string
+// boundary_witness. Anything short of that shape is malformed and must be
+// rejected before restore writes.
 function validatePreDeloadContext(ctx) {
   if (!_isPlainObject(ctx))
     return { ok: false, error: 'Invalid backup: deload history pre_deload_context must be an object' };
   if (ctx.version !== 1)
     return { ok: false, error: `Invalid backup: unsupported deload history pre_deload_context version (${ctx.version})` };
-  if ('source_note_id' in ctx && ctx.source_note_id !== null && typeof ctx.source_note_id !== 'string')
-    return { ok: false, error: 'Invalid backup: deload history pre_deload_context.source_note_id must be a string or null' };
-  if ('exercises' in ctx) {
-    if (!_isPlainObject(ctx.exercises))
-      return { ok: false, error: 'Invalid backup: deload history pre_deload_context.exercises must be an object' };
-    for (const ex of Object.values(ctx.exercises)) {
-      if (!_isPlainObject(ex))
-        return { ok: false, error: 'Invalid backup: deload history pre_deload_context exercise is not an object' };
-      if ('working_weight_lb' in ex && !Number.isFinite(ex.working_weight_lb))
-        return { ok: false, error: 'Invalid backup: deload history pre_deload_context working_weight_lb must be a number' };
-      if ('logged_session_count' in ex && !Number.isInteger(ex.logged_session_count))
-        return { ok: false, error: 'Invalid backup: deload history pre_deload_context logged_session_count must be an integer' };
-      if ('boundary_witness' in ex && typeof ex.boundary_witness !== 'string')
-        return { ok: false, error: 'Invalid backup: deload history pre_deload_context boundary_witness must be a string' };
-    }
+  if (typeof ctx.source_note_id !== 'string' || ctx.source_note_id.length === 0)
+    return { ok: false, error: 'Invalid backup: deload history pre_deload_context.source_note_id must be a non-empty string' };
+  if (!_isPlainObject(ctx.exercises))
+    return { ok: false, error: 'Invalid backup: deload history pre_deload_context.exercises must be an object' };
+  for (const ex of Object.values(ctx.exercises)) {
+    if (!_isPlainObject(ex))
+      return { ok: false, error: 'Invalid backup: deload history pre_deload_context exercise is not an object' };
+    if (!Number.isFinite(ex.working_weight_lb) || ex.working_weight_lb <= 0)
+      return { ok: false, error: 'Invalid backup: deload history pre_deload_context working_weight_lb must be a positive number' };
+    if (!Number.isInteger(ex.logged_session_count) || ex.logged_session_count < 1)
+      return { ok: false, error: 'Invalid backup: deload history pre_deload_context logged_session_count must be a positive integer' };
+    if (typeof ex.boundary_witness !== 'string')
+      return { ok: false, error: 'Invalid backup: deload history pre_deload_context boundary_witness must be a string' };
   }
   return { ok: true };
 }

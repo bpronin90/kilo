@@ -1215,4 +1215,37 @@ describe('#989 deload pre_deload_context in the backup format', () => {
     expect(result.error).toMatch(/pre_deload_context must be an object/);
     expect(await Storage.loadDeloadHistory()).toEqual(kept);
   });
+
+  it('rejects a v1 context missing its required fields', async () => {
+    const kept = await Storage.loadDeloadHistory();
+    const cases = [
+      { pre_deload_context: { version: 1 }, re: /source_note_id must be a non-empty string/ },
+      { pre_deload_context: { version: 1, source_note_id: '' }, re: /source_note_id must be a non-empty string/ },
+      { pre_deload_context: { version: 1, source_note_id: 'wn_src' }, re: /exercises must be an object/ },
+      { pre_deload_context: { version: 1, source_note_id: 'wn_src', exercises: { bench: { logged_session_count: 3, boundary_witness: '[]' } } }, re: /working_weight_lb must be a positive number/ },
+      { pre_deload_context: { version: 1, source_note_id: 'wn_src', exercises: { bench: { working_weight_lb: 185, logged_session_count: -1, boundary_witness: '[]' } } }, re: /logged_session_count must be a positive integer/ },
+      { pre_deload_context: { version: 1, source_note_id: 'wn_src', exercises: { bench: { working_weight_lb: 0, logged_session_count: 3, boundary_witness: '[]' } } }, re: /working_weight_lb must be a positive number/ },
+      { pre_deload_context: { version: 1, source_note_id: 'wn_src', exercises: { bench: { working_weight_lb: 185, logged_session_count: 3 } } }, re: /boundary_witness must be a string/ },
+    ];
+    for (const c of cases) {
+      const backup = {
+        ...(await Storage.exportBackup()),
+        deload_history: [{ id: 'dl_bad3', raw_text: 'x', saved_at: '2026-05-01T00:00:00.000Z', ...c }],
+      };
+      const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(c.re);
+      expect(await Storage.loadDeloadHistory()).toEqual(kept);
+    }
+  });
+
+  it('accepts a valid v1 context with an empty exercises map', async () => {
+    const rec = { id: 'dl_empty', raw_text: 'x', saved_at: '2026-05-01T00:00:00.000Z', completed_at: '2026-05-02T00:00:00.000Z', session_count: 3, pre_deload_context: { version: 1, source_note_id: 'wn_src', exercises: {} } };
+    await Storage.appendDeloadHistory(rec);
+    const backup = await Storage.exportBackup();
+    await Storage.deleteDeloadHistory('dl_empty');
+    const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+    expect(result.ok).toBe(true);
+    expect((await Storage.loadDeloadHistory()).find(r => r.id === 'dl_empty').pre_deload_context).toEqual({ version: 1, source_note_id: 'wn_src', exercises: {} });
+  });
 });
