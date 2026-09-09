@@ -1479,6 +1479,25 @@ export function LogScreen({
         }
         headerRight={
           <View style={styles.editorHeaderActions}>
+            {/* #1006: the idle rest-timer affordance is a compact stopwatch
+                in the editor's header corner, not a full-width row below the
+                editor. It renders nothing outside current-routine edit mode
+                or while a timer is running/just completed, so it adds no
+                header width and reserves no editor or bottom-navigation
+                space; its chooser opens as an out-of-flow dropdown. The
+                running countdown / completion banner stays the single
+                app-shell instance (App.js). */}
+            <RestTimerBanner
+              isRunning={restTimerIsRunning}
+              remainingMs={restTimerRemainingMs}
+              justElapsed={restTimerJustElapsed}
+              backgroundAlertAvailable={restTimerBackgroundAlertAvailable}
+              onCancel={onCancelRestTimer}
+              onDismissDone={onDismissRestTimerDone}
+              onStart={onStartRestTimer}
+              showStart={!otherEditor.editingNoteId && currentEditor.mode === 'edit'}
+              compact
+            />
             {otherEditor.editingNoteId && otherEditor.editingHasABWeeks && (
               <Pressable
                 onPress={otherEditor.handleToggleEditingWeek}
@@ -1518,24 +1537,6 @@ export function LogScreen({
         }
         keyboardShouldPersistTaps="handled"
       >
-        {/* #1006: the idle rest-timer affordance lives in a corner of the
-            current-routine editor as a compact stopwatch, not a full-width
-            bottom row. It renders nothing outside current-routine edit mode
-            or while a timer is running/just completed, so it never reserves
-            banner height or bottom-navigation clearance. The running
-            countdown / completion banner is still the single app-shell
-            instance (App.js). */}
-        <RestTimerBanner
-          isRunning={restTimerIsRunning}
-          remainingMs={restTimerRemainingMs}
-          justElapsed={restTimerJustElapsed}
-          backgroundAlertAvailable={restTimerBackgroundAlertAvailable}
-          onCancel={onCancelRestTimer}
-          onDismissDone={onDismissRestTimerDone}
-          onStart={onStartRestTimer}
-          showStart={!otherEditor.editingNoteId && currentEditor.mode === 'edit'}
-          compact
-        />
         <LogScreenEditorCard
           deloadMode={deloadEditor.deloadMode}
           deloadEditText={deloadEditor.deloadEditText}

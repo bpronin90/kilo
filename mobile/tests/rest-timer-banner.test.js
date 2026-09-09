@@ -94,18 +94,20 @@ describe('RestTimerBanner compact editor control (#1006)', () => {
     expect(JSON.stringify(json)).not.toContain('60s');
   });
 
-  test('collapsed: reserves no bottom-navigation clearance even when a style is passed', () => {
-    const tree = renderBanner({ ...idle, showStart: true, style: { marginBottom: 88 } });
-    const json = tree.toJSON();
-    // the style prop lands on the wrapper, but the control itself is
-    // icon-sized: it is not a full-width banner row.
-    const wrapper = json;
+  test('collapsed: the wrapper adds no size — no height, no full-width row', () => {
+    const tree = renderBanner({ ...idle, showStart: true });
+    const wrapper = tree.toJSON();
     const style = Array.isArray(wrapper.props.style)
       ? Object.assign({}, ...wrapper.props.style.filter(Boolean))
       : wrapper.props.style;
-    // no self-imposed banner height / full-width behaviour
+    // no self-imposed banner height, no flex stretch to a full-width row
     expect(style.height).toBeUndefined();
-    expect(style.alignSelf).toBe('flex-end');
+    expect(style.flex).toBeUndefined();
+    expect(style.alignSelf).toBeUndefined();
+    // it only anchors the dropdown
+    expect(style.position).toBe('relative');
+    // collapsed: the only child is the icon button, no dropdown in the tree
+    expect(wrapper.children).toHaveLength(1);
   });
 
   test('tap the stopwatch: expands all four existing duration choices near the control', () => {
@@ -118,6 +120,18 @@ describe('RestTimerBanner compact editor control (#1006)', () => {
     [60, 90, 120, 180].forEach((sec) => {
       expect(json).toContain(`Start ${sec} second rest timer`);
     });
+  });
+
+  test('expanded: the chooser is an out-of-flow dropdown, so it never shifts the editor', () => {
+    const tree = renderBanner({ ...idle, showStart: true });
+    const toggle = tree.root.findAll((n) => n.props && n.props.accessibilityLabel === 'Rest timer')[0];
+    act(() => { toggle.props.onPress(); });
+    const menu = tree.root.findAll((n) => n.props && n.props.accessibilityRole === 'menu')[0];
+    const style = Array.isArray(menu.props.style)
+      ? Object.assign({}, ...menu.props.style.filter(Boolean))
+      : menu.props.style;
+    expect(style.position).toBe('absolute');
+    expect(style.top).toBe('100%');
   });
 
   test('tap a duration: calls the existing start callback once with that value and collapses', () => {

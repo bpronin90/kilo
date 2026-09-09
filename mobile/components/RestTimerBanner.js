@@ -61,6 +61,10 @@ export function RestTimerBanner({
 
   if (compact) {
     if (!idleStart) return null;
+    // The wrapper is zero-footprint: it is meant to sit in an existing
+    // control cluster (the editor header) and the chooser floats out of
+    // flow as a dropdown anchored to the icon, so the collapsed control
+    // never shifts the editor layout or reserves a row of its own.
     return (
       <View style={[styles.compactWrap, style]}>
         <Pressable
@@ -167,13 +171,11 @@ const createStyles = (colors) => StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.cardBorder,
   },
-  // #1006: the collapsed control is self-sized and right-aligned so it sits
-  // in the top corner of the editor content without stretching to a
-  // full-width row or reserving vertical space of its own.
+  // #1006: the collapsed control is just the icon button; the wrapper adds
+  // no size of its own and acts only as the positioning anchor for the
+  // dropdown chooser.
   compactWrap: {
-    alignSelf: 'flex-end',
-    alignItems: 'flex-end',
-    gap: 8,
+    position: 'relative',
   },
   compactToggle: {
     minHeight: 44,
@@ -183,14 +185,32 @@ const createStyles = (colors) => StyleSheet.create({
     borderRadius: 12,
     backgroundColor: colors.chipBackground,
   },
-  // The chooser opens beneath the icon, inside the editor's scrollable
-  // content — never over the bottom navigation.
+  // The chooser opens as a dropdown anchored to the icon's bottom-right,
+  // out of layout flow so it never shifts the editor and never reserves
+  // space while collapsed. It drops down into the editor area, well clear
+  // of the bottom navigation.
   compactChooser: {
+    position: 'absolute',
+    top: '100%',
+    right: 0,
+    marginTop: 6,
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'flex-end',
     columnGap: 8,
     rowGap: 8,
+    maxWidth: 220,
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    zIndex: 10,
+    elevation: 8,
+    shadowColor: colors.shadowColor,
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
   },
   compactChoiceBtn: {
     minHeight: 44,

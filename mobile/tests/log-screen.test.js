@@ -14173,12 +14173,23 @@ describe('Log rest-timer control is the compact editor stopwatch (#1006)', () =>
     expect(src).toMatch(/<RestTimerBanner[^>]*\n(?:[^<]*\n)*?\s*compact\n/);
   });
 
-  test('it sits inside the current-routine editor, before the editor card', () => {
-    const compactIdx = src.indexOf('compact\n');
+  test('it sits in the editor header cluster, not in the editor body flow', () => {
+    const bannerIdx = src.indexOf('<RestTimerBanner');
+    // anchor to the editor ScreenShell specifically (its subtitle is the
+    // literal 'Edit routine'); the read-mode ScreenShell has its own
+    // headerRight earlier in the file.
+    const editorShellIdx = src.indexOf("'Edit routine'");
+    const headerRightIdx = src.indexOf('headerRight={', editorShellIdx);
+    // `keyboardShouldPersistTaps` is the ScreenShell prop immediately after
+    // the headerRight={...} block closes and before its children begin.
+    const headerCloseIdx = src.indexOf('keyboardShouldPersistTaps', headerRightIdx);
     const editorCardIdx = src.indexOf('<LogScreenEditorCard');
-    expect(compactIdx).toBeGreaterThan(-1);
-    expect(editorCardIdx).toBeGreaterThan(-1);
-    expect(compactIdx).toBeLessThan(editorCardIdx);
+    expect(headerRightIdx).toBeGreaterThan(-1);
+    // rendered inside the headerRight cluster...
+    expect(bannerIdx).toBeGreaterThan(headerRightIdx);
+    expect(bannerIdx).toBeLessThan(headerCloseIdx);
+    // ...and therefore never a child in the editor body flow
+    expect(headerCloseIdx).toBeLessThan(editorCardIdx);
   });
 
   test('the rest-timer element itself reserves no bottom-tab clearance', () => {
