@@ -33,6 +33,7 @@
 // web (#721; guarded by tests/platform-alert.test.js).
 import { Platform, Share } from 'react-native';
 import { Alert } from '../platformAlert';
+import { copyTextToClipboard, systemConfirmsClipboardWrite } from '../platformClipboard';
 import { parseWorkoutNote } from '../parser/workoutNote';
 import { parseExerciseHeader } from '../parser/deloadGenerator';
 import { parseHeaderDeclaration } from '../parser/workoutRow';
@@ -291,6 +292,37 @@ export function shareRoutine({ title, rawText, exportedAt } = {}, deps = {}) {
       },
     ],
   );
+}
+
+export const ROUTINE_COPY_SUCCESS_MESSAGE = 'Routine copied to the clipboard.';
+export const ROUTINE_COPY_FAILURE_MESSAGE =
+  'Couldn’t copy the routine to the clipboard. Nothing else changed.';
+
+/**
+ * Compose the portable routine text (the exact `buildRoutineShareText` payload,
+ * envelope plus the full stored body) and write it to the clipboard.
+ *
+ * Returns `{ ok, showConfirmation }` and never throws:
+ *   - `ok: false` means the write failed — the caller shows its failure status
+ *     and must not report success.
+ *   - `showConfirmation` is false only where the OS already shows its own
+ *     clipboard popup (Android 13+), so the caller skips the in-app
+ *     confirmation rather than doubling it. On a failure it is always true so
+ *     the failure status is shown everywhere.
+ *
+ * `deps` mirrors `shareRoutine`: the app uses the real platform clipboard;
+ * tests inject substitutes.
+ */
+export async function copyRoutineToClipboard({ title, rawText, exportedAt } = {}, deps = {}) {
+  const copy = deps.copy || copyTextToClipboard;
+  const systemConfirms = deps.systemConfirms || systemConfirmsClipboardWrite;
+  const text = buildRoutineShareText({ title, rawText, exportedAt });
+  try {
+    await copy(text);
+  } catch {
+    return { ok: false, showConfirmation: true };
+  }
+  return { ok: true, showConfirmation: !systemConfirms() };
 }
 
 // Image sharing has a separate allowlist. Never send a note or parsed section

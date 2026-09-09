@@ -28,14 +28,19 @@
 // `inlineSwitchButtonText` — which sits on a `chipBackground` fill — takes
 // `colors.chipAccentText`. The `accent` mark uses here (the `New routine` plus
 // glyph) are unchanged.
-import React, { useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Button, Card, SectionTitle } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { localDate } from '../lib/LogScreenHelpers';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
-import { shareRoutine } from '../lib/interoperability/routineShare';
+import {
+  shareRoutine,
+  copyRoutineToClipboard,
+  ROUTINE_COPY_SUCCESS_MESSAGE,
+  ROUTINE_COPY_FAILURE_MESSAGE,
+} from '../lib/interoperability/routineShare';
 import { RoutineShareModal } from './RoutineShareCard';
 
 // A routine row's date has exactly one meaning: the day the routine was created
@@ -119,6 +124,38 @@ export function LogPreviousRoutines({
     const payload = { title: note?.title, rawText: note?.raw_text || '' };
     if (onShareRoutine) onShareRoutine(payload);
     else shareRoutine(payload);
+  };
+
+  // Transient per-routine copy status: `{ noteId, message }`, so the line only
+  // renders under the row it belongs to and never trails a previous routine
+  // when the viewer switches. Copy carries the full stored `raw_text` (#956),
+  // the same byte-for-byte body as Share.
+  const [copyStatus, setCopyStatus] = useState(null);
+  // Auto-expire the line like the Log tab's other transient confirmations
+  // (`skipWeekStatus` / `saveSuccess` in the routine editors); a fast unmount
+  // or a second copy cancels the pending clear.
+  useEffect(() => {
+    if (!copyStatus) return undefined;
+    const timer = setTimeout(() => setCopyStatus(null), 4000);
+    return () => clearTimeout(timer);
+  }, [copyStatus]);
+  const handleCopyRoutine = (note) => {
+    const payload = { title: note?.title, rawText: note?.raw_text || '' };
+    return copyRoutineToClipboard(payload).then(({ ok, showConfirmation }) => {
+      if (!ok) {
+        setCopyStatus({ noteId: note?.id, message: ROUTINE_COPY_FAILURE_MESSAGE });
+        AccessibilityInfo.announceForAccessibility?.(ROUTINE_COPY_FAILURE_MESSAGE);
+        return;
+      }
+      // Android 13+ shows its own system clipboard popup; suppress the in-app
+      // line there so the confirmation is not doubled.
+      if (showConfirmation) {
+        setCopyStatus({ noteId: note?.id, message: ROUTINE_COPY_SUCCESS_MESSAGE });
+        AccessibilityInfo.announceForAccessibility?.(ROUTINE_COPY_SUCCESS_MESSAGE);
+      } else {
+        setCopyStatus(null);
+      }
+    });
   };
 
   const routineCount = otherNotes.length;
@@ -280,6 +317,13 @@ export function LogPreviousRoutines({
                         textStyle={styles.switchButtonText}
                       />
                       <Button
+                        onPress={() => handleCopyRoutine(viewingNote)}
+                        title="Copy routine"
+                        accessibilityLabel={`Copy routine ${viewingNote?.title || 'Untitled Routine'}`}
+                        style={styles.switchButton}
+                        textStyle={styles.switchButtonText}
+                      />
+                      <Button
                         onPress={() => setImageShare({ title: viewingNote?.title, rawText: viewingNote?.raw_text || '' })}
                         title="Share as Image"
                         accessibilityLabel={`Share routine ${viewingNote?.title || 'Untitled Routine'} as image`}
@@ -298,6 +342,15 @@ export function LogPreviousRoutines({
                         accessibilityLabel={`Delete routine ${viewingNote?.title || 'Untitled Routine'}`}
                         tone="danger"
                       />
+                      {copyStatus && copyStatus.noteId === other.id ? (
+                        <Text
+                          style={styles.copyStatusText}
+                          accessibilityLiveRegion="polite"
+                          testID="copy-routine-status"
+                        >
+                          {copyStatus.message}
+                        </Text>
+                      ) : null}
                     </View>
                   </>
                 )}
@@ -433,5 +486,14 @@ const createStyles = (colors) => StyleSheet.create({
   },
   switchButtonText: {
     color: colors.accentText,
+  },
+  // Transient copy confirmation / failure line (#956): the quiet muted-ink
+  // status treatment already used across this file (otherNoteSub,
+  // disclosureToggleText, skipWeekText). Not an accent — it is a passing
+  // acknowledgement, not a call to action.
+  copyStatusText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 4,
   },
 });

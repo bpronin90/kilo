@@ -11,12 +11,17 @@
 // `skipWeekStatusText` take `colors.accentText`, and `inlineSwitchButtonText`,
 // which sits on a `chipBackground` fill, takes `colors.chipAccentText`. The
 // card's 4px `accent` border and every other value here remain locked.
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card } from './UI';
 import { useThemedStyles } from '../theme/ThemeContext';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
-import { shareRoutine } from '../lib/interoperability/routineShare';
+import {
+  shareRoutine,
+  copyRoutineToClipboard,
+  ROUTINE_COPY_SUCCESS_MESSAGE,
+  ROUTINE_COPY_FAILURE_MESSAGE,
+} from '../lib/interoperability/routineShare';
 import { RoutineShareModal } from './RoutineShareCard';
 import { ProgressionSuggestionCard, MutedProgressionRow } from './ProgressionSuggestionCard';
 
@@ -115,6 +120,40 @@ export function LogActiveRoutineCard({
     if (onShareRoutine) onShareRoutine(payload);
     else shareRoutine(payload);
   };
+  // A single transient status line for the most recent copy attempt, matching
+  // the card's existing `skipWeekStatus` treatment. Stored as a fresh object per
+  // attempt (not a bare string) so a second copy while the same message is still
+  // showing is a real state change — the auto-expire effect below re-runs and
+  // restarts its 4s window rather than letting the first timer clear the line
+  // early. The payload is the FULL stored routine body (`routineRawText`), never
+  // the viewed-week slice — copy must carry both A/B halves and the `---`.
+  const [copyStatus, setCopyStatus] = useState(null);
+  // Auto-expire the confirmation like the card's other transient lines
+  // (`skipWeekStatus` clears itself after 4s in useLogCurrentRoutineEditor.js).
+  // The cleanup makes a fast unmount or a second copy cancel the pending clear.
+  useEffect(() => {
+    if (!copyStatus) return undefined;
+    const timer = setTimeout(() => setCopyStatus(null), 4000);
+    return () => clearTimeout(timer);
+  }, [copyStatus]);
+  const handleCopyRoutine = () => {
+    const payload = { title: workoutNoteTitle, rawText: routineRawText ?? activeEditText };
+    return copyRoutineToClipboard(payload).then(({ ok, showConfirmation }) => {
+      if (!ok) {
+        setCopyStatus({ message: ROUTINE_COPY_FAILURE_MESSAGE });
+        AccessibilityInfo.announceForAccessibility?.(ROUTINE_COPY_FAILURE_MESSAGE);
+        return;
+      }
+      // Android 13+ shows its own system clipboard popup; suppress the in-app
+      // line there so the confirmation is not doubled.
+      if (showConfirmation) {
+        setCopyStatus({ message: ROUTINE_COPY_SUCCESS_MESSAGE });
+        AccessibilityInfo.announceForAccessibility?.(ROUTINE_COPY_SUCCESS_MESSAGE);
+      } else {
+        setCopyStatus(null);
+      }
+    });
+  };
   const identityLabel = baselinePaused ? 'Baseline routine · paused' : 'Current routine';
   // An explicit accessibilityLabel on an accessible ancestor replaces the label VoiceOver
   // would otherwise derive from its Text descendants (#738 review) — so the routine title,
@@ -204,6 +243,18 @@ export function LogActiveRoutineCard({
               >
                 <Text style={styles.inlineSwitchButtonText}>Share</Text>
               </Pressable>
+              {/* #956: the one new control this issue authorizes — same pill
+                  form, hitSlop, and 44dp floor as Share beside it, in the one
+                  action strip. No new surface, no layout change. */}
+              <Pressable
+                onPress={(e) => { e.stopPropagation(); return handleCopyRoutine(); }}
+                style={styles.inlineSwitchButton}
+                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Copy routine ${workoutNoteTitle || 'Untitled Routine'}`}
+              >
+                <Text style={styles.inlineSwitchButtonText}>Copy</Text>
+              </Pressable>
               <Pressable
                 onPress={(e) => {
                   e.stopPropagation();
@@ -254,6 +305,15 @@ export function LogActiveRoutineCard({
           </View>
           {skipWeekStatus ? (
             <Text style={styles.skipWeekStatusText}>{skipWeekStatus}</Text>
+          ) : null}
+          {copyStatus ? (
+            <Text
+              style={styles.skipWeekStatusText}
+              accessibilityLiveRegion="polite"
+              testID="log-copy-routine-status"
+            >
+              {copyStatus.message}
+            </Text>
           ) : null}
           <WorkoutContentRenderer
             dayGroups={dayGroups}
