@@ -17,6 +17,7 @@ authoritative description of the active product.
 - [Session Check-In and Fatigue roadmap](mvp-fatigue-roadmap.md)
 - [Contain and Connect roadmap](contain-and-connect-roadmap.md)
 - [Repair and Simplify roadmap](repair-and-simplify-roadmap.md)
+- [Zero-Friction and Active Context roadmap](zero-friction-roadmap.md) preserves the completed product-delivery plan and its owner-resolved decisions.
 
 ## Backend History
 

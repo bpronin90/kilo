@@ -90,16 +90,16 @@ Four open Dependabot alerts, and severity overstates the real exposure:
 Operator checklist for final production signup and authentication. This is a
 genuine launch gate and should be completed against the real production project.
 
-### P6. Security process issues — **owner decision required**
+### P6. Security process issues — **RESOLVED**
 [#975](https://github.com/bpronin90/kilo/issues/975) (monitoring, alerting, audit
 trail), [#976](https://github.com/bpronin90/kilo/issues/976) (vulnerability
 management and incident response), [#977](https://github.com/bpronin90/kilo/issues/977)
-(security review gate). **All three currently carry no labels at all** — no agent,
-no area, no routing — so nobody owns them and they have been invisible.
-
-Kilo stores health and fitness data for real users. *Recommendation: #975 and #976
-in `1.0.0`* — knowing about a breach and having a plan for one are launch-grade
-concerns. *#977 after launch;* it is a process improvement, not a user-facing risk.
+(security review gate) are closed. The documented workflows now exist in
+[Security Monitoring](security-monitoring.md), [Security Incident Response](security-incident-response.md),
+and [Security-critical change review](security-review.md), respectively. These
+documents are the current operational source of truth for detecting and
+investigating security events, handling vulnerabilities and incidents, and
+reviewing security-critical changes.
 
 ### P7. Store listing assets
 Icon (512×512), feature graphic (1024×500) and ≥2 phone screenshots.
@@ -231,7 +231,8 @@ Two rules bind every card, added after review found them missing:
 - Resume the frozen feature work: #956, #957, #960, #961, #962, #969.
 - #578 CSV export and interoperability.
 - `syncAdapter` / `syncQueue` structural work.
-- #977 security review gate, if deferred from `1.0.0`.
+- Security workflow maintenance follows the completed #975/#976/#977 documentation;
+  no separate roadmap gate remains.
 
 ---
 
@@ -240,7 +241,7 @@ Two rules bind every card, added after review found them missing:
 | # | Decision | Recommendation |
 |---|---|---|
 | P3 | Dark mode in `1.0.0`, or hide the toggle? | ~~Hide; land it in D1~~ **Resolved: wired in `1.0.0` (#985)** |
-| P6 | Which of #975/#976/#977 are launch blockers? | #975 and #976 in; #977 after |
+| P6 | Which of #975/#976/#977 are launch blockers? | **Resolved: all three are closed; their documented security workflows now exist.** |
 | P8 | Frozen features in `1.0.0`? | No; resume in Phase 4 |
 | P8 | #578 in `1.0.0`? | No |
 
