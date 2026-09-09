@@ -11,7 +11,7 @@
 // `skipWeekStatusText` take `colors.accentText`, and `inlineSwitchButtonText`,
 // which sits on a `chipBackground` fill, takes `colors.chipAccentText`. The
 // card's 4px `accent` border and every other value here remain locked.
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card } from './UI';
 import { useThemedStyles } from '../theme/ThemeContext';
@@ -85,14 +85,13 @@ export function LogActiveRoutineCard({
   const [imageShare, setImageShare] = useState(null);
   // A single result line for the most recent explicit Apply attempt. Only an
   // `applied: true` result is allowed to read as success; every no-op, failure,
-  // or thrown error explains that nothing was added. `applyInFlightRef` keeps a
-  // second press from racing the first (the helper still guards its own save).
+  // or thrown error explains that nothing was added. Every press reaches the
+  // helper — no card-level in-flight guard — so a second press while the first
+  // save is still running gets the helper's own `save-in-flight` result and its
+  // retry-later line, rather than a silent no-op.
   const [applyStatus, setApplyStatus] = useState(null);
-  const applyInFlightRef = useRef(false);
   const handleApplyProgression = async (record) => {
     if (typeof onApplyProgression !== 'function') return;
-    if (applyInFlightRef.current) return;
-    applyInFlightRef.current = true;
     let message;
     try {
       const result = await onApplyProgression(record);
@@ -108,7 +107,6 @@ export function LogActiveRoutineCard({
     } catch {
       message = 'Couldn’t apply the suggestion. Nothing was added to your note.';
     }
-    applyInFlightRef.current = false;
     setApplyStatus(message);
     AccessibilityInfo.announceForAccessibility?.(message);
   };

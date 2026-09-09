@@ -14066,16 +14066,30 @@ describe('LogScreen — progression-suggestion Apply-to-note wiring (#1010)', ()
     render.act(() => component.unmount());
   });
 
-  test('a concurrent second press does not invoke the helper twice', async () => {
-    let resolve;
-    const onApplyProgression = jest.fn(() => new Promise((r) => { resolve = r; }));
+  test('a second press while the first apply is still running shows the helper retry-later result', async () => {
+    // Faithful to production: the real helper answers a press made while its own
+    // save is in flight with `{ applied: false, reason: 'save-in-flight' }`. The
+    // card must reach the helper on every press and surface that result, not
+    // swallow the second press.
+    let resolveFirst;
+    let call = 0;
+    const onApplyProgression = jest.fn(() => {
+      call += 1;
+      return call === 1
+        ? new Promise((r) => { resolveFirst = r; })
+        : Promise.resolve({ applied: false, reason: 'save-in-flight' });
+    });
     const component = mountCard({ progressionSuggestions: [entry(weightedRecord())], onApplyProgression });
     await render.act(async () => {
       applyButton(component.root).props.onPress({ stopPropagation: jest.fn() });
       applyButton(component.root).props.onPress({ stopPropagation: jest.fn() });
     });
-    expect(onApplyProgression).toHaveBeenCalledTimes(1);
-    await render.act(async () => { resolve({ applied: true }); });
+    expect(onApplyProgression).toHaveBeenCalledTimes(2);
+    expect(statusOf(component.root)).toBe(
+      'Wait for the current save to finish, then try Apply again. Nothing was added.'
+    );
+    await render.act(async () => { resolveFirst({ applied: true }); });
+    expect(statusOf(component.root)).toBe('Applied — the suggested target was added to your note.');
     render.act(() => component.unmount());
   });
 
