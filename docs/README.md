@@ -17,7 +17,8 @@ instead of copying the same contract into several files.
 
 | Document | Owns |
 |----------|------|
-| [Zero-Friction and Active Context Roadmap](zero-friction-roadmap.md) | Active phased product-delivery plan; Phases 1 and 2 are complete. |
+| [Prelaunch and Redesign Roadmap](prelaunch-redesign-roadmap.md) | Active phased plan for the `1.0.0` launch and the post-launch Analog Iron redesign. |
+| [Zero-Friction and Active Context Roadmap](archive/zero-friction-roadmap.md) | Completed historical product-delivery roadmap; preserved for provenance, not current planning. |
 | [Calculations Reference](calculations-reference.md) | Workout, weight, goal, and recovery calculations in plain language. |
 | [UI Design Rules](ui-design-rules.md) | Adopted layout, component, interaction, appearance, and copy rules. |
 | [Design System Map](design-system-map.md) | Current visual tokens, shared components, and screen-level implementation map. |
@@ -37,6 +38,7 @@ instead of copying the same contract into several files.
 |----------|------|
 | [Security Monitoring](security-monitoring.md) | Production security-event logging, redaction, retention, access, alerting, and the investigation runbook. |
 | [Security Incident Response](security-incident-response.md) | Vulnerability intake, triage, containment, recovery, security-fix release, and post-incident review. |
+| [Logging-Speed Benchmark](logging-speed-benchmark.md) | Living, repeatable benchmark for the work required to log representative gym sessions. |
 | [Phone Runbook](phone-runbook.md) | WSL/Expo development, EAS builds, device installation, and runtime policy. |
 | [Play Store Readiness](play-store-readiness.md) | Operator-owned Play Console, closed-testing, listing, and Android release status. |
 | [Beta Tester Guide](tester-guide.md) | Non-technical installation, test, and feedback instructions. |
