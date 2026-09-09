@@ -26,7 +26,7 @@ test('native builds isolate OTA channels and Android OS backup stays disabled', 
   const priorAppEnv = process.env.APP_ENV;
   process.env.APP_ENV = 'preview';
   try {
-    assert.equal(resolveAppConfig({ config: app.expo }).runtimeVersion, 'preview-7');
+    assert.equal(resolveAppConfig({ config: app.expo }).runtimeVersion, 'preview-8');
   } finally {
     if (priorAppEnv === undefined) delete process.env.APP_ENV;
     else process.env.APP_ENV = priorAppEnv;

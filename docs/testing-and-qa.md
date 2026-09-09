@@ -49,8 +49,10 @@ development client is for iteration, the preview build remains the surface for
 the [Installable Preview Smoke Checklist](#installable-preview-smoke-checklist).
 
 Adding `expo-dev-client` was a native change, so `PREVIEW_RUNTIME` moved to
-`preview-7`. Existing `preview-6` installs will not receive new OTA bundles and
-must be replaced with one fresh preview build.
+`preview-7`. Wiring dark mode at the native layer (#985) added `expo-system-ui`
+and is likewise native, so `PREVIEW_RUNTIME` is now `preview-8`. Each such bump
+means older preview installs will not receive new OTA bundles and must be
+replaced with one fresh preview build.
 
 For a standalone installable Android APK that does not depend on a running dev
 machine, use the EAS build flow documented in `docs/phone-runbook.md`.
