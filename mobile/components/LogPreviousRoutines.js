@@ -28,7 +28,7 @@
 // `inlineSwitchButtonText` — which sits on a `chipBackground` fill — takes
 // `colors.chipAccentText`. The `accent` mark uses here (the `New routine` plus
 // glyph) are unchanged.
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Button, Card, SectionTitle } from './UI';
@@ -131,6 +131,14 @@ export function LogPreviousRoutines({
   // when the viewer switches. Copy carries the full stored `raw_text` (#956),
   // the same byte-for-byte body as Share.
   const [copyStatus, setCopyStatus] = useState(null);
+  // Auto-expire the line like the Log tab's other transient confirmations
+  // (`skipWeekStatus` / `saveSuccess` in the routine editors); a fast unmount
+  // or a second copy cancels the pending clear.
+  useEffect(() => {
+    if (!copyStatus) return undefined;
+    const timer = setTimeout(() => setCopyStatus(null), 4000);
+    return () => clearTimeout(timer);
+  }, [copyStatus]);
   const handleCopyRoutine = (note) => {
     const payload = { title: note?.title, rawText: note?.raw_text || '' };
     return copyRoutineToClipboard(payload).then(({ ok, showConfirmation }) => {

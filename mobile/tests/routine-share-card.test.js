@@ -335,3 +335,63 @@ describe('Copy routine to clipboard (#956)', () => {
     render.act(() => component.unmount());
   });
 });
+
+describe('Copy routine status auto-expires (#956)', () => {
+  const { copyTextToClipboard, systemConfirmsClipboardWrite } = platformClipboard;
+  const statusNodes = (root, testID) => root.findAll(n => n.props && n.props.testID === testID);
+
+  beforeEach(() => {
+    copyTextToClipboard.mockReset().mockResolvedValue(undefined);
+    systemConfirmsClipboardWrite.mockReset().mockReturnValue(false);
+    jest.useFakeTimers();
+  });
+  afterEach(() => { jest.useRealTimers(); });
+
+  const pressCopy = async node => {
+    await render.act(async () => { await node.props.onPress({ stopPropagation: jest.fn() }); });
+  };
+
+  test('the current-routine confirmation clears itself after its brief interval', async () => {
+    let component;
+    render.act(() => {
+      component = render.create(<LogActiveRoutineCard workoutNoteTitle="Routine" dayGroups={[]} routineRawText={RAW} />);
+    });
+    await pressCopy(byLabel(component.root, 'Copy routine'));
+    expect(statusNodes(component.root, 'log-copy-routine-status')).not.toHaveLength(0);
+    render.act(() => { jest.advanceTimersByTime(4000); });
+    expect(statusNodes(component.root, 'log-copy-routine-status')).toHaveLength(0);
+    render.act(() => component.unmount());
+  });
+
+  test('a failure line also clears, and unmounting first cancels the pending timer', async () => {
+    copyTextToClipboard.mockRejectedValue(new Error('NotAllowedError'));
+    let component;
+    render.act(() => {
+      component = render.create(<LogActiveRoutineCard workoutNoteTitle="Routine" dayGroups={[]} routineRawText={RAW} />);
+    });
+    await pressCopy(byLabel(component.root, 'Copy routine'));
+    expect(content(component.root)).toContain(ROUTINE_COPY_FAILURE_MESSAGE);
+    render.act(() => component.unmount());
+    // No "state update on an unmounted component" — the cleanup cleared the timer.
+    expect(() => render.act(() => { jest.advanceTimersByTime(4000); })).not.toThrow();
+  });
+
+  test('the saved-routine confirmation clears itself too', async () => {
+    const note = { id: 'old', title: 'Old routine', raw_text: RAW, saved_at: '2026-01-02T00:00:00.000Z' };
+    let component;
+    render.act(() => {
+      component = render.create(
+        <LogPreviousRoutines
+          otherNotes={[note]} expanded viewingNoteId={note.id} viewingNote={note}
+          viewingNoteDayGroups={[]} viewingActiveText="Monday"
+          handleViewOtherNote={jest.fn()} handleCreateRoutine={jest.fn()}
+        />,
+      );
+    });
+    await pressCopy(byLabel(component.root, 'Copy routine Old routine'));
+    expect(statusNodes(component.root, 'copy-routine-status')).not.toHaveLength(0);
+    render.act(() => { jest.advanceTimersByTime(4000); });
+    expect(statusNodes(component.root, 'copy-routine-status')).toHaveLength(0);
+    render.act(() => component.unmount());
+  });
+});

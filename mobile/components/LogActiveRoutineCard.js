@@ -11,7 +11,7 @@
 // `skipWeekStatusText` take `colors.accentText`, and `inlineSwitchButtonText`,
 // which sits on a `chipBackground` fill, takes `colors.chipAccentText`. The
 // card's 4px `accent` border and every other value here remain locked.
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card } from './UI';
 import { useThemedStyles } from '../theme/ThemeContext';
@@ -125,6 +125,14 @@ export function LogActiveRoutineCard({
   // is the FULL stored routine body (`routineRawText`), never the viewed-week
   // slice — copy must carry both A/B halves and the `---` separator.
   const [copyStatus, setCopyStatus] = useState(null);
+  // Auto-expire the confirmation like the card's other transient lines
+  // (`skipWeekStatus` clears itself after 4s in useLogCurrentRoutineEditor.js).
+  // The cleanup makes a fast unmount or a second copy cancel the pending clear.
+  useEffect(() => {
+    if (!copyStatus) return undefined;
+    const timer = setTimeout(() => setCopyStatus(null), 4000);
+    return () => clearTimeout(timer);
+  }, [copyStatus]);
   const handleCopyRoutine = () => {
     const payload = { title: workoutNoteTitle, rawText: routineRawText ?? activeEditText };
     return copyRoutineToClipboard(payload).then(({ ok, showConfirmation }) => {
