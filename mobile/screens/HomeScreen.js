@@ -4,7 +4,7 @@ import Svg, { Path, Rect } from 'react-native-svg';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, HeroMetric, LineChart, getSessionTone, Button, ErrorBanner } from '../components/UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
-import { CLOUD_SYNC_NOTICE, useWeightGoal, useTrackedLifts, getNoteSections, useCloudSyncSummary, useActiveTrainingContext, useDeloadHistory } from '../hooks/useEntries';
+import { CLOUD_SYNC_NOTICE, useWeightGoal, useTrackedLifts, getNoteSections, useCloudSyncSummary, useActiveTrainingContext, useDeloadHistory, useRecoveryBlockState } from '../hooks/useEntries';
 import { deriveHomeDashboardData, useHomeNormalNotes, useHomeRecoverySummary, HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './home/homeDashboardData';
 import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
 import { useWeightUnit } from '../lib/unitPreference';
@@ -441,9 +441,14 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   // `currentId` is still set, and this context must resolve the same
   // activeNoteId Log does — review finding, PR #873).
   const activeTrainingContext = useActiveTrainingContext({ currentId, notes });
-  // #989: post-deload re-entry input for the dashboard analytics pass,
-  // keyed to the same stable current-routine id Analytics and Log use.
+  // #989: post-deload re-entry inputs for the dashboard analytics pass, keyed
+  // to the same stable current-routine id Analytics and Log use. The live
+  // Recovery blocks come from the same authoritative store Analytics reads
+  // (Home already subscribes via useHomeRecoverySummary), passed raw the way
+  // Analytics passes them so the re-entry label's active-Recovery exclusion
+  // matches across both surfaces.
   const { history: deloadHistory } = useDeloadHistory();
+  const { blocks: recoveryBlocks = [] } = useRecoveryBlockState() || {};
 
   // Home's own active-Recovery branch (#869). Only these two derived
   // statuses ever set `baselinePaused` (see activeTrainingContext.js) — every
@@ -498,8 +503,8 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   );
 
   const dashboardData = useMemo(
-    () => deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, trackedLifts, trackedLiftActivations, deloadHistory, sourceNoteId: currentId ?? null }),
-    [weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, trackedLifts, trackedLiftActivations, deloadHistory, currentId]
+    () => deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, trackedLifts, trackedLiftActivations, deloadHistory, sourceNoteId: currentId ?? null, recoveryBlocks }),
+    [weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, trackedLifts, trackedLiftActivations, deloadHistory, currentId, recoveryBlocks]
   );
 
   const weekTone = getSessionTone(dashboardData.sessionCount);

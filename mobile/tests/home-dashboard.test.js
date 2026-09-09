@@ -483,4 +483,17 @@ describe('deriveHomeDashboardData — post-deload re-entry wiring (#989)', () =>
     const result = deriveHomeDashboardData(baseArgs());
     expect(result.reentry).toEqual({});
   });
+
+  test('an exercise under an active Recovery block is not labeled', () => {
+    const result = deriveHomeDashboardData({
+      ...baseArgs(),
+      deloadHistory: [completedRecord],
+      sourceNoteId: 'wn_src',
+      recoveryBlocks: [{
+        started_at: '2026-06-01T00:00:00.000Z', completed_at: null,
+        baseline: { exercises: [{ key: 'bench' }] },
+      }],
+    });
+    expect(result.reentry.bench).toBeUndefined();
+  });
 });

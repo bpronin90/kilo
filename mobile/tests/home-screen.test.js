@@ -2345,6 +2345,24 @@ describe('post-deload re-entry: Home and Analytics stay consistent (#989)', () =
     expect(home.reentry.bench.current_working_weight_lb).toBe(analytics.reentry.bench.current_working_weight_lb);
   });
 
+  test('neither surface labels it for an exercise under an active Recovery block', () => {
+    const recoveryBlocks = [{
+      started_at: '2026-06-01T00:00:00.000Z', completed_at: null,
+      baseline: { exercises: [{ key: 'bench' }] },
+    }];
+    const home = deriveHomeDashboardData({
+      weightEntries: [], workoutNote: currentNote, weightGoal: null,
+      allSections, noteSectionsList: [allSections], trackedLifts: { bench: true },
+      deloadHistory: [completed], sourceNoteId: 'wn_src', recoveryBlocks,
+    });
+    const parsedSections = deriveParsedSections([currentNote], currentNote, null);
+    const analytics = deriveAnalytics(parsedSections, { bench: true }, {}, 1.07, null, {
+      deloadHistory: [completed], sourceNoteId: 'wn_src', recoveryBlocks,
+    });
+    expect(home.reentry.bench).toBeUndefined();
+    expect(analytics.reentry.bench).toBeUndefined();
+  });
+
   test('neither surface labels it for an unrelated source-routine id', () => {
     const home = deriveHomeDashboardData({
       weightEntries: [], workoutNote: currentNote, weightGoal: null,
