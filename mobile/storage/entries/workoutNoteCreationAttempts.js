@@ -107,8 +107,14 @@ function mintToken(sequence) {
 // failed) still continues the unfinished attempt instead of clobbering it with
 // a fresh token — that clobber is exactly how a stranded create becomes a
 // duplicate routine.
+//
+// It THROWS rather than resolving empty when the attempt cannot be persisted,
+// and callers must not swallow that: a create performed without a durable token
+// is an uncorrelated create, which is precisely the duplication this issue
+// exists to remove. Failing before the note is written leaves nothing to
+// duplicate, so fail-closed is the only safe direction here.
 export async function ensureWorkoutNoteCreationAttempt(contextKey) {
-  if (!contextKey) return null;
+  if (!contextKey) throw new Error('A workout-note creation attempt needs a caller context');
   const owner = await getLocalDataOwner();
   let token = null;
   await AsyncStorage.updateItem(WORKOUT_NOTE_CREATION_ATTEMPTS_KEY, (current) => {
@@ -123,6 +129,7 @@ export async function ensureWorkoutNoteCreationAttempt(contextKey) {
     writePendingToken(state, contextKey, owner, token);
     return JSON.stringify(state);
   });
+  if (!token) throw new Error('Could not persist the workout-note creation attempt');
   return token;
 }
 
@@ -170,6 +177,13 @@ export async function loadWorkoutNoteCreationAttemptId(token) {
 // context's slot only while that slot still names `token`. A newer create in
 // the same context — a different token — keeps its slot, so an overlapping
 // completion can never strand it.
+//
+// Retirement is part of the create, not bookkeeping after it, so a rejection
+// here must fail the operation too. A completed attempt left in the store would
+// hand its note id to the NEXT create in that context, overwriting the routine
+// that just succeeded. Reporting the failure instead makes the retry re-enter
+// the same attempt: it updates the same row (no duplicate) and retires the
+// attempt again.
 export async function clearWorkoutNoteCreationAttempt(contextKey, token) {
   if (!token) return;
   const owner = await getLocalDataOwner();

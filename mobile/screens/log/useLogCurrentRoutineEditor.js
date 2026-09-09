@@ -928,19 +928,26 @@ export function useLogCurrentRoutineEditor({
         });
       } else {
         // Id-stable create (#997): persist the attempt token BEFORE the create,
-        // and clear it only after the create has fully succeeded. A failed
+        // and retire it only after the create has fully succeeded. A failed
         // create leaves the token in place, so the next Save — this session or
         // after a restart, with the title or body edited or not — completes the
         // same note instead of adding a second one.
+        //
+        // Neither attempt-store write is swallowed, and both are deliberately
+        // inside this function's try/catch so a rejection surfaces as a failed
+        // save. Minting must not be skipped: an uncorrelated create is the
+        // duplicate this issue exists to prevent, and failing before `add` runs
+        // leaves nothing behind to duplicate. Retirement must not be skipped
+        // either: a completed attempt left in the store would hand this note's
+        // id to the NEXT new routine and overwrite it. The save the user then
+        // retries re-enters the same attempt, updates the same row, and retires
+        // it again, so a reported failure here costs a retry, never a routine.
         const attemptToken = createAttemptTokenRef.current
-          || await ensureWorkoutNoteCreationAttempt(CURRENT_CREATE_ATTEMPT_KEY).catch(() => null);
-        if (attemptToken) createAttemptTokenRef.current = attemptToken;
+          || await ensureWorkoutNoteCreationAttempt(CURRENT_CREATE_ATTEMPT_KEY);
+        createAttemptTokenRef.current = attemptToken;
         result = await add(titleToSave, snapshotText, { attemptToken });
-        if (attemptToken) {
-          createAttemptTokenRef.current = null;
-          await clearWorkoutNoteCreationAttempt(CURRENT_CREATE_ATTEMPT_KEY, attemptToken)
-            .catch(() => {});
-        }
+        await clearWorkoutNoteCreationAttempt(CURRENT_CREATE_ATTEMPT_KEY, attemptToken);
+        createAttemptTokenRef.current = null;
         savingCurrentSnapshotRef.current.noteId = result.id;
         draftNoteIdOverrideRef.current = result.id;
         await selectCurrent(result.id);

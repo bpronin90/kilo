@@ -119,17 +119,22 @@ export function RoutineImportScreen({ onBack, onCreateRoutine }) {
       // routine content, so it must not end up inside the saved note.
       const savedBody = analysis.body;
       const saved = title.trim();
+      // Neither attempt-store write is swallowed: both are inside this
+      // function's try/catch, so a rejection lands on IMPORT_FAILED_MESSAGE
+      // instead of quietly weakening the guarantee. Importing without a durable
+      // token would be an uncorrelated create (the duplicate this exists to
+      // prevent), and leaving a completed attempt in the store would let the
+      // NEXT import adopt this routine's note id and overwrite it. Either way
+      // the honest outcome is the failure message, whose instruction — press
+      // Create again — re-enters the same attempt and cannot duplicate.
       const attemptToken = createAttemptTokenRef.current
-        || await ensureWorkoutNoteCreationAttempt(IMPORT_CREATE_ATTEMPT_KEY).catch(() => null);
-      if (attemptToken) createAttemptTokenRef.current = attemptToken;
+        || await ensureWorkoutNoteCreationAttempt(IMPORT_CREATE_ATTEMPT_KEY);
+      createAttemptTokenRef.current = attemptToken;
       await onCreateRoutine?.(saved, savedBody, { attemptToken });
       // Only a fully successful create retires the attempt. A throw above skips
       // this and leaves the token durable for the retry.
-      if (attemptToken) {
-        createAttemptTokenRef.current = null;
-        await clearWorkoutNoteCreationAttempt(IMPORT_CREATE_ATTEMPT_KEY, attemptToken)
-          .catch(() => {});
-      }
+      await clearWorkoutNoteCreationAttempt(IMPORT_CREATE_ATTEMPT_KEY, attemptToken);
+      createAttemptTokenRef.current = null;
       setSavedTitle(saved || 'Untitled Routine');
       // The fields stay editable during an awaited save, so a user who pasted
       // the NEXT routine while this one was in flight must not have those

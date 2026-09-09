@@ -465,9 +465,8 @@ describe('MoreScreen wiring', () => {
 // create has fully succeeded — which is what makes a retry finish THIS import
 // and the next import a genuinely new routine.
 describe('routine import: durable creation-attempt token (#997)', () => {
-  const {
-    loadWorkoutNoteCreationAttempt,
-  } = require('../storage/entries/workoutNoteCreationAttempts');
+  const creationAttempts = require('../storage/entries/workoutNoteCreationAttempts');
+  const { loadWorkoutNoteCreationAttempt } = creationAttempts;
 
   function mount(onCreateRoutine) {
     let tree;
@@ -571,6 +570,51 @@ describe('routine import: durable creation-attempt token (#997)', () => {
     expect(onCreateRoutine.mock.calls[0].slice(0, 2))
       .toEqual(onCreateRoutine.mock.calls[1].slice(0, 2));
     expect(tokenOf(onCreateRoutine, 1)).not.toBe(tokenOf(onCreateRoutine, 0));
+  });
+
+  test('a token that cannot be persisted fails the import instead of creating an uncorrelated routine', async () => {
+    // Importing without a durable token is the uncorrelated create this exists
+    // to remove, so the import must fail BEFORE the create runs — leaving
+    // nothing on the device for a retry to duplicate.
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const mint = jest.spyOn(creationAttempts, 'ensureWorkoutNoteCreationAttempt')
+      .mockRejectedValue(new Error('device storage unavailable'));
+    const onCreateRoutine = jest.fn().mockResolvedValue({ id: 'wn_import' });
+    const { root } = mount(onCreateRoutine);
+    paste(root, buildRoutineShareText({ title: 'Shared Plan', rawText: ROUTINE }));
+
+    await press(root);
+    expect(onCreateRoutine).not.toHaveBeenCalled();
+    const messages = root.findAll(n => typeof n.type === 'string' && typeof n.props.children === 'string')
+      .map(n => n.props.children);
+    expect(messages.some(m => m.startsWith('Something went wrong while saving.'))).toBe(true);
+    mint.mockRestore();
+    warn.mockRestore();
+  });
+
+  test('a token that cannot be retired fails the import, and the retry completes the same routine', async () => {
+    // Reporting success while the completed attempt is still in the store would
+    // let the NEXT import adopt this routine's note id and overwrite it.
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const retire = jest.spyOn(creationAttempts, 'clearWorkoutNoteCreationAttempt')
+      .mockRejectedValue(new Error('device storage unavailable'));
+    const onCreateRoutine = jest.fn().mockResolvedValue({ id: 'wn_import' });
+    const { root } = mount(onCreateRoutine);
+    const shared = buildRoutineShareText({ title: 'Shared Plan', rawText: ROUTINE });
+    paste(root, shared);
+
+    await press(root);
+    expect(onCreateRoutine).toHaveBeenCalledTimes(1);
+    const token = tokenOf(onCreateRoutine, 0);
+    await expect(loadWorkoutNoteCreationAttempt('import')).resolves.toBe(token);
+    // The paste is still there, and the message says retrying will not duplicate.
+    expect(byTestId(root, 'routine-import-paste')[0].props.value).toBe(shared);
+
+    retire.mockRestore();
+    await press(root);
+    expect(tokenOf(onCreateRoutine, 1)).toBe(token);
+    await expect(loadWorkoutNoteCreationAttempt('import')).resolves.toBeNull();
+    warn.mockRestore();
   });
 
   test('the App.js wiring forwards the token through to the note store', () => {

@@ -13052,9 +13052,8 @@ describe('Log interaction targets and header scaling (#905)', () => {
 describe('Log editors: durable creation-attempt tokens for new notes (#997)', () => {
   const { useLogCurrentRoutineEditor } = require('../screens/log/useLogCurrentRoutineEditor');
   const { useLogOtherRoutineEditor } = require('../screens/log/useLogOtherRoutineEditor');
-  const {
-    loadWorkoutNoteCreationAttempt,
-  } = require('../storage/entries/workoutNoteCreationAttempts');
+  const creationAttempts = require('../storage/entries/workoutNoteCreationAttempts');
+  const { loadWorkoutNoteCreationAttempt } = creationAttempts;
   const AsyncStorageMock = require('@react-native-async-storage/async-storage');
 
   let trees = [];
@@ -13210,6 +13209,46 @@ describe('Log editors: durable creation-attempt tokens for new notes (#997)', ()
       expect(attemptTokenOfCall(add, 0)).toBe(token);
       await expect(loadWorkoutNoteCreationAttempt('current:new')).resolves.toBeNull();
     });
+
+    test('a token that cannot be persisted fails the save instead of creating an uncorrelated note', async () => {
+      // Creating without a durable token is exactly the uncorrelated create
+      // this protocol exists to remove, so the save must fail BEFORE `add`
+      // runs — then there is nothing on the device for a retry to duplicate.
+      const mint = jest.spyOn(creationAttempts, 'ensureWorkoutNoteCreationAttempt')
+        .mockRejectedValue(new Error('device storage unavailable'));
+      const add = jest.fn(async () => ({ id: 'wn_created' }));
+      const editor = mountCurrentEditor({ add });
+
+      let ok;
+      await render.act(async () => { ok = await editor.ref.current.handleSave(); });
+      expect(ok).toBe(false);
+      expect(add).not.toHaveBeenCalled();
+      mint.mockRestore();
+    });
+
+    test('a token that cannot be retired fails the save, and the retry completes the same note', async () => {
+      // Reporting success while a completed attempt is still in the store would
+      // hand this note's id to the NEXT new routine and overwrite it. Failing
+      // costs a retry instead — and the retry re-enters the SAME attempt.
+      const retire = jest.spyOn(creationAttempts, 'clearWorkoutNoteCreationAttempt')
+        .mockRejectedValue(new Error('device storage unavailable'));
+      const add = jest.fn(async () => ({ id: 'wn_created' }));
+      const editor = mountCurrentEditor({ add });
+
+      let ok;
+      await render.act(async () => { ok = await editor.ref.current.handleSave(); });
+      expect(ok).toBe(false);
+      expect(add).toHaveBeenCalledTimes(1);
+      const token = attemptTokenOfCall(add, 0);
+      // Still pending, so the retry cannot become a second routine.
+      await expect(loadWorkoutNoteCreationAttempt('current:new')).resolves.toBe(token);
+
+      retire.mockRestore();
+      await render.act(async () => { ok = await editor.ref.current.handleSave(); });
+      expect(ok).toBe(true);
+      expect(attemptTokenOfCall(add, 1)).toBe(token);
+      await expect(loadWorkoutNoteCreationAttempt('current:new')).resolves.toBeNull();
+    });
   });
 
   describe('the other-routine editor', () => {
@@ -13280,6 +13319,41 @@ describe('Log editors: durable creation-attempt tokens for new notes (#997)', ()
       await render.act(async () => { await restarted.ref.current.handleSaveOtherNote(); });
 
       expect(attemptTokenOfCall(add, 0)).toBe(token);
+      await expect(loadWorkoutNoteCreationAttempt('other:new')).resolves.toBeNull();
+    });
+
+    test('a token that cannot be persisted fails the save instead of creating an uncorrelated note', async () => {
+      const mint = jest.spyOn(creationAttempts, 'ensureWorkoutNoteCreationAttempt')
+        .mockRejectedValue(new Error('device storage unavailable'));
+      const add = jest.fn(async () => ({ id: 'wn_created' }));
+      const editor = mountOtherEditor({ add });
+      await openNewNote(editor, { title: 'Backlog', text: 'Monday\n-Row\n95 8,8,8' });
+
+      let ok;
+      await render.act(async () => { ok = await editor.ref.current.handleSaveOtherNote(); });
+      expect(ok).toBe(false);
+      expect(add).not.toHaveBeenCalled();
+      mint.mockRestore();
+    });
+
+    test('a token that cannot be retired fails the save, and the retry completes the same note', async () => {
+      const retire = jest.spyOn(creationAttempts, 'clearWorkoutNoteCreationAttempt')
+        .mockRejectedValue(new Error('device storage unavailable'));
+      const add = jest.fn(async () => ({ id: 'wn_created' }));
+      const editor = mountOtherEditor({ add });
+      await openNewNote(editor, { title: 'Backlog', text: 'Monday\n-Row\n95 8,8,8' });
+
+      let ok;
+      await render.act(async () => { ok = await editor.ref.current.handleSaveOtherNote(); });
+      expect(ok).toBe(false);
+      expect(add).toHaveBeenCalledTimes(1);
+      const token = attemptTokenOfCall(add, 0);
+      await expect(loadWorkoutNoteCreationAttempt('other:new')).resolves.toBe(token);
+
+      retire.mockRestore();
+      await render.act(async () => { ok = await editor.ref.current.handleSaveOtherNote(); });
+      expect(ok).toBe(true);
+      expect(attemptTokenOfCall(add, 1)).toBe(token);
       await expect(loadWorkoutNoteCreationAttempt('other:new')).resolves.toBeNull();
     });
   });

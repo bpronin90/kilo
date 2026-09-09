@@ -32,6 +32,7 @@ import {
   clearAllWorkoutNoteCreationAttempts,
 } from '../storage/entries/workoutNoteCreationAttempts';
 import { setLocalDataOwner } from '../storage/entries/localDataOwner';
+import { secureStorage } from '../storage/secureStorage';
 import { useWorkoutNotes } from '../hooks/entries/workoutNoteHooks';
 
 const ATTEMPTS_KEY = 'kilo_workout_note_creation_attempts_v1';
@@ -200,6 +201,22 @@ describe('the durable creation-attempt store', () => {
     await setLocalDataOwner('user-a');
     await expect(loadWorkoutNoteCreationAttempt('import')).resolves.toBe(ownedByA);
     await expect(loadWorkoutNoteCreationAttemptId(ownedByA)).resolves.toBe('wn_a');
+  });
+
+  test('a store that cannot persist the attempt REJECTS rather than resolving empty', async () => {
+    // A create performed without a durable token is an uncorrelated create —
+    // the duplicate this whole protocol exists to prevent — so the store must
+    // never let a caller proceed as if an attempt had been recorded.
+    const failing = jest.spyOn(secureStorage, 'updateItem')
+      .mockRejectedValue(new Error('device storage unavailable'));
+    try {
+      await expect(ensureWorkoutNoteCreationAttempt('import')).rejects.toThrow();
+      await expect(clearWorkoutNoteCreationAttempt('import', 'wnca_1_1')).rejects.toThrow();
+    } finally {
+      failing.mockRestore();
+    }
+    // And nothing was recorded, so the next create starts clean.
+    await expect(loadWorkoutNoteCreationAttempt('import')).resolves.toBeNull();
   });
 
   test('clearAllWorkoutNoteCreationAttempts wipes every context (account-transition safety net)', async () => {
@@ -408,28 +425,35 @@ describe('useWorkoutNotes.add after a partial cloud write', () => {
   });
 
   test('the stranded row is completed in place, not rebuilt from scratch', async () => {
-    // A reconciliation pass (or the first attempt itself) may have stamped
-    // fields on the stranded row. Completing the create must carry the latest
-    // submitted text WITHOUT discarding what is already on that row.
+    // Seeded directly to the exact state a stranded create leaves behind — the
+    // row is on the device and the attempt is still bound to it — plus a field
+    // the first attempt (or a later reconciliation pass) stamped on that row.
+    // Completing the create must carry the latest submitted text WITHOUT
+    // discarding what is already there.
     const { api } = await mountNotes();
     const token = await ensureWorkoutNoteCreationAttempt('other:new');
-
-    failNextSave = true;
-    await expect(api().add('Draft', 'Monday\n-Squat\n- 225 5', { attemptToken: token }))
-      .rejects.toThrow('enqueue failed');
-
-    await quiesce();
-    const strandedId = (await liveNotes())[0].id;
-    await realSave({ ...(await liveNotes())[0], activeWeek: 'B' });
-    await quiesce();
-
-    await render.act(async () => {
-      await api().add('Draft', 'Monday\n-Squat\n- 245 5', { attemptToken: token });
+    await claimWorkoutNoteCreationAttemptId(token, 'wn_stranded');
+    await realSave({
+      id: 'wn_stranded',
+      title: 'Draft',
+      raw_text: 'Monday\n-Squat\n- 225 5',
+      activeWeek: 'B',
+      saved_at: '2026-09-01T00:00:00.000Z',
+      updated_at: '2026-09-01T00:00:00.000Z',
     });
+
+    let completed;
+    await render.act(async () => {
+      completed = await api().add('Draft', 'Monday\n-Squat\n- 245 5', { attemptToken: token });
+    });
+    expect(completed.id).toBe('wn_stranded');
+    expect(completed.activeWeek).toBe('B');
+    expect(completed.saved_at).toBe('2026-09-01T00:00:00.000Z');
+    expect(completed.updated_at).not.toBe('2026-09-01T00:00:00.000Z');
 
     const after = await liveNotes();
     expect(after).toHaveLength(1);
-    expect(after[0].id).toBe(strandedId);
+    expect(after[0].id).toBe('wn_stranded');
     expect(after[0].raw_text).toBe('Monday\n-Squat\n- 245 5');
     expect(after[0].activeWeek).toBe('B');
   });

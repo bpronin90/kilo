@@ -765,19 +765,23 @@ export function useLogOtherRoutineEditor({
         }
         if (editingNoteId === 'new') {
           // Id-stable create (#997): the attempt token is durable before the
-          // create and cleared only after it fully succeeds, so retrying a
+          // create and retired only after it fully succeeds, so retrying a
           // create whose cloud enqueue failed — with the title or body edited,
           // and even after an app restart — completes the same note instead of
           // saving a second copy of the routine.
+          //
+          // Neither attempt-store write is swallowed; both sit inside this
+          // function's try/catch so a rejection becomes a failed save. See the
+          // same reasoning spelled out in useLogCurrentRoutineEditor.js:
+          // creating without a durable token is an uncorrelated create, and
+          // leaving a completed attempt in the store would let the next new
+          // routine adopt this note's id and overwrite it.
           const attemptToken = createAttemptTokenRef.current
-            || await ensureWorkoutNoteCreationAttempt(OTHER_CREATE_ATTEMPT_KEY).catch(() => null);
-          if (attemptToken) createAttemptTokenRef.current = attemptToken;
+            || await ensureWorkoutNoteCreationAttempt(OTHER_CREATE_ATTEMPT_KEY);
+          createAttemptTokenRef.current = attemptToken;
           result = await add(titleToSave, editingFullText, { attemptToken });
-          if (attemptToken) {
-            createAttemptTokenRef.current = null;
-            await clearWorkoutNoteCreationAttempt(OTHER_CREATE_ATTEMPT_KEY, attemptToken)
-              .catch(() => {});
-          }
+          await clearWorkoutNoteCreationAttempt(OTHER_CREATE_ATTEMPT_KEY, attemptToken);
+          createAttemptTokenRef.current = null;
           savingOtherSnapshotRef.current.noteId = result.id;
           editingNoteIdRef.current = result.id;
           setEditingNoteId(result.id);
