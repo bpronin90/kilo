@@ -121,9 +121,12 @@ export function LogActiveRoutineCard({
     else shareRoutine(payload);
   };
   // A single transient status line for the most recent copy attempt, matching
-  // the card's existing `skipWeekStatus` / Apply-result treatment. The payload
-  // is the FULL stored routine body (`routineRawText`), never the viewed-week
-  // slice — copy must carry both A/B halves and the `---` separator.
+  // the card's existing `skipWeekStatus` treatment. Stored as a fresh object per
+  // attempt (not a bare string) so a second copy while the same message is still
+  // showing is a real state change — the auto-expire effect below re-runs and
+  // restarts its 4s window rather than letting the first timer clear the line
+  // early. The payload is the FULL stored routine body (`routineRawText`), never
+  // the viewed-week slice — copy must carry both A/B halves and the `---`.
   const [copyStatus, setCopyStatus] = useState(null);
   // Auto-expire the confirmation like the card's other transient lines
   // (`skipWeekStatus` clears itself after 4s in useLogCurrentRoutineEditor.js).
@@ -137,14 +140,14 @@ export function LogActiveRoutineCard({
     const payload = { title: workoutNoteTitle, rawText: routineRawText ?? activeEditText };
     return copyRoutineToClipboard(payload).then(({ ok, showConfirmation }) => {
       if (!ok) {
-        setCopyStatus(ROUTINE_COPY_FAILURE_MESSAGE);
+        setCopyStatus({ message: ROUTINE_COPY_FAILURE_MESSAGE });
         AccessibilityInfo.announceForAccessibility?.(ROUTINE_COPY_FAILURE_MESSAGE);
         return;
       }
       // Android 13+ shows its own system clipboard popup; suppress the in-app
       // line there so the confirmation is not doubled.
       if (showConfirmation) {
-        setCopyStatus(ROUTINE_COPY_SUCCESS_MESSAGE);
+        setCopyStatus({ message: ROUTINE_COPY_SUCCESS_MESSAGE });
         AccessibilityInfo.announceForAccessibility?.(ROUTINE_COPY_SUCCESS_MESSAGE);
       } else {
         setCopyStatus(null);
@@ -248,7 +251,7 @@ export function LogActiveRoutineCard({
                 style={styles.inlineSwitchButton}
                 hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                 accessibilityRole="button"
-                accessibilityLabel="Copy routine"
+                accessibilityLabel={`Copy routine ${workoutNoteTitle || 'Untitled Routine'}`}
               >
                 <Text style={styles.inlineSwitchButtonText}>Copy</Text>
               </Pressable>
@@ -309,7 +312,7 @@ export function LogActiveRoutineCard({
               accessibilityLiveRegion="polite"
               testID="log-copy-routine-status"
             >
-              {copyStatus}
+              {copyStatus.message}
             </Text>
           ) : null}
           <WorkoutContentRenderer
