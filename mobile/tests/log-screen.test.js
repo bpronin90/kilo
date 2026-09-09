@@ -13838,4 +13838,39 @@ describe('LogScreen — progression-suggestion wiring for the current routine (#
     expect(list[0].record.evidence).toEqual(pure.evidence);
     render.act(() => component.unmount());
   });
+
+  test('excludes an opted-out recovery note even when it is the current routine', async () => {
+    // Recovery membership is exact and independent of the current selection, so
+    // an opted-out note is dropped from the derivation population even as the
+    // current routine — matching Analytics, which filters it from signalSections.
+    const RECOVERY_BODY = NOTE;
+    const note = { id: 'wn_rec', title: 'Recovery W1', raw_text: RECOVERY_BODY };
+    await seed(true);
+    jest.clearAllMocks();
+    updateSpy = jest.fn(); addSpy = jest.fn();
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [note], currentId: note.id, currentNote: note, deloadNotes: [],
+      loading: false, error: null, refresh: jest.fn(), selectCurrent: jest.fn(),
+      update: updateSpy, add: addSpy, remove: jest.fn(),
+    });
+    useEntries.useTrackedLifts.mockReturnValue({
+      trackedLifts: { 'bench press': true }, activations: {}, toggle: jest.fn(), reconcileActivations: jest.fn(),
+    });
+    useEntries.useDeloadNote.mockReturnValue({ note: null, loading: false, save: jest.fn(), clear: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+    useEntries.useUserProfile.mockReturnValue({ profile: null, save: jest.fn(), loading: false, clear: jest.fn() });
+    useEntries.useRecoveryBlockState.mockReturnValue({
+      ready: true,
+      blocks: [{ id: 'rb1', status: 'completed', include_in_normal_analytics: false, deleted_at: null }],
+      weeks: [{ id: 'rw1', block_id: 'rb1', note_id: 'wn_rec', deleted_at: null }],
+    });
+
+    const component = await renderScreen(note);
+    expect(cardOf(component).props.progressionSuggestions).toEqual([]);
+    expect(cardOf(component).props.mutedProgressionRows).toEqual([]);
+    render.act(() => component.unmount());
+  });
 });

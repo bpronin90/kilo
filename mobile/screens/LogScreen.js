@@ -678,9 +678,11 @@ export function LogScreen({
       if (n.title?.startsWith(DELOAD_NOTE_PREFIX)) return [];
       // A completed Recovery block that opted out of ordinary analytics takes
       // its linked week notes out of the suggestion history, exactly as
-      // Analytics' `deriveParsedSections` does. The current routine is never one
-      // of those, so it always stays in.
-      if (n.id !== currentId && progressionRecoveryFilter.isNoteExcluded?.(n.id)) return [];
+      // Analytics' `deriveParsedSections` does. Membership is exact and
+      // independent of which routine is current, so an excluded note is dropped
+      // even when it is the current one (then there is simply no history to
+      // suggest from — the same outcome Analytics reaches).
+      if (progressionRecoveryFilter.isNoteExcluded?.(n.id)) return [];
       const text = n.id === currentId ? workoutNoteText : n.raw_text;
       if (!text) return [];
       try {
