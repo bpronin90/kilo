@@ -13,9 +13,12 @@ import {
   ROUTINE_SHARE_HEADER,
   ROUTINE_SHARE_NOTICE_BODY,
   ROUTINE_SHARE_NOTICE_TITLE,
+  ROUTINE_COPY_SUCCESS_MESSAGE,
+  ROUTINE_COPY_FAILURE_MESSAGE,
   buildRoutineShareText,
   parseRoutineShareText,
   shareRoutine,
+  copyRoutineToClipboard,
 } from '../lib/interoperability/routineShare';
 import { parseWorkoutNote } from '../lib/parser';
 import { LogActiveRoutineCard } from '../components/LogActiveRoutineCard';
@@ -316,5 +319,52 @@ describe('Share Routine is reachable from the current and saved routines', () =>
     const share = pressableByLabel(component.root, 'Share routine Saved');
     render.act(() => { share.props.onPress(); });
     expect(onShareRoutine).toHaveBeenCalledWith({ title: 'Saved', rawText: AB_ROUTINE });
+  });
+});
+
+describe('copyRoutineToClipboard (#956)', () => {
+  const fixedDate = new Date(2026, 8, 5);
+
+  test('writes exactly the buildRoutineShareText payload, full A/B body included', async () => {
+    const copy = jest.fn().mockResolvedValue(undefined);
+    await copyRoutineToClipboard(
+      { title: 'Upper/Lower A', rawText: AB_ROUTINE, exportedAt: fixedDate },
+      { copy, systemConfirms: () => false },
+    );
+    expect(copy).toHaveBeenCalledWith(
+      buildRoutineShareText({ title: 'Upper/Lower A', rawText: AB_ROUTINE, exportedAt: fixedDate }),
+    );
+    // The written text round-trips to the whole stored routine — both halves
+    // and the separator — never a week slice.
+    const written = copy.mock.calls[0][0];
+    const body = parseRoutineShareText(written).body;
+    expect(body).toBe(AB_ROUTINE);
+    expect(body).toContain('\n---\n');
+    expect(body).toContain('-Squat');
+  });
+
+  test('success routes an app confirmation everywhere except where the OS shows its own', async () => {
+    const copy = jest.fn().mockResolvedValue(undefined);
+    await expect(
+      copyRoutineToClipboard({ rawText: ROUTINE }, { copy, systemConfirms: () => false }),
+    ).resolves.toEqual({ ok: true, showConfirmation: true });
+    await expect(
+      copyRoutineToClipboard({ rawText: ROUTINE }, { copy, systemConfirms: () => true }),
+    ).resolves.toEqual({ ok: true, showConfirmation: false });
+  });
+
+  test('a rejected clipboard write reports failure and never success', async () => {
+    const copy = jest.fn().mockRejectedValue(new Error('NotAllowedError'));
+    const result = await copyRoutineToClipboard(
+      { rawText: ROUTINE },
+      { copy, systemConfirms: () => true },
+    );
+    expect(result).toEqual({ ok: false, showConfirmation: true });
+  });
+
+  test('exposes distinct success and failure copy for the surface status line', () => {
+    expect(ROUTINE_COPY_SUCCESS_MESSAGE).toEqual(expect.any(String));
+    expect(ROUTINE_COPY_FAILURE_MESSAGE).toEqual(expect.any(String));
+    expect(ROUTINE_COPY_SUCCESS_MESSAGE).not.toBe(ROUTINE_COPY_FAILURE_MESSAGE);
   });
 });

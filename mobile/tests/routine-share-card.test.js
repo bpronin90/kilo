@@ -1,15 +1,27 @@
 import React from 'react';
 import render from 'react-test-renderer';
 import { StyleSheet } from 'react-native';
-import { buildRoutineShareSummary, shareRoutineImage } from '../lib/interoperability/routineShare';
+import {
+  buildRoutineShareSummary,
+  shareRoutineImage,
+  buildRoutineShareText,
+  parseRoutineShareText,
+  ROUTINE_COPY_SUCCESS_MESSAGE,
+  ROUTINE_COPY_FAILURE_MESSAGE,
+} from '../lib/interoperability/routineShare';
 import { RoutineShareCard, RoutineShareModal } from '../components/RoutineShareCard';
 import { LogActiveRoutineCard } from '../components/LogActiveRoutineCard';
 import { LogPreviousRoutines } from '../components/LogPreviousRoutines';
 import { parseWorkoutNote } from '../lib/parser';
 import html2canvas from 'html2canvas';
+import * as platformClipboard from '../lib/platformClipboard';
 
 jest.mock('@expo/vector-icons/MaterialIcons', () => 'MaterialIcons');
 jest.mock('html2canvas', () => jest.fn());
+jest.mock('../lib/platformClipboard', () => ({
+  copyTextToClipboard: jest.fn(),
+  systemConfirmsClipboardWrite: jest.fn(),
+}));
 
 const RAW = 'Monday\n+Lifting\n-Bench Press: 3x8-10\n135 10,10,10 *PR\n-- private comment\nunknown private row\n---\nTuesday\n-Pull-ups: 3x8-12\n12,12,12\n-- another secret\n';
 const content = root => root.findAll(n => n.type === 'Text').map(n => n.props.children).flat().join(' ');
@@ -207,5 +219,119 @@ describe('on-device image transport', () => {
     expect(html2canvas).toHaveBeenCalledWith(element, { logging: false });
     expect(toDataURL).toHaveBeenCalledWith('image/png');
     expect(download).toHaveBeenCalledWith('data:image/png;base64,cGl4ZWxz');
+  });
+});
+
+describe('Copy routine to clipboard (#956)', () => {
+  const { copyTextToClipboard, systemConfirmsClipboardWrite } = platformClipboard;
+  const statusNodes = (root, testID) => root.findAll(n => n.props && n.props.testID === testID);
+  const pressAsync = async node => {
+    await render.act(async () => {
+      await node.props.onPress({ stopPropagation: jest.fn() });
+      // Absorb the expo-vector-icons lazy font setState so it does not escape act.
+      await new Promise(resolve => setImmediate(resolve));
+    });
+  };
+
+  beforeEach(() => {
+    copyTextToClipboard.mockReset().mockResolvedValue(undefined);
+    systemConfirmsClipboardWrite.mockReset().mockReturnValue(false);
+  });
+
+  const mountActive = props => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <LogActiveRoutineCard workoutNoteTitle="Routine" dayGroups={[]} {...props} />,
+      );
+    });
+    return component;
+  };
+
+  const mountSaved = (note, props) => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <LogPreviousRoutines
+          otherNotes={[note]}
+          expanded
+          viewingNoteId={note.id}
+          viewingNote={note}
+          viewingNoteDayGroups={[]}
+          viewingActiveText="Monday"
+          handleViewOtherNote={jest.fn()}
+          handleCreateRoutine={jest.fn()}
+          {...props}
+        />,
+      );
+    });
+    return component;
+  };
+
+  test('the current routine copy control writes the full A/B body, never the viewed week', async () => {
+    const component = mountActive({ routineRawText: RAW, activeEditText: 'Monday' });
+    await pressAsync(byLabel(component.root, 'Copy routine'));
+    expect(copyTextToClipboard).toHaveBeenCalledWith(
+      buildRoutineShareText({ title: 'Routine', rawText: RAW }),
+    );
+    const body = parseRoutineShareText(copyTextToClipboard.mock.calls[0][0]).body;
+    expect(body).toBe(RAW);
+    expect(body).toContain('\n---\n');
+    expect(body).toContain('-Pull-ups'); // Week B, absent from activeEditText
+    render.act(() => component.unmount());
+  });
+
+  test('a successful copy shows the surface-local confirmation through a polite live region', async () => {
+    const component = mountActive({ routineRawText: RAW });
+    await pressAsync(byLabel(component.root, 'Copy routine'));
+    const [status] = statusNodes(component.root, 'log-copy-routine-status');
+    expect(status).toBeTruthy();
+    expect(status.props.accessibilityLiveRegion).toBe('polite');
+    expect(content(component.root)).toContain(ROUTINE_COPY_SUCCESS_MESSAGE);
+    render.act(() => component.unmount());
+  });
+
+  test('Android 13+ relies on its system popup — no doubled in-app confirmation', async () => {
+    systemConfirmsClipboardWrite.mockReturnValue(true);
+    const component = mountActive({ routineRawText: RAW });
+    await pressAsync(byLabel(component.root, 'Copy routine'));
+    expect(statusNodes(component.root, 'log-copy-routine-status')).toHaveLength(0);
+    expect(content(component.root)).not.toContain(ROUTINE_COPY_SUCCESS_MESSAGE);
+    render.act(() => component.unmount());
+  });
+
+  test('a rejected clipboard write shows failure, never success, and touches nothing else', async () => {
+    copyTextToClipboard.mockRejectedValue(new Error('NotAllowedError'));
+    const enterCurrentEditor = jest.fn();
+    const component = mountActive({ routineRawText: RAW, enterCurrentEditor });
+    await pressAsync(byLabel(component.root, 'Copy routine'));
+    expect(content(component.root)).toContain(ROUTINE_COPY_FAILURE_MESSAGE);
+    expect(content(component.root)).not.toContain(ROUTINE_COPY_SUCCESS_MESSAGE);
+    expect(enterCurrentEditor).not.toHaveBeenCalled();
+    render.act(() => component.unmount());
+  });
+
+  test('each saved routine has a Copy routine control that names it and copies its full stored body', async () => {
+    const note = { id: 'old', title: 'Old routine', raw_text: RAW, saved_at: '2026-01-02T00:00:00.000Z' };
+    const component = mountSaved(note);
+    const control = byLabel(component.root, 'Copy routine Old routine');
+    expect(control).toBeTruthy();
+    await pressAsync(control);
+    expect(copyTextToClipboard).toHaveBeenCalledWith(
+      buildRoutineShareText({ title: 'Old routine', rawText: RAW }),
+    );
+    expect(parseRoutineShareText(copyTextToClipboard.mock.calls[0][0]).body).toBe(RAW);
+    render.act(() => component.unmount());
+  });
+
+  test('the saved-routine confirmation is polite and rendered under its own row', async () => {
+    const note = { id: 'old', title: 'Old routine', raw_text: RAW, saved_at: '2026-01-02T00:00:00.000Z' };
+    const component = mountSaved(note);
+    await pressAsync(byLabel(component.root, 'Copy routine Old routine'));
+    const [status] = statusNodes(component.root, 'copy-routine-status');
+    expect(status).toBeTruthy();
+    expect(status.props.accessibilityLiveRegion).toBe('polite');
+    expect(content(component.root)).toContain(ROUTINE_COPY_SUCCESS_MESSAGE);
+    render.act(() => component.unmount());
   });
 });
