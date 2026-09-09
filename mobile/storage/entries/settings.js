@@ -228,6 +228,73 @@ export async function saveDeloadModeEnabled(enabled) {
   await AsyncStorage.setItem(DELOAD_MODE_KEY, JSON.stringify(enabled));
 }
 
+// ── Synchronous cache + subscription for the progression-suggestion UI ──────
+//
+// Log, Analytics and Settings all read the global flag (#958) and the
+// per-exercise mute set (#960), and a change on one surface has to be visible
+// on the others without a full app restart. All five tabs stay mounted (App.js
+// #527), so a plain per-screen `useEffect` read would go stale the moment the
+// user toggled the setting on the More tab. featureToggleHooks.js keeps
+// module-level state for the other feature toggles for the same reason; #960's
+// Allowed Files put the wiring in this module rather than a hook, so the shared
+// state lives here.
+//
+// `_progressionHydrated` guards a one-time read; screens call
+// `hydrateProgressionSuggestionSettings()` on mount and re-render through
+// `subscribeProgressionSuggestionSettings`.
+let _progressionCache = { enabled: false, mutedKeys: [] };
+let _progressionHydrated = false;
+const _progressionSubscribers = new Set();
+
+function _progressionCacheEquals(next) {
+  if (next.enabled !== _progressionCache.enabled) return false;
+  const a = _progressionCache.mutedKeys;
+  const b = next.mutedKeys;
+  if (a.length !== b.length) return false;
+  return a.every((k, i) => k === b[i]);
+}
+
+// Replace the cache and notify subscribers ONLY when the value actually
+// changed. A no-op hydrate (the common case: an untouched store reads back the
+// same default) must not push a state update into a mounted screen — that would
+// fire outside the caller's `act(...)` in tests and repaint for nothing in the
+// app.
+function _setProgressionCache(next) {
+  if (_progressionCacheEquals(next)) return _progressionCache;
+  _progressionCache = next;
+  for (const fn of _progressionSubscribers) {
+    try { fn(_progressionCache); } catch { /* a bad listener never blocks a save */ }
+  }
+  return _progressionCache;
+}
+
+export function getProgressionSuggestionSettings() {
+  return _progressionCache;
+}
+
+export async function hydrateProgressionSuggestionSettings({ force = false } = {}) {
+  if (_progressionHydrated && !force) return _progressionCache;
+  _progressionHydrated = true;
+  const [enabled, mutedKeys] = await Promise.all([
+    loadProgressionSuggestionsEnabled(),
+    loadProgressionSuggestionMutes(),
+  ]);
+  return _setProgressionCache({ enabled: !!enabled, mutedKeys });
+}
+
+export function subscribeProgressionSuggestionSettings(fn) {
+  _progressionSubscribers.add(fn);
+  return () => _progressionSubscribers.delete(fn);
+}
+
+// Test-only reset so a suite starting from a known-empty store does not see a
+// cache populated by an earlier test in the same worker.
+export function __resetProgressionSuggestionSettingsForTests() {
+  _progressionCache = { enabled: false, mutedKeys: [] };
+  _progressionHydrated = false;
+  _progressionSubscribers.clear();
+}
+
 // Progression suggestions (#958). Same shape and default-off posture as
 // fatigue tracking and deload mode: an unset key, a null value, or unreadable
 // storage all read as `false`, so a suggestion surface can never appear for a
@@ -242,7 +309,72 @@ export async function loadProgressionSuggestionsEnabled() {
 }
 
 export async function saveProgressionSuggestionsEnabled(enabled) {
-  await AsyncStorage.setItem(PROGRESSION_SUGGESTIONS_KEY, JSON.stringify(enabled));
+  const next = !!enabled;
+  await AsyncStorage.setItem(PROGRESSION_SUGGESTIONS_KEY, JSON.stringify(next));
+  _setProgressionCache({ ..._progressionCache, enabled: next });
+}
+
+// Per-exercise progression-suggestion mutes (#960). A muted exercise is
+// suppressed in BOTH the Log current-routine surface and the Analytics
+// strength surface; the global opt-out (above) and this set are independent,
+// so turning the feature off and back on leaves the mute set untouched.
+//
+// The stored value is an array of normalized exercise keys — the same
+// `normalizeExerciseKey` identity the rule/analytics layer consumes, never a
+// display label. Anything malformed degrades to an empty set: a bad value
+// never silently suppresses a suggestion the user did not mute.
+//
+// The key string lives here rather than in `storage/entries/keys.js` because
+// #960's Allowed Files scope the settings work to this module. It is
+// device-local like `PROGRESSION_SUGGESTIONS_KEY`: not synced, not part of a
+// JSON backup, not written into any workout note.
+const PROGRESSION_SUGGESTION_MUTES_KEY = 'kilo_progression_suggestion_mutes';
+
+function _normalizeMuteKeys(value) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const entry of value) {
+    if (typeof entry !== 'string') continue;
+    const key = entry.trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(key);
+  }
+  return out;
+}
+
+export async function loadProgressionSuggestionMutes() {
+  try {
+    const raw = await AsyncStorage.getItem(PROGRESSION_SUGGESTION_MUTES_KEY);
+    return _normalizeMuteKeys(raw ? JSON.parse(raw) : []);
+  } catch {
+    return [];
+  }
+}
+
+export async function saveProgressionSuggestionMutes(keys) {
+  const normalized = _normalizeMuteKeys(keys);
+  // Update the in-memory cache SYNCHRONOUSLY, before awaiting the write, so a
+  // second mutation dispatched in the same tick reads this result rather than
+  // the pre-mutation set. Persisting after is fine: a failed write only means
+  // the mute does not survive a restart, which hydrate reconciles — far better
+  // than a lost update that silently un-mutes an exercise.
+  _setProgressionCache({ ..._progressionCache, mutedKeys: normalized });
+  await AsyncStorage.setItem(PROGRESSION_SUGGESTION_MUTES_KEY, JSON.stringify(normalized));
+  return normalized;
+}
+
+export async function setProgressionSuggestionMuted(exerciseKey, muted) {
+  const key = typeof exerciseKey === 'string' ? exerciseKey.trim() : '';
+  if (!key) return _progressionCache.mutedKeys;
+  // Read-modify-write against the synchronous cache, never an async storage
+  // read: two rapid `setProgressionSuggestionMuted` calls would both observe
+  // the stale on-disk value and the last write would drop the other key.
+  const current = new Set(_progressionCache.mutedKeys);
+  if (muted) current.add(key);
+  else current.delete(key);
+  return saveProgressionSuggestionMutes([...current]);
 }
 
 // Plate-calculator equipment profile (#577): bar weight + finite per-side

@@ -19,6 +19,12 @@ The active application lives in `mobile/` and has five tabs:
   blocks from canonical note text.
 - **Weight** records weigh-ins and goals and presents history and trends.
 - **Analytics** derives workout, strength, weight, fatigue, and recovery views.
+
+Progression suggestions are an opt-in feature (off by default, enabled from
+Settings). When on, the deterministic rule engine's double-progression prompts
+appear as explainable, dismissible cards on the Log current-routine view and the
+Analytics strength section, each marked as a heuristic rather than a guaranteed
+prescription and each mutable per exercise. They never modify workout-note text.
 - **More** contains profile, settings, reminders, backup/import, account, cloud
   sync, help, and product information.
 

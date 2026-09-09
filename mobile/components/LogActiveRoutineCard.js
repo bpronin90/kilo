@@ -18,6 +18,7 @@ import { useThemedStyles } from '../theme/ThemeContext';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
 import { shareRoutine } from '../lib/interoperability/routineShare';
 import { RoutineShareModal } from './RoutineShareCard';
+import { ProgressionSuggestionCard, MutedProgressionRow } from './ProgressionSuggestionCard';
 
 export function LogActiveRoutineCard({
   workoutNoteTitle,
@@ -61,6 +62,16 @@ export function LogActiveRoutineCard({
   // for a caller that supplies no body, not the intended source.
   routineRawText,
   onShareRoutine,
+  // #960: explainable progression-suggestion cards for the current routine.
+  // `progressionSuggestions` is already filtered by LogScreen (feature on,
+  // renderable, not muted, not dismissed) — each entry is
+  // `{ record, key, instanceId }`. This card only lays them out below the
+  // routine content and forwards the three allowed actions.
+  progressionSuggestions = [],
+  mutedProgressionRows = [],
+  onMuteProgression,
+  onUnmuteProgression,
+  onDismissProgression,
 }) {
   const styles = useThemedStyles(createStyles);
   const [imageShare, setImageShare] = useState(null);
@@ -224,6 +235,27 @@ export function LogActiveRoutineCard({
             sourceSliceText={activeEditText}
             onExercisePress={onExerciseSourceJump}
           />
+
+          {(progressionSuggestions.length > 0 || mutedProgressionRows.length > 0) && (
+            <View style={styles.progressionSuggestions} testID="log-progression-suggestions">
+              {progressionSuggestions.map(({ record, key, instanceId }) => (
+                <ProgressionSuggestionCard
+                  key={instanceId}
+                  suggestion={record}
+                  surface="log"
+                  onMute={() => onMuteProgression && onMuteProgression(key)}
+                  onDismiss={() => onDismissProgression && onDismissProgression(instanceId)}
+                />
+              ))}
+              {mutedProgressionRows.map(row => (
+                <MutedProgressionRow
+                  key={row.key}
+                  name={row.name}
+                  onUnmute={() => onUnmuteProgression && onUnmuteProgression(row.key)}
+                />
+              ))}
+            </View>
+          )}
         </Pressable>
       </Card>
     </View>
@@ -233,6 +265,13 @@ export function LogActiveRoutineCard({
 const createStyles = (colors) => StyleSheet.create({
   mirrorContainer: {
     paddingBottom: 2,
+  },
+  // #960: a plain vertical stack under the routine content. New layout-only
+  // chrome — it introduces no Log-tab typography or color decision, and the
+  // card's locked 4px accent border and header values are untouched.
+  progressionSuggestions: {
+    marginTop: 16,
+    gap: 12,
   },
   // The one card that deviates from the shared 1px cardBorder: the current
   // routine keeps a 4px accent border on all sides in both modes so the active
