@@ -30,8 +30,23 @@ const RAW_EXERCISES = [
   { id: 'fri_bike', day: 'friday', name: 'Bike', cat: 'warmup', po: false, target: '5 min', history: ['5','6','5'] },
   { id: 'deadlift', day: 'friday', name: 'Deadlift', cat: 'primary_compound', po: true, target: '3×4–6', history: ['80 6,6,6','85 5,5,5','90 4,4,4'] },
   { id: 'rdl', day: 'friday', name: 'RDL', cat: 'secondary_compound', po: true, target: '2×8–10', history: ['50 10,10','55 8,8','55 10,8'] },
-  { id: 'sl_rdl', day: 'friday', name: 'Single-Leg RDL', cat: 'accessory', po: false, target: '2×8', history: ['8,8','10,8','10,10'] },
+  { id: 'sl_rdl', day: 'friday', name: 'Single-Leg RDL', cat: 'accessory', po: false, target: '2×8', history: ['10 8,8','12.5 8,8','12.5 10,8'] },
   { id: 'pallof', day: 'friday', name: 'Pallof Press', cat: 'core', po: true, target: '2×10', history: ['15 10,10','17.5 10,10','17.5 12,10'] },
+  // Compatibility definitions for persisted sessions from older prototype builds.
+  { id: 'hammer_curl_mon', day: 'monday', name: 'Hammer Curl', cat: 'accessory', po: true, target: '2×8–10' },
+  { id: 'sa_pushdown_mon', day: 'monday', name: 'Single-Arm Pushdown', cat: 'accessory', po: false, target: '2×10–12' },
+  { id: 'mon_pec_stretch', day: 'monday', name: 'Pec stretch', cat: 'warmup', po: false, target: '2×60s' },
+  { id: 'mon_band_pa', day: 'monday', name: 'Band pull-aparts', cat: 'warmup', po: false, target: '2×15' },
+  { id: 'mon_cuff', day: 'monday', name: 'Rotator cuff cable', cat: 'warmup', po: false, target: '1×12–15' },
+  { id: 'hammer_curl_wed', day: 'wednesday', name: 'Hammer Curl', cat: 'accessory', po: true, target: '2×8–10' },
+  { id: 'rev_pec', day: 'wednesday', name: 'Reverse Pec Deck', cat: 'accessory', po: true, target: '2×10–12' },
+  { id: 'skull', day: 'thursday', name: 'Skull Crushers', cat: 'accessory', po: true, target: '2×8–10' },
+  { id: 'sa_pushdown_thu', day: 'thursday', name: 'Single-Arm Pushdown', cat: 'accessory', po: false, target: '2×10–12' },
+  { id: 'banded_legs', day: 'friday', name: 'Banded leg raises', cat: 'warmup', po: false, target: '10' },
+  { id: 'hams_band', day: 'friday', name: 'Hamstring stretch', cat: 'warmup', po: false, target: '60–90s' },
+  { id: 'fri_9090', day: 'friday', name: '90/90 hip stretch', cat: 'warmup', po: false, target: '60s' },
+  { id: 'bar_dl', day: 'friday', name: 'Light deadlift', cat: 'warmup', po: false, target: '10' },
+  { id: 'goblet_calf', day: 'friday', name: 'Goblet Calf Raise', cat: 'accessory', po: true, target: '3×12–15' },
 ];
 function parseRepRange(target) { const m = (target || '').match(/(\d+)[×x](\d+)(?:[–-](\d+))?/); return m ? { sets: +m[1], repMin: +m[2], repMax: +(m[3] || m[2]) } : { sets: 0, repMin: 0, repMax: 0 }; }
 const KILO_EXERCISES = RAW_EXERCISES.map(e => ({ ...e, ...parseRepRange(e.target), isWarmup: e.cat === 'warmup' || e.cat === 'core' }));
@@ -41,7 +56,7 @@ function buildSessions() {
   return ['monday','tuesday','wednesday','thursday','friday'].flatMap(day => { const exes = RAW_EXERCISES.filter(e => e.day === day && e.history && e.cat !== 'warmup'); return Array.from({ length: Math.max(...exes.map(e => e.history.length)) }, (_, i) => { const back = ((today.getDay() - dayMap.indexOf(day) + 7) % 7 || 7) + i * 7; const d = new Date(today); d.setDate(d.getDate() - back); const iso = d.toISOString().slice(0, 10); return { id: `synthetic_${iso}_${day}`, entry_type: 'workout', date: iso, saved_at: `${iso}T23:00:00Z`, day, duration: 45 + i, exercises: exes.map(e => ({ exerciseId: e.id, raw: e.history[e.history.length - 1 - i] || '-' })) }; }); }).sort((a, b) => b.date.localeCompare(a.date));
 }
 function buildWeightLog() { const today = new Date('2026-05-05T12:00:00'); return Array.from({ length: 14 }, (_, i) => { const d = new Date(today); d.setDate(d.getDate() - (13 - i)); const iso = d.toISOString().slice(0, 10); const w = 150 + i * 0.1; return { id: `synthetic_weight_${iso}`, entry_type: 'weight', date: iso, weight: w, weight_value: w, weight_unit: 'lb', logged_at: `${iso}T08:00:00Z`, saved_at: `${iso}T08:00:05Z` }; }); }
-const KILO_GOALS = [{ id: 'g_total', type: 'total_lb', label: '500 lb Club', target: 500, current: 0, featured: true, active: true, startDate: '2026-01-01' }, { id: 'g_squat', type: 'lift', label: 'Squat 100', target: 100, current: 70, lift: 'squat', featured: false, active: true }, { id: 'g_dl', type: 'lift', label: 'Deadlift 125', target: 125, current: 90, lift: 'deadlift', featured: false, active: true }, { id: 'g_cut', type: 'body_weight', label: 'Reach 150', target: 150, current: 151.3, direction: 'cut', featured: false, active: true, targetDate: '2026-07-01' }];
+const KILO_GOALS = [{ id: 'g_total', type: 'total_lb', label: '1000 lb Club', target: 1000, current: 0, featured: true, active: true, startDate: '2026-01-01' }, { id: 'g_squat', type: 'lift', label: 'Squat 100', target: 100, current: 70, lift: 'squat', featured: false, active: true }, { id: 'g_dl', type: 'lift', label: 'Deadlift 125', target: 125, current: 90, lift: 'deadlift', featured: false, active: true }, { id: 'g_cut', type: 'body_weight', label: 'Reach 150', target: 150, current: 151.3, direction: 'cut', featured: false, active: true, targetDate: '2026-07-01' }];
 window.KILO_SPLIT = KILO_SPLIT; window.KILO_EXERCISES = KILO_EXERCISES; window.KILO_PT = KILO_PT; window.KILO_GOALS = KILO_GOALS; window.KILO_SESSIONS = buildSessions(); window.KILO_WEIGHTS = buildWeightLog(); window.KILO_TODAY = '2026-05-05'; window.KILO_VERSION = '0.1.0';
 window.dayOfWeek = iso => ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'][new Date(`${iso}T12:00:00`).getDay()];
 (function computeTotal() { const ids = ['squat', 'db_bench', 'deadlift']; let total = 0; for (const id of ids) { const sess = window.KILO_SESSIONS.find(s => s.exercises.some(x => x.exerciseId === id)); const e = sess && sess.exercises.find(x => x.exerciseId === id); const row = e && window.parseWorkoutRow(e.raw); let best = 0; if (row && row.ok) for (const s of row.sets) best = Math.max(best, window.epleyPR(s.weight_value, s.rep_count) || 0); total += best; } KILO_GOALS[0].current = Math.round(total); })();
