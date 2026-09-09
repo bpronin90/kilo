@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { Keyboard, Platform, AppState } from 'react-native';
 import { Alert } from '../../lib/platformAlert';
 import { parseWorkoutNote, countWorkoutSessionsFromSections, applyWeekSkipToText, resolveExerciseSourceAnchor } from '../../lib/parser';
-import { removeWeekSkipFromText } from '../../lib/parser/workoutNote.js';
+import { removeWeekSkipFromText, applyProgressionSuggestionToNoteText } from '../../lib/parser/workoutNote.js';
 import { deriveSessionAlignmentIssueFromSections } from '../../lib/parser/sessions.js';
 import {
   normalizeLiftName,
@@ -1599,6 +1599,39 @@ export function useLogCurrentRoutineEditor({
     );
   };
 
+  // #961: the explicit "Apply to note" action from a progression-suggestion
+  // card. It is the only path by which a suggestion touches canonical note
+  // text. `applyProgressionSuggestionToNoteText` only ever inserts new lines
+  // (a target set row under the matching exercise, or a synthesized exercise
+  // block) and never rewrites or deletes one; a non-applicable, stale, or
+  // duplicate suggestion returns the text byte-identical and this handler
+  // then persists nothing. Mirrors handleSkipWeek: operates on the active
+  // A/B half, splices it back into the full note, and commits via handleSave
+  // so text is never left diverged from what was persisted.
+  const handleApplyProgressionSuggestion = async (suggestion) => {
+    if (!currentId) return { applied: false, reason: 'no-current-note' };
+    if (saveCurrentInFlightRef.current) {
+      return { applied: false, reason: 'save-in-flight' };
+    }
+
+    const result = applyProgressionSuggestionToNoteText(activeEditText, suggestion);
+    if (!result.applied || result.text === activeEditText) {
+      return { applied: false, reason: result.reason || 'no-change' };
+    }
+
+    const prevFullText = workoutNoteText;
+    const newFullText = _spliceActiveText(result.text);
+    setWorkoutNoteText(newFullText);
+    workoutNoteTextRef.current = newFullText;
+    const saved = await handleSave({ overrideText: newFullText });
+    if (!saved) {
+      setWorkoutNoteText(prevFullText);
+      workoutNoteTextRef.current = prevFullText;
+      return { applied: false, reason: 'save-failed' };
+    }
+    return { applied: true, reason: result.reason };
+  };
+
   const handleNoteBodyPress = () => {
     const now = Date.now();
     const DOUBLE_TAP_DELAY = 300;
@@ -1675,6 +1708,7 @@ export function useLogCurrentRoutineEditor({
     handleReadScroll,
     handleSkipWeek,
     handleUnskipWeek,
+    handleApplyProgressionSuggestion,
     canUnskipWeek,
     skipWeekStatus,
     handleNoteBodyPress,

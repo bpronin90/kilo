@@ -9,8 +9,13 @@
 // dismiss (transient, surface-local), mute (persisted, per exercise), and — for
 // a currently muted exercise — unmute.
 //
-// Applying a suggestion is #961 and deliberately has no control here: nothing
-// in this card edits, prefills, or rewrites canonical workout-note text.
+// Applying a suggestion (#961) is the one and only action here that can change
+// canonical workout-note text, and only when the consumer passes `onApply` and
+// the record carries a concrete weighted target. The card itself never edits,
+// prefills, or rewrites `raw_text`: `onApply` runs the pure insertion helper in
+// `lib/parser/workoutNote.js` through the routine editor, which appends a new
+// line and never rewrites an existing one. A muted, dismissed, or passively
+// rendered card leaves `raw_text` byte-identical because it never calls this.
 
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -118,6 +123,7 @@ export function ProgressionSuggestionCard({
   suggestion,
   surface = 'log',
   muted = false,
+  onApply,
   onMute,
   onUnmute,
   onDismiss,
@@ -185,6 +191,17 @@ export function ProgressionSuggestionCard({
       ) : null}
 
       <View style={styles.actionRow}>
+        {typeof onApply === 'function' && recommendation ? (
+          <Pressable
+            onPress={(e) => { stop(e); onApply(e); }}
+            style={styles.actionButton}
+            accessibilityRole="button"
+            accessibilityLabel={`Apply the progression suggestion for ${name} to your note`}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={[styles.actionButtonText, styles.applyButtonText]}>Apply to note</Text>
+          </Pressable>
+        ) : null}
         <Pressable
           onPress={(e) => { stop(e); if (onDismiss) onDismiss(e); }}
           style={styles.actionButton}
@@ -322,6 +339,9 @@ const createStyles = (colors) => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     color: colors.textMuted,
+  },
+  applyButtonText: {
+    color: colors.text,
   },
   mutedRow: {
     flexDirection: 'row',
