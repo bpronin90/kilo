@@ -989,28 +989,42 @@ export function useLogOtherRoutineEditor({
 
   const performRevertOther = async () => {
     if (editingNoteId === 'new') {
+      // The explicit abandonment boundary for a stranded create (#997 review).
+      // While an attempt is pending, Save finishes THAT create — that is what
+      // makes an edited retry safe — so discarding the new note must also retire
+      // the attempt, or the next new routine authored here would be written over
+      // the stranded one. Which of the two the user means cannot be read off the
+      // text (the contract requires an edited retry to stay the same attempt),
+      // so this destructive, confirmed action is what decides it. The stranded
+      // routine itself is untouched and stays under Routines.
+      //
+      // Retirement is AWAITED, comes FIRST, and its failure aborts the discard
+      // (#997 review, round 3) — clearing the editor while the durable slot
+      // still named the attempt would claim a boundary that does not exist, and
+      // the next routine authored here would overwrite the stranded one. An
+      // in-flight create is awaited first because it may be the very attempt
+      // being retired.
+      if (autosaveOtherTimerRef.current) {
+        clearTimeout(autosaveOtherTimerRef.current);
+        autosaveOtherTimerRef.current = null;
+      }
+      if (saveOtherNoteInFlightRef.current) {
+        await saveOtherNoteInFlightRef.current;
+      }
+      const abandoned = createAttemptTokenRef.current;
+      if (abandoned) {
+        try {
+          await clearWorkoutNoteCreationAttempt(OTHER_CREATE_ATTEMPT_KEY, abandoned);
+        } catch {
+          setSaveError('Could not clear this draft');
+          return false;
+        }
+        createAttemptTokenRef.current = null;
+      }
       setEditingTitle('');
       setEditingFullText('');
       setEditingActiveWeek(null);
       clearWorkoutNoteDraft('other:new').catch(() => {});
-      // The explicit abandonment boundary for a stranded create (#997 review,
-      // round 2). While an attempt is pending, Save finishes THAT create — that
-      // is what makes an edited retry safe — so discarding the new note must
-      // also retire the attempt, or the next new routine authored here would be
-      // written over the stranded one. Which of the two the user means cannot be
-      // read off the text (the contract requires an edited retry to stay the
-      // same attempt), so this destructive, confirmed action is what decides it.
-      // The stranded routine itself is untouched and stays under Routines.
-      const abandoned = createAttemptTokenRef.current;
-      if (abandoned) {
-        createAttemptTokenRef.current = null;
-        clearWorkoutNoteCreationAttempt(OTHER_CREATE_ATTEMPT_KEY, abandoned).catch(() => {
-          // Retirement is best-effort here: unlike the create path there is
-          // nothing to report failure on, and the attempt staying pending only
-          // means the next Save continues it — the behavior before this revert.
-          createAttemptTokenRef.current = abandoned;
-        });
-      }
       return true;
     }
     if (!originalNoteState) return true;

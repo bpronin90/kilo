@@ -57,6 +57,13 @@ const IMPORT_FAILED_MESSAGE =
 // over the unfinished one. Which of the two the user means cannot be inferred
 // from the pasted text: the contract requires an edited retry to stay the same
 // attempt, so payload comparison is not allowed to decide it. Asking is.
+// A failed release changes nothing, and the honest next step is either action:
+// try again, or finish the unfinished import — which is still exactly what
+// Create does while its attempt is pending.
+const IMPORT_LEAVE_FAILED_MESSAGE =
+  'Could not release the unfinished import. Nothing changed — try again, or '
+  + 'press Create new routine to finish it.';
+
 const IMPORT_UNFINISHED_MESSAGE =
   'An earlier import was saved on this device but did not finish syncing. '
   + 'Press Create new routine to finish it. To import something else instead, '
@@ -68,6 +75,12 @@ export function RoutineImportScreen({ onBack, onCreateRoutine }) {
   const [pasted, setPasted] = useState('');
   const [title, setTitle] = useState('');
   const [saving, setSaving] = useState(false);
+  // Releasing an unfinished attempt is a separate durable write, and it must be
+  // mutually exclusive with creating (#997 review, round 3): while the release
+  // is awaiting storage the attempt is still pending, so a Create started in
+  // that window would capture the very token being retired and could complete —
+  // and overwrite — the routine the user just chose to leave alone.
+  const [releasing, setReleasing] = useState(false);
   const [error, setError] = useState('');
   const [savedTitle, setSavedTitle] = useState('');
 
@@ -109,14 +122,19 @@ export function RoutineImportScreen({ onBack, onCreateRoutine }) {
   // so the next press is a genuinely new import with its own note id.
   const handleLeaveUnfinishedImport = async () => {
     const token = createAttemptTokenRef.current;
-    if (!token || saving) return;
+    if (!token || saving || releasing) return;
     setError('');
+    setReleasing(true);
     try {
+      // The live token is dropped only after the durable record is gone, so a
+      // failed release leaves the attempt exactly as pending as it was.
       await clearWorkoutNoteCreationAttempt(IMPORT_CREATE_ATTEMPT_KEY, token);
       rememberAttempt(null);
     } catch (e) {
       console.warn('[RoutineImportScreen] could not release the unfinished import', e);
-      setError(IMPORT_FAILED_MESSAGE);
+      setError(IMPORT_LEAVE_FAILED_MESSAGE);
+    } finally {
+      setReleasing(false);
     }
   };
 
@@ -145,7 +163,7 @@ export function RoutineImportScreen({ onBack, onCreateRoutine }) {
   };
 
   const handleImport = async () => {
-    if (!analysis.canImport || saving) return;
+    if (!analysis.canImport || saving || releasing) return;
     const pastedAtPress = pasted;
     setError('');
     setSaving(true);
@@ -228,7 +246,9 @@ export function RoutineImportScreen({ onBack, onCreateRoutine }) {
           <Button
             onPress={handleLeaveUnfinishedImport}
             title="Leave it and start fresh"
-            disabled={saving}
+            loadingTitle="Leaving…"
+            loading={releasing}
+            disabled={saving || releasing}
             accessibilityLabel="Leave the unfinished import as it is and start a new import"
             style={styles.leaveButton}
           />
@@ -299,7 +319,7 @@ export function RoutineImportScreen({ onBack, onCreateRoutine }) {
         title="Create new routine"
         loadingTitle="Creating…"
         loading={saving}
-        disabled={!analysis.canImport || saving}
+        disabled={!analysis.canImport || saving || releasing}
         accessibilityLabel="Create new routine from pasted text"
       />
       <Text style={styles.footnote}>

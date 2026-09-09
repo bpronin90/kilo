@@ -678,6 +678,80 @@ describe('routine import: durable creation-attempt token (#997)', () => {
     warn.mockRestore();
   });
 
+  test('a release that cannot be persisted changes nothing and keeps the attempt pending', async () => {
+    // Reporting the attempt released while the durable slot still names it
+    // would claim a boundary that does not exist — the next import would then
+    // complete, and overwrite, the routine the user chose to leave alone.
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const failing = jest.fn().mockRejectedValue(new Error('enqueue failed'));
+    const { root } = mount(failing);
+    paste(root, buildRoutineShareText({ title: 'Routine A', rawText: ROUTINE }));
+    await press(root);
+    const token = tokenOf(failing, 0);
+
+    const release = jest.spyOn(creationAttempts, 'clearWorkoutNoteCreationAttempt')
+      .mockRejectedValue(new Error('device storage unavailable'));
+    await act(async () => {
+      buttonByLabel(root, 'Leave the unfinished import as it is and start a new import')
+        .props.onPress();
+    });
+    release.mockRestore();
+
+    // Still pending, still surfaced, and the failure is reported honestly.
+    await expect(loadWorkoutNoteCreationAttempt('import')).resolves.toBe(token);
+    expect(byTestId(root, 'routine-import-unfinished').length).toBe(1);
+    const messages = root.findAll(n => typeof n.type === 'string' && typeof n.props.children === 'string')
+      .map(n => n.props.children);
+    expect(messages.some(m => m.startsWith('Could not release the unfinished import.'))).toBe(true);
+    warn.mockRestore();
+  });
+
+  test('Create cannot run while a release is still awaiting storage', async () => {
+    // The release is a durable write; until it lands the attempt is still
+    // pending, so a Create started in that window would capture the very token
+    // being retired and could overwrite the routine being left alone.
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const failing = jest.fn().mockRejectedValue(new Error('enqueue failed'));
+    const { root } = mount(failing);
+    paste(root, buildRoutineShareText({ title: 'Routine A', rawText: ROUTINE }));
+    await press(root);
+    const abandoned = tokenOf(failing, 0);
+
+    // Hold the release open, then try to create the next routine on top of it.
+    let finishRelease;
+    const realRelease = creationAttempts.clearWorkoutNoteCreationAttempt;
+    const release = jest.spyOn(creationAttempts, 'clearWorkoutNoteCreationAttempt')
+      .mockImplementation((...args) => new Promise((resolve, reject) => {
+        finishRelease = () => realRelease(...args).then(resolve, reject);
+      }));
+
+    act(() => {
+      buttonByLabel(root, 'Leave the unfinished import as it is and start a new import')
+        .props.onPress();
+    });
+    await act(async () => {});
+    // Create is locked out while the release is in flight: it reports itself
+    // disabled and carries no press handler at all, so the overlapping create
+    // cannot even be started.
+    const createButton = buttonByLabel(root, 'Create new routine from pasted text');
+    expect(createButton.props.accessibilityState.disabled).toBe(true);
+    expect(typeof createButton.props.onPress).not.toBe('function');
+    expect(failing).toHaveBeenCalledTimes(1);
+
+    await act(async () => { await finishRelease(); });
+    release.mockRestore();
+    await expect(loadWorkoutNoteCreationAttempt('import')).resolves.toBeNull();
+
+    // And the next import is a genuinely new routine.
+    const onCreateRoutine = jest.fn().mockResolvedValue({ id: 'wn_import' });
+    const next = mount(onCreateRoutine);
+    await act(async () => {});
+    paste(next.root, buildRoutineShareText({ title: 'Routine B', rawText: 'Tuesday\n-Press\n- 95 5' }));
+    await press(next.root);
+    expect(tokenOf(onCreateRoutine, 0)).not.toBe(abandoned);
+    warn.mockRestore();
+  });
+
   test('the App.js wiring forwards the token through to the note store', () => {
     // The shell's handler is a pure pass-through, so its contract is that the
     // third argument reaches `noteHook.add` untouched — the note store is what

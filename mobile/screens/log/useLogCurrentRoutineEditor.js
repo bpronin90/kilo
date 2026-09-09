@@ -1322,20 +1322,43 @@ export function useLogCurrentRoutineEditor({
 
   const performRevertCurrent = async () => {
     if (!currentId) {
+      // Explicit abandonment of a stranded create (#997 review) — the same
+      // boundary, and the same reasoning, as performRevertOther's. Without it,
+      // discarding this draft and then authoring a different first routine
+      // would write that routine over the stranded one.
+      //
+      // Retirement is AWAITED and comes FIRST, and the draft is cleared only
+      // once it succeeds (#997 review, round 3). A discard that cleared the
+      // editor while the durable slot still named the stranded attempt would
+      // report a boundary it had not established: the next routine authored
+      // here — this session or after a restart — would then complete the
+      // abandoned attempt and overwrite the stranded routine. Failing instead
+      // leaves everything exactly as it was, which the caller surfaces by
+      // keeping the editor open.
+      //
+      // An in-flight create is awaited first for the same reason: it may be the
+      // very attempt being retired, and retiring underneath it would let its
+      // completion race this boundary.
+      if (autosaveCurrentTimerRef.current) {
+        clearTimeout(autosaveCurrentTimerRef.current);
+        autosaveCurrentTimerRef.current = null;
+      }
+      if (saveCurrentInFlightRef.current) {
+        await saveCurrentInFlightRef.current;
+      }
+      const abandoned = createAttemptTokenRef.current;
+      if (abandoned) {
+        try {
+          await clearWorkoutNoteCreationAttempt(CURRENT_CREATE_ATTEMPT_KEY, abandoned);
+        } catch {
+          setSaveError('Could not clear this draft');
+          return false;
+        }
+        createAttemptTokenRef.current = null;
+      }
       setWorkoutNoteTitle('');
       setWorkoutNoteText('');
       clearWorkoutNoteDraft('current:new').catch(() => {});
-      // Explicit abandonment of a stranded create (#997 review, round 2) — the
-      // same boundary, and the same reasoning, as performRevertOther's. Without
-      // it, discarding this draft and then authoring a different first routine
-      // would write that routine over the stranded one.
-      const abandoned = createAttemptTokenRef.current;
-      if (abandoned) {
-        createAttemptTokenRef.current = null;
-        clearWorkoutNoteCreationAttempt(CURRENT_CREATE_ATTEMPT_KEY, abandoned).catch(() => {
-          createAttemptTokenRef.current = abandoned;
-        });
-      }
       return true;
     }
     if (!originalNoteState) return true;

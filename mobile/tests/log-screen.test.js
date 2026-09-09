@@ -13261,6 +13261,34 @@ describe('Log editors: durable creation-attempt tokens for new notes (#997)', ()
       expect(attemptTokenOfCall(add, 0)).not.toBe(abandoned);
     });
 
+    test('a discard whose retirement fails changes nothing and keeps the draft', async () => {
+      // Clearing the editor while the durable slot still named the attempt would
+      // claim a boundary that does not exist: the next routine authored here
+      // would complete — and overwrite — the stranded one. So the discard aborts
+      // and leaves everything exactly as it was.
+      const failing = jest.fn().mockRejectedValue(new Error('enqueue failed'));
+      const setWorkoutNoteText = jest.fn();
+      const setWorkoutNoteTitle = jest.fn();
+      const editor = mountCurrentEditor({ add: failing, setWorkoutNoteText, setWorkoutNoteTitle });
+      await render.act(async () => { await editor.ref.current.handleSave(); });
+      const token = attemptTokenOfCall(failing, 0);
+      setWorkoutNoteText.mockClear();
+      setWorkoutNoteTitle.mockClear();
+
+      const release = jest.spyOn(creationAttempts, 'clearWorkoutNoteCreationAttempt')
+        .mockRejectedValue(new Error('device storage unavailable'));
+      render.act(() => { editor.ref.current.handleUndoCurrent(); });
+      let discarded;
+      await render.act(async () => { discarded = await pressDestructiveAlertButton(); });
+      release.mockRestore();
+
+      expect(discarded).toBe(false);
+      // The attempt is still pending and the draft text was not cleared.
+      await expect(loadWorkoutNoteCreationAttempt('current:new')).resolves.toBe(token);
+      expect(setWorkoutNoteText).not.toHaveBeenCalled();
+      expect(setWorkoutNoteTitle).not.toHaveBeenCalled();
+    });
+
     test('a token that cannot be retired fails the save, and the retry completes the same note', async () => {
       // Reporting success while a completed attempt is still in the store would
       // hand this note's id to the NEXT new routine and overwrite it. Failing
@@ -13389,6 +13417,59 @@ describe('Log editors: durable creation-attempt tokens for new notes (#997)', ()
       await openNewNote(next, { title: 'Routine B', text: 'Tuesday\n-Press\n95 5,5,5' });
       await render.act(async () => { await next.ref.current.handleSaveOtherNote(); });
       expect(attemptTokenOfCall(add, 0)).not.toBe(abandoned);
+    });
+
+    test('a discard whose retirement fails changes nothing and keeps the draft', async () => {
+      const failing = jest.fn().mockRejectedValue(new Error('enqueue failed'));
+      const editor = mountOtherEditor({ add: failing });
+      await openNewNote(editor, { title: 'Routine A', text: 'Monday\n-Row\n95 8,8,8' });
+      await render.act(async () => { await editor.ref.current.handleSaveOtherNote(); });
+      const token = attemptTokenOfCall(failing, 0);
+
+      const release = jest.spyOn(creationAttempts, 'clearWorkoutNoteCreationAttempt')
+        .mockRejectedValue(new Error('device storage unavailable'));
+      render.act(() => { editor.ref.current.handleUndoOther(); });
+      let discarded;
+      await render.act(async () => { discarded = await pressDestructiveAlertButton(); });
+      release.mockRestore();
+
+      expect(discarded).toBe(false);
+      await expect(loadWorkoutNoteCreationAttempt('other:new')).resolves.toBe(token);
+      // The draft text survives the aborted discard.
+      expect(editor.ref.current.editingTitle).toBe('Routine A');
+      expect(editor.ref.current.editingText).toBe('Monday\n-Row\n95 8,8,8');
+    });
+
+    test('a discard waits for an in-flight create instead of retiring underneath it', async () => {
+      // The create still in flight may be the very attempt being retired, so
+      // retiring underneath it would let its completion race this boundary.
+      let releaseSave;
+      const add = jest.fn(() => new Promise((resolve, reject) => {
+        releaseSave = { resolve, reject };
+      }));
+      const editor = mountOtherEditor({ add });
+      await openNewNote(editor, { title: 'Routine A', text: 'Monday\n-Row\n95 8,8,8' });
+
+      let savePromise;
+      render.act(() => { savePromise = editor.ref.current.handleSaveOtherNote(); });
+      await render.act(async () => {});
+      expect(add).toHaveBeenCalledTimes(1);
+      const token = attemptTokenOfCall(add, 0);
+
+      // Discard is confirmed while the create is still awaiting its cloud write.
+      let discardPromise;
+      render.act(() => { editor.ref.current.handleUndoOther(); });
+      render.act(() => { discardPromise = pressDestructiveAlertButton(); });
+      // The attempt is untouched while the create is still in flight.
+      await expect(loadWorkoutNoteCreationAttempt('other:new')).resolves.toBe(token);
+
+      // The create then FAILS, so the discard is what retires the attempt.
+      await render.act(async () => {
+        releaseSave.reject(new Error('enqueue failed'));
+        await savePromise;
+        await discardPromise;
+      });
+      await expect(loadWorkoutNoteCreationAttempt('other:new')).resolves.toBeNull();
     });
 
     test('a token that cannot be retired fails the save, and the retry completes the same note', async () => {
