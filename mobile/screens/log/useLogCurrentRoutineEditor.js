@@ -1325,6 +1325,17 @@ export function useLogCurrentRoutineEditor({
       setWorkoutNoteTitle('');
       setWorkoutNoteText('');
       clearWorkoutNoteDraft('current:new').catch(() => {});
+      // Explicit abandonment of a stranded create (#997 review, round 2) — the
+      // same boundary, and the same reasoning, as performRevertOther's. Without
+      // it, discarding this draft and then authoring a different first routine
+      // would write that routine over the stranded one.
+      const abandoned = createAttemptTokenRef.current;
+      if (abandoned) {
+        createAttemptTokenRef.current = null;
+        clearWorkoutNoteCreationAttempt(CURRENT_CREATE_ATTEMPT_KEY, abandoned).catch(() => {
+          createAttemptTokenRef.current = abandoned;
+        });
+      }
       return true;
     }
     if (!originalNoteState) return true;

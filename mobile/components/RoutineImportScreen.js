@@ -50,6 +50,18 @@ const IMPORT_FAILED_MESSAGE =
   + 'press Create new routine again to finish this import. Retrying will not '
   + 'create a duplicate.';
 
+// The unfinished attempt has to be VISIBLE, and ending it has to be the user's
+// explicit choice (#997 review, round 2). While an attempt is pending, pressing
+// Create finishes THAT import — that is what makes an edited retry safe — so
+// without this the next import of a different routine would silently be written
+// over the unfinished one. Which of the two the user means cannot be inferred
+// from the pasted text: the contract requires an edited retry to stay the same
+// attempt, so payload comparison is not allowed to decide it. Asking is.
+const IMPORT_UNFINISHED_MESSAGE =
+  'An earlier import was saved on this device but did not finish syncing. '
+  + 'Press Create new routine to finish it. To import something else instead, '
+  + 'leave it as it is — you will find it under Log › Routines.';
+
 export function RoutineImportScreen({ onBack, onCreateRoutine }) {
   const styles = useThemedStyles(createStyles);
   const inputStyle = useInputStyle();
@@ -71,6 +83,13 @@ export function RoutineImportScreen({ onBack, onCreateRoutine }) {
   // create has fully succeeded — which is what makes the next import of an
   // identically titled, byte-identical routine a genuinely new routine.
   const createAttemptTokenRef = useRef(null);
+  // Rendered mirror of the ref, so the pending attempt is shown rather than
+  // silently steering the next press.
+  const [pendingAttempt, setPendingAttempt] = useState(null);
+  const rememberAttempt = (token) => {
+    createAttemptTokenRef.current = token;
+    setPendingAttempt(token);
+  };
   useEffect(() => {
     let cancelled = false;
     loadWorkoutNoteCreationAttempt(IMPORT_CREATE_ATTEMPT_KEY)
@@ -78,12 +97,28 @@ export function RoutineImportScreen({ onBack, onCreateRoutine }) {
         // The restore is asynchronous; never overwrite a token this session
         // already minted.
         if (!cancelled && token && !createAttemptTokenRef.current) {
-          createAttemptTokenRef.current = token;
+          rememberAttempt(token);
         }
       })
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
+
+  // The explicit abandonment boundary. It retires the attempt only — the
+  // routine it created stays on the device, which is what the message says —
+  // so the next press is a genuinely new import with its own note id.
+  const handleLeaveUnfinishedImport = async () => {
+    const token = createAttemptTokenRef.current;
+    if (!token || saving) return;
+    setError('');
+    try {
+      await clearWorkoutNoteCreationAttempt(IMPORT_CREATE_ATTEMPT_KEY, token);
+      rememberAttempt(null);
+    } catch (e) {
+      console.warn('[RoutineImportScreen] could not release the unfinished import', e);
+      setError(IMPORT_FAILED_MESSAGE);
+    }
+  };
 
   const analysis = useMemo(
     () => analyzeRoutineImportText(pasted, previewWeek),
@@ -129,12 +164,12 @@ export function RoutineImportScreen({ onBack, onCreateRoutine }) {
       // Create again — re-enters the same attempt and cannot duplicate.
       const attemptToken = createAttemptTokenRef.current
         || await ensureWorkoutNoteCreationAttempt(IMPORT_CREATE_ATTEMPT_KEY);
-      createAttemptTokenRef.current = attemptToken;
+      rememberAttempt(attemptToken);
       await onCreateRoutine?.(saved, savedBody, { attemptToken });
       // Only a fully successful create retires the attempt. A throw above skips
       // this and leaves the token durable for the retry.
       await clearWorkoutNoteCreationAttempt(IMPORT_CREATE_ATTEMPT_KEY, attemptToken);
-      createAttemptTokenRef.current = null;
+      rememberAttempt(null);
       setSavedTitle(saved || 'Untitled Routine');
       // The fields stay editable during an awaited save, so a user who pasted
       // the NEXT routine while this one was in flight must not have those
@@ -182,6 +217,21 @@ export function RoutineImportScreen({ onBack, onCreateRoutine }) {
           <Text style={styles.successText}>
             Saved “{savedTitle}” as a new routine. Find it under Log › Routines.
           </Text>
+        </Card>
+      ) : null}
+
+      {pendingAttempt ? (
+        <Card>
+          <Text style={styles.mutedText} testID="routine-import-unfinished">
+            {IMPORT_UNFINISHED_MESSAGE}
+          </Text>
+          <Button
+            onPress={handleLeaveUnfinishedImport}
+            title="Leave it and start fresh"
+            disabled={saving}
+            accessibilityLabel="Leave the unfinished import as it is and start a new import"
+            style={styles.leaveButton}
+          />
         </Card>
       ) : null}
 
@@ -295,6 +345,9 @@ const createStyles = (colors) => StyleSheet.create({
   weekButton: {
     paddingVertical: 8,
     paddingHorizontal: 14,
+  },
+  leaveButton: {
+    marginTop: 12,
   },
   footnote: {
     fontSize: 13,

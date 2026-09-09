@@ -617,6 +617,67 @@ describe('routine import: durable creation-attempt token (#997)', () => {
     warn.mockRestore();
   });
 
+  test('a pending attempt is shown, and leaving it makes the next import a new routine', async () => {
+    // The hazard this closes: while an attempt is pending, pressing Create
+    // finishes THAT import, so a user who abandons a failed import and pastes a
+    // different routine would otherwise have the new one written over the old.
+    // The pasted text cannot decide which they meant — an edited retry must stay
+    // the same attempt — so the screen surfaces the unfinished import and lets
+    // the user end it explicitly.
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const onCreateRoutine = jest.fn()
+      .mockRejectedValueOnce(new Error('enqueue failed'))
+      .mockResolvedValue({ id: 'wn_import' });
+    const { root } = mount(onCreateRoutine);
+    paste(root, buildRoutineShareText({ title: 'Routine A', rawText: ROUTINE }));
+    await press(root);
+
+    const firstToken = tokenOf(onCreateRoutine, 0);
+    expect(byTestId(root, 'routine-import-unfinished').length).toBe(1);
+
+    // Explicitly leave it, then import a genuinely different routine.
+    await act(async () => {
+      buttonByLabel(root, 'Leave the unfinished import as it is and start a new import')
+        .props.onPress();
+    });
+    expect(byTestId(root, 'routine-import-unfinished').length).toBe(0);
+    await expect(loadWorkoutNoteCreationAttempt('import')).resolves.toBeNull();
+
+    paste(root, buildRoutineShareText({ title: 'Routine B', rawText: 'Tuesday\n-Overhead Press\n- 95 5' }));
+    await press(root);
+
+    expect(onCreateRoutine).toHaveBeenCalledTimes(2);
+    expect(tokenOf(onCreateRoutine, 1)).not.toBe(firstToken);
+    warn.mockRestore();
+  });
+
+  test('a pending attempt restored after Back/reopen is surfaced, not applied silently', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const failing = jest.fn().mockRejectedValue(new Error('enqueue failed'));
+    const first = mount(failing);
+    paste(first.root, buildRoutineShareText({ title: 'Routine A', rawText: ROUTINE }));
+    await press(first.root);
+    const token = tokenOf(failing, 0);
+    act(() => { first.tree.unmount(); });
+
+    // Back, then reopen Import: the unfinished attempt is visible before the
+    // user does anything, so pressing Create is never a silent overwrite.
+    const onCreateRoutine = jest.fn().mockResolvedValue({ id: 'wn_import' });
+    const second = mount(onCreateRoutine);
+    await act(async () => {});
+    expect(byTestId(second.root, 'routine-import-unfinished').length).toBe(1);
+
+    await act(async () => {
+      buttonByLabel(second.root, 'Leave the unfinished import as it is and start a new import')
+        .props.onPress();
+    });
+    paste(second.root, buildRoutineShareText({ title: 'Routine B', rawText: 'Tuesday\n-Overhead Press\n- 95 5' }));
+    await press(second.root);
+
+    expect(tokenOf(onCreateRoutine, 0)).not.toBe(token);
+    warn.mockRestore();
+  });
+
   test('the App.js wiring forwards the token through to the note store', () => {
     // The shell's handler is a pure pass-through, so its contract is that the
     // third argument reaches `noteHook.add` untouched — the note store is what

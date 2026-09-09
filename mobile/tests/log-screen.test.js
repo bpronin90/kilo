@@ -13054,18 +13054,24 @@ describe('Log editors: durable creation-attempt tokens for new notes (#997)', ()
   const { useLogOtherRoutineEditor } = require('../screens/log/useLogOtherRoutineEditor');
   const creationAttempts = require('../storage/entries/workoutNoteCreationAttempts');
   const { loadWorkoutNoteCreationAttempt } = creationAttempts;
+  const { Alert } = require('../lib/platformAlert');
   const AsyncStorageMock = require('@react-native-async-storage/async-storage');
 
   let trees = [];
+  let alertSpy = null;
 
   beforeEach(async () => {
     jest.clearAllMocks();
     await AsyncStorageMock.clear();
+    // Both editors' revert is reachable only through this confirmation.
+    alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   });
 
   afterEach(() => {
     trees.forEach((tree) => render.act(() => { tree.unmount(); }));
     trees = [];
+    if (alertSpy) alertSpy.mockRestore();
+    alertSpy = null;
   });
 
   const CURRENT_TEXT = 'Monday\n+Lifting\n-Bench Press\n135 5,5,5';
@@ -13141,6 +13147,13 @@ describe('Log editors: durable creation-attempt tokens for new notes (#997)', ()
   function attemptTokenOfCall(add, index) {
     const options = add.mock.calls[index][2];
     return options && options.attemptToken;
+  }
+
+  // Drive the confirmation the way a real "Clear draft" tap would.
+  function pressDestructiveAlertButton() {
+    const call = alertSpy.mock.calls[alertSpy.mock.calls.length - 1];
+    const destructive = call[2].find((b) => b.style === 'destructive');
+    return destructive.onPress();
   }
 
   describe('the current-routine editor', () => {
@@ -13224,6 +13237,28 @@ describe('Log editors: durable creation-attempt tokens for new notes (#997)', ()
       expect(ok).toBe(false);
       expect(add).not.toHaveBeenCalled();
       mint.mockRestore();
+    });
+
+    test('discarding the draft abandons the attempt, so the next routine gets its own id', async () => {
+      // While an attempt is pending, Save finishes THAT create — which is what
+      // makes an edited retry safe — so discarding the new note must also retire
+      // the attempt, or the next first routine authored here would be written
+      // over the stranded one. The editor's explicit destructive revert is the
+      // boundary; the text cannot decide it.
+      const failing = jest.fn().mockRejectedValue(new Error('enqueue failed'));
+      const editor = mountCurrentEditor({ add: failing });
+      await render.act(async () => { await editor.ref.current.handleSave(); });
+      const abandoned = attemptTokenOfCall(failing, 0);
+      await expect(loadWorkoutNoteCreationAttempt('current:new')).resolves.toBe(abandoned);
+
+      render.act(() => { editor.ref.current.handleUndoCurrent(); });
+      await render.act(async () => { await pressDestructiveAlertButton(); });
+      await expect(loadWorkoutNoteCreationAttempt('current:new')).resolves.toBeNull();
+
+      const add = jest.fn(async () => ({ id: 'wn_created' }));
+      editor.rerender({ add, workoutNoteTitle: 'A Different Routine' });
+      await render.act(async () => { await editor.ref.current.handleSave(); });
+      expect(attemptTokenOfCall(add, 0)).not.toBe(abandoned);
     });
 
     test('a token that cannot be retired fails the save, and the retry completes the same note', async () => {
@@ -13334,6 +13369,26 @@ describe('Log editors: durable creation-attempt tokens for new notes (#997)', ()
       expect(ok).toBe(false);
       expect(add).not.toHaveBeenCalled();
       mint.mockRestore();
+    });
+
+    test('discarding the new note abandons the attempt, so the next routine gets its own id', async () => {
+      const failing = jest.fn().mockRejectedValue(new Error('enqueue failed'));
+      const editor = mountOtherEditor({ add: failing });
+      await openNewNote(editor, { title: 'Routine A', text: 'Monday\n-Row\n95 8,8,8' });
+      await render.act(async () => { await editor.ref.current.handleSaveOtherNote(); });
+      const abandoned = attemptTokenOfCall(failing, 0);
+      await expect(loadWorkoutNoteCreationAttempt('other:new')).resolves.toBe(abandoned);
+
+      render.act(() => { editor.ref.current.handleUndoOther(); });
+      await render.act(async () => { await pressDestructiveAlertButton(); });
+      await expect(loadWorkoutNoteCreationAttempt('other:new')).resolves.toBeNull();
+
+      // A genuinely different routine authored in the same editor session.
+      const add = jest.fn(async () => ({ id: 'wn_created' }));
+      const next = mountOtherEditor({ add });
+      await openNewNote(next, { title: 'Routine B', text: 'Tuesday\n-Press\n95 5,5,5' });
+      await render.act(async () => { await next.ref.current.handleSaveOtherNote(); });
+      expect(attemptTokenOfCall(add, 0)).not.toBe(abandoned);
     });
 
     test('a token that cannot be retired fails the save, and the retry completes the same note', async () => {
