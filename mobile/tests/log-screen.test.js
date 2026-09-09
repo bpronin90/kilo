@@ -14158,3 +14158,42 @@ describe('LogScreen — progression-suggestion Apply-to-note wiring (#1010)', ()
     });
   });
 });
+
+// #1006: the idle rest-timer affordance is a compact stopwatch inside the
+// current-routine editor, not a full-width row floating above the tab bar.
+// Pin the wiring so it cannot regress back to a bottom banner that reserves
+// navigation clearance.
+describe('Log rest-timer control is the compact editor stopwatch (#1006)', () => {
+  let src;
+  beforeAll(() => {
+    src = readLogScreenSource();
+  });
+
+  test('the editor rest-timer instance is rendered with the compact prop', () => {
+    expect(src).toMatch(/<RestTimerBanner[^>]*\n(?:[^<]*\n)*?\s*compact\n/);
+  });
+
+  test('it sits inside the current-routine editor, before the editor card', () => {
+    const compactIdx = src.indexOf('compact\n');
+    const editorCardIdx = src.indexOf('<LogScreenEditorCard');
+    expect(compactIdx).toBeGreaterThan(-1);
+    expect(editorCardIdx).toBeGreaterThan(-1);
+    expect(compactIdx).toBeLessThan(editorCardIdx);
+  });
+
+  test('the rest-timer element itself reserves no bottom-tab clearance', () => {
+    const el = src.slice(
+      src.indexOf('<RestTimerBanner'),
+      src.indexOf('/>', src.indexOf('<RestTimerBanner')) + 2
+    );
+    expect(el).toContain('compact');
+    expect(el).not.toContain('bottomBannerClearance');
+    expect(el).not.toContain('marginBottom');
+    expect(el).not.toContain('startOnly');
+  });
+
+  test('the running countdown is still the single app-shell instance (not re-added here)', () => {
+    const matches = src.match(/<RestTimerBanner/g) || [];
+    expect(matches).toHaveLength(1);
+  });
+});
