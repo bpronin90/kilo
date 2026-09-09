@@ -34,8 +34,9 @@ authoritative description of the active product.
   completed validation checklist for the retired `0.103.0` preview.
 - [Browser prototype](browser-prototype/) contains the frozen pre-native app and
   its tests. It is not built, tested, or shipped.
-- [Parser samples](samples/) are historical inputs from parser development and
-  have no runtime role.
+- The former `samples/` directory was removed after its inputs were identified
+  as personal workout exports; synthetic parser fixtures remain in the retired
+  browser prototype tests and seed data.
 
 Return to the [current documentation index](../README.md) before using an
 archived statement as implementation guidance.
