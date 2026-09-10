@@ -296,6 +296,12 @@ export function deriveOverviewRows({
   // "live right now" vs "frozen baseline history" and leads with the former
   // during an active block.
   activeTraining = null,
+  // #1029: the current live week's `deriveRecoveryWeekBands` result and
+  // (when the evidence bar is met) `deriveRecoveryMovement` result. Neither is
+  // recomputed here — both are handed in already derived, exactly like every
+  // other row above reads an already-derived value.
+  recoveryBands = null,
+  recoveryMovement = null,
 } = {}) {
   const isRecoveryActive = activeTraining?.status === ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK
     || activeTraining?.status === ACTIVE_TRAINING_STATUS.RECOVERY_BETWEEN_WEEKS;
@@ -402,18 +408,66 @@ export function deriveOverviewRows({
   // current" when it is not; the between-weeks caption is the true current
   // answer instead.
   const isOpenWeek = activeTraining.status === ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK;
-  const recoveryRow = {
-    key: 'recovery',
-    label: 'Recovery',
-    section: 'recovery',
-    unavailable: false,
-    value: isOpenWeek ? activeTraining.recoveryWeekNumber : null,
-    showUnit: false,
-    valueSuffix: isOpenWeek && activeTraining.recoveryWeekNumber != null ? 'week' : null,
-    emptyCaption: !isOpenWeek
-      ? 'Between weeks — add the next week or end Recovery'
-      : null,
-  };
+  const weekNumber = activeTraining.recoveryWeekNumber ?? null;
+
+  // #1029 amendment: two shapes, chosen by whether movement's evidence bar is
+  // met. Neither shape ever prints a composite percentage, and neither ever
+  // fabricates a numeric `delta`. `AnalyticsOverviewCard` now (amendment to
+  // this issue's Allowed Files) carries a purely additive `infoCaption` field
+  // that renders independently of `delta`, at the bucket-row font-weight
+  // tier — so week identity, anchor week, and matched population are real
+  // caption text via `infoCaption`, never folded into `valueSuffix`.
+  let recoveryRow;
+  if (!isOpenWeek) {
+    recoveryRow = {
+      key: 'recovery',
+      label: 'Recovery',
+      section: 'recovery',
+      unavailable: false,
+      value: null,
+      showUnit: false,
+      valueSuffix: null,
+      infoCaption: null,
+      emptyCaption: 'Between weeks — add the next week or end Recovery',
+    };
+  } else if (recoveryMovement) {
+    recoveryRow = {
+      key: 'recovery',
+      label: 'Recovery',
+      section: 'recovery',
+      unavailable: false,
+      value: recoveryMovement.improved,
+      showUnit: false,
+      valueSuffix: 'lifts improved',
+      infoCaption: `Week ${weekNumber} · since Week ${recoveryMovement.anchor_week_number} · `
+        + `${recoveryMovement.matched_size} lifts matched`,
+      emptyCaption: null,
+    };
+  } else if (recoveryBands) {
+    recoveryRow = {
+      key: 'recovery',
+      label: 'Recovery',
+      section: 'recovery',
+      unavailable: false,
+      value: recoveryBands.trained,
+      showUnit: false,
+      valueSuffix: `of ${recoveryBands.roster_size} lifts trained · `
+        + `${recoveryBands.buckets?.at_or_above ?? 0} at or above`,
+      infoCaption: `Week ${weekNumber}`,
+      emptyCaption: null,
+    };
+  } else {
+    recoveryRow = {
+      key: 'recovery',
+      label: 'Recovery',
+      section: 'recovery',
+      unavailable: false,
+      value: weekNumber,
+      showUnit: false,
+      valueSuffix: weekNumber != null ? 'week' : null,
+      emptyCaption: null,
+    };
+  }
 
   return [recoveryRow, weightRow, oneKRow, progressRow, routineRow].filter(Boolean);
 }

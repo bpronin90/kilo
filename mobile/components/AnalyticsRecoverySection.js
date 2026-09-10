@@ -8,10 +8,10 @@
 // or lifecycle field and none of them feed the comparison above.
 
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Alert } from '../lib/platformAlert';
-import { Card, HeroMetric, SectionTitle, createInputStyle } from './UI';
+import { Card, SectionTitle, createInputStyle } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatLiftWeightValue } from '../lib/units';
@@ -31,6 +31,13 @@ import {
   RECOVERY_WEEK_STATUS,
   RECOVERY_COMPARISON_STATES,
 } from '../lib/data/recoveryAnalytics';
+import {
+  RETURN_BANDS,
+  deriveRecoveryBandSeries,
+  deriveRecoveryMovement,
+  deriveRecoveryTrainedRows,
+  deriveRecoveryWeekBands,
+} from '../lib/data/recoveryReturnBands';
 import { RecoveryInclusionToggle } from './RecoveryInclusionToggle';
 
 // "Total work" replaces the unexplained "Volume" (#758): the number is a sum of
@@ -50,6 +57,34 @@ const METRIC_LABELS = Object.freeze({
 const METRIC_EXPLANATIONS = Object.freeze({
   top_load: 'Load — the heaviest completed working set that week. Not an all-time max or an estimated 1RM.',
   volume: 'Total work — load × reps across that week\'s completed working sets.',
+});
+
+// #697 state words, used only for the below-four-trained-lifts sparse
+// sentence and the details-panel group headings — permitted vocabulary
+// (#1023 v2 §8), unchanged from the detail row it names.
+const STATE_LABEL = Object.freeze({
+  baseline_met: 'at or above baseline',
+  rebuilding: 'rebuilding',
+  not_comparable: "can't compare",
+  added_during_recovery: 'added during recovery',
+});
+
+// Across-weeks band strip (#1029 amendment): each band carries BOTH a token
+// color AND a one-letter code, so `Rebuilding` and `Early` never depend on hue
+// discrimination alone — the letter identifies the band even if the two
+// warm-family colors read close together at the strip's small rendered size.
+// Colors deliberately span the full semantic range rather than two more warm
+// tones: `success` → `accentText` → `cautionText` → `error` walks from "back
+// to baseline" to "furthest from it", with `cannot_compare` on the neutral
+// `textMuted` token since it is a data-quality flag, not a performance tier.
+// The *Text variants are used, never raw `accent`/`caution`, because those are
+// mark colors, not copy colors (docs/design-system-map.md "Text vs. mark").
+const BAND_STRIP_META = Object.freeze({
+  at_or_above: { code: 'A', colorToken: 'success' },
+  close: { code: 'C', colorToken: 'accentText' },
+  rebuilding: { code: 'R', colorToken: 'cautionText' },
+  early: { code: 'E', colorToken: 'error' },
+  cannot_compare: { code: 'X', colorToken: 'textMuted' },
 });
 
 const STATE_META = Object.freeze({
@@ -415,6 +450,9 @@ function _summaryLine(weekLabel, summary) {
 // selected week onto a block that never had them.
 function BlockEvidence({
   block, weeks, notes, unit,
+  // Movement is never derived off an unverified/stale snapshot (#1023 v2 §4
+  // requirement 4) — mirrors the same gate Home and the Overview row apply.
+  stateStale = false,
   // Reopen (#839): the secondary, non-destructive action offered ONLY on the
   // newest completed block's own card, and only while no block is active —
   // the parent computes both conditions and hands down a single `showReopen`
@@ -497,19 +535,80 @@ function BlockEvidence({
   const addedCount = selectedWeek ? (selectedWeek.added || []).length : 0;
   const totalRows = totalBaselineExercises + addedCount;
   const weekLabel = selectedWeek ? `Week ${selectedWeek.week_number}` : null;
+  // Folded into the collapsed "Exercise details" header instead of the first
+  // screenful (#1029 §10c).
   const summaryLine = _summaryLine(weekLabel, selectedWeek?.summary);
-  const heroLabel = `${weekLabel ? `${weekLabel}, ` : ''}${metCount} of ${totalBaselineExercises} baseline exercises met`;
   // One-line identity caption, replacing the old "Baseline routine" label +
   // title pair (#793/R5b cut list). The selected week is always named here so
-  // the hero below is never ambiguous about which week it describes (§5).
+  // the bands below are never ambiguous about which week they describe (§5).
   const identityCaption = weekLabel ? `${weekLabel} · ${routineTitle}` : `Baseline: ${routineTitle}`;
   const provenance = isActive
     ? `Started ${formatDate(block.started_at)}`
     : `${formatDate(block.started_at)} – ${formatDate(block.completed_at)}`;
   const weekRows = selectedWeek ? [...(selectedWeek.exercises || []), ...(selectedWeek.added || [])] : [];
+
+  // #1029: the six-bucket derivation, one proportional row per TRAINED
+  // performance bucket — never the met-count headline, never sized against
+  // the roster. `Not trained yet` moves out of the bucket list into a
+  // same-tier denominator caption.
+  const bands = useMemo(() => deriveRecoveryWeekBands(selectedWeek), [selectedWeek]);
+  const hasBands = !!bands.buckets;
+  const trained = bands.trained;
+  const rosterSize = bands.roster_size;
+  const notTrainedCount = hasBands ? (bands.buckets.not_trained_yet || 0) : 0;
+  // Below four trained lifts, no bucket bars: one plain sentence names the
+  // lift(s) and their state, with the denominator in the sentence itself.
+  const sparse = hasBands && trained > 0 && trained < 4;
+  const bandRows = hasBands && !sparse
+    ? RETURN_BANDS
+        .filter(b => b.id !== 'not_trained_yet')
+        .map(b => ({ id: b.id, label: b.label, count: bands.buckets[b.id] || 0 }))
+        .filter(row => row.count > 0)
+    : [];
+  // Same source of truth as `bands`/`trained` above — never a parallel filter
+  // over `selectedWeek.exercises` (#1029 review finding 1: that would let a
+  // `baseline_value_unusable` row be named even though it is outside the
+  // roster/denominator this sentence itself states).
+  const trainedExercises = deriveRecoveryTrainedRows(selectedWeek);
+  const sparseSentence = sparse
+    ? `${trainedExercises.map(row => `${row.name} (${STATE_LABEL[row.state] || row.state})`).join(', ')} — ${trained} of ${rosterSize} roster exercises trained.`
+    : null;
+  const trainedDenominatorCaption = hasBands ? `Trained this week: ${trained} of ${rosterSize} roster exercises` : null;
+  const notTrainedCaption = hasBands && !sparse
+    ? `${notTrainedCount} of ${rosterSize} roster exercises not trained yet`
+    : null;
+
+  // Movement since the most recent qualifying earlier week, for whichever
+  // week is currently selected. Never derived off an unverified/stale
+  // snapshot (#1023 v2 §4 requirement 4).
+  const movement = useMemo(() => (
+    (!stateStale && selectedWeek)
+      ? deriveRecoveryMovement(weekResults, { currentWeekId: selectedWeek.week_id })
+      : null
+  ), [stateStale, selectedWeek, weekResults]);
+  // #1029 review finding 2: while state is stale, movement is deliberately
+  // never computed (above), but the "not enough matched lifts" copy must not
+  // fall through here either — that falsely attributes the suppression to
+  // insufficient evidence when the real cause is an unverified/stale
+  // snapshot. Nothing is claimed for stale state; the existing stale banner
+  // elsewhere on this card already carries the true reason.
+  const movementSentence = movement
+    ? `Since Week ${movement.anchor_week_number}, on ${movement.matched_size} lifts trained both weeks: ${movement.improved} improved, ${movement.steady} steady, ${movement.fell_back} fell back.`
+    : (!stateStale && hasBands && weekLabel && (selectedWeek?.week_number || 0) > 1
+        ? 'Not enough matched lifts to compare weeks yet.'
+        : null);
+
+  const mostCommonGapLine = hasBands && bands.most_common_gap
+    ? `Most common gap: ${bands.most_common_gap}`
+    : null;
+
+  // Band strip (#1023 v2 §3/§10c) — one small stacked mini-bar per live week,
+  // Analytics-only, separate from the current-week bucket rows above.
+  const bandSeries = useMemo(() => deriveRecoveryBandSeries(comparison), [comparison]);
+
   // Even a baseline-empty week still has something to say if it carries
   // recovery-only work: the merged clause line names it, with no hero above it.
-  const showSummaryLine = selectedWeek && (totalBaselineExercises > 0 || addedCount > 0);
+  const showBandsRegion = selectedWeek && (totalBaselineExercises > 0 || addedCount > 0);
 
   return (
     <Card style={styles.card}>
@@ -618,21 +717,63 @@ function BlockEvidence({
               (e.g. the hero alone) drops the announcement entirely whenever
               the newly selected week resolves to a different branch. */}
           <View style={styles.weekStatusRegion} accessibilityLiveRegion="polite">
-            {showSummaryLine && (
+            {showBandsRegion && (
               <View style={styles.summaryBlock}>
-                {totalBaselineExercises > 0 && (
-                  <View
-                    style={styles.heroBlock}
-                    accessible
-                    accessibilityLabel={heroLabel}
+                {hasBands && trained === 0 ? (
+                  <Text style={styles.summaryLine}>{trainedDenominatorCaption}</Text>
+                ) : sparse ? (
+                  // Sparse visual floor (#1029): below four trained lifts, no
+                  // bucket bars — one plain sentence names the lift(s), their
+                  // state, and the roster denominator, in visible AND
+                  // accessible copy.
+                  <Text
+                    testID="recovery-bands-sparse"
+                    style={styles.summaryLine}
+                    accessibilityLabel={sparseSentence}
                   >
-                    <Text style={[HeroMetric.statPrimary, { color: colors.accentText }]}>
-                      {`${metCount} of ${totalBaselineExercises}`}
-                    </Text>
-                    <Text style={styles.heroCaption}>baseline exercises met</Text>
+                    {sparseSentence}
+                  </Text>
+                ) : hasBands ? (
+                  <View
+                    testID="recovery-bands-rows"
+                    accessible
+                    accessibilityLabel={[
+                      trainedDenominatorCaption,
+                      ...bandRows.map(r => `${r.label} ${r.count}`),
+                      notTrainedCaption,
+                    ].filter(Boolean).join('. ')}
+                  >
+                    {/* Same weight tier as each bucket row (#1029 acceptance
+                        criteria 1/12) — a fact of equal standing, not a
+                        subordinate footnote. */}
+                    <Text style={styles.bandDenominatorCaption}>{trainedDenominatorCaption}</Text>
+                    {bandRows.map(row => (
+                      <View key={row.id} style={styles.bandRow}>
+                        <View style={styles.bandRowTrack}>
+                          <View
+                            style={[
+                              styles.bandRowFill,
+                              { width: `${Math.round((row.count / trained) * 100)}%`, backgroundColor: colors.accent },
+                            ]}
+                          />
+                        </View>
+                        <Text style={styles.bandRowLabel}>{row.label}</Text>
+                        <Text style={styles.bandRowCount}>{row.count}</Text>
+                      </View>
+                    ))}
+                    {!!notTrainedCaption && (
+                      <Text style={styles.bandDenominatorCaption}>{notTrainedCaption}</Text>
+                    )}
                   </View>
+                ) : null}
+
+                {!!mostCommonGapLine && <Text style={styles.summaryLine}>{mostCommonGapLine}</Text>}
+
+                {/* Movement gets EQUAL real estate to bands once it exists —
+                    never dead space reserved for it in Week 1 (#1029). */}
+                {!!movementSentence && (
+                  <Text testID="recovery-movement" style={styles.summaryLine}>{movementSentence}</Text>
                 )}
-                {!!summaryLine && <Text style={styles.summaryLine}>{summaryLine}</Text>}
               </View>
             )}
 
@@ -676,6 +817,14 @@ function BlockEvidence({
               >
                 <View style={styles.detailsHeaderContent}>
                   <Text style={styles.detailsHeaderTitle}>Exercise details</Text>
+                  {/* #1029 acceptance criterion 2: the removed met-count
+                      headline survives ONLY here, worded "X of Y at or above
+                      baseline". */}
+                  {totalBaselineExercises > 0 && (
+                    <Text style={styles.detailsHeaderCount}>
+                      {`${metCount} of ${totalBaselineExercises} at or above baseline`}
+                    </Text>
+                  )}
                   {!detailsExpanded && (
                     <Text style={styles.detailsHeaderCount}>
                       {`${totalRows} exercise${totalRows === 1 ? '' : 's'}`}
@@ -692,6 +841,9 @@ function BlockEvidence({
 
               {detailsExpanded && (
                 <View style={styles.detailsBody}>
+                  {/* The removed first-screenful clause line, folded in here
+                      (#1029 §10c). */}
+                  {!!summaryLine && <Text style={styles.summaryLine}>{summaryLine}</Text>}
                   <MetricLegend rows={weekRows} />
                   <WeekEvidence rows={weekRows} unit={unit} />
                 </View>
@@ -721,6 +873,88 @@ function BlockEvidence({
         </View>
       )}
 
+      {/* Band strip (#1023 v2 §3/§10c, redesigned per the #1029 amendment):
+          one column per live week, in week order — an "across weeks" element,
+          separate from the current-week bucket rows above. Each populated
+          band renders as its own row inside the column: a token-colored,
+          letter-coded chip plus the count, in `docs/design-system-map.md`
+          tokens throughout. Identity comes from the letter, not hue alone, so
+          `Rebuilding` and `Early` stay distinguishable at the strip's actual
+          rendered width without a legend. A week with no readable note is a
+          dashed, glyphed placeholder column — visually distinct from a
+          readable week that simply trained nothing (which still shows its own
+          zero-count row) — never a bar that silently shrinks to nothing. */}
+      {bandSeries.length > 1 && (
+        <View>
+          <Text style={styles.bandStripLegendHint}>Across weeks</Text>
+          <ScrollView
+            testID="recovery-band-strip"
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.bandStrip}
+          >
+            {bandSeries.map(entry => {
+              const populatedBands = entry.buckets
+                ? RETURN_BANDS.filter(b => b.id !== 'not_trained_yet' && (entry.buckets[b.id] || 0) > 0)
+                : [];
+              const a11yLabel = entry.buckets
+                ? `Week ${entry.week_number}: ${RETURN_BANDS.filter(b => b.id !== 'not_trained_yet').map(b => `${b.label} ${entry.buckets[b.id] || 0}`).join(', ')}`
+                : `Week ${entry.week_number}: no readable evidence`;
+              return (
+                <View
+                  key={entry.week_id}
+                  testID={`recovery-band-strip-week-${entry.week_number}`}
+                  style={styles.bandStripCell}
+                  accessible
+                  accessibilityLabel={a11yLabel}
+                >
+                  <Text style={styles.bandStripWeekLabel}>{`Week ${entry.week_number}`}</Text>
+                  {entry.buckets ? (
+                    populatedBands.length > 0 ? (
+                      <View style={styles.bandStripRows}>
+                        {populatedBands.map(b => {
+                          const meta = BAND_STRIP_META[b.id];
+                          return (
+                            <View key={b.id} style={styles.bandStripRow}>
+                              <View style={[styles.bandStripChip, { borderColor: colors[meta.colorToken] }]}>
+                                <Text style={[styles.bandStripChipText, { color: colors[meta.colorToken] }]}>
+                                  {meta.code}
+                                </Text>
+                              </View>
+                              <Text style={styles.bandStripCount}>{entry.buckets[b.id]}</Text>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    ) : (
+                      // A readable week that simply trained nothing: a solid,
+                      // muted-token dash — a real zero, not a gap.
+                      <View style={styles.bandStripZero}>
+                        <Text style={styles.bandStripZeroText}>0 trained</Text>
+                      </View>
+                    )
+                  ) : (
+                    // Unreadable-note gap (#1029 amendment): dashed border,
+                    // muted glyph, and its own text — never mistakable for the
+                    // solid zero-count cell above.
+                    <View style={styles.bandStripGap}>
+                      <MaterialIcons name="help-outline" size={16} color={colors.textMuted} accessible={false} />
+                      <Text style={styles.bandStripGapText}>No data</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* One persistent line, above the provenance stamp (#1023 v2 §8). */}
+      {(comparison.status === RECOVERY_COMPARISON_STATUS.OK || comparison.status === RECOVERY_COMPARISON_STATUS.BASELINE_EMPTY) && (
+        <Text style={styles.nonMedicalText}>
+          Training numbers only. Not a medical judgment — only you end a Recovery block.
+        </Text>
+      )}
       <Text style={styles.provenanceText}>{provenance}</Text>
     </Card>
   );
@@ -925,6 +1159,7 @@ export function AnalyticsRecoverySection({
         weeks={weeks}
         notes={notes}
         unit={unit}
+        stateStale={stateStale}
         showReopen={!activeBlock && !!newestCompletedBlock && focusedBlock.id === newestCompletedBlock.id}
         reopenDisabled={!mutationsAllowed || hasPendingRecovery || reopenBusy}
         reopenBusy={reopenBusy}
@@ -1117,6 +1352,94 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 12,
     color: colors.textMuted,
   },
+  nonMedicalText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+  },
+  // #1029 amendment: the across-weeks strip is a finished design-system
+  // surface — token color/spacing/type throughout, a `ScrollView` (never a
+  // fixed-width row) so it stays legible rather than crushing columns at a
+  // large accessibility text scale, and letter-coded chips so `Rebuilding`
+  // and `Early` never depend on hue discrimination alone.
+  bandStripLegendHint: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginBottom: 6,
+  },
+  bandStrip: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingRight: 4,
+  },
+  bandStripCell: {
+    minWidth: 76,
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: colors.subtleBg,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  bandStripWeekLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  bandStripRows: {
+    gap: 4,
+  },
+  bandStripRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  // Letter-coded chip (#1029 amendment): identity comes from the character,
+  // not the fill color, so two adjacent warm-family bands stay distinguishable
+  // even where the colors themselves read close together.
+  bandStripChip: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    backgroundColor: colors.card,
+  },
+  bandStripChipText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  bandStripCount: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  bandStripZero: {
+    paddingVertical: 2,
+  },
+  bandStripZeroText: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  // Unreadable-note gap: dashed stroke plus its own glyph and text — never a
+  // bare empty box, so it cannot be mistaken for the solid zero-count cell.
+  bandStripGap: {
+    alignItems: 'center',
+    gap: 3,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.cardBorder,
+  },
+  bandStripGapText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
   // Reopen (#839): low-emphasis, non-destructive outline button — matching
   // the Log tab's own secondary styling for the same action — never the
   // filled/accent treatment a primary action would use.
@@ -1169,16 +1492,43 @@ const createStyles = (colors) => StyleSheet.create({
   summaryBlock: {
     gap: 4,
   },
-  heroBlock: {
-    alignItems: 'flex-start',
-    gap: 2,
-  },
-  heroCaption: {
+  // #1029: the denominator caption sits at the SAME weight tier as each
+  // bucket row below it — a fact of equal standing, never a subordinate
+  // footnote (acceptance criterion 1/12).
+  bandDenominatorCaption: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
     color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+  },
+  bandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 3,
+  },
+  bandRowTrack: {
+    flex: 1,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.subtleBg,
+    overflow: 'hidden',
+  },
+  bandRowFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  bandRowLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+    minWidth: 90,
+  },
+  bandRowCount: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+    minWidth: 20,
+    textAlign: 'right',
   },
   summaryLine: {
     fontSize: 13,
