@@ -127,7 +127,7 @@ Release decisions still require the applicable manual checks:
 - installed-device launch, layout, notification, deep-link, and email-link
   behavior;
 - iOS device distribution where called out by the build runbook;
-- Play Console closed-testing and production-access actions;
+- remaining Play Console declarations, listing assets, and release-build checks;
 - production configuration for Supabase Auth, Turnstile, SMTP, OAuth, Sentry,
   policy URLs, and deployment secrets.
 
