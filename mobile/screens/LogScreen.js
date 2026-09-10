@@ -43,6 +43,16 @@
 // glyphs) is untouched. Ratios are recorded in `docs/design-system-map.md` and
 // asserted in `mobile/tests/theme-rendering.test.js`.
 //
+// Authorized exception (#1021), scoped as follows: `LogPreviousRoutines.js`
+// loses its collection-level Show/Hide Routines disclosure — non-current
+// cards are now always listed, each keeping its own independent per-card
+// collapse/expand exactly as before. `LogActiveRoutineCard.js`'s action
+// strip consolidates Edit, Copy, Share, and Share as Image into one 44dp
+// three-dot menu, leaving the compact Week A/B pill as the header's only
+// always-visible control. `LogScreenEditorCard.js`'s New Routine spacing is
+// tightened and gains a secondary Import routine action near Save. No other
+// styling changes.
+//
 // No other styling exception is authorized.
 
 import React, { useContext, useState, useEffect, useRef, useMemo } from 'react';
@@ -94,6 +104,9 @@ import { buildRecoveryAnalyticsFilter } from '../lib/data/recoveryAnalyticsFilte
 
 import { LogDeloadSection } from '../components/LogDeloadSection';
 import { LogPreviousRoutines } from '../components/LogPreviousRoutines';
+// #1021: the New Routine editor's secondary Import routine action opens this
+// same preview MoreScreen already uses — reused in place, not duplicated.
+import { RoutineImportScreen } from '../components/RoutineImportScreen';
 import { LogActiveRoutineCard } from '../components/LogActiveRoutineCard';
 import { LogScreenEditorCard, RoutineAdoptionPrompt } from '../components/LogScreenEditorCard';
 import { RecoveryBlockStartModal } from '../components/RecoveryBlockStartModal';
@@ -261,36 +274,21 @@ export function LogScreen({
   // (`pendingInclusion`, `submitting`, `submitError`) is local to the modal
   // itself.
   const [endBlockModalOpen, setEndBlockModalOpen] = useState(false);
+  // #1021: the New Routine editor's secondary Import routine action. Opens
+  // the existing `RoutineImportScreen` in place of the read/editor pair
+  // below; closing it (its own Back) returns here without touching any
+  // editor state.
+  const [importRoutineOpen, setImportRoutineOpen] = useState(false);
 
-  // Both Log disclosures are owned here (#775), not by the sections that render
-  // them. Routine and Deload are mutually exclusive branches, so
-  // LogPreviousRoutines and LogDeloadSection unmount on every view switch; while
-  // the state lived in those components a user's collapse choice was discarded
-  // by the remount and the card came back in its default state.
-  const [routineManagementExpanded, setRoutineManagementExpanded] = useState(false);
+  // Deload's own disclosure is owned here (#775), not by the section that
+  // renders it: LogDeloadSection unmounts on every view switch, and while the
+  // state lived in that component a user's collapse choice was discarded by
+  // the remount and the card came back in its default state.
   const [deloadCardCollapsed, setDeloadCardCollapsed] = useState(false);
 
-  // A monotonic nonce bumped on every EXTERNAL request to reveal a non-current
-  // routine — now only a typed navigation intent (#718) resolved below, since a
-  // Recovery tap reads its note in place (#775). Keying auto-expand on the
-  // REQUEST rather than on `viewingNoteId` is what lets a fresh request expand
-  // the disclosure even when it re-selects the already-selected note, while
-  // ordinary re-renders under an unchanged key still respect a user's explicit
-  // collapse (#724 review).
-  const [routineRevealKey, setRoutineRevealKey] = useState(0);
-  const revealRoutine = () => setRoutineRevealKey(k => k + 1);
-  // The consumed-request marker lives HERE, alongside the state it opens
-  // (#775). In LogPreviousRoutines it was reset by the very remount it had to
-  // survive, so switching Routine→Deload→Routine replayed the last consumed
-  // request and reopened a disclosure the user had closed. 0 is the "no request
-  // issued" sentinel, so a request that arrives before this screen's first
-  // render is still consumed exactly once.
-  const consumedRevealKeyRef = useRef(0);
-  useEffect(() => {
-    if (routineRevealKey === consumedRevealKeyRef.current) return;
-    consumedRevealKeyRef.current = routineRevealKey;
-    setRoutineManagementExpanded(true);
-  }, [routineRevealKey]);
+  // #1021: a navigation intent that targets a non-current routine no longer
+  // needs a "reveal the disclosure" step — LogPreviousRoutines has none left
+  // to open. `otherEditor.setViewingNoteId` below is sufficient on its own.
 
   // Single lifecycle mutex (#696 review): null | 'week' | 'block' | 'add' |
   // 'delete-unlink' | a week id being unlinked. Every recovery-block write —
@@ -537,12 +535,8 @@ export function LogScreen({
     // "ensure this note is shown", so it must be idempotent, and it touches only
     // the viewer — never editingNoteId/editingText or any other editor state.
     otherEditor.setViewingNoteId(note.id);
-    // A non-current ROUTINE lives inside the collapsed routine-management
-    // disclosure (#724); bump the reveal nonce so it expands for this request
-    // even if the note was already the selected one. A deload target renders in
-    // LogDeloadSection instead, so revealing More Routines for it would open a
-    // disclosure on the view the user is not even looking at (#775).
-    if (!isDeloadTarget) revealRoutine();
+    // #1021: no disclosure left to reveal — LogPreviousRoutines always lists
+    // its non-current cards, so setting the viewing note id is sufficient.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navNoteKey, navNoteId, notesLoading, notesError, notes, currentId, currentEditor.mode, otherEditor.editingNoteId, deloadEditor.deloadMode]);
 
@@ -1185,6 +1179,21 @@ export function LogScreen({
     ? otherEditor.cancelPendingDraftRestore
     : currentEditor.cancelPendingDraftRestore;
 
+  // #1021: the New Routine editor's secondary Import routine action opens
+  // this in place of the ordinary read/editor pair below. `add` is the same
+  // note-store write the import preview is wired to everywhere else
+  // (App.js's `handleCreateRoutineFromImport`) — it creates a note and never
+  // touches the current-routine pointer, so importing here can neither
+  // replace what is being trained on nor edit an existing routine.
+  if (importRoutineOpen) {
+    return (
+      <RoutineImportScreen
+        onBack={() => setImportRoutineOpen(false)}
+        onCreateRoutine={(title, rawText, options) => add(title, rawText, options)}
+      />
+    );
+  }
+
   return (
     <>
       <ScreenShell
@@ -1455,8 +1464,6 @@ export function LogScreen({
                 handleDeleteRoutine={guardedHandleDeleteRoutine}
                 handleCreateRoutine={handleCreateRoutineEntry}
                 recoveryWeekNumberByNoteId={recoveryWeekNumberByNoteId}
-                expanded={routineManagementExpanded}
-                onToggleExpanded={() => setRoutineManagementExpanded(e => !e)}
               />
             )}
           </>
@@ -1574,6 +1581,7 @@ export function LogScreen({
           handleCurrentTextChange={currentEditor.handleCurrentTextChange}
           handleSaveOtherNote={otherEditor.handleSaveOtherNote}
           handleSave={currentEditor.handleSave}
+          onImportRoutine={() => setImportRoutineOpen(true)}
           noteIsSaving={otherEditor.noteIsSaving}
           handleSwitchCurrent={otherEditor.handleSwitchCurrent}
           handleDeleteDeloadNoteFromEditor={otherEditor.handleDeleteDeloadNoteFromEditor}
