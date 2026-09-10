@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.133.0 - 2026-09-10
+
+- Issue #1029: Replaced Recovery's met-count headline with per-bucket return bands and weekly movement on Home, Analytics, and the Overview row.
+
+## 0.132.2 - 2026-09-10
+
+- Issue #1027: Corrected launch-readiness and product documentation and removed unnecessary production-specific commentary.
+
+## 0.132.1 - 2026-09-10
+
+- Issue #1022: Fixed Recovery note closing and multi-weekday rendering in the Log screen.
+
+## 0.132.0 - 2026-09-10
+
+- Issue #1021: Simplified the Log routine surface: the Current Routine card now shows only its compact Week A/B pill plus a three-dot menu for Edit/Copy/Share/Share as Image, the More Routines list is always shown instead of behind a Show/Hide toggle, and the New Routine editor gained a secondary Import routine action.
+
+## 0.131.3 - 2026-09-10
+
+- Issue #1020: Restored always-visible Weight entry date and note controls, and made history date-range boundaries clear independently.
+
+## 0.131.2 - 2026-09-10
+
+- Issue #1018: Made the More > User Profile and Settings unit and appearance selectors share one compact segmented style, tidied the reminder rows, and replaced the Theme, Weight unit, Fatigue multiplier, Progression suggestions, and Deload mode help text with plain language.
+
 ## 0.131.1 - 2026-09-10
 
 - Issue #1014: Archived the completed zero-friction roadmap, refreshed the documentation index, and updated the prelaunch roadmap to reflect the completed security workflows.
