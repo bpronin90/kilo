@@ -105,12 +105,18 @@ export function RestTimerBanner({
           animationType="fade"
           onRequestClose={() => setExpanded(false)}
         >
-          <Pressable
-            style={styles.menuBackdrop}
-            onPress={() => setExpanded(false)}
-            accessibilityRole="button"
-            accessibilityLabel="Close rest timer menu"
-          >
+          <View style={styles.menuRoot}>
+            {/* Sibling scrim BEHIND the menu, not its parent: an accessible
+                Pressable wrapping the menu would group the preset items into
+                one TalkBack element. Non-accessible here; TalkBack users
+                dismiss with the back gesture (onRequestClose) or by choosing
+                a preset. */}
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPress={() => setExpanded(false)}
+              accessible={false}
+              importantForAccessibility="no"
+            />
             <View style={[styles.compactChooser, anchor]} accessibilityRole="menu">
               {DURATION_PRESETS_SEC.map((sec) => (
                 <Pressable
@@ -127,7 +133,7 @@ export function RestTimerBanner({
                 </Pressable>
               ))}
             </View>
-          </Pressable>
+          </View>
         </Modal>
       </View>
     );
@@ -205,8 +211,9 @@ const createStyles = (colors) => StyleSheet.create({
     borderRadius: 12,
     backgroundColor: colors.chipBackground,
   },
-  // Full-screen press target that dismisses the menu when the user taps away.
-  menuBackdrop: {
+  // Full-screen host inside the Modal: a scrim and the anchored menu as
+  // siblings.
+  menuRoot: {
     flex: 1,
   },
   // Anchored against the stopwatch button's measured screen rect (see
