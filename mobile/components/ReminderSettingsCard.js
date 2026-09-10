@@ -187,112 +187,126 @@ export function ReminderSettingsCard() {
 
   return (
     <Card>
-      <View style={styles.settingRow}>
-        <View style={styles.settingInfo}>
-          <Text style={styles.settingLabel}>Daily weigh-in reminder</Text>
-          <Text style={styles.settingHelp}>A daily notification at your chosen time to log your weight</Text>
+      {/* Each reminder is one group: the label/switch row and its sub-elements
+          (inline error, weekday grid, time row) sit a uniform 8dp apart via the
+          group's own gap, and the two groups are separated by Card's 10dp child
+          gap. No row carries a bottom margin, so an enabled reminder's time row
+          is spaced identically to the workout weekday grid (#1018). */}
+      <View style={styles.reminderGroup}>
+        <View style={styles.settingRow}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Daily weigh-in reminder</Text>
+            <Text style={styles.settingHelp}>A daily notification at your chosen time to log your weight</Text>
+          </View>
+          <Switch
+            {...switchColors(colors)}
+            value={!!weighIn.enabled}
+            onValueChange={handleWeighInToggle}
+            accessibilityLabel="Daily weigh-in reminder"
+            accessibilityRole="switch"
+          />
         </View>
-        <Switch
-          {...switchColors(colors)}
-          value={!!weighIn.enabled}
-          onValueChange={handleWeighInToggle}
-          accessibilityLabel="Daily weigh-in reminder"
-          accessibilityRole="switch"
-        />
+        {weighInError ? <Text style={styles.errorText}>{weighInError}</Text> : null}
+        {weighIn.enabled ? (
+          <View style={styles.subRow}>
+            <Text style={styles.subRowLabel}>Reminder time</Text>
+            <Pressable
+              style={styles.timeButton}
+              onPress={() => setShowWeighInPicker(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Weigh-in reminder time"
+            >
+              <Text style={styles.timeButtonText}>{formatReminderTime(weighIn.hour, weighIn.minute)}</Text>
+            </Pressable>
+            {showWeighInPicker && Platform.OS !== 'web' && (
+              <DateTimePicker
+                themeVariant={colors.scheme}
+                value={pickerValue(weighIn.hour, weighIn.minute)}
+                mode="time"
+                display="default"
+                onChange={handleWeighInTime}
+              />
+            )}
+          </View>
+        ) : null}
       </View>
-      {weighInError ? <Text style={styles.errorText}>{weighInError}</Text> : null}
-      {weighIn.enabled ? (
-        <View style={styles.subRow}>
-          <Text style={styles.subRowLabel}>Reminder time</Text>
-          <Pressable
-            style={styles.timeButton}
-            onPress={() => setShowWeighInPicker(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Weigh-in reminder time"
-          >
-            <Text style={styles.timeButtonText}>{formatReminderTime(weighIn.hour, weighIn.minute)}</Text>
-          </Pressable>
-          {showWeighInPicker && Platform.OS !== 'web' && (
-            <DateTimePicker
-              themeVariant={colors.scheme}
-              value={pickerValue(weighIn.hour, weighIn.minute)}
-              mode="time"
-              display="default"
-              onChange={handleWeighInTime}
-            />
-          )}
-        </View>
-      ) : null}
 
-      <View style={[styles.settingRow, { marginBottom: 0 }]}>
-        <View style={styles.settingInfo}>
-          <Text style={styles.settingLabel}>Workout day nudge</Text>
-          <Text style={styles.settingHelp}>{workoutHelp}</Text>
+      <View style={styles.reminderGroup}>
+        <View style={styles.settingRow}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Workout day nudge</Text>
+            <Text style={styles.settingHelp}>{workoutHelp}</Text>
+          </View>
+          <Switch
+            {...switchColors(colors)}
+            value={!!workout.enabled}
+            onValueChange={handleWorkoutToggle}
+            accessibilityLabel="Workout day nudge"
+            accessibilityRole="switch"
+          />
         </View>
-        <Switch
-          {...switchColors(colors)}
-          value={!!workout.enabled}
-          onValueChange={handleWorkoutToggle}
-          accessibilityLabel="Workout day nudge"
-          accessibilityRole="switch"
-        />
+        {workoutError ? <Text style={styles.errorText}>{workoutError}</Text> : null}
+        {!usesInference && (
+          <View style={styles.weekdayRow}>
+            {WEEKDAYS.map((day) => {
+              const selected = workout.fallbackWeekdays.includes(day.value);
+              return (
+                <Pressable
+                  key={day.value}
+                  style={styles.weekdayTarget}
+                  onPress={() => handleToggleWeekday(day.value)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: selected }}
+                  accessibilityLabel={`Nudge on ${day.label}`}
+                >
+                  <View style={[styles.weekdayChip, selected && styles.weekdayChipSelected]}>
+                    <Text style={[styles.weekdayChipText, selected && styles.weekdayChipTextSelected]} accessible={false}>
+                      {day.short}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+        {workout.enabled ? (
+          <View style={styles.subRow}>
+            <Text style={styles.subRowLabel}>Nudge time</Text>
+            <Pressable
+              style={styles.timeButton}
+              onPress={() => setShowWorkoutPicker(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Workout nudge time"
+            >
+              <Text style={styles.timeButtonText}>{formatReminderTime(workout.hour, workout.minute)}</Text>
+            </Pressable>
+            {showWorkoutPicker && Platform.OS !== 'web' && (
+              <DateTimePicker
+                themeVariant={colors.scheme}
+                value={pickerValue(workout.hour, workout.minute)}
+                mode="time"
+                display="default"
+                onChange={handleWorkoutTime}
+              />
+            )}
+          </View>
+        ) : null}
       </View>
-      {workoutError ? <Text style={styles.errorText}>{workoutError}</Text> : null}
-      {!usesInference && (
-        <View style={styles.weekdayRow}>
-          {WEEKDAYS.map((day) => {
-            const selected = workout.fallbackWeekdays.includes(day.value);
-            return (
-              <Pressable
-                key={day.value}
-                style={styles.weekdayTarget}
-                onPress={() => handleToggleWeekday(day.value)}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: selected }}
-                accessibilityLabel={`Nudge on ${day.label}`}
-              >
-                <View style={[styles.weekdayChip, selected && styles.weekdayChipSelected]}>
-                  <Text style={[styles.weekdayChipText, selected && styles.weekdayChipTextSelected]} accessible={false}>
-                    {day.short}
-                  </Text>
-                </View>
-              </Pressable>
-            );
-          })}
-        </View>
-      )}
-      {workout.enabled ? (
-        <View style={styles.subRow}>
-          <Text style={styles.subRowLabel}>Nudge time</Text>
-          <Pressable
-            style={styles.timeButton}
-            onPress={() => setShowWorkoutPicker(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Workout nudge time"
-          >
-            <Text style={styles.timeButtonText}>{formatReminderTime(workout.hour, workout.minute)}</Text>
-          </Pressable>
-          {showWorkoutPicker && Platform.OS !== 'web' && (
-            <DateTimePicker
-              themeVariant={colors.scheme}
-              value={pickerValue(workout.hour, workout.minute)}
-              mode="time"
-              display="default"
-              onChange={handleWorkoutTime}
-            />
-          )}
-        </View>
-      ) : null}
     </Card>
   );
 }
 
 const createStyles = (colors) => StyleSheet.create({
+  // One reminder = one group. The group's gap sets a uniform distance between
+  // the label/switch row and every sub-element under it (#1018); the two groups
+  // are held apart by Card's own 10dp child gap.
+  reminderGroup: {
+    gap: 8,
+  },
   settingRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
   },
   settingInfo: {
     flex: 1,
@@ -341,6 +355,7 @@ const createStyles = (colors) => StyleSheet.create({
   weekdayRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    rowGap: 4,
   },
   // The press target is a real box, not a hitSlop — React Native clips a slop
   // at the parent's bounds, so it cannot claim height this one-circle-tall row

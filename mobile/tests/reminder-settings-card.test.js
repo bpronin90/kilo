@@ -140,6 +140,49 @@ describe('ReminderSettingsCard', () => {
     }, [2]);
   });
 
+  // #1018: each reminder is one group whose gap sets a uniform distance from
+  // the label/switch row to every sub-element under it (weekday grid, time row,
+  // inline error). No row carries a bottom margin, so an enabled weigh-in
+  // time row is spaced identically to the workout weekday grid.
+  describe('sub-element spacing (#1018)', () => {
+    const { StyleSheet } = require('react-native');
+
+    function groupOf(tree, childLabel) {
+      return tree.root.findAll((n) => n.type === 'View'
+        && (StyleSheet.flatten(n.props.style) || {}).gap === 8
+        && n.findAll((c) => c.props?.accessibilityLabel === childLabel).length > 0)[0];
+    }
+
+    test('no reminder row carries a bottom margin; each reminder sits in an 8dp-gap group', async () => {
+      let tree;
+      await act(async () => {
+        tree = createCard();
+      });
+      const rows = tree.root.findAll((n) => n.type === 'View'
+        && (StyleSheet.flatten(n.props.style) || {}).justifyContent === 'space-between'
+        && n.findAll((c) => c.props?.accessibilityRole === 'switch').length > 0);
+      expect(rows.length).toBe(2);
+      rows.forEach((row) => {
+        const style = StyleSheet.flatten(row.props.style) || {};
+        expect(style.marginBottom).toBeUndefined();
+      });
+      // The workout weekday grid and the workout switch share one group.
+      expect(groupOf(tree, 'Nudge on Monday')).toBeTruthy();
+      expect(groupOf(tree, 'Workout day nudge')).toBe(groupOf(tree, 'Nudge on Monday'));
+    });
+
+    test('an enabled weigh-in time row sits in the same 8dp-gap group as its switch', async () => {
+      Storage.loadWeighInReminder.mockResolvedValue({ enabled: true, hour: 8, minute: 0 });
+      let tree;
+      await act(async () => {
+        tree = createCard();
+      });
+      const timeButtonGroup = groupOf(tree, 'Weigh-in reminder time');
+      expect(timeButtonGroup).toBeTruthy();
+      expect(timeButtonGroup).toBe(groupOf(tree, 'Daily weigh-in reminder'));
+    });
+  });
+
   describe('reconciliation wiring (#590 / PR #649 review)', () => {
     test('displays the inferred weekdays reconcileWorkoutReminder reports on mount', async () => {
       setReconciled({ enabled: true, hour: 17, minute: 0, fallbackWeekdays: [] }, [2, 4]);

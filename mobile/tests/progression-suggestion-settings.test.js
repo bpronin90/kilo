@@ -161,4 +161,18 @@ describe('Settings screen — Progression suggestions toggle (#960)', () => {
     await act(async () => { await Promise.resolve(); });
     expect(findToggle(root).props.value).toBe(true);
   });
+
+  // #1018: the help line must describe the visible result, name the explicit
+  // Apply step, and never use the word "heuristic".
+  test('help copy names the visible prompt and the manual Apply, and drops "heuristic"', async () => {
+    const root = await renderSettings();
+    const help = root.root
+      .findAllByType('Text')
+      .map((t) => (Array.isArray(t.props.children) ? t.props.children.join('') : String(t.props.children ?? '')))
+      .find((t) => /Log and Analytics tabs/.test(t) && /prompt/i.test(t));
+    expect(help).toBeDefined();
+    expect(help).not.toMatch(/heuristic/i);
+    expect(help).toMatch(/you apply each one yourself/i);
+    expect(help).toMatch(/never changed/i);
+  });
 });

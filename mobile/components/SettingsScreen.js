@@ -157,7 +157,7 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
         <View style={styles.settingRow}>
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>Deload mode</Text>
-            <Text style={styles.settingHelp}>Enables deload generation and history in the Log tab</Text>
+            <Text style={styles.settingHelp}>Adds deload generation and history to the Log tab. That surface is hidden while a Recovery block is active, because Recovery controls that workflow instead.</Text>
           </View>
           <Switch
             {...switchColors(colors)}
@@ -170,7 +170,7 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
         <View style={[styles.settingRow, { marginBottom: 0 }]}>
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>Progression suggestions</Text>
-            <Text style={styles.settingHelp}>Explainable, heuristic double-progression prompts in Log and Analytics. Never edits your workout notes.</Text>
+            <Text style={styles.settingHelp}>Shows a prompt on the Log and Analytics tabs when your recent sets suggest adding weight or reps. You apply each one yourself; your workout notes are never changed.</Text>
           </View>
           <Switch
             {...switchColors(colors)}
@@ -190,10 +190,9 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
         <View style={[styles.settingRow, { marginBottom: 0 }]}>
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>Theme</Text>
-            <Text style={styles.settingHelp}>Light, Dark, or follow your device's system setting. Applies everywhere immediately.</Text>
           </View>
-          {/* Same segmented pattern as the lb/kg and ft/cm selectors, extended
-              to three options. Selection applies on press and persists. */}
+          {/* Same compact segmented pattern as the lb/kg and ft/cm selectors,
+              extended to three options. Selection applies on press and persists. */}
           <View style={styles.unitToggle}>
             {APPEARANCE_OPTIONS.map(({ value, label, a11yLabel }) => {
               const selected = appearance === value;
@@ -201,12 +200,14 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
                 <Pressable
                   key={value}
                   onPress={() => setAppearance(value)}
-                  style={[styles.unitTab, selected && styles.unitTabActive]}
+                  style={styles.unitTab}
                   accessibilityRole="button"
                   accessibilityState={{ selected, disabled: false }}
                   accessibilityLabel={a11yLabel}
                 >
-                  <Text style={[styles.unitTabText, selected && styles.unitTabTextActive]}>{label}</Text>
+                  <View style={[styles.unitPill, selected && styles.unitPillActive]}>
+                    <Text style={[styles.unitTabText, selected && styles.unitTabTextActive]}>{label}</Text>
+                  </View>
                 </Pressable>
               );
             })}
@@ -219,28 +220,32 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
         <View style={[styles.settingRow, { marginBottom: 0 }]}>
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>Weight unit</Text>
-            <Text style={styles.settingHelp}>Display and entry unit for body weight and lifts. Workout notes and stored data stay in lb.</Text>
+            <Text style={styles.settingHelp}>Shows body weight and lifts in pounds or kilograms. Your notes and saved data stay in lb.</Text>
           </View>
           <View style={styles.unitToggle}>
             <Pressable
               onPress={() => handleSelectUnit('lb')}
               disabled={unitControlsDisabled}
-              style={[styles.unitTab, weightUnit === 'lb' && styles.unitTabActive, unitControlsDisabled && styles.unitTabDisabled]}
+              style={styles.unitTab}
               accessibilityRole="button"
               accessibilityState={{ selected: weightUnit === 'lb', disabled: unitControlsDisabled }}
               accessibilityLabel="Show weights in pounds"
             >
-              <Text style={[styles.unitTabText, weightUnit === 'lb' && styles.unitTabTextActive]}>lb</Text>
+              <View style={[styles.unitPill, weightUnit === 'lb' && styles.unitPillActive, unitControlsDisabled && styles.unitPillDisabled]}>
+                <Text style={[styles.unitTabText, weightUnit === 'lb' && styles.unitTabTextActive]}>lb</Text>
+              </View>
             </Pressable>
             <Pressable
               onPress={() => handleSelectUnit('kg')}
               disabled={unitControlsDisabled}
-              style={[styles.unitTab, weightUnit === 'kg' && styles.unitTabActive, unitControlsDisabled && styles.unitTabDisabled]}
+              style={styles.unitTab}
               accessibilityRole="button"
               accessibilityState={{ selected: weightUnit === 'kg', disabled: unitControlsDisabled }}
               accessibilityLabel="Show weights in kilograms"
             >
-              <Text style={[styles.unitTabText, weightUnit === 'kg' && styles.unitTabTextActive]}>kg</Text>
+              <View style={[styles.unitPill, weightUnit === 'kg' && styles.unitPillActive, unitControlsDisabled && styles.unitPillDisabled]}>
+                <Text style={[styles.unitTabText, weightUnit === 'kg' && styles.unitTabTextActive]}>kg</Text>
+              </View>
             </Pressable>
           </View>
         </View>
@@ -260,7 +265,7 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
         <View style={styles.settingRow}>
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>Fatigue multiplier</Text>
-            <Text style={styles.settingHelp}>Scales your Est. Max to produce the Kilo Max. Lower = more conservative. Default: 1.07.</Text>
+            <Text style={styles.settingHelp}>Scales your logged-set strength estimates to produce the Kilo Max shown in Analytics. A lower number makes the Kilo Max more conservative. Default 1.07.</Text>
           </View>
           <View style={styles.stepper}>
             <Pressable style={styles.stepperButton} onPress={handleDecrement} accessibilityRole="button" accessibilityLabel="Decrease fatigue multiplier">
@@ -337,32 +342,33 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '800',
     color: colors.text,
   },
-  // Segmented lb/kg control — mirrors the ft/cm unitToggle pattern on the
-  // Profile screen so unit selectors read identically across the app.
+  // Compact segmented control — the Appearance and Weight unit selectors here
+  // and Profile's height-unit selector share this exact treatment (#1018). The
+  // pressable is a transparent ≥44dp target box (§15); the visible pill inside
+  // it stays compact and never stretches to the target height.
   unitToggle: {
     flexDirection: 'row',
-    backgroundColor: colors.inputBackground,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    overflow: 'hidden',
+    gap: 4,
   },
-  // Segmented tabs grow to the 44dp minimum target rather than taking a
-  // hitSlop: the toggle sits inline in a settings row with nothing above or
-  // below it, so the taller box is the honest target and matches the
-  // 44dp stepper in the same screen (#904).
   unitTab: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
     minHeight: 44,
     minWidth: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  unitTabActive: {
-    backgroundColor: colors.accent,
+  unitPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.inputBackground,
   },
-  unitTabDisabled: {
+  unitPillActive: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  unitPillDisabled: {
     opacity: 0.5,
   },
   unitTabText: {
@@ -370,7 +376,7 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '700',
     color: colors.textMuted,
   },
-  // Selected tabs are accent-filled, so the label takes the on-accent ink,
+  // Selected pills are accent-filled, so the label takes the on-accent ink,
   // which is white in light mode and dark ink in dark mode (#689).
   unitTabTextActive: {
     color: colors.onAccent,
