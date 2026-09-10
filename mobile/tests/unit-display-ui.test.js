@@ -282,7 +282,10 @@ describe('More settings polish (#1018)', () => {
     expect(texts).toContain('Theme');
     expect(texts.some((t) => /follow your device/i.test(t) || /Applies everywhere/i.test(t))).toBe(false);
     expect(texts.some((t) => /Shows body weight and lifts in pounds or kilograms\. Your notes and saved data stay in lb\./.test(t))).toBe(true);
-    expect(texts.some((t) => /Adjusts your Est\. Max down to the Kilo Max shown in Analytics\./.test(t))).toBe(true);
+    expect(texts.some((t) => /Scales your logged-set strength estimates to produce the Kilo Max shown in Analytics\./.test(t))).toBe(true);
+    // The knob multiplies an average of per-set estimates by 1.00–2.00; it does
+    // not "adjust Est. Max down", so the copy must not claim that direction.
+    expect(texts.some((t) => /Est\. Max down/i.test(t))).toBe(false);
     expect(texts.some((t) => /Deload mode/i.test(t))).toBe(true);
     expect(texts.some((t) => /hidden while a Recovery block is active/i.test(t))).toBe(true);
   });

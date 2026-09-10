@@ -265,7 +265,7 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
         <View style={styles.settingRow}>
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>Fatigue multiplier</Text>
-            <Text style={styles.settingHelp}>Adjusts your Est. Max down to the Kilo Max shown in Analytics. A lower number gives a more conservative Kilo Max. Default 1.07.</Text>
+            <Text style={styles.settingHelp}>Scales your logged-set strength estimates to produce the Kilo Max shown in Analytics. A lower number makes the Kilo Max more conservative. Default 1.07.</Text>
           </View>
           <View style={styles.stepper}>
             <Pressable style={styles.stepperButton} onPress={handleDecrement} accessibilityRole="button" accessibilityLabel="Decrease fatigue multiplier">
