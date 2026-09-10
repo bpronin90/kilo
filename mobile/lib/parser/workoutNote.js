@@ -549,9 +549,7 @@ function _transformExerciseBlocks(rawText, eligibleFlags, onExerciseBlock) {
       continue;
     }
 
-    if (t === '---' ||
-        /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i.test(t) ||
-        t.startsWith('+')) {
+    if (t === '---' || _DAY_RE.test(t) || t.startsWith('+')) {
       flush();
       result.push(line);
       continue;

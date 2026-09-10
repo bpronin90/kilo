@@ -1254,6 +1254,17 @@ describe('parseWorkoutNote — day headings', () => {
     expect(r.sections[0].heading).toBeNull();
     expect(r.sections[0].exercises[0].name).toBe('Bench');
   });
+
+  test('week-skip transforms keep malformed weekday-prefixed exercise content trailing', () => {
+    const note = '-Bench\n135 5\nMondayy felt heavy';
+    const sections = parseWorkoutNote(note).sections;
+    expect(sections.flatMap(section => section.exercises.map(exercise => exercise.name)))
+      .toEqual(['Bench']);
+
+    const skipped = applyWeekSkipToText(note, sections);
+    expect(skipped).toBe('-Bench\n135 5\nMondayy felt heavy\n-');
+    expect(removeWeekSkipFromText(skipped, parseWorkoutNote(skipped).sections)).toBe(note);
+  });
 });
 
 describe('parseWorkoutNote — section headings', () => {
