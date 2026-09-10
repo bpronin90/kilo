@@ -1,5 +1,73 @@
 # Changelog
 
+## 0.131.1 - 2026-09-10
+
+- Issue #1014: Archived the completed zero-friction roadmap, refreshed the documentation index, and updated the prelaunch roadmap to reflect the completed security workflows.
+
+## 0.131.0 - 2026-09-10
+
+- Issue #1010: The progression-suggestion cards on the Log tab's current routine now have a working "Apply to note" action. Applying inserts the suggested target into the current routine and saves it, then shows a clear result for every attempt: confirmation when the target was added, or an explanation that nothing was added when the suggestion no longer applies, a save is still in progress, or the save failed. Applying never dismisses or mutes the suggestion, and a no-op or failed attempt leaves the note text unchanged.
+
+## 0.130.4 - 2026-09-10
+
+- Issue #1006: The idle rest-timer control on the Log screen is now a compact stopwatch in the corner of the current-routine editor instead of a full-width row that floated well above the bottom navigation. Tapping it reveals the same 60, 90, 120, and 180 second choices; tapping one starts that timer and closes the chooser. The control only appears while editing the current routine and no timer is running, and it no longer reserves bottom-navigation clearance. The running countdown and completion banner are unchanged.
+
+## 0.130.3 - 2026-09-10
+
+- Issue #997: Retrying a routine save or import that failed while syncing now finishes the original routine instead of creating a second copy of it, even if you fix the name or the text first, and even after restarting the app.
+
+## 0.130.2 - 2026-09-10
+
+- Issue #993: Run the shared Edge Function module tests (security-event, rate-limit, and health-data-scope) in pull-request and `main` CI, and guard rate-limit event classification with behavioral assertions: an exhausted bucket must emit the subject-attributed throttle event and a limiter outage must emit only `ratelimit.unavailable`.
+
+## 0.130.1 - 2026-09-10
+
+- Issue #989: The app now freezes each routine's working-weight context when its deload is generated and records the witnessed completion boundary when that deload is completed. This post-deload re-entry context is carried additively through local storage, cloud sync (in the existing `deload_history` projection), and lossless backup/restore, so the first working session back can be identified later without rewriting any legacy deload record or canonical workout-note text. No user-facing surface changes yet.
+
+## 0.130.0 - 2026-09-10
+
+- Issue #985: Dark mode is now wired through to the native layer. Light, Dark and System each produce the correct native appearance and System follows a live OS switch; on-screen keyboards, switches and date/time pickers are painted to match the selected theme instead of always rendering light. No screen content, flow or palette changes.
+
+## 0.129.4 - 2026-09-10
+
+- Issue #984: Home now reaches its dashboard faster on app open. The device-storage boundary runs independent reads at the same time instead of one after another, so the launch waits on the slowest value it needs rather than the sum of all of them. Nothing about what Home shows changed: the same four sources still have to resolve before the skeleton is replaced, including the recovery boundary that keeps excluded work out of the totals.
+
+## 0.129.3 - 2026-09-10
+
+- Issue #980: Added an on-device development client for live UI iteration. Preview builds move to runtime preview-7, so existing preview installs must be replaced with a fresh build to keep receiving updates.
+
+## 0.129.2 - 2026-09-10
+
+- Issue #977: Document an explicit human security-review gate for changes that can materially affect authentication, authorization, privacy, data protection, or production security.
+
+## 0.129.1 - 2026-09-10
+
+- Issue #976: Added a lightweight vulnerability-management and security-incident-response runbook for Kilo.
+
+## 0.129.0 - 2026-09-10
+
+- Issue #975: Record classified, pseudonymized security events for server-owned account export, account deletion, and health-data deletion, retain them for 90 days, and alert on authentication abuse, throttling, failed privileged operations, and retention failures.
+
+## 0.128.0 - 2026-09-10
+
+- Issue #961: A progression-suggestion card now has an "Apply to note" action. Applying inserts the suggested target as new note content — a set row under the matching exercise, or a new exercise block written in canonical grammar when the note has no such exercise yet. It never rewrites or deletes an existing line, and a repeated or stale suggestion cannot duplicate or overwrite what you already logged. Canceling, dismissing, muting, or just viewing a suggestion still leaves the note text byte-for-byte unchanged.
+
+## 0.127.0 - 2026-09-10
+
+- Issue #960: Progression suggestions can now be turned on from Settings (default off) and, once on, surface as explainable cards on the Log current-routine view and the Analytics strength section. Each card shows the observed evidence, the heuristic recommendation, and the deterministic explanation from the existing rule engine, and is clearly marked as a conditional prompt rather than a guaranteed prescription. A card can be dismissed for the current view or an exercise can be muted so its suggestions stay hidden in both places until it is unmuted. Nothing here edits, prefills, or rewrites workout-note text — applying a suggestion is still manual.
+
+## 0.126.0 - 2026-09-10
+
+- Issue #957: Share a routine as an on-device summary image with a preview, hidden weights and reps by default, and comments and marks excluded. Numeric details require opt-in for each share; text sharing remains a separate action.
+
+## 0.125.0 - 2026-09-10
+
+- Issue #956: Added a **Copy routine** button beside **Share routine** for the current routine and each saved routine. It copies the full portable routine text — envelope plus the complete stored body, both A/B halves — to the clipboard, with a brief inline confirmation on platforms that do not show their own.
+
+## 0.124.0 - 2026-09-10
+
+- Issue #955: Added More › Import Routine: paste a shared or plain routine, preview exactly what Kilo read from it, and save it as a new routine. Import never overwrites, merges with, or switches your current routine, and text with no exercises cannot be saved.
+
 ## 0.123.2 - 2026-09-05
 
 - Issue #964: Fixed routine ordering in CSV export. Titles now sort by Unicode code point. Previously they were compared as UTF-16 code units, which placed emoji and other astral characters before private-use and other high BMP characters instead of after them.
