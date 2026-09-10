@@ -310,11 +310,13 @@ const createStyles = (colors) => StyleSheet.create({
   errorText: {
     fontSize: 12,
     color: colors.error,
+    marginTop: 4,
   },
   subRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: 4,
   },
   subRowLabel: {
     fontSize: 11,
@@ -341,6 +343,8 @@ const createStyles = (colors) => StyleSheet.create({
   weekdayRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    rowGap: 4,
+    marginTop: 4,
   },
   // The press target is a real box, not a hitSlop — React Native clips a slop
   // at the parent's bounds, so it cannot claim height this one-circle-tall row

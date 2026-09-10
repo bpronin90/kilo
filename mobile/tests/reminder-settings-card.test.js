@@ -140,6 +140,43 @@ describe('ReminderSettingsCard', () => {
     }, [2]);
   });
 
+  // #1018: the reminder sub-elements (weekday grid, time rows, inline errors)
+  // carry one consistent gap from the switch row above them, and the wrapped
+  // weekday grid keeps its two rows apart.
+  describe('sub-element spacing (#1018)', () => {
+    const { StyleSheet } = require('react-native');
+
+    test('the weekday grid is separated from the row above and its wrapped rows do not touch', async () => {
+      let tree;
+      await act(async () => {
+        tree = createCard();
+      });
+      const monday = tree.root.findByProps({ accessibilityLabel: 'Nudge on Monday' });
+      // The grid container is the Monday chip's parent row.
+      const row = tree.root.findAll((n) => n.type === 'View'
+        && n.findAll((c) => c.props?.accessibilityLabel === 'Nudge on Monday').length > 0
+        && (StyleSheet.flatten(n.props.style) || {}).flexWrap === 'wrap')[0];
+      const style = StyleSheet.flatten(row.props.style) || {};
+      expect(style.marginTop).toBe(4);
+      expect(style.rowGap).toBe(4);
+      expect(monday).toBeTruthy();
+    });
+
+    test('an enabled reminder time row carries the same gap', async () => {
+      Storage.loadWeighInReminder.mockResolvedValue({ enabled: true, hour: 8, minute: 0 });
+      let tree;
+      await act(async () => {
+        tree = createCard();
+      });
+      const timeButton = tree.root.findByProps({ accessibilityLabel: 'Weigh-in reminder time' });
+      const subRow = tree.root.findAll((n) => n.type === 'View'
+        && n.findAll((c) => c.props?.accessibilityLabel === 'Weigh-in reminder time').length > 0
+        && (StyleSheet.flatten(n.props.style) || {}).justifyContent === 'space-between')[0];
+      expect((StyleSheet.flatten(subRow.props.style) || {}).marginTop).toBe(4);
+      expect(timeButton).toBeTruthy();
+    });
+  });
+
   describe('reconciliation wiring (#590 / PR #649 review)', () => {
     test('displays the inferred weekdays reconcileWorkoutReminder reports on mount', async () => {
       setReconciled({ enabled: true, hour: 17, minute: 0, fallbackWeekdays: [] }, [2, 4]);

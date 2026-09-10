@@ -228,3 +228,62 @@ describe('Settings unit selector', () => {
     expect(mockSaveProfile).not.toHaveBeenCalled();
   });
 });
+
+// #1018: the Appearance and Weight unit selectors share one compact segmented
+// style — a transparent ≥44dp target box around a compact visible pill — and
+// the explanatory copy is plain language (Theme has none at all).
+describe('More settings polish (#1018)', () => {
+  const { StyleSheet } = require('react-native');
+
+  async function renderSettings() {
+    let component;
+    await act(async () => {
+      component = renderer.create(
+        <SettingsScreen onBack={() => {}} multiplier={1.07} onUpdate={() => {}} />
+      );
+    });
+    return component;
+  }
+
+  function tab(root, label) {
+    return root.findAll((n) => n.props?.accessibilityLabel === label && typeof n.props?.onPress === 'function')[0];
+  }
+
+  test.each([
+    'Show weights in pounds',
+    'Show weights in kilograms',
+    'Use the light appearance',
+    'Follow the device appearance',
+  ])('%s is a ≥44dp target box with no pill-height stretch and no visual on the target itself', async (label) => {
+    const component = await renderSettings();
+    const pressable = tab(component.root, label);
+    const style = StyleSheet.flatten(pressable.props.style) || {};
+
+    expect(style.minHeight).toBe(44);
+    expect(style.minWidth).toBe(44);
+    // The visible treatment lives on the inner pill, not the target.
+    expect(style.backgroundColor).toBeUndefined();
+    expect(style.borderWidth).toBeUndefined();
+
+    const pill = pressable.findAll(
+      (n) => n.type === 'View' && (StyleSheet.flatten(n.props.style) || {}).paddingVertical === 6
+    )[0];
+    expect(pill).toBeTruthy();
+    const pillStyle = StyleSheet.flatten(pill.props.style) || {};
+    // Compact: the pill is padded, not forced to the target height.
+    expect(pillStyle.minHeight).toBeUndefined();
+    expect(pillStyle.height).toBeUndefined();
+    expect(pillStyle.borderRadius).toBe(8);
+  });
+
+  test('Theme has no explanatory line; Weight unit and Fatigue multiplier read plainly', async () => {
+    const component = await renderSettings();
+    const texts = allTexts(component.root);
+    expect(texts).toContain('Theme');
+    expect(texts.some((t) => /follow your device/i.test(t) || /Applies everywhere/i.test(t))).toBe(false);
+    expect(texts.some((t) => /Shows body weight and lifts in pounds or kilograms\. Your notes and saved data stay in lb\./.test(t))).toBe(true);
+    expect(texts.some((t) => /Adjusts your Est\. Max down to the Kilo Max shown in Analytics\./.test(t))).toBe(true);
+    expect(texts.some((t) => /Deload mode/i.test(t))).toBe(true);
+    expect(texts.some((t) => /hidden while a Recovery block is active/i.test(t))).toBe(true);
+  });
+});

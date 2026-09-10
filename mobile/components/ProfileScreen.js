@@ -227,21 +227,25 @@ export function ProfileScreen({ onBack }) {
           <View style={styles.unitToggle}>
             <Pressable
               onPress={() => setHeightUnit('ft')}
-              style={[styles.unitTab, heightUnit === 'ft' && styles.unitTabActive]}
+              style={styles.unitTab}
               accessibilityRole="button"
               accessibilityState={{ selected: heightUnit === 'ft' }}
               accessibilityLabel="Enter height in feet and inches"
             >
-              <Text style={[styles.unitTabText, heightUnit === 'ft' && styles.unitTabTextActive]} accessible={false}>ft/in</Text>
+              <View style={[styles.unitPill, heightUnit === 'ft' && styles.unitPillActive]}>
+                <Text style={[styles.unitTabText, heightUnit === 'ft' && styles.unitTabTextActive]} accessible={false}>ft/in</Text>
+              </View>
             </Pressable>
             <Pressable
               onPress={() => setHeightUnit('cm')}
-              style={[styles.unitTab, heightUnit === 'cm' && styles.unitTabActive]}
+              style={styles.unitTab}
               accessibilityRole="button"
               accessibilityState={{ selected: heightUnit === 'cm' }}
               accessibilityLabel="Enter height in centimeters"
             >
-              <Text style={[styles.unitTabText, heightUnit === 'cm' && styles.unitTabTextActive]} accessible={false}>cm</Text>
+              <View style={[styles.unitPill, heightUnit === 'cm' && styles.unitPillActive]}>
+                <Text style={[styles.unitTabText, heightUnit === 'cm' && styles.unitTabTextActive]} accessible={false}>cm</Text>
+              </View>
             </Pressable>
           </View>
         </View>
@@ -467,27 +471,31 @@ const createStyles = (colors) => StyleSheet.create({
   toggleButtonTextActive: {
     color: colors.onAccent,
   },
+  // Compact segmented selector, shared visually with Settings' Appearance and
+  // Weight unit controls (#1018). The pressable is a transparent ≥44dp target
+  // box (§15); the visible pill inside it stays compact and never stretches to
+  // the target height.
   unitToggle: {
     flexDirection: 'row',
-    backgroundColor: colors.inputBackground,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    overflow: 'hidden',
+    gap: 4,
   },
-  // Matches the Settings segmented tabs: the box itself grows to the 44dp
-  // minimum, since the toggle sits inline in a row with nothing above or
-  // below it to collide with (#904).
   unitTab: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
     minHeight: 44,
     minWidth: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  unitTabActive: {
+  unitPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.inputBackground,
+  },
+  unitPillActive: {
     backgroundColor: colors.accent,
+    borderColor: colors.accent,
   },
   unitTabText: {
     fontSize: 12,
