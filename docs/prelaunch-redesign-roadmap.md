@@ -23,7 +23,7 @@ release. It is therefore **deferred until after production launch**.
 - `docs/design/analog-iron-v0.125/migration-audit.md` — the repo-grounded audit
   and the 14 implementation card drafts. Owner-approved.
 - `docs/design/analog-iron-v0.125/` — the approved visual handoff.
-- `docs/play-store-readiness.md` — launch checklist. **Partly stale; see P1.**
+- `docs/play-store-readiness.md` — current launch checklist.
 - Existing app behavior and tests are authoritative wherever a document,
   screenshot or audit claim conflicts with them.
 
