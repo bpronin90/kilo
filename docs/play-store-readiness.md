@@ -6,20 +6,22 @@ policy and every Play Console value before release.
 Status key: **done** | **user-action-pending** | **blocked**
 
 Package: `com.benpronin.kilo`  
-Account type: Personal developer account (subject to closed-testing requirement before production access)
+Account type: Personal developer account (closed testing completed; production access approved)
 
 ---
 
 ## Closed Testing Requirement
 
-Google requires personal developer accounts to complete a closed test before applying for production access.
+The required closed test is complete and Google Play production access has been
+approved. Preserve this section as the release-readiness record; it is not an
+outstanding launch task.
 
 | Item | Status |
 |---|---|
-| Create a closed testing track in Play Console | user-action-pending |
-| Add ≥12 testers and share opt-in link | user-action-pending |
-| Testers opt in and remain active for 14 continuous days | user-action-pending |
-| Apply for production access after 14-day window | user-action-pending |
+| Create a closed testing track in Play Console | done |
+| Add ≥12 testers and share opt-in link | done |
+| Testers opt in and remain active for 14 continuous days | done |
+| Apply for and receive production access | done |
 
 ---
 

@@ -24,7 +24,10 @@ Progression suggestions are an opt-in feature (off by default, enabled from
 Settings). When on, the deterministic rule engine's double-progression prompts
 appear as explainable, dismissible cards on the Log current-routine view and the
 Analytics strength section, each marked as a heuristic rather than a guaranteed
-prescription and each mutable per exercise. They never modify workout-note text.
+prescription and each mutable per exercise. Workout-note text changes only when
+the user explicitly applies a suggestion; viewing, dismissing, muting, or
+disabling suggestions does not change a note.
+
 - **More** contains profile, settings, reminders, backup/import, account, cloud
   sync, help, and product information.
 

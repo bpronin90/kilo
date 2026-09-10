@@ -12,7 +12,7 @@ set -euo pipefail
 # [functions.health-data-delete]); the CLI reads that config during deploy
 # so the setting cannot silently regress to the default of true.
 #
-# The unrelated anime function is not deployed by this script.
+# Only the Kilo-owned functions listed below are deployed by this script.
 
 readonly PROJECT_REF="ogzhnscdqcdrhfqcobuv"
 readonly FUNCTIONS=(account-export account-delete health-data-delete)
