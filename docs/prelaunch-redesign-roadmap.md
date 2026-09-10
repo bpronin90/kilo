@@ -37,14 +37,12 @@ a behavior change.
 
 ## Phase 1 — Ship `1.0.0`
 
-Everything here is a genuine release gate. Nothing here is styling.
+Unresolved items here are genuine release gates. Nothing here is styling.
 
-### P1. Correct the stale launch checklist
-`docs/play-store-readiness.md` still lists all four closed-testing rows as
-`user-action-pending`, including the 14-day window and the production-access
-application. Closed testing is complete. The document is a living doc and is
-currently misleading — it caused exactly one wrong conclusion during planning.
-Correct it and re-verify which store-listing assets genuinely remain outstanding.
+### P1. Correct the stale launch checklist — **RESOLVED (2026-09-09)**
+`docs/play-store-readiness.md` now records closed testing and production access
+as complete while retaining the genuinely outstanding Play Console declarations,
+listing assets, release-build checks, and API 36 blocker.
 
 ### P2. Home first-paint delay — [#984](https://github.com/bpronin90/kilo/issues/984)
 Home waits on four data sources and renders at the speed of the slowest, on every
