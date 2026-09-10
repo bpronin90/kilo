@@ -50,6 +50,16 @@ function pressableByLabel(root, label) {
   return root.findAll(n => n.props && n.props.accessibilityLabel === label && typeof n.props.onPress === 'function')[0];
 }
 
+// #1021: Edit/Copy/Share/Share-as-Image on the CURRENT routine card (only —
+// LogPreviousRoutines' saved-routine controls are unaffected) now live behind
+// its consolidated three-dot menu (`accessibilityLabel: "Routine actions"`).
+// Open it before reaching any of those controls, exactly as a real tap on the
+// trigger would.
+function openMenu(root) {
+  const trigger = pressableByLabel(root, 'Routine actions');
+  render.act(() => { trigger.props.onPress({ stopPropagation: jest.fn() }); });
+}
+
 describe('routine share envelope', () => {
   test('build composes marker, title, date, blank separator, then the body verbatim', () => {
     const text = buildRoutineShareText({ title: 'Upper/Lower A', rawText: ROUTINE, exportedAt: new Date(2026, 8, 5) });
@@ -248,6 +258,7 @@ describe('Share Routine is reachable from the current and saved routines', () =>
         />
       );
     });
+    openMenu(component.root);
     const share = pressableByLabel(component.root, 'Share routine');
     render.act(() => { share.props.onPress({ stopPropagation: jest.fn() }); });
     expect(onShareRoutine).toHaveBeenCalledWith({ title: 'Current', rawText: ROUTINE });
@@ -281,6 +292,7 @@ describe('Share Routine is reachable from the current and saved routines', () =>
         />
       );
     });
+    openMenu(component.root);
     const share = pressableByLabel(component.root, 'Share routine');
     render.act(() => { share.props.onPress({ stopPropagation: jest.fn() }); });
     expect(onShareRoutine).toHaveBeenCalledWith({ title: 'Current', rawText: AB_ROUTINE });

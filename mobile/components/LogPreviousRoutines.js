@@ -1,24 +1,23 @@
-// Routine management (#724, flattened #823, redesigned #843, recontained #847):
-// the non-current routines and their management actions live behind a
-// collapsed-by-default disclosure so the active routine stays the dominant
-// Log surface. The count and the create-routine affordance are OUTSIDE the
-// disclosure entirely — `More Routines · {count}` is always visible,
-// expanded or collapsed, alongside a persistent `New routine` control, so
-// neither ever depends on the collection's own open state.
+// Routine management (#724, flattened #823, redesigned #843, recontained #847,
+// decollapsed #1021): the non-current routines and their management actions
+// are always listed naturally under the section header — `More Routines ·
+// {count}` alongside a persistent `New routine` control.
 //
 // #847 removes the enclosing "More Routines panel" (#843's single
 // card-equivalent surface with a tinted header and a flat divided row list)
 // and returns non-current routines to individually rounded, quietly bordered
 // `Card` surfaces — the pre-#843 hierarchy — so the Current routine stays the
-// singular, highly highlighted note by comparison. The collection disclosure
-// itself is now a lightweight text-plus-glyph control beside the section
-// header, modeled on Analytics -> Progressive Overload's bulk expand/collapse
-// control (AnalyticsScreen.js's `collapseAllButton`), not a bordered panel
-// header. `Set as current routine` stays reachable only from a row's own
-// expanded body.
+// singular, highly highlighted note by comparison. `Set as current routine`
+// stays reachable only from a row's own expanded body.
 //
-// The disclosure's open/closed state is owned by LogScreen (#775) — see the
-// `expanded`/`onToggleExpanded` props below.
+// #1021 removes the collection-level Show/Hide Routines disclosure that used
+// to gate this whole list behind a collapsed-by-default toggle (#724/#775).
+// Non-current cards are now always rendered; each card keeps its own
+// independent per-card collapsed/expanded body exactly as before — only the
+// outer collection-wide wrapper is gone. LogScreen no longer owns a
+// collection-expanded flag or a reveal-nonce for this component; a
+// navigation intent that targets a non-current note needs no "expand the
+// disclosure" step because there is no disclosure left to expand.
 //
 // #847 owner-authorized exception to the Log tab's style lock, scoped to this
 // file. The Current routine card remains locked.
@@ -95,8 +94,6 @@ export function LogPreviousRoutines({
   viewingActiveText,
   onExerciseSourceJump,
   recoveryWeekNumberByNoteId = {},
-  expanded = false,
-  onToggleExpanded,
   // #954 Share Routine. Injectable only so tests can observe the composed
   // payload; the app uses the module's own notice-then-share flow.
   onShareRoutine,
@@ -104,7 +101,6 @@ export function LogPreviousRoutines({
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const [imageShare, setImageShare] = useState(null);
-  const toggleExpanded = () => onToggleExpanded?.();
   // Double-tap the viewed routine body to open it in the editor (matches main).
   const viewingNoteLastTapRef = useRef(0);
   const handleViewedNoteBodyPress = () => {
@@ -180,30 +176,10 @@ export function LogPreviousRoutines({
         </Pressable>
       </View>
 
-      {/* The collection disclosure (#847): compact text plus glyph, modeled
-          on Analytics -> Progressive Overload's bulk expand/collapse control
-          — no enclosing panel surface or tinted bar of its own. Its label
-          names what it reveals (the routine collection), never implying that
-          every individual note body opens with it. */}
-      <Pressable
-        onPress={toggleExpanded}
-        style={styles.disclosureToggle}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        accessibilityRole="button"
-        accessibilityLabel={expanded ? 'Hide routines' : 'Show routines'}
-        accessibilityState={{ expanded }}
-      >
-        <Text style={styles.disclosureToggleText}>{expanded ? 'Hide routines' : 'Show routines'}</Text>
-        <MaterialIcons
-          name={expanded ? 'unfold-less' : 'unfold-more'}
-          size={16}
-          color={colors.textMuted}
-          accessible={false}
-        />
-      </Pressable>
-
-      {expanded && (
-        <View style={styles.cardList}>
+      {/* #1021: no collection-level disclosure — every non-current routine is
+          always listed here. Each card keeps its own independent
+          collapsed/expanded body below (`isViewedOther`), unchanged. */}
+      <View style={styles.cardList}>
           {sortedNotes.map((other) => {
             // Same rule as LogActiveRoutineCard (#738 review): an explicit
             // accessibilityLabel replaces the label VoiceOver would otherwise derive
@@ -357,8 +333,7 @@ export function LogPreviousRoutines({
               </Card>
             );
           })}
-        </View>
-      )}
+      </View>
     </View>
   );
 }
@@ -395,23 +370,6 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: colors.accentText,
-  },
-  // Lightweight collection disclosure (#847): compact text plus glyph, muted
-  // ink, 44dp target — no bordered panel or tinted bar of its own, matching
-  // Analytics -> Progressive Overload's `collapseAllButton`.
-  disclosureToggle: {
-    flexDirection: 'row',
-    alignSelf: 'flex-start',
-    alignItems: 'center',
-    gap: 4,
-    minHeight: 44,
-  },
-  disclosureToggleText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
   // Individual quiet rounded cards (#847), pre-#843 hierarchy: separated by
   // normal shell spacing, no shared outer panel or divided-list chrome.

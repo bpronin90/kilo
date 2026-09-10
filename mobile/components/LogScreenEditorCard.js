@@ -422,6 +422,12 @@ export function LogScreenEditorCard({
   handleCurrentTextChange,
   handleSaveOtherNote,
   handleSave,
+  // #1021: the secondary "Import routine" action rendered near/below Save on
+  // the New Routine editor. Opens the existing routine-import preview
+  // (`RoutineImportScreen`) — LogScreen owns that surface and this card only
+  // triggers it, the same relationship it already has with every other
+  // cross-cutting action here (delete, adopt, switch-current).
+  onImportRoutine,
   noteIsSaving,
   handleSwitchCurrent,
   handleDeleteDeloadNoteFromEditor,
@@ -1223,12 +1229,29 @@ export function LogScreenEditorCard({
               // possible cloud enqueue, with nothing cached yet), so it must
               // show the in-flight state too — not just a disabled button
               // with no indication of what it's doing.
-              <Button
-                onPress={editingNoteId ? handleSaveOtherNote : handleSave}
-                title="Save"
-                disabled={editingNoteId ? noteIsSaving : isSaving}
-                style={styles.saveButton}
-              />
+              <>
+                <Button
+                  onPress={editingNoteId ? handleSaveOtherNote : handleSave}
+                  title="Save"
+                  disabled={editingNoteId ? noteIsSaving : isSaving}
+                  style={styles.saveButton}
+                />
+                {/* #1021: secondary path for a brand-new routine — paste a
+                    shared routine instead of typing one from scratch. Opens
+                    the existing import preview; nothing here is saved until
+                    that screen's own explicit create action. */}
+                {typeof onImportRoutine === 'function' && (
+                  <Pressable
+                    onPress={onImportRoutine}
+                    style={styles.importRoutineButton}
+                    accessibilityRole="button"
+                    accessibilityLabel="Import routine"
+                    accessibilityHint="Opens a preview to paste and save a shared routine"
+                  >
+                    <Text style={styles.importRoutineButtonText}>Import routine</Text>
+                  </Pressable>
+                )}
+              </>
             ) : null}
             <SaveStatusRegion status={saveStatus} savedLabel={saveSuccess || undefined} />
             {/* A failed write must be visible where the write was asked for.
@@ -1292,8 +1315,10 @@ export function LogScreenEditorCard({
 }
 
 const createStyles = (colors) => StyleSheet.create({
+  // #1021: tightened from 16 — the New Routine editor's top-level rows sat
+  // further apart than the content inside any one of them needed.
   editContainer: {
-    gap: 16,
+    gap: 12,
   },
   input: {
     backgroundColor: colors.inputBackground,
@@ -1306,7 +1331,7 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.text,
   },
   titleInput: {
-    marginBottom: 12,
+    marginBottom: 8,
     fontWeight: '700',
   },
   editorInput: {
@@ -1331,7 +1356,21 @@ const createStyles = (colors) => StyleSheet.create({
     includeFontPadding: false,
   },
   saveButton: {
-    marginTop: 12,
+    marginTop: 8,
+  },
+  // #1021: the secondary Import routine action, near/below Save — a quiet
+  // text-only affordance so Save stays the one prominent control for a
+  // brand-new routine.
+  importRoutineButton: {
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  importRoutineButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.accentText,
   },
   // Empty-note seed example (#785). A tinted block matching the syntax-help
   // code block styling (§4: no nested Card), tappable at minHeight 44.
@@ -1497,8 +1536,8 @@ const createStyles = (colors) => StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.error,
     borderRadius: 24,
-    padding: 18,
-    gap: 12,
+    padding: 16,
+    gap: 10,
   },
   dangerZoneHeading: {
     flexDirection: 'row',

@@ -1416,10 +1416,21 @@ const findPressableByText = (root, text) => {
   return null;
 };
 
-// Routine management is collapsed by default (#724): the routine cards, `+ New
-// routine`, and the relocated `Start recovery block` control render only once
-// the "More Routines" disclosure is expanded. Tests that drive those controls
-// open it first via the whole-header press target.
+// #1021: Edit, Copy, Share, and Share as Image on the CURRENT routine card
+// live behind its consolidated three-dot menu now (`accessibilityLabel:
+// "Routine actions"`), not as standalone pills. Tests that need one of those
+// items open the menu first via this helper.
+const openCurrentRoutineMenu = (root) => {
+  const trigger = root.findAll(
+    n => n.props && n.props.accessibilityLabel === 'Routine actions' && typeof n.props.onPress === 'function'
+  )[0];
+  render.act(() => { trigger.props.onPress({ stopPropagation: jest.fn() }); });
+};
+
+// Routine management renders its non-current cards unconditionally (#1021):
+// the collection-level Show/Hide Routines disclosure this used to expand is
+// gone. Kept as a no-op passthrough so call sites that still name this step
+// (many, across this file) do not need individual rewrites.
 const expandRoutineManagement = (root) => {
   const header = root.findAll(
     n => n.props
@@ -1896,7 +1907,8 @@ describe('explicit editor rollback: integration tests (#851)', () => {
 
     const root = component.root;
 
-    // Find edit button pressable
+    // #1021: Edit now lives behind the current-routine card's three-dot menu.
+    openCurrentRoutineMenu(root);
     const editButton = findPressableByText(root, 'Edit');
     expect(editButton).toBeTruthy();
     render.act(() => {
@@ -2011,7 +2023,8 @@ describe('explicit editor rollback: integration tests (#851)', () => {
 
     const root = component.root;
 
-    // Find edit button pressable
+    // #1021: Edit now lives behind the current-routine card's three-dot menu.
+    openCurrentRoutineMenu(root);
     const editButton = findPressableByText(root, 'Edit');
     expect(editButton).toBeTruthy();
     render.act(() => {
@@ -3777,10 +3790,13 @@ describe('LogActiveRoutineCard: header collapses, body edits (separate handlers)
     expect(props.toggleCollapsed).not.toHaveBeenCalled();
   });
 
-  test('the explicit Edit control in the action strip enters the editor', () => {
+  // #1021: Edit lives inside the card's consolidated three-dot menu now.
+  test('the Edit menu item behind the three-dot menu enters the editor', () => {
     const { root, props } = renderCard();
+    const menuTrigger = root.findAll(n => n.props && n.props.accessibilityLabel === 'Routine actions')[0];
+    render.act(() => { menuTrigger.props.onPress({ stopPropagation: jest.fn() }); });
     const editBtn = pressableAround(root, t => t === 'Edit');
-    expect(editBtn.props.accessibilityRole).toBe('button');
+    expect(editBtn.props.accessibilityRole).toBe('menuitem');
     expect(editBtn.props.accessibilityLabel).toBe('Edit routine');
     render.act(() => { editBtn.props.onPress({ stopPropagation: jest.fn() }); });
     expect(props.enterCurrentEditor).toHaveBeenCalledTimes(1);
@@ -3876,18 +3892,47 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     const wrapRows = findStyled(root, s => s.flexWrap === 'wrap');
     expect(wrapRows.length).toBeGreaterThan(0);
 
-    const pills = findStyled(root, s => s.minHeight === 44);
-    expect(pills.length).toBe(6); // Edit + Week A/B + Share + Copy + Share as Image + Skip week/Remove skip
+    // #1021: Edit, Share, Copy, and Share as Image consolidated into the
+    // three-dot menu, leaving Week A/B and Skip week/Remove skip as the only
+    // shrinkable 44dp pills always in the strip.
+    const pills = findStyled(root, s => s.minHeight === 44 && s.flexShrink === 1);
+    expect(pills.length).toBe(2); // Week A/B + Skip week/Remove skip
     for (const pill of pills) {
       const style = flatStyle(pill);
       expect(style.justifyContent).toBe('center');
-      expect(style.flexShrink).toBe(1);
     }
 
     // gap:12 minus hitSlop's top+bottom (or left+right) must leave >=4dp of
     // effective separation between two pills stacked on wrapped lines.
-    const editPill = pressableAround(root, t => t === 'Edit');
-    expect(editPill.props.hitSlop).toEqual({ top: 4, bottom: 4, left: 4, right: 4 });
+    const weekPill = pressableAround(root, t => t === 'Week A' || t === 'Week B');
+    expect(weekPill.props.hitSlop).toEqual({ top: 4, bottom: 4, left: 4, right: 4 });
+
+    // The consolidated menu trigger is icon-only, 44dp, and not an oversized
+    // visible pill — no visible text, no fill/border chrome to compete with
+    // the Week A/B switch beside it.
+    const menuTrigger = root.findAll(n => n.props && n.props.accessibilityLabel === 'Routine actions')[0];
+    expect(menuTrigger).toBeTruthy();
+    expect(flatStyle(menuTrigger).minHeight).toBe(44);
+    expect(flatStyle(menuTrigger).minWidth).toBe(44);
+    expect(menuTrigger.props.accessibilityState).toEqual({ expanded: false });
+
+    // Edit, Copy, Share, and Share as Image only render once the menu opens —
+    // Copy and Share stay distinct actions inside it, never merged.
+    expect(root.findAll(n => n.props && n.props.accessibilityRole === 'menuitem').length).toBe(0);
+    render.act(() => { menuTrigger.props.onPress({ stopPropagation: jest.fn() }); });
+    // A Pressable's props (including accessibilityRole/Label) land on both the
+    // component and the host node(s) it renders, so dedupe before comparing.
+    const menuItemLabels = [...new Set(
+      root
+        .findAll(n => n.props && n.props.accessibilityRole === 'menuitem')
+        .map(n => n.props.accessibilityLabel)
+    )];
+    expect(menuItemLabels).toEqual([
+      'Edit routine',
+      `Copy routine ${LONG_TITLE}`,
+      'Share routine',
+      'Share routine as image',
+    ]);
   });
 
   test('LogPreviousRoutines: the header holds identity only; the expanded body carries the controls', () => {
@@ -3983,7 +4028,10 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     }
   });
 
-  test('LogPreviousRoutines: a collapsed More Routines list renders only the disclosure toggle and a New Note affordance (#756)', () => {
+  // #1021: the collection-level disclosure this pinned is gone — every
+  // non-current card is always listed, alongside the always-visible count
+  // and `New routine` affordance.
+  test('LogPreviousRoutines: the list renders its cards and a New Note affordance with no collection-level toggle (#756, #1021)', () => {
     const notes = [
       { id: 'r1', title: 'Routine One', raw_text: 'MONDAY\n-Squat 3x5\n', saved_at: '2026-01-01T00:00:00.000Z' },
       { id: 'r2', title: 'Routine Two', raw_text: 'MONDAY\n-Bench 3x5\n', saved_at: '2026-01-02T00:00:00.000Z' },
@@ -4010,40 +4058,22 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     });
     const root = component.root;
 
-    // Collapsed routine management (#724, redesigned #843, recontained #847)
-    // still hides the routine cards and every row-level management action
-    // behind the disclosure, but the count and the `New routine` affordance
-    // live outside it entirely — always visible, not gated by the
-    // disclosure's own open state, and a sibling of the toggle rather than
-    // its child (PR #760 review).
-    const toggle = root.findAll(
-      n => n.props && n.props.accessibilityLabel === 'Show routines'
-        && typeof n.props.onPress === 'function'
-    )[0];
-    expect(toggle).toBeTruthy();
-    expect(toggle.props.accessibilityState).toEqual({ expanded: false });
+    // No collection-level disclosure toggle exists any more.
+    expect(root.findAll(
+      n => n.props && (n.props.accessibilityLabel === 'Show routines' || n.props.accessibilityLabel === 'Hide routines')
+    ).length).toBe(0);
+
     const newRoutine = root.findAll(
       n => n.props && n.props.accessibilityLabel === 'New routine' && typeof n.props.onPress === 'function'
     )[0];
     expect(newRoutine).toBeTruthy();
-
-    // Pressing it neither expands the disclosure nor mounts routine cards —
-    // it calls straight through to handleCreateRoutine.
     render.act(() => { newRoutine.props.onPress({ stopPropagation: jest.fn() }); });
     expect(handleCreateRoutine).toHaveBeenCalledTimes(1);
-    expect(root.findAll(
-      n => n.props && n.props.accessibilityLabel === 'Hide routines'
-    ).length).toBe(0);
 
-    // No routine card is mounted and no other management action exists while
-    // collapsed.
-    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Routine One').length).toBe(0);
-    for (const label of ['Start recovery block', 'Set as current routine', 'Edit routine', 'Delete routine']) {
-      expect(root.findAll(n => n.type === 'Text' && n.props.children === label).length).toBe(0);
-    }
-
-    // The count is `More Routines · {count}` (#843), always visible, with no
-    // "Latest:" naming one routine over the others.
+    // Both non-current cards are always listed, collapsed to their own
+    // per-card body (no "Latest:" naming one routine over the others).
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Routine One').length).toBe(1);
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Routine Two').length).toBe(1);
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'More Routines · 2').length).toBe(1);
     expect(root.findAll(
       n => n.type === 'Text' && Array.isArray(n.props.children) && n.props.children[0] === 'Latest: '
@@ -4071,27 +4101,21 @@ describe('LogPreviousRoutines: quiet note-card containment (#847)', () => {
     handleDeleteRoutine: jest.fn(),
     handleCreateRoutine: jest.fn(),
   };
-  const render_ = (expanded) => {
+  const render_ = () => {
     let component;
     render.act(() => {
       component = render.create(
-        <ControlledPreviousRoutines {...baseProps} expanded={expanded} />
+        <ControlledPreviousRoutines {...baseProps} />
       );
     });
     return component.root;
   };
   const flat = (n) => Object.assign({}, ...(Array.isArray(n.props.style) ? n.props.style : [n.props.style]).filter(Boolean));
 
-  test('collapsed, no routine card and no enclosing panel-style surface render at all', () => {
-    const root = render_(false);
-    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Routine One').length).toBe(0);
-    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Routine Two').length).toBe(0);
-    // No tinted, bordered panel-equivalent surface is mounted while collapsed.
-    expect(root.findAll(n => n.props && n.props.style && flat(n).backgroundColor === LightColors.subtleBg).length).toBe(0);
-  });
-
-  test('expanded, each routine renders as its own bordered, rounded card — not one shared panel', () => {
-    const root = render_(true);
+  // #1021: no collection-level disclosure any more — every non-current
+  // routine is always listed, with no enclosing panel-style surface.
+  test('every routine renders as its own bordered, rounded card — not one shared panel', () => {
+    const root = render_();
     // Two separate rounded, bordered surfaces, one per routine — not a single
     // enclosing panel wrapping a flat divided list.
     const cards = root.findAll(n => typeof n.type === 'string' && n.props && n.props.style && flat(n).borderRadius === 24 && flat(n).overflow === 'hidden');
@@ -4112,17 +4136,13 @@ describe('LogPreviousRoutines: quiet note-card containment (#847)', () => {
     expect(root.findAll(n => n.props && n.props.style && flat(n).backgroundColor === LightColors.subtleBg).length).toBe(0);
   });
 
-  test('the collection disclosure is a lightweight text-plus-glyph control, not a bordered panel header', () => {
-    const root = render_(false);
-    const toggle = root.findAll(n => n.props && n.props.accessibilityLabel === 'Show routines')[0];
-    expect(toggle).toBeTruthy();
-    const style = flat(toggle);
-    // No panel-equivalent chrome on the toggle itself: no border, no tinted
-    // background, no rounded card radius.
-    expect(style.backgroundColor).toBeUndefined();
-    expect(style.borderWidth).toBeUndefined();
-    expect(style.borderRadius).toBeUndefined();
-    expect(style.minHeight).toBeGreaterThanOrEqual(44);
+  // #1021: the collection disclosure this pinned is gone outright — every
+  // non-current card is always listed, with no toggle to test.
+  test('the routines render with no collection-level toggle or panel header', () => {
+    const root = render_();
+    expect(root.findAll(
+      n => n.props && (n.props.accessibilityLabel === 'Show routines' || n.props.accessibilityLabel === 'Hide routines')
+    ).length).toBe(0);
   });
 });
 
@@ -4342,7 +4362,7 @@ describe('LogPreviousRoutines: compact New Note and set-current actions (#756)',
     return { root: component.root, props };
   };
 
-  test('the header New Note affordance calls handleCreateRoutine without toggling the disclosure', () => {
+  test('the header New Note affordance calls handleCreateRoutine and does not disturb the always-listed routines', () => {
     const { root, props } = renderList();
     const headerButton = root.findAll(
       n => n.props && n.props.accessibilityLabel === 'New routine' && typeof n.props.onPress === 'function'
@@ -4351,9 +4371,9 @@ describe('LogPreviousRoutines: compact New Note and set-current actions (#756)',
 
     render.act(() => { headerButton.props.onPress({ stopPropagation: jest.fn() }); });
     expect(props.handleCreateRoutine).toHaveBeenCalledTimes(1);
-    // Still collapsed: the disclosure toggle was not fired by the nested press.
-    const toggle = root.findAll(n => n.props && n.props.accessibilityLabel === 'Show routines')[0];
-    expect(toggle).toBeTruthy();
+    // #1021: no disclosure left to disturb — both routines are still listed.
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Routine One').length).toBe(1);
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Routine Two').length).toBe(1);
   });
 
   // The icon-only per-row quick action is gone (#843): `Set as current
@@ -4552,13 +4572,6 @@ describe('LogPreviousRoutines: collapsed routine management (#724)', () => {
       n => n.type === 'Text' && Array.isArray(n.props.children) && n.props.children[0] === 'Latest: '
     ).length;
 
-  const headerFor = (root) => root.findAll(
-    n => n.props
-      && (n.props.accessibilityLabel === 'Show routines'
-        || n.props.accessibilityLabel === 'Hide routines')
-      && typeof n.props.onPress === 'function'
-  )[0];
-
   test('zero non-current routines: a plural-zero count, no latest line, and the New routine control always reachable (#836, #843)', () => {
     const root = renderList({ otherNotes: [] });
     expect(countText(root)).toEqual(['More Routines · 0']);
@@ -4584,37 +4597,13 @@ describe('LogPreviousRoutines: collapsed routine management (#724)', () => {
     expect(latestLineCount(root)).toBe(0);
   });
 
-  test('the header toggles expansion and announces its state; the count and New routine stay visible either way (#836, #843)', () => {
+  // #1021: no collection-level disclosure left — the routine and the New
+  // routine control are simply always there, with the count staying accurate.
+  test('a non-current routine and the New routine control are always listed, with an accurate count (#836, #843, #1021)', () => {
     const root = renderList({ otherNotes: [{ id: 'r1', title: 'One', updated_at: '2026-01-01T00:00:00.000Z' }] });
-    expect(headerFor(root).props.accessibilityState).toEqual({ expanded: false });
     expect(countText(root)).toEqual(['More Routines · 1']);
     expect(findPressableByText(root, 'New routine')).toBeTruthy();
-
-    render.act(() => { headerFor(root).props.onPress(); });
-    expect(headerFor(root).props.accessibilityState).toEqual({ expanded: true });
-    expect(findPressableByText(root, 'New routine')).toBeTruthy();
-    // Unlike the former in-header summary, the count lives outside the
-    // disclosure entirely now, so it is unaffected by expansion.
-    expect(countText(root)).toEqual(['More Routines · 1']);
-
-    render.act(() => { headerFor(root).props.onPress(); });
-    expect(headerFor(root).props.accessibilityState).toEqual({ expanded: false });
-    expect(countText(root)).toEqual(['More Routines · 1']);
-  });
-
-  test('the disclosure header keeps a 44dp touch target when collapsed-empty and when expanded (#724 review)', () => {
-    const flat = (node) => (Array.isArray(node.props.style)
-      ? Object.assign({}, ...node.props.style.filter(Boolean))
-      : node.props.style) || {};
-
-    // Collapsed with zero routines — the sparsest header — still ≥44dp.
-    const empty = renderList({ otherNotes: [] });
-    expect(flat(headerFor(empty)).minHeight).toBeGreaterThanOrEqual(44);
-
-    // Expanded, where the header holds only the chevron, still ≥44dp.
-    const one = renderList({ otherNotes: [{ id: 'r1', title: 'One', updated_at: '2026-01-01T00:00:00.000Z' }] });
-    render.act(() => { headerFor(one).props.onPress(); });
-    expect(flat(headerFor(one)).minHeight).toBeGreaterThanOrEqual(44);
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'One').length).toBe(1);
   });
 });
 
@@ -5482,18 +5471,24 @@ describe('Android Back routes through registerBackConsumer, gated by isActive (#
     });
     const root = component.root;
 
+    // #1021: Edit lives behind the current-routine card's three-dot menu.
+    openCurrentRoutineMenu(root);
     render.act(() => { findPressableByText(root, 'Edit').props.onPress({ stopPropagation: jest.fn() }); });
     // The editor's ScreenShell mounts unconditionally (toggled via display:none), so
-    // its own "Done" control stays in the tree; the read view's inline "Edit" control
-    // is the one that is conditionally rendered on mode, so its absence/return is the
-    // reliable edit/read-mode signal here.
-    expect(findPressableByText(root, 'Edit')).toBeNull();
+    // its own "Done" control stays in the tree; the read view's current-routine
+    // menu trigger is the one that is conditionally rendered on mode (the whole
+    // card unmounts with it), so its absence/return is the reliable edit/read-mode
+    // signal here.
+    const menuTrigger = () => root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'Routine actions'
+    )[0];
+    expect(menuTrigger()).toBeUndefined();
 
     let handled;
     await render.act(async () => { handled = capturedConsumer(); });
 
     expect(handled).toBe(true);
-    expect(findPressableByText(root, 'Edit')).toBeTruthy();
+    expect(menuTrigger()).toBeTruthy();
   });
 
   test('the registered consumer returns false with no active editor state, letting the shell fall back to Home', () => {
@@ -10927,32 +10922,26 @@ describe('typed note navigation intents (#718)', () => {
     expect(isShowingViewedNote(component)).toBe(true);
   });
 
-  // #724 review: keying auto-expand on the request nonce, not viewingNoteId, so a
-  // later key for the SAME note reopens routine management after the user has
-  // explicitly collapsed the outer disclosure (with the note still selected).
-  test('a later key for the same note re-expands routine management after the user collapsed the disclosure', () => {
+  // #1021: LogPreviousRoutines no longer has a collection-level disclosure to
+  // reopen — non-current cards are always listed — so a later key for the
+  // same already-selected note has nothing to "re-expand". It still keeps
+  // that note visible.
+  test('a later key for the same note keeps that note visible', () => {
     const component = mount({ navNoteId: 'r1', navNoteKey: 1 });
     expect(isShowingViewedNote(component)).toBe(true);
 
-    // Collapse the whole routine-management disclosure — not the note — leaving
-    // the note still selected behind it.
-    const collapse = component.root.findAll(
-      n => n.props && n.props.accessibilityLabel === 'Hide routines' && typeof n.props.onPress === 'function'
-    )[0];
-    render.act(() => { collapse.props.onPress(); });
-    expect(isShowingViewedNote(component)).toBe(false);
-
-    // A new key for the same already-selected note must reopen the disclosure.
     render.act(() => { component.update(<ControlledLogScreen navNoteId="r1" navNoteKey={2} />); });
     expect(isShowingViewedNote(component)).toBe(true);
   });
 
   test('a note target is refused while an editor is open, and leaves the editor alone', () => {
     const component = mount({ navNoteId: null, navNoteKey: 0 });
+    // #1021: Edit lives behind the current-routine card's three-dot menu.
+    openCurrentRoutineMenu(component.root);
     render.act(() => {
       findPressableByText(component.root, 'Edit').props.onPress({ stopPropagation: jest.fn() });
     });
-    // The read view's inline Edit control disappears in edit mode.
+    // The read view's current-routine card (and its menu) unmounts in edit mode.
     expect(findPressableByText(component.root, 'Edit')).toBeNull();
 
     render.act(() => { component.update(<ControlledLogScreen navNoteId="r1" navNoteKey={1} />); });
@@ -10969,6 +10958,8 @@ describe('typed note navigation intents (#718)', () => {
 
   test('a refusal is terminal for its key and is not replayed once the editor closes', () => {
     const component = mount({ navNoteId: null, navNoteKey: 0 });
+    // #1021: Edit lives behind the current-routine card's three-dot menu.
+    openCurrentRoutineMenu(component.root);
     render.act(() => {
       findPressableByText(component.root, 'Edit').props.onPress({ stopPropagation: jest.fn() });
     });
@@ -11203,6 +11194,8 @@ describe('typed recovery-view navigation intents (#869/#874)', () => {
     // arrives.
     const routineToggle = pressableAround(component.root, t => t === 'Routine');
     render.act(() => { routineToggle.props.onPress(); });
+    // #1021: Edit lives behind the current-routine card's three-dot menu.
+    openCurrentRoutineMenu(component.root);
     render.act(() => {
       findPressableByText(component.root, 'Edit').props.onPress({ stopPropagation: jest.fn() });
     });
@@ -12526,16 +12519,10 @@ describe('Log disclosures and Recovery reads at the screen level (#775)', () => 
     render.act(() => { toggle.props.onPress(); });
   };
 
-  const routineToggle = (component) => component.root.findAll(
-    n => n.props
-      && /^(Show|Hide) routines$/.test(n.props.accessibilityLabel || '')
-      && typeof n.props.onPress === 'function'
-  )[0];
-  const routineExpanded = (component) => routineToggle(component).props.accessibilityState.expanded;
-  const toggleRoutineManagement = (component) => {
-    const toggle = routineToggle(component);
-    render.act(() => { toggle.props.onPress(); });
-  };
+  // #1021: LogPreviousRoutines has no collection-level disclosure any more —
+  // non-current routine cards are always listed. "Is Routine B's card in the
+  // tree" replaces the old expanded/collapsed check.
+  const otherRoutineVisible = (component, title = 'Routine B') => hasText(component, title);
 
   const deloadToggle = (component) => component.root.findAll(
     n => n.props
@@ -12561,11 +12548,10 @@ describe('Log disclosures and Recovery reads at the screen level (#775)', () => 
     render.act(() => { row.props.onPress(); });
 
     expect(hasText(component, 'Squat')).toBe(true);
-    // The read happened where the tap did: the routine-management disclosure
-    // neither opened nor changed state. It only mounts on the Routine tab
-    // (#823), so switch there to check it.
+    // The read happened where the tap did: More Routines is unaffected. It
+    // only mounts on the Routine tab (#823), so switch there to check it.
     switchTo(component, 'Routine');
-    expect(routineExpanded(component)).toBe(false);
+    expect(otherRoutineVisible(component)).toBe(true);
   });
 
   test('an A/B recovery week can be read week by week without leaving the Recovery card', () => {
@@ -12601,9 +12587,9 @@ describe('Log disclosures and Recovery reads at the screen level (#775)', () => 
 
     expect(hasText(component, 'Chin Up')).toBe(true);
     expect(hasText(component, 'Squat')).toBe(false);
-    // Still read in place: the routine-management disclosure never opened.
+    // Still read in place: More Routines is unaffected.
     switchTo(component, 'Routine');
-    expect(routineExpanded(component)).toBe(false);
+    expect(otherRoutineVisible(component, 'AB Routine')).toBe(true);
   });
 
   test('a recovery week linked to the CURRENT routine is readable too, not an inert press', () => {
@@ -12620,36 +12606,31 @@ describe('Log disclosures and Recovery reads at the screen level (#775)', () => 
 
     expect(hasText(component, 'Overhead Press')).toBe(true);
     switchTo(component, 'Routine');
-    expect(routineExpanded(component)).toBe(false);
+    expect(otherRoutineVisible(component)).toBe(true);
   });
 
-  test('More Routines keeps its disclosure state across Routine→Deload→Routine', () => {
+  // #1021: no collection-level disclosure left to keep state for — More
+  // Routines simply keeps listing its non-current cards across a
+  // Routine→Deload→Routine remount.
+  test('More Routines keeps listing its non-current routines across Routine→Deload→Routine', () => {
     const component = mount();
-    toggleRoutineManagement(component);
-    expect(routineExpanded(component)).toBe(true);
+    expect(otherRoutineVisible(component)).toBe(true);
 
     switchTo(component, 'Deload');
     switchTo(component, 'Routine');
-    expect(routineExpanded(component)).toBe(true);
-
-    toggleRoutineManagement(component);
-    switchTo(component, 'Deload');
-    switchTo(component, 'Routine');
-    expect(routineExpanded(component)).toBe(false);
+    expect(otherRoutineVisible(component)).toBe(true);
   });
 
-  test('a consumed reveal is not replayed by the remount a view switch causes', () => {
+  // #1021: a navigation handoff to a non-current note needs no "reveal" step
+  // any more — LogPreviousRoutines always lists it — so the note it targets
+  // just stays viewed across an unrelated Routine↔Deload remount.
+  test('a note handoff stays viewed across the remount a view switch causes', () => {
     const component = mount({ navNoteId: 'r1', navNoteKey: 1 });
-    // The handoff opened the disclosure for its target…
-    expect(routineExpanded(component)).toBe(true);
-    // …the user closed it again…
-    toggleRoutineManagement(component);
-    expect(routineExpanded(component)).toBe(false);
+    expect(otherRoutineVisible(component)).toBe(true);
 
-    // …and the Routine↔Deload remount must not re-apply the same spent request.
     switchTo(component, 'Deload');
     switchTo(component, 'Routine');
-    expect(routineExpanded(component)).toBe(false);
+    expect(otherRoutineVisible(component)).toBe(true);
   });
 
   test('the Deload Week card keeps its disclosure state across Deload→Routine→Deload', () => {
@@ -12665,13 +12646,14 @@ describe('Log disclosures and Recovery reads at the screen level (#775)', () => 
     expect(deloadExpanded(component)).toBe(false);
   });
 
-  test('a deload-note handoff does not reveal More Routines, which owns none of its notes', () => {
+  test('a deload-note handoff does not disturb More Routines, which owns none of its notes', () => {
     const component = mount({ navNoteId: 'd1', navNoteKey: 1 });
     // The intent switched the screen to the view that owns the note.
     expect(hasText(component, 'More Routines')).toBe(false);
 
     switchTo(component, 'Routine');
-    expect(routineExpanded(component)).toBe(false);
+    // #1021: More Routines always lists its non-current cards regardless.
+    expect(otherRoutineVisible(component)).toBe(true);
   });
 });
 
@@ -13019,6 +13001,8 @@ describe('Log interaction targets and header scaling (#905)', () => {
     let component;
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
+    // #1021: Edit routine lives behind the current-routine card's three-dot menu.
+    render.act(() => { pressablesByLabel(root, 'Routine actions')[0].props.onPress({ stopPropagation: jest.fn() }); });
     render.act(() => { pressablesByLabel(root, 'Edit routine')[0].props.onPress({ stopPropagation: jest.fn() }); });
 
     // The read shell stays mounted under `display: none` while the editor is
@@ -14251,5 +14235,169 @@ describe('Log rest-timer control is the compact editor stopwatch (#1006)', () =>
   test('the running countdown is still the single app-shell instance (not re-added here)', () => {
     const matches = src.match(/<RestTimerBanner/g) || [];
     expect(matches).toHaveLength(1);
+  });
+});
+
+// #1021: the New Routine editor's secondary Import routine action opens the
+// existing RoutineImportScreen preview in place, wired to the same note-add
+// write every other import entry point (MoreScreen) uses.
+describe('New Routine editor: Import routine action (#1021)', () => {
+  let mockAdd;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAdd = jest.fn().mockResolvedValue({ id: 'imported1' });
+    const currentNote = {
+      id: 'note1',
+      title: 'Routine A',
+      raw_text: 'Monday\n+Lifting\n-Bench\n135 5,5,5',
+      saved_at: '2026-06-01T12:00:00.000Z',
+    };
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [currentNote],
+      currentId: 'note1',
+      currentNote,
+      deloadNotes: [],
+      loading: false,
+      error: null,
+      refresh: jest.fn(),
+      selectCurrent: jest.fn(),
+      update: jest.fn().mockResolvedValue({}),
+      add: mockAdd,
+      remove: jest.fn(),
+    });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: [], toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({ note: { raw_text: '' }, loading: false, save: jest.fn(), clear: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+  });
+
+  const enterNewRoutineEditor = (root) => {
+    const newRoutineButton = root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'New routine' && typeof n.props.onPress === 'function'
+    )[0];
+    render.act(() => { newRoutineButton.props.onPress(); });
+  };
+
+  test('the New Routine editor offers a secondary Import routine action that opens the import preview', () => {
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+    enterNewRoutineEditor(root);
+
+    const importButton = findPressableByText(root, 'Import routine');
+    expect(importButton).toBeTruthy();
+    expect(importButton.props.accessibilityRole).toBe('button');
+
+    render.act(() => { importButton.props.onPress(); });
+
+    // The existing preview screen is now showing: its paste input, and the
+    // preview copy no editor screen carries (ScreenShell itself — title
+    // included — is mocked away in this file's harness, so this file's
+    // tests always identify a screen by its own content, not its shell).
+    // Host node only — the composite TextInput carries the same testID.
+    expect(root.findAll(n => typeof n.type === 'string' && n.props.testID === 'routine-import-paste').length).toBe(1);
+    expect(root.findAll(
+      n => n.type === 'Text' && n.props.children === 'Pasted text'
+    ).length).toBe(1);
+  });
+
+  test('creating a routine from the import preview writes through the same note-add path as everywhere else', async () => {
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+    enterNewRoutineEditor(root);
+    render.act(() => { findPressableByText(root, 'Import routine').props.onPress(); });
+
+    const paste = root.findAll(n => typeof n.type === 'string' && n.props.testID === 'routine-import-paste')[0];
+    const pastedText = 'Monday\n+Lifting\n-Bench Press\n135 5,5,5';
+    render.act(() => { paste.props.onChangeText(pastedText); });
+
+    // The Button composite also carries an `onPress` prop (the undisabled
+    // handler) alongside the actual react-native Pressable it renders, which
+    // additionally carries the computed `accessibilityState`; take the one
+    // that has it.
+    const createButton = root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'Create new routine from pasted text'
+        && typeof n.props.onPress === 'function'
+        && n.props.accessibilityState
+    )[0];
+    expect(createButton).toBeTruthy();
+    expect(createButton.props.accessibilityState.disabled).toBe(false);
+    await render.act(async () => { await createButton.props.onPress(); });
+
+    expect(mockAdd).toHaveBeenCalledTimes(1);
+    expect(mockAdd.mock.calls[0][1]).toBe(pastedText);
+  });
+
+  // ScreenShell is mocked in this file to a plain wrapper that drops `title`/
+  // `onBack` entirely (see the top-of-file mock), so there is no real "←
+  // Back" button to press here. The RoutineImportScreen composite still
+  // receives LogScreen's real `onBack` handler as a prop, so this drives
+  // that handler directly — the same wiring a tap on the real ScreenShell
+  // Back button would invoke in the app.
+  test('Back from the import preview returns to the New Routine editor', () => {
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+    enterNewRoutineEditor(root);
+    render.act(() => { findPressableByText(root, 'Import routine').props.onPress(); });
+    const pasteInput = () => root.findAll(n => typeof n.type === 'string' && n.props.testID === 'routine-import-paste');
+    expect(pasteInput().length).toBe(1);
+
+    const importScreen = root.findAll(n => typeof n.type === 'function' && n.type.name === 'RoutineImportScreen')[0];
+    expect(importScreen).toBeTruthy();
+    render.act(() => { importScreen.props.onBack(); });
+
+    expect(pasteInput().length).toBe(0);
+    expect(findPressableByText(root, 'Import routine')).toBeTruthy();
+  });
+
+  // Review finding: `handleAndroidBack` used to check `otherEditor.editingNoteId`
+  // before `importRoutineOpen`, so Back while the import preview was open would
+  // save/close the underlying New Routine draft instead of just dismissing the
+  // preview, losing the draft's unsaved state. The import preview must now win
+  // the race and dismiss first, leaving the draft exactly as the user left it.
+  test('Android Back dismisses the import preview first, preserving the New Routine draft (#1021 review)', () => {
+    let capturedConsumer;
+    const registerBackConsumer = jest.fn((consumer) => {
+      capturedConsumer = consumer;
+      return jest.fn();
+    });
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledLogScreen isActive registerBackConsumer={registerBackConsumer} />
+      );
+    });
+    const root = component.root;
+    enterNewRoutineEditor(root);
+
+    const getDraftInput = () =>
+      root.findAll(n => n.props && n.props.multiline === true && typeof n.props.onChangeText === 'function')[0];
+    const draftText = 'Monday\n+Lifting\n-Overhead Press\n95 5,5,5';
+    render.act(() => { getDraftInput().props.onChangeText(draftText); });
+    expect(getDraftInput().props.value).toBe(draftText);
+
+    render.act(() => { findPressableByText(root, 'Import routine').props.onPress(); });
+    const pasteInput = () => root.findAll(n => typeof n.type === 'string' && n.props.testID === 'routine-import-paste');
+    expect(pasteInput().length).toBe(1);
+
+    let handled;
+    render.act(() => { handled = capturedConsumer(); });
+
+    // The event was consumed by dismissing the preview, not by closing/saving
+    // the underlying draft.
+    expect(handled).toBe(true);
+    expect(pasteInput().length).toBe(0);
+    expect(findPressableByText(root, 'Import routine')).toBeTruthy();
+    expect(mockAdd).not.toHaveBeenCalled();
+
+    // The draft text is exactly as it was before Import routine was opened —
+    // neither saved nor discarded.
+    expect(getDraftInput().props.value).toBe(draftText);
   });
 });
