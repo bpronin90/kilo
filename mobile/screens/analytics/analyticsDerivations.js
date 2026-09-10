@@ -296,6 +296,12 @@ export function deriveOverviewRows({
   // "live right now" vs "frozen baseline history" and leads with the former
   // during an active block.
   activeTraining = null,
+  // #1029: the current live week's `deriveRecoveryWeekBands` result and
+  // (when the evidence bar is met) `deriveRecoveryMovement` result. Neither is
+  // recomputed here — both are handed in already derived, exactly like every
+  // other row above reads an already-derived value.
+  recoveryBands = null,
+  recoveryMovement = null,
 } = {}) {
   const isRecoveryActive = activeTraining?.status === ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK
     || activeTraining?.status === ACTIVE_TRAINING_STATUS.RECOVERY_BETWEEN_WEEKS;
@@ -402,18 +408,64 @@ export function deriveOverviewRows({
   // current" when it is not; the between-weeks caption is the true current
   // answer instead.
   const isOpenWeek = activeTraining.status === ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK;
-  const recoveryRow = {
-    key: 'recovery',
-    label: 'Recovery',
-    section: 'recovery',
-    unavailable: false,
-    value: isOpenWeek ? activeTraining.recoveryWeekNumber : null,
-    showUnit: false,
-    valueSuffix: isOpenWeek && activeTraining.recoveryWeekNumber != null ? 'week' : null,
-    emptyCaption: !isOpenWeek
-      ? 'Between weeks — add the next week or end Recovery'
-      : null,
-  };
+  const weekNumber = activeTraining.recoveryWeekNumber ?? null;
+
+  // #1029: two shapes, chosen by whether movement's evidence bar is met.
+  // Neither shape ever prints a composite percentage. `AnalyticsOverviewCard`
+  // is outside this issue's Allowed Files and only ever prints `valueSuffix`
+  // unconditionally (its own `caption`/`deltaCaption` fields render only in
+  // combination with a numeric `delta`, which would misrepresent this row as
+  // an up/down change it is not) — so both required qualifiers (the week
+  // identity every row keeps, and movement's anchor week + matched
+  // population) are folded into `valueSuffix` rather than a synthetic delta.
+  let recoveryRow;
+  if (!isOpenWeek) {
+    recoveryRow = {
+      key: 'recovery',
+      label: 'Recovery',
+      section: 'recovery',
+      unavailable: false,
+      value: null,
+      showUnit: false,
+      valueSuffix: null,
+      emptyCaption: 'Between weeks — add the next week or end Recovery',
+    };
+  } else if (recoveryMovement) {
+    recoveryRow = {
+      key: 'recovery',
+      label: 'Recovery',
+      section: 'recovery',
+      unavailable: false,
+      value: recoveryMovement.improved,
+      showUnit: false,
+      valueSuffix: `of ${recoveryMovement.matched_size} lifts improved · since Week `
+        + `${recoveryMovement.anchor_week_number} · Week ${weekNumber}`,
+      emptyCaption: null,
+    };
+  } else if (recoveryBands) {
+    recoveryRow = {
+      key: 'recovery',
+      label: 'Recovery',
+      section: 'recovery',
+      unavailable: false,
+      value: recoveryBands.trained,
+      showUnit: false,
+      valueSuffix: `of ${recoveryBands.roster_size} lifts trained · `
+        + `${recoveryBands.buckets?.at_or_above ?? 0} at or above · Week ${weekNumber}`,
+      emptyCaption: null,
+    };
+  } else {
+    recoveryRow = {
+      key: 'recovery',
+      label: 'Recovery',
+      section: 'recovery',
+      unavailable: false,
+      value: weekNumber,
+      showUnit: false,
+      valueSuffix: weekNumber != null ? 'week' : null,
+      emptyCaption: null,
+    };
+  }
 
   return [recoveryRow, weightRow, oneKRow, progressRow, routineRow].filter(Boolean);
 }

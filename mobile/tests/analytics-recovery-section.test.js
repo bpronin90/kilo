@@ -190,15 +190,22 @@ describe('AnalyticsRecoverySection — visibility', () => {
 });
 
 describe('AnalyticsRecoverySection — active block evidence', () => {
-  test('hero renders a factual "X of Y baseline exercises met" count, never a percentage', () => {
+  // #1029: the met-count headline is gone from the first screenful. With
+  // only two baseline exercises, this fixture is below the four-trained
+  // sparse floor — one plain sentence names each lift and its state, with
+  // the roster denominator, and the survives-only-in-details count is
+  // "X of Y at or above baseline" inside the collapsed Exercise details
+  // header (covered separately below).
+  test('below the sparse floor, one sentence names each trained lift, its state, and the roster denominator — never a percentage', () => {
     const b = block();
     const w = week(1, 'note-w1');
     const n = note('note-w1', BASELINE_TEXT);
     const component = setup({ blocks: [b], weeks: [w], notes: [n] });
     const root = component.root;
 
-    expect(hasText(root, '2 of 2')).toBe(true);
-    expect(hasText(root, 'baseline exercises met')).toBe(true);
+    expect(hasText(root, 'Bench (at or above baseline), Pull-up (at or above baseline) — 2 of 2 roster exercises trained.')).toBe(true);
+    expect(hasText(root, 'baseline exercises met')).toBe(false);
+    expect(hasText(root, '%')).toBe(false);
   });
 
   test('weighted rows show independent Load and Total work; reps-only rows show only their applicable metric', () => {
@@ -373,7 +380,7 @@ describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b
     const component = setup({ blocks: [b], weeks: [w1, w2], notes: [n1, n2] });
     const root = component.root;
 
-    expect(byLabel(root, 'Week 2, 2 of 2 baseline exercises met')).toBeDefined();
+    expect(byLabel(root, 'Bench (at or above baseline), Pull-up (at or above baseline) — 2 of 2 roster exercises trained.')).toBeDefined();
     expect(liveRegions(root).length).toBe(1);
   });
 
@@ -540,7 +547,7 @@ describe('AnalyticsRecoverySection — every exercise class/state (mocked compar
     expect(hasText(root, 'baseline exercises met')).toBe(false);
   });
 
-  test('a baseline-empty week that still carries added work reports it in the summary line and reaches Exercise details', () => {
+  test('a baseline-empty week that still carries added work: the summary line is folded into Exercise details, not the first screenful', () => {
     const addedRow = mockRow({
       key: 'foam-roll', name: 'Foam Roll', state: RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY, exercise_class: 'reps_based',
       metrics: [metricRow('total_reps', 20, null, null, null)],
@@ -552,11 +559,13 @@ describe('AnalyticsRecoverySection — every exercise class/state (mocked compar
     const component = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] });
     const root = component.root;
 
-    // No hero (there is no baseline denominator), but the merged clause line
-    // still names the added work, and it is reachable via Exercise details.
+    // No hero (there is no baseline denominator), and the #1029 bucket
+    // rows/sparse sentence are absent too (zero roster) — but the clause
+    // line naming the added work is still reachable via Exercise details.
     expect(hasText(root, 'baseline exercises met')).toBe(false);
-    expect(hasText(root, 'Week 1 · 1 added during recovery')).toBe(true);
+    expect(hasText(root, 'Week 1 · 1 added during recovery')).toBe(false);
     expandDetails(root);
+    expect(hasText(root, 'Week 1 · 1 added during recovery')).toBe(true);
     expect(rowLabels(root).some(l => l.startsWith('Foam Roll, Added during recovery'))).toBe(true);
   });
 });
@@ -864,25 +873,30 @@ describe('AnalyticsRecoverySection — light/dark appearance', () => {
     return component;
   }
 
-  // #908 moved the hero value off the `accent` mark color onto the readable
-  // `accentText` ink; dark keeps the same value, light darkens to clear AA.
-  test('the hero value renders in the accent text token for both light and dark palettes', () => {
-    const b = block();
+  // #1029 replaced the single met-count hero with per-bucket band rows; a
+  // four-lift fixture (above the sparse floor) exercises the bucket-row
+  // fill, which keeps the accent mark color both palettes always used for
+  // the hero it replaced.
+  const FOUR_LIFT_BASELINE_TEXT = '-A\n- 100 10\n-B\n- 100 10\n-C\n- 100 10\n-D\n- 100 10';
+
+  test('band-row fills render in the accent token for both light and dark palettes', () => {
+    const b = block({ baseline: captureRecoveryBaselineFromText(FOUR_LIFT_BASELINE_TEXT) });
     const w = week(1, 'note-w1');
-    const n = note('note-w1', BASELINE_TEXT);
+    const n = note('note-w1', FOUR_LIFT_BASELINE_TEXT);
 
     const lightComponent = setupWithColors(LightColors, { blocks: [b], weeks: [w], notes: [n] });
-    const lightHero = lightComponent.root.findAll(
-      inst => Array.isArray(inst.props.style) && inst.props.style.some(s => s && s.color === LightColors.accentText)
+    expect(lightComponent.root.findAllByProps({ testID: 'recovery-bands-rows' }).length).toBeGreaterThan(0);
+    const lightFills = lightComponent.root.findAll(
+      inst => Array.isArray(inst.props.style) && inst.props.style.some(s => s && s.backgroundColor === LightColors.accent)
     );
-    expect(lightHero.length).toBeGreaterThan(0);
+    expect(lightFills.length).toBeGreaterThan(0);
 
     const darkComponent = setupWithColors(DarkColors, { blocks: [b], weeks: [w], notes: [n] });
-    const darkHero = darkComponent.root.findAll(
-      inst => Array.isArray(inst.props.style) && inst.props.style.some(s => s && s.color === DarkColors.accentText)
+    const darkFills = darkComponent.root.findAll(
+      inst => Array.isArray(inst.props.style) && inst.props.style.some(s => s && s.backgroundColor === DarkColors.accent)
     );
-    expect(darkHero.length).toBeGreaterThan(0);
-    expect(hasText(darkComponent.root, '2 of 2')).toBe(true);
+    expect(darkFills.length).toBeGreaterThan(0);
+    expect(hasText(darkComponent.root, 'Trained this week: 4 of 4 roster exercises')).toBe(true);
   });
 });
 
@@ -1033,15 +1047,19 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
   test('the section opens on the summary alone — no exercise rows until details are expanded', () => {
     const root = setupMixed();
 
-    expect(hasText(root, '1 of 2')).toBe(true);
-    expect(hasText(root, 'baseline exercises met')).toBe(true);
+    expect(hasText(root, 'Bench (rebuilding), Pull-up (at or above baseline) — 2 of 2 roster exercises trained.')).toBe(true);
+    expect(hasText(root, 'baseline exercises met')).toBe(false);
     expect(hasText(root, 'Exercise details')).toBe(true);
+    expect(hasText(root, '1 of 2 at or above baseline')).toBe(true);
     expect(hasText(root, '3 exercises')).toBe(true);
 
-    // The diagnostic panel this issue is about is not on screen yet.
+    // The diagnostic panel this issue is about is not on screen yet — no
+    // per-row Load metric cell (the "Most common gap: Total work" summary
+    // line is a legitimate first-screenful fact and may itself say "Total
+    // work", so that word alone is not asserted absent).
     expect(rowLabels(root).some(l => l.startsWith('Bench,'))).toBe(false);
     expect(hasText(root, 'Load')).toBe(false);
-    expect(hasText(root, 'Total work')).toBe(false);
+    expect(hasText(root, 'Most common gap: Total work')).toBe(true);
     expect(byLabel(root, 'Expand exercise details')).toBeDefined();
   });
 
@@ -1062,14 +1080,20 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
   test('the summary is week-aware, names only the states that occurred, and never invents a score', () => {
     const root = setupMixed();
 
+    // The old merged clause line ("Week 1 · 1 rebuilding · 1 added during
+    // recovery") is folded into Exercise details, not shown on the first
+    // screenful (#1029 §10c) — it is reachable there instead.
+    expect(hasText(root, 'Week 1 · 1 rebuilding · 1 added during recovery')).toBe(false);
+    // No composite recovery percentage, and no per-row diagnostic detail,
+    // exists on the first screenful.
+    expect(findAllText(root).some(s => s.includes('%'))).toBe(false);
+    expect(byLabel(root, 'Bench (rebuilding), Pull-up (at or above baseline) — 2 of 2 roster exercises trained.')).toBeDefined();
+
+    expandDetails(root);
     expect(hasText(root, 'Week 1 · 1 rebuilding · 1 added during recovery')).toBe(true);
     // States with nothing in them are not listed as zeroes.
     expect(hasText(root, '0 not reintroduced')).toBe(false);
     expect(hasText(root, '0 not comparable')).toBe(false);
-    // The primary summary is a count of baseline exercises met. No composite
-    // recovery percentage exists anywhere in the collapsed state.
-    expect(findAllText(root).some(s => s.includes('%'))).toBe(false);
-    expect(byLabel(root, 'Week 1, 1 of 2 baseline exercises met')).toBeDefined();
   });
 
   test('the week filter re-derives the summary, not just the rows', () => {
@@ -1080,14 +1104,13 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     }).root;
 
     // Latest week first.
-    expect(hasText(root, '1 of 2')).toBe(true);
-    expect(hasText(root, 'Week 2 · 1 rebuilding · 1 added during recovery')).toBe(true);
+    expect(hasText(root, 'Bench (rebuilding), Pull-up (at or above baseline) — 2 of 2 roster exercises trained.')).toBe(true);
 
     act(() => { byLabel(root, 'Week 1').props.onPress(); });
 
-    expect(hasText(root, '2 of 2')).toBe(true);
+    expect(hasText(root, 'Bench (at or above baseline), Pull-up (at or above baseline) — 2 of 2 roster exercises trained.')).toBe(true);
     expect(hasText(root, 'Week 1')).toBe(true);
-    expect(hasText(root, '1 rebuilding')).toBe(false);
+    expect(hasText(root, 'rebuilding')).toBe(false);
   });
 
   test('rows are grouped under counted, accessibilityRole="header" state groups, in Baseline met / R3a clause / Added order', () => {

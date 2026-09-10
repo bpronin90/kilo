@@ -209,6 +209,29 @@ A comparison is reported as **Not comparable** when:
 
 Whole-block error states are reported the same explicit way: no snapshot on the block, a snapshot written by a different baseline format, a snapshot of a supported format whose contents are unreadable, a week whose linked note is missing, and a note that fails the parser contract each produce a named state instead of a comparison against zero. The recorded format version is always read first, so a snapshot from a future version of the app is reported as unsupported rather than as missing.
 
+#### Return bands and weekly movement (#1029)
+
+> Where you see it: Home's Recovery card, the first screenful of the Analytics Recovery section, and the Analytics Overview `Recovery` row
+
+The per-exercise states above are re-grouped, on read, into a "return band" per exercise and a week-over-week movement count. Neither changes the #697 contract above: `deriveRecoveryComparison`'s per-exercise output, the frozen baseline, and every state name are untouched, and no new field is stored.
+
+**Roster and bands.** The roster (`B`) is every frozen baseline exercise except one whose frozen value is itself unusable (see Not comparable above) — a week-independent set. For each roster exercise, its `exercise_return` is the **minimum** ratio across its applicable dimensions (a selection, never a mean, never combined across dimensions or families). Its band is:
+
+| Band | Rule |
+|---|---|
+| At or above | the exercise's state **is** Baseline met |
+| Close | state is Rebuilding and `exercise_return` ≥ 0.90 |
+| Rebuilding | state is Rebuilding and 0.50 ≤ `exercise_return` < 0.90 |
+| Early | state is Rebuilding and `exercise_return` < 0.50 |
+| Not trained yet | state is Not reintroduced |
+| Can't compare | state is Not comparable |
+
+The six bands always sum to the roster size. `Not trained yet` is never shown as a bucket bar — it is a same-tier denominator caption ("N of Y roster exercises trained"), because the useful part of the old met-count headline was identifying which lifts are actually back, and a stacked six-way bar would spend most of its pixels on the one bucket that must never read as a failure. Below four trained lifts, no bucket bars render at all: one plain sentence names the trained lift(s) and their state, with the denominator in the sentence itself.
+
+**Movement.** Movement compares the most recent live week against the most recent EARLIER week that both (a) completed without error and (b) had at least one exercise comparable to a prior week — a week with no readable note is skipped as an anchor, never treated as zero. For each exercise comparable in both weeks, movement is Pareto on exact ratios (never floored percents): improved (every dimension ≥, at least one >), fell back (every dimension ≤, at least one <), or steady (neither). Movement is only ever printed when at least two qualifying weeks exist, at least three exercises (or the whole roster, if it has fewer than three) are matched, and the snapshot is verified and not stale — otherwise no counts and no arrow are shown, only the reason. When printed, the anchor week's number and the matched population size are always named alongside it.
+
+No surface computes or displays a single composite percentage for a week or a block — that stays out of scope (see Out of scope below).
+
 #### Limitations
 
 - **Exact names only.** Comparison is by exact normalized exercise identity. Kilo never maps a substitute onto the lift it replaced and never infers that two exercises are medically or mechanically equivalent — a leg press logged while your squat is out shows up as Added during recovery, and squat shows up as Not reintroduced.

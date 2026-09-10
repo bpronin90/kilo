@@ -7,7 +7,9 @@ import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { deriveWeightGoalAnalytics, DEFAULT_1K_EXERCISES, normalizeLiftName, deriveCheckInHistory, deriveRoutineStatus } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries, useDeloadHistory, useFeatureToggles, useRecoveryBlockState, useActiveTrainingContext } from '../hooks/useEntries';
 import { useRecoveryAnalyticsFilter } from '../hooks/entries/recoveryBlockHooks';
-import { isLiveRecord } from '../lib/data/recoveryBlocks';
+import { findActiveBlock, isLiveRecord } from '../lib/data/recoveryBlocks';
+import { deriveRecoveryComparison } from '../lib/data/recoveryAnalytics';
+import { deriveRecoveryMovement, deriveRecoveryWeekBands } from '../lib/data/recoveryReturnBands';
 import {
   deriveParsedSections,
   deriveNoteExerciseNames,
@@ -532,6 +534,28 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     };
   }, [analytics.oneK, unit]);
 
+  // #1029: the current live week's return bands and (when its evidence bar is
+  // met) movement, for the Overview `Recovery` row. Reuses the same
+  // `deriveRecoveryComparison` read `AnalyticsRecoverySection` renders from —
+  // no second read, no new formula — restricted to the active block only,
+  // since the Overview row only ever describes what is happening right now.
+  const activeRecoveryBlockForOverview = isActiveRecovery ? findActiveBlock(recoveryBlocks) : null;
+  const recoveryOverviewInfo = useMemo(() => {
+    if (!activeRecoveryBlockForOverview) return { bands: null, movement: null };
+    const comparison = deriveRecoveryComparison({
+      block: activeRecoveryBlockForOverview, weeks: recoveryWeeks, notes,
+    });
+    const weeks = comparison.weeks || [];
+    const current = weeks.length > 0 ? weeks[weeks.length - 1] : null;
+    const bands = deriveRecoveryWeekBands(current);
+    // Never derived off an unverified/stale snapshot (#1023 v2 §4
+    // requirement 4) — `recoveryStale` mirrors Home's own `isStale` gate.
+    const movement = (!recoveryStale && current)
+      ? deriveRecoveryMovement(weeks, { currentWeekId: current.week_id })
+      : null;
+    return { bands: bands.buckets ? bands : null, movement };
+  }, [activeRecoveryBlockForOverview, recoveryWeeks, notes, recoveryStale]);
+
   // Overview rows (#821). Fed the same display-space arrays the charts below
   // are given, so a value here is literally the value its own section plots.
   const overviewRows = useMemo(
@@ -547,22 +571,29 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       notesUnavailable: !!notesError,
       weightUnavailable: !!weightError,
       activeTraining: { status: activeTrainingContext.status, recoveryWeekNumber: activeTrainingContext.recoveryWeekNumber },
+      recoveryBands: recoveryOverviewInfo.bands,
+      recoveryMovement: recoveryOverviewInfo.movement,
     }),
     [
       oneKChartData, analytics.signals, sinceDeload, deloadModeEnabled, weightTrends, unit, rolling7,
       notesError, weightError, activeTrainingContext.status, activeTrainingContext.recoveryWeekNumber,
+      recoveryOverviewInfo,
     ]
   );
 
   const overviewLoading = isNotesLoading || isWeightLoading;
 
-  // The overview names the session count it was built from rather than a clock
-  // time: the tab is derived from logs, so "as of" is a log boundary, not a
-  // refresh. Suppressed at zero so a first-run overview does not open with a
-  // count of nothing.
-  const overviewAsOf = sessionCount > 0
-    ? `${sessionCount} session${sessionCount === 1 ? '' : 's'} logged`
-    : null;
+  // #1029 acceptance criterion 3: during active Recovery the panel header
+  // stops stamping "N sessions logged" — it names the Recovery state itself,
+  // exactly as the `activeTrainingContext` already resolves it for Home/Log.
+  // Ending Recovery restores the byte-identical session-count stamp below.
+  const overviewAsOf = isActiveRecovery
+    ? (activeTrainingContext.status === ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK
+        ? `Recovery week ${activeTrainingContext.recoveryWeekNumber}`
+        : 'Recovery, between weeks')
+    : sessionCount > 0
+      ? `${sessionCount} session${sessionCount === 1 ? '' : 's'} logged`
+      : null;
 
   function handleOverviewSelect(sectionId) {
     if (!sectionId) return;

@@ -6,6 +6,7 @@ import { Card, HeroMetric, LineChart, getSessionTone, Button, ErrorBanner } from
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { CLOUD_SYNC_NOTICE, useWeightGoal, useTrackedLifts, getNoteSections, useCloudSyncSummary, useActiveTrainingContext, useDeloadHistory, useRecoveryBlockState } from '../hooks/useEntries';
 import { deriveHomeDashboardData, useHomeNormalNotes, useHomeRecoverySummary, HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './home/homeDashboardData';
+import { RETURN_BANDS } from '../lib/data/recoveryReturnBands';
 import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue, displayChartSeries } from '../lib/units';
@@ -227,6 +228,16 @@ function HomeSkeleton() {
 // `Recovery` has to land on Recovery; leaving it unsectioned made it inherit
 // whatever position Analytics was last left at, which could be any other
 // section entirely.
+// #697 state words used only for the sparse below-4-trained-lifts sentence
+// (#1029) — permitted vocabulary (#1023 v2 §8), unchanged from what
+// `AnalyticsRecoverySection.js` already shows on each exercise's detail row.
+const STATE_LABEL = Object.freeze({
+  baseline_met: 'at or above baseline',
+  rebuilding: 'rebuilding',
+  not_comparable: "can't compare",
+  added_during_recovery: 'added during recovery',
+});
+
 export function HomeRecoverySummary({ summary, onNavigate }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -234,8 +245,8 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   if (!summary) return null;
   const {
     status, stale, message, active,
-    comparisonStatus, weekNumber, weekNoteStatus, metCount, totalBaselineExercises,
-    categoryCounts,
+    comparisonStatus, weekNumber, weekNoteStatus,
+    bands, trained, rosterSize, trainedExercises, movement,
   } = summary;
 
   // Verified, nothing is running, and the answer is CURRENT. This is the one
@@ -276,19 +287,33 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   // yet.` has no week to name, and printing `Week null` or inventing `Week 1`
   // would both be false.
   const weekLabel = weekNumber === null ? null : `Week ${weekNumber}`;
-  const heroValue = fallbackStatus === null
-    ? `${metCount} of ${totalBaselineExercises}`
+
+  // #1029: the met-count headline is replaced by per-bucket return-band rows
+  // sized against the TRAINED total (never the roster) plus, once available,
+  // weekly movement — bands lead in Week 1 without reserving space for
+  // movement, and movement gets equal real estate as soon as it exists.
+  const hasBands = fallbackStatus === null && !!bands;
+  // Below four trained lifts, no bucket bars: one plain sentence naming the
+  // lift(s) and their state, with the denominator in the sentence itself.
+  const sparse = hasBands && trained > 0 && trained < 4;
+  const bandRows = hasBands && !sparse
+    ? RETURN_BANDS
+        .filter(b => b.id !== 'not_trained_yet')
+        .map(b => ({ id: b.id, label: b.label, count: bands[b.id] || 0 }))
+        .filter(row => row.count > 0)
+    : [];
+  const trainedDenominatorCaption = hasBands
+    ? `${trained} of ${rosterSize} roster exercises trained`
+    : null;
+  const sparseSentence = sparse
+    ? `${trainedExercises.map(row => `${row.name} (${STATE_LABEL[row.state] || row.state})`).join(', ')} — ${trained} of ${rosterSize} roster exercises trained.`
     : null;
 
-  // Supporting analytics: one tile per nonzero category, value over label, in
-  // the contract's order. A zero category is absent, not a `0` tile — the card
-  // stays compact and every tile on screen is a fact worth reading.
-  const stats = [];
-  const addStat = (count, label) => { if (count > 0) stats.push({ count, label }); };
-  addStat(categoryCounts.rebuilding, 'Rebuilding');
-  addStat(categoryCounts.not_reintroduced, 'Not reintroduced');
-  addStat(categoryCounts.not_comparable, 'Not comparable');
-  addStat(categoryCounts.added_during_recovery, 'Added during recovery');
+  const movementSentence = movement
+    ? `Since Week ${movement.anchor_week_number}, on ${movement.matched_size} lifts trained both weeks: ${movement.improved} improved, ${movement.steady} steady, ${movement.fell_back} fell back.`
+    : (hasBands && !fallbackStatus && weekNumber !== null && weekNumber > 1
+        ? 'Not enough matched lifts to compare weeks yet.'
+        : null);
 
   // One announcement for the whole summary, assembled in reading order. The
   // visual hierarchy is a layout device; the spoken version has to carry the
@@ -298,8 +323,10 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   // longer part of this summary.
   const accessibleContent = [
     weekLabel,
-    heroValue ? `${heroValue} baseline exercises met` : fallbackStatus,
-    ...stats.map(s => `${s.count} ${s.label.toLowerCase()}`),
+    hasBands
+      ? (sparse ? sparseSentence : `${trainedDenominatorCaption}. ${bandRows.map(r => `${r.label} ${r.count}`).join(', ')}`)
+      : fallbackStatus,
+    movementSentence,
   ].filter(Boolean)
     .map(part => (/[.!?]$/.test(part) ? part : `${part}.`))
     .join(' ');
@@ -341,26 +368,34 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
               {weekLabel ? (
                 <Text style={styles.recoveryWeekLabel}>{weekLabel}</Text>
               ) : null}
-              {heroValue ? (
-                <View style={styles.recoveryHero}>
-                  <Text style={[HeroMetric.statSecondary, styles.recoveryHeroValue]}>{heroValue}</Text>
-                  <Text style={styles.recoveryHeroCaption}>baseline exercises met</Text>
-                </View>
-              ) : (
+              {!hasBands ? (
                 <Text style={styles.recoveryFallbackLine}>{fallbackStatus}</Text>
-              )}
-              {stats.length > 0 ? (
-                <View testID="home-recovery-stats" style={styles.recoveryStatsDivider}>
-                  <View style={styles.recoveryStatCols}>
-                    {stats.map(stat => (
-                      <View key={stat.label} style={styles.recoveryStatCol}>
-                        <View style={styles.recoveryStatDot} />
-                        <Text style={styles.recoveryStatValue}>{stat.count}</Text>
-                        <Text style={styles.recoveryStatLabel}>{stat.label}</Text>
-                      </View>
-                    ))}
-                  </View>
+              ) : sparse ? (
+                // Sparse visual floor (#1029): below four trained lifts, no
+                // bucket bars — one plain sentence names the lift(s), their
+                // state, and the roster denominator.
+                <Text testID="home-recovery-sparse" style={styles.recoveryFallbackLine}>
+                  {sparseSentence}
+                </Text>
+              ) : (
+                <View testID="home-recovery-bands" style={styles.recoveryStatsDivider}>
+                  {/* `Not trained yet` is a same-tier denominator caption, not
+                      a bucket row (#1029 acceptance criterion 1/12). */}
+                  <Text style={styles.recoveryHeroCaption}>{trainedDenominatorCaption}</Text>
+                  {bandRows.map(row => (
+                    <View key={row.id} style={styles.recoveryBandRow}>
+                      <Text style={styles.recoveryBandLabel}>{row.label}</Text>
+                      <Text style={styles.recoveryBandCount}>{row.count}</Text>
+                    </View>
+                  ))}
                 </View>
+              )}
+              {/* Movement gets EQUAL real estate to bands once it exists —
+                  never dead space reserved for it in Week 1 (#1029). */}
+              {movementSentence ? (
+                <Text testID="home-recovery-movement" style={styles.recoveryFallbackLine}>
+                  {movementSentence}
+                </Text>
               ) : null}
             </View>
           </>
@@ -1303,19 +1338,35 @@ const createStyles = (colors) => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  recoveryHero: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    flexWrap: 'wrap',
-    columnGap: 6,
-    marginTop: 2,
-  },
-  recoveryHeroValue: {
-    color: colors.accentText,
-  },
+  // #1029: the denominator caption ("N of Y roster exercises trained") sits
+  // at the SAME weight tier as the bucket rows below it — it is a fact of
+  // equal standing, not a subordinate footnote (acceptance criterion 1/12).
   recoveryHeroCaption: {
     fontSize: 13,
+    fontWeight: '700',
     color: colors.textMuted,
+    marginTop: 2,
+    marginBottom: 6,
+  },
+  // One proportional row per trained performance bucket (#1029), sized
+  // against the trained total rather than the roster — never a stacked
+  // six-way strip, which would spend most of its pixels on the one bucket
+  // (`Not trained yet`) that must never read as a failure.
+  recoveryBandRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 3,
+  },
+  recoveryBandLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  recoveryBandCount: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
   },
   // The fallbacks are sentences, not figures: they take the hero's slot at
   // reading weight rather than being dressed up as a metric.
@@ -1333,45 +1384,6 @@ const createStyles = (colors) => StyleSheet.create({
     borderTopColor: colors.cardBorder,
     paddingTop: 14,
     marginTop: 12,
-  },
-  recoveryStatCols: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: 12,
-    columnGap: 16,
-  },
-  // Unlike classifCol's short fixed labels (Progressing/Steady/Regressing),
-  // a category label here can run to "Added during recovery" — long enough
-  // that even alone on its own wrapped row it can exceed the card's width at
-  // enlarged accessibility text sizes. flexShrink lets the column compress
-  // below its own content width so the label wraps instead of overflowing.
-  recoveryStatCol: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: 'auto',
-    minWidth: 0,
-    alignItems: 'center',
-    gap: 5,
-  },
-  recoveryStatDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.accent,
-    opacity: 0.55,
-  },
-  recoveryStatValue: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  recoveryStatLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.textMuted,
-    textAlign: 'center',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
   recoveryStatusLine: {
     fontSize: 13,

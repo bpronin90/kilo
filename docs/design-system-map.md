@@ -511,24 +511,36 @@ region (`home-recovery-analytics`, a single `accessible` node), in this order:
 - **Week eyebrow** — `Week N`, the micro-label treatment. Omitted when no week
   exists (`Baseline captured. No week logged yet.`): there is nothing to name,
   and `Week 1` would be invented.
-- **Result** — the one hero figure, `X of Y` in `HeroMetric.statSecondary` /
-  `colors.accentText`, with a `baseline exercises met` caption beside it. Exactly
-  one of the result or a fallback occupies this slot, never both, and a
-  fallback prints no count at all rather than `0 of 0`. Baseline
-  unavailable/unsupported takes precedence over a missing/unreadable note,
-  since it is a property of the block, not of any one week.
-- **Category columns** (`home-recovery-stats`) — one dot/count/label column per
-  **nonzero** `rebuilding` / `not reintroduced` / `not comparable` /
-  `added during recovery` count, in that order, wrapping rather than clipping.
-  A zero category is absent, not a `0` column. Reuses the visual grammar (dot,
-  bold count, uppercase muted label) the hero card's Exercise Progress band
-  already established, behind a `cardBorder` divider — but `flexShrink: 1`
-  where `classifCol` uses `0`: the classification labels are short enough to
-  always fit their wrapped column, while a category label can run to "Added
-  during recovery," long enough to still overflow a full-width column at
-  enlarged accessibility text, so this column has to compress and let the
-  label itself wrap.
+- **Result** (`#1029`, replacing the old `X of Y baseline exercises met` hero)
+  — one of three mutually exclusive shapes, chosen by `deriveRecoveryWeekBands`/
+  `deriveRecoveryMovement` (`lib/data/recoveryReturnBands.js`):
+  - `home-recovery-bands` — four or more trained roster lifts: one row per
+    nonzero return band (`At or above`/`Close`/`Rebuilding`/`Early`/`Can't
+    compare`), sized against the TRAINED total, never the roster. A
+    same-weight-tier denominator caption ("N of Y roster exercises trained")
+    sits above the rows — `Not trained yet` is never a bucket row, only this
+    caption.
+  - `home-recovery-sparse` — fewer than four trained lifts: one plain
+    sentence naming each trained lift and its #697 state word, ending with
+    the same roster denominator. No bars at all below this floor.
+  - a fallback (unchanged): baseline unavailable/unsupported, no week
+    logged, or a missing/unreadable note takes precedence, since those are
+    properties of the block or the week, not of the trained population.
+  A fallback prints no count at all rather than `0 of 0`.
+- **Movement** (`home-recovery-movement`, `#1029`) — appears only once its
+  evidence bar is met (`deriveRecoveryMovement` returns non-null): a sentence
+  naming the anchor week, the matched population, and the improved/steady/
+  fell-back counts. Bands lead in Week 1 without reserving space for this;
+  once movement exists it gets equal real estate, never a subordinate line.
 - **Stale message** — the existing `RECOVERY_STALE_MESSAGE`, only when stale.
+
+**Dropped from Home (#1029):** the `rebuilding`/`not reintroduced`/`not
+comparable`/`added during recovery` category columns (`home-recovery-stats`)
+are gone — `not reintroduced` and `not comparable` lifts are now represented
+inside the band rows/sparse sentence themselves (as `Not trained yet`'s
+denominator and the `Can't compare` band respectively), and
+`added_during_recovery` work is out of scope for this summary entirely; it
+stays Analytics-only.
 
 **Dropped from Home (#820):** the exclusion clause (`Not counted in your
 normal analytics.`) no longer renders here or in the composed

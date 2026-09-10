@@ -12,6 +12,7 @@ import {
   RECOVERY_COMPARISON_STATUS,
   RECOVERY_WEEK_STATUS,
 } from '../../lib/data/recoveryAnalytics';
+import { deriveRecoveryMovement, deriveRecoveryWeekBands } from '../../lib/data/recoveryReturnBands';
 
 // Re-exported so HomeScreen's active-branch copy can switch on the same
 // enums this module derives from, without HomeScreen importing a second
@@ -112,9 +113,16 @@ export function useHomeRecoverySummary(notes) {
       comparisonStatus: null,
       weekNumber: null,
       weekNoteStatus: null,
-      metCount: 0,
-      totalBaselineExercises: 0,
-      categoryCounts: { rebuilding: 0, not_reintroduced: 0, not_comparable: 0, added_during_recovery: 0 },
+      // #1029: the met-count headline is replaced by return bands sized
+      // against the trained total, plus movement since the anchor week when
+      // the evidence bar for it is met. `bands`/`trained`/`rosterSize` and
+      // `movement` are the shapes `HomeRecoverySummary` renders from now —
+      // `metCount`/`totalBaselineExercises`/`categoryCounts` are gone.
+      bands: null,
+      trained: 0,
+      rosterSize: 0,
+      trainedExercises: [],
+      movement: null,
       includedInNormalAnalytics: false,
     };
     // An active block is only reported off a verified snapshot. While the read
@@ -124,20 +132,32 @@ export function useHomeRecoverySummary(notes) {
     const comparison = deriveRecoveryComparison({ block: activeBlock, weeks, notes });
     const comparisonWeeks = comparison.weeks || [];
     const current = comparisonWeeks.length > 0 ? comparisonWeeks[comparisonWeeks.length - 1] : null;
+    const bandResult = deriveRecoveryWeekBands(current);
+    // Movement is never derived off an unverified/stale snapshot (#1023 v2
+    // §4 requirement 4) — `isStale` above already covers "last refresh
+    // failed over a still-current last-known-good read".
+    const movement = (!isStale && current)
+      ? deriveRecoveryMovement(comparisonWeeks, { currentWeekId: current.week_id })
+      : null;
+    // Below the 4-trained-lift sparse floor (#1029 acceptance criterion 1),
+    // Home names the trained lift(s) and their band directly rather than
+    // rendering bucket rows/bars.
+    const trainedExercises = current
+      ? (current.exercises || [])
+          .filter(row => row.state !== 'not_reintroduced')
+      : [];
+
     return {
       ...base,
       active: true,
       comparisonStatus: comparison.status,
       weekNumber: current ? current.week_number : null,
       weekNoteStatus: current ? current.status : null,
-      metCount: current?.summary?.baseline_met || 0,
-      totalBaselineExercises: current ? (current.exercises || []).length : 0,
-      categoryCounts: {
-        rebuilding: current?.summary?.rebuilding || 0,
-        not_reintroduced: current?.summary?.not_reintroduced || 0,
-        not_comparable: current?.summary?.not_comparable || 0,
-        added_during_recovery: current?.summary?.added_during_recovery || 0,
-      },
+      bands: bandResult.buckets,
+      trained: bandResult.trained,
+      rosterSize: bandResult.roster_size,
+      trainedExercises,
+      movement,
       includedInNormalAnalytics: activeBlock.include_in_normal_analytics === true,
     };
   }, [activeBlock, weeks, notes, ready, loading, stale, retryRecovery]);
