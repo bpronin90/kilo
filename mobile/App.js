@@ -9,7 +9,6 @@ import { useUpdates } from 'expo-updates';
 import { ThemeProvider, useTheme, useThemedStyles } from './theme/ThemeContext';
 import { TabBar } from './components/TabBar';
 import { Button } from './components/UI';
-import { ScrollContext } from './components/ScreenShell';
 import { TabBarLayoutContext, TAB_BAR_HEIGHT_FALLBACK, TAB_BAR_VISUAL_GAP } from './components/TabBarLayout';
 import { SafeAreaProvider, SafeAreaInsetsContext, initialWindowMetrics } from 'react-native-safe-area-context';
 
@@ -266,9 +265,6 @@ function AppShell({ onDeviceDataWiped }) {
   // rendered bar.
   const { bottom: bottomSafeAreaInset = 0 } = useContext(SafeAreaInsetsContext) || {};
   const restTimerBannerClearance = tabBarHeight + TAB_BAR_VISUAL_GAP + bottomSafeAreaInset;
-  const scrollListeners = useRef(new Set());
-  const isScrollingRef = useRef(false);
-  const scrollTimeout = useRef(null);
 
   // Back consumer registered by the active tab. Returns true if it handled the
   // back event (e.g. popped a sub-view), false to let the shell fall back to Home.
@@ -282,31 +278,6 @@ function AppShell({ onDeviceDataWiped }) {
   // True when the active tab's sub-screen renders its own back affordance; used to
   // suppress the web "← Home" bar so two back controls do not stack.
   const [tabOwnsBack, setTabOwnsBack] = useState(false);
-
-  const addScrollListener = useCallback((listener) => {
-    scrollListeners.current.add(listener);
-    return () => {
-      scrollListeners.current.delete(listener);
-    };
-  }, []);
-
-  const handleScroll = useCallback(() => {
-    if (!isScrollingRef.current) {
-      isScrollingRef.current = true;
-      scrollListeners.current.forEach((listener) => listener(true));
-    }
-    if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
-    scrollTimeout.current = setTimeout(() => {
-      isScrollingRef.current = false;
-      scrollListeners.current.forEach((listener) => listener(false));
-    }, 150);
-  }, []);
-
-  React.useEffect(() => {
-    return () => {
-      if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
-    };
-  }, []);
 
   // Install the foreground notification handler once on app startup. This ensures
   // the handler is in place before any persisted OS notification can arrive in
@@ -957,7 +928,6 @@ function AppShell({ onDeviceDataWiped }) {
     <SafeAreaProvider initialMetrics={initialWindowMetrics || ZERO_SAFE_AREA_METRICS}>
     <TabBarLayoutContext.Provider value={{ tabBarHeight }}>
     <CloudSyncContext.Provider value={cloudSync}>
-    <ScrollContext.Provider value={{ onScroll: handleScroll }}>
       <View style={styles.appContainer}>
         {/* Mounted at the app root, not per-screen: Alert.alert is called
             imperatively from hooks all over the app, so the single host has
@@ -1006,11 +976,12 @@ function AppShell({ onDeviceDataWiped }) {
             tab is active, and the OS notification is deliberately suppressed
             while the app is foregrounded on ANY tab, so this in-app surface
             is the only alert the user gets in that case.
-            #577 review: wrapped with the same tab-bar/safe-area clearance
-            ScreenShell reserves, so the floating (position: absolute)
-            TabBar — or the bottom safe area / home indicator on inset
-            devices — can never cover the banner or its Cancel/Dismiss
-            controls. */}
+            #577 / #1026: the running countdown and completion render as a
+            compact centered pill, not a full-width banner. It carries the
+            same tab-bar/safe-area clearance ScreenShell reserves so the
+            floating (position: absolute) TabBar — or the bottom safe area /
+            home indicator on inset devices — can never cover it or its
+            Cancel/Dismiss action. */}
         <RestTimerBanner
           isRunning={restTimer.isRunning}
           remainingMs={restTimer.remainingMs}
@@ -1026,7 +997,6 @@ function AppShell({ onDeviceDataWiped }) {
           tabs={TABS}
           activeTab={activeTab}
           onTabPress={handleTabPress}
-          addScrollListener={addScrollListener}
           onHeightChange={(height) => setTabBarHeight((prev) => (prev === height ? prev : height))}
         />
         {ownershipPrompt && !auth.passwordRecovery && !auth.recoveryError ? (
@@ -1100,7 +1070,6 @@ function AppShell({ onDeviceDataWiped }) {
           </View>
         ) : null}
       </View>
-    </ScrollContext.Provider>
     </CloudSyncContext.Provider>
     </TabBarLayoutContext.Provider>
     </SafeAreaProvider>

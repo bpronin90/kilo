@@ -1,75 +1,27 @@
-import React, { useContext, useEffect, useRef } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text } from 'react-native';
+import React, { useContext } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useThemedStyles } from '../theme/ThemeContext';
 import { TAB_BAR_VISUAL_GAP } from './TabBarLayout';
 
-export function TabBar({ tabs, activeTab, onTabPress, addScrollListener, onHeightChange }) {
+// The floating bottom navigation is always fully opaque (#1026). It previously
+// animated itself down to 25% opacity two seconds after mount and again after
+// scroll or touch, which left the muted 13px labels unreadable over arbitrary
+// content and made the bar feel like it was disappearing. That behavior — and
+// its scroll-activity plumbing in App.js — is removed; only the tabs, the
+// floating rounded shape, the position, and the safe-area offset remain.
+export function TabBar({ tabs, activeTab, onTabPress, onHeightChange }) {
   const styles = useThemedStyles(createStyles);
   const { bottom: bottomInset = 0 } = useContext(SafeAreaInsetsContext) || {};
 
   const handleLayout = (e) => {
     if (onHeightChange) onHeightChange(e.nativeEvent.layout.height);
   };
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const timeoutRef = useRef(null);
-
-  const animateTo = (toValue, duration, easing = Easing.out(Easing.exp)) => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-    Animated.timing(fadeAnim, {
-      toValue,
-      duration,
-      easing,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const setSolid = (immediate = false) => 
-    animateTo(1, immediate ? 0 : 300, Easing.out(Easing.exp));
-    
-  const setTransparent = (immediate = false) => 
-    animateTo(0.25, immediate ? 0 : 1000, Easing.bezier(0.4, 0, 0.2, 1));
-
-  // Initial settle
-  useEffect(() => {
-    timeoutRef.current = setTimeout(() => {
-      setTransparent(false);
-    }, 2000);
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, []);
-
-  // Handle external scroll activity
-  useEffect(() => {
-    if (!addScrollListener) return;
-    return addScrollListener((scrolling) => {
-      if (scrolling) {
-        setTransparent(false);
-      }
-    });
-  }, [addScrollListener]);
-
-  const handleInteractionStart = () => {
-    setSolid(false); // Smooth but quick appearance on touch
-  };
-
-  const handleInteractionEnd = () => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => {
-      setTransparent(false);
-    }, 1500);
-  };
 
   return (
-    <Animated.View
-      style={[styles.container, { opacity: fadeAnim, bottom: TAB_BAR_VISUAL_GAP + bottomInset }]}
+    <View
+      style={[styles.container, { bottom: TAB_BAR_VISUAL_GAP + bottomInset }]}
       onLayout={handleLayout}
-      onTouchStart={handleInteractionStart}
-      onTouchEnd={handleInteractionEnd}
       accessibilityRole="tablist"
     >
       {tabs.map((tab) => (
@@ -87,7 +39,7 @@ export function TabBar({ tabs, activeTab, onTabPress, addScrollListener, onHeigh
           </Text>
         </Pressable>
       ))}
-    </Animated.View>
+    </View>
   );
 }
 
