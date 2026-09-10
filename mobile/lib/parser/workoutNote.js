@@ -11,7 +11,7 @@ import { kgMarkerToLb } from '../units.js';
 // cloud recompute path so synced remote rows cannot bypass the limit.
 export const MAX_RAW_TEXT_LENGTH = 200000;
 
-const _DAY_RE = /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i;
+const _DAY_RE = /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;
 const _EXERCISE_DASH_RE = /^-([^-\s].*)/;
 const _SESSION_ENTRY_RE = /^-\s+(.+)/;
 const _EXERCISE_NUMBERED_RE = /^(\d+[a-z]?)\.\s+(.+)/i;
@@ -549,9 +549,7 @@ function _transformExerciseBlocks(rawText, eligibleFlags, onExerciseBlock) {
       continue;
     }
 
-    if (t === '---' ||
-        /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i.test(t) ||
-        t.startsWith('+')) {
+    if (t === '---' || _DAY_RE.test(t) || t.startsWith('+')) {
       flush();
       result.push(line);
       continue;
