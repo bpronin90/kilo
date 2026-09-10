@@ -71,8 +71,8 @@ bound (#451).
 The config's `project_id` is not the remote deployment target. Run
 `scripts/deploy-kilo-functions.sh` from the repository root to deploy the three
 Kilo-owned functions; the script supplies project ref
-`ogzhnscdqcdrhfqcobuv` explicitly and does not deploy the unrelated `anime`
-function hosted in the same Supabase project. It reports success only after the
+`ogzhnscdqcdrhfqcobuv` explicitly and does not deploy functions outside Kilo's
+ownership boundary. It reports success only after the
 Supabase management plane shows `account-export`, `account-delete`, and
 `health-data-delete` as `ACTIVE` with an update timestamp from that deployment.
 

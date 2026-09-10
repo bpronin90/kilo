@@ -9,12 +9,16 @@ This is a policy and structure doc, not an ingestion/ETL design. Kilo stores a s
 
 ## Tenancy
 
-Kilo's cloud tables live in one dedicated `kilo` schema inside a Supabase project that is **shared with another app (anime-streaming-tracker)**. The shared project is the reason isolation is explicit rather than inherited.
+Kilo's cloud tables live in one dedicated `kilo` schema inside a shared Supabase
+project. The shared project is the reason isolation is explicit rather than
+inherited.
 
 Rules:
 
 - All Kilo app tables live in the `kilo` schema. Nothing Kilo-owned lives anywhere else.
-- Kilo must **never** use `public` or any of the anime-tracker schemas: `raw`, `canonical`, `serving`, `serving_stage`, `legacy`, `ops`. Those belong to the other app and Kilo does not read or write them.
+- Kilo must **never** use `public` or the reserved co-tenant schemas: `raw`,
+  `canonical`, `serving`, `serving_stage`, `legacy`, `ops`. Kilo does not own,
+  read, or write them.
 - The only cross-schema reference Kilo makes is **read-only to the Supabase-managed `auth` schema** — every table's `user_id` references `auth.users(id) on delete cascade`. Kilo does not own or mutate `auth`.
 
 Because a custom schema does not inherit the default privileges Supabase applies to `public`, isolation here is established by explicit grants and RLS rather than by convention (see Grants And Isolation Posture).
@@ -32,7 +36,7 @@ Consequences:
   layer. A second Kilo schema requires a new explicit ownership decision; none
   is reserved speculatively.
 
-Do not introduce the anime-tracker's `raw/canonical/serving/ops` layer model into Kilo.
+Do not introduce a `raw/canonical/serving/ops` layer model into Kilo.
 
 ## Source-Of-Truth Rule
 

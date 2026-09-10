@@ -1451,10 +1451,8 @@ describe('ongoing profile/toggles/goal/deload sync (issue #489)', () => {
   });
 
   it('repairs a cloud row frozen at bootstrap on an existing device that already has real data', async () => {
-    // The exact production state observed on 2026-07-13 (project ogzhnscdqcdrhfqcobuv):
-    // the single user_profile row was still whatever it was at first sign-in —
-    // current_workout_note_id null, tracked_lifts {}, unit_system null — while
-    // weight entries had synced the same day. This is the bug #489 exists to fix.
+    // Regression fixture for an existing profile left at its bootstrap values
+    // while newer domain records have already synced.
     cloud.seedRemote(SYNC_TABLES.USER_PROFILE, {
       id: SELF,
       display_name: null,

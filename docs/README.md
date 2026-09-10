@@ -48,7 +48,7 @@ Contributor workflow lives in the root [Contributing guide](../CONTRIBUTING.md).
 ## Historical Material
 
 [Archive Index](archive/README.md) groups completed roadmaps, superseded
-specifications, delivery evidence, parser samples, and the retired browser
+specifications, delivery and implementation evidence, and the retired browser
 prototype. Archived files preserve provenance but do not define current product
 behavior.
 
