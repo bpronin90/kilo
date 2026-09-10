@@ -1545,6 +1545,40 @@ describe('WeightHistoryList date range cancel does not commit sentinel date (#39
     expect(JSON.stringify(component.toJSON())).toContain('01-20-2026');
   });
 
+  test('selected boundaries wrap as intact groups at narrow widths with large text enabled', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    render.act(() => {
+      component.root.findByProps({ accessibilityLabel: 'Filter by date range' }).props.onPress();
+    });
+    render.act(() => {
+      component.root.findByProps({ accessibilityLabel: 'From date' }).props.onPress();
+    });
+    render.act(() => {
+      component.root.findByProps({ testID: 'mock-datetimepicker' }).props.onChange({ type: 'set' }, new Date(2026, 0, 15));
+    });
+    render.act(() => {
+      component.root.findByProps({ accessibilityLabel: 'To date' }).props.onPress();
+    });
+    render.act(() => {
+      component.root.findByProps({ testID: 'mock-datetimepicker' }).props.onChange({ type: 'set' }, new Date(2026, 0, 20));
+    });
+
+    const controls = component.root.findByProps({ testID: 'weight-history-date-filter-controls' });
+    expect(StyleSheet.flatten(controls.props.style).flexWrap).toBe('wrap');
+    ['weight-history-from-boundary', 'weight-history-to-boundary'].forEach((testID) => {
+      const boundary = component.root.findByProps({ testID });
+      expect(StyleSheet.flatten(boundary.props.style).flexShrink).toBe(0);
+      boundary.findAllByType('Text').forEach((text) => {
+        expect(text.props.allowFontScaling).not.toBe(false);
+      });
+    });
+  });
+
   test('one-sided filters survive collapse and re-expand', () => {
     let component;
     render.act(() => {

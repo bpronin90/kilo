@@ -405,42 +405,50 @@ function WeightHistoryListImpl({
       {/* Revealed date-range filter — its own row directly under the header,
           clearly separated so it never overlaps row 1 (#411). */}
       {!collapsed && showDateFilter && (
-        <View style={styles.dateFilterRow}>
+        <View style={styles.dateFilterRow} testID="weight-history-date-filter-controls">
           {Platform.OS === 'web' ? (
             <>
-              <WebDateTextInput value={fromDate} onChange={setFromDate} placeholder="From" />
-              {fromDate ? <DateBoundaryClear label="From" onPress={() => setFromDate('')} /> : null}
+              <View style={styles.dateBoundary} testID="weight-history-from-boundary">
+                <WebDateTextInput value={fromDate} onChange={setFromDate} placeholder="From" />
+                {fromDate ? <DateBoundaryClear label="From" onPress={() => setFromDate('')} /> : null}
+              </View>
               <Text style={styles.dateRangeSep}>—</Text>
-              <WebDateTextInput value={toDate} onChange={setToDate} placeholder="To" />
-              {toDate ? <DateBoundaryClear label="To" onPress={() => setToDate('')} /> : null}
+              <View style={styles.dateBoundary} testID="weight-history-to-boundary">
+                <WebDateTextInput value={toDate} onChange={setToDate} placeholder="To" />
+                {toDate ? <DateBoundaryClear label="To" onPress={() => setToDate('')} /> : null}
+              </View>
             </>
           ) : (
             <>
-              <Pressable
-                onPress={() => setShowFromPicker(true)}
-                style={styles.dateChip}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel="From date"
-              >
-                <Text style={[styles.dateChipText, !fromDate && styles.dateChipPlaceholder]}>
-                  {fromDate ? formatDate(fromDate) : 'From'}
-                </Text>
-              </Pressable>
-              {fromDate ? <DateBoundaryClear label="From" onPress={() => setFromDate('')} /> : null}
+              <View style={styles.dateBoundary} testID="weight-history-from-boundary">
+                <Pressable
+                  onPress={() => setShowFromPicker(true)}
+                  style={styles.dateChip}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel="From date"
+                >
+                  <Text style={[styles.dateChipText, !fromDate && styles.dateChipPlaceholder]}>
+                    {fromDate ? formatDate(fromDate) : 'From'}
+                  </Text>
+                </Pressable>
+                {fromDate ? <DateBoundaryClear label="From" onPress={() => setFromDate('')} /> : null}
+              </View>
               <Text style={styles.dateRangeSep}>—</Text>
-              <Pressable
-                onPress={() => setShowToPicker(true)}
-                style={styles.dateChip}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel="To date"
-              >
-                <Text style={[styles.dateChipText, !toDate && styles.dateChipPlaceholder]}>
-                  {toDate ? formatDate(toDate) : 'To'}
-                </Text>
-              </Pressable>
-              {toDate ? <DateBoundaryClear label="To" onPress={() => setToDate('')} /> : null}
+              <View style={styles.dateBoundary} testID="weight-history-to-boundary">
+                <Pressable
+                  onPress={() => setShowToPicker(true)}
+                  style={styles.dateChip}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel="To date"
+                >
+                  <Text style={[styles.dateChipText, !toDate && styles.dateChipPlaceholder]}>
+                    {toDate ? formatDate(toDate) : 'To'}
+                  </Text>
+                </Pressable>
+                {toDate ? <DateBoundaryClear label="To" onPress={() => setToDate('')} /> : null}
+              </View>
             </>
           )}
         </View>
@@ -591,14 +599,24 @@ const createStyles = (colors) => StyleSheet.create({
   },
   dateFilterRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
     gap: 6,
     paddingHorizontal: 16,
     paddingVertical: 10,
     backgroundColor: colors.subtleBg,
     borderBottomWidth: 1,
     borderBottomColor: colors.cardBorder,
+  },
+  // Keep a selected boundary and its clear affordance together. The filter row
+  // may wrap these compact groups at 320dp or with large text, rather than
+  // letting a trailing clear target clip inside the card's overflow boundary.
+  dateBoundary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
+    gap: 4,
   },
   dateChip: {
     paddingHorizontal: 10,
