@@ -219,6 +219,21 @@ function WebDateTextInput({ value, onChange, placeholder }) {
   });
 }
 
+function DateBoundaryClear({ label, onPress }) {
+  const styles = useThemedStyles(createStyles);
+  return (
+    <Pressable
+      onPress={onPress}
+      style={styles.dateBoundaryClearBtn}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={`Clear ${label} date`}
+    >
+      <Text style={styles.dateBoundaryClearText}>✕</Text>
+    </Pressable>
+  );
+}
+
 function filterByDateRange(entries, fromDate, toDate) {
   if (!fromDate && !toDate) return entries;
   return entries.filter(e => {
@@ -272,14 +287,9 @@ function WeightHistoryListImpl({
     if (event.type === 'set' && selectedDate) setToDate(toYMD(selectedDate));
   };
 
-  const clearRange = () => {
-    setFromDate('');
-    setToDate('');
-  };
-
-  // Option B: the From/To controls are hidden by default and revealed by the
-  // header filter icon. Toggling the filter off — or clearing (✕) — closes and
-  // clears the range so it can never overlap the first data row (#411).
+  // The compact From/To controls are revealed from the history header. Turning
+  // the filter off clears both bounds; clearing either bound below deliberately
+  // leaves this control area open so a one-sided range is immediately usable.
   // If the panel is collapsed, always expand it and show the filter so the
   // controls are immediately visible (#411 feedback).
   const toggleDateFilter = () => {
@@ -290,14 +300,12 @@ function WeightHistoryListImpl({
       return;
     }
     setShowDateFilter(prev => {
-      if (prev) clearRange();
+      if (prev) {
+        setFromDate('');
+        setToDate('');
+      }
       return !prev;
     });
-  };
-
-  const clearAndCloseFilter = () => {
-    clearRange();
-    setShowDateFilter(false);
   };
 
   // Re-expanding always starts from the first window so a long session of
@@ -401,8 +409,10 @@ function WeightHistoryListImpl({
           {Platform.OS === 'web' ? (
             <>
               <WebDateTextInput value={fromDate} onChange={setFromDate} placeholder="From" />
+              {fromDate ? <DateBoundaryClear label="From" onPress={() => setFromDate('')} /> : null}
               <Text style={styles.dateRangeSep}>—</Text>
               <WebDateTextInput value={toDate} onChange={setToDate} placeholder="To" />
+              {toDate ? <DateBoundaryClear label="To" onPress={() => setToDate('')} /> : null}
             </>
           ) : (
             <>
@@ -417,6 +427,7 @@ function WeightHistoryListImpl({
                   {fromDate ? formatDate(fromDate) : 'From'}
                 </Text>
               </Pressable>
+              {fromDate ? <DateBoundaryClear label="From" onPress={() => setFromDate('')} /> : null}
               <Text style={styles.dateRangeSep}>—</Text>
               <Pressable
                 onPress={() => setShowToPicker(true)}
@@ -429,11 +440,9 @@ function WeightHistoryListImpl({
                   {toDate ? formatDate(toDate) : 'To'}
                 </Text>
               </Pressable>
+              {toDate ? <DateBoundaryClear label="To" onPress={() => setToDate('')} /> : null}
             </>
           )}
-          <Pressable onPress={clearAndCloseFilter} style={styles.dateClearBtn} hitSlop={8}>
-            <Text style={styles.dateClearBtnText}>✕</Text>
-          </Pressable>
         </View>
       )}
 
@@ -611,11 +620,15 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '700',
     color: colors.textMuted,
   },
-  dateClearBtn: {
-    paddingHorizontal: 6,
-    paddingVertical: 4,
+  dateBoundaryClearBtn: {
+    minHeight: 28,
+    minWidth: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+    backgroundColor: colors.chipBackground,
   },
-  dateClearBtnText: {
+  dateBoundaryClearText: {
     fontSize: 12,
     color: colors.textMuted,
     fontWeight: '700',
