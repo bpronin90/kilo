@@ -14354,4 +14354,50 @@ describe('New Routine editor: Import routine action (#1021)', () => {
     expect(pasteInput().length).toBe(0);
     expect(findPressableByText(root, 'Import routine')).toBeTruthy();
   });
+
+  // Review finding: `handleAndroidBack` used to check `otherEditor.editingNoteId`
+  // before `importRoutineOpen`, so Back while the import preview was open would
+  // save/close the underlying New Routine draft instead of just dismissing the
+  // preview, losing the draft's unsaved state. The import preview must now win
+  // the race and dismiss first, leaving the draft exactly as the user left it.
+  test('Android Back dismisses the import preview first, preserving the New Routine draft (#1021 review)', () => {
+    let capturedConsumer;
+    const registerBackConsumer = jest.fn((consumer) => {
+      capturedConsumer = consumer;
+      return jest.fn();
+    });
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledLogScreen isActive registerBackConsumer={registerBackConsumer} />
+      );
+    });
+    const root = component.root;
+    enterNewRoutineEditor(root);
+
+    const getDraftInput = () =>
+      root.findAll(n => n.props && n.props.multiline === true && typeof n.props.onChangeText === 'function')[0];
+    const draftText = 'Monday\n+Lifting\n-Overhead Press\n95 5,5,5';
+    render.act(() => { getDraftInput().props.onChangeText(draftText); });
+    expect(getDraftInput().props.value).toBe(draftText);
+
+    render.act(() => { findPressableByText(root, 'Import routine').props.onPress(); });
+    const pasteInput = () => root.findAll(n => typeof n.type === 'string' && n.props.testID === 'routine-import-paste');
+    expect(pasteInput().length).toBe(1);
+
+    let handled;
+    render.act(() => { handled = capturedConsumer(); });
+
+    // The event was consumed by dismissing the preview, not by closing/saving
+    // the underlying draft.
+    expect(handled).toBe(true);
+    expect(pasteInput().length).toBe(0);
+    expect(findPressableByText(root, 'Import routine')).toBeTruthy();
+    expect(mockAdd).not.toHaveBeenCalled();
+
+    // The draft text is exactly as it was before Import routine was opened —
+    // neither saved nor discarded.
+    expect(getDraftInput().props.value).toBe(draftText);
+  });
 });

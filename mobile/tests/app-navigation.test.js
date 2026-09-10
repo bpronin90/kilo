@@ -171,6 +171,17 @@ function withinTab(component, tabName) {
   return component.root.findByProps({ testID: `tab-content-${tabName}` });
 }
 
+// #1021: Edit on the Log tab's current-routine card now lives behind its
+// consolidated three-dot menu (`accessibilityLabel: "Routine actions"`)
+// instead of a standalone pill. Open it first so the "Edit" control is
+// reachable, exactly as before.
+function openLogRoutineMenu(component) {
+  const trigger = withinTab(component, 'Log').findAll(
+    n => n.props && n.props.accessibilityLabel === 'Routine actions' && typeof n.props.onPress === 'function'
+  )[0];
+  renderer.act(() => { trigger.props.onPress({ stopPropagation: jest.fn() }); });
+}
+
 const CURRENT_NOTE = {
   id: 'note1',
   title: 'Routine A',
@@ -273,6 +284,7 @@ describe('Android Back handler ownership across tab switches (#527)', () => {
 
   test('Back on the Log tab finishes the active current-routine editor instead of falling back to Home', () => {
     renderer.act(() => { capturedTabPress('Log'); });
+    openLogRoutineMenu(component);
     renderer.act(() => {
       findPressableByText(withinTab(component, 'Log'), 'Edit').props.onPress({ stopPropagation: jest.fn() });
     });
@@ -290,6 +302,7 @@ describe('Android Back handler ownership across tab switches (#527)', () => {
 
   test('switching away from an editing Log tab and back preserves handler precedence for the visible tab', () => {
     renderer.act(() => { capturedTabPress('Log'); });
+    openLogRoutineMenu(component);
     renderer.act(() => {
       findPressableByText(withinTab(component, 'Log'), 'Edit').props.onPress({ stopPropagation: jest.fn() });
     });
@@ -311,6 +324,7 @@ describe('Android Back handler ownership across tab switches (#527)', () => {
 
   test('a hidden Log editor cannot consume Back while another tab is active', () => {
     renderer.act(() => { capturedTabPress('Log'); });
+    openLogRoutineMenu(component);
     renderer.act(() => {
       findPressableByText(withinTab(component, 'Log'), 'Edit').props.onPress({ stopPropagation: jest.fn() });
     });

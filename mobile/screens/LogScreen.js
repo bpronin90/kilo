@@ -581,6 +581,14 @@ export function LogScreen({
   }, [navRecoveryKey, navRecoveryNoteId, recoveryReady, recoveryTabVisible, notes, currentEditor.mode, otherEditor.editingNoteId, deloadEditor.deloadMode]);
 
   const handleAndroidBack = () => {
+    // #1021 feedback: the import preview (opened from the New Routine editor's
+    // Import routine action) must dismiss on Back before any draft-save/close
+    // logic runs, otherwise Back would save/close the underlying draft note
+    // while the preview stays on screen and the draft's unsaved state is lost.
+    if (importRoutineOpen) {
+      setImportRoutineOpen(false);
+      return true;
+    }
     if (deloadEditor.deloadMode === 'edit') {
       deloadEditor.handleDoneDeload();
       return true;
@@ -621,7 +629,7 @@ export function LogScreen({
   useEffect(() => {
     if (!isActive) return undefined;
     return registerBackConsumer?.(() => handleAndroidBackRef.current());
-  }, [isActive, otherEditor.editingNoteId, otherEditor.viewingNoteId, otherEditor.recoveryViewingNoteId, tabView, currentEditor.mode, deloadEditor.deloadMode, registerBackConsumer]);
+  }, [isActive, importRoutineOpen, otherEditor.editingNoteId, otherEditor.viewingNoteId, otherEditor.recoveryViewingNoteId, tabView, currentEditor.mode, deloadEditor.deloadMode, registerBackConsumer]);
 
   const otherNotes = notes.filter(n => n.id !== currentId && !n.title?.startsWith('Deload · '));
 
