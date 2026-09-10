@@ -63,6 +63,11 @@ function OverviewRow({ row, unit, onPress }) {
     delta && row.deltaCaption
       ? `${delta.up ? 'up' : 'down'} ${delta.text.replace(/[▲▼]\s*/, '')}${row.showUnit ? ` ${unit}` : ''}, ${row.deltaCaption}`
       : null,
+    // Purely additive (#1029 amendment): an informational caption independent
+    // of `delta`, joined into the accessible label like every other fact this
+    // row already carries. Absent on every row except Recovery during active
+    // Recovery, so every other row's accessible label is unchanged.
+    row.infoCaption || null,
   ].filter(Boolean).join(', ');
 
   const body = (
@@ -89,7 +94,7 @@ function OverviewRow({ row, unit, onPress }) {
         </View>
       </View>
 
-      {(delta || caption) && (
+      {(delta || caption || row.infoCaption) && (
         <View style={styles.rowSub}>
           {!!delta && (
             <Text style={[styles.rowDelta, delta.up ? styles.rowDeltaUp : styles.rowDeltaDown]}>
@@ -99,6 +104,13 @@ function OverviewRow({ row, unit, onPress }) {
           )}
           {!!row.deltaCaption && !!delta && <Text style={styles.rowCaption}>{row.deltaCaption}</Text>}
           {!!caption && <Text style={styles.rowCaption}>{caption}</Text>}
+          {/* Additive informational caption (#1029 amendment): renders
+              INDEPENDENTLY of `delta`/`caption` — the Recovery row's week
+              identity, anchor week, and matched population during active
+              Recovery, at the bucket-row font-weight tier (matches
+              AnalyticsRecoverySection's own bucket-row/denominator text),
+              never folded into `valueSuffix` and never a fabricated `delta`. */}
+          {!!row.infoCaption && <Text style={styles.rowInfoCaption}>{row.infoCaption}</Text>}
         </View>
       )}
     </>
@@ -264,6 +276,17 @@ const createStyles = (colors) => StyleSheet.create({
   },
   rowCaption: {
     fontSize: 12,
+    color: colors.textMuted,
+    flexShrink: 1,
+  },
+  // Bucket-row font-weight tier (#1029 amendment) — matches
+  // AnalyticsRecoverySection's `bandDenominatorCaption`/`bandRowLabel`
+  // (fontWeight '700'), so week identity/anchor/matched-population facts read
+  // with the same visual weight they carry on the Recovery section itself,
+  // not as a subordinate footnote like the plain-weight `rowCaption`.
+  rowInfoCaption: {
+    fontSize: 12,
+    fontWeight: '700',
     color: colors.textMuted,
     flexShrink: 1,
   },

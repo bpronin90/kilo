@@ -410,14 +410,13 @@ export function deriveOverviewRows({
   const isOpenWeek = activeTraining.status === ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK;
   const weekNumber = activeTraining.recoveryWeekNumber ?? null;
 
-  // #1029: two shapes, chosen by whether movement's evidence bar is met.
-  // Neither shape ever prints a composite percentage. `AnalyticsOverviewCard`
-  // is outside this issue's Allowed Files and only ever prints `valueSuffix`
-  // unconditionally (its own `caption`/`deltaCaption` fields render only in
-  // combination with a numeric `delta`, which would misrepresent this row as
-  // an up/down change it is not) — so both required qualifiers (the week
-  // identity every row keeps, and movement's anchor week + matched
-  // population) are folded into `valueSuffix` rather than a synthetic delta.
+  // #1029 amendment: two shapes, chosen by whether movement's evidence bar is
+  // met. Neither shape ever prints a composite percentage, and neither ever
+  // fabricates a numeric `delta`. `AnalyticsOverviewCard` now (amendment to
+  // this issue's Allowed Files) carries a purely additive `infoCaption` field
+  // that renders independently of `delta`, at the bucket-row font-weight
+  // tier — so week identity, anchor week, and matched population are real
+  // caption text via `infoCaption`, never folded into `valueSuffix`.
   let recoveryRow;
   if (!isOpenWeek) {
     recoveryRow = {
@@ -428,6 +427,7 @@ export function deriveOverviewRows({
       value: null,
       showUnit: false,
       valueSuffix: null,
+      infoCaption: null,
       emptyCaption: 'Between weeks — add the next week or end Recovery',
     };
   } else if (recoveryMovement) {
@@ -438,8 +438,9 @@ export function deriveOverviewRows({
       unavailable: false,
       value: recoveryMovement.improved,
       showUnit: false,
-      valueSuffix: `of ${recoveryMovement.matched_size} lifts improved · since Week `
-        + `${recoveryMovement.anchor_week_number} · Week ${weekNumber}`,
+      valueSuffix: 'lifts improved',
+      infoCaption: `Week ${weekNumber} · since Week ${recoveryMovement.anchor_week_number} · `
+        + `${recoveryMovement.matched_size} lifts matched`,
       emptyCaption: null,
     };
   } else if (recoveryBands) {
@@ -451,7 +452,8 @@ export function deriveOverviewRows({
       value: recoveryBands.trained,
       showUnit: false,
       valueSuffix: `of ${recoveryBands.roster_size} lifts trained · `
-        + `${recoveryBands.buckets?.at_or_above ?? 0} at or above · Week ${weekNumber}`,
+        + `${recoveryBands.buckets?.at_or_above ?? 0} at or above`,
+      infoCaption: `Week ${weekNumber}`,
       emptyCaption: null,
     };
   } else {

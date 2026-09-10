@@ -14,6 +14,7 @@ import {
   elapsedWeeksOnRoutine,
 } from '../lib/data';
 import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
+import { captureRecoveryBaselineFromText } from '../lib/data/recoveryBlocks';
 
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -532,6 +533,55 @@ describe('deriveOverviewRows (#821)', () => {
     expect(oneK.paused).toBe(false);
     expect(oneK.delta).toBe(25);
     expect(oneK.deltaCaption).toBe('since your last session');
+  });
+
+  // #1029 amendment (required test 21): the Recovery row's week identity,
+  // anchor week, and matched population arrive as `infoCaption`, never folded
+  // into `valueSuffix`, and no numeric `delta` is fabricated for either shape.
+  test('active Recovery with movement available: infoCaption carries week identity, anchor week, and matched population — absent from valueSuffix, no fabricated delta', () => {
+    const rows = deriveOverviewRows({
+      activeTraining: { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 3 },
+      recoveryBands: { roster_size: 5, trained: 5, buckets: { at_or_above: 3, close: 1, rebuilding: 1, early: 0, cannot_compare: 0, not_trained_yet: 0 } },
+      recoveryMovement: { improved: 2, steady: 1, fell_back: 0, matched_size: 3, anchor_week_number: 1 },
+    });
+    const recovery = rowFor(rows, 'recovery');
+    expect(recovery.infoCaption).toBe('Week 3 · since Week 1 · 3 lifts matched');
+    expect(recovery.valueSuffix).not.toMatch(/Week 3/);
+    expect(recovery.valueSuffix).not.toMatch(/since Week/);
+    expect(recovery.valueSuffix).not.toMatch(/3 lifts matched/);
+    expect(recovery.delta).toBeUndefined();
+  });
+
+  test('active Recovery with movement unavailable: infoCaption still carries week identity — absent from valueSuffix, no fabricated delta', () => {
+    const rows = deriveOverviewRows({
+      activeTraining: { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 1 },
+      recoveryBands: { roster_size: 5, trained: 2, buckets: { at_or_above: 1, close: 0, rebuilding: 1, early: 0, cannot_compare: 0, not_trained_yet: 3 } },
+      recoveryMovement: null,
+    });
+    const recovery = rowFor(rows, 'recovery');
+    expect(recovery.infoCaption).toBe('Week 1');
+    expect(recovery.valueSuffix).not.toMatch(/Week 1/);
+    expect(recovery.delta).toBeUndefined();
+  });
+
+  // Every other row — the four #737/#871 no-number conditions included —
+  // never supplies `infoCaption`. This is the additive-capability half of the
+  // production-caller matrix: only the Recovery row during active Recovery
+  // carries the field.
+  test('only the active-Recovery row carries infoCaption; every other row is untouched', () => {
+    const rows = deriveOverviewRows({
+      oneKPoints: [{ value: 940 }, { value: 975 }, { value: 1000 }],
+      signals: [{ overload_trend: 'up' }],
+      sessionsSinceDeload: 3,
+      currentWeight: 180,
+      weightPoints: [{ value: 181 }, { value: 180 }],
+      activeTraining: { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 1 },
+      recoveryBands: { roster_size: 2, trained: 1, buckets: { at_or_above: 1, close: 0, rebuilding: 0, early: 0, cannot_compare: 0, not_trained_yet: 1 } },
+    });
+    for (const key of ['weight', 'oneK', 'progress', 'routine']) {
+      expect(rowFor(rows, key).infoCaption).toBeUndefined();
+    }
+    expect(rowFor(rows, 'recovery').infoCaption).toBe('Week 1');
   });
 });
 
@@ -2603,6 +2653,126 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
     }).join(' ');
     expect(oneKTexts).toContain('Baseline training paused during Recovery');
     expect(oneKTexts.toLowerCase()).not.toContain('since your last session');
+  });
+
+  // #1029 amendment (required test 21) — full-render coverage through the real
+  // `AnalyticsRecoverySection`/`AnalyticsOverviewCard` pipeline, both shapes.
+  describe('Overview Recovery row informational caption (#1029 amendment)', () => {
+    const RECOVERY_BASELINE_TEXT = '-Bench\n- 135 5,5,5\n-Pull-up\n- 8,8,8';
+
+    function recoveryBlock(overrides = {}) {
+      return {
+        id: 'rb-open',
+        baseline_note_id: 'note-baseline',
+        baseline_note_title: 'Push Pull Legs',
+        baseline: captureRecoveryBaselineFromText(RECOVERY_BASELINE_TEXT),
+        started_at: '2026-05-01T00:00:00Z',
+        completed_at: null,
+        saved_at: '2026-05-01T00:00:00Z',
+        updated_at: '2026-05-01T00:00:00Z',
+        deleted_at: null,
+        ...overrides,
+      };
+    }
+
+    function recoveryWeek(week_number, note_id, overrides = {}) {
+      return {
+        id: `rw${week_number}`,
+        block_id: 'rb-open',
+        note_id,
+        week_number,
+        completed_at: week_number === 1 ? '2026-05-08T00:00:00Z' : null,
+        saved_at: '2026-05-08T00:00:00Z',
+        updated_at: '2026-05-08T00:00:00Z',
+        deleted_at: null,
+        ...overrides,
+      };
+    }
+
+    function recoveryNote(id, raw_text) {
+      return { id, title: `Note ${id}`, raw_text };
+    }
+
+    function recoveryOverviewRow(root) {
+      return root.findAllByProps({ testID: 'overview-row-recovery' }).find(n => typeof n.props.onPress === 'function');
+    }
+
+    function textNodesOf(row) {
+      return row.findAllByType('Text');
+    }
+
+    function flattenStyle(node) {
+      return [].concat(node.props.style ?? []).reduce((acc, s) => Object.assign(acc, s || {}), {});
+    }
+
+    test('movement available: infoCaption shows week identity, anchor week, matched population, at the bucket-row weight tier, absent from valueSuffix, no fabricated delta, and present in the accessible label', () => {
+      // Both baseline lifts trained both weeks, so movement's matched size
+      // equals the roster (2) — the evidence bar #1029's contract requires
+      // when the roster itself is below 3.
+      mockActiveTraining({ recoveryWeekNumber: 2, activeBlock: { id: 'rb-open' } });
+      const component = renderScreen({
+        recoveryBlocks: [recoveryBlock()],
+        recoveryWeeks: [recoveryWeek(1, 'note-w1'), recoveryWeek(2, 'note-w2')],
+        notes: [recoveryNote('note-w1', RECOVERY_BASELINE_TEXT), recoveryNote('note-w2', RECOVERY_BASELINE_TEXT)],
+      });
+      const root = component.root;
+      const row = recoveryOverviewRow(root);
+      expect(row).toBeDefined();
+
+      const texts = textNodesOf(row).map(t => {
+        const c = t.props.children;
+        return Array.isArray(c) ? c.join('') : String(c ?? '');
+      });
+      const joined = texts.join(' | ');
+
+      expect(joined).toContain('Week 2');
+      expect(joined).toContain('since Week 1');
+      expect(joined).toContain('2 lifts matched');
+      // Never folded into valueSuffix.
+      expect(texts.some(t => /Week 2/.test(t) && /improved/i.test(t))).toBe(false);
+
+      const infoCaptionNode = textNodesOf(row).find(t => {
+        const c = t.props.children;
+        const s = Array.isArray(c) ? c.join('') : String(c ?? '');
+        return s.includes('since Week 1');
+      });
+      expect(infoCaptionNode).toBeDefined();
+      expect(flattenStyle(infoCaptionNode).fontWeight).toBe('700');
+
+      expect(row.props.accessibilityLabel).toContain('Week 2');
+      expect(row.props.accessibilityLabel).toContain('since Week 1');
+      expect(row.props.accessibilityLabel).toContain('2 lifts matched');
+    });
+
+    test('movement unavailable: infoCaption still shows week identity, absent from valueSuffix, no fabricated delta, present in accessible label', () => {
+      mockActiveTraining({ recoveryWeekNumber: 1, activeBlock: { id: 'rb-open' } });
+      const component = renderScreen({
+        recoveryBlocks: [recoveryBlock()],
+        recoveryWeeks: [recoveryWeek(1, 'note-w1', { completed_at: null })],
+        notes: [recoveryNote('note-w1', RECOVERY_BASELINE_TEXT)],
+      });
+      const root = component.root;
+      const row = recoveryOverviewRow(root);
+      expect(row).toBeDefined();
+
+      const texts = textNodesOf(row).map(t => {
+        const c = t.props.children;
+        return Array.isArray(c) ? c.join('') : String(c ?? '');
+      });
+      const joined = texts.join(' | ');
+      expect(joined).toContain('Week 1');
+      expect(texts.some(t => /Week 1/.test(t) && /trained/i.test(t))).toBe(false);
+
+      const infoCaptionNode = textNodesOf(row).find(t => {
+        const c = t.props.children;
+        const s = Array.isArray(c) ? c.join('') : String(c ?? '');
+        return s === 'Week 1';
+      });
+      expect(infoCaptionNode).toBeDefined();
+      expect(flattenStyle(infoCaptionNode).fontWeight).toBe('700');
+
+      expect(row.props.accessibilityLabel).toContain('Week 1');
+    });
   });
 
   test('between-weeks Recovery (open block, no open week) also collapses the baseline disclosure', () => {

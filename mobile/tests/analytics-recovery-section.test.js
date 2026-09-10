@@ -1519,3 +1519,128 @@ describe('AnalyticsRecoverySection — reopen the newest completed block (#839)'
     expect(hasText(component.root, 'Started ')).toBe(true);
   });
 });
+
+// ── #1029 amendment: across-weeks band strip design-system pass ─────────────
+//
+// Required test 22: the strip must be a finished design-system surface (token
+// color/spacing/type), legible at large accessibility text scale, must make an
+// unreadable-week gap visually distinguishable from a readable zero-count
+// week, must carry one accessible label per week, and must keep `Rebuilding`
+// and `Early` distinguishable without legend lookup at the strip's actual
+// rendered width.
+describe('AnalyticsRecoverySection — across-weeks band strip (#1029 amendment)', () => {
+  function flattenStyle(node) {
+    return [].concat(node.props.style ?? []).reduce((acc, s) => Object.assign(acc, s || {}), {});
+  }
+
+  function weekCells(root) {
+    // Host nodes only (`typeof inst.type === 'string'`) — the test renderer
+    // otherwise reports both the composite `View` and its underlying host
+    // node for the same element, doubling every match.
+    return root.findAll(inst =>
+      typeof inst.type === 'string'
+      && typeof inst.props.testID === 'string'
+      && inst.props.testID.startsWith('recovery-band-strip-week-'));
+  }
+
+  // Week 1: Bench returns 60/135 = 0.444 (early), Pull-up returns 17/24 = 0.708
+  // (rebuilding) — both bands populated in the SAME week, at the strip's own
+  // rendered width, exercising the adjacent-warm-hue requirement directly.
+  // Week 2's note is unreadable (over the parser's size limit) — a real gap.
+  // Week 3 trains neither baseline lift — a real, readable zero-count week.
+  function setupStrip() {
+    const b = block();
+    const w1 = week(1, 'note-w1');
+    const w2 = week(2, 'note-w2-bad');
+    const w3 = week(3, 'note-w3');
+    const notes = [
+      note('note-w1', '-Bench\n- 60 5,5,5\n-Pull-up\n- 6,6,5'),
+      note('note-w2-bad', 'x'.repeat(MAX_RAW_TEXT_LENGTH + 1)),
+      note('note-w3', '-Overhead Press\n- 95 5,5,5'),
+    ];
+    return setup({ blocks: [b], weeks: [w1, w2, w3], notes });
+  }
+
+  test('renders one column per live week, each with its own accessible label', () => {
+    const root = setupStrip().root;
+    const cells = weekCells(root);
+    expect(cells.length).toBe(3);
+    for (const cell of cells) {
+      expect(cell.props.accessible).toBe(true);
+      expect(typeof cell.props.accessibilityLabel).toBe('string');
+      expect(cell.props.accessibilityLabel.length).toBeGreaterThan(0);
+    }
+    expect(cells.find(c => c.props.testID === 'recovery-band-strip-week-1').props.accessibilityLabel).toContain('Week 1');
+    expect(cells.find(c => c.props.testID === 'recovery-band-strip-week-2').props.accessibilityLabel).toBe('Week 2: no readable evidence');
+    expect(cells.find(c => c.props.testID === 'recovery-band-strip-week-3').props.accessibilityLabel).toContain('Week 3');
+  });
+
+  test('Rebuilding and Early populate the same week and are distinguishable by both a letter code and distinct token colors, without a legend', () => {
+    const root = setupStrip().root;
+    const week1Cell = weekCells(root).find(c => c.props.testID === 'recovery-band-strip-week-1');
+
+    const chipTexts = week1Cell.findAllByType('Text').map(t => {
+      const c = t.props.children;
+      return Array.isArray(c) ? c.join('') : String(c ?? '');
+    });
+    expect(chipTexts).toContain('R');
+    expect(chipTexts).toContain('E');
+
+    const rChip = week1Cell.findAllByType('Text').find(t => t.props.children === 'R');
+    const eChip = week1Cell.findAllByType('Text').find(t => t.props.children === 'E');
+    const rColor = flattenStyle(rChip).color;
+    const eColor = flattenStyle(eChip).color;
+    // Distinct tokens (cautionText vs error) — never the same value, and never
+    // the raw non-text-safe `accent`/`caution` marks (docs/design-system-map.md
+    // "Text vs. mark").
+    expect(rColor).toBe(LightColors.cautionText);
+    expect(eColor).toBe(LightColors.error);
+    expect(rColor).not.toBe(eColor);
+    // The letter itself, not only the hue, is what a sighted reader without a
+    // legend actually distinguishes the two bands by — assert both are present
+    // as literal, distinct characters.
+    expect(rChip.props.children).not.toBe(eChip.props.children);
+  });
+
+  test('an unreadable-week gap is visually distinct from a readable zero-count week — different structure, different copy, never a bare empty box', () => {
+    const root = setupStrip().root;
+    const gapCell = weekCells(root).find(c => c.props.testID === 'recovery-band-strip-week-2');
+    const zeroCell = weekCells(root).find(c => c.props.testID === 'recovery-band-strip-week-3');
+
+    const gapTexts = gapCell.findAllByType('Text').map(t => {
+      const c = t.props.children;
+      return Array.isArray(c) ? c.join('') : String(c ?? '');
+    });
+    const zeroTexts = zeroCell.findAllByType('Text').map(t => {
+      const c = t.props.children;
+      return Array.isArray(c) ? c.join('') : String(c ?? '');
+    });
+
+    expect(gapTexts).toContain('No data');
+    expect(zeroTexts).toContain('0 trained');
+    expect(gapTexts).not.toContain('0 trained');
+    expect(zeroTexts).not.toContain('No data');
+
+    // Different visual treatment: the gap uses a dashed border, the zero-count
+    // cell does not carry one of its own (only the shared outer cell border).
+    const gapInner = gapCell.findAll(
+      inst => typeof inst.type === 'string' && flattenStyle(inst).borderStyle === 'dashed'
+    );
+    expect(gapInner.length).toBeGreaterThan(0);
+  });
+
+  test('token-backed color, spacing, and type: chip border colors resolve to theme tokens, and text is never clipped by numberOfLines', () => {
+    const root = setupStrip().root;
+    const week1Cell = weekCells(root).find(c => c.props.testID === 'recovery-band-strip-week-1');
+
+    const allTexts = week1Cell.findAllByType('Text');
+    for (const t of allTexts) {
+      expect(t.props.numberOfLines).toBeUndefined();
+    }
+
+    const rChipBox = week1Cell.findAll(
+      inst => typeof inst.type === 'string' && flattenStyle(inst).borderColor === LightColors.cautionText
+    );
+    expect(rChipBox.length).toBeGreaterThan(0);
+  });
+});

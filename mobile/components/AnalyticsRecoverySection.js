@@ -8,7 +8,7 @@
 // or lifecycle field and none of them feed the comparison above.
 
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Alert } from '../lib/platformAlert';
 import { Card, SectionTitle, createInputStyle } from './UI';
@@ -66,6 +66,24 @@ const STATE_LABEL = Object.freeze({
   rebuilding: 'rebuilding',
   not_comparable: "can't compare",
   added_during_recovery: 'added during recovery',
+});
+
+// Across-weeks band strip (#1029 amendment): each band carries BOTH a token
+// color AND a one-letter code, so `Rebuilding` and `Early` never depend on hue
+// discrimination alone — the letter identifies the band even if the two
+// warm-family colors read close together at the strip's small rendered size.
+// Colors deliberately span the full semantic range rather than two more warm
+// tones: `success` → `accentText` → `cautionText` → `error` walks from "back
+// to baseline" to "furthest from it", with `cannot_compare` on the neutral
+// `textMuted` token since it is a data-quality flag, not a performance tier.
+// The *Text variants are used, never raw `accent`/`caution`, because those are
+// mark colors, not copy colors (docs/design-system-map.md "Text vs. mark").
+const BAND_STRIP_META = Object.freeze({
+  at_or_above: { code: 'A', colorToken: 'success' },
+  close: { code: 'C', colorToken: 'accentText' },
+  rebuilding: { code: 'R', colorToken: 'cautionText' },
+  early: { code: 'E', colorToken: 'error' },
+  cannot_compare: { code: 'X', colorToken: 'textMuted' },
 });
 
 const STATE_META = Object.freeze({
@@ -846,39 +864,79 @@ function BlockEvidence({
         </View>
       )}
 
-      {/* Band strip (#1023 v2 §3/§10c): one small mini-bar per live week, in
-          week order — an "across weeks" element, separate from the
-          current-week bucket rows above. A week with no readable note is a
-          gap, never a zero-height bar. */}
+      {/* Band strip (#1023 v2 §3/§10c, redesigned per the #1029 amendment):
+          one column per live week, in week order — an "across weeks" element,
+          separate from the current-week bucket rows above. Each populated
+          band renders as its own row inside the column: a token-colored,
+          letter-coded chip plus the count, in `docs/design-system-map.md`
+          tokens throughout. Identity comes from the letter, not hue alone, so
+          `Rebuilding` and `Early` stay distinguishable at the strip's actual
+          rendered width without a legend. A week with no readable note is a
+          dashed, glyphed placeholder column — visually distinct from a
+          readable week that simply trained nothing (which still shows its own
+          zero-count row) — never a bar that silently shrinks to nothing. */}
       {bandSeries.length > 1 && (
-        <View testID="recovery-band-strip" style={styles.bandStrip}>
-          {bandSeries.map(entry => (
-            <View
-              key={entry.week_id}
-              style={styles.bandStripCell}
-              accessible
-              accessibilityLabel={entry.buckets
+        <View>
+          <Text style={styles.bandStripLegendHint}>Across weeks</Text>
+          <ScrollView
+            testID="recovery-band-strip"
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.bandStrip}
+          >
+            {bandSeries.map(entry => {
+              const populatedBands = entry.buckets
+                ? RETURN_BANDS.filter(b => b.id !== 'not_trained_yet' && (entry.buckets[b.id] || 0) > 0)
+                : [];
+              const a11yLabel = entry.buckets
                 ? `Week ${entry.week_number}: ${RETURN_BANDS.filter(b => b.id !== 'not_trained_yet').map(b => `${b.label} ${entry.buckets[b.id] || 0}`).join(', ')}`
-                : `Week ${entry.week_number}: no readable evidence`}
-            >
-              {entry.buckets ? (
-                <View style={styles.bandStripBar}>
-                  {RETURN_BANDS.filter(b => b.id !== 'not_trained_yet' && (entry.buckets[b.id] || 0) > 0).map(b => (
-                    <View
-                      key={b.id}
-                      style={[
-                        styles.bandStripSegment,
-                        { flex: entry.buckets[b.id], backgroundColor: colors.accent },
-                      ]}
-                    />
-                  ))}
+                : `Week ${entry.week_number}: no readable evidence`;
+              return (
+                <View
+                  key={entry.week_id}
+                  testID={`recovery-band-strip-week-${entry.week_number}`}
+                  style={styles.bandStripCell}
+                  accessible
+                  accessibilityLabel={a11yLabel}
+                >
+                  <Text style={styles.bandStripWeekLabel}>{`Week ${entry.week_number}`}</Text>
+                  {entry.buckets ? (
+                    populatedBands.length > 0 ? (
+                      <View style={styles.bandStripRows}>
+                        {populatedBands.map(b => {
+                          const meta = BAND_STRIP_META[b.id];
+                          return (
+                            <View key={b.id} style={styles.bandStripRow}>
+                              <View style={[styles.bandStripChip, { borderColor: colors[meta.colorToken] }]}>
+                                <Text style={[styles.bandStripChipText, { color: colors[meta.colorToken] }]}>
+                                  {meta.code}
+                                </Text>
+                              </View>
+                              <Text style={styles.bandStripCount}>{entry.buckets[b.id]}</Text>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    ) : (
+                      // A readable week that simply trained nothing: a solid,
+                      // muted-token dash — a real zero, not a gap.
+                      <View style={styles.bandStripZero}>
+                        <Text style={styles.bandStripZeroText}>0 trained</Text>
+                      </View>
+                    )
+                  ) : (
+                    // Unreadable-note gap (#1029 amendment): dashed border,
+                    // muted glyph, and its own text — never mistakable for the
+                    // solid zero-count cell above.
+                    <View style={styles.bandStripGap}>
+                      <MaterialIcons name="help-outline" size={16} color={colors.textMuted} accessible={false} />
+                      <Text style={styles.bandStripGapText}>No data</Text>
+                    </View>
+                  )}
                 </View>
-              ) : (
-                <View style={styles.bandStripGap} />
-              )}
-              <Text style={styles.bandStripLabel}>{`W${entry.week_number}`}</Text>
-            </View>
-          ))}
+              );
+            })}
+          </ScrollView>
         </View>
       )}
 
@@ -1290,37 +1348,88 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.textMuted,
     fontStyle: 'italic',
   },
+  // #1029 amendment: the across-weeks strip is a finished design-system
+  // surface — token color/spacing/type throughout, a `ScrollView` (never a
+  // fixed-width row) so it stays legible rather than crushing columns at a
+  // large accessibility text scale, and letter-coded chips so `Rebuilding`
+  // and `Early` never depend on hue discrimination alone.
+  bandStripLegendHint: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginBottom: 6,
+  },
   bandStrip: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
+    gap: 10,
+    paddingRight: 4,
   },
   bandStripCell: {
-    width: 36,
-    gap: 3,
-  },
-  bandStripBar: {
-    flexDirection: 'row',
-    height: 24,
-    borderRadius: 4,
-    overflow: 'hidden',
+    minWidth: 76,
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderRadius: 10,
     backgroundColor: colors.subtleBg,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
-  bandStripSegment: {
-    height: '100%',
+  bandStripWeekLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text,
   },
-  bandStripGap: {
-    height: 24,
+  bandStripRows: {
+    gap: 4,
+  },
+  bandStripRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  // Letter-coded chip (#1029 amendment): identity comes from the character,
+  // not the fill color, so two adjacent warm-family bands stay distinguishable
+  // even where the colors themselves read close together.
+  bandStripChip: {
+    minWidth: 18,
+    height: 18,
     borderRadius: 4,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    backgroundColor: colors.card,
+  },
+  bandStripChipText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  bandStripCount: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  bandStripZero: {
+    paddingVertical: 2,
+  },
+  bandStripZeroText: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  // Unreadable-note gap: dashed stroke plus its own glyph and text — never a
+  // bare empty box, so it cannot be mistaken for the solid zero-count cell.
+  bandStripGap: {
+    alignItems: 'center',
+    gap: 3,
+    paddingVertical: 4,
+    borderRadius: 8,
     borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: colors.cardBorder,
   },
-  bandStripLabel: {
-    fontSize: 10,
+  bandStripGapText: {
+    fontSize: 11,
     fontWeight: '600',
     color: colors.textMuted,
-    textAlign: 'center',
   },
   // Reopen (#839): low-emphasis, non-destructive outline button — matching
   // the Log tab's own secondary styling for the same action — never the
