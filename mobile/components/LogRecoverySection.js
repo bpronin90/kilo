@@ -35,7 +35,7 @@
 // `height` any more, so both grow with the user's text scale. No color, type,
 // spacing, rail, or row-height value in this card changes.
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Alert } from '../lib/platformAlert';
@@ -199,6 +199,26 @@ export function LogRecoverySection({
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
+  // Compact Recovery reading intentionally leaves the first day to this
+  // surface's kicker so it is not duplicated by WorkoutContentRenderer. Make
+  // later weekday boundaries visible in the renderer's existing subheading
+  // slot instead. This is a display-only projection: it neither changes the
+  // parsed section order nor inserts sections, so source anchors retain their
+  // original positional coordinates.
+  const recoveryDisplayDayGroups = useMemo(() => viewingNoteDayGroups.map((group, groupIndex) => {
+    if (groupIndex === 0 || !group.heading || !group.sections?.length) return group;
+    return {
+      ...group,
+      sections: group.sections.map((section, sectionIndex) => (
+        sectionIndex === 0
+          ? {
+            ...section,
+            subheading: [group.heading, section.subheading].filter(Boolean).join(' · '),
+          }
+          : section
+      )),
+    };
+  }), [viewingNoteDayGroups]);
   const [actionError, setActionError] = useState(null);
   // The inclusion preference (#699) is the one recovery mutation this component
   // owns directly rather than receiving as a handler from LogScreen. It changes
@@ -634,8 +654,9 @@ export function LogRecoverySection({
                 // Status suffix on the label is unchanged from #836: only a
                 // completed row's label gains an explicit ", completed"
                 // suffix.
+                const isEditingThisNote = !!linkedNote && editingNoteId === linkedNote.id;
                 const rowLabel = linkedNote
-                  ? `View ${_noteTitle(linkedNote)}, Recovery Week ${week.week_number}${isCompleted ? ', completed' : ''}`
+                  ? `${isEditingThisNote ? 'Close editor for' : 'View'} ${_noteTitle(linkedNote)}, Recovery Week ${week.week_number}${isCompleted ? ', completed' : ''}`
                   : `Recovery Week ${week.week_number}${isCompleted ? ', completed' : ''}, note unavailable`;
                 const isViewingThisNote = !!linkedNote && viewingNoteId === week.note_id && !!viewingNote;
                 // Freezes which week is expanded while ANY recovery note is
@@ -643,13 +664,16 @@ export function LogRecoverySection({
                 // `isViewingThisNote`'s block below, so switching which week
                 // is viewed while editing would silently unmount the editor
                 // out from under an unsaved edit instead of routing the user
-                // through Save/Cancel. Blocking every row's toggle — including
-                // the edited row's own, which would otherwise collapse it
-                // shut on the same note — is what keeps a second row from
-                // ever opening for editing at the same time too.
-                const rowBlockedByEdit = !!editingNoteId;
+                // through Save/Cancel. Other rows stay blocked, while the
+                // edited row's existing expand-less affordance routes through
+                // the same close decision as its Cancel control instead of
+                // becoming an inert button.
+                const rowBlockedByEdit = !!editingNoteId && !isEditingThisNote;
+                const handleRowPress = isEditingThisNote
+                  ? () => onCancelEdit?.()
+                  : (rowBlockedByEdit ? undefined : () => onViewNote?.(linkedNote));
                 const rowProps = linkedNote
-                  ? { onPress: rowBlockedByEdit ? undefined : () => onViewNote?.(linkedNote), accessibilityRole: 'button' }
+                  ? { onPress: handleRowPress, accessibilityRole: 'button' }
                   : {};
                 const RowMain = linkedNote ? Pressable : View;
                 const dayHeading = viewingNoteDayGroups?.[0]?.heading || `Week ${week.week_number}`;
@@ -705,7 +729,6 @@ export function LogRecoverySection({
                       // every OTHER row while one recovery note is mid-edit,
                       // so a second edit session can never start out from
                       // under the first without an explicit Save/Cancel.
-                      const isEditingThisNote = !!linkedNote && editingNoteId === linkedNote.id;
                       const editingBlocked = !!editingNoteId && !isEditingThisNote;
                       const handleNoteBodyPress = () => {
                         if (editingBlocked) return;
@@ -824,7 +847,7 @@ export function LogRecoverySection({
                                   interaction. */}
                               <Pressable onPress={handleNoteBodyPress} style={styles.weekNoteBody}>
                                 <WorkoutContentRenderer
-                                  dayGroups={viewingNoteDayGroups}
+                                  dayGroups={recoveryDisplayDayGroups}
                                   emptyText="No exercises to display."
                                   compact
                                   sourceNoteId={linkedNote?.id ?? null}

@@ -1245,8 +1245,25 @@ describe('parseWorkoutNote — day headings', () => {
     const note = 'Monday\n-Bench 3x8\n135 8,8,8\nTuesday\n-Squat 3x8\n205 8,8,8';
     const r = parseWorkoutNote(note);
     const headings = r.sections.map(s => s.heading);
-    expect(headings).toContain('Monday');
-    expect(headings).toContain('Tuesday');
+    expect(headings).toEqual(['Monday', 'Tuesday']);
+  });
+
+  test('does not promote a malformed weekday-like heading to a weekday section', () => {
+    const r = parseWorkoutNote('Mondayy\n-Bench 3x8\n135 8,8,8');
+    expect(r.sections).toHaveLength(1);
+    expect(r.sections[0].heading).toBeNull();
+    expect(r.sections[0].exercises[0].name).toBe('Bench');
+  });
+
+  test('week-skip transforms keep malformed weekday-prefixed exercise content trailing', () => {
+    const note = '-Bench\n135 5\nMondayy felt heavy';
+    const sections = parseWorkoutNote(note).sections;
+    expect(sections.flatMap(section => section.exercises.map(exercise => exercise.name)))
+      .toEqual(['Bench']);
+
+    const skipped = applyWeekSkipToText(note, sections);
+    expect(skipped).toBe('-Bench\n135 5\nMondayy felt heavy\n-');
+    expect(removeWeekSkipFromText(skipped, parseWorkoutNote(skipped).sections)).toBe(note);
   });
 });
 
