@@ -28,6 +28,16 @@ const content = root => root.findAll(n => n.type === 'Text').map(n => n.props.ch
 const byLabel = (root, label) => root.findAll(n => n.props.accessibilityRole && n.props.accessibilityLabel === label && typeof n.props.onPress === 'function')[0];
 const press = node => render.act(() => { node.props.onPress({ stopPropagation: jest.fn() }); });
 
+// #1021: Edit/Copy/Share/Share-as-Image on the CURRENT routine card (only —
+// LogPreviousRoutines' saved-routine controls are unaffected) now live behind
+// its consolidated three-dot menu (`accessibilityLabel: "Routine actions"`),
+// closing again after each item press. Open it before reaching any of those
+// controls, exactly as a real tap on the trigger would.
+const openMenu = root => {
+  const trigger = byLabel(root, 'Routine actions');
+  render.act(() => { trigger.props.onPress({ stopPropagation: jest.fn() }); });
+};
+
 describe('routine image allowlist', () => {
   test('real A/B parser content is redacted before reaching the renderer', () => {
     const parsed = parseWorkoutNote(RAW);
@@ -136,14 +146,17 @@ describe('routine image preview and confirmation', () => {
   test('text sharing is independent and closing/reopening resets numeric consent', async () => {
     const onShareRoutine = jest.fn();
     render.act(() => { component = render.create(<LogActiveRoutineCard workoutNoteTitle="Routine" routineRawText={RAW} dayGroups={[]} onShareRoutine={onShareRoutine} />); });
+    openMenu(component.root);
     press(byLabel(component.root, 'Share routine as image'));
     press(byLabel(component.root, 'Include weights and reps for this share'));
     const modal = component.root.findByType(RoutineShareModal);
     expect(modal.props.rawText).toBe(RAW);
     render.act(() => modal.props.onClose());
     expect(component.root.findAllByType(RoutineShareModal)).toHaveLength(0);
+    openMenu(component.root);
     press(byLabel(component.root, 'Share routine'));
     expect(onShareRoutine).toHaveBeenCalledWith({ title: 'Routine', rawText: RAW });
+    openMenu(component.root);
     press(byLabel(component.root, 'Share routine as image'));
     expect(component.root.findByType(RoutineShareCard).props.summary.sections[0].exercises[0]).not.toHaveProperty('latestSets');
   });
@@ -270,6 +283,7 @@ describe('Copy routine to clipboard (#956)', () => {
 
   test('the current routine copy control writes the full A/B body, never the viewed week', async () => {
     const component = mountActive({ routineRawText: RAW, activeEditText: 'Monday' });
+    openMenu(component.root);
     await pressAsync(byLabel(component.root, 'Copy routine Routine'));
     expect(copyTextToClipboard).toHaveBeenCalledWith(
       buildRoutineShareText({ title: 'Routine', rawText: RAW }),
@@ -283,6 +297,7 @@ describe('Copy routine to clipboard (#956)', () => {
 
   test('a successful copy shows the surface-local confirmation through a polite live region', async () => {
     const component = mountActive({ routineRawText: RAW });
+    openMenu(component.root);
     await pressAsync(byLabel(component.root, 'Copy routine Routine'));
     const [status] = statusNodes(component.root, 'log-copy-routine-status');
     expect(status).toBeTruthy();
@@ -294,6 +309,7 @@ describe('Copy routine to clipboard (#956)', () => {
   test('Android 13+ relies on its system popup — no doubled in-app confirmation', async () => {
     systemConfirmsClipboardWrite.mockReturnValue(true);
     const component = mountActive({ routineRawText: RAW });
+    openMenu(component.root);
     await pressAsync(byLabel(component.root, 'Copy routine Routine'));
     expect(statusNodes(component.root, 'log-copy-routine-status')).toHaveLength(0);
     expect(content(component.root)).not.toContain(ROUTINE_COPY_SUCCESS_MESSAGE);
@@ -304,6 +320,7 @@ describe('Copy routine to clipboard (#956)', () => {
     copyTextToClipboard.mockRejectedValue(new Error('NotAllowedError'));
     const enterCurrentEditor = jest.fn();
     const component = mountActive({ routineRawText: RAW, enterCurrentEditor });
+    openMenu(component.root);
     await pressAsync(byLabel(component.root, 'Copy routine Routine'));
     expect(content(component.root)).toContain(ROUTINE_COPY_FAILURE_MESSAGE);
     expect(content(component.root)).not.toContain(ROUTINE_COPY_SUCCESS_MESSAGE);
@@ -337,9 +354,11 @@ describe('Copy routine to clipboard (#956)', () => {
 
   test('the current-routine control names its routine, with the Untitled fallback', () => {
     const named = mountActive({ workoutNoteTitle: 'Leg Day', routineRawText: RAW });
+    openMenu(named.root);
     expect(byLabel(named.root, 'Copy routine Leg Day')).toBeTruthy();
     render.act(() => named.unmount());
     const untitled = mountActive({ workoutNoteTitle: '', routineRawText: RAW });
+    openMenu(untitled.root);
     expect(byLabel(untitled.root, 'Copy routine Untitled Routine')).toBeTruthy();
     render.act(() => untitled.unmount());
   });
@@ -365,6 +384,7 @@ describe('Copy routine status auto-expires (#956)', () => {
     render.act(() => {
       component = render.create(<LogActiveRoutineCard workoutNoteTitle="Routine" dayGroups={[]} routineRawText={RAW} />);
     });
+    openMenu(component.root);
     await pressCopy(byLabel(component.root, 'Copy routine Routine'));
     expect(statusNodes(component.root, 'log-copy-routine-status')).not.toHaveLength(0);
     render.act(() => { jest.advanceTimersByTime(4000); });
@@ -378,6 +398,7 @@ describe('Copy routine status auto-expires (#956)', () => {
     render.act(() => {
       component = render.create(<LogActiveRoutineCard workoutNoteTitle="Routine" dayGroups={[]} routineRawText={RAW} />);
     });
+    openMenu(component.root);
     await pressCopy(byLabel(component.root, 'Copy routine Routine'));
     expect(content(component.root)).toContain(ROUTINE_COPY_FAILURE_MESSAGE);
     render.act(() => component.unmount());
@@ -390,10 +411,12 @@ describe('Copy routine status auto-expires (#956)', () => {
     render.act(() => {
       component = render.create(<LogActiveRoutineCard workoutNoteTitle="Routine" dayGroups={[]} routineRawText={RAW} />);
     });
+    openMenu(component.root);
     await pressCopy(byLabel(component.root, 'Copy routine Routine'));
     render.act(() => { jest.advanceTimersByTime(3000); });
     expect(statusNodes(component.root, 'log-copy-routine-status')).not.toHaveLength(0);
     // Second copy at t=3s: same success message, but the timer must reset.
+    openMenu(component.root);
     await pressCopy(byLabel(component.root, 'Copy routine Routine'));
     render.act(() => { jest.advanceTimersByTime(3000); }); // t=6s overall, 3s since re-copy
     expect(statusNodes(component.root, 'log-copy-routine-status')).not.toHaveLength(0);
