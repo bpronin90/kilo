@@ -229,16 +229,9 @@ describe('WeightScreen edit and delete correction flows', () => {
     const inputs = root.findAll(n => n.type === 'TextInput');
     expect(inputs[0].props.value).toBe('185');
 
-    // The note field is a secondary disclosure row (#897); its value is
-    // discoverable in the collapsed row and editable once revealed.
-    expect(hasText(root, 'Note · morning')).toBe(true);
-    const noteToggle = root.findAllByProps({ testID: 'weight-edit-note-toggle' })
-      .find(t => typeof t.props.onPress === 'function');
-    render.act(() => {
-      noteToggle.props.onPress();
-    });
-    const inputsAfterToggle = root.findAll(n => n.type === 'TextInput');
-    expect(inputsAfterToggle[1].props.value).toBe('morning');
+    // Date and Note remain visible while editing so corrections are clear.
+    expect(root.findByProps({ accessibilityLabel: 'Note' }).props.value).toBe('morning');
+    expect(root.findByProps({ accessibilityLabel: 'Entry date' })).toBeTruthy();
   });
 
   test('edit submit persists corrected weight, exits editing mode, and refreshes the row', async () => {
@@ -270,7 +263,7 @@ describe('WeightScreen edit and delete correction flows', () => {
     });
 
     // The date field defaults to today (unchanged) — an edit that never opens
-    // the compact "Date · <value>" row still threads the entry's own date.
+    // the always-visible date field still threads the entry's own date.
     expect(mockUpdate).toHaveBeenCalledWith('e1', 190, 'morning', '2026-05-24');
     // cancelEdit() triggers re-renders that pick up the updated entries
     expect(hasText(root, 'Editing entry')).toBe(false);
@@ -278,11 +271,7 @@ describe('WeightScreen edit and delete correction flows', () => {
     expect(hasText(root, '185 lb')).toBe(false);
   });
 
-  // Issue #312 (relocated to a compact secondary row by #764): an edit threads
-  // the corrected date through to update() and the refreshed row reflects the
-  // new date. The full date control is absent from the default layout — the
-  // compact "Date · <value>" row must be tapped first to reveal it.
-  test('edit submit threads corrected date through update after revealing the compact date row', async () => {
+  test('edit submit threads a corrected always-visible date through update', async () => {
     let component;
     render.act(() => {
       component = render.create(
@@ -299,15 +288,6 @@ describe('WeightScreen edit and delete correction flows', () => {
     const rowPressable = findPressableByText(root, '185');
     render.act(() => {
       rowPressable.props.onPress();
-    });
-
-    // The full date control is not on screen until the compact row is tapped.
-    expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Entry date').length).toBe(0);
-
-    const toggle = root.findAllByProps({ testID: 'weight-edit-date-toggle' })
-      .find(t => typeof t.props.onPress === 'function');
-    render.act(() => {
-      toggle.props.onPress();
     });
 
     // Open the edit date picker and choose an earlier, valid date
@@ -329,10 +309,7 @@ describe('WeightScreen edit and delete correction flows', () => {
     expect(hasText(root, 'Editing entry')).toBe(false);
   });
 
-  // #764: tapping the compact "Date · <value>" row reveals the full date
-  // control, and tapping "Done" (or the row again) collapses it safely
-  // without discarding the weight/note the user already entered.
-  test('the compact date row reveals and collapses the full date control without losing other edits', () => {
+  test('edit date and note controls remain visible without losing other edits', () => {
     let component;
     render.act(() => {
       component = render.create(
@@ -351,24 +328,14 @@ describe('WeightScreen edit and delete correction flows', () => {
       inputs[0].props.onChangeText('190');
     });
 
-    const toggle = root.findAllByProps({ testID: 'weight-edit-date-toggle' })
-      .find(t => typeof t.props.onPress === 'function');
-    render.act(() => { toggle.props.onPress(); });
     expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Entry date').length).toBeGreaterThan(0);
-
-    const doneBtn = root.findByProps({ accessibilityLabel: 'Done changing entry date' });
-    render.act(() => { doneBtn.props.onPress(); });
-    expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Entry date').length).toBe(0);
 
     // The weight edit made while the date row was open is preserved.
     const inputsAfter = root.findAll(n => n.type === 'TextInput');
     expect(inputsAfter[0].props.value).toBe('190');
   });
 
-  // #897: a same-day weigh-in must require interaction only with the weight
-  // field and Save weigh-in. Note and Date are secondary disclosure rows,
-  // collapsed by default, with no full-size control on screen until tapped.
-  test('a new-entry weigh-in shows only the weight field and Save by default, with Note/Date collapsed', () => {
+  test('a new-entry weigh-in keeps Date and Note visible by default', () => {
     let component;
     render.act(() => {
       component = render.create(
@@ -377,30 +344,13 @@ describe('WeightScreen edit and delete correction flows', () => {
     });
     const root = component.root;
 
-    // The weight TextInput is on screen; the Note field is not rendered
-    // until its disclosure row is tapped.
     expect(root.findByProps({ placeholder: '185.0' })).toBeTruthy();
-    expect(root.findAll(n => n.props && n.props.placeholder === 'Morning, fasted').length).toBe(0);
+    expect(root.findByProps({ accessibilityLabel: 'Note' })).toBeTruthy();
+    expect(root.findByProps({ accessibilityLabel: 'Weigh-in date' })).toBeTruthy();
     expect(findPressableByText(root, 'Save weigh-in')).toBeTruthy();
-
-    // Both secondary controls are present but collapsed, discoverable via
-    // their compact rows.
-    expect(hasText(root, 'Note · None')).toBe(true);
-    expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Note').length).toBe(0);
-    expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Weigh-in date').length).toBe(0);
-
-    // Tapping the Note row reveals the field and does not disturb the date row.
-    const noteToggle = root.findAllByProps({ testID: 'weight-new-note-toggle' })
-      .find(t => typeof t.props.onPress === 'function');
-    render.act(() => { noteToggle.props.onPress(); });
     const noteInput = root.findByProps({ accessibilityLabel: 'Note' });
     render.act(() => { noteInput.props.onChangeText('morning'); });
-    expect(hasText(root, 'Note · morning')).toBe(true);
-
-    const doneBtn = root.findByProps({ accessibilityLabel: 'Done adding note' });
-    render.act(() => { doneBtn.props.onPress(); });
-    expect(hasText(root, 'Note · morning')).toBe(true);
-    expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Note').length).toBe(0);
+    expect(root.findByProps({ accessibilityLabel: 'Note' }).props.value).toBe('morning');
   });
 
   // Issue #596 (review follow-up): a rapid double-press on "Save weigh-in"
@@ -453,7 +403,7 @@ describe('WeightScreen edit and delete correction flows', () => {
   // App.saveWeight recomputes localToday at submission time, rather than
   // threading the possibly-stale date captured earlier — this preserves the
   // "default-today" semantics the issue's own acceptance criteria require.
-  test('an untouched new-entry save calls onSaveWeight with no explicit date, even though the compact date row shows a value', async () => {
+  test('an untouched new-entry save calls onSaveWeight with no explicit date', async () => {
     const mockOnSaveWeight = jest.fn(() => Promise.resolve(true));
 
     let component;
@@ -469,8 +419,8 @@ describe('WeightScreen edit and delete correction flows', () => {
       inputs[0].props.onChangeText('190');
     });
 
-    // The compact "Date · <value>" row is present (showing today's date) but
-    // never tapped — the user never explicitly picked a date.
+    // The visible field still has not been changed, so the user has not picked
+    // an explicit date.
     const saveBtn = findPressableByText(root, 'Save weigh-in');
     await render.act(async () => {
       saveBtn.props.onPress();
@@ -496,9 +446,6 @@ describe('WeightScreen edit and delete correction flows', () => {
       root.findAll(n => n.type === 'TextInput')[0].props.onChangeText('190');
     });
 
-    const toggle = root.findAllByProps({ testID: 'weight-new-date-toggle' })
-      .find(t => typeof t.props.onPress === 'function');
-    render.act(() => { toggle.props.onPress(); });
     const dateBtn = root.findByProps({ accessibilityLabel: 'Weigh-in date' });
     render.act(() => {
       dateBtn.props.onPress();
@@ -854,11 +801,7 @@ describe('WeightScreen DateTimePicker onChange callbacks', () => {
     });
     const root = component.root;
 
-    // Reveal the full date control from the compact "Date · <value>" row,
-    // then open the date picker.
-    const toggle = root.findAllByProps({ testID: 'weight-new-date-toggle' })
-      .find(t => typeof t.props.onPress === 'function');
-    render.act(() => { toggle.props.onPress(); });
+    // Open the always-visible date picker.
     const dateBtn = root.findByProps({ accessibilityLabel: 'Weigh-in date' });
     render.act(() => {
       dateBtn.props.onPress();
@@ -1274,7 +1217,7 @@ describe('WeightScreen web date fallback (#314)', () => {
     useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
   });
 
-  test('renders a DOM date input instead of the native picker for new entries, once the compact date row is revealed', () => {
+  test('renders an always-visible DOM date input instead of the native picker for new entries', () => {
     let component;
     render.act(() => {
       component = render.create(
@@ -1282,16 +1225,6 @@ describe('WeightScreen web date fallback (#314)', () => {
       );
     });
     const root = component.root;
-    // The full date control (and its DOM input) is absent from the default
-    // high-frequency layout until the compact "Date · <value>" row is tapped.
-    expect(root.findAll(
-      n => n.type === 'input' && n.props.type === 'date' && n.props['aria-label'] === 'Weigh-in date'
-    ).length).toBe(0);
-
-    const toggle = root.findAllByProps({ testID: 'weight-new-date-toggle' })
-      .find(t => typeof t.props.onPress === 'function');
-    render.act(() => { toggle.props.onPress(); });
-
     // Match the new-entry input specifically by its aria-label; the goal form
     // also renders a web date input ("Goal target date") when no goal is set.
     const dateInputs = root.findAll(
@@ -1310,9 +1243,6 @@ describe('WeightScreen web date fallback (#314)', () => {
       );
     });
     const root = component.root;
-    const toggle = root.findAllByProps({ testID: 'weight-new-date-toggle' })
-      .find(t => typeof t.props.onPress === 'function');
-    render.act(() => { toggle.props.onPress(); });
     const dateInput = root.find(
       n => n.type === 'input' && n.props.type === 'date' && n.props['aria-label'] === 'Weigh-in date'
     );
@@ -1363,7 +1293,9 @@ describe('WeightGoalCard goal date web fallback (#404)', () => {
       );
     });
     const root = component.root;
-    const dateInputs = root.findAll(n => n.type === 'input' && n.props.type === 'date');
+    const dateInputs = root.findAll(
+      n => n.type === 'input' && n.props.type === 'date' && n.props['aria-label'] === 'Goal target date'
+    );
     expect(dateInputs.length).toBe(1);
     // The native picker must NOT be mounted on web.
     expect(root.findAll(n => n.props && n.props.testID === 'mock-datetimepicker').length).toBe(0);
@@ -1377,11 +1309,15 @@ describe('WeightGoalCard goal date web fallback (#404)', () => {
       );
     });
     const root = component.root;
-    const dateInput = root.find(n => n.type === 'input' && n.props.type === 'date');
+    const dateInput = root.find(
+      n => n.type === 'input' && n.props.type === 'date' && n.props['aria-label'] === 'Goal target date'
+    );
     render.act(() => {
       dateInput.props.onChange({ target: { value: '2026-12-25' } });
     });
-    const updated = root.find(n => n.type === 'input' && n.props.type === 'date');
+    const updated = root.find(
+      n => n.type === 'input' && n.props.type === 'date' && n.props['aria-label'] === 'Goal target date'
+    );
     expect(updated.props.value).toBe('2026-12-25');
   });
 });
@@ -1581,7 +1517,7 @@ describe('WeightHistoryList date range cancel does not commit sentinel date (#39
     expect(text).toContain('"To"');
   });
 
-  test('confirming From date picker updates the chip', () => {
+  test('clearing From preserves To and keeps the filter controls visible', () => {
     let component;
     render.act(() => {
       component = render.create(
@@ -1594,9 +1530,78 @@ describe('WeightHistoryList date range cancel does not commit sentinel date (#39
     render.act(() => { fromBtn.props.onPress(); });
     const picker = component.root.findByProps({ testID: 'mock-datetimepicker' });
     render.act(() => { picker.props.onChange({ type: 'set' }, new Date(2026, 0, 15)); });
-    // clear button appears when a date is committed
-    const clearBtnTexts = component.root.findAll(n => n.props.children === '✕');
-    expect(clearBtnTexts.length).toBeGreaterThan(0);
+    const toBtn = component.root.findByProps({ accessibilityLabel: 'To date' });
+    render.act(() => { toBtn.props.onPress(); });
+    const toPicker = component.root.findByProps({ testID: 'mock-datetimepicker' });
+    render.act(() => { toPicker.props.onChange({ type: 'set' }, new Date(2026, 0, 20)); });
+
+    render.act(() => {
+      component.root.findByProps({ accessibilityLabel: 'Clear From date' }).props.onPress();
+    });
+
+    expect(component.root.findByProps({ accessibilityLabel: 'From date' })).toBeTruthy();
+    expect(component.root.findByProps({ accessibilityLabel: 'To date' })).toBeTruthy();
+    expect(component.root.findByProps({ accessibilityLabel: 'Clear To date' })).toBeTruthy();
+    expect(JSON.stringify(component.toJSON())).toContain('01-20-2026');
+  });
+
+  test('selected boundaries wrap as intact groups at narrow widths with large text enabled', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    render.act(() => {
+      component.root.findByProps({ accessibilityLabel: 'Filter by date range' }).props.onPress();
+    });
+    render.act(() => {
+      component.root.findByProps({ accessibilityLabel: 'From date' }).props.onPress();
+    });
+    render.act(() => {
+      component.root.findByProps({ testID: 'mock-datetimepicker' }).props.onChange({ type: 'set' }, new Date(2026, 0, 15));
+    });
+    render.act(() => {
+      component.root.findByProps({ accessibilityLabel: 'To date' }).props.onPress();
+    });
+    render.act(() => {
+      component.root.findByProps({ testID: 'mock-datetimepicker' }).props.onChange({ type: 'set' }, new Date(2026, 0, 20));
+    });
+
+    const controls = component.root.findByProps({ testID: 'weight-history-date-filter-controls' });
+    expect(StyleSheet.flatten(controls.props.style).flexWrap).toBe('wrap');
+    ['weight-history-from-boundary', 'weight-history-to-boundary'].forEach((testID) => {
+      const boundary = component.root.findByProps({ testID });
+      expect(StyleSheet.flatten(boundary.props.style).flexShrink).toBe(0);
+      boundary.findAllByType('Text').forEach((text) => {
+        expect(text.props.allowFontScaling).not.toBe(false);
+      });
+    });
+  });
+
+  test('one-sided filters survive collapse and re-expand', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    render.act(() => {
+      component.root.findByProps({ accessibilityLabel: 'Filter by date range' }).props.onPress();
+    });
+    render.act(() => {
+      component.root.findByProps({ accessibilityLabel: 'From date' }).props.onPress();
+    });
+    render.act(() => {
+      component.root.findByProps({ testID: 'mock-datetimepicker' }).props.onChange({ type: 'set' }, new Date(2026, 0, 15));
+    });
+    render.act(() => {
+      component.root.findByProps({ accessibilityLabel: 'Collapse history' }).props.onPress();
+    });
+    render.act(() => {
+      component.root.findByProps({ accessibilityLabel: 'Expand history' }).props.onPress();
+    });
+    expect(component.root.findByProps({ accessibilityLabel: 'Clear From date' })).toBeTruthy();
   });
 });
 

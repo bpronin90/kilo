@@ -120,54 +120,6 @@ function DateEntryField({ value, onChangeDate, a11yLabel }) {
   );
 }
 
-// Compact, discoverable "Note · <value>" secondary row (#897). Mirrors
-// DateDisclosureRow below: the full Note field never occupies the default
-// same-day weigh-in layout, so logging weight requires only the weight field
-// and Save. Tapping the row reveals the TextInput; tapping again (or Done)
-// collapses it without discarding whatever was typed.
-function NoteDisclosureRow({ value, open, onToggle, testID }) {
-  const styles = useThemedStyles(createStyles);
-  const trimmed = (value || '').trim();
-  const displayValue = trimmed || 'None';
-  return (
-    <Pressable
-      testID={testID}
-      onPress={onToggle}
-      style={styles.dateDisclosureRow}
-      accessibilityRole="button"
-      accessibilityLabel={`Note, ${displayValue}`}
-      accessibilityHint={open ? 'Hide the note field' : 'Add or edit a note'}
-      accessibilityState={{ expanded: open }}
-    >
-      <Text style={styles.dateDisclosureText} numberOfLines={1}>{`Note · ${displayValue}`}</Text>
-    </Pressable>
-  );
-}
-
-// Compact, discoverable "Date · <value>" secondary row (#764). Sits below the
-// primary Save/Update action so the full date control never occupies the
-// default high-frequency layout — tapping it reveals the existing
-// platform-appropriate date control (DateEntryField), and tapping again (or
-// Cancel) collapses it. Replaces the removed Settings "Date Editing" toggles;
-// the date-editing capability itself is unchanged, only its discoverability.
-function DateDisclosureRow({ value, open, onToggle, label, testID }) {
-  const styles = useThemedStyles(createStyles);
-  const displayValue = value ? formatDate(value) : 'Today';
-  return (
-    <Pressable
-      testID={testID}
-      onPress={onToggle}
-      style={styles.dateDisclosureRow}
-      accessibilityRole="button"
-      accessibilityLabel={`Date, ${displayValue}`}
-      accessibilityHint={open ? `Hide the ${label.toLowerCase()} field` : `Change the ${label.toLowerCase()}`}
-      accessibilityState={{ expanded: open }}
-    >
-      <Text style={styles.dateDisclosureText}>{`Date · ${displayValue}`}</Text>
-    </Pressable>
-  );
-}
-
 export function WeightScreen({
   weightValue,
   setWeightValue,
@@ -199,17 +151,6 @@ export function WeightScreen({
   // submission time, preserving the original default-today semantics.
   const [newEntryDateTouched, setNewEntryDateTouched] = useState(false);
   const [editDate, setEditDate] = useState('');
-  // Reveal state for the compact "Date · <value>" secondary row (#764). Each
-  // context (new entry vs. edit) collapses independently, and both close on
-  // cancel/submit so the full date control never lingers past the action it
-  // was opened for.
-  const [newDateFieldOpen, setNewDateFieldOpen] = useState(false);
-  const [editDateFieldOpen, setEditDateFieldOpen] = useState(false);
-  // Reveal state for the compact "Note · <value>" secondary row (#897), same
-  // collapse-independently-and-close-on-cancel/submit contract as the date
-  // rows above: a same-day weigh-in never needs the Note field on screen.
-  const [newNoteFieldOpen, setNewNoteFieldOpen] = useState(false);
-  const [editNoteFieldOpen, setEditNoteFieldOpen] = useState(false);
   const [goalHistoryCollapsed, setGoalHistoryCollapsed] = useState(true);
   const scrollRef = useRef(null);
 
@@ -366,8 +307,6 @@ export function WeightScreen({
     setWeightValue(formatBodyweightValue(entry.weight_value, unit));
     setWeightNote(entry.note || '');
     setEditDate(entry.date);
-    setEditDateFieldOpen(false);
-    setEditNoteFieldOpen(false);
     scrollRef.current?.scrollTo({ x: 0, y: 0, animated: true });
   }, [unit, setWeightValue, setWeightNote]);
 
@@ -377,8 +316,6 @@ export function WeightScreen({
     setWeightValue('');
     setWeightNote('');
     setEditDate('');
-    setEditDateFieldOpen(false);
-    setEditNoteFieldOpen(false);
   }, [setWeightValue, setWeightNote]);
 
   const handleDelete = useCallback((id) => {
@@ -436,8 +373,6 @@ export function WeightScreen({
         if (ok) {
           setNewEntryDate(localDateToday());
           setNewEntryDateTouched(false);
-          setNewDateFieldOpen(false);
-          setNewNoteFieldOpen(false);
         }
       }
     } finally {
@@ -504,126 +439,48 @@ export function WeightScreen({
           keyboardType="decimal-pad"
           style={styles.input}
         />
+        {!editingId && (
+          <>
+            <DateEntryField
+              value={newEntryDate}
+              onChangeDate={(d) => {
+                setNewEntryDate(d);
+                setNewEntryDateTouched(true);
+              }}
+              a11yLabel="Weigh-in date"
+            />
+            <Text style={styles.inputLabel}>Note</Text>
+            <TextInput
+              keyboardAppearance={colors.scheme}
+              value={weightNote}
+              onChangeText={setWeightNote}
+              placeholder="Morning, fasted"
+              placeholderTextColor={colors.textMuted}
+              style={styles.input}
+              accessibilityLabel="Note"
+            />
+          </>
+        )}
+        {editingId && (
+          <>
+            <DateEntryField value={editDate} onChangeDate={setEditDate} a11yLabel="Entry date" />
+            <Text style={styles.inputLabel}>Note</Text>
+            <TextInput
+              keyboardAppearance={colors.scheme}
+              value={weightNote}
+              onChangeText={setWeightNote}
+              placeholder="Morning, fasted"
+              placeholderTextColor={colors.textMuted}
+              style={styles.input}
+              accessibilityLabel="Note"
+            />
+          </>
+        )}
         <Button
           onPress={handleSubmit}
           title={editingId ? "Update entry" : "Save weigh-in"}
           disabled={saving}
         />
-        {!editingId && (
-          <>
-            <NoteDisclosureRow
-              testID="weight-new-note-toggle"
-              value={weightNote}
-              open={newNoteFieldOpen}
-              onToggle={() => setNewNoteFieldOpen(o => !o)}
-            />
-            {newNoteFieldOpen && (
-              <>
-                <Text style={styles.inputLabel}>Note</Text>
-                <TextInput
-                  keyboardAppearance={colors.scheme}
-                  value={weightNote}
-                  onChangeText={setWeightNote}
-                  placeholder="Morning, fasted"
-                  placeholderTextColor={colors.textMuted}
-                  style={styles.input}
-                  accessibilityLabel="Note"
-                />
-                <Pressable
-                  onPress={() => setNewNoteFieldOpen(false)}
-                  style={styles.editorActionTarget}
-                  accessibilityRole="button"
-                  accessibilityLabel="Done adding note"
-                >
-                  <Text style={styles.cancelText} accessible={false} importantForAccessibility="no">Done</Text>
-                </Pressable>
-              </>
-            )}
-            <DateDisclosureRow
-              testID="weight-new-date-toggle"
-              value={newEntryDate}
-              open={newDateFieldOpen}
-              onToggle={() => setNewDateFieldOpen(o => !o)}
-              label="Weigh-in date"
-            />
-            {newDateFieldOpen && (
-              <>
-                <DateEntryField
-                  value={newEntryDate}
-                  onChangeDate={(d) => {
-                    setNewEntryDate(d);
-                    setNewEntryDateTouched(true);
-                  }}
-                  a11yLabel="Weigh-in date"
-                />
-                <Pressable
-                  onPress={() => setNewDateFieldOpen(false)}
-                  style={styles.editorActionTarget}
-                  accessibilityRole="button"
-                  accessibilityLabel="Done changing weigh-in date"
-                >
-                  <Text style={styles.cancelText} accessible={false} importantForAccessibility="no">Done</Text>
-                </Pressable>
-              </>
-            )}
-          </>
-        )}
-        {editingId && (
-          <>
-            <NoteDisclosureRow
-              testID="weight-edit-note-toggle"
-              value={weightNote}
-              open={editNoteFieldOpen}
-              onToggle={() => setEditNoteFieldOpen(o => !o)}
-            />
-            {editNoteFieldOpen && (
-              <>
-                <Text style={styles.inputLabel}>Note</Text>
-                <TextInput
-                  keyboardAppearance={colors.scheme}
-                  value={weightNote}
-                  onChangeText={setWeightNote}
-                  placeholder="Morning, fasted"
-                  placeholderTextColor={colors.textMuted}
-                  style={styles.input}
-                  accessibilityLabel="Note"
-                />
-                <Pressable
-                  onPress={() => setEditNoteFieldOpen(false)}
-                  style={styles.editorActionTarget}
-                  accessibilityRole="button"
-                  accessibilityLabel="Done editing note"
-                >
-                  <Text style={styles.cancelText} accessible={false} importantForAccessibility="no">Done</Text>
-                </Pressable>
-              </>
-            )}
-            <DateDisclosureRow
-              testID="weight-edit-date-toggle"
-              value={editDate}
-              open={editDateFieldOpen}
-              onToggle={() => setEditDateFieldOpen(o => !o)}
-              label="Entry date"
-            />
-            {editDateFieldOpen && (
-              <>
-                <DateEntryField
-                  value={editDate}
-                  onChangeDate={setEditDate}
-                  a11yLabel="Entry date"
-                />
-                <Pressable
-                  onPress={() => setEditDateFieldOpen(false)}
-                  style={styles.editorActionTarget}
-                  accessibilityRole="button"
-                  accessibilityLabel="Done changing entry date"
-                >
-                  <Text style={styles.cancelText} accessible={false} importantForAccessibility="no">Done</Text>
-                </Pressable>
-              </>
-            )}
-          </>
-        )}
       </Card>
 
       {isHistoryFirstLoad ? <WeightSkeleton /> : historyUnavailable ? null : (
@@ -856,6 +713,7 @@ const createStyles = (colors) => StyleSheet.create({
     borderColor: colors.inputBorder,
     paddingHorizontal: 14,
     paddingVertical: 14,
+    minHeight: 48,
     fontSize: 16,
     color: colors.text,
     justifyContent: 'center',
@@ -882,11 +740,9 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.textMuted,
     padding: 4,
   },
-  // Issue 919: the editing-header Cancel and the four "Done" disclosure
-  // actions are text-only controls. ui-design-rules.md §15 says grow the box
-  // rather than reach for hitSlop (React Native clips a slop at the parent's
-  // bounds), so each carries its own >=44x44dp target while cancelText keeps
-  // its designed 14/600 type and 4dp padding.
+  // The editing-header Cancel is a text-only control. ui-design-rules.md §15
+  // says grow the box rather than reach for hitSlop (React Native clips a slop
+  // at the parent's bounds), so it carries its own >=44x44dp target.
   editorActionTarget: {
     minHeight: 44,
     minWidth: 44,
@@ -896,19 +752,6 @@ const createStyles = (colors) => StyleSheet.create({
   pickerText: {
     fontSize: 16,
     color: colors.text,
-  },
-  // Compact secondary disclosure row (#764): sits below the primary Save/
-  // Update action, minHeight 44 for the touch target, no card/border so it
-  // reads as secondary rather than competing with the primary action.
-  dateDisclosureRow: {
-    minHeight: 44,
-    justifyContent: 'center',
-    marginTop: 4,
-  },
-  dateDisclosureText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textMuted,
   },
   trendsCardMerged: {
     padding: 0,
