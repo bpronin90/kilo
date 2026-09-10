@@ -989,6 +989,22 @@ describe('Recovery Cancel offers safe Done and confirmed persisted revert (#851)
     expect(getHook().editingNoteId).toBe(null);
   });
 
+  test('Keep editing leaves an unchanged recovery draft open without writing', () => {
+    const note = { id: 'weeknote', title: 'Recovery Week Note', raw_text: 'ORIGINAL' };
+    const update = jest.fn();
+    const getHook = mountHarness({ notes: [note], update });
+
+    render.act(() => { getHook().setRecoveryViewingNoteId(note.id); });
+    render.act(() => { getHook().handleEditRecoveryViewedNote(); });
+    render.act(() => { getHook().handleCancelRecoveryEdit(); });
+
+    const keepEditing = alertSpy.mock.calls[0][2].find(button => button.text === 'Keep editing');
+    render.act(() => { keepEditing.onPress?.(); });
+    expect(update).not.toHaveBeenCalled();
+    expect(getHook().editingNoteId).toBe(note.id);
+    expect(getHook().editingText).toBe('ORIGINAL');
+  });
+
   test('a failed confirmed revert keeps the inline editor open', async () => {
     const note = { id: 'weeknote', title: 'Recovery Week Note', raw_text: 'ORIGINAL' };
     const update = jest.fn().mockRejectedValue(new Error('write failed'));
@@ -11827,26 +11843,33 @@ describe('LogRecoverySection: inline recovery-note editing (#841)', () => {
   });
 
   // Since viewingNoteId (which week is expanded) and editingNoteId (which
-  // note is mid-edit) are independent props, nothing stops LogScreen from
-  // moving `viewingNoteId` to a different week while a recovery note is
-  // being edited — except this row-level freeze. Without it, switching the
-  // viewed week would unmount the inline editor's `isViewingThisNote` branch
-  // out from under an unsaved edit, silently discarding no persisted data
-  // but stranding the user mid-edit with no visible Save/Cancel.
-  test('every week row is frozen — including the one being edited — while a recovery note is mid-edit', () => {
+  // note is mid-edit) are independent props, switching to ANOTHER week must
+  // remain blocked. The edited row itself is the exception: its expand-less
+  // affordance must ask the owner to close through unsaved-change protection.
+  test('other week rows freeze while the edited row routes collapse through its close handler', () => {
     const otherWeek = { id: 'rw2', block_id: 'rb841', note_id: 'other', week_number: 2, completed_at: null, deleted_at: null };
     const OTHER_NOTE = { id: 'other', title: 'Other Week', raw_text: 'Monday\n+Lifting\n-Row\n95 5,5,5' };
-    const root = renderInline({ weeks: [week(), otherWeek], notes: [AB_NOTE, OTHER_NOTE] });
+    const onCancelEdit = jest.fn();
+    const root = renderInline({ weeks: [week(), otherWeek], notes: [AB_NOTE, OTHER_NOTE], onCancelEdit });
 
     render.act(() => { byLabel(root, 'Edit').props.onPress(); });
     expect(titleInput(root)).toBeTruthy();
 
-    for (const label of ['View AB Week, Recovery Week 1', 'View Other Week, Recovery Week 2']) {
-      const row = root.findAll(n => n.props && n.props.accessibilityLabel === label)[0];
-      expect(row).toBeTruthy();
-      expect(row.props.onPress).toBeUndefined();
-      expect(row.props.accessibilityState.disabled).toBe(true);
-    }
+    const editedRow = root.findAll(n => n.props
+      && n.props.accessibilityLabel === 'Close editor for AB Week, Recovery Week 1')[0];
+    expect(editedRow).toBeTruthy();
+    expect(editedRow.props.accessibilityState.disabled).toBe(false);
+    render.act(() => { editedRow.props.onPress(); });
+    expect(onCancelEdit).toHaveBeenCalledTimes(1);
+    expect(titleInput(root)).toBeUndefined();
+
+    // Reopen to verify another row cannot unmount this editor underneath it.
+    render.act(() => { byLabel(root, 'Edit').props.onPress(); });
+    const otherRow = root.findAll(n => n.props
+      && n.props.accessibilityLabel === 'View Other Week, Recovery Week 2')[0];
+    expect(otherRow).toBeTruthy();
+    expect(otherRow.props.onPress).toBeUndefined();
+    expect(otherRow.props.accessibilityState.disabled).toBe(true);
   });
 
   test('recovery block and week fields stay unchanged while editing', () => {
@@ -12283,6 +12306,28 @@ describe('LogRecoverySection: simplified active Recovery panel (#804)', () => {
       && String(Array.isArray(n.props.children) ? n.props.children.join('') : n.props.children ?? '')
         .toUpperCase() === 'MONDAY').length;
     expect(mondayCount).toBe(1);
+  });
+
+  test('compact Recovery reading labels every parsed weekday in authored order', () => {
+    const multiDayNote = {
+      id: 'weeknote', title: 'Recovery Week Note',
+      raw_text: 'Monday\n+Lifting\n-Bench\n135 5,5,5\nWednesday\n+Lifting\n-Row\n95 8,8,8',
+    };
+    const root = renderSection({
+      weeks: [week({ note_id: 'weeknote' })],
+      notes: [multiDayNote],
+      viewingNoteId: 'weeknote',
+      viewingNote: multiDayNote,
+      viewingNoteDayGroups: buildDayGroups(parse(multiDayNote.raw_text).sections),
+    });
+    const text = allText(root).map(value => value.toUpperCase());
+    const mondayIndex = text.indexOf('MONDAY');
+    const wednesdayIndex = text.indexOf('WEDNESDAY · LIFTING');
+
+    expect(mondayIndex).toBeGreaterThanOrEqual(0);
+    expect(wednesdayIndex).toBeGreaterThan(mondayIndex);
+    expect(text).toContain('BENCH');
+    expect(text).toContain('ROW');
   });
 
   test('a week with no readable note offers no read affordance at all', () => {
