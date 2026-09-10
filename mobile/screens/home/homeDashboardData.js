@@ -12,7 +12,11 @@ import {
   RECOVERY_COMPARISON_STATUS,
   RECOVERY_WEEK_STATUS,
 } from '../../lib/data/recoveryAnalytics';
-import { deriveRecoveryMovement, deriveRecoveryWeekBands } from '../../lib/data/recoveryReturnBands';
+import {
+  deriveRecoveryMovement,
+  deriveRecoveryTrainedRows,
+  deriveRecoveryWeekBands,
+} from '../../lib/data/recoveryReturnBands';
 
 // Re-exported so HomeScreen's active-branch copy can switch on the same
 // enums this module derives from, without HomeScreen importing a second
@@ -141,11 +145,12 @@ export function useHomeRecoverySummary(notes) {
       : null;
     // Below the 4-trained-lift sparse floor (#1029 acceptance criterion 1),
     // Home names the trained lift(s) and their band directly rather than
-    // rendering bucket rows/bars.
-    const trainedExercises = current
-      ? (current.exercises || [])
-          .filter(row => row.state !== 'not_reintroduced')
-      : [];
+    // rendering bucket rows/bars. Same source of truth as `bandResult`
+    // above — never a parallel filter over `current.exercises` (#1029 review
+    // finding 1: that would let a `baseline_value_unusable` row be named
+    // even though it is outside the roster/denominator this sentence
+    // itself states).
+    const trainedExercises = deriveRecoveryTrainedRows(current);
 
     return {
       ...base,

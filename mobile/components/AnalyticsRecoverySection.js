@@ -35,6 +35,7 @@ import {
   RETURN_BANDS,
   deriveRecoveryBandSeries,
   deriveRecoveryMovement,
+  deriveRecoveryTrainedRows,
   deriveRecoveryWeekBands,
 } from '../lib/data/recoveryReturnBands';
 import { RecoveryInclusionToggle } from './RecoveryInclusionToggle';
@@ -564,9 +565,11 @@ function BlockEvidence({
         .map(b => ({ id: b.id, label: b.label, count: bands.buckets[b.id] || 0 }))
         .filter(row => row.count > 0)
     : [];
-  const trainedExercises = selectedWeek
-    ? (selectedWeek.exercises || []).filter(row => row.state !== RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED)
-    : [];
+  // Same source of truth as `bands`/`trained` above — never a parallel filter
+  // over `selectedWeek.exercises` (#1029 review finding 1: that would let a
+  // `baseline_value_unusable` row be named even though it is outside the
+  // roster/denominator this sentence itself states).
+  const trainedExercises = deriveRecoveryTrainedRows(selectedWeek);
   const sparseSentence = sparse
     ? `${trainedExercises.map(row => `${row.name} (${STATE_LABEL[row.state] || row.state})`).join(', ')} — ${trained} of ${rosterSize} roster exercises trained.`
     : null;
@@ -583,9 +586,15 @@ function BlockEvidence({
       ? deriveRecoveryMovement(weekResults, { currentWeekId: selectedWeek.week_id })
       : null
   ), [stateStale, selectedWeek, weekResults]);
+  // #1029 review finding 2: while state is stale, movement is deliberately
+  // never computed (above), but the "not enough matched lifts" copy must not
+  // fall through here either — that falsely attributes the suppression to
+  // insufficient evidence when the real cause is an unverified/stale
+  // snapshot. Nothing is claimed for stale state; the existing stale banner
+  // elsewhere on this card already carries the true reason.
   const movementSentence = movement
     ? `Since Week ${movement.anchor_week_number}, on ${movement.matched_size} lifts trained both weeks: ${movement.improved} improved, ${movement.steady} steady, ${movement.fell_back} fell back.`
-    : (hasBands && weekLabel && (selectedWeek?.week_number || 0) > 1
+    : (!stateStale && hasBands && weekLabel && (selectedWeek?.week_number || 0) > 1
         ? 'Not enough matched lifts to compare weeks yet.'
         : null);
 

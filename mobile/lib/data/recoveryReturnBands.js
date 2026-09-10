@@ -183,6 +183,24 @@ export function deriveRecoveryWeekBands(week) {
   };
 }
 
+// The exact roster population the sparse-sentence fallback (below four
+// trained lifts) may name, and the exact population `trained` above is sized
+// against: roster rows (`_isRosterRow` — excludes `baseline_value_unusable`)
+// minus `not_trained_yet` rows. Exported so `AnalyticsRecoverySection.js` and
+// `homeDashboardData.js` derive the sparse sentence from this single source
+// of truth rather than re-filtering `week.exercises` with parallel logic that
+// can drift from the bucket/denominator derivation above (#1029 review
+// finding: a `baseline_value_unusable` row must never be named here, matching
+// adversarial fixture 6's exclusion of it from the roster entirely; an
+// `added_during_recovery` row is never in `week.exercises` to begin with —
+// it lives in `week.added` — so it is already excluded by construction).
+export function deriveRecoveryTrainedRows(week) {
+  if (!week || week.status !== RECOVERY_WEEK_STATUS.OK) return [];
+  return (week.exercises || [])
+    .filter(_isRosterRow)
+    .filter(row => row.state !== RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED);
+}
+
 // A week qualifies as a movement anchor (or as "current") only when it is
 // itself readable AND its comparable population — rows eligible to be
 // matched — is non-empty. A `note_missing`/`note_unreadable`/no-comparable-

@@ -309,9 +309,15 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
     ? `${trainedExercises.map(row => `${row.name} (${STATE_LABEL[row.state] || row.state})`).join(', ')} — ${trained} of ${rosterSize} roster exercises trained.`
     : null;
 
+  // #1029 review finding 2: movement is never computed while stale (upstream,
+  // in useHomeRecoverySummary), but the "not enough matched lifts" copy must
+  // not fall through here either — that would falsely attribute the missing
+  // figure to insufficient evidence when the real cause is an unverified/
+  // stale snapshot. Nothing is claimed for stale state; the stale message
+  // already shown for this card carries the true reason.
   const movementSentence = movement
     ? `Since Week ${movement.anchor_week_number}, on ${movement.matched_size} lifts trained both weeks: ${movement.improved} improved, ${movement.steady} steady, ${movement.fell_back} fell back.`
-    : (hasBands && !fallbackStatus && weekNumber !== null && weekNumber > 1
+    : (!stale && hasBands && !fallbackStatus && weekNumber !== null && weekNumber > 1
         ? 'Not enough matched lifts to compare weeks yet.'
         : null);
 

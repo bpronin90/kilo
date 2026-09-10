@@ -1630,6 +1630,35 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     );
   });
 
+  // #1029 review finding 2: movement is deliberately never computed while
+  // stale (useHomeRecoverySummary gates it off `isStale`), but the fallback
+  // must not claim the wrong reason for its absence. These two cached weeks
+  // meet the full movement evidence bar (>=2 qualifying weeks, matched === 2
+  // === roster since roster < 3, a qualifying anchor) — the same fixture the
+  // "regresses" test above shows DOES print a real movement figure when not
+  // stale — so falling back to "not enough matched lifts" here would be false,
+  // not merely conservative.
+  test('a stale refresh suppresses movement without falsely claiming insufficient evidence', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block()],
+      weeks: [
+        week({ note_id: 'nr1' }),
+        week({ id: 'rw2', note_id: 'nr2', week_number: 2 }),
+      ],
+    }));
+    const component = await mount({
+      notes: [NOTE, weekNote('nr1', FULL_TEXT), weekNote('nr2', PARTIAL_TEXT)],
+    });
+    // Sanity: not stale yet, movement is real.
+    expect(hasText(component, 'Since Week 1')).toBe(true);
+
+    AsyncStorage.getItem.mockImplementation(storageWith({ fail: [BLOCKS_KEY, WEEKS_KEY] }));
+    await render.act(async () => { await hooks.refreshRecoveryState(); });
+
+    expect(hasText(component, hooks.RECOVERY_STALE_MESSAGE)).toBe(true);
+    expect(hasText(component, 'Not enough matched lifts to compare weeks yet')).toBe(false);
+  });
+
   test('an exercise added during recovery never folds into the roster denominator or the sparse sentence', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     const component = await mount({ notes: [NOTE, weekNote('nr1', ADDED_TEXT)] });
@@ -1649,6 +1678,33 @@ describe('Home recovery summary (#757, #779, #782)', () => {
       'Week 1. Bench (at or above baseline) — 1 of 2 roster exercises trained.'
     );
     expect(hasText(component, 'Squat')).toBe(false);
+  });
+
+  // #1029 review finding 1: the sparse sentence's candidate population must be
+  // the SAME roster/trained set `deriveRecoveryWeekBands` derives (via
+  // `deriveRecoveryTrainedRows`), never a parallel filter over
+  // `week.exercises`. Splicing an unrecognized-class baseline row in mirrors
+  // recovery-return-bands.test.js fixture 6 (reachable through the real
+  // derivation, not hand-built) and proves it is excluded from the roster
+  // here too; an added-during-recovery lift proves the same for that state.
+  test('the sparse sentence never names a baseline_value_unusable or added_during_recovery row', async () => {
+    const ghostRow = {
+      key: 'ghost lift', name: 'Ghost Lift', exercise_class: 'weighted',
+      top_weight: NaN, volume: NaN, sets_completed: 1,
+    };
+    const baselineWithGhost = { ...baseline, exercises: [...baseline.exercises, ghostRow] };
+    const GHOST_ADDED_TEXT = 'Monday\n+Lifting\n-Bench\n135 5,5,5\n-Squat\n185 5,5,5\n-Sled Push\n95 8,8,8';
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block({ baseline: baselineWithGhost })],
+      weeks: [week()],
+    }));
+    const component = await mount({ notes: [NOTE, weekNote('nr1', GHOST_ADDED_TEXT)] });
+
+    expect(spoken(component)).toBe(
+      'Week 1. Bench (at or above baseline), Squat (at or above baseline) — 2 of 2 roster exercises trained.'
+    );
+    expect(hasText(component, 'Ghost Lift')).toBe(false);
+    expect(hasText(component, 'Sled Push')).toBe(false);
   });
 
   test('a not-comparable exercise still counts as trained and is named with its state', async () => {

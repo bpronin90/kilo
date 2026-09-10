@@ -26,6 +26,7 @@ import {
   RECOVERY_COMPARISON_STATUS,
   RECOVERY_WEEK_STATUS,
   RECOVERY_COMPARISON_STATES,
+  RECOVERY_UNAVAILABLE_REASONS,
   deriveRecoveryComparison,
 } from '../lib/data/recoveryAnalytics';
 import { DarkColors, LightColors } from '../theme/colors';
@@ -206,6 +207,38 @@ describe('AnalyticsRecoverySection — active block evidence', () => {
     expect(hasText(root, 'Bench (at or above baseline), Pull-up (at or above baseline) — 2 of 2 roster exercises trained.')).toBe(true);
     expect(hasText(root, 'baseline exercises met')).toBe(false);
     expect(hasText(root, '%')).toBe(false);
+  });
+
+  // #1029 review finding 1: the sparse sentence's candidate population must be
+  // the SAME roster/trained set `deriveRecoveryWeekBands` derives, never a
+  // parallel filter over `week.exercises`. A `baseline_value_unusable` row is
+  // excluded from the roster entirely (fixture 6 in
+  // recovery-return-bands.test.js) and an `added_during_recovery` row is never
+  // part of `week.exercises` to begin with — neither may be named here, and
+  // the "X of Y" denominator must stay consistent with what the sentence says.
+  test('the sparse sentence never names a baseline_value_unusable or added_during_recovery row, and its denominator matches', () => {
+    const benchRow = mockRow({
+      key: 'bench', name: 'Bench', state: RECOVERY_COMPARISON_STATES.BASELINE_MET, exercise_class: 'weighted',
+      metrics: [metricRow('top_load', 135, 135, 100, true), metricRow('volume', 2025, 2025, 100, true)],
+    });
+    const unusableRow = mockRow({
+      key: 'ghost lift', name: 'Ghost Lift', state: RECOVERY_COMPARISON_STATES.NOT_COMPARABLE, exercise_class: 'weighted',
+      unavailable_reason: RECOVERY_UNAVAILABLE_REASONS.BASELINE_VALUE_UNUSABLE,
+    });
+    const addedRow = mockRow({
+      key: 'sled push', name: 'Sled Push', state: RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY, exercise_class: 'weighted',
+      metrics: [metricRow('top_load', 100, null, null, null)],
+    });
+    deriveRecoveryComparison.mockReturnValueOnce(
+      mockComparison({ weeks: [mockWeek({ exercises: [benchRow, unusableRow], added: [addedRow] })] })
+    );
+
+    const component = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] });
+    const root = component.root;
+
+    expect(hasText(root, 'Bench (at or above baseline) — 1 of 1 roster exercises trained.')).toBe(true);
+    expect(hasText(root, 'Ghost Lift')).toBe(false);
+    expect(hasText(root, 'Sled Push')).toBe(false);
   });
 
   test('weighted rows show independent Load and Total work; reps-only rows show only their applicable metric', () => {
@@ -988,6 +1021,29 @@ describe('AnalyticsRecoverySection — authoritative Recovery state (#716)', () 
     const component = setupState({ stateStale: true, onRetry: jest.fn() });
     expect(texts(component)).toContain(RECOVERY_STALE_MESSAGE);
     expect(retryButton(component)).toBeTruthy();
+  });
+
+  // #1029 review finding 2: movement is deliberately never computed while
+  // stale, but the fallback must not claim the wrong reason for its absence.
+  // Cached weeks here meet the full movement evidence bar (>=2 qualifying
+  // weeks, matched === roster since roster < 3, a qualifying anchor) — if not
+  // for staleness this would print a real movement figure, so the "not enough
+  // matched lifts" copy would be false, not merely conservative.
+  test('stale state suppresses movement without falsely claiming insufficient evidence', () => {
+    const b = block();
+    const w1 = week(1, 'note-w1');
+    const w2 = week(2, 'note-w2');
+    const component = setupState({
+      blocks: [b],
+      weeks: [w1, w2],
+      notes: [note('note-w1', BASELINE_TEXT), note('note-w2', BASELINE_TEXT)],
+      stateStale: true,
+      onRetry: jest.fn(),
+    });
+
+    const rendered = texts(component);
+    expect(rendered).toContain(RECOVERY_STALE_MESSAGE);
+    expect(rendered.some(t => t.includes('Not enough matched lifts to compare weeks yet'))).toBe(false);
   });
 
   test('a verified empty snapshot still renders nothing at all', () => {
