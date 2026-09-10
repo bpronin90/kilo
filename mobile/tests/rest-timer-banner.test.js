@@ -1,4 +1,5 @@
 import React from 'react';
+import { Modal } from 'react-native';
 import renderer, { act } from 'react-test-renderer';
 import { RestTimerBanner } from '../components/RestTimerBanner';
 import { PRMomentBanner } from '../components/PRMomentBanner';
@@ -51,28 +52,58 @@ function buttonsByLabel(json, label) {
   return findAll(json, (n) => n.props && n.props.accessibilityLabel === label);
 }
 
-// #950 review (P1): the running countdown / completion banner mounts once at
-// the app-shell level (startOnly=false); the Log-screen instance is the
-// contextual idle affordance only. These pin the app-shell half.
-describe('RestTimerBanner app-shell instance (#950 review P1)', () => {
+// #950 review (P1): the running countdown / completion surface mounts once at
+// the app-shell level (compact=false); the Log-screen instance is the
+// contextual idle affordance only. #1026: that surface is now a compact
+// centered pill, not a full-width banner — tapping the running pill reveals
+// Cancel, completion offers Dismiss in the same place.
+describe('RestTimerBanner app-shell instance (#950 review P1, #1026)', () => {
+  const shellRun = { isRunning: true, remainingMs: 5000, justElapsed: false, backgroundAlertAvailable: true, showStart: false };
+
   test('shows the countdown while running', () => {
-    const tree = renderBanner({ isRunning: true, remainingMs: 5000, justElapsed: false, backgroundAlertAvailable: true, showStart: false });
+    const tree = renderBanner(shellRun);
     expect(JSON.stringify(tree.toJSON())).toContain('0:05');
   });
 
-  test('shows the done banner after elapsing', () => {
+  test('shows the completion notice after elapsing', () => {
     const tree = renderBanner({ isRunning: false, remainingMs: 0, justElapsed: true, backgroundAlertAvailable: true, showStart: false });
     expect(JSON.stringify(tree.toJSON())).toContain('Rest over');
   });
 
   test('backgroundAlertAvailable=false shows the "unavailable" warning while running', () => {
-    const tree = renderBanner({ isRunning: true, remainingMs: 5000, justElapsed: false, backgroundAlertAvailable: false, showStart: false });
+    const tree = renderBanner({ ...shellRun, backgroundAlertAvailable: false });
     expect(JSON.stringify(tree.toJSON())).toContain('Background alert unavailable');
   });
 
   test('backgroundAlertAvailable=true never shows the "unavailable" warning', () => {
-    const tree = renderBanner({ isRunning: true, remainingMs: 5000, justElapsed: false, backgroundAlertAvailable: true, showStart: false });
+    const tree = renderBanner(shellRun);
     expect(JSON.stringify(tree.toJSON())).not.toContain('Background alert unavailable');
+  });
+
+  test('the running pill hides Cancel until tapped, then exposes it', () => {
+    const onCancel = jest.fn();
+    const tree = renderBanner({ ...shellRun, onCancel });
+    expect(buttonsByLabel(tree.toJSON(), 'Cancel rest timer')).toHaveLength(0);
+    const pill = tree.root.findAll(
+      (n) => n.props && n.props.accessibilityLabel === 'Rest timer, 0:05 remaining'
+    )[0];
+    act(() => { pill.props.onPress(); });
+    const cancel = tree.root.findAll((n) => n.props && n.props.accessibilityLabel === 'Cancel rest timer')[0];
+    act(() => { cancel.props.onPress(); });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  test('completion offers Dismiss (not a second full-width surface)', () => {
+    const onDismissDone = jest.fn();
+    const tree = renderBanner({ isRunning: false, remainingMs: 0, justElapsed: true, backgroundAlertAvailable: true, showStart: false, onDismissDone });
+    const dismiss = tree.root.findAll((n) => n.props && n.props.accessibilityLabel === 'Dismiss rest timer done banner')[0];
+    act(() => { dismiss.props.onPress(); });
+    expect(onDismissDone).toHaveBeenCalledTimes(1);
+  });
+
+  test('renders nothing while idle at the app-shell level', () => {
+    const tree = renderBanner({ isRunning: false, remainingMs: 0, justElapsed: false, backgroundAlertAvailable: true, showStart: false });
+    expect(tree.toJSON()).toBeNull();
   });
 });
 
@@ -122,7 +153,7 @@ describe('RestTimerBanner compact editor control (#1006)', () => {
     });
   });
 
-  test('expanded: the chooser is an out-of-flow dropdown, so it never shifts the editor', () => {
+  test('expanded: the chooser is a Modal-hosted anchored menu, so it never shifts the editor', () => {
     const tree = renderBanner({ ...idle, showStart: true });
     const toggle = tree.root.findAll((n) => n.props && n.props.accessibilityLabel === 'Rest timer')[0];
     act(() => { toggle.props.onPress(); });
@@ -130,8 +161,11 @@ describe('RestTimerBanner compact editor control (#1006)', () => {
     const style = Array.isArray(menu.props.style)
       ? Object.assign({}, ...menu.props.style.filter(Boolean))
       : menu.props.style;
+    // out of flow: absolutely positioned...
     expect(style.position).toBe('absolute');
-    expect(style.top).toBe('100%');
+    // ...and hosted in a Modal so the editor header's own bounds cannot clip
+    // it and it cannot reflow the editor layout
+    expect(tree.root.findAllByType(Modal).some((m) => m.props.visible === true)).toBe(true);
   });
 
   test('tap a duration: calls the existing start callback once with that value and collapses', () => {

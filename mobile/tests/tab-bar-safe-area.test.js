@@ -1,6 +1,5 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
-import { Animated } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { TabBar } from '../components/TabBar';
 import { ScreenShell } from '../components/ScreenShell';
@@ -18,13 +17,20 @@ const findTabs = (component) =>
     (node) => typeof node.type === 'string' && node.props.accessibilityRole === 'tab'
   );
 
+// The TabBar container is the single host View carrying the tablist role
+// (#1026 removed its Animated opacity wrapper).
+const findSurface = (component) =>
+  component.root.find(
+    (node) => typeof node.type === 'string' && node.props.accessibilityRole === 'tablist'
+  );
+
 describe('accessibility', () => {
   test('TabBar container has tablist role', () => {
     const component = renderWithInsets(
       <TabBar tabs={['Home', 'Log']} activeTab="Home" onTabPress={() => {}} />,
       0
     );
-    const surface = component.root.findByType(Animated.View);
+    const surface = findSurface(component);
     expect(surface.props.accessibilityRole).toBe('tablist');
     // The container must not be an accessibility element itself; on iOS
     // accessible={true} on the parent collapses the tabs into one element.
@@ -107,7 +113,7 @@ describe('safe-area layout', () => {
       <TabBar tabs={['Home']} activeTab="Home" onTabPress={() => {}} />,
       0
     );
-    const surface = component.root.findByType(Animated.View);
+    const surface = findSurface(component);
     const zeroStyles = [].concat(surface.props.style).reduce((acc, style) => Object.assign(acc, style || {}), {});
     expect(zeroStyles.bottom).toBe(24);
 
@@ -118,7 +124,7 @@ describe('safe-area layout', () => {
         </SafeAreaProvider>
       );
     });
-    const insetStyles = [].concat(component.root.findByType(Animated.View).props.style)
+    const insetStyles = [].concat(findSurface(component).props.style)
       .reduce((acc, style) => Object.assign(acc, style || {}), {});
     expect(insetStyles.bottom).toBe(56);
     expect(insetStyles.left).toBe(16);
@@ -183,7 +189,7 @@ describe('safe-area layout', () => {
       <TabBar tabs={['Home']} activeTab="Home" onTabPress={() => {}} onHeightChange={onHeightChange} />,
       0
     );
-    const surface = component.root.findByType(Animated.View);
+    const surface = findSurface(component);
     act(() => {
       surface.props.onLayout({ nativeEvent: { layout: { height: 72 } } });
     });
