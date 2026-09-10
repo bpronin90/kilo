@@ -627,25 +627,15 @@ describe('More menu rows', () => {
   });
 });
 
-// Issue 919: nine text-only editor actions on the Weight tab used to sit below
-// the §15 floor across eleven render sites. On WeightScreen the `cancelText`
-// family (the editing-header `Cancel` plus the four disclosure `Done`s) backed
-// bare Pressables with no target box at all, and the header `Cancel` shipped no
-// role or name. On WeightGoalCard the `goalActionChip` (`Edit` / `Archive` /
+// Issue 919: text-only editor actions on the Weight tab used to sit below the
+// §15 floor. The WeightScreen editing-header `Cancel` backed a bare Pressable
+// with no target box at all, and shipped no role or name. On WeightGoalCard the
+// `goalActionChip` (`Edit` / `Archive` /
 // `Clear`, five sites) and the goal-editor `Cancel` reached for a `hitSlop`
 // §15 says a one-line row clips. Each now owns a real >=44x44dp box from its
 // own style — asserted as the flattened minHeight/minWidth so a later style
 // edit fails here rather than shipping a 27dp tap area — with the two `Cancel`s
 // gaining `accessibilityRole="button"` and a name matching their visible label.
-function pressableByTestId(root, testID) {
-  const matches = root.findAll(
-    (node) => node.props?.testID === testID && typeof node.props?.onPress === 'function',
-    { deep: true }
-  );
-  if (matches.length === 0) throw new Error(`no pressable with testID "${testID}"`);
-  return matches[0];
-}
-
 function pressableContainingText(root, substr) {
   const matches = root.findAll(
     (node) => typeof node.props?.onPress === 'function'
@@ -712,24 +702,17 @@ describe('Weight entry controls', () => {
     mockWeightState.goal = null;
   });
 
-  test('the two new-entry disclosure "Done" actions clear the floor from their own box', async () => {
+  test('new-entry Date and Note controls are always visible and meet their accessibility contract', async () => {
     const tree = await renderWeightTree(<WeightScreen {...WEIGHT_PROPS} />);
 
-    await act(async () => {
-      pressableByTestId(tree.root, 'weight-new-note-toggle').props.onPress();
-      pressableByTestId(tree.root, 'weight-new-date-toggle').props.onPress();
-    });
-
-    [['Done adding note'], ['Done changing weigh-in date']].forEach(([label]) => {
-      const done = pressableByLabel(tree.root, label);
-      expect(done.props.accessibilityRole).toBe('button');
-      expect(done.props.accessibilityLabel).toBe(label);
-      expectOwnBox(done);
-      expectLabelSilenced(done, 'Done');
-    });
+    const date = pressableByLabel(tree.root, 'Weigh-in date');
+    expect(date.props.accessibilityRole).toBe('button');
+    expectTarget(date);
+    const note = tree.root.findByProps({ accessibilityLabel: 'Note' });
+    expect(StyleSheet.flatten(note.props.style).minHeight).toBeGreaterThanOrEqual(MIN_TARGET);
   });
 
-  test('the editing-header Cancel and the two edit disclosure "Done" actions clear the floor', async () => {
+  test('editing keeps Date and Note visible while Cancel clears the floor', async () => {
     mockWeightState.entries = [{
       id: 'e1',
       date: '2026-05-24',
@@ -741,7 +724,7 @@ describe('Weight entry controls', () => {
     const tree = await renderWeightTree(<WeightScreen {...WEIGHT_PROPS} />);
 
     // History is collapsed by default; expand it, then tap the row to enter
-    // editing mode so the header and edit-path disclosures render.
+    // editing mode so the header and always-visible edit controls render.
     await act(async () => {
       pressableByLabel(tree.root, 'Expand history').props.onPress();
     });
@@ -755,18 +738,11 @@ describe('Weight entry controls', () => {
     expectOwnBox(cancel);
     expectLabelSilenced(cancel, 'Cancel');
 
-    await act(async () => {
-      pressableByTestId(tree.root, 'weight-edit-note-toggle').props.onPress();
-      pressableByTestId(tree.root, 'weight-edit-date-toggle').props.onPress();
-    });
-
-    [['Done editing note'], ['Done changing entry date']].forEach(([label]) => {
-      const done = pressableByLabel(tree.root, label);
-      expect(done.props.accessibilityRole).toBe('button');
-      expect(done.props.accessibilityLabel).toBe(label);
-      expectOwnBox(done);
-      expectLabelSilenced(done, 'Done');
-    });
+    const date = pressableByLabel(tree.root, 'Entry date');
+    expect(date.props.accessibilityRole).toBe('button');
+    expectTarget(date);
+    const note = tree.root.findByProps({ accessibilityLabel: 'Note' });
+    expect(StyleSheet.flatten(note.props.style).minHeight).toBeGreaterThanOrEqual(MIN_TARGET);
   });
 });
 

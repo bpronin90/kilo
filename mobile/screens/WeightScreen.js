@@ -713,6 +713,7 @@ const createStyles = (colors) => StyleSheet.create({
     borderColor: colors.inputBorder,
     paddingHorizontal: 14,
     paddingVertical: 14,
+    minHeight: 48,
     fontSize: 16,
     color: colors.text,
     justifyContent: 'center',
