@@ -140,9 +140,10 @@ export function HelpScreen({ onBack }) {
             Kilo works offline and without an account; your data lives on this device.
           </Chunk>
           <Chunk styles={styles} label="Local backup">
-            Data & Backup exports a local backup file with your workout notes, weight logs, goals,
-            fatigue ratings, and deload/recovery records. It does not include profile settings,
-            reminders, unit preferences, or tracked-lift enrollment.
+            Data & Backup exports a local backup file with your workout notes, weight logs, your
+            current weight goal, and completed deload and recovery history. It does not include
+            profile settings, reminders, unit preferences, tracked-lift enrollment, past goals, or
+            an in-progress deload.
           </Chunk>
           <Chunk styles={styles} label="Cloud Sync & new phones">
             Optional Cloud Sync keeps data current across devices. On a clean new phone, sign in and
