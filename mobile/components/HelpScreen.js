@@ -97,8 +97,9 @@ export function HelpScreen({ onBack }) {
             exercises you Track.
           </Chunk>
           <Chunk styles={styles} label="Est. Max & Kilo Max">
-            Est. Max is your estimated one-rep max from recent sets. Kilo Max scales it by a fatigue
-            multiplier you set in Settings.
+            Est. Max is your estimated one-rep max from recent sets. Kilo Max averages Epley
+            estimates from eligible historical sets, then applies the fatigue multiplier you set in
+            Settings.
           </Chunk>
           <Chunk styles={styles} label="Charts & Big 3">
             Weight trend charts show 7-day and 30-day moving averages. Combined Big 3 covers mapped
@@ -140,10 +141,9 @@ export function HelpScreen({ onBack }) {
             Kilo works offline and without an account; your data lives on this device.
           </Chunk>
           <Chunk styles={styles} label="Local backup">
-            Data & Backup exports a local backup file with your workout notes, weight logs, your
-            current weight goal, and completed deload and recovery history. It does not include
-            profile settings, reminders, unit preferences, tracked-lift enrollment, past goals, or
-            an in-progress deload.
+            Data & Backup exports a local backup file with your workout notes, weight logs, current
+            weight goal, deload and recovery history, profile and unit settings, tracked-lift
+            enrollment, feature toggles, and the current deload note. Account email is excluded.
           </Chunk>
           <Chunk styles={styles} label="Cloud Sync & new phones">
             Optional Cloud Sync keeps data current across devices. On a clean new phone, sign in and
