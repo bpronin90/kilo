@@ -11,6 +11,7 @@ import { BackupScreen } from '../components/BackupScreen';
 import { SettingsScreen } from '../components/SettingsScreen';
 import { ProfileScreen } from '../components/ProfileScreen';
 import { RoutineImportScreen } from '../components/RoutineImportScreen';
+import { RoutinePromptToolsScreen } from '../components/RoutinePromptToolsScreen';
 import { AccountScreen } from './more/AccountScreen';
 
 export { AccountScreen } from './more/AccountScreen';
@@ -23,7 +24,7 @@ export { AccountLifecycle } from './more/AccountLifecycle';
 // view model. 'menu' is deliberately absent: "navigate to the More menu" is
 // just an ordinary More tab press, and accepting it as a target would let a
 // stray intent yank the user out of a sub-view they are already using.
-const NAV_SUBVIEWS = new Set(['help', 'about', 'backup', 'settings', 'profile', 'account', 'import-routine']);
+const NAV_SUBVIEWS = new Set(['help', 'about', 'backup', 'settings', 'profile', 'account', 'import-routine', 'routine-prompts']);
 
 export function MoreScreen({
   isActive = true,
@@ -149,6 +150,10 @@ export function MoreScreen({
     );
   }
 
+  if (activeView === 'routine-prompts') {
+    return <RoutinePromptToolsScreen onBack={() => showView('menu')} />;
+  }
+
   if (activeView === 'settings') {
     return (
       <SettingsScreen
@@ -205,6 +210,17 @@ export function MoreScreen({
           <View style={styles.menuCopy}>
             <Text style={styles.menuItemText}>Import Routine</Text>
             <Text style={styles.menuItemHelp}>Paste a shared routine</Text>
+          </View>
+          <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
+        </Pressable>
+      </View>
+
+      <SectionTitle>Prompts</SectionTitle>
+      <View style={styles.list}>
+        <Pressable style={styles.menuItem} onPress={() => showView('routine-prompts')} accessibilityRole="button" accessibilityLabel="Routine prompt tools">
+          <View style={styles.menuCopy}>
+            <Text style={styles.menuItemText}>Routine prompt tools</Text>
+            <Text style={styles.menuItemHelp}>Copy local templates for an external LLM</Text>
           </View>
           <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
         </Pressable>
