@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.135.2 - 2026-09-11
+
+- Issue #1026: Redesigned the rest timer as one coherent control: the editor stopwatch now opens an anchored preset menu that layers above the editor without being clipped, and the running countdown and completion notice share a single compact pill that stays visible on every tab (tap it for Cancel, or Dismiss on completion). The bottom navigation no longer fades to near-transparent after a delay, scroll, or touch — it stays fully visible and opaque.
+
+## 0.135.1 - 2026-09-11
+
+- Issue #1025: Aligned the Analytics Overview card's rows so every row's value column ends at the same right edge, whether or not that row links to a section.
+
+## 0.135.0 - 2026-09-11
+
+- Issue #1024: Added local, copyable routine-planning and exercise-name prompt tools under More.
+
+## 0.134.0 - 2026-09-11
+
+- Issue #1019: Replaced the long-form App Guide with a compact Help screen: six expandable topic rows (Logging, Recovery & deloads, Progress & analytics, Weight, Backup/sync, Settings & privacy) that open one at a time inline, so answers are quick to find without scrolling through a manual.
+
 ## 0.133.0 - 2026-09-10
 
 - Issue #1029: Replaced Recovery's met-count headline with per-bucket return bands and weekly movement on Home, Analytics, and the Overview row.
