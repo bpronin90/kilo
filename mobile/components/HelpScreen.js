@@ -1,198 +1,217 @@
-import React, { useRef } from 'react';
+import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { ScreenShell } from './ScreenShell';
-import { Card, SectionTitle } from './UI';
 import { useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 import { useWeightUnit } from '../lib/unitPreference';
 import { formatLiftWeightValue } from '../lib/units';
 import { WorkoutSyntaxReference } from './WorkoutSyntaxReference';
 
-const TOPICS = [
-  ['start', 'Start here'],
-  ['logging', 'Log workouts'],
-  ['weight', 'Weight'],
-  ['analytics', 'Analytics'],
-  ['backup', 'Backup & import'],
-  ['account', 'Account & sync'],
-  ['settings', 'Privacy & settings'],
-  ['terms', 'Terms & definitions'],
-];
+// Help is a six-row inline accordion (#1019). Each topic row uses the same
+// list-row language as the More menu (title, muted one-line summary, trailing
+// chevron) and reveals its help content directly beneath the row. Exactly one
+// topic is open at a time; expanding is local state only, so it never creates
+// a navigation entry or consumes Android/system Back. Detail is rendered only
+// while its topic is open — there is deliberately no always-visible manual and
+// no in-page anchor navigation.
+
+function Body({ styles, children }) {
+  return <View style={styles.body}>{children}</View>;
+}
+
+function Chunk({ styles, label, children }) {
+  return (
+    <View style={styles.chunk}>
+      {label ? (
+        <Text style={styles.chunkLabel} accessibilityRole="header">
+          {label}
+        </Text>
+      ) : null}
+      <Text style={styles.bodyText}>{children}</Text>
+    </View>
+  );
+}
 
 export function HelpScreen({ onBack }) {
   const styles = useThemedStyles(createStyles);
+  const { colors } = useTheme();
   const unit = useWeightUnit();
-  const scrollRef = useRef(null);
-  const sectionY = useRef({});
+  const [openId, setOpenId] = useState(null);
   const oneKTotalLabel = unit === 'kg' ? `${formatLiftWeightValue(1000, 'kg')} kg` : '1,000 lb';
 
-  const jumpTo = (id) => {
-    scrollRef.current?.scrollTo({
-      y: Math.max(0, (sectionY.current[id] || 0) - 12),
-      animated: true,
-    });
-  };
-
-  const renderSection = (id, title, children) => (
-    <View
-      key={id}
-      onLayout={(event) => {
-        sectionY.current[id] = event.nativeEvent.layout.y;
-      }}
-    >
-      <SectionTitle>{title}</SectionTitle>
-      <Card>{children}</Card>
-    </View>
-  );
+  const TOPICS = [
+    {
+      id: 'logging',
+      title: 'Logging workouts',
+      summary: 'Routines, syntax, tracking & progression',
+      content: (
+        <Body styles={styles}>
+          <Chunk styles={styles} label="Writing a routine">
+            Write a workout as plain text. Kilo parses headings, exercises, sets, reps, and weight
+            as you type — no forms to fill in.
+          </Chunk>
+          <View style={styles.syntaxContainer}>
+            <WorkoutSyntaxReference />
+          </View>
+          <Chunk styles={styles} label="Track & Tracked">
+            Logging does not track an exercise. Tap Track beside a parsed exercise to include it in
+            Progressive Overload; it then reads Tracked.
+          </Chunk>
+          <Chunk styles={styles} label="Progression spans">
+            Every explicit Track opens a fresh progression span. First session appears while it
+            builds, and Est. Max, Kilo Max, and best set keep showing full history.
+          </Chunk>
+          <Chunk styles={styles}>
+            Some exercises may already be tracked from a catalog default or an earlier app version,
+            rather than an explicit choice of yours.
+          </Chunk>
+        </Body>
+      ),
+    },
+    {
+      id: 'recovery',
+      title: 'Recovery & deloads',
+      summary: 'Recovery blocks, deloads, and when each appears',
+      content: (
+        <Body styles={styles}>
+          <Chunk styles={styles} label="Recovery">
+            A Recovery block is a planned lower-load stretch compared against your training
+            baseline. Start and review it from the Log tab; its status also surfaces in Analytics.
+          </Chunk>
+          <Chunk styles={styles} label="Deload">
+            A deload generates a planned lower-volume week from your current routine. Turn deload
+            mode on from Log when you want that lighter week.
+          </Chunk>
+          <Chunk styles={styles} label="The difference">
+            A deload is a single lighter week derived from a routine; a Recovery block is a tracked
+            span measured against your baseline. Recovery information is training information, not
+            medical advice.
+          </Chunk>
+        </Body>
+      ),
+    },
+    {
+      id: 'progress',
+      title: 'Progress & analytics',
+      summary: 'Est. Max, Kilo Max, Progressive Overload, charts',
+      content: (
+        <Body styles={styles}>
+          <Chunk styles={styles} label="Progressive Overload">
+            Progressive Overload shows Est. Max, Kilo Max, best set, and progress trend for tracked
+            exercises. An exercise appears here only after you Track it.
+          </Chunk>
+          <Chunk styles={styles} label="Est. Max & Kilo Max">
+            Est. Max is the estimated one-rep max derived from your set performance. Kilo Max is
+            that estimate adjusted for fatigue check-in context.
+          </Chunk>
+          <Chunk styles={styles} label="Trends & Big 3">
+            Weight trend charts display 7-day and 30-day moving averages. Combined Big 3 progress
+            covers mapped squat, bench, and deadlift lifts when enough complete logged cycles exist;
+            the 1K goal is a combined estimated total of {oneKTotalLabel}.
+          </Chunk>
+          <Chunk styles={styles}>
+            When fatigue tracking is enabled, check-ins add volume-decline context.
+          </Chunk>
+        </Body>
+      ),
+    },
+    {
+      id: 'weight',
+      title: 'Weight tracking',
+      summary: 'Entries, trends, goals, and pace',
+      content: (
+        <Body styles={styles}>
+          <Chunk styles={styles} label="Weigh-ins">
+            Enter body weight in the Weight tab. Values follow your preferred unit (kg or lb).
+          </Chunk>
+          <Chunk styles={styles} label="Trends">
+            Kilo shows a 7-day moving average to smooth out day-to-day swings, so the trend line
+            reflects real change rather than a single heavy or light morning.
+          </Chunk>
+          <Chunk styles={styles} label="Goals & pace">
+            Set a weight goal to see projected pace. A pace flag warns when body weight is changing
+            faster than about 1.5% per week.
+          </Chunk>
+        </Body>
+      ),
+    },
+    {
+      id: 'backup',
+      title: 'Backup, sync & moving phones',
+      summary: 'Local backup, Cloud Sync, CSV, routine import',
+      content: (
+        <Body styles={styles}>
+          <Chunk styles={styles} label="Offline first">
+            Kilo works without an account and keeps your working data on this device.
+          </Chunk>
+          <Chunk styles={styles} label="Local backup">
+            Data & Backup exports a local backup file. It preserves core workout notes, body weight
+            logs, goals, fatigue ratings, and deload/recovery records. It omits profile settings,
+            reminders, unit preferences, and tracked-lift enrollment spans.
+          </Chunk>
+          <Chunk styles={styles} label="Cloud Sync & new phones">
+            Optional Cloud Sync reconciles data across devices. On a new phone, sign in and choose
+            Upload local history once, then Sync now for later updates.
+          </Chunk>
+          <Chunk styles={styles} label="CSV & routine import">
+            CSV export is for external tools, not a complete backup. Import Routine (in More) creates
+            a new routine from pasted text and leaves the routine you are running untouched.
+          </Chunk>
+        </Body>
+      ),
+    },
+    {
+      id: 'settings',
+      title: 'Settings & privacy',
+      summary: 'Units, appearance, reminders, optional features, local/cloud data',
+      content: (
+        <Body styles={styles}>
+          <Chunk styles={styles} label="Preferences">
+            Settings controls appearance, units, reminders, deload, and optional fatigue/progression
+            features. Turn optional features on only if you want them.
+          </Chunk>
+          <Chunk styles={styles} label="Your data">
+            Working data and local backup files stay on this device unless you enable Cloud Sync.
+            CSV export files are stored unencrypted.
+          </Chunk>
+          <Chunk styles={styles} label="Privacy Policy">
+            Read the Privacy Policy from More → About Kilo.
+          </Chunk>
+        </Body>
+      ),
+    },
+  ];
 
   return (
-    <ScreenShell
-      ref={scrollRef}
-      title="App Guide"
-      subtitle="A quick reference for using Kilo."
-      onBack={onBack}
-    >
-      <Card>
-        <Text style={styles.helpHeading} accessibilityRole="header">
-          How Kilo works
-        </Text>
-        <Text style={styles.helpText}>
-          Kilo is an offline-first training log. Jump directly to a topic section:
-        </Text>
-        <View accessibilityRole="list" style={styles.tocGrid}>
-          {TOPICS.map(([id, title]) => (
-            <Pressable
-              key={id}
-              accessibilityRole="button"
-              accessibilityLabel={`Read ${title}`}
-              onPress={() => jumpTo(id)}
-              style={styles.tocChip}
-            >
-              <Text style={styles.tocChipText}>{title}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </Card>
-
-      <View style={styles.sections}>
-        {renderSection(
-          'start',
-          'Start here',
-          <>
-            <Text style={styles.subheading}>Main Navigation</Text>
-            <Text style={styles.helpText}>
-              • Home: View your weekly overview and progress snapshot.{'\n'}
-              • Log: Record workout notes, view past routines, or plan deloads.{'\n'}
-              • Weight: Track daily body weight, moving averages, and goal pace.{'\n'}
-              • Analytics: Review long-term strength trends, fatigue, and Recovery.{'\n'}
-              • More: Access settings, profile, backup/sync, and this guide.
-            </Text>
-          </>
-        )}
-
-        {renderSection(
-          'logging',
-          'Log workouts',
-          <>
-            <Text style={styles.subheading}>Syntax Reference</Text>
-            <Text style={styles.helpText}>
-              • Write a routine as plain text; Kilo parses headings, exercises, sets, reps, and weight.
-            </Text>
-            <View style={styles.syntaxContainer}>
-              <WorkoutSyntaxReference />
+    <ScreenShell title="Help" subtitle="Quick answers for using Kilo." onBack={onBack}>
+      <View style={styles.list}>
+        {TOPICS.map(({ id, title, summary, content }) => {
+          const isOpen = openId === id;
+          return (
+            <View key={id} style={styles.topic}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={title}
+                accessibilityState={{ expanded: isOpen }}
+                onPress={() => setOpenId(isOpen ? null : id)}
+                style={styles.row}
+              >
+                <View style={styles.rowCopy}>
+                  <Text style={styles.rowTitle}>{title}</Text>
+                  <Text style={styles.rowSummary}>{summary}</Text>
+                </View>
+                <MaterialIcons
+                  name={isOpen ? 'expand-less' : 'expand-more'}
+                  size={22}
+                  color={colors.textMuted}
+                  accessible={false}
+                />
+              </Pressable>
+              {isOpen ? content : null}
             </View>
-            <Text style={[styles.subheading, styles.sectionSubheading]}>Tracking & Progression</Text>
-            <Text style={styles.helpText}>
-              • Logging does not track an exercise. Tap Track beside a parsed exercise to include it in Progressive Overload.{'\n'}
-              • Every explicit Track opens a fresh progression span. First session appears while it builds; Est. Max, Kilo Max, and best set keep showing full history.{'\n'}
-              • Some exercises may already be tracked from a catalog default or an earlier app version. Deload mode can generate a planned lower-volume week from Log.
-            </Text>
-          </>
-        )}
-
-        {renderSection(
-          'weight',
-          'Weight',
-          <>
-            <Text style={styles.subheading}>Weigh-in & Trends</Text>
-            <Text style={styles.helpText}>
-              • Enter daily body weight in the Weight tab.{'\n'}
-              • Kilo calculates 7-day moving averages to smooth out day-to-day fluctuations.{'\n'}
-              • Pace flag warns if body weight changes faster than ~1.5% per week.{'\n'}
-              • All values update automatically according to your preferred weight unit (kg/lb).
-            </Text>
-          </>
-        )}
-
-        {renderSection(
-          'analytics',
-          'Analytics',
-          <>
-            <Text style={styles.subheading}>Performance & Recovery</Text>
-            <Text style={styles.helpText}>
-              • Weight trend charts display 7-day and 30-day moving averages.{'\n'}
-              • Combined Big 3 progress covers mapped squat, bench, and deadlift lifts when enough complete logged cycles exist.{'\n'}
-              • Progressive Overload shows Est. Max, Kilo Max, best set, and progress trend for tracked exercises.{'\n'}
-              • When fatigue tracking is enabled, check-ins add volume-decline context. Recovery compares a planned block with its baseline; it is training information, not medical advice.
-            </Text>
-          </>
-        )}
-
-        {renderSection(
-          'backup',
-          'Backup & import',
-          <>
-            <Text style={styles.subheading}>Data Management</Text>
-            <Text style={styles.helpText}>
-              • Data & Backup exports a local backup file to save or transfer to another device.{'\n'}
-              • Preserves core workout notes, body weight logs, goals, fatigue ratings, and deload/recovery records.{'\n'}
-              • Omits profile settings, reminders, unit preferences, and tracked-lift enrollment spans.{'\n'}
-              • CSV export is for external tools and omits additional app state. Always review the confirmation dialog before overwriting local data.
-            </Text>
-          </>
-        )}
-
-        {renderSection(
-          'account',
-          'Account & sync',
-          <>
-            <Text style={styles.subheading}>Offline & Cloud</Text>
-            <Text style={styles.helpText}>
-              • Offline-first: Kilo works without an account and stores working data on this device.{'\n'}
-              • Optional Cloud Sync reconciles data across multiple devices.{'\n'}
-              • First-time setup: Sign in, choose "Upload local history" once, then tap "Sync now" for future updates.{'\n'}
-              • Account deletion: Deleting your cloud account removes remote backups while leaving local device history intact.
-            </Text>
-          </>
-        )}
-
-        {renderSection(
-          'settings',
-          'Privacy & settings',
-          <>
-            <Text style={styles.subheading}>App Control & Privacy</Text>
-            <Text style={styles.helpText}>
-              • Settings controls appearance, units, reminders, deload, and optional fatigue/progression features.{'\n'}
-              • Kilo works fully offline; read the Privacy Policy from More → About.{'\n'}
-              • Local backup files remain on-device, and CSV export files are stored unencrypted.
-            </Text>
-          </>
-        )}
-
-        {renderSection(
-          'terms',
-          'Terms & definitions',
-          <>
-            <Text style={styles.subheading}>Key Terminology</Text>
-            <Text style={styles.helpText}>
-              • Est. Max: Estimated one-rep max derived from set performance.{'\n'}
-              • Kilo Max: Est. Max adjusted for fatigue check-in context.{'\n'}
-              • 1K Progress: Combined estimated squat, bench, and deadlift total; the goal is {oneKTotalLabel}.{'\n'}
-              • Track: Enrolls an exercise into Progressive Overload tracking.{'\n'}
-              • Pace Flag: Alert displayed when weight changes faster than the target threshold.{'\n'}
-              • Recovery: A planned lower-load block compared against your training baseline.
-            </Text>
-          </>
-        )}
+          );
+        })}
       </View>
     </ScreenShell>
   );
@@ -200,31 +219,33 @@ export function HelpScreen({ onBack }) {
 
 const createStyles = (colors) =>
   StyleSheet.create({
-    helpHeading: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 4 },
-    subheading: { fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 6 },
-    sectionSubheading: { marginTop: 12 },
-    helpText: { fontSize: 15, lineHeight: 22, color: colors.textMuted },
-    tocGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 8,
-      marginTop: 12,
-    },
-    tocChip: {
-      paddingVertical: 6,
-      paddingHorizontal: 12,
-      borderRadius: 8,
-      backgroundColor: colors.cardBorder,
+    list: { gap: 12 },
+    topic: {
+      backgroundColor: colors.card,
+      borderRadius: 24,
       borderWidth: 1,
       borderColor: colors.cardBorder,
+      overflow: 'hidden',
     },
-    tocChipText: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: colors.text,
+    row: {
+      flexDirection: 'row',
+      minHeight: 44,
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: 20,
+      gap: 12,
     },
-    sections: { gap: 16, marginTop: 16 },
-    syntaxContainer: { marginVertical: 8 },
+    rowCopy: { flex: 1, gap: 4 },
+    rowTitle: { fontSize: 17, fontWeight: '600', color: colors.text },
+    rowSummary: { fontSize: 13, color: colors.textMuted },
+    body: {
+      paddingHorizontal: 20,
+      paddingBottom: 20,
+      paddingTop: 4,
+      gap: 14,
+    },
+    chunk: { gap: 4 },
+    chunkLabel: { fontSize: 14, fontWeight: '700', color: colors.text },
+    bodyText: { fontSize: 15, lineHeight: 22, color: colors.textMuted },
+    syntaxContainer: { marginVertical: 2 },
   });
-
-

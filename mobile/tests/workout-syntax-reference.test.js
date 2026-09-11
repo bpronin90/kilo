@@ -167,7 +167,7 @@ describe('WorkoutSyntaxModal — overlay/sheet/close pattern (#584)', () => {
 describe('HelpScreen consumes the shared WorkoutSyntaxReference (#584)', () => {
   function openLoggingTopic(component) {
     render.act(() => {
-      component.root.findByProps({ accessibilityLabel: 'Read Log workouts' }).props.onPress();
+      component.root.findByProps({ accessibilityLabel: 'Logging workouts' }).props.onPress();
     });
   }
 
@@ -195,7 +195,7 @@ describe('HelpScreen — Track / Tracked terminology explains the tracked span (
 
   function openLoggingTopic(component) {
     render.act(() => {
-      component.root.findByProps({ accessibilityLabel: 'Read Log workouts' }).props.onPress();
+      component.root.findByProps({ accessibilityLabel: 'Logging workouts' }).props.onPress();
     });
   }
 

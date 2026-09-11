@@ -1861,7 +1861,7 @@ describe('explicit editor rollback: integration tests (#851)', () => {
     });
 
     render.act(() => {
-      root.findByProps({ accessibilityLabel: 'Read Log workouts' }).props.onPress();
+      root.findByProps({ accessibilityLabel: 'Logging workouts' }).props.onPress();
     });
 
     // Now HelpScreen should be active. Verify it displays the example text.
@@ -6980,7 +6980,7 @@ describe('#583: App Guide analytics copy matches shipped surfaces', () => {
       findPressableByText(root, 'App Guide').props.onPress();
     });
     render.act(() => {
-      root.findByProps({ accessibilityLabel: 'Read Analytics' }).props.onPress();
+      root.findByProps({ accessibilityLabel: 'Progress & analytics' }).props.onPress();
     });
     return root.findAllByType('Text').map(t => {
       const child = t.props.children;
