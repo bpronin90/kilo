@@ -24,6 +24,9 @@ describe('routine prompt builders', () => {
     expect(prompt).toContain('Start by discussing my goals');
     expect(prompt).toContain('until I explicitly ask');
     expect(prompt).toContain(CURRENT.raw_text);
+    expect(prompt).toContain('Selected routine: Upper');
+    expect(prompt).toContain('<<< BEGIN KILO ROUTINE REFERENCE:');
+    expect(prompt).not.toContain('Current routine');
     expect(prompt).not.toContain('https://');
   });
 
@@ -32,6 +35,9 @@ describe('routine prompt builders', () => {
     expect(prompt).toContain('weights, reps, dates, weekdays, comments/notes, marks, skipped sets, and Week A/B boundaries');
     expect(prompt).toContain(CURRENT.raw_text);
     expect(prompt).toContain(TARGET.raw_text);
+    expect(prompt).toContain('Label each result with its exact reference label');
+    expect(prompt).toContain('Target routine 1: Upper');
+    expect(prompt).not.toContain('Target routine 1: Upper\n---');
   });
 
   test('builders keep malformed and long local note text verbatim', () => {

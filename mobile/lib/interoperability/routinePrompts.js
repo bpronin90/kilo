@@ -20,7 +20,10 @@ function text(value) {
 }
 
 function routineBlock(label, routine) {
-  return `\n\n${label}\n---\n${text(routine?.raw_text)}\n---`;
+  // These delimiters are reference-only prompt framing, deliberately unlike
+  // Kilo's standalone `---` Week A/B token. The prompt also tells the model
+  // never to return them, so they cannot be mistaken for routine content.
+  return `\n\n<<< BEGIN KILO ROUTINE REFERENCE: ${label} >>>\n${text(routine?.raw_text)}\n<<< END KILO ROUTINE REFERENCE >>>`;
 }
 
 /**
@@ -31,7 +34,7 @@ function routineBlock(label, routine) {
 export function buildRoutinePlanningPrompt(routine) {
   return `I want to plan or update this Kilo workout routine. Start by discussing my goals, constraints, recovery, exercise preferences, and proposed changes. Ask useful questions before writing a replacement routine. Do not produce final importable routine text until I explicitly ask for it.
 
-When I ask for the final version, return only the complete Kilo-importable routine text, with no Markdown fence or explanation. ${FORMAT_GUIDE}${routineBlock('Current routine', routine)}`;
+When I ask for the final version, return only the complete Kilo-importable routine text, with no Markdown fence, explanation, or reference markers. ${FORMAT_GUIDE}${routineBlock(`Selected routine: ${text(routine?.title) || 'Untitled Routine'}`, routine)}`;
 }
 
 /**
@@ -42,7 +45,7 @@ export function buildExerciseNameNormalizationPrompt({ authority, targets = [] }
   const targetBlocks = targets.map((routine, index) => routineBlock(`Target routine ${index + 1}: ${text(routine?.title) || 'Untitled Routine'}`, routine)).join('');
   return `Use the authoritative routine below as the source of truth for exercise names. Normalize exercise names in every target routine to match that authority wherever the exercises correspond. Preserve every other character and structure in each target: weights, reps, dates, weekdays, comments/notes, marks, skipped sets, and Week A/B boundaries. Do not add, remove, reorder, or otherwise edit exercises or sets. If a target name has no clear authoritative match, leave it unchanged.
 
-Return each selected target as complete Kilo-importable routine text, one at a time, labelled only with its target title. Do not use Markdown fences. ${FORMAT_GUIDE}${routineBlock(`Authoritative routine: ${text(authority?.title) || 'Untitled Routine'}`, authority)}${targetBlocks}`;
+Return each selected target as complete Kilo-importable routine text, one at a time. Label each result with its exact reference label, for example "Target routine 1: Upper", so duplicate routine titles remain distinguishable. Do not use Markdown fences or return any reference markers. ${FORMAT_GUIDE}${routineBlock(`Authoritative routine: ${text(authority?.title) || 'Untitled Routine'}`, authority)}${targetBlocks}`;
 }
 
 /**
