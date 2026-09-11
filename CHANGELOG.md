@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.0 - 2026-09-11
+
+- Issue #1042: Lowered the floating bottom navigation to sit closer to the safe-area edge with a deliberate small gap, so it no longer appears excessively high or overlaps screen content. This is the official Kilo 1.0.0 release.
+
 ## 0.133.0 - 2026-09-10
 
 - Issue #1029: Replaced Recovery's met-count headline with per-bucket return bands and weekly movement on Home, Analytics, and the Overview row.

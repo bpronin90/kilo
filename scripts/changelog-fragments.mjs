@@ -21,7 +21,7 @@ export function parseFragment(name, source) {
   const filename = name.match(fragmentNameRe);
   if (!filename) throw new Error(`${name}: expected <issue>-<sequence>.md`);
   const normalized = String(source).replace(/\r\n/g, '\n');
-  const match = normalized.match(/^issue: ([1-9][0-9]*)\nbump: (patch|minor)\n\n([^\s][\s\S]*?)\s*$/);
+  const match = normalized.match(/^issue: ([1-9][0-9]*)\nbump: (patch|minor|major)\n\n([^\s][\s\S]*?)\s*$/);
   if (!match) throw new Error(`${name}: expected issue, bump, blank line, and release-note text`);
   const issue = Number(match[1]);
   if (issue !== Number(filename[1])) throw new Error(`${name}: declared issue ${issue} does not match filename`);
@@ -38,7 +38,12 @@ export function nextVersion(current, fragments) {
     const match = String(version).match(semverRe);
     if (!match) throw new Error(`Canonical version is not x.y.z: ${version}`);
     const [major, minor, patch] = match.slice(1).map(Number);
-    if (major !== 0) throw new Error(`Pre-1.0 release policy cannot calculate from ${version}`);
+    if (fragment.bump === 'major') return `${major + 1}.0.0`;
+    if (major !== 0) {
+      return fragment.bump === 'minor'
+        ? `${major}.${minor + 1}.0`
+        : `${major}.${minor}.${patch + 1}`;
+    }
     return fragment.bump === 'minor'
       ? `0.${minor + 1}.0`
       : `0.${minor}.${patch + 1}`;

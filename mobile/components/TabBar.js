@@ -63,7 +63,7 @@ const createStyles = (colors) => StyleSheet.create({
   },
   tab: {
     flex: 1,
-    paddingVertical: 14,
+    paddingVertical: 10,
     borderRadius: 18,
     alignItems: 'center',
   },
