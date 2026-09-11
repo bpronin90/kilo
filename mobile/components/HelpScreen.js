@@ -8,14 +8,14 @@ import { formatLiftWeightValue } from '../lib/units';
 import { WorkoutSyntaxReference } from './WorkoutSyntaxReference';
 
 const TOPICS = [
-  ['start', 'Start here', 'App overview and tab navigation.'],
-  ['logging', 'Log workouts', 'Syntax, tracking, and deloads.'],
-  ['weight', 'Weight', 'Weigh-ins, 7-day trends, and goals.'],
-  ['analytics', 'Analytics', 'Progressive overload, fatigue, and Recovery.'],
-  ['backup', 'Backup & import', 'Local data backup and CSV export.'],
-  ['account', 'Account & sync', 'Offline storage and optional cloud sync.'],
-  ['settings', 'Privacy & settings', 'App preferences and data privacy.'],
-  ['terms', 'Terms & definitions', 'Key metrics and app terminology.'],
+  ['start', 'Start here'],
+  ['logging', 'Log workouts'],
+  ['weight', 'Weight'],
+  ['analytics', 'Analytics'],
+  ['backup', 'Backup & import'],
+  ['account', 'Account & sync'],
+  ['settings', 'Privacy & settings'],
+  ['terms', 'Terms & definitions'],
 ];
 
 export function HelpScreen({ onBack }) {
@@ -56,30 +56,22 @@ export function HelpScreen({ onBack }) {
           How Kilo works
         </Text>
         <Text style={styles.helpText}>
-          Kilo is an offline-first training log. Use the index below to quickly jump to any section.
+          Kilo is an offline-first training log. Jump directly to a topic section:
         </Text>
+        <View accessibilityRole="list" style={styles.tocGrid}>
+          {TOPICS.map(([id, title]) => (
+            <Pressable
+              key={id}
+              accessibilityRole="button"
+              accessibilityLabel={`Read ${title}`}
+              onPress={() => jumpTo(id)}
+              style={styles.tocChip}
+            >
+              <Text style={styles.tocChipText}>{title}</Text>
+            </Pressable>
+          ))}
+        </View>
       </Card>
-
-      <SectionTitle>Table of contents</SectionTitle>
-      <View accessibilityRole="list" style={styles.topicList}>
-        {TOPICS.map(([id, title, summary]) => (
-          <Pressable
-            key={id}
-            accessibilityRole="button"
-            accessibilityLabel={`Read ${title}`}
-            onPress={() => jumpTo(id)}
-            style={styles.topicRow}
-          >
-            <View style={styles.topicCopy}>
-              <Text style={styles.topicTitle}>{title}</Text>
-              <Text style={styles.topicSummary}>{summary}</Text>
-            </View>
-            <Text style={styles.topicArrow} accessible={false}>
-              ›
-            </Text>
-          </Pressable>
-        ))}
-      </View>
 
       <View style={styles.sections}>
         {renderSection(
@@ -212,22 +204,27 @@ const createStyles = (colors) =>
     subheading: { fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 6 },
     sectionSubheading: { marginTop: 12 },
     helpText: { fontSize: 15, lineHeight: 22, color: colors.textMuted },
-    topicList: { gap: 10 },
-    topicRow: {
-      minHeight: 60,
-      padding: 14,
-      borderRadius: 12,
+    tocGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginTop: 12,
+    },
+    tocChip: {
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      borderRadius: 8,
+      backgroundColor: colors.cardBorder,
       borderWidth: 1,
       borderColor: colors.cardBorder,
-      backgroundColor: colors.card,
-      flexDirection: 'row',
-      alignItems: 'center',
     },
-    topicCopy: { flex: 1, minWidth: 0 },
-    topicTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 3 },
-    topicSummary: { fontSize: 14, lineHeight: 19, color: colors.textMuted },
-    topicArrow: { fontSize: 28, color: colors.accentText, marginLeft: 10 },
-    sections: { gap: 16 },
+    tocChipText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    sections: { gap: 16, marginTop: 16 },
     syntaxContainer: { marginVertical: 8 },
   });
+
 
