@@ -88,8 +88,17 @@ function OverviewRow({ row, unit, onPress }) {
             </Text>
           )}
           {!!row.valueSuffix && <Text style={styles.rowValueSuffix}>{row.valueSuffix}</Text>}
-          {interactive && (
+          {interactive ? (
             <MaterialIcons name="chevron-right" size={16} color={colors.textMuted} accessible={false} />
+          ) : (
+            // A same-width, invisible stand-in (not `null`) for every
+            // non-interactive row (Routine has no destination section; an
+            // unavailable row is never a press target): without it those
+            // rows' value text sits flush against the card edge while every
+            // interactive row's chevron pulls its value in by 21px (16 icon +
+            // 5 gap), so the value column's right edge drifted row to row and
+            // the stack read as unrelated rows rather than one aligned grid.
+            <View style={styles.rowValueSpacer} accessible={false} />
           )}
         </View>
       </View>
@@ -255,6 +264,12 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: colors.textMuted,
+  },
+  // Matches the chevron's footprint (16 icon width; the group's own `gap: 5`
+  // still applies) so a non-interactive row's value column ends at the same
+  // right edge as an interactive one.
+  rowValueSpacer: {
+    width: 16,
   },
   rowSub: {
     flexDirection: 'row',
