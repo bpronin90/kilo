@@ -4,8 +4,6 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { ScreenShell } from './ScreenShell';
 import { useThemedStyles } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
-import { useWeightUnit } from '../lib/unitPreference';
-import { formatLiftWeightValue } from '../lib/units';
 import { WorkoutSyntaxReference } from './WorkoutSyntaxReference';
 
 // Help is a six-row inline accordion (#1019). Each topic row uses the same
@@ -36,9 +34,7 @@ function Chunk({ styles, label, children }) {
 export function HelpScreen({ onBack }) {
   const styles = useThemedStyles(createStyles);
   const { colors } = useTheme();
-  const unit = useWeightUnit();
   const [openId, setOpenId] = useState(null);
-  const oneKTotalLabel = unit === 'kg' ? `${formatLiftWeightValue(1000, 'kg')} kg` : '1,000 lb';
 
   const TOPICS = [
     {
@@ -48,23 +44,20 @@ export function HelpScreen({ onBack }) {
       content: (
         <Body styles={styles}>
           <Chunk styles={styles} label="Writing a routine">
-            Write a workout as plain text. Kilo parses headings, exercises, sets, reps, and weight
-            as you type — no forms to fill in.
+            Write a workout as plain text — Kilo parses headings, exercises, sets, reps, and weight
+            as you type.
           </Chunk>
           <View style={styles.syntaxContainer}>
             <WorkoutSyntaxReference />
           </View>
           <Chunk styles={styles} label="Track & Tracked">
-            Logging does not track an exercise. Tap Track beside a parsed exercise to include it in
+            Logging does not track an exercise. Tap Track beside an exercise to add it to
             Progressive Overload; it then reads Tracked.
           </Chunk>
           <Chunk styles={styles} label="Progression spans">
-            Every explicit Track opens a fresh progression span. First session appears while it
-            builds, and Est. Max, Kilo Max, and best set keep showing full history.
-          </Chunk>
-          <Chunk styles={styles}>
-            Some exercises may already be tracked from a catalog default or an earlier app version,
-            rather than an explicit choice of yours.
+            Every explicit Track opens a fresh progression span. First session shows while it
+            builds, while Est. Max, Kilo Max, and best set keep showing full history. Some exercises
+            are already Tracked from a catalog default or an earlier app version.
           </Chunk>
         </Body>
       ),
@@ -76,17 +69,15 @@ export function HelpScreen({ onBack }) {
       content: (
         <Body styles={styles}>
           <Chunk styles={styles} label="Recovery">
-            A Recovery block is a planned lower-load stretch compared against your training
-            baseline. Start and review it from the Log tab; its status also surfaces in Analytics.
+            A Recovery block is a planned lighter-load stretch measured against your training
+            baseline. Start and review it from the Log tab.
           </Chunk>
           <Chunk styles={styles} label="Deload">
-            A deload generates a planned lower-volume week from your current routine. Turn deload
-            mode on from Log when you want that lighter week.
+            A deload turns your current routine into a single lower-volume week. Enable deload mode
+            in Settings → Features; the Deload tab then appears in Log.
           </Chunk>
-          <Chunk styles={styles} label="The difference">
-            A deload is a single lighter week derived from a routine; a Recovery block is a tracked
-            span measured against your baseline. Recovery information is training information, not
-            medical advice.
+          <Chunk styles={styles} label="Not medical advice">
+            Recovery information is training information, not medical advice.
           </Chunk>
         </Body>
       ),
@@ -98,17 +89,16 @@ export function HelpScreen({ onBack }) {
       content: (
         <Body styles={styles}>
           <Chunk styles={styles} label="Progressive Overload">
-            Progressive Overload shows Est. Max, Kilo Max, best set, and progress trend for tracked
-            exercises. An exercise appears here only after you Track it.
+            Progressive Overload shows Est. Max, Kilo Max, best set, and progress trend for
+            exercises you Track.
           </Chunk>
           <Chunk styles={styles} label="Est. Max & Kilo Max">
-            Est. Max is the estimated one-rep max derived from your set performance. Kilo Max is
-            that estimate adjusted for fatigue check-in context.
+            Est. Max is your estimated one-rep max from recent sets. Kilo Max scales it by a fatigue
+            multiplier you set in Settings.
           </Chunk>
-          <Chunk styles={styles} label="Trends & Big 3">
-            Weight trend charts display 7-day and 30-day moving averages. Combined Big 3 progress
-            covers mapped squat, bench, and deadlift lifts when enough complete logged cycles exist;
-            the 1K goal is a combined estimated total of {oneKTotalLabel}.
+          <Chunk styles={styles} label="Charts & Big 3">
+            Weight trend charts show 7-day and 30-day moving averages. Combined Big 3 covers mapped
+            squat, bench, and deadlift lifts once enough complete logged cycles exist.
           </Chunk>
           <Chunk styles={styles}>
             When fatigue tracking is enabled, check-ins add volume-decline context.
@@ -123,15 +113,14 @@ export function HelpScreen({ onBack }) {
       content: (
         <Body styles={styles}>
           <Chunk styles={styles} label="Weigh-ins">
-            Enter body weight in the Weight tab. Values follow your preferred unit (kg or lb).
+            Enter body weight in the Weight tab; values follow your chosen unit.
           </Chunk>
           <Chunk styles={styles} label="Trends">
-            Kilo shows a 7-day moving average to smooth out day-to-day swings, so the trend line
-            reflects real change rather than a single heavy or light morning.
+            A 7-day moving average smooths day-to-day swings so the trend reflects real change.
           </Chunk>
           <Chunk styles={styles} label="Goals & pace">
-            Set a weight goal to see projected pace. A pace flag warns when body weight is changing
-            faster than about 1.5% per week.
+            Set a goal to see projected pace. A pace flag warns when weight changes faster than
+            about 1.5% per week.
           </Chunk>
         </Body>
       ),
@@ -142,21 +131,18 @@ export function HelpScreen({ onBack }) {
       summary: 'Local backup, Cloud Sync, CSV, routine import',
       content: (
         <Body styles={styles}>
-          <Chunk styles={styles} label="Offline first">
-            Kilo works without an account and keeps your working data on this device.
-          </Chunk>
           <Chunk styles={styles} label="Local backup">
-            Data & Backup exports a local backup file. It preserves core workout notes, body weight
-            logs, goals, fatigue ratings, and deload/recovery records. It omits profile settings,
-            reminders, unit preferences, and tracked-lift enrollment spans.
+            Data & Backup exports a local backup file with your workout notes, weight logs, goals,
+            fatigue ratings, and deload/recovery records. It does not include profile settings,
+            reminders, unit preferences, or tracked-lift enrollment.
           </Chunk>
           <Chunk styles={styles} label="Cloud Sync & new phones">
-            Optional Cloud Sync reconciles data across devices. On a new phone, sign in and choose
-            Upload local history once, then Sync now for later updates.
+            Optional Cloud Sync keeps data current across devices. On a clean new phone, sign in and
+            choose Download My Account's Data to restore your cloud history.
           </Chunk>
           <Chunk styles={styles} label="CSV & routine import">
-            CSV export is for external tools, not a complete backup. Import Routine (in More) creates
-            a new routine from pasted text and leaves the routine you are running untouched.
+            CSV export is for other tools, not a full backup. Import Routine (in More) creates a new
+            routine from pasted text.
           </Chunk>
         </Body>
       ),
@@ -168,12 +154,13 @@ export function HelpScreen({ onBack }) {
       content: (
         <Body styles={styles}>
           <Chunk styles={styles} label="Preferences">
-            Settings controls appearance, units, reminders, deload, and optional fatigue/progression
-            features. Turn optional features on only if you want them.
+            Settings controls appearance, units, reminders, and optional deload, fatigue, and
+            progression features.
           </Chunk>
           <Chunk styles={styles} label="Your data">
-            Working data and local backup files stay on this device unless you enable Cloud Sync.
-            CSV export files are stored unencrypted.
+            Your data stays on this device unless you enable Cloud Sync, which syncs your training
+            data to your account. Exported backup and CSV files are unencrypted and leave the device
+            only when you share or save them.
           </Chunk>
           <Chunk styles={styles} label="Privacy Policy">
             Read the Privacy Policy from More → About Kilo.
