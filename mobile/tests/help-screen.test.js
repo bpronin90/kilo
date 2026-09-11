@@ -10,20 +10,18 @@ function renderGuide() {
   return tree;
 }
 
-test('starts with a compact topic index and no detail heading', () => {
+test('starts with a compact topic index and continuous sections below', () => {
   const tree = renderGuide();
   expect(tree.root.findByProps({ accessibilityLabel: 'Read Log workouts' })).toBeTruthy();
-  expect(tree.root.findAllByProps({ accessibilityLabel: 'Back to guide topics' })).toHaveLength(0);
+  expect(tree.root.findByProps({ accessibilityLabel: 'Back to guide topics from Log workouts' })).toBeTruthy();
   act(() => { tree.unmount(); });
 });
 
-test('opens a topic and provides an obvious return to the index', () => {
+test('index item scrolls to its in-page section', () => {
   const tree = renderGuide();
   const logging = tree.root.findByProps({ accessibilityLabel: 'Read Log workouts' });
+  expect(logging.props.onPress).toEqual(expect.any(Function));
   act(() => { logging.props.onPress(); });
-  expect(tree.root.findByProps({ accessibilityLabel: 'Back to guide topics' })).toBeTruthy();
-  expect(tree.root.findAllByProps({ accessibilityLabel: 'Read Log workouts' })).toHaveLength(0);
-  act(() => { tree.root.findByProps({ accessibilityLabel: 'Back to guide topics' }).props.onPress(); });
-  expect(tree.root.findByProps({ accessibilityLabel: 'Read Log workouts' })).toBeTruthy();
+  expect(tree.root.findByProps({ accessibilityLabel: 'Back to guide topics from Log workouts' })).toBeTruthy();
   act(() => { tree.unmount(); });
 });

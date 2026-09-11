@@ -219,7 +219,7 @@ describe('HelpScreen — Track / Tracked terminology explains the tracked span (
     const text = renderedText(component.root);
     expect(text).toMatch(/opens a fresh progression span/);
     expect(text).toContain('First session');
-    expect(text).toMatch(/Est\. Max, Kilo Max, and best set keep showing your full history/);
+    expect(text).toMatch(/Est\. Max, Kilo Max, and best set keep showing full history/);
   });
 
   test('states that inherited catalog/legacy tracked state was not an explicit selection', () => {
@@ -229,6 +229,6 @@ describe('HelpScreen — Track / Tracked terminology explains the tracked span (
     });
     openLoggingTopic(component);
     const text = renderedText(component.root);
-    expect(text).toMatch(/catalog default or an earlier version of the app/);
+    expect(text).toMatch(/catalog default or an earlier app version/);
   });
 });

@@ -6994,7 +6994,7 @@ describe('#583: App Guide analytics copy matches shipped surfaces', () => {
 
     // Corrected descriptions are present.
     expect(joined).toContain('Weight trend charts');
-    expect(joined).toContain('combined Big 3');
+    expect(joined).toContain('Combined Big 3');
     // Big 3 chart prerequisites: mapped lifts and enough complete cycles.
     expect(joined).toContain('mapped squat, bench, and deadlift');
     expect(joined).toContain('enough complete logged cycles');
