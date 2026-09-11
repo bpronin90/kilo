@@ -17,7 +17,7 @@ instead of copying the same contract into several files.
 
 | Document | Owns |
 |----------|------|
-| [Postlaunch and Redesign Roadmap](postlaunch-redesign-roadmap.md) | Active phased plan for the post-launch Analog Iron redesign. |
+| [Postlaunch and Redesign Roadmap](postlaunch-redesign-roadmap.md) | Launch history and future planning for the post-launch Analog Iron redesign. |
 | [Zero-Friction and Active Context Roadmap](archive/zero-friction-roadmap.md) | Completed historical product-delivery roadmap; preserved for provenance, not current planning. |
 | [Calculations Reference](calculations-reference.md) | Workout, weight, goal, and recovery calculations in plain language. |
 | [UI Design Rules](ui-design-rules.md) | Adopted layout, component, interaction, appearance, and copy rules. |

@@ -16,9 +16,10 @@ whole program until after `1.0.0` ships.
 The [repo-grounded migration audit and child issue drafts](design/analog-iron-v0.125/migration-audit.md)
 inventory current routes, states and shared components, record reference conflicts
 and unresolved tokens, and assign disjoint implementation stages. The audit also
-qualifies native appearance: `mobile/app.json` requests automatic appearance, so
-native controls follow the system appearance while the JavaScript palette wiring
-described below handles the app's themed surfaces.
+qualifies native appearance: `mobile/app.json` requests automatic appearance,
+and `ThemeContext.applyNativeAppearance()` synchronizes explicit Light/Dark
+choices with native controls while passing System through to the OS. The
+JavaScript palette wiring described below handles the app's themed surfaces.
 
 For the design rules derived from these patterns, see
 `docs/ui-design-rules.md`. This document records implementation; it does not own
