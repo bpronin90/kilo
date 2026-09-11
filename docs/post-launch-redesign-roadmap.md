@@ -29,42 +29,77 @@ behavior change.
 
 ## Phase 1 — Structural preparation
 
-This phase lands before the redesign. Pure file splits are verified by the
-existing test suite and do not require device sign-off.
+This phase lands before the redesign and is coordinated by
+[#1064](https://github.com/bpronin90/kilo/issues/1064). It assigns each of the 20
+current production files over 600 lines to exactly one implementation card. The
+limit is inclusive: 600 lines passes and 601 fails. Tests, fixtures, generated or
+vendor content, and configuration are outside the count.
 
-Delivery is tracked in [#1064](https://github.com/bpronin90/kilo/issues/1064),
-which assigns every current production file over 600 lines to one scoped card
-and records their dependency order.
+Every card is a behavior-preserving extraction. It may not change copy, visuals,
+navigation, state, persistence, analytics, accessibility, public exports,
+serialized data, dependencies, or database contracts. Each touched or created
+production file must finish at 600 lines or fewer without compressed formatting
+or unrelated deletion. These refactors use targeted tests and ordinary CI; they
+do not require visual device sign-off.
 
-### S1. Split the Log cluster
+### Wave 0 — Establish the ratchet
 
-The current cluster is about 8,500 lines:
+- [#1046](https://github.com/bpronin90/kilo/issues/1046) adds the incremental
+  production-file line guard. It rejects new violations and growth in the
+  explicit legacy baseline while allowing later cards to reduce that baseline.
 
-- `LogScreen.js` — 1,864 lines
-- `LogRecoverySection.js` — 1,650 lines
-- `LogScreenEditorCard.js` — 1,668 lines
-- `useLogCurrentRoutineEditor.js` — 1,734 lines
-- `useLogOtherRoutineEditor.js` — 1,594 lines
+### Wave 1 — Leaf computation and shared foundations
 
-Keep the split separate from the restyle. A move-only change is reviewable and
-testable; combining file movement with visual changes would obscure behavior
-changes and make the Log migration card unnecessarily large.
+These cards have disjoint production ownership and can proceed after #1046:
 
-### S2. Enforce a 600-line limit on app code
+- [#1048](https://github.com/bpronin90/kilo/issues/1048) — shared UI primitives.
+- [#1053](https://github.com/bpronin90/kilo/issues/1053) — workout analytics
+  derivations.
+- [#1057](https://github.com/bpronin90/kilo/issues/1057) — workout-note parsing
+  and text mutation.
+- [#1059](https://github.com/bpronin90/kilo/issues/1059) — Recovery operation
+  journal, replay, locking, and corruption handling.
+- [#1061](https://github.com/bpronin90/kilo/issues/1061) — sync queue stamping,
+  dirty acknowledgements, cursor trust, snapshots, and reconciliation.
 
-The limit applies to app code, not tests, docs, dependencies, or configuration.
-It should block new violations while reporting existing files as debt. A
-genuinely cohesive exception may carry a short, visible justification.
+### Wave 2 — Screens and stateful consumers
 
-The threshold remains appropriate: the largest screen and editor modules still
-substantially exceed it, while normal app modules are much smaller. Enforcement
-lands in the checker owned by redesign card D2.
+Each card starts from current `main` after its named foundations land:
 
-### S3. Keep sync structural work separate
+- [#1047](https://github.com/bpronin90/kilo/issues/1047) — App shell
+  orchestration.
+- [#1049](https://github.com/bpronin90/kilo/issues/1049) — Home composition and
+  first-paint boundaries.
+- [#1050](https://github.com/bpronin90/kilo/issues/1050) — Weight entry, goals,
+  and history presentation.
+- [#1051](https://github.com/bpronin90/kilo/issues/1051) — Analytics screen,
+  after #1053.
+- [#1052](https://github.com/bpronin90/kilo/issues/1052) — Analytics Recovery
+  evidence and state presentation.
+- [#1054](https://github.com/bpronin90/kilo/issues/1054) — Log screen and editor
+  presentation, after #1048.
+- [#1055](https://github.com/bpronin90/kilo/issues/1055) — shared current/other
+  Log editor machinery, after #1057 and #1061.
+- [#1056](https://github.com/bpronin90/kilo/issues/1056) — Log Recovery
+  presentation, after #1059.
+- [#1058](https://github.com/bpronin90/kilo/issues/1058) — Recovery read state,
+  filtering, eligibility, and mutations, after #1059 and #1061.
+- [#1060](https://github.com/bpronin90/kilo/issues/1060) — backup UI, export,
+  validation, and restoration, after #1059 and #1061.
+- [#1062](https://github.com/bpronin90/kilo/issues/1062) — cloud sync adapter,
+  identity gates, table ordering, and rebuild behavior, after #1059 and #1061.
 
-`syncAdapter.js` and `syncQueue.js` remain outside this program. No redesign card
-touches them, and their data-loss risk warrants separately scoped work rather
-than opportunistic restructuring during a visual migration.
+The Recovery, backup, queue, and cloud-adapter cards carry explicit transition
+matrices and adversarial fixtures for stale identity, malformed state, partial
+writes, retries, and clean restoration. The Supabase cards do not authorize any
+schema, RLS, Auth, role, key, migration, or transport-contract change.
+
+### Final gate
+
+[#1063](https://github.com/bpronin90/kilo/issues/1063) is a zero-file,
+independent verification after every implementation card merges. It enumerates
+production files independently, requires an empty legacy baseline, and approves
+Phase 1 only when no production file exceeds 600 lines.
 
 ---
 
@@ -82,8 +117,8 @@ cards, then `D18`.
   treatment.
 - **D1** — retint the palettes, bundle fonts, and establish type and geometry
   tokens. Existing native dark-mode wiring is retained rather than rebuilt.
-- **D2** — add incremental visual anti-pattern enforcement, including S2's line
-  limit.
+- **D2** — add visual anti-pattern enforcement and retain Phase 1's production
+  line-limit guard.
 - **D3–D5** — migrate shared primitives, navigation chrome, charts, and overlays.
 - **D6–D16** — migrate Home, Log, Analytics, Weight, secondary surfaces,
   Settings, Account, and Backup according to the audit's ownership boundaries.
