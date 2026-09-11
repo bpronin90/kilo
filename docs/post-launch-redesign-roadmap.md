@@ -32,6 +32,10 @@ behavior change.
 This phase lands before the redesign. Pure file splits are verified by the
 existing test suite and do not require device sign-off.
 
+Delivery is tracked in [#1064](https://github.com/bpronin90/kilo/issues/1064),
+which assigns every current production file over 600 lines to one scoped card
+and records their dependency order.
+
 ### S1. Split the Log cluster
 
 The current cluster is about 8,500 lines:
