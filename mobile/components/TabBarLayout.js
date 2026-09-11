@@ -8,7 +8,7 @@ export const TAB_BAR_VISUAL_GAP = 8;
 // Approximate rendered TabBar height, used only until TabBar's own onLayout
 // measurement lands so ScreenShell has sufficient clearance before that
 // first measurement without visibly jumping once it arrives.
-export const TAB_BAR_HEIGHT_FALLBACK = 64;
+export const TAB_BAR_HEIGHT_FALLBACK = 56;
 
 // Owned by App.js, which measures TabBar via onLayout and provides the real
 // height to every ScreenShell so scroll clearance tracks the rendered bar.
