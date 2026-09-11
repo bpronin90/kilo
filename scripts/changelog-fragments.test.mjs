@@ -46,7 +46,7 @@ test('parses the issue, sequence, bump, and normalized release text', () => {
 test('rejects malformed names, issue mismatches, and unsupported bump levels', () => {
   assert.throws(() => parseFragment('600.md', 'issue: 600\nbump: patch\n\nText\n'), /expected/);
   assert.throws(() => parseFragment('600-1.md', 'issue: 601\nbump: patch\n\nText\n'), /does not match/);
-  assert.throws(() => parseFragment('600-1.md', 'issue: 600\nbump: major\n\nText\n'), /expected/);
+  assert.throws(() => parseFragment('600-1.md', 'issue: 600\nbump: release\n\nText\n'), /expected/);
 });
 
 test('validation rejects stray files that do not follow the fragment contract', () => {
@@ -67,6 +67,18 @@ test('applies every requested pre-1.0 bump in fragment order', () => {
     '0.100.1'
   );
   assert.equal(nextVersion('0.98.1', []), '0.98.1');
+});
+
+test('major bump advances to the next major version and resets minor and patch', () => {
+  assert.equal(nextVersion('0.135.2', [{ bump: 'major' }]), '1.0.0');
+  assert.equal(nextVersion('0.98.1', [{ bump: 'major' }]), '1.0.0');
+  assert.equal(nextVersion('1.0.0', [{ bump: 'major' }]), '2.0.0');
+});
+
+test('patch and minor bumps work correctly from a post-1.0 version', () => {
+  assert.equal(nextVersion('1.0.0', [{ bump: 'patch' }]), '1.0.1');
+  assert.equal(nextVersion('1.0.0', [{ bump: 'minor' }]), '1.1.0');
+  assert.equal(nextVersion('1.2.3', [{ bump: 'patch' }]), '1.2.4');
 });
 
 test('prepares one deterministic release step per fragment and synchronizes to the final version', () => {

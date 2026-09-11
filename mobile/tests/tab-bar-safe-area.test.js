@@ -115,7 +115,7 @@ describe('safe-area layout', () => {
     );
     const surface = findSurface(component);
     const zeroStyles = [].concat(surface.props.style).reduce((acc, style) => Object.assign(acc, style || {}), {});
-    expect(zeroStyles.bottom).toBe(24);
+    expect(zeroStyles.bottom).toBe(TAB_BAR_VISUAL_GAP);
 
     act(() => {
       component.update(
@@ -126,7 +126,7 @@ describe('safe-area layout', () => {
     });
     const insetStyles = [].concat(findSurface(component).props.style)
       .reduce((acc, style) => Object.assign(acc, style || {}), {});
-    expect(insetStyles.bottom).toBe(56);
+    expect(insetStyles.bottom).toBe(TAB_BAR_VISUAL_GAP + 32);
     expect(insetStyles.left).toBe(16);
     expect(insetStyles.right).toBe(16);
     act(() => component.unmount());
