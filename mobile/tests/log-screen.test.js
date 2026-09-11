@@ -1860,6 +1860,10 @@ describe('explicit editor rollback: integration tests (#851)', () => {
       guideItem.props.onPress();
     });
 
+    render.act(() => {
+      root.findByProps({ accessibilityLabel: 'Logging workouts' }).props.onPress();
+    });
+
     // Now HelpScreen should be active. Verify it displays the example text.
     const allTexts = root.findAllByType('Text');
     const flatTexts = allTexts.map(t => {
@@ -6975,6 +6979,9 @@ describe('#583: App Guide analytics copy matches shipped surfaces', () => {
     render.act(() => {
       findPressableByText(root, 'App Guide').props.onPress();
     });
+    render.act(() => {
+      root.findByProps({ accessibilityLabel: 'Progress & analytics' }).props.onPress();
+    });
     return root.findAllByType('Text').map(t => {
       const child = t.props.children;
       return Array.isArray(child) ? child.join('') : String(child ?? '');
@@ -6987,7 +6994,7 @@ describe('#583: App Guide analytics copy matches shipped surfaces', () => {
 
     // Corrected descriptions are present.
     expect(joined).toContain('Weight trend charts');
-    expect(joined).toContain('combined Big 3');
+    expect(joined).toContain('Combined Big 3');
     // Big 3 chart prerequisites: mapped lifts and enough complete cycles.
     expect(joined).toContain('mapped squat, bench, and deadlift');
     expect(joined).toContain('enough complete logged cycles');
@@ -6997,7 +7004,7 @@ describe('#583: App Guide analytics copy matches shipped surfaces', () => {
     expect(joined).toContain('Kilo Max');
     expect(joined).toContain('best set');
     expect(joined).toContain('progress trend');
-    expect(joined).toContain('when fatigue tracking is enabled');
+    expect(joined).toContain('When fatigue tracking is enabled');
 
     // Removed promises of features Kilo does not ship.
     expect(joined).not.toContain('Est. Max history');

@@ -165,11 +165,18 @@ describe('WorkoutSyntaxModal — overlay/sheet/close pattern (#584)', () => {
 });
 
 describe('HelpScreen consumes the shared WorkoutSyntaxReference (#584)', () => {
+  function openLoggingTopic(component) {
+    render.act(() => {
+      component.root.findByProps({ accessibilityLabel: 'Logging workouts' }).props.onPress();
+    });
+  }
+
   test('renders the same taught example lines as the modal', () => {
     let component;
     render.act(() => {
       component = render.create(<HelpScreen onBack={jest.fn()} />);
     });
+    openLoggingTopic(component);
     const rendered = renderedStrings(component.root);
     for (const line of WORKOUT_SYNTAX_EXAMPLE_LINES) {
       expect(rendered).toContain(line);
@@ -186,14 +193,21 @@ describe('HelpScreen — Track / Tracked terminology explains the tracked span (
     return renderedStrings(root).join(' ');
   }
 
+  function openLoggingTopic(component) {
+    render.act(() => {
+      component.root.findByProps({ accessibilityLabel: 'Logging workouts' }).props.onPress();
+    });
+  }
+
   test('states that logging alone does not track an exercise', () => {
     let component;
     render.act(() => {
       component = render.create(<HelpScreen onBack={jest.fn()} />);
     });
+    openLoggingTopic(component);
     const text = renderedText(component.root);
-    expect(text).toContain('Track / Tracked');
-    expect(text).toMatch(/logging it alone never does/);
+    expect(text).toContain('Logging does not track an exercise');
+    expect(text).toMatch(/Logging does not track an exercise/);
   });
 
   test('states that every explicit Track opens a fresh span while Est./Kilo Max/best set stay historical', () => {
@@ -201,10 +215,11 @@ describe('HelpScreen — Track / Tracked terminology explains the tracked span (
     render.act(() => {
       component = render.create(<HelpScreen onBack={jest.fn()} />);
     });
+    openLoggingTopic(component);
     const text = renderedText(component.root);
     expect(text).toMatch(/opens a fresh progression span/);
     expect(text).toContain('First session');
-    expect(text).toMatch(/Est\. Max, Kilo Max, and best set keep showing your full history/);
+    expect(text).toMatch(/Est\. Max, Kilo Max, and best set keep showing full history/);
   });
 
   test('states that inherited catalog/legacy tracked state was not an explicit selection', () => {
@@ -212,7 +227,8 @@ describe('HelpScreen — Track / Tracked terminology explains the tracked span (
     render.act(() => {
       component = render.create(<HelpScreen onBack={jest.fn()} />);
     });
+    openLoggingTopic(component);
     const text = renderedText(component.root);
-    expect(text).toMatch(/catalog default or an earlier version of the app/);
+    expect(text).toMatch(/catalog default or an earlier app version/);
   });
 });
