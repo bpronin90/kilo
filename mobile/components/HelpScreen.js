@@ -4,6 +4,8 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { ScreenShell } from './ScreenShell';
 import { useThemedStyles } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
+import { useWeightUnit } from '../lib/unitPreference';
+import { formatLiftWeightValue } from '../lib/units';
 import { WorkoutSyntaxReference } from './WorkoutSyntaxReference';
 
 // Help is a six-row inline accordion (#1019). Each topic row uses the same
@@ -34,7 +36,9 @@ function Chunk({ styles, label, children }) {
 export function HelpScreen({ onBack }) {
   const styles = useThemedStyles(createStyles);
   const { colors } = useTheme();
+  const unit = useWeightUnit();
   const [openId, setOpenId] = useState(null);
+  const oneKTotalLabel = unit === 'kg' ? `${formatLiftWeightValue(1000, 'kg')} kg` : '1,000 lb';
 
   const TOPICS = [
     {
@@ -98,7 +102,8 @@ export function HelpScreen({ onBack }) {
           </Chunk>
           <Chunk styles={styles} label="Charts & Big 3">
             Weight trend charts show 7-day and 30-day moving averages. Combined Big 3 covers mapped
-            squat, bench, and deadlift lifts once enough complete logged cycles exist.
+            squat, bench, and deadlift lifts once enough complete logged cycles exist; the 1K goal
+            is a combined estimated total of {oneKTotalLabel}.
           </Chunk>
           <Chunk styles={styles}>
             When fatigue tracking is enabled, check-ins add volume-decline context.
@@ -131,6 +136,9 @@ export function HelpScreen({ onBack }) {
       summary: 'Local backup, Cloud Sync, CSV, routine import',
       content: (
         <Body styles={styles}>
+          <Chunk styles={styles} label="Works offline">
+            Kilo works offline and without an account; your data lives on this device.
+          </Chunk>
           <Chunk styles={styles} label="Local backup">
             Data & Backup exports a local backup file with your workout notes, weight logs, goals,
             fatigue ratings, and deload/recovery records. It does not include profile settings,
