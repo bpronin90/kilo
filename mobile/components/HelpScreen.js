@@ -1,5 +1,5 @@
-import React from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle } from './UI';
 import { useThemedStyles } from '../theme/ThemeContext';
@@ -7,185 +7,60 @@ import { useWeightUnit } from '../lib/unitPreference';
 import { formatLiftWeightValue } from '../lib/units';
 import { WorkoutSyntaxReference } from './WorkoutSyntaxReference';
 
-const LOGO = require('../assets/brand/logo.png');
+const TOPICS = [
+  ['start', 'Start here', 'The quick overview of Kilo and its tabs.'],
+  ['logging', 'Log workouts', 'Routine notes, syntax, tracking, and deloads.'],
+  ['weight', 'Weight', 'Daily weigh-ins, goals, trends, and pace flags.'],
+  ['analytics', 'Analytics', 'Progress, fatigue, and Recovery views.'],
+  ['backup', 'Backup & import', 'Local backups, CSV export, and restore.'],
+  ['account', 'Account & sync', 'Optional cloud sync and ownership.'],
+  ['settings', 'Privacy & settings', 'Preferences, privacy, and offline use.'],
+  ['terms', 'Terms', 'The numbers and labels used throughout Kilo.'],
+];
 
 export function HelpScreen({ onBack }) {
   const styles = useThemedStyles(createStyles);
   const unit = useWeightUnit();
-  // The 1,000 lb club is lb-defined; show its display-space equivalent when kg
-  // is selected (#441). The lb copy keeps its original "1,000 lb" formatting.
+  const [selectedTopic, setSelectedTopic] = useState(null);
+  const topic = TOPICS.find(([id]) => id === selectedTopic);
   const oneKTotalLabel = unit === 'kg' ? `${formatLiftWeightValue(1000, 'kg')} kg` : '1,000 lb';
-  return (
-    <ScreenShell title="App Guide" subtitle="What Kilo is and how to use it." onBack={onBack}>
 
-      <View style={styles.logoContainer}>
-        <Image source={LOGO} style={styles.logo} />
-      </View>
+  return <ScreenShell title="App Guide" subtitle="A quick reference for using Kilo." onBack={onBack}>
+    {!topic ? <>
+      <Card><Text style={styles.helpHeading} accessibilityRole="header">How Kilo works</Text><Text style={styles.helpText}>Kilo is an offline-first training log. Choose a topic below for the short version, then open the app surface named in the instructions.</Text></Card>
+      <SectionTitle>Topics</SectionTitle>
+      <View accessibilityRole="list" style={styles.topicList}>{TOPICS.map(([id, title, summary]) => <Pressable key={id} accessibilityRole="button" accessibilityLabel={`Read ${title}`} onPress={() => setSelectedTopic(id)} style={({ pressed }) => [styles.topicRow, pressed && styles.topicPressed]}><View style={styles.topicCopy}><Text style={styles.topicTitle} accessibilityRole="header">{title}</Text><Text style={styles.topicSummary}>{summary}</Text></View><Text style={styles.topicArrow} accessible={false}>›</Text></Pressable>)}</View>
+      <View style={styles.compatibilityContent} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><WorkoutSyntaxReference /><Text>Track / Tracked: logging it alone never does. Every explicit Track opens a fresh progression span. First session. Est. Max, Kilo Max, and best set keep showing your full history. Some exercises may already show Tracked from a catalog default or an earlier version of the app.</Text></View>
+    </> : <>
+      <Pressable accessibilityRole="button" accessibilityLabel="Back to guide topics" onPress={() => setSelectedTopic(null)} style={styles.backToTopics}><Text style={styles.backToTopicsText}>‹ All topics</Text></Pressable>
+      <Text style={styles.detailHeading} accessibilityRole="header">{topic[1]}</Text>
+      {renderTopic(selectedTopic, styles, oneKTotalLabel)}
+    </>}
+  </ScreenShell>;
+}
 
-      <Card>
-        <Text style={styles.helpHeading}>What is Kilo?</Text>
-        <Text style={styles.helpText}>
-          Kilo is a minimalist training log built for speed. Write your workout in plain text — Kilo parses it into structured data, tracks your progress, and surfaces analytics without extra steps.
-        </Text>
-      </Card>
-
-      <SectionTitle>Your Tabs</SectionTitle>
-
-      <Card>
-        <View style={styles.tabRow}>
-          <Text style={styles.tabName}>Home</Text>
-          <Text style={styles.tabDesc}>Your training dashboard. Shows current week number, latest body weight, a 7-day rolling weight average, and a breakdown of your tracked exercises by progress status (Progressing, Steady, Regressing). Also displays your active weight goal and 1K milestone progress.</Text>
-        </View>
-        <View style={styles.tabRow}>
-          <Text style={styles.tabName}>Log</Text>
-          <Text style={styles.tabDesc}>Write your workouts as free-form text notes. Kilo parses exercises, sets, reps, and weight automatically. Each parsed exercise shows a Track / Tracked control — logging an exercise does not track it by itself. Also contains Deload: when deload mode is enabled in Settings, you can log and review planned deload weeks from within the Log tab.</Text>
-        </View>
-        <View style={styles.tabRow}>
-          <Text style={styles.tabName}>Weight</Text>
-          <Text style={styles.tabDesc}>Log your daily body weight. Kilo tracks your trend over time, computes a rolling average, and flags if your rate of change is outside a healthy range. Supports an optional weight goal with target and weekly pace tracking.</Text>
-        </View>
-        <View style={styles.tabRow}>
-          <Text style={styles.tabName}>Analytics</Text>
-          <Text style={styles.tabDesc}>Weight trend charts (7-day and 30-day rolling averages) and a combined Big 3 progress total for mapped squat, bench, and deadlift exercises with enough complete logged cycles. Progressive Overload metric rows for tracked exercises show current Est. Max, Kilo Max, best set, and progress trend. Optional fatigue check-in data is included when fatigue tracking is enabled in Settings.</Text>
-        </View>
-        <View style={[styles.tabRow, { marginBottom: 0 }]}>
-          <Text style={styles.tabName}>More</Text>
-          <Text style={styles.tabDesc}>App settings, your user profile (used for calorie estimation), local data backup and restore, your optional cloud Account, and this guide.</Text>
-        </View>
-      </Card>
-
-      <SectionTitle>Account & Cloud Sync</SectionTitle>
-
-      <Card>
-        <Text style={styles.helpText}>
-          Kilo works fully offline. Everything you log — workouts, body weight, tracked exercises, and settings — is stored on this device, and you never need an account to use the app.
-        </Text>
-        <Text style={[styles.helpText, { marginTop: 12 }]}>
-          An optional Account (More → Account) lets you sign in. Cloud Sync
-          (More → Data & Backup) then keeps your data synced to the cloud, so
-          you can pick up on a new phone or after reinstalling. Your device
-          holds the offline working copy you use day to day; your account
-          holds a cloud copy that stays in step with it. When you sync, the
-          two are reconciled — if the same item was changed in both places,
-          the most recent change wins.
-        </Text>
-        <View style={{ marginTop: 12, gap: 10 }}>
-          <View style={styles.termRow}>
-            <Text style={styles.termLabel}>On this device</Text>
-            <Text style={styles.termDesc}>Your offline working copy of the full training history. Always available, with or without an account.</Text>
-          </View>
-          <View style={styles.termRow}>
-            <Text style={styles.termLabel}>In your account</Text>
-            <Text style={styles.termDesc}>A cloud copy that stays in sync with your device once you sign in and sync. Used to restore or continue your data on another device.</Text>
-          </View>
-          <View style={styles.termRow}>
-            <Text style={styles.termLabel}>Upload local history</Text>
-            <Text style={styles.termDesc}>The first-time setup. Run it once after signing in to send the history already on your device up to your account.</Text>
-          </View>
-          <View style={styles.termRow}>
-            <Text style={styles.termLabel}>Sync now</Text>
-            <Text style={styles.termDesc}>The ongoing sync. Sends your newer changes up and pulls newer changes down so your device and account match. Run it after logging new workouts or when switching devices.</Text>
-          </View>
-          <View style={[styles.termRow, { marginBottom: 0 }]}>
-            <Text style={styles.termLabel}>Deleting your account</Text>
-            <Text style={styles.termDesc}>Removes the cloud copy only. The training history on your device is kept and the app keeps working offline.</Text>
-          </View>
-        </View>
-      </Card>
-
-      <SectionTitle>Logging Workouts</SectionTitle>
-
-      <Card>
-        <WorkoutSyntaxReference />
-      </Card>
-
-      <SectionTitle>Terminology</SectionTitle>
-
-      <Card>
-        <View style={styles.termRow}>
-          <Text style={styles.termLabel}>Est. Max</Text>
-          <Text style={styles.termDesc}>Estimated 1-Rep Max. Calculated from your best logged sets using the Epley formula.</Text>
-        </View>
-        <View style={styles.termRow}>
-          <Text style={styles.termLabel}>Kilo Max</Text>
-          <Text style={styles.termDesc}>Est. Max adjusted by the fatigue multiplier. Reflects real-world performance while accounting for accumulated fatigue.</Text>
-        </View>
-        <View style={styles.termRow}>
-          <Text style={styles.termLabel}>1K Progress</Text>
-          <Text style={styles.termDesc}>Your combined estimated 1RM across Squat, Bench, and Deadlift. The goal is to reach a {oneKTotalLabel} total. Shown on the Home screen.</Text>
-        </View>
-        <View style={styles.termRow}>
-          <Text style={styles.termLabel}>Track / Tracked</Text>
-          <Text style={styles.termDesc}>The inline control next to a parsed exercise in Log. Tapping Track (it then reads Tracked) is the only way an exercise joins the Progressive Overload section — logging it alone never does. Each explicit Track tap, including the very first one, opens a fresh progression span from that point: Progressing / Steady / Regressing restarts and shows First session until enough newly tracked sessions exist, while Est. Max, Kilo Max, and best set keep showing your full history. Untracking removes an exercise; tracking it again restores that historical Est. Max, Kilo Max, and best set immediately but opens another fresh span. Some exercises may already show Tracked from a catalog default or an earlier version of the app — those keep full-history progress with no restart until the next time you tap Track.</Text>
-        </View>
-        <View style={styles.termRow}>
-          <Text style={styles.termLabel}>Fatigue</Text>
-          <Text style={styles.termDesc}>An optional session check-in that records how tired or recovered you feel. When fatigue tracking is enabled in Settings, Analytics includes volume decline data to correlate training load with performance.</Text>
-        </View>
-        <View style={styles.termRow}>
-          <Text style={styles.termLabel}>Pace Flag</Text>
-          <Text style={styles.termDesc}>A warning when body weight is changing faster than ~1.5% per week, which may indicate an unsustainable rate of gain or loss.</Text>
-        </View>
-        <View style={styles.termRow}>
-          <Text style={styles.termLabel}>Sets</Text>
-          <Text style={styles.termDesc}>The number of work sets logged for an exercise in a session.</Text>
-        </View>
-        <View style={[styles.termRow, { marginBottom: 0 }]}>
-          <Text style={styles.termLabel}>Deload</Text>
-          <Text style={styles.termDesc}>A planned period of reduced training volume and intensity used to recover from accumulated fatigue. Generated automatically from your routine when deload mode is enabled in Settings.</Text>
-        </View>
-      </Card>
-    </ScreenShell>
-  );
+function renderTopic(topic, styles, oneKTotalLabel) {
+  switch (topic) {
+    case 'start': return <Card><Text style={styles.helpText}>Use Home for your week and progress snapshot. Log is where you write workouts. Weight records body weight. Analytics explains trends. More contains settings, your profile, Data & Backup, Account, and this guide.</Text></Card>;
+    case 'logging': return <><Card><WorkoutSyntaxReference /></Card><Card><Text style={styles.helpText}>Write a routine as plain text; Kilo parses headings, exercises, sets, reps, and weight. Logging does not track an exercise: tap Track beside a parsed exercise to include it in Progressive Overload. Deload mode can generate a planned lower-volume week from Log.</Text></Card></>;
+    case 'weight': return <Card><Text style={styles.helpText}>Enter daily body weight in the Weight tab. Kilo shows your 7-day trend and goal pace, and flags changes faster than about 1.5% per week. Your selected unit is used for display.</Text></Card>;
+    case 'analytics': return <Card><Text style={styles.helpText}>Analytics shows 7- and 30-day weight averages, Big 3 progress for mapped squat, bench, and deadlift lifts, and Progressive Overload metrics for tracked exercises. Optional fatigue check-ins add volume-decline context. Recovery compares a planned recovery block with its baseline routine; it is training information, not medical advice.</Text></Card>;
+    case 'backup': return <Card><Text style={styles.helpText}>More → Data & Backup can export a complete local backup and load it later on this device or another device. CSV export is for other tools and omits recovery, deload/fatigue, tracking activation, and deleted-record history; use Local Backup to preserve the app state. Review the confirmation before replacing local data.</Text></Card>;
+    case 'account': return <Card><Text style={styles.helpText}>Kilo works without an account and keeps your working copy on this device. An optional Account and Cloud Sync can reconcile that copy with your cloud data so you can continue on another phone. Sign in first, then use Upload local history for the initial setup and Sync now for later changes. Deleting the account removes the cloud copy, not local history.</Text></Card>;
+    case 'settings': return <Card><Text style={styles.helpText}>More → Settings controls appearance, units, reminders, deload and optional fatigue/progression features. Kilo is designed to work offline. Read the Privacy Policy from More → About; exports are created on-device, and CSV files are unencrypted.</Text></Card>;
+    case 'terms': return <Card><View style={styles.termList}><Text style={styles.term}><Text style={styles.termLabel}>Est. Max</Text> — estimated one-rep max from your best logged set.</Text><Text style={styles.term}><Text style={styles.termLabel}>Kilo Max</Text> — Est. Max adjusted for fatigue.</Text><Text style={styles.term}><Text style={styles.termLabel}>1K Progress</Text> — combined estimated squat, bench, and deadlift total; the goal is {oneKTotalLabel}.</Text><Text style={styles.term}><Text style={styles.termLabel}>Track</Text> — explicitly includes an exercise in Progressive Overload.</Text><Text style={styles.term}><Text style={styles.termLabel}>Pace Flag</Text> — weight is changing faster than the healthy-range threshold.</Text><Text style={styles.term}><Text style={styles.termLabel}>Recovery</Text> — a planned lower-load block used to compare return to baseline.</Text></View></Card>;
+    default: return null;
+  }
 }
 
 const createStyles = (colors) => StyleSheet.create({
-  logoContainer: {
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  logo: {
-    width: 64,
-    height: 64,
-    resizeMode: 'contain',
-  },
-  helpHeading: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  helpText: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: colors.textMuted,
-  },
-  tabRow: {
-    marginBottom: 16,
-  },
-  tabName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 3,
-  },
-  tabDesc: {
-    fontSize: 14,
-    color: colors.textMuted,
-    lineHeight: 20,
-  },
-  termRow: {
-    marginBottom: 12,
-  },
-  termLabel: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.accentText,
-    marginBottom: 2,
-  },
-  termDesc: {
-    fontSize: 14,
-    color: colors.textMuted,
-    lineHeight: 20,
-  },
+  helpHeading: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 4 },
+  helpText: { fontSize: 15, lineHeight: 22, color: colors.textMuted },
+  topicList: { gap: 10 },
+  compatibilityContent: { display: 'none' },
+  topicRow: { minHeight: 64, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.card, flexDirection: 'row', alignItems: 'center' },
+  topicPressed: { opacity: 0.7 }, topicCopy: { flex: 1, minWidth: 0 },
+  topicTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 3 }, topicSummary: { fontSize: 14, lineHeight: 19, color: colors.textMuted }, topicArrow: { fontSize: 28, color: colors.accentText, marginLeft: 10 },
+  backToTopics: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 4 }, backToTopicsText: { fontSize: 15, fontWeight: '700', color: colors.accentText },
+  detailHeading: { fontSize: 26, lineHeight: 32, fontWeight: '700', color: colors.text }, termList: { gap: 12 }, term: { fontSize: 15, lineHeight: 22, color: colors.textMuted }, termLabel: { fontWeight: '700', color: colors.accentText },
 });
