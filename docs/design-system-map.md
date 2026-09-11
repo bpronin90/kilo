@@ -10,15 +10,15 @@ that migration lands, this map continues to describe the current implementation;
 the handoff directory describes the approved destination.
 
 Scheduling for that migration lives in the
-[Prelaunch and Redesign Roadmap](prelaunch-redesign-roadmap.md), which defers the
+[Postlaunch and Redesign Roadmap](postlaunch-redesign-roadmap.md), which defers the
 whole program until after `1.0.0` ships.
 
 The [repo-grounded migration audit and child issue drafts](design/analog-iron-v0.125/migration-audit.md)
 inventory current routes, states and shared components, record reference conflicts
 and unresolved tokens, and assign disjoint implementation stages. The audit also
-qualifies native appearance: the JavaScript palette wiring described below does
-not establish end-to-end native dark mode while `mobile/app.json` requests light
-appearance and native controls lack an application-wide appearance bridge.
+qualifies native appearance: `mobile/app.json` requests automatic appearance, so
+native controls follow the system appearance while the JavaScript palette wiring
+described below handles the app's themed surfaces.
 
 For the design rules derived from these patterns, see
 `docs/ui-design-rules.md`. This document records implementation; it does not own
@@ -277,13 +277,13 @@ Current values live in `styles` at the bottom of `ScreenShell.js`
 sticky back-header (`onBack`) uses `paddingHorizontal: 16`, `paddingVertical: 12`
 with a 1px `cardBorder` bottom.
 
-The absolute `TabBar` keeps 16px horizontal insets and a 24px visual bottom
+The absolute `TabBar` keeps 16px horizontal insets and a 4px visual bottom
 gap (`TAB_BAR_VISUAL_GAP` in `mobile/components/TabBarLayout.js`), then adds
 the runtime bottom safe-area inset from `react-native-safe-area-context`. The
 bar's own rendered height is never added to that offset. `TabBar` reports its
 rendered height through `onLayout`; `mobile/App.js` owns that measurement in
 state and provides it to every `ScreenShell` via `TabBarLayoutContext`, which
-adds it to the shared 24px gap and the bottom inset for scroll clearance.
+adds it to the shared 4px gap and the bottom inset for scroll clearance.
 `SafeAreaProvider` is owned by `mobile/App.js`; `ScreenShell` consumes only
 the bottom inset so existing top spacing is unchanged.
 
