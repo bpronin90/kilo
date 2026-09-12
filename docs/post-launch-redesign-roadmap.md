@@ -134,8 +134,9 @@ cards, then `D18`.
 - **D2** — add visual anti-pattern enforcement and retain Phase 1's production
   line-limit guard.
 - **D3–D5** — migrate shared primitives, navigation chrome, charts, and overlays.
-- **D6–D16** — migrate Home, Log, Analytics, Weight, secondary surfaces,
-  Settings, Account, and Backup according to the audit's ownership boundaries.
+- **D6–D10, D12, D14, D16** — migrate Home, Log, Analytics, Weight, secondary
+  surfaces, Settings, Account, and Backup according to the refreshed audit's
+  ownership boundaries.
 - **D18** — perform the read-only completeness verification and own no files.
 
 Every implementation card requires owner device sign-off. Automated checks can
