@@ -20,8 +20,9 @@ changing product behavior.
 - `docs/design/analog-iron-v0.125/migration-audit.md` — the repo-grounded visual
   audit and original implementation card drafts. Its prelaunch status, frozen-
   work notes, and native-appearance assumptions are historical; this roadmap and
-  current app behavior supersede them. D0 must reconcile those stale passages
-  before any redesign implementation card is opened.
+  current app behavior supersede them. After Phase 1, #1065 must reconcile those
+  stale passages and reassign the extracted production files before any redesign
+  implementation card is opened.
 - `docs/design/analog-iron-v0.125/` — the approved visual handoff.
 - Existing app behavior and tests are authoritative wherever a document,
   screenshot, or audit claim conflicts with them.
@@ -107,14 +108,19 @@ independent verification after every implementation card merges. It enumerates
 production files independently, requires an empty legacy baseline, and approves
 Phase 1 only when no production file exceeds 600 lines.
 
+After that approval, [#1065](https://github.com/bpronin90/kilo/issues/1065)
+rebases the migration audit and every D0–D18 Allowed Files list against the
+landed module tree. This closes the ownership gap created by the extractions and
+is a hard prerequisite for opening D0 or any redesign implementation card.
+
 ---
 
 ## Phase 2 — Analog Iron redesign
 
 The design inventory and draft card-level Allowed Files live in
-`docs/design/analog-iron-v0.125/migration-audit.md`. D0 first refreshes its stale
-prelaunch and native-appearance assumptions against the current app; no later
-card may treat those passages as current requirements before that reconciliation.
+`docs/design/analog-iron-v0.125/migration-audit.md`. They become current only
+after #1065 refreshes stale prelaunch and native-appearance assumptions and
+reassigns every extracted Phase 1 module. No redesign card may open earlier.
 
 The program contains 14 implementation cards plus one zero-file verification
 gate. Order: `D0 → D1 → D2 → D3 → D4 → D5`, then the screen
