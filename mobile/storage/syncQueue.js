@@ -37,9 +37,7 @@ import {
   mergeRecords as _mergeRecords,
   stableStringify as _stableStringify,
   samePayload as _samePayload,
-  SYNC_METADATA_FIELDS as _SYNC_METADATA_FIELDS,
   SyncReconciliationConflictError as _SyncReconciliationConflictError,
-  payloadFingerprint as _payloadFingerprint,
 } from './sync/records';
 
 import {
@@ -93,9 +91,7 @@ export const resolveRecord = _resolveRecord;
 export const mergeRecords = _mergeRecords;
 export const stableStringify = _stableStringify;
 export const samePayload = _samePayload;
-export const SYNC_METADATA_FIELDS = _SYNC_METADATA_FIELDS;
 export const SyncReconciliationConflictError = _SyncReconciliationConflictError;
-export const payloadFingerprint = _payloadFingerprint;
 
 export const subscribeDirtyQueue = _subscribeDirtyQueue;
 export const enqueueDirty = _enqueueDirty;

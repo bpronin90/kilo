@@ -474,3 +474,59 @@ describe('clean convergence', () => {
     expect(applied[0].updated_at).toBe(cloudTs);
   });
 });
+
+// ── export-surface parity ──────────────────────────────────────────────────────
+
+describe('export surface parity', () => {
+  // Exact set of names the original syncQueue.js exported before the split.
+  // If a private helper leaks into the barrel, this test catches it; if a
+  // required export disappears, it also catches that.
+  const EXPECTED_EXPORTS = new Set([
+    'DERIVED_NOTE_FIELDS',
+    'SINGLETON_SYNC_ID',
+    'SYNC_TABLES',
+    'SyncReconciliationConflictError',
+    'assessCursorTrust',
+    'clearCursor',
+    'clearDirty',
+    'clearSyncSnapshot',
+    'diffAgainstBaseline',
+    'enqueueDirty',
+    'enqueueDirtyMany',
+    'getClientId',
+    'getCursor',
+    'getDirtyRecords',
+    'getSyncSnapshot',
+    'isServerRow',
+    'isTombstone',
+    'maxUpdatedAt',
+    'mergeRecords',
+    'pickWinner',
+    'purgeDerivedSectionsFromWorkoutNoteSyncState',
+    'reconcileAgainstBaseline',
+    'reconcileAgainstRemote',
+    'reconcileLocalWrites',
+    'resetClientIdCacheForTests',
+    'resetStampClockForTests',
+    'resolveRecord',
+    'samePayload',
+    'setCursor',
+    'setSyncSnapshot',
+    'stableStringify',
+    'stampTombstone',
+    'stampWrite',
+    'subscribeDirtyQueue',
+    'syncDiffTable',
+    'syncTable',
+  ]);
+
+  it('barrel exports exactly the original public surface — no more, no less', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const barrel = require('../storage/syncQueue');
+    const actual = new Set(Object.keys(barrel).filter((k) => k !== '__esModule'));
+    const extra = [...actual].filter((k) => !EXPECTED_EXPORTS.has(k));
+    const missing = [...EXPECTED_EXPORTS].filter((k) => !actual.has(k));
+    expect(extra).toEqual([]);
+    expect(missing).toEqual([]);
+  });
+});
