@@ -16,6 +16,7 @@
     "test:security-events": "node scripts/security-event-monitor.test.mjs",
     "test:health-deletion-e2e": "node scripts/test-health-deletion-e2e.mjs",
     "test:audit-gate": "node --test scripts/audit-gate.test.mjs",
+    "check:app-lines": "node scripts/check-app-file-lines.mjs",
     "check:changes": "node scripts/changelog-fragments.mjs check",
     "check:health-deletion": "node scripts/check-health-deletion-backlog.mjs",
     "check:health-deletion:dry-run": "node scripts/check-health-deletion-backlog.mjs --dry-run",
