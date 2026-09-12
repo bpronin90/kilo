@@ -1,11 +1,14 @@
 # Kilo Post-Launch Redesign Roadmap
 
-**Status: active. This roadmap covers the post-launch Analog Iron redesign.**
+**Status: planned. This roadmap covers the post-launch Analog Iron redesign.**
 
-This roadmap begins after Kilo's launch; launch work is no longer tracked here.
-It starts with the structural work needed to make the visual migration
-reviewable, then delivers the approved Analog Iron redesign without changing
-product behavior.
+This roadmap begins only after Kilo's production launch is externally verified.
+The version bump does not establish that launch: the remaining production AAB,
+signing, Play Console, listing, declaration, and API-level work stays in
+[`docs/play-store-readiness.md`](play-store-readiness.md). Once that checklist is
+complete, this roadmap starts with the structural work needed to make the visual
+migration reviewable, then delivers the approved Analog Iron redesign without
+changing product behavior.
 
 > **Redesign the product that shipped. Do not use a visual migration to change
 > navigation, state handling, calculations, or data contracts.**
@@ -14,8 +17,11 @@ product behavior.
 
 ## Source of truth
 
-- `docs/design/analog-iron-v0.125/migration-audit.md` — the repo-grounded audit
-  and implementation card drafts.
+- `docs/design/analog-iron-v0.125/migration-audit.md` — the repo-grounded visual
+  audit and original implementation card drafts. Its prelaunch status, frozen-
+  work notes, and native-appearance assumptions are historical; this roadmap and
+  current app behavior supersede them. D0 must reconcile those stale passages
+  before any redesign implementation card is opened.
 - `docs/design/analog-iron-v0.125/` — the approved visual handoff.
 - Existing app behavior and tests are authoritative wherever a document,
   screenshot, or audit claim conflicts with them.
@@ -105,8 +111,10 @@ Phase 1 only when no production file exceeds 600 lines.
 
 ## Phase 2 — Analog Iron redesign
 
-The full contract and card-level Allowed Files live in
-`docs/design/analog-iron-v0.125/migration-audit.md`.
+The design inventory and draft card-level Allowed Files live in
+`docs/design/analog-iron-v0.125/migration-audit.md`. D0 first refreshes its stale
+prelaunch and native-appearance assumptions against the current app; no later
+card may treat those passages as current requirements before that reconciliation.
 
 The program contains 14 implementation cards plus one zero-file verification
 gate. Order: `D0 → D1 → D2 → D3 → D4 → D5`, then the screen
