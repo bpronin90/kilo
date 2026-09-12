@@ -10,8 +10,7 @@ that migration lands, this map continues to describe the current implementation;
 the handoff directory describes the approved destination.
 
 Scheduling for that migration lives in the
-[Postlaunch and Redesign Roadmap](postlaunch-redesign-roadmap.md), which defers the
-whole program until after `1.0.0` ships.
+[Post-Launch Redesign Roadmap](post-launch-redesign-roadmap.md).
 
 The [repo-grounded migration audit and child issue drafts](design/analog-iron-v0.125/migration-audit.md)
 inventory current routes, states and shared components, record reference conflicts
