@@ -30,6 +30,12 @@ jobs:
       - name: Test governance tooling
         run: node --test scripts/review-disposition.test.mjs scripts/changelog-fragments.test.mjs scripts/run-pgtap-suite.test.mjs scripts/security-delivery.test.mjs
 
+      - name: Enforce production file line limit
+        run: npm run check:app-lines
+
+      - name: Test the file line limit guard
+        run: node --test scripts/check-app-file-lines.test.mjs
+
       - run: npm --prefix mobile ci
 
       - run: npm --prefix mobile test
