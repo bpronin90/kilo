@@ -83,10 +83,8 @@ export const BASELINE = {
   'mobile/screens/log/useLogOtherRoutineEditor.js': 1594,
   'mobile/storage/syncQueue.js': 1642,
   'mobile/components/LogRecoverySection.js': 1650,
-  'mobile/components/LogScreenEditorCard.js': 1668,
   'mobile/screens/log/useLogCurrentRoutineEditor.js': 1734,
   'mobile/storage/cloud/syncAdapter.js': 1817,
-  'mobile/screens/LogScreen.js': 1864,
 };
 
 // `wc -l` counts newline characters, not "lines of text" -- a file with no
