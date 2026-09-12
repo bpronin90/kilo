@@ -149,5 +149,3 @@ Two rules bind every card:
 ## Phase 3 — Post-redesign follow-through
 
 - Retake store screenshots and refresh the listing for the redesigned UI.
-- Scope `syncAdapter` and `syncQueue` structural work independently if it remains
-  a priority after the visual migration.
