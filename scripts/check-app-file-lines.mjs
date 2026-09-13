@@ -159,10 +159,14 @@ export function findProductionFiles(scanRoot = root) {
 
 // Scans scanRoot's production files and classifies every one over LIMIT as
 // either legacy debt (pass) or a regression (fail): a brand-new violation not
-// in `baseline`, a baselined file that grew past its allowed count, or a stale
-// baseline entry for a file that has already been reduced to LIMIT or below.
+// in `baseline`, a baselined file that grew past its allowed count, a stale
+// baseline entry for a file that has already been reduced to LIMIT or below,
+// or an orphaned baseline entry for a file that no longer exists (deleted or
+// renamed), which must be removed to prevent a future over-limit recreation
+// from inheriting the old exemption.
 export function scan(scanRoot = root, baseline = BASELINE) {
   const files = findProductionFiles(scanRoot);
+  const fileSet = new Set(files);
   const legacy = [];
   const regressions = [];
 
@@ -194,6 +198,14 @@ export function scan(scanRoot = root, baseline = BASELINE) {
     }
   }
 
+  // Check for baseline entries whose file no longer exists. An orphaned entry
+  // lets a future over-limit file at the same path inherit the old exemption.
+  for (const relPath of Object.keys(baseline)) {
+    if (!fileSet.has(relPath)) {
+      regressions.push({ kind: 'orphaned', path: relPath, baselineCount: baseline[relPath] });
+    }
+  }
+
   return { files, legacy, regressions, ok: regressions.length === 0 };
 }
 
@@ -207,6 +219,9 @@ function describeRegression(regression) {
   }
   if (regression.kind === 'stale') {
     return `  STALE    ${pad(regression.count)}  ${regression.path}  (baseline entry ${regression.baselineCount} is stale; file is now at or under the limit — remove this entry from BASELINE)`;
+  }
+  if (regression.kind === 'orphaned') {
+    return `  ORPHANED          ${regression.path}  (baseline entry ${regression.baselineCount} has no matching file; file was deleted or renamed — remove this entry from BASELINE)`;
   }
   const grew = regression.count - regression.baselineCount;
   return `  GROWTH   ${pad(regression.count)}  ${regression.path}  (baseline allows ${regression.baselineCount}; grew by ${grew} line(s))`;
@@ -242,7 +257,8 @@ export function report({ files, legacy, regressions, ok }) {
     lines.push('', legacy.length > 0 ? 'No new violations. No baseline growth.' : `No file exceeds ${LIMIT} lines.`);
   } else {
     const hasStale = regressions.some((r) => r.kind === 'stale');
-    const hasNewOrGrowth = regressions.some((r) => r.kind !== 'stale');
+    const hasOrphaned = regressions.some((r) => r.kind === 'orphaned');
+    const hasNewOrGrowth = regressions.some((r) => r.kind !== 'stale' && r.kind !== 'orphaned');
     const fixes = [];
     if (hasNewOrGrowth) {
       fixes.push(
@@ -256,6 +272,13 @@ export function report({ files, legacy, regressions, ok }) {
         'For STALE entries: the file has been reduced to the limit or below. '
           + 'Remove its BASELINE entry in scripts/check-app-file-lines.mjs in this same commit. '
           + 'Once removed, future PRs that regrow the file past the limit will fail as new violations.',
+      );
+    }
+    if (hasOrphaned) {
+      fixes.push(
+        'For ORPHANED entries: the file was deleted or renamed and no longer exists. '
+          + 'Remove its BASELINE entry in scripts/check-app-file-lines.mjs. '
+          + 'Leaving it would let a future over-limit recreation at the same path inherit the old exemption.',
       );
     }
     lines.push('', `Fix: ${fixes.join(' ')}`)

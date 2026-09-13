@@ -143,6 +143,35 @@ test('removing the baseline entry after graduation yields a clean result: later 
   assert.equal(result2.regressions[0].kind, 'new');
 });
 
+test('a baseline entry with no matching file (deleted or renamed) fails as orphaned', () => {
+  const root = fixture();
+  // No file written — baseline entry for a path that does not exist.
+  const result = scan(root, { 'mobile/lib/deleted.js': 700 });
+  assert.equal(result.ok, false);
+  assert.equal(result.regressions.length, 1);
+  assert.deepEqual(
+    result.regressions[0],
+    { kind: 'orphaned', path: 'mobile/lib/deleted.js', baselineCount: 700 },
+  );
+});
+
+test('removing the orphaned baseline entry after deletion yields a clean result', () => {
+  const root = fixture();
+  // File is gone and baseline entry has been removed — tree is clean.
+  const result = scan(root, {});
+  assert.equal(result.ok, true);
+  assert.equal(result.regressions.length, 0);
+});
+
+test('an orphaned entry does not let a recreated over-limit file pass once the entry is removed', () => {
+  const root = fixture();
+  // Simulate a later PR that recreates the file over the limit with no baseline entry.
+  put(root, 'mobile/lib/deleted.js', linesOf(LIMIT + 1));
+  const result = scan(root, {});
+  assert.equal(result.ok, false);
+  assert.equal(result.regressions[0].kind, 'new');
+});
+
 test('removing a baseline entry without fixing the file fails it as a new violation', () => {
   const root = fixture();
   put(root, 'mobile/lib/stillBig.js', linesOf(650));
