@@ -146,7 +146,7 @@ export function makeWorkoutNote({ raw_text }) {
 export function makeWorkoutNoteItem({ title = 'Untitled Routine', raw_text = '', isCurrent = false }) {
   const now = new Date().toISOString();
   return {
-    id: `wn_${now.slice(0, 10)}_${Date.now()}`,
+    id: `wn_${now.slice(0, 10)}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     title,
     raw_text,
     saved_at: now,
