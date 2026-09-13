@@ -30,8 +30,23 @@ jobs:
       - name: Test governance tooling
         run: node --test scripts/review-disposition.test.mjs scripts/changelog-fragments.test.mjs scripts/run-pgtap-suite.test.mjs scripts/security-delivery.test.mjs
 
+      - name: Export target-branch baseline for inflation check
+        if: github.event_name == 'pull_request'
+        run: |
+          git show origin/${{ github.base_ref }}:scripts/check-app-file-lines.mjs > /tmp/ref-check.mjs
+          node --input-type=module --eval "
+            import { BASELINE } from '/tmp/ref-check.mjs';
+            import { writeFileSync } from 'node:fs';
+            writeFileSync('/tmp/ref-baseline.json', JSON.stringify(BASELINE));
+          "
+
       - name: Enforce production file line limit
-        run: npm run check:app-lines
+        run: |
+          if [ -f /tmp/ref-baseline.json ]; then
+            node scripts/check-app-file-lines.mjs --ref-baseline /tmp/ref-baseline.json
+          else
+            npm run check:app-lines
+          fi
 
       - name: Test the file line limit guard
         run: node --test scripts/check-app-file-lines.test.mjs

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { LIMIT, countLines, isProductionFile, findProductionFiles, scan, report } from './check-app-file-lines.mjs';
+import { LIMIT, countLines, isProductionFile, findProductionFiles, scan, report, validateBaseline } from './check-app-file-lines.mjs';
 
 // Content whose `wc -l` (and countLines) is exactly `n`: `n` newline-terminated
 // lines, so there is no ambiguity about a missing trailing newline.
@@ -257,6 +257,65 @@ test('report names every violating path and its count, and labels legacy debt se
   assert.match(text, /650\s+mobile\/lib\/oldOffender\.js/);
   assert.match(text, /Legacy debt/);
   assert.doesNotMatch(text, /GROWTH/);
+});
+
+// validateBaseline tests
+
+test('validateBaseline: a new entry not in the ref baseline fails as baseline-added', () => {
+  const violations = validateBaseline(
+    { 'mobile/App.js': 1200 },
+    {},
+  );
+  assert.equal(violations.length, 1);
+  assert.deepEqual(violations[0], { kind: 'baseline-added', path: 'mobile/App.js', count: 1200 });
+});
+
+test('validateBaseline: an increased entry fails as baseline-increased', () => {
+  const violations = validateBaseline(
+    { 'mobile/App.js': 1300 },
+    { 'mobile/App.js': 1191 },
+  );
+  assert.equal(violations.length, 1);
+  assert.deepEqual(
+    violations[0],
+    { kind: 'baseline-increased', path: 'mobile/App.js', count: 1300, refCount: 1191 },
+  );
+});
+
+test('validateBaseline: a decreased entry passes', () => {
+  const violations = validateBaseline(
+    { 'mobile/App.js': 1000 },
+    { 'mobile/App.js': 1191 },
+  );
+  assert.equal(violations.length, 0);
+});
+
+test('validateBaseline: an entry removed from the baseline passes', () => {
+  const violations = validateBaseline(
+    {},
+    { 'mobile/App.js': 1191 },
+  );
+  assert.equal(violations.length, 0);
+});
+
+test('validateBaseline: an entry at the same count as the ref passes', () => {
+  const violations = validateBaseline(
+    { 'mobile/App.js': 1191 },
+    { 'mobile/App.js': 1191 },
+  );
+  assert.equal(violations.length, 0);
+});
+
+test('validateBaseline: growing a file and raising its allowance in the same commit is caught', () => {
+  // This is the exact attack the finding describes: a file grows and its
+  // BASELINE entry is raised to match, causing scan() to pass. validateBaseline
+  // rejects this by comparing against the target-branch baseline.
+  const violations = validateBaseline(
+    { 'mobile/App.js': 1400 },
+    { 'mobile/App.js': 1191 },
+  );
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].kind, 'baseline-increased');
 });
 
 test('report labels a stale baseline entry as STALE and instructs removal', () => {

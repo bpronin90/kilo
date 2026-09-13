@@ -287,7 +287,60 @@ export function report({ files, legacy, regressions, ok }) {
   return lines.join('\n');
 }
 
+// Validates that the current baseline has not added new entries or raised any
+// existing allowance compared to refBaseline. Additions and increases are
+// rejectable in CI by comparing against the target-branch baseline; the only
+// allowed mutations are decreases (deliberate debt reduction) and deletions
+// (graduation or file removal). Returns an array of violations.
+export function validateBaseline(baseline, refBaseline) {
+  const violations = [];
+  for (const [path, count] of Object.entries(baseline)) {
+    const refCount = refBaseline[path];
+    if (refCount === undefined) {
+      violations.push({ kind: 'baseline-added', path, count });
+    } else if (count > refCount) {
+      violations.push({ kind: 'baseline-increased', path, count, refCount });
+    }
+  }
+  return violations;
+}
+
+function describeBaselineViolation(v) {
+  if (v.kind === 'baseline-added') {
+    return `  ADDED    ${pad(v.count)}  ${v.path}  (no entry in target-branch baseline; this guard never adds allowances)`;
+  }
+  const delta = v.count - v.refCount;
+  return `  RAISED   ${pad(v.count)}  ${v.path}  (target branch allows ${v.refCount}; raised by ${delta} line(s))`;
+}
+
 if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
+  const refBaselineIdx = process.argv.indexOf('--ref-baseline');
+  let baselineViolations = [];
+  if (refBaselineIdx !== -1) {
+    const refPath = process.argv[refBaselineIdx + 1];
+    if (!refPath) {
+      console.error('check-app-file-lines: --ref-baseline requires a file path argument');
+      process.exit(1);
+    }
+    let refBaseline;
+    try {
+      refBaseline = JSON.parse(readFileSync(refPath, 'utf8'));
+    } catch (err) {
+      console.error(`check-app-file-lines: cannot read ref baseline ${refPath}: ${err.message}`);
+      process.exit(1);
+    }
+    baselineViolations = validateBaseline(BASELINE, refBaseline);
+    if (baselineViolations.length > 0) {
+      console.error(
+        `check-app-file-lines: ${baselineViolations.length} baseline inflation(s) detected against target branch:\n`
+          + baselineViolations.map(describeBaselineViolation).join('\n')
+          + '\n\nFix: BASELINE entries may only decrease or be removed. '
+          + 'Revert any newly added or raised allowance; instead shrink the file to the limit or below.',
+      );
+      process.exit(1);
+    }
+  }
+
   const result = scan();
   console.log(report(result));
   if (!result.ok) process.exit(1);
