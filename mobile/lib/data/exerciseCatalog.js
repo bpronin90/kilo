@@ -105,8 +105,11 @@ export function listTrackedLifts(trackedMap) {
   return Object.keys(trackedMap).filter(k => trackedMap[k]);
 }
 
-// Monotonic counter — breaks same-millisecond ID collisions without changing
-// the numeric-terminal format that data.test.js and callers rely on.
+// Tiebreaker for same-millisecond makeWorkoutNoteItem calls. The suffix is
+// appended only when timestamps collide, so the first call at any new
+// millisecond produces the same ID format as before (wn_YYYY-MM-DD_<ms>),
+// and only colliding calls get a numeric suffix (wn_YYYY-MM-DD_<ms>1, etc.).
+let _wnLastMs = 0;
 let _wnSeq = 0;
 
 // Factory for a new weight entry
@@ -149,8 +152,10 @@ export function makeWorkoutNote({ raw_text }) {
 // Factory for a named workout note in the multi-note model
 export function makeWorkoutNoteItem({ title = 'Untitled Routine', raw_text = '', isCurrent = false }) {
   const now = new Date().toISOString();
+  const ms = Date.now();
+  if (ms === _wnLastMs) { _wnSeq++; } else { _wnLastMs = ms; _wnSeq = 0; }
   return {
-    id: `wn_${now.slice(0, 10)}_${Date.now()}${_wnSeq++}`,
+    id: `wn_${now.slice(0, 10)}_${ms}${_wnSeq || ''}`,
     title,
     raw_text,
     saved_at: now,
