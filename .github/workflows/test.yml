@@ -33,6 +33,7 @@ jobs:
       - name: Export target-branch baseline for inflation check
         if: github.event_name == 'pull_request'
         run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
           git show origin/${{ github.base_ref }}:scripts/check-app-file-lines.mjs > /tmp/ref-check.mjs
           node --input-type=module --eval "
             import { BASELINE } from '/tmp/ref-check.mjs';
