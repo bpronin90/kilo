@@ -707,6 +707,28 @@ node scripts/sync-version.mjs           # write the canonical version into the m
 
 ---
 
+## App File Line Limit
+
+A CI step (`.github/workflows/test.yml`, job `test`) runs `npm run check:app-lines` on every push to `main` and every pull request. It rejects any `mobile/**/*.{js,jsx,ts,tsx}` production file over 600 lines, excluding tests (`*.test.*`/`*.spec.*` and anything under a `tests/`, `__tests__/`, `__mocks__/`, or `mocks/` directory), fixtures, generated/vendor content (`node_modules/`, `.expo/`, `dist/`, `build/`, `coverage/`, `web-build/`, `android/`, `ios/`, `assets/`), and configuration entry points (`*.config.js`/`.jsx`/`.ts`/`.tsx`, e.g. `metro.config.js`, `app.config.js`).
+
+The repository already carried 20 files past 600 lines when this gate was added. Rather than block all unrelated work on rewriting them at once, `scripts/check-app-file-lines.mjs` pins each of them to its line count at the time (`BASELINE` in that file): a baselined file still passes as long as it has not grown past its baselined count, and partial shrinking (file stays above 600) passes without requiring a matching edit to `BASELINE`. Any file not already in `BASELINE` — new or pre-existing — is held to the plain 600-line limit with no exception. This lets an ongoing refactor program shrink the debt card by card while stopping it from growing anywhere else.
+
+**Ratchet rule (graduation).** When a baselined file's line count is reduced to 600 or fewer, the check fails with a `STALE` regression: the BASELINE entry must be removed in the same commit that reduced the file. The authorized retirement path is to include `scripts/check-app-file-lines.mjs` in Allowed Files for the reduction card and delete the entry there. Once removed, the plain 600-line guard applies permanently — a later PR that reintroduces growth past 600 fails as a new violation. Similarly, a baseline entry for a file that has been deleted or renamed fails as `ORPHANED` and must be removed to prevent a future over-limit recreation at the same path from inheriting the old exemption.
+
+Run the check locally:
+
+```sh
+npm run check:app-lines
+```
+
+The check's own deterministic parsing and classification (new violation vs. baseline growth vs. legacy debt) are covered by:
+
+```sh
+node --test scripts/check-app-file-lines.test.mjs
+```
+
+---
+
 ## Installable Preview Smoke Checklist
 
 Before declaring the packaged preview ready, a human tester must pass every step below on a physical phone. This is the minimum real-device check for installability, launch, update/relaunch, loading behavior, and basic touch interaction. It is not full product QA.
