@@ -105,6 +105,10 @@ export function listTrackedLifts(trackedMap) {
   return Object.keys(trackedMap).filter(k => trackedMap[k]);
 }
 
+// Monotonic counter — breaks same-millisecond ID collisions without changing
+// the numeric-terminal format that data.test.js and callers rely on.
+let _wnSeq = 0;
+
 // Factory for a new weight entry
 export function makeWeightEntry({ weight_value, logged_at, note }) {
   const ts = logged_at || new Date().toISOString();
@@ -146,7 +150,7 @@ export function makeWorkoutNote({ raw_text }) {
 export function makeWorkoutNoteItem({ title = 'Untitled Routine', raw_text = '', isCurrent = false }) {
   const now = new Date().toISOString();
   return {
-    id: `wn_${now.slice(0, 10)}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: `wn_${now.slice(0, 10)}_${Date.now()}${_wnSeq++}`,
     title,
     raw_text,
     saved_at: now,
