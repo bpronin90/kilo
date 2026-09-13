@@ -100,6 +100,49 @@ test('removing the final baseline entry after the file is fixed leaves the tree 
   assert.equal(result.regressions.length, 0);
 });
 
+test('a baselined file reduced to exactly the limit fails as stale: its baseline entry must be removed', () => {
+  const root = fixture();
+  put(root, 'mobile/lib/graduated.js', linesOf(LIMIT));
+
+  const result = scan(root, { 'mobile/lib/graduated.js': 700 });
+  assert.equal(result.ok, false);
+  assert.equal(result.regressions.length, 1);
+  assert.deepEqual(
+    result.regressions[0],
+    { kind: 'stale', path: 'mobile/lib/graduated.js', count: LIMIT, baselineCount: 700 },
+  );
+  assert.equal(result.legacy.length, 0);
+});
+
+test('a baselined file reduced below the limit fails as stale: its baseline entry must be removed', () => {
+  const root = fixture();
+  put(root, 'mobile/lib/graduated.js', linesOf(LIMIT - 1));
+
+  const result = scan(root, { 'mobile/lib/graduated.js': 700 });
+  assert.equal(result.ok, false);
+  assert.equal(result.regressions.length, 1);
+  assert.equal(result.regressions[0].kind, 'stale');
+  assert.equal(result.regressions[0].count, LIMIT - 1);
+});
+
+test('removing the baseline entry after graduation yields a clean result: later growth past 600 would fail as new', () => {
+  const root = fixture();
+  // Simulate the state after a card removes the BASELINE entry following reduction.
+  // Now the file is at the limit with no baseline entry — clean.
+  put(root, 'mobile/lib/graduated.js', linesOf(LIMIT));
+
+  const result = scan(root, {});
+  assert.equal(result.ok, true);
+  assert.equal(result.regressions.length, 0);
+
+  // Now simulate a later PR that grows the file past 600 — must fail as new violation.
+  const root2 = fixture();
+  put(root2, 'mobile/lib/graduated.js', linesOf(LIMIT + 1));
+  const result2 = scan(root2, {});
+  assert.equal(result2.ok, false);
+  assert.equal(result2.regressions[0].kind, 'new');
+});
+
 test('removing a baseline entry without fixing the file fails it as a new violation', () => {
   const root = fixture();
   put(root, 'mobile/lib/stillBig.js', linesOf(650));
@@ -185,6 +228,18 @@ test('report names every violating path and its count, and labels legacy debt se
   assert.match(text, /650\s+mobile\/lib\/oldOffender\.js/);
   assert.match(text, /Legacy debt/);
   assert.doesNotMatch(text, /GROWTH/);
+});
+
+test('report labels a stale baseline entry as STALE and instructs removal', () => {
+  const root = fixture();
+  put(root, 'mobile/lib/done.js', linesOf(LIMIT));
+
+  const result = scan(root, { 'mobile/lib/done.js': 700 });
+  const text = report(result);
+
+  assert.equal(result.ok, false);
+  assert.match(text, /STALE\s+600\s+mobile\/lib\/done\.js/);
+  assert.match(text, /remove this entry from BASELINE/);
 });
 
 test('report reads as a clean pass when only legacy debt (no regressions) remains', () => {

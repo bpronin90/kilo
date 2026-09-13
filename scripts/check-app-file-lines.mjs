@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Rejects new production JavaScript/TypeScript files over 600 lines, and any
-// growth in a file already carrying legacy line-count debt, while letting the
+// Rejects new production JavaScript/TypeScript files over 600 lines, growth in
+// a file already carrying legacy line-count debt, and stale BASELINE entries
+// for files that have already been reduced to the limit, while letting the
 // #1046 refactor program shrink that debt card by card without an all-at-once
 // rewrite.
 //
@@ -9,11 +10,17 @@
 // fully split would stall unrelated work indefinitely. So this check pins each
 // pre-existing offender to its CURRENT line count in BASELINE below. A file
 // already over the limit still passes as long as it does not grow past its
-// baselined count -- shrinking it (even partially) always passes, and never
-// requires editing BASELINE to "unlock" the improvement. A brand-new file, or
-// any file not already in BASELINE, is held to the plain 600-line limit with
-// no exception. That asymmetry is the entire mechanism: it stops the debt from
-// growing anywhere, while only requiring active work to shrink it.
+// baselined count -- shrinking it (even partially) always passes. A brand-new
+// file, or any file not already in BASELINE, is held to the plain 600-line
+// limit with no exception. That asymmetry stops the debt from growing.
+//
+// Ratchet rule: when a baselined file's line count drops to LIMIT or below,
+// its BASELINE entry becomes stale and must be removed. This check enforces
+// that requirement by failing on any stale entry. Removing the entry graduates
+// the file to the plain 600-line guard permanently -- a later PR that tries to
+// regrow it past 600 fails as a new violation. The authorized retirement path
+// is: include `scripts/check-app-file-lines.mjs` in Allowed Files for the card
+// that reduces the file, then delete its BASELINE entry in the same commit.
 //
 // Usage:
 //   node scripts/check-app-file-lines.mjs
@@ -152,7 +159,8 @@ export function findProductionFiles(scanRoot = root) {
 
 // Scans scanRoot's production files and classifies every one over LIMIT as
 // either legacy debt (pass) or a regression (fail): a brand-new violation not
-// in `baseline`, or a baselined file that grew past its allowed count.
+// in `baseline`, a baselined file that grew past its allowed count, or a stale
+// baseline entry for a file that has already been reduced to LIMIT or below.
 export function scan(scanRoot = root, baseline = BASELINE) {
   const files = findProductionFiles(scanRoot);
   const legacy = [];
@@ -165,9 +173,18 @@ export function scan(scanRoot = root, baseline = BASELINE) {
     } catch (err) {
       throw new Error(`check-app-file-lines: cannot read ${relPath}: ${err.message}`);
     }
-    if (count <= LIMIT) continue;
 
     const baselineCount = baseline[relPath];
+
+    if (count <= LIMIT) {
+      // Under the limit. If a baseline entry still exists, it is now stale and
+      // must be removed so future PRs cannot regrow the file past 600 lines.
+      if (baselineCount !== undefined) {
+        regressions.push({ kind: 'stale', path: relPath, count, baselineCount });
+      }
+      continue;
+    }
+
     if (baselineCount === undefined) {
       regressions.push({ kind: 'new', path: relPath, count });
     } else if (count > baselineCount) {
@@ -187,6 +204,9 @@ function pad(count) {
 function describeRegression(regression) {
   if (regression.kind === 'new') {
     return `  NEW      ${pad(regression.count)}  ${regression.path}  (no baseline entry; limit is ${LIMIT} lines)`;
+  }
+  if (regression.kind === 'stale') {
+    return `  STALE    ${pad(regression.count)}  ${regression.path}  (baseline entry ${regression.baselineCount} is stale; file is now at or under the limit — remove this entry from BASELINE)`;
   }
   const grew = regression.count - regression.baselineCount;
   return `  GROWTH   ${pad(regression.count)}  ${regression.path}  (baseline allows ${regression.baselineCount}; grew by ${grew} line(s))`;
@@ -221,12 +241,24 @@ export function report({ files, legacy, regressions, ok }) {
   if (ok) {
     lines.push('', legacy.length > 0 ? 'No new violations. No baseline growth.' : `No file exceeds ${LIMIT} lines.`);
   } else {
-    lines.push(
-      '',
-      `Fix: shrink the file back to ${LIMIT} lines or fewer, or -- if this is deliberate reduction work -- `
-        + 'lower its baseline entry in scripts/check-app-file-lines.mjs. A brand-new file over the limit must '
-        + 'be split before merge; this guard never grows the baseline.',
-    );
+    const hasStale = regressions.some((r) => r.kind === 'stale');
+    const hasNewOrGrowth = regressions.some((r) => r.kind !== 'stale');
+    const fixes = [];
+    if (hasNewOrGrowth) {
+      fixes.push(
+        `Shrink the file back to ${LIMIT} lines or fewer, or -- if this is deliberate reduction work -- `
+          + 'lower its baseline entry in scripts/check-app-file-lines.mjs. '
+          + 'A brand-new file over the limit must be split before merge; this guard never grows the baseline.',
+      );
+    }
+    if (hasStale) {
+      fixes.push(
+        'For STALE entries: the file has been reduced to the limit or below. '
+          + 'Remove its BASELINE entry in scripts/check-app-file-lines.mjs in this same commit. '
+          + 'Once removed, future PRs that regrow the file past the limit will fail as new violations.',
+      );
+    }
+    lines.push('', `Fix: ${fixes.join(' ')}`)
   }
 
   return lines.join('\n');
