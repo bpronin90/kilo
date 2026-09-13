@@ -82,7 +82,6 @@ export const BASELINE = {
   'mobile/components/UI.js': 894,
   'mobile/screens/WeightScreen.js': 941,
   'mobile/storage/entries/recoveryOperationJournal.js': 993,
-  'mobile/App.js': 1191,
   'mobile/screens/AnalyticsScreen.js': 1212,
   'mobile/storage/entries/backupImport.js': 1359,
   'mobile/hooks/entries/recoveryBlockHooks.js': 1366,
