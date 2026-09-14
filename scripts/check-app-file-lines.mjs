@@ -75,9 +75,7 @@ const CONFIG_FILE_RE = /\.config\.(js|jsx|ts|tsx)$/;
 // of these should lower its number here -- but is never required to as a
 // precondition of merging the reduction; see the module comment above.
 export const BASELINE = {
-  'mobile/components/BackupScreen.js': 650,
-  'mobile/storage/entries/backupImport.js': 1359,
-'mobile/storage/syncQueue.js': 1642,
+  'mobile/storage/syncQueue.js': 1642,
   'mobile/storage/cloud/syncAdapter.js': 1817,
 };
 
