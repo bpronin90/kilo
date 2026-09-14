@@ -3,7 +3,6 @@ import { Pressable, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Card, LineChart } from '../../components/UI';
 import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
-import { useWeightUnit } from '../../lib/unitPreference';
 import { formatBodyweightValue, displayChartSeries } from '../../lib/units';
 import { createStyles } from './homeStyles';
 
@@ -22,10 +21,10 @@ export function HomeHeader({
   handleLogWorkoutPress,
   heroPrimaryActionLabel,
   heroPrimaryActionHint,
+  unit,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
-  const unit = useWeightUnit();
 
   return (
     <Card style={styles.weeklyHero}>

@@ -3,7 +3,6 @@ import { Pressable, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Card } from '../../components/UI';
 import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
-import { useWeightUnit } from '../../lib/unitPreference';
 import { displayWeight, formatBodyweightValue } from '../../lib/units';
 import { createStyles } from './homeStyles';
 import { HomeRecoverySummary } from './HomeRecoverySummary';
@@ -18,10 +17,10 @@ export function HomeDashboard({
   weightGoal,
   baselinePaused,
   oneKHeroColor,
+  unit,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
-  const unit = useWeightUnit();
 
   return (
     <>

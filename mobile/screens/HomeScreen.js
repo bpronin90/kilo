@@ -5,6 +5,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, ErrorBanner, getSessionTone } from '../components/UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { CLOUD_SYNC_NOTICE, useWeightGoal, useTrackedLifts, getNoteSections, useCloudSyncSummary, useActiveTrainingContext, useDeloadHistory, useRecoveryBlockState } from '../hooks/useEntries';
+import { useWeightUnit } from '../lib/unitPreference';
 import { deriveHomeDashboardData, useHomeNormalNotes, useHomeRecoverySummary } from './home/homeDashboardData';
 import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
 import { markStartupPhase, markStartupStorageReads } from '../storage/entries/startupTiming';
@@ -253,6 +254,9 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   // matches across both surfaces.
   const { history: deloadHistory } = useDeloadHistory();
   const { blocks: recoveryBlocks = [] } = useRecoveryBlockState() || {};
+  // Subscribe at startup so unit hydration is concurrent with all other reads
+  // rather than deferred behind the loading gate (#1049 feedback).
+  const unit = useWeightUnit();
 
   // Home's own active-Recovery branch (#869). Only these two derived
   // statuses ever set `baselinePaused` (see activeTrainingContext.js) — every
@@ -460,6 +464,7 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
             handleLogWorkoutPress={handleLogWorkoutPress}
             heroPrimaryActionLabel={heroPrimaryActionLabel}
             heroPrimaryActionHint={heroPrimaryActionHint}
+            unit={unit}
           />
           <HomeDashboard
             recoverySummary={recoverySummary}
@@ -468,6 +473,7 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
             weightGoal={weightGoal}
             baselinePaused={baselinePaused}
             oneKHeroColor={oneKHeroColor}
+            unit={unit}
           />
         </>
       )}
