@@ -1,59 +1,38 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Keyboard, Platform, AppState } from 'react-native';
 import { Alert } from '../../lib/platformAlert';
-import { parseWorkoutNote, countWorkoutSessionsFromSections, applyWeekSkipToText, resolveExerciseSourceAnchor } from '../../lib/parser';
-import { removeWeekSkipFromText, applyProgressionSuggestionToNoteText } from '../../lib/parser/workoutNote.js';
-import { deriveSessionAlignmentIssueFromSections } from '../../lib/parser/sessions.js';
+import { parseWorkoutNote, countWorkoutSessionsFromSections, applyWeekSkipToText } from '../../lib/parser';
+import { AUTOSAVE_DEBOUNCE_MS } from '../../lib/LogScreenHelpers';
+import { useNoteConvergencePending, deriveCurrentSaveStatus } from './editorConvergence';
 import {
-  normalizeLiftName,
-  deriveWorkoutNoteAnalytics,
-  listTrackedLifts,
-  getDefaultTrackedNames,
-  deriveSkipData,
-  deriveSessionCheckIn,
-  computeWeeksIn,
-} from '../../lib/data';
-import { loadRecoveryExcludedNoteIds } from '../../hooks/entries/recoveryBlockHooks';
-import { filterNotesForNormalAnalytics } from '../../lib/data/recoveryAnalyticsFilter';
-import { deriveTrackedPROccurrences } from '../../lib/data/workoutAnalytics';
-import { detectPRMoment } from '../../lib/prMoment';
-import { subscribeDirtyQueue, getDirtyRecords, SYNC_TABLES } from '../../storage/syncQueue';
-import { subscribeSyncState, getSyncState, SYNC_PHASE, SYNC_STATUS } from '../../storage/syncRecovery';
-import { getStorageMode, STORAGE_MODES, loadDeloadHistory } from '../../storage/entries';
-import { AUTOSAVE_DEBOUNCE_MS, DELOAD_NOTE_PREFIX } from '../../lib/LogScreenHelpers';
-import { buildDayGroups } from './logScreenHelpers';
+  isValidActiveWeek,
+  spliceWeekText,
+  useCurrentWeekProjection,
+  useActiveWeekReconcile,
+  toggleActiveWeek,
+} from './editorWeekText';
 import {
-  saveWorkoutNoteDraft,
-  loadWorkoutNoteDraft,
-  clearWorkoutNoteDraft,
-  clearWorkoutNoteDraftIfMatches,
-  clearWorkoutNoteDraftsSupersededBySave,
-  markWorkoutNoteDraftSaveStart,
-} from '../../storage/entries/workoutNoteDrafts';
+  writeWorkoutNoteDraftNow,
+  cancelPendingDraftRestore as cancelDraftRestore,
+  useRestoreCreationAttemptToken,
+  useEditorDraftPersistence,
+  useDraftNoteIdOverrideReset,
+} from './editorDrafts';
+import { useCurrentCheckIn } from './currentRoutineCheckIn';
 import {
-  ensureWorkoutNoteCreationAttempt,
-  loadWorkoutNoteCreationAttempt,
-  clearWorkoutNoteCreationAttempt,
-} from '../../storage/entries/workoutNoteCreationAttempts';
-
-// See useLogOtherRoutineEditor.js for why this is much shorter than
-// AUTOSAVE_DEBOUNCE_MS (#880): the write is cheap (no parse/derive/cloud
-// work) and exists specifically to cover the gap the expensive autosave
-// cannot — a brand-new note (no currentId), which the real autosave never
-// touches until the first explicit Save gives it an id.
-const DRAFT_DEBOUNCE_MS = 400;
-
-// #886: how far below the top of the editor viewport a source-jumped exercise
-// header is parked — enough that it does not sit flush against the edge, and
-// no more. About one raw row at the editor's 16pt text.
-//
-// #888: was 96, which is 4-5 rows — a header plus its set rows, i.e. a whole
-// exercise block. Device verification of #886 duly reported the jump landing
-// about one exercise above its target, consistently. That consistency was the
-// diagnosis: a measurement error grows with source depth and varies between
-// jumps, so a fixed one-directional offset had to be a constant, and this is
-// the only constant in that path.
-const SOURCE_JUMP_TOP_GAP = 24;
+  useCurrentEditorLifecycle,
+  handleDoneCurrent as doneCurrent,
+  handleUnskipWeek as unskipWeek,
+  applyProgressionSuggestion as applyProgression,
+  makeHandleNoteBodyPress,
+} from './currentRoutineEditor';
+import { useSaveSuccessAutoClear } from './useLogEditorSave';
+import {
+  computePendingPRCandidate as computePRCandidate,
+  performRevertCurrent as performRevert,
+  performCurrentSave,
+  persistedUniversalSkipCount,
+  useUniversalSkipSeed,
+} from './currentRoutineSave';
 
 function currentDraftKey(currentId) {
   return currentId ? `current:${currentId}` : 'current:new';
@@ -66,107 +45,11 @@ function currentDraftKey(currentId) {
 // store holds create-attempt protocol state, not text.
 const CURRENT_CREATE_ATTEMPT_KEY = 'current:new';
 
-// Pending-cloud-convergence state (#880 revised body). Deliberately NOT a
-// network check — there is no network-detection infrastructure in this app,
-// and a network probe would not be evidence of convergence anyway (a device
-// can be online with a failed/backed-up queue, or briefly offline with
-// nothing pending). Derived from two existing, already-authoritative
-// sources: the sync queue's own dirty record for THIS note
-// (`getDirtyRecords`/`subscribeDirtyQueue`), and `syncRecovery`'s
-// SYNC_STATUS for the SYNC phase (`FAILED` means the last pass could not
-// push/pull, so anything queued is stuck until retry). A note with no dirty
-// record and no sync failure has nothing left to converge — including every
-// note on a local-only (never signed in) device, where nothing is ever
-// enqueued in the first place.
-//
-// Kept local to this file (and its `useLogOtherRoutineEditor.js` twin)
-// rather than in the shared `workoutNoteHooks.js` module: that module is
-// already imported by `recoveryBlockHooks.js`, which both editor hooks also
-// import — a top-level import of syncQueue/syncRecovery added to
-// workoutNoteHooks.js completed a circular-import cycle that left an
-// unrelated hook (`useRecoveryBlockLifecycle`) partially initialized in some
-// test orderings. Leaf-level duplication here avoids that cycle entirely.
-function useNoteConvergencePending(noteId) {
-  const [pending, setPending] = useState(false);
-  const storageMode = getStorageMode();
-
-  useEffect(() => {
-    if (!noteId) {
-      setPending(false);
-      return undefined;
-    }
-    let cancelled = false;
-    let recomputeVersion = 0;
-    const recompute = async () => {
-      const version = ++recomputeVersion;
-      if (getStorageMode() !== STORAGE_MODES.CLOUD) {
-        if (!cancelled && version === recomputeVersion) setPending(false);
-        return;
-      }
-      let dirty;
-      let dirtyReadFailed = false;
-      try {
-        dirty = await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES);
-      } catch {
-        dirty = [];
-        dirtyReadFailed = true;
-      }
-      const isDirty = dirty.some((r) => r?.id === noteId);
-      const syncFailed = getSyncState()[SYNC_PHASE.SYNC]?.status === SYNC_STATUS.FAILED;
-      if (!cancelled && version === recomputeVersion) {
-        setPending(dirtyReadFailed || isDirty || syncFailed);
-      }
-    };
-    recompute();
-    // Subscribe in local mode too. A sign-in can switch storage mode while an
-    // editor remains mounted; the ensuing sync-state/queue event must start
-    // convergence tracking without requiring the editor to be reopened.
-    const unsubDirty = subscribeDirtyQueue(recompute);
-    const unsubSync = subscribeSyncState(recompute);
-    return () => {
-      cancelled = true;
-      unsubDirty();
-      unsubSync();
-    };
-  }, [noteId, storageMode]);
-
-  return pending;
-}
-
-function snapshotMatches(snapshot, title, rawText) {
-  return !!snapshot && snapshot.title === title && snapshot.raw_text === rawText;
-}
-
-function isValidActiveWeek(value) {
-  return value === 'A' || value === 'B';
-}
-
-function isDeloadTitle(title) {
-  return !!title?.startsWith(DELOAD_NOTE_PREFIX);
-}
-
-// At most one check-in prompt per this many session indices (D10 §4.2). The
-// window is measured from the last session actually ASKED about — every key in
-// session_checkins was produced by a prompt — not from the last rough session,
-// so a suppressed session never extends it. Sustained fatigue escalates through
-// Deload/Recovery, not by re-asking a question whose answer changes nothing.
-const CHECKIN_COOLDOWN_SESSIONS = 3;
-
-// True when a prompt for `sessionIndex` falls inside the cooldown window of an
-// existing check-in record. Only keys at or below the current session are
-// consulted: records above it (text cut down or hand-edited) are orphans, and
-// are ignored rather than deleted — deleting them would be a historical-record
-// change.
-function _checkInCooldownActive(checkins, sessionIndex) {
-  if (!checkins || typeof checkins !== 'object') return false;
-  let lastAsked = -1;
-  for (const key of Object.keys(checkins)) {
-    const idx = Number(key);
-    if (!Number.isInteger(idx) || idx < 0 || idx > sessionIndex) continue;
-    if (idx > lastAsked) lastAsked = idx;
-  }
-  return lastAsked >= 0 && sessionIndex - lastAsked < CHECKIN_COOLDOWN_SESSIONS;
-}
+// useNoteConvergencePending/snapshotMatches/deriveSaveStatus live in
+// ./editorConvergence; isValidActiveWeek and the A/B week text helpers in
+// ./editorWeekText; isDeloadTitle, the save-time classification pass, the
+// PR-moment candidate, check-in detection, and the revert body in
+// ./currentRoutineSave (#1055).
 
 export function useLogCurrentRoutineEditor({
   workoutNoteText,
@@ -214,11 +97,6 @@ export function useLogCurrentRoutineEditor({
     pendingPRRef.current = null;
     consumedPRKeysRef.current = new Set();
   }, [originalNoteState]);
-  const [roughFlaggedNames, setRoughFlaggedNames] = useState(new Set());
-  const [roughSessionIndex, setRoughSessionIndex] = useState(null);
-  const [roughNoteId, setRoughNoteId] = useState(null);
-  const [showCheckInModal, setShowCheckInModal] = useState(false);
-  const [roughCheckInData, setRoughCheckInData] = useState(null);
   const [skipWeekStatus, setSkipWeekStatus] = useState('');
 
   const keyboardVisibleRef = useRef(false);
@@ -259,74 +137,56 @@ export function useLogCurrentRoutineEditor({
   modeRef.current = mode;
 
   // Durable creation-attempt token for this editor's new-note create (#997).
-  // Minted before the create, RETAINED when the create fails (a cloud enqueue
-  // can reject after the row is already on the device), restored on mount so a
-  // retry after an app restart still completes the original note, and cleared
-  // only once the create has fully succeeded. The ref is the session's live
-  // copy — a retry in this session reuses it directly — and
-  // `ensureWorkoutNoteCreationAttempt` is the durable authority behind it: an
-  // atomic get-or-mint against the stored slot, so a save that runs before the
-  // restore lands still continues the unfinished attempt rather than starting a
-  // second one.
+  // Minted before the create, RETAINED when the create fails, restored on mount
+  // so a retry after an app restart still completes the original note, and
+  // cleared only once the create has fully succeeded. See editorDrafts for the
+  // shared restore-on-mount effect.
   const createAttemptTokenRef = useRef(null);
-  useEffect(() => {
-    let cancelled = false;
-    loadWorkoutNoteCreationAttempt(CURRENT_CREATE_ATTEMPT_KEY)
-      .then((token) => {
-        // Never overwrite a token this session already minted: the restore is
-        // asynchronous and a save can start before it lands.
-        if (!cancelled && token && !createAttemptTokenRef.current) {
-          createAttemptTokenRef.current = token;
-        }
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
+  useRestoreCreationAttemptToken(CURRENT_CREATE_ATTEMPT_KEY, createAttemptTokenRef);
 
-  const writeCurrentDraftNow = () => {
-    const key = currentDraftKey(draftNoteIdOverrideRef.current ?? currentIdRef.current);
-    const draft = {
-      title: workoutNoteTitleRef.current,
-      raw_text: workoutNoteTextRef.current,
-      baseUpdatedAt: draftBaseUpdatedAtRef.current,
-    };
-    const preserveExisting = preserveExistingDraftRef.current;
-    const signature = JSON.stringify([
-      key,
-      draft.baseUpdatedAt,
-      draft.title,
-      draft.raw_text,
-      preserveExisting,
-    ]);
-    if (lastDraftWriteSignatureRef.current === signature) return;
-    lastDraftWriteSignatureRef.current = signature;
-    saveWorkoutNoteDraft(key, draft, { preserveExisting }).then(() => {
-      if (preserveExisting) preserveExistingDraftRef.current = false;
-    }).catch(() => {
-      if (lastDraftWriteSignatureRef.current === signature) {
-        lastDraftWriteSignatureRef.current = null;
-      }
-    });
-  };
+  const writeCurrentDraftNow = () => writeWorkoutNoteDraftNow({
+    key: currentDraftKey(draftNoteIdOverrideRef.current ?? currentIdRef.current),
+    title: workoutNoteTitleRef.current,
+    raw_text: workoutNoteTextRef.current,
+    baseUpdatedAt: draftBaseUpdatedAtRef.current,
+    preserveExisting: preserveExistingDraftRef.current,
+    signatureRef: lastDraftWriteSignatureRef,
+    onPreserveConsumed: () => { preserveExistingDraftRef.current = false; },
+  });
 
-  // A pending async restore must yield to any real editor interaction. This is
-  // what keeps restoration passive: it can never rewrite a focused value and
-  // thereby move the caret or selection after the user has started editing.
-  // Preserve is armed once for that cancelled restore, not on every later
-  // keystroke; ordinary same-revision typing must keep replacing one active
-  // draft instead of retaining every debounce-window snapshot.
-  const cancelPendingDraftRestore = () => {
-    if (!draftRestorePendingRef.current) return;
-    draftRestorePendingRef.current = false;
-    draftRestoreTokenRef.current += 1;
-    preserveExistingDraftRef.current = true;
-  };
+  const cancelPendingDraftRestore = () => cancelDraftRestore({
+    pendingRef: draftRestorePendingRef,
+    tokenRef: draftRestoreTokenRef,
+    preserveExistingRef: preserveExistingDraftRef,
+  });
 
-  // Check-in gates, held in a ref for the same reason as the values above:
-  // detection runs after an awaited save, so it must read the gates as they are
-  // at the moment of raise, not as they were when the handler was created.
-  const checkInGatesRef = useRef(null);
-  checkInGatesRef.current = { fatigueTrackingEnabled, notesLoading, notesError, otherModalOwnsScreen };
+  // Fatigue check-in state, effects, and detection trigger (see
+  // ./currentRoutineCheckIn). A check-in prompt is raised at exactly one moment:
+  // Done, after a verified save — leaving the Log tab no longer runs detection.
+  const {
+    roughFlaggedNames,
+    roughSessionIndex,
+    roughNoteId,
+    showCheckInModal,
+    setShowCheckInModal,
+    roughCheckInData,
+    withdrawCheckIn,
+    runCheckInDetection: _runCheckInDetection,
+  } = useCurrentCheckIn({
+    currentId,
+    currentNote,
+    fatigueTrackingEnabled,
+    notesLoading,
+    notesError,
+    otherModalOwnsScreen,
+    workoutNoteTitle,
+    trackedLifts,
+    onCheckInPrompt,
+    workoutNoteTitleRef,
+    workoutNoteTextRef,
+    currentIdRef,
+    currentNoteRef,
+  });
 
   const noteIdentity = currentNote?.id ?? currentId ?? null;
   const [localActiveWeek, setLocalActiveWeek] = useState(
@@ -334,40 +194,15 @@ export function useLogCurrentRoutineEditor({
   );
   const previousNoteIdentityRef = useRef(noteIdentity);
 
-  useEffect(() => {
-    if (draftNoteIdOverrideRef.current && currentId === draftNoteIdOverrideRef.current) {
-      draftNoteIdOverrideRef.current = null;
-    }
-  }, [currentId]);
+  useDraftNoteIdOverrideReset(draftNoteIdOverrideRef, currentId);
 
-  // Universal-skip counter: how many not-yet-removed 'Skip week' presses this
-  // note has. Persisted inside skip_markers (same single update as raw_text,
-  // see handleSave) so a partial write can never desync it from the text.
-  // Advisory only — it decides whether 'Remove skip' needs a confirmation
-  // dialog (manual skips) and never causes removal of anything the
-  // text-driven rules wouldn't remove. Held in a ref (local authority after
-  // any mutation in this session, like activeWeek) and re-seeded from the
-  // persisted note whenever the note identity changes.
-  const _persistedUniversalSkipCount = (note) => {
-    const v = note?.skip_markers?.universal_skip_count;
-    return Number.isFinite(v) && v > 0 ? v : 0;
-  };
-  const universalSkipCountRef = useRef(_persistedUniversalSkipCount(currentNote));
-  useEffect(() => {
-    universalSkipCountRef.current = _persistedUniversalSkipCount(currentNoteRef.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [noteIdentity]);
+  // Universal-skip counter (advisory; persisted in skip_markers): local
+  // authority after any in-session mutation, re-seeded from the persisted note
+  // on identity change. See ./currentRoutineSave.
+  const universalSkipCountRef = useRef(persistedUniversalSkipCount(currentNote));
+  useUniversalSkipSeed({ universalSkipCountRef, currentNoteRef, noteIdentity });
 
-  const handleReadScroll = (e) => {
-    readScrollYRef.current = e.nativeEvent.contentOffset.y;
-  };
-
-  useEffect(() => {
-    if (saveSuccess) {
-      const timer = setTimeout(() => setSaveSuccess(''), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [saveSuccess]);
+  useSaveSuccessAutoClear(saveSuccess, setSaveSuccess);
 
   // 'Skip week' / 'Undo skip' are used from the read-mode card (not the
   // editor), so they can't rely on the editor's saveSuccess banner. This
@@ -379,69 +214,6 @@ export function useLogCurrentRoutineEditor({
       return () => clearTimeout(timer);
     }
   }, [skipWeekStatus]);
-
-  useEffect(() => {
-    if (roughSessionIndex == null) return;
-    if (roughNoteId !== currentId) {
-      setRoughFlaggedNames(new Set());
-      setRoughSessionIndex(null);
-      setRoughNoteId(null);
-      return;
-    }
-    const checkins = currentNote?.session_checkins;
-    if (checkins?.[roughSessionIndex]) {
-      setRoughFlaggedNames(new Set());
-      setRoughSessionIndex(null);
-      setRoughNoteId(null);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentNote?.session_checkins, roughSessionIndex, currentId]);
-
-  // A check-in prompt is raised at exactly one moment — Done, after a verified
-  // save — so leaving the Log tab no longer runs detection. Blur is an
-  // interruption, not a completion, and it was the only path that could ask
-  // about text the store had not accepted yet.
-
-  // Whether the check-in is currently blocked from being on screen at all:
-  // the feature is off, the read is not verified, another modal owns the
-  // screen, or this is a deload note. Deload mode itself is a separate editor
-  // this hook deliberately cannot see, so the note title is the only deload
-  // fact available here — and the only one needed.
-  //
-  // Both titles are consulted, because they can disagree. The stored note is
-  // the persisted truth, but it lags: `update()` only broadcasts
-  // `notifyWorkoutNotes()`, and every listener refreshes through
-  // `maybeSyncCloud().then(reload)`, so a title saved a moment ago may be a
-  // cloud round-trip away from reaching `currentNote`. The editor's own title
-  // is what was just written. Either one naming a deload note is enough.
-  const checkInBlocked =
-    !fatigueTrackingEnabled
-    || !!notesLoading
-    || !!notesError
-    || !!otherModalOwnsScreen
-    || isDeloadTitle(workoutNoteTitle)
-    || isDeloadTitle(currentNote?.title);
-
-  // Withdrawal (D10 §3.3): one state transition, never a visibility change and
-  // never a write. Clearing every field is what stops the sheet from
-  // resurrecting itself when the toggle comes back on or the other modal
-  // closes — the only way back to a prompt is fresh detection at a later Done.
-  // Nothing is stored, so the session stays eligible.
-  const withdrawCheckIn = () => {
-    setShowCheckInModal(false);
-    setRoughCheckInData(null);
-    setRoughSessionIndex(null);
-    setRoughNoteId(null);
-    setRoughFlaggedNames(prev => (prev.size === 0 ? prev : new Set()));
-  };
-
-  useEffect(() => {
-    if (!checkInBlocked) return;
-    if (!showCheckInModal && roughCheckInData == null && roughSessionIndex == null
-      && roughNoteId == null && roughFlaggedNames.size === 0) return;
-    withdrawCheckIn();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkInBlocked, showCheckInModal, roughCheckInData, roughSessionIndex, roughNoteId, roughFlaggedNames]);
 
   const parsed = useMemo(() => parseWorkoutNote(workoutNoteText), [workoutNoteText]);
 
@@ -458,91 +230,30 @@ export function useLogCurrentRoutineEditor({
       ? { activeWeek: effectiveActiveWeek }
       : {};
 
-  useEffect(() => {
-    const noteChanged = previousNoteIdentityRef.current !== noteIdentity;
-    previousNoteIdentityRef.current = noteIdentity;
+  useActiveWeekReconcile({
+    hasABWeeks,
+    noteIdentity,
+    persistedActiveWeekValue: currentNote?.activeWeek,
+    previousNoteIdentityRef,
+    pendingActiveWeekRef,
+    activeWeekAuthorityRef,
+    setLocalActiveWeek,
+  });
 
-    const persistedActiveWeek = isValidActiveWeek(currentNote?.activeWeek)
-      ? currentNote.activeWeek
-      : null;
-
-    if (!hasABWeeks) {
-      pendingActiveWeekRef.current = null;
-      activeWeekAuthorityRef.current = 'fallback';
-      setLocalActiveWeek(null);
-      return;
-    }
-
-    if (noteChanged) {
-      pendingActiveWeekRef.current = null;
-      activeWeekAuthorityRef.current = persistedActiveWeek ? 'persisted' : 'fallback';
-      setLocalActiveWeek(persistedActiveWeek ?? 'A');
-      return;
-    }
-
-    if (pendingActiveWeekRef.current && persistedActiveWeek === pendingActiveWeekRef.current) {
-      pendingActiveWeekRef.current = null;
-    }
-
-    if (activeWeekAuthorityRef.current === 'fallback' && persistedActiveWeek) {
-      activeWeekAuthorityRef.current = 'persisted';
-      setLocalActiveWeek(prev => (prev === persistedActiveWeek ? prev : persistedActiveWeek));
-      return;
-    }
-
-    setLocalActiveWeek(prev => (isValidActiveWeek(prev) ? prev : (persistedActiveWeek ?? 'A')));
-  }, [currentNote?.activeWeek, hasABWeeks, noteIdentity]);
-
-  const activeEditText = useMemo(() => {
-    if (!hasABWeeks || !currentId) return workoutNoteText;
-    const lines = workoutNoteText.split('\n');
-    const sepIdx = lines.findIndex(l => l.trim() === '---');
-    if (sepIdx === -1) return workoutNoteText;
-    if (effectiveActiveWeek === 'B') return lines.slice(sepIdx + 1).join('\n');
-    return lines.slice(0, sepIdx).join('\n');
-  }, [workoutNoteText, hasABWeeks, effectiveActiveWeek, currentId]);
-
-  const activeWeekParsed = useMemo(
-    () => (hasABWeeks ? parseWorkoutNote(activeEditText) : parsed),
-    [hasABWeeks, activeEditText, parsed]
-  );
-
-  // The editor operates on one A/B half at a time, so alignment is derived
-  // from that same visible slice. This keeps a clean Week A from being blocked
-  // by Week B (and vice versa) while still making the affected half explicit.
-  const sessionAlignmentIssue = useMemo(
-    () => deriveSessionAlignmentIssueFromSections(activeWeekParsed.sections),
-    [activeWeekParsed]
-  );
-
-  const dayGroups = useMemo(
-    () => buildDayGroups(activeWeekParsed.sections),
-    [activeWeekParsed]
-  );
-
-  // Note-level parser rejection (e.g. an oversize note that `parseWorkoutNote`
-  // refuses with `ok: false`). Surfaced as a sibling to `dayGroups` so the read
-  // view can show a parse-failure affordance instead of a blank empty state; no
-  // synthetic section is invented. Checks both the full-note parse and the
-  // active-week slice so an A/B note that fails on either side is not silent.
-  const noteError = useMemo(
-    () => (!parsed.ok && parsed.error) || (!activeWeekParsed.ok && activeWeekParsed.error) || null,
-    [parsed, activeWeekParsed]
-  );
-
-  // Whether there is a trailing skip marker on at least one exercise in the
-  // active week, i.e. whether 'Undo skip' has anything to remove. Used to
-  // disable/no-op the undo action instead of silently doing nothing.
-  const canUnskipWeek = useMemo(() => {
-    for (const section of activeWeekParsed.sections) {
-      for (const ex of section.exercises) {
-        const entries = ex.session_entries;
-        const last = entries[entries.length - 1];
-        if (last && last.skipped) return true;
-      }
-    }
-    return false;
-  }, [activeWeekParsed]);
+  const {
+    activeEditText,
+    activeWeekParsed,
+    sessionAlignmentIssue,
+    dayGroups,
+    noteError,
+    canUnskipWeek,
+  } = useCurrentWeekProjection({
+    fullText: workoutNoteText,
+    parsed,
+    hasABWeeks,
+    effectiveWeek: effectiveActiveWeek,
+    currentId,
+  });
 
   const hasUnsavedCurrent = useMemo(() => {
     if (!currentNote) return workoutNoteTitle.trim() !== '' || workoutNoteText.trim() !== '';
@@ -572,56 +283,17 @@ export function useLogCurrentRoutineEditor({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workoutNoteText, workoutNoteTitle, mode, currentId]);
 
-  // Cheap draft persistence (#880). Runs whenever the editor is open,
-  // including a brand-new note (`currentId` is null) — the exact gap the
-  // debounced autosave above deliberately does not cover.
-  useEffect(() => {
-    if (mode !== 'edit' || !hasUnsavedCurrent) return;
-    if (draftCurrentTimerRef.current) clearTimeout(draftCurrentTimerRef.current);
-    draftCurrentTimerRef.current = setTimeout(() => {
-      draftCurrentTimerRef.current = null;
-      writeCurrentDraftNow();
-    }, DRAFT_DEBOUNCE_MS);
-    return () => {
-      if (draftCurrentTimerRef.current) {
-        clearTimeout(draftCurrentTimerRef.current);
-        draftCurrentTimerRef.current = null;
-      }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workoutNoteText, workoutNoteTitle, mode, currentId, hasUnsavedCurrent]);
-
-  // Flush the pending draft immediately on backgrounding instead of waiting
-  // out the debounce.
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state !== 'background' && state !== 'inactive') return;
-      if (draftCurrentTimerRef.current) {
-        clearTimeout(draftCurrentTimerRef.current);
-        draftCurrentTimerRef.current = null;
-      }
-      if (modeRef.current === 'edit' && hasUnsavedCurrentRef.current) writeCurrentDraftNow();
-    });
-    return () => sub.remove();
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (autosaveCurrentTimerRef.current) clearTimeout(autosaveCurrentTimerRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const showSub = Keyboard.addListener(showEvent, () => { keyboardVisibleRef.current = true; });
-    const hideSub = Keyboard.addListener(hideEvent, () => { keyboardVisibleRef.current = false; });
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-      if (keyboardExitTimeoutRef.current) clearTimeout(keyboardExitTimeoutRef.current);
-    };
-  }, []);
+  // Cheap draft persistence (#880): a debounced write whenever the editor is
+  // open (including a brand-new note, the gap the debounced autosave above
+  // deliberately does not cover) plus an immediate flush on backgrounding. See
+  // useEditorDraftPersistence in ./editorDrafts.
+  useEditorDraftPersistence({
+    enabled: mode === 'edit' && hasUnsavedCurrent,
+    debounceDeps: [workoutNoteText, workoutNoteTitle, mode, currentId, hasUnsavedCurrent],
+    timerRef: draftCurrentTimerRef,
+    writeDraftNow: writeCurrentDraftNow,
+    isFlushEligible: () => modeRef.current === 'edit' && hasUnsavedCurrentRef.current,
+  });
 
   const handleCurrentTextChange = (newText) => {
     cancelPendingDraftRestore();
@@ -629,43 +301,18 @@ export function useLogCurrentRoutineEditor({
       setWorkoutNoteText(newText);
       return;
     }
-    const lines = workoutNoteText.split('\n');
-    const sepIdx = lines.findIndex(l => l.trim() === '---');
-    if (sepIdx === -1) {
-      setWorkoutNoteText(newText);
-      return;
-    }
-    const weekAText = lines.slice(0, sepIdx).join('\n');
-    const weekBText = lines.slice(sepIdx + 1).join('\n');
-    if (effectiveActiveWeek === 'A') {
-      setWorkoutNoteText(newText + '\n---\n' + weekBText);
-    } else {
-      setWorkoutNoteText(weekAText + '\n---\n' + newText);
-    }
+    setWorkoutNoteText(spliceWeekText(workoutNoteText, effectiveActiveWeek, newText));
   };
 
-  const handleToggleWeek = async () => {
-    if (!currentId || !hasABWeeks) return;
-    const previous = effectiveActiveWeek ?? 'A';
-    const previousAuthority = activeWeekAuthorityRef.current;
-    const next = previous === 'B' ? 'A' : 'B';
-    activeWeekAuthorityRef.current = 'user';
-    pendingActiveWeekRef.current = next;
-    setLocalActiveWeek(next);
-    try {
-      const updated = await update(currentId, { activeWeek: next });
-      if (!updated) {
-        pendingActiveWeekRef.current = null;
-        activeWeekAuthorityRef.current = previousAuthority;
-        setLocalActiveWeek(previous);
-      }
-    } catch (err) {
-      pendingActiveWeekRef.current = null;
-      activeWeekAuthorityRef.current = previousAuthority;
-      setLocalActiveWeek(previous);
-      throw err;
-    }
-  };
+  const handleToggleWeek = () => toggleActiveWeek({
+    currentId,
+    hasABWeeks,
+    effectiveWeek: effectiveActiveWeek,
+    update,
+    pendingActiveWeekRef,
+    activeWeekAuthorityRef,
+    setLocalActiveWeek,
+  });
 
   // #577 (Contract 3): recompute the pending (not-yet-released) PR-moment
   // candidate against the SAME aggregate, recovery-filtered/deload-excluded
@@ -681,732 +328,90 @@ export function useLogCurrentRoutineEditor({
   // storage read, a malformed note elsewhere) is swallowed — PR-moment
   // detection must never block or corrupt the actual save flow.
   const computePendingPRCandidate = async () => {
-    if (!currentId || !originalNoteState) {
-      pendingPRRef.current = null;
-      return;
-    }
-    // #577 review (Codex-and-user, post-freeze): the deload-exclusion
-    // filter (matching deriveParsedSections' own signalSections logic) was
-    // only ever applied to OTHER notes (`eligibleOther` below) — the
-    // CURRENT note's own content was always included even when the note
-    // being edited IS itself a deload note, letting a deload session
-    // produce a PR celebration despite the contract's "deload-titled
-    // signal notes excluded" requirement. A deload note's own edits never
-    // produce a candidate at all now.
-    const currentTitle = lastSavedCurrentTitleRef.current ?? workoutNoteTitleRef.current;
-    if (isDeloadTitle(currentTitle) || isDeloadTitle(originalNoteState.title)) {
-      pendingPRRef.current = null;
-      return;
-    }
-    // #577 gap fix: an A/B active-week switch mid-session changes which
-    // half of the note's raw text `parseWorkoutNote` actually reads (see
-    // `effectiveActiveWeek`/`applyWeekSkipToText` above) — the baseline and
-    // "current" content would no longer be describing the same week, so any
-    // frontier/fingerprint comparison between them would be meaningless.
-    // Treated exactly like a note switch: reset the pending candidate and
-    // never attempt a cross-week comparison.
-    if (originalNoteState.activeWeek !== effectiveActiveWeek) {
-      pendingPRRef.current = null;
-      return;
-    }
-    try {
-      const excludedNoteIds = await loadRecoveryExcludedNoteIds();
-      // #577 review (Codex, post-freeze): the eligible note list must
-      // preserve the SAME order Analytics itself uses — filterNotesForNormalAnalytics
-      // called on the full `notes` array, not on `notes` with the current
-      // note first removed and its sections appended at the very end. The
-      // activation anchor is positional in notebook order
-      // (resolveTrackedLiftAnchors/deriveWorkoutAnalytics count occurrences
-      // in section-list order), so forcing the current note's sections to
-      // the tail — regardless of where it actually sits — could cut
-      // sessions from a different note than Analytics does, producing the
-      // wrong tracked span and either suppressing or falsely announcing a
-      // PR. The current note's live (before/after) content now replaces
-      // its own entry IN PLACE, preserving every other note's position.
-      const eligibleNotes = filterNotesForNormalAnalytics(notes || [], excludedNoteIds)
-        .filter((n) => !n.title?.startsWith(DELOAD_NOTE_PREFIX));
-
-      const buildFullSections = (ownRawText) => eligibleNotes.flatMap((n, noteOrdinal) => {
-        const isCurrent = n.id === currentId;
-        const { sections } = parseWorkoutNote((isCurrent ? ownRawText : n.raw_text) || '');
-        return sections.map((s, sectionOrdinal) => ({
-          ...s,
-          __noteId: isCurrent ? currentId : n.id,
-          __noteOrdinal: noteOrdinal,
-          __sectionOrdinal: sectionOrdinal,
-        }));
-      });
-
-      // #577 review (Codex, post-freeze): the activation anchor/watermark
-      // must be RESOLVED AND CUT against the FULL, UNSLICED Analytics
-      // population — every note's complete content, both A/B halves when
-      // the note has them — never a week-restricted slice. An anchor was
-      // recorded against the exercise's total logged-session count at
-      // Track-toggle time; resolving or cutting it against only the active
-      // week's own (smaller) session list clamps the anchor down and/or
-      // drops sessions the anchor never meant to exclude, including a
-      // legitimate new PR, until enough new active-week sessions replace
-      // the omitted inactive ones. `deriveTrackedPROccurrences` called with
-      // the full, unrestricted section list already does
-      // exactly this correctly — resolve, then sliceEntriesFromAnchor over
-      // the true, correctly-ordered full sequence.
-      const afterText = lastSavedCurrentTextRef.current ?? workoutNoteTextRef.current;
-      const fullAfterSections = buildFullSections(afterText);
-      const fullBeforeSections = buildFullSections(originalNoteState.text);
-      const trackedNames = listTrackedLifts(trackedLifts);
-      const fullAfterEntries = deriveTrackedPROccurrences(fullAfterSections, trackedNames, trackedLiftActivations);
-      const fullBeforeEntries = deriveTrackedPROccurrences(fullBeforeSections, trackedNames, trackedLiftActivations);
-
-      // Frontier comparison itself still runs on the ACTIVE week's own
-      // occurrences only — the two A/B halves are different content
-      // sharing one raw string, and the inactive half's text is provably
-      // unchanged during one active-week editing session (the earlier
-      // activeWeek-mismatch guard above already proves baseline and
-      // current describe the same active week; handleCurrentTextChange
-      // only ever edits the active slice and splices the inactive one back
-      // untouched). Restricting AFTER the anchor cut — by filtering the
-      // already-correctly-watermarked full entries down to just the
-      // current note's sections at or after/before the week boundary —
-      // keeps each entry's occurrenceOrdinal/setOrdinal exactly as the
-      // full-population pass assigned them (sections are always emitted
-      // week-A-then-week-B, so this filter is a stable, order-preserving
-      // subsequence, never a renumbering), which the frontier's
-      // occurrenceOrdinal-sorted walk in lib/prMoment.js depends on.
-      const restrictToActiveWeek = (entries, rawText) => {
-        if (!hasABWeeks) return entries;
-        const { weekBStartIndex } = parseWorkoutNote(rawText || '');
-        if (weekBStartIndex == null) return entries;
-        return entries.filter((e) => (
-          e.noteId !== currentId
-          || (effectiveActiveWeek === 'B' ? e.sectionOrdinal >= weekBStartIndex : e.sectionOrdinal < weekBStartIndex)
-        ));
-      };
-
-      const afterEntries = restrictToActiveWeek(fullAfterEntries, afterText);
-      const beforeEntries = restrictToActiveWeek(fullBeforeEntries, originalNoteState.text);
-      pendingPRRef.current = detectPRMoment(beforeEntries, afterEntries, currentId, consumedPRKeysRef.current);
-    } catch {
-      pendingPRRef.current = null;
-    }
-  };
-
-  // universalSkipCount: explicit new value for the universal-skip counter
-  // (skip/unskip paths); omitted = carry the current value forward unchanged.
-  // sessionCheckins: full replacement session_checkins object to persist in
-  // the SAME update as raw_text (unskip cleanup path); omitted = untouched.
-  // Bundling both here keeps text, counter, and check-in cleanup atomic — a
-  // failed save changes none of them.
-  const handleSave = ({ autosave = false, overrideText, universalSkipCount, sessionCheckins } = {}) => {
-    const isSpecializedSave = overrideText !== undefined
-      || universalSkipCount !== undefined
-      || sessionCheckins !== undefined;
-    if (saveCurrentInFlightRef.current) {
-      // Ordinary Done/autosave callers may await the write already persisting
-      // the same live editor state. Skip/remove-skip calls carry their own
-      // atomic text/counter/check-in payload and must never inherit success
-      // from an older request that did not write that payload.
-      return isSpecializedSave
-        ? Promise.resolve(false)
-        : saveCurrentInFlightRef.current;
-    }
-    const textToSave = overrideText ?? workoutNoteText;
-    if (!currentId && !textToSave.trim()) {
-      setSaveError('Workout notes are required');
-      return Promise.resolve(false);
-    }
-    const savedForId = currentId;
-    const snapshotText = textToSave;
-    const snapshotTitle = workoutNoteTitle;
-    const run = async () => {
-      savingCurrentSnapshotRef.current = {
-        noteId: savedForId || 'new',
-        title: snapshotTitle,
-        raw_text: snapshotText,
-      };
-      setIsSaving(true);
-      setSaveError('');
-      setSaveSuccess('');
-      // Start the draft ordering boundary before canonical persistence, but do
-      // not put the cheap local bookkeeping on the user's save critical path.
-      const draftCheckpointPromise = markWorkoutNoteDraftSaveStart().catch(() => null);
-      try {
-      let result = null;
-      const titleToSave = snapshotTitle || 'Untitled Routine';
-      const { sections: savedSections } = parseWorkoutNote(textToSave);
-      const explicitTrackedNames = listTrackedLifts(trackedLifts);
-      const defaultNames = getDefaultTrackedNames();
-      const normalizedDefaults = new Set(defaultNames.map(n => normalizeLiftName(n)));
-      const trackedNames = [
-        ...defaultNames,
-        ...explicitTrackedNames.filter(n => !normalizedDefaults.has(normalizeLiftName(n))),
-      ];
-      // Ordinary-analytics boundary (#699). Exercise classifications are a
-      // cross-note aggregate cached onto the saved note, and Home reads the
-      // stored value back (computeWeeklySummary -> sessionStatusRows). They must
-      // therefore be derived from the SAME recovery-filtered population Home and
-      // Analytics derive at render time, or an excluded recovery week would leak
-      // back into Home through this cache.
-      //
-      // Read from storage here rather than from a render-time snapshot: autosave
-      // timers and async callbacks can fire long after the render that scheduled
-      // them, and a background sync can land new memberships in that window. The
-      // Week 2+ lifecycle cores make the same choice for the same reason.
-      //
-      // A failed read means the boundary is UNKNOWN. The note's text still
-      // saves — losing the user's writing over an analytics read would be far
-      // worse — but no classification value is written at all, leaving the
-      // previously stored one untouched rather than replacing it with an
-      // aggregate that might include excluded recovery work. The next successful
-      // save repairs it.
-      let excludedNoteIds = null;
-      let recoveryBoundaryKnown = true;
-      try {
-        excludedNoteIds = await loadRecoveryExcludedNoteIds();
-      } catch {
-        recoveryBoundaryKnown = false;
-      }
-
-      // #989: feed the save-time analytics pass the same post-deload re-entry
-      // inputs Analytics and Home use — the deload history and the stable
-      // current-routine id. A failed read leaves it null: analytics still runs,
-      // just without re-entry context, exactly as before this wiring existed.
-      let deloadHistory = null;
-      try {
-        deloadHistory = await loadDeloadHistory();
-      } catch {
-        deloadHistory = null;
-      }
-
-      let classificationsPatch = {};
-      if (recoveryBoundaryKnown) {
-        // A brand-new note (no currentId) has no id yet, so it cannot hold a
-        // recovery membership and its own sections are always in scope.
-        const allSections = [
-          ...notes.flatMap(n => {
-            if (n.id && excludedNoteIds.has(n.id)) return [];
-            const text = n.id === currentId ? textToSave : n.raw_text;
-            return text ? parseWorkoutNote(text).sections : [];
-          }),
-          ...(currentId ? [] : savedSections),
-        ];
-        const { classifications } = deriveWorkoutNoteAnalytics(allSections, trackedNames, undefined, trackedLiftActivations, { deloadHistory, sourceNoteId: currentId ?? null });
-        classificationsPatch = { exercise_classifications: classifications };
-
-        // Tracked-span retirement and stale-anchor repair (#893). This is the
-        // ONE place either is written.
-        //
-        // The population here is deliberately NOT `allSections` above: this list
-        // is unfiltered, so a movement that appears only inside a recovery week
-        // whose block opts out of ordinary analytics is present, not absent, and
-        // is never retired for sitting outside that boundary.
-        //
-        // It still sits inside the `recoveryBoundaryKnown` guard, for the same
-        // reason the classification write does: a failed boundary read means the
-        // population is UNKNOWN, and "could not read" must never be acted on as
-        // "the movement is gone". The next successful save repairs it.
-        //
-        // Awaited, but never allowed to fail the save: the user's text is
-        // already committed above, and losing a note over an analytics
-        // bookkeeping write would be far worse than a stale record that the next
-        // save fixes.
-        const unfilteredSections = [
-          ...notes.flatMap(n => {
-            const text = n.id === currentId ? textToSave : n.raw_text;
-            return text ? parseWorkoutNote(text).sections : [];
-          }),
-          ...(currentId ? [] : savedSections),
-        ];
-        if (reconcileTrackedLiftActivations) {
-          await reconcileTrackedLiftActivations(unfilteredSections).catch(() => {});
-        }
-      }
-      const { exercise_skips, day_skips, attendance_flags } = deriveSkipData(savedSections);
-      const resolvedUniversalSkipCount = Math.max(
-        0,
-        universalSkipCount ?? universalSkipCountRef.current
-      );
-      const skip_markers = { exercise_skips, day_skips, universal_skip_count: resolvedUniversalSkipCount };
-
-      if (currentId) {
-        result = await update(currentId, {
-          title: titleToSave,
-          raw_text: textToSave,
-          ...classificationsPatch,
-          skip_markers,
-          attendance_flags,
-          ...(sessionCheckins !== undefined ? { session_checkins: sessionCheckins } : {}),
-          ...activeWeekPatch,
-        });
-      } else {
-        // Id-stable create (#997): persist the attempt token BEFORE the create,
-        // and retire it only after the create has fully succeeded. A failed
-        // create leaves the token in place, so the next Save — this session or
-        // after a restart, with the title or body edited or not — completes the
-        // same note instead of adding a second one.
-        //
-        // Neither attempt-store write is swallowed, and both are deliberately
-        // inside this function's try/catch so a rejection surfaces as a failed
-        // save. Minting must not be skipped: an uncorrelated create is the
-        // duplicate this issue exists to prevent, and failing before `add` runs
-        // leaves nothing behind to duplicate. Retirement must not be skipped
-        // either: a completed attempt left in the store would hand this note's
-        // id to the NEXT new routine and overwrite it. The save the user then
-        // retries re-enters the same attempt, updates the same row, and retires
-        // it again, so a reported failure here costs a retry, never a routine.
-        const attemptToken = createAttemptTokenRef.current
-          || await ensureWorkoutNoteCreationAttempt(CURRENT_CREATE_ATTEMPT_KEY);
-        createAttemptTokenRef.current = attemptToken;
-        result = await add(titleToSave, snapshotText, { attemptToken });
-        await clearWorkoutNoteCreationAttempt(CURRENT_CREATE_ATTEMPT_KEY, attemptToken);
-        createAttemptTokenRef.current = null;
-        savingCurrentSnapshotRef.current.noteId = result.id;
-        draftNoteIdOverrideRef.current = result.id;
-        await selectCurrent(result.id);
-        if (result) {
-          result = await update(result.id, {
-            ...classificationsPatch,
-            skip_markers,
-            attendance_flags,
-            ...activeWeekPatch,
-          }) || result;
-        }
-      }
-
-      if (result) {
-        const identityUnchanged = savedForId
-          ? currentIdRef.current === savedForId
-          : currentIdRef.current == null || currentIdRef.current === result.id;
-        // Commit the counter only after the write actually persisted, so a
-        // failed save leaves the advisory flag in sync with the stored text.
-        if (identityUnchanged) {
-          savingCurrentSnapshotRef.current.noteId = result.id || savedForId;
-          universalSkipCountRef.current = resolvedUniversalSkipCount;
-          lastSavedCurrentIdRef.current = result.id || savedForId;
-          // A fulfilled mutation proves the submitted payload durable. Bind
-          // status/Done convergence to that exact payload rather than to an
-          // incidental or partial return shape from the storage adapter.
-          lastSavedCurrentTextRef.current = snapshotText;
-          lastSavedCurrentTitleRef.current = titleToSave;
-          draftBaseUpdatedAtRef.current = result.updated_at ?? draftBaseUpdatedAtRef.current;
-          if (!savedForId && result.id) draftNoteIdOverrideRef.current = result.id;
-        }
-        const contentUnchanged =
-          workoutNoteTextRef.current === snapshotText &&
-          workoutNoteTitleRef.current === snapshotTitle;
-        if (contentUnchanged && identityUnchanged) {
-          setWorkoutNoteTitle(result.title || '');
-          setWorkoutNoteText(result.raw_text || '');
-          if (!autosave) setSaveSuccess('Saved on device');
-        }
-        // Successful-save cleanup retires the saved snapshot and conflicts
-        // that predate the save checkpoint. A different draft written after
-        // that boundary is newer in-flight typing and survives.
-        {
-          const draftCheckpoint = await draftCheckpointPromise;
-          const preKey = currentDraftKey(savedForId);
-          const postKey = currentDraftKey(result.id || savedForId);
-          const savedSnapshot = { title: snapshotTitle, raw_text: snapshotText };
-          await clearWorkoutNoteDraftsSupersededBySave(
-            preKey,
-            draftCheckpoint,
-            savedSnapshot,
-          ).catch(() => {});
-          if (postKey !== preKey) {
-            await clearWorkoutNoteDraftsSupersededBySave(
-              postKey,
-              draftCheckpoint,
-              savedSnapshot,
-            ).catch(() => {});
-          }
-
-          // If typing continued while this write was in flight, rebase that
-          // live draft onto the revision the write just created. Leaving it
-          // stamped with the older revision would retain the bytes but refuse
-          // to auto-restore them after a crash — a subtler form of data loss.
-          const latestSnapshot = {
-            title: workoutNoteTitleRef.current,
-            raw_text: workoutNoteTextRef.current,
-          };
-          if (identityUnchanged && !snapshotMatches(latestSnapshot, snapshotTitle, snapshotText)) {
-            await saveWorkoutNoteDraft(postKey, {
-              ...latestSnapshot,
-              baseUpdatedAt: result.updated_at ?? null,
-            }).catch(() => {});
-            if (postKey !== preKey) {
-              await clearWorkoutNoteDraftIfMatches(preKey, latestSnapshot).catch(() => {});
-            }
-          }
-        }
-        return true;
-      } else {
-        setSaveError('Save failed');
-        return false;
-      }
-      } catch {
-        setSaveError('Save failed');
-        return false;
-      } finally {
-        setIsSaving(false);
-        saveCurrentInFlightRef.current = null;
-      }
-    };
-
-    const promise = run();
-    saveCurrentInFlightRef.current = promise;
-    return promise;
-  };
-
-  const finishExitCurrentEditor = () => {
-    readScrollRef.current?.scrollTo({ y: 0, animated: false });
-    setMode('read');
-    setOriginalNoteState(null);
-  };
-
-  const exitCurrentEditor = () => {
-    if (!keyboardVisibleRef.current) {
-      finishExitCurrentEditor();
-      return;
-    }
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const hideSub = Keyboard.addListener(hideEvent, () => {
-      hideSub.remove();
-      if (keyboardExitTimeoutRef.current) {
-        clearTimeout(keyboardExitTimeoutRef.current);
-        keyboardExitTimeoutRef.current = null;
-      }
-      finishExitCurrentEditor();
+    pendingPRRef.current = await computePRCandidate({
+      currentId, originalNoteState, effectiveActiveWeek, hasABWeeks, notes,
+      trackedLifts, trackedLiftActivations,
+      lastSavedTitle: lastSavedCurrentTitleRef.current, liveTitle: workoutNoteTitleRef.current,
+      lastSavedText: lastSavedCurrentTextRef.current, liveText: workoutNoteTextRef.current,
+      consumedPRKeys: consumedPRKeysRef.current,
     });
-    Keyboard.dismiss();
-    keyboardExitTimeoutRef.current = setTimeout(() => {
-      hideSub.remove();
-      keyboardExitTimeoutRef.current = null;
-      finishExitCurrentEditor();
-    }, Platform.OS === 'ios' ? 250 : 150);
   };
 
-  // `restoreScroll` (#886): the ordinary Edit button keeps its #150 behavior of
-  // carrying the read view's vertical offset into the editor, which preserves
-  // the user's reading position when both views are showing the same region.
-  // A source jump must NOT do that — see `handleExerciseSourceJump` below.
-  const openCurrentEditor = ({ restoreDraft, restoreScroll = true }) => {
-    const scrollY = readScrollYRef.current;
-    const expectedId = currentIdRef.current;
-    const canonicalUpdatedAt = currentNoteRef.current?.updated_at ?? null;
-    const expectedTitle = workoutNoteTitleRef.current;
-    const expectedText = workoutNoteTextRef.current;
-    draftBaseUpdatedAtRef.current = canonicalUpdatedAt;
-    preserveExistingDraftRef.current = !restoreDraft;
-    draftRestorePendingRef.current = restoreDraft;
-    const restoreToken = draftRestoreTokenRef.current + 1;
-    draftRestoreTokenRef.current = restoreToken;
-    setOriginalNoteState({
-      title: workoutNoteTitle,
-      text: workoutNoteText,
-      activeWeek: effectiveActiveWeek,
-    });
-    modeRef.current = 'edit';
-    setMode('edit');
-    requestAnimationFrame(() => {
-      // #886: a source jump parks the editor at the top instead of inheriting
-      // the read view's offset. The editor scroll view is never unmounted (it
-      // is only `display: none`), so without this a repeat jump would open on
-      // whatever offset the previous editor session happened to end at.
-      editorScrollRef.current?.scrollTo({ y: restoreScroll ? scrollY : 0, animated: false });
-    });
-    if (restoreDraft) {
-      restoreCurrentDraftIfSafe({
-        expectedId,
-        canonicalUpdatedAt,
-        expectedTitle,
-        expectedText,
-        restoreToken,
-      });
-    }
-  };
+  // opts.universalSkipCount / opts.sessionCheckins (skip/unskip paths) ride in
+  // the SAME update as raw_text so text, counter, and check-in cleanup stay
+  // atomic. See performCurrentSave in ./currentRoutineSave.
+  const handleSave = (opts = {}) => performCurrentSave({
+    workoutNoteText, workoutNoteTitle, currentId, notes, trackedLifts,
+    trackedLiftActivations, reconcileTrackedLiftActivations, activeWeekPatch,
+    update, add, selectCurrent, createAttemptKey: CURRENT_CREATE_ATTEMPT_KEY,
+    saveInFlightRef: saveCurrentInFlightRef, savingSnapshotRef: savingCurrentSnapshotRef,
+    universalSkipCountRef, currentIdRef, workoutNoteTextRef, workoutNoteTitleRef,
+    lastSavedIdRef: lastSavedCurrentIdRef, lastSavedTextRef: lastSavedCurrentTextRef,
+    lastSavedTitleRef: lastSavedCurrentTitleRef, draftBaseUpdatedAtRef,
+    draftNoteIdOverrideRef, createAttemptTokenRef,
+    setIsSaving, setSaveError, setSaveSuccess, setWorkoutNoteTitle, setWorkoutNoteText,
+  }, opts);
+
+  const {
+    handleReadScroll,
+    exitCurrentEditor,
+    openCurrentEditor,
+    restoreCurrentDraftIfSafe,
+    pendingSourceJump,
+    clearPendingSourceJump,
+    handleExerciseSourceJump,
+  } = useCurrentEditorLifecycle({
+    workoutNoteTitle, workoutNoteText, currentId, mode, hasABWeeks,
+    effectiveActiveWeek, activeEditText,
+    readScrollRef, editorScrollRef, readScrollYRef, keyboardVisibleRef,
+    keyboardExitTimeoutRef, autosaveTimerRef: autosaveCurrentTimerRef, modeRef,
+    currentIdRef, currentNoteRef, workoutNoteTitleRef, workoutNoteTextRef,
+    draftBaseUpdatedAtRef, preserveExistingDraftRef, draftRestorePendingRef,
+    draftRestoreTokenRef,
+    setMode, setOriginalNoteState, setWorkoutNoteTitle, setWorkoutNoteText,
+  });
 
   const enterCurrentEditor = () => openCurrentEditor({ restoreDraft: true });
-
-  // Restores a cheap local draft into the live editor on opening the editor
-  // (covers foreground/restart: the app process may have been killed with an
-  // unsaved draft still on disk). Auto-applied ONLY when its `baseUpdatedAt`
-  // matches the canonical note's `updated_at` this editor is opening on (or
-  // `null`, for a note that has none yet).
-  //
-  // #880 revised body (reversal): a mismatch means the canonical record moved
-  // on while the user had unsaved text — that text is precisely the
-  // interrupted work this issue exists to protect. A mismatched draft is
-  // therefore NEVER auto-applied and NEVER deleted here; canonical content is
-  // shown instead, and the draft stays stored and recoverable until the user
-  // explicitly discards/reverts, or a later successful save supersedes it.
-  // (An earlier version of this code cleared the draft on mismatch — that was
-  // itself the data-loss bug this rule now forbids.)
-  const restoreCurrentDraftIfSafe = async ({
-    expectedId,
-    canonicalUpdatedAt,
-    expectedTitle,
-    expectedText,
-    restoreToken,
-  }) => {
-    try {
-      const key = currentDraftKey(expectedId);
-      const draft = await loadWorkoutNoteDraft(key, { baseUpdatedAt: canonicalUpdatedAt }).catch(() => null);
-      if (!draft) return;
-      if (draftRestoreTokenRef.current !== restoreToken) return;
-      if (currentIdRef.current !== expectedId || modeRef.current !== 'edit') return;
-      if ((currentNoteRef.current?.updated_at ?? null) !== canonicalUpdatedAt) return;
-      if (workoutNoteTitleRef.current !== expectedTitle || workoutNoteTextRef.current !== expectedText) return;
-      const draftText = draft.raw_text || '';
-      const draftTitle = draft.title || '';
-      if (draftText === workoutNoteTextRef.current && draftTitle === workoutNoteTitleRef.current) return;
-      setWorkoutNoteTitle(draftTitle);
-      setWorkoutNoteText(draftText);
-    } finally {
-      if (draftRestoreTokenRef.current === restoreToken) {
-        draftRestorePendingRef.current = false;
-      }
-    }
-  };
-
-  // #881 (F10a §2/§6): resolves a double-tapped exercise's source anchor
-  // against the CURRENT live text for the week it was built against, and —
-  // only on success — opens the shared editor with a one-shot collapsed
-  // caret request for LogScreenEditorCard to apply once it has mounted with
-  // the matching text loaded. A discarded/stale anchor is a strict no-op:
-  // the editor does not open and nothing here mutates the read view.
-  const [pendingSourceJump, setPendingSourceJump] = useState(null);
-
-  // #886: called by the editor surface once it has actually applied the jump.
-  // `placement.y` is the target line's own offset inside the EDITOR's scroll
-  // content, measured on the raw-text input — never the read view's offset,
-  // whose layout diverges from the raw text further down the note. When the
-  // surface could not measure itself there is nothing better to aim at, so
-  // the editor keeps the deterministic top-of-note landing `openCurrentEditor`
-  // already applied rather than being scrolled somewhere guessed.
-  const clearPendingSourceJump = (placement) => {
-    setPendingSourceJump(null);
-    if (!placement || !Number.isFinite(placement.y)) return;
-    editorScrollRef.current?.scrollTo({
-      y: Math.max(0, placement.y - SOURCE_JUMP_TOP_GAP),
-      animated: false,
-    });
-  };
-
-  const handleExerciseSourceJump = (anchor) => {
-    if (!anchor || anchor.noteId !== currentId) return;
-    const weekIndex = hasABWeeks && effectiveActiveWeek === 'B' ? 1 : 0;
-    // The renderer only ever builds an anchor against the week it is
-    // currently rendering, so a mismatch here means the anchor is from a
-    // week that is no longer the active one — discard rather than guess.
-    if (anchor.weekIndex !== weekIndex) return;
-    const range = resolveExerciseSourceAnchor(anchor, { noteId: currentId, weekIndex, sliceText: activeEditText });
-    if (!range) return;
-    // #886: `restoreScroll: false` — a source jump is not a "resume reading
-    // where you were" entry. Reusing the read view's offset here landed the
-    // editor at an arbitrary spot whose error grew with how deep the tapped
-    // exercise sat in the note, because the rendered and raw layouts diverge.
-    // The real landing is applied by `clearPendingSourceJump` above, from the
-    // editor's own measurement of the target line.
-    if (mode !== 'edit') openCurrentEditor({ restoreDraft: false, restoreScroll: false });
-    setPendingSourceJump({
-      start: range.end,
-      end: range.end,
-      editingNoteId: null,
-      currentMode: 'edit',
-      expectedText: activeEditText,
-      source: null,
-      token: `${Date.now()}-${Math.random()}`,
-    });
-  };
-
-  // Raises the fatigue check-in, from the single trigger site: Done, after
-  // handleSave has returned true. Precedence is evaluated top-down and the
-  // first matching rule decides.
-  const _runCheckInDetection = () => {
-    const gates = checkInGatesRef.current;
-    // Rows 1, 2, 4 and 6 — feature off, unverified read, deload note, or
-    // another modal owning the screen. Evaluated here, synchronously, at the
-    // moment a prompt would be raised. Nothing is written and nothing is
-    // stored, so the session stays eligible at a later Done.
-    //
-    // The deload check reads the title that was just SAVED, not only the one
-    // on the stored note: this runs immediately after an awaited `handleSave`,
-    // and `currentNote` cannot have caught up yet — its refresh goes through
-    // `notifyWorkoutNotes()` and `maybeSyncCloud()`. A user who renames their
-    // routine to a deload title and presses Done would otherwise be prompted
-    // about a session on a note that is already a deload note, and answering
-    // would write a check-in record onto it.
-    if (!gates.fatigueTrackingEnabled
-      || gates.notesLoading
-      || gates.notesError
-      || gates.otherModalOwnsScreen
-      || isDeloadTitle(workoutNoteTitleRef.current)
-      || isDeloadTitle(currentNoteRef.current?.title)) {
-      withdrawCheckIn();
-      return;
-    }
-    const explicitTrackedNames = listTrackedLifts(trackedLifts);
-    const defaultNames = getDefaultTrackedNames();
-    const normalizedDefaults = new Set(defaultNames.map(n => normalizeLiftName(n)));
-    const resolvedTrackedNames = [
-      ...defaultNames,
-      ...explicitTrackedNames.filter(n => !normalizedDefaults.has(normalizeLiftName(n))),
-    ];
-    const latestText = workoutNoteTextRef.current;
-    const latestId = currentIdRef.current;
-    const { sections: currentSections } = parseWorkoutNote(latestText);
-    const { isRough, sessionIndex, flagged, detectors, metrics } = deriveSessionCheckIn(currentSections, resolvedTrackedNames);
-    const checkins = currentNoteRef.current?.session_checkins;
-    // Row 9 — no trigger fired. Row 7 — this session already has a record
-    // (answered or dismissed), which suppresses it permanently.
-    if (!isRough || sessionIndex == null || checkins?.[sessionIndex]) {
-      setRoughFlaggedNames(new Set());
-      setRoughSessionIndex(null);
-      setRoughNoteId(null);
-      return;
-    }
-    // Row 8 — cooldown. Only the interruption is withheld: the exercises are
-    // still marked inline and the session is still reachable from Analytics.
-    if (_checkInCooldownActive(checkins, sessionIndex)) {
-      setRoughFlaggedNames(new Set(flagged.map(f => f.normName)));
-      setRoughSessionIndex(sessionIndex);
-      setRoughNoteId(latestId);
-      return;
-    }
-    // Row 10 — ask.
-    setRoughFlaggedNames(new Set(flagged.map(f => f.normName)));
-    setRoughSessionIndex(sessionIndex);
-    setRoughNoteId(latestId);
-    setRoughCheckInData({ sessionIndex, detectors, flagged, metrics });
-    setShowCheckInModal(true);
-    onCheckInPrompt?.();
-  };
 
   // #863: session alignment is a purely inline, ignorable signal now — the
   // note is already autosaved by the time Done is pressed, so "Keep
   // editing" and "Save uneven" ended with identical bytes on disk anyway.
   // No dialog on this path any more; alignment problems are surfaced by
   // LogScreenEditorCard's on-demand problem list instead.
-  const handleDoneCurrent = async () => {
-    if (autosaveCurrentTimerRef.current) {
-      clearTimeout(autosaveCurrentTimerRef.current);
-      autosaveCurrentTimerRef.current = null;
-    }
-    if (!currentId) {
-      if (hasUnsavedCurrent) {
-        const ok = await handleSave();
-        if (!ok) return;
-      }
-      exitCurrentEditor();
-      return;
-    }
-    if (hasUnsavedCurrent) {
-      let ok = await handleSave();
-      if (!ok) return;
-      let guard = 0;
-      while (
-        workoutNoteTextRef.current !== lastSavedCurrentTextRef.current ||
-        workoutNoteTitleRef.current !== lastSavedCurrentTitleRef.current
-      ) {
-        if (guard >= 5) return;
-        guard += 1;
-        ok = await handleSave();
-        if (!ok) return;
-      }
-    }
-    // #577: Done is the SOLE release gate — even when hasUnsavedCurrent was
-    // already false because autosave completed minutes earlier, still
-    // recompute right here (fresh recovery-boundary read, fresh aggregate)
-    // rather than trusting a possibly-stale earlier computation, then
-    // release the latest valid result. Never fires from autosave, revert,
-    // a failed save (returned above), or exiting/abandoning without Done.
-    await computePendingPRCandidate();
-    if (pendingPRRef.current) {
-      setPrMoment(pendingPRRef.current);
-      consumedPRKeysRef.current.add(pendingPRRef.current.exerciseKey);
-      pendingPRRef.current = null;
-    }
-    _runCheckInDetection();
-    exitCurrentEditor();
-  };
+  const handleDoneCurrent = () => doneCurrent({
+    currentId,
+    hasUnsavedCurrent,
+    handleSave,
+    exitCurrentEditor,
+    autosaveTimerRef: autosaveCurrentTimerRef,
+    workoutNoteTextRef,
+    workoutNoteTitleRef,
+    lastSavedTextRef: lastSavedCurrentTextRef,
+    lastSavedTitleRef: lastSavedCurrentTitleRef,
+    computePendingPRCandidate,
+    pendingPRRef,
+    setPrMoment,
+    consumedPRKeysRef,
+    runCheckInDetection: _runCheckInDetection,
+  });
 
   const clearPRMoment = () => setPrMoment(null);
 
-  const performRevertCurrent = async () => {
-    if (!currentId) {
-      // Explicit abandonment of a stranded create (#997 review) — the same
-      // boundary, and the same reasoning, as performRevertOther's. Without it,
-      // discarding this draft and then authoring a different first routine
-      // would write that routine over the stranded one.
-      //
-      // Retirement is AWAITED and comes FIRST, and the draft is cleared only
-      // once it succeeds (#997 review, round 3). A discard that cleared the
-      // editor while the durable slot still named the stranded attempt would
-      // report a boundary it had not established: the next routine authored
-      // here — this session or after a restart — would then complete the
-      // abandoned attempt and overwrite the stranded routine. Failing instead
-      // leaves everything exactly as it was, which the caller surfaces by
-      // keeping the editor open.
-      //
-      // An in-flight create is awaited first for the same reason: it may be the
-      // very attempt being retired, and retiring underneath it would let its
-      // completion race this boundary.
-      if (autosaveCurrentTimerRef.current) {
-        clearTimeout(autosaveCurrentTimerRef.current);
-        autosaveCurrentTimerRef.current = null;
-      }
-      if (saveCurrentInFlightRef.current) {
-        await saveCurrentInFlightRef.current;
-      }
-      const abandoned = createAttemptTokenRef.current;
-      if (abandoned) {
-        try {
-          await clearWorkoutNoteCreationAttempt(CURRENT_CREATE_ATTEMPT_KEY, abandoned);
-        } catch {
-          setSaveError('Could not clear this draft');
-          return false;
-        }
-        createAttemptTokenRef.current = null;
-      }
-      setWorkoutNoteTitle('');
-      setWorkoutNoteText('');
-      clearWorkoutNoteDraft('current:new').catch(() => {});
-      return true;
-    }
-    if (!originalNoteState) return true;
-    if (autosaveCurrentTimerRef.current) {
-      clearTimeout(autosaveCurrentTimerRef.current);
-      autosaveCurrentTimerRef.current = null;
-    }
-    if (saveCurrentInFlightRef.current) {
-      await saveCurrentInFlightRef.current;
-    }
-    try {
-      await update(currentId, {
-        title: originalNoteState.title,
-        raw_text: originalNoteState.text,
-        activeWeek: isValidActiveWeek(originalNoteState.activeWeek)
-          ? originalNoteState.activeWeek
-          : null,
-      });
-      setWorkoutNoteTitle(originalNoteState.title);
-      setWorkoutNoteText(originalNoteState.text);
-      if (isValidActiveWeek(originalNoteState.activeWeek)) {
-        pendingActiveWeekRef.current = originalNoteState.activeWeek;
-        activeWeekAuthorityRef.current = 'user';
-        setLocalActiveWeek(originalNoteState.activeWeek);
-      } else {
-        pendingActiveWeekRef.current = null;
-        activeWeekAuthorityRef.current = 'fallback';
-        setLocalActiveWeek(null);
-      }
-      clearWorkoutNoteDraft(`current:${currentId}`).catch(() => {});
-      return true;
-    } catch (err) {
-      console.warn('Revert failed:', err);
-      Alert.alert('Error', 'Failed to revert changes. Please try again.');
-      return false;
-    }
-  };
+  const performRevertCurrent = () => performRevert({
+    currentId,
+    originalNoteState,
+    update,
+    autosaveTimerRef: autosaveCurrentTimerRef,
+    saveInFlightRef: saveCurrentInFlightRef,
+    createAttemptTokenRef,
+    createAttemptKey: CURRENT_CREATE_ATTEMPT_KEY,
+    pendingActiveWeekRef,
+    activeWeekAuthorityRef,
+    setWorkoutNoteTitle,
+    setWorkoutNoteText,
+    setLocalActiveWeek,
+    setSaveError,
+  });
 
   const handleUndoCurrent = () => {
     const isDraft = !currentId;
@@ -1430,16 +435,8 @@ export function useLogCurrentRoutineEditor({
   // preserving the other A/B week's body untouched. Shared by handleSkipWeek
   // and handleUnskipWeek so both stay consistent with the existing A/B
   // active-week slicing in activeEditText/handleCurrentTextChange.
-  const _spliceActiveText = (newActiveText) => {
-    if (!hasABWeeks) return newActiveText;
-    const lines = workoutNoteText.split('\n');
-    const sepIdx = lines.findIndex(l => l.trim() === '---');
-    if (sepIdx === -1) return newActiveText;
-    if (effectiveActiveWeek === 'A') {
-      return newActiveText + '\n---\n' + lines.slice(sepIdx + 1).join('\n');
-    }
-    return lines.slice(0, sepIdx).join('\n') + '\n---\n' + newActiveText;
-  };
+  const _spliceActiveText = (newActiveText) =>
+    spliceWeekText(workoutNoteText, effectiveActiveWeek, newActiveText);
 
   const handleSkipWeek = async () => {
     if (!currentId) return;
@@ -1480,168 +477,34 @@ export function useLogCurrentRoutineEditor({
     setSkipWeekStatus('Skip applied');
   };
 
-  // Performs the actual removal for handleUnskipWeek once any confirmation
-  // has been resolved. nextUniversalSkipCount is the counter value to persist
-  // alongside the removal (count-1 on a universal undo, 0 on a confirmed
-  // manual removal). Text, counter, and check-in cleanup are persisted in one
-  // update via handleSave so a partial write can never desync them.
-  const _performUnskipRemoval = async (newActiveText, nextUniversalSkipCount) => {
-    if (saveCurrentInFlightRef.current) {
-      setSkipWeekStatus('Finishing the previous save — try again');
-      return;
-    }
-    // The session being removed is the note's current deepest session column
-    // (the one the just-removed trailing skip belonged to), computed from the
-    // full note text before the removal — this matches the sessionIndex
-    // _runCheckInDetection used when it recorded a fatigue-reason check-in
-    // for that skip.
-    const removedSessionIndex = computeWeeksIn(parseWorkoutNote(workoutNoteText).sections) - 1;
+  const handleUnskipWeek = () => unskipWeek({
+    currentId,
+    activeEditText,
+    activeWeekParsed,
+    workoutNoteText,
+    effectiveActiveWeek,
+    handleSave,
+    update,
+    setWorkoutNoteText,
+    workoutNoteTextRef,
+    setSkipWeekStatus,
+    saveInFlightRef: saveCurrentInFlightRef,
+    universalSkipCountRef,
+    currentNoteRef,
+  });
 
-    // Drop the fatigue-reason check-in recorded for the removed session (if
-    // any), and re-key any remaining check-ins whose session index shifted
-    // down by one so they stay attached to the correct session. Sessions
-    // before the removed one are untouched. Computed up front so it rides in
-    // the same update as raw_text.
-    let sessionCheckins; // undefined = leave persisted check-ins untouched
-    const prevCheckins = currentNoteRef.current?.session_checkins;
-    if (prevCheckins && typeof prevCheckins === 'object' && removedSessionIndex >= 0) {
-      const nextCheckins = {};
-      let changed = false;
-      for (const [key, value] of Object.entries(prevCheckins)) {
-        const idx = Number(key);
-        if (idx === removedSessionIndex) { changed = true; continue; }
-        const nextIdx = idx > removedSessionIndex ? idx - 1 : idx;
-        if (nextIdx !== idx) changed = true;
-        nextCheckins[String(nextIdx)] = value;
-      }
-      if (changed) sessionCheckins = nextCheckins;
-    }
+  const handleApplyProgressionSuggestion = (suggestion) => applyProgression({
+    currentId,
+    activeEditText,
+    workoutNoteText,
+    effectiveActiveWeek,
+    handleSave,
+    setWorkoutNoteText,
+    workoutNoteTextRef,
+    saveInFlightRef: saveCurrentInFlightRef,
+  }, suggestion);
 
-    const prevFullText = workoutNoteText;
-    const newFullText = _spliceActiveText(newActiveText);
-    setWorkoutNoteText(newFullText);
-    workoutNoteTextRef.current = newFullText;
-    const saved = await handleSave({
-      overrideText: newFullText,
-      universalSkipCount: nextUniversalSkipCount,
-      sessionCheckins,
-    });
-    if (!saved) {
-      // Revert the optimistic local text: nothing persisted (text, counter,
-      // and check-in cleanup travel in one update), so the local state must
-      // return to match — otherwise a retry would find no trailing skip and
-      // the stale-clamp path would desync the counter from the stored text.
-      setWorkoutNoteText(prevFullText);
-      workoutNoteTextRef.current = prevFullText;
-      setSkipWeekStatus('Could not remove skip — try again');
-      return;
-    }
-
-    // Removing a skip is not new logged work, so it does not run fatigue
-    // check-in detection — only a successful 'Skip week' save does.
-    setSkipWeekStatus('Skip removed');
-  };
-
-  const handleUnskipWeek = async () => {
-    if (!currentId) return;
-    if (saveCurrentInFlightRef.current) {
-      setSkipWeekStatus('Finishing the previous save — try again');
-      return;
-    }
-    const newActiveText = removeWeekSkipFromText(activeEditText, activeWeekParsed.sections);
-    const count = universalSkipCountRef.current;
-    if (newActiveText === activeEditText) {
-      // Nothing to undo: no exercise currently ends in a skip marker. The
-      // text-driven no-op rule always wins; if the advisory counter says
-      // otherwise it is stale (hand-edited text), so clamp it to reality.
-      setSkipWeekStatus('No skip to remove');
-      if (count > 0) {
-        const prevMarkers = currentNoteRef.current?.skip_markers;
-        try {
-          const clamped = await update(currentId, {
-            skip_markers: { ...(prevMarkers || {}), universal_skip_count: 0 },
-          });
-          // Commit the ref only after the clamp actually persisted (same
-          // rule as every other counter write). On a falsy result or a
-          // rejection the ref keeps the stale value, so the next press
-          // retries the clamp instead of becoming a pure no-op while
-          // persistence still holds the stale counter.
-          if (clamped) universalSkipCountRef.current = 0;
-        } catch {
-          // Advisory-only flag: a failed clamp write just leaves it stale
-          // (and retryable); the text-driven rules still decide what can
-          // be removed.
-        }
-      }
-      return;
-    }
-
-    if (count > 0) {
-      // The trailing skips include at least one Skip-week press: undo one.
-      await _performUnskipRemoval(newActiveText, count - 1);
-      return;
-    }
-
-    // Counter says no outstanding Skip-week press, but trailing skips exist:
-    // they were added manually (per-exercise dashes). Confirm before
-    // deleting the user's hand-entered history.
-    Alert.alert(
-      'Remove skips?',
-      "These skips weren't added by Skip week. Remove them anyway?",
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: () => _performUnskipRemoval(newActiveText, 0),
-        },
-      ]
-    );
-  };
-
-  // #961: the explicit "Apply to note" action from a progression-suggestion
-  // card. It is the only path by which a suggestion touches canonical note
-  // text. `applyProgressionSuggestionToNoteText` only ever inserts new lines
-  // (a target set row under the matching exercise, or a synthesized exercise
-  // block) and never rewrites or deletes one; a non-applicable, stale, or
-  // duplicate suggestion returns the text byte-identical and this handler
-  // then persists nothing. Mirrors handleSkipWeek: operates on the active
-  // A/B half, splices it back into the full note, and commits via handleSave
-  // so text is never left diverged from what was persisted.
-  const handleApplyProgressionSuggestion = async (suggestion) => {
-    if (!currentId) return { applied: false, reason: 'no-current-note' };
-    if (saveCurrentInFlightRef.current) {
-      return { applied: false, reason: 'save-in-flight' };
-    }
-
-    const result = applyProgressionSuggestionToNoteText(activeEditText, suggestion);
-    if (!result.applied || result.text === activeEditText) {
-      return { applied: false, reason: result.reason || 'no-change' };
-    }
-
-    const prevFullText = workoutNoteText;
-    const newFullText = _spliceActiveText(result.text);
-    setWorkoutNoteText(newFullText);
-    workoutNoteTextRef.current = newFullText;
-    const saved = await handleSave({ overrideText: newFullText });
-    if (!saved) {
-      setWorkoutNoteText(prevFullText);
-      workoutNoteTextRef.current = prevFullText;
-      return { applied: false, reason: 'save-failed' };
-    }
-    return { applied: true, reason: result.reason };
-  };
-
-  const handleNoteBodyPress = () => {
-    const now = Date.now();
-    const DOUBLE_TAP_DELAY = 300;
-    if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
-      enterCurrentEditor();
-      lastTapRef.current = 0;
-    } else {
-      lastTapRef.current = now;
-    }
-  };
+  const handleNoteBodyPress = makeHandleNoteBodyPress({ lastTapRef, enterCurrentEditor });
 
   // #880 revised body, BLOCKER 1: `Saved` is a claim about one specific
   // {title, raw_text} snapshot and must stop being displayed the instant the
@@ -1654,33 +517,20 @@ export function useLogCurrentRoutineEditor({
   // what closes the gap where a completed save's "Saved on device" flash
   // would otherwise keep showing for up to its 2s timeout even after the
   // user typed something new.
-  const liveEditorNoteId = currentId || draftNoteIdOverrideRef.current || 'new';
-  const liveMatchesSavingSnapshot = isSaving
-    && savingCurrentSnapshotRef.current?.noteId === liveEditorNoteId
-    && snapshotMatches(
-      savingCurrentSnapshotRef.current,
-      workoutNoteTitle,
-      workoutNoteText,
-    );
-  const liveMatchesLastSave = lastSavedCurrentIdRef.current === liveEditorNoteId && snapshotMatches(
-    { title: lastSavedCurrentTitleRef.current, raw_text: lastSavedCurrentTextRef.current },
+  const { boundSaveSuccess, saveStatus } = deriveCurrentSaveStatus({
+    currentId,
+    draftNoteIdOverrideRef,
+    isSaving,
+    savingSnapshotRef: savingCurrentSnapshotRef,
     workoutNoteTitle,
     workoutNoteText,
-  );
-  const liveMatchesCanonical = currentNote?.id === liveEditorNoteId && snapshotMatches(
-    { title: currentNote.title || '', raw_text: currentNote.raw_text || '' },
-    workoutNoteTitle,
-    workoutNoteText,
-  );
-  const liveIsLocallyDurable = liveMatchesLastSave || liveMatchesCanonical;
-  const boundSaveSuccess = saveSuccess && liveIsLocallyDurable ? saveSuccess : '';
-  const saveStatus = liveMatchesSavingSnapshot
-    ? 'saving'
-    : liveIsLocallyDurable && pendingConvergence
-      ? 'pending'
-      : boundSaveSuccess
-        ? 'saved'
-        : null;
+    lastSavedIdRef: lastSavedCurrentIdRef,
+    lastSavedTitleRef: lastSavedCurrentTitleRef,
+    lastSavedTextRef: lastSavedCurrentTextRef,
+    currentNote,
+    pendingConvergence,
+    saveSuccess,
+  });
 
   return {
     mode,
