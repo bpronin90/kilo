@@ -87,7 +87,6 @@ export const BASELINE = {
   'mobile/components/LogScreenEditorCard.js': 1668,
   'mobile/screens/log/useLogCurrentRoutineEditor.js': 1734,
   'mobile/storage/cloud/syncAdapter.js': 1817,
-  'mobile/components/AnalyticsRecoverySection.js': 1832,
   'mobile/screens/LogScreen.js': 1864,
 };
 

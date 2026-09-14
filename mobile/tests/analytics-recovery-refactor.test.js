@@ -92,11 +92,13 @@ function completedBlock(overrides = {}) {
   return block({ completed_at: '2026-06-01T00:00:00Z', ...overrides });
 }
 
+let _lastSetupComponent;
 function setup(props) {
   let component;
   act(() => {
     component = render.create(<AnalyticsRecoverySection {...props} />);
   });
+  _lastSetupComponent = component;
   return component;
 }
 
@@ -111,6 +113,13 @@ const byLabel = (root, label) => root.findAll(i => i.props.accessibilityLabel ==
 
 beforeEach(() => {
   deriveRecoveryComparison.mockClear();
+});
+
+afterEach(() => {
+  if (_lastSetupComponent) {
+    act(() => { _lastSetupComponent.unmount(); });
+    _lastSetupComponent = null;
+  }
 });
 
 // ── Export / boundary parity ────────────────────────────────────────────────
