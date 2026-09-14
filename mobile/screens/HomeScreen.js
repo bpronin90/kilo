@@ -12,7 +12,6 @@ import { markStartupPhase, markStartupStorageReads } from '../storage/entries/st
 import { createStyles } from './home/homeStyles';
 import { HomeHeader } from './home/HomeHeader';
 import { HomeDashboard } from './home/HomeDashboard';
-
 // The exact example the welcome card teaches (issue #517). Exported so tests
 // can round-trip it through the real parser — the copy must never drift back
 // to a shape parseWorkoutNote silently rejects.
