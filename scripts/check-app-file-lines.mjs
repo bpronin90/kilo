@@ -77,7 +77,6 @@ const CONFIG_FILE_RE = /\.config\.(js|jsx|ts|tsx)$/;
 export const BASELINE = {
   'mobile/components/BackupScreen.js': 650,
   'mobile/lib/parser/workoutNote.js': 773,
-  'mobile/lib/data/workoutAnalytics.js': 836,
   'mobile/storage/entries/recoveryOperationJournal.js': 993,
   'mobile/storage/entries/backupImport.js': 1359,
   'mobile/hooks/entries/recoveryBlockHooks.js': 1366,
