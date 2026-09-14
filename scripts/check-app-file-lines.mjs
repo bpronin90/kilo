@@ -79,7 +79,6 @@ export const BASELINE = {
   'mobile/components/WeightHistoryList.js': 714,
   'mobile/lib/parser/workoutNote.js': 773,
   'mobile/lib/data/workoutAnalytics.js': 836,
-  'mobile/components/UI.js': 894,
   'mobile/screens/WeightScreen.js': 941,
   'mobile/storage/entries/recoveryOperationJournal.js': 993,
   'mobile/screens/AnalyticsScreen.js': 1212,
