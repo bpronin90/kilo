@@ -80,10 +80,8 @@ export const BASELINE = {
   'mobile/storage/entries/recoveryOperationJournal.js': 993,
   'mobile/storage/entries/backupImport.js': 1359,
   'mobile/hooks/entries/recoveryBlockHooks.js': 1366,
-  'mobile/screens/log/useLogOtherRoutineEditor.js': 1594,
   'mobile/storage/syncQueue.js': 1642,
   'mobile/components/LogRecoverySection.js': 1650,
-  'mobile/screens/log/useLogCurrentRoutineEditor.js': 1734,
   'mobile/storage/cloud/syncAdapter.js': 1817,
 };
 
