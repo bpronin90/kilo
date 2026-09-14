@@ -76,10 +76,8 @@ const CONFIG_FILE_RE = /\.config\.(js|jsx|ts|tsx)$/;
 // precondition of merging the reduction; see the module comment above.
 export const BASELINE = {
   'mobile/components/BackupScreen.js': 650,
-  'mobile/components/WeightHistoryList.js': 714,
   'mobile/lib/parser/workoutNote.js': 773,
   'mobile/lib/data/workoutAnalytics.js': 836,
-  'mobile/screens/WeightScreen.js': 941,
   'mobile/storage/entries/recoveryOperationJournal.js': 993,
   'mobile/screens/AnalyticsScreen.js': 1212,
   'mobile/storage/entries/backupImport.js': 1359,
