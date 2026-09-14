@@ -79,7 +79,6 @@ export const BASELINE = {
   'mobile/lib/parser/workoutNote.js': 773,
   'mobile/lib/data/workoutAnalytics.js': 836,
   'mobile/storage/entries/recoveryOperationJournal.js': 993,
-  'mobile/screens/AnalyticsScreen.js': 1212,
   'mobile/storage/entries/backupImport.js': 1359,
   'mobile/hooks/entries/recoveryBlockHooks.js': 1366,
   'mobile/screens/log/useLogOtherRoutineEditor.js': 1594,
