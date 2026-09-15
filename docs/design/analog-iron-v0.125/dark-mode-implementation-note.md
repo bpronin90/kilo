@@ -89,3 +89,47 @@ conflict with this note. In particular:
 
 These caveats do not authorize visual redesign; they only prevent known export
 defects from overriding the approved tokens and layout behavior.
+
+---
+
+## 6. Chart Token Addendum (dark mode)
+
+Dark values for the chart role contract in `visual-language-spec.md` §7.
+Light values and full alternative specifications are in that section.
+Only the roles that differ from existing `KILO_TOKENS_DARK` entries are listed here;
+roles marked "existing" are already in §2.
+
+### Roles common to all three alternatives (dark)
+
+| Semantic role | Token | Dark value | Source |
+|---|---|---|---|
+| Primary series stroke (Alt A/C) | `ink` | `#F0F0F0` | Existing `KILO_TOKENS_DARK.ink` |
+| Secondary series stroke | `inkMuted` | `#9C9A94` | Existing `KILO_TOKENS_DARK.inkMuted` |
+| Unselected point fill | `surface` | `#1C1C1F` | Existing `KILO_TOKENS_DARK.surface` |
+| Axis rule | `borderHairline` | `#2C2C30` | Existing `KILO_TOKENS_DARK.borderHairline` |
+| Comparison/PR marker | `accentRed` | `#FF453A` | Existing `KILO_TOKENS_DARK.accentRed` |
+| Selected band (Alt A) | `borderHairline` | `#2C2C30` | Existing |
+| Bar fill (Alt A) | `inkMuted` 30% | `rgba(156,154,148,0.30)` | Derived from existing `inkMuted` |
+| Bar fill (Alt C) | `subtleBg` | `rgba(255,255,255,0.06)` | Existing `KILO_TOKENS_DARK` subtleBg |
+| Selected point fill (Alt C) | `chipAccentText` | `#ffc98a` | Existing `KILO_TOKENS_DARK.chipAccentText` |
+
+### Alternative B new token (dark)
+
+Alternative B requires one new token not present in `KILO_TOKENS_DARK`:
+
+```typescript
+chartPrimary: '#8FAAB9',  // Cool iron-blue. 7.8:1 on bg, 7.2:1 on surface. AA text ✓
+```
+
+If Alternative B is selected, add `chartPrimary` to `KILO_TOKENS_DARK` and define the
+corresponding light value (`#42535E`) alongside the existing light palette in `colors.js`.
+No other `KILO_TOKENS_DARK` entries change for any alternative.
+
+### Invariant chart rules for dark mode
+
+- Never use a neon or saturated hue for an ordinary chart series stroke. `accentRed`
+  (`#FF453A`) is reserved for comparison/PR markers and exceptional states only.
+- The warm-orange production accent (`#d98d42`) has no chart series role in dark mode.
+  It is not carried forward under any alternative.
+- The `inkSubtle` token (`#686660`) is decoration-only per §2 and must not be used
+  for series strokes, axis rules, or any text in chart contexts.
