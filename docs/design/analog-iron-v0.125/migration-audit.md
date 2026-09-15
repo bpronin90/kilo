@@ -837,9 +837,11 @@ date picker and the Profile/Set New Password text and secure inputs.
 `mobile/tests/auth-session.test.js` and
 `mobile/tests/workout-syntax-reference.test.js`. Device sign-off, one pass across
 all owned secondary and routine surfaces: tapped lb/kg sets with a unit switch mid-edit and inventory save/cancel;
-all six More subviews and hardware Back; empty and existing Profile with both
+all eight More subviews and hardware Back; empty and existing Profile with both
 height inputs, DOB clear and failure/retry; valid and expired recovery entry with
-a mismatch error; full guide scroll; About update/check/failure. Both themes and
+a mismatch error; full guide scroll; About update/check/failure; Routine Import
+paste/parse/validation and routine creation; Routine Prompt Tools copy and
+external-LLM handoff; Routine Share payload and modal lifecycle. Both themes and
 large text throughout. **Order:** after D14, since Set New Password follows the
 consent/lifecycle shell; the other five need only D5.
 
