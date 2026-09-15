@@ -1,13 +1,11 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { Alert } from '../lib/platformAlert';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, Button, SectionTitle, ErrorBanner } from '../components/UI';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { Card, SectionTitle, ErrorBanner } from '../components/UI';
+import { useThemedStyles } from '../theme/ThemeContext';
 import { useWeightEntries, useWeightGoal, useUserProfile } from '../hooks/useEntries';
-import { formatDate, getWeightDeltaSeverity } from '../lib/format';
+import { getWeightDeltaSeverity } from '../lib/format';
 import { parseWeightEntry } from '../lib/parser';
 import { deriveWeightGoalAnalytics } from '../lib/data';
 import { isGoalMet as computeIsGoalMet, isWeightThresholdMet } from '../lib/data/weightGoal';
@@ -17,108 +15,13 @@ import { formatBodyweightValue, inputWeightToLb } from '../lib/units';
 
 import { localDateToday, buildTrendSections } from '../lib/WeightScreenHelpers';
 
-// Web-safe date input. The native @react-native-community/datetimepicker has no
-// usable rendering on web, so on web we render a real DOM <input type="date">
-// (react-native-web passes lowercase string element types through to the DOM).
-// It writes the YYYY-MM-DD value straight back via onChangeDate, matching the
-// native onChange path which also normalizes to a YYYY-MM-DD string.
-function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
-  const { colors } = useTheme();
-  return React.createElement('input', {
-    type: 'date',
-    value: value || '',
-    max: localDateToday(),
-    'aria-label': accessibilityLabel,
-    onChange: (e) => {
-      const next = e?.target?.value;
-      if (next) onChangeDate(next);
-    },
-    style: {
-      backgroundColor: colors.inputBackground,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderStyle: 'solid',
-      borderColor: colors.inputBorder,
-      padding: 14,
-      fontSize: 16,
-      colorScheme: colors.scheme,
-      color: colors.text,
-      fontFamily: 'inherit',
-      width: '100%',
-      boxSizing: 'border-box',
-    },
-  });
-}
 import { TrendSection } from '../components/WeightTrendSection';
 import { WeightGoalCard } from '../components/WeightGoalCard';
 import { WeightHistoryList } from '../components/WeightHistoryList';
 import { useWeightGoalForm } from '../hooks/useWeightGoalForm';
-
-// Format a Date into a local YYYY-MM-DD string (matching the web <input type="date">
-// value). Shared by the entry-date fields so native picker selections normalize the
-// same way regardless of which field they came from.
-function toYMD(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-// Single weigh-in "Date" field. The new-entry and edit forms rendered identical
-// label + web-input / native-picker blocks; this consolidates them and owns its own
-// picker-visibility state so the parent only tracks the YYYY-MM-DD value.
-function DateEntryField({ value, onChangeDate, a11yLabel }) {
-  const styles = useThemedStyles(createStyles);
-  const { colors } = useTheme();
-  const [showPicker, setShowPicker] = useState(false);
-  const dateObj = useMemo(() => {
-    if (value) {
-      const [y, m, d] = value.split('-').map(Number);
-      return new Date(y, m - 1, d);
-    }
-    return new Date();
-  }, [value]);
-
-  const onPickerChange = (event, selectedDate) => {
-    setShowPicker(false);
-    if (selectedDate) onChangeDate(toYMD(selectedDate));
-  };
-
-  return (
-    <>
-      <Text style={styles.inputLabel}>Date</Text>
-      {Platform.OS === 'web' ? (
-        <WebDateInput
-          value={value}
-          onChangeDate={onChangeDate}
-          accessibilityLabel={a11yLabel}
-        />
-      ) : (
-        <>
-          <Pressable
-            style={styles.input}
-            onPress={() => setShowPicker(true)}
-            accessibilityLabel={a11yLabel}
-            accessibilityRole="button"
-          >
-            <Text style={styles.pickerText}>{value}</Text>
-          </Pressable>
-          {showPicker && (
-            <DateTimePicker
-              themeVariant={colors.scheme}
-              value={dateObj}
-              mode="date"
-              display="default"
-              onChange={onPickerChange}
-              onDismiss={() => setShowPicker(false)}
-              maximumDate={new Date()}
-            />
-          )}
-        </>
-      )}
-    </>
-  );
-}
+import { WeightEntryForm } from './weight/WeightEntryForm';
+import { GoalHistoryPanel } from './weight/GoalHistoryPanel';
+import { createStyles } from './weight/weightStyles';
 
 export function WeightScreen({
   weightValue,
@@ -132,9 +35,7 @@ export function WeightScreen({
   onNavigate,
   registerBackConsumer,
 }) {
-  const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
-  const hp = useThemedStyles(createHistoryPanel);
   const { entries, remove, update, loading: entriesLoading, error: entriesError, refresh: refreshEntries } = useWeightEntries();
   const { goal, loading: goalLoading, error: goalError, refresh: refreshGoal, save: saveGoal, clear: clearGoal, archiveGoal } = useWeightGoal();
   const { archivedGoals } = useArchivedWeightGoals();
@@ -412,76 +313,23 @@ export function WeightScreen({
       {goalError ? (
         <ErrorBanner message="Could not load your weight goal." onRetry={refreshGoal} />
       ) : null}
-      <Card style={editingId ? styles.editingCard : null}>
-        {editingId && (
-          <View style={styles.editingHeader}>
-            <Text style={styles.editingTitle}>Editing entry</Text>
-            <Pressable
-              onPress={cancelEdit}
-              style={styles.editorActionTarget}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel"
-            >
-              <Text style={styles.cancelText} accessible={false} importantForAccessibility="no">Cancel</Text>
-            </Pressable>
-          </View>
-        )}
-        {displayError ? (
-          <Text style={styles.errorText}>{displayError}</Text>
-        ) : null}
-        <Text style={styles.inputLabel}>Weight ({unit})</Text>
-        <TextInput
-          keyboardAppearance={colors.scheme}
-          value={weightValue}
-          onChangeText={setWeightValue}
-          placeholder={unit === 'kg' ? '84.0' : '185.0'}
-          placeholderTextColor={colors.textMuted}
-          keyboardType="decimal-pad"
-          style={styles.input}
-        />
-        {!editingId && (
-          <>
-            <DateEntryField
-              value={newEntryDate}
-              onChangeDate={(d) => {
-                setNewEntryDate(d);
-                setNewEntryDateTouched(true);
-              }}
-              a11yLabel="Weigh-in date"
-            />
-            <Text style={styles.inputLabel}>Note</Text>
-            <TextInput
-              keyboardAppearance={colors.scheme}
-              value={weightNote}
-              onChangeText={setWeightNote}
-              placeholder="Morning, fasted"
-              placeholderTextColor={colors.textMuted}
-              style={styles.input}
-              accessibilityLabel="Note"
-            />
-          </>
-        )}
-        {editingId && (
-          <>
-            <DateEntryField value={editDate} onChangeDate={setEditDate} a11yLabel="Entry date" />
-            <Text style={styles.inputLabel}>Note</Text>
-            <TextInput
-              keyboardAppearance={colors.scheme}
-              value={weightNote}
-              onChangeText={setWeightNote}
-              placeholder="Morning, fasted"
-              placeholderTextColor={colors.textMuted}
-              style={styles.input}
-              accessibilityLabel="Note"
-            />
-          </>
-        )}
-        <Button
-          onPress={handleSubmit}
-          title={editingId ? "Update entry" : "Save weigh-in"}
-          disabled={saving}
-        />
-      </Card>
+      <WeightEntryForm
+        editingId={editingId}
+        cancelEdit={cancelEdit}
+        displayError={displayError}
+        unit={unit}
+        weightValue={weightValue}
+        setWeightValue={setWeightValue}
+        weightNote={weightNote}
+        setWeightNote={setWeightNote}
+        newEntryDate={newEntryDate}
+        setNewEntryDate={setNewEntryDate}
+        setNewEntryDateTouched={setNewEntryDateTouched}
+        editDate={editDate}
+        setEditDate={setEditDate}
+        handleSubmit={handleSubmit}
+        saving={saving}
+      />
 
       {isHistoryFirstLoad ? <WeightSkeleton /> : historyUnavailable ? null : (
       <>
@@ -573,369 +421,3 @@ function WeightSkeleton() {
     </View>
   );
 }
-
-// Archived-goal history panel. Shares the one-panel visual system with Weight
-// History (#411): the header row IS the column-header / summary row, with the
-// collapse chevron in a trailing control cell and no separate empty chevron strip.
-function GoalHistoryPanel({ sortedArchivedGoals, collapsed, setCollapsed, latestArchivedOutcome, unit = 'lb' }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
-  const hp = useThemedStyles(createHistoryPanel);
-  return (
-    <View style={styles.archivedContainer}>
-      <SectionTitle>Goal History</SectionTitle>
-      <View style={hp.card}>
-        <Pressable
-          onPress={() => setCollapsed(c => !c)}
-          style={[hp.headerRow, !collapsed && hp.headerRowBordered]}
-          accessibilityRole="button"
-          accessibilityLabel={collapsed ? 'Expand goal history' : 'Collapse goal history'}
-        >
-          {collapsed ? (
-            <View style={hp.headerContent}>
-              <View style={hp.summaryStack}>
-                <Text style={hp.summaryCount}>
-                  {`${sortedArchivedGoals.length} ${sortedArchivedGoals.length === 1 ? 'goal' : 'goals'}`}
-                </Text>
-                <Text style={hp.summaryLatest} numberOfLines={1}>
-                  {'Latest: '}
-                  <Text
-                    style={[
-                      hp.summaryEmphasis,
-                      latestArchivedOutcome?.met === true && styles.archivedValueMet,
-                      latestArchivedOutcome?.met === false && styles.archivedValueMissed,
-                    ]}
-                  >
-                    {latestArchivedOutcome?.label}
-                  </Text>
-                </Text>
-              </View>
-            </View>
-          ) : (
-            <View style={hp.headerContent}>
-              <Text style={[hp.columnLabel, hp.col1]}>Target</Text>
-              <Text style={[hp.columnLabel, hp.col2, hp.columnLabelCenter]}>End Weight</Text>
-              <Text style={[hp.columnLabel, hp.col3, hp.columnLabelRight]}>Target Date</Text>
-            </View>
-          )}
-          <View style={hp.controlCell}>
-            <MaterialIcons
-              name={collapsed ? 'expand-more' : 'expand-less'}
-              size={18}
-              color={colors.textMuted}
-              accessible={false}
-            />
-          </View>
-        </Pressable>
-        {!collapsed && sortedArchivedGoals.map((g, index) => {
-          const isLast = index === sortedArchivedGoals.length - 1;
-          // Color End Weight by archived outcome: success when the completed
-          // weight met the saved target, error when it did not, neutral when
-          // no completed weight was recorded. Reuses the active-goal helper.
-          const hasCompletedWeight =
-            g.completed_weight !== null && g.completed_weight !== undefined;
-          const rowArchivedRef = g.archived_at ? new Date(g.archived_at) : new Date();
-          const endWeightOutcomeStyle = hasCompletedWeight
-            ? (computeIsGoalMet(g, g.completed_weight, rowArchivedRef)
-                ? styles.archivedValueMet
-                : styles.archivedValueMissed)
-            : null;
-          return (
-            <View key={g.id} style={[hp.rowContainer, isLast && hp.lastRow]}>
-              <View style={hp.rowMain}>
-                <View style={hp.rowCells}>
-                  <View style={hp.col1}>
-                    <Text style={hp.value}>{formatBodyweightValue(g.target_weight, unit)} {unit}</Text>
-                  </View>
-                  <View style={hp.col2}>
-                    <Text style={[hp.value, endWeightOutcomeStyle]}>
-                      {hasCompletedWeight ? `${formatBodyweightValue(g.completed_weight, unit)} ${unit}` : '—'}
-                    </Text>
-                  </View>
-                  <View style={hp.col3}>
-                    <Text style={hp.dateValue}>
-                      {g.target_date ? formatDate(g.target_date) : '—'}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-              {/* Reserved trailing control cell keeps the three content
-                  columns aligned with Weight History's rows (#411). */}
-              <View style={hp.controlCellRow} />
-            </View>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
-const createStyles = (colors) => StyleSheet.create({
-  skeletonCard: {
-    backgroundColor: colors.card,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    padding: 20,
-    marginTop: 12,
-    gap: 12,
-  },
-  skeletonBar: {
-    backgroundColor: colors.cardBorder,
-    borderRadius: 6,
-    opacity: 0.6,
-    height: 12,
-  },
-  skeletonBarShort: {
-    width: '35%',
-  },
-  skeletonBarFull: {
-    width: '100%',
-  },
-  skeletonBarWide: {
-    width: '75%',
-  },
-  errorText: {
-    color: colors.error,
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.textMuted,
-  },
-  input: {
-    backgroundColor: colors.inputBackground,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.inputBorder,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    minHeight: 48,
-    fontSize: 16,
-    color: colors.text,
-    justifyContent: 'center',
-  },
-  editingCard: {
-    borderColor: colors.accent,
-    borderWidth: 2,
-  },
-  editingHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  editingTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.accentText,
-    textTransform: 'uppercase',
-  },
-  cancelText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textMuted,
-    padding: 4,
-  },
-  // The editing-header Cancel is a text-only control. ui-design-rules.md §15
-  // says grow the box rather than reach for hitSlop (React Native clips a slop
-  // at the parent's bounds), so it carries its own >=44x44dp target.
-  editorActionTarget: {
-    minHeight: 44,
-    minWidth: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  pickerText: {
-    fontSize: 16,
-    color: colors.text,
-  },
-  trendsCardMerged: {
-    padding: 0,
-    gap: 0,
-    overflow: 'hidden',
-  },
-  fullTrendsLink: {
-    alignSelf: 'center',
-    minHeight: 44,
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-    marginTop: 4,
-  },
-  fullTrendsLinkText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textMuted,
-  },
-  archivedContainer: {
-    gap: 16,
-  },
-  // Semantic End Weight / latest-outcome colors — the only intended visual
-  // difference from the Weight History panel (#411). Applied on top of the
-  // shared hp.value / hp.summaryEmphasis typography below.
-  archivedValueMet: {
-    color: colors.success,
-  },
-  archivedValueMissed: {
-    color: colors.error,
-  },
-});
-
-// ── Shared history-panel visual system (#411) ─────────────────────────────────
-// Goal History (this screen) and Weight History (WeightHistoryList.js) render as
-// ONE uniform system. Every value below is kept numerically identical to the
-// block of the same name in WeightHistoryList.js so the two panels' equivalent
-// elements (header row, 3-column [value·value·date] grid, trailing control cell,
-// values, dates, labels, and collapsed summary) match exactly. The only intended
-// differences between panels are the literal label text and semantic outcome
-// colors (End Weight / Success-Missed). These constants are duplicated (not
-// imported) because both panels must stay inside their Allowed Files.
-const HISTORY_COL1_FLEX = 1.35; // primary value, left aligned
-const HISTORY_COL2_FLEX = 1.25; // secondary value, center aligned
-const HISTORY_COL3_FLEX = 1.5; // date, right aligned
-const HISTORY_CONTROL_WIDTH = 56; // trailing control cell (chevron / filter / delete)
-const HISTORY_ROW_PAD_V = 12;
-const HISTORY_ROW_PAD_H = 16;
-const HISTORY_VALUE_SIZE = 20;
-const HISTORY_VALUE_WEIGHT = '700';
-const HISTORY_DATE_SIZE = 15;
-const HISTORY_DATE_WEIGHT = '600';
-const HISTORY_LABEL_SIZE = 11;
-const HISTORY_LABEL_WEIGHT = '700';
-const HISTORY_SUMMARY_SIZE = 15;
-const HISTORY_SUMMARY_WEIGHT = '600';
-const HISTORY_SUMMARY_EMPHASIS_WEIGHT = '900';
-const HISTORY_SUMMARY_COUNT_SIZE = 12;
-const HISTORY_SUMMARY_COUNT_WEIGHT = '600';
-
-const createHistoryPanel = (colors) => StyleSheet.create({
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    overflow: 'hidden',
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingLeft: HISTORY_ROW_PAD_H,
-    paddingRight: 0,
-    paddingVertical: 10,
-    minHeight: 44,
-    backgroundColor: colors.subtleBg,
-  },
-  headerRowBordered: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
-  },
-  headerContent: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  controlCell: {
-    width: HISTORY_CONTROL_WIDTH,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingRight: 12,
-    gap: 8,
-  },
-  controlIconBtn: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  controlCellRow: {
-    width: HISTORY_CONTROL_WIDTH,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  columnLabel: {
-    fontSize: HISTORY_LABEL_SIZE,
-    fontWeight: HISTORY_LABEL_WEIGHT,
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  col1: {
-    flex: HISTORY_COL1_FLEX,
-    alignItems: 'flex-start',
-  },
-  col2: {
-    flex: HISTORY_COL2_FLEX,
-    alignItems: 'center',
-  },
-  col3: {
-    flex: HISTORY_COL3_FLEX,
-    alignItems: 'flex-end',
-  },
-  rowContainer: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
-  },
-  activeRow: {
-    backgroundColor: colors.chipBackground,
-  },
-  lastRow: {
-    borderBottomWidth: 0,
-  },
-  rowMain: {
-    flex: 1,
-    paddingLeft: HISTORY_ROW_PAD_H,
-    paddingRight: 0,
-    paddingVertical: HISTORY_ROW_PAD_V,
-  },
-  rowCells: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  value: {
-    fontSize: HISTORY_VALUE_SIZE,
-    fontWeight: HISTORY_VALUE_WEIGHT,
-    color: colors.text,
-  },
-  dateValue: {
-    fontSize: HISTORY_DATE_SIZE,
-    fontWeight: HISTORY_DATE_WEIGHT,
-    color: colors.textMuted,
-    textAlign: 'right',
-  },
-  summaryText: {
-    flex: 1,
-    fontSize: HISTORY_SUMMARY_SIZE,
-    fontWeight: HISTORY_SUMMARY_WEIGHT,
-    color: colors.textMuted,
-  },
-  summaryEmphasis: {
-    fontWeight: HISTORY_SUMMARY_EMPHASIS_WEIGHT,
-    color: colors.text,
-  },
-  summaryStack: {
-    flex: 1,
-    flexDirection: 'column',
-    justifyContent: 'center',
-    gap: 2,
-  },
-  summaryCount: {
-    fontSize: HISTORY_SUMMARY_COUNT_SIZE,
-    fontWeight: HISTORY_SUMMARY_COUNT_WEIGHT,
-    color: colors.textMuted,
-  },
-  summaryLatest: {
-    fontSize: HISTORY_SUMMARY_SIZE,
-    fontWeight: HISTORY_SUMMARY_WEIGHT,
-    color: colors.textMuted,
-  },
-  columnLabelCenter: {
-    textAlign: 'center',
-  },
-  columnLabelRight: {
-    textAlign: 'right',
-  },
-});

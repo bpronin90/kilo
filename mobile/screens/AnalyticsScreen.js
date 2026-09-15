@@ -1,10 +1,8 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View, ActivityIndicator, TextInput } from 'react-native';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { ScreenShell } from '../components/ScreenShell';
-import { HeroMetric, SectionTitle, SessionGauge, ArtisanalPanel, ErrorBanner } from '../components/UI';
+import { HeroMetric } from '../components/UI';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
-import { deriveWeightGoalAnalytics, DEFAULT_1K_EXERCISES, normalizeLiftName, deriveCheckInHistory, deriveRoutineStatus } from '../lib/data';
+import { deriveWeightGoalAnalytics, DEFAULT_1K_EXERCISES, deriveCheckInHistory, deriveRoutineStatus } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries, useDeloadHistory, useFeatureToggles, useRecoveryBlockState, useActiveTrainingContext } from '../hooks/useEntries';
 import { useRecoveryAnalyticsFilter } from '../hooks/entries/recoveryBlockHooks';
 import { findActiveBlock, isLiveRecord } from '../lib/data/recoveryBlocks';
@@ -20,17 +18,11 @@ import {
   deriveOverviewRows,
   shapeEditCheckInData,
 } from './analytics/analyticsDerivations';
-import { formatDuration } from '../lib/format';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 import { lerpColor } from '../lib/AnalyticsScreenHelpers';
 import { useWeightUnit } from '../lib/unitPreference';
-import { displayWeight, formatBodyweightValue, formatLiftWeightValue, displayChartSeries, lbToKg } from '../lib/units';
-import { AnalyticsWeightTrendsCard } from '../components/AnalyticsWeightTrendsCard';
-import { AnalyticsFatigueCard } from '../components/AnalyticsFatigueCard';
-import { AnalyticsStrengthSection, AnalyticsBig3MappingCard } from '../components/AnalyticsStrengthSection';
-import { AnalyticsOverviewCard } from '../components/AnalyticsOverviewCard';
-import { CrossDayComparison, formatOverload } from '../components/AnalyticsCrossDayComparison';
+import { displayWeight, formatBodyweightValue, displayChartSeries, lbToKg } from '../lib/units';
 import { AnalyticsRecoverySection } from '../components/AnalyticsRecoverySection';
 import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
 import { normalizeExerciseKey } from '../lib/parser';
@@ -44,33 +36,13 @@ import {
   isRenderableProgressionSuggestion,
   progressionSuggestionInstanceId,
 } from '../components/ProgressionSuggestionCard';
-
-// #894: a Progressive Overload row's trend can look "stuck" for two very
-// different reasons the icon alone can't tell apart — a movement inherited as
-// tracked with no activation record (#893 legacy/catalog state, full history)
-// versus a movement whose tracked span just opened (an activation record
-// exists, but the span itself holds no comparison yet). Only these two states
-// get a caption; a fully classified row (up/flat/down) needs no explanation,
-// and a row with no capability data at all is already self-explanatory via
-// the dash. `hasActivation` alone can't distinguish "just tracked" from
-// "tracked a while ago, still building history" — `rowTrend === 'first_session'`
-// (or the non-weighted 'dash' arrow) is what actually means "no comparison in
-// this span yet", so the two conditions are checked together.
-function describePoRowState({ hasActivation, isFirstSpanSession, hasCapabilityData }) {
-  if (!hasCapabilityData) return null;
-  if (isFirstSpanSession) {
-    return hasActivation
-      ? 'New tracked span — Est./Kilo/Best above stay historical'
-      : 'First session';
-  }
-  if (!hasActivation) return 'Inherited tracking — full history';
-  return null;
-}
+import { createStyles } from './analytics/analyticsStyles';
+import { AnalyticsOverview } from './analytics/AnalyticsOverview';
+import { AnalyticsProgression } from './analytics/AnalyticsProgression';
 
 // The one section id that needs no measurement: "the top of Analytics" (#770).
-// `Full history and insights` on Home requests it, and it is what makes that
-// control differ from a plain Analytics tab press, which deliberately preserves
-// whatever the user was last looking at.
+// `Full history and insights` on Home requests it; a plain Analytics tab press
+// deliberately preserves whatever the user was last looking at instead.
 const OVERVIEW_SECTION = 'overview';
 
 export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate }) {
@@ -97,12 +69,9 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   const { history: deloadHistory } = useDeloadHistory();
   const { fatigueTrackingEnabled, deloadModeEnabled } = useFeatureToggles();
 
-  // Progression-suggestion UI state (#960). Read from the settings store's
-  // synchronous cache and kept live through its subscription, so a toggle or
-  // mute made on the Log or More tab is reflected here without a remount.
-  // Dismissal is transient and surface-local — it lives only in this screen's
-  // state, keyed on the suggestion instance id, and is never persisted, so
-  // dismissing here never dismisses the Log card.
+  // Progression-suggestion UI state (#960): mirrors the settings store's live
+  // cache. Dismissal is transient/surface-local (keyed on instance id, never
+  // persisted) — dismissing here never dismisses the Log card.
   const [progressionSettings, setProgressionSettings] = useState(getProgressionSuggestionSettings);
   const [dismissedProgressionIds, setDismissedProgressionIds] = useState(() => new Set());
   useEffect(() => {
@@ -114,10 +83,9 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     return () => { active = false; unsubscribe(); };
   }, []);
 
-  // Same authoritative Recovery snapshot the Log screen renders from (#716).
-  // The hook is backed by one shared store, so while both tabs are mounted they
-  // cannot disagree, and `recoveryReady` keeps an unread snapshot from being
-  // presented here as "no recovery blocks".
+  // Same authoritative Recovery snapshot Log renders from (#716), backed by one
+  // shared store so the two tabs cannot disagree; `recoveryReady` keeps an
+  // unread snapshot from presenting here as "no recovery blocks".
   const {
     blocks: recoveryBlocks = [],
     weeks: recoveryWeeks = [],
@@ -130,39 +98,32 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     pendingRecovery: recoveryPendingRecovery = [],
     retryRecovery: retryRecoveryState,
   } = useRecoveryBlockState() || {};
-  // Product-wide "what am I training now?" context (#868), shared verbatim
-  // with Home and Log — same authoritative Recovery snapshot as above,
-  // resolved at this screen's existing Recovery-state boundary.
-  // The STORED current-routine id, not `currentNote?.id`: a restored profile
-  // whose `current_workout_id` references a missing/tombstoned note leaves
-  // `currentNote` null while `currentId` is still set, and this context must
-  // resolve the same activeNoteId Log does (Log reads `currentId` directly)
-  // rather than silently losing it (review finding, PR #873).
+  // Product-wide "what am I training now?" context (#868), shared with Home and
+  // Log. Resolved from the STORED current-routine id, not `currentNote?.id`: a
+  // restored profile whose `current_workout_id` points at a missing/tombstoned
+  // note leaves `currentNote` null while `currentId` stays set, and this must
+  // resolve the same activeNoteId Log does rather than silently losing it
+  // (review finding, PR #873).
   const activeTrainingContext = useActiveTrainingContext({ currentId, notes });
-  // Zero Friction F9 (#871): whether Analytics is currently inside an active
-  // Recovery block — a live open week, or between weeks with the block still
-  // active. Both mean "baseline training is paused right now", the same
-  // reading `HomeScreen` already gives this context (#869). Neither STALE nor
-  // PENDING nor NORMAL counts: a last-known-good/unresolved read must not flip
-  // the hierarchy on a guess, and a verified NORMAL read means Recovery is
-  // over — restoring the unchanged normal hierarchy is the whole point.
+  // Zero Friction F9 (#871): whether Analytics is inside an active Recovery
+  // block (live open week, or between weeks with the block still active) —
+  // both mean baseline training is paused right now (#869). STALE/PENDING/
+  // NORMAL never count: an unresolved read must not flip the hierarchy on a
+  // guess, and a verified NORMAL read restores the unchanged normal hierarchy.
   const isActiveRecovery = activeTrainingContext.status === ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK
     || activeTrainingContext.status === ACTIVE_TRAINING_STATUS.RECOVERY_BETWEEN_WEEKS;
   // Baseline-only sections (Fatigue, Strength/Progressive Overload, Big 3
-  // mapping) collapse under one disclosure while Recovery is active (#871).
-  // Collapsed by default: the whole point is that these are not what the user
-  // opened Analytics to see right now. Only meaningful while `isActiveRecovery`
-  // — it is never read outside that branch, so Recovery ending always restores
-  // the plain, always-expanded normal hierarchy regardless of this state.
+  // mapping) collapse under one disclosure while Recovery is active (#871),
+  // collapsed by default since that's not what the user opened Analytics to
+  // see. Only meaningful while `isActiveRecovery`, so Recovery ending always
+  // restores the plain, always-expanded normal hierarchy.
   const [baselineCollapsed, setBaselineCollapsed] = useState(true);
-  // Identity of the current active-Recovery PERIOD, distinct from `isActiveRecovery`
-  // itself (review finding, PR #876): `activeBlock.id` stays the same across an
-  // open-week/between-weeks flip within one Recovery block, but is a NEW id (or
-  // null, when Recovery is not active) once that block ends and a later one
-  // starts. Resetting on every `isActiveRecovery === true` render would fight the
-  // user's own in-session toggle; resetting only on this identity change lets a
-  // fresh Recovery period always open collapsed while leaving mid-period toggles
-  // alone.
+  // Identity of the current active-Recovery PERIOD, distinct from
+  // `isActiveRecovery` (review finding, PR #876): `activeBlock.id` stays the
+  // same across an open-week/between-weeks flip, but is a NEW id (or null) once
+  // that block ends and a later one starts. Resetting only on this identity
+  // change lets a fresh Recovery period open collapsed while leaving
+  // mid-period toggles alone.
   const activeRecoveryBlockId = isActiveRecovery ? (activeTrainingContext.activeBlock?.id ?? null) : null;
   const prevActiveRecoveryBlockId = useRef(null);
   useEffect(() => {
@@ -171,9 +132,9 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     }
     prevActiveRecoveryBlockId.current = activeRecoveryBlockId;
   }, [activeRecoveryBlockId]);
-  // Ordinary-analytics boundary (#699). Recovery-linked notes whose block keeps
-  // `include_in_normal_analytics` off are dropped from every ordinary population
-  // below. AnalyticsRecoverySection still receives the unfiltered `notes`.
+  // Ordinary-analytics boundary (#699): notes whose Recovery block keeps
+  // `include_in_normal_analytics` off are dropped below. AnalyticsRecoverySection
+  // still receives the unfiltered `notes`.
   const recoveryFilter = useRecoveryAnalyticsFilter();
   const unit = useWeightUnit();
 
@@ -183,14 +144,12 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
 
   const scrollRef = useRef(null);
   // Measured top of every targetable section, keyed by the shell's bounded
-  // section id (#770). A section is only scrollable to once its own onLayout
-  // has reported where it is, so an id missing from this map means "requested
-  // destination not laid out yet" — the request stays pending and is fulfilled
-  // by the layout that resolves it, never by guessing a position.
+  // section id (#770). An id missing from this map means "not laid out yet" —
+  // the request stays pending, fulfilled by whichever layout resolves it.
   const sectionOffsets = useRef({});
-  // Progressive Overload's offset is derived from two boxes rather than read
-  // off one; see handleProgressiveOverloadHeaderLayout. Both start null so an
-  // unmeasured box is never mistaken for a measured zero.
+  // Progressive Overload's offset comes from two boxes, not one; see
+  // handleProgressiveOverloadHeaderLayout. Both start null so an unmeasured
+  // box is never mistaken for a measured zero.
   const overloadHeaderHeight = useRef(null);
   const overloadListY = useRef(null);
   const pendingSection = useRef(section);
@@ -200,18 +159,15 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     return (hookWeightEntries || []).filter(e => e && e.date && e.weight_value != null);
   }, [hookWeightEntries]);
 
-  // A failed read must not be laundered into a permanent loading state (#737).
-  // useWorkoutNotes/useWeightEntries both clear `loading` and leave the
-  // collection empty when a read fails, so without this the affected cards
-  // would sit on their "Not enough data" copy forever with nothing on screen
-  // saying why or offering a retry.
+  // A failed read must not be laundered into a permanent loading state (#737):
+  // both hooks clear `loading` and leave the collection empty on failure, so
+  // without this the affected cards would sit on "Not enough data" forever
+  // with no retry offered.
   const isWeightLoading = loadingWeight && !weightError && weightEntries.length === 0;
   // An unverified recovery boundary (#699) counts as notes-not-ready: the 1K
-  // card and the Progressive Overload list are both derived from a note
-  // population that is not yet known to be correct, so they hold their loading
-  // state rather than painting aggregates that may include excluded work. The
-  // Recovery, weight, and fatigue sections do not depend on the boundary and are
-  // deliberately left alone.
+  // card and Progressive Overload list are derived from a note population not
+  // yet known correct, so they hold loading rather than paint aggregates that
+  // may include excluded work. Recovery/weight/fatigue don't depend on it.
   const isNotesLoading = (loadingNotes && !notesError && notes.length === 0) || !recoveryFilter.ready;
   const isTrackedLoading = loadingTracked && Object.keys(trackedLifts).length === 0;
 
@@ -220,32 +176,27 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     hasScrolled.current = true;
   }
 
-  // One navigation path for every section request, whether it arrives as an
-  // external `section` prop handoff or as a same-screen tap (the Overview
-  // card's rows, #871 review finding). Both must resolve a destination that
-  // lives inside the collapsed baseline disclosure the same way: expand it
-  // first and let the layout that follows fulfill the still-pending request,
-  // rather than reading `sectionOffsets` directly while the section is
-  // unmounted. Reading it directly is exactly what let Overview's 1K/Exercise
-  // Progress rows silently no-op (fresh mount, no offset yet) or scroll to a
-  // stale position (an offset measured before the disclosure last collapsed).
+  // One navigation path for every section request, external `section` prop
+  // handoff or same-screen tap (Overview's rows, #871 review finding). Both
+  // resolve a destination inside the collapsed baseline disclosure the same
+  // way: expand it first and let the layout that follows fulfill the
+  // still-pending request, rather than reading `sectionOffsets` directly while
+  // unmounted — which is exactly what let Overview's rows no-op or scroll
+  // stale before.
   function navigateToSection(sectionId) {
     pendingSection.current = sectionId;
     hasScrolled.current = false;
 
-    // The overview is the top of the tab, so its position is known without
-    // measurement and an `overview` request lands immediately. Every other
-    // destination waits for its layout.
+    // The overview is the top of the tab — its position is known without
+    // measurement. Every other destination waits for its own layout.
     if (sectionId === OVERVIEW_SECTION) {
       scrollToOffset(0);
       return;
     }
 
-    // A request for a section that lives inside the collapsed baseline
-    // disclosure (#871) must open it first — the section's own onLayout never
-    // fires while its content is unmounted, so the request would otherwise sit
-    // pending forever. Requesting `recovery` or `weight` never needs this: both
-    // stay outside the disclosure.
+    // A section inside the collapsed baseline disclosure (#871) must open it
+    // first — its onLayout never fires while unmounted. `recovery`/`weight`
+    // never need this: both stay outside the disclosure.
     if (isActiveRecovery && baselineCollapsed
       && (sectionId === 'strength' || sectionId === 'progressive-overload')) {
       setBaselineCollapsed(false);
@@ -266,9 +217,8 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     // handoff (weight → weight) re-targets the section instead of no-op'ing.
   }, [section, sectionNonce, isActiveRecovery, baselineCollapsed]);
 
-  // One measurement path for every targetable section (#770). The layout that
-  // resolves a still-pending request fulfills it; `hasScrolled` keeps a later
-  // reflow of the same section from yanking the user back after they land.
+  // One measurement path for every section (#770); `hasScrolled` keeps a later
+  // reflow from yanking the user back after they land.
   function recordSectionOffset(id, y) {
     const known = sectionOffsets.current[id];
     if (known != null && Math.abs(known - y) < 1) return;
@@ -277,43 +227,33 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     if (pendingSection.current === id && !hasScrolled.current) scrollToOffset(y);
   }
 
-  // Named per section rather than passed as one generic handler: the weight and
-  // strength anchors are props of components outside this issue's scope, so
-  // their prop names and one-argument shape stay exactly as they were.
+  // Named per section (not one generic handler): the weight/strength anchors
+  // are props of components outside this issue's scope, so their names/shape
+  // stay exactly as before.
   function handleWeightLayout(e) {
     recordSectionOffset('weight', e.nativeEvent.layout.y);
   }
-
   function handleStrengthLayout(e) {
     recordSectionOffset('strength', e.nativeEvent.layout.y);
   }
-
   function handleRecoveryLayout(e) {
     recordSectionOffset('recovery', e.nativeEvent.layout.y);
   }
 
-  // Progressive Overload is the one destination that cannot report its own
-  // position: its header is a sticky header, and ScrollView lays a sticky child
-  // out inside a wrapper of its own, so the header's `onLayout` reports a
-  // position relative to that wrapper (y: 0) rather than a content offset. Its
-  // HEIGHT is still true, and the list beneath it is an ordinary child with an
-  // ordinary offset — so the destination is the list's top minus the header's
-  // height, which parks the pinned header at the top of the viewport with the
-  // first exercise row directly beneath it. Both measurements are needed and
-  // either can arrive first, so whichever completes the pair is the one that
-  // resolves a pending request. Acting on the list alone would scroll a header
-  // height too far and then be unable to correct itself: the pending request is
-  // already spent by the time the real height shows up.
+  // Progressive Overload can't report its own position: its sticky header's
+  // onLayout reports y:0 (laid out inside ScrollView's own wrapper), but its
+  // HEIGHT is true, and the ordinary list beneath it has an ordinary offset —
+  // so the destination is the list's top minus the header's height. Either
+  // measurement can arrive first; whichever completes the pair resolves the
+  // pending request.
   function handleProgressiveOverloadHeaderLayout(e) {
     overloadHeaderHeight.current = e.nativeEvent.layout.height;
     resolveOverloadOffset();
   }
-
   function handleProgressiveOverloadListLayout(e) {
     overloadListY.current = e.nativeEvent.layout.y;
     resolveOverloadOffset();
   }
-
   function resolveOverloadOffset() {
     if (overloadListY.current == null || overloadHeaderHeight.current == null) return;
     recordSectionOffset(
@@ -327,11 +267,10 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     () => deriveWeightGoalAnalytics(weightEntries, null),
     [weightEntries]
   );
-  // Chart series are converted into display space here (identity in lb mode)
-  // so LineChart selection labels and the trends card read in the selected unit.
+  // Converted into display space here (identity in lb mode) so LineChart
+  // labels and the trends card read in the selected unit.
   const rolling7 = useMemo(() => displayChartSeries(rollingSeries || [], unit), [rollingSeries, unit]);
   const rolling30 = useMemo(() => displayChartSeries(rollingSeries30 || [], unit), [rollingSeries30, unit]);
-
   const weightSummary = useMemo(() => {
     if (weightEntries.length === 0) {
       return { latestWeightValue: '—', showUnit: false, weightCount: '0', avg7: '—', avg30: '—', paceFlag: null, paceLevel: null, paceElapsedDays: null };
@@ -357,13 +296,11 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     () => deriveParsedSections(notes, currentNote, recoveryFilter.excludedNoteIds),
     [notes, currentNote, recoveryFilter]
   );
-
   const noteExerciseNames = useMemo(() => deriveNoteExerciseNames(parsedSections.currentSections), [parsedSections]);
-
   const analytics = useMemo(
-    // #989: the stored current-routine id (not `currentNote?.id`) is the stable
-    // source id a deload snapshot was frozen against; pass it with the deload
-    // history and live recovery blocks so re-entry context resolves here.
+    // #989: pass the STORED current-routine id (not `currentNote?.id`) — the
+    // stable id a deload snapshot was frozen against — with deload history and
+    // live recovery blocks, so re-entry context resolves here.
     () => deriveAnalytics(parsedSections, trackedLifts, oneKSelections, multiplier, trackedLiftActivations, {
       deloadHistory,
       sourceNoteId: currentId ?? null,
@@ -372,17 +309,13 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     [parsedSections, trackedLifts, oneKSelections, multiplier, trackedLiftActivations, deloadHistory, currentId, recoveryBlocks]
   );
 
-  // #960: the strength surface's progression-suggestion cards. Consumes
-  // `analytics.progressionSuggestions` (the one canonical derivation pass
-  // above) unchanged — evidence, recommendation, and explanation text are the
-  // derivation's, not recomputed here. Off, muted, dismissed, and
-  // non-renderable records (including the post-deload `re_entry` relabel) all
-  // fall out. When the feature is off the list is empty and nothing renders.
+  // #960: the strength surface's progression-suggestion cards, consuming
+  // `analytics.progressionSuggestions` unchanged. Off, muted, dismissed, and
+  // non-renderable records (incl. the post-deload `re_entry` relabel) fall out.
   const progressionSuggestionView = useMemo(() => {
-    // Hold everything back until the Recovery analytics boundary is verified: an
-    // unready filter exposes the empty placeholder exclusion set, so a note that
-    // will be excluded once membership resolves could briefly produce a card
-    // here that then disappears or changes.
+    // Held back until the Recovery boundary is verified: an unready filter
+    // exposes the empty placeholder exclusion set, so a note that will be
+    // excluded once membership resolves could briefly produce a card here.
     if (!progressionSettings.enabled || !recoveryFilter.ready) return { visible: [], muted: [] };
     const records = Array.isArray(analytics.progressionSuggestions) ? analytics.progressionSuggestions : [];
     const mutedKeys = new Set(progressionSettings.mutedKeys || []);
@@ -392,9 +325,8 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     for (const record of records) {
       if (!isRenderableProgressionSuggestion(record)) continue;
       const key = normalizeExerciseKey(record.name);
-      // The tracked-name list feeding the derivation is already normalized, so
-      // the record's `name` can be lower-cased; present the user's own last-seen
-      // casing instead.
+      // The tracked-name list is already normalized/lower-cased; present the
+      // user's own last-seen casing instead.
       const displayName = (displayMap && displayMap.get(key)) || record.name;
       const shown = { ...record, name: displayName };
       if (mutedKeys.has(key)) {
@@ -430,7 +362,6 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   function handleSlotTap(slot) {
     setActiveSlot(prev => (prev === slot ? null : slot));
   }
-
   function toggleGroup(groupName) {
     setCollapsedGroups(prev => {
       const next = new Set(prev);
@@ -440,13 +371,10 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     });
   }
 
-  // Bulk collapse for Progressive Overload. `groupedSignals` is the same list
-  // the rows render from, so the control acts on exactly what is on screen —
-  // and ONLY on that. A group filtered out by the search box keeps whatever
-  // state the user left it in, in both directions: collapsing must never expand
-  // something, and expanding a narrowed view must not silently reopen groups the
-  // user cannot see the result of (#826 review). Rebuilding the set from the
-  // visible names alone did both.
+  // Bulk collapse for Progressive Overload acts only on `groupedSignals` — what
+  // is actually on screen. A group filtered out by search keeps its own state
+  // in both directions: never silently expanding or reopening groups the user
+  // can't see the result of (#826 review).
   const allGroupsCollapsed =
     groupedSignals.length > 0 && groupedSignals.every(group => collapsedGroups.has(group.name));
 
@@ -471,7 +399,6 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   }
 
   const SLOT_LABELS = { bench: 'Bench', squat: 'Squat', deadlift: 'Deadlift' };
-
   const routineStatus = useMemo(
     () => deriveRoutineStatus(parsedSections.currentSections, currentNote, deloadHistory),
     [parsedSections.currentSections, currentNote, deloadHistory]
@@ -480,7 +407,6 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   const sinceDeload = routineStatus.sessionsSinceDeload;
 
   const checkInHistory = useMemo(() => deriveCheckInHistory(notes), [notes]);
-
   const noteById = useMemo(() => new Map(notes.map(n => [n.id, n])), [notes]);
 
   function handleCheckInEdit(ci) {
@@ -490,15 +416,13 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   }
 
   const oneKChartData = useMemo(() => {
-    // Boundaries are session ordinals INTO the 1K series, which is built from
-    // parsedSections.noteSectionsList — so they must be counted over the same
+    // Boundaries are session ordinals INTO the 1K series (built from
+    // parsedSections.noteSectionsList), so they must count the same
     // recovery-filtered note population or the markers would slide.
     const boundaries = deriveRoutineStartBoundaries(parsedSections.normalNotes, oneKSelections);
     const series = deriveOneKChartData(analytics.oneKSeries, boundaries);
-    // #577: carry the canonical-lb figures alongside the display-space ones
-    // on every point (both unit modes) so a plate-calculator tap on a
-    // selected chart point can read the exact canonical value instead of
-    // reconverting an already-rounded display number.
+    // #577: carry canonical-lb figures alongside display-space ones on every
+    // point so a plate-calculator tap reads the exact canonical value.
     const withCanonical = series.map((p) => ({
       ...p,
       valueLb: p.value,
@@ -507,8 +431,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       deadliftLb: p.deadlift,
     }));
     if (unit !== 'kg') return withCanonical;
-    // Display-space conversion for kg (#441): per-lift breakdown values ride
-    // along with each point, so convert them alongside the plotted total.
+    // Display-space conversion for kg (#441): per-lift values convert too.
     return withCanonical.map((p) => ({
       ...p,
       value: Math.round(lbToKg(p.value)),
@@ -519,9 +442,8 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     }));
   }, [analytics.oneKSeries, parsedSections.normalNotes, oneKSelections, unit]);
 
-  // 1K card values in display space (identity in lb mode). The 1,000 lb club
-  // itself stays lb-defined; AnalyticsStrengthSection converts its progress
-  // target the same way.
+  // 1K card values in display space (identity in lb mode); the 1,000 lb club
+  // itself stays lb-defined, and AnalyticsStrengthSection converts the same way.
   const displayOneK = useMemo(() => {
     const oneK = analytics.oneK;
     if (unit !== 'kg' || !oneK) return oneK;
@@ -534,11 +456,10 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     };
   }, [analytics.oneK, unit]);
 
-  // #1029: the current live week's return bands and (when its evidence bar is
-  // met) movement, for the Overview `Recovery` row. Reuses the same
-  // `deriveRecoveryComparison` read `AnalyticsRecoverySection` renders from —
-  // no second read, no new formula — restricted to the active block only,
-  // since the Overview row only ever describes what is happening right now.
+  // #1029: current live week's return bands and (once its evidence bar is met)
+  // movement, for the Overview `Recovery` row — reuses the same
+  // `deriveRecoveryComparison` read AnalyticsRecoverySection renders from,
+  // restricted to the active block since the row only describes right now.
   const activeRecoveryBlockForOverview = isActiveRecovery ? findActiveBlock(recoveryBlocks) : null;
   const recoveryOverviewInfo = useMemo(() => {
     if (!activeRecoveryBlockForOverview) return { bands: null, movement: null };
@@ -548,8 +469,8 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     const weeks = comparison.weeks || [];
     const current = weeks.length > 0 ? weeks[weeks.length - 1] : null;
     const bands = deriveRecoveryWeekBands(current);
-    // Never derived off an unverified/stale snapshot (#1023 v2 §4
-    // requirement 4) — `recoveryStale` mirrors Home's own `isStale` gate.
+    // Never off an unverified/stale snapshot (#1023 v2 §4 req. 4) —
+    // `recoveryStale` mirrors Home's own `isStale` gate.
     const movement = (!recoveryStale && current)
       ? deriveRecoveryMovement(weeks, { currentWeekId: current.week_id })
       : null;
@@ -580,13 +501,11 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       recoveryOverviewInfo,
     ]
   );
-
   const overviewLoading = isNotesLoading || isWeightLoading;
 
-  // #1029 acceptance criterion 3: during active Recovery the panel header
-  // stops stamping "N sessions logged" — it names the Recovery state itself,
-  // exactly as the `activeTrainingContext` already resolves it for Home/Log.
-  // Ending Recovery restores the byte-identical session-count stamp below.
+  // #1029 AC3: during active Recovery the panel header names the Recovery
+  // state itself (as `activeTrainingContext` resolves for Home/Log) instead of
+  // stamping "N sessions logged"; ending Recovery restores that stamp.
   const overviewAsOf = isActiveRecovery
     ? (activeTrainingContext.status === ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK
         ? `Recovery week ${activeTrainingContext.recoveryWeekNumber}`
@@ -594,12 +513,10 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     : sessionCount > 0
       ? `${sessionCount} session${sessionCount === 1 ? '' : 's'} logged`
       : null;
-
   function handleOverviewSelect(sectionId) {
     if (!sectionId) return;
     navigateToSection(sectionId);
   }
-
   const recoverySection = (
     <AnalyticsRecoverySection
       key="recovery-section"
@@ -617,381 +534,43 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       onNavigate={onNavigate}
     />
   );
-
   // Mirrors AnalyticsRecoverySection's own "nothing to say" condition (#716):
-  // it renders null only for a verified, fresh snapshot that holds no live
-  // block — an unverified or stale one always states its condition, and a live
-  // block is either active or completed, so `some(isLiveRecord)` covers both
-  // populations the section draws. Pinned against the section itself in
+  // null only for a verified, fresh snapshot with no live block; `some(isLiveRecord)`
+  // covers both active and completed. Pinned against the section itself in
   // analytics-screen.test.js so the two cannot drift apart silently.
   const hasRecoverySection =
     !recoveryReady || recoveryStale || recoveryBlocks.some(isLiveRecord);
-
+  // Extracted verbatim into analytics/AnalyticsOverview.js and
+  // AnalyticsProgression.js (card #1051): same keys/testIDs/conditions as the
+  // inline JSX they replace. Each returns a flat array (not a wrapped
+  // component) so the sticky header and its overload-list anchor stay flat
+  // siblings here, exactly as `stickyHeaderIndices` below depends on.
   const screenContent = React.Children.toArray([
-    // Load failures first, above every derived card (#737). Analytics is
-    // entirely derived from the note and weight collections, so a failed read
-    // silently turns the whole tab into a plausible-looking "you have no data"
-    // report. One banner per failed source, each retrying only its own read.
-    notesError ? (
-      <ErrorBanner
-        key="notes-error-banner"
-        message="Could not load workout notes. Training analytics are incomplete."
-        onRetry={refreshNotes}
-      />
-    ) : null,
-
-    weightError ? (
-      <ErrorBanner
-        key="weight-error-banner"
-        message="Could not load weight entries. Weight trends are incomplete."
-        onRetry={refreshWeightEntries}
-      />
-    ) : null,
-
-    // The overview leads the tab (#821). `overview` has always meant "scroll
-    // offset 0"; putting this block first is what makes that id resolve to an
-    // actual overview instead of to whichever section happened to be on top.
-    // Nothing else was reordered — Progressive Overload stays at the bottom,
-    // where its length belongs.
-    <AnalyticsOverviewCard
-      key="overview-card"
-      rows={overviewRows}
-      loading={overviewLoading}
-      asOf={overviewAsOf}
-      onSelectSection={handleOverviewSelect}
-    />,
-
-    <AnalyticsWeightTrendsCard
-      key="weight-trends-card"
-      handleWeightLayout={handleWeightLayout}
-      weightSummary={weightSummary}
-      rolling7={rolling7}
-      rolling30={rolling30}
-      isWeightLoading={isWeightLoading}
-      onNavigate={onNavigate}
-    />,
-
-    // Recovery sits above Fatigue (R5b, #793): it is the only time-boxed,
-    // situational section on the tab, and the two adjacent "should I be
-    // training normally right now?" answers read together — Fatigue's own
-    // gauge is what makes a given baseline count interpretable. Anchor for the
-    // `recovery` handoff (#770): AnalyticsRecoverySection owns its own
-    // presentation and takes no layout prop, so the wrapper carries the anchor
-    // — and only while the section has something to render. An empty wrapper
-    // would still take a slot in the shell's 16px column gap and open a hole
-    // between Weight and Fatigue, so the silent case renders exactly what it
-    // rendered before: the section alone, which resolves to nothing.
-    hasRecoverySection ? (
-      <View key="recovery-section" testID="recovery-section-anchor" onLayout={handleRecoveryLayout}>
-        {recoverySection}
-      </View>
-    ) : recoverySection,
-
-    // Baseline-training disclosure (#871, Zero Friction F9). Fatigue,
-    // Strength/Progressive Overload, and Big 3 Mapping are all derived from
-    // baseline sessions, which have stopped accumulating for the duration of
-    // an active Recovery block — they group under one collapsible "paused"
-    // disclosure instead of leading the tab, and expand back to the plain,
-    // always-visible normal hierarchy the moment Recovery ends.
-    isActiveRecovery ? (
-      <Pressable
-        key="baseline-disclosure-toggle"
-        testID="baseline-disclosure-toggle"
-        onPress={() => setBaselineCollapsed(v => !v)}
-        style={styles.baselineDisclosureToggle}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: !baselineCollapsed }}
-        accessibilityLabel="Baseline training, paused during Recovery"
-        accessibilityHint={baselineCollapsed ? 'Shows fatigue and strength history from before Recovery' : 'Hides fatigue and strength history from before Recovery'}
-      >
-        <Text style={styles.baselineDisclosureLabel}>Baseline training · paused during Recovery</Text>
-        <MaterialIcons
-          name={baselineCollapsed ? 'expand-more' : 'expand-less'}
-          size={20}
-          color={colors.textMuted}
-          accessible={false}
-        />
-      </Pressable>
-    ) : null,
-
-    (!isActiveRecovery || !baselineCollapsed) ? (
-      <View key="combined-section-title">
-        <SectionTitle>Fatigue</SectionTitle>
-      </View>
-    ) : null,
-    (!isActiveRecovery || !baselineCollapsed) ? (
-      // Suppressed advisory (#871): the deload gauge assumes baseline sessions
-      // are actively accumulating, which is untrue for the duration of an
-      // active Recovery block. The count itself still renders (as paused
-      // history), only the "you should deload soon" advisory is withheld.
-      <SessionGauge key="session-gauge" count={sinceDeload} total={sessionCount} showDeload={deloadModeEnabled && !isActiveRecovery} />
-    ) : null,
-
-    (!isActiveRecovery || !baselineCollapsed) && fatigueTrackingEnabled ? (
-      <AnalyticsFatigueCard
-        key="fatigue-card"
-        checkInHistory={checkInHistory}
-        fatigueExpanded={fatigueExpanded}
-        setFatigueExpanded={setFatigueExpanded}
-        handleCheckInEdit={handleCheckInEdit}
-      />
-    ) : null,
-
-    // Strength and Progressive Overload are one section (#821): the 1K total,
-    // then every lift that feeds it. Only the 1K panel carries the section
-    // title now — the sticky header below is a heading inside this section, not
-    // a second top-level one — and Big 3 Mapping moves to the foot, because it
-    // is configuration rather than analysis and was sitting between the total
-    // and its contributors.
-    (!isActiveRecovery || !baselineCollapsed) ? (
-      <AnalyticsStrengthSection
-        key="strength-section"
-        handleStrengthLayout={handleStrengthLayout}
-        isNotesLoading={isNotesLoading}
-        oneK={displayOneK}
-        oneKCanonical={analytics.oneK}
-        oneKChartData={oneKChartData}
-        progressionSuggestions={progressionSuggestionView.visible}
-        mutedProgressionRows={progressionSuggestionView.muted}
-        onMuteProgression={handleMuteProgression}
-        onUnmuteProgression={handleUnmuteProgression}
-        onDismissProgression={handleDismissProgression}
-      />
-    ) : null,
-
-    (!isActiveRecovery || !baselineCollapsed) ? (
-    <View
-      key="sticky-header"
-      style={styles.signalStickyHeader}
-      testID="sticky-header"
-      onLayout={handleProgressiveOverloadHeaderLayout}
-    >
-      <View style={styles.signalHeaderRow}>
-        {/* A heading inside the Strength section, not a section title of its
-            own (#821) — hence the smaller sub-header style rather than
-            SectionTitle, which now appears once per section as intended. */}
-        <Text style={styles.signalSubTitle} accessibilityRole="header">Progressive Overload</Text>
-        {groupedSignals.length > 0 && (
-          <Pressable
-            testID="po-collapse-all"
-            onPress={toggleAllGroups}
-            style={styles.collapseAllButton}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityState={{ expanded: !allGroupsCollapsed }}
-            accessibilityLabel={
-              allGroupsCollapsed ? 'Expand all exercise groups' : 'Collapse all exercise groups'
-            }
-          >
-            <Text style={styles.collapseAllText}>
-              {allGroupsCollapsed ? 'Expand all' : 'Collapse all'}
-            </Text>
-            {/* `unfold-less`/`unfold-more` rather than the single-panel
-                `expand-less`/`expand-more` chevron of ui-design-rules §6: this
-                acts on every group at once, and reusing the per-panel glyph
-                would read as the sticky header collapsing itself. */}
-            <MaterialIcons
-              name={allGroupsCollapsed ? 'unfold-more' : 'unfold-less'}
-              size={16}
-              color={colors.textMuted}
-              accessible={false}
-            />
-          </Pressable>
-        )}
-      </View>
-      <View style={styles.searchContainer}>
-        <TextInput
-          testID="po-search"
-          style={styles.searchInput}
-          placeholder="Search tracked exercises..."
-          placeholderTextColor={colors.textMuted}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          clearButtonMode="while-editing"
-        />
-      </View>
-      <View style={styles.signalColumnHeader}>
-        <View style={styles.signalColumnMetrics}>
-          <Text style={styles.signalColumnLabel}>1RM</Text>
-          <Text style={styles.signalColumnLabel}>Kilo</Text>
-          <Text style={styles.signalColumnLabel}>Best</Text>
-          <Text style={styles.signalColumnLabel}>Trend</Text>
-        </View>
-      </View>
-    </View>
-    ) : null,
-
-    // Progressive Overload's measurable box (#770): the sticky header above
-    // cannot report its own content offset, so this list — an ordinary child
-    // with an ordinary one — carries the anchor. Every branch renders content,
-    // so the wrapper is never an empty box in the shell's column.
-    (!isActiveRecovery || !baselineCollapsed) ? (
-    <View
-      key="overload-list"
-      testID="overload-list-anchor"
-      onLayout={handleProgressiveOverloadListLayout}
-    >
-      {(isNotesLoading || isTrackedLoading) ? (
-        <View key="loading" style={{ height: 100, justifyContent: 'center' }}>
-          <ActivityIndicator color={colors.accent} />
-        </View>
-      ) : groupedSignals.length > 0 ? (
-        <ArtisanalPanel key="po-container" style={styles.poContainer}>
-          {groupedSignals.map((group, groupIdx) => {
-            const isCollapsed = collapsedGroups.has(group.name);
-            return (
-              <View key={group.name} style={[styles.groupSection, groupIdx > 0 && styles.groupSectionBorder]}>
-                <Pressable
-                  testID={`po-group-header-${group.name}`}
-                  onPress={() => toggleGroup(group.name)}
-                  style={styles.groupHeader}
-                >
-                  <Text style={styles.groupName}>{group.name}</Text>
-                  <MaterialIcons 
-                    name={isCollapsed ? "expand-more" : "expand-less"} 
-                    size={20} 
-                    color={colors.textMuted}
-                  />
-                </Pressable>
-              
-                {!isCollapsed && (
-                  <View style={styles.exerciseList}>
-                    {group.exercises.map((sig) => {
-                      const normName = normalizeLiftName(sig.name);
-                      const dayRow = sig.isMultiDay && sig.daySignals ? sig.daySignals[sig.currentDayHeading] : null;
-                      const rowPr = dayRow ? dayRow.latest_pr : sig.latest_pr;
-                      const rowTopWeight = dayRow ? dayRow.latest_top_weight : sig.latest_top_weight;
-                      const rowTrend = dayRow?.overload_trend ?? sig.overload_trend;
-                      const rowIsBodyweight = dayRow ? dayRow.is_bodyweight : sig.is_bodyweight;
-                      const nw = analytics.nonWeightedMetrics?.[normName];
-
-                      // #894: `trackedLiftActivations` is keyed by the same
-                      // canonical key WorkoutContentRenderer's Track control
-                      // writes to (#893) — presence of a record is what makes
-                      // this an EXPLICIT tracked span, not inherited state.
-                      const hasActivation = !!(trackedLiftActivations || {})[normalizeExerciseKey(sig.name)];
-                      const nwArrow = nw ? (nw.exercise_class === 'reps_only' ? nw.reps_arrow : nw.hold_arrow) : null;
-                      const hasCapabilityData = nw
-                        ? (nw.exercise_class === 'reps_only' ? nw.avg_reps != null : nw.avg_hold != null)
-                        : (rowPr != null || sig.kilo_max != null || rowTopWeight != null);
-                      const isFirstSpanSession = nw ? nwArrow === 'dash' : rowTrend === 'first_session';
-                      const poCaption = describePoRowState({ hasActivation, isFirstSpanSession, hasCapabilityData });
-
-                      return (
-                        <View key={normName + sig.currentDayHeading} style={[styles.signalRow, styles.signalRowBorder]}>
-                          <View style={styles.signalNameRow}>
-                            <Text style={styles.signalName}>{analytics.nameDisplayMap?.get(normName) || sig.name}</Text>
-                          </View>
-                          {poCaption && (
-                            <Text style={styles.trackingCaption}>{poCaption}</Text>
-                          )}
-
-                          {nw ? (
-                            <View style={styles.signalMetricsGrid}>
-                              <View style={styles.metricCol}>
-                                <Text style={styles.signalValue}>
-                                  {nw.exercise_class === 'reps_only' 
-                                    ? (nw.avg_reps ?? '—')
-                                    : formatDuration(nw.avg_hold)}
-                                </Text>
-                                <Text style={styles.nwMetricLabel}>AVG</Text>
-                              </View>
-                              <View style={styles.metricCol}>
-                                <Text style={styles.signalValue}>
-                                  {nw.exercise_class === 'reps_only' 
-                                    ? (nw.best_set_reps ?? '—')
-                                    : formatDuration(nw.best_hold)}
-                                </Text>
-                                <Text style={styles.nwMetricLabel}>BEST</Text>
-                              </View>
-                              <View style={styles.metricCol} />
-                              <View style={styles.metricCol}>
-                                {formatOverload(nw.exercise_class === 'reps_only' ? nw.reps_arrow : nw.hold_arrow, colors)}
-                              </View>
-                            </View>
-                          ) : (
-                            <View style={styles.signalMetricsGrid}>
-                              <View style={styles.metricCol}>
-                                <Text style={styles.signalValue}>
-                                  {rowPr ? formatLiftWeightValue(Math.round(rowPr), unit) : '—'}
-                                  {rowPr ? <Text style={styles.unitSuffix}>{unit}</Text> : null}
-                                </Text>
-                              </View>
-                              <View style={styles.metricCol}>
-                                <Text style={styles.signalValue}>
-                                  {sig.kilo_max != null ? formatLiftWeightValue(sig.kilo_max, unit) : '—'}
-                                  {sig.kilo_max != null ? <Text style={styles.unitSuffix}>{unit}</Text> : null}
-                                </Text>
-                              </View>
-                              <View style={styles.metricCol}>
-                                <Text style={styles.signalValue}>
-                                  {rowTopWeight ? (rowIsBodyweight ? rowTopWeight : formatLiftWeightValue(rowTopWeight, unit)) : '—'}
-                                  {rowTopWeight ? <Text style={styles.unitSuffix}>{rowIsBodyweight ? 'reps' : unit}</Text> : null}
-                                </Text>
-                              </View>
-                              <View style={styles.metricCol}>
-                                {formatOverload(rowTrend, colors)}
-                              </View>
-                            </View>
-                          )}
-
-                          {sig.isMultiDay && (
-                            sig.daySignals
-                              ? <CrossDayComparison daySignals={sig.daySignals} currentDay={sig.currentDayHeading} otherDays={sig.otherDays} />
-                              : sig.otherDays.length > 0 && <Text style={styles.multiDaySummary}>Also on {sig.otherDays.join(', ')}</Text>
-                          )}
-
-                        </View>
-                      );
-                    })}
-                  </View>
-                )}
-              </View>
-            );
-          })}
-        </ArtisanalPanel>
-      ) : searchQuery ? (
-        <View key="empty-search" style={styles.emptySearch}>
-          <Text style={styles.emptyText}>No matches for "{searchQuery}"</Text>
-        </View>
-      ) : (
-        <View key="empty-tracked" style={styles.emptyTracked}>
-          <Text style={styles.emptyText}>
-            Tap Track on any exercise in your note to track it here. Logging alone doesn't track it — Track / Tracked is the only control that does.
-          </Text>
-          <Pressable
-            testID="analytics-empty-log-link"
-            onPress={() => onNavigate?.('Log')}
-            style={styles.emptyTrackedLink}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Go to Log"
-            accessibilityHint="Opens the Log tab so you can write a workout note"
-          >
-            <Text style={styles.emptyTrackedLinkText}>Go to Log</Text>
-          </Pressable>
-        </View>
-      )}
-    </View>
-    ) : null,
-
-    // Foot of the merged Strength section.
-    (!isActiveRecovery || !baselineCollapsed) ? (
-      <AnalyticsBig3MappingCard
-        key="big3-mapping"
-        activeSlot={activeSlot}
-        handleSlotTap={handleSlotTap}
-        SLOT_LABELS={SLOT_LABELS}
-        oneKSelections={oneKSelections}
-        noteExerciseNames={noteExerciseNames}
-        handleSelectExercise={handleSelectExercise}
-      />
-    ) : null,
+    ...AnalyticsOverview({
+      notesError, refreshNotes, weightError, refreshWeightEntries,
+      overviewRows, overviewLoading, overviewAsOf, onSelectSection: handleOverviewSelect,
+      handleWeightLayout, weightSummary, rolling7, rolling30, isWeightLoading, onNavigate,
+      hasRecoverySection, handleRecoveryLayout, recoverySection,
+    }),
+    ...AnalyticsProgression({
+      isActiveRecovery, baselineCollapsed, setBaselineCollapsed, styles, colors,
+      sinceDeload, sessionCount, deloadModeEnabled,
+      fatigueTrackingEnabled, checkInHistory, fatigueExpanded, setFatigueExpanded, handleCheckInEdit,
+      handleStrengthLayout, isNotesLoading, isTrackedLoading,
+      oneK: displayOneK, oneKCanonical: analytics.oneK, oneKChartData,
+      progressionSuggestionView,
+      onMuteProgression: handleMuteProgression,
+      onUnmuteProgression: handleUnmuteProgression,
+      onDismissProgression: handleDismissProgression,
+      handleProgressiveOverloadHeaderLayout, handleProgressiveOverloadListLayout,
+      groupedSignals, toggleAllGroups, allGroupsCollapsed, collapsedGroups, toggleGroup,
+      searchQuery, setSearchQuery,
+      analytics, trackedLiftActivations, unit, onNavigate,
+      activeSlot, handleSlotTap, SLOT_LABELS, oneKSelections, noteExerciseNames, handleSelectExercise,
+    }),
   ]);
-
   const foundIndex = screenContent.findIndex(child => child?.props?.testID === 'sticky-header');
   const stickyHeaderIndices = foundIndex !== -1 ? [foundIndex + 1] : [];
-
   const editCheckInData = shapeEditCheckInData(editPendingCheckIn);
 
   return (
@@ -1017,196 +596,3 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
-  // Baseline-training disclosure header (#871). Reads as the same quiet
-  // section-header family used elsewhere in Analytics/Home (label + chevron),
-  // not a filled control — the emphasis on this tab right now belongs to the
-  // Recovery-live content above it.
-  baselineDisclosureToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    minHeight: 44,
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-  },
-  baselineDisclosureLabel: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.textMuted,
-  },
-  signalStickyHeader: {
-    backgroundColor: colors.background,
-    paddingTop: 8,
-    paddingBottom: 8,
-  },
-  signalHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  signalSubTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.text,
-    flexShrink: 1,
-  },
-  collapseAllButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    minHeight: 44,
-    paddingHorizontal: 4,
-  },
-  collapseAllText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  searchContainer: {
-    marginTop: 12,
-    marginBottom: 12,
-  },
-  searchInput: {
-    backgroundColor: colors.inputBackground,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.inputBorder,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: colors.text,
-  },
-  signalColumnHeader: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingBottom: 4,
-  },
-  signalColumnLabel: {
-    flex: 1,
-    fontSize: 11,
-    fontWeight: '800',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    textAlign: 'center',
-  },
-  signalColumnMetrics: {
-    flex: 1,
-    flexDirection: 'row',
-  },
-  poContainer: {
-    paddingHorizontal: 0,
-    paddingVertical: 0,
-  },
-  groupSection: {
-    paddingBottom: 4,
-  },
-  groupSectionBorder: {
-    borderTopWidth: 1,
-    borderTopColor: colors.divider,
-  },
-  groupHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: colors.subtleBg,
-  },
-  groupName: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: colors.text,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  exerciseList: {
-    paddingHorizontal: 16,
-  },
-  signalRow: {
-    paddingVertical: 16,
-  },
-  signalRowBorder: {
-    borderTopWidth: 1,
-    borderTopColor: colors.divider,
-  },
-  signalNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  signalName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-    flex: 1,
-  },
-  signalMetricsGrid: {
-    flexDirection: 'row',
-  },
-  metricCol: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  signalValue: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.text,
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-  },
-  unitSuffix: {
-    fontSize: 11,
-    opacity: 0.4,
-    marginLeft: 2,
-  },
-  nwMetricLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: colors.textMuted,
-    marginTop: 2,
-    letterSpacing: 0.5,
-  },
-  multiDaySummary: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginTop: 6,
-    fontStyle: 'italic',
-  },
-  trackingCaption: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginBottom: 8,
-    fontStyle: 'italic',
-  },
-  emptySearch: {
-    padding: 32,
-    alignItems: 'center',
-  },
-  emptyText: {
-    textAlign: 'center',
-    color: colors.textMuted,
-    marginTop: 20,
-    fontSize: 15,
-  },
-  emptyTracked: {
-    alignItems: 'center',
-  },
-  emptyTrackedLink: {
-    marginTop: 12,
-    minHeight: 44,
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  emptyTrackedLinkText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.accentText,
-  },
-});
