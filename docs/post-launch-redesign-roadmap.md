@@ -1,6 +1,7 @@
 # Kilo Post-Launch Redesign Roadmap
 
-**Status: planned. This roadmap covers the post-launch Analog Iron redesign.**
+**Status: Phase 1 complete; redesign cards remain planned. This roadmap covers
+the post-launch Analog Iron redesign.**
 
 This roadmap begins only after Kilo's production launch is externally verified.
 The version bump does not establish that launch: the remaining production AAB,
@@ -36,11 +37,13 @@ behavior change.
 
 ## Phase 1 — Structural preparation
 
-This phase lands before the redesign and is coordinated by
+This phase landed before the redesign and was coordinated by
 [#1064](https://github.com/bpronin90/kilo/issues/1064). It assigns each of the 20
 current production files over 600 lines to exactly one implementation card. The
 limit is inclusive: 600 lines passes and 601 fails. Tests, fixtures, generated or
-vendor content, and configuration are outside the count.
+vendor content, and configuration are outside the count. #1063 approved current
+`main` at `44ab230ae3c6b8fb2e391f54b77e1a5bc8b0d8d3`: 242 production files were
+checked, none exceeds 600 lines, and the legacy baseline is empty.
 
 Every card is a behavior-preserving extraction. It may not change copy, visuals,
 navigation, state, persistence, analytics, accessibility, public exports,
@@ -110,8 +113,10 @@ Phase 1 only when no production file exceeds 600 lines.
 
 After that approval, [#1065](https://github.com/bpronin90/kilo/issues/1065)
 rebases the migration audit and every D0–D18 Allowed Files list against the
-landed module tree. This closes the ownership gap created by the extractions and
-is a hard prerequisite for opening D0 or any redesign implementation card.
+landed module tree. That refresh is recorded in
+`docs/design/analog-iron-v0.125/migration-audit.md`, closes the ownership gap
+created by the extractions, and remains the hard prerequisite for opening D0 or
+any redesign implementation card.
 
 ---
 
