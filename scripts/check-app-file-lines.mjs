@@ -75,7 +75,6 @@ const CONFIG_FILE_RE = /\.config\.(js|jsx|ts|tsx)$/;
 // of these should lower its number here -- but is never required to as a
 // precondition of merging the reduction; see the module comment above.
 export const BASELINE = {
-  'mobile/storage/syncQueue.js': 1642,
   'mobile/storage/cloud/syncAdapter.js': 1817,
 };
 
