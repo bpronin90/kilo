@@ -1,12 +1,12 @@
 # Analog Iron migration audit and child issue drafts
 
 Planning contract: [#978](https://github.com/bpronin90/kilo/issues/978).
-Audited main: `a4bb03a44b0369791e14387e045cdb620f89e15d` (2026-09-07).
-This document reports the current application and proposes future work; it does
-not attest that the migration or device verification has happened. The reference
-package is present in `docs/design/analog-iron-v0.125/README.md`; the development
-client loop is documented in `docs/testing-and-qa.md` and configured in
-`mobile/eas.json` and `mobile/app.config.js`.
+Audited main: `44ab230ae3c6b8fb2e391f54b77e1a5bc8b0d8d3` (2026-09-15).
+This document reports the shipped application after Phase 1 and proposes future
+work; it does not attest that the redesign or device verification has happened.
+The reference package is present in `docs/design/analog-iron-v0.125/README.md`;
+the development-client loop is documented in `docs/testing-and-qa.md` and
+configured in `mobile/eas.json` and `mobile/app.config.js`.
 
 ## Authority and scope
 
@@ -35,9 +35,16 @@ required before creating actual cards, and owner approval of this audit is
 required before implementing any child. This follows the #978 contract linked
 above; the drafts and their file ownership are recorded here for that review.
 
-## Baseline verification, not a new discovery exercise
+The original prelaunch snapshot, frozen-work notes, and native-appearance
+assumptions below are historical input, not current status. The current-main
+inventory, landed module graph, and shipped behavior in this document supersede
+them. Existing in-flight redesign work remains outside this audit until an owner
+opens a card from the reconciled lists.
 
-The supplied counts remain the sizing baseline. One bounded literal check of
+## Historical sizing context (superseded by current main)
+
+The following counts are retained only as historical sizing context. They are
+not current-main measurements or acceptance criteria. One bounded literal check of
 the existing production JavaScript in `mobile/App.js`, `mobile/components/`,
 `mobile/screens/`, `mobile/lib/`, `mobile/hooks/`, and `mobile/storage/` checked
 the named categories. It excluded tests, configuration JSON, generated files,
@@ -137,44 +144,27 @@ save labels, and do not announce “Synced” from local success. Evidence:
 | Other dialogs and sheets | WorkoutSyntaxModal with shared syntax reference; Deload completion prompt nested in LogDeloadSection; native Alert confirmations versus WebAlertHost; App ownership overlays; Account CAPTCHA web widget/native WebView. Preserve focus, cancellation, destructive confirmation order, external challenge behavior, and modal ownership. | `mobile/components/WorkoutSyntaxModal.js`, `mobile/components/WorkoutSyntaxReference.js`, `mobile/components/LogDeloadSection.js`, `mobile/components/WebAlertHost.js`, `mobile/lib/platformAlert.js`, `mobile/App.js`, `mobile/components/CaptchaChallenge.native.js`, `mobile/components/CaptchaChallenge.web.js` |
 | Forms and controls | Shared input skin is only a style object, not a TextInput wrapper. Custom inputs remain in Log, Recovery, Weight/goal/history, Profile, Plate, Account/reset, Backup JSON, Analytics search/reason and check-in. Native Switch occurs in Settings, Reminders and Recovery inclusion; native dates/times in editor, weight/history/goal, profile and reminders have browser-specific counterparts. | `mobile/components/UI.js`, `mobile/components/LogScreenEditorCard.js`, `mobile/components/LogRecoverySection.js`, `mobile/screens/WeightScreen.js`, `mobile/components/WeightGoalCard.js`, `mobile/components/WeightHistoryList.js`, `mobile/components/ProfileScreen.js`, `mobile/components/ReminderSettingsCard.js`, `mobile/screens/more/SetNewPasswordScreen.js` |
 
-## Native dark-mode wiring: not complete end to end
+## Current native-appearance behavior and redesign boundary
 
-The JavaScript palette path is wired: persisted preference → ThemeProvider →
-resolved mode → themed styles. Explicit Dark works at this layer without asking
-native Appearance to change. `mobile/theme/ThemeContext.js` only reads
-useColorScheme; it does not call Appearance.setColorScheme. The source's claim
-that System follows OS changes is therefore conditional on the scheme native
-actually exposes. `mobile/lib/themePreference.js` stores the preference and
-`mobile/components/SettingsScreen.js` selects it; neither bridges native chrome.
+Current shipped behavior is the complete native-appearance bridge: persisted
+Light/Dark/System preference → resolved JS palette, with explicit preferences
+pinned through `Appearance.setColorScheme` and System releasing control back to
+the OS. `mobile/app.json` sets `userInterfaceStyle` to `automatic`, and
+`expo-system-ui` is installed for native system-UI coordination. Existing
+TextInput, Switch and DateTimePicker callsites receive the theme-driven props
+required by the handoff. These are landed foundations, not D0/D1 work to repeat.
 
-| Layer | Finding and practical effect | Repository evidence / platform support |
-|---|---|---|
-| Native configuration | app.json pins userInterfaceStyle to light and app.config.js does not override it. On iOS the generated app appearance is light; native default alerts/pickers and the scheme observed by the app can remain light despite an OS dark setting. A JS dark palette does not remove that native override. | `mobile/app.json`, `mobile/app.config.js`, `mobile/theme/ThemeContext.js`; [Expo SDK 54 configuration](https://docs.expo.dev/versions/v54.0.0/config/app/#userinterfacestyle), [RN 0.81 Appearance](https://reactnative.dev/docs/0.81/appearance) |
-| Android qualification | Expo requires expo-system-ui to apply userInterfaceStyle on Android. It is absent from both direct dependencies and the lockfile, so the config string alone does **not** prove Android native chrome is forced light. OS/build defaults may govern instead, independently of Kilo's explicit JS preference. Do not report identical native behavior across platforms without a binary test. | `mobile/package.json`, `mobile/package-lock.json`, `mobile/app.json`; [Expo color-theme requirements](https://docs.expo.dev/develop/user-interface/color-themes/) |
-| Status bar and safe areas | App explicitly chooses light status-bar glyphs for JS dark mode and dark glyphs for light; React safe-area and outer backgrounds use palette colors. This part is wired. That does not configure every OS surface or Android navigation-bar icon policy. There is no expo-navigation-bar integration, and Android is edge-to-edge. | `mobile/App.js`, `mobile/app.json`, `mobile/package.json`; [Expo system bars](https://docs.expo.dev/develop/user-interface/system-bars/) |
-| Keyboard | No TextInput callsite sets keyboardAppearance and there is no application-wide native appearance bridge. iOS keyboardAppearance is a separate iOS-only prop; default keyboard styling follows native appearance, so a dark JS editor can retain a light keyboard under the native light policy. Android keyboards belong to the IME and its settings; the iOS prop cannot promise a dark Android keyboard. | `mobile/components/LogScreenEditorCard.js`, `mobile/screens/WeightScreen.js`, `mobile/components/ProfileScreen.js`, `mobile/screens/more/AccountScreen.js`, `mobile/screens/more/SetNewPasswordScreen.js`, `mobile/theme/ThemeContext.js`; [RN 0.81 TextInput](https://reactnative.dev/docs/0.81/textinput#keyboardappearance-ios) |
-| Alerts, dates, switches | platformAlert forwards native calls directly. Native date/time pickers do not receive themeVariant; Settings Switches have no explicit track/thumb palette. Reminders and Recovery inclusion also use native Switch. JavaScript sheet backgrounds repaint, but system controls are not thereby tokenized. Native picker appearance has platform-specific limits; web inputs/widget internals are separate surfaces. | `mobile/lib/platformAlert.js`, `mobile/screens/WeightScreen.js`, `mobile/components/WeightHistoryList.js`, `mobile/components/WeightGoalCard.js`, `mobile/components/ProfileScreen.js`, `mobile/components/LogScreenEditorCard.js`, `mobile/components/SettingsScreen.js`, `mobile/components/ReminderSettingsCard.js`, `mobile/components/RecoveryInclusionToggle.js`; [DateTimePicker appearance options](https://github.com/react-native-datetimepicker/datetimepicker#themevariant-optional-ios-only) |
-| Startup and hosted controls | Splash/adaptive-icon backgrounds are static light-era configuration. CAPTCHA content is separately hosted/generated, not a descendant whose CSS comes from useThemedStyles. An OS permission dialog or external OAuth browser cannot be promised an exact Analog Iron skin. | `mobile/app.json`, `mobile/components/CaptchaChallenge.native.js`, `mobile/components/CaptchaChallenge.web.js`, `mobile/screens/more/AccountScreen.js` |
+The redesign boundary is visual use of those existing roles and device
+verification of the shipped bridge. OS-owned surfaces, hosted CAPTCHA/OAuth
+content, permission dialogs, IME-specific behavior and platform-specific system
+bar details remain explicit verification limits; they are not missing app-level
+appearance wiring. Evidence: `mobile/theme/ThemeContext.js`, `mobile/app.json`,
+`mobile/package.json`, `mobile/tests/theme-preference.test.js`,
+`mobile/tests/theme-rendering.test.js`, and `mobile/tests/app-config.test.js`.
 
-Conclusion: dark React surfaces plus correctly selected status-bar glyphs are
-present; native appearance, System preference, keyboard, controls, and startup
-are not a verified end-to-end dark implementation. This is a source/config
-finding, **not an observation from an installed binary**. The foundation child
-must reconcile native appearance and rebuild where required; screen owners
-handle their own control styling under the common contract's native control
-appearance rule, and D2 enforces it by presence check rather than leaving it to
-device vigilance. Do not merely switch the config to automatic
-and declare explicit Light/Dark/System synchronized. Evidence:
-`mobile/theme/ThemeContext.js`, `mobile/app.config.js`,
-`mobile/tests/theme-preference.test.js`, `mobile/tests/theme-rendering.test.js`.
-
-The device matrix for that child is OS light/dark × app Light/Dark/System, cold
-launch and live switch, text/secure/decimal keyboards, alerts, date/time pickers,
-switches, status/navigation bars, and background/foreground on Android and iOS.
-Record the binary/runtime and any untested platform explicitly. Use the actual
-development client procedure in `docs/testing-and-qa.md`; web/Jest cannot prove
-native chrome. Native config changes follow `mobile/app.config.js`'s runtime
-compatibility rule. No config change is made by this audit.
+Every later card preserves the existing control semantics and verifies its own
+native callsites on the supported device matrix. No card may reopen the native
+bridge or infer an unmodeled OS/hosted surface from a screenshot.
 
 ## Handoff gaps and image conflicts
 
@@ -229,10 +219,11 @@ an image's happy path is never sufficient acceptance coverage.
 | `mobile/screens/more/AccountScreen.js`, `mobile/screens/more/SetNewPasswordScreen.js`, `mobile/components/CaptchaChallenge.native.js`, `mobile/components/CaptchaChallenge.web.js` | Theme changes must not disturb callback, password, challenge expiry/retry or hosted-widget protocols. Visual-only edits need a security-sensitive scoped review and native/web interaction evidence. Existing contracts: `mobile/tests/auth-session.test.js`, `mobile/tests/account-lifecycle-ui.test.js`. |
 | `mobile/theme/colors.js`, `mobile/theme/ThemeContext.js`, `mobile/app.json`, `mobile/app.config.js` | Existing AA assertions, native appearance and font startup can regress independently. Verify actual role pairs, preference transitions, font failure fallback and a matching native runtime; don't use Jest color mocks as device proof. Sources: `mobile/tests/theme-rendering.test.js`, `mobile/tests/theme-preference.test.js`, `mobile/tests/app-config.test.js`. |
 
-## In-flight work and sequencing boundaries
+## Historical work notes and sequencing boundaries
 
-These are sequencing observations, not authority to update, rebase, supersede,
-close or absorb other PRs. Their status below follows the owner assignment;
+These entries preserve the original audit context only. They are not current
+main work, authority to update, rebase, supersede, close or absorb other PRs;
+the current-main ownership manifest below is authoritative. Their status below follows the owner assignment;
 the file overlaps were checked against the linked PR file lists. New files in
 those PRs are not treated as existing main routes or cited as existing files.
 
@@ -261,6 +252,144 @@ module alone is not a completed typography/radius migration. Relevant owners
 must release their files before overlapping feature work resumes. An owner may
 sequence a feature after its final visual owner while unrelated owners proceed,
 but none of the listed PRs is automatically unfrozen by this document.
+
+## Current-main redesign ownership manifest
+
+The following is the post-Phase-1 redesign ownership manifest. It contains 157
+unique owned paths: 155 production paths plus the two D1 configuration paths
+(`mobile/app.json` and `mobile/app.config.js`). A path appears once as a
+redesign write owner; other cards may consume it only as a read-only dependency.
+The complete current-main production tree contains 242 paths. The remaining 87
+production paths are listed as read-only dependencies below; they are accounted
+for in the inventory but are not redesign write targets.
+
+| Owner | Production files owned after the refactor |
+|---|---|
+| D1 | `mobile/App.js`, `mobile/app/AppShell.js`, `mobile/app/navigation.js`, `mobile/app/export.js`, `mobile/theme/ThemeContext.js`, `mobile/theme/colors.js`, `mobile/lib/themePreference.js`, `mobile/app.json`, `mobile/app.config.js` |
+| D3 | `mobile/components/UI.js`, `mobile/components/ui/containers.js`, `mobile/components/ui/controls.js`, `mobile/components/ui/feedback.js`, `mobile/components/ui/styles.js`, `mobile/components/ui/workout.js`, `mobile/components/WorkoutContentRenderer.js`, `mobile/components/TabBar.js`, `mobile/components/TabBarLayout.js`, `mobile/components/ScreenShell.js`, `mobile/components/WebAlertHost.js`, `mobile/components/WorkoutSyntaxModal.js`, `mobile/components/WorkoutSyntaxReference.js` |
+| D4 | `mobile/components/LineChart.js` |
+| D5 | `mobile/components/RestTimerBanner.js`, `mobile/components/PRMomentBanner.js`, `mobile/components/SessionCheckInModal.js`, `mobile/components/RecoveryBlockStartModal.js`, `mobile/components/RecoveryBlockWeekModal.js`, `mobile/components/RecoveryBlockEndModal.js`, `mobile/components/RecoveryInclusionToggle.js` |
+| D6 | `mobile/screens/HomeScreen.js`, `mobile/screens/home/HomeDashboard.js`, `mobile/screens/home/HomeHeader.js`, `mobile/screens/home/HomeRecoverySummary.js`, `mobile/screens/home/homeDashboardData.js`, `mobile/screens/home/homeStyles.js` |
+| D7 | `mobile/screens/LogScreen.js`, `mobile/screens/log/LogScreenContent.js`, `mobile/screens/log/LogScreenStates.js`, `mobile/screens/log/logScreenStyles.js`, `mobile/components/LogEmptyState.js`, `mobile/components/LogActiveRoutineCard.js`, `mobile/components/LogPreviousRoutines.js`, `mobile/components/LogScreenEditorCard.js`, `mobile/components/log/EditorControls.js`, `mobile/components/log/EditorHeader.js`, `mobile/components/log/EditorStatus.js`, `mobile/components/log/logEditorStyles.js`, `mobile/components/LogDeloadSection.js`, `mobile/components/LogRecoverySection.js`, `mobile/components/recovery/LogRecoveryEvidence.js`, `mobile/components/recovery/LogRecoveryLifecycle.js`, `mobile/components/recovery/LogRecoveryWeeks.js`, `mobile/components/recovery/logRecoveryStyles.js`, `mobile/screens/log/useLogCurrentRoutineEditor.js`, `mobile/screens/log/useLogOtherRoutineEditor.js`, `mobile/screens/log/useLogDeloadEditor.js`, `mobile/screens/log/editorDrafts.js`, `mobile/screens/log/editorConvergence.js`, `mobile/screens/log/editorWeekText.js`, `mobile/screens/log/useLogEditorSave.js`, `mobile/screens/log/currentRoutineCheckIn.js`, `mobile/screens/log/currentRoutineEditor.js`, `mobile/screens/log/currentRoutineSave.js`, `mobile/screens/log/otherRoutineAdoption.js`, `mobile/screens/log/otherRoutineEditing.js`, `mobile/screens/log/otherRoutineLifecycle.js`, `mobile/screens/log/otherRoutineViewers.js`, `mobile/lib/parser/workoutNote.js`, `mobile/lib/parser/workoutNoteCore.js`, `mobile/lib/parser/workoutNoteErrors.js`, `mobile/lib/parser/workoutNoteMutations.js` |
+| D8 | `mobile/screens/AnalyticsScreen.js`, `mobile/screens/analytics/AnalyticsOverview.js`, `mobile/screens/analytics/AnalyticsProgression.js`, `mobile/screens/analytics/AnalyticsStates.js`, `mobile/screens/analytics/analyticsStyles.js`, `mobile/components/AnalyticsOverviewCard.js`, `mobile/components/AnalyticsStrengthSection.js`, `mobile/components/ProgressionSuggestionCard.js`, `mobile/components/AnalyticsWeightTrendsCard.js`, `mobile/components/AnalyticsFatigueCard.js`, `mobile/components/AnalyticsCrossDayComparison.js`, `mobile/components/AnalyticsRecoverySection.js`, `mobile/components/recovery/RecoveryEvidence.js`, `mobile/components/recovery/RecoveryStateGroups.js`, `mobile/components/recovery/RecoveryWeekIndex.js`, `mobile/components/recovery/analyticsRecoveryStyles.js`, `mobile/lib/data/workoutAnalytics.js`, `mobile/lib/data/workoutAnalyticsActivations.js`, `mobile/lib/data/workoutAnalyticsCheckIn.js`, `mobile/lib/data/workoutAnalyticsOccurrences.js`, `mobile/lib/data/workoutAnalyticsSummaries.js`, `mobile/hooks/entries/recoveryBlockHooks.js`, `mobile/hooks/entries/recoveryReadState.js`, `mobile/hooks/entries/recoveryAnalyticsHooks.js`, `mobile/hooks/entries/recoveryEligibility.js`, `mobile/hooks/entries/recoveryMutations.js`, `mobile/lib/data/activeTrainingContext.js`, `mobile/lib/data/exerciseCatalog.js` |
+| D9 | `mobile/screens/WeightScreen.js`, `mobile/screens/weight/WeightEntryForm.js`, `mobile/screens/weight/GoalHistoryPanel.js`, `mobile/screens/weight/weightStyles.js`, `mobile/components/WeightGoalCard.js`, `mobile/components/WeightTrendSection.js`, `mobile/components/WeightHistoryList.js`, `mobile/components/weight/WeightHistoryFilters.js`, `mobile/components/weight/weightHistoryStyles.js` |
+| D10 | `mobile/components/PlateCalculatorModal.js`, `mobile/screens/MoreScreen.js`, `mobile/components/ProfileScreen.js`, `mobile/screens/more/SetNewPasswordScreen.js`, `mobile/components/HelpScreen.js`, `mobile/components/AboutScreen.js`, `mobile/components/RoutineImportScreen.js`, `mobile/components/RoutinePromptToolsScreen.js`, `mobile/components/RoutineShareCard.js`, `mobile/lib/interoperability/routinePrompts.js`, `mobile/lib/interoperability/routineShare.js` |
+| D12 | `mobile/components/SettingsScreen.js`, `mobile/components/ReminderSettingsCard.js` |
+| D14 | `mobile/screens/more/AccountScreen.js`, `mobile/screens/more/AccountLifecycle.js`, `mobile/screens/more/HealthDataConsent.js`, `mobile/screens/more/LegalLinks.js`, `mobile/components/CaptchaChallenge.js`, `mobile/components/CaptchaChallenge.native.js`, `mobile/components/CaptchaChallenge.web.js` |
+| D16 | `mobile/components/BackupScreen.js`, `mobile/components/backup/BackupActions.js`, `mobile/components/backup/backupStyles.js`, `mobile/storage/entries/backupImport.js`, `mobile/storage/entries/backupExport.js`, `mobile/storage/entries/backupValidation.js`, `mobile/storage/entries/backupRestore.js`, `mobile/screens/more/CloudSyncRecovery.js`, `mobile/hooks/entries/syncRecoveryHooks.js`, `mobile/storage/syncQueue.js`, `mobile/storage/sync/records.js`, `mobile/storage/sync/dirtyQueue.js`, `mobile/storage/sync/cursors.js`, `mobile/storage/sync/tableSync.js`, `mobile/storage/sync/snapshots.js`, `mobile/storage/sync/reconciliation.js`, `mobile/storage/cloud/syncAdapter.js`, `mobile/storage/cloud/syncTableIo.js`, `mobile/storage/cloud/syncRecoveryResolution.js`, `mobile/storage/cloud/syncSingletons.js`, `mobile/storage/cloud/signedOutReconciliation.js`, `mobile/storage/cloud/syncOrchestrator.js`, `mobile/storage/cloud/syncRebuild.js`, `mobile/storage/entries/recoveryOperationJournal.js`, `mobile/storage/entries/recoveryJournalSchema.js`, `mobile/storage/entries/recoveryJournalStore.js`, `mobile/storage/entries/recoveryJournalReplay.js`, `mobile/storage/entries/recoveryJournalOperations.js` |
+| D18 | none; read-only verification only |
+
+### Read-only current-main production dependencies
+
+These 87 current-main production files are consumed by the owned surfaces or
+remain behaviorally relevant to the redesign, but no D-card may edit them under
+this audit. If a visual change requires one, amend the owning card before work
+starts rather than widening its Allowed Files informally.
+
+- `mobile/hooks/entries/deloadHooks.js`
+- `mobile/hooks/entries/featureToggleHooks.js`
+- `mobile/hooks/entries/noteSections.js`
+- `mobile/hooks/entries/profileHooks.js`
+- `mobile/hooks/entries/shared.js`
+- `mobile/hooks/entries/storageMode.js`
+- `mobile/hooks/entries/trackedLiftHooks.js`
+- `mobile/hooks/entries/weightHooks.js`
+- `mobile/hooks/entries/workoutNoteHooks.js`
+- `mobile/hooks/useAuthSession.js`
+- `mobile/hooks/useEntries.js`
+- `mobile/hooks/useRestTimer.js`
+- `mobile/hooks/useWeightGoalForm.js`
+- `mobile/index.js`
+- `mobile/lib/AnalyticsScreenHelpers.js`
+- `mobile/lib/captchaConfig.js`
+- `mobile/lib/data.js`
+- `mobile/lib/data/fatigue.js`
+- `mobile/lib/data/nonWeightedMetrics.js`
+- `mobile/lib/data/oneK.js`
+- `mobile/lib/data/progressionSuggestions.js`
+- `mobile/lib/data/recoveryAnalytics.js`
+- `mobile/lib/data/recoveryAnalyticsFilter.js`
+- `mobile/lib/data/recoveryBlocks.js`
+- `mobile/lib/data/recoveryReturnBands.js`
+- `mobile/lib/data/routineStatus.js`
+- `mobile/lib/data/skipData.js`
+- `mobile/lib/data/weightGoal.js`
+- `mobile/lib/errorReporting.js`
+- `mobile/lib/format.js`
+- `mobile/lib/guidedEntry.js`
+- `mobile/lib/interoperability/csv.js`
+- `mobile/lib/interoperability/kiloCsv.js`
+- `mobile/lib/interoperability/workoutText.js`
+- `mobile/lib/LogScreenHelpers.js`
+- `mobile/lib/parser.js`
+- `mobile/lib/parser/analytics.js`
+- `mobile/lib/parser/deloadGenerator.js`
+- `mobile/lib/parser/deloadHistory.js`
+- `mobile/lib/parser/exerciseNames.js`
+- `mobile/lib/parser/sessions.js`
+- `mobile/lib/parser/weightEntry.js`
+- `mobile/lib/parser/workoutEntry.js`
+- `mobile/lib/parser/workoutRow.js`
+- `mobile/lib/plateMath.js`
+- `mobile/lib/platformAlert.js`
+- `mobile/lib/platformClipboard.js`
+- `mobile/lib/prMoment.js`
+- `mobile/lib/productMeasurement.js`
+- `mobile/lib/reminders.js`
+- `mobile/lib/reminderScheduler.js`
+- `mobile/lib/restTimer.js`
+- `mobile/lib/restTimerScheduler.js`
+- `mobile/lib/supabaseClient.js`
+- `mobile/lib/unitPreference.js`
+- `mobile/lib/units.js`
+- `mobile/lib/WeightScreenHelpers.js`
+- `mobile/screens/analytics/analyticsDerivations.js`
+- `mobile/screens/log/logScreenHelpers.js`
+- `mobile/storage/cloud/bootstrap.js`
+- `mobile/storage/cloud/bootstrapPlan.js`
+- `mobile/storage/cloud/cloudDomainMethods.js`
+- `mobile/storage/cloud/consent.js`
+- `mobile/storage/cloud/errors.js`
+- `mobile/storage/cloud/transport.js`
+- `mobile/storage/cloudAdapter.js`
+- `mobile/storage/entries.js`
+- `mobile/storage/entries/deloadStorage.js`
+- `mobile/storage/entries/derivedCache.js`
+- `mobile/storage/entries/derivedCachePurge.js`
+- `mobile/storage/entries/jsonStorage.js`
+- `mobile/storage/entries/keys.js`
+- `mobile/storage/entries/localDataOwner.js`
+- `mobile/storage/entries/migrations.js`
+- `mobile/storage/entries/profileStorage.js`
+- `mobile/storage/entries/recoveryStorage.js`
+- `mobile/storage/entries/settings.js`
+- `mobile/storage/entries/startupTiming.js`
+- `mobile/storage/entries/storageMode.js`
+- `mobile/storage/entries/weightEntries.js`
+- `mobile/storage/entries/weightGoal.js`
+- `mobile/storage/entries/workoutNoteCreationAttempts.js`
+- `mobile/storage/entries/workoutNoteDrafts.js`
+- `mobile/storage/entries/workoutNotes.js`
+- `mobile/storage/localAdapter.js`
+- `mobile/storage/secureStorage.js`
+- `mobile/storage/syncRecovery.js`
+
+### Production-caller matrix for shared extracted modules
+
+| Shared derivation or state module | Production consumers | Expected inclusion/exclusion behavior |
+|---|---|---|
+| `mobile/lib/data/activeTrainingContext.js` | D6 Home, D7 Log, D8 Analytics | Include only verified current-training context; preserve stale/unavailable exclusions and each surface's existing retry boundary. |
+| `mobile/lib/data/workoutAnalytics*.js` | D6 Home, D7 Log PR/check-in surfaces, D8 Analytics | Preserve the existing activation watermark, sparse-history handling, ordering and non-weighted evidence; no new metric or series. |
+| `mobile/lib/parser/workoutNote*.js` | D7 Log/editor, D10 routine import/prompt surfaces | Keep the compatibility barrel and exact parse/mutation semantics; import and prompt consumers must not gain editor-only state. |
+| `mobile/components/ProgressionSuggestionCard.js` | D7 Log routine view, D8 Analytics strength/progression | Preserve the same suggestion eligibility, copy, action callback and disabled/busy behavior in both consumers; D8 owns the shared presentation file. |
+| `mobile/components/recovery/RecoveryEvidence.js` and `RecoveryStateGroups.js` | D7 Log Recovery, D8 Analytics Recovery | Use the same evidence and grouping rules; preserve active/history filtering, inclusion locks and missing-baseline degradation. D8 owns the shared files; D7 consumes them read-only. |
+| `mobile/hooks/entries/recoveryBlockHooks.js` and extracted entries | D6 Home, D7 Log, D8 Analytics | Identity comes from the current local owner/account boundary; stale, malformed, partial and foreign state remains excluded until authoritative reads complete. D8 owns the shared hook files. |
+| `mobile/storage/sync/*`, `mobile/storage/cloud/*`, backup and journal modules | D6 Home notices, D7 Log status, D10 More/Backup entry, D16 Backup and Cloud Sync | UI may render only the existing queued/failed/retrying/anchored states; no consumer may reinterpret missing identity or widen local/cloud persistence. D16 owns the storage modules. |
+
+The manifest is checked against `rg --files mobile` at current `main`; every
+named path must exist, and a path may occur in only one owner row. Shared-module
+consumers are named here so ownership does not become permission for a second
+card to edit the same production file.
 
 ## Implementation-ready child issue drafts
 
@@ -373,6 +502,7 @@ Migrate the App shell's own typography/geometry and S0 overlays in this slice.
 
 **Allowed Files:** `mobile/theme/` (existing files and new typography/geometry
 modules only), `mobile/lib/themePreference.js`, `mobile/App.js`,
+`mobile/app/AppShell.js`, `mobile/app/navigation.js`, `mobile/app/export.js`,
 `mobile/app.json`, `mobile/app.config.js`, `mobile/package.json`,
 `mobile/package-lock.json`, `mobile/assets/` (new approved font files and their
 license notices only; no icon/image changes), `mobile/tests/theme-rendering.test.js`,
@@ -435,6 +565,9 @@ whole-program mode read-only and reports any remaining owner-specific defect.
 primitive APIs and S2/S3/S17 interactions.
 
 **Allowed Files:** `mobile/components/UI.js`,
+`mobile/components/ui/containers.js`, `mobile/components/ui/controls.js`,
+`mobile/components/ui/feedback.js`, `mobile/components/ui/styles.js`,
+`mobile/components/ui/workout.js`,
 `mobile/components/WorkoutContentRenderer.js`, `mobile/components/TabBar.js`,
 `mobile/components/TabBarLayout.js`, `mobile/components/ScreenShell.js`,
 `mobile/components/WebAlertHost.js`, `mobile/components/WorkoutSyntaxModal.js`,
@@ -523,9 +656,27 @@ open/between/stale, no weigh-in, partial 1K and long goal text in both themes.
 S2–S5's full authoring and workout workflows.
 
 **Allowed Files:** `mobile/screens/LogScreen.js`,
+`mobile/screens/log/LogScreenContent.js`, `mobile/screens/log/LogScreenStates.js`,
+`mobile/screens/log/logScreenStyles.js`,
 `mobile/components/LogEmptyState.js`, `mobile/components/LogActiveRoutineCard.js`,
 `mobile/components/LogPreviousRoutines.js`, `mobile/components/LogScreenEditorCard.js`,
+`mobile/components/log/EditorHeader.js`, `mobile/components/log/EditorControls.js`,
+`mobile/components/log/EditorStatus.js`, `mobile/components/log/logEditorStyles.js`,
 `mobile/components/LogDeloadSection.js`, `mobile/components/LogRecoverySection.js`,
+`mobile/components/recovery/LogRecoveryEvidence.js`,
+`mobile/components/recovery/LogRecoveryLifecycle.js`,
+`mobile/components/recovery/LogRecoveryWeeks.js`,
+`mobile/components/recovery/logRecoveryStyles.js`,
+`mobile/screens/log/useLogCurrentRoutineEditor.js`,
+`mobile/screens/log/useLogOtherRoutineEditor.js`,
+`mobile/screens/log/useLogDeloadEditor.js`, `mobile/screens/log/editorDrafts.js`,
+`mobile/screens/log/editorConvergence.js`, `mobile/screens/log/editorWeekText.js`,
+`mobile/screens/log/useLogEditorSave.js`, `mobile/screens/log/currentRoutineCheckIn.js`,
+`mobile/screens/log/currentRoutineEditor.js`, `mobile/screens/log/currentRoutineSave.js`,
+`mobile/screens/log/otherRoutineAdoption.js`, `mobile/screens/log/otherRoutineEditing.js`,
+`mobile/screens/log/otherRoutineLifecycle.js`, `mobile/screens/log/otherRoutineViewers.js`,
+`mobile/lib/parser/workoutNote.js`, `mobile/lib/parser/workoutNoteCore.js`,
+`mobile/lib/parser/workoutNoteErrors.js`, `mobile/lib/parser/workoutNoteMutations.js`,
 `mobile/tests/log-screen.test.js`, `mobile/tests/log-editor-card-saving-state.test.js`,
 `mobile/tests/save-status-region.test.js`, `mobile/tests/exercise-source-jump.test.js`,
 `mobile/tests/log-recovery-hierarchy.test.js`, `mobile/tests/log-recovery-save-status.test.js`.
@@ -551,12 +702,27 @@ deload/completion, Recovery inline save/end/reopen and keyboard/modal overlap.
 **Goal:** migrate S7/S8 using current analytics meaning and approved chart roles.
 
 **Allowed Files:** `mobile/screens/AnalyticsScreen.js`,
+`mobile/screens/analytics/AnalyticsOverview.js`,
+`mobile/screens/analytics/AnalyticsProgression.js`,
+`mobile/screens/analytics/AnalyticsStates.js`,
+`mobile/screens/analytics/analyticsStyles.js`,
 `mobile/components/AnalyticsOverviewCard.js`,
 `mobile/components/AnalyticsStrengthSection.js`,
+`mobile/components/ProgressionSuggestionCard.js`,
 `mobile/components/AnalyticsWeightTrendsCard.js`,
 `mobile/components/AnalyticsFatigueCard.js`,
 `mobile/components/AnalyticsCrossDayComparison.js`,
 `mobile/components/AnalyticsRecoverySection.js`,
+`mobile/components/recovery/RecoveryEvidence.js`,
+`mobile/components/recovery/RecoveryStateGroups.js`,
+`mobile/components/recovery/RecoveryWeekIndex.js`,
+`mobile/components/recovery/analyticsRecoveryStyles.js`,
+`mobile/lib/data/workoutAnalytics.js`, `mobile/lib/data/workoutAnalyticsActivations.js`,
+`mobile/lib/data/workoutAnalyticsCheckIn.js`, `mobile/lib/data/workoutAnalyticsOccurrences.js`,
+`mobile/lib/data/workoutAnalyticsSummaries.js`, `mobile/hooks/entries/recoveryBlockHooks.js`,
+`mobile/hooks/entries/recoveryReadState.js`, `mobile/hooks/entries/recoveryAnalyticsHooks.js`,
+`mobile/hooks/entries/recoveryEligibility.js`, `mobile/hooks/entries/recoveryMutations.js`,
+`mobile/lib/data/activeTrainingContext.js`, `mobile/lib/data/exerciseCatalog.js`,
 `mobile/tests/analytics-screen.test.js`,
 `mobile/tests/analytics-strength-section-labels.test.js`,
 `mobile/tests/analytics-weight-trends-card.test.js`,
@@ -579,8 +745,12 @@ chart prerequisites; paused feature work must not edit these files concurrently.
 
 **Goal:** restyle S6's fast entry, goal/trend summaries and editable history.
 
-**Allowed Files:** `mobile/screens/WeightScreen.js`, `mobile/components/WeightGoalCard.js`,
+**Allowed Files:** `mobile/screens/WeightScreen.js`, `mobile/screens/weight/WeightEntryForm.js`,
+`mobile/screens/weight/GoalHistoryPanel.js`, `mobile/screens/weight/weightStyles.js`,
+`mobile/components/WeightGoalCard.js`,
 `mobile/components/WeightTrendSection.js`, `mobile/components/WeightHistoryList.js`,
+`mobile/components/weight/WeightHistoryFilters.js`,
+`mobile/components/weight/weightHistoryStyles.js`,
 `mobile/tests/weight-screen.test.js`, `mobile/tests/weight-goal-ui.test.js`,
 `mobile/tests/weight-goal-read-failure.test.js`,
 `mobile/tests/weight-history-list-render-isolation.test.js`.
@@ -601,13 +771,18 @@ functionality is excluded.
 
 ### D10 — Secondary surfaces migration
 
-**Goal:** apply the visual language to the six small, mutually independent
-surfaces that no other card owns: Plate Calculator, More menu, Profile, Set New
-Password, App Guide and About. Consolidated from the separate D10/D11/D13/D15/
-D17/D18 drafts on owner direction; their files never overlapped each other, so
-one card preserves disjointness while collapsing six device passes into one.
+**Goal:** apply the visual language to the secondary and routine surfaces that
+no other card owns: Plate Calculator, the eight-entry More menu and its subviews,
+Profile, Set New Password, App Guide, About, Routine Import, Routine Prompt Tools,
+and the routine-share surface. Consolidated from the separate D10/D11/D13/D15/
+D17/D18 drafts on owner direction; the production files remain disjoint from
+the other redesign owners, so one card preserves exclusive ownership while
+covering these related surfaces.
 
 **Allowed Files:** `mobile/components/PlateCalculatorModal.js`,
+`mobile/components/RoutineImportScreen.js`, `mobile/components/RoutinePromptToolsScreen.js`,
+`mobile/components/RoutineShareCard.js`, `mobile/lib/interoperability/routinePrompts.js`,
+`mobile/lib/interoperability/routineShare.js`,
 `mobile/tests/plate-calculator-modal.test.js`, `mobile/screens/MoreScreen.js`,
 `mobile/tests/app-navigation.test.js`, `mobile/components/ProfileScreen.js`,
 `mobile/tests/profile-write-failure.test.js`,
@@ -615,16 +790,22 @@ one card preserves disjointness while collapsing six device passes into one.
 `mobile/components/HelpScreen.js`, `mobile/components/AboutScreen.js`,
 `mobile/tests/about-screen.test.js`.
 
-**Acceptance criteria:** complete local typography/geometry on all six surfaces.
+**Acceptance criteria:** complete local typography/geometry on every owned
+secondary and routine surface, preserving all eight More subviews and their
+existing entry/back behavior.
 
 - *Plate Calculator:* preserve empty/below-bar/invalid/remainder cases,
   authored-kg precision, inventory edits, per-unit defaults and unit-switch
   discard. An optional sleeve illustration uses only existing computed counts;
   no target editor, bar preset invention, fake sync badge, math/persistence fix
   or Apply to Log Row.
-- *More menu:* preserve all six entries, labels, callback routes, repeated
-  anchor handling, subview Back and password-recovery entry. No Settings
-  replacement tab and no #971 import route.
+- *More menu:* preserve Preferences, Account & Data, Prompts, and Help & Support;
+  all eight current subviews (`help`, `about`, `backup`, `settings`, `profile`,
+  `account`, `import-routine`, `routine-prompts`), labels, callback routes,
+  repeated anchor handling, subview Back and password-recovery entry. Routine
+  Import remains the existing data-entry route and Routine Prompt Tools remains
+  the existing local-template surface; neither becomes a new tab or changes
+  routine/storage semantics.
 - *Profile:* migrate text/decimal inputs, date picker and selected controls;
   preserve optional values, ft/in/cm conversion, DOB clear, activity options,
   save success/error and clear confirmation.
@@ -636,21 +817,31 @@ one card preserves disjointness while collapsing six device passes into one.
 - *About:* preserve real version, attribution, legal links and OTA
   diagnostics/check/result/error/restart. No fabricated spec IDs or screenshot
   version.
+- *Routine Import and Prompt Tools:* preserve paste/parse/validation/error,
+  routine creation, prompt-copy, external-LLM handoff and Back behavior. No
+  import route is invented; these are already-shipped More subviews.
+- *Routine Share:* preserve the existing Log entry point, modal lifecycle,
+  share payload and interoperability behavior; no share-card redesign may
+  change routine identity or mutate the active routine.
 
 The common contract's native control appearance rule applies here for Profile's
 date picker and the Profile/Set New Password text and secure inputs.
 
 **Verification:** `mobile/tests/plate-calculator-modal.test.js`,
 `mobile/tests/app-navigation.test.js`, `mobile/tests/profile-write-failure.test.js`,
-`mobile/tests/about-screen.test.js`, plus unchanged
+`mobile/tests/about-screen.test.js`, `mobile/tests/routine-import.test.js`,
+`mobile/tests/routine-prompt-tools.test.js`, `mobile/tests/routine-share-card.test.js`,
+`mobile/tests/interoperability-routine-share.test.js`, plus unchanged
 `mobile/tests/plate-math.test.js`, `mobile/tests/app-shell-back.test.js`,
 `mobile/tests/unit-display-ui.test.js`, `mobile/tests/account-lifecycle-ui.test.js`,
 `mobile/tests/auth-session.test.js` and
 `mobile/tests/workout-syntax-reference.test.js`. Device sign-off, one pass across
-all six: tapped lb/kg sets with a unit switch mid-edit and inventory save/cancel;
-all six More subviews and hardware Back; empty and existing Profile with both
+all owned secondary and routine surfaces: tapped lb/kg sets with a unit switch mid-edit and inventory save/cancel;
+all eight More subviews and hardware Back; empty and existing Profile with both
 height inputs, DOB clear and failure/retry; valid and expired recovery entry with
-a mismatch error; full guide scroll; About update/check/failure. Both themes and
+a mismatch error; full guide scroll; About update/check/failure; Routine Import
+paste/parse/validation and routine creation; Routine Prompt Tools copy and
+external-LLM handoff; Routine Share payload and modal lifecycle. Both themes and
 large text throughout. **Order:** after D14, since Set New Password follows the
 consent/lifecycle shell; the other five need only D5.
 
@@ -702,7 +893,23 @@ D16 owns Cloud Sync/Backup consumers of the consent component.
 **Goal:** migrate S15/S16 with explicit local/cloud and destructive boundaries.
 
 **Allowed Files:** `mobile/components/BackupScreen.js`,
-`mobile/screens/more/CloudSyncRecovery.js`, `mobile/tests/backup-screen.test.js`,
+`mobile/components/backup/BackupActions.js`, `mobile/components/backup/backupStyles.js`,
+`mobile/storage/entries/backupImport.js`, `mobile/storage/entries/backupExport.js`,
+`mobile/storage/entries/backupValidation.js`, `mobile/storage/entries/backupRestore.js`,
+`mobile/screens/more/CloudSyncRecovery.js`, `mobile/hooks/entries/syncRecoveryHooks.js`,
+`mobile/storage/syncQueue.js`, `mobile/storage/sync/records.js`,
+`mobile/storage/sync/dirtyQueue.js`, `mobile/storage/sync/cursors.js`,
+`mobile/storage/sync/tableSync.js`, `mobile/storage/sync/snapshots.js`,
+`mobile/storage/sync/reconciliation.js`, `mobile/storage/cloud/syncAdapter.js`,
+`mobile/storage/cloud/syncTableIo.js`, `mobile/storage/cloud/syncRecoveryResolution.js`,
+`mobile/storage/cloud/syncSingletons.js`, `mobile/storage/cloud/signedOutReconciliation.js`,
+`mobile/storage/cloud/syncOrchestrator.js`, `mobile/storage/cloud/syncRebuild.js`,
+`mobile/storage/entries/recoveryOperationJournal.js`,
+`mobile/storage/entries/recoveryJournalSchema.js`,
+`mobile/storage/entries/recoveryJournalStore.js`,
+`mobile/storage/entries/recoveryJournalReplay.js`,
+`mobile/storage/entries/recoveryJournalOperations.js`,
+`mobile/tests/backup-screen.test.js`,
 `mobile/tests/sync-recovery-ui.test.js`.
 
 **Acceptance criteria:** migrate local typography/geometry/forms/status/danger
