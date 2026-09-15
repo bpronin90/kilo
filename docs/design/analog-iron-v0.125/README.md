@@ -95,10 +95,10 @@ screenshots or invent values from them.
 
 ### Owner approval checklist
 
-- [ ] One chart alternative selected for implementation.
-- [ ] Light/dark token tables approved.
+- [x] One chart alternative selected: **B — Warm Steel**. `chartPrimary` = `#42535E` (light) / `#8FAAB9` (dark). PR/exceptional marker = filled vermilion circle.
+- [x] Light/dark token tables approved (Alternative B token table, `visual-language-spec.md` §7).
 - [ ] Actual-pair AA contrast evidence approved.
-- [ ] Space Grotesk weights, mono font/license, and fallback behavior approved.
+- [x] Space Grotesk Display Hero weight approved at **700** (effective weight on native; `fontWeight:'800'` calls clamp here — no source change needed). Mono font selection still required (see §9 options).
 - [ ] Native/hosted control treatment and platform exceptions approved.
 - [ ] Existing-reference links and unauthorized screenshot scope reviewed.
 - [ ] D1/D4/D8/D9 may proceed against this recorded package.

@@ -82,6 +82,9 @@ and `weight-light.png`, and any chart not listed above remain unauthorized.
 
 ---
 
+**Selected alternative: B — Warm Steel** (owner approval recorded above).
+Alternatives A and C are retained for reference only.
+
 ### Alternative A — Mechanical Ink
 
 > Reuses only existing `ink` and `inkMuted` tokens. No new tokens required.
@@ -274,12 +277,7 @@ native targets is rendered at 700 (the nearest available weight — platform fon
 clamps to the heaviest loaded axis). On Expo web with a Google Fonts stylesheet, `font-weight: 800`
 triggers faux-bold synthesis unless a weight-800 source is explicitly loaded.
 
-**Decision required.** Two options:
-
-| Option | Description |
-|---|---|
-| A — Approve 700 as Display Hero weight | Formally document 700 (Bold) as the effective weight for all Display Hero uses. The `fontWeight: '800'` calls in the source render at 700 on native; no source change needed. Simplest. |
-| B — Source a weight-800 face | Evaluate Plus Jakarta Sans (Google Fonts, SIL OFL, weights 200–800) as a substitute for Display Hero use. Space Grotesk remains for all other roles. Requires evaluating visual consistency between the two families side by side. |
+**Approved: Option A — 700 is the effective Display Hero weight.** `fontWeight: '800'` calls in the source clamp to 700 on native; no source change needed. Plus Jakarta Sans is not adopted.
 
 ### Bundled monospace options
 
