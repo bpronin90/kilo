@@ -268,11 +268,13 @@ but none of the listed PRs is automatically unfrozen by this document.
 
 ## Current-main redesign ownership manifest
 
-The following is the post-Phase-1 production ownership manifest. A path appears
-once as a redesign write owner; other cards may consume it only as a read-only
-dependency. Tests are verification dependencies and are not production owners.
-Every extracted Phase-1 production module is included so later cards cannot fall
-back to the pre-refactor parent path.
+The following is the post-Phase-1 redesign ownership manifest. It contains 156
+unique owned paths: 154 production paths plus the two D1 configuration paths
+(`mobile/app.json` and `mobile/app.config.js`). A path appears once as a
+redesign write owner; other cards may consume it only as a read-only dependency.
+The complete current-main production tree contains 242 paths. The remaining 88
+production paths are listed as read-only dependencies below; they are accounted
+for in the inventory but are not redesign write targets.
 
 | Owner | Production files owned after the refactor |
 |---|---|
@@ -289,6 +291,102 @@ back to the pre-refactor parent path.
 | D14 | `mobile/screens/more/AccountScreen.js`, `mobile/screens/more/AccountLifecycle.js`, `mobile/screens/more/HealthDataConsent.js`, `mobile/screens/more/LegalLinks.js`, `mobile/components/CaptchaChallenge.js`, `mobile/components/CaptchaChallenge.native.js`, `mobile/components/CaptchaChallenge.web.js` |
 | D16 | `mobile/components/BackupScreen.js`, `mobile/components/backup/BackupActions.js`, `mobile/components/backup/backupStyles.js`, `mobile/storage/entries/backupImport.js`, `mobile/storage/entries/backupExport.js`, `mobile/storage/entries/backupValidation.js`, `mobile/storage/entries/backupRestore.js`, `mobile/screens/more/CloudSyncRecovery.js`, `mobile/hooks/entries/syncRecoveryHooks.js`, `mobile/storage/syncQueue.js`, `mobile/storage/sync/records.js`, `mobile/storage/sync/dirtyQueue.js`, `mobile/storage/sync/cursors.js`, `mobile/storage/sync/tableSync.js`, `mobile/storage/sync/snapshots.js`, `mobile/storage/sync/reconciliation.js`, `mobile/storage/cloud/syncAdapter.js`, `mobile/storage/cloud/syncTableIo.js`, `mobile/storage/cloud/syncRecoveryResolution.js`, `mobile/storage/cloud/syncSingletons.js`, `mobile/storage/cloud/signedOutReconciliation.js`, `mobile/storage/cloud/syncOrchestrator.js`, `mobile/storage/cloud/syncRebuild.js`, `mobile/storage/entries/recoveryOperationJournal.js`, `mobile/storage/entries/recoveryJournalSchema.js`, `mobile/storage/entries/recoveryJournalStore.js`, `mobile/storage/entries/recoveryJournalReplay.js`, `mobile/storage/entries/recoveryJournalOperations.js` |
 | D18 | none; read-only verification only |
+
+### Read-only current-main production dependencies
+
+These 88 current-main production files are consumed by the owned surfaces or
+remain behaviorally relevant to the redesign, but no D-card may edit them under
+this audit. If a visual change requires one, amend the owning card before work
+starts rather than widening its Allowed Files informally.
+
+- `mobile/components/ProgressionSuggestionCard.js`
+- `mobile/hooks/entries/deloadHooks.js`
+- `mobile/hooks/entries/featureToggleHooks.js`
+- `mobile/hooks/entries/noteSections.js`
+- `mobile/hooks/entries/profileHooks.js`
+- `mobile/hooks/entries/shared.js`
+- `mobile/hooks/entries/storageMode.js`
+- `mobile/hooks/entries/trackedLiftHooks.js`
+- `mobile/hooks/entries/weightHooks.js`
+- `mobile/hooks/entries/workoutNoteHooks.js`
+- `mobile/hooks/useAuthSession.js`
+- `mobile/hooks/useEntries.js`
+- `mobile/hooks/useRestTimer.js`
+- `mobile/hooks/useWeightGoalForm.js`
+- `mobile/index.js`
+- `mobile/lib/AnalyticsScreenHelpers.js`
+- `mobile/lib/captchaConfig.js`
+- `mobile/lib/data.js`
+- `mobile/lib/data/fatigue.js`
+- `mobile/lib/data/nonWeightedMetrics.js`
+- `mobile/lib/data/oneK.js`
+- `mobile/lib/data/progressionSuggestions.js`
+- `mobile/lib/data/recoveryAnalytics.js`
+- `mobile/lib/data/recoveryAnalyticsFilter.js`
+- `mobile/lib/data/recoveryBlocks.js`
+- `mobile/lib/data/recoveryReturnBands.js`
+- `mobile/lib/data/routineStatus.js`
+- `mobile/lib/data/skipData.js`
+- `mobile/lib/data/weightGoal.js`
+- `mobile/lib/errorReporting.js`
+- `mobile/lib/format.js`
+- `mobile/lib/guidedEntry.js`
+- `mobile/lib/interoperability/csv.js`
+- `mobile/lib/interoperability/kiloCsv.js`
+- `mobile/lib/interoperability/workoutText.js`
+- `mobile/lib/LogScreenHelpers.js`
+- `mobile/lib/parser.js`
+- `mobile/lib/parser/analytics.js`
+- `mobile/lib/parser/deloadGenerator.js`
+- `mobile/lib/parser/deloadHistory.js`
+- `mobile/lib/parser/exerciseNames.js`
+- `mobile/lib/parser/sessions.js`
+- `mobile/lib/parser/weightEntry.js`
+- `mobile/lib/parser/workoutEntry.js`
+- `mobile/lib/parser/workoutRow.js`
+- `mobile/lib/plateMath.js`
+- `mobile/lib/platformAlert.js`
+- `mobile/lib/platformClipboard.js`
+- `mobile/lib/prMoment.js`
+- `mobile/lib/productMeasurement.js`
+- `mobile/lib/reminders.js`
+- `mobile/lib/reminderScheduler.js`
+- `mobile/lib/restTimer.js`
+- `mobile/lib/restTimerScheduler.js`
+- `mobile/lib/supabaseClient.js`
+- `mobile/lib/unitPreference.js`
+- `mobile/lib/units.js`
+- `mobile/lib/WeightScreenHelpers.js`
+- `mobile/screens/analytics/analyticsDerivations.js`
+- `mobile/screens/log/logScreenHelpers.js`
+- `mobile/storage/cloud/bootstrap.js`
+- `mobile/storage/cloud/bootstrapPlan.js`
+- `mobile/storage/cloud/cloudDomainMethods.js`
+- `mobile/storage/cloud/consent.js`
+- `mobile/storage/cloud/errors.js`
+- `mobile/storage/cloud/transport.js`
+- `mobile/storage/cloudAdapter.js`
+- `mobile/storage/entries.js`
+- `mobile/storage/entries/deloadStorage.js`
+- `mobile/storage/entries/derivedCache.js`
+- `mobile/storage/entries/derivedCachePurge.js`
+- `mobile/storage/entries/jsonStorage.js`
+- `mobile/storage/entries/keys.js`
+- `mobile/storage/entries/localDataOwner.js`
+- `mobile/storage/entries/migrations.js`
+- `mobile/storage/entries/profileStorage.js`
+- `mobile/storage/entries/recoveryStorage.js`
+- `mobile/storage/entries/settings.js`
+- `mobile/storage/entries/startupTiming.js`
+- `mobile/storage/entries/storageMode.js`
+- `mobile/storage/entries/weightEntries.js`
+- `mobile/storage/entries/weightGoal.js`
+- `mobile/storage/entries/workoutNoteCreationAttempts.js`
+- `mobile/storage/entries/workoutNoteDrafts.js`
+- `mobile/storage/entries/workoutNotes.js`
+- `mobile/storage/localAdapter.js`
+- `mobile/storage/secureStorage.js`
+- `mobile/storage/syncRecovery.js`
 
 ### Production-caller matrix for shared extracted modules
 
