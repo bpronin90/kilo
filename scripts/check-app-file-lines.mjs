@@ -74,9 +74,7 @@ const CONFIG_FILE_RE = /\.config\.(js|jsx|ts|tsx)$/;
 // paired with its exact `wc -l` count that day. A future card that shrinks one
 // of these should lower its number here -- but is never required to as a
 // precondition of merging the reduction; see the module comment above.
-export const BASELINE = {
-  'mobile/storage/cloud/syncAdapter.js': 1817,
-};
+export const BASELINE = {};
 
 // `wc -l` counts newline characters, not "lines of text" -- a file with no
 // trailing newline is one short of what an editor would show. Matching that
