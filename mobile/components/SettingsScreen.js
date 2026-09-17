@@ -261,10 +261,14 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
         )}
       </Card>
 
-      <SectionTitle>Dev Preview</SectionTitle>
-      <Card>
-        <ThemePreviewControl />
-      </Card>
+      {__DEV__ && (
+        <>
+          <SectionTitle>Dev Preview</SectionTitle>
+          <Card>
+            <ThemePreviewControl />
+          </Card>
+        </>
+      )}
 
       <SectionTitle>Advanced</SectionTitle>
       <Card>
