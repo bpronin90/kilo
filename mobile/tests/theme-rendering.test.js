@@ -3,7 +3,18 @@ import renderer, { act } from 'react-test-renderer';
 import { Appearance, Text, View, useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { DarkColors, LightColors, paletteForMode } from '../theme/colors';
+import {
+  DarkColors,
+  LightColors,
+  paletteForMode,
+  KUA_PALETTES,
+  HardCourtLightColors,
+  HardCourtDarkColors,
+  ClayCourtLightColors,
+  ClayCourtDarkColors,
+  GrassCourtLightColors,
+  GrassCourtDarkColors,
+} from '../theme/colors';
 import {
   ThemeProvider,
   switchColors,
@@ -992,6 +1003,7 @@ describe('switchColors token mapping (#985)', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
 // KUA typography token contract (#1097)
 // Source: docs/design/kinetic-utilitarian-athletic/foundation.md
 // ---------------------------------------------------------------------------
@@ -1191,5 +1203,441 @@ describe('KUA typography token contract', () => {
         expect(typeof spec.fontSize).toBe('number');
       });
     }).not.toThrow();
+  });
+});
+
+// KUA six-palette semantic token contract (#1096)
+// ---------------------------------------------------------------------------
+
+// Cross-palette required roles (all six palettes must define these).
+const KUA_REQUIRED_ROLES = [
+  'background', 'surface', 'surfaceCard', 'surfaceBorder',
+  'surfaceCardHeader', 'surfaceSection',
+  'primary', 'primaryContainer', 'primaryContainerBorder', 'primaryOnContainer',
+  'onSurface', 'onSurfaceVariant', 'completion', 'onPrimary',
+  'tabBarBg', 'headerBg', 'error',
+  'success', 'warning', 'selection',
+  'chartSeries1', 'chartSeries2', 'chartSeries3',
+];
+
+// Per-palette complete approved token tables from the spec.
+// Every role listed in the authority doc for that palette must be present
+// and match the approved hex value exactly.
+const KUA_APPROVED_VALUES = {
+  hardCourtLight: {
+    background: '#EEF3F9',
+    surface: '#EEF3F9',
+    surfaceCard: '#FFFFFF',
+    surfaceSubtle: '#EEF3F9',
+    surfaceBorder: '#DDE6F2',
+    surfaceCardHeader: '#EEF3F9',
+    surfaceSection: '#EEF3F9',
+    primary: '#0A4ABF',
+    primaryContainer: '#E1ECFB',
+    primaryContainerBorder: '#9BC1F5',
+    primaryOnContainer: '#083B9A',
+    onSurface: '#0E1726',
+    onSurfaceVariant: '#5A687A',
+    completion: '#006C4A',
+    onPrimary: '#FFFFFF',
+    tabBarBg: '#FFFFFF',
+    headerBg: '#EEF3F9',
+    error: '#BA1A1A',
+    selection: '#E1ECFB',
+    success: '#006C4A',
+    warning: '#B45309',
+    chartSeries1: '#0C7489',
+    chartSeries2: '#C2410C',
+    chartSeries3: '#7C3AED',
+  },
+  hardCourtDark: {
+    background: '#080D18',
+    surface: '#080D18',
+    surfaceCard: '#101728',
+    surfaceCardHeader: '#131D32',
+    surfaceSection: '#0E1524',
+    surfaceBorder: '#1C2742',
+    primary: '#3B82F6',
+    primaryLight: '#60A5FA',
+    primaryContainer: '#17233D',
+    primaryContainerBorder: '#2A3F6D',
+    primaryOnContainer: '#60A5FA',
+    onSurface: '#F0F4FC',
+    onSurfaceVariant: '#8C9BB3',
+    completion: '#10B981',
+    onPrimary: '#080D18',
+    tabBarBg: '#080D18',
+    headerBg: '#080D18',
+    error: '#BA1A1A',
+    selection: '#17233D',
+    success: '#10B981',
+    warning: '#FBBF24',
+    chartSeries1: '#22D3EE',
+    chartSeries2: '#F59E0B',
+    chartSeries3: '#A78BFA',
+  },
+  clayCourtLight: {
+    background: '#F8F5EE',
+    surface: '#F8F5EE',
+    surfaceCard: '#FFFDF9',
+    surfaceElevated: '#F2EDE4',
+    surfaceCardHeader: '#F2EDE4',
+    surfaceSection: '#F2EDE4',
+    surfaceBorder: '#E5DFD3',
+    primary: '#A23E19',
+    primaryDark: '#7E2E0F',
+    primaryContainer: '#FBECE5',
+    primaryContainerBorder: '#E89A7A',
+    primaryOnContainer: '#7E2E0F',
+    onSurface: '#1A1918',
+    onSurfaceVariant: '#585550',
+    onSurfaceMuted: '#736D65',
+    completion: '#1E5B3A',
+    onPrimary: '#FFFFFF',
+    tabBarBg: '#F8F5EE',
+    headerBg: '#F8F5EE',
+    error: '#BA1A1A',
+    selection: '#FBECE5',
+    success: '#006C4A',
+    warning: '#B45309',
+    chartSeries1: '#0C7489',
+    chartSeries2: '#C2410C',
+    chartSeries3: '#7C3AED',
+  },
+  clayCourtDark: {
+    background: '#141211',
+    surface: '#141211',
+    surfaceCard: '#1F1C1A',
+    surfaceCardHeader: '#181513',
+    surfaceLow: '#1A1816',
+    surfaceBorder: '#2C2723',
+    surfaceSection: '#1A1816',
+    primary: '#D86538',
+    primaryLight: '#F08B62',
+    primaryContainer: '#341B13',
+    primaryContainerBorder: '#5C2E1E',
+    primaryOnContainer: '#F08B62',
+    onSurface: '#F5F3F0',
+    onSurfaceVariant: '#A89F96',
+    completion: '#2CA864',
+    onPrimary: '#141211',
+    tabBarBg: '#141211',
+    headerBg: '#141211',
+    error: '#BA1A1A',
+    selection: '#341B13',
+    success: '#10B981',
+    warning: '#FBBF24',
+    chartSeries1: '#22D3EE',
+    chartSeries2: '#F59E0B',
+    chartSeries3: '#A78BFA',
+  },
+  grassCourtLight: {
+    background: '#F4F8F5',
+    surface: '#F4F8F5',
+    surfaceCard: '#FFFFFF',
+    surfaceSubtle: '#F2F7F4',
+    surfaceCardHeader: '#F4F8F5',
+    surfaceSection: '#F2F7F4',
+    surfaceBorder: '#E0EAE3',
+    surfaceSeg: '#E8EFEA',
+    surfaceSegBorder: '#DEE7E1',
+    primary: '#1E5B3A',
+    primaryDark: '#14452B',
+    primaryContainer: '#E8F4EC',
+    primaryContainerBorder: '#A3D4B3',
+    primaryOnContainer: '#14452B',
+    onSurface: '#111813',
+    onSurfaceVariant: '#556B5C',
+    completion: '#1E5B3A',
+    onPrimary: '#FFFFFF',
+    tabBarBg: '#F4F8F5',
+    headerBg: '#F4F8F5',
+    error: '#BA1A1A',
+    selection: '#E8F4EC',
+    success: '#006C4A',
+    warning: '#B45309',
+    chartSeries1: '#0C7489',
+    chartSeries2: '#C2410C',
+    chartSeries3: '#7C3AED',
+  },
+  grassCourtDark: {
+    background: '#0C130F',
+    surface: '#0C130F',
+    surfaceCard: '#15201A',
+    surfaceCardHeader: '#0C130F',
+    surfaceLow: '#111A15',
+    surfaceSection: '#111A15',
+    surfaceBorder: '#1F3025',
+    surfaceSurface2: '#1C2B22',
+    primary: '#2CA864',
+    primaryNeon: '#4ADE80',
+    primaryContainer: '#132B1C',
+    primaryContainerBorder: '#235235',
+    primaryOnContainer: '#4ADE80',
+    onSurface: '#F0F5F2',
+    onSurfaceVariant: '#91A398',
+    completion: '#2CA864',
+    onPrimary: '#0C130F',
+    tabBarBg: '#0C130F',
+    headerBg: '#0C130F',
+    error: '#BA1A1A',
+    selection: '#132B1C',
+    success: '#10B981',
+    warning: '#FBBF24',
+    chartSeries1: '#22D3EE',
+    chartSeries2: '#F59E0B',
+    chartSeries3: '#A78BFA',
+  },
+};
+
+const KUA_ALL_PALETTES = [
+  ['hardCourt/light', HardCourtLightColors, KUA_APPROVED_VALUES.hardCourtLight],
+  ['hardCourt/dark', HardCourtDarkColors, KUA_APPROVED_VALUES.hardCourtDark],
+  ['clayCourt/light', ClayCourtLightColors, KUA_APPROVED_VALUES.clayCourtLight],
+  ['clayCourt/dark', ClayCourtDarkColors, KUA_APPROVED_VALUES.clayCourtDark],
+  ['grassCourt/light', GrassCourtLightColors, KUA_APPROVED_VALUES.grassCourtLight],
+  ['grassCourt/dark', GrassCourtDarkColors, KUA_APPROVED_VALUES.grassCourtDark],
+];
+
+const KUA_LIGHT_PALETTES = [
+  ['hardCourt/light', HardCourtLightColors, KUA_APPROVED_VALUES.hardCourtLight],
+  ['clayCourt/light', ClayCourtLightColors, KUA_APPROVED_VALUES.clayCourtLight],
+  ['grassCourt/light', GrassCourtLightColors, KUA_APPROVED_VALUES.grassCourtLight],
+];
+
+const KUA_DARK_PALETTES = [
+  ['hardCourt/dark', HardCourtDarkColors, KUA_APPROVED_VALUES.hardCourtDark],
+  ['clayCourt/dark', ClayCourtDarkColors, KUA_APPROVED_VALUES.clayCourtDark],
+  ['grassCourt/dark', GrassCourtDarkColors, KUA_APPROVED_VALUES.grassCourtDark],
+];
+
+describe('KUA palette structure', () => {
+  test('KUA_PALETTES exports all six palettes', () => {
+    expect(Object.keys(KUA_PALETTES)).toEqual(['hardCourt', 'clayCourt', 'grassCourt']);
+    for (const theme of Object.values(KUA_PALETTES)) {
+      expect(theme.light).toBeDefined();
+      expect(theme.dark).toBeDefined();
+    }
+  });
+
+  test.each(KUA_ALL_PALETTES)('%s: all required roles are present and not undefined', (_name, palette) => {
+    for (const role of KUA_REQUIRED_ROLES) {
+      expect({ role, value: palette[role] }).not.toEqual({ role, value: undefined });
+      expect({ role, value: palette[role] }).not.toEqual({ role, value: null });
+    }
+  });
+
+  test.each(KUA_ALL_PALETTES)('%s: no required role has an empty value', (_name, palette) => {
+    for (const role of KUA_REQUIRED_ROLES) {
+      expect({ role, empty: palette[role] === '' }).toEqual({ role, empty: false });
+    }
+  });
+
+  test('selection equals primaryContainer for every palette', () => {
+    for (const [name, palette] of KUA_ALL_PALETTES) {
+      expect({ name, match: palette.selection === palette.primaryContainer })
+        .toEqual({ name, match: true });
+    }
+  });
+});
+
+describe('KUA per-palette complete approved token values', () => {
+  // Every role in the authority doc for each palette must be present with its
+  // exact approved hex value — including palette-specific tokens such as
+  // surfaceSubtle, primaryLight, surfaceElevated, onSurfaceMuted,
+  // surfaceSeg/surfaceSegBorder, and primaryNeon.
+  test.each(KUA_ALL_PALETTES)('%s: every approved role has the exact specified value', (_name, palette, approved) => {
+    for (const [role, value] of Object.entries(approved)) {
+      expect({ role, value: palette[role] }).toEqual({ role, value });
+    }
+  });
+
+  test.each(KUA_ALL_PALETTES)('%s: no approved role is missing from the palette', (_name, palette, approved) => {
+    for (const role of Object.keys(approved)) {
+      expect({ role, defined: palette[role] !== undefined }).toEqual({ role, defined: true });
+    }
+  });
+});
+
+describe('KUA shared roles are identical across themes within a mode', () => {
+  const SHARED_ROLES = ['success', 'warning', 'chartSeries1', 'chartSeries2', 'chartSeries3'];
+
+  const SHARED_LIGHT_VALUES = {
+    success: '#006C4A',
+    warning: '#B45309',
+    chartSeries1: '#0C7489',
+    chartSeries2: '#C2410C',
+    chartSeries3: '#7C3AED',
+  };
+
+  const SHARED_DARK_VALUES = {
+    success: '#10B981',
+    warning: '#FBBF24',
+    chartSeries1: '#22D3EE',
+    chartSeries2: '#F59E0B',
+    chartSeries3: '#A78BFA',
+  };
+
+  test.each(KUA_LIGHT_PALETTES)('%s: shared roles match approved light values exactly', (_name, palette) => {
+    for (const role of SHARED_ROLES) {
+      expect({ role, value: palette[role] }).toEqual({ role, value: SHARED_LIGHT_VALUES[role] });
+    }
+  });
+
+  test.each(KUA_DARK_PALETTES)('%s: shared roles match approved dark values exactly', (_name, palette) => {
+    for (const role of SHARED_ROLES) {
+      expect({ role, value: palette[role] }).toEqual({ role, value: SHARED_DARK_VALUES[role] });
+    }
+  });
+
+  test('error is the same across all six palettes', () => {
+    for (const [name, palette] of KUA_ALL_PALETTES) {
+      expect({ name, error: palette.error }).toEqual({ name, error: '#BA1A1A' });
+    }
+  });
+});
+
+describe('KUA WCAG contrast: required text/non-text pairs', () => {
+  // Light: body and muted text on canvas and card must be AA (≥4.5:1)
+  test.each(KUA_LIGHT_PALETTES)('%s: onSurface clears AA on background and surfaceCard', (_name, palette) => {
+    expect(contrastRatio(palette.onSurface, palette.background)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(palette.onSurface, palette.surfaceCard)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  test.each(KUA_DARK_PALETTES)('%s: onSurface clears AA on background and surfaceCard', (_name, palette) => {
+    expect(contrastRatio(palette.onSurface, palette.background)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(palette.onSurface, palette.surfaceCard)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  test.each(KUA_LIGHT_PALETTES)('%s: onSurfaceVariant clears AA on background and surfaceCard', (_name, palette) => {
+    expect(contrastRatio(palette.onSurfaceVariant, palette.background)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(palette.onSurfaceVariant, palette.surfaceCard)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  test.each(KUA_DARK_PALETTES)('%s: onSurfaceVariant clears AA on background and surfaceCard', (_name, palette) => {
+    expect(contrastRatio(palette.onSurfaceVariant, palette.background)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(palette.onSurfaceVariant, palette.surfaceCard)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  test.each(KUA_ALL_PALETTES)('%s: onPrimary clears AA on primary', (_name, palette) => {
+    expect(contrastRatio(palette.onPrimary, palette.primary)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  test.each(KUA_ALL_PALETTES)('%s: primaryOnContainer clears AA on primaryContainer', (_name, palette) => {
+    expect(contrastRatio(palette.primaryOnContainer, palette.primaryContainer)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // Shared light tokens: AA on all six surfaces in their mode
+  test('shared light success clears AA on all light surfaces', () => {
+    for (const [name, palette] of KUA_LIGHT_PALETTES) {
+      for (const surface of [palette.background, palette.surfaceCard]) {
+        expect({ name, ok: contrastRatio(palette.success, surface) >= 4.5 })
+          .toEqual({ name, ok: true });
+      }
+    }
+  });
+
+  test('shared light warning clears AA on all light surfaces', () => {
+    for (const [name, palette] of KUA_LIGHT_PALETTES) {
+      for (const surface of [palette.background, palette.surfaceCard]) {
+        expect({ name, ok: contrastRatio(palette.warning, surface) >= 4.5 })
+          .toEqual({ name, ok: true });
+      }
+    }
+  });
+
+  test('shared light chart series clear AA on all light surfaces', () => {
+    for (const [name, palette] of KUA_LIGHT_PALETTES) {
+      for (const series of ['chartSeries1', 'chartSeries2', 'chartSeries3']) {
+        for (const surface of [palette.background, palette.surfaceCard]) {
+          expect({ name, series, ok: contrastRatio(palette[series], surface) >= 4.5 })
+            .toEqual({ name, series, ok: true });
+        }
+      }
+    }
+  });
+
+  test('shared dark success clears AA on all dark surfaces', () => {
+    for (const [name, palette] of KUA_DARK_PALETTES) {
+      for (const surface of [palette.background, palette.surfaceCard]) {
+        expect({ name, ok: contrastRatio(palette.success, surface) >= 4.5 })
+          .toEqual({ name, ok: true });
+      }
+    }
+  });
+
+  test('shared dark warning clears AA on all dark surfaces', () => {
+    for (const [name, palette] of KUA_DARK_PALETTES) {
+      for (const surface of [palette.background, palette.surfaceCard]) {
+        expect({ name, ok: contrastRatio(palette.warning, surface) >= 4.5 })
+          .toEqual({ name, ok: true });
+      }
+    }
+  });
+
+  test('shared dark chart series clear AA on all dark surfaces', () => {
+    for (const [name, palette] of KUA_DARK_PALETTES) {
+      for (const series of ['chartSeries1', 'chartSeries2', 'chartSeries3']) {
+        for (const surface of [palette.background, palette.surfaceCard]) {
+          expect({ name, series, ok: contrastRatio(palette[series], surface) >= 4.5 })
+            .toEqual({ name, series, ok: true });
+        }
+      }
+    }
+  });
+
+  // Spot-check key documented pairs from the spec
+  test('Hard Court Light: documented pairs match spec ratios', () => {
+    const p = HardCourtLightColors;
+    // #0E1726 / #EEF3F9 → 16.1:1 AAA
+    expect(contrastRatio(p.onSurface, p.background)).toBeGreaterThanOrEqual(15.0);
+    // #0A4ABF / #EEF3F9 → 6.9:1 AA
+    expect(contrastRatio(p.primary, p.background)).toBeGreaterThanOrEqual(6.5);
+    // #FFFFFF / #0A4ABF → 7.7:1 AAA
+    expect(contrastRatio(p.onPrimary, p.primary)).toBeGreaterThanOrEqual(7.5);
+  });
+
+  test('Hard Court Dark: documented pairs match spec ratios', () => {
+    const p = HardCourtDarkColors;
+    // #F0F4FC / #080D18 → 17.6:1 AAA
+    expect(contrastRatio(p.onSurface, p.background)).toBeGreaterThanOrEqual(17.0);
+    // #60A5FA / #17233D → 6.1:1 AA
+    expect(contrastRatio(p.primaryOnContainer, p.primaryContainer)).toBeGreaterThanOrEqual(6.0);
+  });
+
+  test('Clay Court Light: documented pairs match spec ratios', () => {
+    const p = ClayCourtLightColors;
+    // #1A1918 / #FFFDF9 → 17.3:1 AAA
+    expect(contrastRatio(p.onSurface, p.surfaceCard)).toBeGreaterThanOrEqual(17.0);
+    // #A23E19 / #F8F5EE → 6.0:1 AA
+    expect(contrastRatio(p.primary, p.background)).toBeGreaterThanOrEqual(5.8);
+    // #7E2E0F / #FBECE5 → 8.0:1 AAA
+    expect(contrastRatio(p.primaryOnContainer, p.primaryContainer)).toBeGreaterThanOrEqual(7.8);
+  });
+
+  test('Clay Court Dark: documented pairs match spec ratios', () => {
+    const p = ClayCourtDarkColors;
+    // #F5F3F0 / #141211 → 16.9:1 AAA
+    expect(contrastRatio(p.onSurface, p.background)).toBeGreaterThanOrEqual(16.5);
+    // #F08B62 / #341B13 → 6.5:1 AA
+    expect(contrastRatio(p.primaryOnContainer, p.primaryContainer)).toBeGreaterThanOrEqual(6.0);
+  });
+
+  test('Grass Court Light: documented pairs match spec ratios', () => {
+    const p = GrassCourtLightColors;
+    // #111813 / #FFFFFF → 18.0:1 AAA
+    expect(contrastRatio(p.onSurface, p.surfaceCard)).toBeGreaterThanOrEqual(17.5);
+    // #1E5B3A / #F4F8F5 → 7.5:1 AAA
+    expect(contrastRatio(p.primary, p.background)).toBeGreaterThanOrEqual(7.0);
+    // #14452B / #E8F4EC → 9.7:1 AAA
+    expect(contrastRatio(p.primaryOnContainer, p.primaryContainer)).toBeGreaterThanOrEqual(9.5);
+  });
+
+  test('Grass Court Dark: documented pairs match spec ratios', () => {
+    const p = GrassCourtDarkColors;
+    // #F0F5F2 / #0C130F → 17.1:1 AAA
+    expect(contrastRatio(p.onSurface, p.background)).toBeGreaterThanOrEqual(17.0);
+    // #4ADE80 / #132B1C → 8.7:1 AAA
+    expect(contrastRatio(p.primaryOnContainer, p.primaryContainer)).toBeGreaterThanOrEqual(8.5);
   });
 });

@@ -185,3 +185,184 @@ export const PALETTES = { light: LightColors, dark: DarkColors };
 export function paletteForMode(mode) {
   return mode === 'dark' ? DarkColors : LightColors;
 }
+
+// ---------------------------------------------------------------------------
+// KUA semantic token system — Phase 3 D1 (#1096)
+//
+// Six complete palettes for Hard Court, Clay Court, and Grass Court in light
+// and dark modes. Token names are camelCase. Existing LightColors/DarkColors
+// are unchanged; these palettes are additive exports only.
+//
+// Authority: docs/design/kinetic-utilitarian-athletic/tokens.md
+// ---------------------------------------------------------------------------
+
+// Shared semantic tokens are fixed values across all three themes.
+// selection maps to each theme's primaryContainer per the spec.
+const KUA_SHARED_LIGHT = {
+  success: '#006C4A',
+  warning: '#B45309',
+  chartSeries1: '#0C7489',
+  chartSeries2: '#C2410C',
+  chartSeries3: '#7C3AED',
+};
+
+const KUA_SHARED_DARK = {
+  success: '#10B981',
+  warning: '#FBBF24',
+  chartSeries1: '#22D3EE',
+  chartSeries2: '#F59E0B',
+  chartSeries3: '#A78BFA',
+};
+
+export const HardCourtLightColors = {
+  background: '#EEF3F9',
+  surface: '#EEF3F9',
+  surfaceCard: '#FFFFFF',
+  surfaceSubtle: '#EEF3F9',
+  surfaceBorder: '#DDE6F2',
+  surfaceCardHeader: '#EEF3F9',
+  surfaceSection: '#EEF3F9',
+  primary: '#0A4ABF',
+  primaryContainer: '#E1ECFB',
+  primaryContainerBorder: '#9BC1F5',
+  primaryOnContainer: '#083B9A',
+  onSurface: '#0E1726',
+  onSurfaceVariant: '#5A687A',
+  completion: '#006C4A',
+  onPrimary: '#FFFFFF',
+  tabBarBg: '#FFFFFF',
+  headerBg: '#EEF3F9',
+  error: '#BA1A1A',
+  selection: '#E1ECFB',
+  ...KUA_SHARED_LIGHT,
+};
+
+export const HardCourtDarkColors = {
+  background: '#080D18',
+  surface: '#080D18',
+  surfaceCard: '#101728',
+  surfaceCardHeader: '#131D32',
+  surfaceSection: '#0E1524',
+  surfaceBorder: '#1C2742',
+  primary: '#3B82F6',
+  primaryLight: '#60A5FA',
+  primaryContainer: '#17233D',
+  primaryContainerBorder: '#2A3F6D',
+  primaryOnContainer: '#60A5FA',
+  onSurface: '#F0F4FC',
+  onSurfaceVariant: '#8C9BB3',
+  completion: '#10B981',
+  onPrimary: '#080D18',
+  tabBarBg: '#080D18',
+  headerBg: '#080D18',
+  error: '#BA1A1A',
+  selection: '#17233D',
+  ...KUA_SHARED_DARK,
+};
+
+export const ClayCourtLightColors = {
+  background: '#F8F5EE',
+  surface: '#F8F5EE',
+  surfaceCard: '#FFFDF9',
+  surfaceElevated: '#F2EDE4',
+  surfaceCardHeader: '#F2EDE4',
+  surfaceSection: '#F2EDE4',
+  surfaceBorder: '#E5DFD3',
+  primary: '#A23E19',
+  primaryDark: '#7E2E0F',
+  primaryContainer: '#FBECE5',
+  primaryContainerBorder: '#E89A7A',
+  primaryOnContainer: '#7E2E0F',
+  onSurface: '#1A1918',
+  onSurfaceVariant: '#585550',
+  onSurfaceMuted: '#736D65',
+  completion: '#1E5B3A',
+  onPrimary: '#FFFFFF',
+  tabBarBg: '#F8F5EE',
+  headerBg: '#F8F5EE',
+  error: '#BA1A1A',
+  selection: '#FBECE5',
+  ...KUA_SHARED_LIGHT,
+};
+
+export const ClayCourtDarkColors = {
+  background: '#141211',
+  surface: '#141211',
+  surfaceCard: '#1F1C1A',
+  surfaceCardHeader: '#181513',
+  surfaceLow: '#1A1816',
+  surfaceBorder: '#2C2723',
+  surfaceSection: '#1A1816',
+  primary: '#D86538',
+  primaryLight: '#F08B62',
+  primaryContainer: '#341B13',
+  primaryContainerBorder: '#5C2E1E',
+  primaryOnContainer: '#F08B62',
+  onSurface: '#F5F3F0',
+  onSurfaceVariant: '#A89F96',
+  completion: '#2CA864',
+  onPrimary: '#141211',
+  tabBarBg: '#141211',
+  headerBg: '#141211',
+  error: '#BA1A1A',
+  selection: '#341B13',
+  ...KUA_SHARED_DARK,
+};
+
+export const GrassCourtLightColors = {
+  background: '#F4F8F5',
+  surface: '#F4F8F5',
+  surfaceCard: '#FFFFFF',
+  surfaceSubtle: '#F2F7F4',
+  surfaceCardHeader: '#F4F8F5',
+  surfaceSection: '#F2F7F4',
+  surfaceBorder: '#E0EAE3',
+  surfaceSeg: '#E8EFEA',
+  surfaceSegBorder: '#DEE7E1',
+  primary: '#1E5B3A',
+  primaryDark: '#14452B',
+  primaryContainer: '#E8F4EC',
+  primaryContainerBorder: '#A3D4B3',
+  primaryOnContainer: '#14452B',
+  onSurface: '#111813',
+  onSurfaceVariant: '#556B5C',
+  completion: '#1E5B3A',
+  onPrimary: '#FFFFFF',
+  tabBarBg: '#F4F8F5',
+  headerBg: '#F4F8F5',
+  error: '#BA1A1A',
+  selection: '#E8F4EC',
+  ...KUA_SHARED_LIGHT,
+};
+
+export const GrassCourtDarkColors = {
+  background: '#0C130F',
+  surface: '#0C130F',
+  surfaceCard: '#15201A',
+  surfaceCardHeader: '#0C130F',
+  surfaceLow: '#111A15',
+  surfaceSection: '#111A15',
+  surfaceBorder: '#1F3025',
+  surfaceSurface2: '#1C2B22',
+  primary: '#2CA864',
+  primaryNeon: '#4ADE80',
+  primaryContainer: '#132B1C',
+  primaryContainerBorder: '#235235',
+  primaryOnContainer: '#4ADE80',
+  onSurface: '#F0F5F2',
+  onSurfaceVariant: '#91A398',
+  completion: '#2CA864',
+  onPrimary: '#0C130F',
+  tabBarBg: '#0C130F',
+  headerBg: '#0C130F',
+  error: '#BA1A1A',
+  selection: '#132B1C',
+  ...KUA_SHARED_DARK,
+};
+
+// All six KUA palettes keyed by theme and mode.
+export const KUA_PALETTES = {
+  hardCourt: { light: HardCourtLightColors, dark: HardCourtDarkColors },
+  clayCourt: { light: ClayCourtLightColors, dark: ClayCourtDarkColors },
+  grassCourt: { light: GrassCourtLightColors, dark: GrassCourtDarkColors },
+};
