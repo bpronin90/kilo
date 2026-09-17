@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { ThemeProvider, useTheme } from '../theme/ThemeContext';
 import { ThemePreviewControl } from '../components/ThemePreviewControl';
+import { SettingsScreen } from '../components/SettingsScreen';
 import {
   __resetAppearancePreferenceForTests,
   __resetThemeSelectionForTests,
@@ -27,6 +28,8 @@ jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
   __esModule: true,
   default: jest.fn(() => 'light'),
 }));
+
+jest.mock('@expo/vector-icons/MaterialIcons', () => ({ __esModule: true, default: () => null }), { virtual: true });
 
 jest.mock('../hooks/useEntries', () => ({
   useFeatureToggles: () => ({
@@ -276,5 +279,53 @@ describe('DEV label is present', () => {
       .map((n) => n.props.children);
     const hasDevLabel = texts.some((t) => typeof t === 'string' && t.includes('DEV'));
     expect(hasDevLabel).toBe(true);
+  });
+});
+
+describe('APP_ENV gate: SettingsScreen shows Dev Preview only in non-production builds', () => {
+  const _originalAppEnv = process.env.APP_ENV;
+
+  afterEach(() => {
+    if (_originalAppEnv === undefined) {
+      delete process.env.APP_ENV;
+    } else {
+      process.env.APP_ENV = _originalAppEnv;
+    }
+  });
+
+  function renderSettings() {
+    let root;
+    act(() => {
+      root = renderer.create(
+        <SettingsScreen onBack={() => {}} multiplier={1.07} onUpdate={() => {}} />
+      );
+    });
+    return root;
+  }
+
+  function hasDevPreviewSection(root) {
+    return root.root
+      .findAllByType(Text)
+      .some((n) => n.props.children === 'Dev Preview');
+  }
+
+  test('Dev Preview section renders in preview builds', () => {
+    process.env.APP_ENV = 'preview';
+    expect(hasDevPreviewSection(renderSettings())).toBe(true);
+  });
+
+  test('Dev Preview section renders in development builds', () => {
+    process.env.APP_ENV = 'development';
+    expect(hasDevPreviewSection(renderSettings())).toBe(true);
+  });
+
+  test('Dev Preview section is absent in production builds', () => {
+    process.env.APP_ENV = 'production';
+    expect(hasDevPreviewSection(renderSettings())).toBe(false);
+  });
+
+  test('Dev Preview section is absent when APP_ENV is unset', () => {
+    delete process.env.APP_ENV;
+    expect(hasDevPreviewSection(renderSettings())).toBe(false);
   });
 });
