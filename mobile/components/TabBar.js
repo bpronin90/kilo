@@ -49,7 +49,7 @@ export function TabBar({ tabs, activeTab, onTabPress, onHeightChange }) {
             size={TAB_ICON_SIZE}
             color={activeTab === tab ? activeColor : inactiveColor}
           />
-          <Text style={[styles.tabText, { color: activeTab === tab ? activeColor : inactiveColor }]}>
+          <Text style={[styles.tabText, { color: activeTab === tab ? activeColor : inactiveColor, fontWeight: activeTab === tab ? '700' : '500' }]}>
             {tab}
           </Text>
         </Pressable>

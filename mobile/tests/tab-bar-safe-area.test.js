@@ -257,6 +257,29 @@ describe('KUA icon foundation', () => {
     act(() => component.unmount());
   });
 
+  test('Active tab label uses bold weight; inactive uses regular weight (non-color indicator)', () => {
+    const component = renderWithInsets(
+      <TabBar tabs={KUA_TABS} activeTab="Analytics" onTabPress={() => {}} />,
+      0
+    );
+    // Find Text nodes that hold tab labels (they carry the fontWeight style).
+    const texts = component.root.findAll(
+      (node) => typeof node.type === 'string' && node.type === 'Text'
+    );
+    // Analytics is index 3 in KUA_TABS.
+    const activeText = texts.find((t) => {
+      const s = [].concat(t.props.style).reduce((a, s) => Object.assign(a, s || {}), {});
+      return s.fontWeight === '700';
+    });
+    const inactiveText = texts.find((t) => {
+      const s = [].concat(t.props.style).reduce((a, s) => Object.assign(a, s || {}), {});
+      return s.fontWeight === '500';
+    });
+    expect(activeText).toBeDefined();
+    expect(inactiveText).toBeDefined();
+    act(() => component.unmount());
+  });
+
   test('Icon glyphs for all five tabs match the approved mapping', () => {
     const component = renderWithInsets(
       <TabBar tabs={KUA_TABS} activeTab="Home" onTabPress={() => {}} />,
