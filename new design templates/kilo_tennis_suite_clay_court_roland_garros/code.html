@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
+<title>Kilo — Workout Notes</title>
+<!-- Tailwind CSS v3 with forms and container queries -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            clay: {
+              50: '#FDFBF7',
+              100: '#F7F2EB',
+              200: '#EFE7DC',
+              300: '#DECDBD',
+              400: '#CA9F7E',
+              500: '#BF572A', // Vibrant burnt terracotta
+              600: '#A3431D',
+              700: '#833214',
+              800: '#64240E',
+            },
+            court: {
+              sand: '#F7F3EC',
+              line: '#E7DEC8',
+              carbon: '#18191B',
+              slate: '#54555A',
+              muted: '#8A8780',
+            }
+          },
+          fontFamily: {
+            sans: ['-apple-system', 'BlinkMacSystemFont', '"SF Pro Display"', '"SF Pro Text"', 'system-ui', 'sans-serif'],
+            mono: ['"SF Mono"', 'Menlo', 'Monaco', 'Courier New', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+<style data-purpose="custom-typography">
+    /* Subtle athletic baseline rules and clay court editorial touches */
+    .court-lines {
+      background-image: linear-gradient(to right, #E8DFD3 0%, #E8DFD3 100%);
+      background-repeat: no-repeat;
+      background-size: 100% 1px;
+      background-position: bottom;
+    }
+    .chalk-border {
+      box-shadow: 0 0 0 1.5px #18191B;
+    }
+    .clay-inset-stroke {
+      box-shadow: 0 0 0 2px #BF572A;
+    }
+    /* Hide scrollbar for a neat native app feel */
+    ::-webkit-scrollbar {
+      display: none;
+    }
+    body {
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+  </style>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/></head>
+<body class="bg-[#ECE5D9] flex justify-center items-center min-h-screen font-sans antialiased text-court-carbon sm:py-6">
+<!-- BEGIN: MobileDeviceFrame -->
+<main class="w-full max-w-[420px] bg-[#F7F3EC] h-[100vh] sm:h-[890px] sm:rounded-[50px] shadow-2xl relative flex flex-col overflow-hidden sm:border-[9px] sm:border-[#1E1C1A]">
+<!-- BEGIN: iOSStatusBar -->
+<header class="pt-3.5 px-7 flex justify-between items-center z-30 shrink-0 text-court-carbon tracking-tight font-semibold text-[15px]" data-purpose="status-bar">
+<!-- Time -->
+<span class="font-medium tracking-tight">9:48</span>
+<!-- Dynamic island / pill spacer placeholder for realistic feel -->
+<div class="w-24 h-4 bg-transparent"></div>
+<!-- Status Icons -->
+<div class="flex items-center space-x-2 text-[12px]">
+<svg class="w-3.5 h-3.5 fill-current" viewbox="0 0 24 24">
+<path d="M7 17l10-10M17 17L7 7" stroke="currentColor" stroke-linecap="round" stroke-width="2.5"></path>
+</svg>
+<svg class="w-4 h-3.5 fill-current" viewbox="0 0 24 24">
+<path d="M2 17h2v4H2v-4zm4-5h2v9H6v-9zm4-4h2v13h-2V8zm4-4h2v17h-2V4zm4-3h2v20h-2V1z"></path>
+</svg>
+<svg class="w-4 h-3.5 fill-current" viewbox="0 0 24 24">
+<path d="M12 4C7.31 4 3.07 5.9 0 8.98L12 21 24 8.98A16.88 16.88 0 0012 4z"></path>
+</svg>
+<!-- Battery 39% -->
+<div class="flex items-center text-[13px] font-mono tracking-tight ml-0.5">
+<span class="text-[12px] mr-1 font-semibold">39</span>
+<div class="w-5 h-2.5 border border-court-carbon rounded-[3px] p-0.5 flex items-center">
+<div class="h-full bg-court-carbon rounded-[1px] w-2/5"></div>
+</div>
+</div>
+</div>
+</header>
+<!-- END: iOSStatusBar -->
+<!-- BEGIN: ScrollableContentContainer -->
+<div class="flex-1 overflow-y-auto px-5 pt-3 pb-32">
+<!-- BEGIN: PageHeader -->
+<section class="mb-5 mt-1" data-purpose="page-title-section">
+<div class="flex items-baseline justify-between">
+<h1 class="text-[34px] tracking-[-0.035em] font-extrabold text-court-carbon leading-none">Workout Notes</h1>
+<span class="text-[10px] font-mono font-bold tracking-widest text-clay-600 uppercase">KILO // EST.26</span>
+</div>
+<p class="text-[14px] text-court-slate mt-2 tracking-tight font-normal">
+          Your active training routine. Update it as you go.
+        </p>
+</section>
+<!-- END: PageHeader -->
+<!-- BEGIN: SegmentedControl -->
+<nav class="bg-[#EAE2D4] p-1 rounded-xl flex items-center mb-5 border border-[#DFD5C4]" data-purpose="view-toggle">
+<button class="flex-1 py-2 text-center text-[14px] font-medium text-court-slate rounded-lg transition-all hover:text-court-carbon" type="button">
+          Recovery
+        </button>
+<button class="flex-1 py-2 text-center text-[14px] font-bold text-court-carbon bg-white rounded-lg shadow-sm" type="button">
+          Routine
+        </button>
+</nav>
+<!-- END: SegmentedControl -->
+<!-- BEGIN: ActiveRoutineCard -->
+<article class="bg-[#FAF7F2] rounded-3xl border-2 border-clay-500 overflow-hidden shadow-sm" data-purpose="active-routine-card">
+<!-- Routine Master Banner -->
+<div class="p-5 pb-4 bg-[#FAF7F2] court-lines">
+<div class="flex items-center justify-between mb-1">
+<h2 class="text-[25px] font-black text-clay-600 tracking-[-0.03em] leading-tight">
+              Summer 2026 Routine
+            </h2>
+<div class="w-2 h-2 rounded-full bg-clay-500"></div>
+</div>
+<p class="text-[13px] text-court-slate tracking-tight font-medium">
+            Week A · Baseline routine · paused
+          </p>
+</div>
+<!-- Routine Detailed Content (Court Layout) -->
+<div class="p-5 pt-4 space-y-6">
+<!-- Sub-header bar: Week tag, context dots, remove skip -->
+<div class="flex items-center justify-between border-b border-[#EFE8DC] pb-3.5">
+<div class="flex items-center space-x-3">
+<!-- Week Pill with clay accent -->
+<span class="inline-flex items-center px-3.5 py-1 rounded-md text-[13px] font-bold bg-[#EFE4D6] text-clay-700 border border-[#E0D0BC]">
+                Week B
+              </span>
+<!-- Triple dot button -->
+<button aria-label="Routine Options" class="text-court-carbon p-1 hover:bg-[#EFE8DC] rounded-md transition-colors">
+<svg class="w-4 h-4" fill="currentColor" viewbox="0 0 24 24">
+<circle cx="12" cy="5" r="2"></circle>
+<circle cx="12" cy="12" r="2"></circle>
+<circle cx="12" cy="19" r="2"></circle>
+</svg>
+</button>
+</div>
+<!-- Remove skip button -->
+<button class="text-[13px] font-semibold text-court-slate tracking-tight hover:text-clay-600 transition-colors" type="button">
+              Remove skip
+            </button>
+</div>
+<!-- Session Heading -->
+<div class="pt-0.5">
+<div class="flex items-center space-x-2">
+<span class="w-1.5 h-4 bg-clay-500 rounded-full"></span>
+<h3 class="text-[20px] font-black tracking-[-0.02em] uppercase text-court-carbon">
+                MONDAY — Push
+              </h3>
+</div>
+</div>
+<!-- SECTION: Warmup -->
+<div class="space-y-4">
+<!-- Section Subtitle / Category Label -->
+<div class="flex items-center space-x-3">
+<span class="text-[11px] font-extrabold tracking-[0.14em] uppercase text-clay-600">WARMUP</span>
+<div class="h-[1px] flex-1 bg-[#E8DEC8]"></div>
+</div>
+<!-- Warmup Item 1: Bike 5 min with numeric progression -->
+<div class="border-b border-[#EFE8DC] pb-4" data-purpose="exercise-entry">
+<div class="flex justify-between items-start">
+<div class="space-y-1.5">
+<p class="text-[16px] font-bold text-court-carbon leading-snug">
+                    Bike 5 min
+                  </p>
+<!-- Cadence / Resistance Notes -->
+<div class="flex flex-col space-y-1 pt-1 font-mono text-[12px]"><div class="flex items-center space-x-2"><span class="w-1.5 h-1.5 rounded-full bg-clay-500"></span><span class="px-2 py-0.5 bg-[#EFE8DC] rounded text-court-carbon font-semibold">8</span><span class="text-[11px] font-sans text-court-slate">Session 1</span></div><div class="flex items-center space-x-2"><span class="w-1.5 h-1.5 rounded-full bg-clay-500"></span><span class="px-2 py-0.5 bg-[#EFE8DC] rounded text-court-carbon font-semibold">9</span><span class="text-[11px] font-sans text-court-slate">Session 2</span></div><div class="flex items-center space-x-2"><span class="w-1.5 h-1.5 rounded-full bg-clay-500"></span><span class="px-2 py-0.5 bg-[#EFE8DC] rounded text-court-carbon font-semibold">10</span><span class="text-[11px] font-sans text-court-slate">Session 3</span></div></div>
+</div>
+<!-- Track action badge -->
+<button class="text-[12px] font-bold tracking-wide uppercase px-3.5 py-1.5 rounded-lg border border-court-carbon text-court-carbon bg-white hover:bg-court-carbon hover:text-white transition-all shadow-sm active:scale-95" type="button">
+                  Track
+                </button>
+</div>
+</div>
+<!-- Warmup Item 2: Pec stretch -->
+<div class="border-b border-[#EFE8DC] pb-4" data-purpose="exercise-entry">
+<div class="flex justify-between items-start">
+<p class="text-[15px] font-bold text-court-carbon leading-snug max-w-[220px]">
+                  Pec stretch — foam roller 2x60 sec
+                </p>
+<button class="text-[12px] font-bold tracking-wide uppercase px-3.5 py-1.5 rounded-lg border border-court-carbon text-court-carbon bg-white hover:bg-court-carbon hover:text-white transition-all shadow-sm active:scale-95" type="button">
+                  Track
+                </button>
+</div>
+</div>
+<!-- Warmup Item 3: Band pull-aparts -->
+<div class="border-b border-[#EFE8DC] pb-4" data-purpose="exercise-entry">
+<div class="flex justify-between items-start">
+<p class="text-[15px] font-bold text-court-carbon leading-snug max-w-[220px]">
+                  Band pull-aparts 2x15 light band
+                </p>
+<button class="text-[12px] font-bold tracking-wide uppercase px-3.5 py-1.5 rounded-lg border border-court-carbon text-court-carbon bg-white hover:bg-court-carbon hover:text-white transition-all shadow-sm active:scale-95" type="button">
+                  Track
+                </button>
+</div>
+</div>
+<!-- Warmup Item 4: Rotator cuff cable -->
+<div class="pb-3" data-purpose="exercise-entry">
+<div class="flex justify-between items-start">
+<p class="text-[15px] font-bold text-court-carbon leading-snug max-w-[220px]">
+                  Rotator cuff cable — internal and external 1x12-15 each arm 12.5 lbs
+                </p>
+<button class="text-[12px] font-bold tracking-wide uppercase px-3.5 py-1.5 rounded-lg border border-court-carbon text-court-carbon bg-white hover:bg-court-carbon hover:text-white transition-all shadow-sm active:scale-95" type="button">
+                  Track
+                </button>
+</div>
+</div>
+</div>
+<!-- SECTION: Main Strength (DB Bench Press) -->
+<div class="pt-2 border-t-2 border-court-carbon/10">
+<div class="flex justify-between items-center pt-1">
+<div class="flex items-center space-x-2">
+<h4 class="text-[17px] font-extrabold text-court-carbon">DB Bench Press</h4>
+</div>
+<span class="inline-flex items-center px-3.5 py-1 rounded-md text-[12px] font-bold tracking-wide uppercase bg-[#EFE4D6] text-clay-700 border border-clay-300">
+                Tracked
+              </span>
+</div>
+</div>
+</div>
+</article>
+<!-- END: ActiveRoutineCard -->
+</div>
+<!-- END: ScrollableContentContainer -->
+<!-- BEGIN: FloatingAthleticBottomNav -->
+<footer class="absolute bottom-0 inset-x-0 z-40 bg-[#FAF7F2] border-t border-[#E3D8C8] pb-4 pt-2 px-6" data-purpose="bottom-navigation"><nav class="flex items-center justify-between"><a class="flex flex-col items-center justify-center flex-1 py-1 text-court-slate hover:text-court-carbon transition-colors" href="#home"><span class="material-symbols-outlined text-[24px]">home</span><span class="text-[11px] font-medium tracking-tight mt-0.5">Home</span></a><a class="flex flex-col items-center justify-center flex-1 py-1 text-clay-600 transition-colors" href="#log"><div class="p-1 px-3.5 bg-[#EFE4D6] rounded-full flex items-center justify-center"><span class="material-symbols-outlined text-[24px] text-clay-700">menu_book</span></div><span class="text-[11px] font-bold tracking-tight mt-0.5 text-clay-700">Log</span></a><a class="flex flex-col items-center justify-center flex-1 py-1 text-court-slate hover:text-court-carbon transition-colors" href="#weight"><span class="material-symbols-outlined text-[24px]">fitness_center</span><span class="text-[11px] font-medium tracking-tight mt-0.5">Weight</span></a><a class="flex flex-col items-center justify-center flex-1 py-1 text-court-slate hover:text-court-carbon transition-colors" href="#analytics"><span class="material-symbols-outlined text-[24px]">bar_chart</span><span class="text-[11px] font-medium tracking-tight mt-0.5">Analytics</span></a><a class="flex flex-col items-center justify-center flex-1 py-1 text-court-slate hover:text-court-carbon transition-colors" href="#more"><span class="material-symbols-outlined text-[24px]">more_horiz</span><span class="text-[11px] font-medium tracking-tight mt-0.5">More</span></a></nav><div class="w-32 h-1 bg-court-carbon/30 rounded-full mx-auto mt-2.5"></div></footer>
+<!-- END: FloatingAthleticBottomNav -->
+</main>
+<!-- END: MobileDeviceFrame -->
+</body></html>

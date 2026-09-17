@@ -64,10 +64,40 @@ The implementation uses these supplied values:
 - Vermilion red is reserved for execution and exceptional states, not
   decoration.
 
-## Deferred chart-color contract
+## Visual approval package (D0 — #1095) — ARCHIVED
 
-The blue-gray chart fills visible in `stats-light.png` and the trend-line colors
-visible in `weight-light.png` do not have approved semantic tokens or dark-mode
-counterparts in this handoff. Do not sample the screenshots or invent values.
-The #978 audit must assign this gap to a dedicated child issue and resolve the
-chart-color contract before either Stats or Weight migrates.
+> **This section is historical record only.** The Analog Iron direction is retired. It does not gate D1, D4, D8, D9, or any other implementation card on the current roadmap. The active design specification is the KUA three-theme system at `docs/design/kinetic-utilitarian-athletic/`.
+
+This section documented chart treatment alternatives, token tables, contrast evidence, font samples, and native/hosted control treatment under the Analog Iron direction.
+
+Full decision documentation lives in:
+- Chart alternatives, token tables, contrast evidence: §6–8 of `visual-language-spec.md`
+- Font evidence and fallback requirements: §9 of `visual-language-spec.md`
+- Native/hosted control treatment: §10 of `visual-language-spec.md`
+- Dark chart token values: §6 of `dark-mode-implementation-note.md`
+
+Screenshot-only chart types (the blue-gray bar fills visible in `stats-light.png`
+and the trend-line shapes in `weight-light.png`), screenshot metrics, ranges, and
+data remain unauthorized as implementation specifications. Do not sample the
+screenshots or invent values from them.
+
+### Reference exports (direct links)
+
+| Surface | Light | Dark |
+|---|---|---|
+| Home | [home-light.png](https://github.com/bpronin90/kilo/blob/main/docs/design/analog-iron-v0.125/home-light.png) | [home-dark.png](https://github.com/bpronin90/kilo/blob/main/docs/design/analog-iron-v0.125/home-dark.png) |
+| Log | [log-light.png](https://github.com/bpronin90/kilo/blob/main/docs/design/analog-iron-v0.125/log-light.png) | [log-dark.png](https://github.com/bpronin90/kilo/blob/main/docs/design/analog-iron-v0.125/log-dark.png) |
+| Weight | [weight-light.png](https://github.com/bpronin90/kilo/blob/main/docs/design/analog-iron-v0.125/weight-light.png) | Extend dark token rules |
+| Stats | [stats-light.png](https://github.com/bpronin90/kilo/blob/main/docs/design/analog-iron-v0.125/stats-light.png) | Extend dark token rules |
+| Settings | [settings-light.png](https://github.com/bpronin90/kilo/blob/main/docs/design/analog-iron-v0.125/settings-light.png) | [settings-dark.png](https://github.com/bpronin90/kilo/blob/main/docs/design/analog-iron-v0.125/settings-dark.png) |
+| Plate Calculator | [plate-calculator-light.png](https://github.com/bpronin90/kilo/blob/main/docs/design/analog-iron-v0.125/plate-calculator-light.png) | Extend dark token rules |
+
+### Owner approval checklist
+
+- [x] One chart alternative selected: **B — Warm Steel**. `chartPrimary` = `#42535E` (light) / `#8FAAB9` (dark). PR/exceptional marker = filled vermilion circle.
+- [x] Light/dark token tables approved (Alternative B token table, `visual-language-spec.md` §7).
+- [ ] Actual-pair AA contrast evidence approved.
+- [x] Space Grotesk Display Hero weight approved at **700** (effective weight on native; `fontWeight:'800'` calls clamp here — no source change needed). Mono font selection still required (see §9 options).
+- [ ] Native/hosted control treatment and platform exceptions approved.
+- [ ] Existing-reference links and unauthorized screenshot scope reviewed.
+- [ ] D1/D4/D8/D9 may proceed against this recorded package.

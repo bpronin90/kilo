@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
+<title>Kilo — Workout Notes</title>
+<!-- Tailwind CSS v3 with forms and container queries -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            clay: {
+              50: '#FDFBF7',
+              100: '#F7F2EB',
+              200: '#EFE7DC',
+              300: '#DECDBD',
+              400: '#CA9F7E',
+              500: '#BF572A', // Vibrant burnt terracotta
+              600: '#A3431D',
+              700: '#833214',
+              800: '#64240E',
+            },
+            court: {
+              sand: '#F7F3EC',
+              line: '#E7DEC8',
+              carbon: '#18191B',
+              slate: '#54555A',
+              muted: '#8A8780',
+            }
+          },
+          fontFamily: {
+            sans: ['-apple-system', 'BlinkMacSystemFont', '"SF Pro Display"', '"SF Pro Text"', 'system-ui', 'sans-serif'],
+            mono: ['"SF Mono"', 'Menlo', 'Monaco', 'Courier New', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+<style data-purpose="custom-typography">
+    /* Subtle athletic baseline rules and clay court editorial touches */
+    .court-lines {
+      background-image: linear-gradient(to right, #E8DFD3 0%, #E8DFD3 100%);
+      background-repeat: no-repeat;
+      background-size: 100% 1px;
+      background-position: bottom;
+    }
+    .chalk-border {
+      box-shadow: 0 0 0 1.5px #18191B;
+    }
+    .clay-inset-stroke {
+      box-shadow: 0 0 0 2px #BF572A;
+    }
+    /* Hide scrollbar for a neat native app feel */
+    ::-webkit-scrollbar {
+      display: none;
+    }
+    body {
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+  </style>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/></head>
+<body class="bg-[#EDF2F7] flex justify-center items-center min-h-screen font-sans antialiased text-[#0F2042] sm:py-6"><main class="w-full max-w-[420px] bg-[#F0F4F8] h-[100vh] sm:h-[890px] sm:rounded-[50px] shadow-2xl relative flex flex-col overflow-hidden sm:border-[9px] sm:border-[#0F2042]"><!-- BEGIN: iOSStatusBar --><header class="pt-3.5 px-7 flex justify-between items-center z-30 shrink-0 text-[#0F2042] tracking-tight font-semibold text-[15px]" data-purpose="status-bar"><span class="font-medium tracking-tight">9:48</span><div class="w-24 h-4 bg-transparent"></div><div class="flex items-center space-x-2 text-[12px]"><svg class="w-3.5 h-3.5 fill-current" viewbox="0 0 24 24"><path d="M7 17l10-10M17 17L7 7" stroke="currentColor" stroke-linecap="round" stroke-width="2.5"></path></svg><svg class="w-4 h-3.5 fill-current" viewbox="0 0 24 24"><path d="M2 17h2v4H2v-4zm4-5h2v9H6v-9zm4-4h2v13h-2V8zm4-4h2v17h-2V4zm4-3h2v20h-2V1z"></path></svg><svg class="w-4 h-3.5 fill-current" viewbox="0 0 24 24"><path d="M12 4C7.31 4 3.07 5.9 0 8.98L12 21 24 8.98A16.88 16.88 0 0012 4z"></path></svg><div class="flex items-center text-[13px] font-mono tracking-tight ml-0.5"><span class="text-[12px] mr-1 font-semibold">39</span><div class="w-5 h-2.5 border border-[#0F2042] rounded-[3px] p-0.5 flex items-center"><div class="h-full bg-[#0F2042] rounded-[1px] w-2/5"></div></div></div></div></header><!-- END: iOSStatusBar --><!-- BEGIN: ScrollableContentContainer --><div class="flex-1 overflow-y-auto px-5 pt-3 pb-32"><!-- BEGIN: PageHeader --><section class="mb-5 mt-1" data-purpose="page-title-section"><div class="flex items-baseline justify-between"><h1 class="text-[34px] tracking-[-0.035em] font-extrabold text-[#0F2042] leading-none">Workout Notes</h1><span class="text-[10px] font-mono font-bold tracking-widest text-[#0066FF] uppercase">KILO // EST.26</span></div><p class="text-[14px] text-[#546882] mt-2 tracking-tight font-normal">Your active training routine. Update it as you go.</p></section><!-- END: PageHeader --><!-- BEGIN: SegmentedControl --><nav class="bg-[#E2E8F0] p-1 rounded-xl flex items-center mb-5 border border-[#CBD5E1]" data-purpose="view-toggle"><button class="flex-1 py-2 text-center text-[14px] font-medium text-[#546882] rounded-lg transition-all hover:text-[#0F2042]" type="button">Recovery</button><button class="flex-1 py-2 text-center text-[14px] font-bold text-[#0F2042] bg-white rounded-lg shadow-sm" type="button">Routine</button></nav><!-- END: SegmentedControl --><!-- BEGIN: ActiveRoutineCard --><article class="bg-white rounded-3xl border-2 border-[#0F2042] overflow-hidden shadow-sm" data-purpose="active-routine-card"><!-- Routine Master Banner --><div class="p-5 pb-4 bg-white border-b border-[#E2E8F0]"><div class="flex items-center justify-between mb-1"><h2 class="text-[25px] font-black text-[#0F2042] tracking-[-0.03em] leading-tight">Summer 2026 Routine</h2><div class="w-2.5 h-2.5 rounded-full bg-[#CCFF00] border border-[#0F2042]"></div></div><p class="text-[13px] text-[#546882] tracking-tight font-medium">Week A · Baseline routine · paused</p></div><!-- Routine Detailed Content --><div class="p-5 pt-4 space-y-6"><!-- Sub-header bar: Week tag, context dots, remove skip --><div class="flex items-center justify-between border-b border-[#E2E8F0] pb-3.5"><div class="flex items-center space-x-3"><!-- Week Pill --><span class="inline-flex items-center px-3.5 py-1 rounded-md text-[13px] font-bold bg-[#EBF3FF] text-[#0066FF] border border-[#BFDBFE]">Week B</span><!-- Triple dot button --><button aria-label="Routine Options" class="text-[#0F2042] p-1 hover:bg-[#F1F5F9] rounded-md transition-colors"><svg class="w-4 h-4" fill="currentColor" viewbox="0 0 24 24"><circle cx="12" cy="5" r="2"></circle><circle cx="12" cy="12" r="2"></circle><circle cx="12" cy="19" r="2"></circle></svg></button></div><!-- Remove skip button --><button class="text-[13px] font-semibold text-[#546882] tracking-tight hover:text-[#0066FF] transition-colors" type="button">Remove skip</button></div><!-- Session Heading --><div class="pt-0.5"><div class="flex items-center space-x-2"><span class="w-1.5 h-4 bg-[#0066FF] rounded-full"></span><h3 class="text-[20px] font-black tracking-[-0.02em] uppercase text-[#0F2042]">MONDAY — Push</h3></div></div><!-- SECTION: Warmup --><div class="space-y-4"><!-- Section Subtitle / Category Label --><div class="flex items-center space-x-3"><span class="text-[11px] font-extrabold tracking-[0.14em] uppercase text-[#0066FF]">WARMUP</span><div class="h-[1px] flex-1 bg-[#CBD5E1]"></div></div><!-- Warmup Item 1: Bike 5 min with numeric progression --><div class="border-b border-[#E2E8F0] pb-4" data-purpose="exercise-entry"><div class="flex justify-between items-start"><div class="space-y-1.5"><p class="text-[16px] font-bold text-[#0F2042] leading-snug">Bike 5 min</p><!-- Cadence / Resistance Notes vertically stacked --><div class="flex flex-col space-y-1.5 pt-1 font-mono text-[12px]"><div class="flex items-center space-x-2"><span class="w-1.5 h-1.5 rounded-full bg-[#0066FF]"></span><span class="px-2 py-0.5 bg-[#F1F5F9] rounded text-[#0F2042] font-bold border border-[#E2E8F0]">8</span><span class="text-[11px] font-sans text-[#546882]">Session 1</span></div><div class="flex items-center space-x-2"><span class="w-1.5 h-1.5 rounded-full bg-[#0066FF]"></span><span class="px-2 py-0.5 bg-[#F1F5F9] rounded text-[#0F2042] font-bold border border-[#E2E8F0]">9</span><span class="text-[11px] font-sans text-[#546882]">Session 2</span></div><div class="flex items-center space-x-2"><span class="w-1.5 h-1.5 rounded-full bg-[#CCFF00] border border-[#0F2042]"></span><span class="px-2 py-0.5 bg-[#F1F5F9] rounded text-[#0F2042] font-bold border border-[#E2E8F0]">10</span><span class="text-[11px] font-sans text-[#546882]">Session 3</span></div></div></div><!-- Track action badge --><button class="text-[12px] font-bold tracking-wide uppercase px-3.5 py-1.5 rounded-lg border-2 border-[#0F2042] text-[#0F2042] bg-white hover:bg-[#0F2042] hover:text-white transition-all shadow-sm active:scale-95" type="button">Track</button></div></div><!-- Warmup Item 2: Pec stretch --><div class="border-b border-[#E2E8F0] pb-4" data-purpose="exercise-entry"><div class="flex justify-between items-start"><p class="text-[15px] font-bold text-[#0F2042] leading-snug max-w-[220px]">Pec stretch — foam roller 2x60 sec</p><button class="text-[12px] font-bold tracking-wide uppercase px-3.5 py-1.5 rounded-lg border-2 border-[#0F2042] text-[#0F2042] bg-white hover:bg-[#0F2042] hover:text-white transition-all shadow-sm active:scale-95" type="button">Track</button></div></div><!-- Warmup Item 3: Band pull-aparts --><div class="border-b border-[#E2E8F0] pb-4" data-purpose="exercise-entry"><div class="flex justify-between items-start"><p class="text-[15px] font-bold text-[#0F2042] leading-snug max-w-[220px]">Band pull-aparts 2x15 light band</p><button class="text-[12px] font-bold tracking-wide uppercase px-3.5 py-1.5 rounded-lg border-2 border-[#0F2042] text-[#0F2042] bg-white hover:bg-[#0F2042] hover:text-white transition-all shadow-sm active:scale-95" type="button">Track</button></div></div><!-- Warmup Item 4: Rotator cuff cable --><div class="pb-3" data-purpose="exercise-entry"><div class="flex justify-between items-start"><p class="text-[15px] font-bold text-[#0F2042] leading-snug max-w-[220px]">Rotator cuff cable — internal and external 1x12-15 each arm 12.5 lbs</p><button class="text-[12px] font-bold tracking-wide uppercase px-3.5 py-1.5 rounded-lg border-2 border-[#0F2042] text-[#0F2042] bg-white hover:bg-[#0F2042] hover:text-white transition-all shadow-sm active:scale-95" type="button">Track</button></div></div></div><!-- SECTION: Main Strength (DB Bench Press) --><div class="pt-2 border-t-2 border-[#E2E8F0]"><div class="flex justify-between items-center pt-1"><div class="flex items-center space-x-2"><h4 class="text-[17px] font-extrabold text-[#0F2042]">DB Bench Press</h4></div><span class="inline-flex items-center px-3.5 py-1 rounded-md text-[12px] font-bold tracking-wide uppercase bg-[#0F2042] text-white border border-[#0F2042]">Tracked</span></div></div></div></article><!-- END: ActiveRoutineCard --></div><!-- END: ScrollableContentContainer --><!-- BEGIN: FloatingAthleticBottomNav --><footer class="absolute bottom-0 inset-x-0 z-40 bg-white border-t border-[#E2E8F0] pb-4 pt-2 px-6" data-purpose="bottom-navigation"><nav class="flex items-center justify-between"><a class="flex flex-col items-center justify-center flex-1 py-1 text-[#546882] hover:text-[#0F2042] transition-colors" href="#home"><span class="material-symbols-outlined text-[24px]">home</span><span class="text-[11px] font-medium tracking-tight mt-0.5">Home</span></a><a class="flex flex-col items-center justify-center flex-1 py-1 text-[#0066FF] transition-colors" href="#log"><div class="p-1 px-3.5 bg-[#EBF3FF] rounded-full flex items-center justify-center"><span class="material-symbols-outlined text-[24px] text-[#0066FF]">menu_book</span></div><span class="text-[11px] font-bold tracking-tight mt-0.5 text-[#0066FF]">Log</span></a><a class="flex flex-col items-center justify-center flex-1 py-1 text-[#546882] hover:text-[#0F2042] transition-colors" href="#weight"><span class="material-symbols-outlined text-[24px]">fitness_center</span><span class="text-[11px] font-medium tracking-tight mt-0.5">Weight</span></a><a class="flex flex-col items-center justify-center flex-1 py-1 text-[#546882] hover:text-[#0F2042] transition-colors" href="#analytics"><span class="material-symbols-outlined text-[24px]">bar_chart</span><span class="text-[11px] font-medium tracking-tight mt-0.5">Analytics</span></a><a class="flex flex-col items-center justify-center flex-1 py-1 text-[#546882] hover:text-[#0F2042] transition-colors" href="#more"><span class="material-symbols-outlined text-[24px]">more_horiz</span><span class="text-[11px] font-medium tracking-tight mt-0.5">More</span></a></nav><div class="w-32 h-1 bg-[#0F2042]/20 rounded-full mx-auto mt-2.5"></div></footer><!-- END: FloatingAthleticBottomNav --></main></body></html>

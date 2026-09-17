@@ -4,12 +4,11 @@ Status: current implementation map. Use this document to locate visual tokens,
 shared components, and established screen treatments. The active code is
 authoritative for exact values.
 
-The approved target for the Analog Iron & Newsprint migration is documented in
-[`docs/design/analog-iron-v0.125/`](design/analog-iron-v0.125/README.md). Until
-that migration lands, this map continues to describe the current implementation;
-the handoff directory describes the approved destination.
+The approved design target is the **Kinetic Utilitarian Athletic three-theme system**
+documented in [`docs/design/kinetic-utilitarian-athletic/`](design/kinetic-utilitarian-athletic/README.md).
+The Analog Iron direction is retired; `docs/design/analog-iron-v0.125/` is an archive only.
 
-Scheduling for that migration lives in the
+Scheduling for the theme migration lives in the
 [Post-Launch Redesign Roadmap](post-launch-redesign-roadmap.md).
 
 The [repo-grounded migration audit and child issue drafts](design/analog-iron-v0.125/migration-audit.md)
