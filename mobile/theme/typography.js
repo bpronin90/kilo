@@ -153,17 +153,34 @@ export const TYPOGRAPHY = {
   },
 };
 
+// Map from weight-specific bundled family name to the fontWeight that must be
+// applied when the fallback uses a generic system font (which does not encode
+// weight in its name).
+const FAMILY_WEIGHT = {
+  [SG_REGULAR]: '400',
+  [SG_MEDIUM]: '500',
+  [SG_SEMIBOLD]: '600',
+  [SG_BOLD]: '700',
+  [JBM_MEDIUM]: '500',
+  [JBM_SEMIBOLD]: '600',
+  [JBM_BOLD]: '700',
+};
+
 // Fallback versions of each role for use before fonts have loaded or when
-// font loading fails. Identical specs but with platform-appropriate fallback
-// family names instead of the bundled assets.
+// font loading fails. Uses platform-appropriate family names and restores
+// explicit fontWeight so visual hierarchy is preserved even on system fonts.
 export const TYPOGRAPHY_FALLBACK = Object.fromEntries(
   Object.entries(TYPOGRAPHY).map(([role, spec]) => {
     const isMonospace = spec.fontFamily.startsWith('JetBrainsMono');
     const fallback = isMonospace ? JBM_FALLBACK : SG_FALLBACK;
     const { fontFamily: _ignored, ...rest } = spec;
-    return fallback !== undefined
-      ? [role, { ...rest, fontFamily: fallback }]
-      : [role, rest];
+    const fallbackSpec = fallback !== undefined
+      ? { ...rest, fontFamily: fallback }
+      : { ...rest };
+    // Restore the weight the bundled family name encodes so system fonts
+    // render with the correct visual hierarchy.
+    fallbackSpec.fontWeight = FAMILY_WEIGHT[spec.fontFamily];
+    return [role, fallbackSpec];
   }),
 );
 

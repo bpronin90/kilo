@@ -1176,10 +1176,18 @@ describe('KUA typography token contract', () => {
     }
   });
 
-  test('TYPOGRAPHY_FALLBACK preserves sizes and line heights', () => {
+  test('TYPOGRAPHY_FALLBACK preserves sizes, line heights, and restores fontWeight', () => {
+    const EXPECTED_WEIGHTS = {
+      'headline-xl': '700', 'headline-xl-mobile': '700',
+      'headline-lg': '600', 'headline-md': '600', 'headline-sm': '600',
+      'body-lg': '400', 'body-md': '400', 'body-sm': '400',
+      'metric-display': '700', 'metric-display-mobile': '700',
+      'label-lg': '600', 'label-md': '500', 'label-sm': '500',
+    };
     for (const role of Object.keys(TYPOGRAPHY)) {
       expect(TYPOGRAPHY_FALLBACK[role].fontSize).toBe(TYPOGRAPHY[role].fontSize);
       expect(TYPOGRAPHY_FALLBACK[role].lineHeight).toBe(TYPOGRAPHY[role].lineHeight);
+      expect(TYPOGRAPHY_FALLBACK[role].fontWeight).toBe(EXPECTED_WEIGHTS[role]);
     }
   });
 
