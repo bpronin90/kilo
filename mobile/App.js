@@ -5,6 +5,7 @@ import { WebAlertHost } from './components/WebAlertHost';
 import * as Updates from 'expo-updates';
 
 import { ThemeProvider, useTheme, useThemedStyles } from './theme/ThemeContext';
+import { useKuaFonts } from './theme/typography';
 import { TabBar } from './components/TabBar';
 import { Button } from './components/UI';
 import { TabBarLayoutContext, TAB_BAR_VISUAL_GAP } from './components/TabBarLayout';
@@ -62,6 +63,11 @@ const ZERO_SAFE_AREA_METRICS = {
 // through useTheme, so a provider mounted alongside that markup would leave the
 // outermost chrome on the default palette.
 export default function App() {
+  // Load KUA typography fonts from bundled assets on cold start. Errors are
+  // swallowed here: TYPOGRAPHY_FALLBACK in theme/typography.js keeps the UI
+  // on system fonts instead of blocking or crashing (issue #1097).
+  useKuaFonts();
+
   return (
     <ThemeProvider>
       <WipeAwareAppShell />
