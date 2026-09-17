@@ -7017,7 +7017,7 @@ describe('#583: App Guide analytics copy matches shipped surfaces', () => {
 // ── Recovery Block start flow (#695) ────────────────────────────────────────
 
 describe('Recovery Block start flow', () => {
-  const { LightColors, DarkColors } = require('../theme/colors');
+  const { LightColors, DarkColors, KUA_PALETTES } = require('../theme/colors');
   const { ThemeContext } = require('../theme/ThemeContext');
 
   const baselineNote = { id: 'routine1', title: 'Push Day', raw_text: 'Push\n-Bench\n100 5,5,5', updated_at: '2026-01-01T00:00:00.000Z' };
@@ -7589,7 +7589,7 @@ describe('Recovery Block start flow', () => {
     let component;
     render.act(() => {
       component = render.create(
-        <ThemeContext.Provider value={{ preference: 'dark', mode: 'dark', colors: DarkColors, setPreference: jest.fn() }}>
+        <ThemeContext.Provider value={{ preference: 'dark', mode: 'dark', colors: DarkColors, kuaPalette: KUA_PALETTES.hardCourt.dark, setPreference: jest.fn() }}>
           <ControlledLogScreen />
         </ThemeContext.Provider>
       );
