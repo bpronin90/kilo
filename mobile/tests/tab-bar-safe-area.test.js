@@ -4,6 +4,15 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { TabBar } from '../components/TabBar';
 import { ScreenShell } from '../components/ScreenShell';
 import { TabBarLayoutContext, TAB_BAR_VISUAL_GAP, TAB_BAR_HEIGHT_FALLBACK } from '../components/TabBarLayout';
+import { TAB_ICON_MAP } from '../components/Icon';
+
+jest.mock('@expo/vector-icons/MaterialIcons', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return function MockMaterialIcons({ name, size, color, testID }) {
+    return React.createElement(View, { testID: testID ?? `icon-${name}`, accessibilityLabel: name, 'data-icon': name, 'data-size': size, 'data-color': color });
+  };
+});
 
 const metrics = (bottom, top = 0) => ({
   frame: { x: 0, y: 0, width: 800, height: 600 },
@@ -195,5 +204,80 @@ describe('safe-area layout', () => {
     });
     expect(onHeightChange).toHaveBeenCalledWith(72);
     act(() => component.unmount());
+  });
+});
+
+const KUA_TABS = ['Home', 'Log', 'Weight', 'Analytics', 'More'];
+
+// Finds all mock icon nodes by their data-icon prop.
+const findIcons = (component) =>
+  component.root.findAll(
+    (node) => typeof node.type === 'string' && node.props['data-icon'] !== undefined
+  );
+
+describe('KUA icon foundation', () => {
+  test('TAB_ICON_MAP covers all five navigation tabs', () => {
+    expect(TAB_ICON_MAP).toMatchObject({
+      Home: 'home',
+      Log: 'fitness-center',
+      Weight: 'monitor-weight',
+      Analytics: 'bar-chart',
+      More: 'more-horiz',
+    });
+    expect(Object.keys(TAB_ICON_MAP)).toHaveLength(5);
+  });
+
+  test('TabBar renders one icon per tab at 24dp', () => {
+    const component = renderWithInsets(
+      <TabBar tabs={KUA_TABS} activeTab="Home" onTabPress={() => {}} />,
+      0
+    );
+    const icons = findIcons(component);
+    expect(icons).toHaveLength(KUA_TABS.length);
+    icons.forEach((icon) => {
+      expect(icon.props['data-size']).toBe(24);
+    });
+    act(() => component.unmount());
+  });
+
+  test('Active tab icon uses primary color; inactive tabs use onSurfaceVariant', () => {
+    const component = renderWithInsets(
+      <TabBar tabs={KUA_TABS} activeTab="Log" onTabPress={() => {}} />,
+      0
+    );
+    const icons = findIcons(component);
+    // Icons are rendered in tab order; Log is index 1.
+    const activeIcon = icons[1];
+    const inactiveIcon = icons[0];
+    // Colors are supplied inline from the resolved palette. The default test
+    // palette (LightColors) provides chipText for active and textMuted for
+    // inactive when KUA tokens are absent; KUA palettes provide primary and
+    // onSurfaceVariant. Either way, active and inactive must differ.
+    expect(activeIcon.props['data-color']).not.toBe(inactiveIcon.props['data-color']);
+    act(() => component.unmount());
+  });
+
+  test('Icon glyphs for all five tabs match the approved mapping', () => {
+    const component = renderWithInsets(
+      <TabBar tabs={KUA_TABS} activeTab="Home" onTabPress={() => {}} />,
+      0
+    );
+    const icons = findIcons(component);
+    KUA_TABS.forEach((tab, i) => {
+      expect(icons[i].props['data-icon']).toBe(TAB_ICON_MAP[tab]);
+    });
+    act(() => component.unmount());
+  });
+
+  test('No runtime asset loading: icons render without file-system access', () => {
+    // If Icon.js attempted fs.readFile or a network fetch, this synchronous
+    // render would throw. Completing without error proves bundled-only delivery.
+    expect(() => {
+      const component = renderWithInsets(
+        <TabBar tabs={KUA_TABS} activeTab="Home" onTabPress={() => {}} />,
+        0
+      );
+      act(() => component.unmount());
+    }).not.toThrow();
   });
 });

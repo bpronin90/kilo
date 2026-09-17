@@ -1,8 +1,9 @@
 import React, { useContext } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
-import { useThemedStyles } from '../theme/ThemeContext';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { TAB_BAR_VISUAL_GAP } from './TabBarLayout';
+import { Icon } from './Icon';
 
 // The floating bottom navigation is always fully opaque (#1026). It previously
 // animated itself down to 25% opacity two seconds after mount and again after
@@ -10,9 +11,18 @@ import { TAB_BAR_VISUAL_GAP } from './TabBarLayout';
 // content and made the bar feel like it was disappearing. That behavior — and
 // its scroll-activity plumbing in App.js — is removed; only the tabs, the
 // floating rounded shape, the position, and the safe-area offset remain.
+// KUA icon size for the tab bar per foundation.md: 22–24dp.
+const TAB_ICON_SIZE = 24;
+
 export function TabBar({ tabs, activeTab, onTabPress, onHeightChange }) {
   const styles = useThemedStyles(createStyles);
+  const { colors } = useTheme();
   const { bottom: bottomInset = 0 } = useContext(SafeAreaInsetsContext) || {};
+
+  // KUA semantic tokens with fallback to legacy palette names so the tab bar
+  // renders correctly on both KUA and non-KUA themes.
+  const activeColor = colors.primary ?? colors.chipText;
+  const inactiveColor = colors.onSurfaceVariant ?? colors.textMuted;
 
   const handleLayout = (e) => {
     if (onHeightChange) onHeightChange(e.nativeEvent.layout.height);
@@ -34,7 +44,12 @@ export function TabBar({ tabs, activeTab, onTabPress, onHeightChange }) {
           accessibilityState={{ selected: activeTab === tab }}
           accessible={true}
         >
-          <Text style={[styles.tabText, activeTab === tab ? styles.tabTextActive : null]}>
+          <Icon
+            name={tab}
+            size={TAB_ICON_SIZE}
+            color={activeTab === tab ? activeColor : inactiveColor}
+          />
+          <Text style={[styles.tabText, { color: activeTab === tab ? activeColor : inactiveColor }]}>
             {tab}
           </Text>
         </Pressable>
@@ -71,11 +86,8 @@ const createStyles = (colors) => StyleSheet.create({
     backgroundColor: colors.chipBackground,
   },
   tabText: {
-    color: colors.textMuted,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  tabTextActive: {
-    color: colors.chipText,
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 2,
   },
 });
