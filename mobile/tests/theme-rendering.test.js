@@ -1710,15 +1710,18 @@ describe('KUA geometry token contract', () => {
     expect(GEOMETRY['radius-lg']).toBe(8);
     expect(GEOMETRY['radius-xl']).toBe(12);
     expect(GEOMETRY['radius-2xl']).toBe(16);
-    // radius-full is a large integer, not '50%', because React Native
-    // style objects only accept numeric borderRadius values.
-    expect(GEOMETRY['radius-full']).toBeGreaterThan(100);
-    expect(typeof GEOMETRY['radius-full']).toBe('number');
+    // radius-full uses '50%' as specified in foundation.md; React Native 0.81+
+    // accepts percentage strings for borderRadius.
+    expect(GEOMETRY['radius-full']).toBe('50%');
   });
 
-  test('all radius values are numbers (React Native compatible)', () => {
+  test('numeric radius values are numbers; radius-full is the documented percentage string', () => {
     for (const [role, value] of Object.entries(GEOMETRY)) {
-      expect({ role, type: typeof value }).toEqual({ role, type: 'number' });
+      if (role === 'radius-full') {
+        expect({ role, value }).toEqual({ role, value: '50%' });
+      } else {
+        expect({ role, type: typeof value }).toEqual({ role, type: 'number' });
+      }
     }
   });
 

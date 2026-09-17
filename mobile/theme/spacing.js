@@ -22,8 +22,8 @@ export const SPACING = Object.freeze({
 // Geometry (border radius)
 // ---------------------------------------------------------------------------
 
-// radius-full uses a large integer rather than '50%' — React Native style
-// objects accept only numeric borderRadius values, not CSS percentages.
+// radius-full uses '50%' as specified in foundation.md. React Native 0.81+
+// accepts percentage strings for borderRadius on views where width equals height.
 export const GEOMETRY = Object.freeze({
   'radius-xs': 2,
   'radius-sm': 4,
@@ -31,5 +31,5 @@ export const GEOMETRY = Object.freeze({
   'radius-lg': 8,
   'radius-xl': 12,
   'radius-2xl': 16,
-  'radius-full': 9999,
+  'radius-full': '50%',
 });
