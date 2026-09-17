@@ -1773,23 +1773,28 @@ describe('KUA elevation token contract', () => {
     expect(ELEVATION[2]).toEqual({});
   });
 
-  test('level 3 carries shadow properties for elevated cards', () => {
-    expect(ELEVATION[3].shadowColor).toBeDefined();
-    expect(ELEVATION[3].shadowOffset).toBeDefined();
-    expect(typeof ELEVATION[3].shadowOpacity).toBe('number');
-    expect(typeof ELEVATION[3].shadowRadius).toBe('number');
-    expect(typeof ELEVATION[3].elevation).toBe('number');
+  test('level 3 carries exact approved shadow values for elevated cards', () => {
+    // Authority: foundation.md §Borders and elevation — "subtle shadow" at level 3.
+    // Approved recipe: y=2, opacity=0.12, radius=4, android elevation=3.
+    expect(ELEVATION[3]).toEqual({
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.12,
+      shadowRadius: 4,
+      elevation: 3,
+    });
   });
 
-  test('level 4 carries stronger shadow properties for overlays', () => {
-    expect(ELEVATION[4].shadowColor).toBeDefined();
-    expect(ELEVATION[4].shadowOffset).toBeDefined();
-    expect(typeof ELEVATION[4].shadowOpacity).toBe('number');
-    expect(typeof ELEVATION[4].shadowRadius).toBe('number');
-    expect(typeof ELEVATION[4].elevation).toBe('number');
-    // Overlays must be more elevated than cards
-    expect(ELEVATION[4].shadowOpacity).toBeGreaterThan(ELEVATION[3].shadowOpacity);
-    expect(ELEVATION[4].elevation).toBeGreaterThan(ELEVATION[3].elevation);
+  test('level 4 carries exact approved shadow values for overlays', () => {
+    // Authority: foundation.md §Borders and elevation — "elevation-4 shadow" at level 4.
+    // Approved recipe: y=4, opacity=0.16, radius=8, android elevation=6.
+    expect(ELEVATION[4]).toEqual({
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.16,
+      shadowRadius: 8,
+      elevation: 6,
+    });
   });
 
   test('ELEVATION is frozen — consumers cannot mutate tokens', () => {

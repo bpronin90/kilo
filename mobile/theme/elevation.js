@@ -27,6 +27,13 @@ export const BORDERS = Object.freeze({
 // Shadow style objects keyed by level. Level 0–2 carry no shadow.
 // iOS uses shadowColor/shadowOffset/shadowOpacity/shadowRadius.
 // Android uses elevation. Both are included so consumers can spread directly.
+//
+// Levels 3–4 shadow recipe (authority: foundation.md §Borders and elevation):
+//   foundation.md mandates "subtle shadow" at level 3 and names the level-4
+//   shadow as "elevation-4 shadow". The concrete values below are the approved
+//   implementation of those two shadow roles:
+//     Level 3 (elevated card): y=2, opacity=0.12, radius=4, android elevation=3
+//     Level 4 (overlay):       y=4, opacity=0.16, radius=8, android elevation=6
 export const ELEVATION = Object.freeze({
   0: Object.freeze({}),
   1: Object.freeze({}),
