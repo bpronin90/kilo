@@ -277,23 +277,27 @@ The following tokens carry fixed meaning across all three themes and must not va
 
 ### Shared — Light mode
 
-| Token | Value | Semantic use |
-|---|---|---|
-| `success` | `#006C4A` | Completed / confirmed state (same green family as completion) |
-| `warning` | `#B45309` | Caution requiring attention; amber-700 (5.0:1 on white ✓ AA) |
-| `chart-series-1` | `#0694A2` | First chart series — teal (graphic element, not text) |
-| `chart-series-2` | `#D97706` | Second chart series — amber (graphic element) |
-| `chart-series-3` | `#7C3AED` | Third chart series — violet (5.7:1 on white ✓ AA) |
+All pairs verified against all three light canvases; the most-restrictive canvas (HC Light `#F0F4FC`) determines the minimum ratio shown.
+
+| Token | Value | Contrast (min vs HC Light) | Semantic use |
+|---|---|---|---|
+| `success` | `#006C4A` | 5.87:1 AA | Completed / confirmed state (same green family as completion) |
+| `warning` | `#B45309` | 4.56:1 AA | Caution requiring attention; amber-700 |
+| `chart-series-1` | `#0C7489` | 4.92:1 AA | First chart series — dark teal |
+| `chart-series-2` | `#C2410C` | 4.70:1 AA | Second chart series — orange-700 |
+| `chart-series-3` | `#7C3AED` | 5.17:1 AA | Third chart series — violet |
 
 ### Shared — Dark mode
 
-| Token | Value | Semantic use |
-|---|---|---|
-| `success` | `#10B981` | Completed / confirmed state |
-| `warning` | `#FBBF24` | Caution state; amber-300 (≥11:1 on all dark canvases ✓ AAA) |
-| `chart-series-1` | `#22D3EE` | First chart series — teal (10.8:1 on dark canvas ✓ AAA) |
-| `chart-series-2` | `#F59E0B` | Second chart series — amber (9.4:1 on dark canvas ✓ AAA) |
-| `chart-series-3` | `#A78BFA` | Third chart series — violet (7.1:1 on dark canvas ✓ AAA) |
+All pairs verified against all three dark canvases; the most-restrictive canvas (HC Dark `#101728`) determines the minimum ratio shown.
+
+| Token | Value | Contrast (min vs HC Dark) | Semantic use |
+|---|---|---|---|
+| `success` | `#10B981` | 7.04:1 AAA | Completed / confirmed state |
+| `warning` | `#FBBF24` | 10.70:1 AAA | Caution state; amber-300 |
+| `chart-series-1` | `#22D3EE` | 9.89:1 AAA | First chart series — teal |
+| `chart-series-2` | `#F59E0B` | 8.32:1 AAA | Second chart series — amber |
+| `chart-series-3` | `#A78BFA` | 6.57:1 AA | Third chart series — violet |
 
 ### Selection
 

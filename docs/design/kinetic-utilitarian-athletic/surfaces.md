@@ -106,13 +106,13 @@ Charts and metric tiles; no template coverage. Apply KUA tokens.
 - Screen background: `background`
 - Tile cards: standard content card treatment
 - **Weight trends charts** (`AnalyticsWeightTrendsCard` — 7-day and 30-day rolling averages):
-  - Data line: theme-neutral teal (`#0694A2` light; `#22D3EE` dark) — not the theme primary
+  - Data line: theme-neutral teal (`#0C7489` light; `#22D3EE` dark) — not the theme primary
   - PR markers: `completion` color + ✓ icon
   - Callout/tooltip: `surface-card` bg, `on-surface` text
   - Period selector: segmented control treatment without dot indicator
   - Chart grid lines: `surface-border`; axis labels: `on-surface-variant`, `label-sm`
 - **Strength chart** (`AnalyticsStrengthSection` — 1K total over sessions): same teal series treatment
-- Bar chart series (other): theme-neutral amber (`#D97706` light; `#F59E0B` dark) for primary series; additional series use violet, teal
+- Bar chart series (other): theme-neutral orange (`#C2410C` light; `#F59E0B` dark) for primary series; additional series use violet, teal
 - Metric tiles: `metric-display-mobile` (JetBrains Mono 700), `on-surface`; label `label-sm`, `on-surface-variant`
 - Section headings: same as Home
 - Behavior: current analytics calculations, data access, and navigation are unchanged
