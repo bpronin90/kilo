@@ -115,3 +115,91 @@ export function __resetAppearancePreferenceForTests() {
   explicitlySet = false;
   listeners.clear();
 }
+
+// ---------------------------------------------------------------------------
+// Theme selection (#1105)
+//
+// Three court themes: 'hard-court', 'clay-court', 'grass-court'.
+// Missing or invalid values normalize to 'hard-court'.
+// Persisted separately from appearance so the two preferences are independent.
+// ---------------------------------------------------------------------------
+
+export const THEME_SELECTION_KEY = 'kilo.theme_selection';
+export const THEME_SELECTIONS = ['hard-court', 'clay-court', 'grass-court'];
+export const DEFAULT_THEME_SELECTION = 'hard-court';
+
+export function normalizeThemeSelection(value) {
+  return THEME_SELECTIONS.includes(value) ? value : DEFAULT_THEME_SELECTION;
+}
+
+let currentTheme = DEFAULT_THEME_SELECTION;
+let themeHydrateStarted = false;
+let themeExplicitlySet = false;
+const themeListeners = new Set();
+
+function emitTheme() {
+  for (const listener of [...themeListeners]) listener();
+}
+
+export function getThemeSelection() {
+  return currentTheme;
+}
+
+export function setThemeSelection(value) {
+  themeExplicitlySet = true;
+  themeHydrateStarted = true;
+  const next = normalizeThemeSelection(value);
+  if (next !== currentTheme) {
+    currentTheme = next;
+    emitTheme();
+  }
+  try {
+    return Promise.resolve(
+      AsyncStorage.setItem(THEME_SELECTION_KEY, next)
+    ).catch(() => {});
+  } catch (e) {
+    return Promise.resolve();
+  }
+}
+
+function ensureThemeHydrated() {
+  if (themeHydrateStarted) return;
+  themeHydrateStarted = true;
+  try {
+    Promise.resolve(AsyncStorage.getItem(THEME_SELECTION_KEY))
+      .then((raw) => {
+        if (themeExplicitlySet) return;
+        const next = normalizeThemeSelection(raw);
+        if (next !== currentTheme) {
+          currentTheme = next;
+          emitTheme();
+        }
+      })
+      .catch(() => {});
+  } catch (e) {
+    // Ignored: the default theme already applies.
+  }
+}
+
+export function subscribeThemeSelection(listener) {
+  themeListeners.add(listener);
+  ensureThemeHydrated();
+  return () => {
+    themeListeners.delete(listener);
+  };
+}
+
+export function useThemeSelection() {
+  return useSyncExternalStore(
+    subscribeThemeSelection,
+    getThemeSelection,
+    getThemeSelection
+  );
+}
+
+export function __resetThemeSelectionForTests() {
+  currentTheme = DEFAULT_THEME_SELECTION;
+  themeHydrateStarted = false;
+  themeExplicitlySet = false;
+  themeListeners.clear();
+}

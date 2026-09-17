@@ -786,9 +786,10 @@ describe('no production surface can hold a stale palette', () => {
         if (matches) leaks.push(`${path.relative(root, f)}:${i + 1} ${matches.join(' ')}`);
       });
     }
-    // The two brand-orange wordmark accents are the single sanctioned
-    // exception; anything else appearing here is a missed token.
+    // The two brand-orange wordmark accents and the dev-only ThemePreviewControl
+    // are the sanctioned exceptions; anything else appearing here is a missed token.
     expect(leaks).toEqual([
+      "components/ThemePreviewControl.js:70 '#FF5C00'",
       'screens/HomeScreen.js:42 "#FF5C00"',
       'screens/HomeScreen.js:46 "#FF5C00"',
     ]);

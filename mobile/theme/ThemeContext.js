@@ -18,11 +18,14 @@
 import React, { createContext, useContext, useEffect, useMemo } from 'react';
 import { Appearance, Platform, useColorScheme } from 'react-native';
 
-import { LightColors, paletteForMode } from './colors';
+import { LightColors, KUA_PALETTES, paletteForMode } from './colors';
 import {
   DEFAULT_APPEARANCE_PREFERENCE,
+  DEFAULT_THEME_SELECTION,
   setAppearancePreference,
+  setThemeSelection,
   useAppearancePreference,
+  useThemeSelection,
 } from '../lib/themePreference';
 
 // Resolve the effective mode. 'light'/'dark' are absolute; 'system' follows the
@@ -47,17 +50,28 @@ function applyNativeAppearance(preference) {
   Appearance.setColorScheme(pinned);
 }
 
+// Map a theme slug ('hard-court', 'clay-court', 'grass-court') to a KUA_PALETTES key.
+function themeKey(slug) {
+  if (slug === 'clay-court') return 'clayCourt';
+  if (slug === 'grass-court') return 'grassCourt';
+  return 'hardCourt';
+}
+
 const DEFAULT_THEME = {
   preference: DEFAULT_APPEARANCE_PREFERENCE,
   mode: 'light',
   colors: LightColors,
   setPreference: setAppearancePreference,
+  themeSelection: DEFAULT_THEME_SELECTION,
+  setThemeSelection,
+  kuaPalette: KUA_PALETTES.hardCourt.light,
 };
 
 export const ThemeContext = createContext(DEFAULT_THEME);
 
 export function ThemeProvider({ children }) {
   const preference = useAppearancePreference();
+  const themeSelection = useThemeSelection();
   const systemScheme = useColorScheme();
   const mode = resolveThemeMode(preference, systemScheme);
 
@@ -71,8 +85,11 @@ export function ThemeProvider({ children }) {
       mode,
       colors: paletteForMode(mode),
       setPreference: setAppearancePreference,
+      themeSelection,
+      setThemeSelection,
+      kuaPalette: KUA_PALETTES[themeKey(themeSelection)][mode],
     }),
-    [preference, mode]
+    [preference, mode, themeSelection]
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

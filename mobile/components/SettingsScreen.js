@@ -11,6 +11,7 @@ import {
   saveProgressionSuggestionsEnabled,
 } from '../storage/entries/settings';
 import { ReminderSettingsCard } from './ReminderSettingsCard';
+import { ThemePreviewControl } from './ThemePreviewControl';
 import { useWeightUnit, setWeightUnitPreference } from '../lib/unitPreference';
 import { unitFromUnitSystem, unitSystemFromUnit } from '../lib/units';
 
@@ -258,6 +259,11 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
             onRetry={handleRetryUnitSave}
           />
         )}
+      </Card>
+
+      <SectionTitle>Dev Preview</SectionTitle>
+      <Card>
+        <ThemePreviewControl />
       </Card>
 
       <SectionTitle>Advanced</SectionTitle>
