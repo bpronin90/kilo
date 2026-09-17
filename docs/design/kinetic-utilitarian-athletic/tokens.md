@@ -37,15 +37,15 @@ Cobalt blue on cool blue-gray canvas. US Open hard-court aesthetic.
 
 | Pair | Ratio | Grade | Used for |
 |---|---|---|---|
-| `#0E1726` / `#EEF3F9` | 16.2:1 | AAA | Body text on canvas |
-| `#0E1726` / `#FFFFFF` | 18.1:1 | AAA | Body text on card |
+| `#0E1726` / `#EEF3F9` | 16.1:1 | AAA | Body text on canvas |
+| `#0E1726` / `#FFFFFF` | 18.0:1 | AAA | Body text on card |
 | `#0A4ABF` / `#EEF3F9` | 6.9:1 | AA | Primary on canvas (tab active, headings) |
-| `#0A4ABF` / `#FFFFFF` | 7.6:1 | AA | Primary on card (card title, borders) |
-| `#083B9A` / `#E1ECFB` | 6.1:1 | AA | Label on primary-container (TRACK button text) |
-| `#5A687A` / `#EEF3F9` | 5.3:1 | AA | Muted text on canvas |
-| `#5A687A` / `#FFFFFF` | 5.9:1 | AA | Muted text on card |
-| `#006C4A` / `#FFFFFF` | 7.5:1 | AA | Completion label on card |
-| `#FFFFFF` / `#0A4ABF` | 7.6:1 | AA | White text on primary button |
+| `#0A4ABF` / `#FFFFFF` | 7.7:1 | AAA | Primary on card (card title, borders) |
+| `#083B9A` / `#E1ECFB` | 8.4:1 | AAA | TRACK button text on container |
+| `#5A687A` / `#EEF3F9` | 5.1:1 | AA | Muted text on canvas |
+| `#5A687A` / `#FFFFFF` | 5.7:1 | AA | Muted text on card |
+| `#006C4A` / `#FFFFFF` | 6.5:1 | AA | Completion label on card |
+| `#FFFFFF` / `#0A4ABF` | 7.7:1 | AAA | White text on primary button |
 
 ---
 
@@ -80,14 +80,14 @@ Electric blue on deep navy canvas.
 
 | Pair | Ratio | Grade | Used for |
 |---|---|---|---|
-| `#F0F4FC` / `#080D18` | 18.4:1 | AAA | Body text on canvas |
-| `#F0F4FC` / `#101728` | 15.2:1 | AAA | Body text on card |
+| `#F0F4FC` / `#080D18` | 17.6:1 | AAA | Body text on canvas |
+| `#F0F4FC` / `#101728` | 16.2:1 | AAA | Body text on card |
 | `#3B82F6` / `#080D18` | 5.3:1 | AA | Primary on canvas (tab active) |
-| `#60A5FA` / `#080D18` | 7.6:1 | AA | Light primary on canvas |
-| `#60A5FA` / `#101728` | 7.0:1 | AA | Light primary on card |
+| `#60A5FA` / `#080D18` | 7.6:1 | AAA | Light primary on canvas |
+| `#60A5FA` / `#101728` | 7.0:1 | AAA | Light primary on card |
 | `#60A5FA` / `#17233D` | 6.1:1 | AA | TRACK button text on container |
-| `#8C9BB3` / `#080D18` | 6.5:1 | AA | Muted text on canvas |
-| `#8C9BB3` / `#101728` | 5.3:1 | AA | Muted text on card |
+| `#8C9BB3` / `#080D18` | 6.9:1 | AA | Muted text on canvas |
+| `#8C9BB3` / `#101728` | 6.3:1 | AA | Muted text on card |
 | `#080D18` / `#3B82F6` | 5.3:1 | AA | Dark text on primary button |
 
 ---
@@ -114,7 +114,7 @@ Terracotta on warm limestone canvas. Roland Garros clay aesthetic.
 | `primary-on-container` | `#7E2E0F` | Text on primary-container (TRACK button) |
 | `on-surface` | `#1A1918` | Primary body text (ink) |
 | `on-surface-variant` | `#585550` | Secondary text (ink-variant) |
-| `on-surface-muted` | `#7E7870` | Metadata, placeholder text (limestone-muted) |
+| `on-surface-muted` | `#736D65` | Metadata, placeholder text (limestone-muted) |
 | `completion` | `#1E5B3A` | Completed/tracked state (green — distinct from clay primary) |
 | `on-primary` | `#FFFFFF` | Text on primary-colored surfaces |
 | `tab-bar-bg` | `#F8F5EE` | Tab bar background |
@@ -125,15 +125,16 @@ Terracotta on warm limestone canvas. Roland Garros clay aesthetic.
 
 | Pair | Ratio | Grade | Used for |
 |---|---|---|---|
-| `#1A1918` / `#F8F5EE` | 17.3:1 | AAA | Body text on canvas |
-| `#1A1918` / `#FFFDF9` | 18.0:1 | AAA | Body text on card |
+| `#1A1918` / `#F8F5EE` | 16.1:1 | AAA | Body text on canvas |
+| `#1A1918` / `#FFFDF9` | 17.3:1 | AAA | Body text on card |
 | `#A23E19` / `#F8F5EE` | 6.0:1 | AA | Primary on canvas (tab active, card title) |
 | `#A23E19` / `#FFFDF9` | 6.4:1 | AA | Primary on card |
-| `#585550` / `#F8F5EE` | 7.0:1 | AA | Secondary text on canvas |
-| `#585550` / `#FFFDF9` | 7.3:1 | AA | Secondary text on card |
-| `#7E7870` / `#F8F5EE` | 4.6:1 | AA | Muted text on canvas |
-| `#1E5B3A` / `#FFFDF9` | 7.4:1 | AA | Completion label on card |
-| `#7E2E0F` / `#FBECE5` | 8.1:1 | AAA | TRACK button text on container |
+| `#585550` / `#F8F5EE` | 6.8:1 | AA | Secondary text on canvas |
+| `#585550` / `#FFFDF9` | 7.3:1 | AAA | Secondary text on card |
+| `#736D65` / `#F8F5EE` | 4.7:1 | AA | Muted text on canvas |
+| `#736D65` / `#FFFDF9` | 5.0:1 | AA | Muted text on card |
+| `#1E5B3A` / `#FFFDF9` | 7.9:1 | AAA | Completion label on card |
+| `#7E2E0F` / `#FBECE5` | 8.0:1 | AAA | TRACK button text on container |
 | `#FFFFFF` / `#A23E19` | 6.5:1 | AA | White text on primary button |
 
 ---
@@ -170,14 +171,14 @@ Clay orange on deep earthen canvas.
 
 | Pair | Ratio | Grade | Used for |
 |---|---|---|---|
-| `#F5F3F0` / `#141211` | 17.0:1 | AAA | Body text on canvas |
-| `#F5F3F0` / `#1F1C1A` | 14.1:1 | AAA | Body text on card |
-| `#D86538` / `#141211` | 4.8:1 | AA | Primary on canvas (tab active) |
+| `#F5F3F0` / `#141211` | 16.9:1 | AAA | Body text on canvas |
+| `#F5F3F0` / `#1F1C1A` | 15.3:1 | AAA | Body text on card |
+| `#D86538` / `#141211` | 5.2:1 | AA | Primary on canvas (tab active) |
 | `#F08B62` / `#341B13` | 6.5:1 | AA | TRACK button text on container |
-| `#A89F96` / `#141211` | 7.5:1 | AA | Muted text on canvas |
-| `#A89F96` / `#1F1C1A` | 6.2:1 | AA | Muted text on card |
+| `#A89F96` / `#141211` | 7.2:1 | AAA | Muted text on canvas |
+| `#A89F96` / `#1F1C1A` | 6.5:1 | AA | Muted text on card |
 | `#141211` / `#D86538` | 5.2:1 | AA | Dark text on primary button |
-| `#2CA864` / `#141211` | 5.6:1 | AA | Completion state on canvas |
+| `#2CA864` / `#141211` | 6.1:1 | AA | Completion state on canvas |
 
 ---
 
@@ -215,14 +216,14 @@ Court green on pale green canvas. Wimbledon grass aesthetic.
 
 | Pair | Ratio | Grade | Used for |
 |---|---|---|---|
-| `#111813` / `#F4F8F5` | 17.8:1 | AAA | Body text on canvas |
-| `#111813` / `#FFFFFF` | 19.3:1 | AAA | Body text on card |
-| `#1E5B3A` / `#F4F8F5` | 7.2:1 | AA | Primary on canvas (tab active, card title) |
-| `#1E5B3A` / `#FFFFFF` | 7.8:1 | AA | Primary on card (card border, heading) |
-| `#14452B` / `#E8F4EC` | 6.8:1 | AA | TRACK button text on container |
-| `#556B5C` / `#F4F8F5` | 6.1:1 | AA | Muted text on canvas |
-| `#556B5C` / `#FFFFFF` | 6.6:1 | AA | Muted text on card |
-| `#FFFFFF` / `#1E5B3A` | 7.8:1 | AA | White text on primary button |
+| `#111813` / `#F4F8F5` | 16.8:1 | AAA | Body text on canvas |
+| `#111813` / `#FFFFFF` | 18.0:1 | AAA | Body text on card |
+| `#1E5B3A` / `#F4F8F5` | 7.5:1 | AAA | Primary on canvas (tab active, card title) |
+| `#1E5B3A` / `#FFFFFF` | 8.0:1 | AAA | Primary on card (card border, heading) |
+| `#14452B` / `#E8F4EC` | 9.7:1 | AAA | TRACK button text on container |
+| `#556B5C` / `#F4F8F5` | 5.4:1 | AA | Muted text on canvas |
+| `#556B5C` / `#FFFFFF` | 5.8:1 | AA | Muted text on card |
+| `#FFFFFF` / `#1E5B3A` | 8.0:1 | AAA | White text on primary button |
 
 ---
 
@@ -259,13 +260,13 @@ Athletic green on deep forest canvas.
 
 | Pair | Ratio | Grade | Used for |
 |---|---|---|---|
-| `#F0F5F2` / `#0C130F` | 18.7:1 | AAA | Body text on canvas |
-| `#F0F5F2` / `#15201A` | 15.5:1 | AAA | Body text on card |
-| `#2CA864` / `#0C130F` | 7.0:1 | AA | Primary on canvas (tab active) |
-| `#2CA864` / `#15201A` | 5.8:1 | AA | Primary on card (card border, accent) |
+| `#F0F5F2` / `#0C130F` | 17.1:1 | AAA | Body text on canvas |
+| `#F0F5F2` / `#15201A` | 15.2:1 | AAA | Body text on card |
+| `#2CA864` / `#0C130F` | 6.2:1 | AA | Primary on canvas (tab active) |
+| `#2CA864` / `#15201A` | 5.5:1 | AA | Primary on card (card border, accent) |
 | `#4ADE80` / `#132B1C` | 8.7:1 | AAA | TRACK button text on container |
-| `#91A398` / `#0C130F` | 7.0:1 | AA | Muted text on canvas |
-| `#91A398` / `#15201A` | 5.8:1 | AA | Muted text on card |
+| `#91A398` / `#0C130F` | 7.1:1 | AAA | Muted text on canvas |
+| `#91A398` / `#15201A` | 6.3:1 | AA | Muted text on card |
 | `#0C130F` / `#2CA864` | 6.2:1 | AA | Dark text on primary button |
 
 ---
