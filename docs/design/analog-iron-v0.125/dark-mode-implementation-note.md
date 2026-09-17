@@ -45,6 +45,10 @@ export const KILO_TOKENS_DARK = {
   successGreenBg: '#1A2E1C',   // Subtle green wash for completed workout / sync verification.
   cautionAmber: '#F59E0B',     // Technician amber for unparsed format warning chips.
   cautionAmberBg: '#332308',   // Subtle dark amber wash for syntax warning rows.
+
+  // Chart-only tokens (required if Alternative C is selected)
+  subtleBg: 'rgba(255,255,255,0.06)',  // Translucent white wash; Alt C bar/column fill.
+  chipAccentText: '#ffc98a',           // Warm amber-cream; Alt C selected-point and chip text (10.9:1 on surface ✓).
 } as const;
 ```
 

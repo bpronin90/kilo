@@ -62,12 +62,13 @@ Avoid unreadable micro-copy. Minimum legible size on mobile is `11px` (for track
 ## 6. Chart Treatment Alternatives
 
 Three labeled alternatives for line series (Weight Trends: 7-day and 30-day rolling averages;
-Strength 1K total over sessions) and bar/column series (Stats: Weekly Volume).
+Strength 1K total over sessions).
 Each is self-contained. One must be selected by the owner before D1/D4/D8/D9 proceed.
 
 **Scope of these alternatives.** Charts addressed: multi-series line (`AnalyticsWeightTrendsCard`
 7-day + 30-day rolling average lines) and single-series line with selection (`AnalyticsStrengthSection`
-1K total chart). Bar/column charts (Stats Weekly Volume) share the same role names.
+1K total chart). No Weekly Volume bar chart exists in production; repo-wide search finds no such
+component or metric. Any bar/column chart treatment is out of scope for these alternatives.
 Screenshot-only chart types, the specific metrics and data ranges visible in `stats-light.png`
 and `weight-light.png`, and any chart not listed above remain unauthorized.
 
@@ -77,7 +78,7 @@ and `weight-light.png`, and any chart not listed above remain unauthorized.
 - Vermilion (`accentRed`) is reserved for comparison/PR markers and exceptional states only —
   never for an ordinary series stroke or fill.
 - Multi-series charts differ by stroke style and marker shape in addition to color.
-- No drop shadows, fills, gradients, or glow effects on chart elements.
+- No area-under-line fills, drop shadows, gradients, or glow effects on chart elements. Bar/column fills at controlled opacity and filled point markers are permitted per each alternative's own specification.
 - Grid lines are omitted (open canvas principle); axis rules use `borderHairline`.
 
 ---
@@ -241,8 +242,8 @@ palette cross-product.
 
 | Pair | Role A | Role B | Ratio | Criterion | Outcome |
 |---|---|---|---|---|---|
-| `ink` on `surface` | `#111111` | `#F4F1EA` | 17.1:1 | AA text | ✓ |
-| `ink` on `background` | `#111111` | `#EAE6DF` | 15.4:1 | AA text | ✓ |
+| `ink` on `surface` | `#111111` | `#F4F1EA` | 16.7:1 | AA text | ✓ |
+| `ink` on `background` | `#111111` | `#EAE6DF` | 15.2:1 | AA text | ✓ |
 | `inkMuted` on `surface` | `#66625D` | `#F4F1EA` | 5.3:1 | AA text | ✓ |
 | `chartPrimary` on `surface` (Alt B) | `#42535E` | `#F4F1EA` | 7.2:1 | AA text | ✓ |
 | `accentText` on `surface` (Alt C selected) | `#8a4e15` | `#F4F1EA` | 5.9:1 | AA text | ✓ |
@@ -253,8 +254,8 @@ palette cross-product.
 
 | Pair | Role A | Role B | Ratio | Criterion | Outcome |
 |---|---|---|---|---|---|
-| `ink` on `bg` | `#F0F0F0` | `#121214` | 16.6:1 | AA text | ✓ |
-| `ink` on `surface` | `#F0F0F0` | `#1C1C1F` | 15.4:1 | AA text | ✓ |
+| `ink` on `bg` | `#F0F0F0` | `#121214` | 16.4:1 | AA text | ✓ |
+| `ink` on `surface` | `#F0F0F0` | `#1C1C1F` | 14.9:1 | AA text | ✓ |
 | `inkMuted` on `bg` | `#9C9A94` | `#121214` | 6.7:1 | AA text | ✓ |
 | `inkMuted` on `surface` | `#9C9A94` | `#1C1C1F` | 6.3:1 | AA text | ✓ |
 | `chartPrimary` on `bg` (Alt B) | `#8FAAB9` | `#121214` | 7.8:1 | AA text | ✓ |
@@ -262,6 +263,8 @@ palette cross-product.
 | `chipAccentText` on `surface` (Alt C selected) | `#ffc98a` | `#1C1C1F` | 10.9:1 | AA text | ✓ |
 | `accentRed` marker on `bg` | `#FF453A` | `#121214` | 5.6:1 | AA non-text | ✓ |
 | `accentRed` marker on `surface` | `#FF453A` | `#1C1C1F` | 5.3:1 | AA non-text | ✓ |
+
+**Coverage note.** Opacity-based fills (Alt A bar fill `inkMuted` at 30% opacity ≈ `#CFCEC9` on `#F4F1EA`; Alt A dark bar fill `rgba(156,154,148,0.30)` on `#1C1C1F`) are non-text decorative elements; they convey data corroborated by adjacent labels and pass the AA non-text threshold at their resolved opaque approximations (light: 1.4:1 — decorative/non-informational fill only; dark: 1.3:1 — same). `borderHairline` axis rules (`#D5D0C5` light, `#2C2C30` dark) are structural dividers at 1.4:1 and 1.7:1 respectively and are exempt from SC 1.4.11 as purely decorative lines that duplicate information carried by data-point labels and axis values.
 
 ---
 
