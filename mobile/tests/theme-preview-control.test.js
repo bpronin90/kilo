@@ -282,6 +282,22 @@ describe('DEV label is present', () => {
   });
 });
 
+describe('OTA update scripts carry EXPO_PUBLIC_APP_ENV for preview', () => {
+  const pkg = require('../package.json');
+
+  test('update:android:preview includes EXPO_PUBLIC_APP_ENV=preview', () => {
+    expect(pkg.scripts['update:android:preview']).toContain('EXPO_PUBLIC_APP_ENV=preview');
+  });
+
+  test('update:ios:preview includes EXPO_PUBLIC_APP_ENV=preview', () => {
+    expect(pkg.scripts['update:ios:preview']).toContain('EXPO_PUBLIC_APP_ENV=preview');
+  });
+
+  test('update:android:production does not include EXPO_PUBLIC_APP_ENV', () => {
+    expect(pkg.scripts['update:android:production']).not.toContain('EXPO_PUBLIC_APP_ENV');
+  });
+});
+
 describe('EXPO_PUBLIC_APP_ENV gate: SettingsScreen shows Dev Preview only in non-production builds', () => {
   const _originalPublicAppEnv = process.env.EXPO_PUBLIC_APP_ENV;
 
