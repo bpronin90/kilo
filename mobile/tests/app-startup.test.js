@@ -168,4 +168,29 @@ describe('app-startup', () => {
     // plus twice from these direct calls
     expect(reminderScheduler.installForegroundHandler).toHaveBeenCalled();
   });
+
+  // #1097: font-loading fallback — App must not throw, block navigation, or
+  // produce an unhandled rejection when expo-font reports a load error on cold start.
+  test('App renders without blank startup when font loading fails', async () => {
+    jest.resetModules();
+    jest.doMock('expo-font', () => ({
+      useFonts: jest.fn(() => [false, new Error('font load failed')]),
+    }));
+
+    const AppModule = require('../App');
+    const AppWithError = AppModule.default;
+    const { create, act: rAct } = require('react-test-renderer');
+    const { createElement } = require('react');
+
+    let component;
+    await rAct(async () => {
+      expect(() => {
+        component = create(createElement(AppWithError));
+      }).not.toThrow();
+    });
+
+    // Shell must be mounted; basic structure should be in the tree.
+    expect(component).not.toBeNull();
+    jest.dontMock('expo-font');
+  });
 });

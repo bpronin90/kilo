@@ -1004,6 +1004,226 @@ describe('switchColors token mapping (#985)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// KUA typography token contract (#1097)
+// Source: docs/design/kinetic-utilitarian-athletic/foundation.md
+// ---------------------------------------------------------------------------
+
+import {
+  TYPOGRAPHY,
+  TYPOGRAPHY_FALLBACK,
+  FONT_ASSETS,
+  FONT_SPACE_GROTESK,
+  FONT_JETBRAINS_MONO,
+  useKuaTypography,
+} from '../theme/typography';
+
+const SG_ROLES = [
+  'headline-xl',
+  'headline-xl-mobile',
+  'headline-lg',
+  'headline-md',
+  'headline-sm',
+  'body-lg',
+  'body-md',
+  'body-sm',
+];
+
+const JBM_ROLES = [
+  'metric-display',
+  'metric-display-mobile',
+  'label-lg',
+  'label-md',
+  'label-sm',
+];
+
+describe('KUA typography token contract', () => {
+  test('exports all 13 role tokens', () => {
+    const roles = Object.keys(TYPOGRAPHY);
+    expect(roles).toHaveLength(13);
+    for (const role of [...SG_ROLES, ...JBM_ROLES]) {
+      expect(roles).toContain(role);
+    }
+  });
+
+  test('Space Grotesk roles carry exact sizes from foundation.md', () => {
+    expect(TYPOGRAPHY['headline-xl'].fontSize).toBe(40);
+    expect(TYPOGRAPHY['headline-xl-mobile'].fontSize).toBe(32);
+    expect(TYPOGRAPHY['headline-lg'].fontSize).toBe(28);
+    expect(TYPOGRAPHY['headline-md'].fontSize).toBe(22);
+    expect(TYPOGRAPHY['headline-sm'].fontSize).toBe(18);
+    expect(TYPOGRAPHY['body-lg'].fontSize).toBe(16);
+    expect(TYPOGRAPHY['body-md'].fontSize).toBe(14);
+    expect(TYPOGRAPHY['body-sm'].fontSize).toBe(13);
+  });
+
+  test('Space Grotesk roles carry exact line heights from foundation.md', () => {
+    expect(TYPOGRAPHY['headline-xl'].lineHeight).toBe(44);
+    expect(TYPOGRAPHY['headline-xl-mobile'].lineHeight).toBe(36);
+    expect(TYPOGRAPHY['headline-lg'].lineHeight).toBe(32);
+    expect(TYPOGRAPHY['headline-md'].lineHeight).toBe(28);
+    expect(TYPOGRAPHY['headline-sm'].lineHeight).toBe(24);
+    expect(TYPOGRAPHY['body-lg'].lineHeight).toBe(24);
+    expect(TYPOGRAPHY['body-md'].lineHeight).toBe(20);
+    expect(TYPOGRAPHY['body-sm'].lineHeight).toBe(18);
+  });
+
+  test('Space Grotesk roles use weight-specific family names matching foundation.md', () => {
+    // fontWeight is omitted to prevent web synthesis; the family name encodes weight.
+    expect(TYPOGRAPHY['headline-xl'].fontFamily).toBe('SpaceGrotesk-Bold');
+    expect(TYPOGRAPHY['headline-xl-mobile'].fontFamily).toBe('SpaceGrotesk-Bold');
+    expect(TYPOGRAPHY['headline-lg'].fontFamily).toBe('SpaceGrotesk-SemiBold');
+    expect(TYPOGRAPHY['headline-md'].fontFamily).toBe('SpaceGrotesk-SemiBold');
+    expect(TYPOGRAPHY['headline-sm'].fontFamily).toBe('SpaceGrotesk-SemiBold');
+    expect(TYPOGRAPHY['body-lg'].fontFamily).toBe('SpaceGrotesk-Regular');
+    expect(TYPOGRAPHY['body-md'].fontFamily).toBe('SpaceGrotesk-Regular');
+    expect(TYPOGRAPHY['body-sm'].fontFamily).toBe('SpaceGrotesk-Regular');
+    for (const role of SG_ROLES) {
+      expect(TYPOGRAPHY[role].fontWeight).toBeUndefined();
+    }
+  });
+
+  test('JetBrains Mono roles carry exact sizes from foundation.md', () => {
+    expect(TYPOGRAPHY['metric-display'].fontSize).toBe(36);
+    expect(TYPOGRAPHY['metric-display-mobile'].fontSize).toBe(28);
+    expect(TYPOGRAPHY['label-lg'].fontSize).toBe(14);
+    expect(TYPOGRAPHY['label-md'].fontSize).toBe(12);
+    expect(TYPOGRAPHY['label-sm'].fontSize).toBe(11);
+  });
+
+  test('JetBrains Mono roles carry exact line heights from foundation.md', () => {
+    expect(TYPOGRAPHY['metric-display'].lineHeight).toBe(40);
+    expect(TYPOGRAPHY['metric-display-mobile'].lineHeight).toBe(32);
+    expect(TYPOGRAPHY['label-lg'].lineHeight).toBe(20);
+    expect(TYPOGRAPHY['label-md'].lineHeight).toBe(16);
+    expect(TYPOGRAPHY['label-sm'].lineHeight).toBe(14);
+  });
+
+  test('JetBrains Mono roles use weight-specific family names matching foundation.md', () => {
+    // fontWeight is omitted to prevent web synthesis; the family name encodes weight.
+    expect(TYPOGRAPHY['metric-display'].fontFamily).toBe('JetBrainsMono-Bold');
+    expect(TYPOGRAPHY['metric-display-mobile'].fontFamily).toBe('JetBrainsMono-Bold');
+    expect(TYPOGRAPHY['label-lg'].fontFamily).toBe('JetBrainsMono-SemiBold');
+    expect(TYPOGRAPHY['label-md'].fontFamily).toBe('JetBrainsMono-Medium');
+    expect(TYPOGRAPHY['label-sm'].fontFamily).toBe('JetBrainsMono-Medium');
+    for (const role of JBM_ROLES) {
+      expect(TYPOGRAPHY[role].fontWeight).toBeUndefined();
+    }
+  });
+
+  test('metric and label roles carry tabular-nums for stable layout during live logging', () => {
+    for (const role of JBM_ROLES) {
+      expect(TYPOGRAPHY[role].fontVariant).toEqual(['tabular-nums']);
+    }
+  });
+
+  test('linguistic roles do not carry tabular-nums', () => {
+    for (const role of SG_ROLES) {
+      expect(TYPOGRAPHY[role].fontVariant).toBeUndefined();
+    }
+  });
+
+  test('no token sets maxFontSizeMultiplier — dynamic type must remain uncapped', () => {
+    for (const spec of Object.values(TYPOGRAPHY)) {
+      expect(spec.maxFontSizeMultiplier).toBeUndefined();
+    }
+  });
+
+  test('Space Grotesk roles reference bundled font family names, not system-ui', () => {
+    for (const role of SG_ROLES) {
+      expect(TYPOGRAPHY[role].fontFamily).not.toContain('system-ui');
+      expect(TYPOGRAPHY[role].fontFamily).not.toContain('sans-serif');
+      expect(TYPOGRAPHY[role].fontFamily).toMatch(/^SpaceGrotesk-/);
+    }
+  });
+
+  test('JetBrains Mono roles reference bundled font family names, not monospace', () => {
+    for (const role of JBM_ROLES) {
+      expect(TYPOGRAPHY[role].fontFamily).not.toContain('monospace');
+      expect(TYPOGRAPHY[role].fontFamily).not.toContain('Menlo');
+      expect(TYPOGRAPHY[role].fontFamily).toMatch(/^JetBrainsMono-/);
+    }
+  });
+
+  test('FONT_ASSETS registers all seven required weight variants', () => {
+    expect(FONT_ASSETS).toMatchObject({
+      'SpaceGrotesk-Regular': expect.anything(),
+      'SpaceGrotesk-Medium': expect.anything(),
+      'SpaceGrotesk-SemiBold': expect.anything(),
+      'SpaceGrotesk-Bold': expect.anything(),
+      'JetBrainsMono-SemiBold': expect.anything(),
+      'JetBrainsMono-Medium': expect.anything(),
+      'JetBrainsMono-Bold': expect.anything(),
+    });
+    expect(Object.keys(FONT_ASSETS)).toHaveLength(7);
+  });
+
+  test('TYPOGRAPHY_FALLBACK uses platform-appropriate monospace fallbacks', () => {
+    const { Platform } = require('react-native');
+    const expectedMonospace = {
+      android: 'monospace',
+      ios: 'Courier New',
+      web: 'Courier New, Courier, monospace',
+    }[Platform.OS] ?? 'Courier New';
+
+    for (const [role, spec] of Object.entries(TYPOGRAPHY_FALLBACK)) {
+      const isMonospace = JBM_ROLES.includes(role);
+      if (isMonospace) {
+        expect(spec.fontFamily).toBe(expectedMonospace);
+      } else {
+        // Sans-serif: omit fontFamily so the OS/browser uses its default.
+        expect(spec.fontFamily).toBeUndefined();
+      }
+    }
+  });
+
+  test('TYPOGRAPHY_FALLBACK preserves sizes, line heights, and restores fontWeight', () => {
+    const EXPECTED_WEIGHTS = {
+      'headline-xl': '700', 'headline-xl-mobile': '700',
+      'headline-lg': '600', 'headline-md': '600', 'headline-sm': '600',
+      'body-lg': '400', 'body-md': '400', 'body-sm': '400',
+      'metric-display': '700', 'metric-display-mobile': '700',
+      'label-lg': '600', 'label-md': '500', 'label-sm': '500',
+    };
+    for (const role of Object.keys(TYPOGRAPHY)) {
+      expect(TYPOGRAPHY_FALLBACK[role].fontSize).toBe(TYPOGRAPHY[role].fontSize);
+      expect(TYPOGRAPHY_FALLBACK[role].lineHeight).toBe(TYPOGRAPHY[role].lineHeight);
+      expect(TYPOGRAPHY_FALLBACK[role].fontWeight).toBe(EXPECTED_WEIGHTS[role]);
+    }
+  });
+
+  test('label-lg uses the SemiBold asset (600), not Medium', () => {
+    expect(TYPOGRAPHY['label-lg'].fontFamily).toBe('JetBrainsMono-SemiBold');
+    // fontWeight is omitted — weight is encoded in the family name to avoid web synthesis
+    expect(TYPOGRAPHY['label-lg'].fontWeight).toBeUndefined();
+  });
+
+  test('useKuaTypography returns TYPOGRAPHY_FALLBACK when fonts are not loaded', () => {
+    // jest-expo mocks expo-font's useFonts to return [false, null] by default,
+    // so useKuaTypography must return TYPOGRAPHY_FALLBACK on the first render.
+    const React = require('react');
+    let captured;
+    function Probe() {
+      captured = useKuaTypography();
+      return null;
+    }
+    act(() => {
+      renderer.create(React.createElement(Probe));
+    });
+    expect(captured).toBe(TYPOGRAPHY_FALLBACK);
+  });
+
+  test('offline startup: typography module loads without throwing', () => {
+    // Asset require() paths resolve to numeric IDs in Jest — confirm the
+    // module initialises cleanly without a live bundler or network.
+    expect(() => {
+      const { TYPOGRAPHY: T } = require('../theme/typography');
+      Object.values(T).forEach((spec) => {
+        expect(typeof spec.fontSize).toBe('number');
+      });
+    }).not.toThrow();
+  });
+});
+
 // KUA six-palette semantic token contract (#1096)
 // ---------------------------------------------------------------------------
 

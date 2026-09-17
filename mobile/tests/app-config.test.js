@@ -147,4 +147,10 @@ describe('app config', () => {
     const pkg = require('../package.json');
     expect(pkg.dependencies['expo-system-ui']).toMatch(/^~6\.0\./);
   });
+
+  // #1097: KUA typography requires expo-font for offline-safe bundled font loading.
+  test('expo-font is declared as a direct dependency at an SDK-compatible version', () => {
+    const pkg = require('../package.json');
+    expect(pkg.dependencies['expo-font']).toMatch(/^~14\./);
+  });
 });
