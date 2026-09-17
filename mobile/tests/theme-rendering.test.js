@@ -1067,15 +1067,19 @@ describe('KUA typography token contract', () => {
     expect(TYPOGRAPHY['body-sm'].lineHeight).toBe(18);
   });
 
-  test('Space Grotesk roles carry exact weights from foundation.md', () => {
-    expect(TYPOGRAPHY['headline-xl'].fontWeight).toBe('700');
-    expect(TYPOGRAPHY['headline-xl-mobile'].fontWeight).toBe('700');
-    expect(TYPOGRAPHY['headline-lg'].fontWeight).toBe('600');
-    expect(TYPOGRAPHY['headline-md'].fontWeight).toBe('600');
-    expect(TYPOGRAPHY['headline-sm'].fontWeight).toBe('600');
-    expect(TYPOGRAPHY['body-lg'].fontWeight).toBe('400');
-    expect(TYPOGRAPHY['body-md'].fontWeight).toBe('400');
-    expect(TYPOGRAPHY['body-sm'].fontWeight).toBe('400');
+  test('Space Grotesk roles use weight-specific family names matching foundation.md', () => {
+    // fontWeight is omitted to prevent web synthesis; the family name encodes weight.
+    expect(TYPOGRAPHY['headline-xl'].fontFamily).toBe('SpaceGrotesk-Bold');
+    expect(TYPOGRAPHY['headline-xl-mobile'].fontFamily).toBe('SpaceGrotesk-Bold');
+    expect(TYPOGRAPHY['headline-lg'].fontFamily).toBe('SpaceGrotesk-SemiBold');
+    expect(TYPOGRAPHY['headline-md'].fontFamily).toBe('SpaceGrotesk-SemiBold');
+    expect(TYPOGRAPHY['headline-sm'].fontFamily).toBe('SpaceGrotesk-SemiBold');
+    expect(TYPOGRAPHY['body-lg'].fontFamily).toBe('SpaceGrotesk-Regular');
+    expect(TYPOGRAPHY['body-md'].fontFamily).toBe('SpaceGrotesk-Regular');
+    expect(TYPOGRAPHY['body-sm'].fontFamily).toBe('SpaceGrotesk-Regular');
+    for (const role of SG_ROLES) {
+      expect(TYPOGRAPHY[role].fontWeight).toBeUndefined();
+    }
   });
 
   test('JetBrains Mono roles carry exact sizes from foundation.md', () => {
@@ -1094,12 +1098,16 @@ describe('KUA typography token contract', () => {
     expect(TYPOGRAPHY['label-sm'].lineHeight).toBe(14);
   });
 
-  test('JetBrains Mono roles carry exact weights from foundation.md', () => {
-    expect(TYPOGRAPHY['metric-display'].fontWeight).toBe('700');
-    expect(TYPOGRAPHY['metric-display-mobile'].fontWeight).toBe('700');
-    expect(TYPOGRAPHY['label-lg'].fontWeight).toBe('600');
-    expect(TYPOGRAPHY['label-md'].fontWeight).toBe('500');
-    expect(TYPOGRAPHY['label-sm'].fontWeight).toBe('500');
+  test('JetBrains Mono roles use weight-specific family names matching foundation.md', () => {
+    // fontWeight is omitted to prevent web synthesis; the family name encodes weight.
+    expect(TYPOGRAPHY['metric-display'].fontFamily).toBe('JetBrainsMono-Bold');
+    expect(TYPOGRAPHY['metric-display-mobile'].fontFamily).toBe('JetBrainsMono-Bold');
+    expect(TYPOGRAPHY['label-lg'].fontFamily).toBe('JetBrainsMono-SemiBold');
+    expect(TYPOGRAPHY['label-md'].fontFamily).toBe('JetBrainsMono-Medium');
+    expect(TYPOGRAPHY['label-sm'].fontFamily).toBe('JetBrainsMono-Medium');
+    for (const role of JBM_ROLES) {
+      expect(TYPOGRAPHY[role].fontWeight).toBeUndefined();
+    }
   });
 
   test('metric and label roles carry tabular-nums for stable layout during live logging', () => {
@@ -1149,34 +1157,36 @@ describe('KUA typography token contract', () => {
     expect(Object.keys(FONT_ASSETS)).toHaveLength(7);
   });
 
-  test('TYPOGRAPHY_FALLBACK uses native-compatible single-family fallbacks', () => {
+  test('TYPOGRAPHY_FALLBACK uses platform-appropriate monospace fallbacks', () => {
     const { Platform } = require('react-native');
+    const expectedMonospace = {
+      android: 'monospace',
+      ios: 'Courier New',
+      web: 'Courier New, Courier, monospace',
+    }[Platform.OS] ?? 'Courier New';
+
     for (const [role, spec] of Object.entries(TYPOGRAPHY_FALLBACK)) {
       const isMonospace = JBM_ROLES.includes(role);
       if (isMonospace) {
-        // Monospace fallback: platform-selected single family name.
-        // Android ships 'monospace' as a generic alias; iOS ships 'Courier New'.
-        // Neither is a CSS comma-separated stack, which RN would reject wholesale.
-        const expected = Platform.OS === 'android' ? 'monospace' : 'Courier New';
-        expect(spec.fontFamily).toBe(expected);
+        expect(spec.fontFamily).toBe(expectedMonospace);
       } else {
-        // Sans-serif fallback: omit fontFamily so the OS uses its default.
+        // Sans-serif: omit fontFamily so the OS/browser uses its default.
         expect(spec.fontFamily).toBeUndefined();
       }
     }
   });
 
-  test('TYPOGRAPHY_FALLBACK preserves sizes, weights, and line heights', () => {
+  test('TYPOGRAPHY_FALLBACK preserves sizes and line heights', () => {
     for (const role of Object.keys(TYPOGRAPHY)) {
       expect(TYPOGRAPHY_FALLBACK[role].fontSize).toBe(TYPOGRAPHY[role].fontSize);
-      expect(TYPOGRAPHY_FALLBACK[role].fontWeight).toBe(TYPOGRAPHY[role].fontWeight);
       expect(TYPOGRAPHY_FALLBACK[role].lineHeight).toBe(TYPOGRAPHY[role].lineHeight);
     }
   });
 
   test('label-lg uses the SemiBold asset (600), not Medium', () => {
     expect(TYPOGRAPHY['label-lg'].fontFamily).toBe('JetBrainsMono-SemiBold');
-    expect(TYPOGRAPHY['label-lg'].fontWeight).toBe('600');
+    // fontWeight is omitted — weight is encoded in the family name to avoid web synthesis
+    expect(TYPOGRAPHY['label-lg'].fontWeight).toBeUndefined();
   });
 
   test('useKuaTypography returns TYPOGRAPHY_FALLBACK when fonts are not loaded', () => {

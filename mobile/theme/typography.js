@@ -30,18 +30,38 @@ export const FONT_ASSETS = {
   [JBM_BOLD]: require('../assets/fonts/JetBrainsMono-Bold.ttf'),
 };
 
-// Single-family fallback names. React Native on iOS/Android treats fontFamily
-// as an exact asset name, not a CSS comma-separated stack — passing multiple
-// comma-separated values causes the entire string to be rejected.
-// undefined lets the OS use its default sans-serif.
-// For monospace: 'Courier New' on iOS (built-in); Android does not ship that
-// family but does recognise the generic alias 'monospace'.
+// Platform-specific fallback font families for use before bundled assets load.
+//
+// Native (iOS/Android): fontFamily must be a single exact name — RN does not
+// parse CSS comma-separated stacks and rejects the entire value if it finds one.
+//   iOS:     'Courier New' (built-in)
+//   Android: 'monospace' (generic alias → Droid Sans Mono / Noto Mono)
+//
+// Web: CSS stacks are valid and desirable; 'Courier New' is absent on many
+// Linux and ChromeOS installations, so a full stack ending with the
+// generic 'monospace' guarantees a fixed-pitch face.
+//
+// Sans-serif: undefined defers to the OS/browser default without specifying
+// a family name that might be rejected on any platform.
 const SG_FALLBACK = undefined;
-const JBM_FALLBACK = Platform.select({ android: 'monospace', default: 'Courier New' });
+const JBM_FALLBACK = Platform.select({
+  android: 'monospace',
+  ios: 'Courier New',
+  web: 'Courier New, Courier, monospace',
+  default: 'Courier New',
+});
 
 // ---------------------------------------------------------------------------
 // Typography role tokens
 // Source: docs/design/kinetic-utilitarian-athletic/foundation.md
+//
+// fontWeight is intentionally omitted from every token. Each fontFamily value
+// is a weight-specific asset name (e.g. 'SpaceGrotesk-Bold'). On native,
+// React Native selects the file by that name; on web, expo-font registers each
+// key as a separate @font-face at the default weight (400). Pairing an
+// explicit fontWeight with a weight-named family would cause browsers to
+// synthesize extra weight on top of the already-weighted face rather than
+// accepting the real file as-is.
 // ---------------------------------------------------------------------------
 
 // Space Grotesk — linguistic content
@@ -49,56 +69,48 @@ export const TYPOGRAPHY = {
   'headline-xl': {
     fontFamily: SG_BOLD,
     fontSize: 40,
-    fontWeight: '700',
     lineHeight: 44,
     letterSpacing: -0.03 * 40,
   },
   'headline-xl-mobile': {
     fontFamily: SG_BOLD,
     fontSize: 32,
-    fontWeight: '700',
     lineHeight: 36,
     letterSpacing: -0.02 * 32,
   },
   'headline-lg': {
     fontFamily: SG_SEMIBOLD,
     fontSize: 28,
-    fontWeight: '600',
     lineHeight: 32,
     letterSpacing: -0.02 * 28,
   },
   'headline-md': {
     fontFamily: SG_SEMIBOLD,
     fontSize: 22,
-    fontWeight: '600',
     lineHeight: 28,
     letterSpacing: -0.01 * 22,
   },
   'headline-sm': {
     fontFamily: SG_SEMIBOLD,
     fontSize: 18,
-    fontWeight: '600',
     lineHeight: 24,
     letterSpacing: 0,
   },
   'body-lg': {
     fontFamily: SG_REGULAR,
     fontSize: 16,
-    fontWeight: '400',
     lineHeight: 24,
     letterSpacing: 0,
   },
   'body-md': {
     fontFamily: SG_REGULAR,
     fontSize: 14,
-    fontWeight: '400',
     lineHeight: 20,
     letterSpacing: 0,
   },
   'body-sm': {
     fontFamily: SG_REGULAR,
     fontSize: 13,
-    fontWeight: '400',
     lineHeight: 18,
     letterSpacing: 0,
   },
@@ -107,7 +119,6 @@ export const TYPOGRAPHY = {
   'metric-display': {
     fontFamily: JBM_BOLD,
     fontSize: 36,
-    fontWeight: '700',
     lineHeight: 40,
     letterSpacing: -0.02 * 36,
     fontVariant: ['tabular-nums'],
@@ -115,7 +126,6 @@ export const TYPOGRAPHY = {
   'metric-display-mobile': {
     fontFamily: JBM_BOLD,
     fontSize: 28,
-    fontWeight: '700',
     lineHeight: 32,
     letterSpacing: -0.01 * 28,
     fontVariant: ['tabular-nums'],
@@ -123,7 +133,6 @@ export const TYPOGRAPHY = {
   'label-lg': {
     fontFamily: JBM_SEMIBOLD,
     fontSize: 14,
-    fontWeight: '600',
     lineHeight: 20,
     letterSpacing: 0.02 * 14,
     fontVariant: ['tabular-nums'],
@@ -131,7 +140,6 @@ export const TYPOGRAPHY = {
   'label-md': {
     fontFamily: JBM_MEDIUM,
     fontSize: 12,
-    fontWeight: '500',
     lineHeight: 16,
     letterSpacing: 0.04 * 12,
     fontVariant: ['tabular-nums'],
@@ -139,7 +147,6 @@ export const TYPOGRAPHY = {
   'label-sm': {
     fontFamily: JBM_MEDIUM,
     fontSize: 11,
-    fontWeight: '500',
     lineHeight: 14,
     letterSpacing: 0.06 * 11,
     fontVariant: ['tabular-nums'],
@@ -147,8 +154,8 @@ export const TYPOGRAPHY = {
 };
 
 // Fallback versions of each role for use before fonts have loaded or when
-// font loading fails. Identical specs but with native-compatible single-family
-// names instead of the bundled assets.
+// font loading fails. Identical specs but with platform-appropriate fallback
+// family names instead of the bundled assets.
 export const TYPOGRAPHY_FALLBACK = Object.fromEntries(
   Object.entries(TYPOGRAPHY).map(([role, spec]) => {
     const isMonospace = spec.fontFamily.startsWith('JetBrainsMono');
