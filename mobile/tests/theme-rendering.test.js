@@ -1763,38 +1763,24 @@ describe('KUA border token contract', () => {
 });
 
 describe('KUA elevation token contract', () => {
-  test('exports levels 0 through 4', () => {
-    expect(Object.keys(ELEVATION).map(Number).sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4]);
+  test('exports exactly the five named roles from foundation.md', () => {
+    expect(Object.keys(ELEVATION).sort()).toEqual(
+      ['activeCard', 'canvas', 'card', 'elevatedCard', 'overlay'].sort()
+    );
   });
 
-  test('levels 0–2 carry no shadow (flat structural system)', () => {
-    expect(ELEVATION[0]).toEqual({});
-    expect(ELEVATION[1]).toEqual({});
-    expect(ELEVATION[2]).toEqual({});
+  test('every role has the exact level number from foundation.md §Borders and elevation', () => {
+    expect(ELEVATION.canvas).toBe(0);
+    expect(ELEVATION.card).toBe(1);
+    expect(ELEVATION.activeCard).toBe(2);
+    expect(ELEVATION.elevatedCard).toBe(3);
+    expect(ELEVATION.overlay).toBe(4);
   });
 
-  test('level 3 carries exact approved shadow values for elevated cards', () => {
-    // Authority: foundation.md §Borders and elevation — "subtle shadow" at level 3.
-    // Approved recipe: y=2, opacity=0.12, radius=4, android elevation=3.
-    expect(ELEVATION[3]).toEqual({
-      shadowColor: '#000000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.12,
-      shadowRadius: 4,
-      elevation: 3,
-    });
-  });
-
-  test('level 4 carries exact approved shadow values for overlays', () => {
-    // Authority: foundation.md §Borders and elevation — "elevation-4 shadow" at level 4.
-    // Approved recipe: y=4, opacity=0.16, radius=8, android elevation=6.
-    expect(ELEVATION[4]).toEqual({
-      shadowColor: '#000000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.16,
-      shadowRadius: 8,
-      elevation: 6,
-    });
+  test('all level values are numbers (usable as Android elevation style prop)', () => {
+    for (const [role, value] of Object.entries(ELEVATION)) {
+      expect({ role, type: typeof value }).toEqual({ role, type: 'number' });
+    }
   });
 
   test('ELEVATION is frozen — consumers cannot mutate tokens', () => {

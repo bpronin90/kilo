@@ -24,32 +24,15 @@ export const BORDERS = Object.freeze({
   overlay: Object.freeze({ borderWidth: 1 }),
 });
 
-// Shadow style objects keyed by level. Level 0–2 carry no shadow.
-// iOS uses shadowColor/shadowOffset/shadowOpacity/shadowRadius.
-// Android uses elevation. Both are included so consumers can spread directly.
-//
-// Levels 3–4 shadow recipe (authority: foundation.md §Borders and elevation):
-//   foundation.md mandates "subtle shadow" at level 3 and names the level-4
-//   shadow as "elevation-4 shadow". The concrete values below are the approved
-//   implementation of those two shadow roles:
-//     Level 3 (elevated card): y=2, opacity=0.12, radius=4, android elevation=3
-//     Level 4 (overlay):       y=4, opacity=0.16, radius=8, android elevation=6
+// Elevation level map. foundation.md §Borders and elevation defines five named
+// levels (0–4); these are the roles the spec approves. Concrete shadow recipes
+// (shadowColor, shadowOffset, shadowOpacity, shadowRadius) are not specified in
+// foundation.md and must not be invented here. The integer values are valid as
+// the Android `elevation` style prop and as ordering/comparison tokens.
 export const ELEVATION = Object.freeze({
-  0: Object.freeze({}),
-  1: Object.freeze({}),
-  2: Object.freeze({}),
-  3: Object.freeze({
-    shadowColor: '#000000',
-    shadowOffset: Object.freeze({ width: 0, height: 2 }),
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
-    elevation: 3,
-  }),
-  4: Object.freeze({
-    shadowColor: '#000000',
-    shadowOffset: Object.freeze({ width: 0, height: 4 }),
-    shadowOpacity: 0.16,
-    shadowRadius: 8,
-    elevation: 6,
-  }),
+  canvas: 0,
+  card: 1,
+  activeCard: 2,
+  elevatedCard: 3,
+  overlay: 4,
 });
