@@ -63,10 +63,12 @@ const ZERO_SAFE_AREA_METRICS = {
 // through useTheme, so a provider mounted alongside that markup would leave the
 // outermost chrome on the default palette.
 export default function App() {
-  // Load KUA typography fonts from bundled assets on cold start. Errors are
-  // swallowed here: TYPOGRAPHY_FALLBACK in theme/typography.js keeps the UI
-  // on system fonts instead of blocking or crashing (issue #1097).
-  useKuaFonts();
+  // Load KUA typography fonts from bundled assets on cold start (#1097).
+  // fontsLoaded starts false; the shell renders immediately with
+  // TYPOGRAPHY_FALLBACK (system fonts) while the assets load, then switches
+  // to TYPOGRAPHY once expo-font signals completion. Errors fall through to
+  // the same fallback path — no blank startup, no unhandled rejection.
+  const [fontsLoaded] = useKuaFonts();
 
   return (
     <ThemeProvider>

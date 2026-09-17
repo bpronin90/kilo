@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import * as ExpoFont from 'expo-font';
 
 // Font family name constants used by all typography tokens.
@@ -11,6 +12,7 @@ const SG_REGULAR = 'SpaceGrotesk-Regular';
 const SG_MEDIUM = 'SpaceGrotesk-Medium';
 const SG_SEMIBOLD = 'SpaceGrotesk-SemiBold';
 const SG_BOLD = 'SpaceGrotesk-Bold';
+const JBM_SEMIBOLD = 'JetBrainsMono-SemiBold';
 const JBM_MEDIUM = 'JetBrainsMono-Medium';
 const JBM_BOLD = 'JetBrainsMono-Bold';
 
@@ -22,14 +24,18 @@ export const FONT_ASSETS = {
   [SG_MEDIUM]: require('../assets/fonts/SpaceGrotesk-Medium.ttf'),
   [SG_SEMIBOLD]: require('../assets/fonts/SpaceGrotesk-SemiBold.ttf'),
   [SG_BOLD]: require('../assets/fonts/SpaceGrotesk-Bold.ttf'),
+  [JBM_SEMIBOLD]: require('../assets/fonts/JetBrainsMono-SemiBold.ttf'),
   [JBM_MEDIUM]: require('../assets/fonts/JetBrainsMono-Medium.ttf'),
   [JBM_BOLD]: require('../assets/fonts/JetBrainsMono-Bold.ttf'),
 };
 
-// Fallback stacks used when the bundled fonts have not yet loaded or have
-// failed to load. The first entry matches the intended typeface role.
-const SG_FALLBACK = 'system-ui, sans-serif';
-const JBM_FALLBACK = 'Menlo, Courier New, monospace';
+// Single-family fallback names. React Native on iOS/Android treats fontFamily
+// as an exact asset name, not a CSS comma-separated stack — passing multiple
+// comma-separated values causes the entire string to be rejected.
+// undefined lets the OS use its default sans-serif; 'Courier New' is
+// available on both iOS and Android as a monospace substitute.
+const SG_FALLBACK = undefined;
+const JBM_FALLBACK = 'Courier New';
 
 // ---------------------------------------------------------------------------
 // Typography role tokens
@@ -113,9 +119,9 @@ export const TYPOGRAPHY = {
     fontVariant: ['tabular-nums'],
   },
   'label-lg': {
-    fontFamily: JBM_MEDIUM,
+    fontFamily: JBM_SEMIBOLD,
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
     lineHeight: 20,
     letterSpacing: 0.02 * 14,
     fontVariant: ['tabular-nums'],
@@ -138,12 +144,17 @@ export const TYPOGRAPHY = {
   },
 };
 
-// Fallback versions of each role for use before fonts have loaded.
-// Identical specs but using system font stacks instead of the bundled assets.
+// Fallback versions of each role for use before fonts have loaded or when
+// font loading fails. Identical specs but with native-compatible single-family
+// names instead of the bundled assets.
 export const TYPOGRAPHY_FALLBACK = Object.fromEntries(
   Object.entries(TYPOGRAPHY).map(([role, spec]) => {
     const isMonospace = spec.fontFamily.startsWith('JetBrainsMono');
-    return [role, { ...spec, fontFamily: isMonospace ? JBM_FALLBACK : SG_FALLBACK }];
+    const fallback = isMonospace ? JBM_FALLBACK : SG_FALLBACK;
+    const { fontFamily: _ignored, ...rest } = spec;
+    return fallback !== undefined
+      ? [role, { ...rest, fontFamily: fallback }]
+      : [role, rest];
   }),
 );
 
@@ -151,9 +162,19 @@ export const TYPOGRAPHY_FALLBACK = Object.fromEntries(
 // Font loading
 // ---------------------------------------------------------------------------
 
-// Returns [fontsLoaded, fontError] from expo-font. The caller must handle the
-// error case — do not block rendering or navigate away; show whatever content
-// is available using TYPOGRAPHY_FALLBACK.
+// Returns the resolved token map: TYPOGRAPHY once all assets are loaded,
+// TYPOGRAPHY_FALLBACK while still loading or when load fails. Callers receive
+// live tokens that switch atomically after the font load settles; no
+// consumer needs to re-check fontsLoaded independently.
+export function useKuaTypography() {
+  const [fontsLoaded] = ExpoFont.useFonts(FONT_ASSETS);
+  return useMemo(
+    () => (fontsLoaded ? TYPOGRAPHY : TYPOGRAPHY_FALLBACK),
+    [fontsLoaded],
+  );
+}
+
+// Lower-level hook for callers that only need the load state (e.g. App root).
 export function useKuaFonts() {
   return ExpoFont.useFonts(FONT_ASSETS);
 }

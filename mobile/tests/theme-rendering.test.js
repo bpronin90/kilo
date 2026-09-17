@@ -1002,6 +1002,7 @@ import {
   FONT_ASSETS,
   FONT_SPACE_GROTESK,
   FONT_JETBRAINS_MONO,
+  useKuaTypography,
 } from '../theme/typography';
 
 const SG_ROLES = [
@@ -1084,7 +1085,7 @@ describe('KUA typography token contract', () => {
   test('JetBrains Mono roles carry exact weights from foundation.md', () => {
     expect(TYPOGRAPHY['metric-display'].fontWeight).toBe('700');
     expect(TYPOGRAPHY['metric-display-mobile'].fontWeight).toBe('700');
-    expect(TYPOGRAPHY['label-lg'].fontWeight).toBe('500');
+    expect(TYPOGRAPHY['label-lg'].fontWeight).toBe('600');
     expect(TYPOGRAPHY['label-md'].fontWeight).toBe('500');
     expect(TYPOGRAPHY['label-sm'].fontWeight).toBe('500');
   });
@@ -1123,25 +1124,29 @@ describe('KUA typography token contract', () => {
     }
   });
 
-  test('FONT_ASSETS registers all six required weight variants', () => {
+  test('FONT_ASSETS registers all seven required weight variants', () => {
     expect(FONT_ASSETS).toMatchObject({
       'SpaceGrotesk-Regular': expect.anything(),
       'SpaceGrotesk-Medium': expect.anything(),
       'SpaceGrotesk-SemiBold': expect.anything(),
       'SpaceGrotesk-Bold': expect.anything(),
+      'JetBrainsMono-SemiBold': expect.anything(),
       'JetBrainsMono-Medium': expect.anything(),
       'JetBrainsMono-Bold': expect.anything(),
     });
-    expect(Object.keys(FONT_ASSETS)).toHaveLength(6);
+    expect(Object.keys(FONT_ASSETS)).toHaveLength(7);
   });
 
-  test('TYPOGRAPHY_FALLBACK uses system font stacks for all roles', () => {
+  test('TYPOGRAPHY_FALLBACK uses native-compatible single-family fallbacks', () => {
     for (const [role, spec] of Object.entries(TYPOGRAPHY_FALLBACK)) {
       const isMonospace = JBM_ROLES.includes(role);
       if (isMonospace) {
-        expect(spec.fontFamily).toMatch(/Menlo|monospace/);
+        // Monospace fallback: 'Courier New' — available on both iOS and Android
+        expect(spec.fontFamily).toBe('Courier New');
       } else {
-        expect(spec.fontFamily).toMatch(/system-ui|sans-serif/);
+        // Sans-serif fallback: omit fontFamily so the OS uses its default;
+        // React Native rejects comma-separated CSS stacks as a single token.
+        expect(spec.fontFamily).toBeUndefined();
       }
     }
   });
@@ -1154,13 +1159,29 @@ describe('KUA typography token contract', () => {
     }
   });
 
-  test('offline startup: App renders without throwing when fonts are still loading', async () => {
-    // expo-font's useFonts is mocked by jest-expo to return [false, null]
-    // (still loading) — App must render without blocking the shell.
-    const { act: rAct } = require('react-test-renderer');
-    let component;
-    // Importing from the typography module directly to verify it doesn't throw
-    // during require (asset require paths resolve to numeric IDs in Jest).
+  test('label-lg uses the SemiBold asset (600), not Medium', () => {
+    expect(TYPOGRAPHY['label-lg'].fontFamily).toBe('JetBrainsMono-SemiBold');
+    expect(TYPOGRAPHY['label-lg'].fontWeight).toBe('600');
+  });
+
+  test('useKuaTypography returns TYPOGRAPHY_FALLBACK when fonts are not loaded', () => {
+    // jest-expo mocks expo-font's useFonts to return [false, null] by default,
+    // so useKuaTypography must return TYPOGRAPHY_FALLBACK on the first render.
+    const React = require('react');
+    let captured;
+    function Probe() {
+      captured = useKuaTypography();
+      return null;
+    }
+    act(() => {
+      renderer.create(React.createElement(Probe));
+    });
+    expect(captured).toBe(TYPOGRAPHY_FALLBACK);
+  });
+
+  test('offline startup: typography module loads without throwing', () => {
+    // Asset require() paths resolve to numeric IDs in Jest — confirm the
+    // module initialises cleanly without a live bundler or network.
     expect(() => {
       const { TYPOGRAPHY: T } = require('../theme/typography');
       Object.values(T).forEach((spec) => {
