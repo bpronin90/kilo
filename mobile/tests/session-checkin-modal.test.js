@@ -1,8 +1,16 @@
 import React from 'react';
 import { act } from 'react';
 import render from 'react-test-renderer';
-import { Modal } from 'react-native';
+import { AccessibilityInfo, Modal } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
+import { ThemeProvider } from '../theme/ThemeContext';
+import { KUA_PALETTES } from '../theme/colors';
+import {
+  setAppearancePreference,
+  __resetAppearancePreferenceForTests,
+  __resetThemeSelectionForTests,
+} from '../lib/themePreference';
 
 jest.mock('@expo/vector-icons/MaterialIcons', () => ({ __esModule: true, default: 'MaterialIcons' }));
 // The palette is no longer a static export (#689): the modal resolves it
@@ -525,5 +533,168 @@ describe('SessionCheckInModal — accessibility semantics', () => {
 
     const unselectedChip = findByRole(instance.root, 'checkbox').find(n => n.props.accessibilityLabel === 'Tired');
     expect(unselectedChip.props.accessibilityState).toEqual({ checked: false });
+  });
+});
+
+function flattenStyle(style) {
+  if (Array.isArray(style)) return Object.assign({}, ...style.filter(Boolean).map(flattenStyle));
+  return style || {};
+}
+
+function findAllNodes(root, pred) {
+  const results = [];
+  function walk(node) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) { node.forEach(walk); return; }
+    if (pred(node)) results.push(node);
+    (node.children || []).forEach(walk);
+  }
+  walk(root);
+  return results;
+}
+
+describe('SessionCheckInModal KUA token application (#1100)', () => {
+  const hcLight = KUA_PALETTES.hardCourt.light;
+  const hcDark = KUA_PALETTES.hardCourt.dark;
+
+  beforeEach(() => {
+    __resetThemeSelectionForTests();
+    __resetAppearancePreferenceForTests();
+    AsyncStorage.clear();
+  });
+
+  function makeKuaProps(overrides = {}) {
+    return {
+      visible: true,
+      checkInData: {
+        sessionIndex: 0,
+        detectors: ['volume_drop'],
+        flagged: [{ name: 'Squat', normName: 'squat', reasons: ['volume_drop'] }],
+        metrics: { exercises_skipped: 0, volume_decline_pct: 40 },
+      },
+      currentId: 'note-1',
+      currentNote: { id: 'note-1', session_checkins: {} },
+      update: jest.fn().mockResolvedValue(true),
+      onClose: jest.fn(),
+      ...overrides,
+    };
+  }
+
+  test('sheet bg = surfaceCard, title = onSurface (Hard Court Light)', async () => {
+    let instance;
+    await act(async () => {
+      instance = render.create(
+        <ThemeProvider>
+          <SessionCheckInModal {...makeKuaProps()} />
+        </ThemeProvider>
+      );
+    });
+
+    const json = instance.toJSON();
+    const sheetNodes = findAllNodes(json, n => {
+      const s = flattenStyle(n.props?.style);
+      return s.backgroundColor === hcLight.surfaceCard && s.borderRadius > 0;
+    });
+    expect(sheetNodes.length).toBeGreaterThan(0);
+
+    const titleNodes = findAllNodes(json, n => {
+      const s = flattenStyle(n.props?.style);
+      return s.color === hcLight.onSurface && s.fontWeight === '700';
+    });
+    expect(titleNodes.length).toBeGreaterThan(0);
+
+    act(() => { instance.unmount(); });
+  });
+
+  test('sheet bg changes to surfaceCard after dark mode switch (Hard Court Dark)', async () => {
+    let instance;
+    await act(async () => {
+      instance = render.create(
+        <ThemeProvider>
+          <SessionCheckInModal {...makeKuaProps()} />
+        </ThemeProvider>
+      );
+    });
+
+    act(() => { setAppearancePreference('dark'); });
+
+    const json = instance.toJSON();
+    const sheetNodes = findAllNodes(json, n => {
+      const s = flattenStyle(n.props?.style);
+      return s.backgroundColor === hcDark.surfaceCard && s.borderRadius > 0;
+    });
+    expect(sheetNodes.length).toBeGreaterThan(0);
+
+    act(() => { instance.unmount(); });
+  });
+
+  test('non-color state indicator: selected chip has fontWeight 700 (chipTextSelected)', async () => {
+    let instance;
+    await act(async () => {
+      instance = render.create(
+        <ThemeProvider>
+          <SessionCheckInModal {...makeKuaProps()} />
+        </ThemeProvider>
+      );
+    });
+
+    // Select the rough tier to make reason chips visible
+    await act(async () => {
+      findRoughTierButton(instance.root).props.onPress();
+    });
+
+    // Select a reason chip
+    const chips = instance.root.findAll(n => n.props?.accessibilityRole === 'checkbox', { deep: true });
+    expect(chips.length).toBeGreaterThan(0);
+    const firstChip = chips[0];
+    await act(async () => { firstChip.props.onPress(); });
+
+    // The selected chip's text should carry fontWeight '700' from chipTextSelected (non-color indicator)
+    const json = instance.toJSON();
+    const boldChipTexts = findAllNodes(json, n => {
+      const s = flattenStyle(n.props?.style);
+      return s.fontWeight === '700' && s.color === hcLight.primaryOnContainer;
+    });
+    expect(boldChipTexts.length).toBeGreaterThan(0);
+
+    act(() => { instance.unmount(); });
+  });
+
+  test('reduced motion: Modal animationType=none when isReduceMotionEnabled', async () => {
+    const spy = jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(true);
+    let instance;
+    await act(async () => {
+      instance = render.create(
+        <ThemeProvider>
+          <SessionCheckInModal {...makeKuaProps()} />
+        </ThemeProvider>
+      );
+      await Promise.resolve();
+    });
+
+    const modal = instance.root.findByType(Modal);
+    expect(modal.props.animationType).toBe('none');
+
+    spy.mockRestore();
+    act(() => { instance.unmount(); });
+  });
+
+  test('fade animation when reduce-motion is off (default)', async () => {
+    jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(false);
+    let instance;
+    await act(async () => {
+      instance = render.create(
+        <ThemeProvider>
+          <SessionCheckInModal {...makeKuaProps()} />
+        </ThemeProvider>
+      );
+      await Promise.resolve();
+    });
+
+    const modal = instance.root.findByType(Modal);
+    expect(modal.props.animationType).toBe('fade');
+
+    jest.restoreAllMocks();
+    act(() => { instance.unmount(); });
   });
 });

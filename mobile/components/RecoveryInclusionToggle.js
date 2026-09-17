@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { switchColors, useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { switchColors, useTheme } from '../theme/ThemeContext';
+import { GEOMETRY, SPACING } from '../theme/spacing';
 
 // The exact control label, shared by the active card on Log and every
 // completed-block row on Analytics. Exported so tests assert one string.
@@ -15,7 +16,7 @@ export const RECOVERY_INCLUSION_LABEL = 'Include recovery notes in normal analyt
 // paragraph existed to answer: the notes are not taken out of Recovery, and
 // they stay editable either way.
 export const RECOVERY_INCLUSION_HELP =
-  "On: this block’s linked recovery notes are included in normal analytics — classifications, overload signals, Kilo Max, 1K, and Home summaries. Off (the default) keeps them out. Either way the notes stay in Recovery Analytics and stay fully visible and editable.";
+  "On: this block's linked recovery notes are included in normal analytics — classifications, overload signals, Kilo Max, 1K, and Home summaries. Off (the default) keeps them out. Either way the notes stay in Recovery Analytics and stay fully visible and editable.";
 
 // Per-block inclusion control (#699 / #728). The switch reads and writes
 // `include_in_normal_analytics` on THIS block only, so two blocks with
@@ -29,8 +30,11 @@ export const RECOVERY_INCLUSION_HELP =
 // Disclosure state is per mounted control and deliberately local: it is a
 // reading choice, not a preference worth persisting.
 export function RecoveryInclusionToggle({ block, disabled, busy, error, onToggle }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  // `colors` is retained for the native Switch, which defers to native
+  // rendering and uses the legacy palette tints via switchColors. Surrounding
+  // treatment uses KUA tokens via `kua`.
+  const { colors, kuaPalette: kua, mode } = useTheme();
+  const styles = React.useMemo(() => createStyles(kua, mode, colors), [kua, mode, colors]);
   const [helpShown, setHelpShown] = useState(false);
   const checked = block.include_in_normal_analytics === true;
   const blockTitle = block.baseline_note_title || 'Untitled Routine';
@@ -61,7 +65,7 @@ export function RecoveryInclusionToggle({ block, disabled, busy, error, onToggle
                 `${helpShown ? 'Hide' : 'Show'} what including recovery notes in normal analytics does: ${blockTitle}`
               }
             >
-              <MaterialIcons name="info-outline" size={16} color={colors.textMuted} accessible={false} />
+              <MaterialIcons name="info-outline" size={16} color={kua.onSurfaceVariant} accessible={false} />
             </Pressable>
           </View>
           {helpShown ? (
@@ -74,6 +78,9 @@ export function RecoveryInclusionToggle({ block, disabled, busy, error, onToggle
             </Text>
           ) : null}
         </View>
+        {/* Native Switch uses platform rendering; surrounding treatment uses KUA
+            tokens. switchColors takes the legacy palette so the native tints
+            stay consistent with the rest of the system UI. */}
         <Switch
           {...switchColors(colors, { disabled, busy })}
           testID={`recovery-inclusion-switch-${block.id}`}
@@ -90,13 +97,13 @@ export function RecoveryInclusionToggle({ block, disabled, busy, error, onToggle
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+const createStyles = (kua, _mode, colors) => StyleSheet.create({
   inclusionGroup: {
     gap: 8,
     marginTop: 4,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: colors.cardBorder,
+    borderTopColor: kua.surfaceBorder,
   },
   inclusionRow: {
     flexDirection: 'row',
@@ -122,7 +129,7 @@ const createStyles = (colors) => StyleSheet.create({
   inclusionLabel: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.text,
+    color: kua.onSurface,
     flexShrink: 1,
   },
   inclusionHelpToggle: {
@@ -137,15 +144,15 @@ const createStyles = (colors) => StyleSheet.create({
   },
   inclusionHelp: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
   },
   errorBanner: {
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: colors.cardErrorBg,
+    borderRadius: GEOMETRY['radius-lg'],
+    backgroundColor: kua.error,
     borderWidth: 1,
-    borderColor: colors.cardErrorBg,
+    borderColor: kua.error,
   },
   errorBannerText: {
     fontSize: 13,

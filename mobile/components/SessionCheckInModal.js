@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  AccessibilityInfo,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -11,8 +12,9 @@ import {
   View,
 } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 import { createInputStyle } from './UI';
+import { GEOMETRY, SPACING } from '../theme/spacing';
 
 const REASON_GROUPS = [
   {
@@ -86,13 +88,25 @@ function deriveTitle(detectors, flagged) {
 }
 
 export function SessionCheckInModal({ visible, checkInData, currentId, currentNote, update, onClose, isEdit = false }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua, mode } = useTheme();
+  const styles = React.useMemo(() => createStyles(kua, mode, colors), [kua, mode, colors]);
   const [tier, setTier] = useState(null);
   const [selectedReasons, setSelectedReasons] = useState(new Set());
   const [freeText, setFreeText] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    AccessibilityInfo.isReduceMotionEnabled().then(v => {
+      if (!cancelled) setReduceMotion(!!v);
+    }).catch(() => {});
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', v => {
+      if (!cancelled) setReduceMotion(!!v);
+    });
+    return () => { cancelled = true; sub?.remove(); };
+  }, []);
 
   useEffect(() => {
     if (!visible) {
@@ -152,7 +166,7 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
   const title = deriveTitle(checkInData.detectors, checkInData.flagged);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={onClose}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       <KeyboardAvoidingView
         style={[styles.overlay, tier === 'rough' && styles.overlayTop]}
@@ -175,7 +189,7 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
                 <MaterialIcons
                   name="arrow-back"
                   size={20}
-                  color={colors.textMuted}
+                  color={kua.onSurfaceVariant}
                   accessible={false}
                   importantForAccessibility="no"
                 />
@@ -332,7 +346,7 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
               <TextInput
                 style={styles.noteInput}
                 placeholder="Any other notes… (optional)"
-                placeholderTextColor={colors.textMuted}
+                placeholderTextColor={kua.onSurfaceVariant}
                 value={freeText}
                 onChangeText={setFreeText}
                 multiline
@@ -357,12 +371,14 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+const scrim = (mode) => mode === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)';
+
+const createStyles = (kua, mode, colors) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: colors.overlay,
+    backgroundColor: scrim(mode),
     justifyContent: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: SPACING.margin,
   },
   overlayTop: {
     justifyContent: 'flex-start',
@@ -370,10 +386,10 @@ const createStyles = (colors) => StyleSheet.create({
     paddingBottom: Platform.OS === 'ios' ? 34 : 16,
   },
   sheet: {
-    backgroundColor: colors.card,
-    borderRadius: 20,
+    backgroundColor: kua.surfaceCard,
+    borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua.surfaceBorder,
   },
   sheetBounded: {
     maxHeight: '85%',
@@ -384,11 +400,11 @@ const createStyles = (colors) => StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingHorizontal: SPACING['space-lg'],
+    paddingTop: SPACING['space-lg'],
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: kua.surfaceBorder,
     gap: 8,
   },
   backBtn: {
@@ -401,63 +417,60 @@ const createStyles = (colors) => StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '700',
-    color: colors.text,
+    color: kua.onSurface,
   },
   subtitle: {
     fontSize: 13,
     fontWeight: '500',
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
   },
   closeBtn: {
     padding: 4,
   },
   closeBtnText: {
     fontSize: 16,
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
     fontWeight: '600',
   },
   errorBanner: {
-    marginHorizontal: 20,
+    marginHorizontal: SPACING['space-lg'],
     marginTop: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: colors.cardErrorBg,
+    borderRadius: GEOMETRY['radius-lg'],
+    backgroundColor: kua.error,
     borderWidth: 1,
-    borderColor: colors.cardErrorBg,
+    borderColor: kua.error,
   },
   errorBannerText: {
     fontSize: 13,
     fontWeight: '600',
-    // Filled error surface paired with `textLight`, matching the
-    // cardAccentBg/cardSuccessBg/cardCautionBg convention for WCAG AA 4.5:1
-    // contrast on filled tone surfaces (see docs/design-system-map.md).
     color: colors.textLight,
   },
   tierRow: {
     flexDirection: 'row',
     gap: 12,
-    padding: 20,
+    padding: SPACING['space-lg'],
   },
   tierBtn: {
     flex: 1,
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     alignItems: 'center',
     borderWidth: 1,
   },
   tierBtnOk: {
-    backgroundColor: colors.chipBackground,
-    borderColor: colors.cardBorder,
+    backgroundColor: kua.surfaceCard,
+    borderColor: kua.surfaceBorder,
   },
   tierBtnRough: {
-    backgroundColor: colors.roughBackground,
-    borderColor: colors.roughBorder,
+    backgroundColor: kua.primaryContainer,
+    borderColor: kua.primaryContainerBorder,
   },
   tierBtnText: {
     fontSize: 15,
     fontWeight: '700',
-    color: colors.chipText,
+    color: kua.onSurface,
   },
   body: {
     flexShrink: 1,
@@ -466,7 +479,7 @@ const createStyles = (colors) => StyleSheet.create({
     flex: 1,
   },
   bodyContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: SPACING['space-lg'],
     paddingTop: 16,
     paddingBottom: 8,
     gap: 16,
@@ -483,14 +496,14 @@ const createStyles = (colors) => StyleSheet.create({
   subGroupLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
   groupLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -506,48 +519,48 @@ const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 5,
     borderRadius: 20,
-    backgroundColor: colors.background,
+    backgroundColor: kua.background,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua.surfaceBorder,
     minHeight: 44,
     justifyContent: 'center',
   },
   chipSubText: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
     fontWeight: '500',
   },
   chip: {
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: colors.background,
+    backgroundColor: kua.background,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua.surfaceBorder,
     minHeight: 44,
     justifyContent: 'center',
   },
   chipSelected: {
-    backgroundColor: colors.chipBackground,
-    borderColor: colors.accent,
+    backgroundColor: kua.primaryContainer,
+    borderColor: kua.primary,
   },
   chipText: {
     fontSize: 14,
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
     fontWeight: '500',
   },
   chipTextSelected: {
-    color: colors.chipText,
+    color: kua.primaryOnContainer,
     fontWeight: '700',
   },
   noteInput: {
-    ...createInputStyle(colors),
+    ...createInputStyle({ inputBackground: kua.background, inputBorder: kua.surfaceBorder, text: kua.onSurface }),
     minHeight: 72,
     textAlignVertical: 'top',
   },
   submitBtn: {
-    backgroundColor: colors.accent,
-    borderRadius: 18,
+    backgroundColor: kua.primary,
+    borderRadius: GEOMETRY['radius-2xl'],
     paddingVertical: 16,
     alignItems: 'center',
     marginTop: 4,
@@ -558,6 +571,6 @@ const createStyles = (colors) => StyleSheet.create({
   submitBtnText: {
     fontSize: 16,
     fontWeight: '700',
-    color: colors.onAccent,
+    color: kua.onPrimary,
   },
 });

@@ -1,9 +1,16 @@
 import React from 'react';
-import { Modal } from 'react-native';
+import { AccessibilityInfo, Modal } from 'react-native';
 import renderer, { act } from 'react-test-renderer';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RestTimerBanner } from '../components/RestTimerBanner';
 import { PRMomentBanner } from '../components/PRMomentBanner';
 import { ThemeProvider } from '../theme/ThemeContext';
+import { KUA_PALETTES } from '../theme/colors';
+import {
+  setAppearancePreference,
+  __resetAppearancePreferenceForTests,
+  __resetThemeSelectionForTests,
+} from '../lib/themePreference';
 
 jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
   __esModule: true,
@@ -264,5 +271,115 @@ describe('RestTimerBanner + PRMomentBanner combined clearance (#1006, was #951)'
     const json = tree.toJSON();
     const compactWrap = Array.isArray(json) ? json[0] : json;
     expect(marginBottomOf(compactWrap)).toBe(0);
+  });
+});
+
+function flattenStyle(style) {
+  if (Array.isArray(style)) return Object.assign({}, ...style.filter(Boolean).map(flattenStyle));
+  return style || {};
+}
+
+describe('RestTimerBanner KUA token application (#1100)', () => {
+  const hcLight = KUA_PALETTES.hardCourt.light;
+  const hcDark = KUA_PALETTES.hardCourt.dark;
+  const shellRun = { isRunning: true, remainingMs: 5000, justElapsed: false, backgroundAlertAvailable: true, showStart: false };
+  const shellDone = { isRunning: false, remainingMs: 0, justElapsed: true, backgroundAlertAvailable: true, showStart: false };
+
+  beforeEach(() => {
+    __resetThemeSelectionForTests();
+    __resetAppearancePreferenceForTests();
+    AsyncStorage.clear();
+    // Ensure isReduceMotionEnabled always returns a Promise (default: motion enabled)
+    jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(false);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  test('running pill bg = surfaceCard, countdown = onSurface (Hard Court Light)', () => {
+    const tree = renderBanner(shellRun);
+    const json = tree.toJSON(); // pillOuter View
+    const pill = json.children[0]; // pill View
+    expect(flattenStyle(pill.props.style).backgroundColor).toBe(hcLight.surfaceCard);
+
+    const countdownText = findAll(json, n => n.type === 'Text' && JSON.stringify(n.props.style || {}).includes(hcLight.onSurface))[0];
+    expect(countdownText).toBeTruthy();
+  });
+
+  test('running pill uses dark palette after mode switch (Hard Court Dark)', () => {
+    const tree = renderBanner(shellRun);
+    act(() => { setAppearancePreference('dark'); });
+
+    const json = tree.toJSON();
+    const pill = json.children[0];
+    expect(flattenStyle(pill.props.style).backgroundColor).toBe(hcDark.surfaceCard);
+  });
+
+  test('done pill: doneText uses success, actionText uses primary (Hard Court Light)', () => {
+    const tree = renderBanner(shellDone);
+    const json = tree.toJSON();
+    const pill = json.children[0];
+    const doneText = findAll(pill, n => n.type === 'Text' && flattenStyle(n.props.style).color === hcLight.success)[0];
+    expect(doneText).toBeTruthy();
+    const actionText = findAll(pill, n => n.type === 'Text' && flattenStyle(n.props.style).color === hcLight.primary)[0];
+    expect(actionText).toBeTruthy();
+  });
+
+  test('compact toggle bg = primaryContainer (non-color state indicator, Hard Court Light)', () => {
+    const tree = renderBanner({ isRunning: false, remainingMs: 0, justElapsed: false, backgroundAlertAvailable: true, showStart: true, compact: true });
+    const json = tree.toJSON(); // compactWrap View
+    const toggle = json.children[0]; // compactToggle Pressable
+    expect(flattenStyle(toggle.props.style).backgroundColor).toBe(hcLight.primaryContainer);
+  });
+
+  test('reduced motion: compact chooser Modal uses animationType=none when isReduceMotionEnabled', async () => {
+    jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(true);
+    let tree;
+    await act(async () => {
+      tree = renderer.create(
+        <ThemeProvider>
+          <RestTimerBanner isRunning={false} remainingMs={0} justElapsed={false} backgroundAlertAvailable showStart compact />
+        </ThemeProvider>
+      );
+      await Promise.resolve();
+    });
+
+    const toggle = tree.root.findAll(n => n.props?.accessibilityLabel === 'Rest timer')[0];
+    act(() => { toggle.props.onPress(); });
+
+    const modals = tree.root.findAllByType(Modal).filter(m => m.props.visible === true);
+    expect(modals.length).toBeGreaterThan(0);
+    expect(modals[0].props.animationType).toBe('none');
+
+    act(() => { tree.unmount(); });
+  });
+
+  test('onStart, onCancel, onDismissDone callbacks are preserved (unchanged callbacks)', () => {
+    const onStart = jest.fn();
+    const onCancel = jest.fn();
+    const onDismissDone = jest.fn();
+
+    // start
+    const startTree = renderBanner({ isRunning: false, remainingMs: 0, justElapsed: false, backgroundAlertAvailable: true, showStart: true, compact: true, onStart });
+    const toggle = startTree.root.findAll(n => n.props?.accessibilityLabel === 'Rest timer')[0];
+    act(() => { toggle.props.onPress(); });
+    const choice = startTree.root.findAll(n => n.props?.accessibilityLabel === 'Start 60 second rest timer')[0];
+    act(() => { choice.props.onPress(); });
+    expect(onStart).toHaveBeenCalledWith(60);
+
+    // cancel
+    const cancelTree = renderBanner({ ...shellRun, onCancel });
+    const pill = cancelTree.root.findAll(n => n.props?.accessibilityLabel === `Rest timer, 0:05 remaining`)[0];
+    act(() => { pill.props.onPress(); });
+    const cancelBtn = cancelTree.root.findAll(n => n.props?.accessibilityLabel === 'Cancel rest timer')[0];
+    act(() => { cancelBtn.props.onPress(); });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+
+    // dismiss done
+    const doneTree = renderBanner({ ...shellDone, onDismissDone });
+    const dismiss = doneTree.root.findAll(n => n.props?.accessibilityLabel === 'Dismiss rest timer done banner')[0];
+    act(() => { dismiss.props.onPress(); });
+    expect(onDismissDone).toHaveBeenCalledTimes(1);
   });
 });

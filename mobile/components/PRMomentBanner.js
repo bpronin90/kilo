@@ -1,8 +1,9 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 import { formatLiftWeightValue } from '../lib/units';
 import { useWeightUnit } from '../lib/unitPreference';
+import { GEOMETRY } from '../theme/spacing';
 
 // Non-modal PR-moment celebration (#577 Contract 3). Mounted at LogScreen's
 // top level, outside the editor card branch, so Done switching read/edit
@@ -10,7 +11,8 @@ import { useWeightUnit } from '../lib/unitPreference';
 // the fatigue check-in modal, and coexists with the rest-timer banner —
 // each has fully independent close/state ownership.
 export function PRMomentBanner({ moment, onDismiss, style }) {
-  const styles = useThemedStyles(createStyles);
+  const { kuaPalette: kua, mode } = useTheme();
+  const styles = React.useMemo(() => createStyles(kua, mode), [kua, mode]);
   const unit = useWeightUnit();
   if (!moment) return null;
 
@@ -36,22 +38,22 @@ export function PRMomentBanner({ moment, onDismiss, style }) {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+const createStyles = (kua, _mode) => StyleSheet.create({
   banner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     paddingVertical: 10,
     paddingHorizontal: 16,
-    backgroundColor: colors.successBackground ?? colors.panelBackground,
+    backgroundColor: kua.surfaceCard,
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: kua.surfaceBorder,
   },
   text: {
     flex: 1,
     fontSize: 14,
     fontWeight: '800',
-    color: colors.success ?? colors.text,
+    color: kua.success,
   },
   dismissBtn: {
     minHeight: 32,
@@ -62,6 +64,6 @@ const createStyles = (colors) => StyleSheet.create({
   dismissText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
   },
 });
