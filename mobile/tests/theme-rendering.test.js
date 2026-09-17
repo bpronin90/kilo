@@ -1007,6 +1007,7 @@ describe('switchColors token mapping (#985)', () => {
 // KUA six-palette semantic token contract (#1096)
 // ---------------------------------------------------------------------------
 
+// Cross-palette required roles (all six palettes must define these).
 const KUA_REQUIRED_ROLES = [
   'background', 'surface', 'surfaceCard', 'surfaceBorder',
   'surfaceCardHeader', 'surfaceSection',
@@ -1017,25 +1018,195 @@ const KUA_REQUIRED_ROLES = [
   'chartSeries1', 'chartSeries2', 'chartSeries3',
 ];
 
+// Per-palette complete approved token tables from the spec.
+// Every role listed in the authority doc for that palette must be present
+// and match the approved hex value exactly.
+const KUA_APPROVED_VALUES = {
+  hardCourtLight: {
+    background: '#EEF3F9',
+    surface: '#EEF3F9',
+    surfaceCard: '#FFFFFF',
+    surfaceSubtle: '#EEF3F9',
+    surfaceBorder: '#DDE6F2',
+    surfaceCardHeader: '#EEF3F9',
+    surfaceSection: '#EEF3F9',
+    primary: '#0A4ABF',
+    primaryContainer: '#E1ECFB',
+    primaryContainerBorder: '#9BC1F5',
+    primaryOnContainer: '#083B9A',
+    onSurface: '#0E1726',
+    onSurfaceVariant: '#5A687A',
+    completion: '#006C4A',
+    onPrimary: '#FFFFFF',
+    tabBarBg: '#FFFFFF',
+    headerBg: '#EEF3F9',
+    error: '#BA1A1A',
+    selection: '#E1ECFB',
+    success: '#006C4A',
+    warning: '#B45309',
+    chartSeries1: '#0C7489',
+    chartSeries2: '#C2410C',
+    chartSeries3: '#7C3AED',
+  },
+  hardCourtDark: {
+    background: '#080D18',
+    surface: '#080D18',
+    surfaceCard: '#101728',
+    surfaceCardHeader: '#131D32',
+    surfaceSection: '#0E1524',
+    surfaceBorder: '#1C2742',
+    primary: '#3B82F6',
+    primaryLight: '#60A5FA',
+    primaryContainer: '#17233D',
+    primaryContainerBorder: '#2A3F6D',
+    primaryOnContainer: '#60A5FA',
+    onSurface: '#F0F4FC',
+    onSurfaceVariant: '#8C9BB3',
+    completion: '#10B981',
+    onPrimary: '#080D18',
+    tabBarBg: '#080D18',
+    headerBg: '#080D18',
+    error: '#BA1A1A',
+    selection: '#17233D',
+    success: '#10B981',
+    warning: '#FBBF24',
+    chartSeries1: '#22D3EE',
+    chartSeries2: '#F59E0B',
+    chartSeries3: '#A78BFA',
+  },
+  clayCourtLight: {
+    background: '#F8F5EE',
+    surface: '#F8F5EE',
+    surfaceCard: '#FFFDF9',
+    surfaceElevated: '#F2EDE4',
+    surfaceCardHeader: '#F2EDE4',
+    surfaceSection: '#F2EDE4',
+    surfaceBorder: '#E5DFD3',
+    primary: '#A23E19',
+    primaryDark: '#7E2E0F',
+    primaryContainer: '#FBECE5',
+    primaryContainerBorder: '#E89A7A',
+    primaryOnContainer: '#7E2E0F',
+    onSurface: '#1A1918',
+    onSurfaceVariant: '#585550',
+    onSurfaceMuted: '#736D65',
+    completion: '#1E5B3A',
+    onPrimary: '#FFFFFF',
+    tabBarBg: '#F8F5EE',
+    headerBg: '#F8F5EE',
+    error: '#BA1A1A',
+    selection: '#FBECE5',
+    success: '#006C4A',
+    warning: '#B45309',
+    chartSeries1: '#0C7489',
+    chartSeries2: '#C2410C',
+    chartSeries3: '#7C3AED',
+  },
+  clayCourtDark: {
+    background: '#141211',
+    surface: '#141211',
+    surfaceCard: '#1F1C1A',
+    surfaceCardHeader: '#181513',
+    surfaceLow: '#1A1816',
+    surfaceBorder: '#2C2723',
+    surfaceSection: '#1A1816',
+    primary: '#D86538',
+    primaryLight: '#F08B62',
+    primaryContainer: '#341B13',
+    primaryContainerBorder: '#5C2E1E',
+    primaryOnContainer: '#F08B62',
+    onSurface: '#F5F3F0',
+    onSurfaceVariant: '#A89F96',
+    completion: '#2CA864',
+    onPrimary: '#141211',
+    tabBarBg: '#141211',
+    headerBg: '#141211',
+    error: '#BA1A1A',
+    selection: '#341B13',
+    success: '#10B981',
+    warning: '#FBBF24',
+    chartSeries1: '#22D3EE',
+    chartSeries2: '#F59E0B',
+    chartSeries3: '#A78BFA',
+  },
+  grassCourtLight: {
+    background: '#F4F8F5',
+    surface: '#F4F8F5',
+    surfaceCard: '#FFFFFF',
+    surfaceSubtle: '#F2F7F4',
+    surfaceCardHeader: '#F4F8F5',
+    surfaceSection: '#F2F7F4',
+    surfaceBorder: '#E0EAE3',
+    surfaceSeg: '#E8EFEA',
+    surfaceSegBorder: '#DEE7E1',
+    primary: '#1E5B3A',
+    primaryDark: '#14452B',
+    primaryContainer: '#E8F4EC',
+    primaryContainerBorder: '#A3D4B3',
+    primaryOnContainer: '#14452B',
+    onSurface: '#111813',
+    onSurfaceVariant: '#556B5C',
+    completion: '#1E5B3A',
+    onPrimary: '#FFFFFF',
+    tabBarBg: '#F4F8F5',
+    headerBg: '#F4F8F5',
+    error: '#BA1A1A',
+    selection: '#E8F4EC',
+    success: '#006C4A',
+    warning: '#B45309',
+    chartSeries1: '#0C7489',
+    chartSeries2: '#C2410C',
+    chartSeries3: '#7C3AED',
+  },
+  grassCourtDark: {
+    background: '#0C130F',
+    surface: '#0C130F',
+    surfaceCard: '#15201A',
+    surfaceCardHeader: '#0C130F',
+    surfaceLow: '#111A15',
+    surfaceSection: '#111A15',
+    surfaceBorder: '#1F3025',
+    surfaceSurface2: '#1C2B22',
+    primary: '#2CA864',
+    primaryNeon: '#4ADE80',
+    primaryContainer: '#132B1C',
+    primaryContainerBorder: '#235235',
+    primaryOnContainer: '#4ADE80',
+    onSurface: '#F0F5F2',
+    onSurfaceVariant: '#91A398',
+    completion: '#2CA864',
+    onPrimary: '#0C130F',
+    tabBarBg: '#0C130F',
+    headerBg: '#0C130F',
+    error: '#BA1A1A',
+    selection: '#132B1C',
+    success: '#10B981',
+    warning: '#FBBF24',
+    chartSeries1: '#22D3EE',
+    chartSeries2: '#F59E0B',
+    chartSeries3: '#A78BFA',
+  },
+};
+
 const KUA_ALL_PALETTES = [
-  ['hardCourt/light', HardCourtLightColors],
-  ['hardCourt/dark', HardCourtDarkColors],
-  ['clayCourt/light', ClayCourtLightColors],
-  ['clayCourt/dark', ClayCourtDarkColors],
-  ['grassCourt/light', GrassCourtLightColors],
-  ['grassCourt/dark', GrassCourtDarkColors],
+  ['hardCourt/light', HardCourtLightColors, KUA_APPROVED_VALUES.hardCourtLight],
+  ['hardCourt/dark', HardCourtDarkColors, KUA_APPROVED_VALUES.hardCourtDark],
+  ['clayCourt/light', ClayCourtLightColors, KUA_APPROVED_VALUES.clayCourtLight],
+  ['clayCourt/dark', ClayCourtDarkColors, KUA_APPROVED_VALUES.clayCourtDark],
+  ['grassCourt/light', GrassCourtLightColors, KUA_APPROVED_VALUES.grassCourtLight],
+  ['grassCourt/dark', GrassCourtDarkColors, KUA_APPROVED_VALUES.grassCourtDark],
 ];
 
 const KUA_LIGHT_PALETTES = [
-  ['hardCourt/light', HardCourtLightColors],
-  ['clayCourt/light', ClayCourtLightColors],
-  ['grassCourt/light', GrassCourtLightColors],
+  ['hardCourt/light', HardCourtLightColors, KUA_APPROVED_VALUES.hardCourtLight],
+  ['clayCourt/light', ClayCourtLightColors, KUA_APPROVED_VALUES.clayCourtLight],
+  ['grassCourt/light', GrassCourtLightColors, KUA_APPROVED_VALUES.grassCourtLight],
 ];
 
 const KUA_DARK_PALETTES = [
-  ['hardCourt/dark', HardCourtDarkColors],
-  ['clayCourt/dark', ClayCourtDarkColors],
-  ['grassCourt/dark', GrassCourtDarkColors],
+  ['hardCourt/dark', HardCourtDarkColors, KUA_APPROVED_VALUES.hardCourtDark],
+  ['clayCourt/dark', ClayCourtDarkColors, KUA_APPROVED_VALUES.clayCourtDark],
+  ['grassCourt/dark', GrassCourtDarkColors, KUA_APPROVED_VALUES.grassCourtDark],
 ];
 
 describe('KUA palette structure', () => {
@@ -1064,6 +1235,24 @@ describe('KUA palette structure', () => {
     for (const [name, palette] of KUA_ALL_PALETTES) {
       expect({ name, match: palette.selection === palette.primaryContainer })
         .toEqual({ name, match: true });
+    }
+  });
+});
+
+describe('KUA per-palette complete approved token values', () => {
+  // Every role in the authority doc for each palette must be present with its
+  // exact approved hex value — including palette-specific tokens such as
+  // surfaceSubtle, primaryLight, surfaceElevated, onSurfaceMuted,
+  // surfaceSeg/surfaceSegBorder, and primaryNeon.
+  test.each(KUA_ALL_PALETTES)('%s: every approved role has the exact specified value', (_name, palette, approved) => {
+    for (const [role, value] of Object.entries(approved)) {
+      expect({ role, value: palette[role] }).toEqual({ role, value });
+    }
+  });
+
+  test.each(KUA_ALL_PALETTES)('%s: no approved role is missing from the palette', (_name, palette, approved) => {
+    for (const role of Object.keys(approved)) {
+      expect({ role, defined: palette[role] !== undefined }).toEqual({ role, defined: true });
     }
   });
 });
