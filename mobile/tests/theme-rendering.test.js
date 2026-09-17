@@ -1659,3 +1659,137 @@ describe('KUA WCAG contrast: required text/non-text pairs', () => {
     expect(contrastRatio(p.primaryOnContainer, p.primaryContainer)).toBeGreaterThanOrEqual(8.5);
   });
 });
+
+// ---------------------------------------------------------------------------
+// KUA spacing token contract (#1098)
+// Source: docs/design/kinetic-utilitarian-athletic/foundation.md
+// ---------------------------------------------------------------------------
+
+import { SPACING, GEOMETRY } from '../theme/spacing';
+import { BORDERS, ELEVATION } from '../theme/elevation';
+
+describe('KUA spacing token contract', () => {
+  test('exports all nine spacing roles', () => {
+    const roles = Object.keys(SPACING);
+    expect(roles).toHaveLength(9);
+  });
+
+  test('every spacing role has the exact value from foundation.md', () => {
+    expect(SPACING['space-xs']).toBe(4);
+    expect(SPACING['space-sm']).toBe(8);
+    expect(SPACING['gutter']).toBe(12);
+    expect(SPACING['space-md']).toBe(12);
+    expect(SPACING['margin']).toBe(16);
+    expect(SPACING['space-lg']).toBe(20);
+    expect(SPACING['gutter-desktop']).toBe(20);
+    expect(SPACING['space-xl']).toBe(32);
+    expect(SPACING['margin-desktop']).toBe(32);
+  });
+
+  test('all spacing values are numbers', () => {
+    for (const [role, value] of Object.entries(SPACING)) {
+      expect({ role, type: typeof value }).toEqual({ role, type: 'number' });
+    }
+  });
+
+  test('SPACING is frozen — consumers cannot mutate tokens', () => {
+    expect(Object.isFrozen(SPACING)).toBe(true);
+  });
+});
+
+describe('KUA geometry token contract', () => {
+  test('exports all seven radius roles', () => {
+    const roles = Object.keys(GEOMETRY);
+    expect(roles).toHaveLength(7);
+  });
+
+  test('every radius role has the exact value from foundation.md', () => {
+    expect(GEOMETRY['radius-xs']).toBe(2);
+    expect(GEOMETRY['radius-sm']).toBe(4);
+    expect(GEOMETRY['radius-md']).toBe(6);
+    expect(GEOMETRY['radius-lg']).toBe(8);
+    expect(GEOMETRY['radius-xl']).toBe(12);
+    expect(GEOMETRY['radius-2xl']).toBe(16);
+    // radius-full is a large integer, not '50%', because React Native
+    // style objects only accept numeric borderRadius values.
+    expect(GEOMETRY['radius-full']).toBeGreaterThan(100);
+    expect(typeof GEOMETRY['radius-full']).toBe('number');
+  });
+
+  test('all radius values are numbers (React Native compatible)', () => {
+    for (const [role, value] of Object.entries(GEOMETRY)) {
+      expect({ role, type: typeof value }).toEqual({ role, type: 'number' });
+    }
+  });
+
+  test('GEOMETRY is frozen — consumers cannot mutate tokens', () => {
+    expect(Object.isFrozen(GEOMETRY)).toBe(true);
+  });
+});
+
+describe('KUA border token contract', () => {
+  test('exports exactly the five structural levels', () => {
+    expect(Object.keys(BORDERS)).toEqual(['canvas', 'card', 'activeCard', 'elevatedCard', 'overlay']);
+  });
+
+  test('canvas carries no border', () => {
+    expect(BORDERS.canvas).toEqual({});
+  });
+
+  test('card uses 1px structural border', () => {
+    expect(BORDERS.card.borderWidth).toBe(1);
+  });
+
+  test('activeCard uses 2px border (primary color applied by consumer)', () => {
+    expect(BORDERS.activeCard.borderWidth).toBe(2);
+    expect(BORDERS.activeCard.borderColor).toBeUndefined();
+  });
+
+  test('elevatedCard uses 2px border (primary color applied by consumer)', () => {
+    expect(BORDERS.elevatedCard.borderWidth).toBe(2);
+    expect(BORDERS.elevatedCard.borderColor).toBeUndefined();
+  });
+
+  test('overlay uses 1px border', () => {
+    expect(BORDERS.overlay.borderWidth).toBe(1);
+  });
+
+  test('BORDERS is frozen — consumers cannot mutate tokens', () => {
+    expect(Object.isFrozen(BORDERS)).toBe(true);
+  });
+});
+
+describe('KUA elevation token contract', () => {
+  test('exports levels 0 through 4', () => {
+    expect(Object.keys(ELEVATION).map(Number).sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  test('levels 0–2 carry no shadow (flat structural system)', () => {
+    expect(ELEVATION[0]).toEqual({});
+    expect(ELEVATION[1]).toEqual({});
+    expect(ELEVATION[2]).toEqual({});
+  });
+
+  test('level 3 carries shadow properties for elevated cards', () => {
+    expect(ELEVATION[3].shadowColor).toBeDefined();
+    expect(ELEVATION[3].shadowOffset).toBeDefined();
+    expect(typeof ELEVATION[3].shadowOpacity).toBe('number');
+    expect(typeof ELEVATION[3].shadowRadius).toBe('number');
+    expect(typeof ELEVATION[3].elevation).toBe('number');
+  });
+
+  test('level 4 carries stronger shadow properties for overlays', () => {
+    expect(ELEVATION[4].shadowColor).toBeDefined();
+    expect(ELEVATION[4].shadowOffset).toBeDefined();
+    expect(typeof ELEVATION[4].shadowOpacity).toBe('number');
+    expect(typeof ELEVATION[4].shadowRadius).toBe('number');
+    expect(typeof ELEVATION[4].elevation).toBe('number');
+    // Overlays must be more elevated than cards
+    expect(ELEVATION[4].shadowOpacity).toBeGreaterThan(ELEVATION[3].shadowOpacity);
+    expect(ELEVATION[4].elevation).toBeGreaterThan(ELEVATION[3].elevation);
+  });
+
+  test('ELEVATION is frozen — consumers cannot mutate tokens', () => {
+    expect(Object.isFrozen(ELEVATION)).toBe(true);
+  });
+});
