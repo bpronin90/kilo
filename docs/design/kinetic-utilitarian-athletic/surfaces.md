@@ -162,7 +162,9 @@ Existing React Native layout behavior is not changed by this design system. No m
 
 The existing `themePreference` mechanism (`mobile/lib/themePreference.js`) accepts only `light`, `dark`, and `system` — it stores the appearance mode, not the palette theme. Theme selection (Hard Court / Clay Court / Grass Court) requires a **separate** persisted preference key alongside the existing appearance key.
 
-Implementation cards (Phase 5) must:
+The Phase 3 D5 theme-preview and selection-plumbing card must establish this
+state before Phase 4 screen migration begins. The Phase 5 production picker
+reuses it rather than introducing a second preference. D5 must:
 - Add a `kilo.theme_selection` key (or equivalent) to AsyncStorage, independent of `kilo.appearance_preference`.
 - Accept `hard-court`, `clay-court`, or `grass-court`; default to `hard-court`.
 - Keep `ThemeContext` logic: the appearance preference continues to resolve `light`/`dark`/`system`; the theme selection picks which of the three palettes to apply for that mode.
