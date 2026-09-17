@@ -12,7 +12,8 @@
         "buildType": "apk"
       },
       "env": {
-        "APP_ENV": "development"
+        "APP_ENV": "development",
+        "EXPO_PUBLIC_APP_ENV": "development"
       }
     },
     "preview": {
@@ -22,7 +23,8 @@
       "channel": "preview",
       "environment": "preview",
       "env": {
-        "APP_ENV": "preview"
+        "APP_ENV": "preview",
+        "EXPO_PUBLIC_APP_ENV": "preview"
       }
     },
     "production": {
@@ -40,7 +42,8 @@
         "simulator": true
       },
       "env": {
-        "APP_ENV": "preview"
+        "APP_ENV": "preview",
+        "EXPO_PUBLIC_APP_ENV": "preview"
       }
     },
     "ios-device": {
@@ -51,7 +54,8 @@
         "buildConfiguration": "Release"
       },
       "env": {
-        "APP_ENV": "preview"
+        "APP_ENV": "preview",
+        "EXPO_PUBLIC_APP_ENV": "preview"
       }
     }
   }

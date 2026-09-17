@@ -282,14 +282,14 @@ describe('DEV label is present', () => {
   });
 });
 
-describe('APP_ENV gate: SettingsScreen shows Dev Preview only in non-production builds', () => {
-  const _originalAppEnv = process.env.APP_ENV;
+describe('EXPO_PUBLIC_APP_ENV gate: SettingsScreen shows Dev Preview only in non-production builds', () => {
+  const _originalPublicAppEnv = process.env.EXPO_PUBLIC_APP_ENV;
 
   afterEach(() => {
-    if (_originalAppEnv === undefined) {
-      delete process.env.APP_ENV;
+    if (_originalPublicAppEnv === undefined) {
+      delete process.env.EXPO_PUBLIC_APP_ENV;
     } else {
-      process.env.APP_ENV = _originalAppEnv;
+      process.env.EXPO_PUBLIC_APP_ENV = _originalPublicAppEnv;
     }
   });
 
@@ -309,23 +309,23 @@ describe('APP_ENV gate: SettingsScreen shows Dev Preview only in non-production 
       .some((n) => n.props.children === 'Dev Preview');
   }
 
-  test('Dev Preview section renders in preview builds', () => {
-    process.env.APP_ENV = 'preview';
+  test('Dev Preview section renders in EAS preview builds', () => {
+    process.env.EXPO_PUBLIC_APP_ENV = 'preview';
     expect(hasDevPreviewSection(renderSettings())).toBe(true);
   });
 
-  test('Dev Preview section renders in development builds', () => {
-    process.env.APP_ENV = 'development';
+  test('Dev Preview section renders in EAS development builds', () => {
+    process.env.EXPO_PUBLIC_APP_ENV = 'development';
     expect(hasDevPreviewSection(renderSettings())).toBe(true);
   });
 
   test('Dev Preview section is absent in production builds', () => {
-    process.env.APP_ENV = 'production';
+    process.env.EXPO_PUBLIC_APP_ENV = 'production';
     expect(hasDevPreviewSection(renderSettings())).toBe(false);
   });
 
-  test('Dev Preview section is absent when APP_ENV is unset', () => {
-    delete process.env.APP_ENV;
+  test('Dev Preview section is absent when EXPO_PUBLIC_APP_ENV is unset', () => {
+    delete process.env.EXPO_PUBLIC_APP_ENV;
     expect(hasDevPreviewSection(renderSettings())).toBe(false);
   });
 });

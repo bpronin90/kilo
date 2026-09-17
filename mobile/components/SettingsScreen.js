@@ -261,7 +261,7 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
         )}
       </Card>
 
-      {(process.env.APP_ENV === 'development' || process.env.APP_ENV === 'preview') && (
+      {(process.env.EXPO_PUBLIC_APP_ENV === 'development' || process.env.EXPO_PUBLIC_APP_ENV === 'preview') && (
         <>
           <SectionTitle>Dev Preview</SectionTitle>
           <Card>
