@@ -17,9 +17,9 @@
     "build:android:production": "eas build --platform android --profile production",
     "build:ios:simulator": "eas build --platform ios --profile ios-simulator",
     "build:ios:device": "eas build --platform ios --profile ios-device",
-    "update:android:preview": "APP_ENV=preview eas update --platform android --channel preview --environment preview",
+    "update:android:preview": "APP_ENV=preview EXPO_PUBLIC_APP_ENV=preview eas update --platform android --channel preview --environment preview",
     "update:android:production": "APP_ENV=production eas update --platform android --channel production --environment production",
-    "update:ios:preview": "APP_ENV=preview eas update --platform ios --channel preview --environment preview",
+    "update:ios:preview": "APP_ENV=preview EXPO_PUBLIC_APP_ENV=preview eas update --platform ios --channel preview --environment preview",
     "audit": "npm audit --audit-level=high"
   },
   "dependencies": {

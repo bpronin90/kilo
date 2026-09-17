@@ -11,6 +11,7 @@ import {
   saveProgressionSuggestionsEnabled,
 } from '../storage/entries/settings';
 import { ReminderSettingsCard } from './ReminderSettingsCard';
+import { ThemePreviewControl } from './ThemePreviewControl';
 import { useWeightUnit, setWeightUnitPreference } from '../lib/unitPreference';
 import { unitFromUnitSystem, unitSystemFromUnit } from '../lib/units';
 
@@ -259,6 +260,15 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
           />
         )}
       </Card>
+
+      {(process.env.EXPO_PUBLIC_APP_ENV === 'development' || process.env.EXPO_PUBLIC_APP_ENV === 'preview') && (
+        <>
+          <SectionTitle>Dev Preview</SectionTitle>
+          <Card>
+            <ThemePreviewControl />
+          </Card>
+        </>
+      )}
 
       <SectionTitle>Advanced</SectionTitle>
       <Card>
