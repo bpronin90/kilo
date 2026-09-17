@@ -9,6 +9,7 @@
 
 import React, { useEffect, useState } from 'react';
 import {
+  AccessibilityInfo,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -19,9 +20,10 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 import { createInputStyle } from './UI';
 import { MAX_RECOVERY_REASON_LENGTH } from '../lib/data/recoveryBlocks';
+import { GEOMETRY, SPACING } from '../theme/spacing';
 
 export function RecoveryBlockStartModal({
   visible,
@@ -33,8 +35,9 @@ export function RecoveryBlockStartModal({
   onConfirm,
   onClose,
 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua, mode: themeMode } = useTheme();
+  const styles = React.useMemo(() => createStyles(kua, themeMode, colors), [kua, themeMode, colors]);
+  const [reduceMotion, setReduceMotion] = useState(false);
 
   const [baselineNoteId, setBaselineNoteId] = useState(null);
   const [weekChoice, setWeekChoice] = useState('existing'); // 'existing' | 'new'
@@ -46,6 +49,14 @@ export function RecoveryBlockStartModal({
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    AccessibilityInfo.isReduceMotionEnabled().then(v => {
+      if (!cancelled) setReduceMotion(!!v);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!visible) {
@@ -138,7 +149,7 @@ export function RecoveryBlockStartModal({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={onClose}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       <KeyboardAvoidingView
         style={styles.overlay}
@@ -181,7 +192,7 @@ export function RecoveryBlockStartModal({
             <Text style={styles.sectionLabel}>Baseline routine</Text>
             {baselineFixed ? (
               <View style={[styles.optionRow, styles.optionRowSelected]}>
-                <Text style={styles.optionText}>{presetNote?.title || 'Untitled Routine'}</Text>
+                <Text style={[styles.optionText, styles.optionTextSelected]}>{presetNote?.title || 'Untitled Routine'}</Text>
               </View>
             ) : baselineChoices.length === 0 ? (
               <Text style={styles.emptyText}>No eligible routine to freeze as a baseline.</Text>
@@ -195,7 +206,7 @@ export function RecoveryBlockStartModal({
                   accessibilityLabel={`Use ${n.title || 'Untitled Routine'} as the frozen baseline`}
                   accessibilityState={{ checked: baselineNoteId === n.id }}
                 >
-                  <Text style={styles.optionText}>{n.title || 'Untitled Routine'}</Text>
+                  <Text style={[styles.optionText, baselineNoteId === n.id && styles.optionTextSelected]}>{n.title || 'Untitled Routine'}</Text>
                 </Pressable>
               ))
             )}
@@ -203,7 +214,7 @@ export function RecoveryBlockStartModal({
             <Text style={styles.sectionLabel}>Recovery Week 1</Text>
             {weekNoteFixed ? (
               <View style={[styles.optionRow, styles.optionRowSelected]}>
-                <Text style={styles.optionText}>{presetNote?.title || 'Untitled Routine'}</Text>
+                <Text style={[styles.optionText, styles.optionTextSelected]}>{presetNote?.title || 'Untitled Routine'}</Text>
               </View>
             ) : (
               <>
@@ -245,7 +256,7 @@ export function RecoveryBlockStartModal({
                         accessibilityLabel={`Use ${n.title || 'Untitled Routine'} as Recovery Week 1`}
                         accessibilityState={{ checked: weekNoteId === n.id }}
                       >
-                        <Text style={styles.optionText}>{n.title || 'Untitled Routine'}</Text>
+                        <Text style={[styles.optionText, weekNoteId === n.id && styles.optionTextSelected]}>{n.title || 'Untitled Routine'}</Text>
                       </Pressable>
                     ))
                   )
@@ -253,7 +264,7 @@ export function RecoveryBlockStartModal({
                   <TextInput
                     style={styles.input}
                     placeholder="Recovery Week 1 note title"
-                    placeholderTextColor={colors.textMuted}
+                    placeholderTextColor={kua.onSurfaceVariant}
                     value={newNoteTitle}
                     onChangeText={setNewNoteTitle}
                     accessibilityLabel="Recovery Week 1 note title"
@@ -272,7 +283,7 @@ export function RecoveryBlockStartModal({
             <TextInput
               style={styles.input}
               placeholder="e.g. torn hamstring, 8 weeks off"
-              placeholderTextColor={colors.textMuted}
+              placeholderTextColor={kua.onSurfaceVariant}
               value={reason}
               onChangeText={setReason}
               maxLength={MAX_RECOVERY_REASON_LENGTH}
@@ -309,65 +320,67 @@ export function RecoveryBlockStartModal({
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+const scrim = (mode) => mode === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)';
+
+const createStyles = (kua, mode, colors) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: colors.overlay,
+    backgroundColor: scrim(mode),
     justifyContent: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: SPACING.margin,
   },
   sheet: {
-    backgroundColor: colors.card,
-    borderRadius: 20,
+    backgroundColor: kua.surfaceCard,
+    borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua.surfaceBorder,
     maxHeight: '85%',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingHorizontal: SPACING['space-lg'],
+    paddingTop: SPACING['space-lg'],
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: kua.surfaceBorder,
     gap: 8,
   },
   title: {
     flex: 1,
     fontSize: 17,
     fontWeight: '700',
-    color: colors.text,
+    color: kua.onSurface,
   },
   closeBtn: {
     padding: 4,
   },
   closeBtnText: {
     fontSize: 16,
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
     fontWeight: '600',
   },
   body: {
     flexShrink: 1,
   },
   bodyContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: SPACING['space-lg'],
     paddingTop: 16,
     paddingBottom: 8,
     gap: 10,
   },
   explainer: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
     marginBottom: 4,
   },
   errorBanner: {
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: colors.cardErrorBg,
+    borderRadius: GEOMETRY['radius-lg'],
+    backgroundColor: kua.error,
     borderWidth: 1,
-    borderColor: colors.cardErrorBg,
+    borderColor: kua.error,
   },
   errorBannerText: {
     fontSize: 13,
@@ -377,35 +390,39 @@ const createStyles = (colors) => StyleSheet.create({
   sectionLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginTop: 6,
   },
   emptyText: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
   },
   hintText: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
   },
   optionRow: {
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-    backgroundColor: colors.background,
+    borderColor: kua.surfaceBorder,
+    backgroundColor: kua.background,
   },
   optionRowSelected: {
-    borderColor: colors.accent,
-    backgroundColor: colors.chipBackground,
+    borderColor: kua.primary,
+    backgroundColor: kua.primaryContainer,
   },
   optionText: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.text,
+    color: kua.onSurface,
+  },
+  optionTextSelected: {
+    fontWeight: '800',
+    color: kua.primaryOnContainer,
   },
   toggleRow: {
     flexDirection: 'row',
@@ -414,52 +431,52 @@ const createStyles = (colors) => StyleSheet.create({
   toggleBtn: {
     flex: 1,
     paddingVertical: 8,
-    borderRadius: 10,
+    borderRadius: GEOMETRY['radius-lg'],
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-    backgroundColor: colors.background,
+    borderColor: kua.surfaceBorder,
+    backgroundColor: kua.background,
   },
   toggleBtnActive: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
+    backgroundColor: kua.primary,
+    borderColor: kua.primary,
   },
   toggleBtnText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
   },
   toggleBtnTextActive: {
-    color: colors.onAccent,
+    color: kua.onPrimary,
   },
   input: {
-    ...createInputStyle(colors),
+    ...createInputStyle({ inputBackground: kua.background, inputBorder: kua.surfaceBorder, text: kua.onSurface }),
   },
   footer: {
     flexDirection: 'row',
     gap: 12,
-    padding: 20,
+    padding: SPACING['space-lg'],
     borderTopWidth: 1,
-    borderTopColor: colors.cardBorder,
+    borderTopColor: kua.surfaceBorder,
   },
   footerBtn: {
     flex: 1,
     paddingVertical: 14,
-    borderRadius: 14,
+    borderRadius: GEOMETRY['radius-xl'],
     alignItems: 'center',
   },
   footerBtnSecondary: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua.surfaceBorder,
   },
   footerBtnSecondaryText: {
     fontSize: 15,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
   },
   footerBtnPrimary: {
-    backgroundColor: colors.accent,
+    backgroundColor: kua.primary,
   },
   footerBtnDisabled: {
     opacity: 0.5,
@@ -467,6 +484,6 @@ const createStyles = (colors) => StyleSheet.create({
   footerBtnPrimaryText: {
     fontSize: 15,
     fontWeight: '700',
-    color: colors.onAccent,
+    color: kua.onPrimary,
   },
 });

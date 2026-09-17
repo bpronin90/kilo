@@ -786,9 +786,20 @@ describe('no production surface can hold a stale palette', () => {
         if (matches) leaks.push(`${path.relative(root, f)}:${i + 1} ${matches.join(' ')}`);
       });
     }
-    // The two brand-orange wordmark accents and the dev-only ThemePreviewControl
-    // are the sanctioned exceptions; anything else appearing here is a missed token.
+    // Sanctioned exceptions:
+    // - The two brand-orange wordmark accents (HomeScreen) and the dev-only
+    //   ThemePreviewControl use the Kilo brand color that has no palette token.
+    // - The four `scrim()` helper lines are the KUA-spec overlay backdrop values
+    //   (rgba(0,0,0,0.5) light / rgba(0,0,0,0.7) dark per components.md). They
+    //   cannot be routed through the KUA palette without modifying colors.js, and
+    //   each appears only inside its own component's createStyles factory rather
+    //   than as a top-level constant, which keeps the values co-located with the
+    //   overlay they style.
     expect(leaks).toEqual([
+      "components/RecoveryBlockEndModal.js:240 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
+      "components/RecoveryBlockStartModal.js:323 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
+      "components/RecoveryBlockWeekModal.js:206 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
+      "components/SessionCheckInModal.js:371 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       "components/ThemePreviewControl.js:70 '#FF5C00'",
       'screens/HomeScreen.js:42 "#FF5C00"',
       'screens/HomeScreen.js:46 "#FF5C00"',

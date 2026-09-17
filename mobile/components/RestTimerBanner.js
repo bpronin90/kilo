@@ -1,7 +1,8 @@
 import React from 'react';
-import { Dimensions, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Dimensions, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
+import { GEOMETRY } from '../theme/spacing';
 
 function formatCountdown(ms) {
   const totalSec = Math.ceil(ms / 1000);
@@ -48,12 +49,21 @@ export function RestTimerBanner({
   // while the component is idle (returns null).
   style,
 }) {
-  const styles = useThemedStyles(createStyles);
-  const { colors } = useTheme();
+  const { colors, kuaPalette: kua, mode } = useTheme();
+  const styles = React.useMemo(() => createStyles(kua, mode, colors), [kua, mode, colors]);
   const [expanded, setExpanded] = React.useState(false);
   const [anchor, setAnchor] = React.useState(null);
   const [actionsShown, setActionsShown] = React.useState(false);
+  const [reduceMotion, setReduceMotion] = React.useState(false);
   const toggleRef = React.useRef(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    AccessibilityInfo.isReduceMotionEnabled().then(v => {
+      if (!cancelled) setReduceMotion(!!v);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const idleStart = !isRunning && !justElapsed && showStart;
 
@@ -97,12 +107,12 @@ export function RestTimerBanner({
           accessibilityLabel="Rest timer"
           accessibilityState={{ expanded }}
         >
-          <MaterialIcons name="timer" size={22} color={colors.accent} accessible={false} />
+          <MaterialIcons name="timer" size={22} color={kua.primary} accessible={false} />
         </Pressable>
         <Modal
           visible={expanded}
           transparent
-          animationType="fade"
+          animationType={reduceMotion ? 'none' : 'fade'}
           onRequestClose={() => setExpanded(false)}
         >
           <View style={styles.menuRoot}>
@@ -156,7 +166,7 @@ export function RestTimerBanner({
             accessibilityHint="Shows the cancel action"
             accessibilityState={{ expanded: actionsShown }}
           >
-            <MaterialIcons name="timer" size={16} color={colors.text} accessible={false} />
+            <MaterialIcons name="timer" size={16} color={kua.onSurface} accessible={false} />
             <Text style={styles.countdown}>{formatCountdown(remainingMs)}</Text>
           </Pressable>
           {!backgroundAlertAvailable && (
@@ -181,7 +191,7 @@ export function RestTimerBanner({
   return (
     <View style={[styles.pillOuter, style]} pointerEvents="box-none">
       <View style={styles.pill} accessibilityRole="summary">
-        <MaterialIcons name="check-circle" size={16} color={colors.success} accessible={false} />
+        <MaterialIcons name="check-circle" size={16} color={kua.success} accessible={false} />
         <Text style={styles.doneText}>Rest over</Text>
         <Pressable
           onPress={onDismissDone}
@@ -197,7 +207,7 @@ export function RestTimerBanner({
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+const createStyles = (kua, mode, colors) => StyleSheet.create({
   // The collapsed compact control is just the icon button; the wrapper adds no
   // size of its own and only anchors the (Modal-hosted) menu.
   compactWrap: {
@@ -208,8 +218,8 @@ const createStyles = (colors) => StyleSheet.create({
     minWidth: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 12,
-    backgroundColor: colors.chipBackground,
+    borderRadius: GEOMETRY['radius-xl'],
+    backgroundColor: kua.primaryContainer,
   },
   // Full-screen host inside the Modal: a scrim and the anchored menu as
   // siblings.
@@ -231,10 +241,10 @@ const createStyles = (colors) => StyleSheet.create({
     rowGap: 8,
     maxWidth: 240,
     padding: 8,
-    borderRadius: 12,
-    backgroundColor: colors.card,
+    borderRadius: GEOMETRY['radius-xl'],
+    backgroundColor: kua.surfaceCard,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua.surfaceBorder,
     elevation: 8,
     shadowColor: colors.shadowColor,
     shadowOpacity: 0.18,
@@ -247,13 +257,15 @@ const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 12,
-    backgroundColor: colors.chipBackground,
+    borderRadius: GEOMETRY['radius-xl'],
+    backgroundColor: kua.primaryContainer,
+    borderWidth: 1,
+    borderColor: kua.primaryContainerBorder,
   },
   choiceText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.accent,
+    color: kua.primaryOnContainer,
   },
   // App-shell running / completion pill. `pillOuter` is a full-width flow item
   // that only centers the pill; `box-none` keeps the empty space beside it
@@ -272,9 +284,9 @@ const createStyles = (colors) => StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 999,
-    backgroundColor: colors.panelBackground,
+    backgroundColor: kua.surfaceCard,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua.surfaceBorder,
     elevation: 6,
     shadowColor: colors.shadowColor,
     shadowOpacity: 0.15,
@@ -295,22 +307,23 @@ const createStyles = (colors) => StyleSheet.create({
   countdown: {
     fontSize: 16,
     fontWeight: '800',
-    color: colors.text,
+    color: kua.onSurface,
     minWidth: 44,
     textAlign: 'center',
+    fontVariant: ['tabular-nums'],
   },
   warning: {
     fontSize: 11,
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
   },
   doneText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.success,
+    color: kua.success,
   },
   actionText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.accent,
+    color: kua.primary,
   },
 });

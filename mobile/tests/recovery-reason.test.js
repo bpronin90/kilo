@@ -781,3 +781,107 @@ describe('AnalyticsRecoverySection: completed history carries the reason', () =>
       .toBe('torn hamstring');
   });
 });
+
+// ── RecoveryInclusionToggle KUA token application (#1100) ─────────────────────
+
+describe('RecoveryInclusionToggle KUA token application (#1100)', () => {
+  const { RecoveryInclusionToggle } = require('../components/RecoveryInclusionToggle');
+  const { ThemeProvider } = require('../theme/ThemeContext');
+  const { KUA_PALETTES } = require('../theme/colors');
+  const { Switch } = require('react-native');
+  const {
+    setAppearancePreference,
+    __resetAppearancePreferenceForTests,
+    __resetThemeSelectionForTests,
+  } = require('../lib/themePreference');
+
+  jest.mock('@expo/vector-icons/MaterialIcons', () => ({ __esModule: true, default: 'MaterialIcons' }));
+
+  const block = {
+    id: 'rb-1',
+    baseline_note_title: 'Push Pull Legs',
+    include_in_normal_analytics: false,
+  };
+
+  function flattenStyle(style) {
+    if (Array.isArray(style)) return Object.assign({}, ...style.filter(Boolean).map(flattenStyle));
+    return style || {};
+  }
+
+  function findAllNodes(json, pred) {
+    const results = [];
+    function walk(node) {
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) { node.forEach(walk); return; }
+      if (pred(node)) results.push(node);
+      (node.children || []).forEach(walk);
+    }
+    walk(json);
+    return results;
+  }
+
+  beforeEach(() => {
+    __resetThemeSelectionForTests();
+    __resetAppearancePreferenceForTests();
+  });
+
+  function renderToggle(props = {}) {
+    let component;
+    renderer.act(() => {
+      component = renderer.create(
+        React.createElement(ThemeProvider, null,
+          React.createElement(RecoveryInclusionToggle, { block, onToggle: jest.fn(), ...props })
+        )
+      );
+    });
+    return component;
+  }
+
+  test('native Switch component is present (native-control boundary preserved)', () => {
+    const component = renderToggle();
+    const switches = component.root.findAllByType(Switch);
+    expect(switches).toHaveLength(1);
+  });
+
+  test('inclusion label uses onSurface color (surrounding treatment — Hard Court Light)', () => {
+    const component = renderToggle();
+    const hcLight = KUA_PALETTES.hardCourt.light;
+    const json = component.toJSON();
+    const labelNodes = findAllNodes(json, n => {
+      const s = flattenStyle(n.props?.style);
+      return s.color === hcLight.onSurface && s.fontWeight === '700';
+    });
+    expect(labelNodes.length).toBeGreaterThan(0);
+  });
+
+  test('border uses surfaceBorder token (Hard Court Light)', () => {
+    const component = renderToggle();
+    const hcLight = KUA_PALETTES.hardCourt.light;
+    const json = component.toJSON();
+    const groupStyle = flattenStyle(json.props?.style);
+    expect(groupStyle.borderTopColor).toBe(hcLight.surfaceBorder);
+  });
+
+  test('error banner uses kua.error background (not hardcoded)', () => {
+    const component = renderToggle({ error: 'Could not save.' });
+    const hcLight = KUA_PALETTES.hardCourt.light;
+    const json = component.toJSON();
+    const errorNodes = findAllNodes(json, n => {
+      const s = flattenStyle(n.props?.style);
+      return s.backgroundColor === hcLight.error;
+    });
+    expect(errorNodes.length).toBeGreaterThan(0);
+  });
+
+  test('dark mode: label uses hard court dark onSurface token', () => {
+    const component = renderToggle();
+    renderer.act(() => { setAppearancePreference('dark'); });
+    const hcDark = KUA_PALETTES.hardCourt.dark;
+    const json = component.toJSON();
+    const labelNodes = findAllNodes(json, n => {
+      const s = flattenStyle(n.props?.style);
+      return s.color === hcDark.onSurface && s.fontWeight === '700';
+    });
+    expect(labelNodes.length).toBeGreaterThan(0);
+  });
+});

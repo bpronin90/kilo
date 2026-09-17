@@ -13,6 +13,7 @@
 
 import React, { useEffect, useState } from 'react';
 import {
+  AccessibilityInfo,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -23,8 +24,9 @@ import {
   View,
 } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 import { RECOVERY_INCLUSION_HELP } from './RecoveryInclusionToggle';
+import { GEOMETRY, SPACING } from '../theme/spacing';
 
 export function RecoveryBlockEndModal({
   visible,
@@ -38,13 +40,22 @@ export function RecoveryBlockEndModal({
   onConfirmComplete,
   onClose,
 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua, mode } = useTheme();
+  const styles = React.useMemo(() => createStyles(kua, mode, colors), [kua, mode, colors]);
+  const [reduceMotion, setReduceMotion] = useState(false);
 
   const storedInclusion = block?.include_in_normal_analytics === true;
   const [pendingInclusion, setPendingInclusion] = useState(storedInclusion);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    AccessibilityInfo.isReduceMotionEnabled().then(v => {
+      if (!cancelled) setReduceMotion(!!v);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (visible) {
@@ -97,7 +108,7 @@ export function RecoveryBlockEndModal({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={onClose}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       <KeyboardAvoidingView
         style={styles.overlay}
@@ -150,12 +161,12 @@ export function RecoveryBlockEndModal({
               <MaterialIcons
                 name={!pendingInclusion ? 'radio-button-checked' : 'radio-button-unchecked'}
                 size={20}
-                color={!pendingInclusion ? colors.accent : colors.textMuted}
+                color={!pendingInclusion ? kua.primary : kua.onSurfaceVariant}
                 accessible={false}
               />
               <View style={styles.optionInfo}>
                 <View style={styles.optionTitleRow}>
-                  <Text style={styles.optionTitle}>Keep them out of normal analytics</Text>
+                  <Text style={[styles.optionTitle, !pendingInclusion && styles.optionTitleSelected]}>Keep them out of normal analytics</Text>
                   {!storedInclusion && <Text style={styles.optionCurrent}>Your current setting</Text>}
                 </View>
                 <Text style={styles.optionCopy}>
@@ -175,12 +186,12 @@ export function RecoveryBlockEndModal({
               <MaterialIcons
                 name={pendingInclusion ? 'radio-button-checked' : 'radio-button-unchecked'}
                 size={20}
-                color={pendingInclusion ? colors.accent : colors.textMuted}
+                color={pendingInclusion ? kua.primary : kua.onSurfaceVariant}
                 accessible={false}
               />
               <View style={styles.optionInfo}>
                 <View style={styles.optionTitleRow}>
-                  <Text style={styles.optionTitle}>Count them with everything else</Text>
+                  <Text style={[styles.optionTitle, pendingInclusion && styles.optionTitleSelected]}>Count them with everything else</Text>
                   {storedInclusion && <Text style={styles.optionCurrent}>Your current setting</Text>}
                 </View>
                 <Text style={styles.optionCopy}>
@@ -226,69 +237,71 @@ export function RecoveryBlockEndModal({
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+const scrim = (mode) => mode === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)';
+
+const createStyles = (kua, mode, colors) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: colors.overlay,
+    backgroundColor: scrim(mode),
     justifyContent: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: SPACING.margin,
   },
   sheet: {
-    backgroundColor: colors.card,
-    borderRadius: 20,
+    backgroundColor: kua.surfaceCard,
+    borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua.surfaceBorder,
     maxHeight: '85%',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingHorizontal: SPACING['space-lg'],
+    paddingTop: SPACING['space-lg'],
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: kua.surfaceBorder,
     gap: 8,
   },
   title: {
     flex: 1,
     fontSize: 17,
     fontWeight: '700',
-    color: colors.text,
+    color: kua.onSurface,
   },
   closeBtn: {
     padding: 4,
   },
   closeBtnText: {
     fontSize: 16,
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
     fontWeight: '600',
   },
   body: {
     flexShrink: 1,
   },
   bodyContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: SPACING['space-lg'],
     paddingTop: 16,
     paddingBottom: 8,
     gap: 10,
   },
   summary: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
   },
   assurance: {
     fontSize: 12,
     lineHeight: 17,
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
   },
   errorBanner: {
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: colors.cardErrorBg,
+    borderRadius: GEOMETRY['radius-lg'],
+    backgroundColor: kua.error,
     borderWidth: 1,
-    borderColor: colors.cardErrorBg,
+    borderColor: kua.error,
   },
   errorBannerText: {
     fontSize: 13,
@@ -298,7 +311,7 @@ const createStyles = (colors) => StyleSheet.create({
   kicker: {
     fontSize: 11,
     fontWeight: '800',
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     marginTop: 4,
@@ -309,14 +322,14 @@ const createStyles = (colors) => StyleSheet.create({
     gap: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-    backgroundColor: colors.background,
+    borderColor: kua.surfaceBorder,
+    backgroundColor: kua.background,
   },
   optionRowSelected: {
-    borderColor: colors.accent,
-    backgroundColor: colors.chipBackground,
+    borderColor: kua.primary,
+    backgroundColor: kua.primaryContainer,
   },
   optionInfo: {
     flex: 1,
@@ -331,51 +344,55 @@ const createStyles = (colors) => StyleSheet.create({
   optionTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.text,
+    color: kua.onSurface,
+  },
+  optionTitleSelected: {
+    fontWeight: '800',
+    color: kua.primaryOnContainer,
   },
   optionCurrent: {
     fontSize: 10,
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
-    color: colors.chipAccentText,
+    color: kua.primaryOnContainer,
   },
   optionCopy: {
     fontSize: 12,
     lineHeight: 17,
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
   },
   footnote: {
     fontSize: 12,
     lineHeight: 17,
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
     marginTop: 2,
   },
   footer: {
     flexDirection: 'row',
     gap: 12,
-    padding: 20,
+    padding: SPACING['space-lg'],
     borderTopWidth: 1,
-    borderTopColor: colors.cardBorder,
+    borderTopColor: kua.surfaceBorder,
   },
   footerBtn: {
     flex: 1,
     paddingVertical: 14,
-    borderRadius: 14,
+    borderRadius: GEOMETRY['radius-xl'],
     alignItems: 'center',
   },
   footerBtnSecondary: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua.surfaceBorder,
   },
   footerBtnSecondaryText: {
     fontSize: 15,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua.onSurfaceVariant,
   },
   footerBtnPrimary: {
-    backgroundColor: colors.accent,
+    backgroundColor: kua.primary,
   },
   footerBtnDisabled: {
     opacity: 0.5,
@@ -383,6 +400,6 @@ const createStyles = (colors) => StyleSheet.create({
   footerBtnPrimaryText: {
     fontSize: 15,
     fontWeight: '700',
-    color: colors.onAccent,
+    color: kua.onPrimary,
   },
 });
