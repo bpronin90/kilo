@@ -35,7 +35,10 @@ PR #1101, which implemented the retired contract, does not satisfy this roadmap.
 
 - **Three themes, two modes each.** Hard Court (cobalt/navy), Clay Court (terracotta/earthen), Grass Court (court green/forest). Six fully-specified designs. No theme shares a palette with another; visual identity is preserved across the implementation.
 - **Shared foundations before theme work.** Typography, tokens, and base component scaffolding land first so every subsequent card builds on a stable base.
-- **No behavior changes hidden in visual cards.** Every card is purely visual. Navigation, state, data contracts, calculations, and persistence are unchanged. Any visual target requiring a behavior change stops and goes to the owner for explicit written approval.
+- **No behavior changes hidden in visual cards.** Screen-migration cards are
+  purely visual. Navigation, data contracts, and calculations remain unchanged.
+  D5 and Phase 5 own the explicitly approved theme-selection preference and UI;
+  any other behavior or persistence change stops and goes to the owner.
 - **Device sign-off for visual cards.** Each screen-level visual card requires owner device sign-off before it is closed.
 - **Incremental and reviewable.** Cards are sized so each produces a reviewable, mergeable PR in isolation.
 
@@ -97,11 +100,37 @@ Confirm or establish locally bundled Material-equivalent icon set. Verify tab ba
 - **Acceptance:** five tab bar icons render; `on-surface-variant` for inactive, `primary` for active; no CDN dependency
 - **Device sign-off:** required
 
+### D5 — Theme preview and selection plumbing
+
+Establish theme identity as a preference independent from appearance mode before
+any screen migration begins. Add a development/device preview control that lets
+the owner switch among Hard Court, Clay Court, and Grass Court while retaining
+the existing System / Light / Dark choice. The preview control is an
+implementation and review aid, not the final Settings UX.
+
+- Persist theme identity at `kilo.theme_selection` (or an explicitly documented
+  equivalent), separate from `kilo.appearance_preference`
+- Preserve the existing appearance-preference normalization and native System /
+  Light / Dark synchronization
+- Make all six theme/mode combinations selectable in development and owner
+  device-review builds without editing source code or rebuilding between themes
+- Do not expose an unfinished production-facing picker or change sync, backup,
+  or other data contracts
+- **Acceptance:** preference restoration, invalid-value fallback, theme/mode
+  independence, and all six preview combinations have automated coverage
+- **Device sign-off:** required — owner confirms that all six combinations can
+  be selected before the first Phase 4 screen card starts
+
 ---
 
 ## Phase 4 — Screen migration
 
-Each card migrates one screen. All cards in this phase require the Phase 3 foundation cards to be merged first. Each card requires device sign-off from the owner.
+Each card migrates one screen. All cards in this phase require the Phase 3
+foundation cards, including D5's preview mechanism, to be merged first. Each
+card requires the owner to inspect that screen on a physical device in all six
+theme/mode combinations before approval: Hard Court, Clay Court, and Grass
+Court, each in light and dark mode. System mode must also be checked for correct
+live mode resolution without treating it as a seventh visual design.
 
 Cards should be opened as separate issues after Phase 2 (#1095) is owner-approved. The issue bodies follow the product contract in AGENTS.md.
 
@@ -135,11 +164,15 @@ Apply KUA tokens. List rows, section headers, native controls.
 
 ## Phase 5 — Theme selection UI
 
-Introduce a theme picker that allows the user to select Hard Court, Clay Court, or Grass Court. Requires Phase 4 to be complete.
+Replace the development preview control with the polished production-facing
+theme picker after all Phase 4 screens have passed six-combination owner review.
 
 - Theme picker screen (under Settings or a new entry point TBD with owner)
-- Theme selection persists via existing `themePreference` mechanism
+- Reuse the D5 theme-selection plumbing and its separate
+  `kilo.theme_selection` preference; do not overload the existing appearance
+  preference
 - System / Light / Dark mode toggle continues to work within each selected theme
+- Remove or disable the development-only preview entry point in production
 - No change to data contracts, sync, or backup
 
 ---
@@ -149,6 +182,8 @@ Introduce a theme picker that allows the user to select Hard Court, Clay Court, 
 A read-only completeness and consistency check before the redesign is considered done.
 
 - All six token sets render correctly on physical device in light and dark mode for each theme
+- Every Phase 4 screen has an owner sign-off record covering all six
+  theme/mode combinations
 - Typography renders offline with no fallback
 - All chart series are legible without color alone (label/shape present)
 - All documented WCAG pairs pass measured contrast on device
@@ -163,7 +198,8 @@ A read-only completeness and consistency check before the redesign is considered
 ## What this roadmap does not open
 
 - No production code changes in Phase 2 (this issue)
-- No behavior changes in any phase
-- No chart data, calculation, analytics, sync, database, or persistence changes
-- No new product features
+- No behavior changes outside the explicitly scoped theme preview, preference,
+  and production selector in D5 and Phase 5
+- No chart data, calculation, analytics, sync, database, or backup changes
+- No unrelated product features
 - No Analog Iron implementation work
