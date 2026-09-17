@@ -277,27 +277,47 @@ The following tokens carry fixed meaning across all three themes and must not va
 
 ### Shared — Light mode
 
-All pairs verified against all three light canvases; the most-restrictive canvas (HC Light `#F0F4FC`) determines the minimum ratio shown.
+Verified against all three themes' `surface` and `surface-card` backgrounds (6 surfaces total). Every token passes AA (≥4.5:1) on every surface. Minimum ratio is the lowest value across all 6.
 
-| Token | Value | Contrast (min vs HC Light) | Semantic use |
+| Token | Value | Min contrast (worst surface) | Semantic use |
 |---|---|---|---|
-| `success` | `#006C4A` | 5.87:1 AA | Completed / confirmed state (same green family as completion) |
-| `warning` | `#B45309` | 4.56:1 AA | Caution requiring attention; amber-700 |
-| `chart-series-1` | `#0C7489` | 4.92:1 AA | First chart series — dark teal |
-| `chart-series-2` | `#C2410C` | 4.70:1 AA | Second chart series — orange-700 |
-| `chart-series-3` | `#7C3AED` | 5.17:1 AA | Third chart series — violet |
+| `success` | `#006C4A` | 5.80:1 AA (HC surface `#EEF3F9`) | Completed / confirmed state (same green family as completion) |
+| `warning` | `#B45309` | 4.50:1 AA (HC surface `#EEF3F9`) | Caution requiring attention; amber-700 |
+| `chart-series-1` | `#0C7489` | 4.86:1 AA (HC surface `#EEF3F9`) | First chart series — dark teal |
+| `chart-series-2` | `#C2410C` | 4.64:1 AA (HC surface `#EEF3F9`) | Second chart series — orange-700 |
+| `chart-series-3` | `#7C3AED` | 5.11:1 AA (HC surface `#EEF3F9`) | Third chart series — violet |
+
+Full 30-pair evidence (5 tokens × 6 surfaces):
+
+| Token | HC surface `#EEF3F9` | HC card `#FFFFFF` | CC surface `#F8F5EE` | CC card `#FFFDF9` | GC surface `#F4F8F5` | GC card `#FFFFFF` |
+|---|---|---|---|---|---|---|
+| `success #006C4A` | 5.80:1 AA | 6.47:1 AA | 5.95:1 AA | 6.37:1 AA | 6.04:1 AA | 6.47:1 AA |
+| `warning #B45309` | 4.50:1 AA | 5.02:1 AA | 4.61:1 AA | 4.94:1 AA | 4.68:1 AA | 5.02:1 AA |
+| `chart-series-1 #0C7489` | 4.86:1 AA | 5.42:1 AA | 4.98:1 AA | 5.33:1 AA | 5.06:1 AA | 5.42:1 AA |
+| `chart-series-2 #C2410C` | 4.64:1 AA | 5.18:1 AA | 4.76:1 AA | 5.10:1 AA | 4.83:1 AA | 5.18:1 AA |
+| `chart-series-3 #7C3AED` | 5.11:1 AA | 5.70:1 AA | 5.23:1 AA | 5.61:1 AA | 5.32:1 AA | 5.70:1 AA |
 
 ### Shared — Dark mode
 
-All pairs verified against all three dark canvases; the most-restrictive canvas (HC Dark `#101728`) determines the minimum ratio shown.
+Verified against all three themes' `surface` and `surface-card` backgrounds (6 surfaces total). Every token passes AA (≥4.5:1) on every surface. Minimum ratio is the lowest value across all 6.
 
-| Token | Value | Contrast (min vs HC Dark) | Semantic use |
+| Token | Value | Min contrast (worst surface) | Semantic use |
 |---|---|---|---|
-| `success` | `#10B981` | 7.04:1 AAA | Completed / confirmed state |
-| `warning` | `#FBBF24` | 10.70:1 AAA | Caution state; amber-300 |
-| `chart-series-1` | `#22D3EE` | 9.89:1 AAA | First chart series — teal |
-| `chart-series-2` | `#F59E0B` | 8.32:1 AAA | Second chart series — amber |
-| `chart-series-3` | `#A78BFA` | 6.57:1 AA | Third chart series — violet |
+| `success` | `#10B981` | 6.60:1 AAA (CC card `#1F1C1A`) | Completed / confirmed state |
+| `warning` | `#FBBF24` | 10.04:1 AAA (GC card `#15201A`) | Caution state; amber-300 |
+| `chart-series-1` | `#22D3EE` | 9.27:1 AAA (GC card `#15201A`) | First chart series — teal |
+| `chart-series-2` | `#F59E0B` | 7.80:1 AAA (GC card `#15201A`) | Second chart series — amber |
+| `chart-series-3` | `#A78BFA` | 6.16:1 AA (GC card `#15201A`) | Third chart series — violet |
+
+Full 30-pair evidence (5 tokens × 6 surfaces):
+
+| Token | HC surface `#080D18` | HC card `#101728` | CC surface `#141211` | CC card `#1F1C1A` | GC surface `#0C130F` | GC card `#15201A` |
+|---|---|---|---|---|---|---|
+| `success #10B981` | 7.66:1 AAA | 7.04:1 AAA | 7.36:1 AAA | 6.68:1 AAA | 7.42:1 AAA | 6.60:1 AAA |
+| `warning #FBBF24` | 11.64:1 AAA | 10.70:1 AAA | 11.19:1 AAA | 10.15:1 AAA | 11.28:1 AAA | 10.04:1 AAA |
+| `chart-series-1 #22D3EE` | 10.75:1 AAA | 9.89:1 AAA | 10.34:1 AAA | 9.38:1 AAA | 10.42:1 AAA | 9.27:1 AAA |
+| `chart-series-2 #F59E0B` | 9.04:1 AAA | 8.32:1 AAA | 8.70:1 AAA | 7.89:1 AAA | 8.76:1 AAA | 7.80:1 AAA |
+| `chart-series-3 #A78BFA` | 7.14:1 AAA | 6.57:1 AA | 6.86:1 AAA | 6.23:1 AA | 6.92:1 AAA | 6.16:1 AA |
 
 ### Selection
 

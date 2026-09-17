@@ -138,7 +138,7 @@ Charts use a theme-neutral data palette — the theme primary color is not used 
 
 ### Line / area charts (Weight screen)
 
-- Line series: theme-neutral color set (e.g., teal `#0694A2`, amber `#D97706`, violet `#7C3AED`). Never use the theme primary for a data series.
+- Line series: theme-neutral color set (`chart-series-1` teal `#0C7489` light / `#22D3EE` dark; `chart-series-2` orange `#C2410C` light / `#F59E0B` dark; `chart-series-3` violet `#7C3AED` light / `#A78BFA` dark). Never use the theme primary for a data series.
 - Grid lines: `surface-border`
 - Axis labels: `on-surface-variant`, `label-sm`
 - Background: `surface` / `surface-card`
