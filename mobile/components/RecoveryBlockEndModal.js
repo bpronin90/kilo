@@ -54,7 +54,10 @@ export function RecoveryBlockEndModal({
     AccessibilityInfo.isReduceMotionEnabled().then(v => {
       if (!cancelled) setReduceMotion(!!v);
     }).catch(() => {});
-    return () => { cancelled = true; };
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', v => {
+      if (!cancelled) setReduceMotion(!!v);
+    });
+    return () => { cancelled = true; sub?.remove(); };
   }, []);
 
   useEffect(() => {
