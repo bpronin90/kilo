@@ -271,6 +271,42 @@ Athletic green on deep forest canvas.
 
 ---
 
+## Shared semantic tokens
+
+The following tokens carry fixed meaning across all three themes and must not vary by theme. D1 exports these values identically in every palette.
+
+### Shared — Light mode
+
+| Token | Value | Semantic use |
+|---|---|---|
+| `success` | `#006C4A` | Completed / confirmed state (same green family as completion) |
+| `warning` | `#B45309` | Caution requiring attention; amber-700 (5.0:1 on white ✓ AA) |
+| `chart-series-1` | `#0694A2` | First chart series — teal (graphic element, not text) |
+| `chart-series-2` | `#D97706` | Second chart series — amber (graphic element) |
+| `chart-series-3` | `#7C3AED` | Third chart series — violet (5.7:1 on white ✓ AA) |
+
+### Shared — Dark mode
+
+| Token | Value | Semantic use |
+|---|---|---|
+| `success` | `#10B981` | Completed / confirmed state |
+| `warning` | `#FBBF24` | Caution state; amber-300 (≥11:1 on all dark canvases ✓ AAA) |
+| `chart-series-1` | `#22D3EE` | First chart series — teal (10.8:1 on dark canvas ✓ AAA) |
+| `chart-series-2` | `#F59E0B` | Second chart series — amber (9.4:1 on dark canvas ✓ AAA) |
+| `chart-series-3` | `#A78BFA` | Third chart series — violet (7.1:1 on dark canvas ✓ AAA) |
+
+### Selection
+
+`selection` maps to each theme's `primary-container` token. The selection highlight tint is the same surface used for tinted action backgrounds, keeping the selected state visually consistent with the theme.
+
+| Theme | Light `selection` | Dark `selection` |
+|---|---|---|
+| Hard Court | `#E1ECFB` | `#17233D` |
+| Clay Court | `#FBECE5` | `#341B13` |
+| Grass Court | `#E8F4EC` | `#132B1C` |
+
+---
+
 ## Semantic role contract
 
 The following roles carry fixed meaning across all three themes. Theme colors must not alter these meanings.
