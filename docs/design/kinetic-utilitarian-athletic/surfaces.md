@@ -86,17 +86,16 @@ The Home screen has no dedicated template. Apply KUA tokens and current product 
 
 ## Weight screen
 
-Charts only; no template coverage. Apply KUA tokens.
+No template coverage. Apply KUA tokens to the existing weight-entry, goal, and history surfaces.
 
 - Screen background: `background`
-- Chart background: `surface-card`
-- Chart grid lines: `surface-border`
-- Axis labels: `on-surface-variant`, `label-sm`
-- Data line: theme-neutral teal (`#0694A2` light; `#22D3EE` dark) — not the theme primary
-- PR markers: `completion` color + ✓ icon
-- Callout/tooltip: `surface-card-header` bg, `on-surface` text
-- Period selector: same segmented control treatment as Log screen but without the dot indicator
-- Behavior: current weight entry, graphing, and unit logic are unchanged
+- Weight entry section: `surface-card` bg, `on-surface` label, JetBrains Mono numeric input
+- Goal section: standard content card treatment
+- Weight history list: `surface-card` bg, `surface-border` dividers, `on-surface-variant` metadata
+- Empty states: centered `body-md` in `on-surface-variant`
+- Behavior: current weight entry, goal, unit logic, and history are unchanged
+
+> **Note:** The weight-trend `LineChart` callers (`AnalyticsWeightTrendsCard` 7-day and 30-day rolling averages) live on the Analytics screen, not WeightScreen. Chart token treatment is documented under Analytics below.
 
 ---
 
@@ -106,7 +105,14 @@ Charts and metric tiles; no template coverage. Apply KUA tokens.
 
 - Screen background: `background`
 - Tile cards: standard content card treatment
-- Bar chart series: theme-neutral amber (`#D97706` light; `#F59E0B` dark) for primary series; additional series use violet, teal
+- **Weight trends charts** (`AnalyticsWeightTrendsCard` — 7-day and 30-day rolling averages):
+  - Data line: theme-neutral teal (`#0694A2` light; `#22D3EE` dark) — not the theme primary
+  - PR markers: `completion` color + ✓ icon
+  - Callout/tooltip: `surface-card` bg, `on-surface` text
+  - Period selector: segmented control treatment without dot indicator
+  - Chart grid lines: `surface-border`; axis labels: `on-surface-variant`, `label-sm`
+- **Strength chart** (`AnalyticsStrengthSection` — 1K total over sessions): same teal series treatment
+- Bar chart series (other): theme-neutral amber (`#D97706` light; `#F59E0B` dark) for primary series; additional series use violet, teal
 - Metric tiles: `metric-display-mobile` (JetBrains Mono 700), `on-surface`; label `label-sm`, `on-surface-variant`
 - Section headings: same as Home
 - Behavior: current analytics calculations, data access, and navigation are unchanged
@@ -154,7 +160,11 @@ Existing React Native layout behavior is not changed by this design system. No m
 
 ## Theme/mode persistence
 
-- Theme selection and mode (light/dark/system) persist via the existing `themePreference` mechanism in `mobile/lib/themePreference.js`.
-- Three new theme tokens (Hard Court, Clay Court, Grass Court) replace the current single-palette tokens in `mobile/theme/colors.js`.
+The existing `themePreference` mechanism (`mobile/lib/themePreference.js`) accepts only `light`, `dark`, and `system` — it stores the appearance mode, not the palette theme. Theme selection (Hard Court / Clay Court / Grass Court) requires a **separate** persisted preference key alongside the existing appearance key.
+
+Implementation cards (Phase 5) must:
+- Add a `kilo.theme_selection` key (or equivalent) to AsyncStorage, independent of `kilo.appearance_preference`.
+- Accept `hard-court`, `clay-court`, or `grass-court`; default to `hard-court`.
+- Keep `ThemeContext` logic: the appearance preference continues to resolve `light`/`dark`/`system`; the theme selection picks which of the three palettes to apply for that mode.
 - System appearance synchronization via `ThemeContext.applyNativeAppearance()` is preserved.
-- The current `ThemeContext` interface is maintained; implementation cards may add theme-selection UI and the three new palette sets without changing the context contract.
+- The `kilo.appearance_preference` key, its normalization, and the `setAppearancePreference` / `useAppearancePreference` API are unchanged.

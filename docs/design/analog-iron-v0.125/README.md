@@ -64,12 +64,11 @@ The implementation uses these supplied values:
 - Vermilion red is reserved for execution and exceptional states, not
   decoration.
 
-## Visual approval package (D0 — #1095)
+## Visual approval package (D0 — #1095) — ARCHIVED
 
-This section is the decision artifact for D1/D4/D8/D9. It documents chart
-treatment alternatives, token tables, contrast evidence, font samples, and
-native/hosted control treatment. D1, D4, D8, and D9 may not proceed until
-the owner approval checklist at the end of this section is fully checked.
+> **This section is historical record only.** The Analog Iron direction is retired. It does not gate D1, D4, D8, D9, or any other implementation card on the current roadmap. The active design specification is the KUA three-theme system at `docs/design/kinetic-utilitarian-athletic/`.
+
+This section documented chart treatment alternatives, token tables, contrast evidence, font samples, and native/hosted control treatment under the Analog Iron direction.
 
 Full decision documentation lives in:
 - Chart alternatives, token tables, contrast evidence: §6–8 of `visual-language-spec.md`

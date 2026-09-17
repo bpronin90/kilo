@@ -22,13 +22,16 @@ Cobalt blue on cool blue-gray canvas. US Open hard-court aesthetic.
 | `primary` | `#0A4ABF` | Active states, primary CTA, tab bar active, card border |
 | `primary-container` | `#E1ECFB` | Tinted action backgrounds (TRACK untracked state) |
 | `primary-container-border` | `#9BC1F5` | Tinted action borders |
-| `primary-on-container` | `#083B9A` | Text on primary-container |
+| `primary-on-container` | `#083B9A` | Text on primary-container (TRACK button) |
+| `surface-card-header` | `#EEF3F9` | Card header section background |
+| `surface-section` | `#EEF3F9` | Section header row background within cards |
 | `on-surface` | `#0E1726` | Primary body text, headings |
 | `on-surface-variant` | `#5A687A` | Secondary text, placeholders, inactive tab labels |
 | `completion` | `#006C4A` | Completed/tracked state (green) |
 | `on-primary` | `#FFFFFF` | Text on primary-colored surfaces |
 | `tab-bar-bg` | `#FFFFFF` | Tab bar background |
 | `header-bg` | `#EEF3F9` | Page header background |
+| `error` | `#BA1A1A` | Danger button background (shared all themes) |
 
 ### WCAG Contrast
 
@@ -67,9 +70,11 @@ Electric blue on deep navy canvas.
 | `on-surface` | `#F0F4FC` | Primary body text |
 | `on-surface-variant` | `#8C9BB3` | Secondary text, inactive states |
 | `completion` | `#10B981` | Completed/tracked state (green) |
-| `on-primary` | `#FFFFFF` | Text on primary-colored surfaces |
+| `on-primary` | `#080D18` | Text on primary-colored surfaces |
 | `tab-bar-bg` | `#080D18` | Tab bar background |
 | `header-bg` | `#080D18` | Page header background |
+| `primary-on-container` | `#60A5FA` | Text on primary-container (TRACK button) |
+| `error` | `#BA1A1A` | Danger button background (shared all themes) |
 
 ### WCAG Contrast
 
@@ -77,13 +82,13 @@ Electric blue on deep navy canvas.
 |---|---|---|---|
 | `#F0F4FC` / `#080D18` | 18.4:1 | AAA | Body text on canvas |
 | `#F0F4FC` / `#101728` | 15.2:1 | AAA | Body text on card |
-| `#3B82F6` / `#080D18` | 5.1:1 | AA | Primary on canvas (tab active) |
-| `#60A5FA` / `#080D18` | 7.3:1 | AA | Light primary on canvas |
-| `#60A5FA` / `#101728` | 6.0:1 | AA | Light primary on card |
-| `#60A5FA` / `#17233D` | 3.8:1 | AA (large) | Label on tinted container (TRACK text) |
+| `#3B82F6` / `#080D18` | 5.3:1 | AA | Primary on canvas (tab active) |
+| `#60A5FA` / `#080D18` | 7.6:1 | AA | Light primary on canvas |
+| `#60A5FA` / `#101728` | 7.0:1 | AA | Light primary on card |
+| `#60A5FA` / `#17233D` | 6.1:1 | AA | TRACK button text on container |
 | `#8C9BB3` / `#080D18` | 6.5:1 | AA | Muted text on canvas |
 | `#8C9BB3` / `#101728` | 5.3:1 | AA | Muted text on card |
-| `#FFFFFF` / `#3B82F6` | 4.7:1 | AA | White text on primary button |
+| `#080D18` / `#3B82F6` | 5.3:1 | AA | Dark text on primary button |
 
 ---
 
@@ -99,11 +104,14 @@ Terracotta on warm limestone canvas. Roland Garros clay aesthetic.
 | `surface` | `#F8F5EE` | Screen background |
 | `surface-card` | `#FFFDF9` | Card background (limestone 50) |
 | `surface-elevated` | `#F2EDE4` | Slightly elevated sections (limestone 200) |
+| `surface-card-header` | `#F2EDE4` | Card header section background |
+| `surface-section` | `#F2EDE4` | Section header row background within cards |
 | `surface-border` | `#E5DFD3` | Dividers (limestone 300) |
-| `primary` | `#C85A32` | Active states, primary CTA, tab bar active, card border |
-| `primary-dark` | `#A23E19` | Pressed/hover primary |
+| `primary` | `#A23E19` | Active states, primary CTA, tab bar active, card border |
+| `primary-dark` | `#7E2E0F` | Pressed/hover primary |
 | `primary-container` | `#FBECE5` | Tinted action backgrounds |
 | `primary-container-border` | `#E89A7A` | Tinted action borders |
+| `primary-on-container` | `#7E2E0F` | Text on primary-container (TRACK button) |
 | `on-surface` | `#1A1918` | Primary body text (ink) |
 | `on-surface-variant` | `#585550` | Secondary text (ink-variant) |
 | `on-surface-muted` | `#7E7870` | Metadata, placeholder text (limestone-muted) |
@@ -111,6 +119,7 @@ Terracotta on warm limestone canvas. Roland Garros clay aesthetic.
 | `on-primary` | `#FFFFFF` | Text on primary-colored surfaces |
 | `tab-bar-bg` | `#F8F5EE` | Tab bar background |
 | `header-bg` | `#F8F5EE` | Page header background |
+| `error` | `#BA1A1A` | Danger button background (shared all themes) |
 
 ### WCAG Contrast
 
@@ -118,13 +127,14 @@ Terracotta on warm limestone canvas. Roland Garros clay aesthetic.
 |---|---|---|---|
 | `#1A1918` / `#F8F5EE` | 17.3:1 | AAA | Body text on canvas |
 | `#1A1918` / `#FFFDF9` | 18.0:1 | AAA | Body text on card |
-| `#C85A32` / `#F8F5EE` | 4.7:1 | AA | Primary on canvas (tab active, card title) |
-| `#C85A32` / `#FFFDF9` | 4.9:1 | AA | Primary on card |
+| `#A23E19` / `#F8F5EE` | 6.0:1 | AA | Primary on canvas (tab active, card title) |
+| `#A23E19` / `#FFFDF9` | 6.4:1 | AA | Primary on card |
 | `#585550` / `#F8F5EE` | 7.0:1 | AA | Secondary text on canvas |
 | `#585550` / `#FFFDF9` | 7.3:1 | AA | Secondary text on card |
 | `#7E7870` / `#F8F5EE` | 4.6:1 | AA | Muted text on canvas |
 | `#1E5B3A` / `#FFFDF9` | 7.4:1 | AA | Completion label on card |
-| `#FFFFFF` / `#C85A32` | 4.9:1 | AA | White text on primary button |
+| `#7E2E0F` / `#FBECE5` | 8.1:1 | AAA | TRACK button text on container |
+| `#FFFFFF` / `#A23E19` | 6.5:1 | AA | White text on primary button |
 
 ---
 
@@ -146,12 +156,15 @@ Clay orange on deep earthen canvas.
 | `primary-light` | `#F08B62` | Lighter primary for icon accents |
 | `primary-container` | `#341B13` | Tinted action backgrounds (TRACK untracked) |
 | `primary-container-border` | `#5C2E1E` | Tinted action borders |
+| `primary-on-container` | `#F08B62` | Text on primary-container (TRACK button) |
+| `surface-section` | `#1A1816` | Section header row background within cards |
 | `on-surface` | `#F5F3F0` | Primary body text |
 | `on-surface-variant` | `#A89F96` | Secondary text, inactive states |
 | `completion` | `#2CA864` | Completed/tracked state (green) |
-| `on-primary` | `#FFFFFF` | Text on primary-colored surfaces |
+| `on-primary` | `#141211` | Text on primary-colored surfaces |
 | `tab-bar-bg` | `#141211` | Tab bar background |
 | `header-bg` | `#141211` | Page header background |
+| `error` | `#BA1A1A` | Danger button background (shared all themes) |
 
 ### WCAG Contrast
 
@@ -160,10 +173,10 @@ Clay orange on deep earthen canvas.
 | `#F5F3F0` / `#141211` | 17.0:1 | AAA | Body text on canvas |
 | `#F5F3F0` / `#1F1C1A` | 14.1:1 | AAA | Body text on card |
 | `#D86538` / `#141211` | 4.8:1 | AA | Primary on canvas (tab active) |
-| `#F08B62` / `#341B13` | 4.5:1 | AA | Light primary on tinted container |
+| `#F08B62` / `#341B13` | 6.5:1 | AA | TRACK button text on container |
 | `#A89F96` / `#141211` | 7.5:1 | AA | Muted text on canvas |
 | `#A89F96` / `#1F1C1A` | 6.2:1 | AA | Muted text on card |
-| `#FFFFFF` / `#D86538` | 4.5:1 | AA | White text on primary button |
+| `#141211` / `#D86538` | 5.2:1 | AA | Dark text on primary button |
 | `#2CA864` / `#141211` | 5.6:1 | AA | Completion state on canvas |
 
 ---
@@ -180,6 +193,8 @@ Court green on pale green canvas. Wimbledon grass aesthetic.
 | `surface` | `#F4F8F5` | Screen background |
 | `surface-card` | `#FFFFFF` | Card background |
 | `surface-subtle` | `#F2F7F4` | Section headers within cards (surface-subtle) |
+| `surface-card-header` | `#F4F8F5` | Card header section background |
+| `surface-section` | `#F2F7F4` | Section header row background within cards |
 | `surface-border` | `#E0EAE3` | Dividers, inactive card borders |
 | `surface-seg` | `#E8EFEA` | Segmented control background |
 | `surface-seg-border` | `#DEE7E1` | Segmented control border |
@@ -194,6 +209,7 @@ Court green on pale green canvas. Wimbledon grass aesthetic.
 | `on-primary` | `#FFFFFF` | Text on primary-colored surfaces |
 | `tab-bar-bg` | `#F4F8F5` | Tab bar background |
 | `header-bg` | `#F4F8F5` | Page header background |
+| `error` | `#BA1A1A` | Danger button background (shared all themes) |
 
 ### WCAG Contrast
 
@@ -203,7 +219,7 @@ Court green on pale green canvas. Wimbledon grass aesthetic.
 | `#111813` / `#FFFFFF` | 19.3:1 | AAA | Body text on card |
 | `#1E5B3A` / `#F4F8F5` | 7.2:1 | AA | Primary on canvas (tab active, card title) |
 | `#1E5B3A` / `#FFFFFF` | 7.8:1 | AA | Primary on card (card border, heading) |
-| `#14452B` / `#E8F4EC` | 6.8:1 | AA | Label on primary-container (TRACK text) |
+| `#14452B` / `#E8F4EC` | 6.8:1 | AA | TRACK button text on container |
 | `#556B5C` / `#F4F8F5` | 6.1:1 | AA | Muted text on canvas |
 | `#556B5C` / `#FFFFFF` | 6.6:1 | AA | Muted text on card |
 | `#FFFFFF` / `#1E5B3A` | 7.8:1 | AA | White text on primary button |
@@ -221,19 +237,23 @@ Athletic green on deep forest canvas.
 | `background` | `#0C130F` | App canvas (tournament-bg) |
 | `surface` | `#0C130F` | Screen background |
 | `surface-card` | `#15201A` | Primary card background (court-card) |
-| `surface-low` | `#111A15` | Segmented control background, section headers (dark-pine) |
+| `surface-card-header` | `#0C130F` | Card header section background |
+| `surface-low` | `#111A15` | Segmented control background (dark-pine) |
+| `surface-section` | `#111A15` | Section header row background within cards |
 | `surface-border` | `#1F3025` | Dividers (dark-border) |
 | `surface-surface-2` | `#1C2B22` | Subtle elevated surfaces |
 | `primary` | `#2CA864` | Active states, primary CTA, tab bar active, card border (court-green) |
 | `primary-neon` | `#4ADE80` | Status dots, pulsing indicators (court-neon) |
 | `primary-container` | `#132B1C` | Tinted action backgrounds (pine-tag) |
 | `primary-container-border` | `#235235` | Tinted action borders |
+| `primary-on-container` | `#4ADE80` | Text on primary-container (TRACK button) |
 | `on-surface` | `#F0F5F2` | Primary body text (chalk-white) |
 | `on-surface-variant` | `#91A398` | Secondary text (sage-muted) |
 | `completion` | `#2CA864` | Completed/tracked state (same primary; green is the semantic here) |
-| `on-primary` | `#F0F5F2` | Text on primary-colored surfaces |
+| `on-primary` | `#0C130F` | Text on primary-colored surfaces |
 | `tab-bar-bg` | `#0C130F` | Tab bar background |
 | `header-bg` | `#0C130F` | Page header background |
+| `error` | `#BA1A1A` | Danger button background (shared all themes) |
 
 ### WCAG Contrast
 
@@ -243,10 +263,10 @@ Athletic green on deep forest canvas.
 | `#F0F5F2` / `#15201A` | 15.5:1 | AAA | Body text on card |
 | `#2CA864` / `#0C130F` | 7.0:1 | AA | Primary on canvas (tab active) |
 | `#2CA864` / `#15201A` | 5.8:1 | AA | Primary on card (card border, accent) |
-| `#4ADE80` / `#132B1C` | 6.3:1 | AA | Neon on pine-tag container |
+| `#4ADE80` / `#132B1C` | 8.7:1 | AAA | TRACK button text on container |
 | `#91A398` / `#0C130F` | 7.0:1 | AA | Muted text on canvas |
 | `#91A398` / `#15201A` | 5.8:1 | AA | Muted text on card |
-| `#F0F5F2` / `#2CA864` | 4.5:1 | AA | Chalk white on primary button |
+| `#0C130F` / `#2CA864` | 6.2:1 | AA | Dark text on primary button |
 
 ---
 

@@ -47,7 +47,7 @@ All numeric metric indicators (`label-sm`, `label-md`) use uppercase tracking fo
 
 Fonts must be pre-bundled in the app distribution (Expo asset bundling). Do not load from Google Fonts or any CDN at runtime. Fallback stack: `Space Grotesk → system-ui → sans-serif`; `JetBrains Mono → Menlo → Courier New → monospace`.
 
-Dynamic type: Scale with the device text-size preference using Expo's `useWindowDimensions` + `PixelRatio.getFontScale()`. Cap upward scaling at 1.4× to preserve layout integrity in dense data tables.
+Dynamic type: Scale with the device text-size preference using Expo's `useWindowDimensions` + `PixelRatio.getFontScale()`. Do not cap or override the system font scale; React Native text already follows the system scale natively. Dense data tables and exercise rows must reflow or scroll at larger text sizes rather than imposing an artificial scaling ceiling. This preserves the existing app behavior.
 
 ---
 
