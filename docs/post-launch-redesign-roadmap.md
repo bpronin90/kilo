@@ -1,163 +1,169 @@
 # Kilo Post-Launch Redesign Roadmap
 
-**Status: Phase 1 complete; redesign cards remain planned. This roadmap covers
-the post-launch Analog Iron redesign.**
+**Status: Analog Iron direction retired. This roadmap covers the three-theme Kinetic Utilitarian Athletic system.**
 
-This roadmap begins only after Kilo's production launch is externally verified.
-The version bump does not establish that launch: the remaining production AAB,
-signing, Play Console, listing, declaration, and API-level work stays in
-[`docs/play-store-readiness.md`](play-store-readiness.md). Once that checklist is
-complete, this roadmap starts with the structural work needed to make the visual
-migration reviewable, then delivers the approved Analog Iron redesign without
-changing product behavior.
+This roadmap begins only after Kilo's production launch is externally verified. See
+[`docs/play-store-readiness.md`](play-store-readiness.md) for the launch checklist.
+Once that checklist is complete, this roadmap starts with shared foundation work,
+then delivers all three themes and both modes without changing product behavior.
 
 > **Redesign the product that shipped. Do not use a visual migration to change
 > navigation, state handling, calculations, or data contracts.**
 
 ---
 
-## Source of truth
+## Design specification
 
-- `docs/design/analog-iron-v0.125/migration-audit.md` — the repo-grounded visual
-  audit and original implementation card drafts. Its prelaunch status, frozen-
-  work notes, and native-appearance assumptions are historical; this roadmap and
-  current app behavior supersede them. After Phase 1, #1065 must reconcile those
-  stale passages and reassign the extracted production files before any redesign
-  implementation card is opened.
-- `docs/design/analog-iron-v0.125/` — the approved visual handoff.
-- Existing app behavior and tests are authoritative wherever a document,
-  screenshot, or audit claim conflicts with them.
+The implementation-ready design package lives at
+[`docs/design/kinetic-utilitarian-athletic/`](design/kinetic-utilitarian-athletic/).
 
-The standing rule for every phase below is that behavior does not change. Any
-visual target that requires a behavior change stops and goes to the owner in
-writing for explicit approval. A reference image is never authority for a
-behavior change.
+| File | Contents |
+|---|---|
+| `README.md` | Source inventory, theme summary, product constraints |
+| `foundation.md` | Typography, spacing, geometry, icons, motion, accessibility |
+| `tokens.md` | All six theme/mode color token tables with WCAG contrast evidence |
+| `components.md` | Buttons, inputs, cards, navigation, charts, overlays, native controls |
+| `surfaces.md` | Per-screen mappings and template adaptations |
 
----
-
-## Phase 1 — Structural preparation
-
-This phase landed before the redesign and was coordinated by
-[#1064](https://github.com/bpronin90/kilo/issues/1064). It assigns each of the 20
-current production files over 600 lines to exactly one implementation card. The
-limit is inclusive: 600 lines passes and 601 fails. Tests, fixtures, generated or
-vendor content, and configuration are outside the count. #1063 approved current
-`main` at `44ab230ae3c6b8fb2e391f54b77e1a5bc8b0d8d3`: 242 production files were
-checked, none exceeds 600 lines, and the legacy baseline is empty.
-
-Every card is a behavior-preserving extraction. It may not change copy, visuals,
-navigation, state, persistence, analytics, accessibility, public exports,
-serialized data, dependencies, or database contracts. Each touched or created
-production file must finish at 600 lines or fewer without compressed formatting
-or unrelated deletion. These refactors use targeted tests and ordinary CI; they
-do not require visual device sign-off.
-
-### Wave 0 — Establish the ratchet
-
-- [#1046](https://github.com/bpronin90/kilo/issues/1046) adds the incremental
-  production-file line guard. It rejects new violations and growth in the
-  explicit legacy baseline while allowing later cards to reduce that baseline.
-
-### Wave 1 — Leaf computation and shared foundations
-
-These cards have disjoint production ownership and can proceed after #1046:
-
-- [#1048](https://github.com/bpronin90/kilo/issues/1048) — shared UI primitives.
-- [#1053](https://github.com/bpronin90/kilo/issues/1053) — workout analytics
-  derivations.
-- [#1057](https://github.com/bpronin90/kilo/issues/1057) — workout-note parsing
-  and text mutation.
-- [#1059](https://github.com/bpronin90/kilo/issues/1059) — Recovery operation
-  journal, replay, locking, and corruption handling.
-- [#1061](https://github.com/bpronin90/kilo/issues/1061) — sync queue stamping,
-  dirty acknowledgements, cursor trust, snapshots, and reconciliation.
-
-### Wave 2 — Screens and stateful consumers
-
-Each card starts from current `main` after its named foundations land:
-
-- [#1047](https://github.com/bpronin90/kilo/issues/1047) — App shell
-  orchestration.
-- [#1049](https://github.com/bpronin90/kilo/issues/1049) — Home composition and
-  first-paint boundaries.
-- [#1050](https://github.com/bpronin90/kilo/issues/1050) — Weight entry, goals,
-  and history presentation.
-- [#1051](https://github.com/bpronin90/kilo/issues/1051) — Analytics screen,
-  after #1053.
-- [#1052](https://github.com/bpronin90/kilo/issues/1052) — Analytics Recovery
-  evidence and state presentation.
-- [#1054](https://github.com/bpronin90/kilo/issues/1054) — Log screen and editor
-  presentation, after #1048.
-- [#1055](https://github.com/bpronin90/kilo/issues/1055) — shared current/other
-  Log editor machinery, after #1057 and #1061.
-- [#1056](https://github.com/bpronin90/kilo/issues/1056) — Log Recovery
-  presentation, after #1059.
-- [#1058](https://github.com/bpronin90/kilo/issues/1058) — Recovery read state,
-  filtering, eligibility, and mutations, after #1059 and #1061.
-- [#1060](https://github.com/bpronin90/kilo/issues/1060) — backup UI, export,
-  validation, and restoration, after #1059 and #1061.
-- [#1062](https://github.com/bpronin90/kilo/issues/1062) — cloud sync adapter,
-  identity gates, table ordering, and rebuild behavior, after #1059 and #1061.
-
-The Recovery, backup, queue, and cloud-adapter cards carry explicit transition
-matrices and adversarial fixtures for stale identity, malformed state, partial
-writes, retries, and clean restoration. The Supabase cards do not authorize any
-schema, RLS, Auth, role, key, migration, or transport-contract change.
-
-### Final gate
-
-[#1063](https://github.com/bpronin90/kilo/issues/1063) is a zero-file,
-independent verification after every implementation card merges. It enumerates
-production files independently, requires an empty legacy baseline, and approves
-Phase 1 only when no production file exceeds 600 lines.
-
-After that approval, [#1065](https://github.com/bpronin90/kilo/issues/1065)
-rebases the migration audit and every D0–D18 Allowed Files list against the
-landed module tree. That refresh is recorded in
-`docs/design/analog-iron-v0.125/migration-audit.md`, closes the ownership gap
-created by the extractions, and remains the hard prerequisite for opening D0 or
-any redesign implementation card.
+The Analog Iron direction (`docs/design/analog-iron-v0.125/`) is retired and remains
+as an archive only. It does not direct any implementation card on this roadmap.
+PR #1101, which implemented the retired contract, does not satisfy this roadmap.
 
 ---
 
-## Phase 2 — Analog Iron redesign
+## Principles
 
-The design inventory and draft card-level Allowed Files live in
-`docs/design/analog-iron-v0.125/migration-audit.md`. They become current only
-after #1065 refreshes stale prelaunch and native-appearance assumptions and
-reassigns every extracted Phase 1 module. No redesign card may open earlier.
-
-The program contains 14 implementation cards plus one zero-file verification
-gate. Order: `D0 → D1 → D2 → D3 → D4 → D5`, then the screen
-cards, then `D18`.
-
-- **D0** — approve chart tokens and remaining visual decisions, including exact
-  light/dark values, accessible marker fills, font assets, and native-control
-  treatment.
-- **D1** — retint the palettes, bundle fonts, and establish type and geometry
-  tokens. Existing native dark-mode wiring is retained rather than rebuilt.
-- **D2** — add visual anti-pattern enforcement and retain Phase 1's production
-  line-limit guard.
-- **D3–D5** — migrate shared primitives, navigation chrome, charts, and overlays.
-- **D6–D10, D12, D14, D16** — migrate Home, Log, Analytics, Weight, secondary
-  surfaces, Settings, Account, and Backup according to the refreshed audit's
-  ownership boundaries.
-- **D18** — perform the read-only completeness verification and own no files.
-
-Every implementation card requires owner device sign-off. Automated checks can
-protect behavior and structural rules, but they cannot establish that the visual
-result is correct on a physical device.
-
-Two rules bind every card:
-
-- **Native control appearance.** Cards containing `TextInput`, `Switch`, or
-  `DateTimePicker` instances preserve the token-driven native appearance contract
-  specified by the migration audit. D2 enforces the required props.
-- **Behavior-change escalation.** A card that cannot meet its visual target
-  without changing behavior stops and requests an explicit owner decision.
+- **Three themes, two modes each.** Hard Court (cobalt/navy), Clay Court (terracotta/earthen), Grass Court (court green/forest). Six fully-specified designs. No theme shares a palette with another; visual identity is preserved across the implementation.
+- **Shared foundations before theme work.** Typography, tokens, and base component scaffolding land first so every subsequent card builds on a stable base.
+- **No behavior changes hidden in visual cards.** Every card is purely visual. Navigation, state, data contracts, calculations, and persistence are unchanged. Any visual target requiring a behavior change stops and goes to the owner for explicit written approval.
+- **Device sign-off for visual cards.** Each screen-level visual card requires owner device sign-off before it is closed.
+- **Incremental and reviewable.** Cards are sized so each produces a reviewable, mergeable PR in isolation.
 
 ---
 
-## Phase 3 — Post-redesign follow-through
+## Phase 0 — Retire and clean up
 
-- Retake store screenshots and refresh the listing for the redesigned UI.
+Before theme implementation begins, close out the retired direction cleanly.
+
+- **#Phase0-A** Archive Analog Iron: Mark `docs/design/analog-iron-v0.125/` as archived in its README. No files are deleted; they remain as historical record.
+- **#Phase0-B** Remove Analog Iron labels from open issues and PRs. Re-route any open implementation work that referenced the Analog Iron spec.
+
+---
+
+## Phase 1 — Structural preparation (complete)
+
+Landed before this redesign. Assigns production files over 600 lines to implementation cards and establishes the line-count ratchet. Coordinated by [#1064](https://github.com/bpronin90/kilo/issues/1064) and [#1063](https://github.com/bpronin90/kilo/issues/1063).
+
+---
+
+## Phase 2 — Design specification and approval (this issue)
+
+Issue [#1095](https://github.com/bpronin90/kilo/issues/1095). The design package in `docs/design/kinetic-utilitarian-athletic/` is the deliverable. Implementation cards below may not open until the owner checklist in #1095 is fully checked.
+
+---
+
+## Phase 3 — Shared foundation implementation
+
+These cards are prerequisites for all theme and screen work. They may run in parallel within this phase.
+
+### D1 — Token system
+
+Introduce three theme palette sets in `mobile/theme/colors.js` (or a new `mobile/theme/themes.js`). Each theme exports `LightColors` and `DarkColors` with the semantic roles defined in `tokens.md`. Existing token names are preserved so no consumer code changes outside the token file.
+
+- **Allowed files:** `mobile/theme/colors.js`, `mobile/theme/themes.js` (new), existing theme consumers if names change
+- **Acceptance:** `npm run theme-rendering` (or equivalent) passes; all six token sets are exported; no production behavior change
+- **Device sign-off:** not required (token-only, no visible change until screens are wired)
+
+### D2 — Typography and font assets
+
+Bundle Space Grotesk and JetBrains Mono as local assets. Register weights 400/500/600/700 for Space Grotesk and 500/700 for JetBrains Mono. Define typography tokens per `foundation.md`. Remove any existing CDN or network font loading.
+
+- **Allowed files:** `mobile/theme/typography.js` (new), `assets/fonts/`, `app.json`, existing Text component wrappers
+- **Acceptance:** fonts load offline; `label-md`/`label-lg` render in JetBrains Mono; Space Grotesk renders for all body/headline roles; tabular-nums applied to metric values
+- **Device sign-off:** required — verify rendering on physical device
+
+### D3 — Spacing and geometry tokens
+
+Add radius, spacing, and elevation tokens to the theme system per `foundation.md`. No visible change to existing screens until screen-level cards wire them in.
+
+- **Allowed files:** `mobile/theme/spacing.js` (new or extend existing theme), existing style consumers if needed
+- **Acceptance:** all token values match `foundation.md`; no production behavior change
+
+### D4 — Icon foundation
+
+Confirm or establish locally bundled Material-equivalent icon set. Verify tab bar and action icons render at correct sizes and colors in all six theme/mode combinations.
+
+- **Allowed files:** `mobile/components/Icon.js` (or equivalent), `assets/icons/`, existing tab bar
+- **Acceptance:** five tab bar icons render; `on-surface-variant` for inactive, `primary` for active; no CDN dependency
+- **Device sign-off:** required
+
+---
+
+## Phase 4 — Screen migration
+
+Each card migrates one screen. All cards in this phase require the Phase 3 foundation cards to be merged first. Each card requires device sign-off from the owner.
+
+Cards should be opened as separate issues after Phase 2 (#1095) is owner-approved. The issue bodies follow the product contract in AGENTS.md.
+
+### S1 — Log screen (Workout Notes)
+
+The template fully covers this screen. This is the highest-priority visual migration card.
+
+- Routine card: 2px primary border, radius-2xl, card header, section rows, exercise rows
+- TRACK button: untracked and tracked states per `components.md`
+- Segmented control: Recovery / Routine per `components.md`
+- Page header: title, subtitle, avatar button
+- Tab bar: five icons with active/inactive states
+
+### S2 — Weight screen
+
+Apply KUA tokens. Chart line in theme-neutral teal. PR markers use completion color.
+
+### S3 — Analytics screen
+
+Apply KUA tokens. Chart series use theme-neutral colors. Metric tiles use metric-display-mobile typography.
+
+### S4 — Home screen
+
+Apply KUA tokens. Card and section heading treatment from `surfaces.md`.
+
+### S5 — More, Settings, Account, Backup screens
+
+Apply KUA tokens. List rows, section headers, native controls.
+
+---
+
+## Phase 5 — Theme selection UI
+
+Introduce a theme picker that allows the user to select Hard Court, Clay Court, or Grass Court. Requires Phase 4 to be complete.
+
+- Theme picker screen (under Settings or a new entry point TBD with owner)
+- Theme selection persists via existing `themePreference` mechanism
+- System / Light / Dark mode toggle continues to work within each selected theme
+- No change to data contracts, sync, or backup
+
+---
+
+## Phase 6 — Final gate
+
+A read-only completeness and consistency check before the redesign is considered done.
+
+- All six token sets render correctly on physical device in light and dark mode for each theme
+- Typography renders offline with no fallback
+- All chart series are legible without color alone (label/shape present)
+- All documented WCAG pairs pass measured contrast on device
+- TRACK completion state is never indicated by color alone
+- Reduced motion: all animations are disabled or instant when reduce-motion is active
+- No Analog Iron color, font reference, or component style remains in production code
+- `docs/design-system-map.md` is updated to reflect the live three-theme system
+- Owner gives final sign-off; roadmap status is marked complete
+
+---
+
+## What this roadmap does not open
+
+- No production code changes in Phase 2 (this issue)
+- No behavior changes in any phase
+- No chart data, calculation, analytics, sync, database, or persistence changes
+- No new product features
+- No Analog Iron implementation work
