@@ -1138,14 +1138,17 @@ describe('KUA typography token contract', () => {
   });
 
   test('TYPOGRAPHY_FALLBACK uses native-compatible single-family fallbacks', () => {
+    const { Platform } = require('react-native');
     for (const [role, spec] of Object.entries(TYPOGRAPHY_FALLBACK)) {
       const isMonospace = JBM_ROLES.includes(role);
       if (isMonospace) {
-        // Monospace fallback: 'Courier New' — available on both iOS and Android
-        expect(spec.fontFamily).toBe('Courier New');
+        // Monospace fallback: platform-selected single family name.
+        // Android ships 'monospace' as a generic alias; iOS ships 'Courier New'.
+        // Neither is a CSS comma-separated stack, which RN would reject wholesale.
+        const expected = Platform.OS === 'android' ? 'monospace' : 'Courier New';
+        expect(spec.fontFamily).toBe(expected);
       } else {
-        // Sans-serif fallback: omit fontFamily so the OS uses its default;
-        // React Native rejects comma-separated CSS stacks as a single token.
+        // Sans-serif fallback: omit fontFamily so the OS uses its default.
         expect(spec.fontFamily).toBeUndefined();
       }
     }

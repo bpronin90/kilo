@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Platform } from 'react-native';
 import * as ExpoFont from 'expo-font';
 
 // Font family name constants used by all typography tokens.
@@ -32,10 +33,11 @@ export const FONT_ASSETS = {
 // Single-family fallback names. React Native on iOS/Android treats fontFamily
 // as an exact asset name, not a CSS comma-separated stack — passing multiple
 // comma-separated values causes the entire string to be rejected.
-// undefined lets the OS use its default sans-serif; 'Courier New' is
-// available on both iOS and Android as a monospace substitute.
+// undefined lets the OS use its default sans-serif.
+// For monospace: 'Courier New' on iOS (built-in); Android does not ship that
+// family but does recognise the generic alias 'monospace'.
 const SG_FALLBACK = undefined;
-const JBM_FALLBACK = 'Courier New';
+const JBM_FALLBACK = Platform.select({ android: 'monospace', default: 'Courier New' });
 
 // ---------------------------------------------------------------------------
 // Typography role tokens
