@@ -248,13 +248,14 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 12,
   },
-  // Filled pace badges carrying a `textLight` label, so they use the error and
-  // caution *surface* tones rather than the direct status colors (#689).
+  // Filled pace badges. In KUA mode, use semantic error token (all 6 palettes)
+  // and mode-aware caution (no KUA caution token exists). In legacy mode, use
+  // the filled-surface tones from #689.
   paceSpike: {
-    backgroundColor: colors.cardErrorBg,
+    backgroundColor: kua ? kua.error : colors.cardErrorBg,
   },
   paceNotable: {
-    backgroundColor: colors.cardCautionBg,
+    backgroundColor: kua ? colors.caution : colors.cardCautionBg,
   },
   paceText: {
     fontSize: 12,
