@@ -4,7 +4,7 @@ import { Alert, StyleSheet } from 'react-native';
 import { WeightScreen } from '../screens/WeightScreen';
 import { TrendSection } from '../components/WeightTrendSection';
 import { buildTrendSections } from '../lib/WeightScreenHelpers';
-import { LightColors } from '../theme/colors';
+import { LightColors, KUA_PALETTES } from '../theme/colors';
 import * as useEntries from '../hooks/useEntries';
 import * as weightHooks from '../hooks/entries/weightHooks';
 import App from '../App';
@@ -1775,7 +1775,7 @@ describe('TrendSection goal-direction aware colors (#406, H-3)', () => {
   test('with no goal direction → Stable stays neutral (#408)', () => {
     const root = renderSection({ col3: { label: 'Trend', value: '→ Stable' } });
     const color = col3Color(root, '→ Stable');
-    expect(color).toBe(LightColors.text);
+    expect(color).toBe(KUA_PALETTES.hardCourt.light.onSurface);
     expect(color).not.toBe(LightColors.success);
     expect(color).not.toBe(LightColors.error);
   });

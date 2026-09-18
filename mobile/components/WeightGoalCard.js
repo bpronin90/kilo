@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Alert } from '../lib/platformAlert';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card, Button, createInputStyle } from './UI';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 import { formatDate } from '../lib/format';
 import { localDateToday } from '../lib/WeightScreenHelpers';
 import { useWeightUnit } from '../lib/unitPreference';
@@ -43,7 +43,8 @@ function WebGoalDateInput({ value, onChangeDate, accessibilityLabel }) {
 }
 
 export function GoalDerived({ info, calorieEstimate }) {
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const unit = useWeightUnit();
   if (!info) return null;
   const { direction, required_weekly_pace, warnings } = info;
@@ -119,8 +120,8 @@ export function WeightGoalCard({
   isGoalMet,
   aheadOfSchedule,
 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const unit = useWeightUnit();
   const remainingToGoal =
     goal && currentWeight != null && goal.target_weight != null
@@ -192,9 +193,9 @@ export function WeightGoalCard({
                 value={goalStartWeight}
                 onChangeText={setGoalStartWeight}
                 placeholder={unit === 'kg' ? '90.0' : '200.0'}
-                placeholderTextColor={colors.textMuted}
+                placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
                 keyboardType="decimal-pad"
-                style={styles.input}
+                style={styles.numericInput}
               />
             </>
           )}
@@ -204,9 +205,9 @@ export function WeightGoalCard({
             value={goalTargetWeight}
             onChangeText={setGoalTargetWeight}
             placeholder={unit === 'kg' ? '80.0' : '175.0'}
-            placeholderTextColor={colors.textMuted}
+            placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
             keyboardType="decimal-pad"
-            style={styles.input}
+            style={styles.numericInput}
           />
           <Text style={styles.inputLabel}>Target Date</Text>
           {Platform.OS === 'web' ? (
@@ -294,14 +295,26 @@ export function WeightGoalCard({
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+const createStyles = (colors, kua = null) => StyleSheet.create({
   inputLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   input: {
     ...createInputStyle(colors),
+    borderColor: kua ? kua.surfaceBorder : undefined,
+    backgroundColor: kua ? kua.surfaceCard : undefined,
+    color: kua ? kua.onSurface : undefined,
+    justifyContent: 'center',
+  },
+  numericInput: {
+    ...createInputStyle(colors),
+    borderColor: kua ? kua.surfaceBorder : undefined,
+    backgroundColor: kua ? kua.surfaceCard : undefined,
+    color: kua ? kua.onSurface : undefined,
+    fontFamily: 'JetBrainsMono-SemiBold',
+    fontSize: 18,
     justifyContent: 'center',
   },
   goalCard: {
@@ -343,7 +356,7 @@ const createStyles = (colors) => StyleSheet.create({
   // Native clips it at the row's bounds), so the chip owns a >=44x44dp target
   // while its 13/700 label and 12/6 padding stay as designed.
   goalActionChip: {
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
@@ -362,7 +375,7 @@ const createStyles = (colors) => StyleSheet.create({
   goalActionChipText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.chipText,
+    color: kua ? kua.primaryOnContainer : colors.chipText,
   },
   goalClearText: {
     color: colors.error,
@@ -370,15 +383,15 @@ const createStyles = (colors) => StyleSheet.create({
   goalActionText: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     padding: 4,
   },
   pickerText: {
     fontSize: 16,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   pickerTextPlaceholder: {
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   goalErrorText: {
     color: colors.error,
@@ -398,18 +411,18 @@ const createStyles = (colors) => StyleSheet.create({
     gap: 2,
   },
   goalDisplayValue: {
+    fontFamily: 'JetBrainsMono-Bold',
     fontSize: 28,
-    fontWeight: '900',
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
   },
   goalDisplayDateValue: {
+    fontFamily: 'JetBrainsMono-Bold',
     fontSize: 28,
-    fontWeight: '900',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   goalDisplayLabel: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -420,14 +433,14 @@ const createStyles = (colors) => StyleSheet.create({
     gap: 6,
   },
   goalProgressValue: {
+    fontFamily: 'JetBrainsMono-SemiBold',
     fontSize: 16,
-    fontWeight: '800',
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
   },
   goalProgressLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -445,7 +458,7 @@ const createStyles = (colors) => StyleSheet.create({
   },
   goalDivider: {
     height: 1,
-    backgroundColor: colors.cardBorder,
+    backgroundColor: kua ? kua.surfaceBorder : colors.cardBorder,
     opacity: 0.5,
     marginVertical: 4,
   },
@@ -459,25 +472,25 @@ const createStyles = (colors) => StyleSheet.create({
   },
   derivedLabel: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   derivedValue: {
+    fontFamily: 'JetBrainsMono-SemiBold',
     fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   derivedValueNeutral: {
+    fontFamily: 'JetBrainsMono-SemiBold',
     fontSize: 16,
-    fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     opacity: 0.5,
   },
   goalInfoText: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '500',
     textAlign: 'center',
     marginTop: 2,

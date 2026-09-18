@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Platform, Pressable, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card, Button } from '../../components/UI';
-import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import { localDateToday } from '../../lib/WeightScreenHelpers';
 import { createStyles } from './weightStyles';
 
@@ -53,8 +53,8 @@ function toYMD(date) {
 // label + web-input / native-picker blocks; this consolidates them and owns its own
 // picker-visibility state so the parent only tracks the YYYY-MM-DD value.
 function DateEntryField({ value, onChangeDate, a11yLabel }) {
-  const styles = useThemedStyles(createStyles);
-  const { colors } = useTheme();
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const [showPicker, setShowPicker] = useState(false);
   const dateObj = useMemo(() => {
     if (value) {
@@ -127,8 +127,8 @@ export function WeightEntryForm({
   handleSubmit,
   saving,
 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
 
   return (
     <Card style={editingId ? styles.editingCard : null}>
@@ -154,9 +154,9 @@ export function WeightEntryForm({
         value={weightValue}
         onChangeText={setWeightValue}
         placeholder={unit === 'kg' ? '84.0' : '185.0'}
-        placeholderTextColor={colors.textMuted}
+        placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
         keyboardType="decimal-pad"
-        style={styles.input}
+        style={styles.numericInput}
       />
       {!editingId && (
         <>

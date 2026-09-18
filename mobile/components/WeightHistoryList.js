@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 import { formatDate, formatDelta } from '../lib/format';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue } from '../lib/units';
@@ -13,9 +13,9 @@ import { WeightHistoryFilters } from './weight/WeightHistoryFilters';
 // `*Pressed`-opacity audit in tests/theme-rendering.test.js): its only child
 // is a muted glyph already drawn at 0.5 opacity by design, so this fade
 // cannot cross AA the way a label-bearing pressed style's would.
-const createDeleteAffordanceStyles = (colors) => StyleSheet.create({
+const createDeleteAffordanceStyles = (colors, kua = null) => StyleSheet.create({
   deleteAffordancePressed: {
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
     opacity: 0.8,
   },
 });
@@ -45,10 +45,10 @@ function WeightHistoryListImpl({
   getWeightDeltaSeverity,
   goalInfo,
 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
-  const s = useThemedStyles(createHistoryPanel);
-  const deleteStyles = useThemedStyles(createDeleteAffordanceStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
+  const s = useMemo(() => createHistoryPanel(colors, kua), [colors, kua]);
+  const deleteStyles = useMemo(() => createDeleteAffordanceStyles(colors, kua), [colors, kua]);
   const unit = useWeightUnit();
   // Collapsed by default (#898): the daily Weight surface should open on a
   // latest/count summary, not a fully mapped history that grows unbounded
@@ -149,7 +149,7 @@ function WeightHistoryListImpl({
                 <MaterialIcons
                   name="date-range"
                   size={18}
-                  color={(hasRange || showDateFilter) ? colors.accent : colors.textMuted}
+                  color={(hasRange || showDateFilter) ? (kua ? kua.primary : colors.accent) : (kua ? kua.onSurfaceVariant : colors.textMuted)}
                   accessible={false}
                 />
               </Pressable>
@@ -169,7 +169,7 @@ function WeightHistoryListImpl({
               <MaterialIcons
                 name="date-range"
                 size={18}
-                color={(hasRange || showDateFilter) ? colors.accent : colors.textMuted}
+                color={(hasRange || showDateFilter) ? (kua ? kua.primary : colors.accent) : (kua ? kua.onSurfaceVariant : colors.textMuted)}
                 accessible={false}
               />
             </Pressable>
@@ -177,7 +177,7 @@ function WeightHistoryListImpl({
           <MaterialIcons
             name={collapsed ? 'expand-more' : 'expand-less'}
             size={18}
-            color={colors.textMuted}
+            color={kua ? kua.onSurfaceVariant : colors.textMuted}
             accessible={false}
           />
         </View>

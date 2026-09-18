@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { SectionTitle } from '../../components/UI';
-import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import { formatDate } from '../../lib/format';
 import { formatBodyweightValue } from '../../lib/units';
 import { isGoalMet as computeIsGoalMet } from '../../lib/data/weightGoal';
@@ -12,9 +12,9 @@ import { createStyles, createHistoryPanel } from './weightStyles';
 // History (#411): the header row IS the column-header / summary row, with the
 // collapse chevron in a trailing control cell and no separate empty chevron strip.
 export function GoalHistoryPanel({ sortedArchivedGoals, collapsed, setCollapsed, latestArchivedOutcome, unit = 'lb' }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
-  const hp = useThemedStyles(createHistoryPanel);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
+  const hp = useMemo(() => createHistoryPanel(colors, kua), [colors, kua]);
   return (
     <View style={styles.archivedContainer}>
       <SectionTitle>Goal History</SectionTitle>
@@ -56,7 +56,7 @@ export function GoalHistoryPanel({ sortedArchivedGoals, collapsed, setCollapsed,
             <MaterialIcons
               name={collapsed ? 'expand-more' : 'expand-less'}
               size={18}
-              color={colors.textMuted}
+              color={kua ? kua.onSurfaceVariant : colors.textMuted}
               accessible={false}
             />
           </View>

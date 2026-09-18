@@ -28,12 +28,12 @@ const HISTORY_SUMMARY_EMPHASIS_WEIGHT = '900';
 const HISTORY_SUMMARY_COUNT_SIZE = 12;
 const HISTORY_SUMMARY_COUNT_WEIGHT = '600';
 
-export const createHistoryPanel = (colors) => StyleSheet.create({
+export const createHistoryPanel = (colors, kua = null) => StyleSheet.create({
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: kua ? kua.surfaceCard : colors.card,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     overflow: 'hidden',
   },
   headerRow: {
@@ -43,11 +43,11 @@ export const createHistoryPanel = (colors) => StyleSheet.create({
     paddingRight: 0,
     paddingVertical: 10,
     minHeight: 44,
-    backgroundColor: colors.subtleBg,
+    backgroundColor: kua ? kua.surfaceCardHeader : colors.subtleBg,
   },
   headerRowBordered: {
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   headerContent: {
     flex: 1,
@@ -74,7 +74,7 @@ export const createHistoryPanel = (colors) => StyleSheet.create({
   columnLabel: {
     fontSize: HISTORY_LABEL_SIZE,
     fontWeight: HISTORY_LABEL_WEIGHT,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -94,10 +94,10 @@ export const createHistoryPanel = (colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'stretch',
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   activeRow: {
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
   },
   lastRow: {
     borderBottomWidth: 0,
@@ -114,24 +114,24 @@ export const createHistoryPanel = (colors) => StyleSheet.create({
   },
   value: {
     fontSize: HISTORY_VALUE_SIZE,
-    fontWeight: HISTORY_VALUE_WEIGHT,
-    color: colors.text,
+    fontFamily: 'JetBrainsMono-SemiBold',
+    color: kua ? kua.onSurface : colors.text,
   },
   dateValue: {
     fontSize: HISTORY_DATE_SIZE,
     fontWeight: HISTORY_DATE_WEIGHT,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'right',
   },
   summaryText: {
     flex: 1,
     fontSize: HISTORY_SUMMARY_SIZE,
     fontWeight: HISTORY_SUMMARY_WEIGHT,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   summaryEmphasis: {
     fontWeight: HISTORY_SUMMARY_EMPHASIS_WEIGHT,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   summaryStack: {
     flex: 1,
@@ -142,12 +142,12 @@ export const createHistoryPanel = (colors) => StyleSheet.create({
   summaryCount: {
     fontSize: HISTORY_SUMMARY_COUNT_SIZE,
     fontWeight: HISTORY_SUMMARY_COUNT_WEIGHT,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   summaryLatest: {
     fontSize: HISTORY_SUMMARY_SIZE,
     fontWeight: HISTORY_SUMMARY_WEIGHT,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   columnLabelCenter: {
     textAlign: 'center',
@@ -169,13 +169,13 @@ export const createHistoryPanel = (colors) => StyleSheet.create({
 
 // Non-shared styles for row interactions, deltas, and the date-range filter
 // controls (used by both WeightHistoryList.js and WeightHistoryFilters.js).
-export const createStyles = (colors) => StyleSheet.create({
+export const createStyles = (colors, kua = null) => StyleSheet.create({
   // The `chipBackground` fill is the whole press feedback. A `View` opacity
   // here would fade the row's own text along with it — at 0.8 the `notable`
   // delta composited to 3.49:1, under AA, even though the unfaded ink clears
   // it at 5.34:1 (#915 review).
   historyRowPressed: {
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
   },
   dateFilterRow: {
     flexDirection: 'row',
@@ -232,14 +232,15 @@ export const createStyles = (colors) => StyleSheet.create({
     fontWeight: '700',
   },
   rowDelta: {
+    fontFamily: 'JetBrainsMono-SemiBold',
     fontSize: 12,
-    fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
   },
   rowDeltaEmpty: {
+    fontFamily: 'JetBrainsMono-SemiBold',
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     opacity: 0.4,
     textAlign: 'center',
   },
@@ -265,9 +266,10 @@ export const createStyles = (colors) => StyleSheet.create({
   },
   emptyText: {
     textAlign: 'center',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     paddingVertical: 32,
-    fontSize: 15,
+    fontSize: 14,
+    fontWeight: '400',
   },
   loadMoreRow: {
     minHeight: 44,

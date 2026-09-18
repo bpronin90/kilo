@@ -1,7 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { useThemedStyles } from '../theme/ThemeContext';
-import { HeroMetric } from './UI';
+import { useTheme } from '../theme/ThemeContext';
 
 // Resolve the col3 trend color.
 // Pace anomalies (spike/notable) are severity badges and keep their fixed
@@ -36,7 +35,8 @@ function resolveCol3ColorStyle({ value, paceLevel, goalDirection, styles }) {
 }
 
 export function TrendSection({ title, col1, col2, col3, isLast, paceLevel, goalDirection }) {
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const col3ColorStyle = resolveCol3ColorStyle({ value: col3.value, paceLevel, goalDirection, styles });
 
   return (
@@ -67,19 +67,19 @@ export function TrendSection({ title, col1, col2, col3, isLast, paceLevel, goalD
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+const createStyles = (colors, kua = null) => StyleSheet.create({
   trendSection: {
     padding: 16,
     gap: 12,
   },
   trendSectionDivider: {
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   trendSectionTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -100,20 +100,21 @@ const createStyles = (colors) => StyleSheet.create({
     textAlign: 'right',
   },
   trendValue: {
-    ...HeroMetric.statTertiary,
-    color: colors.text,
+    fontFamily: 'JetBrainsMono-Bold',
+    fontSize: 20,
+    color: kua ? kua.onSurface : colors.text,
   },
   // Secondary caption under the pace value (e.g. "over 5 days"). Its own line so
   // the elapsed span stays readable in the narrow trend column instead of being
   // truncated off the end of the value string.
   trendCaption: {
+    fontFamily: 'JetBrainsMono-Medium',
     fontSize: 11,
-    fontWeight: '700',
     marginTop: 2,
   },
   trendLabel: {
     fontSize: 11,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
