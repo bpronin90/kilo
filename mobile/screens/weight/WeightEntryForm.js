@@ -177,7 +177,7 @@ export function WeightEntryForm({
             value={weightNote}
             onChangeText={setWeightNote}
             placeholder="Morning, fasted"
-            placeholderTextColor={colors.textMuted}
+            placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
             style={styles.input}
             accessibilityLabel="Note"
             includeFontPadding={false}
@@ -193,7 +193,7 @@ export function WeightEntryForm({
             value={weightNote}
             onChangeText={setWeightNote}
             placeholder="Morning, fasted"
-            placeholderTextColor={colors.textMuted}
+            placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
             style={styles.input}
             accessibilityLabel="Note"
             includeFontPadding={false}
