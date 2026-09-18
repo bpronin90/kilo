@@ -185,9 +185,9 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 6,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    backgroundColor: colors.subtleBg,
+    backgroundColor: kua ? kua.surfaceCardHeader : colors.subtleBg,
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   // Keep a selected boundary and its clear affordance together. The filter row
   // may wrap these compact groups at 320dp or with large text, rather than
@@ -202,21 +202,21 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 10,
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
   },
   dateChipText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.chipText,
+    color: kua ? kua.primaryOnContainer : colors.chipText,
   },
   dateChipPlaceholder: {
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '600',
   },
   dateRangeSep: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   dateBoundaryClearBtn: {
     minHeight: 28,
@@ -224,11 +224,11 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 14,
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
   },
   dateBoundaryClearText: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '700',
   },
   rowDelta: {
@@ -256,12 +256,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   rowNote: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
   },
   deleteAffordanceText: {
     fontSize: 16,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     opacity: 0.5,
   },
   emptyText: {
@@ -280,13 +280,13 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // Same as `historyRowPressed`: the fill alone carries the press, so the
   // label is not faded below AA (3.40:1 light / 2.86:1 dark at 0.8).
   loadMorePressed: {
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
   },
-  // The press swaps the row to `chipBackground`, so the label takes the chip's
-  // accent ink (#923) — `accentText` reads 3.54:1 on that fill in dark mode.
+  // The press swaps the row to `primaryContainer`, so the label takes the chip's
+  // accent ink (#923) — `primaryOnContainer` reads correctly on that fill.
   loadMoreText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.chipAccentText,
+    color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },
 });
