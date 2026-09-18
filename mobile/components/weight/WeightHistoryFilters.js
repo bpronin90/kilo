@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
+import { useKuaTypography } from '../../theme/typography';
 import { formatDate } from '../../lib/format';
 import { createStyles } from './weightHistoryStyles';
 
@@ -19,7 +20,7 @@ function toYMD(date) {
 }
 
 function WebDateTextInput({ value, onChange, placeholder }) {
-  const { colors } = useTheme();
+  const { colors, kuaPalette: kua } = useTheme();
   return React.createElement('input', {
     type: 'text',
     value: value || '',
@@ -29,13 +30,13 @@ function WebDateTextInput({ value, onChange, placeholder }) {
       onChange(next || '');
     },
     style: {
-      backgroundColor: colors.chipBackground,
+      backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
       border: 'none',
       borderRadius: 8,
       padding: '4px 8px',
       fontSize: 12,
       fontWeight: '700',
-      color: colors.chipText,
+      color: kua ? kua.primaryOnContainer : colors.chipText,
       fontFamily: 'inherit',
       cursor: 'text',
       outline: 'none',
@@ -45,7 +46,9 @@ function WebDateTextInput({ value, onChange, placeholder }) {
 }
 
 function DateBoundaryClear({ label, onPress }) {
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const typo = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typo), [colors, kua, typo]);
   return (
     <Pressable
       onPress={onPress}
@@ -75,8 +78,9 @@ export function WeightHistoryFilters({
   showToPicker,
   setShowToPicker,
 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const typo = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typo), [colors, kua, typo]);
 
   const fromDateObj = useMemo(() => parseLocalDate(fromDate) || new Date(2000, 0, 1), [fromDate]);
   const toDateObj = useMemo(() => parseLocalDate(toDate) || new Date(), [toDate]);
