@@ -154,13 +154,21 @@ export function WeightGoalCard({
               </View>
             </View>
           )}
-          {!goalEditing && !isGoalMet && (
-            <View style={styles.goalHeaderActions}>
-              {goalInfo?.isOverdue && (
+          {!goalEditing && !isGoalMet && goalInfo?.isOverdue && (
+            <View style={styles.goalHeaderOverdue}>
+              <Text style={styles.goalEndedText}>Goal ended</Text>
+              <View style={styles.goalHeaderButtons}>
                 <Pressable onPress={() => handleArchiveGoal(currentWeight)} style={[styles.goalActionChip, styles.goalArchiveChip]} accessibilityRole="button" accessibilityLabel="Archive">
                   <Text style={[styles.goalActionChipText, styles.goalArchiveText]} accessible={false} importantForAccessibility="no">Archive</Text>
                 </Pressable>
-              )}
+                <Pressable onPress={startEditGoal} style={styles.goalActionChip} accessibilityRole="button" accessibilityLabel="Edit">
+                  <Text style={styles.goalActionChipText} accessible={false} importantForAccessibility="no">Edit</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
+          {!goalEditing && !isGoalMet && !goalInfo?.isOverdue && (
+            <View style={styles.goalHeaderActions}>
               <Pressable onPress={startEditGoal} style={styles.goalActionChip} accessibilityRole="button" accessibilityLabel="Edit">
                 <Text style={styles.goalActionChipText} accessible={false} importantForAccessibility="no">Edit</Text>
               </Pressable>
@@ -279,14 +287,10 @@ export function WeightGoalCard({
             </View>
           )}
 
-          {goalInfo && (
+          {goalInfo && !goalInfo.isOverdue && (
             <>
               <View style={styles.goalDivider} />
-              {goalInfo.isOverdue ? (
-                <Text style={styles.goalEndedText}>Goal ended</Text>
-              ) : (
-                <GoalDerived info={goalInfo} calorieEstimate={calorieEstimate} />
-              )}
+              <GoalDerived info={goalInfo} calorieEstimate={calorieEstimate} />
             </>
           )}
         </View>
@@ -336,6 +340,16 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     alignItems: 'center',
   },
   goalHeaderActions: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  goalHeaderOverdue: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  goalHeaderButtons: {
     flexDirection: 'row',
     gap: 4,
   },

@@ -101,7 +101,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   trendValue: {
     fontFamily: 'JetBrainsMono-Bold',
-    fontSize: 15,
+    fontSize: 17,
     color: kua ? kua.onSurface : colors.text,
   },
   // Secondary caption under the pace value (e.g. "over 5 days"). Its own line so

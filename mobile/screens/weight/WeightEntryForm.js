@@ -199,6 +199,7 @@ export function WeightEntryForm({
         onPress={handleSubmit}
         title={editingId ? "Update entry" : "Save weigh-in"}
         disabled={saving}
+        textStyle={{ fontSize: 17 }}
       />
     </Card>
   );
