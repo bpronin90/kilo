@@ -395,7 +395,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.primaryOnContainer : colors.chipText,
   },
   goalClearText: {
-    color: kua ? kua.onSurfaceVariant : colors.error,
+    color: kua ? kua.primaryOnContainer : colors.error,
   },
   goalActionText: {
     fontSize: 14,
