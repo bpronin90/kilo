@@ -34,6 +34,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Card } from './UI';
 import { useTheme } from '../theme/ThemeContext';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
+import { WorkoutKuaProvider } from './ui/workout';
 import {
   shareRoutine,
   copyRoutineToClipboard,
@@ -355,21 +356,23 @@ export function LogActiveRoutineCard({
               {copyStatus.message}
             </Text>
           ) : null}
-          <WorkoutContentRenderer
-            dayGroups={dayGroups}
-            noteError={noteError}
-            trackedLifts={trackedLifts}
-            onToggleTrack={handleToggleTrack}
-            roughNoteId={roughNoteId}
-            currentId={currentId}
-            roughFlaggedNames={roughFlaggedNames}
-            emptyText="Add some exercises to see the formatted view."
-            altWeekText={hasABWeeks ? activeEditText.trim() : ""}
-            sourceNoteId={currentId}
-            sourceWeekIndex={hasABWeeks && effectiveActiveWeek === 'B' ? 1 : 0}
-            sourceSliceText={activeEditText}
-            onExercisePress={onExerciseSourceJump}
-          />
+          <WorkoutKuaProvider kua={kua}>
+            <WorkoutContentRenderer
+              dayGroups={dayGroups}
+              noteError={noteError}
+              trackedLifts={trackedLifts}
+              onToggleTrack={handleToggleTrack}
+              roughNoteId={roughNoteId}
+              currentId={currentId}
+              roughFlaggedNames={roughFlaggedNames}
+              emptyText="Add some exercises to see the formatted view."
+              altWeekText={hasABWeeks ? activeEditText.trim() : ""}
+              sourceNoteId={currentId}
+              sourceWeekIndex={hasABWeeks && effectiveActiveWeek === 'B' ? 1 : 0}
+              sourceSliceText={activeEditText}
+              onExercisePress={onExerciseSourceJump}
+            />
+          </WorkoutKuaProvider>
 
           {(progressionSuggestions.length > 0 || mutedProgressionRows.length > 0 || applyStatus) && (
             <View style={styles.progressionSuggestions} testID="log-progression-suggestions">

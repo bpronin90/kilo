@@ -1,6 +1,21 @@
-import React, { useMemo, useState } from 'react';
+import React, { createContext, useContext, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
+
+// KUA presentation opt-in gate. Defaults to null (legacy path) so every
+// WorkoutHeading/WorkoutSubheading/ExerciseBlock consumer that does not
+// explicitly provide this context keeps the unchanged legacy styles. Only the
+// Log-routine surface (LogActiveRoutineCard) wraps its WorkoutContentRenderer
+// in WorkoutKuaProvider — all other consumers (Deload, previous routines,
+// recovery evidence, Analytics, import) remain on the legacy palette.
+const WorkoutKuaContext = createContext(null);
+export function WorkoutKuaProvider({ kua, children }) {
+  return (
+    <WorkoutKuaContext.Provider value={kua ?? null}>
+      {children}
+    </WorkoutKuaContext.Provider>
+  );
+}
 import { Card } from './containers';
 import { SET_ROW_FONT_SIZE } from './styles';
 import { PlateCalculatorModal } from '../PlateCalculatorModal';
@@ -106,13 +121,15 @@ export function StatCard({ label, value, tone = 'default' }) {
 }
 
 export function WorkoutHeading({ children, style, selectable }) {
-  const { colors, kuaPalette: kua } = useTheme();
+  const { colors } = useTheme();
+  const kua = useContext(WorkoutKuaContext);
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   return <Text selectable={selectable} style={[styles.workoutHeading, style]}>{children}</Text>;
 }
 
 export function WorkoutSubheading({ children, selectable }) {
-  const { colors, kuaPalette: kua } = useTheme();
+  const { colors } = useTheme();
+  const kua = useContext(WorkoutKuaContext);
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   return (
     <View style={styles.subheadingContainer}>
@@ -123,7 +140,8 @@ export function WorkoutSubheading({ children, selectable }) {
 }
 
 export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabledTrack, selectable, onNamePress }) {
-  const { colors, kuaPalette: kua } = useTheme();
+  const { colors } = useTheme();
+  const kua = useContext(WorkoutKuaContext);
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const TrackContainer = (disabledTrack || !onToggleTrack) ? View : Pressable;
 
