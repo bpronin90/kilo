@@ -8,7 +8,7 @@ import { LogDeloadSection } from '../../components/LogDeloadSection';
 import { LogRecoverySection } from '../../components/LogRecoverySection';
 import { LogPreviousRoutines } from '../../components/LogPreviousRoutines';
 import { RoutineAdoptionPrompt } from '../../components/LogScreenEditorCard';
-import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import { createStyles } from './logScreenStyles';
 import { LogSkeleton } from './LogScreenStates';
 import { Alert } from '../../lib/platformAlert';
@@ -33,8 +33,8 @@ export function LogScreenContent(props) {
     recoveryStateError, recoveryMutationsAllowed, showRecoveryStartInManagement, openStartRecoveryBlock, showRecoveryReopenInManagement, openReopenRecoveryBlockConfirm,
     newestCompletedRecoveryBlock, otherNotes, guardedHandleDeleteRoutine, recoveryWeekNumberByNoteId,
   } = props;
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, kua), [colors, kua]);
   const headerRight = !otherEditor.editingNoteId && hasContent && currentEditor.mode === 'edit' && (
     <Pressable
       onPress={currentEditor.handleDoneCurrent}
@@ -557,8 +557,8 @@ export function buildLogRecovery(deps) {
 // Editor header actions beside the compact rest timer: the A/B week toggle,
 // Merge weeks, and Done (RestTimerBanner stays in LogScreen).
 export function EditorHeaderActions({ otherEditor, deloadEditor, currentEditor }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors, kua), [colors, kua]);
   return (
     <>
       {otherEditor.editingNoteId && otherEditor.editingHasABWeeks && (
@@ -569,7 +569,7 @@ export function EditorHeaderActions({ otherEditor, deloadEditor, currentEditor }
           accessibilityLabel={`Switch to Week ${otherEditor.editingEffectiveWeek === 'B' ? 'A' : 'B'}`}
           accessibilityState={{ selected: otherEditor.editingEffectiveWeek === 'B' }}
         >
-          <Text style={[styles.modeToggleText, { color: colors.chipAccentText }]} accessible={false}>
+          <Text style={[styles.modeToggleText, { color: kua ? kua.primaryOnContainer : colors.chipAccentText }]} accessible={false}>
             Week {otherEditor.editingEffectiveWeek === 'B' ? 'A' : 'B'}
           </Text>
         </Pressable>
@@ -581,7 +581,7 @@ export function EditorHeaderActions({ otherEditor, deloadEditor, currentEditor }
           accessibilityRole="button"
           accessibilityLabel="Merge Week A and Week B into one routine"
         >
-          <Text style={[styles.modeToggleText, { color: colors.textMuted, fontWeight: '500' }]} accessible={false}>Merge weeks</Text>
+          <Text style={[styles.modeToggleText, { color: kua ? kua.onSurfaceVariant : colors.textMuted, fontWeight: '500' }]} accessible={false}>Merge weeks</Text>
         </Pressable>
       )}
       <Pressable

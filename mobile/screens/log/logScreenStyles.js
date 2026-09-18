@@ -53,11 +53,22 @@
 // tightened and gains a secondary Import routine action near Save. No other
 // styling changes.
 //
+// Authorized exception (#1109), owner-authorized KUA surface migration: the
+// segmented control (tabToggle), mode-toggle chip, recovery entry rows, and
+// first-use card text adopt KUA palette tokens (primary, primaryContainer,
+// primaryOnContainer, onSurfaceVariant, surfaceBorder, surfaceLow/surfaceSeg).
+// The `createStyles` factory gains an optional `kua` second parameter so
+// LogScreenStates.js (not in this issue's Allowed Files) keeps working with
+// `useThemedStyles(createStyles)` and falls back to legacy colors.
+//
 // No other styling exception is authorized.
 
 import { StyleSheet } from 'react-native';
 
-export const createStyles = (colors) => StyleSheet.create({
+// When `kua` is provided (KUA-mode callers), segmented control and chip styles
+// use KUA palette tokens. When null (legacy callers such as LogScreenStates),
+// the style falls back to legacy palette values so no behaviour changes there.
+export const createStyles = (colors, kua = null) => StyleSheet.create({
   skeletonCard: {
     backgroundColor: colors.card,
     borderRadius: 24,
@@ -94,7 +105,7 @@ export const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
     minHeight: 44,
     justifyContent: 'center',
   },
@@ -105,7 +116,7 @@ export const createStyles = (colors) => StyleSheet.create({
   modeToggleOutline: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   // #905: the editor header holds up to three chips beside a 34px title.
   // `ScreenShell`'s title group is `flex: 1` (basis 0), so this row is never
@@ -129,7 +140,7 @@ export const createStyles = (colors) => StyleSheet.create({
   modeToggleText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.chipAccentText,
+    color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },
   // Neutral navigation strip (#843), restyled from the former accent-filled
   // toggle: a subtle background and card border rather than a chip surface,
@@ -138,12 +149,15 @@ export const createStyles = (colors) => StyleSheet.create({
   // accent fill competing with Recovery's own primary action. The former
   // 12px bottom margin is dropped; spacing to the content below now comes
   // from the surrounding sections' own gaps.
+  //
+  // #1109 KUA update: active segment uses primary fill / on-primary text
+  // instead of the legacy card-bg / shadow emphasis.
   tabToggle: {
     flexDirection: 'row',
     borderRadius: 12,
-    backgroundColor: colors.subtleBg,
+    backgroundColor: kua ? (kua.surfaceLow ?? kua.surfaceSeg ?? colors.subtleBg) : colors.subtleBg,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     padding: 3,
   },
   tabToggleItem: {
@@ -152,7 +166,9 @@ export const createStyles = (colors) => StyleSheet.create({
     borderRadius: 9,
     alignItems: 'center',
   },
-  tabToggleItemActive: {
+  tabToggleItemActive: kua ? {
+    backgroundColor: kua.primary,
+  } : {
     backgroundColor: colors.card,
     shadowColor: colors.shadowColor,
     shadowOffset: { width: 0, height: 1 },
@@ -161,14 +177,18 @@ export const createStyles = (colors) => StyleSheet.create({
     elevation: 1,
   },
   tabToggleText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.48,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   tabToggleTextActive: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.text,
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.48,
+    color: kua ? kua.onPrimary : colors.text,
   },
   // Persistent `Start recovery block` entry point (#823): a low-emphasis
   // outline row, subordinate to Edit on the current routine card above it,
@@ -181,13 +201,13 @@ export const createStyles = (colors) => StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     minHeight: 44,
   },
   recoveryStartRowText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
   },
   // Secondary `Reopen recovery block: {baseline title}` entry point (#839):
   // same outline-row shape as Start, but `textMuted` ink keeps it visibly
@@ -200,7 +220,7 @@ export const createStyles = (colors) => StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     minHeight: 44,
     marginTop: 8,
   },
@@ -209,7 +229,7 @@ export const createStyles = (colors) => StyleSheet.create({
     marginRight: 8,
     fontSize: 14,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // First-use guidance cards (S1/S2). Ordinary `Card` chrome and ordinary
   // text/textMuted ink — no new filled surface + label pairing, so no new
@@ -221,12 +241,12 @@ export const createStyles = (colors) => StyleSheet.create({
   firstUseTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   firstUseBody: {
     fontSize: 14,
     lineHeight: 20,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   firstUseError: {
     fontSize: 13,

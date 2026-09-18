@@ -19,11 +19,20 @@
 // the compact Week A/B switch. Copy and Share stay distinct actions inside
 // that menu — neither is merged into the other. Nothing else about the card
 // (border, title, content, skip-week row) changes.
-import React, { useEffect, useState } from 'react';
+//
+// #1109 owner-authorized exception: full KUA surface migration. The card
+// `createStyles` factory now takes `(kua, colors)` and applies KUA tokens
+// throughout: 2px primary border replaces the legacy 4px accent border;
+// card/header backgrounds use surfaceCard/surfaceCardHeader; title adopts
+// headline-md type in primary color; status uses on-surface-variant; badges
+// and chips use primaryContainer/primaryOnContainer; action menu uses
+// surfaceCard bg / surfaceBorder dividers; skip and status lines use
+// on-surface-variant. No behavioral, data, or navigation change.
+import React, { useEffect, useMemo, useState } from 'react';
 import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Card } from './UI';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
 import {
   shareRoutine,
@@ -95,8 +104,8 @@ export function LogActiveRoutineCard({
   // card rendered.
   onApplyProgression,
 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(kua, colors), [kua, colors]);
   const [imageShare, setImageShare] = useState(null);
   // #1021: the consolidated three-dot menu's open state. Closes itself after
   // any item is chosen, and on header collapse (the menu has nothing to
@@ -250,7 +259,7 @@ export function LogActiveRoutineCard({
                 accessibilityHint="Opens Edit, Copy, Share, and Share as Image"
                 accessibilityState={{ expanded: menuOpen }}
               >
-                <MaterialIcons name="more-vert" size={20} color={colors.chipAccentText} accessible={false} />
+                <MaterialIcons name="more-vert" size={20} color={kua ? kua.onSurfaceVariant : colors.chipAccentText} accessible={false} />
               </Pressable>
             </View>
             {menuOpen && (
@@ -402,33 +411,33 @@ export function LogActiveRoutineCard({
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+// #1109: signature takes (kua, colors) — kua is the active KUA palette and
+// colors is the legacy palette. KUA tokens are used throughout; colors is kept
+// for properties that have no direct KUA equivalent (error, shadowColor).
+const createStyles = (kua, colors) => StyleSheet.create({
   mirrorContainer: {
     paddingBottom: 2,
   },
-  // #960: a plain vertical stack under the routine content. New layout-only
-  // chrome — it introduces no Log-tab typography or color decision, and the
-  // card's locked 4px accent border and header values are untouched.
+  // #960: a plain vertical stack under the routine content.
   progressionSuggestions: {
     marginTop: 16,
     gap: 12,
   },
-  // #1010: the Apply result line. Reuses `skipWeekStatusText`'s size and ink —
-  // the card's existing status-line treatment — so it introduces no new Log-tab
-  // typography or color decision.
+  // #1010/#1109: status line below the content area.
   progressionApplyStatus: {
     fontSize: 11,
-    color: colors.accentText,
+    color: kua ? kua.onSurfaceVariant : colors.accentText,
   },
-  // The one card that deviates from the shared 1px cardBorder: the current
-  // routine keeps a 4px accent border on all sides in both modes so the active
-  // note stays identifiable at a glance (#689). Ordinary cards are never
-  // special-cased this way.
+  // #1109: the primary routine card now uses the KUA activeCard border level —
+  // 2px primary border replacing the legacy 4px accent border. The card stays
+  // visually distinct as the active routine; primary color provides identity
+  // without the heavier accent stroke.
   currentRoutineCard: {
     padding: 0,
     overflow: 'hidden',
-    borderWidth: 4,
-    borderColor: colors.accent,
+    borderWidth: 2,
+    borderColor: kua ? kua.primary : colors.accent,
+    backgroundColor: kua ? kua.surfaceCard : undefined,
   },
   otherNoteHeader: {
     flexDirection: 'row',
@@ -436,6 +445,7 @@ const createStyles = (colors) => StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 24,
     gap: 12,
+    backgroundColor: kua ? kua.surfaceCardHeader : undefined,
   },
   otherNoteInfo: {
     flex: 1,
@@ -447,14 +457,16 @@ const createStyles = (colors) => StyleSheet.create({
     // it never degrades to per-letter wrapping.
     minWidth: 96,
   },
+  // #1109: headline-md type and primary color per KUA surfaces.md.
   currentNoteTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: colors.accentText,
+    fontSize: 22,
+    fontWeight: '600',
+    color: kua ? kua.primary : colors.accentText,
   },
+  // #1109: body-sm, on-surface-variant per KUA surfaces.md.
   otherNoteSub: {
-    fontSize: 12,
-    color: colors.textMuted,
+    fontSize: 13,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
   },
   // Purely presentational metadata layered on top of the ordinary note
@@ -465,21 +477,23 @@ const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
+    borderWidth: kua ? 1 : 0,
+    borderColor: kua ? kua.primaryContainerBorder : undefined,
   },
   recoveryBadgeText: {
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: kua ? '500' : '800',
     textTransform: 'uppercase',
-    color: colors.chipText,
+    color: kua ? kua.primaryOnContainer : colors.chipText,
   },
   inlineSwitchButton: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.primaryContainerBorder : colors.cardBorder,
     minHeight: 44,
     justifyContent: 'center',
     // Lets a single pill shrink (its Text wraps) rather than overflow past
@@ -489,15 +503,15 @@ const createStyles = (colors) => StyleSheet.create({
   },
   inlineSwitchButtonText: {
     fontSize: 12,
-    fontWeight: '700',
-    color: colors.chipAccentText,
+    fontWeight: kua ? '500' : '700',
+    color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },
   currentNoteContent: {
     paddingHorizontal: 24,
     paddingBottom: 24,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: colors.cardBorder,
+    borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   // The card's single action strip (#711), grown out of the former
   // `editHintRow`: same row, same position, same 8px separation from the
@@ -535,8 +549,8 @@ const createStyles = (colors) => StyleSheet.create({
     marginBottom: 8,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-    backgroundColor: colors.chipBackground,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
+    backgroundColor: kua ? kua.surfaceCard : colors.chipBackground,
     overflow: 'hidden',
   },
   actionMenuItem: {
@@ -544,12 +558,12 @@ const createStyles = (colors) => StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   actionMenuItemText: {
     fontSize: 13,
-    fontWeight: '700',
-    color: colors.chipAccentText,
+    fontWeight: '600',
+    color: kua ? kua.onSurface : colors.chipAccentText,
   },
   // 44dp floor and a text size matching the pills beside it (#823): this was
   // previously a bare Pressable sized only by its 11px text, noticeably
@@ -561,11 +575,11 @@ const createStyles = (colors) => StyleSheet.create({
   },
   skipWeekText: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   skipWeekStatusText: {
     fontSize: 11,
-    color: colors.accentText,
+    color: kua ? kua.onSurfaceVariant : colors.accentText,
     marginBottom: 8,
     marginTop: -4,
   },
