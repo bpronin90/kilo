@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Alert } from '../lib/platformAlert';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card, Button, createInputStyle } from './UI';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
+import { useKuaTypography } from '../theme/typography';
 import { formatDate } from '../lib/format';
 import { localDateToday } from '../lib/WeightScreenHelpers';
 import { useWeightUnit } from '../lib/unitPreference';
@@ -15,7 +16,7 @@ import { displayWeight, formatBodyweightValue } from '../lib/units';
 // mirroring the Weight tab entry-form fallback. Goal targets are future dates, so
 // this uses min={today} for parity with the native picker's minimumDate.
 function WebGoalDateInput({ value, onChangeDate, accessibilityLabel }) {
-  const { colors } = useTheme();
+  const { colors, kuaPalette: kua } = useTheme();
   return React.createElement('input', {
     type: 'date',
     value: value || '',
@@ -26,15 +27,15 @@ function WebGoalDateInput({ value, onChangeDate, accessibilityLabel }) {
       if (next) onChangeDate(next);
     },
     style: {
-      backgroundColor: colors.inputBackground,
+      backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
       borderRadius: 16,
       borderWidth: 1,
       borderStyle: 'solid',
-      borderColor: colors.inputBorder,
+      borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
       padding: 14,
       fontSize: 16,
       colorScheme: colors.scheme,
-      color: colors.text,
+      color: kua ? kua.onSurface : colors.text,
       fontFamily: 'inherit',
       width: '100%',
       boxSizing: 'border-box',
@@ -43,7 +44,9 @@ function WebGoalDateInput({ value, onChangeDate, accessibilityLabel }) {
 }
 
 export function GoalDerived({ info, calorieEstimate }) {
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const typo = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typo), [colors, kua, typo]);
   const unit = useWeightUnit();
   if (!info) return null;
   const { direction, required_weekly_pace, warnings } = info;
@@ -119,8 +122,9 @@ export function WeightGoalCard({
   isGoalMet,
   aheadOfSchedule,
 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const typo = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typo), [colors, kua, typo]);
   const unit = useWeightUnit();
   const remainingToGoal =
     goal && currentWeight != null && goal.target_weight != null
@@ -153,13 +157,24 @@ export function WeightGoalCard({
               </View>
             </View>
           )}
-          {!goalEditing && !isGoalMet && (
-            <View style={styles.goalHeaderActions}>
-              {goalInfo?.isOverdue && (
+          {!goalEditing && !isGoalMet && goalInfo?.isOverdue && (
+            <View style={styles.goalHeaderOverdue}>
+              <Text style={styles.goalEndedText}>Goal ended</Text>
+              <View style={styles.goalHeaderButtons}>
                 <Pressable onPress={() => handleArchiveGoal(currentWeight)} style={[styles.goalActionChip, styles.goalArchiveChip]} accessibilityRole="button" accessibilityLabel="Archive">
                   <Text style={[styles.goalActionChipText, styles.goalArchiveText]} accessible={false} importantForAccessibility="no">Archive</Text>
                 </Pressable>
-              )}
+                <Pressable onPress={startEditGoal} style={styles.goalActionChip} accessibilityRole="button" accessibilityLabel="Edit">
+                  <Text style={styles.goalActionChipText} accessible={false} importantForAccessibility="no">Edit</Text>
+                </Pressable>
+                <Pressable onPress={handleClearGoal} style={styles.goalActionChip} accessibilityRole="button" accessibilityLabel="Clear">
+                  <Text style={[styles.goalActionChipText, styles.goalClearText]} accessible={false} importantForAccessibility="no">Clear</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
+          {!goalEditing && !isGoalMet && !goalInfo?.isOverdue && (
+            <View style={styles.goalHeaderActions}>
               <Pressable onPress={startEditGoal} style={styles.goalActionChip} accessibilityRole="button" accessibilityLabel="Edit">
                 <Text style={styles.goalActionChipText} accessible={false} importantForAccessibility="no">Edit</Text>
               </Pressable>
@@ -192,9 +207,9 @@ export function WeightGoalCard({
                 value={goalStartWeight}
                 onChangeText={setGoalStartWeight}
                 placeholder={unit === 'kg' ? '90.0' : '200.0'}
-                placeholderTextColor={colors.textMuted}
+                placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
                 keyboardType="decimal-pad"
-                style={styles.input}
+                style={styles.numericInput}
               />
             </>
           )}
@@ -204,9 +219,9 @@ export function WeightGoalCard({
             value={goalTargetWeight}
             onChangeText={setGoalTargetWeight}
             placeholder={unit === 'kg' ? '80.0' : '175.0'}
-            placeholderTextColor={colors.textMuted}
+            placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
             keyboardType="decimal-pad"
-            style={styles.input}
+            style={styles.numericInput}
           />
           <Text style={styles.inputLabel}>Target Date</Text>
           {Platform.OS === 'web' ? (
@@ -278,14 +293,10 @@ export function WeightGoalCard({
             </View>
           )}
 
-          {goalInfo && (
+          {goalInfo && !goalInfo.isOverdue && (
             <>
               <View style={styles.goalDivider} />
-              {goalInfo.isOverdue ? (
-                <Text style={styles.goalEndedText}>Goal ended.</Text>
-              ) : (
-                <GoalDerived info={goalInfo} calorieEstimate={calorieEstimate} />
-              )}
+              <GoalDerived info={goalInfo} calorieEstimate={calorieEstimate} />
             </>
           )}
         </View>
@@ -294,18 +305,38 @@ export function WeightGoalCard({
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+const jbmFont = (typo, role, fallback) => {
+  if (!typo) return { fontFamily: fallback };
+  const { fontFamily, fontWeight } = typo[role];
+  return fontWeight !== undefined ? { fontFamily, fontWeight } : { fontFamily };
+};
+
+const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
   inputLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   input: {
     ...createInputStyle(colors),
+    borderColor: kua ? kua.surfaceBorder : undefined,
+    backgroundColor: kua ? kua.surfaceCard : undefined,
+    color: kua ? kua.onSurface : undefined,
+    justifyContent: 'center',
+  },
+  numericInput: {
+    ...createInputStyle(colors),
+    borderColor: kua ? kua.surfaceBorder : undefined,
+    backgroundColor: kua ? kua.surfaceCard : undefined,
+    color: kua ? kua.onSurface : undefined,
+    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
+    fontSize: 10,
     justifyContent: 'center',
   },
   goalCard: {
-    gap: 10,
+    gap: 8,
+    backgroundColor: kua ? kua.surfaceCard : undefined,
+    borderColor: kua ? kua.surfaceBorder : undefined,
   },
   goalCardMet: {
     borderColor: colors.success,
@@ -324,7 +355,17 @@ const createStyles = (colors) => StyleSheet.create({
   },
   goalHeaderActions: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 4,
+  },
+  goalHeaderOverdue: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  goalHeaderButtons: {
+    flexDirection: 'row',
+    gap: 4,
   },
   goalMetBadge: {
     fontSize: 13,
@@ -333,20 +374,20 @@ const createStyles = (colors) => StyleSheet.create({
     letterSpacing: 0.3,
   },
   goalArchiveChip: {
-    backgroundColor: colors.cardSuccessBg,
+    backgroundColor: kua ? kua.primaryContainer : colors.cardSuccessBg,
   },
   goalArchiveText: {
-    color: colors.textLight,
+    color: kua ? kua.primaryOnContainer : colors.textLight,
   },
   // Issue 919: Edit / Archive / Clear goal are text-only chips in a one-line
   // row. ui-design-rules.md §15 says a hitSlop cannot rescue that shape (React
   // Native clips it at the row's bounds), so the chip owns a >=44x44dp target
   // while its 13/700 label and 12/6 padding stay as designed.
   goalActionChip: {
-    backgroundColor: colors.chipBackground,
-    paddingHorizontal: 12,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
+    paddingHorizontal: 8,
     paddingVertical: 6,
-    borderRadius: 12,
+    borderRadius: 10,
     minHeight: 44,
     minWidth: 44,
     justifyContent: 'center',
@@ -362,31 +403,31 @@ const createStyles = (colors) => StyleSheet.create({
   goalActionChipText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.chipText,
+    color: kua ? kua.primaryOnContainer : colors.chipText,
   },
   goalClearText: {
-    color: colors.error,
+    color: kua ? kua.primaryOnContainer : colors.error,
   },
   goalActionText: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     padding: 4,
   },
   pickerText: {
     fontSize: 16,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   pickerTextPlaceholder: {
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   goalErrorText: {
-    color: colors.error,
+    color: kua ? kua.error : colors.error,
     fontSize: 13,
     fontWeight: '600',
   },
   goalDisplay: {
-    gap: 12,
+    gap: 8,
   },
   goalDisplayRow: {
     flexDirection: 'row',
@@ -395,21 +436,21 @@ const createStyles = (colors) => StyleSheet.create({
   },
   goalDisplayItem: {
     flex: 1,
-    gap: 2,
+    gap: 1,
   },
   goalDisplayValue: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: colors.accentText,
+    ...jbmFont(typo, 'metric-display', 'JetBrainsMono-Bold'),
+    fontSize: 18,
+    color: kua ? kua.primary : colors.accentText,
   },
   goalDisplayDateValue: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: colors.text,
+    ...jbmFont(typo, 'metric-display', 'JetBrainsMono-Bold'),
+    fontSize: 18,
+    color: kua ? kua.onSurface : colors.text,
   },
   goalDisplayLabel: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -420,19 +461,19 @@ const createStyles = (colors) => StyleSheet.create({
     gap: 6,
   },
   goalProgressValue: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.accentText,
+    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
+    fontSize: 10,
+    color: kua ? kua.primary : colors.accentText,
   },
   goalProgressLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   goalEndedText: {
-    fontSize: 14,
+    fontSize: 16,
     color: colors.error,
     fontWeight: '600',
   },
@@ -445,7 +486,7 @@ const createStyles = (colors) => StyleSheet.create({
   },
   goalDivider: {
     height: 1,
-    backgroundColor: colors.cardBorder,
+    backgroundColor: kua ? kua.surfaceBorder : colors.cardBorder,
     opacity: 0.5,
     marginVertical: 4,
   },
@@ -459,25 +500,25 @@ const createStyles = (colors) => StyleSheet.create({
   },
   derivedLabel: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   derivedValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
+    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
+    fontSize: 10,
+    color: kua ? kua.onSurface : colors.text,
   },
   derivedValueNeutral: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.textMuted,
+    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
+    fontSize: 10,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     opacity: 0.5,
   },
   goalInfoText: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '500',
     textAlign: 'center',
     marginTop: 2,

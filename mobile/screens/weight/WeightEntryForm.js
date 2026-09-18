@@ -2,7 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { Platform, Pressable, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card, Button } from '../../components/UI';
-import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
+import { useKuaTypography } from '../../theme/typography';
 import { localDateToday } from '../../lib/WeightScreenHelpers';
 import { createStyles } from './weightStyles';
 
@@ -12,7 +13,7 @@ import { createStyles } from './weightStyles';
 // It writes the YYYY-MM-DD value straight back via onChangeDate, matching the
 // native onChange path which also normalizes to a YYYY-MM-DD string.
 function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
-  const { colors } = useTheme();
+  const { colors, kuaPalette: kua } = useTheme();
   return React.createElement('input', {
     type: 'date',
     value: value || '',
@@ -23,15 +24,15 @@ function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
       if (next) onChangeDate(next);
     },
     style: {
-      backgroundColor: colors.inputBackground,
+      backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
       borderRadius: 16,
       borderWidth: 1,
       borderStyle: 'solid',
-      borderColor: colors.inputBorder,
+      borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
       padding: 14,
       fontSize: 16,
       colorScheme: colors.scheme,
-      color: colors.text,
+      color: kua ? kua.onSurface : colors.text,
       fontFamily: 'inherit',
       width: '100%',
       boxSizing: 'border-box',
@@ -53,8 +54,8 @@ function toYMD(date) {
 // label + web-input / native-picker blocks; this consolidates them and owns its own
 // picker-visibility state so the parent only tracks the YYYY-MM-DD value.
 function DateEntryField({ value, onChangeDate, a11yLabel }) {
-  const styles = useThemedStyles(createStyles);
-  const { colors } = useTheme();
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const [showPicker, setShowPicker] = useState(false);
   const dateObj = useMemo(() => {
     if (value) {
@@ -127,11 +128,12 @@ export function WeightEntryForm({
   handleSubmit,
   saving,
 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const typo = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typo), [colors, kua, typo]);
 
   return (
-    <Card style={editingId ? styles.editingCard : null}>
+    <Card style={editingId ? styles.editingCard : styles.entryCard}>
       {editingId && (
         <View style={styles.editingHeader}>
           <Text style={styles.editingTitle}>Editing entry</Text>
@@ -154,9 +156,10 @@ export function WeightEntryForm({
         value={weightValue}
         onChangeText={setWeightValue}
         placeholder={unit === 'kg' ? '84.0' : '185.0'}
-        placeholderTextColor={colors.textMuted}
+        placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
         keyboardType="decimal-pad"
-        style={styles.input}
+        style={styles.numericInput}
+        includeFontPadding={false}
       />
       {!editingId && (
         <>
@@ -174,9 +177,10 @@ export function WeightEntryForm({
             value={weightNote}
             onChangeText={setWeightNote}
             placeholder="Morning, fasted"
-            placeholderTextColor={colors.textMuted}
+            placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
             style={styles.input}
             accessibilityLabel="Note"
+            includeFontPadding={false}
           />
         </>
       )}
@@ -189,9 +193,10 @@ export function WeightEntryForm({
             value={weightNote}
             onChangeText={setWeightNote}
             placeholder="Morning, fasted"
-            placeholderTextColor={colors.textMuted}
+            placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
             style={styles.input}
             accessibilityLabel="Note"
+            includeFontPadding={false}
           />
         </>
       )}
@@ -199,6 +204,7 @@ export function WeightEntryForm({
         onPress={handleSubmit}
         title={editingId ? "Update entry" : "Save weigh-in"}
         disabled={saving}
+        textStyle={{ fontSize: 17 }}
       />
     </Card>
   );

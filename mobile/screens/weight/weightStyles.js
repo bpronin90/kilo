@@ -1,5 +1,15 @@
 import { StyleSheet } from 'react-native';
 
+// Returns fontFamily (and fontWeight when needed) for a JBM typography role.
+// When typo is provided, it is either TYPOGRAPHY (fonts loaded; weight is encoded
+// in the family name, no fontWeight needed) or TYPOGRAPHY_FALLBACK (fonts not yet
+// loaded; fontWeight is restored so visual hierarchy is preserved on system fonts).
+const jbmFont = (typo, role, fallback) => {
+  if (!typo) return { fontFamily: fallback };
+  const { fontFamily, fontWeight } = typo[role];
+  return fontWeight !== undefined ? { fontFamily, fontWeight } : { fontFamily };
+};
+
 // ── Shared history-panel visual system (#411) ─────────────────────────────────
 // Goal History (GoalHistoryPanel.js) and Weight History (components/WeightHistoryList.js)
 // render as ONE uniform system. Every value below is kept numerically identical to
@@ -30,18 +40,18 @@ const HISTORY_SUMMARY_COUNT_WEIGHT = '600';
 // Base styles for WeightScreen itself: the entry-form Card, first-paint
 // skeleton, trends card, and the archived-goal-panel semantic colors used by
 // GoalHistoryPanel.
-export const createStyles = (colors) => StyleSheet.create({
+export const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
   skeletonCard: {
-    backgroundColor: colors.card,
+    backgroundColor: kua ? kua.surfaceCard : colors.card,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     padding: 20,
     marginTop: 12,
     gap: 12,
   },
   skeletonBar: {
-    backgroundColor: colors.cardBorder,
+    backgroundColor: kua ? kua.surfaceBorder : colors.cardBorder,
     borderRadius: 6,
     opacity: 0.6,
     height: 12,
@@ -56,7 +66,7 @@ export const createStyles = (colors) => StyleSheet.create({
     width: '75%',
   },
   errorText: {
-    color: colors.error,
+    color: kua ? kua.error : colors.error,
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 8,
@@ -64,22 +74,42 @@ export const createStyles = (colors) => StyleSheet.create({
   inputLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   input: {
-    backgroundColor: colors.inputBackground,
+    backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.inputBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
     paddingHorizontal: 14,
     paddingVertical: 14,
     minHeight: 48,
-    fontSize: 16,
-    color: colors.text,
+    fontSize: 17,
+    color: kua ? kua.onSurface : colors.text,
     justifyContent: 'center',
+    textAlignVertical: 'center',
+  },
+  numericInput: {
+    backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    minHeight: 48,
+    fontSize: 17,
+    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
+    color: kua ? kua.onSurface : colors.text,
+    justifyContent: 'center',
+    textAlignVertical: 'center',
+  },
+  entryCard: {
+    backgroundColor: kua ? kua.surfaceCard : undefined,
+    borderColor: kua ? kua.surfaceBorder : undefined,
   },
   editingCard: {
-    borderColor: colors.accent,
+    backgroundColor: kua ? kua.surfaceCard : undefined,
+    borderColor: kua ? kua.primary : colors.accent,
     borderWidth: 2,
   },
   editingHeader: {
@@ -91,13 +121,13 @@ export const createStyles = (colors) => StyleSheet.create({
   editingTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
     textTransform: 'uppercase',
   },
   cancelText: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     padding: 4,
   },
   // The editing-header Cancel is a text-only control. ui-design-rules.md §15
@@ -111,12 +141,14 @@ export const createStyles = (colors) => StyleSheet.create({
   },
   pickerText: {
     fontSize: 16,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   trendsCardMerged: {
     padding: 0,
     gap: 0,
     overflow: 'hidden',
+    backgroundColor: kua ? kua.surfaceCard : undefined,
+    borderColor: kua ? kua.surfaceBorder : undefined,
   },
   fullTrendsLink: {
     alignSelf: 'center',
@@ -128,7 +160,7 @@ export const createStyles = (colors) => StyleSheet.create({
   fullTrendsLinkText: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   archivedContainer: {
     gap: 16,
@@ -142,14 +174,45 @@ export const createStyles = (colors) => StyleSheet.create({
   archivedValueMissed: {
     color: colors.error,
   },
+  errorBanner: {
+    backgroundColor: kua ? kua.surfaceCard : colors.errorSurface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: kua ? kua.error : colors.error,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: kua ? kua.error : colors.error,
+  },
+  errorBannerRetry: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: kua ? kua.error : colors.cardErrorBg,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorBannerRetryText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textLight,
+  },
 });
 
-export const createHistoryPanel = (colors) => StyleSheet.create({
+export const createHistoryPanel = (colors, kua = null, typo = null) => StyleSheet.create({
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: kua ? kua.surfaceCard : colors.card,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     overflow: 'hidden',
   },
   headerRow: {
@@ -159,11 +222,11 @@ export const createHistoryPanel = (colors) => StyleSheet.create({
     paddingRight: 0,
     paddingVertical: 10,
     minHeight: 44,
-    backgroundColor: colors.subtleBg,
+    backgroundColor: kua ? kua.surfaceCardHeader : colors.subtleBg,
   },
   headerRowBordered: {
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   headerContent: {
     flex: 1,
@@ -190,7 +253,7 @@ export const createHistoryPanel = (colors) => StyleSheet.create({
   columnLabel: {
     fontSize: HISTORY_LABEL_SIZE,
     fontWeight: HISTORY_LABEL_WEIGHT,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -210,10 +273,10 @@ export const createHistoryPanel = (colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'stretch',
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   activeRow: {
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
   },
   lastRow: {
     borderBottomWidth: 0,
@@ -229,25 +292,25 @@ export const createHistoryPanel = (colors) => StyleSheet.create({
     alignItems: 'center',
   },
   value: {
-    fontSize: HISTORY_VALUE_SIZE,
-    fontWeight: HISTORY_VALUE_WEIGHT,
-    color: colors.text,
+    fontSize: 13,
+    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
+    color: kua ? kua.onSurface : colors.text,
   },
   dateValue: {
     fontSize: HISTORY_DATE_SIZE,
     fontWeight: HISTORY_DATE_WEIGHT,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'right',
   },
   summaryText: {
     flex: 1,
     fontSize: HISTORY_SUMMARY_SIZE,
     fontWeight: HISTORY_SUMMARY_WEIGHT,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   summaryEmphasis: {
     fontWeight: HISTORY_SUMMARY_EMPHASIS_WEIGHT,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   summaryStack: {
     flex: 1,
@@ -258,12 +321,12 @@ export const createHistoryPanel = (colors) => StyleSheet.create({
   summaryCount: {
     fontSize: HISTORY_SUMMARY_COUNT_SIZE,
     fontWeight: HISTORY_SUMMARY_COUNT_WEIGHT,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   summaryLatest: {
     fontSize: HISTORY_SUMMARY_SIZE,
     fontWeight: HISTORY_SUMMARY_WEIGHT,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   columnLabelCenter: {
     textAlign: 'center',

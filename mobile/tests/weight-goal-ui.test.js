@@ -4,7 +4,7 @@ import { StyleSheet } from 'react-native';
 import { WeightScreen } from '../screens/WeightScreen';
 import * as useEntries from '../hooks/useEntries';
 import * as weightHooks from '../hooks/entries/weightHooks';
-import { LightColors } from '../theme/colors';
+import { LightColors, KUA_PALETTES } from '../theme/colors';
 
 // Mock dependencies
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -56,7 +56,7 @@ describe('WeightScreen', () => {
     const component = setup(goal, entries);
     const root = component.root;
 
-    expect(findText(root, 'Goal ended.')).toBeTruthy();
+    expect(findText(root, 'Goal ended')).toBeTruthy();
     expect(findText(root, 'Select a future target date for guidance.')).toBeFalsy();
 
     const allTexts = root.findAllByType('Text').map(t => {
@@ -121,7 +121,7 @@ describe('WeightScreen', () => {
     const component = setup(goal);
     const root = component.root;
 
-    expect(findText(root, 'Goal ended.')).toBeTruthy();
+    expect(findText(root, 'Goal ended')).toBeTruthy();
     expect(findText(root, 'Select a future target date for guidance.')).toBeFalsy();
   });
 
@@ -227,7 +227,7 @@ describe('WeightScreen', () => {
       const component = setup(goal, entries);
       const root = component.root;
 
-      expect(findText(root, 'Goal ended.')).toBeTruthy();
+      expect(findText(root, 'Goal ended')).toBeTruthy();
       const allTexts = root.findAllByType('Text').map(t => {
         const children = t.props.children;
         return Array.isArray(children) ? children.join('') : String(children ?? '');
@@ -344,7 +344,7 @@ describe('WeightScreen', () => {
 
       // Negative delta (-3.0) matches the weight loss goal, so it should NOT be highlighted (remain muted)
       const negColor = getStyleProp(negativeDeltaText, 'color');
-      expect(negColor).toBe(LightColors.textMuted);
+      expect(negColor).toBe(KUA_PALETTES.hardCourt.light.onSurfaceVariant);
     });
 
     test('suppresses warnings for weight gain when goal is weight gain, but warns on weight loss', () => {
@@ -372,7 +372,7 @@ describe('WeightScreen', () => {
 
       // Positive delta (+3.0) matches weight gain goal, so it should NOT be highlighted
       const posColor = getStyleProp(positiveDeltaText, 'color');
-      expect(posColor).toBe(LightColors.textMuted);
+      expect(posColor).toBe(KUA_PALETTES.hardCourt.light.onSurfaceVariant);
 
       // Negative delta (-3.0) goes opposite to the weight gain goal, so it should be highlighted
       const negColor = getStyleProp(negativeDeltaText, 'color');
@@ -643,15 +643,14 @@ describe('WeightScreen', () => {
       });
 
       // #408 bumped these to 18; #409 brought them to 20/900; #411 unifies the
-      // shared value typography to a clean 20/700 (off the over-heavy 900),
-      // identical across both history panels.
-      test('primary value cells use the shared value typography 20/700 (#411)', () => {
+      // shared value typography to 20 + JetBrains Mono, identical across both history panels.
+      test('primary value cells use JBM typography (#411)', () => {
         const component = setup(null, [], archivedFixture);
         expandGoalHistory(component.root);
         const valueNode = findByExactText(component.root, '175 lb');
         expect(valueNode).toBeTruthy();
-        expect(getStyleProp(valueNode, 'fontSize')).toBe(20);
-        expect(getStyleProp(valueNode, 'fontWeight')).toBe('700');
+        expect(getStyleProp(valueNode, 'fontSize')).toBe(13);
+        expect(getStyleProp(valueNode, 'fontFamily')).toBe('JetBrainsMono-SemiBold');
       });
 
       // #411 unifies the date typography with Weight History (15/600 muted) so
@@ -904,7 +903,7 @@ describe('WeightScreen', () => {
         const endNode = findByExactText(component.root, '—');
         expect(endNode).toBeTruthy();
         const color = getStyleProp(endNode, 'color');
-        expect(color).toBe(LightColors.text);
+        expect(color).toBe(KUA_PALETTES.hardCourt.light.onSurface);
         expect(color).not.toBe(LightColors.success);
         expect(color).not.toBe(LightColors.error);
       });
@@ -946,7 +945,7 @@ describe('WeightScreen', () => {
         expect(getStyleProp(colLabel, 'fontWeight')).toBe('700');
       });
 
-      test('row weight values use the shared value typography 20/700 (#411)', () => {
+      test('row weight values use JBM typography matching goal history (#411)', () => {
         const component = setup(null, entries);
         expandWeightHistory(component.root);
         const weightNode = component.root.findAllByType('Text').find(t => {
@@ -955,8 +954,8 @@ describe('WeightScreen', () => {
           return text === '190 lb';
         });
         expect(weightNode).toBeTruthy();
-        expect(getStyleProp(weightNode, 'fontSize')).toBe(20);
-        expect(getStyleProp(weightNode, 'fontWeight')).toBe('700');
+        expect(getStyleProp(weightNode, 'fontSize')).toBe(13);
+        expect(getStyleProp(weightNode, 'fontFamily')).toBe('JetBrainsMono-SemiBold');
       });
 
       // #409: collapsed Weight History summary renders the latest weight in bold
@@ -1122,16 +1121,16 @@ describe('WeightScreen', () => {
       return root;
     };
 
-    test('primary value cells share identical typography across both panels', () => {
+    test('primary value cells share identical typography across both panels (#411)', () => {
       const root = renderBoth();
       const goalValue = findByExactText(root, '175 lb');
       const weightValue = findByExactText(root, '190 lb');
       expect(goalValue).toBeTruthy();
       expect(weightValue).toBeTruthy();
       expect(getStyleProp(goalValue, 'fontSize')).toBe(getStyleProp(weightValue, 'fontSize'));
-      expect(getStyleProp(goalValue, 'fontWeight')).toBe(getStyleProp(weightValue, 'fontWeight'));
-      expect(getStyleProp(goalValue, 'fontSize')).toBe(20);
-      expect(getStyleProp(goalValue, 'fontWeight')).toBe('700');
+      expect(getStyleProp(goalValue, 'fontFamily')).toBe(getStyleProp(weightValue, 'fontFamily'));
+      expect(getStyleProp(goalValue, 'fontSize')).toBe(13);
+      expect(getStyleProp(goalValue, 'fontFamily')).toBe('JetBrainsMono-SemiBold');
     });
 
     test('date cells share identical typography across both panels', () => {
@@ -1317,7 +1316,7 @@ describe('WeightScreen', () => {
       // These strings are rendered inside nested fragments and components; findText
       // must recursively flatten to discover them, not crash on circular refs or
       // convert nested React elements to [object Object] strings.
-      expect(findText(root, 'Goal ended.')).toBeTruthy();
+      expect(findText(root, 'Goal ended')).toBeTruthy();
       expect(findText(root, '185.0 lb')).toBeTruthy();
       expect(findText(root, 'Weight')).toBeTruthy();
     });

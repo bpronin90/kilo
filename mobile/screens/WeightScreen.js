@@ -2,8 +2,8 @@ import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { Pressable, Text, View } from 'react-native';
 import { Alert } from '../lib/platformAlert';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, SectionTitle, ErrorBanner } from '../components/UI';
-import { useThemedStyles } from '../theme/ThemeContext';
+import { Card, SectionTitle } from '../components/UI';
+import { useTheme } from '../theme/ThemeContext';
 import { useWeightEntries, useWeightGoal, useUserProfile } from '../hooks/useEntries';
 import { getWeightDeltaSeverity } from '../lib/format';
 import { parseWeightEntry } from '../lib/parser';
@@ -35,7 +35,8 @@ export function WeightScreen({
   onNavigate,
   registerBackConsumer,
 }) {
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const { entries, remove, update, loading: entriesLoading, error: entriesError, refresh: refreshEntries } = useWeightEntries();
   const { goal, loading: goalLoading, error: goalError, refresh: refreshGoal, save: saveGoal, clear: clearGoal, archiveGoal } = useWeightGoal();
   const { archivedGoals } = useArchivedWeightGoals();
@@ -303,15 +304,26 @@ export function WeightScreen({
       title="Weight log"
       subtitle="Track your body weight over time."
       keyboardShouldPersistTaps="handled"
+      style={kua ? { backgroundColor: kua.background } : undefined}
     >
       {/* One banner per failed source, each retrying only its own read (#737):
           a weigh-in read and a goal read fail independently, and merging them
           would offer a retry for something that never failed. */}
       {entriesError ? (
-        <ErrorBanner message="Could not load weight entries." onRetry={refreshEntries} />
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorBannerText}>Could not load weight entries.</Text>
+          <Pressable onPress={refreshEntries} style={styles.errorBannerRetry} accessibilityRole="button" accessibilityLabel="Retry">
+            <Text style={styles.errorBannerRetryText} accessible={false}>Retry</Text>
+          </Pressable>
+        </View>
       ) : null}
       {goalError ? (
-        <ErrorBanner message="Could not load your weight goal." onRetry={refreshGoal} />
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorBannerText}>Could not load your weight goal.</Text>
+          <Pressable onPress={refreshGoal} style={styles.errorBannerRetry} accessibilityRole="button" accessibilityLabel="Retry">
+            <Text style={styles.errorBannerRetryText} accessible={false}>Retry</Text>
+          </Pressable>
+        </View>
       ) : null}
       <WeightEntryForm
         editingId={editingId}
@@ -401,7 +413,8 @@ export function WeightScreen({
 // motion; the shapes track Goal / Trends / History so nothing shifts when the
 // real cards land.
 function WeightSkeleton() {
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   return (
     <View
       testID="weight-skeleton"
