@@ -302,7 +302,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   oneKUnit: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   oneKProgressBarContainer: {
     width: '100%',
