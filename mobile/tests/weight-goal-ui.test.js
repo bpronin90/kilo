@@ -649,7 +649,7 @@ describe('WeightScreen', () => {
         expandGoalHistory(component.root);
         const valueNode = findByExactText(component.root, '175 lb');
         expect(valueNode).toBeTruthy();
-        expect(getStyleProp(valueNode, 'fontSize')).toBe(16);
+        expect(getStyleProp(valueNode, 'fontSize')).toBe(20);
         expect(getStyleProp(valueNode, 'fontFamily')).toBe('JetBrainsMono-SemiBold');
       });
 
@@ -954,7 +954,7 @@ describe('WeightScreen', () => {
           return text === '190 lb';
         });
         expect(weightNode).toBeTruthy();
-        expect(getStyleProp(weightNode, 'fontSize')).toBe(16);
+        expect(getStyleProp(weightNode, 'fontSize')).toBe(20);
         expect(getStyleProp(weightNode, 'fontFamily')).toBe('JetBrainsMono-SemiBold');
       });
 
@@ -1129,7 +1129,7 @@ describe('WeightScreen', () => {
       expect(weightValue).toBeTruthy();
       expect(getStyleProp(goalValue, 'fontSize')).toBe(getStyleProp(weightValue, 'fontSize'));
       expect(getStyleProp(goalValue, 'fontFamily')).toBe(getStyleProp(weightValue, 'fontFamily'));
-      expect(getStyleProp(goalValue, 'fontSize')).toBe(16);
+      expect(getStyleProp(goalValue, 'fontSize')).toBe(20);
       expect(getStyleProp(goalValue, 'fontFamily')).toBe('JetBrainsMono-SemiBold');
     });
 
