@@ -113,7 +113,7 @@ export const createHistoryPanel = (colors, kua = null) => StyleSheet.create({
     alignItems: 'center',
   },
   value: {
-    fontSize: 10,
+    fontSize: 13,
     fontFamily: 'JetBrainsMono-SemiBold',
     color: kua ? kua.onSurface : colors.text,
   },

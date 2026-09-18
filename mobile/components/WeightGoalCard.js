@@ -314,7 +314,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: kua ? kua.surfaceCard : undefined,
     color: kua ? kua.onSurface : undefined,
     fontFamily: 'JetBrainsMono-SemiBold',
-    fontSize: 8,
+    fontSize: 10,
     justifyContent: 'center',
   },
   goalCard: {
@@ -412,12 +412,12 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   goalDisplayValue: {
     fontFamily: 'JetBrainsMono-Bold',
-    fontSize: 14,
+    fontSize: 18,
     color: kua ? kua.primary : colors.accentText,
   },
   goalDisplayDateValue: {
     fontFamily: 'JetBrainsMono-Bold',
-    fontSize: 14,
+    fontSize: 18,
     color: kua ? kua.onSurface : colors.text,
   },
   goalDisplayLabel: {
@@ -434,7 +434,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   goalProgressValue: {
     fontFamily: 'JetBrainsMono-SemiBold',
-    fontSize: 8,
+    fontSize: 10,
     color: kua ? kua.primary : colors.accentText,
   },
   goalProgressLabel: {
@@ -479,12 +479,12 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   derivedValue: {
     fontFamily: 'JetBrainsMono-SemiBold',
-    fontSize: 8,
+    fontSize: 10,
     color: kua ? kua.onSurface : colors.text,
   },
   derivedValueNeutral: {
     fontFamily: 'JetBrainsMono-SemiBold',
-    fontSize: 8,
+    fontSize: 10,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     opacity: 0.5,
   },
