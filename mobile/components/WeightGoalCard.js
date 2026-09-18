@@ -4,6 +4,7 @@ import { Alert } from '../lib/platformAlert';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card, Button, createInputStyle } from './UI';
 import { useTheme } from '../theme/ThemeContext';
+import { useKuaTypography } from '../theme/typography';
 import { formatDate } from '../lib/format';
 import { localDateToday } from '../lib/WeightScreenHelpers';
 import { useWeightUnit } from '../lib/unitPreference';
@@ -15,7 +16,7 @@ import { displayWeight, formatBodyweightValue } from '../lib/units';
 // mirroring the Weight tab entry-form fallback. Goal targets are future dates, so
 // this uses min={today} for parity with the native picker's minimumDate.
 function WebGoalDateInput({ value, onChangeDate, accessibilityLabel }) {
-  const { colors } = useTheme();
+  const { colors, kuaPalette: kua } = useTheme();
   return React.createElement('input', {
     type: 'date',
     value: value || '',
@@ -26,15 +27,15 @@ function WebGoalDateInput({ value, onChangeDate, accessibilityLabel }) {
       if (next) onChangeDate(next);
     },
     style: {
-      backgroundColor: colors.inputBackground,
+      backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
       borderRadius: 16,
       borderWidth: 1,
       borderStyle: 'solid',
-      borderColor: colors.inputBorder,
+      borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
       padding: 14,
       fontSize: 16,
       colorScheme: colors.scheme,
-      color: colors.text,
+      color: kua ? kua.onSurface : colors.text,
       fontFamily: 'inherit',
       width: '100%',
       boxSizing: 'border-box',
@@ -44,7 +45,8 @@ function WebGoalDateInput({ value, onChangeDate, accessibilityLabel }) {
 
 export function GoalDerived({ info, calorieEstimate }) {
   const { colors, kuaPalette: kua } = useTheme();
-  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
+  const typo = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typo), [colors, kua, typo]);
   const unit = useWeightUnit();
   if (!info) return null;
   const { direction, required_weekly_pace, warnings } = info;
@@ -121,7 +123,8 @@ export function WeightGoalCard({
   aheadOfSchedule,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
-  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
+  const typo = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typo), [colors, kua, typo]);
   const unit = useWeightUnit();
   const remainingToGoal =
     goal && currentWeight != null && goal.target_weight != null
@@ -302,7 +305,13 @@ export function WeightGoalCard({
   );
 }
 
-const createStyles = (colors, kua = null) => StyleSheet.create({
+const jbmFont = (typo, role, fallback) => {
+  if (!typo) return { fontFamily: fallback };
+  const { fontFamily, fontWeight } = typo[role];
+  return fontWeight !== undefined ? { fontFamily, fontWeight } : { fontFamily };
+};
+
+const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
   inputLabel: {
     fontSize: 13,
     fontWeight: '700',
@@ -320,7 +329,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     borderColor: kua ? kua.surfaceBorder : undefined,
     backgroundColor: kua ? kua.surfaceCard : undefined,
     color: kua ? kua.onSurface : undefined,
-    fontFamily: 'JetBrainsMono-SemiBold',
+    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
     fontSize: 10,
     justifyContent: 'center',
   },

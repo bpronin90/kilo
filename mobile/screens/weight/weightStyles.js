@@ -1,5 +1,15 @@
 import { StyleSheet } from 'react-native';
 
+// Returns fontFamily (and fontWeight when needed) for a JBM typography role.
+// When typo is provided, it is either TYPOGRAPHY (fonts loaded; weight is encoded
+// in the family name, no fontWeight needed) or TYPOGRAPHY_FALLBACK (fonts not yet
+// loaded; fontWeight is restored so visual hierarchy is preserved on system fonts).
+const jbmFont = (typo, role, fallback) => {
+  if (!typo) return { fontFamily: fallback };
+  const { fontFamily, fontWeight } = typo[role];
+  return fontWeight !== undefined ? { fontFamily, fontWeight } : { fontFamily };
+};
+
 // ── Shared history-panel visual system (#411) ─────────────────────────────────
 // Goal History (GoalHistoryPanel.js) and Weight History (components/WeightHistoryList.js)
 // render as ONE uniform system. Every value below is kept numerically identical to
@@ -30,7 +40,7 @@ const HISTORY_SUMMARY_COUNT_WEIGHT = '600';
 // Base styles for WeightScreen itself: the entry-form Card, first-paint
 // skeleton, trends card, and the archived-goal-panel semantic colors used by
 // GoalHistoryPanel.
-export const createStyles = (colors, kua = null) => StyleSheet.create({
+export const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
   skeletonCard: {
     backgroundColor: kua ? kua.surfaceCard : colors.card,
     borderRadius: 24,
@@ -87,7 +97,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingVertical: 14,
     minHeight: 48,
     fontSize: 17,
-    fontFamily: 'JetBrainsMono-SemiBold',
+    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
     color: kua ? kua.onSurface : colors.text,
     justifyContent: 'center',
   },
@@ -164,7 +174,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
 });
 
-export const createHistoryPanel = (colors, kua = null) => StyleSheet.create({
+export const createHistoryPanel = (colors, kua = null, typo = null) => StyleSheet.create({
   card: {
     backgroundColor: kua ? kua.surfaceCard : colors.card,
     borderRadius: 24,
@@ -250,7 +260,7 @@ export const createHistoryPanel = (colors, kua = null) => StyleSheet.create({
   },
   value: {
     fontSize: 13,
-    fontFamily: 'JetBrainsMono-SemiBold',
+    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
     color: kua ? kua.onSurface : colors.text,
   },
   dateValue: {

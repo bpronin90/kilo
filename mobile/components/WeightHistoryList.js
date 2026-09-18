@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useTheme } from '../theme/ThemeContext';
+import { useKuaTypography } from '../theme/typography';
 import { formatDate, formatDelta } from '../lib/format';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue } from '../lib/units';
@@ -46,8 +47,9 @@ function WeightHistoryListImpl({
   goalInfo,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
-  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
-  const s = useMemo(() => createHistoryPanel(colors, kua), [colors, kua]);
+  const typo = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typo), [colors, kua, typo]);
+  const s = useMemo(() => createHistoryPanel(colors, kua, typo), [colors, kua, typo]);
   const deleteStyles = useMemo(() => createDeleteAffordanceStyles(colors, kua), [colors, kua]);
   const unit = useWeightUnit();
   // Collapsed by default (#898): the daily Weight surface should open on a

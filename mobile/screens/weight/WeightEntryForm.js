@@ -3,6 +3,7 @@ import { Platform, Pressable, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card, Button } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
+import { useKuaTypography } from '../../theme/typography';
 import { localDateToday } from '../../lib/WeightScreenHelpers';
 import { createStyles } from './weightStyles';
 
@@ -12,7 +13,7 @@ import { createStyles } from './weightStyles';
 // It writes the YYYY-MM-DD value straight back via onChangeDate, matching the
 // native onChange path which also normalizes to a YYYY-MM-DD string.
 function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
-  const { colors } = useTheme();
+  const { colors, kuaPalette: kua } = useTheme();
   return React.createElement('input', {
     type: 'date',
     value: value || '',
@@ -23,15 +24,15 @@ function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
       if (next) onChangeDate(next);
     },
     style: {
-      backgroundColor: colors.inputBackground,
+      backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
       borderRadius: 16,
       borderWidth: 1,
       borderStyle: 'solid',
-      borderColor: colors.inputBorder,
+      borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
       padding: 14,
       fontSize: 16,
       colorScheme: colors.scheme,
-      color: colors.text,
+      color: kua ? kua.onSurface : colors.text,
       fontFamily: 'inherit',
       width: '100%',
       boxSizing: 'border-box',
@@ -128,7 +129,8 @@ export function WeightEntryForm({
   saving,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
-  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
+  const typo = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typo), [colors, kua, typo]);
 
   return (
     <Card style={editingId ? styles.editingCard : styles.entryCard}>

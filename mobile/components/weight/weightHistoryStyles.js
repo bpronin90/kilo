@@ -1,5 +1,11 @@
 import { StyleSheet } from 'react-native';
 
+const jbmFont = (typo, role, fallback) => {
+  if (!typo) return { fontFamily: fallback };
+  const { fontFamily, fontWeight } = typo[role];
+  return fontWeight !== undefined ? { fontFamily, fontWeight } : { fontFamily };
+};
+
 // ── Shared history-panel visual system (#411) ─────────────────────────────────
 // Goal History (screens/weight/GoalHistoryPanel.js) and Weight History (this
 // panel) render as ONE uniform system. Every value below is kept numerically
@@ -28,7 +34,7 @@ const HISTORY_SUMMARY_EMPHASIS_WEIGHT = '900';
 const HISTORY_SUMMARY_COUNT_SIZE = 12;
 const HISTORY_SUMMARY_COUNT_WEIGHT = '600';
 
-export const createHistoryPanel = (colors, kua = null) => StyleSheet.create({
+export const createHistoryPanel = (colors, kua = null, typo = null) => StyleSheet.create({
   card: {
     backgroundColor: kua ? kua.surfaceCard : colors.card,
     borderRadius: 24,
@@ -114,7 +120,7 @@ export const createHistoryPanel = (colors, kua = null) => StyleSheet.create({
   },
   value: {
     fontSize: 13,
-    fontFamily: 'JetBrainsMono-SemiBold',
+    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
     color: kua ? kua.onSurface : colors.text,
   },
   dateValue: {
@@ -169,7 +175,7 @@ export const createHistoryPanel = (colors, kua = null) => StyleSheet.create({
 
 // Non-shared styles for row interactions, deltas, and the date-range filter
 // controls (used by both WeightHistoryList.js and WeightHistoryFilters.js).
-export const createStyles = (colors, kua = null) => StyleSheet.create({
+export const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
   // The `chipBackground` fill is the whole press feedback. A `View` opacity
   // here would fade the row's own text along with it — at 0.8 the `notable`
   // delta composited to 3.49:1, under AA, even though the unfaded ink clears
@@ -232,13 +238,13 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     fontWeight: '700',
   },
   rowDelta: {
-    fontFamily: 'JetBrainsMono-SemiBold',
+    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
     fontSize: 12,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
   },
   rowDeltaEmpty: {
-    fontFamily: 'JetBrainsMono-SemiBold',
+    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
     fontSize: 12,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     opacity: 0.4,

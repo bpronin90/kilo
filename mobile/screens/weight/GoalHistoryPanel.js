@@ -3,6 +3,7 @@ import { Pressable, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { SectionTitle } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
+import { useKuaTypography } from '../../theme/typography';
 import { formatDate } from '../../lib/format';
 import { formatBodyweightValue } from '../../lib/units';
 import { isGoalMet as computeIsGoalMet } from '../../lib/data/weightGoal';
@@ -13,8 +14,9 @@ import { createStyles, createHistoryPanel } from './weightStyles';
 // collapse chevron in a trailing control cell and no separate empty chevron strip.
 export function GoalHistoryPanel({ sortedArchivedGoals, collapsed, setCollapsed, latestArchivedOutcome, unit = 'lb' }) {
   const { colors, kuaPalette: kua } = useTheme();
-  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
-  const hp = useMemo(() => createHistoryPanel(colors, kua), [colors, kua]);
+  const typo = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typo), [colors, kua, typo]);
+  const hp = useMemo(() => createHistoryPanel(colors, kua, typo), [colors, kua, typo]);
   return (
     <View style={styles.archivedContainer}>
       <SectionTitle>Goal History</SectionTitle>
