@@ -155,7 +155,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   tabToggle: {
     flexDirection: 'row',
     borderRadius: 12,
-    backgroundColor: kua ? (kua.surfaceLow ?? kua.surfaceSeg ?? colors.subtleBg) : colors.subtleBg,
+    backgroundColor: kua ? (kua.surfaceLow ?? kua.surfaceSeg ?? kua.surfaceSection) : colors.subtleBg,
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     padding: 3,
