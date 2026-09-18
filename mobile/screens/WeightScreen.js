@@ -304,6 +304,7 @@ export function WeightScreen({
       title="Weight log"
       subtitle="Track your body weight over time."
       keyboardShouldPersistTaps="handled"
+      style={kua ? { backgroundColor: kua.background } : undefined}
     >
       {/* One banner per failed source, each retrying only its own read (#737):
           a weigh-in read and a goal read fail independently, and merging them
