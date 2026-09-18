@@ -7,12 +7,12 @@
 // #728, Reopen #839, and the optional reason #872) each change one presentation
 // or lifecycle field and none of them feed the comparison above.
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Alert } from '../lib/platformAlert';
 import { SectionTitle } from './UI';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 import { useWeightUnit } from '../lib/unitPreference';
 import { formatDate } from '../lib/format';
 import { findActiveBlock, isLiveRecord } from '../lib/data/recoveryBlocks';
@@ -53,8 +53,8 @@ export function AnalyticsRecoverySection({
   onRetry,
   onNavigate,
 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const unit = useWeightUnit();
   // Completed-block history starts collapsed for the same reason the details do
   // (#758): its collapsed header already states how many blocks there are and
@@ -221,7 +221,7 @@ export function AnalyticsRecoverySection({
           accessibilityRole="button"
           accessibilityLabel="View active recovery block"
         >
-          <MaterialIcons name="chevron-left" size={16} color={colors.accent} accessible={false} />
+          <MaterialIcons name="chevron-left" size={16} color={kua ? kua.primary : colors.accent} accessible={false} />
           <Text style={styles.backToActiveText}>Back to active block</Text>
         </Pressable>
       )}
@@ -270,7 +270,7 @@ export function AnalyticsRecoverySection({
             <MaterialIcons
               name={historyCollapsed ? 'expand-more' : 'expand-less'}
               size={18}
-              color={colors.textMuted}
+              color={kua ? kua.onSurfaceVariant : colors.textMuted}
               accessible={false}
             />
           </Pressable>

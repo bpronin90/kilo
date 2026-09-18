@@ -1,7 +1,7 @@
 import { StyleSheet } from 'react-native';
 import { createInputStyle } from '../UI';
 
-export const createStyles = (colors) => StyleSheet.create({
+export const createStyles = (colors, kua = null) => StyleSheet.create({
   container: {
     gap: 16,
   },
@@ -11,31 +11,31 @@ export const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
-    backgroundColor: colors.subtleBg,
+    backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     gap: 8,
   },
   stateBannerText: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   stateRetryButton: {
     alignSelf: 'flex-start',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   // Always on `stateRetryButton`'s `chipBackground` fill, so it takes the
   // chip's accent ink (#923).
   stateRetryText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.chipAccentText,
+    color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },
   card: {
     gap: 12,
@@ -43,7 +43,7 @@ export const createStyles = (colors) => StyleSheet.create({
   identityCaption: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Deliberately lighter than `identityCaption` (#872): the reason is context
   // for the comparison above it, not a second heading competing with the
@@ -51,7 +51,7 @@ export const createStyles = (colors) => StyleSheet.create({
   reasonCaption: {
     fontSize: 12,
     lineHeight: 16,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   reasonCaptionDisabled: {
     opacity: 0.5,
@@ -68,7 +68,7 @@ export const createStyles = (colors) => StyleSheet.create({
   },
   reasonErrorText: {
     fontSize: 12,
-    color: colors.error,
+    color: kua ? kua.error : colors.error,
   },
   reasonEditorActions: {
     flexDirection: 'row',
@@ -83,20 +83,20 @@ export const createStyles = (colors) => StyleSheet.create({
   reasonEditorCancelText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   reasonEditorSaveText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
   },
   provenanceText: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   nonMedicalText: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontStyle: 'italic',
   },
   // #1029 amendment: the across-weeks strip is a finished design-system
@@ -106,7 +106,7 @@ export const createStyles = (colors) => StyleSheet.create({
   // and `Early` never depend on hue discrimination alone.
   bandStripLegendHint: {
     fontSize: 11,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginBottom: 6,
   },
   bandStrip: {
@@ -120,14 +120,14 @@ export const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: colors.subtleBg,
+    backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   bandStripWeekLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   bandStripRows: {
     gap: 4,
@@ -148,7 +148,7 @@ export const createStyles = (colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 3,
-    backgroundColor: colors.card,
+    backgroundColor: kua ? kua.surfaceCard : colors.card,
   },
   bandStripChipText: {
     fontSize: 11,
@@ -157,14 +157,14 @@ export const createStyles = (colors) => StyleSheet.create({
   bandStripCount: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   bandStripZero: {
     paddingVertical: 2,
   },
   bandStripZeroText: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Unreadable-note gap: dashed stroke plus its own glyph and text — never a
   // bare empty box, so it cannot be mistaken for the solid zero-count cell.
@@ -175,12 +175,12 @@ export const createStyles = (colors) => StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   bandStripGapText: {
     fontSize: 11,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Reopen (#839): low-emphasis, non-destructive outline button — matching
   // the Log tab's own secondary styling for the same action — never the
@@ -194,7 +194,7 @@ export const createStyles = (colors) => StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     minHeight: 44,
     justifyContent: 'center',
   },
@@ -204,11 +204,11 @@ export const createStyles = (colors) => StyleSheet.create({
   reopenButtonText: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   reopenErrorText: {
     fontSize: 12,
-    color: colors.error,
+    color: kua ? kua.error : colors.error,
   },
   backToActive: {
     flexDirection: 'row',
@@ -219,11 +219,11 @@ export const createStyles = (colors) => StyleSheet.create({
   backToActiveText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
   },
   unavailablePanelText: {
     fontSize: 14,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Wraps whichever of {summary, unavailable notice, no-evidence text} the
   // selected week resolves to (#794 review) — a stable node so the live
@@ -240,7 +240,7 @@ export const createStyles = (colors) => StyleSheet.create({
   bandDenominatorCaption: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   bandRow: {
     flexDirection: 'row',
@@ -252,7 +252,7 @@ export const createStyles = (colors) => StyleSheet.create({
     flex: 1,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.subtleBg,
+    backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
     overflow: 'hidden',
   },
   bandRowFill: {
@@ -262,19 +262,19 @@ export const createStyles = (colors) => StyleSheet.create({
   bandRowLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     minWidth: 90,
   },
   bandRowCount: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     minWidth: 20,
     textAlign: 'right',
   },
   summaryLine: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   chipRow: {
     flexDirection: 'row',
@@ -286,26 +286,26 @@ export const createStyles = (colors) => StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-    backgroundColor: colors.subtleBg,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
+    backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
     minHeight: 44,
     justifyContent: 'center',
   },
   chipSelected: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
+    backgroundColor: kua ? kua.primary : colors.accent,
+    borderColor: kua ? kua.primary : colors.accent,
   },
   chipText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   chipTextSelected: {
-    color: colors.onAccent,
+    color: colors.textLight,
   },
   detailsPanel: {
     borderTopWidth: 1,
-    borderTopColor: colors.divider,
+    borderTopColor: kua ? kua.surfaceBorder : colors.divider,
   },
   detailsHeader: {
     flexDirection: 'row',
@@ -321,12 +321,12 @@ export const createStyles = (colors) => StyleSheet.create({
   detailsHeaderTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   detailsHeaderCount: {
     fontSize: 12,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
   },
   detailsBody: {
@@ -345,14 +345,14 @@ export const createStyles = (colors) => StyleSheet.create({
   legendToggleText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   legendText: {
     fontSize: 12,
     lineHeight: 17,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   evidenceGroup: {
     gap: 16,
@@ -364,7 +364,7 @@ export const createStyles = (colors) => StyleSheet.create({
     gap: 8,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: colors.divider,
+    borderTopColor: kua ? kua.surfaceBorder : colors.divider,
   },
   exerciseRowHeader: {
     flexDirection: 'row',
@@ -375,7 +375,7 @@ export const createStyles = (colors) => StyleSheet.create({
   exerciseRowName: {
     fontSize: 15,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     flex: 1,
   },
   stateChip: {
@@ -389,24 +389,24 @@ export const createStyles = (colors) => StyleSheet.create({
     borderRadius: 4,
   },
   stateDot_success: {
-    backgroundColor: colors.success,
+    backgroundColor: kua ? kua.completion : colors.success,
   },
   stateDot_caution: {
     backgroundColor: colors.caution,
   },
   stateDot_error: {
-    backgroundColor: colors.error,
+    backgroundColor: kua ? kua.error : colors.error,
   },
   stateDot_muted: {
-    backgroundColor: colors.textMuted,
+    backgroundColor: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   stateDot_accent: {
-    backgroundColor: colors.accent,
+    backgroundColor: kua ? kua.primary : colors.accent,
   },
   stateChipText: {
     fontSize: 11,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
@@ -434,7 +434,7 @@ export const createStyles = (colors) => StyleSheet.create({
   metricLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
@@ -444,12 +444,12 @@ export const createStyles = (colors) => StyleSheet.create({
     color: colors.cautionText,
   },
   metricPercentMet: {
-    color: colors.success,
+    color: kua ? kua.completion : colors.success,
   },
   meterTrack: {
     height: 6,
     borderRadius: 3,
-    backgroundColor: colors.subtleBg,
+    backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
     overflow: 'hidden',
   },
   meterFill: {
@@ -458,12 +458,12 @@ export const createStyles = (colors) => StyleSheet.create({
   },
   metricNumbers: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   addedMetricValue: {
     fontSize: 15,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   detailGroup: {
     gap: 12,
@@ -471,19 +471,19 @@ export const createStyles = (colors) => StyleSheet.create({
   detailGroupLabel: {
     fontSize: 11,
     fontWeight: '800',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   unavailableText: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontStyle: 'italic',
   },
   historyPanel: {
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     overflow: 'hidden',
   },
   historyHeader: {
@@ -493,11 +493,11 @@ export const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     minHeight: 44,
-    backgroundColor: colors.subtleBg,
+    backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
   },
   historyHeaderBordered: {
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   historyHeaderContent: {
     flex: 1,
@@ -505,22 +505,22 @@ export const createStyles = (colors) => StyleSheet.create({
   historySummaryCount: {
     fontSize: 12,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   historySummaryLatest: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
   },
   historySummaryEmphasis: {
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   historyBlockGroup: {
   },
   historyBlockGroupBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   historyRow: {
     paddingHorizontal: 16,
@@ -528,16 +528,16 @@ export const createStyles = (colors) => StyleSheet.create({
     gap: 4,
   },
   historyRowSelected: {
-    backgroundColor: colors.subtleBg,
+    backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
   },
   historyBaselineTitle: {
     fontSize: 15,
     fontWeight: '800',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   historyDates: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   historyInclusionWrapper: {
     paddingHorizontal: 16,
@@ -547,7 +547,7 @@ export const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderTopWidth: 1,
-    borderTopColor: colors.divider,
+    borderTopColor: kua ? kua.surfaceBorder : colors.divider,
     gap: 2,
   },
   weekIndexRowHeader: {
@@ -558,17 +558,17 @@ export const createStyles = (colors) => StyleSheet.create({
   weekIndexWeekLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   weekIndexNoteTitle: {
     fontSize: 13,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   weekIndexStateText: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   weekIndexMuted: {
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
 });

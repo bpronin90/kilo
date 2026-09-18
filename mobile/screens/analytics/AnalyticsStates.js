@@ -35,7 +35,7 @@ export function describePoRowState({ hasActivation, isFirstSpanSession, hasCapab
 // the full cross-day comparison or the plain "Also on ..." fallback line.
 // Moved verbatim out of AnalyticsScreen.js (card #1051) — no presentation
 // change, only the module boundary.
-function renderExerciseRow(sig, { analytics, trackedLiftActivations, unit, styles, colors }) {
+function renderExerciseRow(sig, { analytics, trackedLiftActivations, unit, styles, colors, kua = null }) {
   const normName = normalizeLiftName(sig.name);
   const dayRow = sig.isMultiDay && sig.daySignals ? sig.daySignals[sig.currentDayHeading] : null;
   const rowPr = dayRow ? dayRow.latest_pr : sig.latest_pr;
@@ -84,7 +84,7 @@ function renderExerciseRow(sig, { analytics, trackedLiftActivations, unit, style
           </View>
           <View style={styles.metricCol} />
           <View style={styles.metricCol}>
-            {formatOverload(nw.exercise_class === 'reps_only' ? nw.reps_arrow : nw.hold_arrow, colors)}
+            {formatOverload(nw.exercise_class === 'reps_only' ? nw.reps_arrow : nw.hold_arrow, colors, kua)}
           </View>
         </View>
       ) : (
@@ -108,7 +108,7 @@ function renderExerciseRow(sig, { analytics, trackedLiftActivations, unit, style
             </Text>
           </View>
           <View style={styles.metricCol}>
-            {formatOverload(rowTrend, colors)}
+            {formatOverload(rowTrend, colors, kua)}
           </View>
         </View>
       )}
@@ -136,6 +136,7 @@ export function renderOverloadListContent({
   trackedLiftActivations,
   unit,
   colors,
+  kua = null,
   styles,
   searchQuery,
   onNavigate,
@@ -143,7 +144,7 @@ export function renderOverloadListContent({
   if (isNotesLoading || isTrackedLoading) {
     return (
       <View key="loading" style={{ height: 100, justifyContent: 'center' }}>
-        <ActivityIndicator color={colors.accent} />
+        <ActivityIndicator color={kua ? kua.primary : colors.accent} />
       </View>
     );
   }
@@ -164,13 +165,13 @@ export function renderOverloadListContent({
                 <MaterialIcons
                   name={isCollapsed ? "expand-more" : "expand-less"}
                   size={20}
-                  color={colors.textMuted}
+                  color={kua ? kua.onSurfaceVariant : colors.textMuted}
                 />
               </Pressable>
 
               {!isCollapsed && (
                 <View style={styles.exerciseList}>
-                  {group.exercises.map((sig) => renderExerciseRow(sig, { analytics, trackedLiftActivations, unit, styles, colors }))}
+                  {group.exercises.map((sig) => renderExerciseRow(sig, { analytics, trackedLiftActivations, unit, styles, colors, kua }))}
                 </View>
               )}
             </View>

@@ -17,10 +17,10 @@
 // line and never rewrites an existing one. A muted, dismissed, or passively
 // rendered card leaves `raw_text` byte-identical because it never calls this.
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card } from './UI';
-import { useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 
 // A rendered suggestion instance is its normalized exercise identity plus the
 // exact evidence and recommendation the derivation supplied. Transient
@@ -128,7 +128,8 @@ export function ProgressionSuggestionCard({
   onUnmute,
   onDismiss,
 }) {
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   if (!isRenderableProgressionSuggestion(suggestion) && !muted) return null;
   // A muted exercise renders nothing on the consuming surface — the mute
   // control itself lives elsewhere (the card is simply gone). This guard keeps
@@ -231,7 +232,8 @@ export function ProgressionSuggestionCard({
 // rendered by the consuming surface next to (or below) its suggestion list so
 // "unmute restores an otherwise-eligible suggestion" has a visible path.
 export function MutedProgressionRow({ name, onUnmute }) {
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   return (
     <View style={styles.mutedRow} testID="progression-suggestion-muted-row">
       <Text style={styles.mutedText} numberOfLines={2}>
@@ -256,7 +258,7 @@ export function MutedProgressionRow({ name, onUnmute }) {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+const createStyles = (colors, kua = null) => StyleSheet.create({
   card: {
     gap: 8,
   },
@@ -273,24 +275,24 @@ const createStyles = (colors) => StyleSheet.create({
     flex: 1,
     fontSize: 16,
     fontWeight: '800',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   heuristicBadge: {
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
   },
   heuristicBadgeText: {
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.5,
-    color: colors.chipText,
+    color: kua ? kua.primaryOnContainer : colors.chipText,
   },
   heuristicNote: {
     fontSize: 12,
     fontStyle: 'italic',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 17,
   },
   chipRow: {
@@ -302,24 +304,24 @@ const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,
-    backgroundColor: colors.inputBackground,
+    backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   chipText: {
     fontSize: 11,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   explanation: {
     fontSize: 13,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     lineHeight: 19,
   },
   recommendation: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     lineHeight: 19,
   },
   actionRow: {
@@ -338,10 +340,10 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   applyButtonText: {
-    color: colors.text,
+    color: kua ? kua.primary : colors.text,
   },
   mutedRow: {
     flexDirection: 'row',
@@ -353,6 +355,6 @@ const createStyles = (colors) => StyleSheet.create({
   mutedText: {
     flex: 1,
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
 });

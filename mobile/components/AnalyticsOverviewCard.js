@@ -11,11 +11,11 @@
 // scroll offset 0; putting this block at the top is what finally makes offset 0
 // mean "an overview" rather than "whatever section happens to be first".
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { ArtisanalPanel } from './UI';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 import { useWeightUnit } from '../lib/unitPreference';
 
 function formatValue(row) {
@@ -30,8 +30,8 @@ function formatDelta(row) {
 }
 
 function OverviewRow({ row, unit, onPress }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
 
   const value = formatValue(row);
   const delta = formatDelta(row);
@@ -89,7 +89,7 @@ function OverviewRow({ row, unit, onPress }) {
           )}
           {!!row.valueSuffix && <Text style={styles.rowValueSuffix}>{row.valueSuffix}</Text>}
           {interactive ? (
-            <MaterialIcons name="chevron-right" size={16} color={colors.textMuted} accessible={false} />
+            <MaterialIcons name="chevron-right" size={16} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
           ) : (
             // A same-width, invisible stand-in (not `null`) for every
             // non-interactive row (Routine has no destination section; an
@@ -148,8 +148,8 @@ function OverviewRow({ row, unit, onPress }) {
 }
 
 export function AnalyticsOverviewCard({ rows = [], loading = false, asOf = null, onSelectSection }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const unit = useWeightUnit();
 
   return (
@@ -162,7 +162,7 @@ export function AnalyticsOverviewCard({ rows = [], loading = false, asOf = null,
 
         {loading ? (
           <View style={styles.loading} accessible accessibilityLabel="Loading your overview">
-            <ActivityIndicator color={colors.accent} />
+            <ActivityIndicator color={kua ? kua.primary : colors.accent} />
           </View>
         ) : (
           rows.map(row => (
@@ -174,14 +174,14 @@ export function AnalyticsOverviewCard({ rows = [], loading = false, asOf = null,
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+const createStyles = (colors, kua = null) => StyleSheet.create({
   container: {
     gap: 16,
   },
   panel: {
     paddingHorizontal: 0,
     paddingVertical: 0,
-    backgroundColor: colors.panelBackground,
+    backgroundColor: kua ? kua.surfaceCard : colors.panelBackground,
   },
   header: {
     flexDirection: 'row',
@@ -195,13 +195,13 @@ const createStyles = (colors) => StyleSheet.create({
   headerLabel: {
     fontSize: 11,
     fontWeight: '800',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   headerAsOf: {
     fontSize: 11,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     flexShrink: 1,
   },
   loading: {
@@ -214,7 +214,7 @@ const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: colors.divider,
+    borderTopColor: kua ? kua.surfaceBorder : colors.divider,
     minHeight: 44,
     justifyContent: 'center',
   },
@@ -228,7 +228,7 @@ const createStyles = (colors) => StyleSheet.create({
   rowLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     flexShrink: 1,
   },
   rowValueGroup: {
@@ -239,13 +239,13 @@ const createStyles = (colors) => StyleSheet.create({
   rowValue: {
     fontSize: 17,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
   },
   rowValueEmpty: {
     fontSize: 17,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Same weight/size as a normal value, muted like the empty tone (#871): a
   // paused baseline count is a real, true number — not absent — but must not
@@ -253,17 +253,17 @@ const createStyles = (colors) => StyleSheet.create({
   rowValuePaused: {
     fontSize: 17,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   rowValueUnit: {
     fontSize: 11,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   rowValueSuffix: {
     fontSize: 11,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Matches the chevron's footprint (16 icon width; the group's own `gap: 5`
   // still applies) so a non-interactive row's value column ends at the same
@@ -284,14 +284,14 @@ const createStyles = (colors) => StyleSheet.create({
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
   },
   rowDeltaUp: {
-    color: colors.success,
+    color: kua ? kua.completion : colors.success,
   },
   rowDeltaDown: {
-    color: colors.error,
+    color: kua ? kua.error : colors.error,
   },
   rowCaption: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     flexShrink: 1,
   },
   // Bucket-row font-weight tier (#1029 amendment) — matches
@@ -302,7 +302,7 @@ const createStyles = (colors) => StyleSheet.create({
   rowInfoCaption: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     flexShrink: 1,
   },
 });
