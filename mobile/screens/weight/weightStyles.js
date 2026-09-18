@@ -86,7 +86,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 14,
     minHeight: 48,
-    fontSize: 16,
+    fontSize: 8,
     fontFamily: 'JetBrainsMono-SemiBold',
     color: kua ? kua.onSurface : colors.text,
     justifyContent: 'center',
@@ -242,7 +242,7 @@ export const createHistoryPanel = (colors, kua = null) => StyleSheet.create({
     alignItems: 'center',
   },
   value: {
-    fontSize: HISTORY_VALUE_SIZE,
+    fontSize: 10,
     fontFamily: 'JetBrainsMono-SemiBold',
     color: kua ? kua.onSurface : colors.text,
   },
