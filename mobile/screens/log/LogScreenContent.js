@@ -239,7 +239,7 @@ export function LogScreenContent(props) {
                 accessibilityLabel="Start recovery block"
               >
                 <Text style={styles.recoveryStartRowText}>Start recovery block</Text>
-                <MaterialIcons name="chevron-right" size={18} color={colors.accent} accessible={false} />
+                <MaterialIcons name="chevron-right" size={18} color={kua ? kua.primary : colors.accent} accessible={false} />
               </Pressable>
             )}
 
