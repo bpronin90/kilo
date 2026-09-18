@@ -164,6 +164,9 @@ export function WeightGoalCard({
                 <Pressable onPress={startEditGoal} style={styles.goalActionChip} accessibilityRole="button" accessibilityLabel="Edit">
                   <Text style={styles.goalActionChipText} accessible={false} importantForAccessibility="no">Edit</Text>
                 </Pressable>
+                <Pressable onPress={handleClearGoal} style={styles.goalActionChip} accessibilityRole="button" accessibilityLabel="Clear">
+                  <Text style={[styles.goalActionChipText, styles.goalClearText]} accessible={false} importantForAccessibility="no">Clear</Text>
+                </Pressable>
               </View>
             </View>
           )}
