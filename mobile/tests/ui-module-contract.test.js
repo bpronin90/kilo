@@ -294,3 +294,70 @@ describe('UI.js compatibility barrel: rendered structure parity', () => {
     expect(text.props.children).toBe('paused for water');
   });
 });
+
+import { WorkoutKuaProvider } from '../components/ui/workout';
+import { HardCourtLightColors } from '../theme/colors';
+
+describe('WorkoutKuaProvider: KUA opt-in gate', () => {
+  test('ExerciseBlock without a WorkoutKuaProvider renders "Tracked" (legacy text, no ✓)', () => {
+    let component;
+    renderer.act(() => {
+      component = renderer.create(
+        <UI.ExerciseBlock name="Squat" isTracked onToggleTrack={() => {}}>
+          <Text>child</Text>
+        </UI.ExerciseBlock>
+      );
+    });
+    const texts = component.root.findAllByType(Text).map((t) => t.props.children);
+    expect(texts).toContain('Tracked');
+    expect(texts).not.toContain('✓ Tracked');
+  });
+
+  test('ExerciseBlock inside WorkoutKuaProvider renders "✓ Tracked" when tracked', () => {
+    let component;
+    renderer.act(() => {
+      component = renderer.create(
+        <WorkoutKuaProvider kua={HardCourtLightColors}>
+          <UI.ExerciseBlock name="Squat" isTracked onToggleTrack={() => {}}>
+            <Text>child</Text>
+          </UI.ExerciseBlock>
+        </WorkoutKuaProvider>
+      );
+    });
+    const texts = component.root.findAllByType(Text).map((t) => t.props.children);
+    expect(texts).toContain('✓ Tracked');
+    expect(texts).not.toContain('Tracked');
+  });
+
+  test('ExerciseBlock inside WorkoutKuaProvider renders "Track" (no ✓) when untracked', () => {
+    let component;
+    renderer.act(() => {
+      component = renderer.create(
+        <WorkoutKuaProvider kua={HardCourtLightColors}>
+          <UI.ExerciseBlock name="Squat" isTracked={false} onToggleTrack={() => {}}>
+            <Text>child</Text>
+          </UI.ExerciseBlock>
+        </WorkoutKuaProvider>
+      );
+    });
+    const texts = component.root.findAllByType(Text).map((t) => t.props.children);
+    expect(texts).toContain('Track');
+    expect(texts).not.toContain('✓ Tracked');
+  });
+
+  test('WorkoutKuaProvider with kua=null preserves legacy path (no ✓ Tracked)', () => {
+    let component;
+    renderer.act(() => {
+      component = renderer.create(
+        <WorkoutKuaProvider kua={null}>
+          <UI.ExerciseBlock name="Bench Press" isTracked onToggleTrack={() => {}}>
+            <Text>child</Text>
+          </UI.ExerciseBlock>
+        </WorkoutKuaProvider>
+      );
+    });
+    const texts = component.root.findAllByType(Text).map((t) => t.props.children);
+    expect(texts).toContain('Tracked');
+    expect(texts).not.toContain('✓ Tracked');
+  });
+});

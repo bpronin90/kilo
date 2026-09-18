@@ -1,6 +1,21 @@
-import React, { useState } from 'react';
+import React, { createContext, useContext, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
+
+// KUA presentation opt-in gate. Defaults to null (legacy path) so every
+// WorkoutHeading/WorkoutSubheading/ExerciseBlock consumer that does not
+// explicitly provide this context keeps the unchanged legacy styles. Only the
+// Log-routine surface (LogActiveRoutineCard) wraps its WorkoutContentRenderer
+// in WorkoutKuaProvider — all other consumers (Deload, previous routines,
+// recovery evidence, Analytics, import) remain on the legacy palette.
+const WorkoutKuaContext = createContext(null);
+export function WorkoutKuaProvider({ kua, children }) {
+  return (
+    <WorkoutKuaContext.Provider value={kua ?? null}>
+      {children}
+    </WorkoutKuaContext.Provider>
+  );
+}
 import { Card } from './containers';
 import { SET_ROW_FONT_SIZE } from './styles';
 import { PlateCalculatorModal } from '../PlateCalculatorModal';
@@ -106,12 +121,16 @@ export function StatCard({ label, value, tone = 'default' }) {
 }
 
 export function WorkoutHeading({ children, style, selectable }) {
-  const styles = useThemedStyles(createStyles);
+  const { colors } = useTheme();
+  const kua = useContext(WorkoutKuaContext);
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   return <Text selectable={selectable} style={[styles.workoutHeading, style]}>{children}</Text>;
 }
 
 export function WorkoutSubheading({ children, selectable }) {
-  const styles = useThemedStyles(createStyles);
+  const { colors } = useTheme();
+  const kua = useContext(WorkoutKuaContext);
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   return (
     <View style={styles.subheadingContainer}>
       <Text selectable={selectable} style={styles.workoutSubheading}>{children}</Text>
@@ -121,7 +140,9 @@ export function WorkoutSubheading({ children, selectable }) {
 }
 
 export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabledTrack, selectable, onNamePress }) {
-  const styles = useThemedStyles(createStyles);
+  const { colors } = useTheme();
+  const kua = useContext(WorkoutKuaContext);
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const TrackContainer = (disabledTrack || !onToggleTrack) ? View : Pressable;
 
   return (
@@ -158,7 +179,7 @@ export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabl
               isTracked ? styles.trackToggleTextActive : null,
               disabledTrack ? styles.trackToggleTextDisabled : null
             ]}>
-              {isTracked ? 'Tracked' : 'Track'}
+              {kua ? (isTracked ? '✓ Tracked' : 'Track') : (isTracked ? 'Tracked' : 'Track')}
             </Text>
           </TrackContainer>
         )}
@@ -288,7 +309,11 @@ export function AnnotationNote({ text, selectable }) {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+// When `kua` is provided (WorkoutHeading, WorkoutSubheading, ExerciseBlock
+// callers in KUA-mode contexts), section headers and TRACK states use KUA
+// palette tokens. Legacy callers via useThemedStyles pass only `colors` so
+// kua defaults to null and all styles fall back to the legacy palette.
+const createStyles = (colors, kua = null) => StyleSheet.create({
   statCard: {
     flex: 1,
     minWidth: '45%',
@@ -401,7 +426,7 @@ const createStyles = (colors) => StyleSheet.create({
   workoutHeading: {
     fontSize: 22,
     fontWeight: '800',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     marginTop: 24,
     marginBottom: 8,
     textTransform: 'capitalize',
@@ -416,14 +441,14 @@ const createStyles = (colors) => StyleSheet.create({
   workoutSubheading: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   subheadingLine: {
     flex: 1,
     height: 1,
-    backgroundColor: colors.cardBorder,
+    backgroundColor: kua ? kua.primary : colors.cardBorder,
     opacity: 0.5,
   },
   exerciseBlock: {
@@ -439,7 +464,7 @@ const createStyles = (colors) => StyleSheet.create({
   exerciseName: {
     fontSize: 17,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     flex: 1,
   },
   trackToggle: {
@@ -447,27 +472,27 @@ const createStyles = (colors) => StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-    backgroundColor: 'transparent',
+    borderColor: kua ? kua.primaryContainerBorder : colors.cardBorder,
+    backgroundColor: kua ? kua.primaryContainer : 'transparent',
   },
   trackToggleActive: {
-    backgroundColor: colors.chipBackground,
-    borderColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primary : colors.chipBackground,
+    borderColor: kua ? kua.primary : colors.chipBackground,
   },
   trackToggleDisabled: {
     opacity: 0.4,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.primaryContainerBorder : colors.cardBorder,
   },
   trackToggleText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.primaryOnContainer : colors.textMuted,
   },
   trackToggleTextActive: {
-    color: colors.chipText,
+    color: kua ? kua.onPrimary : colors.chipText,
   },
   trackToggleTextDisabled: {
-    color: colors.textMuted,
+    color: kua ? kua.primaryOnContainer : colors.textMuted,
   },
   exerciseContent: {
     paddingLeft: 4,

@@ -1799,3 +1799,39 @@ describe('KUA elevation token contract', () => {
     expect(Object.isFrozen(ELEVATION)).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// KUA Log screen segmented control (#1109)
+// tabToggle background must resolve to a KUA token for all six palettes.
+// Hard Court light/dark and Clay Court light define neither surfaceLow nor
+// surfaceSeg, so the fallback must be surfaceSection (present in all palettes).
+// ---------------------------------------------------------------------------
+
+import { createStyles as createLogStyles } from '../screens/log/logScreenStyles';
+
+describe('KUA Log screen segmented control: tabToggle background uses KUA tokens in all palettes', () => {
+  const LEGACY_SUBTLEBG_RE = /rgba/i;
+
+  test.each([
+    ['hardCourt/light', HardCourtLightColors],
+    ['hardCourt/dark', HardCourtDarkColors],
+    ['clayCourt/light', ClayCourtLightColors],
+    ['clayCourt/dark', ClayCourtDarkColors],
+    ['grassCourt/light', GrassCourtLightColors],
+    ['grassCourt/dark', GrassCourtDarkColors],
+  ])('%s: tabToggle background is a KUA token, not legacy subtleBg', (_name, kua) => {
+    const styles = createLogStyles(LightColors, kua);
+    const bg = styles.tabToggle.backgroundColor;
+    // Must be a string (hex), not the legacy rgba scrim
+    expect(typeof bg).toBe('string');
+    expect(LEGACY_SUBTLEBG_RE.test(bg)).toBe(false);
+    // Must match one of the three candidate KUA tokens
+    const expected = kua.surfaceLow ?? kua.surfaceSeg ?? kua.surfaceSection;
+    expect(bg).toBe(expected);
+  });
+
+  test('tabToggle background falls back to legacy subtleBg when kua is null', () => {
+    const styles = createLogStyles(LightColors, null);
+    expect(styles.tabToggle.backgroundColor).toBe(LightColors.subtleBg);
+  });
+});
