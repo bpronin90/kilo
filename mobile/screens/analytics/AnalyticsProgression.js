@@ -25,6 +25,7 @@ export function AnalyticsProgression({
   setBaselineCollapsed,
   styles,
   colors,
+  kua,
   sinceDeload,
   sessionCount,
   deloadModeEnabled,
@@ -87,7 +88,7 @@ export function AnalyticsProgression({
         <MaterialIcons
           name={baselineCollapsed ? 'expand-more' : 'expand-less'}
           size={20}
-          color={colors.textMuted}
+          color={kua ? kua.onSurfaceVariant : colors.textMuted}
           accessible={false}
         />
       </Pressable>
@@ -172,7 +173,7 @@ export function AnalyticsProgression({
               <MaterialIcons
                 name={allGroupsCollapsed ? 'unfold-more' : 'unfold-less'}
                 size={16}
-                color={colors.textMuted}
+                color={kua ? kua.onSurfaceVariant : colors.textMuted}
                 accessible={false}
               />
             </Pressable>
@@ -183,7 +184,7 @@ export function AnalyticsProgression({
             testID="po-search"
             style={styles.searchInput}
             placeholder="Search tracked exercises..."
-            placeholderTextColor={colors.textMuted}
+            placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
             value={searchQuery}
             onChangeText={setSearchQuery}
             clearButtonMode="while-editing"

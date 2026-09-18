@@ -1835,3 +1835,88 @@ describe('KUA Log screen segmented control: tabToggle background uses KUA tokens
     expect(styles.tabToggle.backgroundColor).toBe(LightColors.subtleBg);
   });
 });
+
+// ---------------------------------------------------------------------------
+// KUA Analytics surface (#1116)
+// Card backgrounds and key color tokens must resolve to KUA values in all six
+// palettes; legacy colors must be used when kua is null.
+// ---------------------------------------------------------------------------
+
+import { createStyles as createAnalyticsStyles } from '../screens/analytics/analyticsStyles';
+import { createStyles as createWeightTrendsStyles } from '../components/AnalyticsWeightTrendsCard';
+import { createStyles as createStrengthStyles } from '../components/AnalyticsStrengthSection';
+
+describe('KUA Analytics surface: createStyles uses KUA tokens in all palettes', () => {
+  test.each([
+    ['hardCourt/light', HardCourtLightColors],
+    ['hardCourt/dark', HardCourtDarkColors],
+    ['clayCourt/light', ClayCourtLightColors],
+    ['clayCourt/dark', ClayCourtDarkColors],
+    ['grassCourt/light', GrassCourtLightColors],
+    ['grassCourt/dark', GrassCourtDarkColors],
+  ])('%s: analyticsStyles stickyHeader background is kua.background', (_name, kua) => {
+    const styles = createAnalyticsStyles(LightColors, kua);
+    expect(styles.signalStickyHeader.backgroundColor).toBe(kua.background);
+  });
+
+  test.each([
+    ['hardCourt/light', HardCourtLightColors],
+    ['hardCourt/dark', HardCourtDarkColors],
+    ['clayCourt/light', ClayCourtLightColors],
+    ['clayCourt/dark', ClayCourtDarkColors],
+    ['grassCourt/light', GrassCourtLightColors],
+    ['grassCourt/dark', GrassCourtDarkColors],
+  ])('%s: analyticsStyles searchInput uses kua.surfaceCard background', (_name, kua) => {
+    const styles = createAnalyticsStyles(LightColors, kua);
+    expect(styles.searchInput.backgroundColor).toBe(kua.surfaceCard);
+    expect(styles.searchInput.borderColor).toBe(kua.surfaceBorder);
+    expect(styles.searchInput.color).toBe(kua.onSurface);
+  });
+
+  test('analyticsStyles falls back to legacy colors when kua is null', () => {
+    const styles = createAnalyticsStyles(LightColors, null);
+    expect(styles.signalStickyHeader.backgroundColor).toBe(LightColors.background);
+    expect(styles.searchInput.backgroundColor).toBe(LightColors.inputBackground);
+  });
+
+  test.each([
+    ['hardCourt/light', HardCourtLightColors],
+    ['hardCourt/dark', HardCourtDarkColors],
+    ['clayCourt/light', ClayCourtLightColors],
+    ['clayCourt/dark', ClayCourtDarkColors],
+    ['grassCourt/light', GrassCourtLightColors],
+    ['grassCourt/dark', GrassCourtDarkColors],
+  ])('%s: weight trends card uses kua.surfaceCard for card background', (_name, kua) => {
+    const styles = createWeightTrendsStyles(LightColors, kua);
+    expect(styles.weightCard.backgroundColor).toBe(kua.surfaceCard);
+    expect(styles.weightFooter.borderTopColor).toBe(kua.surfaceBorder);
+    expect(styles.weightStatValue.color).toBe(kua.onSurface);
+    expect(styles.weightStatLabel.color).toBe(kua.onSurfaceVariant);
+  });
+
+  test('weight trends card falls back to legacy colors when kua is null', () => {
+    const styles = createWeightTrendsStyles(LightColors, null);
+    expect(styles.weightCard.backgroundColor).toBe(LightColors.panelBackground);
+    expect(styles.weightStatValue.color).toBe(LightColors.text);
+  });
+
+  test.each([
+    ['hardCourt/light', HardCourtLightColors],
+    ['hardCourt/dark', HardCourtDarkColors],
+    ['clayCourt/light', ClayCourtLightColors],
+    ['clayCourt/dark', ClayCourtDarkColors],
+    ['grassCourt/light', GrassCourtLightColors],
+    ['grassCourt/dark', GrassCourtDarkColors],
+  ])('%s: strength section uses kua.surfaceCard for 1K card background', (_name, kua) => {
+    const styles = createStrengthStyles(LightColors, kua);
+    expect(styles.oneKCard.backgroundColor).toBe(kua.surfaceCard);
+    expect(styles.oneKProgressBar.backgroundColor).toBe(kua.primary);
+    expect(styles.slotOptionSelected.backgroundColor).toBe(kua.primaryContainer);
+  });
+
+  test('strength section falls back to legacy colors when kua is null', () => {
+    const styles = createStrengthStyles(LightColors, null);
+    expect(styles.oneKCard.backgroundColor).toBe(LightColors.panelBackground);
+    expect(styles.oneKProgressBar.backgroundColor).toBe(LightColors.accent);
+  });
+});
