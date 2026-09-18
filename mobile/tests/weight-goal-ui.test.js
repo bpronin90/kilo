@@ -945,7 +945,7 @@ describe('WeightScreen', () => {
         expect(getStyleProp(colLabel, 'fontWeight')).toBe('700');
       });
 
-      test('row weight values use standard hierarchy typography', () => {
+      test('row weight values use JBM typography matching goal history (#411)', () => {
         const component = setup(null, entries);
         expandWeightHistory(component.root);
         const weightNode = component.root.findAllByType('Text').find(t => {
@@ -954,8 +954,8 @@ describe('WeightScreen', () => {
           return text === '190 lb';
         });
         expect(weightNode).toBeTruthy();
-        expect(getStyleProp(weightNode, 'fontSize')).toBe(20);
-        expect(getStyleProp(weightNode, 'fontWeight')).toBe('700');
+        expect(getStyleProp(weightNode, 'fontSize')).toBe(13);
+        expect(getStyleProp(weightNode, 'fontFamily')).toBe('JetBrainsMono-SemiBold');
       });
 
       // #409: collapsed Weight History summary renders the latest weight in bold
@@ -1121,16 +1121,16 @@ describe('WeightScreen', () => {
       return root;
     };
 
-    test('goal history values use JBM typography; weight history uses standard hierarchy', () => {
+    test('primary value cells share identical typography across both panels (#411)', () => {
       const root = renderBoth();
       const goalValue = findByExactText(root, '175 lb');
       const weightValue = findByExactText(root, '190 lb');
       expect(goalValue).toBeTruthy();
       expect(weightValue).toBeTruthy();
+      expect(getStyleProp(goalValue, 'fontSize')).toBe(getStyleProp(weightValue, 'fontSize'));
+      expect(getStyleProp(goalValue, 'fontFamily')).toBe(getStyleProp(weightValue, 'fontFamily'));
       expect(getStyleProp(goalValue, 'fontSize')).toBe(13);
       expect(getStyleProp(goalValue, 'fontFamily')).toBe('JetBrainsMono-SemiBold');
-      expect(getStyleProp(weightValue, 'fontSize')).toBe(20);
-      expect(getStyleProp(weightValue, 'fontWeight')).toBe('700');
     });
 
     test('date cells share identical typography across both panels', () => {

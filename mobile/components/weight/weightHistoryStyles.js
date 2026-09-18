@@ -113,8 +113,8 @@ export const createHistoryPanel = (colors, kua = null) => StyleSheet.create({
     alignItems: 'center',
   },
   value: {
-    fontSize: HISTORY_VALUE_SIZE,
-    fontWeight: HISTORY_VALUE_WEIGHT,
+    fontSize: 13,
+    fontFamily: 'JetBrainsMono-SemiBold',
     color: kua ? kua.onSurface : colors.text,
   },
   dateValue: {
