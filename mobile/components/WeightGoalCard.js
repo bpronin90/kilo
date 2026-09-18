@@ -506,12 +506,12 @@ const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
     letterSpacing: 0.5,
   },
   derivedValue: {
-    fontFamily: 'JetBrainsMono-SemiBold',
+    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
     fontSize: 10,
     color: kua ? kua.onSurface : colors.text,
   },
   derivedValueNeutral: {
-    fontFamily: 'JetBrainsMono-SemiBold',
+    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
     fontSize: 10,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     opacity: 0.5,
