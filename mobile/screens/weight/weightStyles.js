@@ -87,6 +87,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     fontSize: 17,
     color: kua ? kua.onSurface : colors.text,
     justifyContent: 'center',
+    textAlignVertical: 'center',
   },
   numericInput: {
     backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
@@ -100,6 +101,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
     color: kua ? kua.onSurface : colors.text,
     justifyContent: 'center',
+    textAlignVertical: 'center',
   },
   entryCard: {
     backgroundColor: kua ? kua.surfaceCard : undefined,

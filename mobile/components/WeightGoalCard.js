@@ -439,12 +439,12 @@ const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
     gap: 1,
   },
   goalDisplayValue: {
-    fontFamily: 'JetBrainsMono-Bold',
+    ...jbmFont(typo, 'metric-display', 'JetBrainsMono-Bold'),
     fontSize: 18,
     color: kua ? kua.primary : colors.accentText,
   },
   goalDisplayDateValue: {
-    fontFamily: 'JetBrainsMono-Bold',
+    ...jbmFont(typo, 'metric-display', 'JetBrainsMono-Bold'),
     fontSize: 18,
     color: kua ? kua.onSurface : colors.text,
   },
@@ -461,7 +461,7 @@ const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
     gap: 6,
   },
   goalProgressValue: {
-    fontFamily: 'JetBrainsMono-SemiBold',
+    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
     fontSize: 10,
     color: kua ? kua.primary : colors.accentText,
   },

@@ -159,6 +159,7 @@ export function WeightEntryForm({
         placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
         keyboardType="decimal-pad"
         style={styles.numericInput}
+        includeFontPadding={false}
       />
       {!editingId && (
         <>
@@ -179,6 +180,7 @@ export function WeightEntryForm({
             placeholderTextColor={colors.textMuted}
             style={styles.input}
             accessibilityLabel="Note"
+            includeFontPadding={false}
           />
         </>
       )}
@@ -194,6 +196,7 @@ export function WeightEntryForm({
             placeholderTextColor={colors.textMuted}
             style={styles.input}
             accessibilityLabel="Note"
+            includeFontPadding={false}
           />
         </>
       )}
