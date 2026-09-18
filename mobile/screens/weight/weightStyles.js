@@ -91,7 +91,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurface : colors.text,
     justifyContent: 'center',
   },
+  entryCard: {
+    backgroundColor: kua ? kua.surfaceCard : undefined,
+    borderColor: kua ? kua.surfaceBorder : undefined,
+  },
   editingCard: {
+    backgroundColor: kua ? kua.surfaceCard : undefined,
     borderColor: kua ? kua.primary : colors.accent,
     borderWidth: 2,
   },
@@ -130,6 +135,8 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     padding: 0,
     gap: 0,
     overflow: 'hidden',
+    backgroundColor: kua ? kua.surfaceCard : undefined,
+    borderColor: kua ? kua.surfaceBorder : undefined,
   },
   fullTrendsLink: {
     alignSelf: 'center',

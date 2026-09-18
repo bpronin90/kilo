@@ -131,7 +131,7 @@ export function WeightEntryForm({
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
 
   return (
-    <Card style={editingId ? styles.editingCard : null}>
+    <Card style={editingId ? styles.editingCard : styles.entryCard}>
       {editingId && (
         <View style={styles.editingHeader}>
           <Text style={styles.editingTitle}>Editing entry</Text>

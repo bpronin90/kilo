@@ -326,6 +326,8 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   goalCard: {
     gap: 8,
+    backgroundColor: kua ? kua.surfaceCard : undefined,
+    borderColor: kua ? kua.surfaceBorder : undefined,
   },
   goalCardMet: {
     borderColor: colors.success,
