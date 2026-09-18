@@ -2332,3 +2332,78 @@ describe('TrendSection pace caption rendering (#941)', () => {
     expect(nodes).not.toContain('over 5 days');
   });
 });
+
+// ── KUA error banner regression (#1113) ──────────────────────────────────────
+//
+// WeightScreen renders inline error banners (not the shared ErrorBanner) so
+// KUA color tokens are applied in all six theme/mode combinations. This block
+// confirms that the banner text and border use kua.error, not the legacy
+// colors.error, when an entries or goal read fails while a KUA palette is active.
+describe('WeightScreen error banners use KUA tokens when a KUA palette is active (#1113)', () => {
+  const { StyleSheet } = require('react-native');
+
+  function mountWithError(entriesError, goalError) {
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [],
+      remove: jest.fn(),
+      update: jest.fn(),
+      loading: false,
+      error: entriesError,
+      refresh: jest.fn(),
+    });
+    useEntries.useWeightGoal.mockReturnValue({
+      goal: null,
+      save: jest.fn(),
+      clear: jest.fn(),
+      archiveGoal: jest.fn(),
+      loading: false,
+      error: goalError,
+      refresh: jest.fn(),
+    });
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    return component.root;
+  }
+
+  const kuaError = KUA_PALETTES.hardCourt.light.error;
+
+  test('entries error banner text uses kua.error, not legacy error color', () => {
+    const root = mountWithError(new Error('entries failed'), null);
+    const errorTexts = root.findAll(
+      (n) => n.type === 'Text' && String(n.props.children ?? '').includes('weight entries')
+    );
+    expect(errorTexts.length).toBeGreaterThan(0);
+    const color = StyleSheet.flatten(errorTexts[0].props.style)?.color;
+    expect(color).toBe(kuaError);
+  });
+
+  test('goal error banner text uses kua.error, not legacy error color', () => {
+    const root = mountWithError(null, new Error('goal failed'));
+    const errorTexts = root.findAll(
+      (n) => n.type === 'Text' && String(n.props.children ?? '').includes('weight goal')
+    );
+    expect(errorTexts.length).toBeGreaterThan(0);
+    const color = StyleSheet.flatten(errorTexts[0].props.style)?.color;
+    expect(color).toBe(kuaError);
+  });
+
+  test('entries error banner border uses kua.error', () => {
+    const root = mountWithError(new Error('entries failed'), null);
+    const banners = root.findAll(
+      (n) => n.type === 'View' && StyleSheet.flatten(n.props.style)?.borderColor === kuaError
+    );
+    expect(banners.length).toBeGreaterThan(0);
+  });
+
+  test('goal error banner border uses kua.error', () => {
+    const root = mountWithError(null, new Error('goal failed'));
+    const banners = root.findAll(
+      (n) => n.type === 'View' && StyleSheet.flatten(n.props.style)?.borderColor === kuaError
+    );
+    expect(banners.length).toBeGreaterThan(0);
+  });
+});

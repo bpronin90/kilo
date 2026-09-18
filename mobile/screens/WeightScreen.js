@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { Pressable, Text, View } from 'react-native';
 import { Alert } from '../lib/platformAlert';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, SectionTitle, ErrorBanner } from '../components/UI';
+import { Card, SectionTitle } from '../components/UI';
 import { useTheme } from '../theme/ThemeContext';
 import { useWeightEntries, useWeightGoal, useUserProfile } from '../hooks/useEntries';
 import { getWeightDeltaSeverity } from '../lib/format';
@@ -310,10 +310,20 @@ export function WeightScreen({
           a weigh-in read and a goal read fail independently, and merging them
           would offer a retry for something that never failed. */}
       {entriesError ? (
-        <ErrorBanner message="Could not load weight entries." onRetry={refreshEntries} />
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorBannerText}>Could not load weight entries.</Text>
+          <Pressable onPress={refreshEntries} style={styles.errorBannerRetry} accessibilityRole="button" accessibilityLabel="Retry">
+            <Text style={styles.errorBannerRetryText} accessible={false}>Retry</Text>
+          </Pressable>
+        </View>
       ) : null}
       {goalError ? (
-        <ErrorBanner message="Could not load your weight goal." onRetry={refreshGoal} />
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorBannerText}>Could not load your weight goal.</Text>
+          <Pressable onPress={refreshGoal} style={styles.errorBannerRetry} accessibilityRole="button" accessibilityLabel="Retry">
+            <Text style={styles.errorBannerRetryText} accessible={false}>Retry</Text>
+          </Pressable>
+        </View>
       ) : null}
       <WeightEntryForm
         editingId={editingId}

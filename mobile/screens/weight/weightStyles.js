@@ -174,6 +174,37 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   archivedValueMissed: {
     color: colors.error,
   },
+  errorBanner: {
+    backgroundColor: kua ? kua.surfaceCard : colors.errorSurface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: kua ? kua.error : colors.error,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: kua ? kua.error : colors.error,
+  },
+  errorBannerRetry: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: kua ? kua.error : colors.cardErrorBg,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorBannerRetryText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textLight,
+  },
 });
 
 export const createHistoryPanel = (colors, kua = null, typo = null) => StyleSheet.create({
