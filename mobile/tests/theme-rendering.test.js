@@ -1887,17 +1887,32 @@ describe('KUA Analytics surface: createStyles uses KUA tokens in all palettes', 
     ['grassCourt/light', GrassCourtLightColors],
     ['grassCourt/dark', GrassCourtDarkColors],
   ])('%s: weight trends card uses kua.surfaceCard for card background', (_name, kua) => {
-    const styles = createWeightTrendsStyles(LightColors, kua);
+    const styles = createWeightTrendsStyles(LightColors, kua, TYPOGRAPHY);
     expect(styles.weightCard.backgroundColor).toBe(kua.surfaceCard);
     expect(styles.weightFooter.borderTopColor).toBe(kua.surfaceBorder);
     expect(styles.weightStatValue.color).toBe(kua.onSurface);
     expect(styles.weightStatLabel.color).toBe(kua.onSurfaceVariant);
   });
 
-  test('weight trends card falls back to legacy colors when kua is null', () => {
-    const styles = createWeightTrendsStyles(LightColors, null);
+  test.each([
+    ['hardCourt/light', HardCourtLightColors],
+    ['hardCourt/dark', HardCourtDarkColors],
+    ['clayCourt/light', ClayCourtLightColors],
+    ['clayCourt/dark', ClayCourtDarkColors],
+    ['grassCourt/light', GrassCourtLightColors],
+    ['grassCourt/dark', GrassCourtDarkColors],
+  ])('%s: weight trends card applies metric-display-mobile font for main weight value', (_name, kua) => {
+    const styles = createWeightTrendsStyles(LightColors, kua, TYPOGRAPHY);
+    const spec = TYPOGRAPHY['metric-display-mobile'];
+    expect(styles.weightValueLarge.fontFamily).toBe(spec.fontFamily);
+    expect(styles.weightValueLarge.color).toBe(kua.onSurface);
+  });
+
+  test('weight trends card falls back to legacy styles when kua is null', () => {
+    const styles = createWeightTrendsStyles(LightColors, null, null);
     expect(styles.weightCard.backgroundColor).toBe(LightColors.panelBackground);
     expect(styles.weightStatValue.color).toBe(LightColors.text);
+    expect(styles.weightValueLarge.fontSize).toBe(32);
   });
 
   test.each([
@@ -1908,14 +1923,28 @@ describe('KUA Analytics surface: createStyles uses KUA tokens in all palettes', 
     ['grassCourt/light', GrassCourtLightColors],
     ['grassCourt/dark', GrassCourtDarkColors],
   ])('%s: strength section uses kua.surfaceCard for 1K card background', (_name, kua) => {
-    const styles = createStrengthStyles(LightColors, kua);
+    const styles = createStrengthStyles(LightColors, kua, TYPOGRAPHY);
     expect(styles.oneKCard.backgroundColor).toBe(kua.surfaceCard);
     expect(styles.oneKProgressBar.backgroundColor).toBe(kua.primary);
     expect(styles.slotOptionSelected.backgroundColor).toBe(kua.primaryContainer);
   });
 
-  test('strength section falls back to legacy colors when kua is null', () => {
-    const styles = createStrengthStyles(LightColors, null);
+  test.each([
+    ['hardCourt/light', HardCourtLightColors],
+    ['hardCourt/dark', HardCourtDarkColors],
+    ['clayCourt/light', ClayCourtLightColors],
+    ['clayCourt/dark', ClayCourtDarkColors],
+    ['grassCourt/light', GrassCourtLightColors],
+    ['grassCourt/dark', GrassCourtDarkColors],
+  ])('%s: strength section applies metric-display-mobile font for 1K value', (_name, kua) => {
+    const styles = createStrengthStyles(LightColors, kua, TYPOGRAPHY);
+    const spec = TYPOGRAPHY['metric-display-mobile'];
+    expect(styles.oneKValue.fontFamily).toBe(spec.fontFamily);
+    expect(styles.oneKValue.fontSize).toBe(28);
+  });
+
+  test('strength section falls back to legacy styles when kua is null', () => {
+    const styles = createStrengthStyles(LightColors, null, null);
     expect(styles.oneKCard.backgroundColor).toBe(LightColors.panelBackground);
     expect(styles.oneKProgressBar.backgroundColor).toBe(LightColors.accent);
   });

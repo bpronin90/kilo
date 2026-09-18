@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card, SectionTitle, LineChart } from './UI';
 import { useTheme } from '../theme/ThemeContext';
+import { TYPOGRAPHY } from '../theme/typography';
 import { useWeightUnit } from '../lib/unitPreference';
 import { formatPaceElapsed } from '../lib/format';
 
@@ -125,6 +126,7 @@ export function AnalyticsWeightTrendsCard({
                 height={100}
                 hideHeader
                 showScale
+                color={kua ? kua.chartSeries1 : undefined}
                 seriesLabel="7-day rolling average bodyweight"
                 onSelect={handleSelect}
               />
@@ -232,8 +234,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginBottom: 2,
   },
   weightValueLarge: {
-    fontSize: 32,
-    fontWeight: '800',
+    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : { fontSize: 32, fontWeight: '800' }),
     color: kua ? kua.onSurface : colors.accentText,
   },
   weightUnit: {

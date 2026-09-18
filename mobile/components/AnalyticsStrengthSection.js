@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel } from './UI';
 import { PlateCalculatorModal } from './PlateCalculatorModal';
 import { useTheme } from '../theme/ThemeContext';
+import { TYPOGRAPHY } from '../theme/typography';
 import { lerpColor } from '../lib/AnalyticsScreenHelpers';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useWeightUnit } from '../lib/unitPreference';
@@ -104,6 +105,7 @@ export function AnalyticsStrengthSection({
                     height={120}
                     hideHeader
                     showScale
+                    color={kua ? kua.chartSeries1 : undefined}
                     seriesLabel="1K total by session"
                     onSelect={p => setSelectedSeriesPoint(p)}
                   />
@@ -290,8 +292,8 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     letterSpacing: 1,
   },
   oneKValue: {
-    ...HeroMetric.hero,
-    color: colors.text,
+    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : { ...HeroMetric.hero }),
+    color: kua ? undefined : colors.text,
   },
   // Literal leading space, not marginLeft — this Text is nested inside the
   // value Text, and native RN treats a nested Text as an inline attributed
