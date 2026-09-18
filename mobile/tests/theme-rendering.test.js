@@ -636,13 +636,13 @@ describe('themed prop defaults resolve after the theme is read', () => {
     return component;
   }
 
-  test('LineChart renders with no color prop and falls back to the accent', () => {
+  test('LineChart renders with no color prop and falls back to kua.primary', () => {
     let component;
     expect(() => {
       component = mountChart();
     }).not.toThrow();
 
-    expect(strokes(component)).toContain(LightColors.accent);
+    expect(strokes(component)).toContain(HardCourtLightColors.primary);
     expect(strokes(component).every((s) => s !== undefined)).toBe(true);
   });
 
@@ -653,7 +653,7 @@ describe('themed prop defaults resolve after the theme is read', () => {
       setAppearancePreference('dark');
     });
 
-    expect(strokes(component)).toContain(DarkColors.accent);
+    expect(strokes(component)).toContain(HardCourtDarkColors.primary);
     expect(strokes(component).every((s) => s !== undefined)).toBe(true);
   });
 
