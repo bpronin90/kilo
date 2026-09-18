@@ -101,7 +101,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   trendValue: {
     fontFamily: 'JetBrainsMono-Bold',
-    fontSize: 13,
+    fontSize: 15,
     color: kua ? kua.onSurface : colors.text,
   },
   // Secondary caption under the pace value (e.g. "over 5 days"). Its own line so
@@ -109,11 +109,11 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   // truncated off the end of the value string.
   trendCaption: {
     fontFamily: 'JetBrainsMono-Medium',
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 2,
   },
   trendLabel: {
-    fontSize: 11,
+    fontSize: 12,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '700',
     textTransform: 'uppercase',

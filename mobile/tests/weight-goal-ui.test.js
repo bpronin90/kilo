@@ -56,7 +56,7 @@ describe('WeightScreen', () => {
     const component = setup(goal, entries);
     const root = component.root;
 
-    expect(findText(root, 'Goal ended.')).toBeTruthy();
+    expect(findText(root, 'Goal ended')).toBeTruthy();
     expect(findText(root, 'Select a future target date for guidance.')).toBeFalsy();
 
     const allTexts = root.findAllByType('Text').map(t => {
@@ -121,7 +121,7 @@ describe('WeightScreen', () => {
     const component = setup(goal);
     const root = component.root;
 
-    expect(findText(root, 'Goal ended.')).toBeTruthy();
+    expect(findText(root, 'Goal ended')).toBeTruthy();
     expect(findText(root, 'Select a future target date for guidance.')).toBeFalsy();
   });
 
@@ -227,7 +227,7 @@ describe('WeightScreen', () => {
       const component = setup(goal, entries);
       const root = component.root;
 
-      expect(findText(root, 'Goal ended.')).toBeTruthy();
+      expect(findText(root, 'Goal ended')).toBeTruthy();
       const allTexts = root.findAllByType('Text').map(t => {
         const children = t.props.children;
         return Array.isArray(children) ? children.join('') : String(children ?? '');
@@ -945,7 +945,7 @@ describe('WeightScreen', () => {
         expect(getStyleProp(colLabel, 'fontWeight')).toBe('700');
       });
 
-      test('row weight values use JBM typography (#411)', () => {
+      test('row weight values use standard hierarchy typography', () => {
         const component = setup(null, entries);
         expandWeightHistory(component.root);
         const weightNode = component.root.findAllByType('Text').find(t => {
@@ -954,8 +954,8 @@ describe('WeightScreen', () => {
           return text === '190 lb';
         });
         expect(weightNode).toBeTruthy();
-        expect(getStyleProp(weightNode, 'fontSize')).toBe(13);
-        expect(getStyleProp(weightNode, 'fontFamily')).toBe('JetBrainsMono-SemiBold');
+        expect(getStyleProp(weightNode, 'fontSize')).toBe(20);
+        expect(getStyleProp(weightNode, 'fontWeight')).toBe('700');
       });
 
       // #409: collapsed Weight History summary renders the latest weight in bold
@@ -1121,16 +1121,16 @@ describe('WeightScreen', () => {
       return root;
     };
 
-    test('primary value cells share identical typography across both panels', () => {
+    test('goal history values use JBM typography; weight history uses standard hierarchy', () => {
       const root = renderBoth();
       const goalValue = findByExactText(root, '175 lb');
       const weightValue = findByExactText(root, '190 lb');
       expect(goalValue).toBeTruthy();
       expect(weightValue).toBeTruthy();
-      expect(getStyleProp(goalValue, 'fontSize')).toBe(getStyleProp(weightValue, 'fontSize'));
-      expect(getStyleProp(goalValue, 'fontFamily')).toBe(getStyleProp(weightValue, 'fontFamily'));
       expect(getStyleProp(goalValue, 'fontSize')).toBe(13);
       expect(getStyleProp(goalValue, 'fontFamily')).toBe('JetBrainsMono-SemiBold');
+      expect(getStyleProp(weightValue, 'fontSize')).toBe(20);
+      expect(getStyleProp(weightValue, 'fontWeight')).toBe('700');
     });
 
     test('date cells share identical typography across both panels', () => {
@@ -1316,7 +1316,7 @@ describe('WeightScreen', () => {
       // These strings are rendered inside nested fragments and components; findText
       // must recursively flatten to discover them, not crash on circular refs or
       // convert nested React elements to [object Object] strings.
-      expect(findText(root, 'Goal ended.')).toBeTruthy();
+      expect(findText(root, 'Goal ended')).toBeTruthy();
       expect(findText(root, '185.0 lb')).toBeTruthy();
       expect(findText(root, 'Weight')).toBeTruthy();
     });

@@ -283,7 +283,7 @@ export function WeightGoalCard({
             <>
               <View style={styles.goalDivider} />
               {goalInfo.isOverdue ? (
-                <Text style={styles.goalEndedText}>Goal ended.</Text>
+                <Text style={styles.goalEndedText}>Goal ended</Text>
               ) : (
                 <GoalDerived info={goalInfo} calorieEstimate={calorieEstimate} />
               )}
@@ -318,7 +318,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     justifyContent: 'center',
   },
   goalCard: {
-    gap: 10,
+    gap: 8,
   },
   goalCardMet: {
     borderColor: colors.success,
@@ -337,7 +337,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   goalHeaderActions: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 4,
   },
   goalMetBadge: {
     fontSize: 13,
@@ -346,10 +346,10 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     letterSpacing: 0.3,
   },
   goalArchiveChip: {
-    backgroundColor: colors.cardSuccessBg,
+    backgroundColor: kua ? kua.primaryContainer : colors.cardSuccessBg,
   },
   goalArchiveText: {
-    color: colors.textLight,
+    color: kua ? kua.primaryOnContainer : colors.textLight,
   },
   // Issue 919: Edit / Archive / Clear goal are text-only chips in a one-line
   // row. ui-design-rules.md §15 says a hitSlop cannot rescue that shape (React
@@ -357,9 +357,9 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   // while its 13/700 label and 12/6 padding stay as designed.
   goalActionChip: {
     backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     paddingVertical: 6,
-    borderRadius: 12,
+    borderRadius: 10,
     minHeight: 44,
     minWidth: 44,
     justifyContent: 'center',
@@ -399,7 +399,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     fontWeight: '600',
   },
   goalDisplay: {
-    gap: 12,
+    gap: 8,
   },
   goalDisplayRow: {
     flexDirection: 'row',
@@ -408,7 +408,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   goalDisplayItem: {
     flex: 1,
-    gap: 2,
+    gap: 1,
   },
   goalDisplayValue: {
     fontFamily: 'JetBrainsMono-Bold',
@@ -445,7 +445,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     letterSpacing: 0.5,
   },
   goalEndedText: {
-    fontSize: 14,
+    fontSize: 16,
     color: colors.error,
     fontWeight: '600',
   },
