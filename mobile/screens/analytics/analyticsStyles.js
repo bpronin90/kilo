@@ -1,12 +1,7 @@
 import { Platform, StyleSheet } from 'react-native';
+import { TYPOGRAPHY } from '../../theme/typography';
 
-const jbmFont = (typo, role, fallback) => {
-  if (!typo) return { fontFamily: fallback };
-  const { fontFamily, fontWeight } = typo[role];
-  return fontWeight !== undefined ? { fontFamily, fontWeight } : { fontFamily };
-};
-
-export const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
+export const createStyles = (colors, kua = null) => StyleSheet.create({
   // Baseline-training disclosure header (#871). Reads as the same quiet
   // section-header family used elsewhere in Analytics/Home (label + chevron),
   // not a filled control — the emphasis on this tab right now belongs to the
@@ -145,10 +140,9 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     alignItems: 'center',
   },
   signalValue: {
-    ...(typo
-      ? jbmFont(typo, 'label-lg', Platform.select({ ios: 'Menlo', android: 'monospace' }))
-      : { fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }), fontWeight: '700' }),
-    fontSize: typo ? undefined : 14,
+    ...(kua
+      ? TYPOGRAPHY['label-lg']
+      : { fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }), fontWeight: '700', fontSize: 14 }),
     color: kua ? kua.onSurface : colors.text,
   },
   unitSuffix: {
@@ -157,11 +151,11 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     marginLeft: 2,
   },
   nwMetricLabel: {
-    ...(typo ? jbmFont(typo, 'label-sm', Platform.select({ ios: 'Menlo', android: 'monospace' })) : { fontWeight: '800' }),
-    fontSize: typo ? undefined : 11,
+    ...(kua
+      ? TYPOGRAPHY['label-sm']
+      : { fontWeight: '800', fontSize: 11, letterSpacing: 0.5 }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
-    letterSpacing: typo ? undefined : 0.5,
   },
   multiDaySummary: {
     fontSize: 12,

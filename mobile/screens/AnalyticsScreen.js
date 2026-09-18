@@ -19,7 +19,6 @@ import {
   shapeEditCheckInData,
 } from './analytics/analyticsDerivations';
 import { useTheme } from '../theme/ThemeContext';
-import { useKuaTypography } from '../theme/typography';
 
 import { lerpColor } from '../lib/AnalyticsScreenHelpers';
 import { useWeightUnit } from '../lib/unitPreference';
@@ -48,8 +47,7 @@ const OVERVIEW_SECTION = 'overview';
 
 export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate }) {
   const { colors, kuaPalette: kua } = useTheme();
-  const typo = useKuaTypography();
-  const styles = useMemo(() => createStyles(colors, kua, typo), [colors, kua, typo]);
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const {
     notes,
     currentId,
