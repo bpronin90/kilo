@@ -1912,7 +1912,7 @@ describe('KUA Analytics surface: createStyles uses KUA tokens in all palettes', 
     const styles = createWeightTrendsStyles(LightColors, null, null);
     expect(styles.weightCard.backgroundColor).toBe(LightColors.panelBackground);
     expect(styles.weightStatValue.color).toBe(LightColors.text);
-    expect(styles.weightValueLarge.fontSize).toBe(32);
+    expect(styles.weightValueLarge.fontSize).toBe(36);
   });
 
   test.each([

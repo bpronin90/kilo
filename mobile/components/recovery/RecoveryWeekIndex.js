@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import { formatDate } from '../../lib/format';
 import { parseWorkoutNote } from '../../lib/parser/workoutNote';
 import { createStyles } from './analyticsRecoveryStyles';
@@ -15,8 +15,8 @@ function _weekNoteStatus(week, notesById) {
 }
 
 export function WeekIndexRow({ block, week, notesById, onNavigate }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const { kind, title } = _weekNoteStatus(week, notesById);
   const isAvailable = kind === 'ok';
 
@@ -40,7 +40,7 @@ export function WeekIndexRow({ block, week, notesById, onNavigate }) {
           {`Week ${week.week_number}`}
         </Text>
         {isAvailable && (
-          <MaterialIcons name="chevron-right" size={16} color={colors.accent} accessible={false} />
+          <MaterialIcons name="chevron-right" size={16} color={kua ? kua.primary : colors.accent} accessible={false} />
         )}
       </View>
       {noteTitle != null && (

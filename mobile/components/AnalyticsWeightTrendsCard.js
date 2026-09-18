@@ -234,7 +234,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginBottom: 2,
   },
   weightValueLarge: {
-    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : { fontSize: 32, fontWeight: '800' }),
+    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 32, lineHeight: 36 } : { fontSize: 36, fontWeight: '800' }),
     color: kua ? kua.onSurface : colors.accentText,
   },
   weightUnit: {
