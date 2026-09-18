@@ -644,12 +644,12 @@ describe('WeightScreen', () => {
 
       // #408 bumped these to 18; #409 brought them to 20/900; #411 unifies the
       // shared value typography to 20 + JetBrains Mono, identical across both history panels.
-      test('primary value cells use the shared value typography 20/JBM (#411)', () => {
+      test('primary value cells use JBM typography (#411)', () => {
         const component = setup(null, [], archivedFixture);
         expandGoalHistory(component.root);
         const valueNode = findByExactText(component.root, '175 lb');
         expect(valueNode).toBeTruthy();
-        expect(getStyleProp(valueNode, 'fontSize')).toBe(20);
+        expect(getStyleProp(valueNode, 'fontSize')).toBe(16);
         expect(getStyleProp(valueNode, 'fontFamily')).toBe('JetBrainsMono-SemiBold');
       });
 
@@ -945,7 +945,7 @@ describe('WeightScreen', () => {
         expect(getStyleProp(colLabel, 'fontWeight')).toBe('700');
       });
 
-      test('row weight values use the shared value typography 20/JBM (#411)', () => {
+      test('row weight values use JBM typography (#411)', () => {
         const component = setup(null, entries);
         expandWeightHistory(component.root);
         const weightNode = component.root.findAllByType('Text').find(t => {
@@ -954,7 +954,7 @@ describe('WeightScreen', () => {
           return text === '190 lb';
         });
         expect(weightNode).toBeTruthy();
-        expect(getStyleProp(weightNode, 'fontSize')).toBe(20);
+        expect(getStyleProp(weightNode, 'fontSize')).toBe(16);
         expect(getStyleProp(weightNode, 'fontFamily')).toBe('JetBrainsMono-SemiBold');
       });
 
@@ -1129,7 +1129,7 @@ describe('WeightScreen', () => {
       expect(weightValue).toBeTruthy();
       expect(getStyleProp(goalValue, 'fontSize')).toBe(getStyleProp(weightValue, 'fontSize'));
       expect(getStyleProp(goalValue, 'fontFamily')).toBe(getStyleProp(weightValue, 'fontFamily'));
-      expect(getStyleProp(goalValue, 'fontSize')).toBe(20);
+      expect(getStyleProp(goalValue, 'fontSize')).toBe(16);
       expect(getStyleProp(goalValue, 'fontFamily')).toBe('JetBrainsMono-SemiBold');
     });
 
