@@ -18,7 +18,7 @@ import {
   deriveOverviewRows,
   shapeEditCheckInData,
 } from './analytics/analyticsDerivations';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 
 import { lerpColor } from '../lib/AnalyticsScreenHelpers';
 import { useWeightUnit } from '../lib/unitPreference';
@@ -46,8 +46,8 @@ import { AnalyticsProgression } from './analytics/AnalyticsProgression';
 const OVERVIEW_SECTION = 'overview';
 
 export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const {
     notes,
     currentId,
@@ -553,7 +553,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       hasRecoverySection, handleRecoveryLayout, recoverySection,
     }),
     ...AnalyticsProgression({
-      isActiveRecovery, baselineCollapsed, setBaselineCollapsed, styles, colors,
+      isActiveRecovery, baselineCollapsed, setBaselineCollapsed, styles, colors, kua,
       sinceDeload, sessionCount, deloadModeEnabled,
       fatigueTrackingEnabled, checkInHistory, fatigueExpanded, setFatigueExpanded, handleCheckInEdit,
       handleStrengthLayout, isNotesLoading, isTrackedLoading,

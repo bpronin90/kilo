@@ -1,10 +1,7 @@
 import { Platform, StyleSheet } from 'react-native';
+import { TYPOGRAPHY } from '../../theme/typography';
 
-// Styles for the Analytics screen's baseline-training disclosure, the
-// Progressive Overload sticky header/search/column labels, and the
-// exercise-row/group presentation beneath it. Extracted verbatim from
-// AnalyticsScreen.js (card #1051) — no visual change.
-export const createStyles = (colors) => StyleSheet.create({
+export const createStyles = (colors, kua = null) => StyleSheet.create({
   // Baseline-training disclosure header (#871). Reads as the same quiet
   // section-header family used elsewhere in Analytics/Home (label + chevron),
   // not a filled control — the emphasis on this tab right now belongs to the
@@ -22,10 +19,10 @@ export const createStyles = (colors) => StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   signalStickyHeader: {
-    backgroundColor: colors.background,
+    backgroundColor: kua ? kua.background : colors.background,
     paddingTop: 8,
     paddingBottom: 8,
   },
@@ -38,7 +35,7 @@ export const createStyles = (colors) => StyleSheet.create({
   signalSubTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     flexShrink: 1,
   },
   collapseAllButton: {
@@ -51,7 +48,7 @@ export const createStyles = (colors) => StyleSheet.create({
   collapseAllText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -60,14 +57,14 @@ export const createStyles = (colors) => StyleSheet.create({
     marginBottom: 12,
   },
   searchInput: {
-    backgroundColor: colors.inputBackground,
+    backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.inputBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
     paddingHorizontal: 14,
     paddingVertical: 14,
     fontSize: 16,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   signalColumnHeader: {
     flexDirection: 'row',
@@ -78,7 +75,7 @@ export const createStyles = (colors) => StyleSheet.create({
     flex: 1,
     fontSize: 11,
     fontWeight: '800',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     textAlign: 'center',
@@ -96,7 +93,7 @@ export const createStyles = (colors) => StyleSheet.create({
   },
   groupSectionBorder: {
     borderTopWidth: 1,
-    borderTopColor: colors.divider,
+    borderTopColor: kua ? kua.surfaceBorder : colors.divider,
   },
   groupHeader: {
     flexDirection: 'row',
@@ -104,12 +101,12 @@ export const createStyles = (colors) => StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 14,
-    backgroundColor: colors.subtleBg,
+    backgroundColor: kua ? (kua.surfaceSection ?? kua.surfaceCard) : colors.subtleBg,
   },
   groupName: {
     fontSize: 14,
     fontWeight: '800',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -121,7 +118,7 @@ export const createStyles = (colors) => StyleSheet.create({
   },
   signalRowBorder: {
     borderTopWidth: 1,
-    borderTopColor: colors.divider,
+    borderTopColor: kua ? kua.surfaceBorder : colors.divider,
   },
   signalNameRow: {
     flexDirection: 'row',
@@ -132,7 +129,7 @@ export const createStyles = (colors) => StyleSheet.create({
   signalName: {
     fontSize: 16,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     flex: 1,
   },
   signalMetricsGrid: {
@@ -143,10 +140,10 @@ export const createStyles = (colors) => StyleSheet.create({
     alignItems: 'center',
   },
   signalValue: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.text,
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    ...(kua
+      ? TYPOGRAPHY['label-lg']
+      : { fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }), fontWeight: '700', fontSize: 14 }),
+    color: kua ? kua.onSurface : colors.text,
   },
   unitSuffix: {
     fontSize: 11,
@@ -154,21 +151,21 @@ export const createStyles = (colors) => StyleSheet.create({
     marginLeft: 2,
   },
   nwMetricLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: colors.textMuted,
+    ...(kua
+      ? TYPOGRAPHY['label-sm']
+      : { fontWeight: '800', fontSize: 11, letterSpacing: 0.5 }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
-    letterSpacing: 0.5,
   },
   multiDaySummary: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 6,
     fontStyle: 'italic',
   },
   trackingCaption: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginBottom: 8,
     fontStyle: 'italic',
   },
@@ -178,7 +175,7 @@ export const createStyles = (colors) => StyleSheet.create({
   },
   emptyText: {
     textAlign: 'center',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 20,
     fontSize: 15,
   },
@@ -194,6 +191,6 @@ export const createStyles = (colors) => StyleSheet.create({
   emptyTrackedLinkText: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
   },
 });

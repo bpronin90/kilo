@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card, SectionTitle, LineChart } from './UI';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
+import { TYPOGRAPHY } from '../theme/typography';
 import { useWeightUnit } from '../lib/unitPreference';
 import { formatPaceElapsed } from '../lib/format';
 
@@ -12,13 +13,13 @@ import { formatPaceElapsed } from '../lib/format';
 // line — so two weigh-ins on different days is exactly what turns this into a
 // chart, for both the 7-day and the 30-day window.
 function ChartEmptyState({ loading, onNavigate }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
 
   if (loading) {
     return (
       <View style={styles.chartPlaceholder}>
-        <ActivityIndicator size="small" color={colors.accent} />
+        <ActivityIndicator size="small" color={kua ? kua.primary : colors.accent} />
       </View>
     );
   }
@@ -51,8 +52,8 @@ export function AnalyticsWeightTrendsCard({
   isWeightLoading,
   onNavigate,
 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   // rolling7/rolling30 and weightSummary arrive already converted into display
   // space by AnalyticsScreen, so only the unit label is needed here.
   const unit = useWeightUnit();
@@ -125,6 +126,7 @@ export function AnalyticsWeightTrendsCard({
                 height={100}
                 hideHeader
                 showScale
+                color={kua ? kua.chartSeries1 : undefined}
                 seriesLabel="7-day rolling average bodyweight"
                 onSelect={handleSelect}
               />
@@ -143,7 +145,7 @@ export function AnalyticsWeightTrendsCard({
                 height={100}
                 hideHeader
                 showScale
-                color={colors.textMuted}
+                color={kua ? kua.chartSeries1 : colors.textMuted}
                 seriesLabel="30-day rolling average bodyweight"
                 onSelect={handleSelect}
               />
@@ -168,14 +170,14 @@ export function AnalyticsWeightTrendsCard({
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+export const createStyles = (colors, kua = null) => StyleSheet.create({
   sectionWrapper: {
     gap: 16,
   },
   weightCard: {
     padding: 20,
     gap: 16,
-    backgroundColor: colors.panelBackground,
+    backgroundColor: kua ? kua.surfaceCard : colors.panelBackground,
   },
   chartBlock: {
     gap: 4,
@@ -183,7 +185,7 @@ const createStyles = (colors) => StyleSheet.create({
   chartLabel: {
     fontSize: 11,
     fontWeight: '800',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
@@ -197,14 +199,14 @@ const createStyles = (colors) => StyleSheet.create({
   chartPlaceholder: {
     minHeight: 100,
     paddingVertical: 12,
-    backgroundColor: colors.subtleBg,
+    backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
   chartEmpty: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
     paddingHorizontal: 16,
   },
@@ -217,7 +219,7 @@ const createStyles = (colors) => StyleSheet.create({
   chartEmptyActionText: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
   },
   weightHeader: {
     flexDirection: 'row',
@@ -227,19 +229,18 @@ const createStyles = (colors) => StyleSheet.create({
   weightLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     marginBottom: 2,
   },
   weightValueLarge: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: colors.accentText,
+    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : { fontSize: 32, fontWeight: '800' }),
+    color: kua ? kua.onSurface : colors.accentText,
   },
   weightUnit: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.text,
+    color: kua ? kua.onSurfaceVariant : colors.text,
     marginLeft: 4,
   },
   paceBadge: {
@@ -247,13 +248,14 @@ const createStyles = (colors) => StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 12,
   },
-  // Filled pace badges carrying a `textLight` label, so they use the error and
-  // caution *surface* tones rather than the direct status colors (#689).
+  // Filled pace badges. In KUA mode, use semantic error token (all 6 palettes)
+  // and mode-aware caution (no KUA caution token exists). In legacy mode, use
+  // the filled-surface tones from #689.
   paceSpike: {
-    backgroundColor: colors.cardErrorBg,
+    backgroundColor: kua ? kua.error : colors.cardErrorBg,
   },
   paceNotable: {
-    backgroundColor: colors.cardCautionBg,
+    backgroundColor: kua ? colors.caution : colors.cardCautionBg,
   },
   paceText: {
     fontSize: 12,
@@ -272,7 +274,7 @@ const createStyles = (colors) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     borderTopWidth: 1,
-    borderTopColor: colors.cardBorder,
+    borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
     paddingTop: 16,
   },
   weightStat: {
@@ -283,11 +285,11 @@ const createStyles = (colors) => StyleSheet.create({
   weightStatValue: {
     fontSize: 18,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   weightStatLabel: {
     fontSize: 11,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '600',
     textTransform: 'uppercase',
   },

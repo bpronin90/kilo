@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel } from './UI';
 import { PlateCalculatorModal } from './PlateCalculatorModal';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
+import { TYPOGRAPHY } from '../theme/typography';
 import { lerpColor } from '../lib/AnalyticsScreenHelpers';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useWeightUnit } from '../lib/unitPreference';
@@ -25,8 +26,8 @@ export function AnalyticsStrengthSection({
   onUnmuteProgression,
   onDismissProgression,
 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const [selectedSeriesPoint, setSelectedSeriesPoint] = useState(null);
   const [oneKInfoExpanded, setOneKInfoExpanded] = useState(false);
   const [plateWeightLb, setPlateWeightLb] = useState(null);
@@ -62,11 +63,11 @@ export function AnalyticsStrengthSection({
       {(isNotesLoading || oneK?.total) ? (
         <ArtisanalPanel style={[styles.oneKCard, isNotesLoading && { opacity: 0.5, minHeight: 160, justifyContent: 'center' }]}>
           {isNotesLoading ? (
-            <ActivityIndicator size="large" color={colors.accent} />
+            <ActivityIndicator size="large" color={kua ? kua.primary : colors.accent} />
           ) : (
             <>
               <Text style={styles.oneKLabel}>1K Progress</Text>
-              <Text style={[styles.oneKValue, { color: lerpColor(colors.accentText, colors.success, Math.min(1, (displayOneK.total || 0) / oneKTarget)) }]}>
+              <Text style={[styles.oneKValue, { color: lerpColor(kua ? kua.primary : colors.accentText, kua ? kua.success : colors.success, Math.min(1, (displayOneK.total || 0) / oneKTarget)) }]}>
                 {displayOneK.total.toFixed(0)}<Text style={styles.oneKUnit}> {unit}</Text>
               </Text>
 
@@ -104,6 +105,7 @@ export function AnalyticsStrengthSection({
                     height={120}
                     hideHeader
                     showScale
+                    color={kua ? kua.chartSeries1 : undefined}
                     seriesLabel="1K total by session"
                     onSelect={p => setSelectedSeriesPoint(p)}
                   />
@@ -119,12 +121,12 @@ export function AnalyticsStrengthSection({
                   accessibilityLabel={oneKInfoExpanded ? 'Hide how the 1K is calculated' : 'How is the 1K calculated?'}
                   testID="onek-info-toggle"
                 >
-                  <MaterialIcons name="info-outline" size={14} color={colors.textMuted} accessible={false} />
+                  <MaterialIcons name="info-outline" size={14} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
                   <Text style={styles.oneKInfoToggleText}>How is this calculated?</Text>
                   <MaterialIcons
                     name={oneKInfoExpanded ? 'expand-less' : 'expand-more'}
                     size={16}
-                    color={colors.textMuted}
+                    color={kua ? kua.onSurfaceVariant : colors.textMuted}
                     accessible={false}
                   />
                 </Pressable>
@@ -195,8 +197,8 @@ export function AnalyticsBig3MappingCard({
   noteExerciseNames,
   handleSelectExercise,
 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   // Expanded by default, per ui-design-rules §6. Moving the card to the foot of
   // the section changes where it sits, not whether it opens closed.
   const [big3Collapsed, setBig3Collapsed] = useState(false);
@@ -214,7 +216,7 @@ export function AnalyticsBig3MappingCard({
           <MaterialIcons
             name={big3Collapsed ? 'expand-more' : 'expand-less'}
             size={16}
-            color={colors.textMuted}
+            color={kua ? kua.onSurfaceVariant : colors.textMuted}
             accessible={false}
           />
         </Pressable>
@@ -233,7 +235,7 @@ export function AnalyticsBig3MappingCard({
                 <MaterialIcons
                   name={activeSlot === slot ? 'expand-less' : 'expand-more'}
                   size={14}
-                  color={colors.textMuted}
+                  color={kua ? kua.onSurfaceVariant : colors.textMuted}
                   accessible={false}
                 />
               </View>
@@ -268,7 +270,7 @@ export function AnalyticsBig3MappingCard({
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+export const createStyles = (colors, kua = null) => StyleSheet.create({
   strengthSection: {
     gap: 16,
   },
@@ -280,18 +282,18 @@ const createStyles = (colors) => StyleSheet.create({
     padding: 24,
     alignItems: 'center',
     gap: 8,
-    backgroundColor: colors.panelBackground,
+    backgroundColor: kua ? kua.surfaceCard : colors.panelBackground,
   },
   oneKLabel: {
     fontSize: 12,
     fontWeight: '800',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   oneKValue: {
-    ...HeroMetric.hero,
-    color: colors.text,
+    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : { ...HeroMetric.hero }),
+    color: kua ? undefined : colors.text,
   },
   // Literal leading space, not marginLeft — this Text is nested inside the
   // value Text, and native RN treats a nested Text as an inline attributed
@@ -300,19 +302,19 @@ const createStyles = (colors) => StyleSheet.create({
   oneKUnit: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   oneKProgressBarContainer: {
     width: '100%',
     height: 8,
-    backgroundColor: colors.divider,
+    backgroundColor: kua ? kua.surfaceBorder : colors.divider,
     borderRadius: 4,
     marginVertical: 12,
     overflow: 'hidden',
   },
   oneKProgressBar: {
     height: '100%',
-    backgroundColor: colors.accent,
+    backgroundColor: kua ? kua.primary : colors.accent,
     borderRadius: 4,
   },
   oneKBreakdown: {
@@ -328,7 +330,7 @@ const createStyles = (colors) => StyleSheet.create({
   oneKChartLabel: {
     fontSize: 11,
     fontWeight: '800',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
     textAlign: 'center',
@@ -345,18 +347,18 @@ const createStyles = (colors) => StyleSheet.create({
   // same way.
   oneKItemTappable: {
     borderBottomWidth: 1,
-    borderBottomColor: colors.textMuted,
+    borderBottomColor: kua ? kua.onSurfaceVariant : colors.textMuted,
     borderStyle: 'dashed',
   },
   oneKItemValue: {
     fontSize: 18,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   oneKItemLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
   },
   oneKInfoBlock: {
@@ -364,7 +366,7 @@ const createStyles = (colors) => StyleSheet.create({
     marginTop: 16,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: colors.divider,
+    borderTopColor: kua ? kua.surfaceBorder : colors.divider,
   },
   oneKInfoToggle: {
     flexDirection: 'row',
@@ -376,7 +378,7 @@ const createStyles = (colors) => StyleSheet.create({
   oneKInfoToggleText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -386,7 +388,7 @@ const createStyles = (colors) => StyleSheet.create({
   },
   oneKInfoText: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 19,
     textAlign: 'left',
   },
@@ -394,12 +396,12 @@ const createStyles = (colors) => StyleSheet.create({
     backgroundColor: 'transparent',
     borderStyle: 'dashed',
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     padding: 20,
   },
   infoText: {
     fontSize: 14,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -417,7 +419,7 @@ const createStyles = (colors) => StyleSheet.create({
   slotCardTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     marginBottom: 0,
   },
@@ -430,13 +432,13 @@ const createStyles = (colors) => StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     borderTopWidth: 1,
-    borderTopColor: colors.cardBorder,
+    borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
     minHeight: 44,
   },
   slotLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     width: 72,
   },
   slotValueRow: {
@@ -449,11 +451,11 @@ const createStyles = (colors) => StyleSheet.create({
   slotValue: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     textAlign: 'right',
   },
   slotPicker: {
-    backgroundColor: colors.inputBackground,
+    backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
     borderRadius: 10,
     marginBottom: 4,
     overflow: 'hidden',
@@ -462,26 +464,24 @@ const createStyles = (colors) => StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
     minHeight: 44,
     justifyContent: 'center',
   },
   slotOptionSelected: {
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
   },
   slotOptionText: {
     fontSize: 14,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
-  // Selected rows take `slotOptionSelected`'s `chipBackground` fill, so the
-  // label needs the chip's own accent ink (#923) rather than `accentText`.
   slotOptionTextSelected: {
     fontWeight: '700',
-    color: colors.chipAccentText,
+    color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },
   slotEmpty: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontStyle: 'italic',
     paddingVertical: 8,
     paddingHorizontal: 4,
