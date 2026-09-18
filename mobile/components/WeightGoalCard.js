@@ -422,7 +422,7 @@ const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   goalErrorText: {
-    color: colors.error,
+    color: kua ? kua.error : colors.error,
     fontSize: 13,
     fontWeight: '600',
   },

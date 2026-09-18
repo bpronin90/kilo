@@ -66,7 +66,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     width: '75%',
   },
   errorText: {
-    color: colors.error,
+    color: kua ? kua.error : colors.error,
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 8,
