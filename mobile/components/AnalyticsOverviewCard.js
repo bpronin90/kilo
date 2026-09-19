@@ -12,7 +12,7 @@
 // mean "an overview" rather than "whatever section happens to be first".
 
 import React, { useMemo } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { ArtisanalPanel } from './UI';
 import { useTheme } from '../theme/ThemeContext';
@@ -240,7 +240,6 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
   },
   rowValueEmpty: {
     fontSize: 17,
@@ -256,12 +255,12 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   rowValueUnit: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   rowValueSuffix: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
@@ -280,7 +279,6 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   rowDelta: {
     fontSize: 12,
     fontWeight: '700',
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
   },
   rowDeltaUp: {
     color: kua ? kua.completion : colors.success,
