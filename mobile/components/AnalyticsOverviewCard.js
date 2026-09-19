@@ -220,21 +220,21 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   rowTop: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
-    flexWrap: 'wrap',
   },
   rowLabel: {
     fontSize: 14,
     fontWeight: '600',
     color: kua ? kua.onSurface : colors.text,
-    flexShrink: 1,
+    flex: 1,
   },
   rowValueGroup: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
     gap: 5,
+    flexShrink: 0,
   },
   rowValue: {
     fontSize: 17,
@@ -273,7 +273,6 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   rowSub: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 6,
     marginTop: 3,
@@ -292,7 +291,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   rowCaption: {
     fontSize: 12,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    flexShrink: 1,
+    flex: 1,
   },
   // Bucket-row font-weight tier (#1029 amendment) — matches
   // AnalyticsRecoverySection's `bandDenominatorCaption`/`bandRowLabel`
