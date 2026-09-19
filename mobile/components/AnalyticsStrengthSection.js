@@ -170,6 +170,7 @@ export function AnalyticsStrengthSection({
             <MutedProgressionRow
               key={row.key}
               name={row.name}
+              surface="analytics"
               onUnmute={() => onUnmuteProgression && onUnmuteProgression(row.key)}
             />
           ))}

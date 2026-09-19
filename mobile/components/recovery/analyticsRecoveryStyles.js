@@ -301,7 +301,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   chipTextSelected: {
-    color: colors.textLight,
+    color: kua ? kua.onPrimary : colors.onAccent,
   },
   detailsPanel: {
     borderTopWidth: 1,

@@ -129,7 +129,8 @@ export function ProgressionSuggestionCard({
   onDismiss,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
-  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
+  const effectiveKua = surface === 'analytics' ? kua : null;
+  const styles = useMemo(() => createStyles(colors, effectiveKua), [colors, effectiveKua]);
   if (!isRenderableProgressionSuggestion(suggestion) && !muted) return null;
   // A muted exercise renders nothing on the consuming surface — the mute
   // control itself lives elsewhere (the card is simply gone). This guard keeps
@@ -231,9 +232,10 @@ export function ProgressionSuggestionCard({
 // A compact, always-available control to bring a muted exercise back. It is
 // rendered by the consuming surface next to (or below) its suggestion list so
 // "unmute restores an otherwise-eligible suggestion" has a visible path.
-export function MutedProgressionRow({ name, onUnmute }) {
+export function MutedProgressionRow({ name, onUnmute, surface = 'log' }) {
   const { colors, kuaPalette: kua } = useTheme();
-  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
+  const effectiveKua = surface === 'analytics' ? kua : null;
+  const styles = useMemo(() => createStyles(colors, effectiveKua), [colors, effectiveKua]);
   return (
     <View style={styles.mutedRow} testID="progression-suggestion-muted-row">
       <Text style={styles.mutedText} numberOfLines={2}>
