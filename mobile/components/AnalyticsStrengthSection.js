@@ -105,7 +105,7 @@ export function AnalyticsStrengthSection({
                     height={120}
                     hideHeader
                     showScale
-                    color={kua ? kua.chartSeries1 : undefined}
+                    color={kua ? kua.primary : undefined}
                     seriesLabel="1K total by session"
                     onSelect={p => setSelectedSeriesPoint(p)}
                   />
