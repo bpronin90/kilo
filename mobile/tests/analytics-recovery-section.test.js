@@ -29,7 +29,7 @@ import {
   RECOVERY_UNAVAILABLE_REASONS,
   deriveRecoveryComparison,
 } from '../lib/data/recoveryAnalytics';
-import { DarkColors, LightColors } from '../theme/colors';
+import { DarkColors, HardCourtLightColors, LightColors } from '../theme/colors';
 import { ThemeContext } from '../theme/ThemeContext';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -1650,7 +1650,7 @@ describe('AnalyticsRecoverySection — across-weeks band strip (#1029 amendment)
     // the raw non-text-safe `accent`/`caution` marks (docs/design-system-map.md
     // "Text vs. mark").
     expect(rColor).toBe(LightColors.cautionText);
-    expect(eColor).toBe(LightColors.error);
+    expect(eColor).toBe(HardCourtLightColors.error);
     expect(rColor).not.toBe(eColor);
     // The letter itself, not only the hue, is what a sighted reader without a
     // legend actually distinguishes the two bands by — assert both are present
