@@ -126,7 +126,7 @@ export function AnalyticsWeightTrendsCard({
                 height={100}
                 hideHeader
                 showScale
-                color={kua ? kua.chartSeries1 : undefined}
+                color={kua ? kua.primary : undefined}
                 seriesLabel="7-day rolling average bodyweight"
                 onSelect={handleSelect}
               />
@@ -145,7 +145,7 @@ export function AnalyticsWeightTrendsCard({
                 height={100}
                 hideHeader
                 showScale
-                color={kua ? kua.chartSeries1 : colors.textMuted}
+                color={kua ? kua.primary : colors.textMuted}
                 seriesLabel="30-day rolling average bodyweight"
                 onSelect={handleSelect}
               />
