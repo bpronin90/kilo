@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Card } from '../UI';
-import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import { formatDate } from '../../lib/format';
 import { MAX_RECOVERY_REASON_LENGTH } from '../../lib/data/recoveryBlocks';
 import {
@@ -48,6 +48,19 @@ const BAND_STRIP_META = Object.freeze({
   cannot_compare: { code: 'X', colorToken: 'textMuted' },
 });
 
+// Maps a BAND_STRIP_META colorToken to the active palette color. `cautionText`
+// has no KUA equivalent across any palette; all others have a direct token.
+function _bandColor(colorToken, colors, kua) {
+  if (!kua) return colors[colorToken];
+  switch (colorToken) {
+    case 'success':    return kua.completion;
+    case 'accentText': return kua.primary;
+    case 'error':      return kua.error;
+    case 'textMuted':  return kua.onSurfaceVariant;
+    default:           return colors[colorToken];
+  }
+}
+
 // The one-line week-aware summary under the hero count. It states the week the
 // count belongs to and the remaining states in plain words, dropping any state
 // with nothing in it — a lifter reading "Week 3 · 2 rebuilding" should not also
@@ -92,8 +105,8 @@ export function BlockEvidence({
   reasonLocked = false,
   onSaveReason,
 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const [selectedWeekId, setSelectedWeekId] = useState(null);
   // Editor state is local to this component, and the parent renders it with
   // `key={focusedBlock.id}` — so switching which block is in focus remounts and
@@ -247,7 +260,7 @@ export function BlockEvidence({
             value={reasonDraft}
             onChangeText={setReasonDraft}
             placeholder="e.g. torn hamstring, 8 weeks off"
-            placeholderTextColor={colors.textMuted}
+            placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
             maxLength={MAX_RECOVERY_REASON_LENGTH}
             editable={!reasonDisabled}
             accessibilityLabel="Reason for this recovery block"
@@ -373,7 +386,7 @@ export function BlockEvidence({
                           <View
                             style={[
                               styles.bandRowFill,
-                              { width: `${Math.round((row.count / trained) * 100)}%`, backgroundColor: colors.accent },
+                              { width: `${Math.round((row.count / trained) * 100)}%`, backgroundColor: kua ? kua.primary : colors.accent },
                             ]}
                           />
                         </View>
@@ -454,7 +467,7 @@ export function BlockEvidence({
                 <MaterialIcons
                   name={detailsExpanded ? 'expand-less' : 'expand-more'}
                   size={18}
-                  color={colors.textMuted}
+                  color={kua ? kua.onSurfaceVariant : colors.textMuted}
                   accessible={false}
                 />
               </Pressable>
@@ -536,8 +549,8 @@ export function BlockEvidence({
                           const meta = BAND_STRIP_META[b.id];
                           return (
                             <View key={b.id} style={styles.bandStripRow}>
-                              <View style={[styles.bandStripChip, { borderColor: colors[meta.colorToken] }]}>
-                                <Text style={[styles.bandStripChipText, { color: colors[meta.colorToken] }]}>
+                              <View style={[styles.bandStripChip, { borderColor: _bandColor(meta.colorToken, colors, kua) }]}>
+                                <Text style={[styles.bandStripChipText, { color: _bandColor(meta.colorToken, colors, kua) }]}>
                                   {meta.code}
                                 </Text>
                               </View>
@@ -558,7 +571,7 @@ export function BlockEvidence({
                     // muted glyph, and its own text — never mistakable for the
                     // solid zero-count cell above.
                     <View style={styles.bandStripGap}>
-                      <MaterialIcons name="help-outline" size={16} color={colors.textMuted} accessible={false} />
+                      <MaterialIcons name="help-outline" size={16} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
                       <Text style={styles.bandStripGapText}>No data</Text>
                     </View>
                   )}

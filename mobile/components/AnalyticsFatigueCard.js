@@ -1,13 +1,13 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Card } from './UI';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 import { formatCheckInDate } from '../lib/AnalyticsScreenHelpers';
 
 function FatigueRow({ ci, onEdit }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const metrics = [];
   if (ci.note) {
     metrics.push(ci.note);
@@ -34,13 +34,14 @@ function FatigueRow({ ci, onEdit }) {
           <Text style={styles.fatigueMeta}>{metrics.join('  ·  ')}</Text>
         )}
       </View>
-      <MaterialIcons name="chevron-right" size={18} color={colors.textMuted} style={styles.fatigueChevron} />
+      <MaterialIcons name="chevron-right" size={18} color={kua ? kua.onSurfaceVariant : colors.textMuted} style={styles.fatigueChevron} />
     </Pressable>
   );
 }
 
 function FatigueChip({ ci, onEdit }) {
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   return (
     <Pressable
       style={styles.fatigueChip}
@@ -54,7 +55,8 @@ function FatigueChip({ ci, onEdit }) {
 }
 
 function FatigueSection({ status, label, count, rows, onEdit, variant = 'detailed' }) {
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   return (
     <View style={styles.fatigueSection}>
       <View style={styles.fatigueSectionHeader}>
@@ -85,8 +87,8 @@ export function AnalyticsFatigueCard({
   setFatigueExpanded,
   handleCheckInEdit,
 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   if (checkInHistory.rough.length === 0 && checkInHistory.ok.length === 0 && checkInHistory.pending.length === 0) {
     return (
       <Card style={styles.fatigueCard}>
@@ -122,14 +124,15 @@ export function AnalyticsFatigueCard({
             style={styles.fatigueAlert}
             accessibilityLabel={`${checkInHistory.summary.pendingTotal} unanswered check-in${checkInHistory.summary.pendingTotal > 1 ? 's' : ''}`}
           >
-            <MaterialIcons name="error-outline" size={14} color={colors.caution} />
+            <MaterialIcons name="error-outline" size={14} color={colors.caution} accessible={false} />
             <Text style={styles.fatigueAlertText}>{checkInHistory.summary.pendingTotal} unanswered</Text>
           </View>
         )}
         <MaterialIcons
           name={fatigueExpanded ? 'expand-less' : 'expand-more'}
           size={22}
-          color={colors.textMuted}
+          color={kua ? kua.onSurfaceVariant : colors.textMuted}
+          accessible={false}
         />
       </Pressable>
       {fatigueExpanded && (
@@ -169,22 +172,22 @@ export function AnalyticsFatigueCard({
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+const createStyles = (colors, kua = null) => StyleSheet.create({
   fatigueCard: {
     padding: 20,
     gap: 8,
-    backgroundColor: colors.panelBackground,
+    backgroundColor: kua ? kua.surfaceCard : colors.panelBackground,
   },
   fatiguePanelLabel: {
     fontSize: 11,
     fontWeight: '800',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   fatigueEmpty: {
     fontSize: 14,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
     paddingVertical: 8,
   },
@@ -221,17 +224,17 @@ const createStyles = (colors) => StyleSheet.create({
     marginTop: 16,
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: colors.divider,
+    borderTopColor: kua ? kua.surfaceBorder : colors.divider,
   },
   fatigueInsightLabel: {
     fontSize: 11,
     fontWeight: '500',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   fatigueInsightValue: {
     fontSize: 18,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   fatigueSection: {
     gap: 0,
@@ -248,10 +251,10 @@ const createStyles = (colors) => StyleSheet.create({
     borderRadius: 4,
   },
   fatigueDot_rough: {
-    backgroundColor: colors.error,
+    backgroundColor: kua ? kua.error : colors.error,
   },
   fatigueDot_ok: {
-    backgroundColor: colors.success,
+    backgroundColor: kua ? kua.completion : colors.success,
   },
   fatigueDot_pending: {
     backgroundColor: colors.caution,
@@ -260,14 +263,14 @@ const createStyles = (colors) => StyleSheet.create({
     flex: 1,
     fontSize: 11,
     fontWeight: '800',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   fatigueSectionCount: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   fatigueEntryList: {
     gap: 8,
@@ -275,14 +278,14 @@ const createStyles = (colors) => StyleSheet.create({
   fatigueEntry: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.subtleBg,
+    backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
     borderRadius: 10,
     overflow: 'hidden',
   },
   fatigueEntryAccent: {
     alignSelf: 'stretch',
     width: 3,
-    backgroundColor: colors.error,
+    backgroundColor: kua ? kua.error : colors.error,
   },
   fatigueEntryBody: {
     flex: 1,
@@ -297,18 +300,18 @@ const createStyles = (colors) => StyleSheet.create({
   fatigueDate: {
     fontSize: 11,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   fatigueReasons: {
     fontSize: 15,
     fontWeight: '600',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   fatigueMeta: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '500',
   },
   fatigueChipRow: {
@@ -321,7 +324,7 @@ const createStyles = (colors) => StyleSheet.create({
   // with an 8dp gap, so a slop that large would overlap the next line (#904).
   fatigueChip: {
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     borderRadius: 14,
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -333,6 +336,6 @@ const createStyles = (colors) => StyleSheet.create({
   fatigueChipText: {
     fontSize: 12,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
 });

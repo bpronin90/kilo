@@ -221,6 +221,7 @@ export function AnalyticsProgression({
           trackedLiftActivations,
           unit,
           colors,
+          kua,
           styles,
           searchQuery,
           onNavigate,

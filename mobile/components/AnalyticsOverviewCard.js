@@ -11,11 +11,11 @@
 // scroll offset 0; putting this block at the top is what finally makes offset 0
 // mean "an overview" rather than "whatever section happens to be first".
 
-import React from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { ArtisanalPanel } from './UI';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 import { useWeightUnit } from '../lib/unitPreference';
 
 function formatValue(row) {
@@ -30,8 +30,8 @@ function formatDelta(row) {
 }
 
 function OverviewRow({ row, unit, onPress }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
 
   const value = formatValue(row);
   const delta = formatDelta(row);
@@ -71,58 +71,37 @@ function OverviewRow({ row, unit, onPress }) {
   ].filter(Boolean).join(', ');
 
   const body = (
-    <>
-      <View style={styles.rowTop}>
-        <Text style={styles.rowLabel} numberOfLines={1}>{row.label}</Text>
+    <View style={styles.rowTop}>
+      <Text style={styles.rowLabel} numberOfLines={1}>{row.label}</Text>
+      <View style={styles.rowValueStack}>
         <View style={styles.rowValueGroup}>
           {value == null ? (
             <Text style={styles.rowValueEmpty}>—</Text>
           ) : (
-            // Paused rows (#871) keep their real value on screen — it is still
-            // the true frozen count — but muted like the empty-value tone, so a
-            // baseline count that has stopped accumulating never reads as a
-            // fresh live one at a glance.
             <Text style={row.paused ? styles.rowValuePaused : styles.rowValue}>
               {value}
               {row.showUnit && <Text style={styles.rowValueUnit}> {unit}</Text>}
             </Text>
           )}
           {!!row.valueSuffix && <Text style={styles.rowValueSuffix}>{row.valueSuffix}</Text>}
-          {interactive ? (
-            <MaterialIcons name="chevron-right" size={16} color={colors.textMuted} accessible={false} />
-          ) : (
-            // A same-width, invisible stand-in (not `null`) for every
-            // non-interactive row (Routine has no destination section; an
-            // unavailable row is never a press target): without it those
-            // rows' value text sits flush against the card edge while every
-            // interactive row's chevron pulls its value in by 21px (16 icon +
-            // 5 gap), so the value column's right edge drifted row to row and
-            // the stack read as unrelated rows rather than one aligned grid.
-            <View style={styles.rowValueSpacer} accessible={false} />
-          )}
+          {interactive
+            ? <MaterialIcons name="chevron-right" size={16} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
+            : <View style={styles.rowValueSpacer} accessible={false} />
+          }
         </View>
+        {(delta || caption || row.infoCaption) && (
+          <View style={styles.rowSub}>
+            {!!delta && (
+              <Text style={[styles.rowDelta, delta.up ? styles.rowDeltaUp : styles.rowDeltaDown]}>
+                {delta.text}{row.showUnit ? ` ${unit}` : ''}{row.deltaCaption ? ` · ${row.deltaCaption}` : ''}
+              </Text>
+            )}
+            {!!caption && <Text style={styles.rowCaption}>{caption}</Text>}
+            {!!row.infoCaption && <Text style={styles.rowInfoCaption}>{row.infoCaption}</Text>}
+          </View>
+        )}
       </View>
-
-      {(delta || caption || row.infoCaption) && (
-        <View style={styles.rowSub}>
-          {!!delta && (
-            <Text style={[styles.rowDelta, delta.up ? styles.rowDeltaUp : styles.rowDeltaDown]}>
-              {delta.text}
-              {row.showUnit ? ` ${unit}` : ''}
-            </Text>
-          )}
-          {!!row.deltaCaption && !!delta && <Text style={styles.rowCaption}>{row.deltaCaption}</Text>}
-          {!!caption && <Text style={styles.rowCaption}>{caption}</Text>}
-          {/* Additive informational caption (#1029 amendment): renders
-              INDEPENDENTLY of `delta`/`caption` — the Recovery row's week
-              identity, anchor week, and matched population during active
-              Recovery, at the bucket-row font-weight tier (matches
-              AnalyticsRecoverySection's own bucket-row/denominator text),
-              never folded into `valueSuffix` and never a fabricated `delta`. */}
-          {!!row.infoCaption && <Text style={styles.rowInfoCaption}>{row.infoCaption}</Text>}
-        </View>
-      )}
-    </>
+    </View>
   );
 
   if (!interactive) {
@@ -148,8 +127,8 @@ function OverviewRow({ row, unit, onPress }) {
 }
 
 export function AnalyticsOverviewCard({ rows = [], loading = false, asOf = null, onSelectSection }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const unit = useWeightUnit();
 
   return (
@@ -162,7 +141,7 @@ export function AnalyticsOverviewCard({ rows = [], loading = false, asOf = null,
 
         {loading ? (
           <View style={styles.loading} accessible accessibilityLabel="Loading your overview">
-            <ActivityIndicator color={colors.accent} />
+            <ActivityIndicator color={kua ? kua.primary : colors.accent} />
           </View>
         ) : (
           rows.map(row => (
@@ -174,14 +153,14 @@ export function AnalyticsOverviewCard({ rows = [], loading = false, asOf = null,
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+const createStyles = (colors, kua = null) => StyleSheet.create({
   container: {
     gap: 16,
   },
   panel: {
     paddingHorizontal: 0,
     paddingVertical: 0,
-    backgroundColor: colors.panelBackground,
+    backgroundColor: kua ? kua.surfaceCard : colors.panelBackground,
   },
   header: {
     flexDirection: 'row',
@@ -195,13 +174,13 @@ const createStyles = (colors) => StyleSheet.create({
   headerLabel: {
     fontSize: 11,
     fontWeight: '800',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   headerAsOf: {
     fontSize: 11,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     flexShrink: 1,
   },
   loading: {
@@ -214,38 +193,41 @@ const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: colors.divider,
+    borderTopColor: kua ? kua.surfaceBorder : colors.divider,
     minHeight: 44,
     justifyContent: 'center',
   },
   rowTop: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
-    flexWrap: 'wrap',
   },
   rowLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.text,
-    flexShrink: 1,
+    color: kua ? kua.onSurface : colors.text,
+    flex: 1,
+  },
+  rowValueStack: {
+    alignItems: 'flex-end',
+    flexShrink: 0,
+    gap: 2,
   },
   rowValueGroup: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
     gap: 5,
   },
   rowValue: {
     fontSize: 17,
     fontWeight: '700',
-    color: colors.text,
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    color: kua ? kua.onSurface : colors.text,
   },
   rowValueEmpty: {
     fontSize: 17,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Same weight/size as a normal value, muted like the empty tone (#871): a
   // paused baseline count is a real, true number — not absent — but must not
@@ -253,17 +235,17 @@ const createStyles = (colors) => StyleSheet.create({
   rowValuePaused: {
     fontSize: 17,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   rowValueUnit: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   rowValueSuffix: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Matches the chevron's footprint (16 icon width; the group's own `gap: 5`
   // still applies) so a non-interactive row's value column ends at the same
@@ -273,26 +255,25 @@ const createStyles = (colors) => StyleSheet.create({
   },
   rowSub: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 6,
-    marginTop: 3,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 4,
   },
   rowDelta: {
     fontSize: 12,
     fontWeight: '700',
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
   },
   rowDeltaUp: {
-    color: colors.success,
+    color: kua ? kua.completion : colors.success,
   },
   rowDeltaDown: {
-    color: colors.error,
+    color: kua ? kua.error : colors.error,
   },
   rowCaption: {
     fontSize: 12,
-    color: colors.textMuted,
-    flexShrink: 1,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    textAlign: 'right',
   },
   // Bucket-row font-weight tier (#1029 amendment) — matches
   // AnalyticsRecoverySection's `bandDenominatorCaption`/`bandRowLabel`
@@ -302,7 +283,7 @@ const createStyles = (colors) => StyleSheet.create({
   rowInfoCaption: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.textMuted,
-    flexShrink: 1,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    textAlign: 'right',
   },
 });

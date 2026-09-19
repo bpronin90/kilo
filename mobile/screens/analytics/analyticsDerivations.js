@@ -396,7 +396,7 @@ export function deriveOverviewRows({
   if (!isRecoveryActive) {
     // Unchanged normal hierarchy (#871 acceptance: ending Recovery restores
     // this exact order).
-    return [oneKRow, progressRow, routineRow, weightRow].filter(Boolean);
+    return [oneKRow, progressRow, weightRow].filter(Boolean);
   }
 
   // Active Recovery: lead with the Recovery state itself, then current weight
@@ -469,7 +469,7 @@ export function deriveOverviewRows({
     };
   }
 
-  return [recoveryRow, weightRow, oneKRow, progressRow, routineRow].filter(Boolean);
+  return [recoveryRow, weightRow, oneKRow, progressRow].filter(Boolean);
 }
 
 export function shapeEditCheckInData(editPendingCheckIn) {

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { StyleSheet, View, Text, Pressable, PixelRatio } from 'react-native';
 import Svg, { Polyline, Circle, Rect, G, Line } from 'react-native-svg';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 
 // Base width for the showScale gutter at the OS default text size (#828). A
 // fixed pixel width doesn't track React Native's accessibility font scaling
@@ -33,13 +33,13 @@ export function LineChart({
   emptyMessage = 'Not enough data',
   seriesLabel,
 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   // Resolved here, not as a parameter default: parameter initializers evaluate
   // before the function body, so `colors.accent` in the signature would hit the
   // body-scoped `colors` binding in its temporal dead zone and throw for every
   // caller that omits `color` (#689).
-  const strokeColor = color || colors.accent;
+  const strokeColor = color || (kua ? kua.primary : colors.accent);
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [chartWidth, setChartWidth] = useState(0);
 
@@ -259,7 +259,7 @@ export function LineChart({
                   cx={getX(i)}
                   cy={getY(d.value)}
                   r={i === displayIndex ? 5 : 3}
-                  fill={i === displayIndex ? strokeColor : colors.card}
+                  fill={i === displayIndex ? strokeColor : (kua ? kua.surfaceCard : colors.card)}
                   stroke={strokeColor}
                   strokeWidth={2}
                 />
@@ -272,7 +272,7 @@ export function LineChart({
                     y1={0}
                     x2={getX(i)}
                     y2={height}
-                    stroke={colors.textMuted}
+                    stroke={kua ? kua.onSurfaceVariant : colors.textMuted}
                     strokeWidth={1}
                     strokeDasharray="2,3"
                     opacity={0.5}
@@ -341,7 +341,7 @@ export function LineChart({
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+const createStyles = (colors, kua = null) => StyleSheet.create({
   container: {
     marginVertical: 10,
   },
@@ -360,18 +360,18 @@ const createStyles = (colors) => StyleSheet.create({
   latestLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
   },
   latestValue: {
     fontSize: 24,
     fontWeight: '800',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   unit: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginLeft: 2,
   },
   // Low-emphasis by design: it tells the user the chart is operable without
@@ -379,12 +379,12 @@ const createStyles = (colors) => StyleSheet.create({
   selectHint: {
     fontSize: 11,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
   },
   noData: {
     textAlign: 'center',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontSize: 14,
     marginTop: 20,
   },
@@ -404,25 +404,25 @@ const createStyles = (colors) => StyleSheet.create({
   scaleLabel: {
     fontSize: 10,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'right',
   },
   dateLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
     marginTop: 4,
   },
   selectionLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
     marginTop: 4,
   },
   selectionValue: {
     fontWeight: '800',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
 });

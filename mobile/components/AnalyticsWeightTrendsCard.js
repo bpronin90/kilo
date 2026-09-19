@@ -126,7 +126,7 @@ export function AnalyticsWeightTrendsCard({
                 height={100}
                 hideHeader
                 showScale
-                color={kua ? kua.chartSeries1 : undefined}
+                color={kua ? kua.primary : undefined}
                 seriesLabel="7-day rolling average bodyweight"
                 onSelect={handleSelect}
               />
@@ -145,7 +145,7 @@ export function AnalyticsWeightTrendsCard({
                 height={100}
                 hideHeader
                 showScale
-                color={kua ? kua.chartSeries1 : colors.textMuted}
+                color={kua ? kua.primary : colors.textMuted}
                 seriesLabel="30-day rolling average bodyweight"
                 onSelect={handleSelect}
               />
@@ -234,7 +234,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginBottom: 2,
   },
   weightValueLarge: {
-    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : { fontSize: 32, fontWeight: '800' }),
+    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 32, lineHeight: 36 } : { fontSize: 36, fontWeight: '800' }),
     color: kua ? kua.onSurface : colors.accentText,
   },
   weightUnit: {

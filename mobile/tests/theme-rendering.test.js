@@ -636,13 +636,13 @@ describe('themed prop defaults resolve after the theme is read', () => {
     return component;
   }
 
-  test('LineChart renders with no color prop and falls back to the accent', () => {
+  test('LineChart renders with no color prop and falls back to kua.primary', () => {
     let component;
     expect(() => {
       component = mountChart();
     }).not.toThrow();
 
-    expect(strokes(component)).toContain(LightColors.accent);
+    expect(strokes(component)).toContain(HardCourtLightColors.primary);
     expect(strokes(component).every((s) => s !== undefined)).toBe(true);
   });
 
@@ -653,7 +653,7 @@ describe('themed prop defaults resolve after the theme is read', () => {
       setAppearancePreference('dark');
     });
 
-    expect(strokes(component)).toContain(DarkColors.accent);
+    expect(strokes(component)).toContain(HardCourtDarkColors.primary);
     expect(strokes(component).every((s) => s !== undefined)).toBe(true);
   });
 
@@ -1912,7 +1912,7 @@ describe('KUA Analytics surface: createStyles uses KUA tokens in all palettes', 
     const styles = createWeightTrendsStyles(LightColors, null, null);
     expect(styles.weightCard.backgroundColor).toBe(LightColors.panelBackground);
     expect(styles.weightStatValue.color).toBe(LightColors.text);
-    expect(styles.weightValueLarge.fontSize).toBe(32);
+    expect(styles.weightValueLarge.fontSize).toBe(36);
   });
 
   test.each([
@@ -1940,7 +1940,7 @@ describe('KUA Analytics surface: createStyles uses KUA tokens in all palettes', 
     const styles = createStrengthStyles(LightColors, kua, TYPOGRAPHY);
     const spec = TYPOGRAPHY['metric-display-mobile'];
     expect(styles.oneKValue.fontFamily).toBe(spec.fontFamily);
-    expect(styles.oneKValue.fontSize).toBe(28);
+    expect(styles.oneKValue.fontSize).toBe(36);
   });
 
   test('strength section falls back to legacy styles when kua is null', () => {

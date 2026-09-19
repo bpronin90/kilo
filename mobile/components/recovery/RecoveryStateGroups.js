@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import { displayWeight, formatLiftWeightValue } from '../../lib/units';
 import { formatDuration } from '../../lib/format';
 import { RECOVERY_COMPARISON_STATES, RECOVERY_WEEK_STATUS } from '../../lib/data/recoveryAnalytics';
@@ -108,8 +108,8 @@ function _rowAccessibilityLabel(row, unit) {
 }
 
 function MetricCell({ metric, unit }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   // Visual fill is capped at 100% (`cappedPct`) so a lifter who came back
   // stronger doesn't overflow the bar, but the exact percent text is never
   // capped — a value above baseline stays numerically visible (#698).
@@ -126,7 +126,7 @@ function MetricCell({ metric, unit }) {
         <View
           style={[
             styles.meterFill,
-            { width: `${cappedPct}%`, backgroundColor: metric.met ? colors.success : colors.caution },
+            { width: `${cappedPct}%`, backgroundColor: metric.met ? (kua ? kua.completion : colors.success) : colors.caution },
           ]}
         />
       </View>
@@ -138,7 +138,8 @@ function MetricCell({ metric, unit }) {
 }
 
 function ExerciseRow({ row, unit }) {
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const meta = STATE_META[row.state] || STATE_META[RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED];
   const showComparedMetrics =
     row.state === RECOVERY_COMPARISON_STATES.BASELINE_MET ||
@@ -195,7 +196,8 @@ function ExerciseRow({ row, unit }) {
 // disclosure, never inside it: a collapsed panel must not be the reason a lifter
 // cannot see that this week has no readable evidence at all (#758).
 export function WeekUnavailableNotice({ week }) {
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   if (!week) return null;
 
   if (week.status === RECOVERY_WEEK_STATUS.NOTE_MISSING) {
@@ -219,8 +221,8 @@ export function WeekUnavailableNotice({ week }) {
 // timed work has nothing to disambiguate, so it gets no legend — and neither
 // does a not-comparable row, which prints its reason instead of any metric.
 export function MetricLegend({ rows }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   // Behind a disclosure rather than printed above every expansion (#821). The
   // definitions still matter — they are why "Total work" replaced the
   // undefined "Volume" in #758 — but they are read once and then known, and
@@ -251,7 +253,7 @@ export function MetricLegend({ rows }) {
         <MaterialIcons
           name={expanded ? 'expand-less' : 'expand-more'}
           size={16}
-          color={colors.textMuted}
+          color={kua ? kua.onSurfaceVariant : colors.textMuted}
           accessible={false}
         />
       </Pressable>
@@ -265,7 +267,8 @@ export function MetricLegend({ rows }) {
 // (#793/R5b). Renders nothing when this block's focused week has no rows in
 // this state, so an empty group never takes a slot.
 function StateGroup({ state, rows, unit }) {
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   if (!rows || rows.length === 0) return null;
   const meta = STATE_META[state] || STATE_META[RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED];
   return (
@@ -281,7 +284,8 @@ function StateGroup({ state, rows, unit }) {
 }
 
 export function WeekEvidence({ rows, unit }) {
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const groups = new Map();
   for (const row of rows) {
     const list = groups.get(row.state);
