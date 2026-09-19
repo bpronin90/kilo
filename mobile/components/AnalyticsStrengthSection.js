@@ -292,7 +292,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     letterSpacing: 1,
   },
   oneKValue: {
-    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 36, lineHeight: 40 } : { ...HeroMetric.hero }),
+    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 36, lineHeight: 40, fontWeight: '800' } : { ...HeroMetric.hero }),
     color: kua ? undefined : colors.text,
   },
   // Literal leading space, not marginLeft — this Text is nested inside the
