@@ -292,7 +292,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     letterSpacing: 1,
   },
   oneKValue: {
-    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 34, lineHeight: 38 } : { ...HeroMetric.hero }),
+    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 36, lineHeight: 40 } : { ...HeroMetric.hero }),
     color: kua ? undefined : colors.text,
   },
   // Literal leading space, not marginLeft — this Text is nested inside the
@@ -353,7 +353,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   oneKItemValue: {
     fontSize: 18,
     fontWeight: '700',
-    color: kua ? kua.onSurface : colors.text,
+    color: kua ? kua.primary : colors.text,
   },
   oneKItemLabel: {
     fontSize: 11,

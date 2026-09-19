@@ -1940,7 +1940,7 @@ describe('KUA Analytics surface: createStyles uses KUA tokens in all palettes', 
     const styles = createStrengthStyles(LightColors, kua, TYPOGRAPHY);
     const spec = TYPOGRAPHY['metric-display-mobile'];
     expect(styles.oneKValue.fontFamily).toBe(spec.fontFamily);
-    expect(styles.oneKValue.fontSize).toBe(34);
+    expect(styles.oneKValue.fontSize).toBe(36);
   });
 
   test('strength section falls back to legacy styles when kua is null', () => {
