@@ -493,11 +493,9 @@ describe('deriveOverviewRows (#821)', () => {
     expect(progress.valueSuffix).toBe('of 4 up');
   });
 
-  test('the routine row is suppressed entirely when deload mode is off', () => {
-    const on = deriveOverviewRows({ sessionsSinceDeload: 8, deloadModeEnabled: true });
-    const off = deriveOverviewRows({ sessionsSinceDeload: 8, deloadModeEnabled: false });
-    expect(rowFor(on, 'routine').value).toBe(8);
-    expect(rowFor(off, 'routine')).toBeUndefined();
+  test('the routine row is no longer shown in the overview', () => {
+    const rows = deriveOverviewRows({ sessionsSinceDeload: 8, deloadModeEnabled: true });
+    expect(rowFor(rows, 'routine')).toBeUndefined();
   });
 
   test('a failed read is marked unavailable, not reported as an empty state', () => {
@@ -578,7 +576,7 @@ describe('deriveOverviewRows (#821)', () => {
       activeTraining: { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 1 },
       recoveryBands: { roster_size: 2, trained: 1, buckets: { at_or_above: 1, close: 0, rebuilding: 0, early: 0, cannot_compare: 0, not_trained_yet: 1 } },
     });
-    for (const key of ['weight', 'oneK', 'progress', 'routine']) {
+    for (const key of ['weight', 'oneK', 'progress']) {
       expect(rowFor(rows, key).infoCaption).toBeUndefined();
     }
     expect(rowFor(rows, 'recovery').infoCaption).toBe('Week 1');

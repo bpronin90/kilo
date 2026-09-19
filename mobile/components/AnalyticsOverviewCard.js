@@ -71,58 +71,37 @@ function OverviewRow({ row, unit, onPress }) {
   ].filter(Boolean).join(', ');
 
   const body = (
-    <>
-      <View style={styles.rowTop}>
-        <Text style={styles.rowLabel} numberOfLines={1}>{row.label}</Text>
+    <View style={styles.rowTop}>
+      <Text style={styles.rowLabel} numberOfLines={1}>{row.label}</Text>
+      <View style={styles.rowValueStack}>
         <View style={styles.rowValueGroup}>
           {value == null ? (
             <Text style={styles.rowValueEmpty}>—</Text>
           ) : (
-            // Paused rows (#871) keep their real value on screen — it is still
-            // the true frozen count — but muted like the empty-value tone, so a
-            // baseline count that has stopped accumulating never reads as a
-            // fresh live one at a glance.
             <Text style={row.paused ? styles.rowValuePaused : styles.rowValue}>
               {value}
               {row.showUnit && <Text style={styles.rowValueUnit}> {unit}</Text>}
             </Text>
           )}
           {!!row.valueSuffix && <Text style={styles.rowValueSuffix}>{row.valueSuffix}</Text>}
-          {interactive ? (
-            <MaterialIcons name="chevron-right" size={16} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
-          ) : (
-            // A same-width, invisible stand-in (not `null`) for every
-            // non-interactive row (Routine has no destination section; an
-            // unavailable row is never a press target): without it those
-            // rows' value text sits flush against the card edge while every
-            // interactive row's chevron pulls its value in by 21px (16 icon +
-            // 5 gap), so the value column's right edge drifted row to row and
-            // the stack read as unrelated rows rather than one aligned grid.
-            <View style={styles.rowValueSpacer} accessible={false} />
-          )}
+          {interactive
+            ? <MaterialIcons name="chevron-right" size={16} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
+            : <View style={styles.rowValueSpacer} accessible={false} />
+          }
         </View>
+        {(delta || caption || row.infoCaption) && (
+          <View style={styles.rowSub}>
+            {!!delta && (
+              <Text style={[styles.rowDelta, delta.up ? styles.rowDeltaUp : styles.rowDeltaDown]}>
+                {delta.text}{row.showUnit ? ` ${unit}` : ''}{row.deltaCaption ? ` · ${row.deltaCaption}` : ''}
+              </Text>
+            )}
+            {!!caption && <Text style={styles.rowCaption}>{caption}</Text>}
+            {!!row.infoCaption && <Text style={styles.rowInfoCaption}>{row.infoCaption}</Text>}
+          </View>
+        )}
       </View>
-
-      {(delta || caption || row.infoCaption) && (
-        <View style={styles.rowSub}>
-          {!!delta && (
-            <Text style={[styles.rowDelta, delta.up ? styles.rowDeltaUp : styles.rowDeltaDown]}>
-              {delta.text}
-              {row.showUnit ? ` ${unit}` : ''}
-            </Text>
-          )}
-          {!!row.deltaCaption && !!delta && <Text style={styles.rowCaption}>{row.deltaCaption}</Text>}
-          {!!caption && <Text style={styles.rowCaption}>{caption}</Text>}
-          {/* Additive informational caption (#1029 amendment): renders
-              INDEPENDENTLY of `delta`/`caption` — the Recovery row's week
-              identity, anchor week, and matched population during active
-              Recovery, at the bucket-row font-weight tier (matches
-              AnalyticsRecoverySection's own bucket-row/denominator text),
-              never folded into `valueSuffix` and never a fabricated `delta`. */}
-          {!!row.infoCaption && <Text style={styles.rowInfoCaption}>{row.infoCaption}</Text>}
-        </View>
-      )}
-    </>
+    </View>
   );
 
   if (!interactive) {
@@ -230,11 +209,15 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurface : colors.text,
     flex: 1,
   },
+  rowValueStack: {
+    alignItems: 'flex-end',
+    flexShrink: 0,
+    gap: 2,
+  },
   rowValueGroup: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    flexShrink: 0,
   },
   rowValue: {
     fontSize: 17,
@@ -273,8 +256,9 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   rowSub: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginTop: 3,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 4,
   },
   rowDelta: {
     fontSize: 12,
@@ -289,7 +273,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   rowCaption: {
     fontSize: 12,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    flex: 1,
+    textAlign: 'right',
   },
   // Bucket-row font-weight tier (#1029 amendment) — matches
   // AnalyticsRecoverySection's `bandDenominatorCaption`/`bandRowLabel`
@@ -300,6 +284,6 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    flexShrink: 1,
+    textAlign: 'right',
   },
 });
