@@ -133,10 +133,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   heroPrimaryActions: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    backgroundColor: kua ? kua.surfaceBorder : colors.subtleBg,
+    backgroundColor: kua ? 'transparent' : colors.subtleBg,
+    borderWidth: kua ? 1 : 0,
+    borderColor: kua ? kua.surfaceBorder : 'transparent',
     borderRadius: 12,
     overflow: 'hidden',
-    marginTop: 8,
+    marginTop: 16,
     marginBottom: 8,
   },
   heroPrimaryAction: {
@@ -160,7 +162,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   heroPrimaryActionDivider: {
     width: 1,
     marginVertical: 8,
-    backgroundColor: kua ? kua.surfaceCard : colors.cardBorder,
+    backgroundColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   // Quiet Analytics handoff attached to the sparkline. 44pt minimum target per
   // the mobile touch-target rule, kept visually quiet so the hero metric remains
@@ -195,13 +197,13 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   heroWeightUnit: {
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   heroSparklineStrip: {
     marginTop: 4,
-    marginBottom: 12,
+    marginBottom: 4,
   },
   heroSparklineSublabel: {
     ...(kua ? TYPOGRAPHY['label-sm'] : {}),
@@ -246,12 +248,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     flexShrink: 0,
   },
   classifSectionLabel: {
-    ...(kua ? TYPOGRAPHY['headline-sm'] : {}),
+    ...(kua ? TYPOGRAPHY['label-sm'] : {}),
     fontSize: kua ? undefined : 12,
     fontWeight: kua ? undefined : '700',
-    color: kua ? kua.onSurface : colors.text,
+    color: kua ? kua.onSurfaceVariant : colors.text,
     textTransform: 'uppercase',
-    letterSpacing: kua ? undefined : 0.5,
+    letterSpacing: kua ? 0.5 : 0.5,
   },
   classifRow: {
     flexDirection: 'row',
@@ -285,9 +287,10 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderRadius: 4,
   },
   classifCount: {
-    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
+    ...(kua ? TYPOGRAPHY['headline-sm'] : {}),
     fontSize: kua ? undefined : 16,
     fontWeight: kua ? undefined : '800',
+    // Color is passed inline per-column (success/warning/error) in KUA mode.
     color: kua ? kua.onSurface : colors.text,
   },
   classifLabel: {
@@ -309,17 +312,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   classifCaptionToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
     marginTop: 6,
     minHeight: 28,
   },
-  classifCaptionIcon: {
-    fontSize: 13,
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    opacity: 0.7,
-  },
   heroFooter: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginTop: 12,
   },
   insightsLink: {
@@ -331,7 +329,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     ...(kua ? TYPOGRAPHY['body-sm'] : {}),
     fontSize: kua ? undefined : 13,
     fontWeight: kua ? undefined : '600',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    color: kua ? kua.primary : colors.textMuted,
   },
   // Recovery status card (#757). Same padding as the other tiers; the label
   // reuses the uppercase section treatment already used by the Exercise

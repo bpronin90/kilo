@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Circle, Path } from 'react-native-svg';
 import { Card, LineChart } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
 import { formatBodyweightValue, displayChartSeries } from '../../lib/units';
@@ -185,8 +185,7 @@ export function HomeHeader({
               { label: 'Regressing', count: dashboardData.weeklySummary.classifications?.regressing ?? 0, color: kua ? kua.error : colors.error },
             ].map((item, idx) => (
               <View key={idx} style={styles.classifCol}>
-                <View style={[styles.classifDot, { backgroundColor: item.color }]} />
-                <Text style={styles.classifCount}>{item.count}</Text>
+                <Text style={[styles.classifCount, kua ? { color: item.color } : null]}>{item.count}</Text>
                 <Text style={styles.classifLabel}>{item.label}</Text>
               </View>
             ))}
@@ -211,7 +210,7 @@ export function HomeHeader({
                     : `${dashboardData.weeklySummary.newlyTrackedCount} exercises in their first tracked session — log another to see a trend`
                 }
               >
-                <Text style={styles.classifCaptionIcon}>ⓘ</Text>
+                <Svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Circle cx="12" cy="12" r="10" /><Path d="M12 16v-4M12 8h.01" /></Svg>
                 {captionExpanded ? (
                   <Text style={styles.classifCaption}>
                     {dashboardData.weeklySummary.newlyTrackedCount === 1
@@ -236,7 +235,7 @@ export function HomeHeader({
                 accessibilityRole="button"
                 accessibilityLabel="Includes exercises tracked before this update, using full history"
               >
-                <Text style={styles.classifCaptionIcon}>ⓘ</Text>
+                <Svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Circle cx="12" cy="12" r="10" /><Path d="M12 16v-4M12 8h.01" /></Svg>
                 {captionExpanded ? (
                   <Text style={styles.classifCaption}>
                     Includes exercises tracked before this update, using full history
