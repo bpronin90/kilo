@@ -317,9 +317,10 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   );
 
   const weekTone = getSessionTone(dashboardData.sessionCount);
-  // In KUA mode the week label uses on-surface-variant from the theme; tonal
-  // overrides fight the palette and look the same green across every theme.
-  const weekToneColor = kua ? null
+  // In KUA mode the week label uses primary as its base color so it reads as
+  // on-brand. Semantic tone overrides (success/warn/error) stay on the
+  // classification counts below — not the label — to avoid duplicate signals.
+  const weekToneColor = kua ? kua.primary
     : weekTone === 'error' ? colors.error
     : weekTone === 'warn' ? colors.cautionText
     : weekTone === 'success' ? colors.success

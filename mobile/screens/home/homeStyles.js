@@ -197,8 +197,9 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   heroWeightUnit: {
-    fontSize: 20,
-    fontWeight: '600',
+    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
+    fontSize: kua ? undefined : 16,
+    fontWeight: kua ? undefined : '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   heroSparklineStrip: {
@@ -483,8 +484,9 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurface : colors.text,
   },
   goalStatUnitLabel: {
-    fontSize: 18,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
+    fontSize: kua ? undefined : 18,
+    fontWeight: kua ? undefined : '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Top padding and gap trimmed from the 24/10 default (#820): the header
@@ -514,15 +516,16 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // Restored to the accepted pre-regression scale (#771): the #763 compact-
   // summary override read as a visual demotion of the 1K total, so this
   // spreads HeroMetric.hero (48/900) the same as the Analytics owner card.
-  // In KUA mode, 32px JBM Bold — metric-display-mobile base with +4px bump
-  // so the total reads as the dominant figure in the card.
+  // In KUA mode, metric-display-mobile (28px JBM Bold) — aligns with the
+  // goal card's stat values so secondary metrics share one consistent step.
   oneKHeroValue: {
-    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 32 } : HeroMetric.hero),
+    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : HeroMetric.hero),
     color: kua ? kua.onSurface : colors.text,
   },
   oneKHeroUnit: {
-    fontSize: 16,
-    fontWeight: '600',
+    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
+    fontSize: kua ? undefined : 16,
+    fontWeight: kua ? undefined : '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Track color, radius, and vertical rhythm match the Analytics 1K progress
@@ -555,10 +558,10 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderRightWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
-  // Weight and case match the Analytics breakdown item (#763); fontSize
-  // stays smaller here because Home is the compact summary, not the owner.
+  // Breakdown values sit one step below the 28px total — label-lg (14px JBM
+  // SemiBold) so they read as supporting data rather than competing heroes.
   oneKGridValue: {
-    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 22 } : {}),
+    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
     fontSize: kua ? undefined : 16,
     fontWeight: kua ? undefined : '700',
     color: kua ? kua.onSurface : colors.text,
