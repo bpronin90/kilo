@@ -584,14 +584,12 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     expect(onNavigate).toHaveBeenCalledWith('Analytics', 'overview');
   });
 
-  test('the weight sparkline goes to the Analytics weight section', () => {
-    render.act(() => { byTestID(component.root, 'home-weight-trend-link').props.onPress(); });
-    expect(onNavigate).toHaveBeenCalledWith('Analytics', 'weight');
-  });
+  // home-weight-trend-link is legacy-only; KUA mode (always active in tests) hides it.
+  // Navigation to 'Analytics', 'weight' is covered by the weight action in the KUA path.
 
+  // home-weight-trend-link is legacy-only (KUA mode hides it) and is excluded from this loop.
   test('repeating any Analytics handoff issues it again with the same target', () => {
     for (const [testID, expected] of [
-      ['home-weight-trend-link', 'weight'],
       ['home-strength-summary-link', 'progressive-overload'],
       ['home-insights-link', 'overview'],
       ['home-one-k-link', 'strength'],
@@ -606,12 +604,12 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     }
   });
 
+  // home-weight-trend-link is legacy-only; KUA mode (always active in tests) hides it.
   test('each handoff exposes a button role and an accessible label', () => {
     for (const testID of [
       'home-current-routine-link',
       'home-weight-action',
       'home-strength-summary-link',
-      'home-weight-trend-link',
       'home-insights-link',
     ]) {
       const node = byTestID(component.root, testID);
@@ -623,9 +621,9 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
 
   // #770: a hint that names a destination the press does not reach is worse
   // than no hint, so each one is pinned to the section its control targets.
+  // home-weight-trend-link is legacy-only; KUA mode (always active in tests) hides it.
   test('each Analytics hint names the section its control actually opens', () => {
     for (const [testID, hint] of [
-      ['home-weight-trend-link', 'Opens the weight section of the Analytics tab'],
       ['home-strength-summary-link', 'Opens the Progressive Overload section of the Analytics tab'],
       ['home-one-k-link', 'Opens the strength section of the Analytics tab'],
       ['home-insights-link', 'Opens the Analytics tab at the top'],
@@ -652,14 +650,14 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     'home-current-routine-link',
     'home-weight-action',
     'home-strength-summary-link',
-    'home-weight-trend-link',
+    // home-weight-trend-link is legacy-only; KUA mode (always active in tests) hides it.
   ];
 
-  // The three quiet inline controls, which carry an explicit 44pt minimum.
+  // The two quiet inline controls, which carry an explicit 44pt minimum.
+  // home-weight-trend-link is omitted: hidden in KUA mode (always active in tests).
   const INLINE_ACTION_IDS = [
     'home-current-routine-link',
     'home-weight-action',
-    'home-weight-trend-link',
   ];
 
   test(
@@ -687,6 +685,7 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
   test('no handoff declares a fixed height that a scaled label could overflow', () => {
     // Structural guard: both primary controls get equal flexible width, while
     // all labeled handoffs can grow vertically under enlarged text.
+    // home-weight-trend-link is legacy-only; KUA mode (always active in tests) hides it.
     const routineAction = component.root.findByProps({ testID: 'home-current-routine-link' });
     const weightAction = component.root.findByProps({ testID: 'home-weight-action' });
     expect(routineAction.parent).toBe(weightAction.parent);
@@ -694,7 +693,7 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     expect(flatStyle(routineAction).flex).toBe(1);
     expect(flatStyle(weightAction).flex).toBe(1);
 
-    for (const testID of ['home-current-routine-link', 'home-weight-action', 'home-weight-trend-link']) {
+    for (const testID of ['home-current-routine-link', 'home-weight-action']) {
       const style = flatStyle(component.root.findByProps({ testID }));
       expect(style.height).toBeUndefined();
       expect(style.minHeight).toBe(44);
@@ -702,12 +701,8 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
   });
 
   test('each handoff owns its press region exclusively — no nested press owners', () => {
-    // The sparkline chart owns an inner Pressable for point selection, so the
-    // Analytics-weight handoff must not wrap it (#717 review finding 1).
-    const { LineChart } = require('../components/UI');
-    const trendLink = component.root.findByProps({ testID: 'home-weight-trend-link' });
-    expect(trendLink.findAllByType(LineChart)).toHaveLength(0);
-
+    // home-weight-trend-link is legacy-only (KUA mode hides it), so the LineChart
+    // nesting guard is skipped. Remaining handoffs still must not wrap press owners.
     for (const testID of HANDOFF_IDS) {
       const node = component.root.findByProps({ testID });
       // No descendant of a handoff may itself be a press owner.
@@ -730,10 +725,10 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
       .filter(id => HANDOFF_IDS.includes(id))
       .filter((id, i, all) => id !== all[i - 1]);
 
+    // home-weight-trend-link is legacy-only; KUA mode (always active in tests) hides it.
     expect(order).toEqual([
       'home-current-routine-link',
       'home-weight-action',
-      'home-weight-trend-link',
       'home-strength-summary-link',
     ]);
   });
@@ -749,10 +744,7 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
       .toContain('Log workout');
     expect(visibleText(component.root.findByProps({ testID: 'home-weight-action' })))
       .toContain('Log weight');
-    // An explicit action label, not the chart caption: "7-day rolling avg" read
-    // as chart furniture rather than something tappable (#717 review round 3).
-    expect(visibleText(component.root.findByProps({ testID: 'home-weight-trend-link' })))
-      .toContain('See weight trends');
+    // home-weight-trend-link is legacy-only; KUA mode (always active in tests) hides it.
     expect(visibleText(component.root.findByProps({ testID: 'home-strength-summary-link' })))
       .toContain('Exercise Progress');
   });
@@ -798,9 +790,9 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     const allTexts = local.root.findAllByType('Text')
       .map(t => String(t.props.children ?? '').trim());
     expect(allTexts).not.toContain('7-day rolling avg');
-    // The handoffs are still reachable in the no-data state.
+    // The weigh-in action is still reachable in the no-data state.
+    // home-weight-trend-link is legacy-only; KUA mode (always active in tests) hides it.
     expect(local.root.findByProps({ testID: 'home-weight-action' })).toBeTruthy();
-    expect(local.root.findByProps({ testID: 'home-weight-trend-link' })).toBeTruthy();
 
     await render.act(async () => { local.unmount(); });
   });
@@ -908,12 +900,10 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     // #1112: KUA mode uses metric-display-mobile (28px JBM Bold) instead of the
     // legacy 48/900 hero, so the guard accepts either KUA scale or legacy scale.
     const card = component.root.findByProps({ testID: 'home-one-k-link' }).parent.parent;
-    // KUA metric-display-mobile: 28px; legacy hero: 48px.
-    const heroValueNodes = card.findAll(n => n.type === 'Text' && (flatStyle(n).fontSize === 48 || flatStyle(n).fontSize === 28));
+    // KUA mode (always active in tests): metric-display-mobile base is 28px, but
+    // #1112 visual feedback bumped the 1K hero to 32px for prominence. Legacy: 48px.
+    const heroValueNodes = card.findAll(n => n.type === 'Text' && (flatStyle(n).fontSize === 48 || flatStyle(n).fontSize === 32));
     expect(heroValueNodes.length).toBeGreaterThan(0);
-    // Nothing in the 1K card renders at the old compact-summary override scale.
-    const compactScaleNodes = card.findAll(n => n.type === 'Text' && flatStyle(n).fontSize === 32);
-    expect(compactScaleNodes).toHaveLength(0);
   });
 
   test('the 1K unit suffix uses a literal leading space, not marginLeft (#763)', () => {

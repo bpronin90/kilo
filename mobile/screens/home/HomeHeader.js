@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Card, LineChart } from '../../components/UI';
@@ -25,6 +25,7 @@ export function HomeHeader({
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
+  const [captionExpanded, setCaptionExpanded] = useState(false);
 
   return (
     <Card style={styles.weeklyHero}>
@@ -96,41 +97,37 @@ export function HomeHeader({
         </Pressable>
       </View>
 
-      {/* #4 sparkline strip below weight. LineChart owns its own Pressable
-          for point selection, so the Analytics-weight handoff is a separate
-          explicit control beneath the chart — one press owner per region,
-          no nested responders. The chart caption stays a plain caption; the
-          handoff reads as an action ("See weight trends") so it is not
-          mistaken for chart furniture (#717 review). */}
+      {/* #4 sparkline strip below weight. In KUA mode the "See weight trends"
+          link is removed — "Full history and insights" at the card footer
+          already covers this destination and the duplicate read as noise.
+          The link is kept in legacy mode for continuity. */}
       <View style={styles.heroSparklineStrip}>
-        {/* With no weigh-ins there is no trend to draw, so the caption and
-            the chart's own "Not enough data" placeholder are suppressed
-            rather than left as dead space in the primary card. The handoff
-            itself stays available. */}
         {hasWeightSeries ? (
           <>
             <Text style={styles.heroSparklineSublabel}>7-day rolling avg</Text>
             <LineChart
               data={displayChartSeries(dashboardData.weightSeries, unit)}
-              color={colors.textMuted}
+              color={kua ? kua.onSurfaceVariant : colors.textMuted}
               height={44}
               paddingHorizontal={0}
               hideHeader
             />
           </>
         ) : null}
-        <Pressable
-          testID="home-weight-trend-link"
-          onPress={() => onNavigate('Analytics', 'weight')}
-          style={styles.heroInlineAction}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel="See weight trends"
-          accessibilityHint="Opens the weight section of the Analytics tab"
-        >
-          <Text style={styles.heroInlineActionText}>See weight trends</Text>
-          <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
-        </Pressable>
+        {!kua ? (
+          <Pressable
+            testID="home-weight-trend-link"
+            onPress={() => onNavigate('Analytics', 'weight')}
+            style={styles.heroInlineAction}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="See weight trends"
+            accessibilityHint="Opens the weight section of the Analytics tab"
+          >
+            <Text style={styles.heroInlineActionText}>See weight trends</Text>
+            <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
+          </Pressable>
+        ) : null}
       </View>
 
       {/* Classification band — handoff to Analytics' Progressive Overload
@@ -202,15 +199,55 @@ export function HomeHeader({
               "still building history". Newly-tracked takes priority
               when both apply: it names a concrete next action. */}
           {dashboardData.weeklySummary.newlyTrackedCount > 0 ? (
-            <Text style={styles.classifCaption}>
-              {dashboardData.weeklySummary.newlyTrackedCount === 1
-                ? '1 exercise in its first tracked session — log another to see a trend'
-                : `${dashboardData.weeklySummary.newlyTrackedCount} exercises in their first tracked session — log another to see a trend`}
-            </Text>
+            kua ? (
+              <Pressable
+                onPress={() => setCaptionExpanded(v => !v)}
+                style={styles.classifCaptionToggle}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  dashboardData.weeklySummary.newlyTrackedCount === 1
+                    ? '1 exercise in its first tracked session — log another to see a trend'
+                    : `${dashboardData.weeklySummary.newlyTrackedCount} exercises in their first tracked session — log another to see a trend`
+                }
+              >
+                <Text style={styles.classifCaptionIcon}>ⓘ</Text>
+                {captionExpanded ? (
+                  <Text style={styles.classifCaption}>
+                    {dashboardData.weeklySummary.newlyTrackedCount === 1
+                      ? '1 exercise in its first tracked session — log another to see a trend'
+                      : `${dashboardData.weeklySummary.newlyTrackedCount} exercises in their first tracked session — log another to see a trend`}
+                  </Text>
+                ) : null}
+              </Pressable>
+            ) : (
+              <Text style={styles.classifCaption}>
+                {dashboardData.weeklySummary.newlyTrackedCount === 1
+                  ? '1 exercise in its first tracked session — log another to see a trend'
+                  : `${dashboardData.weeklySummary.newlyTrackedCount} exercises in their first tracked session — log another to see a trend`}
+              </Text>
+            )
           ) : dashboardData.weeklySummary.hasInheritedTracking ? (
-            <Text style={styles.classifCaption}>
-              Includes exercises tracked before this update, using full history
-            </Text>
+            kua ? (
+              <Pressable
+                onPress={() => setCaptionExpanded(v => !v)}
+                style={styles.classifCaptionToggle}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Includes exercises tracked before this update, using full history"
+              >
+                <Text style={styles.classifCaptionIcon}>ⓘ</Text>
+                {captionExpanded ? (
+                  <Text style={styles.classifCaption}>
+                    Includes exercises tracked before this update, using full history
+                  </Text>
+                ) : null}
+              </Pressable>
+            ) : (
+              <Text style={styles.classifCaption}>
+                Includes exercises tracked before this update, using full history
+              </Text>
+            )
           ) : null}
         </View>
       )}

@@ -125,6 +125,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   heroWeightRow: {
     minWidth: 0,
+    marginBottom: kua ? 12 : 0,
   },
   // The two highest-frequency actions share one stable strip at every width,
   // keeping them visually distinct from the surrounding summary and Analytics
@@ -178,7 +179,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   heroWeightValue: {
-    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : HeroMetric.hero),
+    ...(kua ? TYPOGRAPHY['metric-display'] : HeroMetric.hero),
     color: kua ? kua.onSurface : colors.accentText,
     // Allow the value to give up width inside the row so an enlarged metric on a
     // 320dp screen stays inside the card instead of painting past its edge.
@@ -302,8 +303,20 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     ...(kua ? TYPOGRAPHY['body-sm'] : {}),
     fontSize: kua ? undefined : 12,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    marginTop: 8,
+    marginTop: kua ? 4 : 8,
     fontStyle: 'italic',
+  },
+  classifCaptionToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+    minHeight: 28,
+  },
+  classifCaptionIcon: {
+    fontSize: 13,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    opacity: 0.7,
   },
   heroFooter: {
     alignItems: 'center',
@@ -503,9 +516,10 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // Restored to the accepted pre-regression scale (#771): the #763 compact-
   // summary override read as a visual demotion of the 1K total, so this
   // spreads HeroMetric.hero (48/900) the same as the Analytics owner card.
-  // In KUA mode, metric-display-mobile (JBM Bold 28px) replaces the legacy hero.
+  // In KUA mode, 32px JBM Bold — metric-display-mobile base with +4px bump
+  // so the total reads as the dominant figure in the card.
   oneKHeroValue: {
-    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : HeroMetric.hero),
+    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 32 } : HeroMetric.hero),
     color: kua ? kua.onSurface : colors.text,
   },
   oneKHeroUnit: {
@@ -546,7 +560,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // Weight and case match the Analytics breakdown item (#763); fontSize
   // stays smaller here because Home is the compact summary, not the owner.
   oneKGridValue: {
-    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
+    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 22 } : {}),
     fontSize: kua ? undefined : 16,
     fontWeight: kua ? undefined : '700',
     color: kua ? kua.onSurface : colors.text,

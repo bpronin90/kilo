@@ -317,9 +317,12 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   );
 
   const weekTone = getSessionTone(dashboardData.sessionCount);
-  const weekToneColor = weekTone === 'error' ? (kua ? kua.error : colors.error)
-    : weekTone === 'warn' ? (kua ? kua.warning : colors.cautionText)
-    : weekTone === 'success' ? (kua ? kua.success : colors.success)
+  // In KUA mode the week label uses on-surface-variant from the theme; tonal
+  // overrides fight the palette and look the same green across every theme.
+  const weekToneColor = kua ? null
+    : weekTone === 'error' ? colors.error
+    : weekTone === 'warn' ? colors.cautionText
+    : weekTone === 'success' ? colors.success
     : null;
 
   // Whether there is any rolling-average series to plot at all.
