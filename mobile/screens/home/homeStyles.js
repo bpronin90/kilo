@@ -197,8 +197,9 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   heroWeightUnit: {
-    fontSize: kua ? 18 : 16,
-    fontWeight: '600',
+    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
+    fontSize: kua ? undefined : 16,
+    fontWeight: kua ? undefined : '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   heroSparklineStrip: {
@@ -483,8 +484,9 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurface : colors.text,
   },
   goalStatUnitLabel: {
-    fontSize: kua ? 16 : 18,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
+    fontSize: kua ? undefined : 18,
+    fontWeight: kua ? undefined : '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Top padding and gap trimmed from the 24/10 default (#820): the header
@@ -521,8 +523,9 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurface : colors.text,
   },
   oneKHeroUnit: {
-    fontSize: 16,
-    fontWeight: '600',
+    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
+    fontSize: kua ? undefined : 16,
+    fontWeight: kua ? undefined : '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Track color, radius, and vertical rhythm match the Analytics 1K progress
@@ -555,10 +558,10 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderRightWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
-  // Breakdown values sit one step below the 28px total — 20px JBM Bold so
-  // they have visual weight without competing with the hero.
+  // Breakdown values — label-lg (14px JBM SemiBold) so they read as
+  // supporting data clearly below the 28px total.
   oneKGridValue: {
-    ...(kua ? { fontFamily: TYPOGRAPHY['metric-display-mobile'].fontFamily, fontSize: 20, fontWeight: TYPOGRAPHY['metric-display-mobile'].fontWeight } : {}),
+    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
     fontSize: kua ? undefined : 16,
     fontWeight: kua ? undefined : '700',
     color: kua ? kua.onSurface : colors.text,
