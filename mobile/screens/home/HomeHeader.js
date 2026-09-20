@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Card, LineChart } from '../../components/UI';
-import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import { formatBodyweightValue, displayChartSeries } from '../../lib/units';
 import { createStyles } from './homeStyles';
 
@@ -23,8 +23,8 @@ export function HomeHeader({
   heroPrimaryActionHint,
   unit,
 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
 
   return (
     <Card style={styles.weeklyHero}>
@@ -77,7 +77,7 @@ export function HomeHeader({
           accessibilityHint={heroPrimaryActionHint}
         >
           <Text style={styles.heroPrimaryActionText}>{heroPrimaryActionLabel}</Text>
-          <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
+          <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
         </Pressable>
 
         <View style={styles.heroPrimaryActionDivider} />
@@ -92,7 +92,7 @@ export function HomeHeader({
           accessibilityHint="Opens the Weight tab to log a weigh-in"
         >
           <Text style={styles.heroPrimaryActionText}>Log weight</Text>
-          <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
+          <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
         </Pressable>
       </View>
 
@@ -129,7 +129,7 @@ export function HomeHeader({
           accessibilityHint="Opens the weight section of the Analytics tab"
         >
           <Text style={styles.heroInlineActionText}>See weight trends</Text>
-          <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
+          <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
         </Pressable>
       </View>
 
@@ -161,7 +161,7 @@ export function HomeHeader({
           >
             <Text style={[styles.classifSectionLabel, styles.sectionHeaderLabel]}>Baseline training paused during Recovery</Text>
             <View style={styles.sectionHeaderChevron}>
-              <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
+              <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
             </View>
           </Pressable>
         </View>
@@ -178,14 +178,14 @@ export function HomeHeader({
           >
             <Text style={[styles.classifSectionLabel, styles.sectionHeaderLabel]}>Exercise Progress</Text>
             <View style={styles.sectionHeaderChevron}>
-              <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
+              <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
             </View>
           </Pressable>
           <View style={styles.classifRow}>
             {[
-              { label: 'Progressing', count: dashboardData.weeklySummary.classifications?.progressing ?? 0, color: colors.success },
-              { label: 'Steady', count: dashboardData.weeklySummary.classifications?.stalled ?? 0, color: colors.caution },
-              { label: 'Regressing', count: dashboardData.weeklySummary.classifications?.regressing ?? 0, color: colors.error },
+              { label: 'Progressing', count: dashboardData.weeklySummary.classifications?.progressing ?? 0, color: kua ? kua.success : colors.success },
+              { label: 'Steady', count: dashboardData.weeklySummary.classifications?.stalled ?? 0, color: kua ? kua.warning : colors.caution },
+              { label: 'Regressing', count: dashboardData.weeklySummary.classifications?.regressing ?? 0, color: kua ? kua.error : colors.error },
             ].map((item, idx) => (
               <View key={idx} style={styles.classifCol}>
                 <View style={[styles.classifDot, { backgroundColor: item.color }]} />
@@ -230,7 +230,7 @@ export function HomeHeader({
           accessibilityHint="Opens the Analytics tab at the top"
         >
           <Text style={styles.insightsLinkText}>Full history and insights</Text>
-          <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
+          <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
         </Pressable>
       </View>
     </Card>

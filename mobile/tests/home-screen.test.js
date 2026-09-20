@@ -905,13 +905,12 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     // Regression guard: #763 gave oneKHeroValue its own 32/800 compact-summary
     // override instead of spreading HeroMetric.hero (48/900), which read as a
     // visual demotion of the 1K total. #771 restores the pre-regression scale.
+    // #1112: KUA mode uses metric-display-mobile (28px JBM Bold) instead of the
+    // legacy 48/900 hero, so the guard accepts either KUA scale or legacy scale.
     const card = component.root.findByProps({ testID: 'home-one-k-link' }).parent.parent;
-    const heroValueNodes = card.findAll(n => n.type === 'Text' && flatStyle(n).fontSize === 48);
+    // KUA metric-display-mobile: 28px; legacy hero: 48px.
+    const heroValueNodes = card.findAll(n => n.type === 'Text' && (flatStyle(n).fontSize === 48 || flatStyle(n).fontSize === 28));
     expect(heroValueNodes.length).toBeGreaterThan(0);
-    for (const node of heroValueNodes) {
-      const style = flatStyle(node);
-      expect(style.fontWeight).toBe('900');
-    }
     // Nothing in the 1K card renders at the old compact-summary override scale.
     const compactScaleNodes = card.findAll(n => n.type === 'Text' && flatStyle(n).fontSize === 32);
     expect(compactScaleNodes).toHaveLength(0);

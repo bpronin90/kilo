@@ -3,7 +3,7 @@ import { Pressable, Text, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, ErrorBanner, getSessionTone } from '../components/UI';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 import { CLOUD_SYNC_NOTICE, useWeightGoal, useTrackedLifts, getNoteSections, useCloudSyncSummary, useActiveTrainingContext, useDeloadHistory, useRecoveryBlockState } from '../hooks/useEntries';
 import { useWeightUnit } from '../lib/unitPreference';
 import { deriveHomeDashboardData, useHomeNormalNotes, useHomeRecoverySummary } from './home/homeDashboardData';
@@ -79,7 +79,8 @@ function ScaleIcon({ color, size = 22 }) {
 // this renders nothing: no summary was published, so there is nothing honest to
 // say about sync.
 export function CloudSyncNotice() {
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const cloudSync = useCloudSyncSummary();
   const [retryError, setRetryError] = useState('');
   const [retrying, setRetrying] = useState(false);
@@ -177,7 +178,8 @@ export function CloudSyncNotice() {
 // Deliberately static: an animated shimmer is motion the user did not ask for,
 // and this placeholder is usually on screen for a few frames.
 function HomeSkeleton() {
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   return (
     <View
       testID="home-skeleton"
@@ -204,8 +206,8 @@ function HomeSkeleton() {
 }
 
 export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes, successMessage, onNavigate, loading, loadError = false, onRetryLoad }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const { goal: weightGoal, loading: goalLoading, error: goalError, refresh: refreshGoal } = useWeightGoal();
   const { trackedLifts, activations: trackedLiftActivations, loading: trackedLiftsLoading, error: trackedLiftsError, refresh: refreshTrackedLifts } = useTrackedLifts();
 
@@ -315,9 +317,9 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   );
 
   const weekTone = getSessionTone(dashboardData.sessionCount);
-  const weekToneColor = weekTone === 'error' ? colors.error
-    : weekTone === 'warn' ? colors.cautionText
-    : weekTone === 'success' ? colors.success
+  const weekToneColor = weekTone === 'error' ? (kua ? kua.error : colors.error)
+    : weekTone === 'warn' ? (kua ? kua.warning : colors.cautionText)
+    : weekTone === 'success' ? (kua ? kua.success : colors.success)
     : null;
 
   // Whether there is any rolling-average series to plot at all.
@@ -325,7 +327,9 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
     && dashboardData.weightSeries.length > 0;
   // 1K hero color, precomputed here (was inline in the 1K card JSX before the
   // #1049 split) so lerpColor stays in the screen that owns startup composition.
-  const oneKHeroColor = lerpColor(colors.accentText, colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000));
+  const oneKHeroColor = kua
+    ? lerpColor(kua.primary, kua.completion, Math.min(1, (dashboardData.oneK?.total || 0) / 1000))
+    : lerpColor(colors.accentText, colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000));
 
   // Gate the whole first paint on every data source Home renders, not just
   // weight/notes: weight goal and tracked lifts feed the dashboard too, so

@@ -1,7 +1,8 @@
 import { StyleSheet } from 'react-native';
 import { HeroMetric } from '../../components/UI';
+import { TYPOGRAPHY } from '../../theme/typography';
 
-export const createStyles = (colors) => StyleSheet.create({
+export const createStyles = (colors, kua = null) => StyleSheet.create({
   // Cloud sync notice. The queued state is informational, so it uses the same
   // quiet chip tone as the shell's update banner; only a real failure takes the
   // error surface.
@@ -17,28 +18,28 @@ export const createStyles = (colors) => StyleSheet.create({
     marginTop: 12,
     gap: 8,
     backgroundColor: colors.errorSurface,
-    borderColor: colors.error,
+    borderColor: kua ? kua.error : colors.error,
   },
   syncNoticeTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   syncNoticeTitleFailed: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.error,
+    color: kua ? kua.error : colors.error,
   },
   syncNoticeBody: {
-    fontSize: 13,
-    color: colors.textMuted,
+    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: TYPOGRAPHY['body-sm'].fontSize } : {}),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     // No fixed lineHeight: enlarged text must grow its own line box.
     marginTop: 2,
   },
   syncNoticeRetryError: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.error,
+    color: kua ? kua.error : colors.error,
   },
   syncNoticeActions: {
     flexDirection: 'row',
@@ -67,9 +68,11 @@ export const createStyles = (colors) => StyleSheet.create({
     padding: 24,
     marginTop: 12,
     gap: 12,
+    backgroundColor: kua ? kua.surfaceCard : undefined,
+    borderColor: kua ? kua.surfaceBorder : undefined,
   },
   skeletonBar: {
-    backgroundColor: colors.cardBorder,
+    backgroundColor: kua ? kua.surfaceBorder : colors.cardBorder,
     borderRadius: 6,
     opacity: 0.6,
   },
@@ -93,27 +96,31 @@ export const createStyles = (colors) => StyleSheet.create({
     padding: 24,
     gap: 0,
     marginTop: 12,
+    backgroundColor: kua ? kua.surfaceCard : undefined,
+    borderColor: kua ? kua.surfaceBorder : undefined,
   },
   heroWeekRow: {
     marginBottom: 4,
   },
   heroWeekLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textMuted,
+    ...(kua ? TYPOGRAPHY['body-sm'] : {}),
+    fontSize: kua ? undefined : 12,
+    fontWeight: kua ? undefined : '600',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     flexShrink: 1,
   },
   // Active-Recovery eyebrow (#869): accent-colored so the hero visibly
   // announces Recovery rather than reading as an ordinary baseline week.
   heroWeekLabelRecovery: {
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
   },
   // The active Recovery note's own title, named directly under the eyebrow so
   // "what is current" answers both the week number and which note that is.
   heroRecoveryNoteLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.text,
+    ...(kua ? TYPOGRAPHY['body-sm'] : {}),
+    fontSize: kua ? undefined : 13,
+    fontWeight: kua ? undefined : '600',
+    color: kua ? kua.onSurface : colors.text,
     marginTop: 2,
   },
   heroWeightRow: {
@@ -125,7 +132,7 @@ export const createStyles = (colors) => StyleSheet.create({
   heroPrimaryActions: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    backgroundColor: colors.subtleBg,
+    backgroundColor: kua ? kua.surfaceBorder : colors.subtleBg,
     borderRadius: 12,
     overflow: 'hidden',
     marginTop: 8,
@@ -143,15 +150,16 @@ export const createStyles = (colors) => StyleSheet.create({
   },
   heroPrimaryActionText: {
     flexShrink: 1,
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textMuted,
+    ...(kua ? TYPOGRAPHY['body-sm'] : {}),
+    fontSize: kua ? undefined : 13,
+    fontWeight: kua ? undefined : '600',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
   },
   heroPrimaryActionDivider: {
     width: 1,
     marginVertical: 8,
-    backgroundColor: colors.cardBorder,
+    backgroundColor: kua ? kua.surfaceCard : colors.cardBorder,
   },
   // Quiet Analytics handoff attached to the sparkline. 44pt minimum target per
   // the mobile touch-target rule, kept visually quiet so the hero metric remains
@@ -164,13 +172,14 @@ export const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: 4,
   },
   heroInlineActionText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textMuted,
+    ...(kua ? TYPOGRAPHY['body-sm'] : {}),
+    fontSize: kua ? undefined : 13,
+    fontWeight: kua ? undefined : '600',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   heroWeightValue: {
-    ...HeroMetric.hero,
-    color: colors.accentText,
+    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : HeroMetric.hero),
+    color: kua ? kua.onSurface : colors.accentText,
     // Allow the value to give up width inside the row so an enlarged metric on a
     // 320dp screen stays inside the card instead of painting past its edge.
     flexShrink: 1,
@@ -179,28 +188,30 @@ export const createStyles = (colors) => StyleSheet.create({
   // The no-data hero is a short muted sentence, not a hero-sized dash: at hero
   // scale a lone glyph left a visible hole in the card's dominant slot.
   heroWeightPlaceholder: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: colors.textMuted,
+    ...(kua ? TYPOGRAPHY['body-md'] : {}),
+    fontSize: kua ? undefined : 20,
+    fontWeight: kua ? undefined : '600',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   heroWeightUnit: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   heroSparklineStrip: {
     marginTop: 4,
     marginBottom: 12,
   },
   heroSparklineSublabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.textMuted,
+    ...(kua ? TYPOGRAPHY['label-sm'] : {}),
+    fontSize: kua ? undefined : 11,
+    fontWeight: kua ? undefined : '600',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginBottom: 2,
   },
   classifSection: {
     borderTopWidth: 1,
-    borderTopColor: colors.cardBorder,
+    borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
     paddingTop: 16,
     marginBottom: 16,
   },
@@ -234,11 +245,12 @@ export const createStyles = (colors) => StyleSheet.create({
     flexShrink: 0,
   },
   classifSectionLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.text,
+    ...(kua ? TYPOGRAPHY['headline-sm'] : {}),
+    fontSize: kua ? undefined : 12,
+    fontWeight: kua ? undefined : '700',
+    color: kua ? kua.onSurface : colors.text,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: kua ? undefined : 0.5,
   },
   classifRow: {
     flexDirection: 'row',
@@ -272,21 +284,24 @@ export const createStyles = (colors) => StyleSheet.create({
     borderRadius: 4,
   },
   classifCount: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.text,
+    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
+    fontSize: kua ? undefined : 16,
+    fontWeight: kua ? undefined : '800',
+    color: kua ? kua.onSurface : colors.text,
   },
   classifLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.textMuted,
+    ...(kua ? TYPOGRAPHY['label-sm'] : {}),
+    fontSize: kua ? undefined : 11,
+    fontWeight: kua ? undefined : '600',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
     // No fixed lineHeight: a scaled-up label must grow its own line box rather
     // than overflow a 14px one.
   },
   classifCaption: {
-    fontSize: 12,
-    color: colors.textMuted,
+    ...(kua ? TYPOGRAPHY['body-sm'] : {}),
+    fontSize: kua ? undefined : 12,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 8,
     fontStyle: 'italic',
   },
@@ -300,9 +315,10 @@ export const createStyles = (colors) => StyleSheet.create({
     gap: 4,
   },
   insightsLinkText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textMuted,
+    ...(kua ? TYPOGRAPHY['body-sm'] : {}),
+    fontSize: kua ? undefined : 13,
+    fontWeight: kua ? undefined : '600',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Recovery status card (#757). Same padding as the other tiers; the label
   // reuses the uppercase section treatment already used by the Exercise
@@ -314,32 +330,37 @@ export const createStyles = (colors) => StyleSheet.create({
     padding: 24,
     paddingTop: 14,
     gap: 4,
+    backgroundColor: kua ? kua.surfaceCard : undefined,
+    borderColor: kua ? kua.surfaceBorder : undefined,
   },
   recoveryLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.text,
+    ...(kua ? TYPOGRAPHY['headline-sm'] : {}),
+    fontSize: kua ? undefined : 12,
+    fontWeight: kua ? undefined : '700',
+    color: kua ? kua.onSurface : colors.text,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: kua ? undefined : 0.5,
   },
   // #803: the card is read as analytics, not as prose — a week eyebrow, one
   // hero result, then supporting count tiles. Sizes follow the analytics
   // hierarchy already established for cards (ui-design-rules §8): one hero,
   // supporting values at 18/700 over an 11/600 uppercase muted label.
   recoveryWeekLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textMuted,
+    ...(kua ? TYPOGRAPHY['label-sm'] : {}),
+    fontSize: kua ? undefined : 11,
+    fontWeight: kua ? undefined : '700',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: kua ? undefined : 0.5,
   },
   // #1029: the denominator caption ("N of Y roster exercises trained") sits
   // at the SAME weight tier as the bucket rows below it — it is a fact of
   // equal standing, not a subordinate footnote (acceptance criterion 1/12).
   recoveryHeroCaption: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.textMuted,
+    ...(kua ? TYPOGRAPHY['body-sm'] : {}),
+    fontSize: kua ? undefined : 13,
+    fontWeight: kua ? undefined : '700',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
     marginBottom: 6,
   },
@@ -354,21 +375,24 @@ export const createStyles = (colors) => StyleSheet.create({
     paddingVertical: 3,
   },
   recoveryBandLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.text,
+    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
+    fontSize: kua ? undefined : 13,
+    fontWeight: kua ? undefined : '700',
+    color: kua ? kua.onSurface : colors.text,
   },
   recoveryBandCount: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.text,
+    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
+    fontSize: kua ? undefined : 13,
+    fontWeight: kua ? undefined : '700',
+    color: kua ? kua.onSurface : colors.text,
   },
   // The fallbacks are sentences, not figures: they take the hero's slot at
   // reading weight rather than being dressed up as a metric.
   recoveryFallbackLine: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
+    ...(kua ? TYPOGRAPHY['body-md'] : {}),
+    fontSize: kua ? undefined : 16,
+    fontWeight: kua ? undefined : '700',
+    color: kua ? kua.onSurface : colors.text,
     marginTop: 2,
   },
   // Category breakdown (#820): reuses the Exercise Progress band's own
@@ -376,13 +400,14 @@ export const createStyles = (colors) => StyleSheet.create({
   // two summary rows in this hero card read as one visual language.
   recoveryStatsDivider: {
     borderTopWidth: 1,
-    borderTopColor: colors.cardBorder,
+    borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
     paddingTop: 14,
     marginTop: 12,
   },
   recoveryStatusLine: {
-    fontSize: 13,
-    color: colors.textMuted,
+    ...(kua ? TYPOGRAPHY['body-sm'] : {}),
+    fontSize: kua ? undefined : 13,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
   },
   recoveryAction: {
@@ -390,12 +415,15 @@ export const createStyles = (colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   recoveryActionText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.accentText,
+    ...(kua ? TYPOGRAPHY['body-sm'] : {}),
+    fontSize: kua ? undefined : 13,
+    fontWeight: kua ? undefined : '700',
+    color: kua ? kua.primary : colors.accentText,
   },
   goalCard: {
     padding: 24,
+    backgroundColor: kua ? kua.surfaceCard : undefined,
+    borderColor: kua ? kua.surfaceBorder : undefined,
   },
   goalModeRow: {
     flexDirection: 'row',
@@ -404,17 +432,19 @@ export const createStyles = (colors) => StyleSheet.create({
     marginBottom: 20,
   },
   goalDirectionText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
+    ...(kua ? TYPOGRAPHY['headline-sm'] : {}),
+    fontSize: kua ? undefined : 18,
+    fontWeight: kua ? undefined : '700',
+    color: kua ? kua.onSurface : colors.text,
   },
   goalModeAccent: {
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
   },
   goalWeeksText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textMuted,
+    ...(kua ? TYPOGRAPHY['body-sm'] : {}),
+    fontSize: kua ? undefined : 14,
+    fontWeight: kua ? undefined : '600',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   goalStatsGrid: {
     flexDirection: 'row',
@@ -425,9 +455,10 @@ export const createStyles = (colors) => StyleSheet.create({
     gap: 4,
   },
   goalStatLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textMuted,
+    ...(kua ? TYPOGRAPHY['label-sm'] : {}),
+    fontSize: kua ? undefined : 12,
+    fontWeight: kua ? undefined : '600',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   goalStatValueRow: {
     flexDirection: 'row',
@@ -435,14 +466,15 @@ export const createStyles = (colors) => StyleSheet.create({
     gap: 4,
   },
   goalStatValueLarge: {
-    fontSize: 30,
-    fontWeight: '800',
-    color: colors.text,
+    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : {}),
+    fontSize: kua ? undefined : 30,
+    fontWeight: kua ? undefined : '800',
+    color: kua ? kua.onSurface : colors.text,
   },
   goalStatUnitLabel: {
     fontSize: 18,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Top padding and gap trimmed from the 24/10 default (#820): the header
   // row is still a full 44dp target, so the fix for the dead space it left
@@ -452,13 +484,16 @@ export const createStyles = (colors) => StyleSheet.create({
     paddingTop: 14,
     gap: 6,
     alignItems: 'center',
+    backgroundColor: kua ? kua.surfaceCard : undefined,
+    borderColor: kua ? kua.surfaceBorder : undefined,
   },
   oneKLabel: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.textMuted,
+    ...(kua ? TYPOGRAPHY['headline-sm'] : {}),
+    fontSize: kua ? undefined : 12,
+    fontWeight: kua ? undefined : '800',
+    color: kua ? kua.onSurface : colors.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: kua ? undefined : 1,
     flexShrink: 1,
   },
   oneKHero: {
@@ -468,21 +503,22 @@ export const createStyles = (colors) => StyleSheet.create({
   // Restored to the accepted pre-regression scale (#771): the #763 compact-
   // summary override read as a visual demotion of the 1K total, so this
   // spreads HeroMetric.hero (48/900) the same as the Analytics owner card.
+  // In KUA mode, metric-display-mobile (JBM Bold 28px) replaces the legacy hero.
   oneKHeroValue: {
-    ...HeroMetric.hero,
-    color: colors.text,
+    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : HeroMetric.hero),
+    color: kua ? kua.onSurface : colors.text,
   },
   oneKHeroUnit: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Track color, radius, and vertical rhythm match the Analytics 1K progress
   // bar (#763) — the bar reads as the same control on both surfaces, and since
   // #771 so does the hero value itself (see design-system-map.md).
   progressBarLarge: {
     height: 8,
-    backgroundColor: colors.divider,
+    backgroundColor: kua ? kua.surfaceBorder : colors.divider,
     borderRadius: 4,
     overflow: 'hidden',
     marginBottom: 16,
@@ -490,7 +526,7 @@ export const createStyles = (colors) => StyleSheet.create({
   },
   progressFillLarge: {
     height: '100%',
-    backgroundColor: colors.accent,
+    backgroundColor: kua ? kua.primary : colors.accent,
     borderRadius: 4,
   },
   oneKGrid: {
@@ -505,54 +541,61 @@ export const createStyles = (colors) => StyleSheet.create({
   oneKGridItemBorder: {
     borderLeftWidth: 1,
     borderRightWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   // Weight and case match the Analytics breakdown item (#763); fontSize
   // stays smaller here because Home is the compact summary, not the owner.
   oneKGridValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
+    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
+    fontSize: kua ? undefined : 16,
+    fontWeight: kua ? undefined : '700',
+    color: kua ? kua.onSurface : colors.text,
   },
   oneKGridLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.textMuted,
+    ...(kua ? TYPOGRAPHY['label-sm'] : {}),
+    fontSize: kua ? undefined : 11,
+    fontWeight: kua ? undefined : '600',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
   },
   placeholderText: {
     fontSize: 48,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '400',
   },
   emptyText: {
-    fontSize: 13,
-    color: colors.textMuted,
+    ...(kua ? TYPOGRAPHY['body-md'] : {}),
+    fontSize: kua ? undefined : 13,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
-    lineHeight: 18,
+    lineHeight: kua ? undefined : 18,
     fontStyle: 'italic',
   },
   welcomeCard: {
     padding: 24,
     marginTop: 12,
+    backgroundColor: kua ? kua.surfaceCard : undefined,
+    borderColor: kua ? kua.surfaceBorder : undefined,
   },
   welcomeHeader: {
     marginBottom: 8,
   },
   welcomeTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: colors.text,
+    ...(kua ? TYPOGRAPHY['headline-md'] : {}),
+    fontSize: kua ? undefined : 22,
+    fontWeight: kua ? undefined : '800',
+    color: kua ? kua.onSurface : colors.text,
   },
   welcomeSubtitle: {
-    fontSize: 14,
-    color: colors.textMuted,
-    lineHeight: 20,
+    ...(kua ? TYPOGRAPHY['body-md'] : {}),
+    fontSize: kua ? undefined : 14,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    lineHeight: kua ? undefined : 20,
     marginTop: 6,
   },
   welcomeDivider: {
     height: 1,
-    backgroundColor: colors.cardBorder,
+    backgroundColor: kua ? kua.surfaceBorder : colors.cardBorder,
     marginVertical: 16,
   },
   welcomeStep: {
@@ -568,7 +611,7 @@ export const createStyles = (colors) => StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: colors.cardBorder,
+    backgroundColor: kua ? kua.surfaceBorder : colors.cardBorder,
     alignItems: 'center',
     justifyContent: 'center',
     opacity: 0.8,
@@ -577,14 +620,16 @@ export const createStyles = (colors) => StyleSheet.create({
     flex: 1,
   },
   welcomeStepTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
+    ...(kua ? TYPOGRAPHY['body-lg'] : {}),
+    fontSize: kua ? undefined : 16,
+    fontWeight: kua ? undefined : '700',
+    color: kua ? kua.onSurface : colors.text,
   },
   welcomeStepDesc: {
-    fontSize: 13,
-    color: colors.textMuted,
-    lineHeight: 18,
+    ...(kua ? TYPOGRAPHY['body-sm'] : {}),
+    fontSize: kua ? undefined : 13,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    lineHeight: kua ? undefined : 18,
     marginTop: 4,
   },
   welcomeButton: {

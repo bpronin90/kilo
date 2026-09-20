@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Card } from '../../components/UI';
-import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import { displayWeight, formatBodyweightValue } from '../../lib/units';
 import { createStyles } from './homeStyles';
 import { HomeRecoverySummary } from './HomeRecoverySummary';
@@ -19,8 +19,8 @@ export function HomeDashboard({
   oneKHeroColor,
   unit,
 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
 
   return (
     <>
@@ -31,9 +31,9 @@ export function HomeDashboard({
       {dashboardData.goalInfo ? (() => {
         const gi = dashboardData.goalInfo;
         const warnings = gi.warnings || [];
-        const paceColor = warnings.includes('unrealistic') ? colors.error
-          : warnings.includes('unhealthy') ? colors.cautionText
-          : colors.success;
+        const paceColor = warnings.includes('unrealistic') ? (kua ? kua.error : colors.error)
+          : warnings.includes('unhealthy') ? (kua ? kua.warning : colors.cautionText)
+          : (kua ? kua.success : colors.success);
         const modeLabel = gi.direction === 'loss' ? 'Cutting' : gi.direction === 'gain' ? 'Bulking' : 'Maintaining';
         return (
           <Card style={styles.goalCard}>
@@ -96,7 +96,7 @@ export function HomeDashboard({
         >
           <Text style={[styles.oneKLabel, styles.sectionHeaderLabel]}>1K Progress</Text>
           <View style={styles.sectionHeaderChevron}>
-            <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
+            <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
           </View>
         </Pressable>
         <Text style={[styles.oneKHeroValue, { color: oneKHeroColor }]}>
