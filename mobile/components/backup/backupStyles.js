@@ -52,8 +52,14 @@ export const createStyles = (colors, kua = null, typography = {}) => StyleSheet.
   statusTextSuccess: {
     color: kua ? kua.success : undefined,
   },
+  // `kua.error` is the danger FILL (used for the tinted card border above,
+  // and the Danger Zone fill/border below) — not an AA-safe text ink. Failure
+  // copy uses `kua.errorText`, the dedicated foreground token that clears AA
+  // against every KUA canvas/card surface (min 5.86:1 light / 5.78:1 dark, see
+  // theme/colors.js), instead of the ~2.6-2.8:1 `kua.error` gave on dark
+  // surfaceCard backgrounds (Codex review, PR #1131).
   statusTextError: {
-    color: kua ? kua.error : undefined,
+    color: kua ? kua.errorText : undefined,
   },
   helpText: {
     fontSize: 15,
@@ -80,8 +86,9 @@ export const createStyles = (colors, kua = null, typography = {}) => StyleSheet.
   dangerButton: {
     borderColor: kua ? kua.error : undefined,
   },
+  // Foreground ink, not the fill: see the `statusTextError` comment above.
   dangerButtonText: {
-    color: kua ? kua.error : undefined,
+    color: kua ? kua.errorText : undefined,
   },
   importInput: {
     marginTop: 12,
@@ -122,11 +129,14 @@ export const createStyles = (colors, kua = null, typography = {}) => StyleSheet.
     flexDirection: 'row',
     alignItems: 'center',
   },
+  // Foreground ink, not the fill: see the `statusTextError` comment above.
+  // The zone's own background/border stay `error`-derived (fill/border use is
+  // correct there and must remain danger-coded across all six combos).
   dangerZoneHeadingText: {
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
-    color: kua ? kua.error : colors.error,
+    color: kua ? kua.errorText : colors.error,
   },
 });
