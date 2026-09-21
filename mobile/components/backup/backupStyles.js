@@ -5,51 +5,148 @@
 
 import { StyleSheet } from 'react-native';
 
-export const createStyles = (colors) => StyleSheet.create({
+// `kua.error` is a plain `#rrggbb` string, fixed across all six theme/mode
+// combinations (theme/colors.js) — this derives a tinted danger fill from it
+// so the Danger Zone reads as danger-coded by background, not border alone,
+// in every palette. Mirrors the withAlpha helper in LogRecoveryWeeks.js.
+function withAlpha(hex, alpha) {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return hex;
+  const r = parseInt(m[1].slice(0, 2), 16);
+  const g = parseInt(m[1].slice(2, 4), 16);
+  const b = parseInt(m[1].slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// `kua` is the active KUA palette (theme.kuaPalette) or null; `typography` is
+// the result of useKuaTypography() — see SettingsScreen/WeightScreen for the
+// same conditional-token pattern this screen follows.
+export const createStyles = (colors, kua = null, typography = {}) => StyleSheet.create({
+  // Section headers: KUA renders an uppercase label-sm micro-header
+  // (onSurfaceVariant) in place of the legacy SectionTitle, matching
+  // SettingsScreen's KUA migration.
+  sectionHeader: {
+    ...(typography['label-sm'] ?? { fontSize: 11, fontWeight: '700' }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    textTransform: 'uppercase',
+    marginTop: 6,
+  },
   statusText: {
     fontSize: 15,
     fontWeight: '600',
-    color: colors.textLight,
+    color: kua ? kua.onSurface : colors.textLight,
     textAlign: 'center',
+  },
+  // Success/error status card container — KUA uses a tinted-not-filled
+  // surface (surfaceCard) with a tone-colored border, matching the
+  // errorBanner treatment in weightStyles.js rather than the legacy filled
+  // Card tone.
+  statusCardSuccess: {
+    backgroundColor: kua ? kua.surfaceCard : undefined,
+    borderColor: kua ? kua.success : undefined,
+  },
+  statusCardError: {
+    backgroundColor: kua ? kua.surfaceCard : undefined,
+    borderColor: kua ? kua.error : undefined,
+  },
+  statusTextSuccess: {
+    color: kua ? kua.success : undefined,
+  },
+  // `kua.error` is the danger FILL (used for the tinted card border above,
+  // and the Danger Zone fill/border below) — not an AA-safe text ink. Failure
+  // copy uses `kua.errorText`, the dedicated foreground token that clears AA
+  // against every KUA canvas/card surface (min 5.86:1 light / 5.78:1 dark, see
+  // theme/colors.js), instead of the ~2.6-2.8:1 `kua.error` gave on dark
+  // surfaceCard backgrounds (Codex review, PR #1131).
+  statusTextError: {
+    color: kua ? kua.errorText : undefined,
   },
   helpText: {
     fontSize: 15,
     lineHeight: 22,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
+  // Caution ink (not error): "unencrypted export" is a disclosure, not a
+  // failure, so KUA uses the dedicated `warning` token rather than `error` —
+  // matching the legacy `cautionText` intent this replaces (#914-style
+  // status-meaning preservation). This style is only ever placed on a plain
+  // `surfaceCard`/canvas background (the Export card) — `kua.warning` clears
+  // AA there in every combo. It is NOT used inside the Danger Zone; see
+  // `dangerZoneWarnText` below for text placed on that tinted surface.
   warnText: {
     marginTop: 10,
     fontSize: 13,
     lineHeight: 19,
     fontWeight: '600',
-    color: colors.cautionText ?? colors.error ?? colors.textMuted,
+    color: kua ? kua.warning : (colors.cautionText ?? colors.error ?? colors.textMuted),
+  },
+  // Text placed directly on the Danger Zone's tinted background
+  // (`withAlpha(kua.error, 0.14)` over the theme canvas) must clear AA
+  // against that COMPOSITED surface, not the bare canvas — `kua.warning` and
+  // `kua.onSurfaceVariant` both fail AA there in the KUA light themes
+  // (measured 3.57-3.70:1 and 4.04-4.24:1 respectively; Codex re-review,
+  // PR #1131). `kua.errorText` clears 4.5:1 against the composited tint in
+  // all six combinations (measured 4.65-6.32:1: hardCourt light 4.65,
+  // clayCourt light 4.73, grassCourt light 4.81, hardCourt dark 6.32,
+  // clayCourt dark 6.02, grassCourt dark 6.13) and keeps the copy's
+  // attention/warning semantic, so both the "wipe retry needed" notice and
+  // the danger-zone action status use it instead of `warnText`/`helpText`.
+  dangerZoneWarnText: {
+    marginTop: 10,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '600',
+    color: kua ? kua.errorText : (colors.cautionText ?? colors.error ?? colors.textMuted),
+  },
+  dangerZoneStatusText: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: kua ? kua.errorText : colors.textMuted,
   },
   actionButton: {
     marginTop: 12,
   },
+  // Danger-zone buttons keep the shared Button `tone="danger"` shape
+  // (transparent fill, outlined) but repoint the outline/label to the KUA
+  // error token instead of the legacy `colors.error`.
+  dangerButton: {
+    borderColor: kua ? kua.error : undefined,
+  },
+  // Foreground ink, not the fill: see the `statusTextError` comment above.
+  dangerButtonText: {
+    color: kua ? kua.errorText : undefined,
+  },
   importInput: {
     marginTop: 12,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
+    backgroundColor: kua ? kua.surfaceCard : undefined,
     borderRadius: 12,
     padding: 12,
     fontSize: 13,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     fontFamily: 'monospace',
     minHeight: 100,
     textAlignVertical: 'top',
   },
   // Card tone="accent" is a filled dark surface; its label needs the light
-  // contrasting ink rather than the default muted text color.
+  // contrasting ink rather than the default muted text color. In KUA mode the
+  // Cloud sign-in prompt instead uses the tinted primaryContainer surface, so
+  // its label takes primaryOnContainer via `accentCardStyle`/`textAccent`
+  // below rather than this legacy override.
   textLight: {
-    color: colors.textLight,
+    color: kua ? kua.primaryOnContainer : colors.textLight,
   },
   // Irreversible-action container: error-tinted surface groups Wipe Device
   // Data apart from routine export/import/sync. See ui-design-rules.md #14.
+  // KUA must never fall back to the plain `surfaceCard` neutral fill every
+  // other card on this screen uses — that would read as an ordinary card and
+  // lose the danger semantic — so this tints `kua.error` itself rather than
+  // reusing a non-danger surface token.
   dangerZone: {
-    backgroundColor: colors.errorSurface,
+    backgroundColor: kua ? withAlpha(kua.error, 0.14) : colors.errorSurface,
     borderWidth: 1,
-    borderColor: colors.error,
+    borderColor: kua ? kua.error : colors.error,
     borderRadius: 24,
     padding: 18,
     gap: 12,
@@ -58,11 +155,14 @@ export const createStyles = (colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  // Foreground ink, not the fill: see the `statusTextError` comment above.
+  // The zone's own background/border stay `error`-derived (fill/border use is
+  // correct there and must remain danger-coded across all six combos).
   dangerZoneHeadingText: {
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
-    color: colors.error,
+    color: kua ? kua.errorText : colors.error,
   },
 });

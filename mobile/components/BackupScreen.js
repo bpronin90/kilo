@@ -1,9 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Platform, Share, Text, TextInput, View } from 'react-native';
 import { Alert } from '../lib/platformAlert';
 import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle, Button } from './UI';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
+import { useKuaTypography } from '../theme/typography';
 import { CloudSyncRecovery } from '../screens/more/CloudSyncRecovery';
 import { loadWorkoutNotes, loadWeightEntriesRaw } from '../storage/entries';
 import { exportWorkoutsCsv, exportWeightCsv } from '../lib/interoperability/kiloCsv';
@@ -16,8 +17,14 @@ import { writeExportFile, writeCsvExportFile, readNewestBackupFile } from './bac
 const CLOUD_SYNC_ANCHOR = 'cloud-sync';
 
 export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, navAnchor = null, navAnchorKey = 0 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const typography = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
+  // Content-card treatment for the plain (non-tone) cards in KUA mode.
+  const cardStyle = kua ? { backgroundColor: kua.surfaceCard, borderColor: kua.surfaceBorder } : undefined;
+  // Cloud sign-in prompt: replaces the legacy Card tone="accent" filled
+  // surface with the KUA tinted primaryContainer surface.
+  const accentCardStyle = kua ? { backgroundColor: kua.primaryContainer, borderColor: kua.primaryContainerBorder } : undefined;
   const scrollRef = useRef(null);
   const [importText, setImportText] = useState('');
   const [status, setStatus] = useState(null); // { ok: bool, message: string }
@@ -338,16 +345,22 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
       title="Data & Backup"
       subtitle="Export or restore your training data — on this device or in the cloud."
       onBack={onBack}
+      style={kua ? { backgroundColor: kua.background } : undefined}
     >
 
       {status ? (
-        <Card tone={status.ok ? 'success' : 'error'}>
-          <Text style={styles.statusText}>{status.message}</Text>
+        <Card
+          tone={kua ? 'default' : (status.ok ? 'success' : 'error')}
+          style={kua ? (status.ok ? styles.statusCardSuccess : styles.statusCardError) : undefined}
+        >
+          <Text style={[styles.statusText, kua ? (status.ok ? styles.statusTextSuccess : styles.statusTextError) : null]}>
+            {status.message}
+          </Text>
         </Card>
       ) : null}
 
-      <SectionTitle>Export</SectionTitle>
-      <Card>
+      {kua ? <Text style={styles.sectionHeader}>EXPORT</Text> : <SectionTitle>Export</SectionTitle>}
+      <Card style={cardStyle}>
         <Text style={styles.helpText}>
           Exports all locally saved weight entries and workout notes as a JSON snapshot you can save or share.
         </Text>
@@ -373,8 +386,8 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
         />
       </Card>
 
-      <SectionTitle>Import</SectionTitle>
-      <Card>
+      {kua ? <Text style={styles.sectionHeader}>IMPORT</Text> : <SectionTitle>Import</SectionTitle>}
+      <Card style={cardStyle}>
         <Text style={styles.helpText}>
           Load a previously exported backup file, or paste one below, then tap Import. This will replace all current data.
         </Text>
@@ -391,7 +404,7 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
           multiline
           numberOfLines={6}
           placeholder="Paste backup JSON here…"
-          placeholderTextColor={colors.textMuted}
+          placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
           value={importText}
           onChangeText={setImportText}
           autoCapitalize="none"
@@ -400,16 +413,16 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
         <Button title="Import Data" onPress={handleImport} disabled={busy} style={styles.actionButton} />
       </Card>
 
-      <SectionTitle>Cloud</SectionTitle>
+      {kua ? <Text style={styles.sectionHeader}>CLOUD</Text> : <SectionTitle>Cloud</SectionTitle>}
       {!auth?.configured ? (
-        <Card>
+        <Card style={cardStyle}>
           <Text style={styles.helpText}>
             Cloud accounts are not configured in this build. The app continues to
             work fully offline with your local data.
           </Text>
         </Card>
       ) : auth?.loading ? null : !auth?.signedIn ? (
-        <Card tone="accent">
+        <Card tone={kua ? 'default' : 'accent'} style={kua ? accentCardStyle : undefined}>
           <Text style={[styles.helpText, styles.textLight]}>
             Cloud backup is off. Create an account to keep a synced copy of your
             data across devices.
@@ -423,7 +436,7 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
         </Card>
       ) : (
         <>
-          <Card>
+          <Card style={cardStyle}>
             <Text style={styles.helpText}>
               Export Account Data fetches what the server currently holds for
               your account — not what is on this device. It may differ from
@@ -461,7 +474,10 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
           <Text style={styles.dangerZoneHeadingText}>⚠ Danger Zone</Text>
         </View>
         {auth?.deviceWipeRequired ? (
-          <Text style={styles.warnText} accessibilityLabel="Device wipe required">
+          <Text
+            style={kua ? styles.dangerZoneWarnText : styles.warnText}
+            accessibilityLabel="Device wipe required"
+          >
             Your account session ended, but device data could not be wiped. Retry before sharing this device.
           </Text>
         ) : null}
@@ -471,7 +487,8 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
           disabled={dangerBusy}
           onPress={handleDeviceWipe}
           accessibilityLabel="Wipe device data"
-          style={styles.actionButton}
+          style={[styles.actionButton, kua ? styles.dangerButton : null]}
+          textStyle={kua ? styles.dangerButtonText : undefined}
         />
         {auth?.signedIn ? (
           <Button
@@ -480,11 +497,15 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
             disabled={dangerBusy}
             onPress={handleSignOutAndWipe}
             accessibilityLabel="Sign out and wipe device data"
-            style={styles.actionButton}
+            style={[styles.actionButton, kua ? styles.dangerButton : null]}
+            textStyle={kua ? styles.dangerButtonText : undefined}
           />
         ) : null}
         {dangerStatus ? (
-          <Text style={styles.helpText} accessibilityLabel="Danger zone status">
+          <Text
+            style={kua ? styles.dangerZoneStatusText : styles.helpText}
+            accessibilityLabel="Danger zone status"
+          >
             {dangerStatus}
           </Text>
         ) : null}
