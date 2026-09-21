@@ -33,7 +33,7 @@ export function HomeDashboard({
       {dashboardData.goalInfo ? (() => {
         const gi = dashboardData.goalInfo;
         const warnings = gi.warnings || [];
-        const paceColor = warnings.includes('unrealistic') ? (kua ? kua.error : colors.error)
+        const paceColor = warnings.includes('unrealistic') ? (kua ? kua.errorText : colors.error)
           : warnings.includes('unhealthy') ? (kua ? kua.warning : colors.cautionText)
           : (kua ? kua.success : colors.success);
         const modeLabel = gi.direction === 'loss' ? 'Cutting' : gi.direction === 'gain' ? 'Bulking' : 'Maintaining';

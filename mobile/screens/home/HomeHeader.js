@@ -156,7 +156,7 @@ export function HomeHeader({
             {[
               { label: 'Progressing', count: dashboardData.weeklySummary.classifications?.progressing ?? 0, color: kua ? kua.success : colors.success },
               { label: 'Steady', count: dashboardData.weeklySummary.classifications?.stalled ?? 0, color: kua ? kua.warning : colors.caution },
-              { label: 'Regressing', count: dashboardData.weeklySummary.classifications?.regressing ?? 0, color: kua ? kua.error : colors.error },
+              { label: 'Regressing', count: dashboardData.weeklySummary.classifications?.regressing ?? 0, color: kua ? kua.errorText : colors.error },
             ].map((item, idx) => (
               <View key={idx} style={styles.classifCol}>
                 <Text style={[styles.classifCount, kua ? { color: item.color } : null]}>{item.count}</Text>
