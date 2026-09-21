@@ -858,11 +858,11 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     // Regression guard: #763 gave oneKHeroValue its own 32/800 compact-summary
     // override instead of spreading HeroMetric.hero (48/900), which read as a
     // visual demotion of the 1K total. #771 restores the pre-regression scale.
-    // #1112: KUA mode uses metric-display-mobile (28px JBM Bold) instead of the
-    // legacy 48/900 hero, so the guard accepts either KUA scale or legacy scale.
+    // #1112: the 1K total is Home's flagship figure and is scaled past the
+    // metric-display token (56px JBM Bold) per owner feedback; legacy stays at
+    // 48px. Either satisfies the "not visually demoted" guard.
     const card = component.root.findByProps({ testID: 'home-one-k-link' }).parent.parent;
-    // KUA mode (always active in tests): metric-display (36px JBM Bold). Legacy: 48px.
-    const heroValueNodes = card.findAll(n => n.type === 'Text' && (flatStyle(n).fontSize === 48 || flatStyle(n).fontSize === 36));
+    const heroValueNodes = card.findAll(n => n.type === 'Text' && (flatStyle(n).fontSize === 48 || flatStyle(n).fontSize === 56));
     expect(heroValueNodes.length).toBeGreaterThan(0);
   });
 

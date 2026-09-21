@@ -56,14 +56,17 @@ export function HomeHeader({
   const [captionExpanded, setCaptionExpanded] = useState(false);
 
   const isRecovery = isRecoveryOpenWeek || isRecoveryBetweenWeeks;
-  const sectionLabel = isRecovery ? 'Recovery' : 'This week';
-  const weekIdentity = isRecoveryOpenWeek
+  // The header carries the week identity itself — no separate "THIS WEEK" label
+  // duplicated by a week number on the right (#1112 owner feedback). Recovery
+  // keeps a "Recovery" header with the week/state on the line below.
+  const headerLabel = isRecovery
+    ? 'Recovery'
+    : dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Week —';
+  const recoverySubline = isRecoveryOpenWeek
     ? `Week ${activeTrainingContext.recoveryWeekNumber ?? '—'}`
     : isRecoveryBetweenWeeks
       ? 'Between weeks'
-      : dashboardData.weeksIn !== null
-        ? `Week ${dashboardData.weeksIn}`
-        : 'Week —';
+      : null;
 
   const mutedStroke = kua ? kua.onSurfaceVariant : colors.textMuted;
   const actionStroke = kua ? kua.primaryOnContainer : colors.textMuted;
@@ -79,24 +82,34 @@ export function HomeHeader({
 
   return (
     <Card style={styles.weeklyHero}>
-      {/* KUA section header (#1112): accent bar + uppercase label on the left,
-          week identity on the right. The accent bar is the structural motif
-          the Log surface uses, carried onto Home. */}
+      {/* KUA section header (#1112): accent bar + the week identity itself.
+          The info toggle (only when the counts need explaining) lives on the
+          right, in the space the redundant week label used to occupy — it no
+          longer costs its own row below the counts. */}
       <View style={styles.heroHeaderRow}>
         <View style={styles.heroHeaderLeft}>
           <View style={styles.heroAccentBar} />
-          <Text style={styles.heroSectionLabel} numberOfLines={1}>{sectionLabel}</Text>
+          <Text style={styles.heroSectionLabel} numberOfLines={1}>{headerLabel}</Text>
         </View>
-        <Text
-          style={[
-            styles.heroWeekLabel,
-            isRecovery ? styles.heroWeekLabelRecovery : (weekToneColor ? { color: weekToneColor } : null),
-          ]}
-          numberOfLines={1}
-        >
-          {weekIdentity}
-        </Text>
+        {captionText && !baselinePaused && kua ? (
+          <Pressable
+            testID="home-classif-info"
+            onPress={() => setCaptionExpanded(v => !v)}
+            style={styles.heroInfoToggle}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: captionExpanded }}
+            accessibilityLabel={captionText}
+          >
+            <InfoIcon color={mutedStroke} />
+          </Pressable>
+        ) : null}
       </View>
+
+      {/* Recovery sub-line: the live week/state under the "Recovery" header. */}
+      {recoverySubline ? (
+        <Text style={styles.heroWeekSubline} numberOfLines={1}>{recoverySubline}</Text>
+      ) : null}
 
       {/* The active Recovery note's own title, named directly under the header
           so "what is current" answers both the week and which note that is. */}
@@ -147,22 +160,14 @@ export function HomeHeader({
           {/* #894: the counts above only cover a fully classified tracked span;
               a freshly opened span or inherited/pre-#893 tracking contributes
               to neither bucket, so the caption explains a 0/0/0 row instead of
-              letting it read as "nothing classifiable". In KUA mode it is an
-              info toggle, collapsed by default. */}
+              letting it read as "nothing classifiable". In KUA mode it is
+              toggled from the header info icon and revealed inline here; legacy
+              mode shows it plainly. */}
           {captionText ? (
             kua ? (
-              <Pressable
-                onPress={() => setCaptionExpanded(v => !v)}
-                style={styles.classifCaptionToggle}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={captionText}
-              >
-                <InfoIcon color={mutedStroke} />
-                {captionExpanded ? (
-                  <Text style={styles.classifCaption}>{captionText}</Text>
-                ) : null}
-              </Pressable>
+              captionExpanded ? (
+                <Text style={styles.classifCaption}>{captionText}</Text>
+              ) : null
             ) : (
               <Text style={styles.classifCaption}>{captionText}</Text>
             )
@@ -218,14 +223,16 @@ export function HomeHeader({
         )}
         {hasWeightSeries ? (
           <>
-            <Text style={[styles.heroSparklineSublabel, { marginTop: 10 }]}>7-day rolling avg</Text>
-            <LineChart
-              data={displayChartSeries(dashboardData.weightSeries, unit)}
-              color={kua ? kua.onSurfaceVariant : colors.textMuted}
-              height={44}
-              paddingHorizontal={0}
-              hideHeader
-            />
+            <Text style={[styles.heroSparklineSublabel, { marginTop: 12 }]}>7-day rolling avg</Text>
+            <View style={styles.heroSparklineChart}>
+              <LineChart
+                data={displayChartSeries(dashboardData.weightSeries, unit)}
+                color={kua ? kua.primary : colors.textMuted}
+                height={64}
+                paddingHorizontal={0}
+                hideHeader
+              />
+            </View>
           </>
         ) : null}
         {/* Legacy-mode Analytics handoff. In KUA mode the card footer's

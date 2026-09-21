@@ -112,7 +112,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   heroHeaderLeft: {
     flexDirection: 'row',
@@ -128,36 +128,33 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: kua ? kua.primary : colors.accent,
   },
   heroSectionLabel: {
-    ...(kua ? TYPOGRAPHY['headline-sm'] : {}),
-    fontSize: kua ? undefined : 13,
-    fontWeight: kua ? undefined : '700',
+    ...(kua ? TYPOGRAPHY['headline-sm'] : { fontSize: 13, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
     textTransform: 'uppercase',
     letterSpacing: kua ? 0.5 : 0.5,
     flexShrink: 1,
   },
-  // The week identity, right-aligned in the header. In KUA mode it is the
-  // theme primary so the card announces its own accent without a second
-  // competing hero number.
-  heroWeekLabel: {
-    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
-    fontSize: kua ? undefined : 12,
-    fontWeight: kua ? undefined : '700',
-    color: kua ? kua.primary : colors.accentText,
-    textAlign: 'right',
+  // Header-right info toggle for the classification caption (#1112 owner
+  // feedback): the "ⓘ" no longer owns a dedicated row — it lives in the space
+  // the redundant week label used to occupy.
+  heroInfoToggle: {
     flexShrink: 0,
+    minWidth: 32,
+    minHeight: 32,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
   },
-  // Active-Recovery eyebrow (#869): accent-colored so the hero visibly
-  // announces Recovery rather than reading as an ordinary baseline week.
-  heroWeekLabelRecovery: {
+  // Recovery sub-line under the "Recovery" header: the week number or
+  // between-weeks state, in the theme primary so it reads as the live accent.
+  heroWeekSubline: {
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: 13, fontWeight: '700' }),
     color: kua ? kua.primary : colors.accentText,
+    marginBottom: 4,
   },
   // The active Recovery note's own title, named directly under the eyebrow so
   // "what is current" answers both the week number and which note that is.
   heroRecoveryNoteLabel: {
-    ...(kua ? TYPOGRAPHY['body-sm'] : {}),
-    fontSize: kua ? undefined : 13,
-    fontWeight: kua ? undefined : '600',
+    ...(kua ? TYPOGRAPHY['body-sm'] : { fontSize: 13, fontWeight: '600' }),
     color: kua ? kua.onSurface : colors.text,
     marginTop: 2,
   },
@@ -192,9 +189,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   heroPrimaryActionText: {
     flexShrink: 1,
-    ...(kua ? TYPOGRAPHY['body-md'] : {}),
-    fontSize: kua ? undefined : 13,
-    fontWeight: kua ? undefined : '600',
+    ...(kua ? TYPOGRAPHY['body-md'] : { fontSize: 13, fontWeight: '600' }),
     color: kua ? kua.primaryOnContainer : colors.textMuted,
     textAlign: 'center',
   },
@@ -214,9 +209,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingHorizontal: 4,
   },
   heroInlineActionText: {
-    ...(kua ? TYPOGRAPHY['body-sm'] : {}),
-    fontSize: kua ? undefined : 13,
-    fontWeight: kua ? undefined : '600',
+    ...(kua ? TYPOGRAPHY['body-sm'] : { fontSize: 13, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Body-weight block (#1112 redesign). On a screen titled "current routine
@@ -224,9 +217,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // below the training pulse and its own action, grouped with the trend it
   // belongs to. Small uppercase label over a metric value.
   heroMetricLabel: {
-    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: TYPOGRAPHY['body-sm'].fontSize } : {}),
-    fontSize: kua ? undefined : 11,
-    fontWeight: kua ? undefined : '700',
+    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: TYPOGRAPHY['body-sm'].fontSize } : { fontSize: 11, fontWeight: '700' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -247,9 +238,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // The no-data hero is a short muted sentence, not a hero-sized dash: at hero
   // scale a lone glyph left a visible hole in the card's dominant slot.
   heroWeightPlaceholder: {
-    ...(kua ? TYPOGRAPHY['body-md'] : {}),
-    fontSize: kua ? undefined : 20,
-    fontWeight: kua ? undefined : '600',
+    ...(kua ? TYPOGRAPHY['body-md'] : { fontSize: 20, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Explicit Space Grotesk family: a unit ("lb"/"kg") is linguistic, not a
@@ -262,14 +251,17 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   heroSparklineStrip: {
-    marginTop: 10,
+    marginTop: 14,
   },
   heroSparklineSublabel: {
-    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: TYPOGRAPHY['body-sm'].fontSize } : {}),
-    fontSize: kua ? undefined : 11,
-    fontWeight: kua ? undefined : '600',
+    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: TYPOGRAPHY['body-sm'].fontSize } : { fontSize: 11, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    marginBottom: 4,
+    marginBottom: 8,
+  },
+  // A taller chart so the trend does not read as a squished wide band and the
+  // built-in date axis is not crowded against the line (#1112 owner feedback).
+  heroSparklineChart: {
+    marginBottom: 8,
   },
   // The classification trio is the hero's lead content (#1112: training leads).
   // It sits directly under the header with no top rule, so the week's training
@@ -307,9 +299,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     flexShrink: 0,
   },
   classifSectionLabel: {
-    ...(kua ? TYPOGRAPHY['label-sm'] : {}),
-    fontSize: kua ? undefined : 12,
-    fontWeight: kua ? undefined : '700',
+    ...(kua ? TYPOGRAPHY['label-sm'] : { fontSize: 12, fontWeight: '700' }),
     color: kua ? kua.onSurfaceVariant : colors.text,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -345,34 +335,23 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     height: 8,
     borderRadius: 4,
   },
-  // Promoted to the metric scale (#1112): as the hero's lead figures the counts
-  // read as the dominant numbers on the card, tinted per bucket in JSX.
+  // Promoted to the full metric-display scale (#1112 owner feedback): as the
+  // hero's lead figures the counts are the dominant numbers on the card,
+  // tinted per bucket in JSX.
   classifCount: {
-    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : {}),
-    fontSize: kua ? undefined : 16,
-    fontWeight: kua ? undefined : '800',
+    ...(kua ? TYPOGRAPHY['metric-display'] : { fontSize: 16, fontWeight: '800' }),
     color: kua ? kua.onSurface : colors.text,
   },
   classifLabel: {
-    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: TYPOGRAPHY['body-sm'].fontSize } : {}),
-    fontSize: kua ? undefined : 11,
-    fontWeight: kua ? undefined : '600',
+    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: TYPOGRAPHY['body-sm'].fontSize } : { fontSize: 11, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
   },
   classifCaption: {
-    ...(kua ? TYPOGRAPHY['body-sm'] : {}),
-    fontSize: kua ? undefined : 12,
+    ...(kua ? TYPOGRAPHY['body-sm'] : { fontSize: 12 }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: kua ? 4 : 8,
     fontStyle: 'italic',
-  },
-  classifCaptionToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 10,
-    minHeight: 28,
   },
   heroFooter: {
     alignItems: 'center',
@@ -384,9 +363,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 4,
   },
   insightsLinkText: {
-    ...(kua ? TYPOGRAPHY['body-sm'] : {}),
-    fontSize: kua ? undefined : 13,
-    fontWeight: kua ? undefined : '600',
+    ...(kua ? TYPOGRAPHY['body-sm'] : { fontSize: 13, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Recovery status card (#757). Same padding as the other tiers; the label
@@ -403,32 +380,24 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderColor: kua ? kua.surfaceBorder : undefined,
   },
   recoveryLabel: {
-    ...(kua ? TYPOGRAPHY['headline-sm'] : {}),
-    fontSize: kua ? undefined : 12,
-    fontWeight: kua ? undefined : '700',
+    ...(kua ? TYPOGRAPHY['headline-sm'] : { fontSize: 12, fontWeight: '700', letterSpacing: 0.5 }),
     color: kua ? kua.onSurface : colors.text,
     textTransform: 'uppercase',
-    letterSpacing: kua ? undefined : 0.5,
   },
   // #803: the card is read as analytics, not as prose — a week eyebrow, one
   // hero result, then supporting count tiles. Sizes follow the analytics
   // hierarchy already established for cards (ui-design-rules §8): one hero,
   // supporting values at 18/700 over an 11/600 uppercase muted label.
   recoveryWeekLabel: {
-    ...(kua ? TYPOGRAPHY['label-sm'] : {}),
-    fontSize: kua ? undefined : 11,
-    fontWeight: kua ? undefined : '700',
+    ...(kua ? TYPOGRAPHY['label-sm'] : { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: kua ? undefined : 0.5,
   },
   // #1029: the denominator caption ("N of Y roster exercises trained") sits
   // at the SAME weight tier as the bucket rows below it — it is a fact of
   // equal standing, not a subordinate footnote (acceptance criterion 1/12).
   recoveryHeroCaption: {
-    ...(kua ? TYPOGRAPHY['body-sm'] : {}),
-    fontSize: kua ? undefined : 13,
-    fontWeight: kua ? undefined : '700',
+    ...(kua ? TYPOGRAPHY['body-sm'] : { fontSize: 13, fontWeight: '700' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
     marginBottom: 6,
@@ -444,23 +413,17 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingVertical: 3,
   },
   recoveryBandLabel: {
-    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
-    fontSize: kua ? undefined : 13,
-    fontWeight: kua ? undefined : '700',
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: 13, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
   recoveryBandCount: {
-    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
-    fontSize: kua ? undefined : 13,
-    fontWeight: kua ? undefined : '700',
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: 13, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
   // The fallbacks are sentences, not figures: they take the hero's slot at
   // reading weight rather than being dressed up as a metric.
   recoveryFallbackLine: {
-    ...(kua ? TYPOGRAPHY['body-md'] : {}),
-    fontSize: kua ? undefined : 16,
-    fontWeight: kua ? undefined : '700',
+    ...(kua ? TYPOGRAPHY['body-md'] : { fontSize: 16, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
     marginTop: 2,
   },
@@ -474,8 +437,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginTop: 12,
   },
   recoveryStatusLine: {
-    ...(kua ? TYPOGRAPHY['body-sm'] : {}),
-    fontSize: kua ? undefined : 13,
+    ...(kua ? TYPOGRAPHY['body-sm'] : { fontSize: 13 }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
   },
@@ -484,9 +446,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     justifyContent: 'center',
   },
   recoveryActionText: {
-    ...(kua ? TYPOGRAPHY['body-sm'] : {}),
-    fontSize: kua ? undefined : 13,
-    fontWeight: kua ? undefined : '700',
+    ...(kua ? TYPOGRAPHY['body-sm'] : { fontSize: 13, fontWeight: '700' }),
     color: kua ? kua.primary : colors.accentText,
   },
   goalCard: {
@@ -501,18 +461,14 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginBottom: 20,
   },
   goalDirectionText: {
-    ...(kua ? TYPOGRAPHY['headline-sm'] : {}),
-    fontSize: kua ? undefined : 18,
-    fontWeight: kua ? undefined : '700',
+    ...(kua ? TYPOGRAPHY['headline-md'] : { fontSize: 20, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
   goalModeAccent: {
     color: kua ? kua.primary : colors.accentText,
   },
   goalWeeksText: {
-    ...(kua ? TYPOGRAPHY['body-sm'] : {}),
-    fontSize: kua ? undefined : 14,
-    fontWeight: kua ? undefined : '600',
+    ...(kua ? TYPOGRAPHY['body-sm'] : { fontSize: 14, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   goalStatsGrid: {
@@ -524,9 +480,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 4,
   },
   goalStatLabel: {
-    ...(kua ? TYPOGRAPHY['label-sm'] : {}),
-    fontSize: kua ? undefined : 12,
-    fontWeight: kua ? undefined : '600',
+    ...(kua ? TYPOGRAPHY['label-sm'] : { fontSize: 12, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   goalStatValueRow: {
@@ -535,14 +489,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 4,
   },
   goalStatValueLarge: {
-    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : {}),
-    fontSize: kua ? undefined : 30,
-    fontWeight: kua ? undefined : '800',
+    ...(kua ? TYPOGRAPHY['metric-display'] : { fontSize: 30, fontWeight: '800' }),
     color: kua ? kua.onSurface : colors.text,
   },
   goalStatUnitLabel: {
     fontFamily: kua ? TYPOGRAPHY['body-md'].fontFamily : undefined,
-    fontSize: kua ? 15 : 18,
+    fontSize: kua ? 17 : 18,
     fontWeight: kua ? undefined : '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
@@ -558,12 +510,9 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderColor: kua ? kua.surfaceBorder : undefined,
   },
   oneKLabel: {
-    ...(kua ? TYPOGRAPHY['headline-sm'] : {}),
-    fontSize: kua ? undefined : 12,
-    fontWeight: kua ? undefined : '800',
+    ...(kua ? TYPOGRAPHY['headline-sm'] : { fontSize: 12, fontWeight: '800', letterSpacing: 1 }),
     color: kua ? kua.onSurface : colors.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: kua ? undefined : 1,
     flexShrink: 1,
   },
   oneKHero: {
@@ -575,16 +524,19 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // spreads HeroMetric.hero (48/900) the same as the Analytics owner card.
   // In KUA mode, 32px JBM Bold — metric-display-mobile base with +4px bump
   // so the total reads as the dominant figure in the card.
+  // The 1K total is Home's flagship figure (#1112 owner feedback): spread the
+  // metric-display token but scaled well past it so the number dominates its
+  // card the way the signature "1K" metric should.
   oneKHeroValue: {
-    ...(kua ? TYPOGRAPHY['metric-display'] : HeroMetric.hero),
+    ...(kua ? { ...TYPOGRAPHY['metric-display'], fontSize: 56, lineHeight: 60, letterSpacing: -0.02 * 56 } : HeroMetric.hero),
     color: kua ? kua.onSurface : colors.text,
   },
   // Explicit Space Grotesk: the unit suffix is nested inside the JetBrains Mono
   // hero value and would otherwise inherit the mono family and render "lb" as a
-  // mangled ligature (#1112).
+  // mangled ligature (#1112). Sized against the enlarged total.
   oneKHeroUnit: {
     fontFamily: kua ? TYPOGRAPHY['body-md'].fontFamily : undefined,
-    fontSize: kua ? 16 : 16,
+    fontSize: kua ? 20 : 16,
     fontWeight: kua ? undefined : '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
@@ -592,12 +544,11 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // scale in the muted ink, never the lerp-tinted value color that made "—"
   // read as a stray colored mark (#1112).
   oneKHeroPlaceholder: {
-    ...(kua ? TYPOGRAPHY['metric-display'] : HeroMetric.hero),
+    ...(kua ? { ...TYPOGRAPHY['metric-display'], fontSize: 56, lineHeight: 60 } : HeroMetric.hero),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   oneKHeroCaption: {
-    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: TYPOGRAPHY['body-sm'].fontSize } : {}),
-    fontSize: kua ? undefined : 12,
+    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: TYPOGRAPHY['body-sm'].fontSize } : { fontSize: 12 }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
     marginTop: 2,
@@ -635,15 +586,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // Weight and case match the Analytics breakdown item (#763); fontSize
   // stays smaller here because Home is the compact summary, not the owner.
   oneKGridValue: {
-    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : {}),
-    fontSize: kua ? undefined : 16,
-    fontWeight: kua ? undefined : '700',
+    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 32, lineHeight: 36 } : { fontWeight: '700' }),
+    fontSize: kua ? 32 : 16,
     color: kua ? kua.onSurface : colors.text,
   },
   oneKGridLabel: {
-    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: TYPOGRAPHY['body-sm'].fontSize } : {}),
-    fontSize: kua ? undefined : 11,
-    fontWeight: kua ? undefined : '600',
+    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: TYPOGRAPHY['body-sm'].fontSize } : { fontSize: 11, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
   },
@@ -653,11 +601,9 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     fontWeight: '400',
   },
   emptyText: {
-    ...(kua ? TYPOGRAPHY['body-md'] : {}),
-    fontSize: kua ? undefined : 13,
+    ...(kua ? TYPOGRAPHY['body-md'] : { fontSize: 13, lineHeight: 18 }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
-    lineHeight: kua ? undefined : 18,
     fontStyle: 'italic',
   },
   welcomeCard: {
@@ -670,16 +616,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginBottom: 8,
   },
   welcomeTitle: {
-    ...(kua ? TYPOGRAPHY['headline-md'] : {}),
-    fontSize: kua ? undefined : 22,
-    fontWeight: kua ? undefined : '800',
+    ...(kua ? TYPOGRAPHY['headline-md'] : { fontSize: 22, fontWeight: '800' }),
     color: kua ? kua.onSurface : colors.text,
   },
   welcomeSubtitle: {
-    ...(kua ? TYPOGRAPHY['body-md'] : {}),
-    fontSize: kua ? undefined : 14,
+    ...(kua ? TYPOGRAPHY['body-md'] : { fontSize: 14, lineHeight: 20 }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    lineHeight: kua ? undefined : 20,
     marginTop: 6,
   },
   welcomeDivider: {
@@ -709,16 +651,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     flex: 1,
   },
   welcomeStepTitle: {
-    ...(kua ? TYPOGRAPHY['body-lg'] : {}),
-    fontSize: kua ? undefined : 16,
-    fontWeight: kua ? undefined : '700',
+    ...(kua ? TYPOGRAPHY['body-lg'] : { fontSize: 16, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
   welcomeStepDesc: {
-    ...(kua ? TYPOGRAPHY['body-sm'] : {}),
-    fontSize: kua ? undefined : 13,
+    ...(kua ? TYPOGRAPHY['body-sm'] : { fontSize: 13, lineHeight: 18 }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    lineHeight: kua ? undefined : 18,
     marginTop: 4,
   },
   welcomeButton: {
