@@ -206,11 +206,12 @@ dependency.
 unzip -p <production-aab> base/manifest/AndroidManifest.xml | \
   strings | grep -i 'barcode\|mlkit\|code.scanner\|GmsBarcodeScanning'
 
-# DEX: dev-launcher and barcode classes
-for dex in base/dex/classes.dex base/dex/classes2.dex base/dex/classes3.dex; do
-  unzip -p <production-aab> "$dex" 2>/dev/null | \
-    strings | grep -i 'GmsBarcodeScanning\|expo.modules.devlauncher'
-done
+# DEX: dev-launcher and barcode classes (all shards)
+unzip -l <production-aab> | awk '/base\/dex\/classes.*\.dex/{print $4}' | \
+  while read dex; do
+    unzip -p <production-aab> "$dex" 2>/dev/null | \
+      strings | grep -i 'GmsBarcodeScanning\|expo.modules.devlauncher'
+  done
 ```
 
 **Upgrade path:** This constraint is upstream in `expo-dev-launcher`. Track the
