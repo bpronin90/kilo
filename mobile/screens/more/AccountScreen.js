@@ -1,11 +1,12 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { CaptchaChallenge } from '../../components/CaptchaChallenge';
 import { ScreenShell } from '../../components/ScreenShell';
 import { Button, SectionTitle, useInputStyle } from '../../components/UI';
 import { Alert } from '../../lib/platformAlert';
-import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
+import { useKuaTypography } from '../../theme/typography';
 import { KILO_AUTH_REDIRECT } from '../../hooks/useAuthSession';
 import { AccountLifecycle } from './AccountLifecycle';
 import { LegalLinks } from './LegalLinks';
@@ -21,8 +22,9 @@ import { SetNewPasswordScreen } from './SetNewPasswordScreen';
 // here) means the session is already resolved when this screen mounts, so the
 // Signed-In view renders immediately with no per-mount re-probe (#366).
 export function AccountScreen({ onBack, auth }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const typography = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
   const inputStyle = useInputStyle();
   const scrollRef = useRef(null);
   const [email, setEmail] = useState('');
@@ -199,10 +201,11 @@ export function AccountScreen({ onBack, auth }) {
       title="Account"
       subtitle="Cloud sign in is optional. Your data works locally without an account."
       onBack={onBack}
+      style={kua ? { backgroundColor: kua.background } : undefined}
     >
       {!auth.configured ? (
         <View style={styles.accountBlock}>
-          <SectionTitle>Cloud Account</SectionTitle>
+          {kua ? <Text style={styles.sectionHeader}>CLOUD ACCOUNT</Text> : <SectionTitle>Cloud Account</SectionTitle>}
           <Text style={styles.accountNote} accessibilityLabel="Cloud accounts unavailable">
             Cloud accounts are not configured in this build. The app continues to
             work fully offline with your local data.
@@ -211,7 +214,7 @@ export function AccountScreen({ onBack, auth }) {
         </View>
       ) : auth.signedIn ? (
         <View style={styles.accountBlock}>
-          <SectionTitle>Signed In</SectionTitle>
+          {kua ? <Text style={styles.sectionHeader}>SIGNED IN</Text> : <SectionTitle>Signed In</SectionTitle>}
           <Text style={styles.accountNote}>
             Signed in as {auth.user?.email || 'your account'}. Your training
             history is the offline working copy on this device. An account keeps a
@@ -221,6 +224,8 @@ export function AccountScreen({ onBack, auth }) {
             title="Sign Out"
             loadingTitle="Working…"
             disabled={busy}
+            style={styles.actionButton}
+            textStyle={styles.actionButtonText}
             onPress={() => run(() => auth.signOut().then((r) => (r.ok ? { ok: true, message: 'Signed out.' } : r)))}
           />
           <View style={styles.dangerZone}>
@@ -240,7 +245,7 @@ export function AccountScreen({ onBack, auth }) {
         <View style={styles.accountBlock} accessibilityLabel="Account loading" />
       ) : confirmationEmail ? (
         <View style={styles.accountBlock}>
-          <SectionTitle>Confirm Your Email</SectionTitle>
+          {kua ? <Text style={styles.sectionHeader}>CONFIRM YOUR EMAIL</Text> : <SectionTitle>Confirm Your Email</SectionTitle>}
           <Text style={styles.accountNote} accessibilityLabel="Confirmation pending">
             {confirmationContext === 'signup'
               // Enumeration-safe (#496): Supabase returns this same no-session
@@ -261,6 +266,8 @@ export function AccountScreen({ onBack, auth }) {
             <Button
               title="Retry Security Verification"
               disabled={busy}
+              style={styles.actionButton}
+              textStyle={styles.actionButtonText}
               onPress={retryCaptcha}
               accessibilityLabel="Retry security verification"
             />
@@ -269,19 +276,23 @@ export function AccountScreen({ onBack, auth }) {
             title="Resend Confirmation Email"
             loadingTitle="Working…"
             disabled={busy}
+            style={styles.actionButton}
+            textStyle={styles.actionButtonText}
             onPress={handleResendConfirmation}
             accessibilityLabel="Resend confirmation email"
           />
           <Button
             title="Back to Sign In"
             disabled={busy}
+            style={styles.actionButton}
+            textStyle={styles.actionButtonText}
             onPress={handleBackToSignIn}
             accessibilityLabel="Back to Sign In"
           />
         </View>
       ) : (
         <View style={styles.accountBlock}>
-          <SectionTitle>Sign In</SectionTitle>
+          {kua ? <Text style={styles.sectionHeader}>SIGN IN</Text> : <SectionTitle>Sign In</SectionTitle>}
           <Text style={styles.accountNote}>
             Your training history is saved on this device and works without an
             account. Signing in lets you keep it synced to the cloud and continue
@@ -290,9 +301,9 @@ export function AccountScreen({ onBack, auth }) {
           </Text>
           <TextInput
             keyboardAppearance={colors.scheme}
-            style={inputStyle}
+            style={[inputStyle, styles.kuaInput]}
             placeholder="Email"
-            placeholderTextColor={colors.textMuted}
+            placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
             autoCapitalize="none"
             keyboardType="email-address"
             value={email}
@@ -301,9 +312,9 @@ export function AccountScreen({ onBack, auth }) {
           />
           <TextInput
             keyboardAppearance={colors.scheme}
-            style={inputStyle}
+            style={[inputStyle, styles.kuaInput]}
             placeholder="Password"
-            placeholderTextColor={colors.textMuted}
+            placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
             secureTextEntry
             value={password}
             onChangeText={setPassword}
@@ -319,6 +330,8 @@ export function AccountScreen({ onBack, auth }) {
             <Button
               title="Retry Security Verification"
               disabled={busy}
+              style={styles.actionButton}
+              textStyle={styles.actionButtonText}
               onPress={retryCaptcha}
               accessibilityLabel="Retry security verification"
             />
@@ -327,6 +340,8 @@ export function AccountScreen({ onBack, auth }) {
             title="Sign In"
             loadingTitle="Working…"
             disabled={busy}
+            style={styles.actionButton}
+            textStyle={styles.actionButtonText}
             // On any failed password sign-in, append the GitHub hint
             // unconditionally (#496). It is shown for every failure and does not
             // branch on whether the address exists, so it adds no enumeration
@@ -349,6 +364,8 @@ export function AccountScreen({ onBack, auth }) {
           <Button
             title="Create Account"
             disabled={busy}
+            style={styles.actionButton}
+            textStyle={styles.actionButtonText}
             // Honest, enumeration-safe signup copy (#496) is preserved: Supabase
             // returns the same 200 whether the address is new or already
             // registered, and this handler behaves identically either way — it
@@ -368,6 +385,8 @@ export function AccountScreen({ onBack, auth }) {
           <Button
             title="Reset Password"
             disabled={busy}
+            style={styles.actionButton}
+            textStyle={styles.actionButtonText}
             onPress={handleResetPassword}
             accessibilityLabel="Reset Password"
           />
@@ -376,6 +395,8 @@ export function AccountScreen({ onBack, auth }) {
               title="Continue with GitHub"
               loadingTitle="Working…"
               disabled={busy}
+              style={styles.actionButton}
+              textStyle={styles.actionButtonText}
               onPress={Platform.OS === 'web' ? handleGitHubSignIn : handleGitHubSignInNative}
               accessibilityLabel="Continue with GitHub"
             />
@@ -392,27 +413,49 @@ export function AccountScreen({ onBack, auth }) {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+const createStyles = (colors, kua = null, typography = {}) => StyleSheet.create({
   accountBlock: {
     gap: 12,
   },
+  // KUA section headers replace SectionTitle in kua mode (#1114), matching
+  // the label-sm/uppercase treatment already used by Settings and More.
+  sectionHeader: {
+    ...(typography['label-sm'] ?? { fontSize: 11, fontWeight: '500' }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    textTransform: 'uppercase',
+    marginTop: 6,
+  },
   accountNote: {
     fontSize: 15,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     lineHeight: 22,
     marginBottom: 12,
   },
   accountStatus: {
     fontSize: 14,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 16,
   },
+  // Overrides applied to every auth-flow Button's style/textStyle props
+  // (Sign In, Sign Out, Create Account, Reset Password, GitHub, CAPTCHA
+  // retry, confirmation resend/back). `null` in legacy mode leaves the
+  // shared Button component's own default styling untouched.
+  actionButton: kua ? { backgroundColor: kua.primary } : null,
+  actionButtonText: kua ? { color: kua.onPrimary } : null,
+  // Composed onto the shared `useInputStyle()` result at the TextInput call
+  // site (#1114) rather than editing the shared hook, which Allowed Files
+  // excludes.
+  kuaInput: kua ? {
+    backgroundColor: kua.surfaceCard,
+    borderColor: kua.surfaceBorder,
+    color: kua.onSurface,
+  } : null,
   // Irreversible-action container: error-tinted surface groups Delete Account
   // apart from the routine Sign Out above it. See ui-design-rules.md #14.
   dangerZone: {
-    backgroundColor: colors.errorSurface,
+    backgroundColor: kua ? kua.surfaceSection : colors.errorSurface,
     borderWidth: 1,
-    borderColor: colors.error,
+    borderColor: kua ? kua.error : colors.error,
     borderRadius: 24,
     padding: 18,
     gap: 12,
@@ -426,6 +469,6 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
-    color: colors.error,
+    color: kua ? kua.errorText : colors.error,
   },
 });
