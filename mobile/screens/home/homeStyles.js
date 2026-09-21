@@ -133,12 +133,10 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   heroPrimaryActions: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    backgroundColor: kua ? 'transparent' : colors.subtleBg,
-    borderWidth: kua ? 1 : 0,
-    borderColor: kua ? kua.surfaceBorder : 'transparent',
+    backgroundColor: kua ? kua.surfaceBorder : colors.subtleBg,
     borderRadius: 12,
     overflow: 'hidden',
-    marginTop: 16,
+    marginTop: 8,
     marginBottom: 8,
   },
   heroPrimaryAction: {
@@ -162,7 +160,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   heroPrimaryActionDivider: {
     width: 1,
     marginVertical: 8,
-    backgroundColor: kua ? kua.surfaceBorder : colors.cardBorder,
+    backgroundColor: kua ? kua.surfaceCard : colors.cardBorder,
   },
   // Quiet Analytics handoff attached to the sparkline. 44pt minimum target per
   // the mobile touch-target rule, kept visually quiet so the hero metric remains
@@ -197,14 +195,13 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   heroWeightUnit: {
-    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
-    fontSize: kua ? undefined : 16,
-    fontWeight: kua ? undefined : '600',
+    fontSize: 16,
+    fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   heroSparklineStrip: {
     marginTop: 4,
-    marginBottom: 4,
+    marginBottom: 12,
   },
   heroSparklineSublabel: {
     ...(kua ? TYPOGRAPHY['label-sm'] : {}),
@@ -254,7 +251,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     fontWeight: kua ? undefined : '700',
     color: kua ? kua.onSurfaceVariant : colors.text,
     textTransform: 'uppercase',
-    letterSpacing: kua ? 0.5 : 0.5,
+    letterSpacing: 0.5,
   },
   classifRow: {
     flexDirection: 'row',
@@ -291,7 +288,6 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     ...(kua ? TYPOGRAPHY['headline-sm'] : {}),
     fontSize: kua ? undefined : 16,
     fontWeight: kua ? undefined : '800',
-    // Color is passed inline per-column (success/warning/error) in KUA mode.
     color: kua ? kua.onSurface : colors.text,
   },
   classifLabel: {
@@ -313,12 +309,17 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   classifCaptionToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
     marginTop: 6,
     minHeight: 28,
   },
+  classifCaptionIcon: {
+    fontSize: 13,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    opacity: 0.7,
+  },
   heroFooter: {
-    alignItems: 'flex-start',
+    alignItems: 'center',
     marginTop: 12,
   },
   insightsLink: {
@@ -330,7 +331,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     ...(kua ? TYPOGRAPHY['body-sm'] : {}),
     fontSize: kua ? undefined : 13,
     fontWeight: kua ? undefined : '600',
-    color: kua ? kua.primary : colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Recovery status card (#757). Same padding as the other tiers; the label
   // reuses the uppercase section treatment already used by the Exercise
@@ -484,9 +485,8 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurface : colors.text,
   },
   goalStatUnitLabel: {
-    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
-    fontSize: kua ? undefined : 18,
-    fontWeight: kua ? undefined : '700',
+    fontSize: 18,
+    fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Top padding and gap trimmed from the 24/10 default (#820): the header
@@ -516,16 +516,15 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // Restored to the accepted pre-regression scale (#771): the #763 compact-
   // summary override read as a visual demotion of the 1K total, so this
   // spreads HeroMetric.hero (48/900) the same as the Analytics owner card.
-  // In KUA mode, metric-display-mobile (28px JBM Bold) — aligns with the
-  // goal card's stat values so secondary metrics share one consistent step.
+  // In KUA mode, 32px JBM Bold — metric-display-mobile base with +4px bump
+  // so the total reads as the dominant figure in the card.
   oneKHeroValue: {
-    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : HeroMetric.hero),
+    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 32 } : HeroMetric.hero),
     color: kua ? kua.onSurface : colors.text,
   },
   oneKHeroUnit: {
-    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
-    fontSize: kua ? undefined : 16,
-    fontWeight: kua ? undefined : '600',
+    fontSize: 16,
+    fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Track color, radius, and vertical rhythm match the Analytics 1K progress
@@ -558,10 +557,10 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderRightWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
-  // Breakdown values — label-lg (14px JBM SemiBold) so they read as
-  // supporting data clearly below the 28px total.
+  // Weight and case match the Analytics breakdown item (#763); fontSize
+  // stays smaller here because Home is the compact summary, not the owner.
   oneKGridValue: {
-    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
+    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 22 } : {}),
     fontSize: kua ? undefined : 16,
     fontWeight: kua ? undefined : '700',
     color: kua ? kua.onSurface : colors.text,

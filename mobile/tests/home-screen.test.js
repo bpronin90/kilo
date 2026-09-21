@@ -900,9 +900,8 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     // #1112: KUA mode uses metric-display-mobile (28px JBM Bold) instead of the
     // legacy 48/900 hero, so the guard accepts either KUA scale or legacy scale.
     const card = component.root.findByProps({ testID: 'home-one-k-link' }).parent.parent;
-    // KUA mode (always active in tests): metric-display-mobile (28px JBM Bold).
-    // Legacy: HeroMetric.hero (48px).
-    const heroValueNodes = card.findAll(n => n.type === 'Text' && (flatStyle(n).fontSize === 48 || flatStyle(n).fontSize === 28));
+    // KUA mode (always active in tests): 32px JBM Bold. Legacy: HeroMetric.hero (48px).
+    const heroValueNodes = card.findAll(n => n.type === 'Text' && (flatStyle(n).fontSize === 48 || flatStyle(n).fontSize === 32));
     expect(heroValueNodes.length).toBeGreaterThan(0);
   });
 
