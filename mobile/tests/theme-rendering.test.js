@@ -801,8 +801,8 @@ describe('no production surface can hold a stale palette', () => {
       "components/RecoveryBlockWeekModal.js:209 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       "components/SessionCheckInModal.js:374 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       "components/ThemePreviewControl.js:70 '#FF5C00'",
-      'screens/HomeScreen.js:42 "#FF5C00"',
-      'screens/HomeScreen.js:46 "#FF5C00"',
+      'screens/HomeScreen.js:43 "#FF5C00"',
+      'screens/HomeScreen.js:47 "#FF5C00"',
     ]);
   });
 });
@@ -1246,7 +1246,7 @@ const KUA_REQUIRED_ROLES = [
   'primary', 'primaryContainer', 'primaryContainerBorder', 'primaryOnContainer',
   'onSurface', 'onSurfaceVariant', 'completion', 'onPrimary',
   'tabBarBg', 'headerBg', 'error',
-  'success', 'warning', 'selection',
+  'success', 'warning', 'errorText', 'selection',
   'chartSeries1', 'chartSeries2', 'chartSeries3',
 ];
 
@@ -1276,6 +1276,7 @@ const KUA_APPROVED_VALUES = {
     selection: '#E1ECFB',
     success: '#006C4A',
     warning: '#B45309',
+    errorText: '#B3261E',
     chartSeries1: '#0C7489',
     chartSeries2: '#C2410C',
     chartSeries3: '#7C3AED',
@@ -1302,6 +1303,7 @@ const KUA_APPROVED_VALUES = {
     selection: '#17233D',
     success: '#10B981',
     warning: '#FBBF24',
+    errorText: '#F2705C',
     chartSeries1: '#22D3EE',
     chartSeries2: '#F59E0B',
     chartSeries3: '#A78BFA',
@@ -1330,6 +1332,7 @@ const KUA_APPROVED_VALUES = {
     selection: '#FBECE5',
     success: '#006C4A',
     warning: '#B45309',
+    errorText: '#B3261E',
     chartSeries1: '#0C7489',
     chartSeries2: '#C2410C',
     chartSeries3: '#7C3AED',
@@ -1357,6 +1360,7 @@ const KUA_APPROVED_VALUES = {
     selection: '#341B13',
     success: '#10B981',
     warning: '#FBBF24',
+    errorText: '#F2705C',
     chartSeries1: '#22D3EE',
     chartSeries2: '#F59E0B',
     chartSeries3: '#A78BFA',
@@ -1386,6 +1390,7 @@ const KUA_APPROVED_VALUES = {
     selection: '#E8F4EC',
     success: '#006C4A',
     warning: '#B45309',
+    errorText: '#B3261E',
     chartSeries1: '#0C7489',
     chartSeries2: '#C2410C',
     chartSeries3: '#7C3AED',
@@ -1414,6 +1419,7 @@ const KUA_APPROVED_VALUES = {
     selection: '#132B1C',
     success: '#10B981',
     warning: '#FBBF24',
+    errorText: '#F2705C',
     chartSeries1: '#22D3EE',
     chartSeries2: '#F59E0B',
     chartSeries3: '#A78BFA',
@@ -1495,6 +1501,7 @@ describe('KUA shared roles are identical across themes within a mode', () => {
   const SHARED_LIGHT_VALUES = {
     success: '#006C4A',
     warning: '#B45309',
+    errorText: '#B3261E',
     chartSeries1: '#0C7489',
     chartSeries2: '#C2410C',
     chartSeries3: '#7C3AED',
@@ -1503,6 +1510,7 @@ describe('KUA shared roles are identical across themes within a mode', () => {
   const SHARED_DARK_VALUES = {
     success: '#10B981',
     warning: '#FBBF24',
+    errorText: '#F2705C',
     chartSeries1: '#22D3EE',
     chartSeries2: '#F59E0B',
     chartSeries3: '#A78BFA',

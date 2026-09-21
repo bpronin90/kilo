@@ -201,6 +201,11 @@ export function paletteForMode(mode) {
 const KUA_SHARED_LIGHT = {
   success: '#006C4A',
   warning: '#B45309',
+  // Error INK for text/icons on surfaces (distinct from `error`, the danger
+  // FILL). The fill red (#BA1A1A) is only ~2.6:1 as text on dark cards; this
+  // mode-appropriate pair clears AA on every KUA canvas and card surface
+  // (min 5.86:1 light / 5.78:1 dark).
+  errorText: '#B3261E',
   chartSeries1: '#0C7489',
   chartSeries2: '#C2410C',
   chartSeries3: '#7C3AED',
@@ -209,6 +214,7 @@ const KUA_SHARED_LIGHT = {
 const KUA_SHARED_DARK = {
   success: '#10B981',
   warning: '#FBBF24',
+  errorText: '#F2705C',
   chartSeries1: '#22D3EE',
   chartSeries2: '#F59E0B',
   chartSeries3: '#A78BFA',

@@ -3,13 +3,14 @@ import { Pressable, Text, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, ErrorBanner, getSessionTone } from '../components/UI';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 import { CLOUD_SYNC_NOTICE, useWeightGoal, useTrackedLifts, getNoteSections, useCloudSyncSummary, useActiveTrainingContext, useDeloadHistory, useRecoveryBlockState } from '../hooks/useEntries';
 import { useWeightUnit } from '../lib/unitPreference';
 import { deriveHomeDashboardData, useHomeNormalNotes, useHomeRecoverySummary } from './home/homeDashboardData';
 import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
 import { markStartupPhase, markStartupStorageReads } from '../storage/entries/startupTiming';
 import { createStyles } from './home/homeStyles';
+import { useKuaTypography } from '../theme/typography';
 import { HomeHeader } from './home/HomeHeader';
 import { HomeDashboard } from './home/HomeDashboard';
 // The exact example the welcome card teaches (issue #517). Exported so tests
@@ -79,7 +80,9 @@ function ScaleIcon({ color, size = 22 }) {
 // this renders nothing: no summary was published, so there is nothing honest to
 // say about sync.
 export function CloudSyncNotice() {
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const typography = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
   const cloudSync = useCloudSyncSummary();
   const [retryError, setRetryError] = useState('');
   const [retrying, setRetrying] = useState(false);
@@ -177,7 +180,9 @@ export function CloudSyncNotice() {
 // Deliberately static: an animated shimmer is motion the user did not ask for,
 // and this placeholder is usually on screen for a few frames.
 function HomeSkeleton() {
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const typography = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
   return (
     <View
       testID="home-skeleton"
@@ -204,8 +209,9 @@ function HomeSkeleton() {
 }
 
 export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes, successMessage, onNavigate, loading, loadError = false, onRetryLoad }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const typography = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
   const { goal: weightGoal, loading: goalLoading, error: goalError, refresh: refreshGoal } = useWeightGoal();
   const { trackedLifts, activations: trackedLiftActivations, loading: trackedLiftsLoading, error: trackedLiftsError, refresh: refreshTrackedLifts } = useTrackedLifts();
 
@@ -315,7 +321,11 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   );
 
   const weekTone = getSessionTone(dashboardData.sessionCount);
-  const weekToneColor = weekTone === 'error' ? colors.error
+  // In KUA mode the week label uses primary as its base color so it reads as
+  // on-brand. Semantic tone overrides (success/warn/error) stay on the
+  // classification counts below — not the label — to avoid duplicate signals.
+  const weekToneColor = kua ? kua.primary
+    : weekTone === 'error' ? colors.error
     : weekTone === 'warn' ? colors.cautionText
     : weekTone === 'success' ? colors.success
     : null;
@@ -325,7 +335,9 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
     && dashboardData.weightSeries.length > 0;
   // 1K hero color, precomputed here (was inline in the 1K card JSX before the
   // #1049 split) so lerpColor stays in the screen that owns startup composition.
-  const oneKHeroColor = lerpColor(colors.accentText, colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000));
+  const oneKHeroColor = kua
+    ? lerpColor(kua.primary, kua.completion, Math.min(1, (dashboardData.oneK?.total || 0) / 1000))
+    : lerpColor(colors.accentText, colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000));
 
   // Gate the whole first paint on every data source Home renders, not just
   // weight/notes: weight goal and tracked lifts feed the dashboard too, so

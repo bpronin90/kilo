@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Card } from '../../components/UI';
-import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
+import { useTheme } from '../../theme/ThemeContext';
 import { displayWeight, formatBodyweightValue } from '../../lib/units';
 import { createStyles } from './homeStyles';
+import { useKuaTypography } from '../../theme/typography';
 import { HomeRecoverySummary } from './HomeRecoverySummary';
 
 // Tiers 1b-3 (recovery summary, weight goal, 1K progress), extracted from
@@ -19,8 +20,9 @@ export function HomeDashboard({
   oneKHeroColor,
   unit,
 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const typography = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
 
   return (
     <>
@@ -31,17 +33,22 @@ export function HomeDashboard({
       {dashboardData.goalInfo ? (() => {
         const gi = dashboardData.goalInfo;
         const warnings = gi.warnings || [];
-        const paceColor = warnings.includes('unrealistic') ? colors.error
-          : warnings.includes('unhealthy') ? colors.cautionText
-          : colors.success;
+        const paceColor = warnings.includes('unrealistic') ? (kua ? kua.errorText : colors.error)
+          : warnings.includes('unhealthy') ? (kua ? kua.warning : colors.cautionText)
+          : (kua ? kua.success : colors.success);
         const modeLabel = gi.direction === 'loss' ? 'Cutting' : gi.direction === 'gain' ? 'Bulking' : 'Maintaining';
+        // The goal-timeline status carries the same semantic palette as the
+        // classification trio (#1112 owner feedback): an active goal reads
+        // "on" (success green), an ended one reads as a caution to act on
+        // (warning amber) — never bland muted text.
+        const weeksColor = gi.isOverdue ? (kua ? kua.warning : colors.cautionText) : (kua ? kua.success : colors.success);
         return (
           <Card style={styles.goalCard}>
             <View style={styles.goalModeRow}>
               <Text style={styles.goalDirectionText}>
                 Goal: <Text style={styles.goalModeAccent}>{modeLabel}</Text>
               </Text>
-              <Text style={styles.goalWeeksText}>
+              <Text style={[styles.goalWeeksText, { color: weeksColor }]}>
                 {gi.isOverdue ? 'Goal ended' : `${Math.round(gi.weeks_remaining)} weeks left`}
               </Text>
             </View>
@@ -94,15 +101,24 @@ export function HomeDashboard({
           accessibilityLabel="1K Progress"
           accessibilityHint="Opens the strength section of the Analytics tab"
         >
-          <Text style={[styles.oneKLabel, styles.sectionHeaderLabel]}>1K Progress</Text>
+          <Text style={[styles.oneKLabel, styles.sectionHeaderLabel]} numberOfLines={1}>1K Progress</Text>
           <View style={styles.sectionHeaderChevron}>
-            <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
+            <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
           </View>
         </Pressable>
-        <Text style={[styles.oneKHeroValue, { color: oneKHeroColor }]}>
-          {dashboardData.oneK?.total ? `${displayWeight(dashboardData.oneK.total, unit).toFixed(0)}` : '—'}
-          <Text style={styles.oneKHeroUnit}> {unit}</Text>
-        </Text>
+        {dashboardData.oneK?.total ? (
+          <Text style={[styles.oneKHeroValue, { color: oneKHeroColor }]}>
+            {`${displayWeight(dashboardData.oneK.total, unit).toFixed(0)}`}
+            <Text style={styles.oneKHeroUnit}> {unit}</Text>
+          </Text>
+        ) : (
+          // Untracked total: a muted em-dash at hero scale plus a plain-language
+          // next step, not a lerp-tinted lone glyph that read as a stray mark.
+          <>
+            <Text style={styles.oneKHeroPlaceholder}>—</Text>
+            <Text style={styles.oneKHeroCaption}>Track lifts to see your 1K total</Text>
+          </>
+        )}
         <View style={styles.progressBarLarge}>
           <View
             style={[
