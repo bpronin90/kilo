@@ -214,6 +214,11 @@ unzip -l <production-aab> | awk '/base\/dex\/classes.*\.dex/{print $4}' | \
   done
 ```
 
+**Production smoke test (confirmed):** Cold-start, email/password sign-in, and
+CAPTCHA all function correctly on a production build at this SDK version.
+`GmsBarcodeScanningDelegateActivity` registered in the merged manifest does not
+interfere with the app's CAPTCHA or authentication activity flow.
+
 **Upgrade path:** This constraint is upstream in `expo-dev-launcher`. Track the
 [expo-dev-launcher changelog](https://github.com/expo/expo/tree/main/packages/expo-dev-launcher)
 for a future SDK that either removes the scanner dependency or exposes a
