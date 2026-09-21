@@ -173,7 +173,7 @@ export function MoreScreen({
   }
 
   return (
-    <ScreenShell title="More" subtitle="Settings, help, and your data.">
+    <ScreenShell title="More" subtitle="Settings, help, and your data." style={kua ? { backgroundColor: kua.background } : undefined}>
       <SectionTitle>Preferences</SectionTitle>
       <View style={styles.list}>
         <Pressable style={styles.menuItem} onPress={() => showView('profile')} accessibilityRole="button" accessibilityLabel="User Profile">
