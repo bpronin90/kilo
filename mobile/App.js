@@ -5,6 +5,7 @@ import { WebAlertHost } from './components/WebAlertHost';
 import * as Updates from 'expo-updates';
 
 import { ThemeProvider, useTheme, useThemedStyles } from './theme/ThemeContext';
+import { useThemePreferencesHydrated } from './lib/themePreference';
 import { useKuaFonts } from './theme/typography';
 import { TabBar } from './components/TabBar';
 import { Button } from './components/UI';
@@ -72,9 +73,30 @@ export default function App() {
 
   return (
     <ThemeProvider>
-      <WipeAwareAppShell />
+      <ThemeHydrationGate>
+        <WipeAwareAppShell />
+      </ThemeHydrationGate>
     </ThemeProvider>
   );
+}
+
+// Cold-start theme barrier (#1138). A persisted Clay/Grass theme or an explicit
+// Light/Dark appearance is only known after an asynchronous AsyncStorage read,
+// so painting the shell from the in-memory defaults (Hard Court / System) lets
+// the wrong theme visibly stabilize before the read lands. This holds the first
+// *themed* frame until both preferences settle, then reveals the shell already
+// on the correct palette. The hold is deliberately theme-neutral — no palette
+// color is committed while the theme is still unknown — and it always releases:
+// a failed or empty read still marks the store hydrated, so there is no
+// indefinite loading state. The gate sits under ThemeProvider so the revealed
+// shell reads the resolved theme on its very first render.
+function ThemeHydrationGate({ children }) {
+  const hydrated = useThemePreferencesHydrated();
+  // Inline flex-only style on purpose: no palette color is committed while the
+  // theme is unknown, and a module-scope StyleSheet.create() would (correctly)
+  // trip the "no stale palette" structural guard in theme-rendering.
+  if (!hydrated) return <View style={{ flex: 1 }} />;
+  return children;
 }
 
 
