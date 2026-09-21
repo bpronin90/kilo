@@ -164,20 +164,6 @@ export function HomeHeader({
         </View>
       ) : (
         <View style={styles.classifSection}>
-          <Pressable
-            testID="home-strength-summary-link"
-            onPress={() => onNavigate('Analytics', 'progressive-overload')}
-            style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart]}
-            hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
-            accessibilityRole="button"
-            accessibilityLabel="Exercise Progress"
-            accessibilityHint="Opens the Progressive Overload section of the Analytics tab"
-          >
-            <Text style={[styles.classifSectionLabel, styles.sectionHeaderLabel]}>Exercise Progress</Text>
-            <View style={styles.sectionHeaderChevron}>
-              <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
-            </View>
-          </Pressable>
           <View style={styles.classifRow}>
             {[
               { label: 'Progressing', count: dashboardData.weeklySummary.classifications?.progressing ?? 0, color: kua ? kua.success : colors.success },

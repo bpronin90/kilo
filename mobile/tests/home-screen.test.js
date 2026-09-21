@@ -567,12 +567,8 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     expect(onNavigate).toHaveBeenCalledWith('Weight');
   });
 
-  // #770: the band's own counts are the per-exercise classification, which is
-  // itemized in Progressive Overload — `strength` landed short of the label.
-  test('the Exercise Progress band goes to the Analytics Progressive Overload section', () => {
-    render.act(() => { byTestID(component.root, 'home-strength-summary-link').props.onPress(); });
-    expect(onNavigate).toHaveBeenCalledWith('Analytics', 'progressive-overload');
-  });
+  // home-strength-summary-link removed; progressive-overload navigation is
+  // covered by home-insights-link (overview) and the baseline-paused-link tests.
 
   test('the 1K card still goes to the Analytics strength section, where the 1K detail lives', () => {
     render.act(() => { byTestID(component.root, 'home-one-k-link').props.onPress(); });
@@ -587,10 +583,9 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
   // home-weight-trend-link is legacy-only; KUA mode (always active in tests) hides it.
   // Navigation to 'Analytics', 'weight' is covered by the weight action in the KUA path.
 
-  // home-weight-trend-link is legacy-only (KUA mode hides it) and is excluded from this loop.
+  // home-weight-trend-link and home-strength-summary-link removed in KUA mode.
   test('repeating any Analytics handoff issues it again with the same target', () => {
     for (const [testID, expected] of [
-      ['home-strength-summary-link', 'progressive-overload'],
       ['home-insights-link', 'overview'],
       ['home-one-k-link', 'strength'],
     ]) {
@@ -604,12 +599,11 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     }
   });
 
-  // home-weight-trend-link is legacy-only; KUA mode (always active in tests) hides it.
+  // home-weight-trend-link and home-strength-summary-link removed in KUA mode.
   test('each handoff exposes a button role and an accessible label', () => {
     for (const testID of [
       'home-current-routine-link',
       'home-weight-action',
-      'home-strength-summary-link',
       'home-insights-link',
     ]) {
       const node = byTestID(component.root, testID);
@@ -621,10 +615,9 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
 
   // #770: a hint that names a destination the press does not reach is worse
   // than no hint, so each one is pinned to the section its control targets.
-  // home-weight-trend-link is legacy-only; KUA mode (always active in tests) hides it.
+  // home-weight-trend-link and home-strength-summary-link removed in KUA mode.
   test('each Analytics hint names the section its control actually opens', () => {
     for (const [testID, hint] of [
-      ['home-strength-summary-link', 'Opens the Progressive Overload section of the Analytics tab'],
       ['home-one-k-link', 'Opens the strength section of the Analytics tab'],
       ['home-insights-link', 'Opens the Analytics tab at the top'],
     ]) {
@@ -646,11 +639,12 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     {}
   );
 
+  // home-weight-trend-link is legacy-only (KUA hides it).
+  // home-strength-summary-link removed: "Exercise Progress" header dropped in favour
+  // of the "Full history and insights" footer link already on the same card.
   const HANDOFF_IDS = [
     'home-current-routine-link',
     'home-weight-action',
-    'home-strength-summary-link',
-    // home-weight-trend-link is legacy-only; KUA mode (always active in tests) hides it.
   ];
 
   // The two quiet inline controls, which carry an explicit 44pt minimum.
@@ -670,7 +664,7 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
 
       // Every handoff is now a compact labeled row, so they all declare the
       // same minimum target rather than one relying on block geometry.
-      for (const testID of [...INLINE_ACTION_IDS, 'home-strength-summary-link', 'home-one-k-link']) {
+      for (const testID of [...INLINE_ACTION_IDS, 'home-one-k-link']) {
         const node = local.root.findByProps({ testID });
         expect(node.props.accessibilityRole).toBe('button');
         const style = flatStyle(node);
@@ -725,11 +719,10 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
       .filter(id => HANDOFF_IDS.includes(id))
       .filter((id, i, all) => id !== all[i - 1]);
 
-    // home-weight-trend-link is legacy-only; KUA mode (always active in tests) hides it.
+    // home-weight-trend-link and home-strength-summary-link are both removed in KUA mode.
     expect(order).toEqual([
       'home-current-routine-link',
       'home-weight-action',
-      'home-strength-summary-link',
     ]);
   });
 
@@ -744,9 +737,7 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
       .toContain('Log workout');
     expect(visibleText(component.root.findByProps({ testID: 'home-weight-action' })))
       .toContain('Log weight');
-    // home-weight-trend-link is legacy-only; KUA mode (always active in tests) hides it.
-    expect(visibleText(component.root.findByProps({ testID: 'home-strength-summary-link' })))
-      .toContain('Exercise Progress');
+    // home-weight-trend-link and home-strength-summary-link removed in KUA mode.
   });
 
   test('the hero keeps a single dominant metric alongside the new actions', () => {
@@ -801,57 +792,36 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     // Dropping the strength band's chevron in an earlier round recreated the
     // "silently pressable" defect, so every handoff must show a chevron.
     const Svg = require('react-native-svg').default;
-    for (const testID of [...INLINE_ACTION_IDS, 'home-strength-summary-link', 'home-one-k-link']) {
+    for (const testID of [...INLINE_ACTION_IDS, 'home-one-k-link']) {
       const node = component.root.findByProps({ testID });
       expect(node.props.accessibilityRole).toBe('button');
       expect(node.findAllByType(Svg).length).toBeGreaterThan(0);
     }
   });
 
-  test('the two strength destinations use the established chevron treatment', () => {
+  // home-strength-summary-link removed; only 1K Progress link remains as a strength destination.
+  test('the 1K Progress link uses the established chevron treatment', () => {
     const visibleText = (node) => node.findAllByType('Text')
       .map(t => String(t.props.children ?? '').trim());
-
-    const band = component.root.findByProps({ testID: 'home-strength-summary-link' });
     const oneK = component.root.findByProps({ testID: 'home-one-k-link' });
-
-    // No filled-pill treatment: a chip background read as noisy, so these match
-    // the plain `Full history and insights ›` control already on this screen.
-    for (const node of [band, oneK]) {
-      const filled = node.findAll(n => {
-        const s = flatStyle(n);
-        return s.backgroundColor !== undefined || s.borderRadius === 999;
-      });
-      expect(filled).toHaveLength(0);
-      expect(flatStyle(node).minHeight).toBe(44);
-      expect(node.props.hitSlop).not.toBeUndefined();
-    }
-
-    // §12: each accessible label matches its own visible label exactly, and the
-    // two names stay distinct so a screen reader can tell them apart.
-    expect(visibleText(band)).toContain('Exercise Progress');
-    expect(band.props.accessibilityLabel).toBe('Exercise Progress');
+    const filled = oneK.findAll(n => {
+      const s = flatStyle(n);
+      return s.backgroundColor !== undefined || s.borderRadius === 999;
+    });
+    expect(filled).toHaveLength(0);
+    expect(flatStyle(oneK).minHeight).toBe(44);
+    expect(oneK.props.hitSlop).not.toBeUndefined();
     expect(visibleText(oneK)).toContain('1K Progress');
     expect(oneK.props.accessibilityLabel).toBe('1K Progress');
   });
 
-  test('the section-header chevron cannot orphan onto its own line', () => {
-    // As independent children of a wrapping full-width row, the chevron dropped
-    // alone below the label at 320px with enlarged text. The row now hugs its
-    // content and does not wrap; the label shrinks instead.
-    for (const testID of ['home-strength-summary-link', 'home-one-k-link']) {
-      const style = flatStyle(component.root.findByProps({ testID }));
-      expect(style.flexWrap).not.toBe('wrap');
-      expect(style.justifyContent).not.toBe('space-between');
-    }
+  test('the 1K header chevron cannot orphan onto its own line', () => {
+    const style = flatStyle(component.root.findByProps({ testID: 'home-one-k-link' }));
+    expect(style.flexWrap).not.toBe('wrap');
+    expect(style.justifyContent).not.toBe('space-between');
   });
 
-  test('the Exercise Progress and 1K headers keep their own card alignment', () => {
-    // The shared header style must not carry cross-axis alignment: baking
-    // `flex-start` into it dragged the centered 1K header to the left edge while
-    // that card's total and breakdown stayed centered.
-    const band = flatStyle(component.root.findByProps({ testID: 'home-strength-summary-link' }));
-    expect(band.alignSelf).toBe('flex-start');
+  test('the 1K header keeps centered card alignment', () => {
     const oneK = flatStyle(component.root.findByProps({ testID: 'home-one-k-link' }));
     expect(oneK.alignSelf).toBe('center');
   });
@@ -859,23 +829,12 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
   test('the classification columns keep horizontal separation', () => {
     // Content-sized columns with no gap could exactly fill the row, so the three
     // labels ran together as one string at 375px with enlarged text.
-    const row = component.root.findByProps({ testID: 'home-strength-summary-link' })
-      .parent.findAll(n => flatStyle(n).flexWrap === 'wrap' && flatStyle(n).columnGap)[0];
-    expect(row).toBeTruthy();
-    expect(flatStyle(row).columnGap).toBeGreaterThanOrEqual(12);
+    const rows = component.root.findAll(n => flatStyle(n).flexWrap === 'wrap' && flatStyle(n).columnGap);
+    const classifRow = rows.find(n => flatStyle(n).columnGap >= 12);
+    expect(classifRow).toBeTruthy();
   });
 
-  test('only the section header row is tappable, not the metrics beneath', () => {
-    // Making the whole band and the whole 1K card tappable was too much
-    // clickable area: the counts, chart, and per-lift grid are data, not
-    // controls.
-    const band = component.root.findByProps({ testID: 'home-strength-summary-link' });
-    const bandText = band.findAllByType('Text').map(t => String(t.props.children ?? '').trim());
-    expect(bandText).toContain('Exercise Progress');
-    for (const label of ['Progressing', 'Steady', 'Regressing']) {
-      expect(bandText).not.toContain(label);
-    }
-
+  test('only the 1K header row is tappable, not the metrics beneath', () => {
     const oneK = component.root.findByProps({ testID: 'home-one-k-link' });
     const oneKText = oneK.findAllByType('Text').map(t => String(t.props.children ?? '').trim());
     expect(oneKText).toContain('1K Progress');
@@ -900,8 +859,8 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     // #1112: KUA mode uses metric-display-mobile (28px JBM Bold) instead of the
     // legacy 48/900 hero, so the guard accepts either KUA scale or legacy scale.
     const card = component.root.findByProps({ testID: 'home-one-k-link' }).parent.parent;
-    // KUA mode (always active in tests): 32px JBM Bold. Legacy: HeroMetric.hero (48px).
-    const heroValueNodes = card.findAll(n => n.type === 'Text' && (flatStyle(n).fontSize === 48 || flatStyle(n).fontSize === 32));
+    // KUA mode (always active in tests): metric-display (36px JBM Bold). Legacy: 48px.
+    const heroValueNodes = card.findAll(n => n.type === 'Text' && (flatStyle(n).fontSize === 48 || flatStyle(n).fontSize === 36));
     expect(heroValueNodes.length).toBeGreaterThan(0);
   });
 
@@ -920,13 +879,9 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     }
   });
 
-  test('neither strength destination nests a press owner', () => {
-    // The chevron is presentational; each section header row is the single
-    // press owner, so there is no nested responder.
-    for (const testID of ['home-strength-summary-link', 'home-one-k-link']) {
-      const node = component.root.findByProps({ testID });
-      expect(node.findAll(n => n !== node && typeof n.props?.onPress === 'function')).toHaveLength(0);
-    }
+  test('the 1K link does not nest a press owner', () => {
+    const node = component.root.findByProps({ testID: 'home-one-k-link' });
+    expect(node.findAll(n => n !== node && typeof n.props?.onPress === 'function')).toHaveLength(0);
   });
 
   test('the two daily-loop actions share one stable primary-action row', () => {
@@ -2268,7 +2223,7 @@ describe('HomeScreen follows the shared active-training context (#869)', () => {
 
     expect(has(component, 'home-baseline-paused-link')).toBe(true);
     expect(hasText(component, 'Baseline training paused during Recovery')).toBe(true);
-    expect(has(component, 'home-strength-summary-link')).toBe(false);
+    // home-strength-summary-link removed in KUA mode.
     expect(has(component, 'home-one-k-link')).toBe(false);
   });
 
@@ -2306,7 +2261,7 @@ describe('HomeScreen follows the shared active-training context (#869)', () => {
     const component = await mount();
 
     expect(has(component, 'home-baseline-paused-link')).toBe(true);
-    expect(has(component, 'home-strength-summary-link')).toBe(false);
+    // home-strength-summary-link removed in KUA mode.
     expect(has(component, 'home-one-k-link')).toBe(false);
   });
 
@@ -2319,7 +2274,7 @@ describe('HomeScreen follows the shared active-training context (#869)', () => {
     const component = await mount({ onNavigate, notes: [NOTE] });
 
     expect(has(component, 'home-baseline-paused-link')).toBe(false);
-    expect(has(component, 'home-strength-summary-link')).toBe(true);
+    // home-strength-summary-link removed in KUA mode.
     expect(has(component, 'home-one-k-link')).toBe(true);
     expect(hasText(component, 'Recovery ·')).toBe(false);
 

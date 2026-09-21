@@ -179,10 +179,8 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   heroWeightValue: {
-    ...(kua ? TYPOGRAPHY['metric-display'] : HeroMetric.hero),
+    ...(kua ? { ...TYPOGRAPHY['metric-display'], fontSize: 44, lineHeight: 48 } : HeroMetric.hero),
     color: kua ? kua.onSurface : colors.accentText,
-    // Allow the value to give up width inside the row so an enlarged metric on a
-    // 320dp screen stays inside the card instead of painting past its edge.
     flexShrink: 1,
     minWidth: 0,
   },
@@ -291,13 +289,11 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurface : colors.text,
   },
   classifLabel: {
-    ...(kua ? TYPOGRAPHY['label-sm'] : {}),
+    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: TYPOGRAPHY['body-sm'].fontSize } : {}),
     fontSize: kua ? undefined : 11,
     fontWeight: kua ? undefined : '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
-    // No fixed lineHeight: a scaled-up label must grow its own line box rather
-    // than overflow a 14px one.
   },
   classifCaption: {
     ...(kua ? TYPOGRAPHY['body-sm'] : {}),
@@ -519,7 +515,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // In KUA mode, 32px JBM Bold — metric-display-mobile base with +4px bump
   // so the total reads as the dominant figure in the card.
   oneKHeroValue: {
-    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 32 } : HeroMetric.hero),
+    ...(kua ? TYPOGRAPHY['metric-display'] : HeroMetric.hero),
     color: kua ? kua.onSurface : colors.text,
   },
   oneKHeroUnit: {
@@ -560,13 +556,13 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // Weight and case match the Analytics breakdown item (#763); fontSize
   // stays smaller here because Home is the compact summary, not the owner.
   oneKGridValue: {
-    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 22 } : {}),
+    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : {}),
     fontSize: kua ? undefined : 16,
     fontWeight: kua ? undefined : '700',
     color: kua ? kua.onSurface : colors.text,
   },
   oneKGridLabel: {
-    ...(kua ? TYPOGRAPHY['label-sm'] : {}),
+    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: TYPOGRAPHY['body-sm'].fontSize } : {}),
     fontSize: kua ? undefined : 11,
     fontWeight: kua ? undefined : '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
