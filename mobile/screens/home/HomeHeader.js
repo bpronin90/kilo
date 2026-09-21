@@ -233,7 +233,7 @@ export function HomeHeader({
               <LineChart
                 data={displayChartSeries(dashboardData.weightSeries, unit)}
                 color={kua ? kua.primary : colors.textMuted}
-                height={64}
+                height={52}
                 paddingHorizontal={0}
                 hideHeader
               />

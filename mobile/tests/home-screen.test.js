@@ -854,16 +854,25 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     expect(onNavigate).toHaveBeenNthCalledWith(2, 'Analytics', 'strength');
   });
 
-  test('the 1K hero total matches the Analytics owner scale, restoring the pre-#763 treatment (#771)', () => {
+  test('the 1K hero total matches the Analytics owner scale, restoring the pre-#763 treatment (#771)', async () => {
     // Regression guard: #763 gave oneKHeroValue its own 32/800 compact-summary
     // override instead of spreading HeroMetric.hero (48/900), which read as a
     // visual demotion of the 1K total. #771 restores the pre-regression scale.
     // #1112: the 1K total is Home's flagship figure and is scaled past the
     // metric-display token (56px JBM Bold) per owner feedback; legacy stays at
-    // 48px. Either satisfies the "not visually demoted" guard.
-    const card = component.root.findByProps({ testID: 'home-one-k-link' }).parent.parent;
+    // 48px. Either satisfies the "not visually demoted" guard. The untracked
+    // placeholder is deliberately smaller, so this mounts a note that yields a
+    // real total to exercise the flagship value itself.
+    const NOTE_1K = { id: 'n1', title: 'A', raw_text: ORDINARY_TEXT, one_k_exercises: ONE_K, saved_at: '2026-06-01T12:00:00.000Z' };
+    useEntriesModule.useTrackedLifts.mockReturnValue({ trackedLifts: TRACKED, loading: false, save: jest.fn(), toggle: jest.fn() });
+    let local;
+    await render.act(async () => {
+      local = render.create(<HomeScreen {...populatedProps(jest.fn())} workoutNote={NOTE_1K} notes={[NOTE_1K]} currentId="n1" />);
+    });
+    const card = local.root.findByProps({ testID: 'home-one-k-link' }).parent.parent;
     const heroValueNodes = card.findAll(n => n.type === 'Text' && (flatStyle(n).fontSize === 48 || flatStyle(n).fontSize === 56));
     expect(heroValueNodes.length).toBeGreaterThan(0);
+    await render.act(async () => { local.unmount(); });
   });
 
   test('the 1K unit suffix uses a literal leading space, not marginLeft (#763)', async () => {

@@ -97,7 +97,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // the same signal the Log routine card uses — so Home reads as the same
   // design system rather than a stack of generic panels.
   weeklyHero: {
-    padding: 24,
+    padding: 20,
     gap: 0,
     marginTop: 12,
     backgroundColor: kua ? kua.surfaceCard : undefined,
@@ -112,7 +112,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   heroHeaderLeft: {
     flexDirection: 'row',
@@ -266,23 +266,23 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   heroSparklineStrip: {
-    marginTop: 14,
+    marginTop: 8,
   },
   heroSparklineSublabel: {
     ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: TYPOGRAPHY['body-sm'].fontSize } : { fontSize: 11, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   // A taller chart so the trend does not read as a squished wide band and the
   // built-in date axis is not crowded against the line (#1112 owner feedback).
   heroSparklineChart: {
-    marginBottom: 8,
+    marginBottom: 2,
   },
   // The classification trio is the hero's lead content (#1112: training leads).
   // It sits directly under the header with no top rule, so the week's training
   // pulse is the first thing read, above the actions and the body-weight trend.
   classifSection: {
-    marginBottom: 20,
+    marginBottom: 12,
   },
   // Shared affordance for the two strength destinations (Exercise Progress and
   // 1K Progress): the section label plus the same plain chevron that
@@ -370,7 +370,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   heroFooter: {
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: 6,
   },
   insightsLink: {
     flexDirection: 'row',
@@ -388,7 +388,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // is still a full 44dp target, so the fix for the dead space it left above
   // the week eyebrow is tightening the space around it, not the target itself.
   recoveryCard: {
-    padding: 24,
+    padding: 20,
     paddingTop: 14,
     gap: 4,
     backgroundColor: kua ? kua.surfaceCard : undefined,
@@ -465,7 +465,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.primary : colors.accentText,
   },
   goalCard: {
-    padding: 24,
+    padding: 20,
     backgroundColor: kua ? kua.surfaceCard : undefined,
     borderColor: kua ? kua.surfaceBorder : undefined,
   },
@@ -473,7 +473,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 12,
   },
   goalDirectionText: {
     ...(kua ? { ...TYPOGRAPHY['headline-md'], fontSize: 20, lineHeight: 26 } : { fontSize: 20, fontWeight: '700' }),
@@ -520,9 +520,9 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // row is still a full 44dp target, so the fix for the dead space it left
   // above the hero total is tightening the space around it, not the target.
   oneKCard: {
-    padding: 24,
-    paddingTop: 14,
-    gap: 6,
+    padding: 20,
+    paddingTop: 12,
+    gap: 2,
     alignItems: 'center',
     backgroundColor: kua ? kua.surfaceCard : undefined,
     borderColor: kua ? kua.surfaceBorder : undefined,
@@ -564,8 +564,11 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // Muted hero placeholder for the untracked 1K total: a plain em-dash at hero
   // scale in the muted ink, never the lerp-tinted value color that made "—"
   // read as a stray colored mark (#1112).
+  // The untracked placeholder is smaller than the real total so the empty
+  // state is not a tall box holding a lone em-dash (#1112 owner feedback: dead
+  // space).
   oneKHeroPlaceholder: {
-    ...(kua ? { ...TYPOGRAPHY['metric-display'], fontSize: 56, lineHeight: 60 } : HeroMetric.hero),
+    ...(kua ? { ...TYPOGRAPHY['metric-display'], fontSize: 36, lineHeight: 40 } : HeroMetric.hero),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   oneKHeroCaption: {
@@ -582,7 +585,8 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: kua ? kua.surfaceBorder : colors.divider,
     borderRadius: 4,
     overflow: 'hidden',
-    marginBottom: 16,
+    marginTop: 6,
+    marginBottom: 12,
     alignSelf: 'stretch',
   },
   progressFillLarge: {

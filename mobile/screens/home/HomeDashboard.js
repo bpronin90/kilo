@@ -94,7 +94,7 @@ export function HomeDashboard({
           accessibilityLabel="1K Progress"
           accessibilityHint="Opens the strength section of the Analytics tab"
         >
-          <Text style={[styles.oneKLabel, styles.sectionHeaderLabel]}>1K Progress</Text>
+          <Text style={[styles.oneKLabel, styles.sectionHeaderLabel]} numberOfLines={1}>1K Progress</Text>
           <View style={styles.sectionHeaderChevron}>
             <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
           </View>
