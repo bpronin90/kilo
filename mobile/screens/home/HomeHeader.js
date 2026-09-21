@@ -91,18 +91,23 @@ export function HomeHeader({
           <View style={styles.heroAccentBar} />
           <Text style={styles.heroSectionLabel} numberOfLines={1}>{headerLabel}</Text>
         </View>
-        {captionText && !baselinePaused && kua ? (
-          <Pressable
-            testID="home-classif-info"
-            onPress={() => setCaptionExpanded(v => !v)}
-            style={styles.heroInfoToggle}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityState={{ expanded: captionExpanded }}
-            accessibilityLabel={captionText}
-          >
-            <InfoIcon color={mutedStroke} />
-          </Pressable>
+        {!baselinePaused ? (
+          <View style={styles.heroHeaderRight}>
+            <Text style={styles.heroClassifHeaderLabel} numberOfLines={1}>Exercise Progress</Text>
+            {captionText && kua ? (
+              <Pressable
+                testID="home-classif-info"
+                onPress={() => setCaptionExpanded(v => !v)}
+                style={styles.heroInfoToggle}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: captionExpanded }}
+                accessibilityLabel={captionText}
+              >
+                <InfoIcon color={mutedStroke} />
+              </Pressable>
+            ) : null}
+          </View>
         ) : null}
       </View>
 

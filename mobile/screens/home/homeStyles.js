@@ -128,11 +128,26 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: kua ? kua.primary : colors.accent,
   },
   heroSectionLabel: {
-    ...(kua ? TYPOGRAPHY['headline-sm'] : { fontSize: 13, fontWeight: '700' }),
+    ...(kua ? { ...TYPOGRAPHY['headline-sm'], fontSize: 14, lineHeight: 18 } : { fontSize: 13, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
     textTransform: 'uppercase',
-    letterSpacing: kua ? 0.5 : 0.5,
+    letterSpacing: 0.5,
     flexShrink: 1,
+  },
+  // Right side of the hero header: the "Exercise Progress" label for the
+  // classification trio, sitting across from the week with the info toggle
+  // next to it (#1112 owner feedback).
+  heroHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+  },
+  heroClassifHeaderLabel: {
+    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: TYPOGRAPHY['body-sm'].fontSize } : { fontSize: 12, fontWeight: '700' }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   // Header-right info toggle for the classification caption (#1112 owner
   // feedback): the "ⓘ" no longer owns a dedicated row — it lives in the space
@@ -230,7 +245,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     minWidth: 0,
   },
   heroWeightValue: {
-    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : HeroMetric.hero),
+    ...(kua ? TYPOGRAPHY['metric-display'] : HeroMetric.hero),
     color: kua ? kua.onSurface : colors.accentText,
     flexShrink: 1,
     minWidth: 0,
@@ -246,7 +261,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // otherwise — which rendered "lb" as a mangled mono ligature (#1112).
   heroWeightUnit: {
     fontFamily: kua ? TYPOGRAPHY['body-md'].fontFamily : undefined,
-    fontSize: kua ? 15 : 16,
+    fontSize: kua ? 18 : 16,
     fontWeight: kua ? undefined : '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
@@ -339,7 +354,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // hero's lead figures the counts are the dominant numbers on the card,
   // tinted per bucket in JSX.
   classifCount: {
-    ...(kua ? TYPOGRAPHY['metric-display'] : { fontSize: 16, fontWeight: '800' }),
+    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : { fontSize: 16, fontWeight: '800' }),
     color: kua ? kua.onSurface : colors.text,
   },
   classifLabel: {
@@ -461,7 +476,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginBottom: 20,
   },
   goalDirectionText: {
-    ...(kua ? TYPOGRAPHY['headline-md'] : { fontSize: 20, fontWeight: '700' }),
+    ...(kua ? { ...TYPOGRAPHY['headline-md'], fontSize: 20, lineHeight: 26 } : { fontSize: 20, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
   goalModeAccent: {
@@ -479,8 +494,10 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     flex: 1,
     gap: 4,
   },
+  // Matches the classification (Progressing/Steady) label treatment so the
+  // goal stats read as the same family (#1112 owner feedback).
   goalStatLabel: {
-    ...(kua ? TYPOGRAPHY['label-sm'] : { fontSize: 12, fontWeight: '600' }),
+    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: TYPOGRAPHY['body-sm'].fontSize } : { fontSize: 12, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   goalStatValueRow: {
@@ -488,13 +505,14 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     alignItems: 'baseline',
     gap: 4,
   },
+  // Same scale as the classification counts (#1112 owner feedback).
   goalStatValueLarge: {
-    ...(kua ? TYPOGRAPHY['metric-display'] : { fontSize: 30, fontWeight: '800' }),
+    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : { fontSize: 30, fontWeight: '800' }),
     color: kua ? kua.onSurface : colors.text,
   },
   goalStatUnitLabel: {
     fontFamily: kua ? TYPOGRAPHY['body-md'].fontFamily : undefined,
-    fontSize: kua ? 17 : 18,
+    fontSize: kua ? 15 : 18,
     fontWeight: kua ? undefined : '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
@@ -509,10 +527,13 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: kua ? kua.surfaceCard : undefined,
     borderColor: kua ? kua.surfaceBorder : undefined,
   },
+  // Same size as the hero's WEEK header so the card titles read as one family
+  // (#1112 owner feedback: match the others where applicable).
   oneKLabel: {
-    ...(kua ? TYPOGRAPHY['headline-sm'] : { fontSize: 12, fontWeight: '800', letterSpacing: 1 }),
+    ...(kua ? { ...TYPOGRAPHY['headline-sm'], fontSize: 14, lineHeight: 18 } : { fontSize: 12, fontWeight: '800', letterSpacing: 1 }),
     color: kua ? kua.onSurface : colors.textMuted,
     textTransform: 'uppercase',
+    letterSpacing: kua ? 0.5 : 1,
     flexShrink: 1,
   },
   oneKHero: {
@@ -585,9 +606,9 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   // Weight and case match the Analytics breakdown item (#763); fontSize
   // stays smaller here because Home is the compact summary, not the owner.
+  // Same scale as the classification / goal metric values (#1112 owner feedback).
   oneKGridValue: {
-    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 32, lineHeight: 36 } : { fontWeight: '700' }),
-    fontSize: kua ? 32 : 16,
+    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : { fontSize: 16, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
   oneKGridLabel: {
