@@ -474,7 +474,10 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
           <Text style={styles.dangerZoneHeadingText}>⚠ Danger Zone</Text>
         </View>
         {auth?.deviceWipeRequired ? (
-          <Text style={styles.warnText} accessibilityLabel="Device wipe required">
+          <Text
+            style={kua ? styles.dangerZoneWarnText : styles.warnText}
+            accessibilityLabel="Device wipe required"
+          >
             Your account session ended, but device data could not be wiped. Retry before sharing this device.
           </Text>
         ) : null}
@@ -499,7 +502,10 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
           />
         ) : null}
         {dangerStatus ? (
-          <Text style={styles.helpText} accessibilityLabel="Danger zone status">
+          <Text
+            style={kua ? styles.dangerZoneStatusText : styles.helpText}
+            accessibilityLabel="Danger zone status"
+          >
             {dangerStatus}
           </Text>
         ) : null}

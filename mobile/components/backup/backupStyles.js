@@ -66,16 +66,42 @@ export const createStyles = (colors, kua = null, typography = {}) => StyleSheet.
     lineHeight: 22,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
-  // Caution ink (not error): "unencrypted export" and "wipe retry needed" are
-  // disclosures/prompts, not failures, so KUA uses the dedicated `warning`
-  // token rather than `error` — matching the legacy `cautionText` intent this
-  // replaces (#914-style status-meaning preservation).
+  // Caution ink (not error): "unencrypted export" is a disclosure, not a
+  // failure, so KUA uses the dedicated `warning` token rather than `error` —
+  // matching the legacy `cautionText` intent this replaces (#914-style
+  // status-meaning preservation). This style is only ever placed on a plain
+  // `surfaceCard`/canvas background (the Export card) — `kua.warning` clears
+  // AA there in every combo. It is NOT used inside the Danger Zone; see
+  // `dangerZoneWarnText` below for text placed on that tinted surface.
   warnText: {
     marginTop: 10,
     fontSize: 13,
     lineHeight: 19,
     fontWeight: '600',
     color: kua ? kua.warning : (colors.cautionText ?? colors.error ?? colors.textMuted),
+  },
+  // Text placed directly on the Danger Zone's tinted background
+  // (`withAlpha(kua.error, 0.14)` over the theme canvas) must clear AA
+  // against that COMPOSITED surface, not the bare canvas — `kua.warning` and
+  // `kua.onSurfaceVariant` both fail AA there in the KUA light themes
+  // (measured 3.57-3.70:1 and 4.04-4.24:1 respectively; Codex re-review,
+  // PR #1131). `kua.errorText` clears 4.5:1 against the composited tint in
+  // all six combinations (measured 4.65-6.32:1: hardCourt light 4.65,
+  // clayCourt light 4.73, grassCourt light 4.81, hardCourt dark 6.32,
+  // clayCourt dark 6.02, grassCourt dark 6.13) and keeps the copy's
+  // attention/warning semantic, so both the "wipe retry needed" notice and
+  // the danger-zone action status use it instead of `warnText`/`helpText`.
+  dangerZoneWarnText: {
+    marginTop: 10,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '600',
+    color: kua ? kua.errorText : (colors.cautionText ?? colors.error ?? colors.textMuted),
+  },
+  dangerZoneStatusText: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: kua ? kua.errorText : colors.textMuted,
   },
   actionButton: {
     marginTop: 12,
