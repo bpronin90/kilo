@@ -1,9 +1,9 @@
-import React, { useState, useLayoutEffect, useEffect, useRef } from 'react';
+import React, { useState, useLayoutEffect, useEffect, useRef, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { ScreenShell } from '../components/ScreenShell';
 import { SectionTitle } from '../components/UI';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 
 import { HelpScreen } from '../components/HelpScreen';
 import { AboutScreen } from '../components/AboutScreen';
@@ -40,8 +40,8 @@ export function MoreScreen({
   navSubviewAnchor = null,
   navSubviewKey = 0,
 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const [activeView, setActiveView] = useState('menu');
 
   // Password recovery (#497): when the shell reports an active recovery
@@ -178,11 +178,11 @@ export function MoreScreen({
       <View style={styles.list}>
         <Pressable style={styles.menuItem} onPress={() => showView('profile')} accessibilityRole="button" accessibilityLabel="User Profile">
           <Text style={styles.menuItemText}>User Profile</Text>
-          <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
+          <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
         </Pressable>
         <Pressable style={styles.menuItem} onPress={() => showView('settings')} accessibilityRole="button" accessibilityLabel="Settings">
           <Text style={styles.menuItemText}>Settings</Text>
-          <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
+          <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
         </Pressable>
       </View>
 
@@ -193,14 +193,14 @@ export function MoreScreen({
             <Text style={styles.menuItemText}>Account</Text>
             <Text style={styles.menuItemHelp}>Sign-in & cloud account</Text>
           </View>
-          <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
+          <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
         </Pressable>
         <Pressable style={styles.menuItem} onPress={() => showView('backup')} accessibilityRole="button" accessibilityLabel="Data and Backup">
           <View style={styles.menuCopy}>
             <Text style={styles.menuItemText}>Data & Backup</Text>
             <Text style={styles.menuItemHelp}>Local & cloud backup</Text>
           </View>
-          <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
+          <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
         </Pressable>
         {/* Routine import (#955) lives beside Data & Backup rather than on the
             Log tab: it is a data-entry surface, not part of training, and
@@ -211,7 +211,7 @@ export function MoreScreen({
             <Text style={styles.menuItemText}>Import Routine</Text>
             <Text style={styles.menuItemHelp}>Paste a shared routine</Text>
           </View>
-          <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
+          <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
         </Pressable>
       </View>
 
@@ -222,7 +222,7 @@ export function MoreScreen({
             <Text style={styles.menuItemText}>Routine prompt tools</Text>
             <Text style={styles.menuItemHelp}>Copy local templates for an external LLM</Text>
           </View>
-          <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
+          <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
         </Pressable>
       </View>
 
@@ -230,18 +230,18 @@ export function MoreScreen({
       <View style={styles.list}>
         <Pressable style={styles.menuItem} onPress={() => showView('help')} accessibilityRole="button" accessibilityLabel="App Guide">
           <Text style={styles.menuItemText}>App Guide</Text>
-          <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
+          <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
         </Pressable>
         <Pressable style={styles.menuItem} onPress={() => showView('about')} accessibilityRole="button" accessibilityLabel="About Kilo">
           <Text style={styles.menuItemText}>About Kilo</Text>
-          <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
+          <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
         </Pressable>
       </View>
     </ScreenShell>
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+const createStyles = (colors, kua = null) => StyleSheet.create({
   list: {
     gap: 12,
   },
@@ -250,11 +250,11 @@ const createStyles = (colors) => StyleSheet.create({
     minHeight: 44,
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: colors.card,
+    backgroundColor: kua ? kua.surfaceCard : colors.card,
     padding: 20,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   menuCopy: {
     flex: 1,
@@ -263,10 +263,10 @@ const createStyles = (colors) => StyleSheet.create({
   menuItemText: {
     fontSize: 17,
     fontWeight: '600',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   menuItemHelp: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
 });
