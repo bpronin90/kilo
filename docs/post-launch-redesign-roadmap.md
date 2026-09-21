@@ -1,6 +1,6 @@
 # Kilo Post-Launch Redesign Roadmap
 
-**Status: Analog Iron direction retired. This roadmap covers the three-theme Kinetic Utilitarian Athletic system.**
+**Status: KUA foundations and screen migrations complete. Phase 5 theme selection UI is next.**
 
 This roadmap begins only after Kilo's production launch is externally verified. See
 [`docs/play-store-readiness.md`](play-store-readiness.md) for the launch checklist.
@@ -59,15 +59,21 @@ Landed before this redesign. Assigns production files over 600 lines to implemen
 
 ---
 
-## Phase 2 — Design specification and approval (this issue)
+## Phase 2 — Design specification and approval (complete)
 
-Issue [#1095](https://github.com/bpronin90/kilo/issues/1095). The design package in `docs/design/kinetic-utilitarian-athletic/` is the deliverable. Implementation cards below may not open until the owner checklist in #1095 is fully checked.
+Issue [#1095](https://github.com/bpronin90/kilo/issues/1095). The approved design package lives in `docs/design/kinetic-utilitarian-athletic/`.
 
 ---
 
-## Phase 3 — Shared foundation implementation
+## Phase 3 — Shared foundation implementation (complete)
 
-These cards are prerequisites for all theme and screen work. They may run in parallel within this phase.
+These prerequisites for all theme and screen work are complete:
+
+- D1: [#1096](https://github.com/bpronin90/kilo/issues/1096)
+- D2: [#1097](https://github.com/bpronin90/kilo/issues/1097)
+- D3: [#1098](https://github.com/bpronin90/kilo/issues/1098)
+- D4: [#1099](https://github.com/bpronin90/kilo/issues/1099)
+- D5: [#1105](https://github.com/bpronin90/kilo/issues/1105)
 
 ### D1 — Token system
 
@@ -123,7 +129,7 @@ implementation and review aid, not the final Settings UX.
 
 ---
 
-## Phase 4 — Screen migration
+## Phase 4 — Screen migration (complete)
 
 Each card migrates one screen. All cards in this phase require the Phase 3
 foundation cards, including D5's preview mechanism, to be merged first. Each
@@ -132,7 +138,18 @@ theme/mode combinations before approval: Hard Court, Clay Court, and Grass
 Court, each in light and dark mode. System mode must also be checked for correct
 live mode resolution without treating it as a seventh visual design.
 
-Cards should be opened as separate issues after Phase 2 (#1095) is owner-approved. The issue bodies follow the product contract in AGENTS.md.
+All screen migrations and the shared execution, check-in, and Recovery overlay
+migration are complete:
+
+- Shared overlays: [#1100](https://github.com/bpronin90/kilo/issues/1100)
+- S1 Log: [#1109](https://github.com/bpronin90/kilo/issues/1109)
+- S2 Weight: [#1113](https://github.com/bpronin90/kilo/issues/1113)
+- S3 Analytics: [#1116](https://github.com/bpronin90/kilo/issues/1116)
+- S4 Home: [#1112](https://github.com/bpronin90/kilo/issues/1112)
+- S5 More: [#1111](https://github.com/bpronin90/kilo/issues/1111)
+- S5 Settings: [#1115](https://github.com/bpronin90/kilo/issues/1115)
+- S5 Account: [#1114](https://github.com/bpronin90/kilo/issues/1114)
+- S5 Data and Backup: [#1110](https://github.com/bpronin90/kilo/issues/1110)
 
 ### S1 — Log screen (Workout Notes)
 
@@ -162,7 +179,7 @@ Apply KUA tokens. List rows, section headers, native controls.
 
 ---
 
-## Phase 5 — Theme selection UI
+## Phase 5 — Theme selection UI (next)
 
 Replace the development preview control with the polished production-facing
 theme picker after all Phase 4 screens have passed six-combination owner review.
