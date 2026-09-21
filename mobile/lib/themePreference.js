@@ -79,6 +79,22 @@ export function getThemePreferencesHydrated() {
   return appearanceHydrated && themeSelectionHydrated;
 }
 
+// Safety-net release (#1138 review). Rejection and synchronous-throw settle the
+// barrier, but a read whose promise simply never resolves (a stalled native
+// storage bridge) would otherwise strand the app on the neutral hold forever.
+// A bounded fallback guarantees the barrier always opens; the value still
+// corrects if the real read lands late (markHydrated is idempotent). Generous
+// enough not to fire on an ordinary slow cold-start read (tens of ms), so it
+// only ever trips on a genuinely stuck read.
+export const THEME_HYDRATION_TIMEOUT_MS = 3000;
+
+// A setTimeout that never keeps a Node test process alive on its own.
+function scheduleHydrationFallback(settle) {
+  const timer = setTimeout(settle, THEME_HYDRATION_TIMEOUT_MS);
+  if (timer && typeof timer.unref === 'function') timer.unref();
+  return timer;
+}
+
 export function getAppearancePreference() {
   return currentPreference;
 }
@@ -113,10 +129,25 @@ export function setAppearancePreference(value) {
 function ensureHydrated() {
   if (hydrateStarted) return;
   hydrateStarted = true;
+  // Clears the fallback timer on settle so a normal read leaves no lingering
+  // timeout, and releases the barrier exactly once (markAppearanceHydrated is
+  // idempotent whether the read or the fallback wins).
+  let fallbackTimer = null;
+  const settle = () => {
+    if (fallbackTimer !== null) {
+      clearTimeout(fallbackTimer);
+      fallbackTimer = null;
+    }
+    markAppearanceHydrated();
+  };
   // Wrapped in Promise.resolve + try/catch so a storage adapter that throws
   // synchronously or returns a non-thenable leaves the app on the default
   // preference instead of tearing down the first render that subscribed.
   try {
+    // Armed before the read so even a promise that never settles releases the
+    // barrier (#1138 review): rejection and sync-throw are handled below, but a
+    // stuck bridge would otherwise hold the neutral hold indefinitely.
+    fallbackTimer = scheduleHydrationFallback(settle);
     Promise.resolve(AsyncStorage.getItem(APPEARANCE_PREFERENCE_KEY))
       .then((raw) => {
         // An explicit selection made while the read was in flight always wins.
@@ -130,10 +161,10 @@ function ensureHydrated() {
       .catch(() => {})
       // Settled either way: release the barrier so a failed or empty read never
       // leaves the app on an indefinite loading frame.
-      .finally(markAppearanceHydrated);
+      .finally(settle);
   } catch (e) {
     // A synchronously throwing adapter still counts as settled on the default.
-    markAppearanceHydrated();
+    settle();
   }
 }
 
@@ -215,7 +246,17 @@ export function setThemeSelection(value) {
 function ensureThemeHydrated() {
   if (themeHydrateStarted) return;
   themeHydrateStarted = true;
+  let fallbackTimer = null;
+  const settle = () => {
+    if (fallbackTimer !== null) {
+      clearTimeout(fallbackTimer);
+      fallbackTimer = null;
+    }
+    markThemeSelectionHydrated();
+  };
   try {
+    // Same stuck-read safety net as the appearance store (#1138 review).
+    fallbackTimer = scheduleHydrationFallback(settle);
     Promise.resolve(AsyncStorage.getItem(THEME_SELECTION_KEY))
       .then((raw) => {
         if (themeExplicitlySet) return;
@@ -226,10 +267,10 @@ function ensureThemeHydrated() {
         }
       })
       .catch(() => {})
-      .finally(markThemeSelectionHydrated);
+      .finally(settle);
   } catch (e) {
     // A synchronously throwing adapter still counts as settled on the default.
-    markThemeSelectionHydrated();
+    settle();
   }
 }
 

@@ -22,6 +22,7 @@ import {
   useThemeSelection,
   getThemePreferencesHydrated,
   useThemePreferencesHydrated,
+  THEME_HYDRATION_TIMEOUT_MS,
 } from '../lib/themePreference';
 import { resolveThemeMode } from '../theme/ThemeContext';
 
@@ -589,6 +590,7 @@ describe('cold-start hydration barrier (#1138)', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+    jest.useRealTimers();
   });
 
   test('the barrier stays closed until BOTH reads settle', async () => {
@@ -701,6 +703,35 @@ describe('cold-start hydration barrier (#1138)', () => {
       theme: 'hard-court',
       appearance: 'system',
     });
+  });
+
+  test('a read that never settles still opens the barrier after the timeout', async () => {
+    jest.useFakeTimers();
+    // A promise that resolves and rejects never — a stalled native bridge.
+    jest.spyOn(AsyncStorage, 'getItem').mockReturnValue(new Promise(() => {}));
+
+    let component;
+    await act(async () => {
+      component = renderer.create(<HydrationProbe />);
+    });
+
+    // Neither read can settle, so without the safety net the barrier would hang.
+    expect(getThemePreferencesHydrated()).toBe(false);
+    expect(probeState(component).hydrated).toBe('false');
+
+    act(() => {
+      jest.advanceTimersByTime(THEME_HYDRATION_TIMEOUT_MS);
+    });
+
+    // The bounded fallback releases the barrier on the safe defaults.
+    expect(getThemePreferencesHydrated()).toBe(true);
+    expect(probeState(component)).toEqual({
+      hydrated: 'true',
+      theme: 'hard-court',
+      appearance: 'system',
+    });
+
+    jest.useRealTimers();
   });
 
   test('a synchronously throwing read still opens the barrier on the defaults', async () => {
