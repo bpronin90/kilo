@@ -333,10 +333,10 @@ const createStyles = (colors, kua = null, typography = {}) => StyleSheet.create(
   stepper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.inputBackground,
+    backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     overflow: 'hidden',
   },
   stepperButton: {
@@ -344,14 +344,15 @@ const createStyles = (colors, kua = null, typography = {}) => StyleSheet.create(
     height: 44,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
   },
   // `chipAccentText` (#923): the glyphs always sit on `stepperButton`'s
   // `chipBackground` fill, where `accentText` measures 3.54:1 in dark mode.
+  // In KUA mode: `primaryOnContainer` on `primaryContainer`.
   stepperText: {
     fontSize: 20,
     fontWeight: '700',
-    color: colors.chipAccentText,
+    color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },
   stepperValueContainer: {
     width: 60,
