@@ -10,6 +10,7 @@ import { deriveHomeDashboardData, useHomeNormalNotes, useHomeRecoverySummary } f
 import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
 import { markStartupPhase, markStartupStorageReads } from '../storage/entries/startupTiming';
 import { createStyles } from './home/homeStyles';
+import { useKuaTypography } from '../theme/typography';
 import { HomeHeader } from './home/HomeHeader';
 import { HomeDashboard } from './home/HomeDashboard';
 // The exact example the welcome card teaches (issue #517). Exported so tests
@@ -80,7 +81,8 @@ function ScaleIcon({ color, size = 22 }) {
 // say about sync.
 export function CloudSyncNotice() {
   const { colors, kuaPalette: kua } = useTheme();
-  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
+  const typography = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
   const cloudSync = useCloudSyncSummary();
   const [retryError, setRetryError] = useState('');
   const [retrying, setRetrying] = useState(false);
@@ -179,7 +181,8 @@ export function CloudSyncNotice() {
 // and this placeholder is usually on screen for a few frames.
 function HomeSkeleton() {
   const { colors, kuaPalette: kua } = useTheme();
-  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
+  const typography = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
   return (
     <View
       testID="home-skeleton"
@@ -207,7 +210,8 @@ function HomeSkeleton() {
 
 export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes, successMessage, onNavigate, loading, loadError = false, onRetryLoad }) {
   const { colors, kuaPalette: kua } = useTheme();
-  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
+  const typography = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
   const { goal: weightGoal, loading: goalLoading, error: goalError, refresh: refreshGoal } = useWeightGoal();
   const { trackedLifts, activations: trackedLiftActivations, loading: trackedLiftsLoading, error: trackedLiftsError, refresh: refreshTrackedLifts } = useTrackedLifts();
 

@@ -5,6 +5,7 @@ import { Card } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
 import { displayWeight, formatBodyweightValue } from '../../lib/units';
 import { createStyles } from './homeStyles';
+import { useKuaTypography } from '../../theme/typography';
 import { HomeRecoverySummary } from './HomeRecoverySummary';
 
 // Tiers 1b-3 (recovery summary, weight goal, 1K progress), extracted from
@@ -20,7 +21,8 @@ export function HomeDashboard({
   unit,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
-  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
+  const typography = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
 
   return (
     <>

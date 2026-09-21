@@ -801,8 +801,8 @@ describe('no production surface can hold a stale palette', () => {
       "components/RecoveryBlockWeekModal.js:209 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       "components/SessionCheckInModal.js:374 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       "components/ThemePreviewControl.js:70 '#FF5C00'",
-      'screens/HomeScreen.js:42 "#FF5C00"',
-      'screens/HomeScreen.js:46 "#FF5C00"',
+      'screens/HomeScreen.js:43 "#FF5C00"',
+      'screens/HomeScreen.js:47 "#FF5C00"',
     ]);
   });
 });

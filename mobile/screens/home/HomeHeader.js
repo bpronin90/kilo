@@ -5,6 +5,7 @@ import { Card, LineChart } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
 import { formatBodyweightValue, displayChartSeries } from '../../lib/units';
 import { createStyles } from './homeStyles';
+import { useKuaTypography } from '../../theme/typography';
 
 // Small chevron affordance shared by every quiet handoff on this card.
 function Chevron({ color }) {
@@ -52,7 +53,8 @@ export function HomeHeader({
   unit,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
-  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
+  const typography = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
   const [captionExpanded, setCaptionExpanded] = useState(false);
 
   const isRecovery = isRecoveryOpenWeek || isRecoveryBetweenWeeks;

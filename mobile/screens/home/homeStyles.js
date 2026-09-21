@@ -2,7 +2,7 @@ import { StyleSheet } from 'react-native';
 import { HeroMetric } from '../../components/UI';
 import { TYPOGRAPHY } from '../../theme/typography';
 
-export const createStyles = (colors, kua = null) => StyleSheet.create({
+export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => StyleSheet.create({
   // Cloud sync notice.
   syncNoticeCard: {
     padding: 16,
@@ -29,7 +29,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.error : colors.error,
   },
   syncNoticeBody: {
-    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: TYPOGRAPHY['body-sm'].fontSize } : {}),
+    ...(kua ? { fontFamily: typography['body-sm'].fontFamily, fontSize: typography['body-sm'].fontSize } : {}),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     // No fixed lineHeight: enlarged text must grow its own line box.
     marginTop: 2,
@@ -115,7 +115,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: kua ? kua.primary : colors.accent,
   },
   heroSectionLabel: {
-    ...(kua ? { ...TYPOGRAPHY['headline-sm'], fontSize: 13, lineHeight: 17 } : { fontSize: 12, fontWeight: '700' }),
+    ...(kua ? { ...typography['headline-sm'], fontSize: 13, lineHeight: 17 } : { fontSize: 12, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -128,7 +128,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     flexShrink: 0,
   },
   heroClassifHeaderLabel: {
-    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: 12 } : { fontSize: 11, fontWeight: '700' }),
+    ...(kua ? { fontFamily: typography['body-sm'].fontFamily, fontSize: 12 } : { fontSize: 11, fontWeight: '700' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -141,12 +141,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     justifyContent: 'center',
   },
   heroWeekSubline: {
-    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: 13, fontWeight: '700' }),
+    ...(kua ? typography['label-lg'] : { fontSize: 13, fontWeight: '700' }),
     color: kua ? kua.primary : colors.accentText,
     marginBottom: 4,
   },
   heroRecoveryNoteLabel: {
-    ...(kua ? TYPOGRAPHY['body-sm'] : { fontSize: 13, fontWeight: '600' }),
+    ...(kua ? typography['body-sm'] : { fontSize: 13, fontWeight: '600' }),
     color: kua ? kua.onSurface : colors.text,
     marginTop: 2,
   },
@@ -178,7 +178,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   heroPrimaryActionText: {
     flexShrink: 1,
-    ...(kua ? { ...TYPOGRAPHY['body-md'], fontSize: 13 } : { fontSize: 12, fontWeight: '600' }),
+    ...(kua ? { ...typography['body-md'], fontSize: 13 } : { fontSize: 12, fontWeight: '600' }),
     color: kua ? kua.primaryOnContainer : colors.textMuted,
     textAlign: 'center',
   },
@@ -196,12 +196,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingHorizontal: 4,
   },
   heroInlineActionText: {
-    ...(kua ? TYPOGRAPHY['body-sm'] : { fontSize: 13, fontWeight: '600' }),
+    ...(kua ? typography['body-sm'] : { fontSize: 13, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Body-weight block (#1112 redesign).
   heroMetricLabel: {
-    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: 12 } : { fontSize: 11, fontWeight: '700' }),
+    ...(kua ? { fontFamily: typography['body-sm'].fontFamily, fontSize: 12 } : { fontSize: 11, fontWeight: '700' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -214,17 +214,17 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     minWidth: 0,
   },
   heroWeightValue: {
-    ...(kua ? { ...TYPOGRAPHY['metric-display'], fontSize: 32, lineHeight: 36 } : HeroMetric.hero),
+    ...(kua ? { ...typography['metric-display'], fontSize: 32, lineHeight: 36 } : HeroMetric.hero),
     color: kua ? kua.onSurface : colors.accentText,
     flexShrink: 1,
     minWidth: 0,
   },
   heroWeightPlaceholder: {
-    ...(kua ? TYPOGRAPHY['body-md'] : { fontSize: 20, fontWeight: '600' }),
+    ...(kua ? typography['body-md'] : { fontSize: 20, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   heroWeightUnit: {
-    fontFamily: kua ? TYPOGRAPHY['body-md'].fontFamily : undefined,
+    fontFamily: kua ? typography['body-md'].fontFamily : undefined,
     fontSize: kua ? 16 : 16,
     fontWeight: kua ? undefined : '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
@@ -233,7 +233,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginTop: 8,
   },
   heroSparklineSublabel: {
-    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: 12 } : { fontSize: 11, fontWeight: '600' }),
+    ...(kua ? { fontFamily: typography['body-sm'].fontFamily, fontSize: 12 } : { fontSize: 11, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginBottom: 4,
   },
@@ -264,7 +264,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     flexShrink: 0,
   },
   classifSectionLabel: {
-    ...(kua ? TYPOGRAPHY['label-sm'] : { fontSize: 12, fontWeight: '700' }),
+    ...(kua ? typography['label-sm'] : { fontSize: 12, fontWeight: '700' }),
     color: kua ? kua.onSurfaceVariant : colors.text,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -289,16 +289,16 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderRadius: 4,
   },
   classifCount: {
-    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 24, lineHeight: 28 } : { fontSize: 16, fontWeight: '800' }),
+    ...(kua ? { ...typography['metric-display-mobile'], fontSize: 24, lineHeight: 28 } : { fontSize: 16, fontWeight: '800' }),
     color: kua ? kua.onSurface : colors.text,
   },
   classifLabel: {
-    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: 12 } : { fontSize: 11, fontWeight: '600' }),
+    ...(kua ? { fontFamily: typography['body-sm'].fontFamily, fontSize: 12 } : { fontSize: 11, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
   },
   classifCaption: {
-    ...(kua ? { ...TYPOGRAPHY['body-sm'], fontSize: 12 } : { fontSize: 12 }),
+    ...(kua ? { ...typography['body-sm'], fontSize: 12 } : { fontSize: 12 }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: kua ? 4 : 8,
     fontStyle: 'italic',
@@ -313,7 +313,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 4,
   },
   insightsLinkText: {
-    ...(kua ? { ...TYPOGRAPHY['body-sm'], fontSize: 12 } : { fontSize: 12, fontWeight: '600' }),
+    ...(kua ? { ...typography['body-sm'], fontSize: 12 } : { fontSize: 12, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Recovery status card (#757).
@@ -325,18 +325,18 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderColor: kua ? kua.surfaceBorder : undefined,
   },
   recoveryLabel: {
-    ...(kua ? { ...TYPOGRAPHY['headline-sm'], fontSize: 13, lineHeight: 17 } : { fontSize: 12, fontWeight: '700', letterSpacing: 0.5 }),
+    ...(kua ? { ...typography['headline-sm'], fontSize: 13, lineHeight: 17 } : { fontSize: 12, fontWeight: '700', letterSpacing: 0.5 }),
     color: kua ? kua.onSurface : colors.text,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   recoveryWeekLabel: {
-    ...(kua ? TYPOGRAPHY['label-sm'] : { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 }),
+    ...(kua ? typography['label-sm'] : { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
   },
   recoveryHeroCaption: {
-    ...(kua ? { ...TYPOGRAPHY['body-sm'], fontSize: 12 } : { fontSize: 13, fontWeight: '700' }),
+    ...(kua ? { ...typography['body-sm'], fontSize: 12 } : { fontSize: 13, fontWeight: '700' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
     marginBottom: 6,
@@ -348,15 +348,15 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingVertical: 3,
   },
   recoveryBandLabel: {
-    ...(kua ? { ...TYPOGRAPHY['label-lg'], fontSize: 13, lineHeight: 18 } : { fontSize: 13, fontWeight: '700' }),
+    ...(kua ? { ...typography['label-lg'], fontSize: 13, lineHeight: 18 } : { fontSize: 13, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
   recoveryBandCount: {
-    ...(kua ? { ...TYPOGRAPHY['label-lg'], fontSize: 13, lineHeight: 18 } : { fontSize: 13, fontWeight: '700' }),
+    ...(kua ? { ...typography['label-lg'], fontSize: 13, lineHeight: 18 } : { fontSize: 13, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
   recoveryFallbackLine: {
-    ...(kua ? { ...TYPOGRAPHY['body-md'], fontSize: 15, lineHeight: 21 } : { fontSize: 16, fontWeight: '700' }),
+    ...(kua ? { ...typography['body-md'], fontSize: 15, lineHeight: 21 } : { fontSize: 16, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
     marginTop: 2,
   },
@@ -367,7 +367,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginTop: 10,
   },
   recoveryStatusLine: {
-    ...(kua ? { ...TYPOGRAPHY['body-sm'], fontSize: 12 } : { fontSize: 13 }),
+    ...(kua ? { ...typography['body-sm'], fontSize: 12 } : { fontSize: 13 }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
   },
@@ -376,7 +376,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     justifyContent: 'center',
   },
   recoveryActionText: {
-    ...(kua ? TYPOGRAPHY['body-sm'] : { fontSize: 13, fontWeight: '700' }),
+    ...(kua ? typography['body-sm'] : { fontSize: 13, fontWeight: '700' }),
     color: kua ? kua.primary : colors.accentText,
   },
   goalCard: {
@@ -391,14 +391,14 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginBottom: 12,
   },
   goalDirectionText: {
-    ...(kua ? { ...TYPOGRAPHY['headline-md'], fontSize: 18, lineHeight: 24 } : { fontSize: 18, fontWeight: '700' }),
+    ...(kua ? { ...typography['headline-md'], fontSize: 18, lineHeight: 24 } : { fontSize: 18, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
   goalModeAccent: {
     color: kua ? kua.primary : colors.accentText,
   },
   goalWeeksText: {
-    ...(kua ? { ...TYPOGRAPHY['body-sm'], fontSize: 12 } : { fontSize: 13, fontWeight: '600' }),
+    ...(kua ? { ...typography['body-sm'], fontSize: 12 } : { fontSize: 13, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   goalStatsGrid: {
@@ -411,7 +411,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     alignItems: 'center',
   },
   goalStatLabel: {
-    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: 12 } : { fontSize: 11, fontWeight: '600' }),
+    ...(kua ? { fontFamily: typography['body-sm'].fontFamily, fontSize: 12 } : { fontSize: 11, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -423,11 +423,11 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   // Same scale as the classification counts (#1112 owner feedback).
   goalStatValueLarge: {
-    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 24, lineHeight: 28 } : { fontSize: 30, fontWeight: '800' }),
+    ...(kua ? { ...typography['metric-display-mobile'], fontSize: 24, lineHeight: 28 } : { fontSize: 30, fontWeight: '800' }),
     color: kua ? kua.onSurface : colors.text,
   },
   goalStatUnitLabel: {
-    fontFamily: kua ? TYPOGRAPHY['body-md'].fontFamily : undefined,
+    fontFamily: kua ? typography['body-md'].fontFamily : undefined,
     fontSize: kua ? 14 : 18,
     fontWeight: kua ? undefined : '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
@@ -441,7 +441,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderColor: kua ? kua.surfaceBorder : undefined,
   },
   oneKLabel: {
-    ...(kua ? { ...TYPOGRAPHY['headline-sm'], fontSize: 13, lineHeight: 17 } : { fontSize: 12, fontWeight: '800', letterSpacing: 1 }),
+    ...(kua ? { ...typography['headline-sm'], fontSize: 13, lineHeight: 17 } : { fontSize: 12, fontWeight: '800', letterSpacing: 1 }),
     color: kua ? kua.onSurface : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: kua ? 0.5 : 1,
@@ -452,21 +452,21 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginBottom: 16,
   },
   oneKHeroValue: {
-    ...(kua ? { ...TYPOGRAPHY['metric-display'], fontSize: 48, lineHeight: 52, letterSpacing: -0.02 * 48 } : HeroMetric.hero),
+    ...(kua ? { ...typography['metric-display'], fontSize: 48, lineHeight: 52, letterSpacing: -0.02 * 48 } : HeroMetric.hero),
     color: kua ? kua.onSurface : colors.text,
   },
   oneKHeroUnit: {
-    fontFamily: kua ? TYPOGRAPHY['body-md'].fontFamily : undefined,
+    fontFamily: kua ? typography['body-md'].fontFamily : undefined,
     fontSize: kua ? 18 : 16,
     fontWeight: kua ? undefined : '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   oneKHeroPlaceholder: {
-    ...(kua ? { ...TYPOGRAPHY['metric-display'], fontSize: 32, lineHeight: 36 } : HeroMetric.hero),
+    ...(kua ? { ...typography['metric-display'], fontSize: 32, lineHeight: 36 } : HeroMetric.hero),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   oneKHeroCaption: {
-    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: 12 } : { fontSize: 12 }),
+    ...(kua ? { fontFamily: typography['body-sm'].fontFamily, fontSize: 12 } : { fontSize: 12 }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
     marginTop: 2,
@@ -500,11 +500,11 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   oneKGridValue: {
-    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 24, lineHeight: 28 } : { fontSize: 16, fontWeight: '700' }),
+    ...(kua ? { ...typography['metric-display-mobile'], fontSize: 24, lineHeight: 28 } : { fontSize: 16, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
   oneKGridLabel: {
-    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: 12 } : { fontSize: 11, fontWeight: '600' }),
+    ...(kua ? { fontFamily: typography['body-sm'].fontFamily, fontSize: 12 } : { fontSize: 11, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
   },
@@ -514,7 +514,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     fontWeight: '400',
   },
   emptyText: {
-    ...(kua ? TYPOGRAPHY['body-md'] : { fontSize: 13, lineHeight: 18 }),
+    ...(kua ? typography['body-md'] : { fontSize: 13, lineHeight: 18 }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
     fontStyle: 'italic',
@@ -529,11 +529,11 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginBottom: 8,
   },
   welcomeTitle: {
-    ...(kua ? TYPOGRAPHY['headline-md'] : { fontSize: 22, fontWeight: '800' }),
+    ...(kua ? typography['headline-md'] : { fontSize: 22, fontWeight: '800' }),
     color: kua ? kua.onSurface : colors.text,
   },
   welcomeSubtitle: {
-    ...(kua ? TYPOGRAPHY['body-md'] : { fontSize: 14, lineHeight: 20 }),
+    ...(kua ? typography['body-md'] : { fontSize: 14, lineHeight: 20 }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 6,
   },
@@ -564,11 +564,11 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     flex: 1,
   },
   welcomeStepTitle: {
-    ...(kua ? TYPOGRAPHY['body-lg'] : { fontSize: 16, fontWeight: '700' }),
+    ...(kua ? typography['body-lg'] : { fontSize: 16, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
   welcomeStepDesc: {
-    ...(kua ? TYPOGRAPHY['body-sm'] : { fontSize: 13, lineHeight: 18 }),
+    ...(kua ? typography['body-sm'] : { fontSize: 13, lineHeight: 18 }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 4,
   },
