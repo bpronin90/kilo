@@ -5,6 +5,19 @@
 
 import { StyleSheet } from 'react-native';
 
+// `kua.error` is a plain `#rrggbb` string, fixed across all six theme/mode
+// combinations (theme/colors.js) — this derives a tinted danger fill from it
+// so the Danger Zone reads as danger-coded by background, not border alone,
+// in every palette. Mirrors the withAlpha helper in LogRecoveryWeeks.js.
+function withAlpha(hex, alpha) {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return hex;
+  const r = parseInt(m[1].slice(0, 2), 16);
+  const g = parseInt(m[1].slice(2, 4), 16);
+  const b = parseInt(m[1].slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 // `kua` is the active KUA palette (theme.kuaPalette) or null; `typography` is
 // the result of useKuaTypography() — see SettingsScreen/WeightScreen for the
 // same conditional-token pattern this screen follows.
@@ -47,12 +60,16 @@ export const createStyles = (colors, kua = null, typography = {}) => StyleSheet.
     lineHeight: 22,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
+  // Caution ink (not error): "unencrypted export" and "wipe retry needed" are
+  // disclosures/prompts, not failures, so KUA uses the dedicated `warning`
+  // token rather than `error` — matching the legacy `cautionText` intent this
+  // replaces (#914-style status-meaning preservation).
   warnText: {
     marginTop: 10,
     fontSize: 13,
     lineHeight: 19,
     fontWeight: '600',
-    color: kua ? kua.error : (colors.cautionText ?? colors.error ?? colors.textMuted),
+    color: kua ? kua.warning : (colors.cautionText ?? colors.error ?? colors.textMuted),
   },
   actionButton: {
     marginTop: 12,
@@ -89,8 +106,12 @@ export const createStyles = (colors, kua = null, typography = {}) => StyleSheet.
   },
   // Irreversible-action container: error-tinted surface groups Wipe Device
   // Data apart from routine export/import/sync. See ui-design-rules.md #14.
+  // KUA must never fall back to the plain `surfaceCard` neutral fill every
+  // other card on this screen uses — that would read as an ordinary card and
+  // lose the danger semantic — so this tints `kua.error` itself rather than
+  // reusing a non-danger surface token.
   dangerZone: {
-    backgroundColor: kua ? kua.surfaceCard : colors.errorSurface,
+    backgroundColor: kua ? withAlpha(kua.error, 0.14) : colors.errorSurface,
     borderWidth: 1,
     borderColor: kua ? kua.error : colors.error,
     borderRadius: 24,
