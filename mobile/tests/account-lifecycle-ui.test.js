@@ -814,9 +814,11 @@ describe('AccountScreen OAuth Flow', () => {
       tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(FAKE_SESSION) }));
     });
 
-    // Signed-In view is present on the very first synchronous paint.
+    // Signed-In view is present on the very first synchronous paint. The KUA
+    // section header renders this heading in uppercase (#1114), so the match
+    // stays case-insensitive.
     const json = JSON.stringify(tree.toJSON());
-    expect(json).toMatch(/Signed In/);
+    expect(json).toMatch(/Signed In/i);
     expect(json).toMatch(/a@test\.com/);
     // No loading placeholder and no Sign In form.
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Account loading' }).length).toBe(0);
