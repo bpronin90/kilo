@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle, Button, ErrorBanner } from './UI';
-import { switchColors, useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { switchColors, useTheme } from '../theme/ThemeContext';
+import { useKuaTypography } from '../theme/typography';
 import { useFeatureToggles, useUserProfile } from '../hooks/useEntries';
 import {
   hydrateProgressionSuggestionSettings,
@@ -40,8 +41,9 @@ export function __resetUnitSaveStateForTests() {
 }
 
 export function SettingsScreen({ onBack, multiplier, onUpdate }) {
-  const styles = useThemedStyles(createStyles);
-  const { colors, preference: appearance, setPreference: setAppearance } = useTheme();
+  const { colors, kuaPalette: kua, preference: appearance, setPreference: setAppearance } = useTheme();
+  const typography = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
   const { fatigueTrackingEnabled, deloadModeEnabled, setFatigueTrackingEnabled, setDeloadModeEnabled } = useFeatureToggles();
 
   // Progression suggestions (#960). The persisted global flag from #958 is the
@@ -137,11 +139,13 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
   const handleDecrement = () => onUpdate(Math.max(1, Math.round((multiplier - 0.01) * 100) / 100));
   const handleReset = () => onUpdate(1.07);
 
-  return (
-    <ScreenShell title="Settings" subtitle="App features and preferences." onBack={onBack}>
+  const cardStyle = kua ? { backgroundColor: kua.surfaceCard, borderColor: kua.surfaceBorder } : undefined;
 
-      <SectionTitle>Features</SectionTitle>
-      <Card>
+  return (
+    <ScreenShell title="Settings" subtitle="App features and preferences." onBack={onBack} style={kua ? { backgroundColor: kua.background } : undefined}>
+
+      {kua ? <Text style={styles.sectionHeader}>FEATURES</Text> : <SectionTitle>Features</SectionTitle>}
+      <Card style={cardStyle}>
         <View style={styles.settingRow}>
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>Fatigue tracking</Text>
@@ -183,11 +187,11 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
         </View>
       </Card>
 
-      <SectionTitle>Reminders</SectionTitle>
+      {kua ? <Text style={styles.sectionHeader}>REMINDERS</Text> : <SectionTitle>Reminders</SectionTitle>}
       <ReminderSettingsCard />
 
-      <SectionTitle>Appearance</SectionTitle>
-      <Card>
+      {kua ? <Text style={styles.sectionHeader}>APPEARANCE</Text> : <SectionTitle>Appearance</SectionTitle>}
+      <Card style={cardStyle}>
         <View style={[styles.settingRow, { marginBottom: 0 }]}>
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>Theme</Text>
@@ -216,8 +220,8 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
         </View>
       </Card>
 
-      <SectionTitle>Units</SectionTitle>
-      <Card>
+      {kua ? <Text style={styles.sectionHeader}>UNITS</Text> : <SectionTitle>Units</SectionTitle>}
+      <Card style={cardStyle}>
         <View style={[styles.settingRow, { marginBottom: 0 }]}>
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>Weight unit</Text>
@@ -263,15 +267,15 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
 
       {(process.env.EXPO_PUBLIC_APP_ENV === 'development' || process.env.EXPO_PUBLIC_APP_ENV === 'preview') && (
         <>
-          <SectionTitle>Dev Preview</SectionTitle>
-          <Card>
+          {kua ? <Text style={styles.sectionHeader}>DEV PREVIEW</Text> : <SectionTitle>Dev Preview</SectionTitle>}
+          <Card style={cardStyle}>
             <ThemePreviewControl />
           </Card>
         </>
       )}
 
-      <SectionTitle>Advanced</SectionTitle>
-      <Card>
+      {kua ? <Text style={styles.sectionHeader}>ADVANCED</Text> : <SectionTitle>Advanced</SectionTitle>}
+      <Card style={cardStyle}>
         <View style={styles.settingRow}>
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>Fatigue multiplier</Text>
@@ -300,7 +304,13 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+const createStyles = (colors, kua = null, typography = {}) => StyleSheet.create({
+  sectionHeader: {
+    ...(typography['label-sm'] ?? { fontSize: 11, fontWeight: '500' }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    textTransform: 'uppercase',
+    marginTop: 6,
+  },
   settingRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -314,19 +324,19 @@ const createStyles = (colors) => StyleSheet.create({
   settingLabel: {
     fontSize: 16,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   settingHelp: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   stepper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.inputBackground,
+    backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     overflow: 'hidden',
   },
   stepperButton: {
@@ -334,14 +344,15 @@ const createStyles = (colors) => StyleSheet.create({
     height: 44,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
   },
   // `chipAccentText` (#923): the glyphs always sit on `stepperButton`'s
   // `chipBackground` fill, where `accentText` measures 3.54:1 in dark mode.
+  // In KUA mode: `primaryOnContainer` on `primaryContainer`.
   stepperText: {
     fontSize: 20,
     fontWeight: '700',
-    color: colors.chipAccentText,
+    color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },
   stepperValueContainer: {
     width: 60,
@@ -350,7 +361,7 @@ const createStyles = (colors) => StyleSheet.create({
   stepperValue: {
     fontSize: 16,
     fontWeight: '800',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   // Compact segmented control — the Appearance and Weight unit selectors here
   // and Profile's height-unit selector share this exact treatment (#1018). The
@@ -371,12 +382,12 @@ const createStyles = (colors) => StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-    backgroundColor: colors.inputBackground,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
+    backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
   },
   unitPillActive: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
+    backgroundColor: kua ? kua.primary : colors.accent,
+    borderColor: kua ? kua.primary : colors.accent,
   },
   unitPillDisabled: {
     opacity: 0.5,
@@ -384,12 +395,12 @@ const createStyles = (colors) => StyleSheet.create({
   unitTabText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Selected pills are accent-filled, so the label takes the on-accent ink,
   // which is white in light mode and dark ink in dark mode (#689).
   unitTabTextActive: {
-    color: colors.onAccent,
+    color: kua ? kua.onPrimary : colors.onAccent,
   },
   resetButton: {
     backgroundColor: 'transparent',
@@ -399,7 +410,7 @@ const createStyles = (colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   resetButtonText: {
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontSize: 12,
     fontWeight: '600',
     textTransform: 'uppercase',

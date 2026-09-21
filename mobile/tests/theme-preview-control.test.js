@@ -322,7 +322,7 @@ describe('EXPO_PUBLIC_APP_ENV gate: SettingsScreen shows Dev Preview only in non
   function hasDevPreviewSection(root) {
     return root.root
       .findAllByType(Text)
-      .some((n) => n.props.children === 'Dev Preview');
+      .some((n) => n.props.children === 'DEV PREVIEW');
   }
 
   test('Dev Preview section renders in EAS preview builds', () => {

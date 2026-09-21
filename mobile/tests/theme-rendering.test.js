@@ -844,7 +844,7 @@ describe('Settings Appearance control', () => {
       .findAllByType(Text)
       .map((n) => n.props.children)
       .filter((c) => typeof c === 'string');
-    expect(headings).toContain('Appearance');
+    expect(headings).toContain('APPEARANCE');
     expect(headings).toContain('Light');
     expect(headings).toContain('Dark');
     expect(headings).toContain('System');
@@ -884,13 +884,13 @@ describe('Settings Appearance control', () => {
       return flatten(themeLabel.props.style).color;
     };
 
-    expect(labelColor()).toBe(LightColors.text);
+    expect(labelColor()).toBe(HardCourtLightColors.onSurface);
 
     act(() => {
       option(component, 'dark').props.onPress();
     });
 
-    expect(labelColor()).toBe(DarkColors.text);
+    expect(labelColor()).toBe(HardCourtDarkColors.onSurface);
   });
 
   test('selecting Light after Dark returns the app to the light palette', () => {
@@ -1210,18 +1210,27 @@ describe('KUA typography token contract', () => {
   });
 
   test('useKuaTypography returns TYPOGRAPHY_FALLBACK when fonts are not loaded', () => {
-    // jest-expo mocks expo-font's useFonts to return [false, null] by default,
-    // so useKuaTypography must return TYPOGRAPHY_FALLBACK on the first render.
-    const React = require('react');
+    // expo-font keeps a module-scoped in-memory cache. Prior test renders
+    // (e.g. SettingsScreen) call useKuaTypography, which loads fonts into that
+    // cache. jest.isolateModules gives a fresh module registry whose font
+    // cache starts empty, so useFonts' initial useState(isMapLoaded(map))
+    // returns false — the "not yet loaded" condition this test checks (#1115).
     let captured;
-    function Probe() {
-      captured = useKuaTypography();
-      return null;
-    }
-    act(() => {
-      renderer.create(React.createElement(Probe));
+    jest.isolateModules(() => {
+      const { act: isoAct } = require('react-test-renderer');
+      const isoRenderer = require('react-test-renderer');
+      const React = require('react');
+      const { useKuaTypography: isoUseKuaTypography, TYPOGRAPHY_FALLBACK: isoFallback } = require('../theme/typography');
+      function Probe() {
+        captured = isoUseKuaTypography();
+        return null;
+      }
+      isoAct(() => {
+        isoRenderer.create(React.createElement(Probe));
+      });
+      // Verify against the isolated module's own TYPOGRAPHY_FALLBACK reference
+      expect(captured).toBe(isoFallback);
     });
-    expect(captured).toBe(TYPOGRAPHY_FALLBACK);
   });
 
   test('offline startup: typography module loads without throwing', () => {
