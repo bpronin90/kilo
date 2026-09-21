@@ -43,6 +43,8 @@ jest.mock('react-native-svg', () => {
     default: ({ children }) => React.createElement(View, null, children),
     Path: () => null,
     Rect: () => null,
+    Circle: () => null,
+    Line: () => null,
   };
 });
 
@@ -864,19 +866,29 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     expect(heroValueNodes.length).toBeGreaterThan(0);
   });
 
-  test('the 1K unit suffix uses a literal leading space, not marginLeft (#763)', () => {
+  test('the 1K unit suffix uses a literal leading space, not marginLeft (#763)', async () => {
     // Nested Text is an inline attributed run on native RN, not a Yoga box, so
     // marginLeft on it does not reliably create spacing. The unit suffix text
     // must carry its own leading space so "1000 lbs" (not "1000lbs") renders
     // on iOS/Android.
+    // #1112: the shared populated fixture has no computable 1K total (Bench-only,
+    // single session), so the untracked hero now shows a unit-free em-dash. To
+    // exercise the unit mechanic we mount a note that yields a real total.
     const text = (n) => (Array.isArray(n.props.children) ? n.props.children.join('') : String(n.props.children ?? ''));
-    const card = component.root.findByProps({ testID: 'home-one-k-link' }).parent;
+    const NOTE_1K = { id: 'n1', title: 'A', raw_text: ORDINARY_TEXT, one_k_exercises: ONE_K, saved_at: '2026-06-01T12:00:00.000Z' };
+    useEntriesModule.useTrackedLifts.mockReturnValue({ trackedLifts: TRACKED, loading: false, save: jest.fn(), toggle: jest.fn() });
+    let local;
+    await render.act(async () => {
+      local = render.create(<HomeScreen {...populatedProps(jest.fn())} workoutNote={NOTE_1K} notes={[NOTE_1K]} currentId="n1" />);
+    });
+    const card = local.root.findByProps({ testID: 'home-one-k-link' }).parent;
     const unitNodes = card.findAll(n => n.type === 'Text' && text(n).includes('lbs'));
     expect(unitNodes.length).toBeGreaterThan(0);
     for (const node of unitNodes) {
       expect(text(node)).toBe(' lbs');
       expect(flatStyle(node).marginLeft).toBeFalsy();
     }
+    await render.act(async () => { local.unmount(); });
   });
 
   test('the 1K link does not nest a press owner', () => {
@@ -2170,7 +2182,11 @@ describe('HomeScreen follows the shared active-training context (#869)', () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     const component = await mount();
 
-    expect(hasText(component, 'Recovery · Week 1')).toBe(true);
+    // #1112: the hero header splits the eyebrow into a "Recovery" section
+    // label and a right-aligned week identity, so the two facts are separate
+    // text nodes rather than one "Recovery · Week 1" string.
+    expect(hasText(component, 'Recovery')).toBe(true);
+    expect(hasText(component, 'Week 1')).toBe(true);
     expect(hasText(component, 'Recovery week nr1')).toBe(true);
     // The frozen baseline label must not read as though baseline training is
     // still current.
@@ -2244,7 +2260,9 @@ describe('HomeScreen follows the shared active-training context (#869)', () => {
     const onNavigate = jest.fn();
     const component = await mount({ onNavigate });
 
-    expect(hasText(component, 'Recovery · Between weeks')).toBe(true);
+    // #1112: split header — "Recovery" label + "Between weeks" week identity.
+    expect(hasText(component, 'Recovery')).toBe(true);
+    expect(hasText(component, 'Between weeks')).toBe(true);
     const link = component.root.findByProps({ testID: 'home-current-routine-link' });
     expect(link.props.accessibilityLabel).toBe('Add week or end Recovery');
 

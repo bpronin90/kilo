@@ -1,14 +1,42 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Circle, Line, Path } from 'react-native-svg';
 import { Card, LineChart } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
 import { formatBodyweightValue, displayChartSeries } from '../../lib/units';
 import { createStyles } from './homeStyles';
 
+// Small chevron affordance shared by every quiet handoff on this card.
+function Chevron({ color }) {
+  return (
+    <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}>
+      <Path d="M9 5l7 7-7 7" />
+    </Svg>
+  );
+}
+
+// Info glyph for the classification caption toggle. Replaces the "ⓘ" text
+// character, which is absent from the bundled Space Grotesk / JetBrains Mono
+// faces and rendered as a tofu box on device (#1112).
+function InfoIcon({ color }) {
+  return (
+    <Svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" accessible={false}>
+      <Circle cx="12" cy="12" r="9" />
+      <Line x1="12" y1="11" x2="12" y2="16" />
+      <Circle cx="12" cy="7.5" r="0.6" fill={color} stroke={color} />
+    </Svg>
+  );
+}
+
 // Tier 1 weekly-summary hero, extracted from HomeScreen (#1049). Presentation
 // only: every value it renders is computed by HomeScreen and passed in, so the
 // first-paint gate and dashboard math stay in one place.
+//
+// #1112 redesign: training leads. The card opens with a KUA section header
+// (accent bar + "THIS WEEK") and the week's classification trio as the lead
+// figures; the two daily-loop actions follow; body weight is demoted to a
+// supporting metric grouped with its own trend below. Body weight is no longer
+// the hero of the "current routine progress" screen.
 export function HomeHeader({
   dashboardData,
   onNavigate,
@@ -27,125 +55,65 @@ export function HomeHeader({
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const [captionExpanded, setCaptionExpanded] = useState(false);
 
+  const isRecovery = isRecoveryOpenWeek || isRecoveryBetweenWeeks;
+  const sectionLabel = isRecovery ? 'Recovery' : 'This week';
+  const weekIdentity = isRecoveryOpenWeek
+    ? `Week ${activeTrainingContext.recoveryWeekNumber ?? '—'}`
+    : isRecoveryBetweenWeeks
+      ? 'Between weeks'
+      : dashboardData.weeksIn !== null
+        ? `Week ${dashboardData.weeksIn}`
+        : 'Week —';
+
+  const mutedStroke = kua ? kua.onSurfaceVariant : colors.textMuted;
+  const actionStroke = kua ? kua.primaryOnContainer : colors.textMuted;
+
+  const newlyTrackedCount = dashboardData.weeklySummary.newlyTrackedCount;
+  const captionText = newlyTrackedCount > 0
+    ? (newlyTrackedCount === 1
+        ? '1 exercise in its first tracked session — log another to see a trend'
+        : `${newlyTrackedCount} exercises in their first tracked session — log another to see a trend`)
+    : dashboardData.weeklySummary.hasInheritedTracking
+      ? 'Includes exercises tracked before this update, using full history'
+      : null;
+
   return (
     <Card style={styles.weeklyHero}>
-      {/* #2 inline week label. The two primary daily-loop actions live in
-          one stable row below the hero state instead of being scattered
-          beside the values they act on (#717 review). */}
-      <View style={styles.heroWeekRow}>
-        {isRecoveryOpenWeek || isRecoveryBetweenWeeks ? (
-          <>
-            <Text style={[styles.heroWeekLabel, styles.heroWeekLabelRecovery]}>
-              {isRecoveryOpenWeek
-                ? `Recovery · Week ${activeTrainingContext.recoveryWeekNumber ?? '—'}`
-                : 'Recovery · Between weeks'}
-            </Text>
-            {isRecoveryOpenWeek && activeTrainingContext.activeNote ? (
-              <Text testID="home-recovery-active-note" style={styles.heroRecoveryNoteLabel}>
-                {activeTrainingContext.activeNote.title || 'Untitled'}
-              </Text>
-            ) : null}
-          </>
-        ) : (
-          <Text style={[styles.heroWeekLabel, weekToneColor ? { color: weekToneColor } : null]}>
-            {dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Week —'}
-          </Text>
-        )}
-      </View>
-
-      {/* The hero metric stays a plain, non-pressable value (§8). With no
-          weigh-in yet the slot reads as a short muted sentence instead of
-          a bare dash over dead space. */}
-      <View style={styles.heroWeightRow}>
-        {dashboardData.latestWeight ? (
-          <Text style={styles.heroWeightValue}>
-            {formatBodyweightValue(dashboardData.latestWeight, unit)}
-            <Text style={styles.heroWeightUnit}> {unit}</Text>
-          </Text>
-        ) : (
-          <Text style={styles.heroWeightPlaceholder}>No weigh-in yet</Text>
-        )}
-      </View>
-
-      <View style={styles.heroPrimaryActions}>
-        <Pressable
-          testID="home-current-routine-link"
-          onPress={handleLogWorkoutPress}
-          style={styles.heroPrimaryAction}
-          hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
-          accessibilityRole="button"
-          accessibilityLabel={heroPrimaryActionLabel}
-          accessibilityHint={heroPrimaryActionHint}
+      {/* KUA section header (#1112): accent bar + uppercase label on the left,
+          week identity on the right. The accent bar is the structural motif
+          the Log surface uses, carried onto Home. */}
+      <View style={styles.heroHeaderRow}>
+        <View style={styles.heroHeaderLeft}>
+          <View style={styles.heroAccentBar} />
+          <Text style={styles.heroSectionLabel} numberOfLines={1}>{sectionLabel}</Text>
+        </View>
+        <Text
+          style={[
+            styles.heroWeekLabel,
+            isRecovery ? styles.heroWeekLabelRecovery : (weekToneColor ? { color: weekToneColor } : null),
+          ]}
+          numberOfLines={1}
         >
-          <Text style={styles.heroPrimaryActionText}>{heroPrimaryActionLabel}</Text>
-          <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
-        </Pressable>
-
-        <View style={styles.heroPrimaryActionDivider} />
-
-        <Pressable
-          testID="home-weight-action"
-          onPress={() => onNavigate('Weight')}
-          style={styles.heroPrimaryAction}
-          hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
-          accessibilityRole="button"
-          accessibilityLabel="Log weight"
-          accessibilityHint="Opens the Weight tab to log a weigh-in"
-        >
-          <Text style={styles.heroPrimaryActionText}>Log weight</Text>
-          <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
-        </Pressable>
+          {weekIdentity}
+        </Text>
       </View>
 
-      {/* #4 sparkline strip below weight. In KUA mode the "See weight trends"
-          link is removed — "Full history and insights" at the card footer
-          already covers this destination and the duplicate read as noise.
-          The link is kept in legacy mode for continuity. */}
-      <View style={styles.heroSparklineStrip}>
-        {hasWeightSeries ? (
-          <>
-            <Text style={styles.heroSparklineSublabel}>7-day rolling avg</Text>
-            <LineChart
-              data={displayChartSeries(dashboardData.weightSeries, unit)}
-              color={kua ? kua.onSurfaceVariant : colors.textMuted}
-              height={44}
-              paddingHorizontal={0}
-              hideHeader
-            />
-          </>
-        ) : null}
-        {!kua ? (
-          <Pressable
-            testID="home-weight-trend-link"
-            onPress={() => onNavigate('Analytics', 'weight')}
-            style={styles.heroInlineAction}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="See weight trends"
-            accessibilityHint="Opens the weight section of the Analytics tab"
-          >
-            <Text style={styles.heroInlineActionText}>See weight trends</Text>
-            <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
-          </Pressable>
-        ) : null}
-      </View>
+      {/* The active Recovery note's own title, named directly under the header
+          so "what is current" answers both the week and which note that is. */}
+      {isRecoveryOpenWeek && activeTrainingContext.activeNote ? (
+        <Text testID="home-recovery-active-note" style={styles.heroRecoveryNoteLabel}>
+          {activeTrainingContext.activeNote.title || 'Untitled'}
+        </Text>
+      ) : null}
 
-      {/* Classification band — handoff to Analytics' Progressive Overload
-          table (#717, retargeted in #770). The counts under this header
-          ARE the per-exercise progressing/steady/regressing classification,
-          and that table is where they are itemized, so `strength` (the 1K
-          block, higher up the tab) was landing short of what the label
-          promises. Only the header row is the press target: the counts
-          beneath are data, not a control, so making the whole band
-          tappable was too much clickable area. The affordance is the plain
-          chevron already used by `Full history and insights` on this same
-          screen — no fill, no border. */}
+      {/* Lead content: the week's per-exercise classification pulse (#1112).
+          Only the counts vary by tone; the label row is data, not a control. */}
       {baselinePaused ? (
-        // Frozen baseline handoff (#869). The classification band and the
-        // 1K card below both describe the frozen baseline routine, which
-        // is not what is being trained right now — collapsed into one
-        // compact, low-emphasis row rather than dominating active-Recovery
-        // Home with numbers that cannot move until Recovery ends.
+        // Frozen baseline handoff (#869). The classification band and the 1K
+        // card below both describe the frozen baseline routine, which is not
+        // what is being trained right now — collapsed into one compact,
+        // low-emphasis row rather than dominating active-Recovery Home with
+        // numbers that cannot move until Recovery ends.
         <View style={styles.classifSection}>
           <Pressable
             testID="home-baseline-paused-link"
@@ -158,7 +126,7 @@ export function HomeHeader({
           >
             <Text style={[styles.classifSectionLabel, styles.sectionHeaderLabel]}>Baseline training paused during Recovery</Text>
             <View style={styles.sectionHeaderChevron}>
-              <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
+              <Chevron color={mutedStroke} />
             </View>
           </Pressable>
         </View>
@@ -176,72 +144,110 @@ export function HomeHeader({
               </View>
             ))}
           </View>
-          {/* #894: the three counts above only cover a fully classified
-              tracked span (progressing/steady/regressing) — a freshly
-              opened span (#893) or inherited catalog/pre-#893 tracking
-              contributes to neither bucket, so a 0/0/0 row would
-              otherwise read as "nothing classifiable" rather than
-              "still building history". Newly-tracked takes priority
-              when both apply: it names a concrete next action. */}
-          {dashboardData.weeklySummary.newlyTrackedCount > 0 ? (
+          {/* #894: the counts above only cover a fully classified tracked span;
+              a freshly opened span or inherited/pre-#893 tracking contributes
+              to neither bucket, so the caption explains a 0/0/0 row instead of
+              letting it read as "nothing classifiable". In KUA mode it is an
+              info toggle, collapsed by default. */}
+          {captionText ? (
             kua ? (
               <Pressable
                 onPress={() => setCaptionExpanded(v => !v)}
                 style={styles.classifCaptionToggle}
                 hitSlop={8}
                 accessibilityRole="button"
-                accessibilityLabel={
-                  dashboardData.weeklySummary.newlyTrackedCount === 1
-                    ? '1 exercise in its first tracked session — log another to see a trend'
-                    : `${dashboardData.weeklySummary.newlyTrackedCount} exercises in their first tracked session — log another to see a trend`
-                }
+                accessibilityLabel={captionText}
               >
-                <Text style={styles.classifCaptionIcon}>ⓘ</Text>
+                <InfoIcon color={mutedStroke} />
                 {captionExpanded ? (
-                  <Text style={styles.classifCaption}>
-                    {dashboardData.weeklySummary.newlyTrackedCount === 1
-                      ? '1 exercise in its first tracked session — log another to see a trend'
-                      : `${dashboardData.weeklySummary.newlyTrackedCount} exercises in their first tracked session — log another to see a trend`}
-                  </Text>
+                  <Text style={styles.classifCaption}>{captionText}</Text>
                 ) : null}
               </Pressable>
             ) : (
-              <Text style={styles.classifCaption}>
-                {dashboardData.weeklySummary.newlyTrackedCount === 1
-                  ? '1 exercise in its first tracked session — log another to see a trend'
-                  : `${dashboardData.weeklySummary.newlyTrackedCount} exercises in their first tracked session — log another to see a trend`}
-              </Text>
-            )
-          ) : dashboardData.weeklySummary.hasInheritedTracking ? (
-            kua ? (
-              <Pressable
-                onPress={() => setCaptionExpanded(v => !v)}
-                style={styles.classifCaptionToggle}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Includes exercises tracked before this update, using full history"
-              >
-                <Text style={styles.classifCaptionIcon}>ⓘ</Text>
-                {captionExpanded ? (
-                  <Text style={styles.classifCaption}>
-                    Includes exercises tracked before this update, using full history
-                  </Text>
-                ) : null}
-              </Pressable>
-            ) : (
-              <Text style={styles.classifCaption}>
-                Includes exercises tracked before this update, using full history
-              </Text>
+              <Text style={styles.classifCaption}>{captionText}</Text>
             )
           ) : null}
         </View>
       )}
 
-      {/* #7 quiet CTA. Targets `overview` rather than a bare tab press
-          (#770): "full history and insights" promises the whole tab from
-          the top, and an unsectioned press would instead resume the last
-          Analytics scroll position — which for a returning user is
-          whatever single section they were reading last. */}
+      {/* The two highest-frequency daily-loop actions, in one stable row. */}
+      <View style={styles.heroPrimaryActions}>
+        <Pressable
+          testID="home-current-routine-link"
+          onPress={handleLogWorkoutPress}
+          style={styles.heroPrimaryAction}
+          hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+          accessibilityRole="button"
+          accessibilityLabel={heroPrimaryActionLabel}
+          accessibilityHint={heroPrimaryActionHint}
+        >
+          <Text style={styles.heroPrimaryActionText}>{heroPrimaryActionLabel}</Text>
+          <Chevron color={actionStroke} />
+        </Pressable>
+
+        <View style={styles.heroPrimaryActionDivider} />
+
+        <Pressable
+          testID="home-weight-action"
+          onPress={() => onNavigate('Weight')}
+          style={styles.heroPrimaryAction}
+          hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+          accessibilityRole="button"
+          accessibilityLabel="Log weight"
+          accessibilityHint="Opens the Weight tab to log a weigh-in"
+        >
+          <Text style={styles.heroPrimaryActionText}>Log weight</Text>
+          <Chevron color={actionStroke} />
+        </Pressable>
+      </View>
+
+      {/* Body weight — a supporting metric now, grouped with the trend it
+          belongs to (#1112). With no weigh-in the value degrades to a short
+          muted sentence and the empty sparkline is suppressed. */}
+      <View style={styles.heroSparklineStrip}>
+        <Text style={styles.heroMetricLabel}>Body weight</Text>
+        {dashboardData.latestWeight ? (
+          <View style={styles.heroWeightValueRow}>
+            <Text style={styles.heroWeightValue} numberOfLines={1}>
+              {formatBodyweightValue(dashboardData.latestWeight, unit)}
+            </Text>
+            <Text style={styles.heroWeightUnit}>{unit}</Text>
+          </View>
+        ) : (
+          <Text style={styles.heroWeightPlaceholder}>No weigh-in yet</Text>
+        )}
+        {hasWeightSeries ? (
+          <>
+            <Text style={[styles.heroSparklineSublabel, { marginTop: 10 }]}>7-day rolling avg</Text>
+            <LineChart
+              data={displayChartSeries(dashboardData.weightSeries, unit)}
+              color={kua ? kua.onSurfaceVariant : colors.textMuted}
+              height={44}
+              paddingHorizontal={0}
+              hideHeader
+            />
+          </>
+        ) : null}
+        {/* Legacy-mode Analytics handoff. In KUA mode the card footer's
+            "Full history and insights" already covers this destination. */}
+        {!kua ? (
+          <Pressable
+            testID="home-weight-trend-link"
+            onPress={() => onNavigate('Analytics', 'weight')}
+            style={styles.heroInlineAction}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="See weight trends"
+            accessibilityHint="Opens the weight section of the Analytics tab"
+          >
+            <Text style={styles.heroInlineActionText}>See weight trends</Text>
+            <Chevron color={colors.textMuted} />
+          </Pressable>
+        ) : null}
+      </View>
+
+      {/* #7 quiet CTA. Targets `overview` rather than a bare tab press (#770):
+          "full history and insights" promises the whole tab from the top. */}
       <View style={styles.heroFooter}>
         <Pressable
           testID="home-insights-link"
@@ -252,7 +258,7 @@ export function HomeHeader({
           accessibilityHint="Opens the Analytics tab at the top"
         >
           <Text style={styles.insightsLinkText}>Full history and insights</Text>
-          <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
+          <Chevron color={mutedStroke} />
         </Pressable>
       </View>
     </Card>

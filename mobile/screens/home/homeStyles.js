@@ -92,22 +92,60 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     height: 12,
     width: '75%',
   },
+  // The hero is Home's one "active" card. KUA level-2 treatment (foundation.md
+  // §borders): a 2px primary border marks it as the primary/focused surface,
+  // the same signal the Log routine card uses — so Home reads as the same
+  // design system rather than a stack of generic panels.
   weeklyHero: {
     padding: 24,
     gap: 0,
     marginTop: 12,
     backgroundColor: kua ? kua.surfaceCard : undefined,
-    borderColor: kua ? kua.surfaceBorder : undefined,
+    borderColor: kua ? kua.primary : undefined,
+    borderWidth: kua ? 2 : undefined,
   },
-  heroWeekRow: {
-    marginBottom: 4,
+  // Section-header row for the hero (#1112 redesign): a short primary accent
+  // bar + uppercase section label on the left, the week identity on the right.
+  // The accent bar is the KUA structural motif carried onto Home.
+  heroHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 20,
   },
-  heroWeekLabel: {
-    ...(kua ? TYPOGRAPHY['body-sm'] : {}),
-    fontSize: kua ? undefined : 12,
-    fontWeight: kua ? undefined : '600',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+  heroHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     flexShrink: 1,
+    minWidth: 0,
+  },
+  heroAccentBar: {
+    width: 3,
+    height: 18,
+    borderRadius: 2,
+    backgroundColor: kua ? kua.primary : colors.accent,
+  },
+  heroSectionLabel: {
+    ...(kua ? TYPOGRAPHY['headline-sm'] : {}),
+    fontSize: kua ? undefined : 13,
+    fontWeight: kua ? undefined : '700',
+    color: kua ? kua.onSurface : colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: kua ? 0.5 : 0.5,
+    flexShrink: 1,
+  },
+  // The week identity, right-aligned in the header. In KUA mode it is the
+  // theme primary so the card announces its own accent without a second
+  // competing hero number.
+  heroWeekLabel: {
+    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
+    fontSize: kua ? undefined : 12,
+    fontWeight: kua ? undefined : '700',
+    color: kua ? kua.primary : colors.accentText,
+    textAlign: 'right',
+    flexShrink: 0,
   },
   // Active-Recovery eyebrow (#869): accent-colored so the hero visibly
   // announces Recovery rather than reading as an ordinary baseline week.
@@ -127,16 +165,19 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     minWidth: 0,
     marginBottom: kua ? 12 : 0,
   },
-  // The two highest-frequency actions share one stable strip at every width,
-  // keeping them visually distinct from the surrounding summary and Analytics
-  // handoffs while preserving the single hero metric.
+  // The two highest-frequency actions share one stable strip at every width.
+  // In KUA mode it takes the tinted primary-container treatment (the same
+  // family as the Log TRACK button), so the daily loops read as inviting,
+  // tappable surfaces rather than the near-invisible gray bar they were.
   heroPrimaryActions: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    backgroundColor: kua ? kua.surfaceBorder : colors.subtleBg,
+    backgroundColor: kua ? kua.primaryContainer : colors.subtleBg,
     borderRadius: 12,
     overflow: 'hidden',
-    marginTop: 8,
+    borderWidth: kua ? 1 : 0,
+    borderColor: kua ? kua.primaryContainerBorder : 'transparent',
+    marginTop: 4,
     marginBottom: 8,
   },
   heroPrimaryAction: {
@@ -151,16 +192,16 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   heroPrimaryActionText: {
     flexShrink: 1,
-    ...(kua ? TYPOGRAPHY['body-sm'] : {}),
+    ...(kua ? TYPOGRAPHY['body-md'] : {}),
     fontSize: kua ? undefined : 13,
     fontWeight: kua ? undefined : '600',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    color: kua ? kua.primaryOnContainer : colors.textMuted,
     textAlign: 'center',
   },
   heroPrimaryActionDivider: {
     width: 1,
     marginVertical: 8,
-    backgroundColor: kua ? kua.surfaceCard : colors.cardBorder,
+    backgroundColor: kua ? kua.primaryContainerBorder : colors.cardBorder,
   },
   // Quiet Analytics handoff attached to the sparkline. 44pt minimum target per
   // the mobile touch-target rule, kept visually quiet so the hero metric remains
@@ -178,8 +219,27 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     fontWeight: kua ? undefined : '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
+  // Body-weight block (#1112 redesign). On a screen titled "current routine
+  // progress" body weight is a supporting metric, not the headline: it sits
+  // below the training pulse and its own action, grouped with the trend it
+  // belongs to. Small uppercase label over a metric value.
+  heroMetricLabel: {
+    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: TYPOGRAPHY['body-sm'].fontSize } : {}),
+    fontSize: kua ? undefined : 11,
+    fontWeight: kua ? undefined : '700',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  heroWeightValueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+    minWidth: 0,
+  },
   heroWeightValue: {
-    ...(kua ? { ...TYPOGRAPHY['metric-display'], fontSize: 44, lineHeight: 48 } : HeroMetric.hero),
+    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : HeroMetric.hero),
     color: kua ? kua.onSurface : colors.accentText,
     flexShrink: 1,
     minWidth: 0,
@@ -192,27 +252,30 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     fontWeight: kua ? undefined : '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
+  // Explicit Space Grotesk family: a unit ("lb"/"kg") is linguistic, not a
+  // metric, and a nested Text inherits its parent value's JetBrains Mono
+  // otherwise — which rendered "lb" as a mangled mono ligature (#1112).
   heroWeightUnit: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontFamily: kua ? TYPOGRAPHY['body-md'].fontFamily : undefined,
+    fontSize: kua ? 15 : 16,
+    fontWeight: kua ? undefined : '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   heroSparklineStrip: {
-    marginTop: 4,
-    marginBottom: 12,
+    marginTop: 10,
   },
   heroSparklineSublabel: {
-    ...(kua ? TYPOGRAPHY['label-sm'] : {}),
+    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: TYPOGRAPHY['body-sm'].fontSize } : {}),
     fontSize: kua ? undefined : 11,
     fontWeight: kua ? undefined : '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    marginBottom: 2,
+    marginBottom: 4,
   },
+  // The classification trio is the hero's lead content (#1112: training leads).
+  // It sits directly under the header with no top rule, so the week's training
+  // pulse is the first thing read, above the actions and the body-weight trend.
   classifSection: {
-    borderTopWidth: 1,
-    borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
-    paddingTop: 16,
-    marginBottom: 16,
+    marginBottom: 20,
   },
   // Shared affordance for the two strength destinations (Exercise Progress and
   // 1K Progress): the section label plus the same plain chevron that
@@ -282,8 +345,10 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     height: 8,
     borderRadius: 4,
   },
+  // Promoted to the metric scale (#1112): as the hero's lead figures the counts
+  // read as the dominant numbers on the card, tinted per bucket in JSX.
   classifCount: {
-    ...(kua ? TYPOGRAPHY['headline-sm'] : {}),
+    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : {}),
     fontSize: kua ? undefined : 16,
     fontWeight: kua ? undefined : '800',
     color: kua ? kua.onSurface : colors.text,
@@ -305,14 +370,9 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   classifCaptionToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginTop: 6,
+    gap: 6,
+    marginTop: 10,
     minHeight: 28,
-  },
-  classifCaptionIcon: {
-    fontSize: 13,
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    opacity: 0.7,
   },
   heroFooter: {
     alignItems: 'center',
@@ -481,8 +541,9 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurface : colors.text,
   },
   goalStatUnitLabel: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontFamily: kua ? TYPOGRAPHY['body-md'].fontFamily : undefined,
+    fontSize: kua ? 15 : 18,
+    fontWeight: kua ? undefined : '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Top padding and gap trimmed from the 24/10 default (#820): the header
@@ -518,10 +579,28 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     ...(kua ? TYPOGRAPHY['metric-display'] : HeroMetric.hero),
     color: kua ? kua.onSurface : colors.text,
   },
+  // Explicit Space Grotesk: the unit suffix is nested inside the JetBrains Mono
+  // hero value and would otherwise inherit the mono family and render "lb" as a
+  // mangled ligature (#1112).
   oneKHeroUnit: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontFamily: kua ? TYPOGRAPHY['body-md'].fontFamily : undefined,
+    fontSize: kua ? 16 : 16,
+    fontWeight: kua ? undefined : '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
+  },
+  // Muted hero placeholder for the untracked 1K total: a plain em-dash at hero
+  // scale in the muted ink, never the lerp-tinted value color that made "—"
+  // read as a stray colored mark (#1112).
+  oneKHeroPlaceholder: {
+    ...(kua ? TYPOGRAPHY['metric-display'] : HeroMetric.hero),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+  },
+  oneKHeroCaption: {
+    ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: TYPOGRAPHY['body-sm'].fontSize } : {}),
+    fontSize: kua ? undefined : 12,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    textAlign: 'center',
+    marginTop: 2,
   },
   // Track color, radius, and vertical rhythm match the Analytics 1K progress
   // bar (#763) — the bar reads as the same control on both surfaces, and since

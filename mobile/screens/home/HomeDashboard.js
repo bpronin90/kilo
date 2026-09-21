@@ -99,10 +99,19 @@ export function HomeDashboard({
             <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
           </View>
         </Pressable>
-        <Text style={[styles.oneKHeroValue, { color: oneKHeroColor }]}>
-          {dashboardData.oneK?.total ? `${displayWeight(dashboardData.oneK.total, unit).toFixed(0)}` : '—'}
-          <Text style={styles.oneKHeroUnit}> {unit}</Text>
-        </Text>
+        {dashboardData.oneK?.total ? (
+          <Text style={[styles.oneKHeroValue, { color: oneKHeroColor }]}>
+            {`${displayWeight(dashboardData.oneK.total, unit).toFixed(0)}`}
+            <Text style={styles.oneKHeroUnit}> {unit}</Text>
+          </Text>
+        ) : (
+          // Untracked total: a muted em-dash at hero scale plus a plain-language
+          // next step, not a lerp-tinted lone glyph that read as a stray mark.
+          <>
+            <Text style={styles.oneKHeroPlaceholder}>—</Text>
+            <Text style={styles.oneKHeroCaption}>Track lifts to see your 1K total</Text>
+          </>
+        )}
         <View style={styles.progressBarLarge}>
           <View
             style={[
