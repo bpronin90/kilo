@@ -2375,3 +2375,64 @@ describe('post-deload re-entry: Home and Analytics stay consistent (#989)', () =
     expect(analytics.reentry.bench).toBeUndefined();
   });
 });
+
+// #1112 review finding 2 (follow-up): HomeRecoverySummary must receive the
+// load-aware typography map so its cold-start / font-load-failure paths use
+// system fallbacks instead of requesting unavailable bundled families. In this
+// suite jest-expo's useFonts reports fonts unloaded, so useKuaTypography()
+// returns TYPOGRAPHY_FALLBACK and the recovery card's mono styles must resolve
+// to the monospace fallback family, never 'JetBrainsMono-*'.
+describe('HomeRecoverySummary threads the load-aware typography (#1112)', () => {
+  const React = require('react');
+  const render = require('react-test-renderer');
+  const { HomeRecoverySummary } = require('../screens/HomeScreen');
+  const { TYPOGRAPHY, TYPOGRAPHY_FALLBACK } = require('../theme/typography');
+
+  const flat = (node) => [].concat(node.props.style ?? []).reduce(
+    (acc, s) => (s ? Object.assign(acc, s) : acc), {});
+
+  // An active block with return-band rows, which render the JetBrains Mono
+  // count/label and week-label styles.
+  const summary = {
+    status: 'ready',
+    active: true,
+    stale: false,
+    message: null,
+    comparisonStatus: 'ok',
+    weekNumber: 2,
+    weekNoteStatus: 'ok',
+    bands: { at_or_above: 3, rebuilding: 1 },
+    trained: 4,
+    rosterSize: 5,
+    trainedExercises: [],
+    movement: null,
+    retry: null,
+  };
+
+  test('recovery mono styles use the monospace fallback, not the bundled family, when fonts are unloaded', async () => {
+    // Force the unloaded state: HomeRecoverySummary must render from whatever
+    // useKuaTypography() returns, so with the fallback map its mono styles carry
+    // the system monospace family rather than the bundled 'JetBrainsMono-*'.
+    const typographyModule = require('../theme/typography');
+    const spy = jest.spyOn(typographyModule, 'useKuaTypography').mockReturnValue(TYPOGRAPHY_FALLBACK);
+    let component;
+    await render.act(async () => {
+      component = render.create(
+        <HomeRecoverySummary summary={summary} onNavigate={jest.fn()} />
+      );
+    });
+
+    // The count for the first band row is a JetBrains Mono value in the loaded
+    // map; under fallback it must carry the monospace fallback family.
+    const countNode = component.root.findAllByType('Text')
+      .find(n => String(n.props.children ?? '') === '3');
+    expect(countNode).toBeTruthy();
+    const family = flat(countNode).fontFamily;
+    expect(family).toBe(TYPOGRAPHY_FALLBACK['label-lg'].fontFamily);
+    expect(family).not.toBe(TYPOGRAPHY['label-lg'].fontFamily);
+    expect(String(family || '')).not.toMatch(/JetBrainsMono/);
+
+    await render.act(async () => { component.unmount(); });
+    spy.mockRestore();
+  });
+});

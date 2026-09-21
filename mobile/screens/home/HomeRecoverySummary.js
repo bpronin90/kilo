@@ -6,6 +6,7 @@ import { useTheme } from '../../theme/ThemeContext';
 import { RETURN_BANDS } from '../../lib/data/recoveryReturnBands';
 import { HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './homeDashboardData';
 import { createStyles } from './homeStyles';
+import { useKuaTypography } from '../../theme/typography';
 
 // Active-recovery status on Home (#757).
 //
@@ -44,7 +45,8 @@ const STATE_LABEL = Object.freeze({
 
 export function HomeRecoverySummary({ summary, onNavigate }) {
   const { colors, kuaPalette: kua } = useTheme();
-  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
+  const typography = useKuaTypography();
+  const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
 
   if (!summary) return null;
   const {
