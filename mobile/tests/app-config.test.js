@@ -154,6 +154,14 @@ describe('app config', () => {
     expect(pkg.dependencies['expo-font']).toMatch(/^~14\./);
   });
 
+  // #1127: expo-dev-client is a direct runtime dependency and ships in all builds including production.
+  // expo-dev-launcher (its native dependency) unconditionally includes play-services-code-scanner and
+  // mlkit:barcode-scanning on SDK 54; there is no per-profile autolinking exclusion available.
+  test('expo-dev-client is declared as a direct dependency at an SDK-54-compatible version', () => {
+    const pkg = require('../package.json');
+    expect(pkg.dependencies['expo-dev-client']).toMatch(/^~6\.0\./);
+  });
+
   // #1124: R8 optimization for production AABs.
   test('expo-build-properties is declared as a direct dependency at an SDK-compatible version', () => {
     const pkg = require('../package.json');

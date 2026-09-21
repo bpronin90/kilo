@@ -171,3 +171,42 @@ ls *.zip | xargs -I{} unzip -l {} | grep mapping
 If Sentry credentials are available in the build environment, the mapping
 upload is performed automatically by `@sentry/react-native/expo`. Confirm
 the upload in the Sentry project's ProGuard/R8 mappings UI after building.
+
+### Development Launcher and ML Kit Scanner Dependencies
+
+**Finding (Expo SDK 54 / expo-dev-launcher 6.0.21):** `expo-dev-launcher`
+unconditionally declares `com.google.android.gms:play-services-code-scanner:16.1.0`
+and `com.google.mlkit:barcode-scanning:17.3.0` in its `android/build.gradle` and
+registers `com.google.mlkit.vision.DEPENDENCIES: barcode_ui` in its
+`AndroidManifest.xml`. These ship in **all** builds — development, preview, and
+production — because `expo-dev-client` is a direct runtime dependency in
+`mobile/package.json` and is autolinked into every native build.
+
+**Why exclusion is not available on SDK 54:**
+`expo-modules-autolinking` supports an `exclude` option via the
+`expo.autolinking.exclude` array in `package.json`, but the setting is global
+across all EAS build profiles. Excluding `expo-dev-launcher` would break
+development builds that rely on the development client; there is no per-profile
+autolinking configuration in Expo SDK 54. No patch upgrade within
+`expo-dev-launcher@~6.0` (the sdk-54 tag is 6.0.21) removes the ML Kit
+dependency. R8 code shrinking does not remove the `barcode_ui` meta-data entry
+from the merged Android manifest or the transitive Activity references it keeps
+reachable.
+
+**Inspection commands** (run against a production AAB):
+
+```sh
+# Confirm play-services-code-scanner and mlkit:barcode-scanning are present
+unzip -p <production-aab> base/manifest/AndroidManifest.xml | \
+  strings | grep -i 'barcode\|mlkit\|code.scanner'
+
+# List all classes from the dev-launcher and scanner libraries
+unzip -p <production-aab> base/dex/classes.dex | \
+  strings | grep -i 'GmsBarcodeScanning\|expo.modules.devlauncher'
+```
+
+**Upgrade path:** This constraint is upstream in `expo-dev-launcher`. Track the
+[expo-dev-launcher changelog](https://github.com/expo/expo/tree/main/packages/expo-dev-launcher)
+for a future SDK that either removes the scanner dependency or exposes a
+supported per-profile exclusion mechanism before assuming the dependency is gone
+in a new SDK.
