@@ -174,13 +174,21 @@ the upload in the Sentry project's ProGuard/R8 mappings UI after building.
 
 ### Development Launcher and ML Kit Scanner Dependencies
 
-**Finding (Expo SDK 54 / expo-dev-launcher 6.0.21):** `expo-dev-launcher`
-unconditionally declares `com.google.android.gms:play-services-code-scanner:16.1.0`
-and `com.google.mlkit:barcode-scanning:17.3.0` in its `android/build.gradle` and
-registers `com.google.mlkit.vision.DEPENDENCIES: barcode_ui` in its
-`AndroidManifest.xml`. These ship in **all** builds — development, preview, and
-production — because `expo-dev-client` is a direct runtime dependency in
-`mobile/package.json` and is autolinked into every native build.
+**Finding (Expo SDK 54 / expo-dev-launcher 6.0.21, confirmed by production AAB
+inspection):** `expo-dev-launcher` unconditionally declares
+`com.google.android.gms:play-services-code-scanner:16.1.0` and
+`com.google.mlkit:barcode-scanning:17.3.0` in its `android/build.gradle`. A
+production AAB built from this repo confirms all four markers are present:
+
+- `com.google.mlkit.vision.DEPENDENCIES: barcode_ui` — in the merged manifest
+- `GmsBarcodeScanningDelegateActivity` — registered in the manifest and present in dex
+- `expo.modules.devlauncher.DevLauncherPackage` — present in dex
+- R8 shrinking is active (see R8 Optimization section) but does not remove the
+  Activity because it is reachable through the merged manifest
+
+These ship in **all** builds — development, preview, and production — because
+`expo-dev-client` is a direct runtime dependency in `mobile/package.json` and is
+autolinked into every native build.
 
 **Why exclusion is not available on SDK 54:**
 `expo-modules-autolinking` supports an `exclude` option via the
@@ -189,20 +197,20 @@ across all EAS build profiles. Excluding `expo-dev-launcher` would break
 development builds that rely on the development client; there is no per-profile
 autolinking configuration in Expo SDK 54. No patch upgrade within
 `expo-dev-launcher@~6.0` (the sdk-54 tag is 6.0.21) removes the ML Kit
-dependency. R8 code shrinking does not remove the `barcode_ui` meta-data entry
-from the merged Android manifest or the transitive Activity references it keeps
-reachable.
+dependency.
 
-**Inspection commands** (run against a production AAB):
+**Inspection commands** (to re-verify against a future AAB):
 
 ```sh
-# Confirm play-services-code-scanner and mlkit:barcode-scanning are present
+# Manifest: barcode/mlkit/scanner refs
 unzip -p <production-aab> base/manifest/AndroidManifest.xml | \
-  strings | grep -i 'barcode\|mlkit\|code.scanner'
+  strings | grep -i 'barcode\|mlkit\|code.scanner\|GmsBarcodeScanning'
 
-# List all classes from the dev-launcher and scanner libraries
-unzip -p <production-aab> base/dex/classes.dex | \
-  strings | grep -i 'GmsBarcodeScanning\|expo.modules.devlauncher'
+# DEX: dev-launcher and barcode classes
+for dex in base/dex/classes.dex base/dex/classes2.dex base/dex/classes3.dex; do
+  unzip -p <production-aab> "$dex" 2>/dev/null | \
+    strings | grep -i 'GmsBarcodeScanning\|expo.modules.devlauncher'
+done
 ```
 
 **Upgrade path:** This constraint is upstream in `expo-dev-launcher`. Track the
