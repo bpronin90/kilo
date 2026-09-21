@@ -389,15 +389,16 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // the week eyebrow is tightening the space around it, not the target itself.
   recoveryCard: {
     padding: 20,
-    paddingTop: 14,
+    paddingTop: 12,
     gap: 4,
     backgroundColor: kua ? kua.surfaceCard : undefined,
     borderColor: kua ? kua.surfaceBorder : undefined,
   },
   recoveryLabel: {
-    ...(kua ? TYPOGRAPHY['headline-sm'] : { fontSize: 12, fontWeight: '700', letterSpacing: 0.5 }),
+    ...(kua ? { ...TYPOGRAPHY['headline-sm'], fontSize: 13, lineHeight: 17 } : { fontSize: 12, fontWeight: '700', letterSpacing: 0.5 }),
     color: kua ? kua.onSurface : colors.text,
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   // #803: the card is read as analytics, not as prose — a week eyebrow, one
   // hero result, then supporting count tiles. Sizes follow the analytics
@@ -412,7 +413,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // at the SAME weight tier as the bucket rows below it — it is a fact of
   // equal standing, not a subordinate footnote (acceptance criterion 1/12).
   recoveryHeroCaption: {
-    ...(kua ? TYPOGRAPHY['body-sm'] : { fontSize: 13, fontWeight: '700' }),
+    ...(kua ? { ...TYPOGRAPHY['body-sm'], fontSize: 12 } : { fontSize: 13, fontWeight: '700' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
     marginBottom: 6,
@@ -428,17 +429,17 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingVertical: 3,
   },
   recoveryBandLabel: {
-    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: 13, fontWeight: '700' }),
+    ...(kua ? { ...TYPOGRAPHY['label-lg'], fontSize: 13, lineHeight: 18 } : { fontSize: 13, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
   recoveryBandCount: {
-    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: 13, fontWeight: '700' }),
+    ...(kua ? { ...TYPOGRAPHY['label-lg'], fontSize: 13, lineHeight: 18 } : { fontSize: 13, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
   // The fallbacks are sentences, not figures: they take the hero's slot at
   // reading weight rather than being dressed up as a metric.
   recoveryFallbackLine: {
-    ...(kua ? TYPOGRAPHY['body-md'] : { fontSize: 16, fontWeight: '700' }),
+    ...(kua ? { ...TYPOGRAPHY['body-md'], fontSize: 15, lineHeight: 21 } : { fontSize: 16, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
     marginTop: 2,
   },
@@ -448,11 +449,11 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   recoveryStatsDivider: {
     borderTopWidth: 1,
     borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
-    paddingTop: 14,
-    marginTop: 12,
+    paddingTop: 12,
+    marginTop: 10,
   },
   recoveryStatusLine: {
-    ...(kua ? TYPOGRAPHY['body-sm'] : { fontSize: 13 }),
+    ...(kua ? { ...TYPOGRAPHY['body-sm'], fontSize: 12 } : { fontSize: 13 }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
   },
@@ -490,21 +491,21 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
+  // The two goal stats read as the same visual language as the classification
+  // trio (#1112 owner feedback): centered columns spanning the card, not edge-
+  // pinned values with a gulf between them.
   goalStatCol: {
     flex: 1,
     gap: 4,
+    alignItems: 'center',
   },
-  // Right-align the second stat (Pace) to the card edge so it mirrors the
-  // header row above instead of floating at the horizontal midpoint (#1112
-  // owner feedback).
-  goalStatColEnd: {
-    alignItems: 'flex-end',
-  },
-  // Matches the classification (Progressing/Steady) label treatment so the
-  // goal stats read as the same family (#1112 owner feedback).
+  // Same treatment as the "Exercise Progress" header label (#1112 owner
+  // feedback): uppercase, tracked, muted.
   goalStatLabel: {
     ...(kua ? { fontFamily: TYPOGRAPHY['body-sm'].fontFamily, fontSize: 12 } : { fontSize: 11, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   goalStatValueRow: {
     flexDirection: 'row',

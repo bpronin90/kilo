@@ -35,13 +35,18 @@ export function HomeDashboard({
           : warnings.includes('unhealthy') ? (kua ? kua.warning : colors.cautionText)
           : (kua ? kua.success : colors.success);
         const modeLabel = gi.direction === 'loss' ? 'Cutting' : gi.direction === 'gain' ? 'Bulking' : 'Maintaining';
+        // The goal-timeline status carries the same semantic palette as the
+        // classification trio (#1112 owner feedback): an active goal reads
+        // "on" (success green), an ended one reads as a caution to act on
+        // (warning amber) — never bland muted text.
+        const weeksColor = gi.isOverdue ? (kua ? kua.warning : colors.cautionText) : (kua ? kua.success : colors.success);
         return (
           <Card style={styles.goalCard}>
             <View style={styles.goalModeRow}>
               <Text style={styles.goalDirectionText}>
                 Goal: <Text style={styles.goalModeAccent}>{modeLabel}</Text>
               </Text>
-              <Text style={styles.goalWeeksText}>
+              <Text style={[styles.goalWeeksText, { color: weeksColor }]}>
                 {gi.isOverdue ? 'Goal ended' : `${Math.round(gi.weeks_remaining)} weeks left`}
               </Text>
             </View>
@@ -54,7 +59,7 @@ export function HomeDashboard({
                 </View>
               </View>
               <View
-                style={[styles.goalStatCol, styles.goalStatColEnd]}
+                style={styles.goalStatCol}
                 accessible
                 accessibilityLabel={`Pace: ${
                   gi.required_weekly_pace !== null
