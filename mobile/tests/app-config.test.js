@@ -153,4 +153,20 @@ describe('app config', () => {
     const pkg = require('../package.json');
     expect(pkg.dependencies['expo-font']).toMatch(/^~14\./);
   });
+
+  // #1124: R8 optimization for production AABs.
+  test('expo-build-properties is declared as a direct dependency at an SDK-compatible version', () => {
+    const pkg = require('../package.json');
+    expect(pkg.dependencies['expo-build-properties']).toMatch(/^~1\.0\./);
+  });
+
+  test('static config registers expo-build-properties with R8 enabled for release builds', () => {
+    const appJson = require('../app.json');
+    const buildPropsPlugin = appJson.expo.plugins.find(
+      (p) => Array.isArray(p) && p[0] === 'expo-build-properties',
+    );
+    expect(buildPropsPlugin).toBeDefined();
+    expect(buildPropsPlugin[1].android.enableMinifyInReleaseBuilds).toBe(true);
+    expect(buildPropsPlugin[1].android.enableShrinkResourcesInReleaseBuilds).toBe(true);
+  });
 });

@@ -111,6 +111,7 @@ Verify those systems immediately before release.
 | Item | Status | Notes |
 |---|---|---|
 | Production AAB via EAS | user-action-pending | Build `npm --prefix mobile run build:android:production` from the intended release head and inspect the resulting artifact. |
+| R8 code shrinking and resource shrinking | user-action-pending | Configuration in place via `expo-build-properties` in `mobile/app.json` (`enableMinifyInReleaseBuilds`, `enableShrinkResourcesInReleaseBuilds`). Verification requires a production AAB build: confirm `BUNDLE-METADATA/com.android.tools/r8.json` is present, the obfuscation mapping artifact exists, and Sentry mapping upload succeeds when credentials are available. Development builds (debug Gradle variant) are unaffected; preview APKs share the release Gradle variant and also receive R8 intentionally. |
 | Crash/error reporting build values | user-action-pending | Set `EXPO_PUBLIC_SENTRY_DSN`, `SENTRY_ORG`, `SENTRY_PROJECT`, and the sensitive `SENTRY_AUTH_TOKEN` in the build environment. |
 | Play App Signing enrollment | user-action-pending | Confirm enrollment in Play Console before the first release upload. |
 | Target API through August 30, 2026 | done | The current Expo SDK 54 dependency resolves Android target API 35. |
@@ -136,3 +137,37 @@ Android 16 / API 36 or higher. Before a submission on or after that date:
 
 Do not infer the target SDK from `app.json` alone; verify the generated Android
 artifact.
+
+### R8 Optimization
+
+R8 code shrinking and resource shrinking are enabled for release builds via
+the `expo-build-properties` plugin in `mobile/app.json`:
+
+```json
+["expo-build-properties", {
+  "android": {
+    "enableMinifyInReleaseBuilds": true,
+    "enableShrinkResourcesInReleaseBuilds": true
+  }
+}]
+```
+
+This configuration applies to any Android build that uses the `release` Gradle
+build type. The production profile (AAB) and the preview profile (APK) both use
+the release build type and therefore receive R8 — this is shared intentionally.
+The development profile uses `developmentClient: true` and the debug build type
+and is not affected.
+
+**Verification commands** (run against the production AAB artifact):
+
+```sh
+# Confirm R8 metadata is present
+unzip -p <production-aab> BUNDLE-METADATA/com.android.tools/r8.json
+
+# Confirm the mapping artifact exists (path varies by EAS build output)
+ls *.zip | xargs -I{} unzip -l {} | grep mapping
+```
+
+If Sentry credentials are available in the build environment, the mapping
+upload is performed automatically by `@sentry/react-native/expo`. Confirm
+the upload in the Sentry project's ProGuard/R8 mappings UI after building.
