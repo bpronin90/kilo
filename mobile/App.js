@@ -4,20 +4,8 @@ import { KeyboardAvoidingView, Platform, Pressable, SafeAreaView, StyleSheet, Te
 import { WebAlertHost } from './components/WebAlertHost';
 import * as Updates from 'expo-updates';
 
-import * as SplashScreen from 'expo-splash-screen';
-
 import { ThemeProvider, useTheme, useThemedStyles } from './theme/ThemeContext';
-import { useThemePreferencesHydrated } from './lib/themePreference';
-
-// Hold the native splash until the theme barrier opens (#1138 review). The JS
-// barrier alone is not enough on a native cold start: Expo auto-hides the splash
-// on the first rendered frame, and that frame is the theme-neutral hold, so a
-// Dark/Clay user would briefly see the configured light splash/window surface
-// before the resolved shell mounts — a blank wrong-mode flash. Keeping the
-// splash up until hydration means the first *visible* frame is already the
-// correct theme. Best-effort: on web or in tests the native module is absent, so
-// a rejection here must never break startup.
-SplashScreen.preventAutoHideAsync().catch(() => {});
+import { ThemeHydrationGate } from './app/ThemeHydrationGate';
 import { useKuaFonts } from './theme/typography';
 import { TabBar } from './components/TabBar';
 import { Button } from './components/UI';
@@ -91,33 +79,6 @@ export default function App() {
     </ThemeProvider>
   );
 }
-
-// Cold-start theme barrier (#1138). A persisted Clay/Grass theme or an explicit
-// Light/Dark appearance is only known after an asynchronous AsyncStorage read,
-// so painting the shell from the in-memory defaults (Hard Court / System) lets
-// the wrong theme visibly stabilize before the read lands. This holds the first
-// *themed* frame until both preferences settle, then reveals the shell already
-// on the correct palette. The hold is deliberately theme-neutral — no palette
-// color is committed while the theme is still unknown — and it always releases:
-// a failed or empty read still marks the store hydrated, so there is no
-// indefinite loading state. The gate sits under ThemeProvider so the revealed
-// shell reads the resolved theme on its very first render.
-function ThemeHydrationGate({ children }) {
-  const hydrated = useThemePreferencesHydrated();
-  // Lift the native splash only once the barrier has opened, in an effect so it
-  // runs after the resolved shell has committed. The splash covers the hold
-  // until then, so the first frame the user actually sees is already themed.
-  // Best-effort for the same reason as preventAutoHideAsync above.
-  useEffect(() => {
-    if (hydrated) SplashScreen.hideAsync().catch(() => {});
-  }, [hydrated]);
-  // Inline flex-only style on purpose: no palette color is committed while the
-  // theme is unknown, and a module-scope StyleSheet.create() would (correctly)
-  // trip the "no stale palette" structural guard in theme-rendering.
-  if (!hydrated) return <View style={{ flex: 1 }} />;
-  return children;
-}
-
 
 // A confirmed device wipe must discard more than persisted values. Every tab
 // stays mounted for navigation performance, and those trees own hydrated
