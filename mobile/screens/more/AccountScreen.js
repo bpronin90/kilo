@@ -7,6 +7,7 @@ import { Button, SectionTitle, useInputStyle } from '../../components/UI';
 import { Alert } from '../../lib/platformAlert';
 import { useTheme } from '../../theme/ThemeContext';
 import { useKuaTypography } from '../../theme/typography';
+import { GEOMETRY } from '../../theme/spacing';
 import { KILO_AUTH_REDIRECT } from '../../hooks/useAuthSession';
 import { AccountLifecycle } from './AccountLifecycle';
 import { LegalLinks } from './LegalLinks';
@@ -56,6 +57,11 @@ export function AccountScreen({ onBack, auth }) {
   // was just sent; 'signin' says the account is awaiting confirmation).
   const [confirmationEmail, setConfirmationEmail] = useState('');
   const [confirmationContext, setConfirmationContext] = useState('signup');
+  // Presentation-only focus tracking for the KUA input focus-border contract
+  // (2px `primary` border on focus, #1114 review). Purely local UI state —
+  // it does not gate or alter any auth behavior.
+  const [emailFocused, setEmailFocused] = useState(false);
+  const [passwordFocused, setPasswordFocused] = useState(false);
 
   const run = async (fn) => {
     setBusy(true);
@@ -316,23 +322,27 @@ export function AccountScreen({ onBack, auth }) {
           </Text>
           <TextInput
             keyboardAppearance={colors.scheme}
-            style={[inputStyle, styles.kuaInput]}
+            style={[inputStyle, styles.kuaInput, kua && emailFocused ? styles.kuaInputFocused : null]}
             placeholder="Email"
             placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
             autoCapitalize="none"
             keyboardType="email-address"
             value={email}
             onChangeText={setEmail}
+            onFocus={() => setEmailFocused(true)}
+            onBlur={() => setEmailFocused(false)}
             accessibilityLabel="Email"
           />
           <TextInput
             keyboardAppearance={colors.scheme}
-            style={[inputStyle, styles.kuaInput]}
+            style={[inputStyle, styles.kuaInput, kua && passwordFocused ? styles.kuaInputFocused : null]}
             placeholder="Password"
             placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
             secureTextEntry
             value={password}
             onChangeText={setPassword}
+            onFocus={() => setPasswordFocused(true)}
+            onBlur={() => setPasswordFocused(false)}
             accessibilityLabel="Password"
           />
           <CaptchaChallenge
@@ -455,15 +465,49 @@ const createStyles = (colors, kua = null, typography = {}) => StyleSheet.create(
   // (Sign In, Sign Out, Create Account, Reset Password, GitHub, CAPTCHA
   // retry, confirmation resend/back). `null` in legacy mode leaves the
   // shared Button component's own default styling untouched.
-  actionButton: kua ? { backgroundColor: kua.primary } : null,
-  actionButtonText: kua ? { color: kua.onPrimary } : null,
+  //
+  // Matches the KUA Primary action button contract
+  // (docs/design/kinetic-utilitarian-athletic/components.md): `primary` fill,
+  // `radius-sm` (4px) — overriding the shared Button's legacy 18px pill — and
+  // a 44dp minimum height (the shared Button's own padding already clears
+  // this, but it's asserted explicitly since the KUA contract calls it out).
+  // The shared Button component has no pressed-style callback to override at
+  // the call site, so the contract's "darken 10% / scale 0.97 on press" is
+  // NOT applied here — see PR notes; out of scope without editing Button.
+  actionButton: kua ? {
+    backgroundColor: kua.primary,
+    borderRadius: GEOMETRY['radius-sm'],
+    minHeight: 44,
+  } : null,
+  // `on-primary`, `label-md` (JetBrains Mono, uppercase) per the same
+  // contract. `typography['label-md']` already carries the font family,
+  // size, line height, and tracked letter-spacing; textTransform is added
+  // here since no typography token encodes case.
+  actionButtonText: kua ? {
+    color: kua.onPrimary,
+    ...(typography['label-md'] ?? { fontSize: 12, fontWeight: '600' }),
+    textTransform: 'uppercase',
+  } : null,
   // Composed onto the shared `useInputStyle()` result at the TextInput call
   // site (#1114) rather than editing the shared hook, which Allowed Files
-  // excludes.
+  // excludes. Matches the KUA Inputs contract: 44dp height, `radius-sm`
+  // (4px), `surface-card` background, 1px `surface-border`, `on-surface`
+  // text in `body-md` (Space Grotesk — these are plain text fields, not
+  // numeric/metric, so JetBrains Mono does not apply).
   kuaInput: kua ? {
+    height: 44,
+    borderRadius: GEOMETRY['radius-sm'],
     backgroundColor: kua.surfaceCard,
     borderColor: kua.surfaceBorder,
     color: kua.onSurface,
+    ...(typography['body-md'] ?? { fontSize: 14, lineHeight: 20 }),
+  } : null,
+  // Focus state per the same contract: border becomes 2px `primary`, no glow
+  // spread. Applied conditionally via local onFocus/onBlur state tracked in
+  // the component (not in the shared hook).
+  kuaInputFocused: kua ? {
+    borderWidth: 2,
+    borderColor: kua.primary,
   } : null,
   // Irreversible-action container: error-tinted surface groups Delete Account
   // apart from the routine Sign Out above it. See ui-design-rules.md #14. The
