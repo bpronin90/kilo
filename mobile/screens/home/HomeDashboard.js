@@ -54,7 +54,7 @@ export function HomeDashboard({
                 </View>
               </View>
               <View
-                style={styles.goalStatCol}
+                style={[styles.goalStatCol, styles.goalStatColEnd]}
                 accessible
                 accessibilityLabel={`Pace: ${
                   gi.required_weekly_pace !== null
