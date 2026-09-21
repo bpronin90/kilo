@@ -20,6 +20,9 @@ import {
   setThemeSelection,
   subscribeThemeSelection,
   useThemeSelection,
+  getThemePreferencesHydrated,
+  useThemePreferencesHydrated,
+  THEME_HYDRATION_TIMEOUT_MS,
 } from '../lib/themePreference';
 import { resolveThemeMode } from '../theme/ThemeContext';
 
@@ -534,5 +537,240 @@ describe('theme and appearance independence', () => {
     setAppearancePreference('dark');
     expect(appearanceListener).toHaveBeenCalledTimes(1);
     expect(themeListener).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cold-start hydration barrier (#1138)
+//
+// The app root holds the first *themed* frame until both persisted preferences
+// have settled, so a Clay/Grass theme or an explicit Light/Dark appearance is
+// never painted as a stable Hard Court / System frame first. These tests drive
+// an UNRESOLVED storage read on purpose and assert the pre-resolution state —
+// the barrier is closed and no wrong value has stabilized — rather than only
+// the post-flush value.
+// ---------------------------------------------------------------------------
+describe('cold-start hydration barrier (#1138)', () => {
+  let readResolvers;
+
+  // Replace getItem with a per-key deferred promise so a test can hold both
+  // reads open indefinitely and release them one at a time.
+  function installDeferredReads() {
+    readResolvers = {};
+    jest
+      .spyOn(AsyncStorage, 'getItem')
+      .mockImplementation(
+        (key) => new Promise((resolve) => {
+          readResolvers[key] = resolve;
+        }),
+      );
+  }
+
+  async function resolveRead(key, value) {
+    readResolvers[key](value);
+    await flush();
+  }
+
+  function HydrationProbe() {
+    const hydrated = useThemePreferencesHydrated();
+    const theme = useThemeSelection();
+    const appearance = useAppearancePreference();
+    return <Text>{`${hydrated}|${theme}|${appearance}`}</Text>;
+  }
+
+  function probeState(component) {
+    const [hydrated, theme, appearance] = renderedText(component).split('|');
+    return { hydrated, theme, appearance };
+  }
+
+  beforeEach(() => {
+    __resetThemeSelectionForTests();
+    __resetAppearancePreferenceForTests();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  });
+
+  test('the barrier stays closed until BOTH reads settle', async () => {
+    installDeferredReads();
+
+    let component;
+    await act(async () => {
+      component = renderer.create(<HydrationProbe />);
+    });
+
+    // Both reads pending: no themed frame may be committed.
+    expect(getThemePreferencesHydrated()).toBe(false);
+    expect(probeState(component).hydrated).toBe('false');
+
+    // Resolving only one preference is not enough to open the barrier.
+    await resolveRead(THEME_SELECTION_KEY, 'clay-court');
+    expect(getThemePreferencesHydrated()).toBe(false);
+    expect(probeState(component).hydrated).toBe('false');
+
+    await resolveRead(APPEARANCE_PREFERENCE_KEY, 'dark');
+    expect(getThemePreferencesHydrated()).toBe(true);
+    expect(probeState(component).hydrated).toBe('true');
+  });
+
+  test('a persisted theme is the first value released, never Hard Court first', async () => {
+    installDeferredReads();
+
+    let component;
+    await act(async () => {
+      component = renderer.create(<HydrationProbe />);
+    });
+
+    // While the read is unresolved the barrier is closed, so the in-memory
+    // Hard Court default is held BEHIND the barrier and never stabilizes as a
+    // painted frame.
+    expect(probeState(component).hydrated).toBe('false');
+
+    await resolveRead(THEME_SELECTION_KEY, 'grass-court');
+    await resolveRead(APPEARANCE_PREFERENCE_KEY, 'system');
+
+    // The first frame the barrier releases is already Grass Court.
+    const state = probeState(component);
+    expect(state.hydrated).toBe('true');
+    expect(state.theme).toBe('grass-court');
+  });
+
+  test('a persisted explicit Dark appearance is released under Dark, not System', async () => {
+    installDeferredReads();
+
+    let component;
+    await act(async () => {
+      component = renderer.create(<HydrationProbe />);
+    });
+    expect(probeState(component).hydrated).toBe('false');
+
+    await resolveRead(APPEARANCE_PREFERENCE_KEY, 'dark');
+    await resolveRead(THEME_SELECTION_KEY, 'hard-court');
+
+    const state = probeState(component);
+    expect(state.hydrated).toBe('true');
+    expect(state.appearance).toBe('dark');
+  });
+
+  test('an explicit selection made while hydration is in flight opens the barrier and wins', async () => {
+    installDeferredReads();
+
+    let component;
+    await act(async () => {
+      component = renderer.create(<HydrationProbe />);
+    });
+    expect(probeState(component).hydrated).toBe('false');
+
+    // The user taps a theme and an appearance before either read resolves.
+    await act(async () => {
+      setThemeSelection('clay-court');
+      setAppearancePreference('light');
+    });
+
+    // Both explicit choices settle their store, so the barrier opens without
+    // waiting on the reads at all.
+    expect(getThemePreferencesHydrated()).toBe(true);
+    expect(probeState(component)).toEqual({
+      hydrated: 'true',
+      theme: 'clay-court',
+      appearance: 'light',
+    });
+
+    // A late read must not clobber the explicit selection.
+    await resolveRead(THEME_SELECTION_KEY, 'grass-court');
+    await resolveRead(APPEARANCE_PREFERENCE_KEY, 'dark');
+    expect(probeState(component)).toEqual({
+      hydrated: 'true',
+      theme: 'clay-court',
+      appearance: 'light',
+    });
+  });
+
+  test('a rejected read still opens the barrier without an indefinite loading state', async () => {
+    jest.spyOn(AsyncStorage, 'getItem').mockRejectedValue(new Error('storage down'));
+
+    let component;
+    await act(async () => {
+      component = renderer.create(<HydrationProbe />);
+    });
+    await flush();
+
+    expect(getThemePreferencesHydrated()).toBe(true);
+    expect(probeState(component)).toEqual({
+      hydrated: 'true',
+      theme: 'hard-court',
+      appearance: 'system',
+    });
+  });
+
+  test('a read that never settles still opens the barrier after the timeout', async () => {
+    jest.useFakeTimers();
+    // A promise that resolves and rejects never — a stalled native bridge.
+    jest.spyOn(AsyncStorage, 'getItem').mockReturnValue(new Promise(() => {}));
+
+    let component;
+    await act(async () => {
+      component = renderer.create(<HydrationProbe />);
+    });
+
+    // Neither read can settle, so without the safety net the barrier would hang.
+    expect(getThemePreferencesHydrated()).toBe(false);
+    expect(probeState(component).hydrated).toBe('false');
+
+    act(() => {
+      jest.advanceTimersByTime(THEME_HYDRATION_TIMEOUT_MS);
+    });
+
+    // The bounded fallback releases the barrier on the safe defaults.
+    expect(getThemePreferencesHydrated()).toBe(true);
+    expect(probeState(component)).toEqual({
+      hydrated: 'true',
+      theme: 'hard-court',
+      appearance: 'system',
+    });
+
+    jest.useRealTimers();
+  });
+
+  test('a synchronously throwing read still opens the barrier on the defaults', async () => {
+    jest.spyOn(AsyncStorage, 'getItem').mockImplementation(() => {
+      throw new Error('adapter exploded');
+    });
+
+    let component;
+    await act(async () => {
+      component = renderer.create(<HydrationProbe />);
+    });
+    await flush();
+
+    expect(getThemePreferencesHydrated()).toBe(true);
+    expect(probeState(component)).toEqual({
+      hydrated: 'true',
+      theme: 'hard-court',
+      appearance: 'system',
+    });
+  });
+
+  test('theme and appearance settle the barrier independently and device-locally', async () => {
+    installDeferredReads();
+
+    await act(async () => {
+      renderer.create(<HydrationProbe />);
+    });
+
+    // Appearance resolving does not mark the theme store settled, and vice
+    // versa — the two are tracked independently.
+    await resolveRead(APPEARANCE_PREFERENCE_KEY, 'light');
+    expect(getThemePreferencesHydrated()).toBe(false);
+    expect(getAppearancePreference()).toBe('light');
+    expect(getThemeSelection()).toBe('hard-court');
+
+    await resolveRead(THEME_SELECTION_KEY, 'clay-court');
+    expect(getThemePreferencesHydrated()).toBe(true);
+    // A theme read never leaked into the appearance value.
+    expect(getAppearancePreference()).toBe('light');
+    expect(getThemeSelection()).toBe('clay-court');
   });
 });

@@ -5,6 +5,7 @@ import { WebAlertHost } from './components/WebAlertHost';
 import * as Updates from 'expo-updates';
 
 import { ThemeProvider, useTheme, useThemedStyles } from './theme/ThemeContext';
+import { ThemeHydrationGate } from './app/ThemeHydrationGate';
 import { useKuaFonts } from './theme/typography';
 import { TabBar } from './components/TabBar';
 import { Button } from './components/UI';
@@ -72,11 +73,12 @@ export default function App() {
 
   return (
     <ThemeProvider>
-      <WipeAwareAppShell />
+      <ThemeHydrationGate>
+        <WipeAwareAppShell />
+      </ThemeHydrationGate>
     </ThemeProvider>
   );
 }
-
 
 // A confirmed device wipe must discard more than persisted values. Every tab
 // stays mounted for navigation performance, and those trees own hydrated

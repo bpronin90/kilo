@@ -41,6 +41,60 @@ function emit() {
   for (const listener of [...listeners]) listener();
 }
 
+// ---------------------------------------------------------------------------
+// Cold-start hydration barrier (#1138)
+//
+// Each store starts on its in-memory default and only learns the persisted
+// value after an asynchronous AsyncStorage read. Painting the shell from those
+// defaults lets a Clay/Grass or explicit Light/Dark user watch Hard Court /
+// System stabilize first, then jump. The barrier below lets the app root hold
+// the first *themed* frame until BOTH preferences have settled (resolved,
+// rejected, or pre-empted by an explicit selection), so the first stable frame
+// is the correct one. It always releases — a read failure marks the store
+// hydrated too, so there is no indefinite loading state.
+// ---------------------------------------------------------------------------
+let appearanceHydrated = false;
+let themeSelectionHydrated = false;
+const hydrationListeners = new Set();
+
+function emitHydration() {
+  for (const listener of [...hydrationListeners]) listener();
+}
+
+function markAppearanceHydrated() {
+  if (appearanceHydrated) return;
+  appearanceHydrated = true;
+  emitHydration();
+}
+
+function markThemeSelectionHydrated() {
+  if (themeSelectionHydrated) return;
+  themeSelectionHydrated = true;
+  emitHydration();
+}
+
+// True once neither store can still swap its value out from under the first
+// paint. Synchronous so it can seed useSyncExternalStore's snapshot.
+export function getThemePreferencesHydrated() {
+  return appearanceHydrated && themeSelectionHydrated;
+}
+
+// Safety-net release (#1138 review). Rejection and synchronous-throw settle the
+// barrier, but a read whose promise simply never resolves (a stalled native
+// storage bridge) would otherwise strand the app on the neutral hold forever.
+// A bounded fallback guarantees the barrier always opens; the value still
+// corrects if the real read lands late (markHydrated is idempotent). Generous
+// enough not to fire on an ordinary slow cold-start read (tens of ms), so it
+// only ever trips on a genuinely stuck read.
+export const THEME_HYDRATION_TIMEOUT_MS = 3000;
+
+// A setTimeout that never keeps a Node test process alive on its own.
+function scheduleHydrationFallback(settle) {
+  const timer = setTimeout(settle, THEME_HYDRATION_TIMEOUT_MS);
+  if (timer && typeof timer.unref === 'function') timer.unref();
+  return timer;
+}
+
 export function getAppearancePreference() {
   return currentPreference;
 }
@@ -52,6 +106,10 @@ export function getAppearancePreference() {
 export function setAppearancePreference(value) {
   explicitlySet = true;
   hydrateStarted = true;
+  // An explicit choice is the final value; nothing pending can override it, so
+  // the barrier no longer needs to wait on the read (which #1138's in-flight
+  // test exercises: a selection made mid-hydration must release the gate).
+  markAppearanceHydrated();
   const next = normalizeAppearancePreference(value);
   if (next !== currentPreference) {
     currentPreference = next;
@@ -71,10 +129,25 @@ export function setAppearancePreference(value) {
 function ensureHydrated() {
   if (hydrateStarted) return;
   hydrateStarted = true;
+  // Clears the fallback timer on settle so a normal read leaves no lingering
+  // timeout, and releases the barrier exactly once (markAppearanceHydrated is
+  // idempotent whether the read or the fallback wins).
+  let fallbackTimer = null;
+  const settle = () => {
+    if (fallbackTimer !== null) {
+      clearTimeout(fallbackTimer);
+      fallbackTimer = null;
+    }
+    markAppearanceHydrated();
+  };
   // Wrapped in Promise.resolve + try/catch so a storage adapter that throws
   // synchronously or returns a non-thenable leaves the app on the default
   // preference instead of tearing down the first render that subscribed.
   try {
+    // Armed before the read so even a promise that never settles releases the
+    // barrier (#1138 review): rejection and sync-throw are handled below, but a
+    // stuck bridge would otherwise hold the neutral hold indefinitely.
+    fallbackTimer = scheduleHydrationFallback(settle);
     Promise.resolve(AsyncStorage.getItem(APPEARANCE_PREFERENCE_KEY))
       .then((raw) => {
         // An explicit selection made while the read was in flight always wins.
@@ -85,9 +158,13 @@ function ensureHydrated() {
           emit();
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      // Settled either way: release the barrier so a failed or empty read never
+      // leaves the app on an indefinite loading frame.
+      .finally(settle);
   } catch (e) {
-    // Ignored: the default preference already applies.
+    // A synchronously throwing adapter still counts as settled on the default.
+    settle();
   }
 }
 
@@ -114,6 +191,8 @@ export function __resetAppearancePreferenceForTests() {
   hydrateStarted = false;
   explicitlySet = false;
   listeners.clear();
+  appearanceHydrated = false;
+  hydrationListeners.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -148,6 +227,8 @@ export function getThemeSelection() {
 export function setThemeSelection(value) {
   themeExplicitlySet = true;
   themeHydrateStarted = true;
+  // An explicit choice is final; release the barrier immediately (#1138).
+  markThemeSelectionHydrated();
   const next = normalizeThemeSelection(value);
   if (next !== currentTheme) {
     currentTheme = next;
@@ -165,7 +246,17 @@ export function setThemeSelection(value) {
 function ensureThemeHydrated() {
   if (themeHydrateStarted) return;
   themeHydrateStarted = true;
+  let fallbackTimer = null;
+  const settle = () => {
+    if (fallbackTimer !== null) {
+      clearTimeout(fallbackTimer);
+      fallbackTimer = null;
+    }
+    markThemeSelectionHydrated();
+  };
   try {
+    // Same stuck-read safety net as the appearance store (#1138 review).
+    fallbackTimer = scheduleHydrationFallback(settle);
     Promise.resolve(AsyncStorage.getItem(THEME_SELECTION_KEY))
       .then((raw) => {
         if (themeExplicitlySet) return;
@@ -175,9 +266,11 @@ function ensureThemeHydrated() {
           emitTheme();
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(settle);
   } catch (e) {
-    // Ignored: the default theme already applies.
+    // A synchronously throwing adapter still counts as settled on the default.
+    settle();
   }
 }
 
@@ -202,4 +295,38 @@ export function __resetThemeSelectionForTests() {
   themeHydrateStarted = false;
   themeExplicitlySet = false;
   themeListeners.clear();
+  themeSelectionHydrated = false;
+  hydrationListeners.clear();
 }
+
+// ---------------------------------------------------------------------------
+// Combined hydration barrier subscription (#1138)
+//
+// Subscribing kicks off BOTH reads (so the gate can release even before the
+// theme/appearance hooks themselves have any subscriber) and notifies whenever
+// either store settles. The app root uses this to withhold the first themed
+// frame until both persisted preferences have resolved.
+// ---------------------------------------------------------------------------
+export function subscribeThemePreferencesHydrated(listener) {
+  hydrationListeners.add(listener);
+  ensureHydrated();
+  ensureThemeHydrated();
+  return () => {
+    hydrationListeners.delete(listener);
+  };
+}
+
+export function useThemePreferencesHydrated() {
+  return useSyncExternalStore(
+    subscribeThemePreferencesHydrated,
+    getThemePreferencesHydrated,
+    getThemePreferencesHydrated
+  );
+}
+
+// Begin both reads at module import, before the first React render, so the
+// persisted values are already in flight when the app root mounts. On a real
+// cold start the barrier still holds until they resolve; this only shortens the
+// hold rather than deferring the read until the first subscriber (#1138).
+ensureHydrated();
+ensureThemeHydrated();
