@@ -59,9 +59,11 @@ Landed before this redesign. Assigns production files over 600 lines to implemen
 
 ---
 
-## Phase 2 — Design specification and approval (complete)
+## Phase 2 — Design specification (landed)
 
-Issue [#1095](https://github.com/bpronin90/kilo/issues/1095). The approved design package lives in `docs/design/kinetic-utilitarian-athletic/`.
+Issue [#1095](https://github.com/bpronin90/kilo/issues/1095). The design package lives in
+`docs/design/kinetic-utilitarian-athletic/`; its README remains the authority for
+the formal owner-approval checklist.
 
 ---
 
