@@ -37,6 +37,7 @@ function withAlpha(hex, alpha) {
 export function LogRecoveryWeeks({
   styles,
   colors,
+  kua = null,
   activeWeeks,
   currentWeek,
   notesById,
@@ -136,7 +137,7 @@ export function LogRecoveryWeeks({
                 // a 3px accent left rail, with left padding compensated
                 // from 18 to 15 so the rail's own width completes the
                 // table's 18px rhythm (#843).
-                isCurrentWeek && { backgroundColor: withAlpha(colors.accent, 0.06), borderLeftWidth: 3, borderLeftColor: colors.accent },
+                isCurrentWeek && { backgroundColor: withAlpha(kua ? kua.primary : colors.accent, 0.06), borderLeftWidth: 3, borderLeftColor: kua ? kua.primary : colors.accent },
               ]}
             >
               <RowMain
@@ -150,11 +151,11 @@ export function LogRecoveryWeeks({
                   style={[
                     styles.statusDot,
                     isCompleted
-                      ? { backgroundColor: withAlpha(colors.success, 0.12) }
-                      : { borderWidth: 2, borderColor: colors.accent },
+                      ? { backgroundColor: withAlpha(kua ? kua.completion : colors.success, 0.12) }
+                      : { borderWidth: 2, borderColor: kua ? kua.primary : colors.accent },
                   ]}
                 >
-                  {isCompleted && <MaterialIcons name="check" size={16} color={colors.success} accessible={false} />}
+                  {isCompleted && <MaterialIcons name="check" size={16} color={kua ? kua.completion : colors.success} accessible={false} />}
                 </View>
                 <Text style={styles.weekLabel}>Week {week.week_number}</Text>
                 <Text style={styles.weekNoteTitle} numberOfLines={1}>
@@ -164,7 +165,7 @@ export function LogRecoveryWeeks({
                   <MaterialIcons
                     name={isViewingThisNote ? 'expand-less' : 'expand-more'}
                     size={20}
-                    color={colors.textMuted}
+                    color={kua ? kua.onSurfaceVariant : colors.textMuted}
                     accessible={false}
                   />
                 ) : null}
@@ -173,6 +174,7 @@ export function LogRecoveryWeeks({
                 <LogRecoveryEvidence
                   styles={styles}
                   colors={colors}
+                  kua={kua}
                   week={week}
                   linkedNote={linkedNote}
                   isCurrentWeek={isCurrentWeek}

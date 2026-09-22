@@ -18,21 +18,39 @@ export const EDITOR_INPUT_TEXT_INSET = (EDITOR_INPUT_HORIZONTAL_PADDING + EDITOR
 // their own positioning context changes no spacing.
 export const EDITOR_STACK_GAP = 10;
 
-export const createStyles = (colors) => StyleSheet.create({
+// Fade a KUA hex token to a low-opacity fill for the danger-zone surface, so
+// the error tint reads on any court canvas. Mirrors the helper in
+// backup/backupStyles.js and LogRecoveryWeeks.js. Only used on the KUA path.
+function withAlpha(hex, alpha) {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+// When `kua` is supplied (production KUA gate) the editor's surfaces, ink,
+// inputs, and validation/danger states resolve through the selected court
+// palette; outside the gate (`kua` null — isolated editor tests) every value
+// falls back to the unchanged legacy palette. Status ink (error/warning) uses
+// the on-surface KUA error/warning tokens, and the danger zone mirrors the
+// BackupScreen reference: a faded-error tint with an error border and ink.
+export const createStyles = (colors, kua = null) => StyleSheet.create({
   // #1021: tightened from 16 — the New Routine editor's top-level rows sat
   // further apart than the content inside any one of them needed.
   editContainer: {
     gap: 12,
   },
   input: {
-    backgroundColor: colors.inputBackground,
+    backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
     borderRadius: 16,
     borderWidth: EDITOR_INPUT_BORDER_WIDTH,
-    borderColor: colors.inputBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
     paddingHorizontal: EDITOR_INPUT_HORIZONTAL_PADDING,
     paddingVertical: EDITOR_INPUT_VERTICAL_PADDING,
     fontSize: 16,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   titleInput: {
     marginBottom: 8,
@@ -74,16 +92,16 @@ export const createStyles = (colors) => StyleSheet.create({
   importRoutineButtonText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
   },
   // Empty-note seed example (#785). A tinted block matching the syntax-help
   // code block styling (§4: no nested Card), tappable at minHeight 44.
   seedBlock: {
     marginTop: 8,
-    backgroundColor: colors.inputBackground,
+    backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     padding: 10,
     minHeight: 44,
     justifyContent: 'center',
@@ -91,13 +109,13 @@ export const createStyles = (colors) => StyleSheet.create({
   },
   seedHint: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginBottom: 4,
   },
   seedLineText: {
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     fontSize: 13,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   // #867: the tool row + note pair, and the positioning context the problem
   // list overlays them from. `gap` mirrors the surrounding Card's own gap, so
@@ -122,7 +140,7 @@ export const createStyles = (colors) => StyleSheet.create({
   syntaxHelpButtonText: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
   },
   // Outlined circled "!" + count (#863), replacing the standing bordered
   // warning block and the always-visible active-problem message with a
@@ -169,9 +187,9 @@ export const createStyles = (colors) => StyleSheet.create({
     zIndex: 2,
     maxHeight: 220,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     borderRadius: 12,
-    backgroundColor: colors.card,
+    backgroundColor: kua ? kua.surfaceCard : colors.card,
   },
   validationListRow: {
     minHeight: 44,
@@ -181,17 +199,17 @@ export const createStyles = (colors) => StyleSheet.create({
   },
   validationListRowDivider: {
     borderTopWidth: 1,
-    borderTopColor: colors.cardBorder,
+    borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   validationListRowText: {
     fontSize: 13,
     lineHeight: 18,
   },
   validationListRowTextError: {
-    color: colors.error,
+    color: kua ? kua.errorText : colors.error,
   },
   validationListRowTextWarning: {
-    color: colors.cautionText,
+    color: kua ? kua.warning : colors.cautionText,
   },
   // The single dismissible bar (#863) for whichever one problem is
   // selected. Renders below the TextInput, not above it, so jumping to a
@@ -208,10 +226,10 @@ export const createStyles = (colors) => StyleSheet.create({
     lineHeight: 18,
   },
   validationBarTextError: {
-    color: colors.error,
+    color: kua ? kua.errorText : colors.error,
   },
   validationBarTextWarning: {
-    color: colors.cautionText,
+    color: kua ? kua.warning : colors.cautionText,
   },
   validationBarDismiss: {
     minWidth: 44,
@@ -222,23 +240,23 @@ export const createStyles = (colors) => StyleSheet.create({
   validationBarDismissText: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   switchButton: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   switchButtonText: {
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
   },
   // Irreversible-action container (#823, ui-design-rules.md §14): groups
   // Delete apart from the routine-management Buttons above it, matching
   // BackupScreen's "Wipe Device Data" reference implementation.
   dangerZone: {
-    backgroundColor: colors.errorSurface,
+    backgroundColor: kua ? withAlpha(kua.error, 0.14) : colors.errorSurface,
     borderWidth: 1,
-    borderColor: colors.error,
+    borderColor: kua ? kua.error : colors.error,
     borderRadius: 24,
     padding: 16,
     gap: 10,
@@ -252,11 +270,11 @@ export const createStyles = (colors) => StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
-    color: colors.error,
+    color: kua ? kua.errorText : colors.error,
   },
   autosaveIndicator: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'right',
     marginTop: 8,
   },
@@ -273,7 +291,7 @@ export const createStyles = (colors) => StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     fontWeight: '600',
-    color: colors.error,
+    color: kua ? kua.errorText : colors.error,
     marginTop: 8,
   },
   // A tinted block, not a nested Card (§4): ordinary `text`/`textMuted` ink on
@@ -284,25 +302,25 @@ export const createStyles = (colors) => StyleSheet.create({
     padding: 14,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-    backgroundColor: colors.subtleBg,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
+    backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
     gap: 6,
   },
   adoptionTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   adoptionBody: {
     fontSize: 14,
     lineHeight: 20,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   adoptionError: {
     fontSize: 13,
     lineHeight: 18,
     fontWeight: '600',
-    color: colors.error,
+    color: kua ? kua.errorText : colors.error,
   },
   // Stacks vertically at large text rather than squeezing two pills onto one
   // line; no fixed heights, so every label wraps instead of truncating.
@@ -325,15 +343,15 @@ export const createStyles = (colors) => StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   adoptionSecondaryText: {
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   inputLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginBottom: 6,
     marginTop: 4,
   },
@@ -346,7 +364,7 @@ export const createStyles = (colors) => StyleSheet.create({
   },
   dateInputText: {
     fontSize: 16,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   // Compact secondary "Date · <value>" disclosure row (#764), replacing the
   // removed Settings "Edit deload dates" toggle. minHeight 44 for the touch
@@ -361,12 +379,12 @@ export const createStyles = (colors) => StyleSheet.create({
   dateDisclosureText: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   dateDisclosureDoneText: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
     marginBottom: 8,
   },
 });

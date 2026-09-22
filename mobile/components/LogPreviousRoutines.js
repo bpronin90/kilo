@@ -31,7 +31,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Button, Card, SectionTitle } from './UI';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme, useThemedStyles, useKuaStyle } from '../theme/ThemeContext';
 import { localDate } from '../lib/LogScreenHelpers';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
 import {
@@ -99,6 +99,7 @@ export function LogPreviousRoutines({
   onShareRoutine,
 }) {
   const { colors } = useTheme();
+  const kua = useKuaStyle();
   const styles = useThemedStyles(createStyles);
   const [imageShare, setImageShare] = useState(null);
   // Double-tap the viewed routine body to open it in the editor (matches main).
@@ -171,7 +172,7 @@ export function LogPreviousRoutines({
           accessibilityRole="button"
           accessibilityLabel="New routine"
         >
-          <MaterialIcons name="add" size={16} color={colors.accent} accessible={false} />
+          <MaterialIcons name="add" size={16} color={kua ? kua.primary : colors.accent} accessible={false} />
           <Text style={styles.newRoutineButtonText} accessible={false}>New routine</Text>
         </Pressable>
       </View>
@@ -238,7 +239,7 @@ export function LogPreviousRoutines({
                   <MaterialIcons
                     name={isViewedOther ? 'expand-less' : 'expand-more'}
                     size={18}
-                    color={colors.textMuted}
+                    color={kua ? kua.onSurfaceVariant : colors.textMuted}
                     accessible={false}
                   />
                 </Pressable>
@@ -338,7 +339,10 @@ export function LogPreviousRoutines({
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+// Under the production KUA gate (`kua` supplied) the routine-management cards,
+// switch chips, and ink resolve through the selected court palette; outside the
+// gate (`kua` null — isolated tests) they keep the legacy palette.
+const createStyles = (colors, kua = null) => StyleSheet.create({
   previousRoutines: {
     marginTop: 4,
     gap: 12,
@@ -364,12 +368,12 @@ const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   newRoutineButtonText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
   },
   // Individual quiet rounded cards (#847), pre-#843 hierarchy: separated by
   // normal shell spacing, no shared outer panel or divided-list chrome.
@@ -395,20 +399,20 @@ const createStyles = (colors) => StyleSheet.create({
   otherNoteTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   otherNoteSub: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
   },
   inlineSwitchButton: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     minHeight: 44,
     justifyContent: 'center',
     flexShrink: 1,
@@ -416,14 +420,14 @@ const createStyles = (colors) => StyleSheet.create({
   inlineSwitchButtonText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.chipAccentText,
+    color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },
   currentNoteContent: {
     paddingHorizontal: 24,
     paddingBottom: 20,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: colors.cardBorder,
+    borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   inlineActions: {
     paddingHorizontal: 16,
@@ -440,10 +444,10 @@ const createStyles = (colors) => StyleSheet.create({
   switchButton: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   switchButtonText: {
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
   },
   // Transient copy confirmation / failure line (#956): the quiet muted-ink
   // status treatment already used across this file (otherNoteSub,
@@ -451,7 +455,7 @@ const createStyles = (colors) => StyleSheet.create({
   // acknowledgement, not a call to action.
   copyStatusText: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 4,
   },
 });

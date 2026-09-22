@@ -40,7 +40,11 @@ export function WorkoutSyntaxModal({ visible, onClose }) {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+// Under the production KUA gate (`kua` supplied) the sheet chrome, header rule,
+// and ink resolve through the selected court palette; the dim backdrop stays on
+// the court-neutral legacy overlay token, and outside the gate (`kua` null —
+// isolated modal tests) every value keeps the legacy palette.
+const createStyles = (colors, kua = null) => StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: colors.overlay,
@@ -49,10 +53,10 @@ const createStyles = (colors) => StyleSheet.create({
     paddingVertical: 40,
   },
   sheet: {
-    backgroundColor: colors.card,
+    backgroundColor: kua ? kua.surfaceCard : colors.card,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     maxWidth: 420,
     maxHeight: '100%',
     width: '100%',
@@ -65,21 +69,21 @@ const createStyles = (colors) => StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
     gap: 8,
   },
   title: {
     flex: 1,
     fontSize: 17,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   closeBtn: {
     padding: 4,
   },
   closeBtnText: {
     fontSize: 16,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '600',
   },
   body: {

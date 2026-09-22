@@ -362,22 +362,28 @@ export function WorkoutContentRenderer({
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+// Under the production KUA gate (`kua` supplied) the compact reading scale,
+// skip/empty ink, and flagged-exercise rail resolve through the selected court
+// palette; outside the gate (`kua` null — isolated renderer tests) they keep
+// the legacy palette. The workout section headers/TRACK states themselves come
+// from the shared UI.js primitives, which stay on their own WorkoutKuaProvider
+// opt-in (unchanged here).
+const createStyles = (colors, kua = null) => StyleSheet.create({
   // Retained for the alt-week raw-text preview shown when the inactive A/B
   // week has no parsed content; unparsed set rows themselves now render via
   // the shared `UnparsedRow` component.
   unparsedRowMuted: {
     fontSize: SET_ROW_FONT_SIZE,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     paddingLeft: 0,
   },
   skipMarker: {
     fontSize: SET_ROW_FONT_SIZE,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   flaggedExercise: {
     borderLeftWidth: 3,
-    borderLeftColor: colors.error,
+    borderLeftColor: kua ? kua.errorText : colors.error,
     marginLeft: -3,
   },
   // Recovery's compact type scale (#843): see the `compact` prop above.
@@ -388,7 +394,7 @@ const createStyles = (colors) => StyleSheet.create({
   compactExerciseName: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   compactSetLine: {
     flexDirection: 'row',
@@ -403,21 +409,21 @@ const createStyles = (colors) => StyleSheet.create({
   compactSetWeight: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   compactSetReps: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   compactSetMark: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginLeft: 6,
   },
   emptyText: {
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontSize: 16,
     textAlign: 'center',
     marginTop: 40,

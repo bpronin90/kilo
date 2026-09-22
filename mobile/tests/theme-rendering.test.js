@@ -741,6 +741,143 @@ describe('KUA shell + shared primitives wire to the selected court (#1139)', () 
   });
 });
 
+// #1140: the remaining Log, editor, workout, and utility surfaces wire to the
+// selected court exactly like the #1139 shell primitives — under the gate they
+// resolve KUA tokens and repaint on a fixed-mode court switch; rendered outside
+// it (the legacy-only style-factory call sites every isolated Log/editor test
+// still uses) they keep the unchanged legacy palette.
+describe('KUA wiring for Log/editor/workout/utility surfaces (#1140)', () => {
+  const { createStyles: logScreenCreateStyles } = require('../screens/log/logScreenStyles');
+  const { createStyles: logEditorCreateStyles } = require('../components/log/logEditorStyles');
+  const { createStyles: logRecoveryCreateStyles } = require('../components/recovery/logRecoveryStyles');
+  const { LogEmptyState } = require('../components/LogEmptyState');
+  const { WorkoutSyntaxReference } = require('../components/WorkoutSyntaxReference');
+
+  const SIX = [
+    ['hardCourt/light', HardCourtLightColors],
+    ['hardCourt/dark', HardCourtDarkColors],
+    ['clayCourt/light', ClayCourtLightColors],
+    ['clayCourt/dark', ClayCourtDarkColors],
+    ['grassCourt/light', GrassCourtLightColors],
+    ['grassCourt/dark', GrassCourtDarkColors],
+  ];
+
+  function renderGated(element) {
+    let component;
+    act(() => {
+      component = renderer.create(
+        <ThemeProvider>
+          <KuaStyleGate>{element}</KuaStyleGate>
+        </ThemeProvider>
+      );
+    });
+    return component;
+  }
+
+  // --- legacy-only style-factory call sites: kua === null keeps legacy -------
+
+  test('the shared Log/editor/recovery factories fall back to the legacy palette when kua is null', () => {
+    const screen = logScreenCreateStyles(LightColors, null);
+    expect(screen.skeletonCard.backgroundColor).toBe(LightColors.card);
+    expect(screen.firstUseTitle.color).toBe(LightColors.text);
+
+    const editor = logEditorCreateStyles(LightColors, null);
+    expect(editor.input.backgroundColor).toBe(LightColors.inputBackground);
+    expect(editor.dangerZone.borderColor).toBe(LightColors.error);
+    expect(editor.syntaxHelpButtonText.color).toBe(LightColors.accentText);
+
+    const recovery = logRecoveryCreateStyles(LightColors, null);
+    expect(recovery.primaryButton.backgroundColor).toBe(LightColors.accent);
+    expect(recovery.headline.color).toBe(LightColors.text);
+  });
+
+  // --- each factory resolves selected KUA tokens in all six combinations ----
+
+  test('the Log/editor/recovery factories resolve KUA tokens in all six theme/mode combinations', () => {
+    for (const [name, kua] of SIX) {
+      const screen = logScreenCreateStyles(LightColors, kua);
+      expect({ name, v: screen.skeletonCard.backgroundColor }).toEqual({ name, v: kua.surfaceCard });
+      expect({ name, v: screen.firstUseTitle.color }).toEqual({ name, v: kua.onSurface });
+
+      const editor = logEditorCreateStyles(LightColors, kua);
+      expect({ name, v: editor.input.backgroundColor }).toEqual({ name, v: kua.surfaceCard });
+      expect({ name, v: editor.dangerZoneHeadingText.color }).toEqual({ name, v: kua.errorText });
+      expect({ name, v: editor.syntaxHelpButtonText.color }).toEqual({ name, v: kua.primary });
+
+      const recovery = logRecoveryCreateStyles(LightColors, kua);
+      expect({ name, v: recovery.primaryButton.backgroundColor }).toEqual({ name, v: kua.primary });
+      expect({ name, v: recovery.stateZone.backgroundColor }).toEqual({ name, v: kua.surfaceSection });
+    }
+  });
+
+  // A fixed-mode court switch (same legacy `colors`, different `kua`) must
+  // return a fresh sheet: the editor's primary ink is court-distinct.
+  test('switching Hard→Clay at a fixed mode repaints the editor and recovery factories', () => {
+    const hard = logEditorCreateStyles(LightColors, HardCourtLightColors);
+    const clay = logEditorCreateStyles(LightColors, ClayCourtLightColors);
+    expect(hard.syntaxHelpButtonText.color).toBe(HardCourtLightColors.primary);
+    expect(clay.syntaxHelpButtonText.color).toBe(ClayCourtLightColors.primary);
+    expect(clay.syntaxHelpButtonText.color).not.toBe(hard.syntaxHelpButtonText.color);
+
+    const hardR = logRecoveryCreateStyles(LightColors, HardCourtLightColors);
+    const clayR = logRecoveryCreateStyles(LightColors, ClayCourtLightColors);
+    expect(clayR.primaryButton.backgroundColor).not.toBe(hardR.primaryButton.backgroundColor);
+  });
+
+  // Regression for the PR #1147 review (validation badge, flagged-exercise rail,
+  // recovery manage chevron): on-surface error ink/icons must use the readable
+  // `errorText` token, never the `error` FILL red. `errorText` clears AA on the
+  // card surface in every palette, whereas the raw `error` fill drops to ~2.6:1
+  // on the dark KUA cards — which is exactly the defect the fix corrected.
+  test('on-surface error ink uses errorText (AA on every card), not the error fill', () => {
+    for (const [name, kua] of SIX) {
+      expect({ name, ok: contrastRatio(kua.errorText, kua.surfaceCard) >= 4.5 })
+        .toEqual({ name, ok: true });
+      if (name.endsWith('/dark')) {
+        expect({ name, ok: contrastRatio(kua.error, kua.surfaceCard) >= 4.5 })
+          .toEqual({ name, ok: false });
+      }
+    }
+  });
+
+  // --- representative mounted repaint paths ---------------------------------
+
+  function textColorOf(component, text) {
+    const node = component.root.findAllByType(Text).find(
+      (t) => flatten(t.props.style).color !== undefined
+        && (t.props.children === text || String(t.props.children).includes(text))
+    );
+    return flatten(node.props.style).color;
+  }
+
+  test('outside the gate, a mounted Log surface keeps the legacy palette (opt-in)', () => {
+    let component;
+    act(() => {
+      component = renderer.create(
+        <ThemeProvider>
+          <LogEmptyState onCreateRoutine={() => {}} />
+        </ThemeProvider>
+      );
+    });
+    expect(textColorOf(component, 'Write your first routine')).toBe(LightColors.text);
+  });
+
+  test('inside the gate, a mounted workout-help surface repaints on a fixed-mode court switch', () => {
+    const component = renderGated(<WorkoutSyntaxReference />);
+    // helpText resolves onSurfaceVariant, which is court-distinct.
+    expect(textColorOf(component, 'Each workout note is plain text'))
+      .toBe(HardCourtLightColors.onSurfaceVariant);
+
+    act(() => {
+      setThemeSelection('grass-court');
+    });
+
+    expect(textColorOf(component, 'Each workout note is plain text'))
+      .toBe(GrassCourtLightColors.onSurfaceVariant);
+    expect(GrassCourtLightColors.onSurfaceVariant).not.toBe(HardCourtLightColors.onSurfaceVariant);
+  });
+});
+
 // Regression: a themed default must never be written as a parameter default.
 // Parameter initializers evaluate before the function body, so `colors.accent`
 // in a signature resolves the body-scoped `colors` binding inside its temporal

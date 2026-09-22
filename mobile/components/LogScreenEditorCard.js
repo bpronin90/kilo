@@ -2,7 +2,7 @@ import React from 'react';
 import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card, Button } from './UI';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme, useThemedStyles, useKuaStyle } from '../theme/ThemeContext';
 import { DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
 import { formatDate } from '../lib/format';
 import { WorkoutSyntaxModal } from './WorkoutSyntaxModal';
@@ -34,6 +34,7 @@ function localDateToday() {
 // today via max, matching the native maximumDate.
 function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
   const { colors } = useTheme();
+  const kua = useKuaStyle();
   return React.createElement('input', {
     type: 'date',
     value: value || '',
@@ -44,15 +45,15 @@ function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
       if (next) onChangeDate(next);
     },
     style: {
-      backgroundColor: colors.inputBackground,
+      backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
       borderRadius: 16,
       borderWidth: 1,
       borderStyle: 'solid',
-      borderColor: colors.inputBorder,
+      borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
       padding: 14,
       fontSize: 16,
       colorScheme: colors.scheme,
-      color: colors.text,
+      color: kua ? kua.onSurface : colors.text,
       fontFamily: 'inherit',
       width: '100%',
       boxSizing: 'border-box',
@@ -122,6 +123,7 @@ export function LogScreenEditorCard({
   onSourceJumpApplied,
 }) {
   const { colors } = useTheme();
+  const kua = useKuaStyle();
   const styles = useThemedStyles(createStyles);
   const {
     editContainerRef,
@@ -230,7 +232,7 @@ export function LogScreenEditorCard({
                 }}
                 onFocus={onEditorInteraction}
                 placeholder="Routine Name (e.g. Push Day)"
-                placeholderTextColor={colors.textMuted}
+                placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
                 autoCorrect={false}
                 autoCapitalize="none"
                 spellCheck={false}
@@ -288,7 +290,7 @@ export function LogScreenEditorCard({
                       onChangeText={v => setDeloadEditOrdinal(v.replace(/[^0-9]/g, ''))}
                       keyboardType="number-pad"
                       placeholder="Session number"
-                      placeholderTextColor={colors.textMuted}
+                      placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
                       autoCorrect={false}
                       autoCapitalize="none"
                       spellCheck={false}
@@ -378,13 +380,13 @@ export function LogScreenEditorCard({
                     <View
                       style={[
                         styles.validationBadgeCircle,
-                        { borderColor: validationErrorCount > 0 ? colors.error : colors.caution },
+                        { borderColor: validationErrorCount > 0 ? (kua ? kua.errorText : colors.error) : (kua ? kua.warning : colors.caution) },
                       ]}
                     >
                       <Text
                         style={[
                           styles.validationBadgeGlyph,
-                          { color: validationErrorCount > 0 ? colors.error : colors.caution },
+                          { color: validationErrorCount > 0 ? (kua ? kua.errorText : colors.error) : (kua ? kua.warning : colors.caution) },
                         ]}
                       >
                         !
@@ -393,7 +395,7 @@ export function LogScreenEditorCard({
                     <Text
                       style={[
                         styles.validationBadgeCount,
-                        { color: validationErrorCount > 0 ? colors.error : colors.caution },
+                        { color: validationErrorCount > 0 ? (kua ? kua.errorText : colors.error) : (kua ? kua.warning : colors.caution) },
                       ]}
                     >
                       {validationProblems.length}
@@ -413,7 +415,7 @@ export function LogScreenEditorCard({
                 }}
                 onFocus={onEditorInteraction}
                 selection={problemSelectionRequest ?? seedSelection ?? undefined}
-                selectionColor={colors.accent}
+                selectionColor={kua ? kua.primary : colors.accent}
                 onSelectionChange={() => {
                   if (!problemSelectionRequest) return;
                   // Any event after the request means native selection has
@@ -422,7 +424,7 @@ export function LogScreenEditorCard({
                   setProblemSelectionRequest(null);
                 }}
                 placeholder="e.g.&#10;Monday&#10;+Lifting&#10;-Bench&#10;135 5,5,5"
-                placeholderTextColor={colors.textMuted}
+                placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
                 multiline
                 autoCorrect={false}
                 autoCapitalize="none"
