@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useTheme } from '../theme/ThemeContext';
+import { useKuaStyle, useTheme } from '../theme/ThemeContext';
 import { setWebAlertHandler } from '../lib/platformAlert';
 
 // Renders the dialogs platformAlert.js's Alert.alert queues on web, since
@@ -16,8 +16,11 @@ export function WebAlertHost() {
   const [dialog, setDialog] = useState(null);
   // Built from the resolved court palette and mode: the dialog card resolves
   // through KUA, while its scrim is the KUA-spec neutral backdrop keyed on mode
-  // (#1139).
-  const { colors, kuaPalette: kua, mode } = useTheme();
+  // (#1139). `kua` comes from the KuaStyleGate (null outside it) so an isolated
+  // render — like the web-alert tests, which mount no gate — keeps the legacy
+  // palette, matching every other shared primitive's opt-in boundary.
+  const { colors, mode } = useTheme();
+  const kua = useKuaStyle();
   const styles = useMemo(() => createStyles(colors, kua, mode), [colors, kua, mode]);
 
   useEffect(() => {

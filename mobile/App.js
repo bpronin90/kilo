@@ -4,7 +4,7 @@ import { KeyboardAvoidingView, Platform, Pressable, SafeAreaView, StyleSheet, Te
 import { WebAlertHost } from './components/WebAlertHost';
 import * as Updates from 'expo-updates';
 
-import { ThemeProvider, KuaStyleGate, useTheme } from './theme/ThemeContext';
+import { ThemeProvider, KuaStyleGate, useKuaStyle, useTheme } from './theme/ThemeContext';
 import { ThemeHydrationGate } from './app/ThemeHydrationGate';
 import { useKuaFonts } from './theme/typography';
 import { TabBar } from './components/TabBar';
@@ -127,11 +127,14 @@ function WipeAwareAppShell() {
 // and renders the same tree App.js always rendered. Kept above useAppShell so a
 // wipe remount (WipeAwareAppShell's key) rebuilds hooks and view together.
 function ShellView({ onDeviceDataWiped }) {
-  const { colors, kuaPalette: kua, mode } = useTheme();
-  // Built from the resolved court palette (kua) and mode rather than
-  // useThemedStyles: ShellView owns the outermost canvas/safe-area chrome and
-  // the modal scrim, and the scrim is the KUA-spec neutral backdrop keyed on
-  // mode, which the two-argument style hook does not carry (#1139).
+  const { colors, mode } = useTheme();
+  // `kua` comes from the KuaStyleGate (mounted above this shell in App), so it is
+  // the selected court palette in production and null outside the gate — the same
+  // opt-in boundary every shared primitive uses (#1139). Built via useMemo rather
+  // than useThemedStyles because ShellView owns the outermost canvas/safe-area
+  // chrome and the modal scrim, and the scrim is the KUA-spec neutral backdrop
+  // keyed on mode, which the two-argument style hook does not carry.
+  const kua = useKuaStyle();
   const styles = useMemo(() => createStyles(colors, kua, mode), [colors, kua, mode]);
   const { bottom: bottomSafeAreaInset = 0 } = useContext(SafeAreaInsetsContext) || {};
   const {

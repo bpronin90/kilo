@@ -20,10 +20,13 @@ export function TabBar({ tabs, activeTab, onTabPress, onHeightChange }) {
   const kua = useKuaStyle();
   const { bottom: bottomInset = 0 } = useContext(SafeAreaInsetsContext) || {};
 
-  // Active/inactive tint from the selected court palette (primary / on-surface-
-  // variant per components.md → Tab bar), falling back to the legacy palette
-  // when rendered outside the production KUA gate (#1139).
-  const activeColor = kua ? kua.primary : colors.chipText;
+  // Active/inactive tint from the selected court palette, falling back to the
+  // legacy palette outside the production KUA gate (#1139). The active tab keeps
+  // its `selection` (primary-container) pill, so the active icon/11px label take
+  // `primaryOnContainer` — the ink KUA guarantees AA on that container in every
+  // court/mode — rather than `primary`, which is only 4.25:1 on Hard Court dark's
+  // selection fill. Inactive items sit on `tabBarBg` and take onSurfaceVariant.
+  const activeColor = kua ? kua.primaryOnContainer : colors.chipText;
   const inactiveColor = kua ? kua.onSurfaceVariant : colors.textMuted;
 
   const handleLayout = (e) => {

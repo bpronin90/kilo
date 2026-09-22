@@ -713,19 +713,31 @@ describe('KUA shell + shared primitives wire to the selected court (#1139)', () 
       return flatten(active.props.style).color;
     };
 
-    expect(activeLabelColor()).toBe(HardCourtLightColors.primary);
+    // Active tint is primaryOnContainer (AA-safe on the selection pill), not
+    // primary — see TabBar.js. It still tracks the selected court and mode.
+    expect(activeLabelColor()).toBe(HardCourtLightColors.primaryOnContainer);
 
     // Court switch at fixed light mode.
     act(() => {
       setThemeSelection('grass-court');
     });
-    expect(activeLabelColor()).toBe(GrassCourtLightColors.primary);
+    expect(activeLabelColor()).toBe(GrassCourtLightColors.primaryOnContainer);
 
     // Mode switch still repaints (light→dark) on the same court.
     act(() => {
       setAppearancePreference('dark');
     });
-    expect(activeLabelColor()).toBe(GrassCourtDarkColors.primary);
+    expect(activeLabelColor()).toBe(GrassCourtDarkColors.primaryOnContainer);
+  });
+
+  // Regression for the Codex review of PR #1145: the active tab label/icon must
+  // clear WCAG AA on the selection fill in every court/mode, including Hard
+  // Court dark where `primary` measured only 4.25:1 on `selection`.
+  test('the active tab tint clears AA on the selection fill in all six palettes', () => {
+    for (const [name, kua] of KUA_ALL_PALETTES) {
+      expect({ name, ok: contrastRatio(kua.primaryOnContainer, kua.selection) >= 4.5 })
+        .toEqual({ name, ok: true });
+    }
   });
 });
 
@@ -929,13 +941,13 @@ describe('no production surface can hold a stale palette', () => {
       // App shell (#1139) and web alert host use the same KUA-spec neutral
       // scrim as the modals below — black at 0.5/0.7 opacity, which is not a
       // palette token — inside their own createStyles factories.
-      "App.js:484 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
+      "App.js:487 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       "components/RecoveryBlockEndModal.js:243 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       "components/RecoveryBlockStartModal.js:326 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       "components/RecoveryBlockWeekModal.js:209 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       "components/SessionCheckInModal.js:374 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       "components/ThemePreviewControl.js:70 '#FF5C00'",
-      "components/WebAlertHost.js:74 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
+      "components/WebAlertHost.js:77 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       'screens/HomeScreen.js:43 "#FF5C00"',
       'screens/HomeScreen.js:47 "#FF5C00"',
     ]);
