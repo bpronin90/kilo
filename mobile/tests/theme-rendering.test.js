@@ -941,7 +941,7 @@ describe('no production surface can hold a stale palette', () => {
       // App shell (#1139) and web alert host use the same KUA-spec neutral
       // scrim as the modals below — black at 0.5/0.7 opacity, which is not a
       // palette token — inside their own createStyles factories.
-      "App.js:487 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
+      "App.js:484 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       "components/RecoveryBlockEndModal.js:243 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       "components/RecoveryBlockStartModal.js:326 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       "components/RecoveryBlockWeekModal.js:209 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
