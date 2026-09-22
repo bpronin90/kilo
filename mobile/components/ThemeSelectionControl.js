@@ -60,6 +60,8 @@ const createStyles = (kua = null, colors = {}, typography = {}) => StyleSheet.cr
   },
   toggle: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
     gap: 4,
   },
   tab: {
