@@ -23,6 +23,7 @@ import { SaveStatusRegion } from '../LogScreenEditorCard';
 export function LogRecoveryEvidence({
   styles,
   colors,
+  kua = null,
   week,
   linkedNote,
   isCurrentWeek,
@@ -135,7 +136,7 @@ export function LogRecoveryEvidence({
             }}
             onFocus={onEditorInteraction}
             placeholder="Routine Name"
-            placeholderTextColor={colors.textMuted}
+            placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
             autoCorrect={false}
             autoCapitalize="none"
             spellCheck={false}
@@ -151,7 +152,7 @@ export function LogRecoveryEvidence({
             }}
             onFocus={onEditorInteraction}
             placeholder="Workout note…"
-            placeholderTextColor={colors.textMuted}
+            placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
             multiline
             autoCorrect={false}
             autoCapitalize="none"
@@ -256,7 +257,7 @@ export function LogRecoveryEvidence({
                 accessibilityLabel="Edit"
                 accessibilityState={{ disabled: editingBlocked }}
               >
-                <MaterialIcons name="edit" size={14} color={colors.accent} accessible={false} />
+                <MaterialIcons name="edit" size={14} color={kua ? kua.primary : colors.accent} accessible={false} />
                 <Text style={styles.editNoteButtonText}>Edit note</Text>
               </Pressable>
             )}

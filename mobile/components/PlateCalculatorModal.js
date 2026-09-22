@@ -282,7 +282,12 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+// Under the production KUA gate (`kua` supplied) the sheet chrome, unit
+// toggle, plate rows, inputs, and edit actions resolve through the selected
+// court palette; the dim backdrop stays on the court-neutral legacy overlay
+// token, and outside the gate (`kua` null — isolated modal tests) every value
+// keeps the legacy palette.
+const createStyles = (colors, kua = null) => StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: colors.overlay,
@@ -290,10 +295,10 @@ const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: 16,
   },
   sheet: {
-    backgroundColor: colors.card,
+    backgroundColor: kua ? kua.surfaceCard : colors.card,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     maxWidth: 360,
     width: '100%',
     alignSelf: 'center',
@@ -305,21 +310,21 @@ const createStyles = (colors) => StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
     gap: 8,
   },
   title: {
     flex: 1,
     fontSize: 17,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   closeBtn: {
     padding: 4,
   },
   closeBtnText: {
     fontSize: 16,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '600',
   },
   unitToggleRow: {
@@ -333,19 +338,19 @@ const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   unitToggleActive: {
-    backgroundColor: colors.chipBackground,
-    borderColor: colors.accent,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
+    borderColor: kua ? kua.primary : colors.accent,
   },
   unitToggleText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   unitToggleTextActive: {
-    color: colors.chipAccentText,
+    color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },
   body: {
     paddingHorizontal: 20,
@@ -364,34 +369,34 @@ const createStyles = (colors) => StyleSheet.create({
   rowLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   rowValue: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   plateBlock: {
     gap: 6,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: colors.divider,
+    borderTopColor: kua ? kua.surfaceBorder : colors.divider,
   },
   plateBlockLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   message: {
     fontSize: 14,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 20,
   },
   remainder: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontStyle: 'italic',
     lineHeight: 19,
   },
@@ -401,17 +406,17 @@ const createStyles = (colors) => StyleSheet.create({
   editLinkText: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.accent,
+    color: kua ? kua.primary : colors.accent,
   },
   input: {
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     borderRadius: 8,
     paddingVertical: 4,
     paddingHorizontal: 10,
     minWidth: 64,
     textAlign: 'right',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     fontSize: 14,
   },
   editActionsRow: {
@@ -428,14 +433,14 @@ const createStyles = (colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   editActionBtnPrimary: {
-    backgroundColor: colors.accent,
+    backgroundColor: kua ? kua.primary : colors.accent,
   },
   editActionText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   editActionTextPrimary: {
-    color: colors.accentText,
+    color: kua ? kua.onPrimary : colors.accentText,
   },
 });

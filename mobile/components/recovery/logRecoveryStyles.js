@@ -6,7 +6,13 @@
 import { StyleSheet } from 'react-native';
 import { createInputStyle } from '../UI';
 
-export const createStyles = (colors) => StyleSheet.create({
+// When `kua` is supplied (production KUA gate) the Recovery card's zones,
+// week table, note surfaces, inputs, manage list, and primary action resolve
+// through the selected court palette; outside the gate (`kua` null — isolated
+// recovery-section tests) every value falls back to the unchanged legacy
+// palette. The filled error banner keeps its AA-tuned legacy status surface,
+// mirroring the shared filled-tone cards.
+export const createStyles = (colors, kua = null) => StyleSheet.create({
   container: {
     gap: 16,
   },
@@ -22,7 +28,7 @@ export const createStyles = (colors) => StyleSheet.create({
     gap: 0,
   },
   stateZone: {
-    backgroundColor: colors.subtleBg,
+    backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
     paddingHorizontal: 18,
     paddingTop: 18,
     paddingBottom: 16,
@@ -33,17 +39,17 @@ export const createStyles = (colors) => StyleSheet.create({
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   headline: {
     fontSize: 24,
     fontWeight: '800',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   baselineCaption: {
     fontSize: 13,
     lineHeight: 19,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   errorBanner: {
     paddingHorizontal: 12,
@@ -63,7 +69,7 @@ export const createStyles = (colors) => StyleSheet.create({
   weekItem: {},
   weekItemDivider: {
     borderBottomWidth: 1,
-    borderBottomColor: colors.divider,
+    borderBottomColor: kua ? kua.surfaceBorder : colors.divider,
   },
   weekRow: {
     flexDirection: 'row',
@@ -89,13 +95,13 @@ export const createStyles = (colors) => StyleSheet.create({
     width: 56,
     fontSize: 12,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   weekNoteTitle: {
     flex: 1,
     fontSize: 15,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   weekNoteContent: {
     paddingHorizontal: 18,
@@ -108,10 +114,10 @@ export const createStyles = (colors) => StyleSheet.create({
   // The expanded note's own inset, card-colored bordered surface (#843) — a
   // 14px-radius surface distinct from the week row it belongs to.
   noteSurface: {
-    backgroundColor: colors.card,
+    backgroundColor: kua ? kua.surfaceCard : colors.card,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     padding: 14,
     gap: 10,
   },
@@ -127,7 +133,7 @@ export const createStyles = (colors) => StyleSheet.create({
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
   },
   weekNoteBody: {},
   // The inline recovery-note editor (#841): a compact title + text pair, no
@@ -138,25 +144,25 @@ export const createStyles = (colors) => StyleSheet.create({
     gap: 8,
   },
   inlineEditorTitleInput: {
-    backgroundColor: colors.inputBackground,
+    backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.inputBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   inlineEditorTextInput: {
-    backgroundColor: colors.inputBackground,
+    backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.inputBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     minHeight: 160,
     textAlignVertical: 'top',
   },
@@ -170,9 +176,9 @@ export const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.primaryContainerBorder : colors.cardBorder,
     minHeight: 44,
     justifyContent: 'center',
     flexShrink: 1,
@@ -183,7 +189,7 @@ export const createStyles = (colors) => StyleSheet.create({
   inlineSwitchButtonText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.chipAccentText,
+    color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },
   // The one expanded-note action (#843), at the 44dp floor since #921: the
   // box grows, the 13px label / 1px outline / 10px radius do not. `minHeight`
@@ -199,13 +205,13 @@ export const createStyles = (colors) => StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     justifyContent: 'center',
   },
   editNoteButtonText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
   },
   // The A/B segment's real target (#921): the visual keeps its 32dp height,
   // so the press box is a separate 44×44dp wrapper around it — §15's
@@ -225,8 +231,8 @@ export const createStyles = (colors) => StyleSheet.create({
     minHeight: 32,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-    backgroundColor: colors.chipBackground,
+    borderColor: kua ? kua.primaryContainerBorder : colors.cardBorder,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
     overflow: 'hidden',
   },
   abSegmentItem: {
@@ -235,15 +241,15 @@ export const createStyles = (colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   abSegmentItemActive: {
-    backgroundColor: colors.accent,
+    backgroundColor: kua ? kua.primary : colors.accent,
   },
   abSegmentText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.chipAccentText,
+    color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },
   abSegmentTextActive: {
-    color: colors.onAccent,
+    color: kua ? kua.onPrimary : colors.onAccent,
   },
   actionZone: {
     paddingHorizontal: 18,
@@ -257,9 +263,9 @@ export const createStyles = (colors) => StyleSheet.create({
   primaryButton: {
     height: 48,
     borderRadius: 12,
-    backgroundColor: colors.accent,
+    backgroundColor: kua ? kua.primary : colors.accent,
     borderWidth: 1,
-    borderColor: colors.accent,
+    borderColor: kua ? kua.primary : colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -269,12 +275,12 @@ export const createStyles = (colors) => StyleSheet.create({
   primaryButtonText: {
     fontSize: 15,
     fontWeight: '700',
-    color: colors.onAccent,
+    color: kua ? kua.onPrimary : colors.onAccent,
   },
   actionCaption: {
     fontSize: 12,
     lineHeight: 17,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // `Undo completion` (#843): muted, not error, ink — reopening the latest
   // week is a routine correction, not a destructive action.
@@ -287,7 +293,7 @@ export const createStyles = (colors) => StyleSheet.create({
   undoButtonText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   manageCard: {
     padding: 0,
@@ -305,16 +311,16 @@ export const createStyles = (colors) => StyleSheet.create({
   manageTriggerText: {
     fontSize: 16,
     fontWeight: '800',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   manageList: {
     borderTopWidth: 1,
-    borderTopColor: colors.cardBorder,
+    borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   manageRow: {},
   manageRowDivider: {
     borderBottomWidth: 1,
-    borderBottomColor: colors.divider,
+    borderBottomColor: kua ? kua.surfaceBorder : colors.divider,
   },
   manageRowMain: {
     flexDirection: 'row',
@@ -343,28 +349,28 @@ export const createStyles = (colors) => StyleSheet.create({
   manageRowTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   manageRowTitleError: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.error,
+    color: kua ? kua.errorText : colors.error,
   },
   manageRowSubtitle: {
     fontSize: 12,
     lineHeight: 16,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   manageRowInlineError: {
     fontSize: 12,
     lineHeight: 16,
     fontWeight: '600',
-    color: colors.error,
+    color: kua ? kua.errorText : colors.error,
   },
   manageRowState: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // The inline reason editor (#872). It replaces the row's own contents rather
   // than opening a modal: the field is one short line, and a sheet for it would
@@ -374,7 +380,7 @@ export const createStyles = (colors) => StyleSheet.create({
     gap: 8,
   },
   reasonInput: {
-    ...createInputStyle(colors),
+    ...createInputStyle(colors, kua),
   },
   reasonEditorActions: {
     flexDirection: 'row',
@@ -389,12 +395,12 @@ export const createStyles = (colors) => StyleSheet.create({
   reasonEditorCancelText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   reasonEditorSaveText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
   },
   // On-demand inclusion help toggle (#843 review), matching
   // `RecoveryInclusionToggle`'s own info-button box: a real 44dp target, not
@@ -410,29 +416,29 @@ export const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
-    backgroundColor: colors.subtleBg,
+    backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     gap: 8,
     marginTop: 4,
   },
   pendingBannerText: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   pendingRetryButton: {
     alignSelf: 'flex-start',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.primaryContainerBorder : colors.cardBorder,
   },
   pendingRetryText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.chipAccentText,
+    color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },
 });

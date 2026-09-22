@@ -27,7 +27,7 @@ import React, { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Alert } from '../lib/platformAlert';
 import { Card, SectionTitle } from './UI';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme, useThemedStyles, useKuaStyle } from '../theme/ThemeContext';
 import {
   findActiveBlock,
   orderedLiveWeeks,
@@ -154,6 +154,7 @@ export function LogRecoverySection({
   mutationsAllowed = true,
 }) {
   const { colors } = useTheme();
+  const kua = useKuaStyle();
   const styles = useThemedStyles(createStyles);
   const [actionError, setActionError] = useState(null);
 
@@ -425,6 +426,7 @@ export function LogRecoverySection({
             <LogRecoveryWeeks
               styles={styles}
               colors={colors}
+              kua={kua}
               activeWeeks={activeWeeks}
               currentWeek={currentWeek}
               notesById={notesById}
@@ -469,6 +471,7 @@ export function LogRecoverySection({
           <LogRecoveryLifecycle
             styles={styles}
             colors={colors}
+            kua={kua}
             activeBlock={activeBlock}
             currentWeek={currentWeek}
             busy={busy}

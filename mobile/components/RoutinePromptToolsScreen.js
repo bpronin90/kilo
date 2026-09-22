@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { ScreenShell } from './ScreenShell';
 import { Button, Card, SectionTitle } from './UI';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme, useThemedStyles, useKuaStyle } from '../theme/ThemeContext';
 import { copyTextToClipboard } from '../lib/platformClipboard';
 import { loadCurrentWorkoutId, loadWorkoutNotes } from '../storage/entries/workoutNotes';
 import {
@@ -38,6 +38,7 @@ export function RoutinePromptToolsScreen({
   share = null,
 }) {
   const { colors } = useTheme();
+  const kua = useKuaStyle();
   const styles = useThemedStyles(createStyles);
   const [notes, setNotes] = useState([]);
   const [currentId, setCurrentId] = useState(null);
@@ -114,7 +115,7 @@ export function RoutinePromptToolsScreen({
             <View style={styles.choiceList}>
               {notes.map((note, index) => {
                 const selected = note.id === authorityId;
-                return <Pressable key={note.id || `${index}`} onPress={() => { setAuthorityId(note.id); setNotice(''); }} style={[styles.choice, selected && { borderColor: colors.accent }]} accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={`Use ${titleFor(note, index, notes)} as ${isNormalize ? 'the authoritative routine' : 'the routine to plan'}`}>
+                return <Pressable key={note.id || `${index}`} onPress={() => { setAuthorityId(note.id); setNotice(''); }} style={[styles.choice, selected && { borderColor: kua ? kua.primary : colors.accent }]} accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={`Use ${titleFor(note, index, notes)} as ${isNormalize ? 'the authoritative routine' : 'the routine to plan'}`}>
                   <Text style={styles.choiceTitle}>{titleFor(note, index, notes)}{note.id === currentId ? ' · Current' : ''}</Text>
                 </Pressable>;
               })}
@@ -124,7 +125,7 @@ export function RoutinePromptToolsScreen({
               <View style={styles.choiceList}>
                 {notes.map((note, index) => {
                   const selected = targetIds.includes(note.id);
-                  return <Pressable key={note.id || `${index}`} onPress={() => { toggleTarget(note.id); setNotice(''); }} style={[styles.choice, selected && { borderColor: colors.accent }]} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} accessibilityLabel={`Normalize ${titleFor(note, index, notes)}`}>
+                  return <Pressable key={note.id || `${index}`} onPress={() => { toggleTarget(note.id); setNotice(''); }} style={[styles.choice, selected && { borderColor: kua ? kua.primary : colors.accent }]} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} accessibilityLabel={`Normalize ${titleFor(note, index, notes)}`}>
                     <Text style={styles.choiceTitle}>{selected ? '✓ ' : ''}{titleFor(note, index, notes)}</Text>
                   </Pressable>;
                 })}
@@ -158,17 +159,20 @@ export function RoutinePromptToolsScreen({
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+// Under the production KUA gate (`kua` supplied) the tool/choice cards and ink
+// resolve through the selected court palette; outside the gate (`kua` null)
+// they keep the legacy palette.
+const createStyles = (colors, kua = null) => StyleSheet.create({
   toolList: { gap: 12 },
-  toolCard: { backgroundColor: colors.card, borderColor: colors.cardBorder, borderWidth: 1, borderRadius: 24, minHeight: 76, padding: 18, justifyContent: 'center' },
+  toolCard: { backgroundColor: kua ? kua.surfaceCard : colors.card, borderColor: kua ? kua.surfaceBorder : colors.cardBorder, borderWidth: 1, borderRadius: 24, minHeight: 76, padding: 18, justifyContent: 'center' },
   toolCopy: { gap: 4 },
-  toolTitle: { color: colors.text, fontSize: 17, fontWeight: '600' },
-  muted: { color: colors.textMuted, fontSize: 14, lineHeight: 20 },
+  toolTitle: { color: kua ? kua.onSurface : colors.text, fontSize: 17, fontWeight: '600' },
+  muted: { color: kua ? kua.onSurfaceVariant : colors.textMuted, fontSize: 14, lineHeight: 20 },
   choiceList: { gap: 8 },
-  choice: { backgroundColor: colors.card, borderColor: colors.cardBorder, borderWidth: 1, borderRadius: 16, minHeight: 48, justifyContent: 'center', paddingHorizontal: 16 },
-  choiceTitle: { color: colors.text, fontSize: 15, fontWeight: '600' },
-  prompt: { color: colors.text, fontSize: 14, lineHeight: 20 },
+  choice: { backgroundColor: kua ? kua.surfaceCard : colors.card, borderColor: kua ? kua.surfaceBorder : colors.cardBorder, borderWidth: 1, borderRadius: 16, minHeight: 48, justifyContent: 'center', paddingHorizontal: 16 },
+  choiceTitle: { color: kua ? kua.onSurface : colors.text, fontSize: 15, fontWeight: '600' },
+  prompt: { color: kua ? kua.onSurface : colors.text, fontSize: 14, lineHeight: 20 },
   actions: { gap: 10 },
-  notice: { color: colors.textMuted, fontSize: 14, lineHeight: 20 },
-  error: { color: colors.error, fontSize: 14, lineHeight: 20 },
+  notice: { color: kua ? kua.onSurfaceVariant : colors.textMuted, fontSize: 14, lineHeight: 20 },
+  error: { color: kua ? kua.errorText : colors.error, fontSize: 14, lineHeight: 20 },
 });

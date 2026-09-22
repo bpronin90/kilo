@@ -61,7 +61,7 @@ export function LogEmptyState({ onCreateRoutine }) {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+const createStyles = (colors, kua = null) => StyleSheet.create({
   container: {
     gap: 16,
     paddingBottom: 24,
@@ -74,12 +74,12 @@ const createStyles = (colors) => StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: '800',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     textAlign: 'center',
   },
   copy: {
     fontSize: 16,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 8,
@@ -90,7 +90,7 @@ const createStyles = (colors) => StyleSheet.create({
   exampleLabel: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginLeft: 8,
@@ -108,12 +108,12 @@ const createStyles = (colors) => StyleSheet.create({
   codeLine: {
     fontSize: 13,
     fontFamily: 'monospace',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     lineHeight: 18,
   },
   helpText: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 18,
   },
   formatRow: {
@@ -124,13 +124,13 @@ const createStyles = (colors) => StyleSheet.create({
   codeText: {
     fontSize: 12,
     fontFamily: 'monospace',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     fontWeight: '600',
     minWidth: 80,
   },
   formatDesc: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 18,
     flex: 1,
   },
