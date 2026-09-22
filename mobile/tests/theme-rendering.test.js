@@ -2458,3 +2458,652 @@ describe('KUA wiring for nested More/Account/Help/data-utility surfaces (#1141)'
     expect(GrassCourtLightColors.onSurfaceVariant).not.toBe(HardCourtLightColors.onSurfaceVariant);
   });
 });
+
+// ===========================================================================
+// #1142: Deterministic production KUA wiring + repaint regression guard.
+//
+// #1137 confirmed a coverage gap: main CI stayed green while production callers
+// silently ignored the user-selected court. Two failures could hide there and
+// this suite could not see either — a factory that resolves the legacy `colors`
+// only (never its `kua` argument), and a live surface that repaints on
+// light↔dark but not on a fixed-mode court switch. The two blocks below close
+// both, and each assertion names the behavior it proves.
+// ===========================================================================
+
+// Shared analysis for the memoized-dependency guard (#1142), reused by the
+// production scan and a focused fixture so the guard's own logic is proven, not
+// just asserted against known-clean source. Given labeled ASTs, it resolves each
+// themed factory (by import or same-file definition) and, for every memoized call
+// to one, requires each court value the call feeds to the factory's `kua` position
+// to appear in the memo's dependency array. A required dep is a binding derived
+// from the court palette OR the object of a `theme.kuaPalette` member — either
+// must be depended on for the memo to recompute on a court change.
+function collectMemoDepOffenders(astEntries) {
+  const path = require('path');
+  const traverseMod = require('@babel/traverse');
+  const traverse = traverseMod.default || traverseMod;
+  const fs = require('fs');
+  const FACTORY = /^create[A-Za-z]*Styles?$|^create[A-Za-z]*Style$/;
+  const root = path.join(__dirname, '..');
+
+  function kuaIndexOf(fn) {
+    return fn.params.findIndex(
+      (pm) => (pm.type === 'Identifier' && pm.name === 'kua')
+        || (pm.type === 'AssignmentPattern' && pm.left.name === 'kua')
+    );
+  }
+  // Factory def -> kua param index, keyed "<label>::<export>", across all entries.
+  const kuaParamIndex = new Map();
+  for (const { label, ast } of astEntries) {
+    traverse(ast, {
+      VariableDeclarator(p) {
+        const { id, init } = p.node;
+        if (
+          id && id.name && FACTORY.test(id.name) && init &&
+          (init.type === 'ArrowFunctionExpression' || init.type === 'FunctionExpression')
+        ) {
+          const idx = kuaIndexOf(init);
+          if (idx >= 0) kuaParamIndex.set(`${label}::${id.name}`, idx);
+        }
+      },
+    });
+  }
+  function courtBindingsOf(ast) {
+    const set = new Set();
+    const decls = [];
+    traverse(ast, {
+      VariableDeclarator(p) {
+        decls.push(p.node);
+        if (p.node.id.type === 'ObjectPattern') {
+          for (const pr of p.node.id.properties) {
+            if (pr.type === 'ObjectProperty' && pr.key.name === 'kuaPalette') set.add(pr.value.name || 'kuaPalette');
+          }
+        }
+      },
+    });
+    let changed = true;
+    let pass = 0;
+    while (changed && pass < 8) {
+      changed = false;
+      pass += 1;
+      for (const d of decls) {
+        if (!d.id || d.id.type !== 'Identifier' || set.has(d.id.name)) continue;
+        let refs = false;
+        const stack = [d.init];
+        while (stack.length) {
+          const n = stack.pop();
+          if (!n || typeof n.type !== 'string') continue;
+          if (n.type === 'Identifier' && set.has(n.name)) refs = true;
+          for (const k of Object.keys(n)) {
+            const v = n[k];
+            if (Array.isArray(v)) v.forEach((x) => x && typeof x.type === 'string' && stack.push(x));
+            else if (v && typeof v.type === 'string') stack.push(v);
+          }
+        }
+        if (refs) { set.add(d.id.name); changed = true; }
+      }
+    }
+    return set;
+  }
+  // Identifiers the memo must depend on for this kua argument to stay fresh:
+  // court bindings referenced in it, plus the object of any `<ident>.kuaPalette`.
+  function requiredDepsIn(node, court) {
+    const out = new Set();
+    const stack = [node];
+    while (stack.length) {
+      const n = stack.pop();
+      if (!n || typeof n.type !== 'string') continue;
+      if (n.type === 'Identifier' && court.has(n.name)) out.add(n.name);
+      if (n.type === 'MemberExpression' && n.property && n.property.name === 'kuaPalette'
+        && n.object.type === 'Identifier') out.add(n.object.name);
+      for (const k of Object.keys(n)) {
+        const v = n[k];
+        if (Array.isArray(v)) v.forEach((x) => x && typeof x.type === 'string' && stack.push(x));
+        else if (v && typeof v.type === 'string') stack.push(v);
+      }
+    }
+    return out;
+  }
+  function resolveImport(fromLabel, spec) {
+    if (!spec.startsWith('.')) return null;
+    let p = path.resolve(path.dirname(fromLabel), spec);
+    if (!p.endsWith('.js')) p += '.js';
+    return fs.existsSync(p) ? p : null;
+  }
+
+  const offenders = [];
+  for (const { label, ast } of astEntries) {
+    const local = new Map();
+    traverse(ast, {
+      ImportDeclaration(p) {
+        const mod = resolveImport(label, p.node.source.value);
+        if (!mod) return;
+        for (const s of p.node.specifiers) {
+          if (s.type !== 'ImportSpecifier') continue;
+          const key = `${mod}::${s.imported.name}`;
+          if (kuaParamIndex.has(key)) local.set(s.local.name, key);
+        }
+      },
+    });
+    for (const key of kuaParamIndex.keys()) {
+      if (key.startsWith(`${label}::`)) local.set(key.split('::')[1], key);
+    }
+    const court = courtBindingsOf(ast);
+    traverse(ast, {
+      CallExpression(p) {
+        const callee = p.node.callee;
+        if (callee.type !== 'Identifier' || (callee.name !== 'useMemo' && callee.name !== 'useCallback')) return;
+        const cb = p.node.arguments[0];
+        const deps = p.node.arguments[1];
+        if (!cb || !/Function/.test(cb.type) || !deps || deps.type !== 'ArrayExpression') return;
+        const depNames = new Set(deps.elements.filter((e) => e && e.type === 'Identifier').map((e) => e.name));
+        p.get('arguments.0').traverse({
+          CallExpression(q) {
+            const c = q.node.callee;
+            if (c.type !== 'Identifier') return;
+            const key = local.get(c.name);
+            if (!key) return;
+            const arg = q.node.arguments[kuaParamIndex.get(key)];
+            if (!arg) return;
+            for (const name of requiredDepsIn(arg, court)) {
+              if (!depNames.has(name)) {
+                const where = label.startsWith(root) ? path.relative(root, label) : label;
+                offenders.push(`${where}:${p.node.loc.start.line} ${c.name} missing dep '${name}'`);
+              }
+            }
+          },
+        });
+      },
+    });
+  }
+  return offenders.sort();
+}
+
+// --- (1) Static inventory guard -------------------------------------------
+// A source-level guard, so it protects every production factory at once —
+// including surfaces that have no render test of their own. It fails the moment
+// a newly added factory resolves the legacy palette only, which is the exact
+// class of defect #1137 found. It is maintainable by construction: new surfaces
+// are covered automatically because the walk re-derives the file list every run;
+// the only hand-maintained input is a tiny, justified DEV exemption set.
+describe('every production themed-style factory consumes the selected court (#1142)', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const parser = require('@babel/parser');
+  const traverseMod = require('@babel/traverse');
+  const traverse = traverseMod.default || traverseMod;
+
+  const root = path.join(__dirname, '..');
+  function walk(dir, acc = []) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full, acc);
+      else if (entry.name.endsWith('.js')) acc.push(full);
+    }
+    return acc;
+  }
+  const files = [
+    path.join(root, 'App.js'),
+    ...walk(path.join(root, 'components')),
+    ...walk(path.join(root, 'screens')),
+  ];
+
+  // The production StyleSheet contract is a `create*Style(s)(colors, kua)`
+  // factory (see ThemeContext.themedStyles). Every such factory must read `kua`
+  // in its BODY — the parameter list is excluded on purpose, so a factory that
+  // declares `(colors, kua)` but never consumes it is still caught.
+  const FACTORY = /^create[A-Za-z]*Styles?$|^create[A-Za-z]*Style$/;
+
+  // DEV-only exemptions: surfaces intentionally outside the palette system,
+  // keyed `"<relative path> <factory name>"`. ThemePreviewControl (the dev court
+  // picker) ships plain literals and is never migrated to a production theme, so
+  // if it ever grows a factory it would live here. A production surface never
+  // belongs in this set; today it is empty because every production factory
+  // already consumes the court palette.
+  const DEV_EXEMPT = new Set([]);
+
+  function factoriesIn(file) {
+    const ast = parser.parse(fs.readFileSync(file, 'utf8'), {
+      sourceType: 'module',
+      plugins: ['jsx'],
+    });
+    const rel = path.relative(root, file);
+    const found = [];
+    function inspect(fnPath, name) {
+      let usesKua = false;
+      fnPath.get('body').traverse({
+        Identifier(p) {
+          if (p.node.name === 'kua') usesKua = true;
+        },
+      });
+      found.push({ rel, name, usesKua });
+    }
+    traverse(ast, {
+      VariableDeclarator(p) {
+        const { id, init } = p.node;
+        if (
+          id && id.name && FACTORY.test(id.name) && init &&
+          (init.type === 'ArrowFunctionExpression' || init.type === 'FunctionExpression')
+        ) {
+          inspect(p.get('init'), id.name);
+        }
+      },
+      FunctionDeclaration(p) {
+        if (p.node.id && FACTORY.test(p.node.id.name)) inspect(p, p.node.id.name);
+      },
+    });
+    return found;
+  }
+
+  const inventory = files.flatMap(factoriesIn);
+
+  // Proves the walk/matcher actually resolved the production factories. Without
+  // it, a renamed convention or a silent parse failure would empty the
+  // inventory and make the legacy-only assertion vacuously pass.
+  test('the inventory resolves the production themed-style factories', () => {
+    expect(inventory.length).toBeGreaterThan(40);
+  });
+
+  // Proves no production factory is wired to the legacy palette only. Reverting
+  // any one production caller to drop its `kua` branch adds it here and fails.
+  test('no production factory resolves the legacy palette only', () => {
+    const legacyOnly = inventory
+      .filter((f) => !f.usesKua && !DEV_EXEMPT.has(`${f.rel} ${f.name}`))
+      .map((f) => `${f.rel} ${f.name}`)
+      .sort();
+    expect(legacyOnly).toEqual([]);
+  });
+
+  // Call-site guard. The factory-body check above proves a factory CAN paint the
+  // court; this proves its production callers actually HAND IT one. A factory
+  // read straight off the theme (`createStyles(colors, kua)`, not the
+  // `useThemedStyles` hook that injects `kua` for free) can silently regress if a
+  // caller drops the palette argument — exactly the #1137 class of defect, and a
+  // gap a factory-only or synthetic-probe test cannot see.
+  //
+  // The check resolves values, not names, so it resists the obvious dodges:
+  //   - The callee binds through its import (or a same-file definition), so an
+  //     ALIASED import (`createStyles as homeStyles`) is still matched, and each
+  //     bare `create*` name maps to the ONE factory it actually calls — the same
+  //     name has different signatures across files and `kua` is not always the
+  //     second parameter.
+  //   - The `kua`-position argument must trace to a court-palette SOURCE
+  //     (`useTheme().kuaPalette`, `useKuaStyle()`, or `useContext(<…Kua…>)`),
+  //     directly or through a local binding derived from one. A `.kuaPalette`
+  //     member only counts when its object is the theme itself (a `useTheme()`
+  //     call or a binding of one), so a look-alike wrapper
+  //     (`{ kuaPalette: colors }.kuaPalette`) does not qualify. A renamed binding
+  //     (`const { kuaPalette: court } = useTheme()`) passes; `colors`, a mode
+  //     string, `null`, or a conditional whose branches are not court sources
+  //     (e.g. `true ? colors : colors`) is flagged.
+  //
+  // Evidence boundary: only Identifier callees are inspected. A factory reached
+  // through a namespace member (`ns.createStyles()`) or an untyped variable would
+  // be skipped; the production tree uses neither today, and such a call would
+  // still have to satisfy the factory-body and mounted-repaint guards.
+  test('every direct factory call hands the court palette to its kua parameter', () => {
+    function resolveImport(fromFile, spec) {
+      if (!spec.startsWith('.')) return null;
+      let p = path.resolve(path.dirname(fromFile), spec);
+      if (!p.endsWith('.js')) p += '.js';
+      return fs.existsSync(p) ? p : null;
+    }
+    function kuaIndexOf(fn) {
+      return fn.params.findIndex(
+        (pm) => (pm.type === 'Identifier' && pm.name === 'kua')
+          || (pm.type === 'AssignmentPattern' && pm.left.name === 'kua')
+      );
+    }
+    const isUseTheme = (n) => n && n.type === 'CallExpression'
+      && n.callee.type === 'Identifier' && n.callee.name === 'useTheme';
+    // Identifiers bound to a `useTheme()` result, e.g. `const theme = useTheme()`.
+    function themeBindingsOf(ast) {
+      const set = new Set();
+      traverse(ast, {
+        VariableDeclarator(p) {
+          if (p.node.id.type === 'Identifier' && isUseTheme(p.node.init)) set.add(p.node.id.name);
+        },
+      });
+      return set;
+    }
+    // The expressions that read the selected court palette in production. A
+    // `.kuaPalette` member counts only when its object IS the theme, so a
+    // hand-rolled `{ kuaPalette: colors }` wrapper cannot masquerade as one.
+    function isCourtSource(node, themeBindings) {
+      if (!node || typeof node.type !== 'string') return false;
+      if (node.type === 'MemberExpression' && node.property && node.property.name === 'kuaPalette') {
+        return isUseTheme(node.object)
+          || (node.object.type === 'Identifier' && themeBindings.has(node.object.name));
+      }
+      if (node.type === 'CallExpression' && node.callee.type === 'Identifier') {
+        if (node.callee.name === 'useKuaStyle') return true; // gate hook
+        if (node.callee.name === 'useContext' && node.arguments[0]
+          && /kua/i.test(node.arguments[0].name || '')) return true; // Workout/KuaStyle context
+      }
+      return false;
+    }
+
+    // Factory defs keyed "<abs file>::<export>" → the index `kua` occupies.
+    const kuaParamIndex = new Map();
+    const astOf = new Map();
+    for (const file of files) {
+      const ast = parser.parse(fs.readFileSync(file, 'utf8'), {
+        sourceType: 'module',
+        plugins: ['jsx'],
+      });
+      astOf.set(file, ast);
+      traverse(ast, {
+        VariableDeclarator(p) {
+          const { id, init } = p.node;
+          if (
+            id && id.name && FACTORY.test(id.name) && init &&
+            (init.type === 'ArrowFunctionExpression' || init.type === 'FunctionExpression')
+          ) {
+            const idx = kuaIndexOf(init);
+            if (idx >= 0) kuaParamIndex.set(`${file}::${id.name}`, idx);
+          }
+        },
+      });
+    }
+
+    // Local names that hold the court palette in a file: destructured from
+    // `kuaPalette`, then any binding whose initializer references a court source
+    // or an already-known court binding (e.g. `const effectiveKua = … kua …`).
+    function courtBindingsOf(ast, themeBindings) {
+      const set = new Set();
+      const decls = [];
+      traverse(ast, {
+        VariableDeclarator(p) {
+          decls.push(p.node);
+          if (p.node.id.type === 'ObjectPattern') {
+            for (const pr of p.node.id.properties) {
+              if (pr.type === 'ObjectProperty' && pr.key.name === 'kuaPalette') {
+                set.add(pr.value.name || 'kuaPalette');
+              }
+            }
+          }
+        },
+      });
+      let changed = true;
+      let pass = 0;
+      while (changed && pass < 8) {
+        changed = false;
+        pass += 1;
+        for (const d of decls) {
+          if (!d.id || d.id.type !== 'Identifier' || set.has(d.id.name)) continue;
+          let refsCourt = false;
+          const stack = [d.init];
+          while (stack.length) {
+            const n = stack.pop();
+            if (!n || typeof n.type !== 'string') continue;
+            if (isCourtSource(n, themeBindings)) refsCourt = true;
+            if (n.type === 'Identifier' && set.has(n.name)) refsCourt = true;
+            for (const k of Object.keys(n)) {
+              const v = n[k];
+              if (Array.isArray(v)) v.forEach((x) => x && typeof x.type === 'string' && stack.push(x));
+              else if (v && typeof v.type === 'string') stack.push(v);
+            }
+          }
+          if (refsCourt) {
+            set.add(d.id.name);
+            changed = true;
+          }
+        }
+      }
+      return set;
+    }
+
+    function handsCourtPalette(node, court, themeBindings) {
+      if (!node) return false;
+      if (isCourtSource(node, themeBindings)) return true;
+      if (node.type === 'Identifier') return court.has(node.name);
+      if (node.type === 'MemberExpression') {
+        return node.object.type === 'Identifier' && court.has(node.object.name);
+      }
+      if (node.type === 'ConditionalExpression') {
+        return handsCourtPalette(node.consequent, court, themeBindings)
+          && handsCourtPalette(node.alternate, court, themeBindings);
+      }
+      if (node.type === 'LogicalExpression') {
+        return handsCourtPalette(node.left, court, themeBindings)
+          && handsCourtPalette(node.right, court, themeBindings);
+      }
+      return false;
+    }
+
+    const offenders = [];
+    for (const file of files) {
+      const ast = astOf.get(file);
+      // localName -> factory def key, from imports AND same-file definitions.
+      const local = new Map();
+      traverse(ast, {
+        ImportDeclaration(p) {
+          const mod = resolveImport(file, p.node.source.value);
+          if (!mod) return;
+          for (const s of p.node.specifiers) {
+            if (s.type !== 'ImportSpecifier') continue;
+            const key = `${mod}::${s.imported.name}`;
+            if (kuaParamIndex.has(key)) local.set(s.local.name, key);
+          }
+        },
+      });
+      for (const key of kuaParamIndex.keys()) {
+        if (key.startsWith(`${file}::`)) local.set(key.split('::')[1], key);
+      }
+      const themeBindings = themeBindingsOf(ast);
+      const court = courtBindingsOf(ast, themeBindings);
+      traverse(ast, {
+        CallExpression(p) {
+          const callee = p.node.callee;
+          if (callee.type !== 'Identifier') return;
+          const key = local.get(callee.name);
+          if (!key) return; // hook-consumed, non-themed, or not a resolved factory
+          const idx = kuaParamIndex.get(key);
+          if (!handsCourtPalette(p.node.arguments[idx], court, themeBindings)) {
+            offenders.push(`${path.relative(root, file)}:${p.node.loc.start.line} ${callee.name}`);
+          }
+        },
+      });
+    }
+    expect(offenders.sort()).toEqual([]);
+  });
+
+  // Dependency guard. Handing the court palette to a factory is not enough if the
+  // call is memoized on a STALE dependency list: `useMemo(() => createStyles(
+  // colors, kua, …), [colors, typography])` drops `kua`, so at a fixed mode
+  // (colors unchanged) a court switch never recomputes the sheet and the surface
+  // keeps its previous court. The factory-body, call-site, and mounted-probe
+  // guards all stay green — the probe does not run through the real memo — so
+  // this is the one court regression a normal contributor introduces by accident
+  // (there is no react-hooks/exhaustive-deps lint in this repo to catch it). For
+  // every memoized resolved-factory call, each court value the call feeds to the
+  // `kua` position — a court binding like `kua`, or the object of a
+  // `theme.kuaPalette` member after a direct-`useTheme()` refactor — must appear
+  // in the memo's dependency array. The detection logic is shared with the
+  // fixture below so it is proven, not just asserted against clean source.
+  test('every memoized factory call lists its court palette as a dependency', () => {
+    const astEntries = files.map((file) => ({
+      label: file,
+      ast: parser.parse(fs.readFileSync(file, 'utf8'), { sourceType: 'module', plugins: ['jsx'] }),
+    }));
+    expect(collectMemoDepOffenders(astEntries)).toEqual([]);
+  });
+
+  // Focused fixture: proves the shared analysis actually flags a dropped court
+  // dependency, for both a court binding and a `theme.kuaPalette` member (the
+  // direct-`useTheme()` shape). The factory is defined in the fixture itself so
+  // it resolves as a same-file themed factory without touching production.
+  test('the dependency analysis flags a memo that drops its court palette', () => {
+    const fixture = `
+      const createStyles = (colors, kua) => ({ card: { color: kua.primary, bg: colors.card } });
+      function Bound() {
+        const { colors, kuaPalette: kua } = useTheme();
+        return useMemo(() => createStyles(colors, kua), [colors]);
+      }
+      function Member() {
+        const theme = useTheme();
+        return useMemo(() => createStyles(colors, theme.kuaPalette), [colors]);
+      }
+      function Ok() {
+        const { colors, kuaPalette: kua } = useTheme();
+        return useMemo(() => createStyles(colors, kua), [colors, kua]);
+      }
+    `;
+    const ast = parser.parse(fixture, { sourceType: 'module', plugins: ['jsx'] });
+    const offenders = collectMemoDepOffenders([{ label: 'fixture.js', ast }]);
+    expect(offenders).toEqual([
+      "fixture.js:5 createStyles missing dep 'kua'",
+      "fixture.js:9 createStyles missing dep 'theme'",
+    ]);
+  });
+});
+
+// --- (2) Mounted Hard→Clay→Grass repaint across every surface family -------
+// Static wiring is necessary but not sufficient: the palette must reach the
+// screen and repaint live. Each representative is MOUNTED once, the court is
+// switched twice at a FIXED light mode, and a court-distinct rendered token is
+// read after each switch — so a surface that only repaints on light↔dark, or is
+// stranded behind a stale cache, fails. Reads inspect rendered style, never a
+// snapshot. One representative stands in for each production surface family:
+// shell/shared, Log, Home, Weight, Analytics, More/nested, and overlay.
+describe('mounted surfaces repaint Hard→Clay→Grass at a fixed mode (#1142)', () => {
+  const { WorkoutSyntaxReference } = require('../components/WorkoutSyntaxReference');
+  const { WorkoutSyntaxModal } = require('../components/WorkoutSyntaxModal');
+  const { LegalLinks } = require('../screens/more/LegalLinks');
+  const { createStyles: homeCreateStyles } = require('../screens/home/homeStyles');
+  const { createStyles: weightCreateStyles } = require('../screens/weight/weightStyles');
+  const { createStyles: analyticsCreateStyles } = require('../screens/analytics/analyticsStyles');
+
+  // A screen-level surface reads `useTheme().kuaPalette` directly and applies
+  // its real production factory — exactly the Home/Weight/Analytics screen path.
+  // The probe renders the one role whose token is court-distinct so the read is
+  // unambiguous. The probe itself supplies `kuaPalette`, so it proves the factory
+  // repaints; the call-site guard above proves the real screen callers actually
+  // hand that factory the court palette, closing the gap between the two.
+  function ScreenProbe({ factory, role }) {
+    const { colors, kuaPalette } = useTheme();
+    const styles = factory(colors, kuaPalette);
+    return <Text style={styles[role]}>probe</Text>;
+  }
+
+  function colorOfText(component, includes) {
+    const node = component.root.findAllByType(Text).find(
+      (t) => flatten(t.props.style).color !== undefined
+        && String(t.props.children).includes(includes)
+    );
+    return flatten(node.props.style).color;
+  }
+  function probeColor(component) {
+    return flatten(
+      component.root.findAllByType(Text).find((t) => t.props.children === 'probe').props.style
+    ).color;
+  }
+  function buttonBackground(component) {
+    return flatten(
+      component.root.find((n) => n.props && n.props.accessibilityRole === 'button').props.style
+    ).backgroundColor;
+  }
+
+  // Each family: how to mount it under the gate, how to read a court-distinct
+  // rendered token, and the palette role that token must equal per court.
+  const SURFACES = [
+    {
+      family: 'shell/shared',
+      mount: () => <Button title="Save" onPress={() => {}} />,
+      read: buttonBackground,
+      token: (p) => p.primary,
+    },
+    {
+      family: 'Log',
+      mount: () => <WorkoutSyntaxReference />,
+      read: (c) => colorOfText(c, 'Each workout note is plain text'),
+      token: (p) => p.onSurfaceVariant,
+    },
+    {
+      family: 'Home',
+      mount: () => <ScreenProbe factory={homeCreateStyles} role="syncNoticeBody" />,
+      read: probeColor,
+      token: (p) => p.onSurfaceVariant,
+    },
+    {
+      family: 'Weight',
+      mount: () => <ScreenProbe factory={weightCreateStyles} role="editingTitle" />,
+      read: probeColor,
+      token: (p) => p.primary,
+    },
+    {
+      family: 'Analytics',
+      mount: () => <ScreenProbe factory={analyticsCreateStyles} role="baselineDisclosureLabel" />,
+      read: probeColor,
+      token: (p) => p.onSurfaceVariant,
+    },
+    {
+      family: 'More/nested',
+      mount: () => <LegalLinks />,
+      read: (c) => colorOfText(c, 'Privacy Policy'),
+      token: (p) => p.onSurfaceVariant,
+    },
+    {
+      family: 'overlay',
+      mount: () => <WorkoutSyntaxModal visible onClose={() => {}} />,
+      read: (c) => colorOfText(c, 'Workout syntax help'),
+      token: (p) => p.onSurface,
+    },
+  ];
+
+  test.each(SURFACES)(
+    '$family repaints across Hard→Clay→Grass without reload',
+    ({ mount, read, token }) => {
+      let component;
+      act(() => {
+        component = renderer.create(
+          <ThemeProvider>
+            <KuaStyleGate>{mount()}</KuaStyleGate>
+          </ThemeProvider>
+        );
+      });
+
+      // Mode is held at light throughout; only the court identity changes.
+      expect(read(component)).toBe(token(HardCourtLightColors));
+
+      act(() => {
+        setThemeSelection('clay-court');
+      });
+      expect(read(component)).toBe(token(ClayCourtLightColors));
+
+      act(() => {
+        setThemeSelection('grass-court');
+      });
+      expect(read(component)).toBe(token(GrassCourtLightColors));
+
+      // Court-distinct by construction: identical values would let a frozen
+      // surface pass all three reads.
+      const [hard, clay, grass] = [
+        token(HardCourtLightColors),
+        token(ClayCourtLightColors),
+        token(GrassCourtLightColors),
+      ];
+      expect(new Set([hard, clay, grass]).size).toBe(3);
+    }
+  );
+
+  // Retains explicit malformed-selection fallback coverage at the RENDER
+  // boundary: a garbage selection must resolve to the Hard Court default in the
+  // mounted tree, not paint an invalid palette.
+  test('a malformed court selection renders the Hard Court fallback', () => {
+    let component;
+    act(() => {
+      component = renderer.create(
+        <ThemeProvider>
+          <KuaStyleGate>
+            <Button title="Save" onPress={() => {}} />
+          </KuaStyleGate>
+        </ThemeProvider>
+      );
+    });
+    act(() => {
+      setThemeSelection('not-a-real-court');
+    });
+    expect(buttonBackground(component)).toBe(HardCourtLightColors.primary);
+  });
+});
