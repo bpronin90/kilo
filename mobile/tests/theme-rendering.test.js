@@ -17,15 +17,19 @@ import {
 } from '../theme/colors';
 import {
   ThemeProvider,
+  KuaStyleGate,
   switchColors,
   useTheme,
   useThemedStyles,
 } from '../theme/ThemeContext';
-import { Button, Card, LineChart, StatCard } from '../components/UI';
+import { Button, Card, Chip, LineChart, StatCard } from '../components/UI';
+import { TabBar } from '../components/TabBar';
 import { SettingsScreen } from '../components/SettingsScreen';
 import {
   __resetAppearancePreferenceForTests,
+  __resetThemeSelectionForTests,
   setAppearancePreference,
+  setThemeSelection,
 } from '../lib/themePreference';
 
 jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
@@ -111,6 +115,7 @@ function flatten(style) {
 
 beforeEach(() => {
   __resetAppearancePreferenceForTests();
+  __resetThemeSelectionForTests();
   // Cleared so a previous test's persisted selection cannot hydrate into the
   // next render after its act() block has already closed.
   AsyncStorage.clear();
@@ -599,6 +604,143 @@ describe('shared primitives switch palettes', () => {
   });
 });
 
+// #1139: the app shell and shared primitives must resolve through the SELECTED
+// KUA court palette, and repaint when the court changes at a FIXED mode — not
+// only on a light↔dark switch. The production KuaStyleGate supplies the palette;
+// rendered outside it, the same primitives stay on the legacy palette (the
+// opt-in that keeps every isolated primitive/screen test unchanged).
+describe('KUA shell + shared primitives wire to the selected court (#1139)', () => {
+  function renderGated(element) {
+    let component;
+    act(() => {
+      component = renderer.create(
+        <ThemeProvider>
+          <KuaStyleGate>{element}</KuaStyleGate>
+        </ThemeProvider>
+      );
+    });
+    return component;
+  }
+
+  function buttonBackground(component) {
+    const pressable = component.root.find(
+      (n) => n.props && n.props.accessibilityRole === 'button'
+    );
+    return flatten(pressable.props.style).backgroundColor;
+  }
+
+  function cardBackground(component) {
+    return flatten(component.root.findByType(View).props.style).backgroundColor;
+  }
+
+  test('outside the gate, the shared Button keeps the legacy palette (opt-in)', () => {
+    let component;
+    act(() => {
+      component = renderer.create(
+        <ThemeProvider>
+          <Button title="Save" onPress={() => {}} />
+        </ThemeProvider>
+      );
+    });
+    // No KuaStyleGate: the primitive must NOT silently adopt a court palette.
+    expect(buttonBackground(component)).toBe(LightColors.text);
+  });
+
+  test('inside the gate, the Button fills with the selected court primary', () => {
+    const component = renderGated(<Button title="Save" onPress={() => {}} />);
+    expect(buttonBackground(component)).toBe(HardCourtLightColors.primary);
+  });
+
+  test('switching Hard→Clay at a fixed light mode repaints the Button', () => {
+    const component = renderGated(<Button title="Save" onPress={() => {}} />);
+    expect(buttonBackground(component)).toBe(HardCourtLightColors.primary);
+
+    // Mode is held at light; only the court identity changes.
+    act(() => {
+      setThemeSelection('clay-court');
+    });
+
+    expect(buttonBackground(component)).toBe(ClayCourtLightColors.primary);
+    expect(ClayCourtLightColors.primary).not.toBe(HardCourtLightColors.primary);
+  });
+
+  test('switching Clay→Grass at a fixed dark mode repaints the shared Card', () => {
+    act(() => {
+      setAppearancePreference('dark');
+      setThemeSelection('clay-court');
+    });
+    const component = renderGated(
+      <Card>
+        <Text>body</Text>
+      </Card>
+    );
+    expect(cardBackground(component)).toBe(ClayCourtDarkColors.surfaceCard);
+
+    act(() => {
+      setThemeSelection('grass-court');
+    });
+
+    expect(cardBackground(component)).toBe(GrassCourtDarkColors.surfaceCard);
+    expect(GrassCourtDarkColors.surfaceCard).not.toBe(ClayCourtDarkColors.surfaceCard);
+  });
+
+  test('a Chip surface follows the selected court at a fixed mode', () => {
+    const component = renderGated(<Chip>New PR</Chip>);
+    expect(cardBackground(component)).toBe(HardCourtLightColors.primaryContainer);
+
+    act(() => {
+      setThemeSelection('grass-court');
+    });
+
+    expect(cardBackground(component)).toBe(GrassCourtLightColors.primaryContainer);
+  });
+
+  test('the tab bar active/inactive tint tracks the selected court, then the mode', () => {
+    let component;
+    act(() => {
+      component = renderer.create(
+        <ThemeProvider>
+          <KuaStyleGate>
+            <TabBar tabs={['Home', 'Log']} activeTab="Home" onTabPress={() => {}} />
+          </KuaStyleGate>
+        </ThemeProvider>
+      );
+    });
+    const activeLabelColor = () => {
+      const active = component.root
+        .findAllByType(Text)
+        .find((t) => flatten(t.props.style).fontWeight === '700');
+      return flatten(active.props.style).color;
+    };
+
+    // Active tint is primaryOnContainer (AA-safe on the selection pill), not
+    // primary — see TabBar.js. It still tracks the selected court and mode.
+    expect(activeLabelColor()).toBe(HardCourtLightColors.primaryOnContainer);
+
+    // Court switch at fixed light mode.
+    act(() => {
+      setThemeSelection('grass-court');
+    });
+    expect(activeLabelColor()).toBe(GrassCourtLightColors.primaryOnContainer);
+
+    // Mode switch still repaints (light→dark) on the same court.
+    act(() => {
+      setAppearancePreference('dark');
+    });
+    expect(activeLabelColor()).toBe(GrassCourtDarkColors.primaryOnContainer);
+  });
+
+  // Regression for the Codex review of PR #1145: the active tab label/icon must
+  // clear WCAG AA on the selection fill in every court/mode, including Hard
+  // Court dark where `primary` measured only 4.25:1 on `selection`.
+  test('the active tab tint clears AA on the selection fill in all six palettes', () => {
+    for (const [name, kua] of KUA_ALL_PALETTES) {
+      expect({ name, ok: contrastRatio(kua.primaryOnContainer, kua.selection) >= 4.5 })
+        .toEqual({ name, ok: true });
+    }
+  });
+});
+
 // Regression: a themed default must never be written as a parameter default.
 // Parameter initializers evaluate before the function body, so `colors.accent`
 // in a signature resolves the body-scoped `colors` binding inside its temporal
@@ -796,11 +938,16 @@ describe('no production surface can hold a stale palette', () => {
     //   than as a top-level constant, which keeps the values co-located with the
     //   overlay they style.
     expect(leaks).toEqual([
+      // App shell (#1139) and web alert host use the same KUA-spec neutral
+      // scrim as the modals below — black at 0.5/0.7 opacity, which is not a
+      // palette token — inside their own createStyles factories.
+      "App.js:484 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       "components/RecoveryBlockEndModal.js:243 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       "components/RecoveryBlockStartModal.js:326 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       "components/RecoveryBlockWeekModal.js:209 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       "components/SessionCheckInModal.js:374 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       "components/ThemePreviewControl.js:70 '#FF5C00'",
+      "components/WebAlertHost.js:77 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       'screens/HomeScreen.js:43 "#FF5C00"',
       'screens/HomeScreen.js:47 "#FF5C00"',
     ]);

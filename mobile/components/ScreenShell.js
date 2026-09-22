@@ -91,18 +91,18 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
   );
 });
 
-const createStyles = (colors) => StyleSheet.create({
+const createStyles = (colors, kua = null) => StyleSheet.create({
   outerContainer: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: kua ? kua.background : colors.background,
   },
   stickyHeader: {
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 12,
-    backgroundColor: colors.background,
+    backgroundColor: kua ? kua.background : colors.background,
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   stickyHeaderInner: {
     flexDirection: 'row',
@@ -112,7 +112,7 @@ const createStyles = (colors) => StyleSheet.create({
   backButton: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     alignSelf: 'flex-start',
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -122,7 +122,7 @@ const createStyles = (colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   backButtonText: {
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     fontSize: 14,
   },
   scroll: {
@@ -162,15 +162,15 @@ const createStyles = (colors) => StyleSheet.create({
   title: {
     fontSize: 34,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   version: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   subtitle: {
     fontSize: 15,
     lineHeight: 22,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
 });

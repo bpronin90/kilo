@@ -42,21 +42,29 @@ export function ArtisanalPanel({ children, style }) {
   return <View style={[styles.artisanalPanel, style]}>{children}</View>;
 }
 
-const createStyles = (colors) => StyleSheet.create({
+// Under the production KUA gate (#1139) the standard content card, panel, and
+// section title resolve through the selected court palette (surface-card /
+// surface-border / on-surface per components.md → Cards); outside the gate
+// `kua` is null and they keep the legacy palette. The filled STATUS tones
+// (accent/success/error/warn) carry a light label in both modes and stay on the
+// AA-tuned legacy filled-tone surfaces — KUA has no always-light ink that clears
+// AA on both a bright dark success/warning fill and a dark error fill, so, like
+// the workout-family StatCard tones, they signal status rather than court.
+const createStyles = (colors, kua = null) => StyleSheet.create({
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: kua ? kua.surfaceCard : colors.card,
     borderRadius: 24,
     padding: 18,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     gap: 10,
   },
   artisanalPanel: {
-    backgroundColor: colors.panelBackground,
+    backgroundColor: kua ? kua.surfaceCard : colors.panelBackground,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: colors.divider,
-    shadowColor: colors.text,
+    borderColor: kua ? kua.surfaceBorder : colors.divider,
+    shadowColor: kua ? kua.onSurface : colors.text,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.03,
     shadowRadius: 8,
@@ -86,7 +94,7 @@ const createStyles = (colors) => StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     marginTop: 6,
   },
 });

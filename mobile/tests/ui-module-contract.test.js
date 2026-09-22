@@ -297,6 +297,68 @@ describe('UI.js compatibility barrel: rendered structure parity', () => {
 
 import { WorkoutKuaProvider } from '../components/ui/workout';
 import { HardCourtLightColors } from '../theme/colors';
+import { ThemeProvider, KuaStyleGate } from '../theme/ThemeContext';
+
+// #1139: the shared primitives are court-agnostic in isolation (legacy palette,
+// asserted above) but must consume the selected KUA palette when mounted inside
+// the production KuaStyleGate. These pin that opt-in boundary directly on the
+// barrel-exported primitives.
+describe('UI.js compatibility barrel: KUA gate opt-in (#1139)', () => {
+  function renderGated(element) {
+    let component;
+    renderer.act(() => {
+      component = renderer.create(
+        <ThemeProvider>
+          <KuaStyleGate>{element}</KuaStyleGate>
+        </ThemeProvider>
+      );
+    });
+    return component;
+  }
+
+  test('Card resolves its surface through KUA inside the gate', () => {
+    const component = renderGated(
+      <UI.Card>
+        <Text>body</Text>
+      </UI.Card>
+    );
+    const style = flatten(component.root.findByType(View).props.style);
+    expect(style.backgroundColor).toBe(HardCourtLightColors.surfaceCard);
+    expect(style.borderColor).toBe(HardCourtLightColors.surfaceBorder);
+  });
+
+  test('SectionTitle ink resolves through KUA inside the gate', () => {
+    const component = renderGated(<UI.SectionTitle>Overview</UI.SectionTitle>);
+    const text = component.root.findByType(Text);
+    expect(flatten(text.props.style).color).toBe(HardCourtLightColors.onSurface);
+  });
+
+  test('ArtisanalPanel surface resolves through KUA inside the gate', () => {
+    const component = renderGated(
+      <UI.ArtisanalPanel>
+        <Text>inner</Text>
+      </UI.ArtisanalPanel>
+    );
+    const panel = component.root.findByType(View);
+    expect(flatten(panel.props.style).backgroundColor).toBe(HardCourtLightColors.surfaceCard);
+  });
+
+  test('Chip surface and label resolve through KUA inside the gate', () => {
+    const component = renderGated(<UI.Chip>New PR</UI.Chip>);
+    const view = component.root.findByType(View);
+    const text = component.root.findByType(Text);
+    expect(flatten(view.props.style).backgroundColor).toBe(HardCourtLightColors.primaryContainer);
+    expect(flatten(text.props.style).color).toBe(HardCourtLightColors.primaryOnContainer);
+  });
+
+  test('createInputStyle spreads the KUA skin when a palette is supplied', () => {
+    expect(UI.createInputStyle(LightColors, HardCourtLightColors)).toMatchObject({
+      backgroundColor: HardCourtLightColors.surfaceCard,
+      borderColor: HardCourtLightColors.surfaceBorder,
+      color: HardCourtLightColors.onSurface,
+    });
+  });
+});
 
 describe('WorkoutKuaProvider: KUA opt-in gate', () => {
   test('ExerciseBlock without a WorkoutKuaProvider renders "Tracked" (legacy text, no ✓)', () => {

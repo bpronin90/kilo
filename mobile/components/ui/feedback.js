@@ -72,12 +72,30 @@ export function ErrorBanner({ message, onRetry }) {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+// A tinted danger fill derived from the shared `error` red, so a danger banner
+// reads as danger-coded by background in every court/mode without an always-
+// light ink. Mirrors backupStyles.js's Danger Zone tint; `error` is a fixed
+// `#rrggbb` across all six palettes.
+function withAlpha(hex, alpha) {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return hex;
+  const r = parseInt(m[1].slice(0, 2), 16);
+  const g = parseInt(m[1].slice(2, 4), 16);
+  const b = parseInt(m[1].slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// Under the production KUA gate (#1139) the error/parse-failure feedback
+// surfaces resolve through the selected court palette; outside the gate `kua`
+// is null and they keep the unchanged legacy palette. Danger copy on the tinted
+// surface uses `errorText` (the AA-safe foreground ink), never the `error`
+// fill/border red — matching backupStyles.js's Danger Zone treatment.
+const createStyles = (colors, kua = null) => StyleSheet.create({
   errorBanner: {
-    backgroundColor: colors.errorSurface,
+    backgroundColor: kua ? withAlpha(kua.error, 0.14) : colors.errorSurface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.error,
+    borderColor: kua ? kua.error : colors.error,
     padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -87,16 +105,19 @@ const createStyles = (colors) => StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontWeight: '600',
-    color: colors.error,
+    color: kua ? kua.errorText : colors.error,
   },
-  // Filled, so it takes the error *surface* tone rather than the direct error
-  // color: dark mode's `error` is a bright foreground red that cannot carry a
-  // textLight label.
+  // Legacy: a filled error *surface* tone (dark mode's `error` is a bright
+  // foreground red that cannot carry a textLight label). KUA: a transparent
+  // outlined ghost repointed to the `error` outline / `errorText` label, so the
+  // retry action clears AA on the tinted banner without an always-light ink.
   errorBannerRetry: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: colors.cardErrorBg,
+    backgroundColor: kua ? 'transparent' : colors.cardErrorBg,
+    borderWidth: kua ? 1 : 0,
+    borderColor: kua ? kua.error : 'transparent',
     minWidth: 44,
     minHeight: 44,
     alignItems: 'center',
@@ -105,19 +126,21 @@ const createStyles = (colors) => StyleSheet.create({
   errorBannerRetryText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.textLight,
+    color: kua ? kua.errorText : colors.textLight,
   },
   // Unparsed-row styles. unparsedRow/unparsedRowMuted keep the exact single
   // color tokens the read view relied on before (colors.error for unresolved
   // lifting fallbacks, colors.text otherwise) so per-mode color parity holds.
+  // The unresolved-line ink is danger text on the section surface, so KUA uses
+  // the AA-safe `errorText` foreground rather than the `error` fill red.
   unparsedRow: {
     fontSize: SET_ROW_FONT_SIZE,
-    color: colors.error,
+    color: kua ? kua.errorText : colors.error,
     paddingLeft: 0,
   },
   unparsedRowMuted: {
     fontSize: SET_ROW_FONT_SIZE,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     paddingLeft: 0,
   },
   unparsedGroup: {
@@ -131,22 +154,22 @@ const createStyles = (colors) => StyleSheet.create({
   },
   unparsedGlyph: {
     fontSize: SET_ROW_FONT_SIZE,
-    color: colors.error,
+    color: kua ? kua.errorText : colors.error,
   },
   unparsedGlyphMuted: {
     fontSize: SET_ROW_FONT_SIZE,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   unparsedHint: {
     fontSize: SET_ROW_FONT_SIZE - 1,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     paddingLeft: 18,
   },
   noteParseError: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.error,
-    backgroundColor: colors.panelBackground,
+    borderColor: kua ? kua.error : colors.error,
+    backgroundColor: kua ? kua.surfaceCard : colors.panelBackground,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginTop: 8,
@@ -154,6 +177,6 @@ const createStyles = (colors) => StyleSheet.create({
   noteParseErrorText: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.error,
+    color: kua ? kua.errorText : colors.error,
   },
 });

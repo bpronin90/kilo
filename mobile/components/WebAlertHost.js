@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useThemedStyles } from '../theme/ThemeContext';
+import { useKuaStyle, useTheme } from '../theme/ThemeContext';
 import { setWebAlertHandler } from '../lib/platformAlert';
 
 // Renders the dialogs platformAlert.js's Alert.alert queues on web, since
@@ -14,7 +14,14 @@ import { setWebAlertHandler } from '../lib/platformAlert';
 // platformAlert.js.
 export function WebAlertHost() {
   const [dialog, setDialog] = useState(null);
-  const styles = useThemedStyles(createStyles);
+  // Built from the resolved court palette and mode: the dialog card resolves
+  // through KUA, while its scrim is the KUA-spec neutral backdrop keyed on mode
+  // (#1139). `kua` comes from the KuaStyleGate (null outside it) so an isolated
+  // render — like the web-alert tests, which mount no gate — keeps the legacy
+  // palette, matching every other shared primitive's opt-in boundary.
+  const { colors, mode } = useTheme();
+  const kua = useKuaStyle();
+  const styles = useMemo(() => createStyles(colors, kua, mode), [colors, kua, mode]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return undefined;
@@ -65,10 +72,14 @@ export function WebAlertHost() {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+// KUA overlay scrim (components.md → Overlays and modals): theme-neutral, black
+// at 0.5 opacity in light mode and 0.7 in dark, deliberately not a palette token.
+const scrim = (mode) => (mode === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)');
+
+const createStyles = (colors, kua = null, mode = 'light') => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: colors.overlay,
+    backgroundColor: kua ? scrim(mode) : colors.overlay,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
@@ -76,21 +87,21 @@ const createStyles = (colors) => StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 360,
-    backgroundColor: colors.card,
+    backgroundColor: kua ? kua.surfaceCard : colors.card,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     padding: 20,
     gap: 8,
   },
   title: {
     fontSize: 17,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   message: {
     fontSize: 14,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     lineHeight: 20,
   },
   actions: {
@@ -109,13 +120,13 @@ const createStyles = (colors) => StyleSheet.create({
   buttonText: {
     fontSize: 15,
     fontWeight: '700',
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
   },
   cancelText: {
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '600',
   },
   destructiveText: {
-    color: colors.error,
+    color: kua ? kua.errorText : colors.error,
   },
 });

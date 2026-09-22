@@ -1,10 +1,10 @@
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
-import React, { useCallback, useContext, useState, useRef, useEffect } from 'react';
+import React, { useCallback, useContext, useMemo, useState, useRef, useEffect } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, SafeAreaView, StyleSheet, Text, View, StatusBar } from 'react-native';
 import { WebAlertHost } from './components/WebAlertHost';
 import * as Updates from 'expo-updates';
 
-import { ThemeProvider, useTheme, useThemedStyles } from './theme/ThemeContext';
+import { ThemeProvider, KuaStyleGate, useKuaStyle, useTheme } from './theme/ThemeContext';
 import { ThemeHydrationGate } from './app/ThemeHydrationGate';
 import { useKuaFonts } from './theme/typography';
 import { TabBar } from './components/TabBar';
@@ -71,11 +71,19 @@ export default function App() {
   // the same fallback path — no blank startup, no unhandled rejection.
   const [fontsLoaded] = useKuaFonts();
 
+  // KuaStyleGate wires the whole shell — canvas/safe-area chrome, tab bar, web
+  // alert host, and every shared Card/Panel/Button/Chip/feedback/input primitive
+  // underneath — to the selected court palette (#1139). It sits inside
+  // ThemeProvider (reads the resolved kuaPalette) and above the shell, so a
+  // Hard/Clay/Grass switch at a fixed mode repaints all of them without a reload
+  // while the same primitives keep their legacy palette in isolation.
   return (
     <ThemeProvider>
-      <ThemeHydrationGate>
-        <WipeAwareAppShell />
-      </ThemeHydrationGate>
+      <KuaStyleGate>
+        <ThemeHydrationGate>
+          <WipeAwareAppShell />
+        </ThemeHydrationGate>
+      </KuaStyleGate>
     </ThemeProvider>
   );
 }
@@ -118,8 +126,13 @@ function WipeAwareAppShell() {
 // and renders the same tree App.js always rendered. Kept above useAppShell so a
 // wipe remount (WipeAwareAppShell's key) rebuilds hooks and view together.
 function ShellView({ onDeviceDataWiped }) {
-  const { mode } = useTheme();
-  const styles = useThemedStyles(createStyles);
+  const { colors, mode } = useTheme();
+  // `kua` comes from the KuaStyleGate (null outside it) — the same opt-in
+  // boundary every shared primitive uses (#1139). Built via useMemo, not
+  // useThemedStyles, because ShellView owns the outermost canvas/safe-area chrome
+  // and the mode-keyed KUA-spec modal scrim, which the 2-arg hook does not carry.
+  const kua = useKuaStyle();
+  const styles = useMemo(() => createStyles(colors, kua, mode), [colors, kua, mode]);
   const { bottom: bottomSafeAreaInset = 0 } = useContext(SafeAreaInsetsContext) || {};
   const {
     activeTab, tabOwnsBack, tabBarHeight, setTabBarHeight, weightHook, noteHook, stableAuth,
@@ -464,14 +477,20 @@ function ShellView({ onDeviceDataWiped }) {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+// KUA overlay scrim (components.md → Overlays and modals): a theme-neutral
+// backdrop, black at 0.5 opacity in light mode and 0.7 in dark, deliberately
+// not a palette token. Mirrors the scrim helper the recovery/check-in modals
+// use (and its theme-rendering.test.js hardcoded-color allowance).
+const scrim = (mode) => (mode === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)');
+
+const createStyles = (colors, kua = null, mode = 'light') => StyleSheet.create({
   appContainer: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: kua ? kua.background : colors.background,
   },
   topSafeArea: {
     flex: 0,
-    backgroundColor: colors.background,
+    backgroundColor: kua ? kua.background : colors.background,
     paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 30) : 0,
   },
   container: {
@@ -497,34 +516,34 @@ const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 4,
-    backgroundColor: colors.background,
+    backgroundColor: kua ? kua.background : colors.background,
   },
   updateBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
   updateBannerText: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.chipText,
+    color: kua ? kua.primaryOnContainer : colors.chipText,
   },
   updateBannerButton: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.chipText,
+    borderColor: kua ? kua.primaryOnContainer : colors.chipText,
     minHeight: 32,
     justifyContent: 'center',
   },
   updateBannerButtonText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.chipText,
+    color: kua ? kua.primaryOnContainer : colors.chipText,
   },
   webBackButton: {
     alignSelf: 'flex-start',
@@ -532,7 +551,7 @@ const createStyles = (colors) => StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     backgroundColor: 'transparent',
     // WCAG 2.5.5 / mobile a11y: guarantee a >=44x44 tappable area.
     minHeight: 44,
@@ -540,39 +559,39 @@ const createStyles = (colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   webBackButtonText: {
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     fontSize: 14,
     fontWeight: '600',
   },
   ownershipOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.overlay,
+    backgroundColor: kua ? scrim(mode) : colors.overlay,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
   },
   ownershipCard: {
     alignSelf: 'stretch',
-    backgroundColor: colors.background,
+    backgroundColor: kua ? kua.surfaceCard : colors.background,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     padding: 20,
     gap: 12,
   },
   ownershipTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   ownershipBody: {
     fontSize: 15,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     lineHeight: 22,
   },
   ownershipHint: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 18,
     marginTop: -6,
   },
