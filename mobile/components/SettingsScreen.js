@@ -12,7 +12,7 @@ import {
   saveProgressionSuggestionsEnabled,
 } from '../storage/entries/settings';
 import { ReminderSettingsCard } from './ReminderSettingsCard';
-import { ThemePreviewControl } from './ThemePreviewControl';
+import { ThemeSelectionControl } from './ThemeSelectionControl';
 import { useWeightUnit, setWeightUnitPreference } from '../lib/unitPreference';
 import { unitFromUnitSystem, unitSystemFromUnit } from '../lib/units';
 
@@ -192,6 +192,7 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
 
       {kua ? <Text style={styles.sectionHeader}>APPEARANCE</Text> : <SectionTitle>Appearance</SectionTitle>}
       <Card style={cardStyle}>
+        <ThemeSelectionControl />
         <View style={[styles.settingRow, { marginBottom: 0 }]}>
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>Theme</Text>
@@ -264,15 +265,6 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
           />
         )}
       </Card>
-
-      {(process.env.EXPO_PUBLIC_APP_ENV === 'development' || process.env.EXPO_PUBLIC_APP_ENV === 'preview') && (
-        <>
-          {kua ? <Text style={styles.sectionHeader}>DEV PREVIEW</Text> : <SectionTitle>Dev Preview</SectionTitle>}
-          <Card style={cardStyle}>
-            <ThemePreviewControl />
-          </Card>
-        </>
-      )}
 
       {kua ? <Text style={styles.sectionHeader}>ADVANCED</Text> : <SectionTitle>Advanced</SectionTitle>}
       <Card style={cardStyle}>

@@ -298,7 +298,11 @@ describe('OTA update scripts carry EXPO_PUBLIC_APP_ENV for preview', () => {
   });
 });
 
-describe('EXPO_PUBLIC_APP_ENV gate: SettingsScreen shows Dev Preview only in non-production builds', () => {
+describe('DEV PREVIEW section removed: Settings never exposes the dev-only picker', () => {
+  // The temporary ThemePreviewControl / DEV PREVIEW section was removed in
+  // #1136. SettingsScreen no longer gates on EXPO_PUBLIC_APP_ENV for a preview
+  // picker — the production court-theme control (ThemeSelectionControl) is shown
+  // in all builds instead.
   const _originalPublicAppEnv = process.env.EXPO_PUBLIC_APP_ENV;
 
   afterEach(() => {
@@ -325,14 +329,14 @@ describe('EXPO_PUBLIC_APP_ENV gate: SettingsScreen shows Dev Preview only in non
       .some((n) => n.props.children === 'DEV PREVIEW');
   }
 
-  test('Dev Preview section renders in EAS preview builds', () => {
+  test('Dev Preview section is absent in preview builds', () => {
     process.env.EXPO_PUBLIC_APP_ENV = 'preview';
-    expect(hasDevPreviewSection(renderSettings())).toBe(true);
+    expect(hasDevPreviewSection(renderSettings())).toBe(false);
   });
 
-  test('Dev Preview section renders in EAS development builds', () => {
+  test('Dev Preview section is absent in development builds', () => {
     process.env.EXPO_PUBLIC_APP_ENV = 'development';
-    expect(hasDevPreviewSection(renderSettings())).toBe(true);
+    expect(hasDevPreviewSection(renderSettings())).toBe(false);
   });
 
   test('Dev Preview section is absent in production builds', () => {

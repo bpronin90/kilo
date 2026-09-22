@@ -1,0 +1,99 @@
+import React, { useMemo } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useTheme } from '../theme/ThemeContext';
+import { useKuaTypography } from '../theme/typography';
+import { setThemeSelection } from '../lib/themePreference';
+
+const THEME_OPTIONS = [
+  { value: 'hard-court', label: 'Hard Court', a11yLabel: 'Use Hard Court' },
+  { value: 'clay-court', label: 'Clay Court', a11yLabel: 'Use Clay Court' },
+  { value: 'grass-court', label: 'Grass Court', a11yLabel: 'Use Grass Court' },
+];
+
+export function ThemeSelectionControl() {
+  const { themeSelection, kuaPalette: kua, colors } = useTheme();
+  const typography = useKuaTypography();
+  const styles = useMemo(() => createStyles(kua, colors, typography), [kua, colors, typography]);
+
+  return (
+    <View testID="theme-selection-control" style={styles.row}>
+      <View style={styles.labelContainer}>
+        <Text style={styles.label}>Court</Text>
+      </View>
+      <View style={styles.toggle}>
+        {THEME_OPTIONS.map(({ value, label, a11yLabel }) => {
+          const selected = themeSelection === value;
+          return (
+            <Pressable
+              key={value}
+              onPress={() => setThemeSelection(value)}
+              style={styles.tab}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              accessibilityLabel={a11yLabel}
+            >
+              <View style={[styles.pill, selected && styles.pillActive]}>
+                <Text style={[styles.tabText, selected && styles.tabTextActive]}>{label}</Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+const createStyles = (kua = null, colors = {}, typography = {}) => StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 20,
+  },
+  // Label takes its natural width; the toggle gets the remaining space.
+  labelContainer: {
+    flexShrink: 0,
+  },
+  label: {
+    ...(typography['body-lg'] ?? { fontSize: 16 }),
+    color: kua ? kua.onSurface : colors.text,
+  },
+  // flex: 1 constrains the toggle to the available row width so that flexWrap
+  // can actually wrap the pills rather than growing the container off-screen.
+  toggle: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 4,
+  },
+  tab: {
+    minHeight: 44,
+    minWidth: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
+    backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
+  },
+  pillActive: {
+    backgroundColor: kua ? kua.primary : colors.accent,
+    borderColor: kua ? kua.primary : colors.accent,
+  },
+  tabText: {
+    ...(typography['label-sm'] ?? { fontSize: 11 }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+  },
+  // Selected: inherits label-sm metrics but upgrades to label-lg family/weight
+  // for a real KUA medium-to-semibold change without hardcoded font names.
+  tabTextActive: {
+    fontFamily: (typography['label-lg'] ?? {}).fontFamily,
+    fontWeight: (typography['label-lg'] ?? {}).fontWeight,
+    color: kua ? kua.onPrimary : colors.onAccent,
+  },
+});
