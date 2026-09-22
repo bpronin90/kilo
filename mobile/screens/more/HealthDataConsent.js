@@ -131,18 +131,23 @@ export function HealthDataConsent({ onGranted, onDecline, appVersion }) {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+// Under the production KUA gate (`kua` supplied) the disclosure copy, policy
+// link, and the affirmative-consent checkbox resolve through the selected court
+// palette; outside the gate (`kua` null — isolated consent tests) they keep the
+// legacy palette. The unchecked-by-default checkbox and its accessibility state
+// are unaffected — only the resting/checked colors move to the court.
+export const createStyles = (colors, kua = null) => StyleSheet.create({
   block: {
     gap: 12,
   },
   disclosure: {
     fontSize: 15,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     lineHeight: 22,
   },
   link: {
     fontSize: 15,
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
     textDecorationLine: 'underline',
   },
   affirmRow: {
@@ -156,17 +161,17 @@ const createStyles = (colors) => StyleSheet.create({
     height: 22,
     borderRadius: 4,
     borderWidth: 2,
-    borderColor: colors.textMuted,
+    borderColor: kua ? kua.onSurfaceVariant : colors.textMuted,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 2,
   },
   checkboxChecked: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accent,
+    borderColor: kua ? kua.primary : colors.accent,
+    backgroundColor: kua ? kua.primary : colors.accent,
   },
   checkmark: {
-    color: colors.onAccent,
+    color: kua ? kua.onPrimary : colors.onAccent,
     fontSize: 14,
     fontWeight: '700',
     lineHeight: 16,
@@ -174,12 +179,12 @@ const createStyles = (colors) => StyleSheet.create({
   affirmText: {
     flex: 1,
     fontSize: 15,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     lineHeight: 22,
   },
   status: {
     fontSize: 14,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 8,
   },
 });

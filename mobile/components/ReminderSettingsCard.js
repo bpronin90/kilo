@@ -296,7 +296,13 @@ export function ReminderSettingsCard() {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+// Under the production KUA gate (`kua` supplied) the reminder labels, help copy,
+// inline errors, time buttons, and weekday chips resolve through the selected
+// court palette; outside the gate (`kua` null — isolated reminder-card tests)
+// they keep the legacy palette. The native <Switch> tint is intentionally left
+// on the legacy accent via `switchColors(colors)`, matching the migrated
+// SettingsScreen — an OS control keeps its own light/dark boundary.
+export const createStyles = (colors, kua = null) => StyleSheet.create({
   // One reminder = one group. The group's gap sets a uniform distance between
   // the label/switch row and every sub-element under it (#1018); the two groups
   // are held apart by Card's own 10dp child gap.
@@ -315,15 +321,15 @@ const createStyles = (colors) => StyleSheet.create({
   settingLabel: {
     fontSize: 16,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   settingHelp: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   errorText: {
     fontSize: 12,
-    color: colors.error,
+    color: kua ? kua.errorText : colors.error,
   },
   subRow: {
     flexDirection: 'row',
@@ -335,13 +341,13 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   timeButton: {
-    backgroundColor: colors.inputBackground,
+    backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     paddingVertical: 10,
     paddingHorizontal: 16,
     minHeight: 44,
@@ -350,7 +356,7 @@ const createStyles = (colors) => StyleSheet.create({
   timeButtonText: {
     fontSize: 16,
     fontWeight: '800',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   weekdayRow: {
     flexDirection: 'row',
@@ -377,20 +383,20 @@ const createStyles = (colors) => StyleSheet.create({
     borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.inputBackground,
+    backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   weekdayChipSelected: {
-    backgroundColor: colors.chipBackground,
-    borderColor: colors.chipText,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
+    borderColor: kua ? kua.primaryOnContainer : colors.chipText,
   },
   weekdayChipText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   weekdayChipTextSelected: {
-    color: colors.chipText,
+    color: kua ? kua.primaryOnContainer : colors.chipText,
   },
 });

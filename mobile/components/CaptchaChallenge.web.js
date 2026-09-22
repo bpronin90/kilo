@@ -79,7 +79,12 @@ export function CaptchaChallenge({ onToken, onExpired, onError, resetKey = 0 }) 
   return <View nativeID={containerId} style={styles.container} accessibilityLabel="Security verification" />;
 }
 
-const createStyles = (colors) => StyleSheet.create({
+// Only the unavailable-build error label is app-painted; the Turnstile widget
+// renders its own hosted iframe so it keeps its correct light/dark boundary.
+// Under the production KUA gate (`kua` supplied) the error ink uses the readable
+// on-surface `errorText` token; outside the gate (`kua` null — isolated captcha
+// tests) it keeps the legacy palette.
+export const createStyles = (colors, kua = null) => StyleSheet.create({
   container: { minHeight: 70, width: '100%' },
-  error: { color: colors.error, fontSize: 14 },
+  error: { color: kua ? kua.errorText : colors.error, fontSize: 14 },
 });

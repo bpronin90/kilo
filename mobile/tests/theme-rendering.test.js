@@ -2250,3 +2250,211 @@ describe('KUA Analytics surface: createStyles uses KUA tokens in all palettes', 
     expect(styles.oneKProgressBar.backgroundColor).toBe(LightColors.accent);
   });
 });
+
+// ---------------------------------------------------------------------------
+// #1141: nested More/Account/Settings/Help/data-utility child surfaces wire to
+// the selected court exactly like the #1139/#1140 surfaces — under the gate they
+// resolve KUA tokens and repaint on a fixed-mode court switch; rendered outside
+// it (the legacy-only factory call sites every isolated test still uses) they
+// keep the unchanged legacy palette. Hosted controls (CAPTCHA Turnstile widget)
+// and the exported routine-share IMAGE keep their fixed boundaries.
+// ---------------------------------------------------------------------------
+
+describe('KUA wiring for nested More/Account/Help/data-utility surfaces (#1141)', () => {
+  // ReminderSettingsCard is mocked to null at the top of this file; reach its
+  // real factory. The CAPTCHA challenge has platform variants, so require both.
+  const { createStyles: profileCreateStyles } = require('../components/ProfileScreen');
+  const { createStyles: aboutCreateStyles } = require('../components/AboutScreen');
+  const { createStyles: helpCreateStyles } = require('../components/HelpScreen');
+  const { createStyles: reminderCreateStyles } = jest.requireActual('../components/ReminderSettingsCard');
+  const { createStyles: importCreateStyles } = require('../components/RoutineImportScreen');
+  const { createStyles: shareCreateStyles } = require('../components/RoutineShareCard');
+  const { createStyles: lifecycleCreateStyles } = require('../screens/more/AccountLifecycle');
+  const { createStyles: consentCreateStyles } = require('../screens/more/HealthDataConsent');
+  const { createStyles: cloudCreateStyles } = require('../screens/more/CloudSyncRecovery');
+  const { createStyles: legalCreateStyles } = require('../screens/more/LegalLinks');
+  const { createStyles: passwordCreateStyles } = require('../screens/more/SetNewPasswordScreen');
+  const { createStyles: captchaWebCreateStyles } = require('../components/CaptchaChallenge.web');
+  const { createStyles: captchaNativeCreateStyles } = require('../components/CaptchaChallenge.native');
+
+  const SIX = [
+    ['hardCourt/light', HardCourtLightColors],
+    ['hardCourt/dark', HardCourtDarkColors],
+    ['clayCourt/light', ClayCourtLightColors],
+    ['clayCourt/dark', ClayCourtDarkColors],
+    ['grassCourt/light', GrassCourtLightColors],
+    ['grassCourt/dark', GrassCourtDarkColors],
+  ];
+
+  // --- legacy-only factory call sites: kua === null keeps the legacy palette --
+
+  test('every #1141 factory falls back to the legacy palette when kua is null', () => {
+    expect(profileCreateStyles(LightColors, null).activityCard.backgroundColor).toBe(LightColors.card);
+    expect(profileCreateStyles(LightColors, null).activityLabelActive.color).toBe(LightColors.accentText);
+    expect(aboutCreateStyles(LightColors, null).aboutValue.color).toBe(LightColors.text);
+    expect(aboutCreateStyles(LightColors, null).diagAlert.backgroundColor).toBe(LightColors.chipBackground);
+    expect(helpCreateStyles(LightColors, null).topic.backgroundColor).toBe(LightColors.card);
+    expect(reminderCreateStyles(LightColors, null).settingLabel.color).toBe(LightColors.text);
+    expect(reminderCreateStyles(LightColors, null).errorText.color).toBe(LightColors.error);
+    expect(importCreateStyles(LightColors, null).errorText.color).toBe(LightColors.error);
+    expect(importCreateStyles(LightColors, null).successText.color).toBe(LightColors.success);
+    expect(shareCreateStyles(LightColors, null).dialog.backgroundColor).toBe(LightColors.background);
+    expect(lifecycleCreateStyles(LightColors, null).accountNote.color).toBe(LightColors.text);
+    expect(consentCreateStyles(LightColors, null).checkboxChecked.backgroundColor).toBe(LightColors.accent);
+    expect(cloudCreateStyles(LightColors, null).syncLabel.color).toBe(LightColors.text);
+    expect(legalCreateStyles(LightColors, null).legalLink.color).toBe(LightColors.textMuted);
+    expect(passwordCreateStyles(LightColors, null).note.color).toBe(LightColors.text);
+    expect(captchaWebCreateStyles(LightColors, null).error.color).toBe(LightColors.error);
+    expect(captchaNativeCreateStyles(LightColors, null).error.color).toBe(LightColors.error);
+  });
+
+  // --- each factory resolves selected KUA tokens in all six combinations ------
+
+  test('every #1141 factory resolves KUA tokens in all six theme/mode combinations', () => {
+    for (const [name, kua] of SIX) {
+      const profile = profileCreateStyles(LightColors, kua);
+      expect({ name, v: profile.activityCard.backgroundColor }).toEqual({ name, v: kua.surfaceCard });
+      expect({ name, v: profile.activityLabelActive.color }).toEqual({ name, v: kua.primary });
+      expect({ name, v: profile.toggleButtonActive.backgroundColor }).toEqual({ name, v: kua.primary });
+      expect({ name, v: profile.toggleButtonTextActive.color }).toEqual({ name, v: kua.onPrimary });
+
+      const about = aboutCreateStyles(LightColors, kua);
+      expect({ name, v: about.aboutValue.color }).toEqual({ name, v: kua.onSurface });
+      expect({ name, v: about.diagAlert.backgroundColor }).toEqual({ name, v: kua.primaryContainer });
+      expect({ name, v: about.diagAlertText.color }).toEqual({ name, v: kua.primaryOnContainer });
+
+      const help = helpCreateStyles(LightColors, kua);
+      expect({ name, v: help.topic.backgroundColor }).toEqual({ name, v: kua.surfaceCard });
+      expect({ name, v: help.rowTitle.color }).toEqual({ name, v: kua.onSurface });
+
+      const reminder = reminderCreateStyles(LightColors, kua);
+      expect({ name, v: reminder.settingLabel.color }).toEqual({ name, v: kua.onSurface });
+      expect({ name, v: reminder.weekdayChipSelected.backgroundColor }).toEqual({ name, v: kua.primaryContainer });
+      expect({ name, v: reminder.errorText.color }).toEqual({ name, v: kua.errorText });
+
+      const imported = importCreateStyles(LightColors, kua);
+      expect({ name, v: imported.mutedText.color }).toEqual({ name, v: kua.onSurfaceVariant });
+      expect({ name, v: imported.successText.color }).toEqual({ name, v: kua.success });
+      expect({ name, v: imported.errorText.color }).toEqual({ name, v: kua.errorText });
+
+      const share = shareCreateStyles(LightColors, kua);
+      expect({ name, v: share.dialog.backgroundColor }).toEqual({ name, v: kua.surfaceCard });
+      expect({ name, v: share.dialogTitle.color }).toEqual({ name, v: kua.onSurface });
+      expect({ name, v: share.error.color }).toEqual({ name, v: kua.errorText });
+
+      expect({ name, v: lifecycleCreateStyles(LightColors, kua).accountNote.color }).toEqual({ name, v: kua.onSurface });
+
+      const consent = consentCreateStyles(LightColors, kua);
+      expect({ name, v: consent.checkboxChecked.backgroundColor }).toEqual({ name, v: kua.primary });
+      expect({ name, v: consent.checkmark.color }).toEqual({ name, v: kua.onPrimary });
+      expect({ name, v: consent.link.color }).toEqual({ name, v: kua.primary });
+
+      const cloud = cloudCreateStyles(LightColors, kua);
+      expect({ name, v: cloud.syncLabel.color }).toEqual({ name, v: kua.onSurface });
+      expect({ name, v: cloud.phaseDesc.color }).toEqual({ name, v: kua.onSurfaceVariant });
+
+      expect({ name, v: legalCreateStyles(LightColors, kua).legalLink.color }).toEqual({ name, v: kua.onSurfaceVariant });
+
+      const password = passwordCreateStyles(LightColors, kua);
+      expect({ name, v: password.note.color }).toEqual({ name, v: kua.onSurface });
+      expect({ name, v: password.status.color }).toEqual({ name, v: kua.onSurfaceVariant });
+
+      expect({ name, v: captchaWebCreateStyles(LightColors, kua).error.color }).toEqual({ name, v: kua.errorText });
+      expect({ name, v: captchaNativeCreateStyles(LightColors, kua).error.color }).toEqual({ name, v: kua.errorText });
+    }
+  });
+
+  // A fixed-mode court switch (same legacy `colors`, different `kua`) is
+  // court-distinct: Hard→Clay changes the profile's active primary and the
+  // reminder's selected-chip container.
+  test('switching Hard→Clay at a fixed mode repaints the #1141 factories', () => {
+    const hardProfile = profileCreateStyles(LightColors, HardCourtLightColors);
+    const clayProfile = profileCreateStyles(LightColors, ClayCourtLightColors);
+    expect(hardProfile.toggleButtonActive.backgroundColor).toBe(HardCourtLightColors.primary);
+    expect(clayProfile.toggleButtonActive.backgroundColor).toBe(ClayCourtLightColors.primary);
+    expect(clayProfile.toggleButtonActive.backgroundColor).not.toBe(hardProfile.toggleButtonActive.backgroundColor);
+
+    const hardReminder = reminderCreateStyles(LightColors, HardCourtLightColors);
+    const clayReminder = reminderCreateStyles(LightColors, ClayCourtLightColors);
+    expect(clayReminder.weekdayChipSelected.backgroundColor)
+      .not.toBe(hardReminder.weekdayChipSelected.backgroundColor);
+  });
+
+  // Error/status states: on-surface error ink uses the readable `errorText`
+  // token, which clears AA on the card in every palette, never the `error` FILL
+  // red (which drops below AA as ink on the dark KUA cards).
+  test('nested-flow error ink uses errorText (AA on every card), not the error fill', () => {
+    // Each factory's on-surface error style keyed by its own style name.
+    const errorInkSites = [
+      [reminderCreateStyles, 'errorText'],
+      [importCreateStyles, 'errorText'],
+      [shareCreateStyles, 'error'],
+      [captchaWebCreateStyles, 'error'],
+      [captchaNativeCreateStyles, 'error'],
+    ];
+    for (const [name, kua] of SIX) {
+      for (const [factory, key] of errorInkSites) {
+        expect({ name, ok: contrastRatio(factory(LightColors, kua)[key].color, kua.surfaceCard) >= 4.5 })
+          .toEqual({ name, ok: true });
+      }
+      if (name.endsWith('/dark')) {
+        expect({ name, ok: contrastRatio(kua.error, kua.surfaceCard) >= 4.5 })
+          .toEqual({ name, ok: false });
+      }
+    }
+  });
+
+  // The exported routine-share IMAGE is a portable document: its card, title,
+  // and body ink stay on fixed LightColors regardless of the selected court, so
+  // a shared image looks identical no matter who exports it.
+  test('the routine-share export image keeps fixed LightColors under every court', () => {
+    for (const [, kua] of SIX) {
+      const share = shareCreateStyles(LightColors, kua);
+      expect(share.card.backgroundColor).toBe(LightColors.card);
+      expect(share.title.color).toBe(LightColors.text);
+      expect(share.detail.color).toBe(LightColors.textMuted);
+    }
+  });
+
+  // --- representative mounted repaint path (LegalLinks: no external deps) ------
+
+  const { LegalLinks } = require('../screens/more/LegalLinks');
+
+  function legalLinkColor(component) {
+    const node = component.root.findAllByType(Text).find(
+      (t) => String(t.props.children).includes('Privacy Policy')
+    );
+    return flatten(node.props.style).color;
+  }
+
+  test('outside the gate, mounted LegalLinks keeps the legacy palette (opt-in)', () => {
+    let component;
+    act(() => {
+      component = renderer.create(
+        <ThemeProvider>
+          <LegalLinks />
+        </ThemeProvider>
+      );
+    });
+    expect(legalLinkColor(component)).toBe(LightColors.textMuted);
+  });
+
+  test('inside the gate, mounted LegalLinks repaints on a fixed-mode court switch', () => {
+    let component;
+    act(() => {
+      component = renderer.create(
+        <ThemeProvider>
+          <KuaStyleGate><LegalLinks /></KuaStyleGate>
+        </ThemeProvider>
+      );
+    });
+    expect(legalLinkColor(component)).toBe(HardCourtLightColors.onSurfaceVariant);
+
+    act(() => {
+      setThemeSelection('grass-court');
+    });
+
+    expect(legalLinkColor(component)).toBe(GrassCourtLightColors.onSurfaceVariant);
+    expect(GrassCourtLightColors.onSurfaceVariant).not.toBe(HardCourtLightColors.onSurfaceVariant);
+  });
+});
