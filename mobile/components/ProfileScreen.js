@@ -4,12 +4,13 @@ import { Alert } from '../lib/platformAlert';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle, Button, createInputStyle } from './UI';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme, useThemedStyles, useKuaStyle } from '../theme/ThemeContext';
 import { useUserProfile } from '../hooks/useEntries';
 import { setWeightUnitPreference } from '../lib/unitPreference';
 
 export function ProfileScreen({ onBack }) {
   const { colors } = useTheme();
+  const kua = useKuaStyle();
   const styles = useThemedStyles(createStyles);
   const webDateInputStyle = useThemedStyles(createWebDateInputStyle);
   const { profile, save, loading, clear: clearAll } = useUserProfile();
@@ -164,7 +165,7 @@ export function ProfileScreen({ onBack }) {
       accessibilityLabel="Clear All"
     >
       <Text
-        style={{ color: colors.error, fontSize: 13, fontWeight: '700', textTransform: 'uppercase' }}
+        style={{ color: kua ? kua.errorText : colors.error, fontSize: 13, fontWeight: '700', textTransform: 'uppercase' }}
         accessible={false}
       >
         Clear All
@@ -301,7 +302,7 @@ export function ProfileScreen({ onBack }) {
               accessibilityLabel="Clear date of birth"
             >
               <Text
-                style={{ color: colors.error, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' }}
+                style={{ color: kua ? kua.errorText : colors.error, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' }}
                 accessible={false}
               >
                 Clear
@@ -335,7 +336,7 @@ export function ProfileScreen({ onBack }) {
                 : 'Select date of birth'}
             >
               <Text
-                style={[styles.datePickerText, !localProfile?.date_of_birth && { color: colors.textMuted }]}
+                style={[styles.datePickerText, !localProfile?.date_of_birth && { color: kua ? kua.onSurfaceVariant : colors.textMuted }]}
                 accessible={false}
               >
                 {localProfile?.date_of_birth || 'Select Date'}
@@ -392,7 +393,7 @@ export function ProfileScreen({ onBack }) {
         />
         {saveSuccess && (
           <View style={{ alignItems: 'center' }}>
-            <Text style={{ color: colors.success, fontWeight: '700' }}>Profile saved successfully!</Text>
+            <Text style={{ color: kua ? kua.success : colors.success, fontWeight: '700' }}>Profile saved successfully!</Text>
           </View>
         )}
       </View>
@@ -402,26 +403,33 @@ export function ProfileScreen({ onBack }) {
 
 // Plain DOM style object for the web-only <input type="date"> (react-native-web
 // renders this as a real HTML element, so it takes CSS, not an RN StyleSheet).
-const createWebDateInputStyle = (colors) => ({
-  backgroundColor: colors.inputBackground,
+const createWebDateInputStyle = (colors, kua = null) => ({
+  backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
   borderWidth: 1,
   borderStyle: 'solid',
-  borderColor: colors.cardBorder,
+  borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   borderRadius: 12,
   padding: 16,
   fontSize: 16,
   fontWeight: '700',
+  // colorScheme stays on the resolved light/dark mode so the browser's own date
+  // picker chrome matches appearance, independent of the selected court.
   colorScheme: colors.scheme,
-  color: colors.text,
+  color: kua ? kua.onSurface : colors.text,
   width: '100%',
   boxSizing: 'border-box',
 });
 
-const createStyles = (colors) => StyleSheet.create({
+// Under the production KUA gate (`kua` supplied) the profile inputs, segmented
+// controls, date button, and activity cards resolve through the selected court
+// palette; outside the gate (`kua` null — isolated profile tests) they keep the
+// legacy palette. Recessed control fills use `surfaceSection` so they read on the
+// court's `surfaceCard`; the active/selected states use the court `primary`.
+export const createStyles = (colors, kua = null) => StyleSheet.create({
   inputLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 8,
@@ -429,7 +437,7 @@ const createStyles = (colors) => StyleSheet.create({
   inputSublabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
     textTransform: 'uppercase',
   },
@@ -456,20 +464,20 @@ const createStyles = (colors) => StyleSheet.create({
     alignItems: 'center',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-    backgroundColor: colors.inputBackground,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
+    backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
   },
   toggleButtonActive: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
+    backgroundColor: kua ? kua.primary : colors.accent,
+    borderColor: kua ? kua.primary : colors.accent,
   },
   toggleButtonText: {
     fontSize: 15,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   toggleButtonTextActive: {
-    color: colors.onAccent,
+    color: kua ? kua.onPrimary : colors.onAccent,
   },
   // Compact segmented selector, shared visually with Settings' Appearance and
   // Weight unit controls (#1018). The pressable is a transparent ≥44dp target
@@ -490,34 +498,34 @@ const createStyles = (colors) => StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-    backgroundColor: colors.inputBackground,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
+    backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
   },
   unitPillActive: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
+    backgroundColor: kua ? kua.primary : colors.accent,
+    borderColor: kua ? kua.primary : colors.accent,
   },
   unitTabText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   unitTabTextActive: {
-    color: colors.onAccent,
+    color: kua ? kua.onPrimary : colors.onAccent,
   },
   heightRow: {
     flexDirection: 'row',
     gap: 12,
   },
   profileInput: {
-    ...createInputStyle(colors),
+    ...createInputStyle(colors, kua),
     fontWeight: '700',
     textAlign: 'center',
   },
   datePickerButton: {
-    backgroundColor: colors.inputBackground,
+    backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
@@ -525,49 +533,49 @@ const createStyles = (colors) => StyleSheet.create({
   datePickerText: {
     fontSize: 16,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   activityCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.card,
+    backgroundColor: kua ? kua.surfaceCard : colors.card,
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     gap: 12,
   },
   activityCardActive: {
-    borderColor: colors.accent,
-    backgroundColor: colors.card,
+    borderColor: kua ? kua.primary : colors.accent,
+    backgroundColor: kua ? kua.surfaceCard : colors.card,
   },
   activityLabel: {
     fontSize: 16,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     marginBottom: 2,
   },
   activityLabelActive: {
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
   },
   activityDesc: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 18,
   },
   activityDescActive: {
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   checkCircle: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: colors.accent,
+    backgroundColor: kua ? kua.primary : colors.accent,
     justifyContent: 'center',
     alignItems: 'center',
   },
   checkText: {
-    color: colors.onAccent,
+    color: kua ? kua.onPrimary : colors.onAccent,
     fontSize: 14,
     fontWeight: '800',
   },

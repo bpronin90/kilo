@@ -330,29 +330,34 @@ export function RoutineImportScreen({ onBack, onCreateRoutine }) {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+// Under the production KUA gate (`kua` supplied) the preview/notice/status copy
+// resolves through the selected court palette; outside the gate (`kua` null —
+// isolated import tests) it keeps the legacy palette. The paste/title fields use
+// the shared `useInputStyle()` primitive, which is already court-aware. Success
+// uses the shared `success` ink and error the readable on-surface `errorText`.
+export const createStyles = (colors, kua = null) => StyleSheet.create({
   pasteInput: {
     minHeight: 160,
     textAlignVertical: 'top',
   },
   mutedText: {
     fontSize: 14,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 20,
   },
   metaText: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 8,
   },
   successText: {
     fontSize: 14,
-    color: colors.success,
+    color: kua ? kua.success : colors.success,
     lineHeight: 20,
   },
   errorText: {
     fontSize: 14,
-    color: colors.error,
+    color: kua ? kua.errorText : colors.error,
     lineHeight: 20,
   },
   weekRow: {
@@ -371,7 +376,7 @@ const createStyles = (colors) => StyleSheet.create({
   },
   footnote: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 18,
   },
 });

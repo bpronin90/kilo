@@ -112,18 +112,22 @@ export function AccountLifecycle({ auth }) {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+// Under the production KUA gate (`kua` supplied) the note/status copy resolves
+// through the selected court palette; outside the gate (`kua` null — isolated
+// tests) it keeps the legacy palette. Destructive-action semantics live in the
+// shared `tone="danger"` Buttons, which are unchanged.
+export const createStyles = (colors, kua = null) => StyleSheet.create({
   accountBlock: {
     gap: 12,
   },
   accountNote: {
     fontSize: 15,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     lineHeight: 22,
   },
   accountStatus: {
     fontSize: 14,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 16,
   },
 });

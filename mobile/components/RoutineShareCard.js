@@ -113,13 +113,20 @@ export function RoutineShareModal({ title, rawText, onClose, shareImage = shareR
   );
 }
 
-const createStyles = colors => StyleSheet.create({
+// Under the production KUA gate (`kua` supplied) the share MODAL's chrome
+// (dialog surface, title, description, option, error) resolves through the
+// selected court palette; outside the gate (`kua` null — isolated share-card
+// tests) it keeps the legacy palette. The modal scrim stays court-neutral. The
+// exported IMAGE card keeps its fixed LightColors on purpose: the image is a
+// portable document that must render identically regardless of the viewer's
+// selected court or mode.
+export const createStyles = (colors, kua = null) => StyleSheet.create({
   overlay: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'center', padding: 16 },
-  dialog: { backgroundColor: colors.background, borderRadius: 24, padding: 18, gap: 16, maxHeight: '90%', width: '100%', maxWidth: 560, alignSelf: 'center' },
-  dialogTitle: { color: colors.text, fontSize: 22, fontWeight: '700' },
-  description: { color: colors.textMuted, fontSize: 14 },
+  dialog: { backgroundColor: kua ? kua.surfaceCard : colors.background, borderRadius: 24, padding: 18, gap: 16, maxHeight: '90%', width: '100%', maxWidth: 560, alignSelf: 'center' },
+  dialogTitle: { color: kua ? kua.onSurface : colors.text, fontSize: 22, fontWeight: '700' },
+  description: { color: kua ? kua.onSurfaceVariant : colors.textMuted, fontSize: 14 },
   option: { minHeight: 44, justifyContent: 'center' },
-  optionText: { color: colors.text, fontSize: 15 },
+  optionText: { color: kua ? kua.onSurface : colors.text, fontSize: 15 },
   preview: { flexShrink: 1 },
   previewContent: { flexGrow: 1 },
   // Fixed export colors are intentional: the image is a portable document.
@@ -133,5 +140,5 @@ const createStyles = colors => StyleSheet.create({
   detail: { color: LightColors.textMuted, fontSize: 14, flexShrink: 1 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   action: { flexGrow: 1, flexBasis: 120 },
-  error: { color: colors.error, fontSize: 14 },
+  error: { color: kua ? kua.errorText : colors.error, fontSize: 14 },
 });

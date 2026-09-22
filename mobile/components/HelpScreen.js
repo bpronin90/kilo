@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { ScreenShell } from './ScreenShell';
 import { useThemedStyles } from '../theme/ThemeContext';
-import { useTheme } from '../theme/ThemeContext';
+import { useTheme, useKuaStyle } from '../theme/ThemeContext';
 import { useWeightUnit } from '../lib/unitPreference';
 import { formatLiftWeightValue } from '../lib/units';
 import { WorkoutSyntaxReference } from './WorkoutSyntaxReference';
@@ -36,6 +36,7 @@ function Chunk({ styles, label, children }) {
 export function HelpScreen({ onBack }) {
   const styles = useThemedStyles(createStyles);
   const { colors } = useTheme();
+  const kua = useKuaStyle();
   const unit = useWeightUnit();
   const [openId, setOpenId] = useState(null);
   const oneKTotalLabel = unit === 'kg' ? `${formatLiftWeightValue(1000, 'kg')} kg` : '1,000 lb';
@@ -200,7 +201,7 @@ export function HelpScreen({ onBack }) {
                 <MaterialIcons
                   name={isOpen ? 'expand-less' : 'expand-more'}
                   size={22}
-                  color={colors.textMuted}
+                  color={kua ? kua.onSurfaceVariant : colors.textMuted}
                   accessible={false}
                 />
               </Pressable>
@@ -213,14 +214,17 @@ export function HelpScreen({ onBack }) {
   );
 }
 
-const createStyles = (colors) =>
+// Under the production KUA gate (`kua` supplied) the accordion rows and help
+// copy resolve through the selected court palette; outside the gate (`kua` null
+// — isolated Help tests) they keep the legacy palette.
+export const createStyles = (colors, kua = null) =>
   StyleSheet.create({
     list: { gap: 12 },
     topic: {
-      backgroundColor: colors.card,
+      backgroundColor: kua ? kua.surfaceCard : colors.card,
       borderRadius: 24,
       borderWidth: 1,
-      borderColor: colors.cardBorder,
+      borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
       overflow: 'hidden',
     },
     row: {
@@ -232,8 +236,8 @@ const createStyles = (colors) =>
       gap: 12,
     },
     rowCopy: { flex: 1, gap: 4 },
-    rowTitle: { fontSize: 17, fontWeight: '600', color: colors.text },
-    rowSummary: { fontSize: 13, color: colors.textMuted },
+    rowTitle: { fontSize: 17, fontWeight: '600', color: kua ? kua.onSurface : colors.text },
+    rowSummary: { fontSize: 13, color: kua ? kua.onSurfaceVariant : colors.textMuted },
     body: {
       paddingHorizontal: 20,
       paddingBottom: 20,
@@ -241,7 +245,7 @@ const createStyles = (colors) =>
       gap: 14,
     },
     chunk: { gap: 4 },
-    chunkLabel: { fontSize: 14, fontWeight: '700', color: colors.text },
-    bodyText: { fontSize: 15, lineHeight: 22, color: colors.textMuted },
+    chunkLabel: { fontSize: 14, fontWeight: '700', color: kua ? kua.onSurface : colors.text },
+    bodyText: { fontSize: 15, lineHeight: 22, color: kua ? kua.onSurfaceVariant : colors.textMuted },
     syntaxContainer: { marginVertical: 2 },
   });

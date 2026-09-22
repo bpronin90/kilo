@@ -128,7 +128,11 @@ export function AboutScreen({ onBack }) {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+// Under the production KUA gate (`kua` supplied) the About copy, OTA diagnostics
+// rows, update-available chip, and legal links resolve through the selected court
+// palette; outside the gate (`kua` null — isolated About tests) they keep the
+// legacy palette.
+export const createStyles = (colors, kua = null) => StyleSheet.create({
   aboutCard: {
     alignItems: 'center',
     paddingVertical: 32,
@@ -136,7 +140,7 @@ const createStyles = (colors) => StyleSheet.create({
   aboutLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     marginTop: 16,
     marginBottom: 4,
@@ -144,18 +148,18 @@ const createStyles = (colors) => StyleSheet.create({
   aboutValue: {
     fontSize: 24,
     fontWeight: '800',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   aboutFooter: {
     marginTop: 32,
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
   },
   helpText: {
     fontSize: 15,
     lineHeight: 22,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   diagRow: {
     flexDirection: 'row',
@@ -166,19 +170,19 @@ const createStyles = (colors) => StyleSheet.create({
   diagLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   diagValue: {
     fontSize: 13,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     flexShrink: 1,
     textAlign: 'right',
   },
   diagAlert: {
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
     borderRadius: 8,
     paddingHorizontal: 10,
     marginTop: 4,
@@ -186,14 +190,14 @@ const createStyles = (colors) => StyleSheet.create({
   diagAlertText: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.chipText,
+    color: kua ? kua.primaryOnContainer : colors.chipText,
   },
   diagButton: {
     marginTop: 12,
   },
   diagCheckResult: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
     marginTop: 8,
   },
@@ -206,11 +210,11 @@ const createStyles = (colors) => StyleSheet.create({
   },
   legalLink: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textDecorationLine: 'underline',
   },
   legalSep: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
 });

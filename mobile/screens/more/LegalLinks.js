@@ -27,7 +27,10 @@ export function LegalLinks() {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+// Under the production KUA gate (`kua` supplied) the legal links resolve
+// through the selected court palette; outside the gate (`kua` null — isolated
+// tests) they keep the legacy palette.
+export const createStyles = (colors, kua = null) => StyleSheet.create({
   legalLinks: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -37,11 +40,11 @@ const createStyles = (colors) => StyleSheet.create({
   },
   legalLink: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textDecorationLine: 'underline',
   },
   legalSep: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
 });

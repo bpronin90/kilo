@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScreenShell } from '../../components/ScreenShell';
 import { Button, SectionTitle, useInputStyle } from '../../components/UI';
-import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
+import { useTheme, useThemedStyles, useKuaStyle } from '../../theme/ThemeContext';
 
 // Set-new-password surface (#497). AccountScreen renders this in place of its
 // normal Sign In / Signed In views whenever the shared `auth` instance
@@ -23,6 +23,7 @@ import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
 // elements.
 export function SetNewPasswordScreen({ auth, onDone, onBack }) {
   const { colors } = useTheme();
+  const kua = useKuaStyle();
   const styles = useThemedStyles(createStyles);
   const inputStyle = useInputStyle();
   const [password, setPassword] = useState('');
@@ -94,7 +95,7 @@ export function SetNewPasswordScreen({ auth, onDone, onBack }) {
               keyboardAppearance={colors.scheme}
               style={inputStyle}
               placeholder="New password"
-              placeholderTextColor={colors.textMuted}
+              placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
               secureTextEntry
               value={password}
               onChangeText={setPassword}
@@ -104,7 +105,7 @@ export function SetNewPasswordScreen({ auth, onDone, onBack }) {
               keyboardAppearance={colors.scheme}
               style={inputStyle}
               placeholder="Confirm new password"
-              placeholderTextColor={colors.textMuted}
+              placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
               secureTextEntry
               value={confirmPassword}
               onChangeText={setConfirmPassword}
@@ -136,19 +137,24 @@ export function SetNewPasswordScreen({ auth, onDone, onBack }) {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+// Under the production KUA gate (`kua` supplied) the note/status copy resolves
+// through the selected court palette; outside the gate (`kua` null — isolated
+// tests) it keeps the legacy palette. The password fields use the shared
+// `useInputStyle()` primitive, already court-aware, and `keyboardAppearance`
+// stays on `colors.scheme` (light/dark mode, not court).
+export const createStyles = (colors, kua = null) => StyleSheet.create({
   block: {
     gap: 12,
   },
   note: {
     fontSize: 15,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     lineHeight: 22,
     marginBottom: 12,
   },
   status: {
     fontSize: 14,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 16,
   },
 });

@@ -496,7 +496,11 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+// Under the production KUA gate (`kua` supplied) the recovery panel's copy and
+// status ink resolve through the selected court palette; outside the gate (`kua`
+// null — isolated sync-recovery tests) they keep the legacy palette. Sync,
+// consent, and withdrawal semantics are untouched — only text colors move.
+export const createStyles = (colors, kua = null) => StyleSheet.create({
   accountBlock: {
     gap: 12,
   },
@@ -505,19 +509,19 @@ const createStyles = (colors) => StyleSheet.create({
   },
   accountNote: {
     fontSize: 15,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     lineHeight: 22,
     marginBottom: 12,
   },
   phaseDesc: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 18,
     marginTop: -2,
   },
   accountStatus: {
     fontSize: 14,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 16,
   },
   syncRow: {
@@ -529,11 +533,11 @@ const createStyles = (colors) => StyleSheet.create({
   syncLabel: {
     fontSize: 15,
     fontWeight: '600',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   syncValue: {
     fontSize: 14,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     flexShrink: 1,
     textAlign: 'right',
     marginLeft: 12,
