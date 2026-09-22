@@ -55,6 +55,26 @@ change repaints every mounted surface without a reload.
 - Chosen from **More → Settings → Appearance** via a three-way segmented
   control that follows the existing `unitToggle` visual convention.
 
+## Court Theme Picker
+
+Source: `mobile/components/ThemeSelectionControl.js`, `mobile/lib/themePreference.js`
+
+The production court theme picker lives in **More → Settings → Appearance**, directly
+above the Light/Dark/System appearance control. It is shown in all builds; the
+development-only `ThemePreviewControl` and DEV PREVIEW Settings section have been
+removed (#1136).
+
+- Theme values: `hard-court`, `clay-court`, `grass-court`. Missing or invalid normalizes
+  to `hard-court`.
+- Persisted at AsyncStorage key `kilo.theme_selection` (dot-namespaced, same account-switch
+  exclusion as `kilo.appearance_preference`).
+- Rendered by `ThemeSelectionControl`: a three-option segmented row labelled **Court**, each
+  option showing its full name (Hard Court, Clay Court, Grass Court) with a 44×44dp touch
+  target. The selected option is distinguished by both fill color and font weight (satisfying
+  the "without color alone" accessibility requirement).
+- The selection and the Light/Dark/System appearance choice are fully independent: changing
+  one never alters the other.
+
 ## Color Palette
 
 Source: `mobile/theme/colors.js`
