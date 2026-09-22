@@ -124,7 +124,7 @@ export function AnalyticsFatigueCard({
             style={styles.fatigueAlert}
             accessibilityLabel={`${checkInHistory.summary.pendingTotal} unanswered check-in${checkInHistory.summary.pendingTotal > 1 ? 's' : ''}`}
           >
-            <MaterialIcons name="error-outline" size={14} color={colors.caution} accessible={false} />
+            <MaterialIcons name="error-outline" size={14} color={kua ? kua.warning : colors.caution} accessible={false} />
             <Text style={styles.fatigueAlertText}>{checkInHistory.summary.pendingTotal} unanswered</Text>
           </View>
         )}
@@ -172,7 +172,7 @@ export function AnalyticsFatigueCard({
   );
 }
 
-const createStyles = (colors, kua = null) => StyleSheet.create({
+export const createStyles = (colors, kua = null) => StyleSheet.create({
   fatigueCard: {
     padding: 20,
     gap: 8,
@@ -257,7 +257,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: kua ? kua.completion : colors.success,
   },
   fatigueDot_pending: {
-    backgroundColor: colors.caution,
+    backgroundColor: kua ? kua.warning : colors.caution,
   },
   fatigueSectionLabel: {
     flex: 1,

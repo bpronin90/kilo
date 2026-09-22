@@ -11,8 +11,8 @@ import { formatLiftWeightValue } from '../lib/units';
 export function formatOverload(trend, colors, kua = null) {
   switch (trend) {
     case 'up':   return <MaterialIcons name="arrow-upward"    size={16} color={kua ? kua.completion : colors.success} />;
-    case 'flat': return <Text style={{ color: colors.caution, fontSize: 14 }}>↔</Text>;
-    case 'dash': return <Text style={{ color: colors.caution, fontSize: 18, fontWeight: '900', lineHeight: 22 }}>—</Text>;
+    case 'flat': return <Text style={{ color: kua ? kua.warning : colors.caution, fontSize: 14 }}>↔</Text>;
+    case 'dash': return <Text style={{ color: kua ? kua.warning : colors.caution, fontSize: 18, fontWeight: '900', lineHeight: 22 }}>—</Text>;
     case 'down': return <MaterialIcons name="arrow-downward"  size={16} color={kua ? kua.error : colors.error}   />;
     case 'baseline':
     case 'first_session': return <MaterialIcons name="fiber-manual-record" size={8} color={kua ? kua.onSurfaceVariant : colors.textMuted} style={{ opacity: 0.4 }} />;
@@ -31,7 +31,7 @@ export function CrossDayComparison({ daySignals, currentDay, otherDays }) {
         const d = daySignals[day];
         const trendColor = d?.overload_trend === 'up' ? (kua ? kua.completion : colors.success)
           : d?.overload_trend === 'down' ? (kua ? kua.error : colors.error)
-          : colors.caution;
+          : (kua ? kua.warning : colors.caution);
         const trendChar = d?.overload_trend === 'up' ? '↑'
           : d?.overload_trend === 'down' ? '↓'
           : d?.overload_trend === 'flat' ? '↔' : null;
