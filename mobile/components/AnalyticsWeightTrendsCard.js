@@ -248,14 +248,20 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 12,
   },
-  // Filled pace badges. In KUA mode, use semantic error token (all 6 palettes)
-  // and mode-aware caution (no KUA caution token exists). In legacy mode, use
-  // the filled-surface tones from #689.
+  // Filled pace badges. In KUA mode the spike badge uses the semantic error
+  // token (all 6 palettes). The notable badge has no KUA-mode filled-caution
+  // surface, so it keeps the tuned legacy filled caution surface
+  // (`cardCautionBg`) in both modes rather than the raw `caution` mark color —
+  // that mark is a bright saturated yellow (dark #f2b94a) meant for a glyph,
+  // and using it as a filled background under near-white `textLight` read as a
+  // harsh, low-contrast pill in dark mode. `cardCautionBg` is the deep muted
+  // amber the badge already showed in legacy mode. In legacy mode, both use the
+  // filled-surface tones from #689.
   paceSpike: {
     backgroundColor: kua ? kua.error : colors.cardErrorBg,
   },
   paceNotable: {
-    backgroundColor: kua ? colors.caution : colors.cardCautionBg,
+    backgroundColor: colors.cardCautionBg,
   },
   paceText: {
     fontSize: 12,
