@@ -55,8 +55,7 @@ const createStyles = (kua = null, colors = {}, typography = {}) => StyleSheet.cr
     flexShrink: 0,
   },
   label: {
-    fontSize: 16,
-    fontWeight: '700',
+    ...(typography['body-lg'] ?? { fontSize: 16 }),
     color: kua ? kua.onSurface : colors.text,
   },
   // flex: 1 constrains the toggle to the available row width so that flexWrap
@@ -87,13 +86,14 @@ const createStyles = (kua = null, colors = {}, typography = {}) => StyleSheet.cr
     borderColor: kua ? kua.primary : colors.accent,
   },
   tabText: {
-    fontSize: 11,
-    fontWeight: '500',
+    ...(typography['label-sm'] ?? { fontSize: 11 }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
-  // Selected: both color and weight change so the selection is not color-only.
+  // Selected: inherits label-sm metrics but upgrades to label-lg family/weight
+  // for a real KUA medium-to-semibold change without hardcoded font names.
   tabTextActive: {
+    fontFamily: (typography['label-lg'] ?? {}).fontFamily,
+    fontWeight: (typography['label-lg'] ?? {}).fontWeight,
     color: kua ? kua.onPrimary : colors.onAccent,
-    fontWeight: '700',
   },
 });

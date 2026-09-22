@@ -154,6 +154,42 @@ describe('ThemeSelectionControl accessibility contract', () => {
   );
 });
 
+describe('ThemeSelectionControl KUA typography tokens', () => {
+  test('label and option text use KUA token values; selected option uses label-lg family/weight', () => {
+    // By assertion time expo-font has settled and the component renders with
+    // the loaded TYPOGRAPHY map (the act()-outside warning is expo-font's async
+    // font-load state update; the rendered values are from TYPOGRAPHY).
+    const { TYPOGRAPHY } = require('../theme/typography');
+    const typo = TYPOGRAPHY;
+
+    const component = renderControl();
+
+    // Press Clay Court to get a selected option.
+    act(() => {
+      tabByLabel(component, 'Use Clay Court').props.onPress();
+    });
+
+    const { Text: RNText } = require('react-native');
+    const allTexts = component.root.findAllByType(RNText);
+
+    const labelNode = allTexts.find((n) => n.props.children === 'Court');
+    const labelStyle = StyleSheet.flatten(labelNode.props.style);
+    // body-lg drives the label; fontFamily may be undefined for SG on fallback
+    expect(labelStyle.fontFamily).toBe(typo['body-lg'].fontFamily);
+
+    const unselectedNode = allTexts.find((n) => n.props.children === 'Hard Court');
+    const unselectedStyle = StyleSheet.flatten(unselectedNode.props.style);
+    // Unselected options use label-sm
+    expect(unselectedStyle.fontFamily).toBe(typo['label-sm'].fontFamily);
+
+    const selectedNode = allTexts.find((n) => n.props.children === 'Clay Court');
+    const selectedStyle = StyleSheet.flatten(selectedNode.props.style);
+    // Selected option upgrades to label-lg family and weight
+    expect(selectedStyle.fontFamily).toBe(typo['label-lg'].fontFamily);
+    expect(selectedStyle.fontWeight).toBe(typo['label-lg'].fontWeight);
+  });
+});
+
 describe('ThemeSelectionControl does not alter appearance', () => {
   test('changing court theme does not change the appearance preference', () => {
     const component = renderControl();
