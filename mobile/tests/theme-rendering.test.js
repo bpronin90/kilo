@@ -2458,3 +2458,258 @@ describe('KUA wiring for nested More/Account/Help/data-utility surfaces (#1141)'
     expect(GrassCourtLightColors.onSurfaceVariant).not.toBe(HardCourtLightColors.onSurfaceVariant);
   });
 });
+
+// ===========================================================================
+// #1142: Deterministic production KUA wiring + repaint regression guard.
+//
+// #1137 confirmed a coverage gap: main CI stayed green while production callers
+// silently ignored the user-selected court. Two failures could hide there and
+// this suite could not see either — a factory that resolves the legacy `colors`
+// only (never its `kua` argument), and a live surface that repaints on
+// light↔dark but not on a fixed-mode court switch. The two blocks below close
+// both, and each assertion names the behavior it proves.
+// ===========================================================================
+
+// --- (1) Static inventory guard -------------------------------------------
+// A source-level guard, so it protects every production factory at once —
+// including surfaces that have no render test of their own. It fails the moment
+// a newly added factory resolves the legacy palette only, which is the exact
+// class of defect #1137 found. It is maintainable by construction: new surfaces
+// are covered automatically because the walk re-derives the file list every run;
+// the only hand-maintained input is a tiny, justified DEV exemption set.
+describe('every production themed-style factory consumes the selected court (#1142)', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const parser = require('@babel/parser');
+  const traverseMod = require('@babel/traverse');
+  const traverse = traverseMod.default || traverseMod;
+
+  const root = path.join(__dirname, '..');
+  function walk(dir, acc = []) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full, acc);
+      else if (entry.name.endsWith('.js')) acc.push(full);
+    }
+    return acc;
+  }
+  const files = [
+    path.join(root, 'App.js'),
+    ...walk(path.join(root, 'components')),
+    ...walk(path.join(root, 'screens')),
+  ];
+
+  // The production StyleSheet contract is a `create*Style(s)(colors, kua)`
+  // factory (see ThemeContext.themedStyles). Every such factory must read `kua`
+  // in its BODY — the parameter list is excluded on purpose, so a factory that
+  // declares `(colors, kua)` but never consumes it is still caught.
+  const FACTORY = /^create[A-Za-z]*Styles?$|^create[A-Za-z]*Style$/;
+
+  // DEV-only exemptions: surfaces intentionally outside the palette system,
+  // keyed `"<relative path> <factory name>"`. ThemePreviewControl (the dev court
+  // picker) ships plain literals and is never migrated to a production theme, so
+  // if it ever grows a factory it would live here. A production surface never
+  // belongs in this set; today it is empty because every production factory
+  // already consumes the court palette.
+  const DEV_EXEMPT = new Set([]);
+
+  function factoriesIn(file) {
+    const ast = parser.parse(fs.readFileSync(file, 'utf8'), {
+      sourceType: 'module',
+      plugins: ['jsx'],
+    });
+    const rel = path.relative(root, file);
+    const found = [];
+    function inspect(fnPath, name) {
+      let usesKua = false;
+      fnPath.get('body').traverse({
+        Identifier(p) {
+          if (p.node.name === 'kua') usesKua = true;
+        },
+      });
+      found.push({ rel, name, usesKua });
+    }
+    traverse(ast, {
+      VariableDeclarator(p) {
+        const { id, init } = p.node;
+        if (
+          id && id.name && FACTORY.test(id.name) && init &&
+          (init.type === 'ArrowFunctionExpression' || init.type === 'FunctionExpression')
+        ) {
+          inspect(p.get('init'), id.name);
+        }
+      },
+      FunctionDeclaration(p) {
+        if (p.node.id && FACTORY.test(p.node.id.name)) inspect(p, p.node.id.name);
+      },
+    });
+    return found;
+  }
+
+  const inventory = files.flatMap(factoriesIn);
+
+  // Proves the walk/matcher actually resolved the production factories. Without
+  // it, a renamed convention or a silent parse failure would empty the
+  // inventory and make the legacy-only assertion vacuously pass.
+  test('the inventory resolves the production themed-style factories', () => {
+    expect(inventory.length).toBeGreaterThan(40);
+  });
+
+  // Proves no production factory is wired to the legacy palette only. Reverting
+  // any one production caller to drop its `kua` branch adds it here and fails.
+  test('no production factory resolves the legacy palette only', () => {
+    const legacyOnly = inventory
+      .filter((f) => !f.usesKua && !DEV_EXEMPT.has(`${f.rel} ${f.name}`))
+      .map((f) => `${f.rel} ${f.name}`)
+      .sort();
+    expect(legacyOnly).toEqual([]);
+  });
+});
+
+// --- (2) Mounted Hard→Clay→Grass repaint across every surface family -------
+// Static wiring is necessary but not sufficient: the palette must reach the
+// screen and repaint live. Each representative is MOUNTED once, the court is
+// switched twice at a FIXED light mode, and a court-distinct rendered token is
+// read after each switch — so a surface that only repaints on light↔dark, or is
+// stranded behind a stale cache, fails. Reads inspect rendered style, never a
+// snapshot. One representative stands in for each production surface family:
+// shell/shared, Log, Home, Weight, Analytics, More/nested, and overlay.
+describe('mounted surfaces repaint Hard→Clay→Grass at a fixed mode (#1142)', () => {
+  const { WorkoutSyntaxReference } = require('../components/WorkoutSyntaxReference');
+  const { WorkoutSyntaxModal } = require('../components/WorkoutSyntaxModal');
+  const { LegalLinks } = require('../screens/more/LegalLinks');
+  const { createStyles: homeCreateStyles } = require('../screens/home/homeStyles');
+  const { createStyles: weightCreateStyles } = require('../screens/weight/weightStyles');
+  const { createStyles: analyticsCreateStyles } = require('../screens/analytics/analyticsStyles');
+
+  // A screen-level surface reads `useTheme().kuaPalette` directly and applies
+  // its real production factory — exactly the Home/Weight/Analytics screen path.
+  // The probe renders the one role whose token is court-distinct so the read is
+  // unambiguous.
+  function ScreenProbe({ factory, role }) {
+    const { colors, kuaPalette } = useTheme();
+    const styles = factory(colors, kuaPalette);
+    return <Text style={styles[role]}>probe</Text>;
+  }
+
+  function colorOfText(component, includes) {
+    const node = component.root.findAllByType(Text).find(
+      (t) => flatten(t.props.style).color !== undefined
+        && String(t.props.children).includes(includes)
+    );
+    return flatten(node.props.style).color;
+  }
+  function probeColor(component) {
+    return flatten(
+      component.root.findAllByType(Text).find((t) => t.props.children === 'probe').props.style
+    ).color;
+  }
+  function buttonBackground(component) {
+    return flatten(
+      component.root.find((n) => n.props && n.props.accessibilityRole === 'button').props.style
+    ).backgroundColor;
+  }
+
+  // Each family: how to mount it under the gate, how to read a court-distinct
+  // rendered token, and the palette role that token must equal per court.
+  const SURFACES = [
+    {
+      family: 'shell/shared',
+      mount: () => <Button title="Save" onPress={() => {}} />,
+      read: buttonBackground,
+      token: (p) => p.primary,
+    },
+    {
+      family: 'Log',
+      mount: () => <WorkoutSyntaxReference />,
+      read: (c) => colorOfText(c, 'Each workout note is plain text'),
+      token: (p) => p.onSurfaceVariant,
+    },
+    {
+      family: 'Home',
+      mount: () => <ScreenProbe factory={homeCreateStyles} role="syncNoticeBody" />,
+      read: probeColor,
+      token: (p) => p.onSurfaceVariant,
+    },
+    {
+      family: 'Weight',
+      mount: () => <ScreenProbe factory={weightCreateStyles} role="editingTitle" />,
+      read: probeColor,
+      token: (p) => p.primary,
+    },
+    {
+      family: 'Analytics',
+      mount: () => <ScreenProbe factory={analyticsCreateStyles} role="baselineDisclosureLabel" />,
+      read: probeColor,
+      token: (p) => p.onSurfaceVariant,
+    },
+    {
+      family: 'More/nested',
+      mount: () => <LegalLinks />,
+      read: (c) => colorOfText(c, 'Privacy Policy'),
+      token: (p) => p.onSurfaceVariant,
+    },
+    {
+      family: 'overlay',
+      mount: () => <WorkoutSyntaxModal visible onClose={() => {}} />,
+      read: (c) => colorOfText(c, 'Workout syntax help'),
+      token: (p) => p.onSurface,
+    },
+  ];
+
+  test.each(SURFACES)(
+    '$family repaints across Hard→Clay→Grass without reload',
+    ({ mount, read, token }) => {
+      let component;
+      act(() => {
+        component = renderer.create(
+          <ThemeProvider>
+            <KuaStyleGate>{mount()}</KuaStyleGate>
+          </ThemeProvider>
+        );
+      });
+
+      // Mode is held at light throughout; only the court identity changes.
+      expect(read(component)).toBe(token(HardCourtLightColors));
+
+      act(() => {
+        setThemeSelection('clay-court');
+      });
+      expect(read(component)).toBe(token(ClayCourtLightColors));
+
+      act(() => {
+        setThemeSelection('grass-court');
+      });
+      expect(read(component)).toBe(token(GrassCourtLightColors));
+
+      // Court-distinct by construction: identical values would let a frozen
+      // surface pass all three reads.
+      const [hard, clay, grass] = [
+        token(HardCourtLightColors),
+        token(ClayCourtLightColors),
+        token(GrassCourtLightColors),
+      ];
+      expect(new Set([hard, clay, grass]).size).toBe(3);
+    }
+  );
+
+  // Retains explicit malformed-selection fallback coverage at the RENDER
+  // boundary: a garbage selection must resolve to the Hard Court default in the
+  // mounted tree, not paint an invalid palette.
+  test('a malformed court selection renders the Hard Court fallback', () => {
+    let component;
+    act(() => {
+      component = renderer.create(
+        <ThemeProvider>
+          <KuaStyleGate>
+            <Button title="Save" onPress={() => {}} />
+          </KuaStyleGate>
+        </ThemeProvider>
+      );
+    });
+    act(() => {
+      setThemeSelection('not-a-real-court');
+    });
+    expect(buttonBackground(component)).toBe(HardCourtLightColors.primary);
+  });
+});
