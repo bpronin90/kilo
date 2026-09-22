@@ -2570,16 +2570,26 @@ describe('every production themed-style factory consumes the selected court (#11
   // read straight off the theme (`createStyles(colors, kua)`, not the
   // `useThemedStyles` hook that injects `kua` for free) can silently regress if a
   // caller drops the palette argument — exactly the #1137 class of defect, and a
-  // gap a factory-only or synthetic-probe test cannot see. Callers are resolved
-  // through their imports so each `create*` name binds to the ONE factory it
-  // actually imports (the same bare name maps to different signatures across
-  // files, and the `kua` parameter is not always second), and the argument at
-  // that factory's own `kua` position must reference a court palette.
+  // gap a factory-only or synthetic-probe test cannot see.
+  //
+  // The check resolves values, not names, so it resists the obvious dodges:
+  //   - The callee binds through its import (or a same-file definition), so an
+  //     ALIASED import (`createStyles as homeStyles`) is still matched, and each
+  //     bare `create*` name maps to the ONE factory it actually calls — the same
+  //     name has different signatures across files and `kua` is not always the
+  //     second parameter.
+  //   - The `kua`-position argument must trace to a court-palette SOURCE
+  //     (`useTheme().kuaPalette`, `useKuaStyle()`, or `useContext(<…Kua…>)`),
+  //     directly or through a local binding derived from one. A renamed binding
+  //     (`const { kuaPalette: court } = useTheme()`) passes; `colors`, a mode
+  //     string, `null`, or a conditional whose branches are not court sources
+  //     (e.g. `true ? colors : colors`) is flagged.
+  //
+  // Evidence boundary: only Identifier callees are inspected. A factory reached
+  // through a namespace member (`ns.createStyles()`) or an untyped variable would
+  // be skipped; the production tree uses neither today, and such a call would
+  // still have to satisfy the factory-body and mounted-repaint guards.
   test('every direct factory call hands the court palette to its kua parameter', () => {
-    // Every exported factory that declares a `kua` parameter, keyed
-    // `"<abs file>::<export>"`, with the position `kua` occupies in ITS list.
-    const kuaParamIndex = new Map();
-    // Absolute path a relative import specifier resolves to, or null.
     function resolveImport(fromFile, spec) {
       if (!spec.startsWith('.')) return null;
       let p = path.resolve(path.dirname(fromFile), spec);
@@ -2592,6 +2602,22 @@ describe('every production themed-style factory consumes the selected court (#11
           || (pm.type === 'AssignmentPattern' && pm.left.name === 'kua')
       );
     }
+    // The three expressions that read the selected court palette in production.
+    function isCourtSource(node) {
+      if (!node || typeof node.type !== 'string') return false;
+      if (node.type === 'MemberExpression' && node.property && node.property.name === 'kuaPalette') {
+        return true; // useTheme().kuaPalette
+      }
+      if (node.type === 'CallExpression' && node.callee.type === 'Identifier') {
+        if (node.callee.name === 'useKuaStyle') return true; // gate hook
+        if (node.callee.name === 'useContext' && node.arguments[0]
+          && /kua/i.test(node.arguments[0].name || '')) return true; // Workout/KuaStyle context
+      }
+      return false;
+    }
+
+    // Factory defs keyed "<abs file>::<export>" → the index `kua` occupies.
+    const kuaParamIndex = new Map();
     const astOf = new Map();
     for (const file of files) {
       const ast = parser.parse(fs.readFileSync(file, 'utf8'), {
@@ -2613,37 +2639,98 @@ describe('every production themed-style factory consumes the selected court (#11
       });
     }
 
-    // An argument counts as a court palette when it names one (`kua`,
-    // `kuaPalette`, `effectiveKua`) or is a conditional/`??` selecting one — not
-    // when it is `colors`, a mode string, or missing entirely.
-    function handsCourtPalette(node) {
+    // Local names that hold the court palette in a file: destructured from
+    // `kuaPalette`, then any binding whose initializer references a court source
+    // or an already-known court binding (e.g. `const effectiveKua = … kua …`).
+    function courtBindingsOf(ast) {
+      const set = new Set();
+      const decls = [];
+      traverse(ast, {
+        VariableDeclarator(p) {
+          decls.push(p.node);
+          if (p.node.id.type === 'ObjectPattern') {
+            for (const pr of p.node.id.properties) {
+              if (pr.type === 'ObjectProperty' && pr.key.name === 'kuaPalette') {
+                set.add(pr.value.name || 'kuaPalette');
+              }
+            }
+          }
+        },
+      });
+      let changed = true;
+      let pass = 0;
+      while (changed && pass < 8) {
+        changed = false;
+        pass += 1;
+        for (const d of decls) {
+          if (!d.id || d.id.type !== 'Identifier' || set.has(d.id.name)) continue;
+          let refsCourt = false;
+          const stack = [d.init];
+          while (stack.length) {
+            const n = stack.pop();
+            if (!n || typeof n.type !== 'string') continue;
+            if (isCourtSource(n)) refsCourt = true;
+            if (n.type === 'Identifier' && set.has(n.name)) refsCourt = true;
+            for (const k of Object.keys(n)) {
+              const v = n[k];
+              if (Array.isArray(v)) v.forEach((x) => x && typeof x.type === 'string' && stack.push(x));
+              else if (v && typeof v.type === 'string') stack.push(v);
+            }
+          }
+          if (refsCourt) {
+            set.add(d.id.name);
+            changed = true;
+          }
+        }
+      }
+      return set;
+    }
+
+    function handsCourtPalette(node, court) {
       if (!node) return false;
-      if (node.type === 'Identifier') return /kua/i.test(node.name);
-      if (node.type === 'MemberExpression') return /kua/i.test(node.property.name || '');
-      if (node.type === 'ConditionalExpression' || node.type === 'LogicalExpression') return true;
+      if (isCourtSource(node)) return true;
+      if (node.type === 'Identifier') return court.has(node.name);
+      if (node.type === 'MemberExpression') {
+        return node.property.name === 'kuaPalette'
+          || (node.object.type === 'Identifier' && court.has(node.object.name));
+      }
+      if (node.type === 'ConditionalExpression') {
+        return handsCourtPalette(node.consequent, court) && handsCourtPalette(node.alternate, court);
+      }
+      if (node.type === 'LogicalExpression') {
+        return handsCourtPalette(node.left, court) && handsCourtPalette(node.right, court);
+      }
       return false;
     }
 
     const offenders = [];
     for (const file of files) {
-      const imported = new Map(); // localName -> "<abs file>::<export>"
-      traverse(astOf.get(file), {
+      const ast = astOf.get(file);
+      // localName -> factory def key, from imports AND same-file definitions.
+      const local = new Map();
+      traverse(ast, {
         ImportDeclaration(p) {
           const mod = resolveImport(file, p.node.source.value);
           if (!mod) return;
           for (const s of p.node.specifiers) {
-            if (s.type === 'ImportSpecifier') imported.set(s.local.name, `${mod}::${s.imported.name}`);
+            if (s.type !== 'ImportSpecifier') continue;
+            const key = `${mod}::${s.imported.name}`;
+            if (kuaParamIndex.has(key)) local.set(s.local.name, key);
           }
         },
       });
-      traverse(astOf.get(file), {
+      for (const key of kuaParamIndex.keys()) {
+        if (key.startsWith(`${file}::`)) local.set(key.split('::')[1], key);
+      }
+      const court = courtBindingsOf(ast);
+      traverse(ast, {
         CallExpression(p) {
           const callee = p.node.callee;
-          if (callee.type !== 'Identifier' || !FACTORY.test(callee.name)) return;
-          const key = imported.get(callee.name);
-          if (!key || !kuaParamIndex.has(key)) return; // hook-consumed or non-themed
+          if (callee.type !== 'Identifier') return;
+          const key = local.get(callee.name);
+          if (!key) return; // hook-consumed, non-themed, or not a resolved factory
           const idx = kuaParamIndex.get(key);
-          if (!handsCourtPalette(p.node.arguments[idx])) {
+          if (!handsCourtPalette(p.node.arguments[idx], court)) {
             offenders.push(`${path.relative(root, file)}:${p.node.loc.start.line} ${callee.name}`);
           }
         },
