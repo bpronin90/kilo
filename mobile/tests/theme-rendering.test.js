@@ -2337,6 +2337,68 @@ describe('KUA wiring for mixed Home/Analytics/Weight surfaces (#1143)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// #1146: the remaining shared-input callers — WeightGoalCard (input, numericInput)
+// and analyticsRecoveryStyles (reasonInput) — forward the resolved KUA palette
+// so a fixed-mode court switch repaints those input surfaces.
+// ---------------------------------------------------------------------------
+
+describe('KUA wiring for shared-input callers (#1146)', () => {
+  const { createStyles: createWeightGoalStyles1146 } = require('../components/WeightGoalCard');
+  const { createStyles: createAnalyticsRecoveryStyles } = require('../components/recovery/analyticsRecoveryStyles');
+
+  const KUA_LIST = [
+    ['hardCourt/light', HardCourtLightColors],
+    ['hardCourt/dark', HardCourtDarkColors],
+    ['clayCourt/light', ClayCourtLightColors],
+    ['clayCourt/dark', ClayCourtDarkColors],
+    ['grassCourt/light', GrassCourtLightColors],
+    ['grassCourt/dark', GrassCourtDarkColors],
+  ];
+
+  // analyticsRecoveryStyles had NO prior manual kua overrides for reasonInput, so
+  // these assertions are behavioral: reverting the fix produces colors.inputBackground
+  // (not kua.surfaceCard) and the test fails.
+  test.each(KUA_LIST)(
+    '%s: analyticsRecoveryStyles reasonInput uses kua surface tokens',
+    (_name, kua) => {
+      const styles = createAnalyticsRecoveryStyles(LightColors, kua);
+      expect(styles.reasonInput.backgroundColor).toBe(kua.surfaceCard);
+      expect(styles.reasonInput.borderColor).toBe(kua.surfaceBorder);
+      expect(styles.reasonInput.color).toBe(kua.onSurface);
+    }
+  );
+
+  test('analyticsRecoveryStyles reasonInput repaints on Hard→Clay at a fixed light mode', () => {
+    const hard = createAnalyticsRecoveryStyles(LightColors, HardCourtLightColors);
+    const clay = createAnalyticsRecoveryStyles(LightColors, ClayCourtLightColors);
+    expect(hard.reasonInput.backgroundColor).toBe(HardCourtLightColors.surfaceCard);
+    expect(clay.reasonInput.backgroundColor).toBe(ClayCourtLightColors.surfaceCard);
+    expect(clay.reasonInput.backgroundColor).not.toBe(hard.reasonInput.backgroundColor);
+  });
+
+  // WeightGoalCard previously had manual kua overrides after createInputStyle(colors),
+  // producing identical kua≠null output to the new code. The #1142 call-site scan
+  // ('every direct factory call hands the court palette to its kua parameter') is the
+  // guard that fails if createInputStyle is called without kua there.
+  //
+  // The null-fallback IS behaviorally distinct: old code set backgroundColor/borderColor/
+  // color to undefined (override wins); new code returns the legacy palette values.
+  test('WeightGoalCard input falls back to legacy colors when kua is null', () => {
+    const styles = createWeightGoalStyles1146(LightColors, null);
+    expect(styles.input.backgroundColor).toBe(LightColors.inputBackground);
+    expect(styles.input.borderColor).toBe(LightColors.inputBorder);
+    expect(styles.numericInput.backgroundColor).toBe(LightColors.inputBackground);
+    expect(styles.numericInput.borderColor).toBe(LightColors.inputBorder);
+  });
+
+  test('analyticsRecoveryStyles reasonInput falls back to legacy colors when kua is null', () => {
+    const styles = createAnalyticsRecoveryStyles(LightColors, null);
+    expect(styles.reasonInput.backgroundColor).toBe(LightColors.inputBackground);
+    expect(styles.reasonInput.borderColor).toBe(LightColors.inputBorder);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // #1141: nested More/Account/Settings/Help/data-utility child surfaces wire to
 // the selected court exactly like the #1139/#1140 surfaces — under the gate they
 // resolve KUA tokens and repaint on a fixed-mode court switch; rendered outside

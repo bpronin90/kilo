@@ -64,7 +64,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingVertical: 4,
   },
   reasonInput: {
-    ...createInputStyle(colors),
+    ...createInputStyle(colors, kua),
   },
   reasonErrorText: {
     fontSize: 12,
