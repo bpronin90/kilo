@@ -383,7 +383,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   flaggedExercise: {
     borderLeftWidth: 3,
-    borderLeftColor: kua ? kua.error : colors.error,
+    borderLeftColor: kua ? kua.errorText : colors.error,
     marginLeft: -3,
   },
   // Recovery's compact type scale (#843): see the `compact` prop above.

@@ -380,13 +380,13 @@ export function LogScreenEditorCard({
                     <View
                       style={[
                         styles.validationBadgeCircle,
-                        { borderColor: validationErrorCount > 0 ? (kua ? kua.error : colors.error) : (kua ? kua.warning : colors.caution) },
+                        { borderColor: validationErrorCount > 0 ? (kua ? kua.errorText : colors.error) : (kua ? kua.warning : colors.caution) },
                       ]}
                     >
                       <Text
                         style={[
                           styles.validationBadgeGlyph,
-                          { color: validationErrorCount > 0 ? (kua ? kua.error : colors.error) : (kua ? kua.warning : colors.caution) },
+                          { color: validationErrorCount > 0 ? (kua ? kua.errorText : colors.error) : (kua ? kua.warning : colors.caution) },
                         ]}
                       >
                         !
@@ -395,7 +395,7 @@ export function LogScreenEditorCard({
                     <Text
                       style={[
                         styles.validationBadgeCount,
-                        { color: validationErrorCount > 0 ? (kua ? kua.error : colors.error) : (kua ? kua.warning : colors.caution) },
+                        { color: validationErrorCount > 0 ? (kua ? kua.errorText : colors.error) : (kua ? kua.warning : colors.caution) },
                       ]}
                     >
                       {validationProblems.length}

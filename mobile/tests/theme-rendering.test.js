@@ -824,6 +824,22 @@ describe('KUA wiring for Log/editor/workout/utility surfaces (#1140)', () => {
     expect(clayR.primaryButton.backgroundColor).not.toBe(hardR.primaryButton.backgroundColor);
   });
 
+  // Regression for the PR #1147 review (validation badge, flagged-exercise rail,
+  // recovery manage chevron): on-surface error ink/icons must use the readable
+  // `errorText` token, never the `error` FILL red. `errorText` clears AA on the
+  // card surface in every palette, whereas the raw `error` fill drops to ~2.6:1
+  // on the dark KUA cards — which is exactly the defect the fix corrected.
+  test('on-surface error ink uses errorText (AA on every card), not the error fill', () => {
+    for (const [name, kua] of SIX) {
+      expect({ name, ok: contrastRatio(kua.errorText, kua.surfaceCard) >= 4.5 })
+        .toEqual({ name, ok: true });
+      if (name.endsWith('/dark')) {
+        expect({ name, ok: contrastRatio(kua.error, kua.surfaceCard) >= 4.5 })
+          .toEqual({ name, ok: false });
+      }
+    }
+  });
+
   // --- representative mounted repaint paths ---------------------------------
 
   function textColorOf(component, text) {

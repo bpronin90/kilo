@@ -373,7 +373,7 @@ export function LogRecoveryLifecycle({
                 Completes this block and asks how these weeks should count in analytics.
               </Text>
             </View>
-            <MaterialIcons name="chevron-right" size={20} color={kua ? kua.error : colors.error} accessible={false} />
+            <MaterialIcons name="chevron-right" size={20} color={kua ? kua.errorText : colors.error} accessible={false} />
           </Pressable>
         </View>
       )}
