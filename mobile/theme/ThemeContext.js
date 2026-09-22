@@ -117,30 +117,65 @@ export function useTheme() {
   return useContext(ThemeContext);
 }
 
-// Palette-keyed StyleSheet cache. A `createStyles(colors)` factory is a stable
-// module-level function and a palette object is a stable module-level constant,
-// so every component instance sharing a factory shares one registered sheet per
-// palette instead of rebuilding it per mount. Both keys are held weakly, so a
-// future dynamic palette cannot leak sheets.
+// Shared-primitive KUA opt-in gate (#1139). Defaults to null so every shell and
+// shared-primitive factory built with `useThemedStyles` keeps the unchanged
+// legacy palette when rendered outside the production shell (isolated unit
+// tests, storybook-style harnesses). Only the app root wraps the whole tree in
+// `KuaStyleGate`, feeding it the selected court palette, so the shell, tab bar,
+// alerts, and shared Card/Panel/Button/Chip/feedback/input surfaces resolve
+// through the active KUA identity in production without changing how those same
+// primitives render in isolation. Mirrors WorkoutKuaProvider's null-default
+// opt-in, but sourced from the resolved theme rather than a per-subtree prop.
+export const KuaStyleContext = createContext(null);
+
+export function KuaStyleGate({ children }) {
+  const { kuaPalette } = useTheme();
+  return (
+    <KuaStyleContext.Provider value={kuaPalette ?? null}>
+      {children}
+    </KuaStyleContext.Provider>
+  );
+}
+
+// The gated KUA palette, or null outside the production shell. Inline styles
+// (TabBar's active/inactive icon tint) read it directly; StyleSheet factories
+// receive it as the second `createStyles(colors, kua)` argument.
+export function useKuaStyle() {
+  return useContext(KuaStyleContext);
+}
+
+// Palette-keyed StyleSheet cache. A `createStyles(colors, kua)` factory is a
+// stable module-level function and every palette object (legacy or KUA) is a
+// stable module-level constant, so every component instance sharing a factory
+// shares one registered sheet per resolved palette instead of rebuilding it per
+// mount. The cache key is the KUA palette when the gate supplies one and the
+// legacy palette otherwise, so a fixed-mode court switch (same legacy `colors`,
+// different `kua`) still returns a fresh sheet and repaints. Both keys are held
+// weakly, so no palette can leak sheets.
 const styleSheetCache = new WeakMap();
 
-export function themedStyles(factory, colors) {
+export function themedStyles(factory, colors, kua = null) {
+  const key = kua || colors;
   let byPalette = styleSheetCache.get(factory);
   if (!byPalette) {
     byPalette = new WeakMap();
     styleSheetCache.set(factory, byPalette);
   }
-  let sheet = byPalette.get(colors);
+  let sheet = byPalette.get(key);
   if (!sheet) {
-    sheet = factory(colors);
-    byPalette.set(colors, sheet);
+    sheet = factory(colors, kua);
+    byPalette.set(key, sheet);
   }
   return sheet;
 }
 
 // Styles for the active palette. Replaces module-scope StyleSheet.create(),
 // which captures colors at module load and cannot repaint on a mode change.
+// The factory receives the legacy `colors` and the gated KUA palette (`kua`,
+// null outside the production shell) so a single factory serves both the
+// legacy-isolated and KUA-in-production renders.
 export function useThemedStyles(factory) {
   const { colors } = useTheme();
-  return themedStyles(factory, colors);
+  const kua = useKuaStyle();
+  return themedStyles(factory, colors, kua);
 }

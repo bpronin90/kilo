@@ -10,17 +10,20 @@ export const HeroMetric = {
 };
 
 // Shared text-input skin. Two forms because both call shapes exist (#689):
-// createInputStyle(colors) so a screen's own createStyles() factory can spread
-// it, and useInputStyle() for the JSX call sites that apply it directly.
-export const createInputStyle = (colors) => ({
-  backgroundColor: colors.inputBackground,
+// createInputStyle(colors, kua) so a screen's own createStyles() factory can
+// spread it, and useInputStyle() for the JSX call sites that apply it directly.
+// Under the production KUA gate (#1139) it resolves through the selected court
+// palette (surface-card / surface-border / on-surface per components.md →
+// Inputs); outside the gate `kua` is null and it keeps the legacy palette.
+export const createInputStyle = (colors, kua = null) => ({
+  backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
   borderWidth: 1,
-  borderColor: colors.inputBorder,
+  borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
   borderRadius: 12,
   paddingHorizontal: 12,
   paddingVertical: 12,
   fontSize: 15,
-  color: colors.text,
+  color: kua ? kua.onSurface : colors.text,
 });
 
 export function useInputStyle() {

@@ -1,7 +1,7 @@
 import React, { useContext } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useKuaStyle, useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { TAB_BAR_VISUAL_GAP } from './TabBarLayout';
 import { Icon } from './Icon';
 
@@ -17,12 +17,14 @@ const TAB_ICON_SIZE = 24;
 export function TabBar({ tabs, activeTab, onTabPress, onHeightChange }) {
   const styles = useThemedStyles(createStyles);
   const { colors } = useTheme();
+  const kua = useKuaStyle();
   const { bottom: bottomInset = 0 } = useContext(SafeAreaInsetsContext) || {};
 
-  // KUA semantic tokens with fallback to legacy palette names so the tab bar
-  // renders correctly on both KUA and non-KUA themes.
-  const activeColor = colors.primary ?? colors.chipText;
-  const inactiveColor = colors.onSurfaceVariant ?? colors.textMuted;
+  // Active/inactive tint from the selected court palette (primary / on-surface-
+  // variant per components.md → Tab bar), falling back to the legacy palette
+  // when rendered outside the production KUA gate (#1139).
+  const activeColor = kua ? kua.primary : colors.chipText;
+  const inactiveColor = kua ? kua.onSurfaceVariant : colors.textMuted;
 
   const handleLayout = (e) => {
     if (onHeightChange) onHeightChange(e.nativeEvent.layout.height);
@@ -58,18 +60,18 @@ export function TabBar({ tabs, activeTab, onTabPress, onHeightChange }) {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+const createStyles = (colors, kua = null) => StyleSheet.create({
   container: {
     position: 'absolute',
     left: 16,
     right: 16,
     flexDirection: 'row',
     gap: 8,
-    backgroundColor: colors.card,
+    backgroundColor: kua ? kua.tabBarBg : colors.card,
     borderRadius: 24,
     padding: 8,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     shadowColor: colors.shadowColor,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -83,7 +85,7 @@ const createStyles = (colors) => StyleSheet.create({
     alignItems: 'center',
   },
   tabActive: {
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.selection : colors.chipBackground,
   },
   tabText: {
     fontSize: 11,
