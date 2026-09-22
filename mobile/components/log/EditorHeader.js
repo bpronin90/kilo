@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, Text, TextInput } from 'react-native';
 import { Card, Button } from '../UI';
-import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
+import { useTheme, useThemedStyles, useKuaStyle } from '../../theme/ThemeContext';
 import { createStyles } from './logEditorStyles';
 
 // The deload-record editor's note body — a plain multiline field plus its own
@@ -9,6 +9,7 @@ import { createStyles } from './logEditorStyles';
 // week is being edited.
 export function EditorDeloadNoteInput({ value, onChangeText, onSave, saveSuccess, isSaving }) {
   const { colors } = useTheme();
+  const kua = useKuaStyle();
   const styles = useThemedStyles(createStyles);
   return (
     <Card>
@@ -17,7 +18,7 @@ export function EditorDeloadNoteInput({ value, onChangeText, onSave, saveSuccess
         value={value}
         onChangeText={onChangeText}
         placeholder="Deload note…"
-        placeholderTextColor={colors.textMuted}
+        placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
         multiline
         autoCorrect={false}
         autoCapitalize="none"

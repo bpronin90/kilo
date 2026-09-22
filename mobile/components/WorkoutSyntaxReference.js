@@ -75,24 +75,27 @@ export function WorkoutSyntaxReference() {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+// Under the production KUA gate (`kua` supplied) the help copy, code block,
+// and format rows resolve through the selected court palette; outside the gate
+// (`kua` null — isolated syntax-reference tests) they keep the legacy palette.
+const createStyles = (colors, kua = null) => StyleSheet.create({
   helpText: {
     fontSize: 15,
     lineHeight: 22,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   bold: {
     fontWeight: 'bold',
   },
   boldText: {
     fontWeight: 'bold',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   codeBlock: {
-    backgroundColor: colors.inputBackground,
+    backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     padding: 10,
     marginTop: 8,
     gap: 2,
@@ -100,7 +103,7 @@ const createStyles = (colors) => StyleSheet.create({
   codeText: {
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     fontSize: 13,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   rowList: {
     marginTop: 6,
@@ -114,7 +117,7 @@ const createStyles = (colors) => StyleSheet.create({
   formatDesc: {
     flex: 1,
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 18,
   },
 });

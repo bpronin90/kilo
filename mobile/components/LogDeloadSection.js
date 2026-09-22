@@ -3,7 +3,7 @@ import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Alert } from '../lib/platformAlert';
 import { Card, Button, SectionTitle } from './UI';
-import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { useTheme, useThemedStyles, useKuaStyle } from '../theme/ThemeContext';
 import { localDate, DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
 
@@ -37,6 +37,7 @@ export function LogDeloadSection({
   onToggleDeloadCollapsed,
 }) {
   const { colors } = useTheme();
+  const kua = useKuaStyle();
   const styles = useThemedStyles(createStyles);
   const [expandedDeloads, setExpandedDeloads] = useState(new Set());
   const [showDeloadOrdinalPrompt, setShowDeloadOrdinalPrompt] = useState(false);
@@ -131,7 +132,7 @@ export function LogDeloadSection({
                 <MaterialIcons
                   name={deloadCollapsed ? 'expand-more' : 'expand-less'}
                   size={18}
-                  color={colors.textMuted}
+                  color={kua ? kua.onSurfaceVariant : colors.textMuted}
                   accessible={false}
                 />
               </Pressable>
@@ -211,7 +212,7 @@ export function LogDeloadSection({
                     <MaterialIcons
                       name={isViewed ? 'expand-less' : 'expand-more'}
                       size={18}
-                      color={colors.textMuted}
+                      color={kua ? kua.onSurfaceVariant : colors.textMuted}
                       accessible={false}
                     />
                   </Pressable>
@@ -276,7 +277,7 @@ export function LogDeloadSection({
                   <MaterialIcons
                     name={isExpanded ? 'expand-less' : 'expand-more'}
                     size={18}
-                    color={colors.textMuted}
+                    color={kua ? kua.onSurfaceVariant : colors.textMuted}
                     accessible={false}
                   />
                 </Pressable>
@@ -357,15 +358,31 @@ export function LogDeloadSection({
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+// Fade a KUA hex token to a low-opacity fill for the error card surface, so
+// the tint reads on any court canvas. Mirrors backup/backupStyles.js. Only used
+// on the KUA path.
+function withAlpha(hex, alpha) {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+// Under the production KUA gate (`kua` supplied) the deload cards, ordinal
+// sheet, and ink resolve through the selected court palette; the dim backdrop
+// stays on the court-neutral legacy overlay token, and outside the gate (`kua`
+// null) every value keeps the legacy palette.
+const createStyles = (colors, kua = null) => StyleSheet.create({
   errorText: {
-    color: colors.error,
+    color: kua ? kua.errorText : colors.error,
     fontSize: 14,
     fontWeight: '600',
   },
   errorCard: {
-    borderColor: colors.error,
-    backgroundColor: colors.errorSurface,
+    borderColor: kua ? kua.error : colors.error,
+    backgroundColor: kua ? withAlpha(kua.error, 0.14) : colors.errorSurface,
     padding: 12,
     marginBottom: 8,
   },
@@ -376,7 +393,7 @@ const createStyles = (colors) => StyleSheet.create({
     padding: 0,
     overflow: 'hidden',
     borderWidth: 4,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   otherNoteHeader: {
     flexDirection: 'row',
@@ -392,21 +409,21 @@ const createStyles = (colors) => StyleSheet.create({
   otherNoteTitle: {
     fontSize: 20,
     fontWeight: '800',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   currentNoteTitle: {
     fontSize: 24,
     fontWeight: '800',
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
   },
   otherNoteSub: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
   },
   editHint: {
     fontSize: 11,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginBottom: 8,
   },
   currentNoteContent: {
@@ -414,15 +431,15 @@ const createStyles = (colors) => StyleSheet.create({
     paddingBottom: 24,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: colors.cardBorder,
+    borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   generateButton: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   generateButtonText: {
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
   },
   deloadEmpty: {
     marginTop: 40,
@@ -431,7 +448,7 @@ const createStyles = (colors) => StyleSheet.create({
   },
   deloadEmptyText: {
     fontSize: 16,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
   },
   pastDeloads: {
@@ -444,13 +461,13 @@ const createStyles = (colors) => StyleSheet.create({
   },
   pastDeloadContent: {
     fontSize: 13,
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     fontFamily: 'monospace',
     paddingHorizontal: 24,
     paddingBottom: 20,
     paddingTop: 4,
     borderTopWidth: 1,
-    borderTopColor: colors.cardBorder,
+    borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   inlineActions: {
     paddingHorizontal: 16,
@@ -460,10 +477,10 @@ const createStyles = (colors) => StyleSheet.create({
   switchButton: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   switchButtonText: {
-    color: colors.accentText,
+    color: kua ? kua.primary : colors.accentText,
   },
   ordinalOverlay: {
     flex: 1,
@@ -472,33 +489,33 @@ const createStyles = (colors) => StyleSheet.create({
     paddingHorizontal: 24,
   },
   ordinalSheet: {
-    backgroundColor: colors.card,
+    backgroundColor: kua ? kua.surfaceCard : colors.card,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     padding: 24,
     gap: 12,
   },
   ordinalTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
   },
   ordinalSubtitle: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 18,
   },
   ordinalInput: {
-    backgroundColor: colors.inputBackground,
+    backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.inputBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 20,
     fontWeight: '700',
-    color: colors.text,
+    color: kua ? kua.onSurface : colors.text,
     textAlign: 'center',
   },
   ordinalButtons: {
@@ -511,25 +528,25 @@ const createStyles = (colors) => StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
-    backgroundColor: colors.chipBackground,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   ordinalCancelText: {
     fontSize: 15,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: kua ? kua.primaryOnContainer : colors.textMuted,
   },
   ordinalConfirm: {
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
-    backgroundColor: colors.accent,
+    backgroundColor: kua ? kua.primary : colors.accent,
   },
   ordinalConfirmText: {
     fontSize: 15,
     fontWeight: '700',
-    color: colors.onAccent,
+    color: kua ? kua.onPrimary : colors.onAccent,
   },
 });

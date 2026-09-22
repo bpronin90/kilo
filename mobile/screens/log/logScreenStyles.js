@@ -70,16 +70,16 @@ import { StyleSheet } from 'react-native';
 // the style falls back to legacy palette values so no behaviour changes there.
 export const createStyles = (colors, kua = null) => StyleSheet.create({
   skeletonCard: {
-    backgroundColor: colors.card,
+    backgroundColor: kua ? kua.surfaceCard : colors.card,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     padding: 20,
     marginBottom: 12,
     gap: 12,
   },
   skeletonBar: {
-    backgroundColor: colors.cardBorder,
+    backgroundColor: kua ? kua.surfaceBorder : colors.cardBorder,
     borderRadius: 6,
     opacity: 0.6,
     height: 12,
@@ -252,7 +252,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     fontWeight: '600',
-    color: colors.error,
+    color: kua ? kua.errorText : colors.error,
   },
   firstUseAction: {
     minHeight: 44,

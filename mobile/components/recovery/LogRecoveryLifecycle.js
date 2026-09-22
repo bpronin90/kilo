@@ -21,6 +21,7 @@ import { RECOVERY_INCLUSION_HELP } from '../RecoveryInclusionToggle';
 export function LogRecoveryLifecycle({
   styles,
   colors,
+  kua = null,
   activeBlock,
   currentWeek,
   busy = null,
@@ -183,7 +184,7 @@ export function LogRecoveryLifecycle({
         <MaterialIcons
           name={manageExpanded ? 'expand-less' : 'expand-more'}
           size={20}
-          color={colors.textMuted}
+          color={kua ? kua.onSurfaceVariant : colors.textMuted}
           accessible={false}
         />
       </Pressable>
@@ -205,7 +206,7 @@ export function LogRecoveryLifecycle({
                   value={reasonDraft}
                   onChangeText={setReasonDraft}
                   placeholder="e.g. torn hamstring, 8 weeks off"
-                  placeholderTextColor={colors.textMuted}
+                  placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
                   maxLength={MAX_RECOVERY_REASON_LENGTH}
                   editable={!reasonLocked}
                   accessibilityLabel="Reason for this recovery block"
@@ -264,7 +265,7 @@ export function LogRecoveryLifecycle({
                     <Text style={styles.manageRowInlineError}>{reasonErrorFor(activeBlock.id)}</Text>
                   ) : null}
                 </View>
-                <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
+                <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
               </Pressable>
             )}
           </View>
@@ -329,9 +330,9 @@ export function LogRecoveryLifecycle({
                 accessibilityState={{ expanded: inclusionHelpShown }}
                 accessibilityLabel={`${inclusionHelpShown ? 'Hide' : 'Show'} what counting these weeks in normal analytics does`}
               >
-                <MaterialIcons name="info-outline" size={16} color={colors.textMuted} accessible={false} />
+                <MaterialIcons name="info-outline" size={16} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
               </Pressable>
-              <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
+              <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
             </View>
           </View>
 
@@ -354,7 +355,7 @@ export function LogRecoveryLifecycle({
                   Removes the note from this block. The note itself is kept and stays editable.
                 </Text>
               </View>
-              <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} accessible={false} />
+              <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
             </Pressable>
           )}
 
@@ -372,7 +373,7 @@ export function LogRecoveryLifecycle({
                 Completes this block and asks how these weeks should count in analytics.
               </Text>
             </View>
-            <MaterialIcons name="chevron-right" size={20} color={colors.error} accessible={false} />
+            <MaterialIcons name="chevron-right" size={20} color={kua ? kua.error : colors.error} accessible={false} />
           </Pressable>
         </View>
       )}
