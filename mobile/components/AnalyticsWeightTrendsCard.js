@@ -107,14 +107,19 @@ export function AnalyticsWeightTrendsCard({
               {display.showUnit && <Text style={styles.weightUnit}> {unit}</Text>}
             </Text>
           </View>
-          {display.paceFlag && (
-            <View style={[styles.paceBadge, display.paceLevel === 'spike' ? styles.paceSpike : styles.paceNotable]}>
-              <Text style={styles.paceText}>
-                {display.paceFlag === 'gain' ? '↑ Gaining fast' : '↓ Losing fast'}
-              </Text>
-              <Text style={styles.pacePeriodText}>{formatPaceElapsed(display.paceElapsedDays)}</Text>
-            </View>
-          )}
+          {display.paceFlag && (() => {
+            const isSpike = display.paceLevel === 'spike';
+            return (
+              <View style={[styles.paceBadge, isSpike ? styles.paceSpike : styles.paceNotable]}>
+                <Text style={[styles.paceText, !isSpike && styles.paceTextNotable]}>
+                  {display.paceFlag === 'gain' ? '↑ Gaining fast' : '↓ Losing fast'}
+                </Text>
+                <Text style={[styles.pacePeriodText, !isSpike && styles.paceTextNotable]}>
+                  {formatPaceElapsed(display.paceElapsedDays)}
+                </Text>
+              </View>
+            );
+          })()}
         </View>
 
         <View style={styles.chartBlock}>
@@ -248,19 +253,33 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 12,
   },
-  // Filled pace badges. In KUA mode, use semantic error token (all 6 palettes)
-  // and mode-aware caution (no KUA caution token exists). In legacy mode, use
-  // the filled-surface tones from #689.
+  // Pace badges. The spike badge stays a loud saturated fill (KUA `error` in all
+  // six palettes, `cardErrorBg` legacy) with light text. The notable badge is a
+  // step quieter: the mode-adaptive soft caution *container* (`cautionSurface`
+  // with its paired `cautionSurfaceText` ink, both AA-tuned and asserted in
+  // theme-rendering) — pale amber + dark ink in light mode, dark warm brown +
+  // bright amber ink in dark mode. This replaces two earlier misfires: the raw
+  // `caution` mark as a fill (a harsh 1.57:1 glyph-yellow in dark mode) and the
+  // `cardCautionBg` filled tone (a dark amber that barely differed between light
+  // and dark). No KUA-mode caution container token exists, so the notable badge
+  // is court-neutral but mode-aware.
   paceSpike: {
     backgroundColor: kua ? kua.error : colors.cardErrorBg,
   },
   paceNotable: {
-    backgroundColor: kua ? colors.caution : colors.cardCautionBg,
+    backgroundColor: colors.cautionSurface,
   },
   paceText: {
     fontSize: 12,
     fontWeight: '800',
     color: colors.textLight,
+  },
+  // Notable badge ink: the on-surface pair for `cautionSurface`, so the label
+  // reads in both modes (dark amber on the pale light surface, bright amber on
+  // the dark surface) instead of the near-white `textLight` the filled spike
+  // badge uses.
+  paceTextNotable: {
+    color: colors.cautionSurfaceText,
   },
   // States the elapsed span in words so the badge does not lean on color alone.
   pacePeriodText: {
