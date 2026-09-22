@@ -2758,6 +2758,152 @@ describe('every production themed-style factory consumes the selected court (#11
     }
     expect(offenders.sort()).toEqual([]);
   });
+
+  // Dependency guard. Handing the court palette to a factory is not enough if the
+  // call is memoized on a STALE dependency list: `useMemo(() => createStyles(
+  // colors, kua, …), [colors, typography])` drops `kua`, so at a fixed mode
+  // (colors unchanged) a court switch never recomputes the sheet and the surface
+  // keeps its previous court. The factory-body, call-site, and mounted-probe
+  // guards all stay green — the probe does not run through the real memo — so
+  // this is the one court regression a normal contributor introduces by accident
+  // (there is no react-hooks/exhaustive-deps lint in this repo to catch it). For
+  // every memoized resolved-factory call, each court binding the call feeds to
+  // the `kua` position must appear in the memo's dependency array.
+  test('every memoized factory call lists its court palette as a dependency', () => {
+    function resolveImport(fromFile, spec) {
+      if (!spec.startsWith('.')) return null;
+      let p = path.resolve(path.dirname(fromFile), spec);
+      if (!p.endsWith('.js')) p += '.js';
+      return fs.existsSync(p) ? p : null;
+    }
+    function kuaIndexOf(fn) {
+      return fn.params.findIndex(
+        (pm) => (pm.type === 'Identifier' && pm.name === 'kua')
+          || (pm.type === 'AssignmentPattern' && pm.left.name === 'kua')
+      );
+    }
+    // Factory def -> kua param index, and every file's AST (shared with above).
+    const kuaParamIndex = new Map();
+    const astOf = new Map();
+    for (const file of files) {
+      const ast = parser.parse(fs.readFileSync(file, 'utf8'), { sourceType: 'module', plugins: ['jsx'] });
+      astOf.set(file, ast);
+      traverse(ast, {
+        VariableDeclarator(p) {
+          const { id, init } = p.node;
+          if (
+            id && id.name && FACTORY.test(id.name) && init &&
+            (init.type === 'ArrowFunctionExpression' || init.type === 'FunctionExpression')
+          ) {
+            const idx = kuaIndexOf(init);
+            if (idx >= 0) kuaParamIndex.set(`${file}::${id.name}`, idx);
+          }
+        },
+      });
+    }
+    // Local names that hold the court palette: destructured from `kuaPalette`,
+    // then any binding whose initializer references one (e.g. `effectiveKua`).
+    function courtBindingsOf(ast) {
+      const set = new Set();
+      const decls = [];
+      traverse(ast, {
+        VariableDeclarator(p) {
+          decls.push(p.node);
+          if (p.node.id.type === 'ObjectPattern') {
+            for (const pr of p.node.id.properties) {
+              if (pr.type === 'ObjectProperty' && pr.key.name === 'kuaPalette') set.add(pr.value.name || 'kuaPalette');
+            }
+          }
+        },
+      });
+      let changed = true;
+      let pass = 0;
+      while (changed && pass < 8) {
+        changed = false;
+        pass += 1;
+        for (const d of decls) {
+          if (!d.id || d.id.type !== 'Identifier' || set.has(d.id.name)) continue;
+          let refs = false;
+          const stack = [d.init];
+          while (stack.length) {
+            const n = stack.pop();
+            if (!n || typeof n.type !== 'string') continue;
+            if (n.type === 'Identifier' && set.has(n.name)) refs = true;
+            for (const k of Object.keys(n)) {
+              const v = n[k];
+              if (Array.isArray(v)) v.forEach((x) => x && typeof x.type === 'string' && stack.push(x));
+              else if (v && typeof v.type === 'string') stack.push(v);
+            }
+          }
+          if (refs) { set.add(d.id.name); changed = true; }
+        }
+      }
+      return set;
+    }
+    // Court bindings referenced anywhere inside a node (the factory's kua arg).
+    function courtIdentsIn(node, court) {
+      const out = new Set();
+      const stack = [node];
+      while (stack.length) {
+        const n = stack.pop();
+        if (!n || typeof n.type !== 'string') continue;
+        if (n.type === 'Identifier' && court.has(n.name)) out.add(n.name);
+        for (const k of Object.keys(n)) {
+          const v = n[k];
+          if (Array.isArray(v)) v.forEach((x) => x && typeof x.type === 'string' && stack.push(x));
+          else if (v && typeof v.type === 'string') stack.push(v);
+        }
+      }
+      return out;
+    }
+
+    const offenders = [];
+    for (const file of files) {
+      const ast = astOf.get(file);
+      const local = new Map();
+      traverse(ast, {
+        ImportDeclaration(p) {
+          const mod = resolveImport(file, p.node.source.value);
+          if (!mod) return;
+          for (const s of p.node.specifiers) {
+            if (s.type !== 'ImportSpecifier') continue;
+            const key = `${mod}::${s.imported.name}`;
+            if (kuaParamIndex.has(key)) local.set(s.local.name, key);
+          }
+        },
+      });
+      for (const key of kuaParamIndex.keys()) {
+        if (key.startsWith(`${file}::`)) local.set(key.split('::')[1], key);
+      }
+      const court = courtBindingsOf(ast);
+      traverse(ast, {
+        CallExpression(p) {
+          const callee = p.node.callee;
+          if (callee.type !== 'Identifier' || (callee.name !== 'useMemo' && callee.name !== 'useCallback')) return;
+          const cb = p.node.arguments[0];
+          const deps = p.node.arguments[1];
+          if (!cb || !/Function/.test(cb.type) || !deps || deps.type !== 'ArrayExpression') return;
+          const depNames = new Set(deps.elements.filter((e) => e && e.type === 'Identifier').map((e) => e.name));
+          p.get('arguments.0').traverse({
+            CallExpression(q) {
+              const c = q.node.callee;
+              if (c.type !== 'Identifier') return;
+              const key = local.get(c.name);
+              if (!key) return;
+              const arg = q.node.arguments[kuaParamIndex.get(key)];
+              if (!arg) return;
+              for (const name of courtIdentsIn(arg, court)) {
+                if (!depNames.has(name)) {
+                  offenders.push(`${path.relative(root, file)}:${p.node.loc.start.line} ${c.name} missing dep '${name}'`);
+                }
+              }
+            },
+          });
+        },
+      });
+    }
+    expect(offenders.sort()).toEqual([]);
+  });
 });
 
 // --- (2) Mounted Hard→Clay→Grass repaint across every surface family -------
