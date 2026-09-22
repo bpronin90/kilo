@@ -2564,6 +2564,93 @@ describe('every production themed-style factory consumes the selected court (#11
       .sort();
     expect(legacyOnly).toEqual([]);
   });
+
+  // Call-site guard. The factory-body check above proves a factory CAN paint the
+  // court; this proves its production callers actually HAND IT one. A factory
+  // read straight off the theme (`createStyles(colors, kua)`, not the
+  // `useThemedStyles` hook that injects `kua` for free) can silently regress if a
+  // caller drops the palette argument — exactly the #1137 class of defect, and a
+  // gap a factory-only or synthetic-probe test cannot see. Callers are resolved
+  // through their imports so each `create*` name binds to the ONE factory it
+  // actually imports (the same bare name maps to different signatures across
+  // files, and the `kua` parameter is not always second), and the argument at
+  // that factory's own `kua` position must reference a court palette.
+  test('every direct factory call hands the court palette to its kua parameter', () => {
+    // Every exported factory that declares a `kua` parameter, keyed
+    // `"<abs file>::<export>"`, with the position `kua` occupies in ITS list.
+    const kuaParamIndex = new Map();
+    // Absolute path a relative import specifier resolves to, or null.
+    function resolveImport(fromFile, spec) {
+      if (!spec.startsWith('.')) return null;
+      let p = path.resolve(path.dirname(fromFile), spec);
+      if (!p.endsWith('.js')) p += '.js';
+      return fs.existsSync(p) ? p : null;
+    }
+    function kuaIndexOf(fn) {
+      return fn.params.findIndex(
+        (pm) => (pm.type === 'Identifier' && pm.name === 'kua')
+          || (pm.type === 'AssignmentPattern' && pm.left.name === 'kua')
+      );
+    }
+    const astOf = new Map();
+    for (const file of files) {
+      const ast = parser.parse(fs.readFileSync(file, 'utf8'), {
+        sourceType: 'module',
+        plugins: ['jsx'],
+      });
+      astOf.set(file, ast);
+      traverse(ast, {
+        VariableDeclarator(p) {
+          const { id, init } = p.node;
+          if (
+            id && id.name && FACTORY.test(id.name) && init &&
+            (init.type === 'ArrowFunctionExpression' || init.type === 'FunctionExpression')
+          ) {
+            const idx = kuaIndexOf(init);
+            if (idx >= 0) kuaParamIndex.set(`${file}::${id.name}`, idx);
+          }
+        },
+      });
+    }
+
+    // An argument counts as a court palette when it names one (`kua`,
+    // `kuaPalette`, `effectiveKua`) or is a conditional/`??` selecting one — not
+    // when it is `colors`, a mode string, or missing entirely.
+    function handsCourtPalette(node) {
+      if (!node) return false;
+      if (node.type === 'Identifier') return /kua/i.test(node.name);
+      if (node.type === 'MemberExpression') return /kua/i.test(node.property.name || '');
+      if (node.type === 'ConditionalExpression' || node.type === 'LogicalExpression') return true;
+      return false;
+    }
+
+    const offenders = [];
+    for (const file of files) {
+      const imported = new Map(); // localName -> "<abs file>::<export>"
+      traverse(astOf.get(file), {
+        ImportDeclaration(p) {
+          const mod = resolveImport(file, p.node.source.value);
+          if (!mod) return;
+          for (const s of p.node.specifiers) {
+            if (s.type === 'ImportSpecifier') imported.set(s.local.name, `${mod}::${s.imported.name}`);
+          }
+        },
+      });
+      traverse(astOf.get(file), {
+        CallExpression(p) {
+          const callee = p.node.callee;
+          if (callee.type !== 'Identifier' || !FACTORY.test(callee.name)) return;
+          const key = imported.get(callee.name);
+          if (!key || !kuaParamIndex.has(key)) return; // hook-consumed or non-themed
+          const idx = kuaParamIndex.get(key);
+          if (!handsCourtPalette(p.node.arguments[idx])) {
+            offenders.push(`${path.relative(root, file)}:${p.node.loc.start.line} ${callee.name}`);
+          }
+        },
+      });
+    }
+    expect(offenders.sort()).toEqual([]);
+  });
 });
 
 // --- (2) Mounted Hard→Clay→Grass repaint across every surface family -------
@@ -2585,7 +2672,9 @@ describe('mounted surfaces repaint Hard→Clay→Grass at a fixed mode (#1142)',
   // A screen-level surface reads `useTheme().kuaPalette` directly and applies
   // its real production factory — exactly the Home/Weight/Analytics screen path.
   // The probe renders the one role whose token is court-distinct so the read is
-  // unambiguous.
+  // unambiguous. The probe itself supplies `kuaPalette`, so it proves the factory
+  // repaints; the call-site guard above proves the real screen callers actually
+  // hand that factory the court palette, closing the gap between the two.
   function ScreenProbe({ factory, role }) {
     const { colors, kuaPalette } = useTheme();
     const styles = factory(colors, kuaPalette);
