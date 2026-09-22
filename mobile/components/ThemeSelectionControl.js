@@ -46,19 +46,23 @@ export function ThemeSelectionControl() {
 const createStyles = (kua = null, colors = {}, typography = {}) => StyleSheet.create({
   row: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
     marginBottom: 20,
   },
+  // Label takes its natural width; the toggle gets the remaining space.
   labelContainer: {
-    flex: 1,
+    flexShrink: 0,
   },
   label: {
     fontSize: 16,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
+  // flex: 1 constrains the toggle to the available row width so that flexWrap
+  // can actually wrap the pills rather than growing the container off-screen.
   toggle: {
+    flex: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'flex-end',
