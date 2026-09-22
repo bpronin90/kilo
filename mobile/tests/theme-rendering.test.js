@@ -2337,6 +2337,83 @@ describe('KUA wiring for mixed Home/Analytics/Weight surfaces (#1143)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// #1146: the remaining shared-input callers — WeightGoalCard (input, numericInput)
+// and analyticsRecoveryStyles (reasonInput) — forward the resolved KUA palette
+// so a fixed-mode court switch repaints those input surfaces.
+// ---------------------------------------------------------------------------
+
+describe('KUA wiring for shared-input callers (#1146)', () => {
+  const { createStyles: createWeightGoalStyles1146 } = require('../components/WeightGoalCard');
+  const { createStyles: createAnalyticsRecoveryStyles } = require('../components/recovery/analyticsRecoveryStyles');
+
+  const KUA_LIST = [
+    ['hardCourt/light', HardCourtLightColors],
+    ['hardCourt/dark', HardCourtDarkColors],
+    ['clayCourt/light', ClayCourtLightColors],
+    ['clayCourt/dark', ClayCourtDarkColors],
+    ['grassCourt/light', GrassCourtLightColors],
+    ['grassCourt/dark', GrassCourtDarkColors],
+  ];
+
+  test.each(KUA_LIST)(
+    '%s: WeightGoalCard input uses kua surface tokens',
+    (_name, kua) => {
+      const styles = createWeightGoalStyles1146(LightColors, kua);
+      expect(styles.input.backgroundColor).toBe(kua.surfaceCard);
+      expect(styles.input.borderColor).toBe(kua.surfaceBorder);
+      expect(styles.input.color).toBe(kua.onSurface);
+    }
+  );
+
+  test.each(KUA_LIST)(
+    '%s: WeightGoalCard numericInput uses kua surface tokens',
+    (_name, kua) => {
+      const styles = createWeightGoalStyles1146(LightColors, kua);
+      expect(styles.numericInput.backgroundColor).toBe(kua.surfaceCard);
+      expect(styles.numericInput.borderColor).toBe(kua.surfaceBorder);
+      expect(styles.numericInput.color).toBe(kua.onSurface);
+    }
+  );
+
+  test.each(KUA_LIST)(
+    '%s: analyticsRecoveryStyles reasonInput uses kua surface tokens',
+    (_name, kua) => {
+      const styles = createAnalyticsRecoveryStyles(LightColors, kua);
+      expect(styles.reasonInput.backgroundColor).toBe(kua.surfaceCard);
+      expect(styles.reasonInput.borderColor).toBe(kua.surfaceBorder);
+      expect(styles.reasonInput.color).toBe(kua.onSurface);
+    }
+  );
+
+  test('WeightGoalCard input repaints on Hard→Clay at a fixed light mode', () => {
+    const hard = createWeightGoalStyles1146(LightColors, HardCourtLightColors);
+    const clay = createWeightGoalStyles1146(LightColors, ClayCourtLightColors);
+    expect(hard.input.backgroundColor).toBe(HardCourtLightColors.surfaceCard);
+    expect(clay.input.backgroundColor).toBe(ClayCourtLightColors.surfaceCard);
+    expect(clay.input.backgroundColor).not.toBe(hard.input.backgroundColor);
+  });
+
+  test('analyticsRecoveryStyles reasonInput repaints on Hard→Clay at a fixed light mode', () => {
+    const hard = createAnalyticsRecoveryStyles(LightColors, HardCourtLightColors);
+    const clay = createAnalyticsRecoveryStyles(LightColors, ClayCourtLightColors);
+    expect(hard.reasonInput.backgroundColor).toBe(HardCourtLightColors.surfaceCard);
+    expect(clay.reasonInput.backgroundColor).toBe(ClayCourtLightColors.surfaceCard);
+    expect(clay.reasonInput.backgroundColor).not.toBe(hard.reasonInput.backgroundColor);
+  });
+
+  test('WeightGoalCard input falls back to legacy colors when kua is null', () => {
+    const styles = createWeightGoalStyles1146(LightColors, null);
+    expect(styles.input.backgroundColor).toBe(LightColors.inputBackground);
+    expect(styles.numericInput.backgroundColor).toBe(LightColors.inputBackground);
+  });
+
+  test('analyticsRecoveryStyles reasonInput falls back to legacy colors when kua is null', () => {
+    const styles = createAnalyticsRecoveryStyles(LightColors, null);
+    expect(styles.reasonInput.backgroundColor).toBe(LightColors.inputBackground);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // #1141: nested More/Account/Settings/Help/data-utility child surfaces wire to
 // the selected court exactly like the #1139/#1140 surfaces — under the gate they
 // resolve KUA tokens and repaint on a fixed-mode court switch; rendered outside
