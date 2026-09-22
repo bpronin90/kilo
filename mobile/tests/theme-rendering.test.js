@@ -2580,7 +2580,10 @@ describe('every production themed-style factory consumes the selected court (#11
   //     second parameter.
   //   - The `kua`-position argument must trace to a court-palette SOURCE
   //     (`useTheme().kuaPalette`, `useKuaStyle()`, or `useContext(<…Kua…>)`),
-  //     directly or through a local binding derived from one. A renamed binding
+  //     directly or through a local binding derived from one. A `.kuaPalette`
+  //     member only counts when its object is the theme itself (a `useTheme()`
+  //     call or a binding of one), so a look-alike wrapper
+  //     (`{ kuaPalette: colors }.kuaPalette`) does not qualify. A renamed binding
   //     (`const { kuaPalette: court } = useTheme()`) passes; `colors`, a mode
   //     string, `null`, or a conditional whose branches are not court sources
   //     (e.g. `true ? colors : colors`) is flagged.
@@ -2602,11 +2605,26 @@ describe('every production themed-style factory consumes the selected court (#11
           || (pm.type === 'AssignmentPattern' && pm.left.name === 'kua')
       );
     }
-    // The three expressions that read the selected court palette in production.
-    function isCourtSource(node) {
+    const isUseTheme = (n) => n && n.type === 'CallExpression'
+      && n.callee.type === 'Identifier' && n.callee.name === 'useTheme';
+    // Identifiers bound to a `useTheme()` result, e.g. `const theme = useTheme()`.
+    function themeBindingsOf(ast) {
+      const set = new Set();
+      traverse(ast, {
+        VariableDeclarator(p) {
+          if (p.node.id.type === 'Identifier' && isUseTheme(p.node.init)) set.add(p.node.id.name);
+        },
+      });
+      return set;
+    }
+    // The expressions that read the selected court palette in production. A
+    // `.kuaPalette` member counts only when its object IS the theme, so a
+    // hand-rolled `{ kuaPalette: colors }` wrapper cannot masquerade as one.
+    function isCourtSource(node, themeBindings) {
       if (!node || typeof node.type !== 'string') return false;
       if (node.type === 'MemberExpression' && node.property && node.property.name === 'kuaPalette') {
-        return true; // useTheme().kuaPalette
+        return isUseTheme(node.object)
+          || (node.object.type === 'Identifier' && themeBindings.has(node.object.name));
       }
       if (node.type === 'CallExpression' && node.callee.type === 'Identifier') {
         if (node.callee.name === 'useKuaStyle') return true; // gate hook
@@ -2642,7 +2660,7 @@ describe('every production themed-style factory consumes the selected court (#11
     // Local names that hold the court palette in a file: destructured from
     // `kuaPalette`, then any binding whose initializer references a court source
     // or an already-known court binding (e.g. `const effectiveKua = … kua …`).
-    function courtBindingsOf(ast) {
+    function courtBindingsOf(ast, themeBindings) {
       const set = new Set();
       const decls = [];
       traverse(ast, {
@@ -2669,7 +2687,7 @@ describe('every production themed-style factory consumes the selected court (#11
           while (stack.length) {
             const n = stack.pop();
             if (!n || typeof n.type !== 'string') continue;
-            if (isCourtSource(n)) refsCourt = true;
+            if (isCourtSource(n, themeBindings)) refsCourt = true;
             if (n.type === 'Identifier' && set.has(n.name)) refsCourt = true;
             for (const k of Object.keys(n)) {
               const v = n[k];
@@ -2686,19 +2704,20 @@ describe('every production themed-style factory consumes the selected court (#11
       return set;
     }
 
-    function handsCourtPalette(node, court) {
+    function handsCourtPalette(node, court, themeBindings) {
       if (!node) return false;
-      if (isCourtSource(node)) return true;
+      if (isCourtSource(node, themeBindings)) return true;
       if (node.type === 'Identifier') return court.has(node.name);
       if (node.type === 'MemberExpression') {
-        return node.property.name === 'kuaPalette'
-          || (node.object.type === 'Identifier' && court.has(node.object.name));
+        return node.object.type === 'Identifier' && court.has(node.object.name);
       }
       if (node.type === 'ConditionalExpression') {
-        return handsCourtPalette(node.consequent, court) && handsCourtPalette(node.alternate, court);
+        return handsCourtPalette(node.consequent, court, themeBindings)
+          && handsCourtPalette(node.alternate, court, themeBindings);
       }
       if (node.type === 'LogicalExpression') {
-        return handsCourtPalette(node.left, court) && handsCourtPalette(node.right, court);
+        return handsCourtPalette(node.left, court, themeBindings)
+          && handsCourtPalette(node.right, court, themeBindings);
       }
       return false;
     }
@@ -2722,7 +2741,8 @@ describe('every production themed-style factory consumes the selected court (#11
       for (const key of kuaParamIndex.keys()) {
         if (key.startsWith(`${file}::`)) local.set(key.split('::')[1], key);
       }
-      const court = courtBindingsOf(ast);
+      const themeBindings = themeBindingsOf(ast);
+      const court = courtBindingsOf(ast, themeBindings);
       traverse(ast, {
         CallExpression(p) {
           const callee = p.node.callee;
@@ -2730,7 +2750,7 @@ describe('every production themed-style factory consumes the selected court (#11
           const key = local.get(callee.name);
           if (!key) return; // hook-consumed, non-themed, or not a resolved factory
           const idx = kuaParamIndex.get(key);
-          if (!handsCourtPalette(p.node.arguments[idx], court)) {
+          if (!handsCourtPalette(p.node.arguments[idx], court, themeBindings)) {
             offenders.push(`${path.relative(root, file)}:${p.node.loc.start.line} ${callee.name}`);
           }
         },
