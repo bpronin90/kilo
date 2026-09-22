@@ -311,7 +311,7 @@ const jbmFont = (typo, role, fallback) => {
   return fontWeight !== undefined ? { fontFamily, fontWeight } : { fontFamily };
 };
 
-const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
+export const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
   inputLabel: {
     fontSize: 13,
     fontWeight: '700',
@@ -339,7 +339,7 @@ const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
     borderColor: kua ? kua.surfaceBorder : undefined,
   },
   goalCardMet: {
-    borderColor: colors.success,
+    borderColor: kua ? kua.success : colors.success,
     borderWidth: 1.5,
   },
   goalHeader: {
@@ -370,7 +370,7 @@ const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
   goalMetBadge: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.success,
+    color: kua ? kua.success : colors.success,
     letterSpacing: 0.3,
   },
   goalArchiveChip: {
@@ -474,13 +474,13 @@ const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
   },
   goalEndedText: {
     fontSize: 16,
-    color: colors.error,
+    color: kua ? kua.errorText : colors.error,
     fontWeight: '600',
   },
   goalAheadText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.cautionText,
+    color: kua ? kua.warning : colors.cautionText,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -525,7 +525,7 @@ const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
   },
   goalWarningText: {
     fontSize: 13,
-    color: colors.error,
+    color: kua ? kua.errorText : colors.error,
     opacity: 0.9,
     fontWeight: '600',
     textAlign: 'center',

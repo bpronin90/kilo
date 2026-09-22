@@ -30,31 +30,32 @@ function lerpColor(a, b, t) {
 // but the two #FF5C00 accents are the fixed Kilo brand orange and are
 // intentionally NOT themed — they are the only hardcoded colors left in the
 // migrated production surfaces (#689).
-function KiloWordmark({ width = 140, height = 48 }) {
-  const { colors } = useTheme();
+export function KiloWordmark({ width = 140, height = 48 }) {
+  const { colors, kuaPalette: kua } = useTheme();
+  const letterColor = kua ? kua.onSurface : colors.text;
   return (
     <View style={{ width, height, justifyContent: 'center', marginLeft: -8 }}>
       <Svg width="100%" height="100%" viewBox="0 0 303 106">
         {/* K */}
-        <Rect x="8" y="9" width="7" height="88" rx="3.5" ry="3.5" fill={colors.text} />
-        <Path d="M 21 52 L 43 52 L 78 12 M 43 52 L 78 92" fill="none" stroke={colors.text} strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
+        <Rect x="8" y="9" width="7" height="88" rx="3.5" ry="3.5" fill={letterColor} />
+        <Path d="M 21 52 L 43 52 L 78 12 M 43 52 L 78 92" fill="none" stroke={letterColor} strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
         {/* I */}
-        <Rect x="102" y="30" width="7" height="66" rx="3.5" ry="3.5" fill={colors.text} />
+        <Rect x="102" y="30" width="7" height="66" rx="3.5" ry="3.5" fill={letterColor} />
         <Rect x="102" y="10" width="7" height="15" rx="3.5" ry="3.5" fill="#FF5C00" />
         {/* L */}
-        <Path d="M 136.5 12.5 V 80.5 A 12 12 0 0 0 148.5 92.5 H 178.5" fill="none" stroke={colors.text} strokeWidth="7" strokeLinecap="round" />
+        <Path d="M 136.5 12.5 V 80.5 A 12 12 0 0 0 148.5 92.5 H 178.5" fill="none" stroke={letterColor} strokeWidth="7" strokeLinecap="round" />
         {/* O (dot) */}
         <Rect x="187" y="89.5" width="16" height="7" rx="3.5" ry="3.5" fill="#FF5C00" />
         {/* O (circle) */}
-        <Path d="M 251.5 11.5 C 282.7 11.5 290.5 19.7 290.5 52.5 C 290.5 85.3 282.7 93.5 251.5 93.5 C 220.3 93.5 212.5 85.3 212.5 52.5 C 212.5 19.7 220.3 11.5 251.5 11.5 Z" fill="none" stroke={colors.text} strokeWidth="7" strokeLinejoin="round" />
+        <Path d="M 251.5 11.5 C 282.7 11.5 290.5 19.7 290.5 52.5 C 290.5 85.3 282.7 93.5 251.5 93.5 C 220.3 93.5 212.5 85.3 212.5 52.5 C 212.5 19.7 220.3 11.5 251.5 11.5 Z" fill="none" stroke={letterColor} strokeWidth="7" strokeLinejoin="round" />
       </Svg>
     </View>
   );
 }
 
 function BarbellIcon({ color, size = 22 }) {
-  const { colors } = useTheme();
-  const stroke = color || colors.accent;
+  const { colors, kuaPalette: kua } = useTheme();
+  const stroke = color || (kua ? kua.primary : colors.accent);
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <Path d="M18 4v16M6 4v16M2 8v8M22 8v8M6 12h12" />
@@ -63,8 +64,8 @@ function BarbellIcon({ color, size = 22 }) {
 }
 
 function ScaleIcon({ color, size = 22 }) {
-  const { colors } = useTheme();
-  const stroke = color || colors.accent;
+  const { colors, kuaPalette: kua } = useTheme();
+  const stroke = color || (kua ? kua.primary : colors.accent);
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <Path d="M3 6h18M12 6v14M12 20H9m3 0h3M5 6l3 8h8l3-8" />

@@ -1085,8 +1085,8 @@ describe('no production surface can hold a stale palette', () => {
       "components/SessionCheckInModal.js:374 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       "components/ThemePreviewControl.js:70 '#FF5C00'",
       "components/WebAlertHost.js:77 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
-      'screens/HomeScreen.js:43 "#FF5C00"',
-      'screens/HomeScreen.js:47 "#FF5C00"',
+      'screens/HomeScreen.js:44 "#FF5C00"',
+      'screens/HomeScreen.js:48 "#FF5C00"',
     ]);
   });
 });
@@ -2252,6 +2252,91 @@ describe('KUA Analytics surface: createStyles uses KUA tokens in all palettes', 
 });
 
 // ---------------------------------------------------------------------------
+// #1143: mixed Home, Analytics, and Weight surfaces complete KUA wiring.
+// Caution icon, pending dot, flat/dash indicators, and goal semantic tokens
+// must resolve KUA tokens when a palette is supplied; legacy colors are used
+// when kua is null.
+// ---------------------------------------------------------------------------
+
+import { createStyles as createFatigueStyles } from '../components/AnalyticsFatigueCard';
+import { createStyles as createWeightGoalStyles } from '../components/WeightGoalCard';
+
+describe('KUA wiring for mixed Home/Analytics/Weight surfaces (#1143)', () => {
+  const KUA_PALETTES_LIST = [
+    ['hardCourt/light', HardCourtLightColors],
+    ['hardCourt/dark', HardCourtDarkColors],
+    ['clayCourt/light', ClayCourtLightColors],
+    ['clayCourt/dark', ClayCourtDarkColors],
+    ['grassCourt/light', GrassCourtLightColors],
+    ['grassCourt/dark', GrassCourtDarkColors],
+  ];
+
+  test.each(KUA_PALETTES_LIST)(
+    '%s: fatigue card pending dot uses kua.warning',
+    (_name, kua) => {
+      const styles = createFatigueStyles(LightColors, kua);
+      expect(styles.fatigueDot_pending.backgroundColor).toBe(kua.warning);
+    }
+  );
+
+  test('fatigue card pending dot falls back to legacy caution when kua is null', () => {
+    const styles = createFatigueStyles(LightColors, null);
+    expect(styles.fatigueDot_pending.backgroundColor).toBe(LightColors.caution);
+  });
+
+  test.each(KUA_PALETTES_LIST)(
+    '%s: weight goal card met border uses kua.success',
+    (_name, kua) => {
+      const styles = createWeightGoalStyles(LightColors, kua);
+      expect(styles.goalCardMet.borderColor).toBe(kua.success);
+      expect(styles.goalMetBadge.color).toBe(kua.success);
+    }
+  );
+
+  test.each(KUA_PALETTES_LIST)(
+    '%s: weight goal error text uses kua.errorText',
+    (_name, kua) => {
+      const styles = createWeightGoalStyles(LightColors, kua);
+      expect(styles.goalEndedText.color).toBe(kua.errorText);
+      expect(styles.goalWarningText.color).toBe(kua.errorText);
+    }
+  );
+
+  test.each(KUA_PALETTES_LIST)(
+    '%s: weight goal ahead text uses kua.warning',
+    (_name, kua) => {
+      const styles = createWeightGoalStyles(LightColors, kua);
+      expect(styles.goalAheadText.color).toBe(kua.warning);
+    }
+  );
+
+  test('weight goal falls back to legacy colors when kua is null', () => {
+    const styles = createWeightGoalStyles(LightColors, null);
+    expect(styles.goalCardMet.borderColor).toBe(LightColors.success);
+    expect(styles.goalMetBadge.color).toBe(LightColors.success);
+    expect(styles.goalEndedText.color).toBe(LightColors.error);
+    expect(styles.goalWarningText.color).toBe(LightColors.error);
+    expect(styles.goalAheadText.color).toBe(LightColors.cautionText);
+  });
+
+  // Fixed-mode court switch: Hard→Clay at light repaints the fatigue card.
+  // Uses ScreenProbe pattern from the repaint suite below.
+  test('fatigue card pending dot repaints on Hard→Clay at a fixed light mode', () => {
+    const fatigueProbe = (colors, kua) => createFatigueStyles(colors, kua);
+    const hard = fatigueProbe(LightColors, HardCourtLightColors).fatigueDot_pending.backgroundColor;
+    const clay = fatigueProbe(LightColors, ClayCourtLightColors).fatigueDot_pending.backgroundColor;
+    // Both resolve kua.warning; Hard and Clay share the same KUA_SHARED_LIGHT.warning
+    // value, so both equal '#B45309'. This confirms the factory uses the KUA token
+    // rather than the court-independent legacy colors.caution.
+    expect(hard).toBe(HardCourtLightColors.warning);
+    expect(clay).toBe(ClayCourtLightColors.warning);
+    // Native mode-only boundary: caution surface fill stays legacy (no KUA caution container).
+    const styles = fatigueProbe(LightColors, HardCourtLightColors);
+    expect(styles.fatigueAlert.backgroundColor).toBe(LightColors.cautionSurface);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // #1141: nested More/Account/Settings/Help/data-utility child surfaces wire to
 // the selected court exactly like the #1139/#1140 surfaces — under the gate they
 // resolve KUA tokens and repaint on a fixed-mode court switch; rendered outside
@@ -2973,6 +3058,7 @@ describe('mounted surfaces repaint Hard→Clay→Grass at a fixed mode (#1142)',
   const { createStyles: homeCreateStyles } = require('../screens/home/homeStyles');
   const { createStyles: weightCreateStyles } = require('../screens/weight/weightStyles');
   const { createStyles: analyticsCreateStyles } = require('../screens/analytics/analyticsStyles');
+  const { KiloWordmark } = require('../screens/HomeScreen');
 
   // A screen-level surface reads `useTheme().kuaPalette` directly and applies
   // its real production factory — exactly the Home/Weight/Analytics screen path.
@@ -2997,6 +3083,12 @@ describe('mounted surfaces repaint Hard→Clay→Grass at a fixed mode (#1142)',
     return flatten(
       component.root.findAllByType(Text).find((t) => t.props.children === 'probe').props.style
     ).color;
+  }
+  function wordmarkLetterStroke(component) {
+    // The K letterform Path has stroke={letterColor} — readable as a string.
+    return component.root.findAll(
+      (n) => n.props && typeof n.props.stroke === 'string'
+    )[0]?.props.stroke;
   }
   function buttonBackground(component) {
     return flatten(
@@ -3024,6 +3116,12 @@ describe('mounted surfaces repaint Hard→Clay→Grass at a fixed mode (#1142)',
       mount: () => <ScreenProbe factory={homeCreateStyles} role="syncNoticeBody" />,
       read: probeColor,
       token: (p) => p.onSurfaceVariant,
+    },
+    {
+      family: 'Home/wordmark',
+      mount: () => <KiloWordmark />,
+      read: wordmarkLetterStroke,
+      token: (p) => p.onSurface,
     },
     {
       family: 'Weight',
