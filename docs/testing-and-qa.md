@@ -729,6 +729,27 @@ node --test scripts/check-app-file-lines.test.mjs
 
 ---
 
+## Android Edge-to-Edge Device Matrix
+
+Verify Android inset-safe behavior on the following combinations after any change
+to `App.js` safe-area wiring, `ScreenShell.js`, or `TabBar.js`.
+
+| API level | Nav mode | Cut-out | Light theme | Dark theme |
+|-----------|----------|---------|-------------|------------|
+| Android 15 | Gesture | absent | tab bar and content clear system bars | same |
+| Android 15 | Gesture | present (corner/hole-punch) | interactive content not obscured | same |
+| Android 15 | 3-button | absent | bottom nav bar not covered by tab bar | same |
+| Android 16 | Gesture | absent | tab bar and content clear system bars | same |
+| Android 16 | Gesture | present | interactive content not obscured | same |
+| Android 16 | 3-button | absent | bottom nav bar not covered by tab bar | same |
+
+For each combination, also verify:
+- Keyboard-visible inputs (Log workout entry, Weight entry) remain reachable and unobscured.
+- First and last scroll positions do not clip behind the tab bar or top status bar.
+- System-bar icon appearance (light glyphs on dark chrome and vice versa) remains legible.
+
+---
+
 ## Installable Preview Smoke Checklist
 
 Before declaring the packaged preview ready, a human tester must pass every step below on a physical phone. This is the minimum real-device check for installability, launch, update/relaunch, loading behavior, and basic touch interaction. It is not full product QA.

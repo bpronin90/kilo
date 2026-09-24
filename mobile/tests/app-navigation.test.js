@@ -650,3 +650,55 @@ describe('normalizeNavTarget: the typed navigation-intent contract (#718)', () =
     expect(normalizeNavTarget('Log', () => {})).toBe(null);
   });
 });
+
+// Verify App's top safe-area View uses SafeAreaInsetsContext, not StatusBar.currentHeight (#1125).
+describe('App shell top safe-area inset (#1125)', () => {
+  let component;
+  let backHandlerSpy;
+
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(MOCK_NOW);
+    capturedTabPress = null;
+
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [], loading: false, refresh: jest.fn(), remove: jest.fn(), update: jest.fn(),
+    });
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [], currentId: null, currentNote: null, deloadNotes: [], loading: false,
+      error: null, refresh: jest.fn(), selectCurrent: jest.fn(), update: jest.fn(),
+      add: jest.fn(), remove: jest.fn(),
+    });
+    useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: [], toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({ note: { raw_text: '' }, loading: false, save: jest.fn(), clear: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(),
+      deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+    useEntries.useUserProfile.mockReturnValue(null);
+    useEntries.useAutoSync.mockReturnValue({});
+
+    backHandlerSpy = jest.spyOn(BackHandler, 'addEventListener').mockImplementation(
+      (_event, handler) => ({ remove: jest.fn(), handler })
+    );
+    renderer.act(() => { component = renderer.create(<App />); });
+  });
+
+  afterEach(() => {
+    backHandlerSpy.mockRestore();
+    component = null;
+    jest.useRealTimers();
+  });
+
+  test('top-safe-area View exists and paddingTop tracks the inset context, not StatusBar.currentHeight', () => {
+    const tree = component.toJSON();
+    const el = findByTestID(tree, 'top-safe-area');
+    expect(el).not.toBeNull();
+    const style = [].concat(el.props.style).reduce((acc, s) => Object.assign(acc, s || {}), {});
+    // In the test environment, SafeAreaInsetsContext provides top=0. The old code
+    // used StatusBar.currentHeight || 30, which gives 30 in test env (currentHeight
+    // is undefined). Seeing 0 confirms the inset context path is taken.
+    expect(style.paddingTop).toBe(0);
+  });
+});
