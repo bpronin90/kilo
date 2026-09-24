@@ -1,5 +1,5 @@
 import React, { useContext, createContext } from 'react';
-import { ScrollView, StyleSheet, Text, View, Platform, StatusBar, useWindowDimensions } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, Platform, useWindowDimensions } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useThemedStyles } from '../theme/ThemeContext';
 import { Button } from './UI';

@@ -1,6 +1,6 @@
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import React, { useCallback, useContext, useMemo, useState, useRef, useEffect } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, SafeAreaView, StyleSheet, Text, View, StatusBar } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { WebAlertHost } from './components/WebAlertHost';
 import * as Updates from 'expo-updates';
 
@@ -132,8 +132,8 @@ function ShellView({ onDeviceDataWiped }) {
   // useThemedStyles, because ShellView owns the outermost canvas/safe-area chrome
   // and the mode-keyed KUA-spec modal scrim, which the 2-arg hook does not carry.
   const kua = useKuaStyle();
-  const styles = useMemo(() => createStyles(colors, kua, mode), [colors, kua, mode]);
-  const { bottom: bottomSafeAreaInset = 0 } = useContext(SafeAreaInsetsContext) || {};
+  const styles = useMemo(() => createStyles(colors, kua, mode, topSafeAreaInset), [colors, kua, mode, topSafeAreaInset]);
+  const { bottom: bottomSafeAreaInset = 0, top: topSafeAreaInset = 0 } = useContext(SafeAreaInsetsContext) || {};
   const {
     activeTab, tabOwnsBack, tabBarHeight, setTabBarHeight, weightHook, noteHook, stableAuth,
     auth, restTimer, cloudSync, isUpdatePending, registerBackConsumer, setTabOwnsBack,
@@ -334,7 +334,7 @@ function ShellView({ onDeviceDataWiped }) {
             imperatively from hooks all over the app, so the single host has
             to outlive any one screen. */}
         <WebAlertHost />
-        <SafeAreaView style={styles.topSafeArea} />
+        <View style={styles.topSafeArea} testID="top-safe-area" />
         {/* Dark chrome needs light status-bar glyphs and vice versa. */}
         <ExpoStatusBar style={mode === 'dark' ? 'light' : 'dark'} />
         <KeyboardAvoidingView
@@ -483,7 +483,7 @@ function ShellView({ onDeviceDataWiped }) {
 // use (and its theme-rendering.test.js hardcoded-color allowance).
 const scrim = (mode) => (mode === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)');
 
-const createStyles = (colors, kua = null, mode = 'light') => StyleSheet.create({
+const createStyles = (colors, kua = null, mode = 'light', topInset = 0) => StyleSheet.create({
   appContainer: {
     flex: 1,
     backgroundColor: kua ? kua.background : colors.background,
@@ -491,7 +491,7 @@ const createStyles = (colors, kua = null, mode = 'light') => StyleSheet.create({
   topSafeArea: {
     flex: 0,
     backgroundColor: kua ? kua.background : colors.background,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 30) : 0,
+    paddingTop: topInset,
   },
   container: {
     flex: 1,
