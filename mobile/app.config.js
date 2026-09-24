@@ -44,8 +44,22 @@ function mergeConfigChanges(existing, required = MAIN_ACTIVITY_CONFIG_CHANGES) {
   return tokens.join('|');
 }
 
+// The repo-root security-delivery test resolves this config without mobile/
+// dependencies installed, so `expo` may be absent there. Any Expo CLI or EAS
+// evaluation runs inside mobile/ with expo installed and always gets the mod.
+function loadConfigPlugins() {
+  try {
+    return require('expo/config-plugins');
+  } catch (error) {
+    if (error && error.code === 'MODULE_NOT_FOUND') return null;
+    throw error;
+  }
+}
+
 function withResizableMainActivity(config) {
-  const { withAndroidManifest, AndroidConfig } = require('expo/config-plugins');
+  const plugins = loadConfigPlugins();
+  if (!plugins) return config;
+  const { withAndroidManifest, AndroidConfig } = plugins;
   return withAndroidManifest(config, (modConfig) => {
     const activity = AndroidConfig.Manifest.getMainActivityOrThrow(modConfig.modResults);
     activity.$['android:configChanges'] = mergeConfigChanges(activity.$['android:configChanges']);
