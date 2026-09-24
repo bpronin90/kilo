@@ -78,13 +78,15 @@ export default function App() {
   // Hard/Clay/Grass switch at a fixed mode repaints all of them without a reload
   // while the same primitives keep their legacy palette in isolation.
   return (
-    <ThemeProvider>
-      <KuaStyleGate>
-        <ThemeHydrationGate>
-          <WipeAwareAppShell />
-        </ThemeHydrationGate>
-      </KuaStyleGate>
-    </ThemeProvider>
+    <SafeAreaProvider initialMetrics={initialWindowMetrics || ZERO_SAFE_AREA_METRICS}>
+      <ThemeProvider>
+        <KuaStyleGate>
+          <ThemeHydrationGate>
+            <WipeAwareAppShell />
+          </ThemeHydrationGate>
+        </KuaStyleGate>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }
 
@@ -326,7 +328,6 @@ function ShellView({ onDeviceDataWiped }) {
   };
 
   return (
-    <SafeAreaProvider initialMetrics={initialWindowMetrics || ZERO_SAFE_AREA_METRICS}>
     <TabBarLayoutContext.Provider value={{ tabBarHeight }}>
     <CloudSyncContext.Provider value={cloudSync}>
       <View style={styles.appContainer}>
@@ -473,7 +474,6 @@ function ShellView({ onDeviceDataWiped }) {
       </View>
     </CloudSyncContext.Provider>
     </TabBarLayoutContext.Provider>
-    </SafeAreaProvider>
   );
 }
 
