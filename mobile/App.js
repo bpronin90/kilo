@@ -134,8 +134,8 @@ function ShellView({ onDeviceDataWiped }) {
   // useThemedStyles, because ShellView owns the outermost canvas/safe-area chrome
   // and the mode-keyed KUA-spec modal scrim, which the 2-arg hook does not carry.
   const kua = useKuaStyle();
-  const styles = useMemo(() => createStyles(colors, kua, mode, topSafeAreaInset), [colors, kua, mode, topSafeAreaInset]);
   const { bottom: bottomSafeAreaInset = 0, top: topSafeAreaInset = 0 } = useContext(SafeAreaInsetsContext) || {};
+  const styles = useMemo(() => createStyles(colors, kua, mode, topSafeAreaInset), [colors, kua, mode, topSafeAreaInset]);
   const {
     activeTab, tabOwnsBack, tabBarHeight, setTabBarHeight, weightHook, noteHook, stableAuth,
     auth, restTimer, cloudSync, isUpdatePending, registerBackConsumer, setTabOwnsBack,
