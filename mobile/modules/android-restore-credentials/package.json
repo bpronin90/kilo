@@ -1,0 +1,8 @@
+{
+  "name": "android-restore-credentials",
+  "version": "1.0.0",
+  "description": "Local Expo module wrapping AndroidX Credential Manager Restore Credentials for Kilo (issue #1158).",
+  "main": "src/index.js",
+  "license": "UNLICENSED",
+  "private": true
+}
