@@ -23,7 +23,35 @@
 //   the native layer (Android especially). It is a new native module and flips
 //   userInterfaceStyle from "light" to "automatic", so preview-7 binaries lack
 //   the required native code and must be replaced with a fresh preview-8 build.
-const PREVIEW_RUNTIME = 'preview-8';
+// preview-9: #1126 drops the portrait lock and adds smallestScreenSize to the
+//   MainActivity configChanges. Both are native manifest changes, so preview-8
+//   installs stay isolated and need one replacement build.
+const PREVIEW_RUNTIME = 'preview-9';
+
+// Large-screen resizing (#1126). The SDK 54 template's MainActivity already
+// handles orientation|screenSize|screenLayout itself, but not
+// smallestScreenSize, so unfolding a foldable or crossing the 600dp split-screen
+// boundary would recreate the activity and remount React, dropping the active
+// tab, navigation depth, and any open modal. Handling it in-process keeps the
+// tree mounted; React Native re-lays out from the new window dimensions.
+const MAIN_ACTIVITY_CONFIG_CHANGES = ['smallestScreenSize'];
+
+function mergeConfigChanges(existing, required = MAIN_ACTIVITY_CONFIG_CHANGES) {
+  const tokens = String(existing || '').split('|').filter(Boolean);
+  for (const token of required) {
+    if (!tokens.includes(token)) tokens.push(token);
+  }
+  return tokens.join('|');
+}
+
+function withResizableMainActivity(config) {
+  const { withAndroidManifest, AndroidConfig } = require('expo/config-plugins');
+  return withAndroidManifest(config, (modConfig) => {
+    const activity = AndroidConfig.Manifest.getMainActivityOrThrow(modConfig.modResults);
+    activity.$['android:configChanges'] = mergeConfigChanges(activity.$['android:configChanges']);
+    return modConfig;
+  });
+}
 
 // Development builds install alongside preview/production rather than replacing
 // them (#980). Preview and production share com.benpronin.kilo, so a development
@@ -76,9 +104,11 @@ module.exports = ({ config }) => {
         ]
       : null;
   const base = isDevelopment ? applyDevelopmentIdentity(config) : config;
-  return {
+  return withResizableMainActivity({
     ...base,
     plugins: sentryPlugin ? appendPlugin(base.plugins, sentryPlugin) : base.plugins,
     runtimeVersion: isPreview ? PREVIEW_RUNTIME : { policy: 'appVersion' },
-  };
+  });
 };
+
+module.exports.mergeConfigChanges = mergeConfigChanges;

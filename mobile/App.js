@@ -8,7 +8,7 @@ import { ThemeProvider, KuaStyleGate, useKuaStyle, useTheme } from './theme/Them
 import { ThemeHydrationGate } from './app/ThemeHydrationGate';
 import { useKuaFonts } from './theme/typography';
 import { TabBar } from './components/TabBar';
-import { Button } from './components/UI';
+import { OwnershipPrompt } from './components/OwnershipPrompt';
 import { TabBarLayoutContext, TAB_BAR_VISUAL_GAP } from './components/TabBarLayout';
 import { SafeAreaProvider, SafeAreaInsetsContext, initialWindowMetrics } from 'react-native-safe-area-context';
 
@@ -132,10 +132,11 @@ function ShellView({ onDeviceDataWiped }) {
   // `kua` comes from the KuaStyleGate (null outside it) — the same opt-in
   // boundary every shared primitive uses (#1139). Built via useMemo, not
   // useThemedStyles, because ShellView owns the outermost canvas/safe-area chrome
-  // and the mode-keyed KUA-spec modal scrim, which the 2-arg hook does not carry.
+  // (the top inset), which the 2-arg hook does not carry. The ownership prompt's
+  // mode-keyed scrim moved to components/OwnershipPrompt.js (#1126).
   const kua = useKuaStyle();
   const { bottom: bottomSafeAreaInset = 0, top: topSafeAreaInset = 0 } = useContext(SafeAreaInsetsContext) || {};
-  const styles = useMemo(() => createStyles(colors, kua, mode, topSafeAreaInset), [colors, kua, mode, topSafeAreaInset]);
+  const styles = useMemo(() => createStyles(colors, kua, topSafeAreaInset), [colors, kua, topSafeAreaInset]);
   const {
     activeTab, tabOwnsBack, tabBarHeight, setTabBarHeight, weightHook, noteHook, stableAuth,
     auth, restTimer, cloudSync, isUpdatePending, registerBackConsumer, setTabOwnsBack,
@@ -402,74 +403,14 @@ function ShellView({ onDeviceDataWiped }) {
           onHeightChange={(height) => setTabBarHeight((prev) => (prev === height ? prev : height))}
         />
         {ownershipPrompt && !auth.passwordRecovery && !auth.recoveryError ? (
-          <View style={styles.ownershipOverlay} testID="ownership-prompt">
-            <View style={styles.ownershipCard}>
-              {ownershipPrompt.type === 'first-upload' ? (
-                <>
-                  <Text style={styles.ownershipTitle}>
-                    Upload your local history?
-                  </Text>
-                  <Text style={styles.ownershipBody}>
-                    This is your first sign-in on this device. Kilo can upload
-                    the training history saved here into your account
-                    {canRestore
-                      ? ', or download the data already in your account onto this device.'
-                      : ' so it stays in sync across your devices.'}
-                  </Text>
-                  <Button
-                    title="Upload My History"
-                    loadingTitle="Working…"
-                    onPress={() => confirmOwnershipUpload()}
-                  />
-                  {canRestore ? (
-                    <>
-                      <Button
-                        title="Download My Account's Data"
-                        loadingTitle="Working…"
-                        onPress={() => downloadAccountData()}
-                      />
-                      <Text style={styles.ownershipHint}>
-                        This device is empty. Pull the data already in your
-                        account down onto it — nothing is uploaded.
-                      </Text>
-                    </>
-                  ) : null}
-                  <Button title="Not Now" onPress={dismissOwnershipPrompt} />
-                </>
-              ) : (
-                <>
-                  <Text style={styles.ownershipTitle}>
-                    This device holds another account's history
-                  </Text>
-                  <Text style={styles.ownershipBody}>
-                    The training history saved on this device belongs to a
-                    different account. Choose what to do before cloud sync
-                    starts. Nothing is uploaded until you decide.
-                  </Text>
-                  <Button
-                    title="Start Fresh on This Device"
-                    loadingTitle="Working…"
-                    onPress={() => startFreshOnDevice()}
-                  />
-                  <Text style={styles.ownershipHint}>
-                    Recommended. Removes the history stored on this device,
-                    then downloads your account's own data. The other
-                    account's cloud copy is not affected.
-                  </Text>
-                  <Button
-                    title="Upload It Into My Account"
-                    loadingTitle="Working…"
-                    onPress={() => confirmOwnershipUpload()}
-                  />
-                  <Text style={styles.ownershipHint}>
-                    Only choose this if the history on this device is really
-                    yours.
-                  </Text>
-                  <Button title="Decide Later" onPress={dismissOwnershipPrompt} />
-                </>
-              )}
-            </View>
-          </View>
+          <OwnershipPrompt
+            type={ownershipPrompt.type}
+            canRestore={canRestore}
+            onUpload={confirmOwnershipUpload}
+            onDownload={downloadAccountData}
+            onStartFresh={startFreshOnDevice}
+            onDismiss={dismissOwnershipPrompt}
+          />
         ) : null}
       </View>
     </CloudSyncContext.Provider>
@@ -477,13 +418,7 @@ function ShellView({ onDeviceDataWiped }) {
   );
 }
 
-// KUA overlay scrim (components.md → Overlays and modals): a theme-neutral
-// backdrop, black at 0.5 opacity in light mode and 0.7 in dark, deliberately
-// not a palette token. Mirrors the scrim helper the recovery/check-in modals
-// use (and its theme-rendering.test.js hardcoded-color allowance).
-const scrim = (mode) => (mode === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)');
-
-const createStyles = (colors, kua = null, mode = 'light', topInset = 0) => StyleSheet.create({
+const createStyles = (colors, kua = null, topInset = 0) => StyleSheet.create({
   appContainer: {
     flex: 1,
     backgroundColor: kua ? kua.background : colors.background,
@@ -562,37 +497,5 @@ const createStyles = (colors, kua = null, mode = 'light', topInset = 0) => Style
     color: kua ? kua.onSurface : colors.text,
     fontSize: 14,
     fontWeight: '600',
-  },
-  ownershipOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: kua ? scrim(mode) : colors.overlay,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  ownershipCard: {
-    alignSelf: 'stretch',
-    backgroundColor: kua ? kua.surfaceCard : colors.background,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
-    padding: 20,
-    gap: 12,
-  },
-  ownershipTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: kua ? kua.onSurface : colors.text,
-  },
-  ownershipBody: {
-    fontSize: 15,
-    color: kua ? kua.onSurface : colors.text,
-    lineHeight: 22,
-  },
-  ownershipHint: {
-    fontSize: 13,
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    lineHeight: 18,
-    marginTop: -6,
   },
 });

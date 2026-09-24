@@ -4,6 +4,7 @@ import { Button } from './UI';
 import { useThemedStyles } from '../theme/ThemeContext';
 import { LightColors } from '../theme/colors';
 import { buildRoutineShareSummary, shareRoutineImage } from '../lib/interoperability/routineShare';
+import { MODAL_SUPPORTED_ORIENTATIONS } from './adaptiveLayout';
 
 // A timed hold declares seconds, not reps. Collapse an equal lo/hi to a single
 // value so `2x60s` reads "60s hold", not "60-60s hold".
@@ -78,7 +79,7 @@ export function RoutineShareModal({ title, rawText, onClose, shareImage = shareR
     }
   };
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={close}>
+    <Modal visible transparent supportedOrientations={MODAL_SUPPORTED_ORIENTATIONS} animationType="fade" onRequestClose={close}>
       <View style={styles.overlay}>
         <View style={styles.dialog} accessibilityViewIsModal>
           <Text style={styles.dialogTitle} accessibilityRole="header">Share as Image</Text>

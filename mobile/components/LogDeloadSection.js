@@ -6,6 +6,7 @@ import { Card, Button, SectionTitle } from './UI';
 import { useTheme, useThemedStyles, useKuaStyle } from '../theme/ThemeContext';
 import { localDate, DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
+import { MODAL_SUPPORTED_ORIENTATIONS, dialogWidthStyle } from './adaptiveLayout';
 
 export function LogDeloadSection({
   deloadNote,
@@ -312,6 +313,7 @@ export function LogDeloadSection({
       <Modal
         visible={showDeloadOrdinalPrompt}
         transparent
+        supportedOrientations={MODAL_SUPPORTED_ORIENTATIONS}
         animationType="fade"
         onRequestClose={() => setShowDeloadOrdinalPrompt(false)}
       >
@@ -489,6 +491,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingHorizontal: 24,
   },
   ordinalSheet: {
+    ...dialogWidthStyle,
     backgroundColor: kua ? kua.surfaceCard : colors.card,
     borderRadius: 20,
     borderWidth: 1,

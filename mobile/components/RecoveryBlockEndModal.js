@@ -27,6 +27,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useTheme } from '../theme/ThemeContext';
 import { RECOVERY_INCLUSION_HELP } from './RecoveryInclusionToggle';
 import { GEOMETRY, SPACING } from '../theme/spacing';
+import { MODAL_SUPPORTED_ORIENTATIONS, dialogWidthStyle } from './adaptiveLayout';
 
 export function RecoveryBlockEndModal({
   visible,
@@ -111,7 +112,7 @@ export function RecoveryBlockEndModal({
   };
 
   return (
-    <Modal visible={visible} transparent animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={onClose}>
+    <Modal visible={visible} transparent supportedOrientations={MODAL_SUPPORTED_ORIENTATIONS} animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={onClose}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       <KeyboardAvoidingView
         style={styles.overlay}
@@ -250,6 +251,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     paddingHorizontal: SPACING.margin,
   },
   sheet: {
+    ...dialogWidthStyle,
     backgroundColor: kua.surfaceCard,
     borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,

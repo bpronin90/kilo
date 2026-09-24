@@ -2,6 +2,7 @@ import React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useThemedStyles } from '../theme/ThemeContext';
 import { WorkoutSyntaxReference } from './WorkoutSyntaxReference';
+import { MODAL_SUPPORTED_ORIENTATIONS } from './adaptiveLayout';
 
 // Editor-reachable workout syntax reference (#584, follow-up to #573).
 // Follows the PlateCalculatorModal overlay/sheet/close pattern: transparent
@@ -14,7 +15,7 @@ export function WorkoutSyntaxModal({ visible, onClose }) {
   if (!visible) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent supportedOrientations={MODAL_SUPPORTED_ORIENTATIONS} animationType="fade" onRequestClose={onClose}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       <View style={styles.overlay} pointerEvents="box-none">
         <View style={styles.sheet} onStartShouldSetResponder={() => true}>

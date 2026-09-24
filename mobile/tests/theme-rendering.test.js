@@ -1075,14 +1075,14 @@ describe('no production surface can hold a stale palette', () => {
     //   than as a top-level constant, which keeps the values co-located with the
     //   overlay they style.
     expect(leaks).toEqual([
-      // App shell (#1139) and web alert host use the same KUA-spec neutral
-      // scrim as the modals below — black at 0.5/0.7 opacity, which is not a
-      // palette token — inside their own createStyles factories.
-      "App.js:484 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
-      "components/RecoveryBlockEndModal.js:243 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
-      "components/RecoveryBlockStartModal.js:326 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
-      "components/RecoveryBlockWeekModal.js:209 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
-      "components/SessionCheckInModal.js:374 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
+      // The shell's ownership prompt (#1139, extracted from App.js in #1126)
+      // and web alert host use the same KUA-spec neutral scrim as the modals
+      // below — black at 0.5/0.7 opacity, which is not a palette token.
+      "components/OwnershipPrompt.js:12 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
+      "components/RecoveryBlockEndModal.js:244 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
+      "components/RecoveryBlockStartModal.js:327 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
+      "components/RecoveryBlockWeekModal.js:210 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
+      "components/SessionCheckInModal.js:375 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       "components/ThemePreviewControl.js:70 '#FF5C00'",
       "components/WebAlertHost.js:77 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       'screens/HomeScreen.js:44 "#FF5C00"',

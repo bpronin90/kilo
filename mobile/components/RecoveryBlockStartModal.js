@@ -24,6 +24,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { createInputStyle } from './UI';
 import { MAX_RECOVERY_REASON_LENGTH } from '../lib/data/recoveryBlocks';
 import { GEOMETRY, SPACING } from '../theme/spacing';
+import { MODAL_SUPPORTED_ORIENTATIONS, dialogWidthStyle } from './adaptiveLayout';
 
 export function RecoveryBlockStartModal({
   visible,
@@ -152,7 +153,7 @@ export function RecoveryBlockStartModal({
   };
 
   return (
-    <Modal visible={visible} transparent animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={onClose}>
+    <Modal visible={visible} transparent supportedOrientations={MODAL_SUPPORTED_ORIENTATIONS} animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={onClose}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       <KeyboardAvoidingView
         style={styles.overlay}
@@ -333,6 +334,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     paddingHorizontal: SPACING.margin,
   },
   sheet: {
+    ...dialogWidthStyle,
     backgroundColor: kua.surfaceCard,
     borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,

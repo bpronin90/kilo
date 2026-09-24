@@ -1,22 +1,19 @@
 import React, { useContext, createContext } from 'react';
-import { ScrollView, StyleSheet, Text, View, Platform, useWindowDimensions } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useThemedStyles } from '../theme/ThemeContext';
 import { Button } from './UI';
 import { TabBarLayoutContext, TAB_BAR_VISUAL_GAP } from './TabBarLayout';
+import { centeredColumnInsets } from './adaptiveLayout';
 import pkg from '../package.json';
 
 export const ScrollContext = createContext({ onScroll: () => {} });
 
-// Desktop web readability cap: on wide viewports the single-column mobile
-// layout stretches uncomfortably, so center the content within a fixed max
-// width. Native (phone) layout is unaffected because the viewport is narrower
-// than the cap.
-const DESKTOP_CONTENT_MAX_WIDTH = 640;
-
 /**
  * Shared Shell Contract:
- * - Horizontal padding: 16px (standard boundary for all screen content)
+ * - Horizontal padding: 16px plus the side safe-area inset; on windows wider
+ *   than the content cap (tablet, landscape, desktop web) the padding grows so
+ *   the column stays centered at CONTENT_MAX_WIDTH (#1126)
  * - Vertical gap: 16px (consistent spacing between top-level components/cards)
  * - Bottom padding: measured TabBar height + 24px visual gap + bottom safe
  *   area inset (ensures content clears the absolute TabBar, whatever its
@@ -27,14 +24,12 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
   const styles = useThemedStyles(createStyles);
   const version = `v${pkg.version}`;
   const { onScroll: contextOnScroll } = useContext(ScrollContext);
-  const { bottom: bottomInset = 0 } = useContext(SafeAreaInsetsContext) || {};
+  const { bottom: bottomInset = 0, left: leftInset = 0, right: rightInset = 0 } = useContext(SafeAreaInsetsContext) || {};
   const { tabBarHeight } = useContext(TabBarLayoutContext);
   const bottomClearance = tabBarHeight + TAB_BAR_VISUAL_GAP + bottomInset;
   const { width: windowWidth } = useWindowDimensions();
-  const isWideWeb = Platform.OS === 'web' && windowWidth > DESKTOP_CONTENT_MAX_WIDTH;
-  const wideContentStyle = isWideWeb
-    ? { maxWidth: DESKTOP_CONTENT_MAX_WIDTH, width: '100%', alignSelf: 'center' }
-    : null;
+  const column = centeredColumnInsets(windowWidth, { left: leftInset, right: rightInset });
+  const columnPadding = { paddingLeft: column.left, paddingRight: column.right };
 
   const handleScroll = (e) => {
     if (contextOnScroll) contextOnScroll(e);
@@ -44,8 +39,8 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
   return (
     <View style={[styles.outerContainer, style]}>
       {onBack && (
-        <View style={styles.stickyHeader}>
-          <View style={[styles.stickyHeaderInner, wideContentStyle]}>
+        <View style={[styles.stickyHeader, columnPadding]}>
+          <View style={styles.stickyHeaderInner}>
             <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
             {headerRight}
           </View>
@@ -54,7 +49,7 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
       <ScrollView
         ref={ref}
         style={styles.scroll}
-        contentContainerStyle={[styles.container, { paddingBottom: bottomClearance }, wideContentStyle]}
+        contentContainerStyle={[styles.container, { paddingBottom: bottomClearance }, columnPadding]}
         keyboardShouldPersistTaps={keyboardShouldPersistTaps}
         onScroll={handleScroll}
         scrollEventThrottle={16}
