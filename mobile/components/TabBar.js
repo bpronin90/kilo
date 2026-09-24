@@ -1,9 +1,10 @@
 import React, { useContext } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useKuaStyle, useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { TAB_BAR_VISUAL_GAP } from './TabBarLayout';
 import { Icon } from './Icon';
+import { centeredColumnInsets } from './adaptiveLayout';
 
 // The floating bottom navigation is always fully opaque (#1026). It previously
 // animated itself down to 25% opacity two seconds after mount and again after
@@ -18,7 +19,12 @@ export function TabBar({ tabs, activeTab, onTabPress, onHeightChange }) {
   const styles = useThemedStyles(createStyles);
   const { colors } = useTheme();
   const kua = useKuaStyle();
-  const { bottom: bottomInset = 0 } = useContext(SafeAreaInsetsContext) || {};
+  const { bottom: bottomInset = 0, left: leftInset = 0, right: rightInset = 0 } = useContext(SafeAreaInsetsContext) || {};
+  // Wide windows (#1126): the bar aligns with ScreenShell's centered content
+  // column and clears side insets instead of spanning a tablet or landscape
+  // display. On phone portrait this resolves to the original 16/16 offsets.
+  const { width: windowWidth } = useWindowDimensions();
+  const column = centeredColumnInsets(windowWidth, { left: leftInset, right: rightInset });
 
   // Active/inactive tint from the selected court palette, falling back to the
   // legacy palette outside the production KUA gate (#1139). The active tab keeps
@@ -35,7 +41,7 @@ export function TabBar({ tabs, activeTab, onTabPress, onHeightChange }) {
 
   return (
     <View
-      style={[styles.container, { bottom: TAB_BAR_VISUAL_GAP + bottomInset }]}
+      style={[styles.container, { bottom: TAB_BAR_VISUAL_GAP + bottomInset, left: column.left, right: column.right }]}
       onLayout={handleLayout}
       accessibilityRole="tablist"
     >
@@ -66,8 +72,6 @@ export function TabBar({ tabs, activeTab, onTabPress, onHeightChange }) {
 const createStyles = (colors, kua = null) => StyleSheet.create({
   container: {
     position: 'absolute',
-    left: 16,
-    right: 16,
     flexDirection: 'row',
     gap: 8,
     backgroundColor: kua ? kua.tabBarBg : colors.card,

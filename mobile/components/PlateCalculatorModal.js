@@ -19,6 +19,7 @@ import {
 } from '../lib/plateMath';
 import { lbToKg } from '../lib/units';
 import { loadPlateCalculatorProfile, savePlateCalculatorProfile } from '../storage/entries';
+import { MODAL_SUPPORTED_ORIENTATIONS } from './adaptiveLayout';
 
 // Lightweight sheet showing the per-side plate loading for a tapped weight,
 // against a persisted, editable lb/kg equipment profile (#577). Follows the
@@ -140,7 +141,7 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent supportedOrientations={MODAL_SUPPORTED_ORIENTATIONS} animationType="fade" onRequestClose={onClose}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       <KeyboardAvoidingView
         style={styles.overlay}
@@ -181,7 +182,7 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
           </View>
 
           {!editing && (
-            <View style={styles.body}>
+            <ScrollView style={styles.viewScroll} contentContainerStyle={styles.body}>
               {!load.valid && (
                 <Text style={styles.message}>No plate math for this weight.</Text>
               )}
@@ -228,7 +229,7 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
                   Edit {unit} bar &amp; inventory
                 </Text>
               </Pressable>
-            </View>
+            </ScrollView>
           )}
 
           {editing && (
@@ -293,6 +294,9 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: colors.overlay,
     justifyContent: 'center',
     paddingHorizontal: 16,
+    // Short landscape windows (#1126): keep the sheet off the edges and let
+    // its body scroll rather than clipping the plate breakdown.
+    paddingVertical: 16,
   },
   sheet: {
     backgroundColor: kua ? kua.surfaceCard : colors.card,
@@ -300,8 +304,12 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     maxWidth: 360,
+    maxHeight: '100%',
     width: '100%',
     alignSelf: 'center',
+  },
+  viewScroll: {
+    flexShrink: 1,
   },
   header: {
     flexDirection: 'row',
@@ -360,6 +368,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   editScroll: {
     maxHeight: '70%',
+    flexShrink: 1,
   },
   row: {
     flexDirection: 'row',

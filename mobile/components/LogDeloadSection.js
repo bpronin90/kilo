@@ -1,11 +1,12 @@
 import React, { useState, useRef } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Alert } from '../lib/platformAlert';
 import { Card, Button, SectionTitle } from './UI';
 import { useTheme, useThemedStyles, useKuaStyle } from '../theme/ThemeContext';
 import { localDate, DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
+import { MODAL_SUPPORTED_ORIENTATIONS, dialogWidthStyle } from './adaptiveLayout';
 
 export function LogDeloadSection({
   deloadNote,
@@ -312,47 +313,59 @@ export function LogDeloadSection({
       <Modal
         visible={showDeloadOrdinalPrompt}
         transparent
+        supportedOrientations={MODAL_SUPPORTED_ORIENTATIONS}
         animationType="fade"
         onRequestClose={() => setShowDeloadOrdinalPrompt(false)}
       >
-        <View style={styles.ordinalOverlay}>
-          <View style={styles.ordinalSheet}>
-            <Text style={styles.ordinalTitle}>Which session number is this deload?</Text>
-            <Text style={styles.ordinalSubtitle}>
-              Prefilled from your current note. Edit if your real session count differs.
-            </Text>
-            <TextInput
-              style={styles.ordinalInput}
-              value={deloadOrdinalInput}
-              onChangeText={setDeloadOrdinalInput}
-              keyboardType="number-pad"
-              selectTextOnFocus
-              autoFocus
-              autoCorrect={false}
-              autoCapitalize="none"
-              spellCheck={false}
-              accessibilityLabel="Deload session number"
-            />
-            <View style={styles.ordinalButtons}>
-              <Pressable
-                style={styles.ordinalCancel}
-                onPress={() => setShowDeloadOrdinalPrompt(false)}
-                accessibilityRole="button"
-                accessibilityLabel="Cancel"
-              >
-                <Text style={styles.ordinalCancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={styles.ordinalConfirm}
-                onPress={handleConfirmDeloadOrdinal}
-                accessibilityRole="button"
-                accessibilityLabel="Confirm deload complete"
-              >
-                <Text style={styles.ordinalConfirmText}>Deload complete</Text>
-              </Pressable>
+        {/* The number pad opens on mount; avoid it and let the sheet scroll so
+            both actions stay reachable in short landscape windows (#1126). */}
+        <KeyboardAvoidingView
+          style={styles.ordinalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <ScrollView
+            style={styles.ordinalScroll}
+            contentContainerStyle={styles.ordinalScrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.ordinalSheet}>
+              <Text style={styles.ordinalTitle}>Which session number is this deload?</Text>
+              <Text style={styles.ordinalSubtitle}>
+                Prefilled from your current note. Edit if your real session count differs.
+              </Text>
+              <TextInput
+                style={styles.ordinalInput}
+                value={deloadOrdinalInput}
+                onChangeText={setDeloadOrdinalInput}
+                keyboardType="number-pad"
+                selectTextOnFocus
+                autoFocus
+                autoCorrect={false}
+                autoCapitalize="none"
+                spellCheck={false}
+                accessibilityLabel="Deload session number"
+              />
+              <View style={styles.ordinalButtons}>
+                <Pressable
+                  style={styles.ordinalCancel}
+                  onPress={() => setShowDeloadOrdinalPrompt(false)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel"
+                >
+                  <Text style={styles.ordinalCancelText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.ordinalConfirm}
+                  onPress={handleConfirmDeloadOrdinal}
+                  accessibilityRole="button"
+                  accessibilityLabel="Confirm deload complete"
+                >
+                  <Text style={styles.ordinalConfirmText}>Deload complete</Text>
+                </Pressable>
+              </View>
             </View>
-          </View>
-        </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   );
@@ -485,10 +498,18 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   ordinalOverlay: {
     flex: 1,
     backgroundColor: colors.overlay,
+  },
+  ordinalScroll: {
+    flex: 1,
+  },
+  ordinalScrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 24,
+    paddingVertical: 16,
   },
   ordinalSheet: {
+    ...dialogWidthStyle,
     backgroundColor: kua ? kua.surfaceCard : colors.card,
     borderRadius: 20,
     borderWidth: 1,

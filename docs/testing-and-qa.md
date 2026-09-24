@@ -748,6 +748,30 @@ For each combination, also verify:
 - First and last scroll positions do not clip behind the tab bar or top status bar.
 - System-bar icon appearance (light glyphs on dark chrome and vice versa) remains legible.
 
+## Large-Screen and Resizing Matrix (#1126)
+
+`MainActivity` is no longer portrait-locked and declares
+`smallestScreenSize` in `configChanges` (via `mobile/app.config.js`), so
+rotation, unfold, and split-screen resizes re-lay out the mounted React tree
+instead of recreating the activity. `mobile/tests/adaptive-layout.test.js`
+covers the column/tab-bar geometry, side-inset clearance, draft preservation
+across simulated resizes, and the `Modal` orientation contract.
+
+Optional manual matrix after changes to `ScreenShell.js`, `TabBar.js`,
+`components/adaptiveLayout.js`, or a dialog layout (not an acceptance gate):
+
+| Window | Expect |
+|--------|--------|
+| Phone portrait | geometry identical to pre-#1126 |
+| Phone landscape | primary actions reachable by scrolling; cut-out side cleared |
+| Tablet portrait / landscape | 640px centered column, tab bar aligned with it |
+| Unfolded foldable, split-screen, freeform resize | same as tablet at ≥640px; phone layout below |
+
+Across each transition, with a Log draft, an active workout/rest timer, a
+pushed screen (Settings → Account), and an open dialog: the draft, active
+session, navigation depth, and dialog all survive. Only the rest-timer preset
+menu (anchored to a measured position) closes.
+
 ---
 
 ## Installable Preview Smoke Checklist

@@ -157,8 +157,23 @@ the changelog and archived roadmaps.
 - Long single-line values (dates, notes, latest-summary lines) use
   `numberOfLines={1}` with the row grid absorbing width; never let one long
   value push the layout wider than the shell.
-- The desktop-web build caps content width (640px, centered) in `ScreenShell`;
-  do not defeat that cap with fixed pixel widths on panels.
+- Every platform caps content width at 640px, centered, in `ScreenShell`
+  (`CONTENT_MAX_WIDTH` in `components/adaptiveLayout.js`, #1126). The app is not
+  orientation-locked: tablets, unfolded foldables, landscape, split-screen, and
+  resizable windows all use the same single column. Do not defeat that cap with
+  fixed pixel widths on panels, and do not branch layout on device type — read
+  `useWindowDimensions()` so a live resize re-lays out in place.
+- `TabBar` uses the same `centeredColumnInsets()` offsets as `ScreenShell`, so
+  the bar and content column stay aligned on wide windows. Both add the left
+  and right safe-area insets (landscape cut-out or side navigation bar) to the
+  16px gutter. Phone portrait resolves to the original 16/16 offsets.
+- Centered dialogs and sheets spread `dialogWidthStyle` (560px cap) and every
+  `Modal` passes `supportedOrientations={MODAL_SUPPORTED_ORIENTATIONS}`; a
+  source-scan test in `adaptive-layout.test.js` enforces the latter. Dialog
+  bodies that can outgrow a short landscape window must scroll so every action
+  stays reachable.
+- Popovers anchored to a measured window position close on a window-size change
+  rather than floating at a stale offset; nothing else is dismissed by a resize.
 - Native bottom navigation uses the runtime bottom safe-area inset without
   device checks. Add that inset once to both the tab bar's 4px visual gap and
   `ScreenShell`'s content clearance (measured `TabBar` height + 4px gap +

@@ -15,6 +15,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useTheme } from '../theme/ThemeContext';
 import { createInputStyle } from './UI';
 import { GEOMETRY, SPACING } from '../theme/spacing';
+import { MODAL_SUPPORTED_ORIENTATIONS, dialogWidthStyle } from './adaptiveLayout';
 
 const REASON_GROUPS = [
   {
@@ -166,7 +167,7 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
   const title = deriveTitle(checkInData.detectors, checkInData.flagged);
 
   return (
-    <Modal visible={visible} transparent animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={onClose}>
+    <Modal visible={visible} transparent supportedOrientations={MODAL_SUPPORTED_ORIENTATIONS} animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={onClose}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       <KeyboardAvoidingView
         style={[styles.overlay, tier === 'rough' && styles.overlayTop]}
@@ -386,6 +387,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     paddingBottom: Platform.OS === 'ios' ? 34 : 16,
   },
   sheet: {
+    ...dialogWidthStyle,
     backgroundColor: kua.surfaceCard,
     borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,

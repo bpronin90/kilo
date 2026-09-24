@@ -6,6 +6,14 @@ import { ScreenShell } from '../components/ScreenShell';
 import { TabBarLayoutContext, TAB_BAR_VISUAL_GAP, TAB_BAR_HEIGHT_FALLBACK } from '../components/TabBarLayout';
 import { TAB_ICON_MAP } from '../components/Icon';
 
+// Phone portrait window: jest-react-native's default 750dp width is past the
+// 640dp content cap, which would center the bar (#1126) instead of testing the
+// phone gutter this suite pins.
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => ({ width: 411, height: 891, scale: 2, fontScale: 1 }),
+}));
+
 jest.mock('@expo/vector-icons/MaterialIcons', () => {
   const React = require('react');
   const { View } = require('react-native');

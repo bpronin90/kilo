@@ -1,8 +1,9 @@
 import React from 'react';
-import { AccessibilityInfo, Dimensions, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Dimensions, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useTheme } from '../theme/ThemeContext';
 import { GEOMETRY } from '../theme/spacing';
+import { MODAL_SUPPORTED_ORIENTATIONS } from './adaptiveLayout';
 
 function formatCountdown(ms) {
   const totalSec = Math.ceil(ms / 1000);
@@ -77,6 +78,14 @@ export function RestTimerBanner({
     if (!idleStart) setExpanded(false);
   }, [idleStart]);
 
+  // The preset menu is anchored to the toggle's measured window position, which
+  // a rotation or window resize invalidates (#1126). Close it instead of leaving
+  // it floating at a stale offset; no timer state is lost, only the open menu.
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  React.useEffect(() => {
+    setExpanded(false);
+  }, [windowWidth, windowHeight]);
+
   // The running pill starts collapsed every time a new timer starts.
   React.useEffect(() => {
     if (!isRunning) setActionsShown(false);
@@ -115,6 +124,7 @@ export function RestTimerBanner({
         <Modal
           visible={expanded}
           transparent
+          supportedOrientations={MODAL_SUPPORTED_ORIENTATIONS}
           animationType={reduceMotion ? 'none' : 'fade'}
           onRequestClose={() => setExpanded(false)}
         >
