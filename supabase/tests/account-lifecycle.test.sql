@@ -22,7 +22,7 @@
 
 begin;
 
-select plan(29);
+select plan(34);
 
 \set user_a '33333333-3333-3333-3333-333333333333'
 \set user_b '44444444-4444-4444-4444-444444444444'
@@ -176,6 +176,42 @@ select is((select count(*)::int from kilo.weight_entries where id = 'lc_wb'),   
 select is((select count(*)::int from kilo.workout_notes  where id = 'lc_nb'),   1, 'user B workout_notes untouched after user A ops');
 
 select pg_temp.logout();
+
+-- ---------------------------------------------------------------------------
+-- Android Restore Credentials revocation ordering (issue #1157).
+--
+-- account-delete revokes restore credentials FIRST, as its own committed
+-- step, and every later step can fail. The savepoint below plays the part of a
+-- later step that fails and rolls back: the revocation must survive it, and the
+-- credential must stay ineligible until the auth user is finally deleted.
+-- ---------------------------------------------------------------------------
+select isnt(
+  kilo.restore_register_credential(:'user_b'::uuid, rpad('lc-cred-b', 20, 'b'), rpad('lc-key-b', 20, 'k'), 0),
+  null,
+  'user B has an active restore credential before deletion'
+);
+select is(kilo.restore_revoke_user(:'user_b'::uuid), 1, 'account deletion step 0 revokes the restore credential');
+
+savepoint later_deletion_step;
+delete from kilo.user_profile where user_id = :'user_b'::uuid;
+rollback to savepoint later_deletion_step;
+
+select ok(
+  (select revoked_at is not null from kilo.restore_credentials where credential_id = rpad('lc-cred-b', 20, 'b')),
+  'a failed later deletion step does not restore the revocation'
+);
+select is(
+  (select count(*)::int from kilo.restore_lookup_credential(rpad('lc-cred-b', 20, 'b'))),
+  0,
+  'the credential stays ineligible after the failed deletion'
+);
+
+delete from auth.users where id = :'user_b'::uuid;
+select is(
+  (select count(*)::int from kilo.restore_credentials where user_id = :'user_b'::uuid),
+  0,
+  'deleting the auth user last removes the revoked credential'
+);
 
 select * from finish();
 

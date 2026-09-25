@@ -97,3 +97,5 @@ jobs:
           supabase/functions/_shared/security-event.test.ts
           supabase/functions/_shared/rate-limit.test.ts
           supabase/functions/_shared/health-data-scope.test.ts
+          supabase/functions/_shared/android-restore-credentials.test.ts
+          supabase/functions/android-restore-credentials/handler.test.ts

@@ -77,8 +77,11 @@ server-side, and `supabase/tests/security-events.test.sql` asserts them.
 ## Event catalog
 
 Written by `supabase/functions/_shared/security-event.ts` from the
-`account-export`, `account-delete`, and `health-data-delete` Edge Functions.
-Severity is assigned by the server.
+`account-export`, `account-delete`, `health-data-delete`, and
+`android-restore-credentials` Edge Functions. Severity is assigned by the
+server. The latest catalog definition is migration
+`20260925120000_android_restore_credentials.sql`, which extended the original
+`20260908120000_security_event_log.sql`.
 
 | Event | Severity | Recorded when |
 |-------|----------|---------------|
@@ -90,10 +93,16 @@ Severity is assigned by the server.
 | `account.delete_failed` | warning | An account deletion aborted — missing evidence key, database failure, or health rows still present |
 | `health.purge_failed` | warning | A consent-withdrawal purge job failed or could not complete |
 | `server.error` | warning | An unexpected server-side failure on a privileged endpoint |
+| `restore.assertion_rejected` | warning | An Android restore assertion failed: malformed, replayed or expired challenge, unknown or revoked credential, or a signature/origin/RP ID failure. The client sees one identical failure; the reason code here says which |
+| `restore.session_failed` | warning | A restore assertion verified but no session was issued: the key was revoked concurrently, the account was ineligible (deleted, banned, unconfirmed), or GoTrue refused the exchange |
 | `auth.token_missing` | info | A request arrived with no `Authorization` header |
 | `account.export_succeeded` | info | A full copy of one account's data was returned |
 | `account.delete_succeeded` | info | An account and its data were erased |
 | `health.purge_succeeded` | info | A consent-withdrawal purge completed and the database confirmed the gated set is empty |
+| `restore.enrolled` | info | An Android restore credential was registered, replacing the account's previous one |
+| `restore.assertion_accepted` | info | A restore assertion passed signature, challenge, origin, and RP ID verification |
+| `restore.session_issued` | info | A session was issued to the verified key owner through the server-side magic-link exchange |
+| `restore.revoked` | info | Restore credentials were revoked on sign-out (`android-restore-credentials`) or as the first step of account deletion (`account-delete`) |
 
 All three `ratelimit.*` events are recorded by
 `supabase/functions/_shared/rate-limit.ts`, never by the endpoints. Only the
@@ -205,15 +214,17 @@ It alerts when any of these is true:
 
 - **any** `critical` event occurred in the window — there is no rate at which a
   fail-closed limiter or an authorization breach is acceptable;
-- `auth.token_missing` + `auth.token_rejected` exceeds
-  `KILO_SECURITY_MAX_AUTH_FAILURES` (default 100);
-- `auth.token_rejected` came from more than `KILO_SECURITY_MAX_AUTH_SUBJECTS`
-  distinct subjects (default 20) — the shape test rather than the volume test:
+- `auth.token_missing` + `auth.token_rejected` + `restore.assertion_rejected`
+  exceeds `KILO_SECURITY_MAX_AUTH_FAILURES` (default 100) — a rejected restore
+  assertion is a failed sign-in with a key;
+- `auth.token_rejected` or `restore.assertion_rejected` came from more than
+  `KILO_SECURITY_MAX_AUTH_SUBJECTS` distinct subjects (default 20) — the shape test rather than the volume test:
   300 rejections from one subject is a broken client, 300 from 280 subjects is
   credential stuffing, and volume alone cannot tell them apart;
 - `ratelimit.ip_blocked` + `ratelimit.user_blocked` exceeds
   `KILO_SECURITY_MAX_RATE_LIMIT_BLOCKS` (default 200);
-- `server.error` + `account.delete_failed` + `health.purge_failed` exceeds
+- `server.error` + `account.delete_failed` + `health.purge_failed` +
+  `restore.session_failed` exceeds
   `KILO_SECURITY_MAX_SERVER_ERRORS` (default 10) — deliberately low, because
   these are failures of operations a user asked for;
 - the `security-event-purge` cron entry is missing or inactive, or rows have

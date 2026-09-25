@@ -34,3 +34,12 @@ verify_jwt = false
 # before the token is verified.
 [functions.health-data-delete]
 verify_jwt = false
+
+# android-restore-credentials (issue #1157) has two routes a signed-out device
+# must reach before it has any session (restore-options, restore-verification),
+# so gateway JWT verification would reject exactly the requests it exists for.
+# Its three authenticated routes (enrollment-options, registration-verification,
+# revoke) validate the bearer token themselves before acting, the same model as
+# the functions above.
+[functions.android-restore-credentials]
+verify_jwt = false

@@ -28,7 +28,8 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.108.
 type SecurityEventClient = SupabaseClient<any, any, any, any, any>
 
 // The catalog. Must stay identical to the CHECK constraint on
-// kilo.security_events.event_name; the database raises on anything else, which
+// kilo.security_events.event_name (latest definition: migration
+// 20260925120000_android_restore_credentials.sql); the database raises on anything else, which
 // is deliberate -- an event the catalog does not know is one nothing alerts on.
 export const SECURITY_EVENT_NAMES = [
   'auth.token_missing',
@@ -43,12 +44,19 @@ export const SECURITY_EVENT_NAMES = [
   'health.purge_succeeded',
   'health.purge_failed',
   'server.error',
+  'restore.enrolled',
+  'restore.assertion_accepted',
+  'restore.assertion_rejected',
+  'restore.session_issued',
+  'restore.session_failed',
+  'restore.revoked',
 ] as const
 
 export const SECURITY_EVENT_SOURCES = [
   'account-export',
   'account-delete',
   'health-data-delete',
+  'android-restore-credentials',
 ] as const
 
 export const SECURITY_EVENT_OUTCOMES = ['allowed', 'denied', 'succeeded', 'failed'] as const
@@ -64,6 +72,13 @@ export const SECURITY_EVENT_REASONS = [
   'incomplete',
   'subject_mismatch',
   'unknown',
+  'malformed',
+  'config_missing',
+  'challenge_invalid',
+  'credential_inactive',
+  'verification_failed',
+  'user_ineligible',
+  'issuer_error',
 ] as const
 
 export type SecurityEventName = typeof SECURITY_EVENT_NAMES[number]

@@ -7,15 +7,16 @@ set -euo pipefail
 # checkout without first running `supabase link`. The remote target is
 # therefore reproducible from tracked files alone.
 #
-# verify_jwt=false for all three functions is pinned in supabase/config.toml
-# ([functions.account-export], [functions.account-delete], and
-# [functions.health-data-delete]); the CLI reads that config during deploy
-# so the setting cannot silently regress to the default of true.
+# verify_jwt=false for all four functions is pinned in supabase/config.toml
+# ([functions.account-export], [functions.account-delete],
+# [functions.health-data-delete], and [functions.android-restore-credentials]);
+# the CLI reads that config during deploy so the setting cannot silently
+# regress to the default of true.
 #
 # Only the Kilo-owned functions listed below are deployed by this script.
 
 readonly PROJECT_REF="ogzhnscdqcdrhfqcobuv"
-readonly FUNCTIONS=(account-export account-delete health-data-delete)
+readonly FUNCTIONS=(account-export account-delete health-data-delete android-restore-credentials)
 
 die() {
   echo "ERROR: $*" >&2

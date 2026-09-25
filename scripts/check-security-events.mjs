@@ -82,11 +82,14 @@ const CONNECTION_ENV = 'SUPABASE_SECURITY_MONITOR_URL';
 //                         of jitter tolerance; consecutive runs re-report an
 //                         event in the overlap, which is the cheap direction to
 //                         be wrong in.
-//   AUTH_FAILURES    100  auth.token_missing + auth.token_rejected in the
-//                         window. Kilo's real traffic produces single digits;
+//   AUTH_FAILURES    100  auth.token_missing + auth.token_rejected +
+//                         restore.assertion_rejected in the window. A rejected
+//                         Android restore assertion is a failed sign-in with a
+//                         key, so it counts the same as a rejected token. Kilo's real traffic produces single digits;
 //                         100 is comfortably above a flapping client and far
 //                         below a serious attempt.
-//   AUTH_SUBJECTS     20  DISTINCT subjects on auth.token_rejected. This is the
+//   AUTH_SUBJECTS     20  DISTINCT subjects on auth.token_rejected or
+//                         restore.assertion_rejected. This is the
 //                         shape test, not the volume test: 300 rejections from
 //                         one subject is a broken client, and 300 from 280
 //                         subjects is credential stuffing. Volume alone cannot
@@ -96,7 +99,7 @@ const CONNECTION_ENV = 'SUPABASE_SECURITY_MONITOR_URL';
 //                         limiter working as designed is not itself a finding;
 //                         a sustained rate of it is abuse worth looking at.
 //   SERVER_ERRORS     10  server.error + account.delete_failed +
-//                         health.purge_failed. These are failures of operations
+//                         health.purge_failed + restore.session_failed. These are failures of operations
 //                         the user asked for, so the threshold is deliberately
 //                         low.
 const DEFAULTS = {
@@ -111,9 +114,10 @@ const DEFAULTS = {
 // as a failed sweep. The sweep runs daily, so anything under two days is noise.
 const RETENTION_GRACE_DAYS = 2;
 
-const AUTH_FAILURE_EVENTS = ['auth.token_missing', 'auth.token_rejected'];
+const AUTH_FAILURE_EVENTS = ['auth.token_missing', 'auth.token_rejected', 'restore.assertion_rejected'];
+const AUTH_SPREAD_EVENTS = ['auth.token_rejected', 'restore.assertion_rejected'];
 const RATE_LIMIT_EVENTS = ['ratelimit.ip_blocked', 'ratelimit.user_blocked'];
-const SERVER_FAILURE_EVENTS = ['server.error', 'account.delete_failed', 'health.purge_failed'];
+const SERVER_FAILURE_EVENTS = ['server.error', 'account.delete_failed', 'health.purge_failed', 'restore.session_failed'];
 
 function abort(code, message, detail) {
   emit('error', `security-events: ${message}`);
@@ -319,12 +323,12 @@ export function buildAlert(snapshot, thresholds, projectRef) {
     });
   }
 
-  const authSubjects = maxSubjectsWhere(events, ['auth.token_rejected']);
+  const authSubjects = maxSubjectsWhere(events, AUTH_SPREAD_EVENTS);
   if (authSubjects > thresholds.maxAuthSubjects) {
     findings.push({
       kind: 'auth-failure-spread',
       detail:
-        `rejected tokens from ${authSubjects} distinct subjects ` +
+        `rejected tokens or restore assertions from ${authSubjects} distinct subjects ` +
         `(threshold ${thresholds.maxAuthSubjects}) — distributed, not a single client`,
     });
   }

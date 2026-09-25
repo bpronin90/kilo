@@ -19,7 +19,7 @@
 
 begin;
 
-select plan(55);
+select plan(58);
 
 -- ---------------------------------------------------------------------------
 -- Catalog: an unknown value RAISES rather than recording something silent
@@ -81,6 +81,30 @@ select is(
   kilo.security_event_severity('not.a.real.event'),
   null,
   'an uncatalogued name has no severity, so its insert cannot succeed'
+);
+
+-- Android Restore Credentials catalog extension (#1157, migration
+-- 20260925120000). Every restore event has a server-derived severity, the
+-- two failure events are warnings, and the new source can write.
+select is(
+  (select count(*)::int from unnest(array[
+    'restore.enrolled', 'restore.assertion_accepted', 'restore.assertion_rejected',
+    'restore.session_issued', 'restore.session_failed', 'restore.revoked'
+  ]) as e(name) where kilo.security_event_severity(e.name) is null),
+  0,
+  'every restore event has a server-derived severity'
+);
+
+select is(
+  kilo.security_event_severity('restore.assertion_rejected') || ',' || kilo.security_event_severity('restore.session_failed'),
+  'warning,warning',
+  'restore failures are warnings'
+);
+
+select ok(
+  kilo.record_security_event('restore.revoked', 'android-restore-credentials', 'succeeded', 'user',
+    '11111111-1111-4111-8111-111111111111', '{"count": 1, "reason": "challenge_invalid"}'::jsonb),
+  'the android-restore-credentials source can record an event'
 );
 
 -- ---------------------------------------------------------------------------
