@@ -78,6 +78,18 @@ describe('android-restore-credentials', () => {
     expect(result.credentialJson).toBeUndefined();
   });
 
+  it('passes through an Android provider that does not support Restore Credentials as unsupported', async () => {
+    nativeMock.__setResult('createRestoreCredential', {
+      status: 'unsupported',
+      message: 'Restore Credentials is not supported by the provider.',
+    });
+
+    const result = await createRestoreCredential('{"request":"payload"}');
+
+    expect(result.status).toBe('unsupported');
+    expect(result.responseJson).toBeUndefined();
+  });
+
   it('surfaces a cancellation result distinct from failure', async () => {
     nativeMock.__setResult('getRestoreCredential', { status: 'cancelled' });
 
