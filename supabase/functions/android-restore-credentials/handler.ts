@@ -148,10 +148,21 @@ export function createRestoreHandler(deps: RestoreHandlerDeps): (req: Request) =
     // -------------------------------------------------------------------
     // Sign-out revocation. Not rate-limited: it is authenticated, idempotent,
     // and a throttled sign-out would leave a backed-up key eligible.
+    //
+    // Two steps, in this order, close the race with a concurrent restore:
+    //   1. revoke the key in the database, so any restore that re-checks the
+    //      credential after its GoTrue exchange sees it revoked and discards
+    //      its session;
+    //   2. end every GoTrue session the user holds, which kills a session a
+    //      restore minted and re-checked before step 1 committed.
+    // A session can only survive by being minted after step 2, and one minted
+    // after step 1 fails its re-check. Kilo's client sign-out is already
+    // global, so step 2 does not change what sign-out means.
     // -------------------------------------------------------------------
     if (route === 'revoke') {
       const user = await authenticate()
       if (user instanceof Response) return user
+      const token = extractToken(req)!
       const revoked = await revokeUserCredentials(admin, user.id)
       if (!revoked.ok) {
         await recordSecurityEvent(admin, {
@@ -163,6 +174,20 @@ export function createRestoreHandler(deps: RestoreHandlerDeps): (req: Request) =
           context: { status: 500, reason: 'db_error', code: revoked.code, request_id: rid },
         })
         return json(500, { error: 'Revocation failed' })
+      }
+      const signedOut = await identity.signOutEverywhere(token)
+      if (!signedOut.ok) {
+        // The key is revoked; only the concurrent-restore window is still
+        // open. Fail so the client retries -- the route is idempotent.
+        await recordSecurityEvent(admin, {
+          name: 'server.error',
+          source: SECURITY_SOURCE,
+          outcome: 'failed',
+          subjectType: 'user',
+          subject: user.id,
+          context: { status: 500, reason: 'issuer_error', code: signedOut.code, request_id: rid },
+        })
+        return json(500, { error: 'Revocation incomplete' })
       }
       await recordSecurityEvent(admin, {
         name: 'restore.revoked',

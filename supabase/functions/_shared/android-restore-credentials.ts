@@ -356,6 +356,9 @@ export interface RestoreIdentity {
     | { ok: false; code: string }
   >
   revokeSession(accessToken: string): Promise<void>
+  // auth.admin.signOut(accessToken, 'global'): ends every session the user
+  // holds, including one a concurrent restore minted before this call.
+  signOutEverywhere(accessToken: string): Promise<{ ok: true } | { ok: false; code: string }>
 }
 
 export type IssueResult =

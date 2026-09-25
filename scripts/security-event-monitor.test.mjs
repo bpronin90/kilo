@@ -293,6 +293,24 @@ test('rejected restore assertions count as authentication failures', () => {
   assert.deepEqual(spread.findings.map((f) => f.kind), ['auth-failure-spread']);
 });
 
+test('an attacker split across rejected tokens and rejected restores still trips the spread threshold', () => {
+  // 15 + 15 distinct subjects: neither event alone crosses 20, and the total
+  // volume (30) is far under 100. The union is not in the snapshot, so the
+  // spread test sums the per-event counts -- an upper bound that alerts here.
+  const alert = buildAlert(
+    snapshot({
+      severity_counts: { critical: 0, warning: 30, info: 0 },
+      events: [
+        event({ event_name: 'auth.token_rejected', count: 15, distinct_subjects: 15 }),
+        event({ event_name: 'restore.assertion_rejected', count: 15, distinct_subjects: 15 }),
+      ],
+    }),
+    DEFAULT_THRESHOLDS,
+    'test-project',
+  );
+  assert.deepEqual(alert.findings.map((f) => f.kind), ['auth-failure-spread']);
+});
+
 test('failed restore session issuance counts as a failed privileged operation', () => {
   const alert = buildAlert(
     snapshot({

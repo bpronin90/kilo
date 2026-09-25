@@ -194,6 +194,10 @@ function fakeIdentity(overrides: Partial<RestoreIdentity> = {}, user: Partial<Re
       revokedSessions.push(token)
       return Promise.resolve()
     },
+    signOutEverywhere: (token) => {
+      revokedSessions.push(`global:${token}`)
+      return Promise.resolve({ ok: true })
+    },
     ...overrides,
   }
   return { identity, revokedSessions }
@@ -376,6 +380,38 @@ Deno.test('a revoked key is rejected and revocation is server-side', async () =>
   const credential = await assertionResponse(authenticator, { challenge: fresh.challenge, rpId: RP_ID, origin: ORIGIN })
   const result = await ctx.call('restore-verification', { version: 1, credential })
   assertEquals({ status: result.status, body: result.body }, REJECTED, 'the revoked key cannot restore')
+})
+
+Deno.test('sign-out revokes the key before ending every GoTrue session', async () => {
+  const order: string[] = []
+  const { identity } = fakeIdentity({
+    signOutEverywhere: (token) => {
+      order.push(`signOutEverywhere:${token}`)
+      return Promise.resolve({ ok: true })
+    },
+  })
+  const ctx = setup({ identity })
+  const { authenticator } = await enroll(ctx)
+  const originalRpc = ctx.db.admin.rpc
+  ctx.db.admin.rpc = (fn: string, args: Record<string, unknown>) => {
+    if (fn === 'restore_revoke_user') order.push('restore_revoke_user')
+    return originalRpc(fn, args)
+  }
+  const result = await ctx.call('revoke', {}, OWNER_TOKEN)
+  assertEquals(result.status, 200, 'revocation succeeds')
+  assertEquals(order, ['restore_revoke_user', `signOutEverywhere:${OWNER_TOKEN}`], 'database first, then GoTrue')
+  assert(ctx.db.credentials.get(authenticator.credentialId)!.revoked, 'the key is revoked')
+})
+
+Deno.test('a failed global sign-out keeps the key revoked and asks the client to retry', async () => {
+  const { identity } = fakeIdentity({ signOutEverywhere: () => Promise.resolve({ ok: false, code: 'http_500' }) })
+  const ctx = setup({ identity })
+  const { authenticator } = await enroll(ctx)
+  const result = await ctx.call('revoke', {}, OWNER_TOKEN)
+  assertEquals(result.status, 500, 'the incomplete sign-out is reported')
+  assert(ctx.db.credentials.get(authenticator.credentialId)!.revoked, 'the key stays revoked')
+  assert(ctx.db.eventNames().includes('server.error:issuer_error'), 'audited')
+  assertEquals((await ctx.call('revoke', {}, OWNER_TOKEN)).status, 500, 'the retry is idempotent')
 })
 
 Deno.test('revocation that races the lookup wins', async () => {

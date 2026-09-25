@@ -88,8 +88,12 @@ const CONNECTION_ENV = 'SUPABASE_SECURITY_MONITOR_URL';
 //                         key, so it counts the same as a rejected token. Kilo's real traffic produces single digits;
 //                         100 is comfortably above a flapping client and far
 //                         below a serious attempt.
-//   AUTH_SUBJECTS     20  DISTINCT subjects on auth.token_rejected or
-//                         restore.assertion_rejected. This is the
+//   AUTH_SUBJECTS     20  DISTINCT subjects on auth.token_rejected plus
+//                         DISTINCT subjects on restore.assertion_rejected.
+//                         The snapshot aggregates per event name, so the
+//                         union is not available; the sum is its upper bound,
+//                         which errs toward alerting. (The max would be a lower
+//                         bound and would miss an attacker split across both.) This is the
 //                         shape test, not the volume test: 300 rejections from
 //                         one subject is a broken client, and 300 from 280
 //                         subjects is credential stuffing. Volume alone cannot
@@ -257,10 +261,10 @@ function sumWhere(events, names) {
     .reduce((total, event) => total + event.count, 0);
 }
 
-function maxSubjectsWhere(events, names) {
+function sumSubjectsWhere(events, names) {
   return events
     .filter((event) => names.includes(event.event_name))
-    .reduce((most, event) => Math.max(most, event.distinct_subjects), 0);
+    .reduce((total, event) => total + event.distinct_subjects, 0);
 }
 
 // Pure. Takes the raw snapshot document, returns the redacted alert. Every
@@ -323,7 +327,7 @@ export function buildAlert(snapshot, thresholds, projectRef) {
     });
   }
 
-  const authSubjects = maxSubjectsWhere(events, AUTH_SPREAD_EVENTS);
+  const authSubjects = sumSubjectsWhere(events, AUTH_SPREAD_EVENTS);
   if (authSubjects > thresholds.maxAuthSubjects) {
     findings.push({
       kind: 'auth-failure-spread',

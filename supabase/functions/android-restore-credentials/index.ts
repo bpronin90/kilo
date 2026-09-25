@@ -108,6 +108,11 @@ const identity: RestoreIdentity = {
   async revokeSession(accessToken) {
     await admin.auth.admin.signOut(accessToken, 'local')
   },
+
+  async signOutEverywhere(accessToken) {
+    const { error } = await admin.auth.admin.signOut(accessToken, 'global')
+    return error ? { ok: false, code: errorCode(error) } : { ok: true }
+  },
 }
 
 serve(createRestoreHandler({

@@ -163,6 +163,7 @@ function identity(user: Partial<RestoreUser> | null, overrides: Partial<RestoreI
       calls.push(`revokeSession:${token}`)
       return Promise.resolve()
     },
+    signOutEverywhere: () => Promise.resolve({ ok: true }),
     ...overrides,
   }
   return { fake, calls }

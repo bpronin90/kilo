@@ -229,7 +229,11 @@ key revoked. Revocation wins both races with the restore flow: a registration
 whose challenge was issued before the stamp is refused even if already
 underway (challenge issue, registration, and revocation serialize on a per-user
 advisory lock), and restore-verification re-checks the credential after the
-GoTrue exchange and revokes the new session if the key was revoked meanwhile. Both tables are RLS
+GoTrue exchange and revokes the new session if the key was revoked meanwhile.
+The `revoke` route then ends every GoTrue session the user holds
+(`auth.admin.signOut(token, 'global')`, matching the client's default global
+sign-out), which kills a session a restore minted and re-checked just before the
+database revocation committed. Both tables are RLS
 deny-all with no table grants; every access goes through `kilo.restore_*`
 security-definer functions granted to `service_role` only.
 

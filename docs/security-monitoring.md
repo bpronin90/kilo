@@ -217,8 +217,10 @@ It alerts when any of these is true:
 - `auth.token_missing` + `auth.token_rejected` + `restore.assertion_rejected`
   exceeds `KILO_SECURITY_MAX_AUTH_FAILURES` (default 100) — a rejected restore
   assertion is a failed sign-in with a key;
-- `auth.token_rejected` or `restore.assertion_rejected` came from more than
-  `KILO_SECURITY_MAX_AUTH_SUBJECTS` distinct subjects (default 20) — the shape test rather than the volume test:
+- the distinct subjects on `auth.token_rejected` plus those on
+  `restore.assertion_rejected` exceed `KILO_SECURITY_MAX_AUTH_SUBJECTS`
+  (default 20). The snapshot counts distinct subjects per event name, so the
+  sum is an upper bound on the union and errs toward alerting — the shape test rather than the volume test:
   300 rejections from one subject is a broken client, 300 from 280 subjects is
   credential stuffing, and volume alone cannot tell them apart;
 - `ratelimit.ip_blocked` + `ratelimit.user_blocked` exceeds
