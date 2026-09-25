@@ -26,7 +26,9 @@
 // preview-9: #1126 drops the portrait lock and adds smallestScreenSize to the
 //   MainActivity configChanges. Both are native manifest changes, so preview-8
 //   installs stay isolated and need one replacement build.
-const PREVIEW_RUNTIME = 'preview-9';
+// preview-10: #1158 adds the android-restore-credentials local native module
+//   and its config plugin, so preview-9 installs lack the native side.
+const PREVIEW_RUNTIME = 'preview-10';
 
 // Large-screen resizing (#1126). The SDK 54 template's MainActivity already
 // handles orientation|screenSize|screenLayout itself, but not
