@@ -1,6 +1,7 @@
 import {
   assertionOptions,
   fromBase64Url,
+  isRecentlyAuthenticated,
   issueRestoreSession,
   loadRestoreConfig,
   lookupCredential,
@@ -9,6 +10,8 @@ import {
   parseRestoreOptionsRequest,
   readClientDataChallenge,
   readJsonBody,
+  readTokenClaims,
+  RECENT_AUTH_WINDOW_SECONDS,
   registrationOptions,
   type RestoreIdentity,
   type RestoreUser,
@@ -221,4 +224,47 @@ Deno.test('issuer failures and subject mismatches return no tokens', async () =>
     verifyMagicLink: () => Promise.resolve({ ok: true, session: { userId: OWNER, accessToken: 'access', refreshToken: '' } }),
   })
   assertEquals(await issueRestoreSession(partial.fake, OWNER), { ok: false, reason: 'issuer_error' }, 'partial session')
+})
+
+// ---------------------------------------------------------------------------
+// Token claims and recent authentication (issue #1162)
+// ---------------------------------------------------------------------------
+
+function fakeJwt(payload: unknown): string {
+  const part = (value: unknown) => toBase64Url(new TextEncoder().encode(JSON.stringify(value)))
+  return `${part({ alg: 'HS256' })}.${part(payload)}.signature`
+}
+
+const SESSION = '31570000-0000-4000-8000-0000000005a1'
+
+Deno.test('token claims come from session_id and the latest amr timestamp, not iat', () => {
+  const claims = readTokenClaims(fakeJwt({
+    sub: OWNER,
+    iat: 2_000_000_000,
+    session_id: SESSION,
+    amr: [{ method: 'password', timestamp: 1_700_000_000 }, { method: 'otp', timestamp: 1_700_000_500 }],
+  }))
+  assertEquals(claims, { sessionId: SESSION, authTime: 1_700_000_500 }, 'latest authentication, not the refresh time')
+
+  for (const [label, payload] of [
+    ['no session', { amr: [{ method: 'password', timestamp: 1_700_000_000 }] }],
+    ['malformed session', { session_id: 'not-a-uuid', amr: [{ method: 'password', timestamp: 1_700_000_000 }] }],
+    ['no amr', { session_id: SESSION }],
+    ['amr without timestamps', { session_id: SESSION, amr: [{ method: 'password' }] }],
+  ] as const) {
+    assertEquals(readTokenClaims(fakeJwt(payload)), null, label)
+  }
+  assertEquals(readTokenClaims('not.a-jwt'), null, 'not a JWT')
+})
+
+Deno.test('recent authentication is a bounded window with small clock-skew tolerance', () => {
+  const now = Date.parse('2026-09-26T12:00:00Z')
+  const nowS = now / 1000
+  assert(isRecentlyAuthenticated(nowS - 30, now), 'a sign-in 30 seconds ago is recent')
+  assert(isRecentlyAuthenticated(nowS - RECENT_AUTH_WINDOW_SECONDS, now), 'the window edge is recent')
+  assert(!isRecentlyAuthenticated(nowS - RECENT_AUTH_WINDOW_SECONDS - 1, now), 'just past the window is not')
+  assert(!isRecentlyAuthenticated(nowS - 24 * 3600, now), 'yesterday is not')
+  assert(isRecentlyAuthenticated(nowS + 30, now), 'small forward skew is tolerated')
+  assert(!isRecentlyAuthenticated(nowS + 3600, now), 'a future authentication time is not trusted')
+  assert(!isRecentlyAuthenticated(null, now), 'a missing time is not recent')
 })

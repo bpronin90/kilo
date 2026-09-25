@@ -27,7 +27,11 @@ import {
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
 } from 'https://esm.sh/@simplewebauthn/server@14.0.2'
-import { loadRestoreConfig, type RestoreIdentity } from '../_shared/android-restore-credentials.ts'
+import {
+  loadRestoreConfig,
+  readTokenClaims,
+  type RestoreIdentity,
+} from '../_shared/android-restore-credentials.ts'
 import { createRestoreHandler } from './handler.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -54,7 +58,10 @@ function errorCode(error: { code?: unknown; status?: unknown }): string {
 const identity: RestoreIdentity = {
   async userFromToken(token) {
     const { data, error } = await admin.auth.getUser(token)
-    return error || !data.user ? null : { id: data.user.id }
+    if (error || !data.user) return null
+    // Decoded only now that GoTrue has validated the token.
+    const claims = readTokenClaims(token)
+    return { id: data.user.id, sessionId: claims?.sessionId ?? null, authTime: claims?.authTime ?? null }
   },
 
   async getUserById(id) {

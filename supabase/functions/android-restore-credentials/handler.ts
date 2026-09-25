@@ -30,9 +30,11 @@ import {
 import {
   assertionOptions,
   consumeChallenge,
+  credentialEligible,
   fromBase64Url,
   issueChallenge,
   issueRestoreSession,
+  isRecentlyAuthenticated,
   lookupCredential,
   parseAssertionRequest,
   parseRegistrationRequest,
@@ -117,7 +119,8 @@ export function createRestoreHandler(deps: RestoreHandlerDeps): (req: Request) =
     }
 
     // Returns the verified user, or the 401 to send.
-    const authenticate = async (): Promise<{ id: string } | Response> => {
+    type AuthenticatedUser = { id: string; sessionId: string | null; authTime: number | null }
+    const authenticate = async (): Promise<AuthenticatedUser | Response> => {
       const token = extractToken(req)
       if (!token) {
         await recordSecurityEvent(admin, {
@@ -214,12 +217,28 @@ export function createRestoreHandler(deps: RestoreHandlerDeps): (req: Request) =
       }
       if (!config) return await serverError('config_missing')
 
+      // Recent sign-in required on BOTH enrollment routes (issue #1162). The
+      // time comes from the GoTrue-signed amr claim, never from the client,
+      // and the token must name its session so the key can be bound to it.
+      if (!user.sessionId || !isRecentlyAuthenticated(user.authTime)) {
+        await recordSecurityEvent(admin, {
+          name: 'auth.token_rejected',
+          source: SECURITY_SOURCE,
+          outcome: 'denied',
+          subjectType: 'user',
+          subject: user.id,
+          context: { status: 401, reason: 'invalid_token', code: 'reauth_required', request_id: rid },
+        })
+        return json(401, { error: 'Reauthentication required', code: 'reauth_required' })
+      }
+      const sessionId = user.sessionId
+
       const body = await readJsonBody(req)
       if (!body) return json(400, { error: 'Bad Request' })
 
       if (route === 'enrollment-options') {
         const challenge = randomBase64Url()
-        const issued = await issueChallenge(admin, 'registration', challenge, { userId: user.id })
+        const issued = await issueChallenge(admin, 'registration', challenge, { userId: user.id, sessionId })
         if (!issued.ok) return await serverError('db_error', issued.code)
         return json(200, registrationOptions(config, challenge, randomBase64Url()))
       }
@@ -230,7 +249,7 @@ export function createRestoreHandler(deps: RestoreHandlerDeps): (req: Request) =
 
       // Consume BEFORE verifying: a challenge is spent by its first attempt,
       // valid or not, so two concurrent submissions cannot both proceed.
-      const consumed = await consumeChallenge(admin, 'registration', challenge, { userId: user.id })
+      const consumed = await consumeChallenge(admin, 'registration', challenge, { userId: user.id, sessionId })
       if (!consumed.ok) return await serverError('db_error', consumed.code)
       if (!consumed.value) return json(400, { error: 'Registration failed' })
 
@@ -254,7 +273,7 @@ export function createRestoreHandler(deps: RestoreHandlerDeps): (req: Request) =
       }
       if (credential.id !== registration.id) return json(400, { error: 'Registration failed' })
 
-      const stored = await registerCredential(admin, user.id, challenge, credential.id, toBase64Url(credential.publicKey), credential.counter)
+      const stored = await registerCredential(admin, user.id, challenge, sessionId, credential.id, toBase64Url(credential.publicKey), credential.counter)
       if (!stored.ok) {
         // 23505: the credential id is already registered (to anyone). It is
         // never re-bound, so this is a refusal, not an outage.
@@ -262,7 +281,7 @@ export function createRestoreHandler(deps: RestoreHandlerDeps): (req: Request) =
         return await serverError('db_error', stored.code)
       }
       // Refused: the user signed out (or account deletion began) after this
-      // registration's challenge was issued.
+      // registration's challenge was issued, or the enrolling session ended.
       if (!stored.value) return json(409, { error: 'Registration failed' })
       await recordSecurityEvent(admin, {
         name: 'restore.enrolled',
@@ -374,11 +393,12 @@ export function createRestoreHandler(deps: RestoreHandlerDeps): (req: Request) =
       return await sessionFailed(issued.reason, issued.reason === 'issuer_error' ? 503 : 401, issued.code)
     }
 
-    // And re-checked after: the GoTrue exchange takes real time, and a sign-out
-    // or account deletion that revoked the key during it must win. The session
-    // already exists at this point, so it is revoked, not merely withheld.
-    const still = await lookupCredential(admin, assertion.id)
-    if (!still.ok || !still.value || still.value.userId !== stored.userId) {
+    // And re-checked after: the GoTrue exchange takes real time, and a sign-out,
+    // account deletion, password change, or global sign-out during it must win
+    // (#1162). The session already exists at this point, so it is revoked, not
+    // merely withheld.
+    const still = await credentialEligible(admin, assertion.id, stored.userId)
+    if (!still.ok || !still.value) {
       await identity.revokeSession(issued.accessToken)
       return still.ok
         ? await sessionFailed('credential_inactive', 401)

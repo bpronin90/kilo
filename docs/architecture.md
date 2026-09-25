@@ -237,6 +237,19 @@ database revocation committed. Both tables are RLS
 deny-all with no table grants; every access goes through `kilo.restore_*`
 security-definer functions granted to `service_role` only.
 
+A key also dies with its owner's auth lifecycle (issue #1162, migration
+`20260926120000_restore_credentials_auth_lifecycle.sql`). Enrollment records a
+digest of the owner's `auth.users.encrypted_password` and the GoTrue
+`session_id` that enrolled it. The key is eligible only while the digest still
+matches and that session still exists in `auth.sessions`, so a password change
+or reset, or a global sign-out through any path, ends it. `restore_record_use`
+checks this before issuance, `restore_credential_eligible` re-checks it after
+the GoTrue exchange, and a stale key is revoked durably. Both enrollment routes
+also require a sign-in within the last 10 minutes, read from the GoTrue-signed
+`amr` claim (401 with `code: "reauth_required"` otherwise), and a registration
+challenge can be spent only by the session that requested it. These functions
+only read the `auth` schema; nothing in it is altered.
+
 Configuration is two Edge Function secrets, `KILO_RESTORE_RP_ID` and
 `KILO_ANDROID_APK_KEY_HASHES`; with either missing or malformed, every
 registration and restore route fails closed while `revoke` keeps working. The

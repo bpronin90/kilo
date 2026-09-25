@@ -177,6 +177,26 @@ select is((select count(*)::int from kilo.workout_notes  where id = 'lc_nb'),   
 
 select pg_temp.logout();
 
+-- Test stand-in for GoTrue sessions (issue #1162). auth.sessions is created by
+-- GoTrue, which this database does not run, so kilo.restore_session_active is
+-- replaced -- inside this rolled-back transaction only -- by one that reads a
+-- temp table. pg_temp.sess(uid) is each user's default session id.
+create temp table fake_sessions (id uuid primary key, user_id uuid not null);
+
+create or replace function pg_temp.sess(uid uuid) returns uuid
+language sql as $$ select md5('sess:' || uid::text)::uuid $$;
+
+create or replace function kilo.restore_session_active(p_session_id uuid, p_user_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (select 1 from pg_temp.fake_sessions s where s.id = p_session_id and s.user_id = p_user_id)
+$$;
+insert into pg_temp.fake_sessions values (pg_temp.sess(:'user_b'::uuid), :'user_b'::uuid);
+
 -- ---------------------------------------------------------------------------
 -- Android Restore Credentials revocation ordering (issue #1157).
 --
@@ -185,10 +205,10 @@ select pg_temp.logout();
 -- later step that fails and rolls back: the revocation must survive it, and the
 -- credential must stay ineligible until the auth user is finally deleted.
 -- ---------------------------------------------------------------------------
-select kilo.restore_issue_challenge('registration', rpad('lc-chal-b', 43, 'x'), :'user_b'::uuid, null, 300);
-select kilo.restore_consume_challenge('registration', rpad('lc-chal-b', 43, 'x'), :'user_b'::uuid, null);
+select kilo.restore_issue_challenge('registration', rpad('lc-chal-b', 43, 'x'), :'user_b'::uuid, pg_temp.sess(:'user_b'::uuid), null, 300);
+select kilo.restore_consume_challenge('registration', rpad('lc-chal-b', 43, 'x'), :'user_b'::uuid, pg_temp.sess(:'user_b'::uuid), null);
 select isnt(
-  kilo.restore_register_credential(:'user_b'::uuid, rpad('lc-chal-b', 43, 'x'), rpad('lc-cred-b', 20, 'b'), rpad('lc-key-b', 20, 'k'), 0),
+  kilo.restore_register_credential(:'user_b'::uuid, rpad('lc-chal-b', 43, 'x'), pg_temp.sess(:'user_b'::uuid), rpad('lc-cred-b', 20, 'b'), rpad('lc-key-b', 20, 'k'), 0),
   null,
   'user B has an active restore credential before deletion'
 );
