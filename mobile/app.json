@@ -39,6 +39,7 @@
     "plugins": [
       "expo-secure-store",
       "expo-notifications",
+      "./plugins/withAndroidRestoreCredentials",
       [
         "expo-build-properties",
         {

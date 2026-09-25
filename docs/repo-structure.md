@@ -52,6 +52,8 @@ Local workflow-layer files such as `AGENTS.md`, `CLAUDE.md`, `CODEX.md`,
 | `mobile/storage/entries/` | Local persistence, backup/import, migrations, settings, and domain stores. |
 | `mobile/storage/cloud/` | Cloud bootstrap, transport, reconciliation, and cloud domain methods. |
 | `mobile/storage/secureStorage.js` | Native encrypted-storage boundary and device wipe. |
+| `mobile/modules/android-restore-credentials/` | Local Expo native module wrapping AndroidX Credential Manager Restore Credentials (create/get/clear); no-op on non-Android platforms. |
+| `mobile/plugins/withAndroidRestoreCredentials.js` | Config plugin enforcing `android.allowBackup: false` for the Restore Credentials module. |
 | `mobile/theme/` | Appearance preference, semantic colors, and theme context. |
 | `mobile/tests/` | Jest unit, integration, source-contract, and rendered-component tests. |
 | `mobile/assets/` and `mobile/certs/` | Packaged assets and public certificate documentation. |

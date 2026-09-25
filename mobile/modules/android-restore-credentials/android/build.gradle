@@ -1,0 +1,21 @@
+apply plugin: 'com.android.library'
+apply plugin: 'org.jetbrains.kotlin.android'
+apply plugin: 'expo-module-gradle-plugin'
+
+group = 'com.benpronin.kilo.androidrestorecredentials'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.androidrestorecredentials"
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
+}
+
+dependencies {
+  // AndroidX Credential Manager: CreateRestoreCredentialRequest,
+  // GetRestoreCredentialOption, and ClearCredentialStateRequest live here.
+  api "androidx.credentials:credentials:1.5.0"
+  api "androidx.credentials:credentials-play-services-auth:1.5.0"
+}
