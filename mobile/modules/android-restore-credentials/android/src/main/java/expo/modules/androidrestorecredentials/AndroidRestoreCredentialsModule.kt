@@ -3,6 +3,7 @@ package expo.modules.androidrestorecredentials
 import android.app.Activity
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CreateRestoreCredentialRequest
+import androidx.credentials.CreateCredentialResponse
 import androidx.credentials.CreateRestoreCredentialResponse
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
@@ -20,6 +21,7 @@ import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.GetCredentialProviderConfigurationException
 import androidx.credentials.exceptions.GetCredentialUnsupportedException
 import androidx.credentials.exceptions.NoCredentialException
+import androidx.credentials.exceptions.restorecredential.E2eeUnavailableException
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
@@ -50,8 +52,17 @@ class AndroidRestoreCredentialsModule : Module() {
     AsyncFunction("createRestoreCredential") Coroutine { requestJson: String ->
       return@Coroutine try {
         val credentialManager = CredentialManager.create(currentActivity)
-        val request = CreateRestoreCredentialRequest(requestJson)
-        val response = credentialManager.createCredential(currentActivity, request)
+        // Cloud backup is the default. Devices without end-to-end encrypted
+        // backup reject it with E2eeUnavailableException; retry local-only so
+        // the credential still covers device-to-device migration.
+        val response: CreateCredentialResponse = try {
+          credentialManager.createCredential(currentActivity, CreateRestoreCredentialRequest(requestJson))
+        } catch (error: E2eeUnavailableException) {
+          credentialManager.createCredential(
+            currentActivity,
+            CreateRestoreCredentialRequest(requestJson, isCloudBackupEnabled = false)
+          )
+        }
         val responseJson = (response as? CreateRestoreCredentialResponse)?.responseJson
         if (responseJson.isNullOrEmpty()) {
           mapOf("status" to STATUS_MALFORMED)
