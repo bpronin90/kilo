@@ -55,6 +55,14 @@ alter table kilo.restore_credentials
 alter table kilo.restore_challenges
   add column if not exists session_id uuid;
 
+-- Registration challenges issued before this migration carry no session and
+-- could never be spent under the session-bound functions below, so they are
+-- removed first; otherwise any still in the table would fail the new
+-- constraint and abort the migration.
+delete from kilo.restore_challenges
+ where operation = 'registration'
+   and session_id is null;
+
 alter table kilo.restore_challenges drop constraint if exists restore_challenges_registration_session;
 alter table kilo.restore_challenges add constraint restore_challenges_registration_session
   check (operation <> 'registration' or session_id is not null);
