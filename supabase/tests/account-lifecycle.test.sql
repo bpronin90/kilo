@@ -185,8 +185,10 @@ select pg_temp.logout();
 -- later step that fails and rolls back: the revocation must survive it, and the
 -- credential must stay ineligible until the auth user is finally deleted.
 -- ---------------------------------------------------------------------------
+select kilo.restore_issue_challenge('registration', rpad('lc-chal-b', 43, 'x'), :'user_b'::uuid, null, 300);
+select kilo.restore_consume_challenge('registration', rpad('lc-chal-b', 43, 'x'), :'user_b'::uuid, null);
 select isnt(
-  kilo.restore_register_credential(:'user_b'::uuid, rpad('lc-cred-b', 20, 'b'), rpad('lc-key-b', 20, 'k'), 0),
+  kilo.restore_register_credential(:'user_b'::uuid, rpad('lc-chal-b', 43, 'x'), rpad('lc-cred-b', 20, 'b'), rpad('lc-key-b', 20, 'k'), 0),
   null,
   'user B has an active restore credential before deletion'
 );

@@ -271,20 +271,26 @@ export async function consumeChallenge(
   return error ? { ok: false, code: dbCode(error) } : { ok: true, value: data === true }
 }
 
+// value is false when the database refused the registration because the
+// user's credentials were revoked after its challenge was issued (a sign-out
+// or account deletion that raced this enrollment), or the challenge is not
+// this user's consumed registration challenge.
 export async function registerCredential(
   admin: RpcClient,
   userId: string,
+  challenge: string,
   credentialId: string,
   publicKey: string,
   signCount: number,
-): Promise<DbResult<true>> {
-  const { error } = await admin.rpc('restore_register_credential', {
+): Promise<DbResult<boolean>> {
+  const { data, error } = await admin.rpc('restore_register_credential', {
     p_user_id: userId,
+    p_challenge: challenge,
     p_credential_id: credentialId,
     p_public_key: publicKey,
     p_sign_count: signCount,
   })
-  return error ? { ok: false, code: dbCode(error) } : { ok: true, value: true }
+  return error ? { ok: false, code: dbCode(error) } : { ok: true, value: typeof data === 'string' && data.length > 0 }
 }
 
 export interface StoredCredential {

@@ -222,9 +222,14 @@ extension, or JWT signing changes.
 
 Challenges live in `kilo.restore_challenges` and are consumed exactly once by a
 single conditional `UPDATE`. Revocation is durable and one-way:
-`kilo.restore_revoke_user` revokes the credential and burns outstanding
-challenges, and `account-delete` calls it as step 0, before anything is deleted,
-so a later deletion failure leaves the key revoked. Both tables are RLS
+`kilo.restore_revoke_user` revokes the credential, burns outstanding
+challenges, and stamps `kilo.restore_revocations`, and `account-delete` calls it
+as step 0, before anything is deleted, so a later deletion failure leaves the
+key revoked. Revocation wins both races with the restore flow: a registration
+whose challenge was issued before the stamp is refused even if already
+underway (challenge issue, registration, and revocation serialize on a per-user
+advisory lock), and restore-verification re-checks the credential after the
+GoTrue exchange and revokes the new session if the key was revoked meanwhile. Both tables are RLS
 deny-all with no table grants; every access goes through `kilo.restore_*`
 security-definer functions granted to `service_role` only.
 

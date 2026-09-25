@@ -47,6 +47,7 @@ function assertEquals(actual: unknown, expected: unknown, message: string) {
 // ---------------------------------------------------------------------------
 
 interface Challenge {
+  issuedAt: number
   operation: string
   userId: string | null
   credentialId: string | null
@@ -64,9 +65,14 @@ interface Credential {
 function fakeDatabase() {
   const challenges = new Map<string, Challenge>()
   const credentials = new Map<string, Credential>()
+  const revocations = new Map<string, number>()
+  // A strictly increasing clock, standing in for clock_timestamp() under the
+  // per-user lock that orders challenge issue against revocation.
+  let clock = 0
+  const tick = () => ++clock
   const events: Record<string, unknown>[] = []
   const failures = new Map<string, string>()
-  const hooks: { afterLookup?: () => void } = {}
+  const hooks: { afterLookup?: () => void; afterConsume?: () => void } = {}
   let rateLimitAllows = true
 
   const ok = (data: unknown) => Promise.resolve({ data, error: null })
@@ -81,6 +87,7 @@ function fakeDatabase() {
         return ok(true)
       case 'restore_issue_challenge':
         challenges.set(args.p_challenge, {
+          issuedAt: tick(),
           operation: args.p_operation,
           userId: args.p_user_id,
           credentialId: args.p_credential_id,
@@ -95,9 +102,16 @@ function fakeDatabase() {
           : c.credentialId === args.p_credential_id)
         if (!c || c.consumed || c.operation !== args.p_operation || c.expiresAt <= Date.now() || !bound) return ok(false)
         c.consumed = true
+        hooks.afterConsume?.()
         return ok(true)
       }
       case 'restore_register_credential': {
+        const challenge = challenges.get(args.p_challenge)
+        if (!challenge || challenge.operation !== 'registration' || challenge.userId !== args.p_user_id || !challenge.consumed) {
+          return ok(null)
+        }
+        const revokedAt = revocations.get(args.p_user_id)
+        if (revokedAt !== undefined && revokedAt >= challenge.issuedAt) return ok(null)
         if (credentials.has(args.p_credential_id)) {
           return Promise.resolve({ data: null, error: { code: '23505', message: 'duplicate' } })
         }
@@ -125,6 +139,7 @@ function fakeDatabase() {
         return ok(true)
       }
       case 'restore_revoke_user': {
+        revocations.set(args.p_user_id, tick())
         let count = 0
         for (const [id, cred] of credentials) {
           if (cred.userId !== args.p_user_id) continue
@@ -374,6 +389,50 @@ Deno.test('revocation that races the lookup wins', async () => {
   const result = await ctx.call('restore-verification', { version: 1, credential })
   assertEquals({ status: result.status, body: result.body }, REJECTED, 'no session after a concurrent revocation')
   assert(ctx.db.eventNames().includes('restore.session_failed:credential_inactive'), 'audited')
+})
+
+Deno.test('a sign-out that lands during session issuance revokes the new session', async () => {
+  const revokedSessions: string[] = []
+  let revokeDuringExchange = () => {}
+  const { identity } = fakeIdentity({
+    verifyMagicLink: () => {
+      revokeDuringExchange()
+      return Promise.resolve({ ok: true, session: { userId: OWNER, accessToken: ISSUED_ACCESS, refreshToken: ISSUED_REFRESH } })
+    },
+    revokeSession: (token) => {
+      revokedSessions.push(token)
+      return Promise.resolve()
+    },
+  })
+  const ctx = setup({ identity })
+  const { authenticator } = await enroll(ctx)
+  revokeDuringExchange = () => {
+    ctx.db.credentials.get(authenticator.credentialId)!.revoked = true
+  }
+  const options = await restoreOptions(ctx, authenticator.credentialId)
+  const credential = await assertionResponse(authenticator, { challenge: options.challenge, rpId: RP_ID, origin: ORIGIN })
+  const result = await ctx.call('restore-verification', { version: 1, credential })
+  assertEquals({ status: result.status, body: result.body }, REJECTED, 'no session is returned')
+  assertEquals(revokedSessions, [ISSUED_ACCESS], 'the session minted during the race is revoked')
+  assert(!ctx.db.eventNames().includes('restore.session_issued'), 'no issuance is audited')
+})
+
+Deno.test('a registration in flight when the user signs out cannot land a credential', async () => {
+  const ctx = setup()
+  const authenticator = await createAuthenticator()
+  const options = await ctx.call('enrollment-options', {}, OWNER_TOKEN)
+  const credential = await registrationResponse(authenticator, { challenge: options.body.challenge, rpId: RP_ID, origin: ORIGIN })
+  // The sign-out lands after the challenge is consumed and before the insert.
+  ctx.db.hooks.afterConsume = () => {
+    ctx.db.hooks.afterConsume = undefined
+    ctx.db.admin.rpc('restore_revoke_user', { p_user_id: OWNER })
+  }
+  const result = await ctx.call('registration-verification', { version: 1, credential }, OWNER_TOKEN)
+  assertEquals(result.status, 409, 'the raced registration is refused')
+  assert(!ctx.db.credentials.has(authenticator.credentialId), 'no credential was created after the revocation')
+
+  const again = await enroll(ctx)
+  assertEquals(again.result.status, 200, 'a registration started after the sign-out succeeds')
 })
 
 async function restoreWith(identity: RestoreIdentity) {

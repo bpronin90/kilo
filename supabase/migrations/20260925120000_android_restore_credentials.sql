@@ -26,7 +26,12 @@
 --   2. Revocation is durable and one-way. Nothing in this schema clears
 --      revoked_at. restore_revoke_user is what sign-out and account deletion
 --      call, and a later failure in either flow cannot make a credential
---      eligible again.
+--      eligible again. It also stamps kilo.restore_revocations, and
+--      registration refuses any challenge issued at or before that stamp, so a
+--      registration already in flight when the user signed out cannot land a
+--      fresh credential afterwards. Registration-challenge issue, registration,
+--      and revocation serialize on one per-user advisory lock, which is what
+--      makes that timestamp comparison a total order.
 --
 -- It also extends the shared security-event catalog (20260908120000) with the
 -- restore events and the android-restore-credentials source. Applied
@@ -105,6 +110,38 @@ comment on table kilo.restore_challenges is
   'One-time Android Restore Credentials challenges (issue #1157). Consumed atomically by kilo.restore_consume_challenge. RLS deny-all with no table grants.';
 
 -- ---------------------------------------------------------------------------
+-- 2b. Revocation marker
+-- ---------------------------------------------------------------------------
+--
+-- The last time each user's restore credentials were revoked. A registration
+-- whose challenge was issued at or before this instant is refused even if its
+-- challenge was already consumed, because that registration started before
+-- the user signed out (or before account deletion began).
+create table if not exists kilo.restore_revocations (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  revoked_at timestamptz not null
+);
+
+alter table kilo.restore_revocations enable row level security;
+revoke all on kilo.restore_revocations from public, anon, authenticated, service_role;
+
+comment on table kilo.restore_revocations is
+  'Per-user Android Restore Credentials revocation stamp (issue #1157). Registrations whose challenge predates it are refused. RLS deny-all with no table grants.';
+
+-- One lock key per user for registration-challenge issue, registration, and
+-- revocation. Transaction-scoped, so it is released at commit.
+create or replace function kilo.restore_lock_user(p_user_id uuid)
+returns void
+language sql
+security definer
+set search_path = ''
+as $$
+  select pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('restore_user:' || p_user_id::text))
+$$;
+
+revoke all on function kilo.restore_lock_user(uuid) from public, anon, authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
 -- 3. Functions (service_role only)
 -- ---------------------------------------------------------------------------
 
@@ -133,10 +170,17 @@ begin
   delete from kilo.restore_challenges c
   where c.expires_at < now() - interval '1 hour';
 
-  v_expires := now() + make_interval(secs => p_ttl_seconds);
+  -- Registration challenges are ordered against revocation under the user's
+  -- lock, with a wall-clock issue time so the comparison in
+  -- restore_register_credential is exact.
+  if p_operation = 'registration' and p_user_id is not null then
+    perform kilo.restore_lock_user(p_user_id);
+  end if;
 
-  insert into kilo.restore_challenges (challenge, operation, user_id, credential_id, expires_at)
-  values (p_challenge, p_operation, p_user_id, p_credential_id, v_expires);
+  v_expires := pg_catalog.clock_timestamp() + make_interval(secs => p_ttl_seconds);
+
+  insert into kilo.restore_challenges (challenge, operation, user_id, credential_id, created_at, expires_at)
+  values (p_challenge, p_operation, p_user_id, p_credential_id, pg_catalog.clock_timestamp(), v_expires);
 
   return v_expires;
 end;
@@ -180,8 +224,14 @@ $$;
 -- statement block, so a failure (for example a credential id that is already
 -- registered) rolls back the revocation of the previous credential too: the
 -- user is never left with neither.
+--
+-- p_challenge is the registration challenge the caller consumed before
+-- verifying. Returns null -- refusing the registration -- when that challenge
+-- is not this user's consumed registration challenge, or when the user's
+-- credentials were revoked at or after the challenge was issued.
 create or replace function kilo.restore_register_credential(
   p_user_id uuid,
+  p_challenge text,
   p_credential_id text,
   p_public_key text,
   p_sign_count bigint
@@ -193,9 +243,30 @@ set search_path = ''
 as $$
 declare
   v_id uuid;
+  v_issued timestamptz;
+  v_revoked timestamptz;
 begin
   if not exists (select 1 from auth.users u where u.id = p_user_id) then
     raise exception 'restore credential owner does not exist';
+  end if;
+
+  perform kilo.restore_lock_user(p_user_id);
+
+  select c.created_at into v_issued
+  from kilo.restore_challenges c
+  where c.challenge = p_challenge
+    and c.operation = 'registration'
+    and c.user_id = p_user_id
+    and c.consumed_at is not null;
+  if v_issued is null then
+    return null;
+  end if;
+
+  select r.revoked_at into v_revoked
+  from kilo.restore_revocations r
+  where r.user_id = p_user_id;
+  if v_revoked is not null and v_revoked >= v_issued then
+    return null;
   end if;
 
   update kilo.restore_credentials rc
@@ -266,6 +337,15 @@ as $$
 declare
   v_revoked integer;
 begin
+  perform kilo.restore_lock_user(p_user_id);
+
+  -- Stamped under the lock, so every registration challenge issued before this
+  -- instant is refused by restore_register_credential, including one that was
+  -- already consumed by a registration still in flight.
+  insert into kilo.restore_revocations (user_id, revoked_at)
+  values (p_user_id, pg_catalog.clock_timestamp())
+  on conflict (user_id) do update set revoked_at = excluded.revoked_at;
+
   update kilo.restore_challenges c
      set consumed_at = now()
    where c.consumed_at is null
@@ -288,14 +368,14 @@ $$;
 
 revoke all on function kilo.restore_issue_challenge(text, text, uuid, text, integer) from public, anon, authenticated;
 revoke all on function kilo.restore_consume_challenge(text, text, uuid, text) from public, anon, authenticated;
-revoke all on function kilo.restore_register_credential(uuid, text, text, bigint) from public, anon, authenticated;
+revoke all on function kilo.restore_register_credential(uuid, text, text, text, bigint) from public, anon, authenticated;
 revoke all on function kilo.restore_lookup_credential(text) from public, anon, authenticated;
 revoke all on function kilo.restore_record_use(text, uuid, bigint) from public, anon, authenticated;
 revoke all on function kilo.restore_revoke_user(uuid) from public, anon, authenticated;
 
 grant execute on function kilo.restore_issue_challenge(text, text, uuid, text, integer) to service_role;
 grant execute on function kilo.restore_consume_challenge(text, text, uuid, text) to service_role;
-grant execute on function kilo.restore_register_credential(uuid, text, text, bigint) to service_role;
+grant execute on function kilo.restore_register_credential(uuid, text, text, text, bigint) to service_role;
 grant execute on function kilo.restore_lookup_credential(text) to service_role;
 grant execute on function kilo.restore_record_use(text, uuid, bigint) to service_role;
 grant execute on function kilo.restore_revoke_user(uuid) to service_role;

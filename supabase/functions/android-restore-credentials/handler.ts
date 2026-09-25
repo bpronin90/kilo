@@ -229,13 +229,16 @@ export function createRestoreHandler(deps: RestoreHandlerDeps): (req: Request) =
       }
       if (credential.id !== registration.id) return json(400, { error: 'Registration failed' })
 
-      const stored = await registerCredential(admin, user.id, credential.id, toBase64Url(credential.publicKey), credential.counter)
+      const stored = await registerCredential(admin, user.id, challenge, credential.id, toBase64Url(credential.publicKey), credential.counter)
       if (!stored.ok) {
         // 23505: the credential id is already registered (to anyone). It is
         // never re-bound, so this is a refusal, not an outage.
         if (stored.code === '23505') return json(409, { error: 'Registration failed' })
         return await serverError('db_error', stored.code)
       }
+      // Refused: the user signed out (or account deletion began) after this
+      // registration's challenge was issued.
+      if (!stored.value) return json(409, { error: 'Registration failed' })
       await recordSecurityEvent(admin, {
         name: 'restore.enrolled',
         source: SECURITY_SOURCE,
@@ -344,6 +347,17 @@ export function createRestoreHandler(deps: RestoreHandlerDeps): (req: Request) =
     const issued = await issueRestoreSession(identity, stored.userId)
     if (!issued.ok) {
       return await sessionFailed(issued.reason, issued.reason === 'issuer_error' ? 503 : 401, issued.code)
+    }
+
+    // And re-checked after: the GoTrue exchange takes real time, and a sign-out
+    // or account deletion that revoked the key during it must win. The session
+    // already exists at this point, so it is revoked, not merely withheld.
+    const still = await lookupCredential(admin, assertion.id)
+    if (!still.ok || !still.value || still.value.userId !== stored.userId) {
+      await identity.revokeSession(issued.accessToken)
+      return still.ok
+        ? await sessionFailed('credential_inactive', 401)
+        : await sessionFailed('db_error', 503, still.code)
     }
 
     await recordSecurityEvent(admin, {

@@ -17,14 +17,15 @@
 
 begin;
 
-select plan(50);
+select plan(54);
 
 \set user_a '71570000-0000-4000-8000-00000000000a'
 \set user_b '71570000-0000-4000-8000-00000000000b'
 \set user_c '71570000-0000-4000-8000-00000000000c'
+\set user_d '71570000-0000-4000-8000-00000000000d'
 \set user_ghost '71570000-0000-4000-8000-0000000000ff'
 
-insert into auth.users (id) values (:'user_a'::uuid), (:'user_b'::uuid), (:'user_c'::uuid)
+insert into auth.users (id) values (:'user_a'::uuid), (:'user_b'::uuid), (:'user_c'::uuid), (:'user_d'::uuid)
 on conflict do nothing;
 
 create or replace function pg_temp.login_as(uid uuid) returns void
@@ -52,6 +53,17 @@ $$;
 -- 43 base64url characters, the shape of 32 random bytes.
 create or replace function pg_temp.chal(tag text) returns text
 language sql as $$ select rpad('chal' || tag, 43, 'x') $$;
+
+-- The Edge Function's enrollment sequence: issue a registration challenge,
+-- consume it, then register against it.
+create or replace function pg_temp.enroll(uid uuid, cred text, pubkey text) returns uuid
+language plpgsql as $$
+begin
+  perform kilo.restore_issue_challenge('registration', pg_temp.chal('en' || cred), uid, null, 300);
+  perform kilo.restore_consume_challenge('registration', pg_temp.chal('en' || cred), uid, null);
+  return kilo.restore_register_credential(uid, pg_temp.chal('en' || cred), cred, pubkey, 0);
+end;
+$$;
 
 -- ---------------------------------------------------------------------------
 -- 1. Least privilege
@@ -87,8 +99,8 @@ select throws_ok(
   'an authenticated client cannot look up verification material'
 );
 select throws_ok(
-  format('select kilo.restore_register_credential(%L, %L, %L, 0)',
-    :'user_a', rpad('cred', 20, 'a'), rpad('key', 20, 'a')),
+  format('select kilo.restore_register_credential(%L, %L, %L, %L, 0)',
+    :'user_a', pg_temp.chal('x'), rpad('cred', 20, 'a'), rpad('key', 20, 'a')),
   '42501', null,
   'an authenticated client cannot call the registration function'
 );
@@ -191,7 +203,7 @@ select throws_ok(
 -- ---------------------------------------------------------------------------
 
 select isnt(
-  kilo.restore_register_credential(:'user_a'::uuid, rpad('credA1', 20, 'a'), rpad('keyA1', 20, 'k'), 0),
+  pg_temp.enroll(:'user_a'::uuid, rpad('credA1', 20, 'a'), rpad('keyA1', 20, 'k')),
   null,
   'user A registers a credential'
 );
@@ -201,7 +213,7 @@ select is(
   'the active credential resolves to its owner'
 );
 select isnt(
-  kilo.restore_register_credential(:'user_a'::uuid, rpad('credA2', 20, 'a'), rpad('keyA2', 20, 'k'), 0),
+  pg_temp.enroll(:'user_a'::uuid, rpad('credA2', 20, 'a'), rpad('keyA2', 20, 'k')),
   null,
   'user A enrolls a replacement credential'
 );
@@ -217,12 +229,12 @@ select is(
 );
 
 select isnt(
-  kilo.restore_register_credential(:'user_b'::uuid, rpad('credB1', 20, 'b'), rpad('keyB1', 20, 'k'), 0),
+  pg_temp.enroll(:'user_b'::uuid, rpad('credB1', 20, 'b'), rpad('keyB1', 20, 'k')),
   null,
   'user B registers a credential'
 );
 select throws_ok(
-  format('select kilo.restore_register_credential(%L, %L, %L, 0)',
+  format('select pg_temp.enroll(%L, %L, %L)',
     :'user_b', rpad('credA2', 20, 'a'), rpad('keyX', 20, 'k')),
   '23505', null,
   'a credential id that is already registered cannot be re-bound to another user'
@@ -238,10 +250,38 @@ select is(
   'the failed enrollment did not take over user A''s credential'
 );
 select throws_ok(
-  format('select kilo.restore_register_credential(%L, %L, %L, 0)',
-    :'user_ghost', rpad('credG', 20, 'g'), rpad('keyG', 20, 'k')),
+  format('select kilo.restore_register_credential(%L, %L, %L, %L, 0)',
+    :'user_ghost', pg_temp.chal('ghost'), rpad('credG', 20, 'g'), rpad('keyG', 20, 'k')),
   'P0001', 'restore credential owner does not exist',
   'a credential cannot be registered for a user that does not exist'
+);
+
+-- Registration is bound to a consumed challenge, and a revocation that lands
+-- between consuming it and registering wins (the sign-out / account-deletion
+-- race).
+select isnt(
+  kilo.restore_issue_challenge('registration', pg_temp.chal('unconsumed'), :'user_d'::uuid, null, 300),
+  null,
+  'user D has an unconsumed registration challenge'
+);
+select is(
+  kilo.restore_register_credential(:'user_d'::uuid, pg_temp.chal('unconsumed'), rpad('credD0', 20, 'd'), rpad('keyD0', 20, 'k'), 0),
+  null,
+  'a registration against an unconsumed challenge is refused'
+);
+
+select kilo.restore_issue_challenge('registration', pg_temp.chal('race'), :'user_d'::uuid, null, 300);
+select kilo.restore_consume_challenge('registration', pg_temp.chal('race'), :'user_d'::uuid, null);
+select kilo.restore_revoke_user(:'user_d'::uuid);
+select is(
+  kilo.restore_register_credential(:'user_d'::uuid, pg_temp.chal('race'), rpad('credD1', 20, 'd'), rpad('keyD1', 20, 'k'), 0),
+  null,
+  'a registration whose challenge predates a revocation is refused even though the challenge was consumed'
+);
+select isnt(
+  pg_temp.enroll(:'user_d'::uuid, rpad('credD2', 20, 'd'), rpad('keyD2', 20, 'k')),
+  null,
+  'a registration started after the revocation succeeds'
 );
 
 -- ---------------------------------------------------------------------------
