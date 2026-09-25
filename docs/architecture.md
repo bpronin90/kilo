@@ -247,7 +247,8 @@ checks this before issuance, `restore_credential_eligible` re-checks it after
 the GoTrue exchange, and a stale key is revoked durably. Both enrollment routes
 also require a sign-in within the last 10 minutes, read from the GoTrue-signed
 `amr` claim (401 with `code: "reauth_required"` otherwise), and a registration
-challenge can be spent only by the session that requested it. These functions
+challenge can be spent only by the session that requested it, and only while
+the owner's password is unchanged since the challenge was issued. These functions
 only read the `auth` schema; nothing in it is altered.
 
 Configuration is two Edge Function secrets, `KILO_RESTORE_RP_ID` and

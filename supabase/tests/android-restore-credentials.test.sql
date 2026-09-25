@@ -17,7 +17,7 @@
 
 begin;
 
-select plan(70);
+select plan(71);
 
 \set user_a '71570000-0000-4000-8000-00000000000a'
 \set user_b '71570000-0000-4000-8000-00000000000b'
@@ -201,8 +201,8 @@ select is(
   'a replayed registration challenge is refused'
 );
 
-insert into kilo.restore_challenges (challenge, operation, user_id, session_id, created_at, expires_at)
-values (pg_temp.chal('expired'), 'registration', :'user_a'::uuid, pg_temp.sess(:'user_a'::uuid), now() - interval '10 minutes', now() - interval '5 minutes');
+insert into kilo.restore_challenges (challenge, operation, user_id, session_id, password_fingerprint, created_at, expires_at)
+values (pg_temp.chal('expired'), 'registration', :'user_a'::uuid, pg_temp.sess(:'user_a'::uuid), repeat('0', 64), now() - interval '10 minutes', now() - interval '5 minutes');
 select is(
   kilo.restore_consume_challenge('registration', pg_temp.chal('expired'), :'user_a'::uuid, pg_temp.sess(:'user_a'::uuid), null),
   false,
@@ -504,6 +504,21 @@ select is(
     '71570000-0000-4000-8000-0000000000e2', rpad('credE4', 20, 'e'), rpad('keyE4', 20, 'k'), 0),
   null,
   'a registration whose session was signed out mid-enrollment is refused'
+);
+
+-- The password is reset between enrollment options and verification.
+insert into pg_temp.fake_sessions values ('71570000-0000-4000-8000-0000000000e5', :'user_e'::uuid);
+select kilo.restore_issue_challenge('registration', pg_temp.chal('pwrace'), :'user_e'::uuid,
+  '71570000-0000-4000-8000-0000000000e5', null, 300);
+select kilo.restore_consume_challenge('registration', pg_temp.chal('pwrace'), :'user_e'::uuid,
+  '71570000-0000-4000-8000-0000000000e5', null);
+update auth.users set encrypted_password = '$2a$10$resetmidenrollmentresetmidenrollmentresetmidenrollm'
+ where id = :'user_e'::uuid;
+select is(
+  kilo.restore_register_credential(:'user_e'::uuid, pg_temp.chal('pwrace'),
+    '71570000-0000-4000-8000-0000000000e5', rpad('credE5', 20, 'e'), rpad('keyE5', 20, 'k'), 0),
+  null,
+  'a registration whose challenge predates a password reset is refused'
 );
 
 -- A credential without lifecycle binding (enrolled before this migration).

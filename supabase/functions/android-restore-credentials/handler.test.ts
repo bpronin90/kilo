@@ -50,6 +50,7 @@ function assertEquals(actual: unknown, expected: unknown, message: string) {
 // ---------------------------------------------------------------------------
 
 interface Challenge {
+  passwordVersion: number
   issuedAt: number
   sessionId: string | null
   operation: string
@@ -105,6 +106,7 @@ function fakeDatabase() {
       case 'restore_issue_challenge':
         challenges.set(args.p_challenge, {
           issuedAt: tick(),
+          passwordVersion: passwordOf(args.p_user_id ?? ''),
           sessionId: args.p_session_id,
           operation: args.p_operation,
           userId: args.p_user_id,
@@ -132,6 +134,7 @@ function fakeDatabase() {
           return ok(null)
         }
         if (!sessions.has(args.p_session_id)) return ok(null)
+        if (challenge.passwordVersion !== passwordOf(args.p_user_id)) return ok(null)
         const revokedAt = revocations.get(args.p_user_id)
         if (revokedAt !== undefined && revokedAt >= challenge.issuedAt) return ok(null)
         if (credentials.has(args.p_credential_id)) {
@@ -727,6 +730,17 @@ Deno.test('a password change during the GoTrue exchange revokes the new session'
   const result = await ctx.call('restore-verification', { version: 1, credential })
   assertEquals({ status: result.status, body: result.body }, REJECTED, 'no session is returned')
   assertEquals(revokedSessions, [ISSUED_ACCESS], 'the session minted during the race is revoked')
+})
+
+Deno.test('a password reset between enrollment options and verification refuses the registration', async () => {
+  const ctx = setup()
+  const authenticator = await createAuthenticator()
+  const options = await ctx.call('enrollment-options', {}, OWNER_TOKEN)
+  ctx.db.passwords.set(OWNER, 2) // reset while the (possibly stolen) token is still valid
+  const credential = await registrationResponse(authenticator, { challenge: options.body.challenge, rpId: RP_ID, origin: ORIGIN })
+  const result = await ctx.call('registration-verification', { version: 1, credential }, OWNER_TOKEN)
+  assertEquals(result.status, 409, 'the in-flight enrollment is refused')
+  assert(!ctx.db.credentials.has(authenticator.credentialId), 'no key survives the reset')
 })
 
 Deno.test('a registration challenge from a signed-out session cannot be used by a new session', async () => {

@@ -52,8 +52,14 @@ alter table kilo.restore_credentials
   add column if not exists password_fingerprint text
     check (password_fingerprint ~ '^[0-9a-f]{64}$');
 
+-- A registration challenge also captures the owner's password digest when it
+-- is issued, and registration requires it unchanged: a password reset between
+-- options and verification must not let the in-flight enrollment record the
+-- NEW digest and survive the reset.
 alter table kilo.restore_challenges
-  add column if not exists session_id uuid;
+  add column if not exists session_id uuid,
+  add column if not exists password_fingerprint text
+    check (password_fingerprint ~ '^[0-9a-f]{64}$');
 
 -- Registration challenges issued before this migration carry no session and
 -- could never be spent under the session-bound functions below, so they are
@@ -65,7 +71,7 @@ delete from kilo.restore_challenges
 
 alter table kilo.restore_challenges drop constraint if exists restore_challenges_registration_session;
 alter table kilo.restore_challenges add constraint restore_challenges_registration_session
-  check (operation <> 'registration' or session_id is not null);
+  check (operation <> 'registration' or (session_id is not null and password_fingerprint is not null));
 
 -- ---------------------------------------------------------------------------
 -- 2. Lifecycle reads (internal; granted to no role)
@@ -205,8 +211,13 @@ begin
 
   v_expires := pg_catalog.clock_timestamp() + make_interval(secs => p_ttl_seconds);
 
-  insert into kilo.restore_challenges (challenge, operation, user_id, session_id, credential_id, created_at, expires_at)
-  values (p_challenge, p_operation, p_user_id, p_session_id, p_credential_id, pg_catalog.clock_timestamp(), v_expires);
+  insert into kilo.restore_challenges (
+    challenge, operation, user_id, session_id, password_fingerprint, credential_id, created_at, expires_at
+  ) values (
+    p_challenge, p_operation, p_user_id, p_session_id,
+    case when p_operation = 'registration' then kilo.restore_password_fingerprint(p_user_id) end,
+    p_credential_id, pg_catalog.clock_timestamp(), v_expires
+  );
 
   return v_expires;
 end;
@@ -265,6 +276,8 @@ declare
   v_id uuid;
   v_issued timestamptz;
   v_revoked timestamptz;
+  v_challenge_fingerprint text;
+  v_fingerprint text;
 begin
   if not exists (select 1 from auth.users u where u.id = p_user_id) then
     raise exception 'restore credential owner does not exist';
@@ -272,7 +285,7 @@ begin
 
   perform kilo.restore_lock_user(p_user_id);
 
-  select c.created_at into v_issued
+  select c.created_at, c.password_fingerprint into v_issued, v_challenge_fingerprint
   from kilo.restore_challenges c
   where c.challenge = p_challenge
     and c.operation = 'registration'
@@ -295,6 +308,12 @@ begin
     return null;
   end if;
 
+  -- The password changed between options and verification.
+  v_fingerprint := kilo.restore_password_fingerprint(p_user_id);
+  if v_challenge_fingerprint is null or v_fingerprint is distinct from v_challenge_fingerprint then
+    return null;
+  end if;
+
   update kilo.restore_credentials rc
      set revoked_at = now()
    where rc.user_id = p_user_id
@@ -304,7 +323,7 @@ begin
     user_id, credential_id, public_key, sign_count, enrolled_session_id, password_fingerprint
   ) values (
     p_user_id, p_credential_id, p_public_key, coalesce(p_sign_count, 0),
-    p_session_id, kilo.restore_password_fingerprint(p_user_id)
+    p_session_id, v_fingerprint
   )
   returning id into v_id;
 
