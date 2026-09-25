@@ -26,6 +26,9 @@ const OWNER = '11570000-0000-4000-8000-00000000000a'
 const OTHER = '11570000-0000-4000-8000-00000000000b'
 const OWNER_TOKEN = 'owner-access-jwt'
 const OTHER_TOKEN = 'other-access-jwt'
+const OWNER_SESSION = '11570000-0000-4000-8000-0000000005a1'
+const OTHER_SESSION = '11570000-0000-4000-8000-0000000005b1'
+const nowSeconds = () => Math.floor(Date.now() / 1000)
 const OWNER_EMAIL = 'owner@example.test'
 const ISSUED_ACCESS = 'issued-access-token-value'
 const ISSUED_REFRESH = 'issued-refresh-token-value'
@@ -47,7 +50,9 @@ function assertEquals(actual: unknown, expected: unknown, message: string) {
 // ---------------------------------------------------------------------------
 
 interface Challenge {
+  passwordVersion: number
   issuedAt: number
+  sessionId: string | null
   operation: string
   userId: string | null
   credentialId: string | null
@@ -56,6 +61,8 @@ interface Challenge {
 }
 
 interface Credential {
+  enrolledSession: string
+  passwordVersion: number
   userId: string
   publicKey: string
   signCount: number
@@ -66,6 +73,17 @@ function fakeDatabase() {
   const challenges = new Map<string, Challenge>()
   const credentials = new Map<string, Credential>()
   const revocations = new Map<string, number>()
+  // Stand-ins for auth state the database reads (issue #1162): which GoTrue
+  // sessions exist, and a per-user password version standing in for the
+  // encrypted_password digest.
+  const sessions = new Set<string>([OWNER_SESSION, OTHER_SESSION])
+  const passwords = new Map<string, number>()
+  const passwordOf = (userId: string) => passwords.get(userId) ?? 1
+  const eligible = (credentialId: string, userId: string) => {
+    const cred = credentials.get(credentialId)
+    return !!cred && !cred.revoked && cred.userId === userId &&
+      cred.passwordVersion === passwordOf(userId) && sessions.has(cred.enrolledSession)
+  }
   // A strictly increasing clock, standing in for clock_timestamp() under the
   // per-user lock that orders challenge issue against revocation.
   let clock = 0
@@ -88,6 +106,8 @@ function fakeDatabase() {
       case 'restore_issue_challenge':
         challenges.set(args.p_challenge, {
           issuedAt: tick(),
+          passwordVersion: passwordOf(args.p_user_id ?? ''),
+          sessionId: args.p_session_id,
           operation: args.p_operation,
           userId: args.p_user_id,
           credentialId: args.p_credential_id,
@@ -98,7 +118,7 @@ function fakeDatabase() {
       case 'restore_consume_challenge': {
         const c = challenges.get(args.p_challenge)
         const bound = c && (args.p_operation === 'registration'
-          ? c.userId === args.p_user_id
+          ? c.userId === args.p_user_id && c.sessionId === args.p_session_id
           : c.credentialId === args.p_credential_id)
         if (!c || c.consumed || c.operation !== args.p_operation || c.expiresAt <= Date.now() || !bound) return ok(false)
         c.consumed = true
@@ -107,9 +127,14 @@ function fakeDatabase() {
       }
       case 'restore_register_credential': {
         const challenge = challenges.get(args.p_challenge)
-        if (!challenge || challenge.operation !== 'registration' || challenge.userId !== args.p_user_id || !challenge.consumed) {
+        if (
+          !challenge || challenge.operation !== 'registration' || challenge.userId !== args.p_user_id ||
+          challenge.sessionId !== args.p_session_id || !challenge.consumed
+        ) {
           return ok(null)
         }
+        if (!sessions.has(args.p_session_id)) return ok(null)
+        if (challenge.passwordVersion !== passwordOf(args.p_user_id)) return ok(null)
         const revokedAt = revocations.get(args.p_user_id)
         if (revokedAt !== undefined && revokedAt >= challenge.issuedAt) return ok(null)
         if (credentials.has(args.p_credential_id)) {
@@ -117,6 +142,8 @@ function fakeDatabase() {
         }
         for (const cred of credentials.values()) if (cred.userId === args.p_user_id) cred.revoked = true
         credentials.set(args.p_credential_id, {
+          enrolledSession: args.p_session_id,
+          passwordVersion: passwordOf(args.p_user_id),
           userId: args.p_user_id,
           publicKey: args.p_public_key,
           signCount: args.p_sign_count,
@@ -134,10 +161,15 @@ function fakeDatabase() {
       }
       case 'restore_record_use': {
         const cred = credentials.get(args.p_credential_id)
-        if (!cred || cred.revoked || cred.userId !== args.p_user_id) return ok(false)
-        cred.signCount = Math.max(cred.signCount, args.p_sign_count)
+        if (!eligible(args.p_credential_id, args.p_user_id)) {
+          if (cred && cred.userId === args.p_user_id) cred.revoked = true
+          return ok(false)
+        }
+        cred!.signCount = Math.max(cred!.signCount, args.p_sign_count)
         return ok(true)
       }
+      case 'restore_credential_eligible':
+        return ok(eligible(args.p_credential_id, args.p_user_id))
       case 'restore_revoke_user': {
         revocations.set(args.p_user_id, tick())
         let count = 0
@@ -160,6 +192,8 @@ function fakeDatabase() {
   return {
     admin: { rpc } as any,
     challenges,
+    sessions,
+    passwords,
     credentials,
     events,
     failures,
@@ -175,11 +209,20 @@ function fakeDatabase() {
 // Fake GoTrue
 // ---------------------------------------------------------------------------
 
+// token -> who it authenticates, its session, and how many seconds ago its
+// authentication happened (read at call time, like GoTrue's amr claim).
+const tokens = new Map<string, { id: string; sessionId: string | null; authAgo: number }>([
+  [OWNER_TOKEN, { id: OWNER, sessionId: OWNER_SESSION, authAgo: 5 }],
+  [OTHER_TOKEN, { id: OTHER, sessionId: OTHER_SESSION, authAgo: 5 }],
+])
+
 function fakeIdentity(overrides: Partial<RestoreIdentity> = {}, user: Partial<RestoreUser> = {}) {
   const revokedSessions: string[] = []
   const identity: RestoreIdentity = {
-    userFromToken: (token) =>
-      Promise.resolve(token === OWNER_TOKEN ? { id: OWNER } : token === OTHER_TOKEN ? { id: OTHER } : null),
+    userFromToken: (token) => {
+      const entry = tokens.get(token)
+      return Promise.resolve(entry ? { id: entry.id, sessionId: entry.sessionId, authTime: nowSeconds() - entry.authAgo } : null)
+    },
     getUserById: (id) =>
       Promise.resolve({
         ok: true,
@@ -602,6 +645,116 @@ Deno.test('unauthenticated restore routes are throttled', async () => {
 Deno.test('unknown routes and methods are refused', async () => {
   const ctx = setup()
   assertEquals((await ctx.call('not-a-route', {})).status, 404, 'unknown route')
+})
+
+// ---------------------------------------------------------------------------
+// Auth lifecycle (issue #1162)
+// ---------------------------------------------------------------------------
+
+const REAUTH = { status: 401, body: { error: 'Reauthentication required', code: 'reauth_required' } }
+
+Deno.test('both enrollment routes refuse a token without a recent sign-in', async () => {
+  tokens.set('owner-stale-jwt', { id: OWNER, sessionId: OWNER_SESSION, authAgo: 60 * 60 })
+  tokens.set('owner-no-session-jwt', { id: OWNER, sessionId: null, authAgo: 5 })
+  const ctx = setup()
+
+  const stale = await ctx.call('enrollment-options', {}, 'owner-stale-jwt')
+  assertEquals({ status: stale.status, body: stale.body }, REAUTH, 'stale token: options refused')
+  const noSession = await ctx.call('enrollment-options', {}, 'owner-no-session-jwt')
+  assertEquals({ status: noSession.status, body: noSession.body }, REAUTH, 'token without a session: options refused')
+
+  // A challenge obtained with a fresh token cannot be spent with a stale one
+  // from the same session.
+  const authenticator = await createAuthenticator()
+  const options = await ctx.call('enrollment-options', {}, OWNER_TOKEN)
+  const credential = await registrationResponse(authenticator, { challenge: options.body.challenge, rpId: RP_ID, origin: ORIGIN })
+  const late = await ctx.call('registration-verification', { version: 1, credential }, 'owner-stale-jwt')
+  assertEquals({ status: late.status, body: late.body }, REAUTH, 'stale token: registration refused')
+  assert(!ctx.db.credentials.has(authenticator.credentialId), 'nothing was stored')
+  assert(ctx.db.eventNames().includes('auth.token_rejected:invalid_token'), 'the refusal is audited')
+})
+
+Deno.test('a password change after enrollment stops restores without returning a session', async () => {
+  const ctx = setup()
+  const { authenticator } = await enroll(ctx)
+  ctx.db.passwords.set(OWNER, 2)
+  const options = await restoreOptions(ctx, authenticator.credentialId)
+  const credential = await assertionResponse(authenticator, { challenge: options.challenge, rpId: RP_ID, origin: ORIGIN })
+  const result = await ctx.call('restore-verification', { version: 1, credential })
+  assertEquals({ status: result.status, body: result.body }, REJECTED, 'the stale key is refused like any other failure')
+  assert(ctx.db.eventNames().includes('restore.session_failed:credential_inactive'), 'audited')
+  assert(ctx.db.credentials.get(authenticator.credentialId)!.revoked, 'the stale key is revoked')
+})
+
+Deno.test('a global sign-out outside /v1/revoke stops restores', async () => {
+  const ctx = setup()
+  const { authenticator } = await enroll(ctx)
+  ctx.db.sessions.delete(OWNER_SESSION) // GoTrue deleted every session row for the user
+  const options = await restoreOptions(ctx, authenticator.credentialId)
+  const credential = await assertionResponse(authenticator, { challenge: options.challenge, rpId: RP_ID, origin: ORIGIN })
+  const result = await ctx.call('restore-verification', { version: 1, credential })
+  assertEquals({ status: result.status, body: result.body }, REJECTED, 'no session after a global sign-out')
+})
+
+Deno.test('after re-authentication the owner re-enrolls and restores cleanly', async () => {
+  const ctx = setup()
+  await enroll(ctx)
+  ctx.db.passwords.set(OWNER, 2)
+  ctx.db.sessions.delete(OWNER_SESSION)
+
+  const freshSession = '11570000-0000-4000-8000-0000000005a2'
+  ctx.db.sessions.add(freshSession)
+  tokens.set('owner-reauth-jwt', { id: OWNER, sessionId: freshSession, authAgo: 5 })
+  const { authenticator, result: enrolled } = await enroll(ctx, 'owner-reauth-jwt')
+  assertEquals(enrolled.status, 200, 're-enrollment succeeds')
+
+  const options = await restoreOptions(ctx, authenticator.credentialId)
+  const credential = await assertionResponse(authenticator, { challenge: options.challenge, rpId: RP_ID, origin: ORIGIN })
+  const result = await ctx.call('restore-verification', { version: 1, credential })
+  assertEquals(result.status, 200, 'restore from the new key succeeds')
+})
+
+Deno.test('a password change during the GoTrue exchange revokes the new session', async () => {
+  let changePassword = () => {}
+  const { identity, revokedSessions } = fakeIdentity({
+    verifyMagicLink: () => {
+      changePassword()
+      return Promise.resolve({ ok: true, session: { userId: OWNER, accessToken: ISSUED_ACCESS, refreshToken: ISSUED_REFRESH } })
+    },
+  })
+  const ctx = setup({ identity })
+  const { authenticator } = await enroll(ctx)
+  changePassword = () => ctx.db.passwords.set(OWNER, 3)
+  const options = await restoreOptions(ctx, authenticator.credentialId)
+  const credential = await assertionResponse(authenticator, { challenge: options.challenge, rpId: RP_ID, origin: ORIGIN })
+  const result = await ctx.call('restore-verification', { version: 1, credential })
+  assertEquals({ status: result.status, body: result.body }, REJECTED, 'no session is returned')
+  assertEquals(revokedSessions, [ISSUED_ACCESS], 'the session minted during the race is revoked')
+})
+
+Deno.test('a password reset between enrollment options and verification refuses the registration', async () => {
+  const ctx = setup()
+  const authenticator = await createAuthenticator()
+  const options = await ctx.call('enrollment-options', {}, OWNER_TOKEN)
+  ctx.db.passwords.set(OWNER, 2) // reset while the (possibly stolen) token is still valid
+  const credential = await registrationResponse(authenticator, { challenge: options.body.challenge, rpId: RP_ID, origin: ORIGIN })
+  const result = await ctx.call('registration-verification', { version: 1, credential }, OWNER_TOKEN)
+  assertEquals(result.status, 409, 'the in-flight enrollment is refused')
+  assert(!ctx.db.credentials.has(authenticator.credentialId), 'no key survives the reset')
+})
+
+Deno.test('a registration challenge from a signed-out session cannot be used by a new session', async () => {
+  const ctx = setup()
+  const authenticator = await createAuthenticator()
+  const options = await ctx.call('enrollment-options', {}, OWNER_TOKEN)
+  ctx.db.sessions.delete(OWNER_SESSION)
+  const nextSession = '11570000-0000-4000-8000-0000000005a3'
+  ctx.db.sessions.add(nextSession)
+  tokens.set('owner-next-jwt', { id: OWNER, sessionId: nextSession, authAgo: 5 })
+  const credential = await registrationResponse(authenticator, { challenge: options.body.challenge, rpId: RP_ID, origin: ORIGIN })
+  const result = await ctx.call('registration-verification', { version: 1, credential }, 'owner-next-jwt')
+  assertEquals(result.status, 400, 'the old session\'s challenge is refused')
+  assert(!ctx.db.credentials.has(authenticator.credentialId), 'nothing was stored')
 })
 
 // ---------------------------------------------------------------------------

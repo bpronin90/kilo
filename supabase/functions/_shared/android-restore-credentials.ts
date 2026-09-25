@@ -17,6 +17,12 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.108.
 export const RESTORE_API_VERSION = 1
 export const CHALLENGE_TTL_SECONDS = 300
 export const WEBAUTHN_TIMEOUT_MS = CHALLENGE_TTL_SECONDS * 1000
+// Enrollment must follow a real sign-in (issue #1162): a bearer token whose
+// most recent authentication is older than this is refused, so a long-lived or
+// stolen session cannot plant a restore key.
+export const RECENT_AUTH_WINDOW_SECONDS = 10 * 60
+// Tolerated clock skew between GoTrue's issuing clock and this function's.
+const AUTH_TIME_SKEW_SECONDS = 60
 // Registration and assertion JSON is a few KB. Anything larger is not a
 // credential response and is refused before it is parsed.
 export const MAX_BODY_BYTES = 16 * 1024
@@ -92,6 +98,53 @@ export function readClientDataChallenge(clientDataJSON: string): string | null {
   } catch {
     return null
   }
+}
+
+// ---------------------------------------------------------------------------
+// Bearer-token claims (issue #1162)
+// ---------------------------------------------------------------------------
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export interface TokenClaims {
+  // GoTrue session the token belongs to; restore keys are bound to it.
+  sessionId: string
+  // Unix seconds of the most recent authentication, from the signed `amr`
+  // claim. Not `iat`: a refresh re-issues the token without re-authenticating.
+  authTime: number
+}
+
+// Reads session_id and the authentication time from a GoTrue access token.
+// Call it ONLY after GoTrue has validated the token (identity.userFromToken):
+// this decodes, it does not verify. Returns null for anything malformed, and
+// the caller then treats the token as not recently authenticated.
+export function readTokenClaims(token: string): TokenClaims | null {
+  const parts = token.split('.')
+  if (parts.length !== 3) return null
+  const payload = fromBase64Url(parts[1])
+  if (!payload) return null
+  let claims: Record<string, unknown>
+  try {
+    claims = JSON.parse(new TextDecoder().decode(payload))
+  } catch {
+    return null
+  }
+  const sessionId = claims?.session_id
+  if (typeof sessionId !== 'string' || !UUID_PATTERN.test(sessionId)) return null
+  const amr = claims.amr
+  if (!Array.isArray(amr)) return null
+  let authTime = 0
+  for (const entry of amr) {
+    const timestamp = (entry as { timestamp?: unknown })?.timestamp
+    if (typeof timestamp === 'number' && Number.isFinite(timestamp) && timestamp > authTime) authTime = timestamp
+  }
+  return authTime > 0 ? { sessionId: sessionId.toLowerCase(), authTime } : null
+}
+
+export function isRecentlyAuthenticated(authTime: number | null | undefined, nowMs = Date.now()): boolean {
+  if (typeof authTime !== 'number') return false
+  const now = Math.floor(nowMs / 1000)
+  return authTime <= now + AUTH_TIME_SKEW_SECONDS && now - authTime <= RECENT_AUTH_WINDOW_SECONDS
 }
 
 // ---------------------------------------------------------------------------
@@ -240,16 +293,21 @@ function dbCode(error: { code?: unknown }): string {
   return typeof error.code === 'string' ? error.code : 'unknown'
 }
 
+// Registration challenges are bound to the user AND the session that asked for
+// them; assertion challenges to the credential id.
+type ChallengeBinding = { userId?: string; sessionId?: string; credentialId?: string }
+
 export async function issueChallenge(
   admin: RpcClient,
   operation: 'registration' | 'assertion',
   challenge: string,
-  binding: { userId?: string; credentialId?: string },
+  binding: ChallengeBinding,
 ): Promise<DbResult<true>> {
   const { error } = await admin.rpc('restore_issue_challenge', {
     p_operation: operation,
     p_challenge: challenge,
     p_user_id: binding.userId ?? null,
+    p_session_id: binding.sessionId ?? null,
     p_credential_id: binding.credentialId ?? null,
     p_ttl_seconds: CHALLENGE_TTL_SECONDS,
   })
@@ -260,25 +318,28 @@ export async function consumeChallenge(
   admin: RpcClient,
   operation: 'registration' | 'assertion',
   challenge: string,
-  binding: { userId?: string; credentialId?: string },
+  binding: ChallengeBinding,
 ): Promise<DbResult<boolean>> {
   const { data, error } = await admin.rpc('restore_consume_challenge', {
     p_operation: operation,
     p_challenge: challenge,
     p_user_id: binding.userId ?? null,
+    p_session_id: binding.sessionId ?? null,
     p_credential_id: binding.credentialId ?? null,
   })
   return error ? { ok: false, code: dbCode(error) } : { ok: true, value: data === true }
 }
 
-// value is false when the database refused the registration because the
-// user's credentials were revoked after its challenge was issued (a sign-out
-// or account deletion that raced this enrollment), or the challenge is not
-// this user's consumed registration challenge.
+// value is false when the database refused the registration: the user's
+// credentials were revoked after its challenge was issued (a sign-out or
+// account deletion that raced this enrollment), the challenge is not this
+// user's and this session's consumed registration challenge, or the enrolling
+// session has ended.
 export async function registerCredential(
   admin: RpcClient,
   userId: string,
   challenge: string,
+  sessionId: string,
   credentialId: string,
   publicKey: string,
   signCount: number,
@@ -286,6 +347,7 @@ export async function registerCredential(
   const { data, error } = await admin.rpc('restore_register_credential', {
     p_user_id: userId,
     p_challenge: challenge,
+    p_session_id: sessionId,
     p_credential_id: credentialId,
     p_public_key: publicKey,
     p_sign_count: signCount,
@@ -326,6 +388,21 @@ export async function recordCredentialUse(
   return error ? { ok: false, code: dbCode(error) } : { ok: true, value: data === true }
 }
 
+// Whether a credential may still issue a session for its owner: active, the
+// owner's password unchanged since enrollment, and the enrolling GoTrue session
+// still alive (issue #1162). Evaluated in the database, which reads auth state.
+export async function credentialEligible(
+  admin: RpcClient,
+  credentialId: string,
+  userId: string,
+): Promise<DbResult<boolean>> {
+  const { data, error } = await admin.rpc('restore_credential_eligible', {
+    p_credential_id: credentialId,
+    p_user_id: userId,
+  })
+  return error ? { ok: false, code: dbCode(error) } : { ok: true, value: data === true }
+}
+
 export async function revokeUserCredentials(admin: RpcClient, userId: string): Promise<DbResult<number>> {
   const { data, error } = await admin.rpc('restore_revoke_user', { p_user_id: userId })
   return error ? { ok: false, code: dbCode(error) } : { ok: true, value: Number(data) || 0 }
@@ -345,7 +422,9 @@ export interface RestoreUser {
 
 // Implemented by the Edge Function over supabase-js; faked in tests.
 export interface RestoreIdentity {
-  userFromToken(token: string): Promise<{ id: string } | null>
+  // The GoTrue-validated user, plus the token's session and authentication
+  // time (null when the token does not carry them).
+  userFromToken(token: string): Promise<{ id: string; sessionId: string | null; authTime: number | null } | null>
   getUserById(id: string): Promise<{ ok: true; user: RestoreUser | null } | { ok: false; code: string }>
   // auth.admin.generateLink({ type: 'magiclink', email }). Returns the user the
   // link was generated for and the hashed token; nothing is emailed.
