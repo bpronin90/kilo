@@ -32,6 +32,7 @@ graph TD
         EdgeExport["account-export Edge Function"]
         EdgeDelete["account-delete Edge Function"]
         EdgeHealthDelete["health-data-delete Edge Function"]
+        EdgeRestore["android-restore-credentials Edge Function"]
         KiloSchema[("kilo schema\nRLS app tables · consent ledger\npurge jobs · evidence archive")]
         Auth[("Supabase Auth")]
     end
@@ -50,14 +51,17 @@ graph TD
     EdgeExport --> KiloSchema
     EdgeDelete --> KiloSchema
     EdgeHealthDelete --> KiloSchema
+    EdgeRestore --> KiloSchema
     EdgeDelete --> Auth
+    EdgeRestore --> Auth
 ```
 
 ## Supabase Deployment Configuration
 
 `supabase/config.toml` records the local project identifier, the exact exposed
-schema set, and `verify_jwt = false` for `account-export` and
-`account-delete`. `health-data-delete` also disables platform JWT verification
+schema set, and `verify_jwt = false` for `account-export`,
+`account-delete`, and `android-restore-credentials` (whose restore routes are
+reached before the device has any session). `health-data-delete` also disables platform JWT verification
 because it authenticates either the withdrawing user's JWT or the Vault-backed
 service-role Cron worker itself. Those functions perform their own JWT
 validation and must
@@ -69,12 +73,12 @@ after the 1-hour window so abandoned bucket keys cannot grow the table without
 bound (#451).
 
 The config's `project_id` is not the remote deployment target. Run
-`scripts/deploy-kilo-functions.sh` from the repository root to deploy the three
+`scripts/deploy-kilo-functions.sh` from the repository root to deploy the four
 Kilo-owned functions; the script supplies project ref
 `ogzhnscdqcdrhfqcobuv` explicitly and does not deploy functions outside Kilo's
 ownership boundary. It reports success only after the
-Supabase management plane shows `account-export`, `account-delete`, and
-`health-data-delete` as `ACTIVE` with an update timestamp from that deployment.
+Supabase management plane shows `account-export`, `account-delete`,
+`health-data-delete`, and `android-restore-credentials` as `ACTIVE` with an update timestamp from that deployment.
 
 The production health-deletion worker also requires two **database Vault**
 secrets, verified by name from `vault.secrets` (never decrypted, read, or
@@ -188,6 +192,57 @@ alert: the user was told their erasure had started and is still waiting on it.
    `kilo.complete_health_deletion_job` refuses to advance to `withdrawn` while
    any scoped row remains, so a `complete` job is itself the erasure proof.
 
+## Android Restore Credentials Trust Boundary
+
+`supabase/functions/android-restore-credentials/` (issue #1157) lets a user who
+migrates to a new Android device be signed back in without typing credentials.
+The device's Credential Manager holds a WebAuthn-style key pair that it backs up
+with the device; Kilo stores only the public key, in `kilo.restore_credentials`
+(migration `20260925120000_android_restore_credentials.sql`).
+
+The v1 contract is five POST routes. `enrollment-options` and
+`registration-verification` are authenticated and register a key for the bearer
+user, replacing any previous one. `restore-options` and `restore-verification`
+are unauthenticated and IP rate-limited: the device asks for a one-time
+challenge, signs it, and the server verifies the signature, challenge, Android
+origin (`android:apk-key-hash:` of an accepted signing certificate), and RP ID
+with `@simplewebauthn/server`. `revoke` is authenticated and is the sign-out
+path. An unknown credential is answered exactly like a known one, and every
+rejected restore returns the same 401, so the routes cannot be used to learn
+which credentials exist.
+
+Only after verification does the function issue a session, through the
+mechanism the user authorized on #1157: with the service-role key it checks the
+key owner by id (existing, not banned, confirmed email), calls
+`auth.admin.generateLink({ type: 'magiclink' })`, and immediately redeems the
+hashed token with `verifyOtp` on a client that persists nothing. It returns
+only `access_token` and `refresh_token`, and discards (and revokes) any session
+whose subject is not the key owner. No shared-project Auth setting, role,
+extension, or JWT signing changes.
+
+Challenges live in `kilo.restore_challenges` and are consumed exactly once by a
+single conditional `UPDATE`. Revocation is durable and one-way:
+`kilo.restore_revoke_user` revokes the credential, burns outstanding
+challenges, and stamps `kilo.restore_revocations`, and `account-delete` calls it
+as step 0, before anything is deleted, so a later deletion failure leaves the
+key revoked. Revocation wins both races with the restore flow: a registration
+whose challenge was issued before the stamp is refused even if already
+underway (challenge issue, registration, and revocation serialize on a per-user
+advisory lock), and restore-verification re-checks the credential after the
+GoTrue exchange and revokes the new session if the key was revoked meanwhile.
+The `revoke` route then ends every GoTrue session the user holds
+(`auth.admin.signOut(token, 'global')`, matching the client's default global
+sign-out), which kills a session a restore minted and re-checked just before the
+database revocation committed. Both tables are RLS
+deny-all with no table grants; every access goes through `kilo.restore_*`
+security-definer functions granted to `service_role` only.
+
+Configuration is two Edge Function secrets, `KILO_RESTORE_RP_ID` and
+`KILO_ANDROID_APK_KEY_HASHES`; with either missing or malformed, every
+registration and restore route fails closed while `revoke` keeps working. The
+RP ID domain must serve a matching `/.well-known/assetlinks.json`; hosting it
+and the mobile wiring (#1159) are separate issues.
+
 ## Security Event Monitor
 
 The health-deletion monitor above watches one queue. This one watches the
@@ -212,7 +267,8 @@ could not detect one.
 
 `kilo.security_events` is the durable half. The Edge Functions write to it
 through `supabase/functions/_shared/security-event.ts` on a fixed catalog of
-twelve events. Severity is derived server-side from the event name, so a caller
+eighteen events (twelve from #975, six Android Restore Credentials events from
+#1157). Severity is derived server-side from the event name, so a caller
 cannot downgrade its own event; the subject is a salted digest rather than a raw
 user id or IP, so one actor can be followed across endpoints while the log names
 nobody; and context is an allow-list of bounded scalars, so no message, header,

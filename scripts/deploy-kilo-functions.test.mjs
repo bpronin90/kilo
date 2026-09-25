@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 const repoRoot = new URL('..', import.meta.url).pathname;
 const scriptPath = join(repoRoot, 'scripts/deploy-kilo-functions.sh');
 const projectRef = 'ogzhnscdqcdrhfqcobuv';
-const requiredFunctions = ['account-export', 'account-delete', 'health-data-delete'];
+const requiredFunctions = ['account-export', 'account-delete', 'health-data-delete', 'android-restore-credentials'];
 const activeFunctions = requiredFunctions.map((slug) => ({
   slug,
   status: 'ACTIVE',
@@ -102,6 +102,7 @@ function expectFailure(options, message) {
 }
 
 expectFailure({ functions: activeFunctions.slice(0, 2) }, /Required Edge Function is missing: health-data-delete/);
+expectFailure({ functions: activeFunctions.slice(0, 3) }, /Required Edge Function is missing: android-restore-credentials/);
 expectFailure({ functions: activeFunctions.map((fn) => fn.slug === 'account-delete' ? { ...fn, status: 'FAILED' } : fn) }, /not ACTIVE: account-delete/);
 expectFailure({ functions: activeFunctions.map((fn) => fn.slug === 'account-export' ? { ...fn, updated_at: '2000-01-01T00:00:00Z' } : fn) }, /lacks current deployment evidence: account-export/);
 expectFailure({ vault: 'missing' }, /Required health-deletion worker Vault secrets are missing/);

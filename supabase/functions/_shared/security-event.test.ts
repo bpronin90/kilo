@@ -3,6 +3,7 @@ import {
   requestId,
   sanitizeSecurityContext,
   SECURITY_EVENT_NAMES,
+  SECURITY_EVENT_SOURCES,
 } from './security-event.ts'
 
 interface RpcCall {
@@ -164,4 +165,22 @@ Deno.test('the catalog is a closed set of distinct names', () => {
   if (unique.size !== SECURITY_EVENT_NAMES.length) {
     throw new Error('the security event catalog contains a duplicate')
   }
+})
+
+Deno.test('the Android Restore Credentials events, source, and reasons are catalogued (#1157)', () => {
+  for (const name of [
+    'restore.enrolled',
+    'restore.assertion_accepted',
+    'restore.assertion_rejected',
+    'restore.session_issued',
+    'restore.session_failed',
+    'restore.revoked',
+  ]) {
+    if (!(SECURITY_EVENT_NAMES as readonly string[]).includes(name)) throw new Error(`${name} is not catalogued`)
+  }
+  if (!(SECURITY_EVENT_SOURCES as readonly string[]).includes('android-restore-credentials')) {
+    throw new Error('the android-restore-credentials source is not allowed')
+  }
+  const out = sanitizeSecurityContext({ reason: 'verification_failed', status: 401 })
+  if (out.reason !== 'verification_failed') throw new Error('a restore reason was dropped by the sanitizer')
 })

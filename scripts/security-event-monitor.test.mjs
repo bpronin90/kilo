@@ -28,7 +28,7 @@
 // best-effort, and the event simply never arrives -- so it is asserted here.
 
 import assert from 'node:assert/strict';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -261,6 +261,61 @@ test('failed privileged operations have their own low threshold', () => {
         event({ event_name: 'account.delete_failed', outcome: 'failed', count: 6, distinct_subjects: 6 }),
         event({ event_name: 'health.purge_failed', outcome: 'failed', count: 5, distinct_subjects: 5 }),
       ],
+    }),
+    DEFAULT_THRESHOLDS,
+    'test-project',
+  );
+  assert.deepEqual(alert.findings.map((f) => f.kind), ['server-failure-volume']);
+});
+
+test('rejected restore assertions count as authentication failures', () => {
+  // A rejected Android restore assertion is a failed sign-in with a key. Alone
+  // it clears the volume threshold, and spread across many origins it is the
+  // key-trial shape the distinct-subject threshold exists for.
+  const volume = buildAlert(
+    snapshot({
+      severity_counts: { critical: 0, warning: 101, info: 0 },
+      events: [event({ event_name: 'restore.assertion_rejected', count: 101, distinct_subjects: 2 })],
+    }),
+    DEFAULT_THRESHOLDS,
+    'test-project',
+  );
+  assert.deepEqual(volume.findings.map((f) => f.kind), ['auth-failure-volume']);
+
+  const spread = buildAlert(
+    snapshot({
+      severity_counts: { critical: 0, warning: 30, info: 0 },
+      events: [event({ event_name: 'restore.assertion_rejected', count: 30, distinct_subjects: 25 })],
+    }),
+    DEFAULT_THRESHOLDS,
+    'test-project',
+  );
+  assert.deepEqual(spread.findings.map((f) => f.kind), ['auth-failure-spread']);
+});
+
+test('an attacker split across rejected tokens and rejected restores still trips the spread threshold', () => {
+  // 15 + 15 distinct subjects: neither event alone crosses 20, and the total
+  // volume (30) is far under 100. The union is not in the snapshot, so the
+  // spread test sums the per-event counts -- an upper bound that alerts here.
+  const alert = buildAlert(
+    snapshot({
+      severity_counts: { critical: 0, warning: 30, info: 0 },
+      events: [
+        event({ event_name: 'auth.token_rejected', count: 15, distinct_subjects: 15 }),
+        event({ event_name: 'restore.assertion_rejected', count: 15, distinct_subjects: 15 }),
+      ],
+    }),
+    DEFAULT_THRESHOLDS,
+    'test-project',
+  );
+  assert.deepEqual(alert.findings.map((f) => f.kind), ['auth-failure-spread']);
+});
+
+test('failed restore session issuance counts as a failed privileged operation', () => {
+  const alert = buildAlert(
+    snapshot({
+      severity_counts: { critical: 0, warning: 11, info: 0 },
+      events: [event({ event_name: 'restore.session_failed', outcome: 'failed', count: 11, distinct_subjects: 3 })],
     }),
     DEFAULT_THRESHOLDS,
     'test-project',
@@ -511,10 +566,29 @@ test('a threshold override in the .env file is honoured by a real run', () => {
 // the monitor thresholds on, and that the catalog and allow-lists have not
 // drifted between the TypeScript and the SQL that both enforce them.
 
-const migrationSource = readFileSync(
-  join(repoRoot, 'supabase/migrations/20260908120000_security_event_log.sql'),
-  'utf8',
-);
+// Applied migrations are immutable, so a catalog change lands in a NEW
+// migration that replaces the constraint or function. The effective definition
+// of each list is therefore the one in the LATEST migration that defines it,
+// not the one in 20260908120000_security_event_log.sql that introduced it.
+const migrationDir = join(repoRoot, 'supabase/migrations');
+const migrationsNewestFirst = readdirSync(migrationDir)
+  .filter((name) => name.endsWith('.sql'))
+  .sort()
+  .reverse()
+  .map((name) => ({ name, source: readFileSync(join(migrationDir, name), 'utf8') }));
+
+function latestMigrationWith(anchor) {
+  const found = migrationsNewestFirst.find((migration) => migration.source.includes(anchor));
+  assert.ok(found, `no migration defines: ${anchor}`);
+  return found.source;
+}
+
+const EVENT_NAME_ANCHOR = 'check (event_name in';
+const SOURCE_ANCHOR = 'check (source in';
+const OUTCOME_ANCHOR = 'check (outcome in';
+const REASON_ANCHOR = "v_text := p_context ->> 'reason';";
+const SEVERITY_ANCHOR = 'create or replace function kilo.security_event_severity';
+const RECORDER_ANCHOR = 'create or replace function kilo.record_security_event';
 const recorderSource = readFileSync(
   join(repoRoot, 'supabase/functions/_shared/security-event.ts'),
   'utf8',
@@ -523,6 +597,10 @@ const functionSources = {
   'account-export': readFileSync(join(repoRoot, 'supabase/functions/account-export/index.ts'), 'utf8'),
   'account-delete': readFileSync(join(repoRoot, 'supabase/functions/account-delete/index.ts'), 'utf8'),
   'health-data-delete': readFileSync(join(repoRoot, 'supabase/functions/health-data-delete/index.ts'), 'utf8'),
+  'android-restore-credentials': readFileSync(
+    join(repoRoot, 'supabase/functions/android-restore-credentials/handler.ts'),
+    'utf8',
+  ),
   'rate-limit': readFileSync(join(repoRoot, 'supabase/functions/_shared/rate-limit.ts'), 'utf8'),
 };
 
@@ -547,28 +625,37 @@ function tsStringList(source, name) {
 test('the event catalog is identical in TypeScript and SQL', () => {
   assert.deepEqual(
     tsStringList(recorderSource, 'SECURITY_EVENT_NAMES'),
-    sqlStringList(migrationSource, 'event_name text not null check (event_name in'),
+    sqlStringList(latestMigrationWith(EVENT_NAME_ANCHOR), EVENT_NAME_ANCHOR),
   );
 });
 
 test('the source allow-list is identical in TypeScript and SQL', () => {
   assert.deepEqual(
     tsStringList(recorderSource, 'SECURITY_EVENT_SOURCES'),
-    sqlStringList(migrationSource, 'source text not null check (source in'),
+    sqlStringList(latestMigrationWith(SOURCE_ANCHOR), SOURCE_ANCHOR),
+  );
+});
+
+test('record_security_event accepts exactly the source allow-list', () => {
+  // The function re-validates the source independently of the CHECK, so a
+  // source added to one and not the other fails every write from it.
+  assert.deepEqual(
+    tsStringList(recorderSource, 'SECURITY_EVENT_SOURCES'),
+    sqlStringList(latestMigrationWith(RECORDER_ANCHOR).split(RECORDER_ANCHOR).pop(), 'p_source not in'),
   );
 });
 
 test('the outcome allow-list is identical in TypeScript and SQL', () => {
   assert.deepEqual(
     tsStringList(recorderSource, 'SECURITY_EVENT_OUTCOMES'),
-    sqlStringList(migrationSource, 'outcome text not null check (outcome in'),
+    sqlStringList(latestMigrationWith(OUTCOME_ANCHOR), OUTCOME_ANCHOR),
   );
 });
 
 test('the context reason allow-list is identical in TypeScript and SQL', () => {
   assert.deepEqual(
     tsStringList(recorderSource, 'SECURITY_EVENT_REASONS'),
-    sqlStringList(migrationSource, "v_text := p_context ->> 'reason';"),
+    sqlStringList(latestMigrationWith(REASON_ANCHOR), REASON_ANCHOR),
   );
 });
 
@@ -576,9 +663,10 @@ test('every catalog event has a server-derived severity', () => {
   // A name the severity map does not know returns null, and the NOT NULL column
   // then rejects the insert -- loudly in a test, silently in production, since
   // recording is best-effort by design.
+  const severitySource = latestMigrationWith(SEVERITY_ANCHOR).split(SEVERITY_ANCHOR).pop().split('$$;')[0];
   for (const name of tsStringList(recorderSource, 'SECURITY_EVENT_NAMES')) {
     assert.ok(
-      migrationSource.includes(`when '${name}' then`),
+      severitySource.includes(`when '${name}' then`),
       `kilo.security_event_severity has no branch for ${name}`,
     );
   }
@@ -586,7 +674,7 @@ test('every catalog event has a server-derived severity', () => {
 
 test('a caller can never set its own severity', () => {
   assert.ok(
-    !/p_severity/.test(migrationSource),
+    !migrationsNewestFirst.some((migration) => /p_severity/.test(migration.source)),
     'record_security_event must not accept a severity argument',
   );
   assert.ok(
@@ -620,6 +708,17 @@ const REQUIRED_EVENTS = {
     'health.purge_succeeded',
     'health.purge_failed',
   ],
+  'android-restore-credentials': [
+    'auth.token_missing',
+    'auth.token_rejected',
+    'server.error',
+    'restore.enrolled',
+    'restore.assertion_accepted',
+    'restore.assertion_rejected',
+    'restore.session_issued',
+    'restore.session_failed',
+    'restore.revoked',
+  ],
   'rate-limit': [
     'ratelimit.unavailable',
     'ratelimit.ip_blocked',
@@ -642,7 +741,7 @@ test('every rate-limit call site identifies both its source and its subject', ()
   // The limiter records the throttle event, so it needs the source to attribute
   // it and the subject to name it. A call missing either is silently unlogged:
   // recording is best-effort, so nothing fails loudly at runtime.
-  for (const fn of ['account-export', 'account-delete', 'health-data-delete']) {
+  for (const fn of ['account-export', 'account-delete', 'health-data-delete', 'android-restore-credentials']) {
     const calls = functionSources[fn].match(/rateLimitAllowed\([^)]*\)/g) ?? [];
     assert.ok(calls.length > 0, `${fn} has no rate-limit call sites`);
     for (const call of calls) {
@@ -658,7 +757,7 @@ test('endpoints never classify a rate-limit rejection themselves', () => {
   // a false return logged a quota throttle during a database outage -- blaming
   // the caller for the server's failure and spiking the throttle-volume alert
   // on the very incident ratelimit.unavailable exists to isolate.
-  for (const fn of ['account-export', 'account-delete', 'health-data-delete']) {
+  for (const fn of ['account-export', 'account-delete', 'health-data-delete', 'android-restore-credentials']) {
     assert.ok(
       !functionSources[fn].includes('ratelimit.'),
       `${fn} classifies a rate-limit rejection itself; only the limiter can`,

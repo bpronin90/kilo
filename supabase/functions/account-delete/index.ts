@@ -18,6 +18,10 @@
 //     statement to that id.
 //
 // Order of operations, and why:
+//   0. Revoke Android restore credentials (issue #1157) BEFORE anything else.
+//      Revocation is durable and one-way: if any later step fails, the account
+//      survives but its backed-up restore key can no longer mint a session, and
+//      nothing in this function or the restore schema ever un-revokes it.
 //   1. Build the pseudonymized consent-evidence archive BEFORE anything is
 //      deleted. The account-linked consent ledger cascades away with auth.users,
 //      so once the identity is gone the evidence cannot be reconstructed. Art. 7(1)
@@ -42,6 +46,7 @@ import { corsHeaders } from '../_shared/cors.ts'
 import { extractToken } from '../_shared/auth.ts'
 import { clientIp, rateLimitAllowed } from '../_shared/rate-limit.ts'
 import { deleteHealthData } from '../_shared/health-data-scope.ts'
+import { revokeUserCredentials } from '../_shared/android-restore-credentials.ts'
 import {
   recordSecurityEvent,
   requestId,
@@ -242,6 +247,36 @@ serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
       status: 429,
       headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '3600' },
+    })
+  }
+
+  // 0. Restore credentials first. A deletion that cannot revoke them aborts
+  //    before destroying anything, so the user can retry; a later failure
+  //    leaves them revoked.
+  const revoked = await revokeUserCredentials(rlAdmin, user.id)
+  if (!revoked.ok) {
+    console.error('account-delete restore credential revocation failed', { code: revoked.code })
+    await recordSecurityEvent(rlAdmin, {
+      name: 'account.delete_failed',
+      source: SECURITY_SOURCE,
+      outcome: 'failed',
+      subjectType: 'user',
+      subject: user.id,
+      context: { status: 500, reason: 'db_error', code: revoked.code, request_id: rid },
+    })
+    return new Response(JSON.stringify({ error: 'Account deletion failed.' }), {
+      status: 500,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    })
+  }
+  if (revoked.value > 0) {
+    await recordSecurityEvent(rlAdmin, {
+      name: 'restore.revoked',
+      source: SECURITY_SOURCE,
+      outcome: 'succeeded',
+      subjectType: 'user',
+      subject: user.id,
+      context: { status: 200, count: revoked.value, request_id: rid },
     })
   }
 
