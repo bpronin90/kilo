@@ -397,6 +397,23 @@ describe('androidRestoreSession', () => {
     expect(mockSetSession).not.toHaveBeenCalled();
   });
 
+  test('restore-verification with wrong version is rejected', async () => {
+    await seedCredentialId();
+    nativeMock.__setResult('getRestoreCredential', { status: 'success', credentialJson: ASSERTION_CREDENTIAL_JSON });
+    mockFetch
+      .mockResolvedValueOnce(fakeRes(RESTORE_OPTIONS_BODY))
+      .mockResolvedValueOnce(fakeRes({ version: 2, access_token: 'new-tok', refresh_token: 'new-ref' }));
+
+    const { ref } = renderAuthHook();
+    await flush();
+
+    let result;
+    await act(async () => { result = await ref.current.androidRestoreSession(); });
+
+    expect(result.ok).toBe(false);
+    expect(mockSetSession).not.toHaveBeenCalled();
+  });
+
   test('partial server response (missing refresh_token) returns error', async () => {
     await seedCredentialId();
     nativeMock.__setResult('getRestoreCredential', { status: 'success', credentialJson: ASSERTION_CREDENTIAL_JSON });
@@ -502,6 +519,21 @@ describe('signOut with Android revocation', () => {
     expect(result.ok).toBe(false);
     expect(result.error).toContain('revoke');
     expect(mockAuth.signOut).not.toHaveBeenCalled();
+  });
+
+  test('native clear unavailable/unsupported surfaces as incomplete-cleanup message', async () => {
+    await seedCredentialId();
+    mockFetch.mockResolvedValueOnce(fakeRes({ version: 1, revoked: true }));
+    nativeMock.__setResult('clearRestoreCredential', { status: 'unavailable' });
+
+    const { ref } = renderAuthHook();
+    await flush();
+
+    let result;
+    await act(async () => { result = await ref.current.signOut(); });
+
+    expect(result.ok).toBe(true);
+    expect(result.message).toMatch(/could not be cleared/i);
   });
 
   test('device-clear failure surfaces as incomplete-cleanup message (server revocation is authoritative)', async () => {

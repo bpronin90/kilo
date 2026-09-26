@@ -311,7 +311,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
         const tok = (await client.auth.getSession().catch(() => ({ data: {} }))).data?.session?.access_token;
         if (surl && tok && !(await callAndroidRestoreApi(surl, 'revoke', {}, tok).catch(() => null))?.ok)
           return { ok: false, error: 'Could not revoke Android restore key. Sign out again to retry.' };
-        clearFailed = (await Promise.allSettled([nativeClearRestoreCredential(), clearAndroidRestoreCredentialId()])).some((r) => r.status === 'rejected' || r.value?.status === 'error');
+        clearFailed = await Promise.allSettled([nativeClearRestoreCredential(), clearAndroidRestoreCredentialId()]).then(([nc]) => nc.status === 'rejected' || nc.value?.status !== 'success');
       }
       const { error } = await client.auth.signOut();
       if (error) return { ok: false, error: error.message };
@@ -400,7 +400,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
       if (!res.ok) return { ok: false, error: body?.error || 'Account deletion failed.' };
       let clearFailed = false;
       if (isAndroidRestoreCredentialsAvailable()) {
-        clearFailed = (await Promise.allSettled([nativeClearRestoreCredential(), clearAndroidRestoreCredentialId()])).some((r) => r.status === 'rejected' || r.value?.status === 'error');
+        clearFailed = await Promise.allSettled([nativeClearRestoreCredential(), clearAndroidRestoreCredentialId()]).then(([nc]) => nc.status === 'rejected' || nc.value?.status !== 'success');
       }
       // Clear local session state — the auth user is gone server-side.
       await client.auth.signOut();
@@ -568,7 +568,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
       let assertion; try { assertion = JSON.parse(native.credentialJson); } catch { return { ok: false, error: 'Restore failed.' }; }
       if (!credentialId && assertion?.id) saveAndroidRestoreCredentialId(assertion.id);
       const ver = await callAndroidRestoreApi(supabaseUrl, 'restore-verification', assertion);
-      if (!ver.ok || !ver.body?.access_token || !ver.body?.refresh_token) return { ok: false, error: 'Restore failed.' };
+      if (!ver.ok || ver.body?.version !== 1 || !ver.body?.access_token || !ver.body?.refresh_token) return { ok: false, error: 'Restore failed.' };
       const { error: e } = await client.auth.setSession({ access_token: ver.body.access_token, refresh_token: ver.body.refresh_token });
       return e ? { ok: false, error: e.message } : { ok: true };
     } catch (e) { return networkErrorResult(e); }
