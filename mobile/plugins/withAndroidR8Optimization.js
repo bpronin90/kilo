@@ -109,10 +109,15 @@ function withAndroidR8Optimization(config) {
     }
 
     const contents = modConfig.modResults.contents;
-    // Locate block boundaries against a comment-blanked copy (same length/
-    // offsets as `contents`) so a commented-out example block or mention
-    // can't be mistaken for the real, active Gradle structure.
-    const releaseBlock = findReleaseBuildTypeBlock(blankOutComments(contents));
+    // Comment-blanked copy: same length/offsets as `contents`, but with every
+    // comment's characters replaced by spaces. Every lookup below — block
+    // boundaries *and* the proguard-string checks within them — runs against
+    // this copy, so a commented-out example block or an incidental mention of
+    // either proguard string inside a comment can never be mistaken for real,
+    // active Gradle structure. The offsets it yields are then used to read
+    // and patch the corresponding span of the original `contents`.
+    const blanked = blankOutComments(contents);
+    const releaseBlock = findReleaseBuildTypeBlock(blanked);
 
     if (!releaseBlock) {
       throw new Error(
@@ -123,14 +128,16 @@ function withAndroidR8Optimization(config) {
       );
     }
 
+    const blankedReleaseContents = blanked.slice(releaseBlock.start, releaseBlock.end);
     const releaseContents = contents.slice(releaseBlock.start, releaseBlock.end);
 
-    if (releaseContents.includes(OPTIMIZING_PROGUARD_FILE)) {
+    if (blankedReleaseContents.includes(OPTIMIZING_PROGUARD_FILE)) {
       // Already patched (idempotent re-run, e.g. a second prebuild pass).
       return modConfig;
     }
 
-    if (!releaseContents.includes(NON_OPTIMIZING_PROGUARD_FILE)) {
+    const nonOptimizingIndex = blankedReleaseContents.indexOf(NON_OPTIMIZING_PROGUARD_FILE);
+    if (nonOptimizingIndex === -1) {
       throw new Error(
         'withAndroidR8Optimization: expected to find ' +
           `${NON_OPTIMIZING_PROGUARD_FILE} in the generated app build.gradle release ` +
@@ -139,10 +146,10 @@ function withAndroidR8Optimization(config) {
       );
     }
 
-    const patchedReleaseContents = releaseContents.replace(
-      NON_OPTIMIZING_PROGUARD_FILE,
-      OPTIMIZING_PROGUARD_FILE
-    );
+    const patchedReleaseContents =
+      releaseContents.slice(0, nonOptimizingIndex) +
+      OPTIMIZING_PROGUARD_FILE +
+      releaseContents.slice(nonOptimizingIndex + NON_OPTIMIZING_PROGUARD_FILE.length);
 
     modConfig.modResults.contents =
       contents.slice(0, releaseBlock.start) +

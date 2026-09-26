@@ -324,5 +324,32 @@ describe('app config', () => {
       expect(activeReleaseBlock).toContain('getDefaultProguardFile("proguard-android-optimize.txt")');
       expect(activeReleaseBlock).not.toContain('getDefaultProguardFile("proguard-android.txt")');
     });
+
+    // Connector finding on PR #1169: a comment inside the *active* release
+    // block that mentions the optimizing proguard file must not cause the
+    // idempotency check to pass while the real (non-commented) proguard line
+    // in that same block is still the non-optimizing default.
+    test('checks idempotency and replacement against the real code, not an in-block comment', async () => {
+      const contents = [
+        'buildTypes {',
+        '  release {',
+        '    // TODO: eventually switch to getDefaultProguardFile("proguard-android-optimize.txt")',
+        '    minifyEnabled true',
+        '    proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"',
+        '  }',
+        '}',
+      ].join('\n');
+
+      const result = await runAppBuildGradleMod(contents);
+
+      const codeLine = result
+        .split('\n')
+        .find((line) => line.trim().startsWith('proguardFiles'));
+      expect(codeLine).toContain('getDefaultProguardFile("proguard-android-optimize.txt")');
+      // The comment itself is left untouched.
+      expect(result).toContain(
+        '// TODO: eventually switch to getDefaultProguardFile("proguard-android-optimize.txt")'
+      );
+    });
   });
 });
