@@ -14,8 +14,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, Platform } from 'react-native';
 import { getCaptchaConfig } from '../lib/captchaConfig';
-import { getSupabaseClient, getSupabaseConfig, hasSupabaseConfig } from '../lib/supabaseClient';
+import { getSupabaseClient, getSupabaseConfig, hasSupabaseConfig, callAndroidRestoreApi, clearAndroidRestoreCredentialId, enrollAndroidRestoreCredential, loadAndroidRestoreCredentialId } from '../lib/supabaseClient';
 import { wipeSensitiveDeviceData } from '../storage/secureStorage';
+import { isAndroidRestoreCredentialsAvailable, getRestoreCredential as nativeGetRestoreCredential, clearRestoreCredential as nativeClearRestoreCredential } from 'android-restore-credentials';
 
 const LOCAL_ONLY_RESULT = Object.freeze({
   ok: false,
@@ -237,6 +238,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
         // of a dead-end "invalid login" message (#799).
         return { ok: false, error: error.message, unconfirmed: error.code === 'email_not_confirmed' };
       }
+      if (data?.session?.access_token) enrollAndroidRestoreCredential(getSupabaseConfig()?.url, data.session.access_token);
       return { ok: true, session: data?.session || null };
     } catch (e) {
       return networkErrorResult(e);
@@ -303,6 +305,13 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
     const client = requireClient();
     if (!client) return LOCAL_ONLY_RESULT;
     try {
+      if (isAndroidRestoreCredentialsAvailable()) {
+        const surl = getSupabaseConfig()?.url;
+        const tok = (await client.auth.getSession().catch(() => ({ data: {} }))).data?.session?.access_token;
+        if (surl && tok && !(await callAndroidRestoreApi(surl, 'revoke', {}, tok).catch(() => null))?.ok)
+          return { ok: false, error: 'Could not revoke Android restore key. Sign out again to retry.' };
+        await Promise.allSettled([nativeClearRestoreCredential(), clearAndroidRestoreCredentialId()]);
+      }
       const { error } = await client.auth.signOut();
       if (error) return { ok: false, error: error.message };
       applySession(null);
@@ -388,6 +397,9 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
       );
       const body = await res.json();
       if (!res.ok) return { ok: false, error: body?.error || 'Account deletion failed.' };
+      if (isAndroidRestoreCredentialsAvailable()) {
+        await Promise.allSettled([nativeClearRestoreCredential(), clearAndroidRestoreCredentialId()]);
+      }
       // Clear local session state — the auth user is gone server-side.
       await client.auth.signOut();
       applySession(null);
@@ -541,6 +553,27 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
     }
   }, [requireClient]);
 
+  const androidRestoreSession = useCallback(async () => {
+    if (!isAndroidRestoreCredentialsAvailable()) return { ok: false, error: 'Not available.' };
+    const client = requireClient();
+    if (!client) return LOCAL_ONLY_RESULT;
+    const supabaseUrl = getSupabaseConfig()?.url;
+    if (!supabaseUrl) return LOCAL_ONLY_RESULT;
+    const credentialId = await loadAndroidRestoreCredentialId();
+    if (!credentialId) return { ok: false, error: 'No restore credential.' };
+    try {
+      const opts = await callAndroidRestoreApi(supabaseUrl, 'restore-options', { version: 1, credentialId });
+      if (!opts.ok) return { ok: false, error: 'Restore unavailable.' };
+      const native = await nativeGetRestoreCredential(JSON.stringify(opts.body));
+      if (native.status !== 'success') return { ok: false, error: 'Restore unavailable.' };
+      let assertion; try { assertion = JSON.parse(native.credentialJson); } catch { return { ok: false, error: 'Restore failed.' }; }
+      const ver = await callAndroidRestoreApi(supabaseUrl, 'restore-verification', assertion);
+      if (!ver.ok || !ver.body?.access_token || !ver.body?.refresh_token) return { ok: false, error: 'Restore failed.' };
+      const { error: e } = await client.auth.setSession({ access_token: ver.body.access_token, refresh_token: ver.body.refresh_token });
+      return e ? { ok: false, error: e.message } : { ok: true };
+    } catch (e) { return networkErrorResult(e); }
+  }, [requireClient]);
+
   return {
     configured,
     loading,
@@ -562,5 +595,6 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
     deleteAccount,
     deviceWipeRequired,
     wipeDeviceData,
+    androidRestoreSession,
   };
 }

@@ -293,3 +293,65 @@ export function getSupabaseClient() {
 export function resetSupabaseClientForTests() {
   cachedClient = undefined;
 }
+
+// ---------------------------------------------------------------------------
+// Android Restore Credentials helpers (issue #1159)
+// ---------------------------------------------------------------------------
+
+function loadAsyncStorage() {
+  try {
+    // eslint-disable-next-line global-require
+    const mod = require('@react-native-async-storage/async-storage');
+    return mod?.default ?? mod;
+  } catch (e) {
+    return null;
+  }
+}
+
+const ANDROID_RESTORE_CREDENTIAL_ID_KEY = 'kilo.auth.androidRestoreCredentialId';
+
+export async function loadAndroidRestoreCredentialId() {
+  const AS = loadAsyncStorage();
+  if (!AS) return null;
+  try { return await AS.getItem(ANDROID_RESTORE_CREDENTIAL_ID_KEY); } catch { return null; }
+}
+
+async function saveAndroidRestoreCredentialId(id) {
+  const AS = loadAsyncStorage();
+  if (!AS) return;
+  try { await AS.setItem(ANDROID_RESTORE_CREDENTIAL_ID_KEY, id); } catch { /* best-effort */ }
+}
+
+export async function clearAndroidRestoreCredentialId() {
+  const AS = loadAsyncStorage();
+  if (!AS) return;
+  try { await AS.removeItem(ANDROID_RESTORE_CREDENTIAL_ID_KEY); } catch { /* best-effort */ }
+}
+
+export async function callAndroidRestoreApi(supabaseUrl, route, body, bearerToken) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (bearerToken) headers.Authorization = `Bearer ${bearerToken}`;
+  const res = await fetch(
+    `${supabaseUrl}/functions/v1/android-restore-credentials/v1/${route}`,
+    { method: 'POST', headers, body: JSON.stringify(body) },
+  );
+  const json = await res.json().catch(() => ({}));
+  return { ok: res.ok, status: res.status, body: json };
+}
+
+// Fire-and-forget: enroll an Android Restore Credential after interactive sign-in.
+// Silently skips on any failure so the sign-in session is always preserved.
+export async function enrollAndroidRestoreCredential(supabaseUrl, bearerToken) {
+  if (!supabaseUrl || !bearerToken) return;
+  try {
+    // eslint-disable-next-line global-require
+    const { createRestoreCredential } = require('android-restore-credentials');
+    const opts = await callAndroidRestoreApi(supabaseUrl, 'enrollment-options', { version: 1 }, bearerToken);
+    if (!opts.ok) return;
+    const native = await createRestoreCredential(JSON.stringify(opts.body));
+    if (native.status !== 'success') return;
+    const regBody = JSON.parse(native.responseJson);
+    const reg = await callAndroidRestoreApi(supabaseUrl, 'registration-verification', regBody, bearerToken);
+    if (reg.ok && reg.body?.credentialId) await saveAndroidRestoreCredentialId(reg.body.credentialId);
+  } catch { /* best-effort */ }
+}
