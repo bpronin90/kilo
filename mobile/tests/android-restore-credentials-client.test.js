@@ -506,6 +506,21 @@ describe('signOut with Android revocation', () => {
     expect(await AS.getItem('kilo.auth.androidRestoreCredentialId')).toBeNull();
   });
 
+  test('getSession failure surfaces revoke error and prevents signOut', async () => {
+    await seedCredentialId();
+    mockAuth.getSession = jest.fn().mockRejectedValue(new Error('network error'));
+
+    const { ref } = renderAuthHook();
+    await flush();
+
+    let result;
+    await act(async () => { result = await ref.current.signOut(); });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/revoke/i);
+    expect(mockAuth.signOut).not.toHaveBeenCalled();
+  });
+
   test('revoke failure surfaces error and prevents signOut', async () => {
     await seedCredentialId();
     mockFetch.mockResolvedValueOnce(fakeRes({ error: 'Revocation failed' }, 500));

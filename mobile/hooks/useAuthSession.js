@@ -308,8 +308,8 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
       let clearFailed = false;
       if (isAndroidRestoreCredentialsAvailable()) {
         const surl = getSupabaseConfig()?.url;
-        const tok = (await client.auth.getSession().catch(() => ({ data: {} }))).data?.session?.access_token;
-        if (surl && tok && !(await callAndroidRestoreApi(surl, 'revoke', {}, tok).catch(() => null))?.ok)
+        const tok = (await client.auth.getSession().catch(() => null))?.data?.session?.access_token;
+        if (surl == null || tok == null || !(await callAndroidRestoreApi(surl, 'revoke', {}, tok).catch(() => null))?.ok)
           return { ok: false, error: 'Could not revoke Android restore key. Sign out again to retry.' };
         clearFailed = await Promise.allSettled([nativeClearRestoreCredential(), clearAndroidRestoreCredentialId()]).then(([nc]) => nc.status === 'rejected' || nc.value?.status !== 'success');
       }
