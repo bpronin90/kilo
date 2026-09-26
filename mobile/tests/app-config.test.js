@@ -271,5 +271,34 @@ describe('app config', () => {
       expect(releaseBlock).toContain('getDefaultProguardFile("proguard-android-optimize.txt")');
       expect(releaseBlock).not.toContain('getDefaultProguardFile("proguard-android.txt")');
     });
+
+    // #1167 review round 2: a `signingConfigs { release { ... } }` block whose
+    // comment happens to mention the optimizing proguard file, sitting before
+    // `buildTypes { release { ... } }`, must not be mistaken for the buildType
+    // and short-circuit the idempotency check while the real release
+    // buildType stays non-optimized.
+    test('does not mistake a release-named signingConfigs block for the release buildType', async () => {
+      const contents = [
+        'android {',
+        '  signingConfigs {',
+        '    release {',
+        '      // getDefaultProguardFile("proguard-android-optimize.txt")',
+        '    }',
+        '  }',
+        '  buildTypes {',
+        '    release {',
+        '      minifyEnabled true',
+        '      proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"',
+        '    }',
+        '  }',
+        '}',
+      ].join('\n');
+
+      const result = await runAppBuildGradleMod(contents);
+
+      const buildTypesBlock = result.slice(result.indexOf('buildTypes {'));
+      expect(buildTypesBlock).toContain('getDefaultProguardFile("proguard-android-optimize.txt")');
+      expect(buildTypesBlock).not.toContain('getDefaultProguardFile("proguard-android.txt")');
+    });
   });
 });

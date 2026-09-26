@@ -13,32 +13,61 @@ const pkg = require('../package.json');
 const NON_OPTIMIZING_PROGUARD_FILE = 'getDefaultProguardFile("proguard-android.txt")';
 const OPTIMIZING_PROGUARD_FILE = 'getDefaultProguardFile("proguard-android-optimize.txt")';
 
-// Locates the `release { ... }` buildType block by brace-counting from the
-// `release {` marker, so the proguard-file swap below only ever inspects and
-// edits the release build's settings — never a `debug` (or other) block that
-// happens to contain a similar-looking proguard line. Returns null if no such
-// block is found, or if its braces never balance (an unexpected Gradle shape).
-function findReleaseBuildTypeBlock(contents) {
-  const marker = /\brelease\s*\{/.exec(contents);
-  if (!marker) {
-    return null;
-  }
-
-  const blockStart = marker.index;
+// Brace-counts forward from just after `marker`'s opening `{` to find the
+// matching closing `}`. Returns null if the braces never balance.
+function findBalancedBlockEnd(contents, openBraceIndex) {
   let depth = 0;
-  for (let i = blockStart + marker[0].length - 1; i < contents.length; i += 1) {
+  for (let i = openBraceIndex; i < contents.length; i += 1) {
     const char = contents[i];
     if (char === '{') {
       depth += 1;
     } else if (char === '}') {
       depth -= 1;
       if (depth === 0) {
-        return { start: blockStart, end: i + 1 };
+        return i + 1;
       }
     }
   }
 
   return null;
+}
+
+// Locates the `release { ... }` buildType block *inside* `buildTypes { ... }`
+// specifically — not the first textual `release {` anywhere in the file — so
+// the proguard-file swap below only ever inspects and edits the production
+// release build's settings. This guards against both a `debug` block that
+// happens to contain a similar-looking proguard line, and an unrelated
+// `release`-named block elsewhere (e.g. under `signingConfigs`) that could
+// otherwise be mistaken for the buildType and short-circuit the idempotency
+// check while the real release buildType stays unpatched. Returns null if
+// `buildTypes { ... }`, or a `release { ... }` nested directly inside it, is
+// not found, or if either block's braces never balance (an unexpected shape).
+function findReleaseBuildTypeBlock(contents) {
+  const buildTypesMarker = /\bbuildTypes\s*\{/.exec(contents);
+  if (!buildTypesMarker) {
+    return null;
+  }
+
+  const buildTypesOpenBrace = buildTypesMarker.index + buildTypesMarker[0].length - 1;
+  const buildTypesEnd = findBalancedBlockEnd(contents, buildTypesOpenBrace);
+  if (buildTypesEnd === null) {
+    return null;
+  }
+
+  const buildTypesContents = contents.slice(buildTypesOpenBrace, buildTypesEnd);
+  const releaseMarker = /\brelease\s*\{/.exec(buildTypesContents);
+  if (!releaseMarker) {
+    return null;
+  }
+
+  const releaseStart = buildTypesOpenBrace + releaseMarker.index;
+  const releaseOpenBrace = releaseStart + releaseMarker[0].length - 1;
+  const releaseEnd = findBalancedBlockEnd(contents, releaseOpenBrace);
+  if (releaseEnd === null || releaseEnd > buildTypesEnd) {
+    return null;
+  }
+
+  return { start: releaseStart, end: releaseEnd };
 }
 
 function withAndroidR8Optimization(config) {
