@@ -109,8 +109,11 @@ Deno.test('credential requests are rebuilt from known fields only', () => {
     assertEquals(parseAssertionRequest(body as Record<string, unknown>), null, `refuses ${JSON.stringify(body)}`)
     assertEquals(parseRegistrationRequest(body as Record<string, unknown>), null, `refuses ${JSON.stringify(body)}`)
   }
-  assertEquals(parseRestoreOptionsRequest({ version: 1, credentialId: id }), id, 'options request')
+  assertEquals(parseRestoreOptionsRequest({ version: 1, credentialId: id }), { credentialId: id }, 'options request with id')
+  assertEquals(parseRestoreOptionsRequest({ version: 1 }), { credentialId: null }, 'discovery mode options request')
+  assertEquals(parseRestoreOptionsRequest({ version: 1, credentialId: null }), { credentialId: null }, 'explicit null credentialId is discovery mode')
   assertEquals(parseRestoreOptionsRequest({ version: 1, credentialId: 'has spaces in it!!' }), null, 'bad credential id')
+  assertEquals(parseRestoreOptionsRequest({ version: 2 }), null, 'bad version')
 })
 
 Deno.test('oversized and non-object bodies are refused', async () => {
@@ -129,6 +132,8 @@ Deno.test('option payloads carry exactly the v1 fields', () => {
   assertEquals(Object.keys(assertionOptions(config, 'c', 'id')).sort(), [
     'allowCredentials', 'challenge', 'operation', 'rpId', 'timeout', 'version',
   ], 'assertion options')
+  assertEquals(assertionOptions(config, 'c', 'id').allowCredentials, [{ type: 'public-key', id: 'id' }], 'specific credential')
+  assertEquals(assertionOptions(config, 'c', null).allowCredentials, [], 'discovery mode')
 })
 
 Deno.test('database wrappers surface only bounded error codes', async () => {

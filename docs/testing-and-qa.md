@@ -891,3 +891,50 @@ least `Content-Security-Policy`, `Permissions-Policy`,
 `X-Content-Type-Options`, and `X-Frame-Options` are present. Cloudflare `_headers`
 does not apply to Pages Functions responses, so a future Worker/Functions path
 must set the same policy in its own response code.
+
+---
+
+## Android Restore Credentials Migration/Restore Test Flow
+
+These steps verify the end-to-end Android Restore Credentials lifecycle added in
+issue #1159. All steps require a physical Android device and a configured cloud
+build (Supabase URL + anon key present).
+
+**Enrollment (on the source device):**
+
+1. Sign in with email/password on Android. After sign-in, enrollment fires
+   automatically in the background. Verify by checking the server security event
+   log for `restore.enrolled` and confirming
+   `AsyncStorage.getItem('kilo.auth.androidRestoreCredentialId')` is populated.
+2. Verify that a #1162 re-auth refusal (sign in, wait >5 minutes, sign in again
+   without a fresh session) does not create a credential: the successful second
+   sign-in is preserved but no `kilo.auth.androidRestoreCredentialId` entry
+   appears.
+
+**Restore (on a target device after Android backup/restore):**
+
+3. After restoring the device from an Android backup that includes the source
+   device's app data, open Kilo in the signed-out state. The app should detect
+   a restore credential is available.
+4. Trigger `androidRestoreSession()` via the UI path. Confirm the session
+   transitions to signed-in (user ID matches the source device's account) and
+   the server security event log records `restore.session_issued`.
+5. Confirm that a failed restore (e.g., tampered assertion) leaves the app
+   signed out with no partial session in secure storage.
+
+**Sign-out revocation:**
+
+6. While signed in on Android, sign out. Confirm the security event log records
+   `restore.revoked`, the device's AsyncStorage entry for the credential ID is
+   cleared, and a subsequent restore attempt on the same device returns
+   "No restore credential."
+7. Attempt to re-use the revoked credential directly (e.g., by restoring
+   AsyncStorage from backup): confirm the server rejects the restore-verification
+   with a 401 and the app remains signed out.
+
+**Account deletion:**
+
+8. Delete the account via the in-app flow. Confirm the device credential and
+   AsyncStorage entry are cleared. Confirm no additional `/v1/revoke` client
+   call is made (the server revokes at deletion step 0). A failed device clear
+   is recorded but does not block deletion.

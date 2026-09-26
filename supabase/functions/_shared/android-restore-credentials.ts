@@ -241,9 +241,14 @@ export function parseAssertionRequest(body: Record<string, unknown>): ParsedAsse
   }
 }
 
-export function parseRestoreOptionsRequest(body: Record<string, unknown>): string | null {
-  if (body.version !== RESTORE_API_VERSION || !isCredentialId(body.credentialId)) return null
-  return body.credentialId
+// Returns { credentialId: string | null } on a valid request: non-null for a
+// specific credential, null for discovery mode (no credentialId in body).
+// Returns null (outer) for a malformed request (bad version or invalid id).
+export function parseRestoreOptionsRequest(body: Record<string, unknown>): { credentialId: string | null } | null {
+  if (body.version !== RESTORE_API_VERSION) return null
+  if (body.credentialId === undefined || body.credentialId === null) return { credentialId: null }
+  if (!isCredentialId(body.credentialId)) return null
+  return { credentialId: body.credentialId as string }
 }
 
 // ---------------------------------------------------------------------------
@@ -270,16 +275,18 @@ export function registrationOptions(config: RestoreConfig, challenge: string, us
   }
 }
 
-// Echoes the requested credential id whether or not it exists, so the response
-// cannot be used to learn which ids are registered.
-export function assertionOptions(config: RestoreConfig, challenge: string, credentialId: string) {
+// In specific mode (credentialId non-null), echoes the requested id whether or
+// not it exists, so the response cannot be used to learn which ids are
+// registered. In discovery mode (null), allowCredentials is empty so the OS
+// offers any eligible restore key it holds.
+export function assertionOptions(config: RestoreConfig, challenge: string, credentialId: string | null) {
   return {
     version: RESTORE_API_VERSION,
     operation: 'assertion' as const,
     challenge,
     rpId: config.rpId,
     timeout: WEBAUTHN_TIMEOUT_MS,
-    allowCredentials: [{ type: 'public-key' as const, id: credentialId }],
+    allowCredentials: credentialId ? [{ type: 'public-key' as const, id: credentialId }] : [],
   }
 }
 

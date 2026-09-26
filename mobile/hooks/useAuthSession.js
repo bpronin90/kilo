@@ -14,8 +14,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, Platform } from 'react-native';
 import { getCaptchaConfig } from '../lib/captchaConfig';
-import { getSupabaseClient, getSupabaseConfig, hasSupabaseConfig } from '../lib/supabaseClient';
+import { getSupabaseClient, getSupabaseConfig, hasSupabaseConfig, callAndroidRestoreApi, clearAndroidRestoreCredentialId, enrollAndroidRestoreCredential, loadAndroidRestoreCredentialId, saveAndroidRestoreCredentialId } from '../lib/supabaseClient';
 import { wipeSensitiveDeviceData } from '../storage/secureStorage';
+import { isAndroidRestoreCredentialsAvailable, getRestoreCredential as nativeGetRestoreCredential, clearRestoreCredential as nativeClearRestoreCredential } from 'android-restore-credentials';
 
 const LOCAL_ONLY_RESULT = Object.freeze({
   ok: false,
@@ -237,6 +238,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
         // of a dead-end "invalid login" message (#799).
         return { ok: false, error: error.message, unconfirmed: error.code === 'email_not_confirmed' };
       }
+      if (data?.session?.access_token) enrollAndroidRestoreCredential(getSupabaseConfig()?.url, data.session.access_token);
       return { ok: true, session: data?.session || null };
     } catch (e) {
       return networkErrorResult(e);
@@ -303,6 +305,14 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
     const client = requireClient();
     if (!client) return LOCAL_ONLY_RESULT;
     try {
+      let clearFailed = false;
+      const surl = getSupabaseConfig()?.url;
+      const tok = surl && await client.auth.getSession().then((r) => r?.data?.session?.access_token, () => Symbol()); // eslint-disable-line symbol-description
+      if (tok && (typeof tok === 'symbol' || !(await callAndroidRestoreApi(surl, 'revoke', {}, tok).catch(() => null))?.ok))
+        return { ok: false, error: 'Could not revoke Android restore key. Sign out again to retry.' };
+      if (isAndroidRestoreCredentialsAvailable()) {
+        clearFailed = await Promise.allSettled([nativeClearRestoreCredential(), clearAndroidRestoreCredentialId()]).then(([nc]) => nc.status === 'rejected' || nc.value?.status !== 'success');
+      }
       const { error } = await client.auth.signOut();
       if (error) return { ok: false, error: error.message };
       applySession(null);
@@ -312,7 +322,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
           return { ok: false, error: 'Signed out, but device data could not be wiped. Try the wipe again before sharing this device.' };
         }
       }
-      return { ok: true };
+      return clearFailed ? { ok: true, message: 'Signed out. Device restore credential could not be cleared.' } : { ok: true };
     } catch (e) {
       return networkErrorResult(e);
     }
@@ -388,6 +398,10 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
       );
       const body = await res.json();
       if (!res.ok) return { ok: false, error: body?.error || 'Account deletion failed.' };
+      let clearFailed = false;
+      if (isAndroidRestoreCredentialsAvailable()) {
+        clearFailed = await Promise.allSettled([nativeClearRestoreCredential(), clearAndroidRestoreCredentialId()]).then(([nc]) => nc.status === 'rejected' || nc.value?.status !== 'success');
+      }
       // Clear local session state — the auth user is gone server-side.
       await client.auth.signOut();
       applySession(null);
@@ -397,7 +411,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
           return { ok: false, error: 'Account deleted, but device data could not be wiped. Try the wipe again before sharing this device.' };
         }
       }
-      return { ok: true };
+      return clearFailed ? { ok: true, message: 'Account deleted, but device restore credential could not be cleared.' } : { ok: true };
     } catch (e) {
       return { ok: false, error: e?.message || 'Account deletion failed.' };
     }
@@ -426,7 +440,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
   // flows (PKCE code exchange) require an explicit exchange. This handles both
   // by exchanging an auth code when present and otherwise reading the restored
   // session.
-  const handleAuthCallbackUrl = useCallback(async (url) => {
+  const handleAuthCallbackUrl = useCallback(async (url, { isRecovery = false } = {}) => {
     const client = requireClient();
     if (!client) return LOCAL_ONLY_RESULT;
 
@@ -469,6 +483,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
         if (error) return { ok: false, error: error.message };
         if (!data?.session) return { ok: false, error: 'Sign in did not complete.' };
         applySession(data.session);
+        if (!isRecovery && data.session.access_token) enrollAndroidRestoreCredential(getSupabaseConfig()?.url, data.session.access_token);
         return { ok: true, session: data.session };
       }
 
@@ -478,25 +493,22 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
       if (error) return { ok: false, error: error.message };
       if (!data?.session) return { ok: false, error: 'Sign in did not complete.' };
       applySession(data.session);
+      if (!isRecovery && data.session.access_token) enrollAndroidRestoreCredential(getSupabaseConfig()?.url, data.session.access_token);
       return { ok: true, session: data.session };
     } catch (e) {
       return networkErrorResult(e);
     }
   }, [requireClient, applySession]);
 
-  // Native cold/warm-start deep-link handling for the recovery callback,
-  // following the same code-exchange path as the GitHub OAuth callback
-  // (handleAuthCallbackUrl above). Web does not need this: App.js's web
-  // effect already drives handleAuthCallbackUrl from window.location on
-  // mount, and detectSessionInUrl covers the implicit fallback.
+  // Native cold/warm-start deep-link handling for the recovery callback.
+  // Same code-exchange path as handleAuthCallbackUrl; web does not need
+  // this because App.js drives it from window.location on mount and
+  // detectSessionInUrl covers the implicit fallback.
   //
-  // GitHub sign-in on native (see AccountScreen) already captures its
-  // redirect directly via WebBrowser.openAuthSessionAsync's return value,
-  // which intercepts the kilo:// redirect through its own auth-session
-  // mechanism rather than the app's general deep-link surface, so this
-  // listener does not race it. This listener's only real-world source is a
-  // password-recovery link opened from outside the app (e.g. a mail client),
-  // including the cold-start case where the app was not already running.
+  // GitHub sign-in on native is captured by WebBrowser.openAuthSessionAsync
+  // and never reaches this listener. Its only real-world source is a
+  // password-recovery link opened from outside the app (e.g. a mail
+  // client), including the cold-start case.
   useEffect(() => {
     if (Platform.OS === 'web') return undefined;
     const client = getSupabaseClient();
@@ -504,7 +516,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
 
     const handleUrl = (url) => {
       if (!url || !url.startsWith(KILO_AUTH_REDIRECT)) return;
-      handleAuthCallbackUrl(url).then((result) => {
+      handleAuthCallbackUrl(url, { isRecovery: true }).then((result) => {
         if (!result.ok && mountedRef.current) {
           setRecoveryError(result.error || 'Password reset link is invalid or has expired.');
         }
@@ -541,6 +553,27 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
     }
   }, [requireClient]);
 
+  const androidRestoreSession = useCallback(async () => {
+    if (!isAndroidRestoreCredentialsAvailable()) return { ok: false, error: 'Not available.' };
+    const client = requireClient();
+    if (!client) return LOCAL_ONLY_RESULT;
+    const supabaseUrl = getSupabaseConfig()?.url;
+    if (!supabaseUrl) return LOCAL_ONLY_RESULT;
+    const credentialId = await loadAndroidRestoreCredentialId();
+    try {
+      const opts = await callAndroidRestoreApi(supabaseUrl, 'restore-options', credentialId ? { version: 1, credentialId } : { version: 1 });
+      if (!opts.ok) return { ok: false, error: 'Restore unavailable.' };
+      const native = await nativeGetRestoreCredential(JSON.stringify(opts.body));
+      if (native.status !== 'success') return { ok: false, error: 'Restore unavailable.' };
+      let assertion; try { assertion = JSON.parse(native.credentialJson); } catch { return { ok: false, error: 'Restore failed.' }; }
+      if (!credentialId && assertion?.id) saveAndroidRestoreCredentialId(assertion.id);
+      const ver = await callAndroidRestoreApi(supabaseUrl, 'restore-verification', assertion);
+      if (!ver.ok || ver.body?.version !== 1 || !ver.body?.access_token || !ver.body?.refresh_token) return { ok: false, error: 'Restore failed.' };
+      const { error: e } = await client.auth.setSession({ access_token: ver.body.access_token, refresh_token: ver.body.refresh_token });
+      return e ? { ok: false, error: e.message } : { ok: true };
+    } catch (e) { return networkErrorResult(e); }
+  }, [requireClient]);
+
   return {
     configured,
     loading,
@@ -562,5 +595,6 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
     deleteAccount,
     deviceWipeRequired,
     wipeDeviceData,
+    androidRestoreSession,
   };
 }

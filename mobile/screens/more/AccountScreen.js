@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { isAndroidRestoreCredentialsAvailable } from 'android-restore-credentials';
 import * as WebBrowser from 'expo-web-browser';
 import { CaptchaChallenge } from '../../components/CaptchaChallenge';
 import { ScreenShell } from '../../components/ScreenShell';
@@ -133,6 +134,10 @@ export function AccountScreen({ onBack, auth }) {
     setStatus('');
   };
 
+  const handleAndroidRestore = () => run(() =>
+    auth.androidRestoreSession().then((r) => (r.ok ? { ok: true, message: 'Signed in.' } : r))
+  );
+
   const handleGitHubSignIn = async () => {
     if (Platform.OS !== 'web') return;
     setBusy(true);
@@ -247,7 +252,7 @@ export function AccountScreen({ onBack, auth }) {
             disabled={busy}
             style={styles.actionButton}
             textStyle={styles.actionButtonText}
-            onPress={() => run(() => auth.signOut().then((r) => (r.ok ? { ok: true, message: 'Signed out.' } : r)))}
+            onPress={() => run(() => auth.signOut().then((r) => (r.ok ? { ok: true, message: r.message ?? 'Signed out.' } : r)))}
           />
           <View style={styles.dangerZone}>
             <View style={styles.dangerZoneHeading}>
@@ -424,6 +429,17 @@ export function AccountScreen({ onBack, auth }) {
               textStyle={styles.actionButtonText}
               onPress={Platform.OS === 'web' ? handleGitHubSignIn : handleGitHubSignInNative}
               accessibilityLabel="Continue with GitHub"
+            />
+          )}
+          {Platform.OS === 'android' && isAndroidRestoreCredentialsAvailable() && (
+            <Button
+              title="Restore from Another Device"
+              loadingTitle="Working…"
+              disabled={busy}
+              style={styles.actionButton}
+              textStyle={styles.actionButtonText}
+              onPress={handleAndroidRestore}
+              accessibilityLabel="Restore from another device"
             />
           )}
           <LegalLinks />
