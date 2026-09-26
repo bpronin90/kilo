@@ -22,7 +22,7 @@ describe('app config', () => {
 
     const result = configFactory({ config: { plugins: [] } });
 
-    expect(result.runtimeVersion).toBe('preview-10');
+    expect(result.runtimeVersion).toBe('preview-11');
   });
 
   test('uses the appVersion runtime policy for production builds', () => {
