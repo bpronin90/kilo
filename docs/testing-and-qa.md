@@ -786,7 +786,7 @@ console access records these values here.
 Reproduce:
 
 ```sh
-eas build:list --platform android --limit 1 --json --non-interactive   # take artifacts.buildUrl
+eas build:view 0b84c33c-5390-43b1-a288-d38c44f2f0f4 --json   # take artifacts.buildUrl (expires 2026-10-21)
 curl -sL -o kilo.aab "<buildUrl>" && sha256sum kilo.aab
 unzip -l kilo.aab | grep -E 'base/dex/|baseline.prof|resources.pb'
 unzip -p kilo.aab BUNDLE-METADATA/com.android.tools/r8.json   # read options + stats
