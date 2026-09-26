@@ -569,8 +569,10 @@ describe('signOut with Android revocation', () => {
     expect(result.message).toMatch(/could not be cleared/i);
   });
 
-  test('non-Android skips revoke entirely', async () => {
+  test('non-Android calls revoke but skips device clear', async () => {
     Platform.OS = 'ios';
+    mockFetch.mockResolvedValueOnce(fakeRes({ version: 1, revoked: true }));
+
     const { ref } = renderAuthHook();
     await flush();
 
@@ -578,7 +580,7 @@ describe('signOut with Android revocation', () => {
     await act(async () => { result = await ref.current.signOut(); });
 
     expect(result.ok).toBe(true);
-    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/v1/revoke'), expect.anything());
     expect(nativeMock.clearRestoreCredential).not.toHaveBeenCalled();
   });
 });
