@@ -792,6 +792,11 @@ unzip -l kilo.aab | grep -E 'base/dex/|baseline.prof|resources.pb'
 unzip -p kilo.aab BUNDLE-METADATA/com.android.tools/r8.json   # read options + stats
 ```
 
+EAS deletes the artifact after 2026-10-21. The table above, the SHA-256 and
+the `r8.json` values are the durable record. After expiry, run the same steps
+on the current production build ID and record it as a new dated entry. Don't
+treat it as a re-check of versionCode 17.
+
 ## Large-Screen and Resizing Matrix (#1126)
 
 `MainActivity` is no longer portrait-locked and declares
