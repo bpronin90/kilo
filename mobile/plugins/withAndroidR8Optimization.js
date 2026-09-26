@@ -13,6 +13,35 @@ const pkg = require('../package.json');
 const NON_OPTIMIZING_PROGUARD_FILE = 'getDefaultProguardFile("proguard-android.txt")';
 const OPTIMIZING_PROGUARD_FILE = 'getDefaultProguardFile("proguard-android-optimize.txt")';
 
+// Replaces every character inside a `//` line comment or `/* ... */` block
+// comment with a space, preserving length and newlines so the result's
+// character offsets still line up with the original `contents`. Used so the
+// block/marker lookups below never match inside a comment (e.g. a commented-
+// out example `release { ... }` block, or a proguard-file mention in a
+// comment) and mistake it for real, active Gradle structure.
+function blankOutComments(contents) {
+  let result = '';
+  for (let i = 0; i < contents.length; i += 1) {
+    const twoChars = contents.slice(i, i + 2);
+    if (twoChars === '//') {
+      let end = contents.indexOf('\n', i);
+      if (end === -1) {
+        end = contents.length;
+      }
+      result += contents.slice(i, end).replace(/[^\n]/g, ' ');
+      i = end - 1;
+    } else if (twoChars === '/*') {
+      let end = contents.indexOf('*/', i + 2);
+      end = end === -1 ? contents.length : end + 2;
+      result += contents.slice(i, end).replace(/[^\n]/g, ' ');
+      i = end - 1;
+    } else {
+      result += contents[i];
+    }
+  }
+  return result;
+}
+
 // Brace-counts forward from just after `marker`'s opening `{` to find the
 // matching closing `}`. Returns null if the braces never balance.
 function findBalancedBlockEnd(contents, openBraceIndex) {
@@ -80,7 +109,10 @@ function withAndroidR8Optimization(config) {
     }
 
     const contents = modConfig.modResults.contents;
-    const releaseBlock = findReleaseBuildTypeBlock(contents);
+    // Locate block boundaries against a comment-blanked copy (same length/
+    // offsets as `contents`) so a commented-out example block or mention
+    // can't be mistaken for the real, active Gradle structure.
+    const releaseBlock = findReleaseBuildTypeBlock(blankOutComments(contents));
 
     if (!releaseBlock) {
       throw new Error(

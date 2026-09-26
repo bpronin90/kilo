@@ -300,5 +300,29 @@ describe('app config', () => {
       expect(buildTypesBlock).toContain('getDefaultProguardFile("proguard-android-optimize.txt")');
       expect(buildTypesBlock).not.toContain('getDefaultProguardFile("proguard-android.txt")');
     });
+
+    // Connector finding on PR #1169: a commented-out example `release { ... }`
+    // block preceding the real one must not be mistaken for it — otherwise the
+    // plugin patches (or reads idempotency off) dead comment text while the
+    // active buildTypes.release block stays non-optimized.
+    test('ignores a commented-out release block and patches the real one', async () => {
+      const contents = [
+        'buildTypes {',
+        '  // release {',
+        '  //   proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"',
+        '  // }',
+        '  release {',
+        '    minifyEnabled true',
+        '    proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"',
+        '  }',
+        '}',
+      ].join('\n');
+
+      const result = await runAppBuildGradleMod(contents);
+
+      const activeReleaseBlock = result.slice(result.lastIndexOf('release {'));
+      expect(activeReleaseBlock).toContain('getDefaultProguardFile("proguard-android-optimize.txt")');
+      expect(activeReleaseBlock).not.toContain('getDefaultProguardFile("proguard-android.txt")');
+    });
   });
 });
