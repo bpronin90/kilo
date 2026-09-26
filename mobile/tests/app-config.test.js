@@ -248,5 +248,28 @@ describe('app config', () => {
     test('fails clearly when the generated build.gradle is not Groovy', async () => {
       await expect(runAppBuildGradleMod('// kts', 'kt')).rejects.toThrow(/Groovy/);
     });
+
+    // A debug buildType that already carries an optimizing-looking proguard line
+    // (or an unrelated block preceding release) must not short-circuit the
+    // idempotency check or divert the replacement away from release.
+    test('only inspects and patches the release buildType, ignoring a similar debug block', async () => {
+      const contents = [
+        'buildTypes {',
+        '  debug {',
+        '    proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"',
+        '  }',
+        '  release {',
+        '    minifyEnabled true',
+        '    proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"',
+        '  }',
+        '}',
+      ].join('\n');
+
+      const result = await runAppBuildGradleMod(contents);
+
+      const releaseBlock = result.slice(result.indexOf('release {'));
+      expect(releaseBlock).toContain('getDefaultProguardFile("proguard-android-optimize.txt")');
+      expect(releaseBlock).not.toContain('getDefaultProguardFile("proguard-android.txt")');
+    });
   });
 });
