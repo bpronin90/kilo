@@ -748,6 +748,55 @@ For each combination, also verify:
 - First and last scroll positions do not clip behind the tab bar or top status bar.
 - System-bar icon appearance (light glyphs on dark chrome and vice versa) remains legible.
 
+## Google Play 2027 Memory and DEX Optimization (#1134)
+
+Requirement source: [Play Console technical quality requirements](https://support.google.com/googleplay/android-developer/answer/17492799)
+(checked 2026-09-25). From February 2027, apps with more than 10 MB of DEX code
+must reach at least 25% **each** of optimization, shrinking and obfuscation.
+Apps must also stay under the memory bad-behavior thresholds: anonymous RSS +
+swap by device RAM tier (for example, 2 GB foreground on 4 GB devices), and
+bitmap memory above 200 MB (user-perceived/background) or 400 MB (cached).
+
+**Artifact inspected:** the EAS production AAB, build
+`0b84c33c-5390-43b1-a288-d38c44f2f0f4`, versionCode 17, appVersion 1.0.0,
+git `de6058e3`, built 2026-09-21. SHA-256
+`e18268dc09fd69d55ec6707810b63e822cef299dbc6b92a61ed09c158beb8c12`.
+Toolchain: AGP 8.11.0, R8 8.11.18, minSdk 24.
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| DEX size | `base/dex/classes.dex` 7.15 MB + `classes2.dex` 4.90 MB = 12.05 MB | Over the 10 MB threshold, so the rule applies |
+| Shrinking | `r8.json` `isShrinkingEnabled: true`, `noShrinkingPercentage: 8.38` → 91.6% | Pass |
+| Obfuscation | `isObfuscationEnabled: true`, `noObfuscationPercentage: 8.31` → 91.7% | Pass |
+| Optimization | `isOptimizationsEnabled: false`, `noOptimizationPercentage: 100.0` → 0% | **Fail** |
+| Resource shrinking | `enableShrinkResourcesInReleaseBuilds: true` in `mobile/app.json`; `resources.pb` present | Enabled (`isOptimizedShrinkingEnabled: false`, not a Play requirement) |
+| Baseline profile | `BUNDLE-METADATA/com.android.tools.build.profiles/baseline.prof` present | Present |
+
+**Kilo-owned contributor:** the Expo SDK 54 prebuild template writes
+`getDefaultProguardFile("proguard-android.txt")` into
+`android/app/build.gradle`. That default file carries `-dontoptimize`. The
+remediation is tracked in #1167.
+
+**Memory (Android Vitals): not evaluated, blocked.** No agent session has Play
+Console access. The missing evidence is Android Vitals → Memory: anonymous
+RSS + swap and bitmap memory per RAM tier/app state, plus OOM/low-memory kill
+rates, for the production track. Compliance is not claimed until someone with
+console access records these values here.
+
+Reproduce:
+
+```sh
+eas build:view 0b84c33c-5390-43b1-a288-d38c44f2f0f4 --json   # take artifacts.buildUrl (expires 2026-10-21)
+curl -sL -o kilo.aab "<buildUrl>" && sha256sum kilo.aab
+unzip -l kilo.aab | grep -E 'base/dex/|baseline.prof|resources.pb'
+unzip -p kilo.aab BUNDLE-METADATA/com.android.tools/r8.json   # read options + stats
+```
+
+EAS deletes the artifact after 2026-10-21. The table above, the SHA-256 and
+the `r8.json` values are the durable record. After expiry, run the same steps
+on the current production build ID and record it as a new dated entry. Don't
+treat it as a re-check of versionCode 17.
+
 ## Large-Screen and Resizing Matrix (#1126)
 
 `MainActivity` is no longer portrait-locked and declares
