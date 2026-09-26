@@ -119,7 +119,8 @@ function fakeDatabase() {
         const c = challenges.get(args.p_challenge)
         const bound = c && (args.p_operation === 'registration'
           ? c.userId === args.p_user_id && c.sessionId === args.p_session_id
-          : c.credentialId === args.p_credential_id)
+          : c.credentialId === args.p_credential_id ||
+            (args.p_credential_id != null && c.credentialId === null))
         if (!c || c.consumed || c.operation !== args.p_operation || c.expiresAt <= Date.now() || !bound) return ok(false)
         c.consumed = true
         hooks.afterConsume?.()
@@ -281,6 +282,12 @@ async function enroll(ctx: ReturnType<typeof setup>, token = OWNER_TOKEN) {
 async function restoreOptions(ctx: ReturnType<typeof setup>, credentialId: string) {
   const options = await ctx.call('restore-options', { version: 1, credentialId })
   assertEquals(options.status, 200, 'restore options are issued')
+  return options.body
+}
+
+async function restoreOptionsDiscovery(ctx: ReturnType<typeof setup>) {
+  const options = await ctx.call('restore-options', { version: 1 })
+  assertEquals(options.status, 200, 'discovery restore options are issued')
   return options.body
 }
 
@@ -612,6 +619,44 @@ Deno.test('malformed restore requests are rejected like any other failure', asyn
     const result = await ctx.call('restore-verification', body)
     assertEquals({ status: result.status, body: result.body }, REJECTED, `malformed body ${JSON.stringify(body)}`)
   }
+})
+
+// ---------------------------------------------------------------------------
+// Discovery mode (no credentialId in restore-options)
+// ---------------------------------------------------------------------------
+
+Deno.test('discovery mode: restore-options without credentialId returns empty allowCredentials', async () => {
+  const ctx = setup()
+  const options = await restoreOptionsDiscovery(ctx)
+  assertEquals(options.allowCredentials, [], 'discovery mode returns empty allowCredentials')
+  assertEquals(options.operation, 'assertion', 'operation is still assertion')
+  assert(typeof options.challenge === 'string' && options.challenge.length > 0, 'challenge is present')
+})
+
+Deno.test('discovery mode: a valid assertion after discovery options succeeds', async () => {
+  const ctx = setup()
+  const { authenticator } = await enroll(ctx)
+  const options = await restoreOptionsDiscovery(ctx)
+  const credential = await assertionResponse(authenticator, { challenge: options.challenge, rpId: RP_ID, origin: ORIGIN })
+  const result = await ctx.call('restore-verification', { version: 1, credential })
+  assertEquals(result.status, 200, 'discovery restore succeeds')
+  assertEquals(result.body, { version: 1, access_token: ISSUED_ACCESS, refresh_token: ISSUED_REFRESH })
+})
+
+Deno.test('discovery mode: restore-options with invalid credentialId returns 400', async () => {
+  const ctx = setup()
+  const result = await ctx.call('restore-options', { version: 1, credentialId: 'bad!' })
+  assertEquals(result.status, 400, 'invalid credentialId is rejected')
+})
+
+Deno.test('discovery mode: discovery challenge cannot be replayed', async () => {
+  const ctx = setup()
+  const { authenticator } = await enroll(ctx)
+  const options = await restoreOptionsDiscovery(ctx)
+  const credential = await assertionResponse(authenticator, { challenge: options.challenge, rpId: RP_ID, origin: ORIGIN })
+  await ctx.call('restore-verification', { version: 1, credential })
+  const replay = await ctx.call('restore-verification', { version: 1, credential })
+  assertEquals({ status: replay.status, body: replay.body }, REJECTED, 'replayed discovery assertion is rejected')
 })
 
 // ---------------------------------------------------------------------------

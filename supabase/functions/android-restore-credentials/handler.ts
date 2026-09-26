@@ -305,10 +305,11 @@ export function createRestoreHandler(deps: RestoreHandlerDeps): (req: Request) =
     const body = await readJsonBody(req)
 
     if (route === 'restore-options') {
-      const credentialId = body && parseRestoreOptionsRequest(body)
-      if (!credentialId) return json(400, { error: 'Bad Request' })
+      const parsed = body && parseRestoreOptionsRequest(body)
+      if (!parsed) return json(400, { error: 'Bad Request' })
+      const { credentialId } = parsed
       const challenge = randomBase64Url()
-      const issued = await issueChallenge(admin, 'assertion', challenge, { credentialId })
+      const issued = await issueChallenge(admin, 'assertion', challenge, credentialId ? { credentialId } : {})
       if (!issued.ok) return await serverError('db_error', issued.code)
       return json(200, assertionOptions(config, challenge, credentialId))
     }

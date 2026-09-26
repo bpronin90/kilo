@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, Platform } from 'react-native';
 import { getCaptchaConfig } from '../lib/captchaConfig';
-import { getSupabaseClient, getSupabaseConfig, hasSupabaseConfig, callAndroidRestoreApi, clearAndroidRestoreCredentialId, enrollAndroidRestoreCredential, loadAndroidRestoreCredentialId } from '../lib/supabaseClient';
+import { getSupabaseClient, getSupabaseConfig, hasSupabaseConfig, callAndroidRestoreApi, clearAndroidRestoreCredentialId, enrollAndroidRestoreCredential, loadAndroidRestoreCredentialId, saveAndroidRestoreCredentialId } from '../lib/supabaseClient';
 import { wipeSensitiveDeviceData } from '../storage/secureStorage';
 import { isAndroidRestoreCredentialsAvailable, getRestoreCredential as nativeGetRestoreCredential, clearRestoreCredential as nativeClearRestoreCredential } from 'android-restore-credentials';
 
@@ -560,13 +560,13 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
     const supabaseUrl = getSupabaseConfig()?.url;
     if (!supabaseUrl) return LOCAL_ONLY_RESULT;
     const credentialId = await loadAndroidRestoreCredentialId();
-    if (!credentialId) return { ok: false, error: 'No restore credential.' };
     try {
-      const opts = await callAndroidRestoreApi(supabaseUrl, 'restore-options', { version: 1, credentialId });
+      const opts = await callAndroidRestoreApi(supabaseUrl, 'restore-options', credentialId ? { version: 1, credentialId } : { version: 1 });
       if (!opts.ok) return { ok: false, error: 'Restore unavailable.' };
       const native = await nativeGetRestoreCredential(JSON.stringify(opts.body));
       if (native.status !== 'success') return { ok: false, error: 'Restore unavailable.' };
       let assertion; try { assertion = JSON.parse(native.credentialJson); } catch { return { ok: false, error: 'Restore failed.' }; }
+      if (!credentialId && assertion?.id) saveAndroidRestoreCredentialId(assertion.id);
       const ver = await callAndroidRestoreApi(supabaseUrl, 'restore-verification', assertion);
       if (!ver.ok || !ver.body?.access_token || !ver.body?.refresh_token) return { ok: false, error: 'Restore failed.' };
       const { error: e } = await client.auth.setSession({ access_token: ver.body.access_token, refresh_token: ver.body.refresh_token });

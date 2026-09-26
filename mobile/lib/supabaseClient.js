@@ -316,7 +316,7 @@ export async function loadAndroidRestoreCredentialId() {
   try { return await AS.getItem(ANDROID_RESTORE_CREDENTIAL_ID_KEY); } catch { return null; }
 }
 
-async function saveAndroidRestoreCredentialId(id) {
+export async function saveAndroidRestoreCredentialId(id) {
   const AS = loadAsyncStorage();
   if (!AS) return;
   try { await AS.setItem(ANDROID_RESTORE_CREDENTIAL_ID_KEY, id); } catch { /* best-effort */ }

@@ -251,15 +251,40 @@ describe('androidRestoreSession', () => {
     );
   });
 
-  test('no stored credential id returns error without native call', async () => {
+  test('no stored credential id uses discovery mode (no credentialId in request)', async () => {
+    nativeMock.__setResult('getRestoreCredential', { status: 'success', credentialJson: ASSERTION_CREDENTIAL_JSON });
+    mockFetch
+      .mockResolvedValueOnce(fakeRes({ ...RESTORE_OPTIONS_BODY, allowCredentials: [] }))
+      .mockResolvedValueOnce(fakeRes({ version: 1, access_token: 'new-tok', refresh_token: 'new-ref' }));
+
     const { ref } = renderAuthHook();
     await flush();
 
     let result;
     await act(async () => { result = await ref.current.androidRestoreSession(); });
 
-    expect(result.ok).toBe(false);
-    expect(nativeMock.getRestoreCredential).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining('/v1/restore-options'),
+      expect.objectContaining({ body: expect.not.stringContaining('credentialId') }),
+    );
+  });
+
+  test('discovery mode: restore-options request omits credentialId', async () => {
+    nativeMock.__setResult('getRestoreCredential', { status: 'success', credentialJson: ASSERTION_CREDENTIAL_JSON });
+    mockFetch
+      .mockResolvedValueOnce(fakeRes({ ...RESTORE_OPTIONS_BODY, allowCredentials: [] }))
+      .mockResolvedValueOnce(fakeRes({ version: 1, access_token: 'new-tok', refresh_token: 'new-ref' }));
+
+    const { ref } = renderAuthHook();
+    await flush();
+
+    await act(async () => { await ref.current.androidRestoreSession(); });
+
+    const [, init] = mockFetch.mock.calls.find(([url]) => url.includes('/v1/restore-options'));
+    const body = JSON.parse(init.body);
+    expect(body).not.toHaveProperty('credentialId');
+    expect(body.version).toBe(1);
   });
 
   test('native status unsupported returns error', async () => {
