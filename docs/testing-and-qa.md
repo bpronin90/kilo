@@ -777,11 +777,14 @@ Toolchain: AGP 8.11.0, R8 8.11.18, minSdk 24.
 `android/app/build.gradle`. That default file carries `-dontoptimize`. The
 remediation is tracked in #1167.
 
-**Memory (Android Vitals): not evaluated, blocked.** No agent session has Play
-Console access. The missing evidence is Android Vitals → Memory: anonymous
-RSS + swap and bitmap memory per RAM tier/app state, plus OOM/low-memory kill
-rates, for the production track. Compliance is not claimed until someone with
-console access records these values here.
+**Memory (Android Vitals): not evaluable yet, blocked.** The owner checked
+Play Console → Android vitals on 2026-09-26. Every memory metric showed "Not
+enough data", and there were no crashes reported, including `OutOfMemoryError`.
+The install base is too small for Vitals to report anonymous RSS + swap, bitmap
+memory, or low-memory kills. Compliance is not claimed. Check again after the next
+production build (which carries the R8 optimization fix, #1167) has about 28
+days of user data, and record each metric's value, threshold, date range, track
+and RAM-tier/app-state breakdown here.
 
 Reproduce:
 
