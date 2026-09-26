@@ -792,8 +792,10 @@ unzip -l kilo.aab | grep -E 'base/dex/|baseline.prof|resources.pb'
 unzip -p kilo.aab BUNDLE-METADATA/com.android.tools/r8.json   # read options + stats
 ```
 
-EAS deletes the artifact after 2026-10-21. The table above, the SHA-256 and
-the `r8.json` values are the durable record. After expiry, run the same steps
+EAS deletes the artifact after 2026-10-21. The unmodified `r8.json` and the
+AAB entry listing are preserved in the
+[#1134 evidence comment](https://github.com/bpronin90/kilo/issues/1134#issuecomment-5850366149).
+Together with the SHA-256, they are the durable record. After expiry, run the same steps
 on the current production build ID and record it as a new dated entry. Don't
 treat it as a re-check of versionCode 17.
 
