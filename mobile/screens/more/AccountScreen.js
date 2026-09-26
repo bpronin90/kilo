@@ -252,7 +252,7 @@ export function AccountScreen({ onBack, auth }) {
             disabled={busy}
             style={styles.actionButton}
             textStyle={styles.actionButtonText}
-            onPress={() => run(() => auth.signOut().then((r) => (r.ok ? { ok: true, message: 'Signed out.' } : r)))}
+            onPress={() => run(() => auth.signOut().then((r) => (r.ok ? { ok: true, message: r.message ?? 'Signed out.' } : r)))}
           />
           <View style={styles.dangerZone}>
             <View style={styles.dangerZoneHeading}>

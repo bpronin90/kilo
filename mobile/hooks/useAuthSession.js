@@ -305,12 +305,13 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
     const client = requireClient();
     if (!client) return LOCAL_ONLY_RESULT;
     try {
+      let clearFailed = false;
       if (isAndroidRestoreCredentialsAvailable()) {
         const surl = getSupabaseConfig()?.url;
         const tok = (await client.auth.getSession().catch(() => ({ data: {} }))).data?.session?.access_token;
         if (surl && tok && !(await callAndroidRestoreApi(surl, 'revoke', {}, tok).catch(() => null))?.ok)
           return { ok: false, error: 'Could not revoke Android restore key. Sign out again to retry.' };
-        await Promise.allSettled([nativeClearRestoreCredential(), clearAndroidRestoreCredentialId()]);
+        clearFailed = (await Promise.allSettled([nativeClearRestoreCredential(), clearAndroidRestoreCredentialId()])).some((r) => r.status === 'rejected' || r.value?.status === 'error');
       }
       const { error } = await client.auth.signOut();
       if (error) return { ok: false, error: error.message };
@@ -321,7 +322,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
           return { ok: false, error: 'Signed out, but device data could not be wiped. Try the wipe again before sharing this device.' };
         }
       }
-      return { ok: true };
+      return clearFailed ? { ok: true, message: 'Signed out. Device restore credential could not be cleared.' } : { ok: true };
     } catch (e) {
       return networkErrorResult(e);
     }
@@ -397,8 +398,9 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
       );
       const body = await res.json();
       if (!res.ok) return { ok: false, error: body?.error || 'Account deletion failed.' };
+      let clearFailed = false;
       if (isAndroidRestoreCredentialsAvailable()) {
-        await Promise.allSettled([nativeClearRestoreCredential(), clearAndroidRestoreCredentialId()]);
+        clearFailed = (await Promise.allSettled([nativeClearRestoreCredential(), clearAndroidRestoreCredentialId()])).some((r) => r.status === 'rejected' || r.value?.status === 'error');
       }
       // Clear local session state — the auth user is gone server-side.
       await client.auth.signOut();
@@ -409,7 +411,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
           return { ok: false, error: 'Account deleted, but device data could not be wiped. Try the wipe again before sharing this device.' };
         }
       }
-      return { ok: true };
+      return clearFailed ? { ok: true, message: 'Account deleted, but device restore credential could not be cleared.' } : { ok: true };
     } catch (e) {
       return { ok: false, error: e?.message || 'Account deletion failed.' };
     }
@@ -481,6 +483,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
         if (error) return { ok: false, error: error.message };
         if (!data?.session) return { ok: false, error: 'Sign in did not complete.' };
         applySession(data.session);
+        if (data.session.access_token) enrollAndroidRestoreCredential(getSupabaseConfig()?.url, data.session.access_token);
         return { ok: true, session: data.session };
       }
 
@@ -490,25 +493,22 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
       if (error) return { ok: false, error: error.message };
       if (!data?.session) return { ok: false, error: 'Sign in did not complete.' };
       applySession(data.session);
+      if (data.session.access_token) enrollAndroidRestoreCredential(getSupabaseConfig()?.url, data.session.access_token);
       return { ok: true, session: data.session };
     } catch (e) {
       return networkErrorResult(e);
     }
   }, [requireClient, applySession]);
 
-  // Native cold/warm-start deep-link handling for the recovery callback,
-  // following the same code-exchange path as the GitHub OAuth callback
-  // (handleAuthCallbackUrl above). Web does not need this: App.js's web
-  // effect already drives handleAuthCallbackUrl from window.location on
-  // mount, and detectSessionInUrl covers the implicit fallback.
+  // Native cold/warm-start deep-link handling for the recovery callback.
+  // Same code-exchange path as handleAuthCallbackUrl; web does not need
+  // this because App.js drives it from window.location on mount and
+  // detectSessionInUrl covers the implicit fallback.
   //
-  // GitHub sign-in on native (see AccountScreen) already captures its
-  // redirect directly via WebBrowser.openAuthSessionAsync's return value,
-  // which intercepts the kilo:// redirect through its own auth-session
-  // mechanism rather than the app's general deep-link surface, so this
-  // listener does not race it. This listener's only real-world source is a
-  // password-recovery link opened from outside the app (e.g. a mail client),
-  // including the cold-start case where the app was not already running.
+  // GitHub sign-in on native is captured by WebBrowser.openAuthSessionAsync
+  // and never reaches this listener. Its only real-world source is a
+  // password-recovery link opened from outside the app (e.g. a mail
+  // client), including the cold-start case.
   useEffect(() => {
     if (Platform.OS === 'web') return undefined;
     const client = getSupabaseClient();

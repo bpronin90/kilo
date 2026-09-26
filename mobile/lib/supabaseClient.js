@@ -345,7 +345,8 @@ export async function enrollAndroidRestoreCredential(supabaseUrl, bearerToken) {
   if (!supabaseUrl || !bearerToken) return;
   try {
     // eslint-disable-next-line global-require
-    const { createRestoreCredential } = require('android-restore-credentials');
+    const { isAndroidRestoreCredentialsAvailable, createRestoreCredential } = require('android-restore-credentials');
+    if (!isAndroidRestoreCredentialsAvailable()) return;
     const opts = await callAndroidRestoreApi(supabaseUrl, 'enrollment-options', { version: 1 }, bearerToken);
     if (!opts.ok) return;
     const native = await createRestoreCredential(JSON.stringify(opts.body));

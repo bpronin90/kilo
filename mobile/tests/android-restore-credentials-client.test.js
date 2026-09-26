@@ -206,7 +206,7 @@ describe('enrollment after signInWithPassword', () => {
     expect(await AS.getItem('kilo.auth.androidRestoreCredentialId')).toBeNull();
   });
 
-  test('sign-in on non-Android does not attempt enrollment', async () => {
+  test('sign-in on non-Android skips enrollment API call and native module', async () => {
     Platform.OS = 'ios';
     const { ref } = renderAuthHook();
     await flush();
@@ -217,6 +217,32 @@ describe('enrollment after signInWithPassword', () => {
 
     expect(result.ok).toBe(true);
     expect(nativeMock.createRestoreCredential).not.toHaveBeenCalled();
+    // platform gate in enrollAndroidRestoreCredential prevents enrollment-options API call
+    expect(mockFetch).not.toHaveBeenCalledWith(
+      expect.stringContaining('enrollment-options'),
+      expect.anything(),
+    );
+  });
+
+  test('GitHub OAuth callback triggers enrollment on Android', async () => {
+    const session = { access_token: 'tok-github', refresh_token: 'ref-github', user: { id: 'uid-gh' } };
+    mockAuth.exchangeCodeForSession = jest.fn().mockResolvedValue({ data: { session }, error: null });
+    nativeMock.__setResult('createRestoreCredential', { status: 'success', responseJson: REGISTRATION_RESPONSE_JSON });
+    mockFetch
+      .mockResolvedValueOnce(fakeRes(ENROLLMENT_OPTIONS_BODY))           // enrollment-options
+      .mockResolvedValueOnce(fakeRes({ credentialId: 'cred-id-github' })); // registration-verification
+
+    const { ref } = renderAuthHook();
+    await flush();
+
+    let result;
+    await act(async () => { result = await ref.current.handleAuthCallbackUrl('kilo://auth/callback?code=abc'); });
+    await flush();
+
+    expect(result.ok).toBe(true);
+    expect(nativeMock.createRestoreCredential).toHaveBeenCalled();
+    const AS = require('@react-native-async-storage/async-storage');
+    expect(await AS.getItem('kilo.auth.androidRestoreCredentialId')).toBe('cred-id-github');
   });
 });
 
@@ -459,7 +485,7 @@ describe('signOut with Android revocation', () => {
     expect(mockAuth.signOut).not.toHaveBeenCalled();
   });
 
-  test('device-clear failure does not surface as error (server revocation is authoritative)', async () => {
+  test('device-clear failure surfaces as incomplete-cleanup message (server revocation is authoritative)', async () => {
     await seedCredentialId();
     mockFetch.mockResolvedValueOnce(fakeRes({ version: 1, revoked: true }));
     nativeMock.__setResult('clearRestoreCredential', { status: 'error', message: 'device clear failed' });
@@ -470,9 +496,11 @@ describe('signOut with Android revocation', () => {
     let result;
     await act(async () => { result = await ref.current.signOut(); });
 
-    // sign-out completes because Promise.allSettled is used for device clear
+    // sign-out completes because server revocation is authoritative
     expect(result.ok).toBe(true);
     expect(mockAuth.signOut).toHaveBeenCalled();
+    // incomplete local cleanup is exposed via message, not silently discarded
+    expect(result.message).toMatch(/could not be cleared/i);
   });
 
   test('non-Android skips revoke entirely', async () => {
@@ -523,7 +551,7 @@ describe('deleteAccount device clear', () => {
     expect(await AS.getItem('kilo.auth.androidRestoreCredentialId')).toBeNull();
   });
 
-  test('device-clear failure during deleteAccount is handled without blocking', async () => {
+  test('device-clear failure during deleteAccount surfaces as incomplete-cleanup message', async () => {
     await seedCredentialId();
     nativeMock.__setResult('clearRestoreCredential', { status: 'error', message: 'device error' });
     mockFetch.mockResolvedValueOnce(fakeRes({ deleted: true }));
@@ -536,6 +564,8 @@ describe('deleteAccount device clear', () => {
 
     expect(result.ok).toBe(true);
     expect(mockAuth.signOut).toHaveBeenCalled();
+    // incomplete local cleanup exposed via message so callers can report it
+    expect(result.message).toMatch(/could not be cleared/i);
   });
 
   test('server deletion failure does not clear device credential', async () => {
