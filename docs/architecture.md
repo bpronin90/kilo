@@ -251,6 +251,17 @@ challenge can be spent only by the session that requested it, and only while
 the owner's password is unchanged since the challenge was issued. These functions
 only read the `auth` schema; nothing in it is altered.
 
+The RP ID is `kilo-app.pages.dev`, and Android accepts restore keys for it only
+because that domain publishes a Digital Asset Links statement for
+`com.benpronin.kilo` (issue #1164). The source is
+`mobile/public/.well-known/assetlinks.json`; `expo export --platform web` copies
+it, hidden directory included, into the Pages build, where it is served as a
+static JSON file ahead of the SPA fallback. `mobile/tests/assetlinks-export.test.js`
+runs a real export and byte-compares the result. It lists the SHA-256 of the
+Play app signing key; a build signed by any other key is not covered. After a
+deploy, the owner checks it with `curl -D -` (HTTP 200, `application/json`, no
+redirect) and Google's `statements:list` API.
+
 Configuration is two Edge Function secrets, `KILO_RESTORE_RP_ID` and
 `KILO_ANDROID_APK_KEY_HASHES`; with either missing or malformed, every
 registration and restore route fails closed while `revoke` keeps working. The

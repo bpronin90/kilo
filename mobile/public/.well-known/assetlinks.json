@@ -1,0 +1,1 @@
+[{"relation":["delegate_permission/common.handle_all_urls","delegate_permission/common.get_login_creds"],"target":{"namespace":"android_app","package_name":"com.benpronin.kilo","sha256_cert_fingerprints":["A9:87:86:76:EA:FD:BB:20:C7:40:2B:EE:D2:A8:65:BF:A2:4F:3C:B5:98:9A:E8:1E:19:BC:E9:29:A9:A0:F3:DC"]}}]
