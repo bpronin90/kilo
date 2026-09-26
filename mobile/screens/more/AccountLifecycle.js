@@ -55,7 +55,7 @@ export function AccountLifecycle({ auth }) {
             if (result.ok) {
               return {
                 ok: true,
-                message: wipeLocalData ? 'Account deleted and device data wiped.' : 'Account deleted.',
+                message: result.message ?? (wipeLocalData ? 'Account deleted and device data wiped.' : 'Account deleted.'),
               };
             }
             setDeleteArmed(false);

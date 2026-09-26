@@ -244,6 +244,25 @@ describe('enrollment after signInWithPassword', () => {
     const AS = require('@react-native-async-storage/async-storage');
     expect(await AS.getItem('kilo.auth.androidRestoreCredentialId')).toBe('cred-id-github');
   });
+
+  test('recovery callback does not trigger enrollment', async () => {
+    const session = { access_token: 'tok-recovery', refresh_token: 'ref-recovery', user: { id: 'uid-r' } };
+    mockAuth.exchangeCodeForSession = jest.fn().mockResolvedValue({ data: { session }, error: null });
+
+    const { ref } = renderAuthHook();
+    await flush();
+
+    let result;
+    await act(async () => { result = await ref.current.handleAuthCallbackUrl('kilo://auth/callback?code=abc', { isRecovery: true }); });
+    await flush();
+
+    expect(result.ok).toBe(true);
+    expect(nativeMock.createRestoreCredential).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalledWith(
+      expect.stringContaining('enrollment-options'),
+      expect.anything(),
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

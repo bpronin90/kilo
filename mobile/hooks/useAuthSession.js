@@ -440,7 +440,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
   // flows (PKCE code exchange) require an explicit exchange. This handles both
   // by exchanging an auth code when present and otherwise reading the restored
   // session.
-  const handleAuthCallbackUrl = useCallback(async (url) => {
+  const handleAuthCallbackUrl = useCallback(async (url, { isRecovery = false } = {}) => {
     const client = requireClient();
     if (!client) return LOCAL_ONLY_RESULT;
 
@@ -483,7 +483,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
         if (error) return { ok: false, error: error.message };
         if (!data?.session) return { ok: false, error: 'Sign in did not complete.' };
         applySession(data.session);
-        if (data.session.access_token) enrollAndroidRestoreCredential(getSupabaseConfig()?.url, data.session.access_token);
+        if (!isRecovery && data.session.access_token) enrollAndroidRestoreCredential(getSupabaseConfig()?.url, data.session.access_token);
         return { ok: true, session: data.session };
       }
 
@@ -493,7 +493,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
       if (error) return { ok: false, error: error.message };
       if (!data?.session) return { ok: false, error: 'Sign in did not complete.' };
       applySession(data.session);
-      if (data.session.access_token) enrollAndroidRestoreCredential(getSupabaseConfig()?.url, data.session.access_token);
+      if (!isRecovery && data.session.access_token) enrollAndroidRestoreCredential(getSupabaseConfig()?.url, data.session.access_token);
       return { ok: true, session: data.session };
     } catch (e) {
       return networkErrorResult(e);
@@ -516,7 +516,7 @@ export function useAuthSession({ onDeviceDataWiped } = {}) {
 
     const handleUrl = (url) => {
       if (!url || !url.startsWith(KILO_AUTH_REDIRECT)) return;
-      handleAuthCallbackUrl(url).then((result) => {
+      handleAuthCallbackUrl(url, { isRecovery: true }).then((result) => {
         if (!result.ok && mountedRef.current) {
           setRecoveryError(result.error || 'Password reset link is invalid or has expired.');
         }
