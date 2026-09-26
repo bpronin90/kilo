@@ -28,7 +28,12 @@
 //   installs stay isolated and need one replacement build.
 // preview-10: #1158 adds the android-restore-credentials local native module
 //   and its config plugin, so preview-9 installs lack the native side.
-const PREVIEW_RUNTIME = 'preview-10';
+// preview-11: #1167 adds withAndroidR8Optimization, a local config plugin that
+//   patches the generated app module's release buildType Gradle config
+//   (proguard-android.txt -> proguard-android-optimize.txt). The "preview" EAS
+//   build profile shares that release buildType, so preview-10 installs lack
+//   the R8-optimized native config and must be replaced with a fresh build.
+const PREVIEW_RUNTIME = 'preview-11';
 
 // Large-screen resizing (#1126). The SDK 54 template's MainActivity already
 // handles orientation|screenSize|screenLayout itself, but not

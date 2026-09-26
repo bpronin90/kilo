@@ -22,7 +22,7 @@ describe('app config', () => {
 
     const result = configFactory({ config: { plugins: [] } });
 
-    expect(result.runtimeVersion).toBe('preview-10');
+    expect(result.runtimeVersion).toBe('preview-11');
   });
 
   test('uses the appVersion runtime policy for production builds', () => {
@@ -176,5 +176,180 @@ describe('app config', () => {
     expect(buildPropsPlugin).toBeDefined();
     expect(buildPropsPlugin[1].android.enableMinifyInReleaseBuilds).toBe(true);
     expect(buildPropsPlugin[1].android.enableShrinkResourcesInReleaseBuilds).toBe(true);
+  });
+
+  // #1167: Expo SDK 54 prebuild emits a non-optimizing proguard-android.txt default,
+  // which disables R8 optimization and fails Google Play's Feb 2027 app-quality bar.
+  test('static config registers the R8 optimization plugin', () => {
+    const appJson = require('../app.json');
+    expect(appJson.expo.plugins).toContain('./plugins/withAndroidR8Optimization');
+  });
+
+  describe('withAndroidR8Optimization', () => {
+    const runAppBuildGradleMod = async (contents, language = 'groovy') => {
+      const withAndroidR8Optimization = require('../plugins/withAndroidR8Optimization');
+      const config = withAndroidR8Optimization({ name: 'test', slug: 'test' });
+      const modFn = config.mods.android.appBuildGradle;
+      const result = await modFn({
+        modResults: { language, contents },
+        modRequest: { platform: 'android' },
+      });
+      return result.modResults.contents;
+    };
+
+    test('replaces the non-optimizing proguard file with the optimizing one', async () => {
+      const contents = [
+        'buildTypes {',
+        '  release {',
+        '    minifyEnabled true',
+        '    shrinkResources true',
+        '    proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"',
+        '  }',
+        '}',
+      ].join('\n');
+
+      const result = await runAppBuildGradleMod(contents);
+
+      expect(result).toContain('getDefaultProguardFile("proguard-android-optimize.txt")');
+      expect(result).not.toContain('getDefaultProguardFile("proguard-android.txt")');
+      // Existing minify/shrink settings must survive untouched.
+      expect(result).toContain('minifyEnabled true');
+      expect(result).toContain('shrinkResources true');
+    });
+
+    test('is idempotent when the proguard file is already optimizing', async () => {
+      const contents = [
+        'buildTypes {',
+        '  release {',
+        '    proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"',
+        '  }',
+        '}',
+      ].join('\n');
+
+      const result = await runAppBuildGradleMod(contents);
+
+      expect(result).toBe(contents);
+    });
+
+    test('fails clearly when the expected non-optimizing proguard line is missing', async () => {
+      const contents = [
+        'buildTypes {',
+        '  release {',
+        '    minifyEnabled true',
+        '  }',
+        '}',
+      ].join('\n');
+
+      await expect(runAppBuildGradleMod(contents)).rejects.toThrow(
+        /expected to find/
+      );
+    });
+
+    test('fails clearly when the generated build.gradle is not Groovy', async () => {
+      await expect(runAppBuildGradleMod('// kts', 'kt')).rejects.toThrow(/Groovy/);
+    });
+
+    // A debug buildType that already carries an optimizing-looking proguard line
+    // (or an unrelated block preceding release) must not short-circuit the
+    // idempotency check or divert the replacement away from release.
+    test('only inspects and patches the release buildType, ignoring a similar debug block', async () => {
+      const contents = [
+        'buildTypes {',
+        '  debug {',
+        '    proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"',
+        '  }',
+        '  release {',
+        '    minifyEnabled true',
+        '    proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"',
+        '  }',
+        '}',
+      ].join('\n');
+
+      const result = await runAppBuildGradleMod(contents);
+
+      const releaseBlock = result.slice(result.indexOf('release {'));
+      expect(releaseBlock).toContain('getDefaultProguardFile("proguard-android-optimize.txt")');
+      expect(releaseBlock).not.toContain('getDefaultProguardFile("proguard-android.txt")');
+    });
+
+    // #1167 review round 2: a `signingConfigs { release { ... } }` block whose
+    // comment happens to mention the optimizing proguard file, sitting before
+    // `buildTypes { release { ... } }`, must not be mistaken for the buildType
+    // and short-circuit the idempotency check while the real release
+    // buildType stays non-optimized.
+    test('does not mistake a release-named signingConfigs block for the release buildType', async () => {
+      const contents = [
+        'android {',
+        '  signingConfigs {',
+        '    release {',
+        '      // getDefaultProguardFile("proguard-android-optimize.txt")',
+        '    }',
+        '  }',
+        '  buildTypes {',
+        '    release {',
+        '      minifyEnabled true',
+        '      proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"',
+        '    }',
+        '  }',
+        '}',
+      ].join('\n');
+
+      const result = await runAppBuildGradleMod(contents);
+
+      const buildTypesBlock = result.slice(result.indexOf('buildTypes {'));
+      expect(buildTypesBlock).toContain('getDefaultProguardFile("proguard-android-optimize.txt")');
+      expect(buildTypesBlock).not.toContain('getDefaultProguardFile("proguard-android.txt")');
+    });
+
+    // Connector finding on PR #1169: a commented-out example `release { ... }`
+    // block preceding the real one must not be mistaken for it — otherwise the
+    // plugin patches (or reads idempotency off) dead comment text while the
+    // active buildTypes.release block stays non-optimized.
+    test('ignores a commented-out release block and patches the real one', async () => {
+      const contents = [
+        'buildTypes {',
+        '  // release {',
+        '  //   proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"',
+        '  // }',
+        '  release {',
+        '    minifyEnabled true',
+        '    proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"',
+        '  }',
+        '}',
+      ].join('\n');
+
+      const result = await runAppBuildGradleMod(contents);
+
+      const activeReleaseBlock = result.slice(result.lastIndexOf('release {'));
+      expect(activeReleaseBlock).toContain('getDefaultProguardFile("proguard-android-optimize.txt")');
+      expect(activeReleaseBlock).not.toContain('getDefaultProguardFile("proguard-android.txt")');
+    });
+
+    // Connector finding on PR #1169: a comment inside the *active* release
+    // block that mentions the optimizing proguard file must not cause the
+    // idempotency check to pass while the real (non-commented) proguard line
+    // in that same block is still the non-optimizing default.
+    test('checks idempotency and replacement against the real code, not an in-block comment', async () => {
+      const contents = [
+        'buildTypes {',
+        '  release {',
+        '    // TODO: eventually switch to getDefaultProguardFile("proguard-android-optimize.txt")',
+        '    minifyEnabled true',
+        '    proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"',
+        '  }',
+        '}',
+      ].join('\n');
+
+      const result = await runAppBuildGradleMod(contents);
+
+      const codeLine = result
+        .split('\n')
+        .find((line) => line.trim().startsWith('proguardFiles'));
+      expect(codeLine).toContain('getDefaultProguardFile("proguard-android-optimize.txt")');
+      // The comment itself is left untouched.
+      expect(result).toContain(
+        '// TODO: eventually switch to getDefaultProguardFile("proguard-android-optimize.txt")'
+      );
+    });
   });
 });
