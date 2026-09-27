@@ -77,6 +77,12 @@ function splitHeader(line, name) {
   return { prefix: line.slice(0, at), suffix: line.slice(at + name.length) };
 }
 
+// The parser can fold a spaced prescription ("Bench 3 x 5") into the name, so
+// a rename must keep every number on the header line exactly as it was.
+function numbers(line) {
+  return (line.match(/\d+(?:\.\d+)?/g) || []).join(',');
+}
+
 function markTail(name) {
   return (MARK_TAIL_RE.exec(name) || [''])[0];
 }
@@ -112,7 +118,7 @@ export function diffTargetNames(originalText, returnedLines) {
     if (before === after) continue;
     const a = splitHeader(before, oldName);
     const b = splitHeader(after, newName);
-    if (!a || !b || a.prefix !== b.prefix || a.suffix !== b.suffix || markTail(oldName) !== markTail(newName) || !newName.trim()) {
+    if (!a || !b || a.prefix !== b.prefix || a.suffix !== b.suffix || markTail(oldName) !== markTail(newName) || numbers(before) !== numbers(after) || !newName.trim()) {
       problems.push(`Line ${lineNumber} changed more than the exercise name: “${before}” → “${after}”.`);
       continue;
     }

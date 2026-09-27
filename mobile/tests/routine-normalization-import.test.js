@@ -108,6 +108,11 @@ describe('diffTargetNames rejects structural edits disguised as renames', () => 
     expect(diffTargetNames(T1.raw_text, returned.split('\n')).problems.length).toBeGreaterThan(0);
   });
 
+  test('a spaced prescription folded into the name cannot change', () => {
+    expect(diffTargetNames('Monday\n-Bench 3 x 5', ['Monday', '-Bench 4 x 5']).problems).toHaveLength(1);
+    expect(diffTargetNames('Monday\n-bench 3 x 5', ['Monday', '-Bench Press 3 x 5']).changes).toHaveLength(1);
+  });
+
   test('casing and punctuation-only renames are allowed name changes', () => {
     const out = diffTargetNames('Monday\n-db row 3x8', ['Monday', '-DB Row, one-arm 3x8']);
     expect(out.changes).toEqual([expect.objectContaining({ oldName: 'db row', newName: 'DB Row, one-arm' })]);
