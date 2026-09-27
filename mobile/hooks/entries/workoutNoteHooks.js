@@ -187,3 +187,19 @@ export function useWorkoutNotes() {
 
   return { notes, currentId, currentNote, deloadNotes, loading, error, add, update, remove, selectCurrent, refresh, reload };
 }
+
+// #1172: compare-and-set text write for bulk exercise-name normalization.
+// Writes `nextRawText` only while the note still holds `expectedRawText` (the
+// text the prompt was generated from), through the same storage-mode path as
+// the editors so cloud mode enqueues it. A note already holding `nextRawText`
+// is a retry after an interrupted write/enqueue and is written again so the
+// enqueue completes. Throws on a failed write; callers report it truthfully.
+export async function saveWorkoutNoteTextIfUnchanged(id, expectedRawText, nextRawText) {
+  const list = await readVia('loadWorkoutNotes', Storage.loadWorkoutNotes);
+  const note = list.find(n => n.id === id);
+  if (!note) return 'missing';
+  if (note.raw_text !== expectedRawText && note.raw_text !== nextRawText) return 'stale';
+  await writeVia('saveWorkoutNoteItem', Storage.saveWorkoutNoteItem, { ...note, raw_text: nextRawText, updated_at: new Date().toISOString() });
+  notifyWorkoutNotes();
+  return 'saved';
+}

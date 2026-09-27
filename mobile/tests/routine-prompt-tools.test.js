@@ -104,4 +104,76 @@ describe('RoutinePromptToolsScreen', () => {
     expect(tree.root.findAll(node => node.props?.testID === 'routine-prompt-output')).toHaveLength(0);
     expect(tree.root.findAllByType('Text').some(node => node.children.join('').includes('Create a routine first'))).toBe(true);
   });
+
+  describe('import normalized routines (#1172)', () => {
+    const REPLY = 'Here are the results.\n\nTarget routine 1: Upper\n' + TARGET.raw_text.replace('-Bench press', '-Bench Press');
+    const text = root => root.findAllByType('Text').map(node => node.children.join('')).join('\n');
+    const setup = async (props = {}) => {
+      const tree = mount({ canPickFile: false, ...props });
+      await act(async () => {});
+      await act(async () => { button(tree.root, 'Normalize exercise names').props.onPress(); });
+      await act(async () => { button(tree.root, 'Normalize Upper (2)').props.onPress(); });
+      await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
+      return tree;
+    };
+    const paste = async (tree, value) => {
+      const input = tree.root.findAll(node => node.props?.testID === 'normalization-reply-input' && node.props.onChangeText)[0];
+      await act(async () => { input.props.onChangeText(value); });
+      await act(async () => { button(tree.root, 'Review normalized routines').props.onPress(); });
+    };
+
+    test('import is offered only after the prompt is copied, and nothing is written before Apply', async () => {
+      const saveText = jest.fn().mockResolvedValue('saved');
+      const tree = mount({ saveText, canPickFile: false });
+      await act(async () => {});
+      await act(async () => { button(tree.root, 'Normalize exercise names').props.onPress(); });
+      await act(async () => { button(tree.root, 'Normalize Upper (2)').props.onPress(); });
+      expect(button(tree.root, 'Review normalized routines')).toBeUndefined();
+      await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
+      await paste(tree, REPLY);
+      expect(text(tree.root)).toContain('Bench press → Bench Press');
+      expect(saveText).not.toHaveBeenCalled();
+      await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
+      expect(saveText).toHaveBeenCalledWith('target', TARGET.raw_text, TARGET.raw_text.replace('-Bench press', '-Bench Press'));
+      expect(text(tree.root)).toContain('Updated Target routine 1: Upper.');
+    });
+
+    test('a failed save is reported and can be retried without re-writing saved notes', async () => {
+      const saveText = jest.fn().mockRejectedValueOnce(new Error('enqueue failed')).mockResolvedValue('saved');
+      const tree = await setup({ saveText });
+      await paste(tree, REPLY);
+      await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
+      expect(text(tree.root)).toContain('Couldn’t save Target routine 1: Upper.');
+      expect(text(tree.root)).not.toContain('Updated');
+      await act(async () => { button(tree.root, 'Retry failed routines').props.onPress(); });
+      expect(saveText).toHaveBeenCalledTimes(2);
+      expect(text(tree.root)).toContain('Updated Target routine 1: Upper.');
+    });
+
+    test('an authority edited after the prompt blocks every write', async () => {
+      const notes = [CURRENT, TARGET];
+      const saveText = jest.fn();
+      const tree = await setup({ saveText, loadNotes: async () => notes });
+      await paste(tree, REPLY);
+      notes[0] = { ...CURRENT, raw_text: `${CURRENT.raw_text}\n- 200 1` };
+      await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
+      expect(saveText).not.toHaveBeenCalled();
+      expect(text(tree.root)).toContain('Nothing was written');
+    });
+
+    test('a structurally edited result is listed as not applied', async () => {
+      const saveText = jest.fn();
+      const tree = await setup({ saveText });
+      await paste(tree, REPLY.replace('135', '145'));
+      expect(text(tree.root)).toContain('Not applied');
+      expect(button(tree.root, 'Apply normalized names').props.disabled).toBe(true);
+    });
+
+    test('a picked text file uses the same review pipeline', async () => {
+      const tree = await setup({ canPickFile: true, pickFile: jest.fn().mockResolvedValue(REPLY) });
+      await act(async () => { button(tree.root, 'Choose normalized routines file').props.onPress(); });
+      expect(text(tree.root)).toContain('Bench press → Bench Press');
+    });
+  });
 });
+
