@@ -64,6 +64,12 @@ describe('buildNormalizationPreview', () => {
     expect(dup.entries[0].problems[0]).toMatch(/appears 2 times/);
   });
 
+  test('an oversized reply is rejected before splitting', () => {
+    const preview = buildNormalizationPreview(`Target routine 1\n${'x'.repeat(1024 * 1024)}`, SNAP, NOTES);
+    expect(preview.tooLarge).toBe(true);
+    expect(preview.entries).toEqual([]);
+  });
+
   test('malformed output with no labels yields no applicable changes', () => {
     const preview = buildNormalizationPreview('I could not do this.', SNAP, NOTES);
     expect(preview.entries.every(e => e.problems)).toBe(true);

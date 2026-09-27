@@ -9,6 +9,10 @@
 // outside an approved header name stays byte-identical by construction.
 import { parseWorkoutNote } from '../parser.js';
 
+// Untrusted input bound, checked before any split: generous for many full
+// routines, far below anything that could stall the per-line walk.
+export const MAX_REPLY_LENGTH = 1024 * 1024;
+
 const LABEL_RE = /^\s*(?:#{1,6}\s*)?(?:[-*]\s+)?target\s+routine\s+(\d+)\b\s*(?::.*)?$/i;
 const FENCE_RE = /^\s*(```|~~~)/;
 const MARK_TAIL_RE = /\*+$/;
@@ -33,6 +37,7 @@ function trimBlankEdges(lines) {
  * section is kept verbatim so structural edits are caught by validation.
  */
 export function splitNormalizationReply(replyText) {
+  if (String(replyText ?? '').length > MAX_REPLY_LENGTH) return [];
   const lines = String(replyText ?? '').replace(/\r\n?/g, '\n').split('\n');
   const sections = [];
   let current = null;
@@ -126,6 +131,9 @@ export function buildNormalizationPreview(replyText, snapshot, currentNotes = []
   const currentAuthority = byId.get(snapshot?.authority?.id);
   if (!currentAuthority || currentAuthority.raw_text !== snapshot?.authority?.raw_text) {
     return { authorityStale: true, entries: [], unknown: [], mappings: [] };
+  }
+  if (String(replyText ?? '').length > MAX_REPLY_LENGTH) {
+    return { authorityStale: false, tooLarge: true, entries: [], unknown: [], mappings: [] };
   }
   const sections = splitNormalizationReply(replyText);
   const grouped = new Map();

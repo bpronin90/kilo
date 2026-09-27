@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScreenShell } from './ScreenShell';
 import { Button, Card, SectionTitle, useInputStyle } from './UI';
@@ -46,16 +46,23 @@ function NormalizationImport({ snapshot, loadNotes, saveText, pickFile, canPickF
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  // Only the newest review may publish; an edit or a later review makes any
+  // in-flight one obsolete.
+  const reviewSeq = useRef(0);
 
   const review = async (text) => {
+    const seq = ++reviewSeq.current;
     setResult(null);
     setMessage('');
     try {
-      const next = buildNormalizationPreview(text, snapshot, await loadNotes());
+      const loaded = await loadNotes();
+      if (seq !== reviewSeq.current) return;
+      const next = buildNormalizationPreview(text, snapshot, loaded);
       setPreview(next);
       setOffKeys(new Set());
       setOffTargets(new Set());
     } catch {
+      if (seq !== reviewSeq.current) return;
       setPreview(null);
       setMessage('Couldn’t read routines from this device. Nothing changed.');
     }
@@ -126,7 +133,7 @@ function NormalizationImport({ snapshot, loadNotes, saveText, pickFile, canPickF
         style={[inputStyle, styles.replyInput]}
         multiline
         value={reply}
-        onChangeText={(text) => { setReply(text); setPreview(null); setResult(null); }}
+        onChangeText={(text) => { reviewSeq.current += 1; setReply(text); setPreview(null); setResult(null); }}
         placeholder="Paste the normalized routines here"
         accessibilityLabel="Normalized routines reply"
         testID="normalization-reply-input"
@@ -136,10 +143,11 @@ function NormalizationImport({ snapshot, loadNotes, saveText, pickFile, canPickF
         {canPickFile ? <Button title="Choose text file" onPress={handlePick} accessibilityLabel="Choose normalized routines file" /> : null}
       </View>
       {message ? <Text style={styles.error}>{message}</Text> : null}
+      {preview?.tooLarge ? <Text style={styles.error}>That reply is too large to be routine results. Nothing changed.</Text> : null}
       {preview?.authorityStale ? (
         <Text style={styles.error}>The authoritative routine changed after the prompt was generated. Nothing can be applied. Generate a fresh prompt.</Text>
       ) : null}
-      {preview && !preview.authorityStale ? <>
+      {preview && !preview.authorityStale && !preview.tooLarge ? <>
         {preview.mappings.length ? <>
           <SectionTitle>Name changes</SectionTitle>
           <View style={styles.choiceList}>
