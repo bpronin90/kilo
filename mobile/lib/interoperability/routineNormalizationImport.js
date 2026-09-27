@@ -83,6 +83,13 @@ function numbers(line) {
   return (line.match(/\d+(?:\.\d+)?/g) || []).join(',');
 }
 
+// Everything from the first standalone number on (the prescription, however
+// it is spaced) must be byte-identical.
+function prescriptionTail(line) {
+  const at = line.search(/\s\d/);
+  return at < 0 ? '' : line.slice(at);
+}
+
 function markTail(name) {
   return (MARK_TAIL_RE.exec(name) || [''])[0];
 }
@@ -118,7 +125,7 @@ export function diffTargetNames(originalText, returnedLines) {
     if (before === after) continue;
     const a = splitHeader(before, oldName);
     const b = splitHeader(after, newName);
-    if (!a || !b || a.prefix !== b.prefix || a.suffix !== b.suffix || markTail(oldName) !== markTail(newName) || numbers(before) !== numbers(after) || !newName.trim()) {
+    if (!a || !b || a.prefix !== b.prefix || a.suffix !== b.suffix || markTail(oldName) !== markTail(newName) || numbers(before) !== numbers(after) || prescriptionTail(before) !== prescriptionTail(after) || !newName.trim()) {
       problems.push(`Line ${lineNumber} changed more than the exercise name: “${before}” → “${after}”.`);
       continue;
     }

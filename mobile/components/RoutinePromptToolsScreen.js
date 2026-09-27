@@ -92,7 +92,9 @@ function NormalizationImport({ snapshot, loadNotes, saveText, pickFile, canPickF
     setMessage('');
     try {
       const authority = (await loadNotes()).find(note => note?.id === snapshot.authority.id);
-      if (!authority || authority.raw_text !== snapshot.authority.raw_text) {
+      // The authority may itself be a target this import already saved.
+      const savedAuthority = (previous?.saved || []).find(item => item.entry.id === snapshot.authority.id);
+      if (!authority || (authority.raw_text !== snapshot.authority.raw_text && authority.raw_text !== savedAuthority?.next)) {
         setMessage('The authoritative routine changed after the prompt was generated. Nothing was written. Generate a fresh prompt.');
         setBusy(false);
         return;
