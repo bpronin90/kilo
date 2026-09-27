@@ -27,6 +27,13 @@ describe('splitNormalizationReply', () => {
   });
 });
 
+test('a fence-like line inside a routine is kept and validated', () => {
+  const fenced = { ...T2, raw_text: 'Friday\n-BB Bench 3x5\n```\n- 140 5,5,5' };
+  const out = '```\nTarget routine 1\n```\nFriday\n-Bench Press 3x5\n```\n- 140 5,5,5\n```';
+  const preview = buildNormalizationPreview(out, { authority: AUTH, targets: [fenced] }, [AUTH, fenced]);
+  expect(preview.entries[0].changes).toHaveLength(1);
+});
+
 describe('buildNormalizationPreview', () => {
   test('matches by reference label regardless of order and duplicate titles', () => {
     const preview = buildNormalizationPreview(reply('Target routine 2: Upper', T2_OUT, 'Target routine 1: Upper', T1_OUT), SNAP, NOTES);

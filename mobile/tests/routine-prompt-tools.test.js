@@ -206,6 +206,18 @@ describe('RoutinePromptToolsScreen', () => {
       expect(tree.root.findAll(node => node.props?.accessibilityLabel === 'Apply normalized names')).toHaveLength(0);
     });
 
+    test('prompt actions are withheld while notes refresh after apply', async () => {
+      let calls = 0;
+      let release;
+      const loadNotes = () => { calls += 1; return calls === 4 ? new Promise(r => { release = () => r([CURRENT, TARGET]); }) : Promise.resolve([CURRENT, TARGET]); };
+      const tree = await setup({ loadNotes, saveText: jest.fn().mockResolvedValue('saved') });
+      await paste(tree, REPLY);
+      await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
+      expect(button(tree.root, 'Copy prompt')).toBeUndefined();
+      await act(async () => { release(); });
+      expect(button(tree.root, 'Copy prompt')).toBeTruthy();
+    });
+
     test('a picked text file uses the same review pipeline', async () => {
       const tree = await setup({ canPickFile: true, pickFile: jest.fn().mockResolvedValue(REPLY) });
       await act(async () => { button(tree.root, 'Choose normalized routines file').props.onPress(); });

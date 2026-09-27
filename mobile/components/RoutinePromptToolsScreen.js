@@ -222,12 +222,15 @@ export function RoutinePromptToolsScreen({
 
   // After an import writes, re-read so a new prompt/snapshot uses the saved
   // text instead of the text loaded when the screen mounted.
+  const [refreshing, setRefreshing] = useState(false);
   const refreshNotes = () => {
+    setRefreshing(true);
     loadNotes()
       .then(loaded => { if (Array.isArray(loaded)) setNotes(loaded.filter(note => note && typeof note.raw_text === 'string')); })
       // A failed re-read must not leave the pre-apply text available for a
       // new prompt/snapshot; show the read failure instead.
-      .catch(() => setLoadFailed(true));
+      .catch(() => setLoadFailed(true))
+      .finally(() => setRefreshing(false));
   };
 
   useEffect(() => {
@@ -249,12 +252,12 @@ export function RoutinePromptToolsScreen({
   const authority = useMemo(() => notes.find(note => note.id === authorityId) || null, [notes, authorityId]);
   const targets = useMemo(() => notes.filter(note => targetIds.includes(note.id)), [notes, targetIds]);
   const prompt = useMemo(() => {
-    if (loadFailed && tool !== 'format') return '';
+    if ((loadFailed || refreshing) && tool !== 'format') return '';
     if (tool === 'plan') return authority ? buildRoutinePlanningPrompt(authority) : '';
     if (tool === 'normalize') return authority && targets.length ? buildExerciseNameNormalizationPrompt({ authority, targets }) : '';
     if (tool === 'format') return buildKiloRoutineFormatPrompt();
     return '';
-  }, [tool, authority, targets, loadFailed]);
+  }, [tool, authority, targets, loadFailed, refreshing]);
 
   const openTool = (nextTool) => {
     setNotice('');

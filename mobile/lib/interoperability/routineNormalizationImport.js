@@ -23,11 +23,12 @@ function stripDecoration(line) {
   return line.replace(/[*_`]/g, '');
 }
 
-function trimBlankEdges(lines) {
+function trimBlankEdges(lines, fences = false) {
+  const edge = line => line.trim() === '' || (fences && FENCE_RE.test(line));
   let start = 0;
   let end = lines.length;
-  while (start < end && lines[start].trim() === '') start += 1;
-  while (end > start && lines[end - 1].trim() === '') end -= 1;
+  while (start < end && edge(lines[start])) start += 1;
+  while (end > start && edge(lines[end - 1])) end -= 1;
   return { start, end };
 }
 
@@ -42,7 +43,6 @@ export function splitNormalizationReply(replyText) {
   const sections = [];
   let current = null;
   for (const line of lines) {
-    if (FENCE_RE.test(line)) continue;
     const label = LABEL_RE.exec(stripDecoration(line));
     if (label) {
       current = { number: parseInt(label[1], 10), lines: [] };
@@ -51,8 +51,10 @@ export function splitNormalizationReply(replyText) {
     }
     if (current) current.lines.push(line);
   }
+  // Fences are dropped only at a section's edges (where models wrap output);
+  // a fence-like line inside a routine stays and is validated like any line.
   return sections.map(section => {
-    const { start, end } = trimBlankEdges(section.lines);
+    const { start, end } = trimBlankEdges(section.lines, true);
     return { number: section.number, lines: section.lines.slice(start, end) };
   });
 }
