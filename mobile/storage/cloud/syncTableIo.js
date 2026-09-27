@@ -1,4 +1,5 @@
 import * as Storage from '../entries';
+import { withWorkoutNotebookLock } from '../entries/workoutNotes';
 import {
   loadArchivedWeightGoalsRaw,
   replaceArchivedWeightGoalsRaw,
@@ -102,8 +103,15 @@ export function createPassCache() {
         entries.set(table, { list, serialized });
         return list;
       }
-      const next = hit ? preserveConcurrentWrites(hit.list, (await load()) || [], list) : list;
-      await persist(next);
+      // #1172: the notes table reloads, folds, and persists under the same
+      // notebook lock as the domain note writers and compare-and-set, so no
+      // note write can land between this reload and this persist.
+      const commit = async () => {
+        const merged = hit ? preserveConcurrentWrites(hit.list, (await load()) || [], list) : list;
+        await persist(merged);
+        return merged;
+      };
+      const next = table === SYNC_TABLES.WORKOUT_NOTES ? await withWorkoutNotebookLock(commit) : await commit();
       entries.set(table, {
         list: next,
         serialized: next === list ? serialized : JSON.stringify(next),

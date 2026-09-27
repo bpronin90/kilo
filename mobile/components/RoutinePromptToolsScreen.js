@@ -92,9 +92,10 @@ function NormalizationImport({ snapshot, loadNotes, saveText, pickFile, canPickF
     setMessage('');
     try {
       const authority = (await loadNotes()).find(note => note?.id === snapshot.authority.id);
-      // The authority may itself be a target this import already saved.
-      const savedAuthority = (previous?.saved || []).find(item => item.entry.id === snapshot.authority.id);
-      if (!authority || (authority.raw_text !== snapshot.authority.raw_text && authority.raw_text !== savedAuthority?.next)) {
+      // The authority may itself be a target this import already wrote: saved
+      // earlier, or landed locally before a failed enqueue now being retried.
+      const written = [...(previous?.saved || []), ...items].filter(item => item.entry.id === snapshot.authority.id).map(item => item.next);
+      if (!authority || (authority.raw_text !== snapshot.authority.raw_text && !written.includes(authority.raw_text))) {
         setMessage('The authoritative routine changed after the prompt was generated. Nothing was written. Generate a fresh prompt.');
         setBusy(false);
         return;

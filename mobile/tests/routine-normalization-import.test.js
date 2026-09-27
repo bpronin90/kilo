@@ -112,6 +112,9 @@ describe('diffTargetNames rejects structural edits disguised as renames', () => 
   test('a spaced prescription folded into the name cannot change', () => {
     expect(diffTargetNames('Monday\n-Bench 3 x 5', ['Monday', '-Bench 4 x 5']).problems).toHaveLength(1);
     expect(diffTargetNames('Monday\n-Bench 3 x 5', ['Monday', '-Bench 3x 5']).problems).toHaveLength(1);
+    expect(diffTargetNames('Monday\n-Bench3x5', ['Monday', '-Bench3-5']).problems).toHaveLength(1);
+    expect(diffTargetNames('Monday\n-Bench 3x5', ['Monday', '-Bench3x5']).problems).toHaveLength(1);
+    expect(diffTargetNames('Monday\n-bench3x5', ['Monday', '-Bench Press3x5']).changes).toHaveLength(1);
     expect(diffTargetNames('Monday\n-bench 3 x 5', ['Monday', '-Bench Press 3 x 5']).changes).toHaveLength(1);
   });
 

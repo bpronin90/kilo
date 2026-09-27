@@ -240,6 +240,26 @@ describe('RoutinePromptToolsScreen', () => {
       expect(text(tree.root)).toContain('Updated Target routine 2: Upper.');
     });
 
+    test('retry works when the authority landed locally but its enqueue failed', async () => {
+      const notes = [CURRENT, TARGET];
+      let first = true;
+      const saveText = jest.fn(async (id, _e, next) => {
+        if (id !== 'current') return 'saved';
+        notes[0] = { ...notes[0], raw_text: next };
+        if (first) { first = false; throw new Error('enqueue failed'); }
+        return 'saved';
+      });
+      const tree = mount({ canPickFile: false, saveText, loadNotes: async () => notes });
+      await act(async () => {});
+      await act(async () => { button(tree.root, 'Normalize exercise names').props.onPress(); });
+      await act(async () => { button(tree.root, 'Normalize Upper (1)').props.onPress(); });
+      await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
+      await paste(tree, `Target routine 1\n${CURRENT.raw_text.replace('-Squat', '-Back Squat')}`);
+      await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
+      await act(async () => { button(tree.root, 'Retry failed routines').props.onPress(); });
+      expect(text(tree.root)).toContain('Updated Target routine 1: Upper.');
+    });
+
     test('a picked text file uses the same review pipeline', async () => {
       const tree = await setup({ canPickFile: true, pickFile: jest.fn().mockResolvedValue(REPLY) });
       await act(async () => { button(tree.root, 'Choose normalized routines file').props.onPress(); });

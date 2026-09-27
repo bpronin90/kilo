@@ -60,3 +60,19 @@ test('both adapters expose compare-and-set', () => {
   expect(typeof localAdapter.compareAndSetWorkoutNoteText).toBe('function');
   expect(typeof cloudAdapter.compareAndSetWorkoutNoteText).toBe('function');
 });
+
+test('a sync pass persist cannot land between compare and write', async () => {
+  // eslint-disable-next-line global-require
+  const { createPassCache } = require('../storage/cloud/syncTableIo');
+  await CloudNotes.saveWorkoutNoteItem(NOTE);
+  const cache = createPassCache();
+  const base = await cache.read(SYNC_TABLES.WORKOUT_NOTES, Storage.loadWorkoutNotesRaw);
+  const pulled = [...base, { id: 'remote', title: 'Pulled', raw_text: 'Friday' }];
+  const cas = CloudNotes.compareAndSetWorkoutNoteText('n1', NOTE.raw_text, NEXT);
+  const syncWrite = cache.write(SYNC_TABLES.WORKOUT_NOTES, pulled, Storage.replaceWorkoutNotesRaw, Storage.loadWorkoutNotesRaw);
+  expect(await cas).toBe('saved');
+  await syncWrite;
+  const ids = (await Storage.loadWorkoutNotesRaw()).map(n => n.id).sort();
+  expect(ids).toEqual(['n1', 'remote']);
+  expect(await text()).toBe(NEXT);
+});

@@ -83,10 +83,10 @@ function numbers(line) {
   return (line.match(/\d+(?:\.\d+)?/g) || []).join(',');
 }
 
-// Everything from the first standalone number on (the prescription, however
-// it is spaced) must be byte-identical.
+// Everything from the first number on, including any whitespace right before
+// it (the prescription, however spaced or attached), must be byte-identical.
 function prescriptionTail(line) {
-  const at = line.search(/\s\d/);
+  const at = line.search(/\s*\d/);
   return at < 0 ? '' : line.slice(at);
 }
 
