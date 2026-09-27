@@ -36,7 +36,7 @@ function ToolCard({ title, detail, onPress, label, testID }) {
 // #1172 return path: paste or pick the external reply, preview every rename
 // against the targets captured when the prompt was copied/shared, then apply
 // only the approved renames. Invalid or stale targets are listed, never written.
-function NormalizationImport({ snapshot, loadNotes, saveText, pickFile, canPickFile }) {
+function NormalizationImport({ snapshot, loadNotes, saveText, pickFile, canPickFile, onApplied }) {
   const styles = useThemedStyles(createStyles);
   const inputStyle = useInputStyle();
   const [reply, setReply] = useState('');
@@ -106,6 +106,7 @@ function NormalizationImport({ snapshot, loadNotes, saveText, pickFile, canPickF
     }
     setBusy(false);
     setResult(outcome);
+    if (outcome.saved.length) onApplied();
   };
 
   const toggle = (setter, key) => setter(previous => {
@@ -211,6 +212,14 @@ export function RoutinePromptToolsScreen({
   const [notice, setNotice] = useState('');
   const [snapshot, setSnapshot] = useState(null);
 
+  // After an import writes, re-read so a new prompt/snapshot uses the saved
+  // text instead of the text loaded when the screen mounted.
+  const refreshNotes = () => {
+    loadNotes()
+      .then(loaded => { if (Array.isArray(loaded)) setNotes(loaded.filter(note => note && typeof note.raw_text === 'string')); })
+      .catch(() => {});
+  };
+
   useEffect(() => {
     let cancelled = false;
     Promise.all([loadNotes(), loadCurrentId()])
@@ -248,7 +257,9 @@ export function RoutinePromptToolsScreen({
   const captureSnapshot = () => {
     if (tool !== 'normalize' || !authority || !targets.length) return;
     const pick = note => ({ id: note.id, title: note.title, raw_text: note.raw_text });
-    setSnapshot({ authority: pick(authority), targets: targets.map(pick) });
+    // Every capture gets a fresh identity so the import panel remounts and
+    // never applies a preview built from an earlier snapshot.
+    setSnapshot({ version: (snapshot?.version || 0) + 1, authority: pick(authority), targets: targets.map(pick) });
   };
   const handleCopy = async () => {
     try {
@@ -314,7 +325,7 @@ export function RoutinePromptToolsScreen({
           </View>
         </> : null}
         {isNormalize && snapshot ? (
-          <NormalizationImport key={JSON.stringify(snapshot.targets.map(t => t.id))} snapshot={snapshot} loadNotes={loadNotes} saveText={saveText} pickFile={pickFile} canPickFile={canPickFile} />
+          <NormalizationImport key={snapshot.version} snapshot={snapshot} loadNotes={loadNotes} saveText={saveText} pickFile={pickFile} canPickFile={canPickFile} onApplied={refreshNotes} />
         ) : null}
       </ScreenShell>
     );

@@ -169,6 +169,19 @@ describe('RoutinePromptToolsScreen', () => {
       expect(button(tree.root, 'Apply normalized names').props.disabled).toBe(true);
     });
 
+    test('a new snapshot discards an earlier preview, and applied text feeds the next prompt', async () => {
+      const notes = [CURRENT, TARGET];
+      const saveText = jest.fn(async (id, _expected, next) => { notes[1] = { ...TARGET, raw_text: next }; return 'saved'; });
+      const tree = await setup({ saveText, loadNotes: async () => notes });
+      await paste(tree, REPLY);
+      await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
+      await act(async () => {});
+      expect(promptOutput(tree.root)).not.toContain('-Bench press');
+      await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
+      expect(tree.root.findAll(node => node.props?.accessibilityLabel === 'Apply normalized names')).toHaveLength(0);
+      expect(text(tree.root)).not.toContain('Updated Target routine 1');
+    });
+
     test('a picked text file uses the same review pipeline', async () => {
       const tree = await setup({ canPickFile: true, pickFile: jest.fn().mockResolvedValue(REPLY) });
       await act(async () => { button(tree.root, 'Choose normalized routines file').props.onPress(); });
