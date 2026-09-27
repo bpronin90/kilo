@@ -15,6 +15,7 @@ import {
   loadWorkoutNotes,
   saveWorkoutNoteItem,
   deleteWorkoutNoteItem,
+  compareAndSetWorkoutNoteText,
 } from './cloud/cloudDomainMethods';
 
 export { CloudNotImplementedError } from './cloud/errors';
@@ -77,6 +78,7 @@ const IMPLEMENTED = {
   loadWorkoutNotes,
   saveWorkoutNoteItem,
   deleteWorkoutNoteItem,
+  compareAndSetWorkoutNoteText,
   ...RECOVERY_METHODS,
 };
 

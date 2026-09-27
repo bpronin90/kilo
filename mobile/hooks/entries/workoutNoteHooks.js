@@ -6,6 +6,7 @@ import { maybeSyncCloud, readVia, writeVia } from './storageMode';
 import { safeNotify } from './shared';
 import { markStartupPhase } from '../../storage/entries/startupTiming';
 import { clearWorkoutNoteDraftsForNote } from '../../storage/entries/workoutNoteDrafts';
+import { compareAndSetWorkoutNoteText } from '../../storage/entries/workoutNotes';
 import { claimWorkoutNoteCreationAttemptId } from '../../storage/entries/workoutNoteCreationAttempts';
 
 // NOTE (#880 revised body): pending-cloud-convergence state deliberately
@@ -189,17 +190,11 @@ export function useWorkoutNotes() {
 }
 
 // #1172: compare-and-set text write for bulk exercise-name normalization.
-// Writes `nextRawText` only while the note still holds `expectedRawText` (the
-// text the prompt was generated from), through the same storage-mode path as
-// the editors so cloud mode enqueues it. A note already holding `nextRawText`
-// is a retry after an interrupted write/enqueue and is written again so the
-// enqueue completes. Throws on a failed write; callers report it truthfully.
+// Storage performs the compare and the write under one notebook lock (and, in
+// cloud mode, enqueues after the local write). Throws on a failed write or
+// enqueue; callers report it truthfully and may retry.
 export async function saveWorkoutNoteTextIfUnchanged(id, expectedRawText, nextRawText) {
-  const list = await readVia('loadWorkoutNotes', Storage.loadWorkoutNotes);
-  const note = list.find(n => n.id === id);
-  if (!note) return 'missing';
-  if (note.raw_text !== expectedRawText && note.raw_text !== nextRawText) return 'stale';
-  await writeVia('saveWorkoutNoteItem', Storage.saveWorkoutNoteItem, { ...note, raw_text: nextRawText, updated_at: new Date().toISOString() });
-  notifyWorkoutNotes();
-  return 'saved';
+  const status = await writeVia('compareAndSetWorkoutNoteText', compareAndSetWorkoutNoteText, id, expectedRawText, nextRawText);
+  if (status === 'saved') notifyWorkoutNotes();
+  return status;
 }

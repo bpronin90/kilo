@@ -6,6 +6,7 @@ import {
 } from '../lib/interoperability/routineNormalizationImport';
 import { saveWorkoutNoteTextIfUnchanged } from '../hooks/entries/workoutNoteHooks';
 import * as Storage from '../storage/entries';
+import { canPickTextFile, pickTextFile } from '../lib/platformFilePicker';
 
 jest.mock('../lib/reminderScheduler', () => ({ reconcileWorkoutReminder: () => Promise.resolve() }));
 
@@ -138,5 +139,29 @@ describe('saveWorkoutNoteTextIfUnchanged', () => {
     expect(await saveWorkoutNoteTextIfUnchanged('t2', T2.raw_text, T2_OUT)).toBe('stale');
     expect((await Storage.loadWorkoutNotes()).find(n => n.id === 't2').raw_text).toBe('newer');
     expect(await saveWorkoutNoteTextIfUnchanged('gone', 'a', 'b')).toBe('missing');
+  });
+});
+
+describe('platformFilePicker (native)', () => {
+  const fetchText = body => jest.fn().mockResolvedValue({ text: async () => body });
+
+  test('android and ios offer file picking', () => {
+    expect(canPickTextFile({ platform: 'android' })).toBe(true);
+    expect(canPickTextFile({ platform: 'ios' })).toBe(true);
+  });
+
+  test('reads the cached copy locally and returns null on cancel', async () => {
+    const documentPicker = { getDocumentAsync: jest.fn().mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///cache/r.txt', size: 10 }] }) };
+    const fetch = fetchText('Target routine 1');
+    await expect(pickTextFile({ platform: 'android', documentPicker, fetch })).resolves.toBe('Target routine 1');
+    expect(documentPicker.getDocumentAsync).toHaveBeenCalledWith(expect.objectContaining({ copyToCacheDirectory: true }));
+    expect(fetch).toHaveBeenCalledWith('file:///cache/r.txt');
+    documentPicker.getDocumentAsync.mockResolvedValue({ canceled: true, assets: null });
+    await expect(pickTextFile({ platform: 'ios', documentPicker, fetch })).resolves.toBeNull();
+  });
+
+  test('rejects oversized files', async () => {
+    const documentPicker = { getDocumentAsync: jest.fn().mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///x', size: 5 * 1024 * 1024 }] }) };
+    await expect(pickTextFile({ platform: 'android', documentPicker, fetch: fetchText('') })).rejects.toThrow(/too large/);
   });
 });

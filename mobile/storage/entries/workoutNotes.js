@@ -114,15 +114,44 @@ export async function replaceWorkoutNotesRaw(list) {
   await writeNotebook(Array.isArray(list) ? list : []);
 }
 
-export async function saveWorkoutNoteItem(note) {
-  const list = await readNotebook();
-  const idx = list.findIndex(n => n.id === note.id);
-  if (idx >= 0) {
-    list[idx] = note;
-  } else {
-    list.push(note);
-  }
-  await writeNotebook(list);
+// #1172: serializes the notebook read-modify-write of the note writers (local
+// and cloud save/delete, and the compare-and-set below) so a compare can never
+// be split from its write by another writer. The chain survives a rejected
+// step. Callers inside the lock must use the unlocked raw helpers.
+let notebookLock = Promise.resolve();
+export function withWorkoutNotebookLock(fn) {
+  const run = notebookLock.then(() => fn());
+  notebookLock = run.catch(() => {});
+  return run;
+}
+
+export function saveWorkoutNoteItem(note) {
+  return withWorkoutNotebookLock(async () => {
+    const list = await readNotebook();
+    const idx = list.findIndex(n => n.id === note.id);
+    if (idx >= 0) {
+      list[idx] = note;
+    } else {
+      list.push(note);
+    }
+    await writeNotebook(list);
+  });
+}
+
+// Atomic compare-and-set of one note's text (#1172). Writes only while the note
+// still holds `expectedRawText`, or already holds `nextRawText` (a retry).
+// Returns 'saved' | 'stale' | 'missing'.
+export function compareAndSetWorkoutNoteText(id, expectedRawText, nextRawText) {
+  return withWorkoutNotebookLock(async () => {
+    const list = await readNotebook();
+    const idx = list.findIndex(n => n.id === id && !n.deleted_at);
+    if (idx < 0) return 'missing';
+    const note = list[idx];
+    if (note.raw_text !== expectedRawText && note.raw_text !== nextRawText) return 'stale';
+    list[idx] = { ...note, raw_text: nextRawText, updated_at: new Date().toISOString() };
+    await writeNotebook(list);
+    return 'saved';
+  });
 }
 
 function defaultImportId() {
@@ -179,8 +208,10 @@ export async function saveFreshImportedWorkoutNotes(noteDrafts, {
 }
 
 export async function deleteWorkoutNoteItem(id) {
-  const list = await readNotebook();
-  await writeNotebook(list.filter(n => n.id !== id));
+  await withWorkoutNotebookLock(async () => {
+    const list = await readNotebook();
+    await writeNotebook(list.filter(n => n.id !== id));
+  });
   const currentId = await loadCurrentWorkoutId();
   if (currentId === id) {
     await clearCurrentWorkoutId();

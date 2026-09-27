@@ -8,6 +8,7 @@ import {
   enqueueDirty,
   getDirtyRecords,
 } from '../syncQueue';
+import { withWorkoutNotebookLock } from '../entries/workoutNotes';
 
 function localDateToday() {
   const d = new Date();
@@ -72,15 +73,38 @@ export async function loadWorkoutNotes() {
   return list.filter((n) => !isTombstone(n));
 }
 
-export async function saveWorkoutNoteItem(note) {
-  const clientId = await getClientId();
-  const stamped = stampWrite(note, clientId);
-  const list = await Storage.loadWorkoutNotesRaw();
-  const idx = list.findIndex((n) => n.id === stamped.id);
-  if (idx >= 0) list[idx] = stamped;
-  else list.push(stamped);
-  await Storage.replaceWorkoutNotesRaw(list);
-  await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, stamped);
+// Note writers share the local notebook lock (#1172) so the compare-and-set
+// below cannot be split from its write by another note writer.
+export function saveWorkoutNoteItem(note) {
+  return withWorkoutNotebookLock(async () => {
+    const clientId = await getClientId();
+    const stamped = stampWrite(note, clientId);
+    const list = await Storage.loadWorkoutNotesRaw();
+    const idx = list.findIndex((n) => n.id === stamped.id);
+    if (idx >= 0) list[idx] = stamped;
+    else list.push(stamped);
+    await Storage.replaceWorkoutNotesRaw(list);
+    await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, stamped);
+  });
+}
+
+// Cloud compare-and-set (#1172): same contract as the local one, stamped and
+// enqueued after the local write. A retry whose text already landed (enqueue
+// failed) is re-stamped and re-enqueued.
+export function compareAndSetWorkoutNoteText(id, expectedRawText, nextRawText) {
+  return withWorkoutNotebookLock(async () => {
+    const list = await Storage.loadWorkoutNotesRaw();
+    const idx = list.findIndex((n) => n.id === id && !isTombstone(n));
+    if (idx < 0) return 'missing';
+    const note = list[idx];
+    if (note.raw_text !== expectedRawText && note.raw_text !== nextRawText) return 'stale';
+    const clientId = await getClientId();
+    const stamped = stampWrite({ ...note, raw_text: nextRawText, updated_at: new Date().toISOString() }, clientId);
+    list[idx] = stamped;
+    await Storage.replaceWorkoutNotesRaw(list);
+    await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, stamped);
+    return 'saved';
+  });
 }
 
 // Idempotent by construction (#696). The recovery operation journal replays
@@ -91,20 +115,22 @@ export async function saveWorkoutNoteItem(note) {
 // tombstone would slide its timestamp forward on every replay and make the row
 // look newer than the one another device already accepted, so an existing
 // tombstone is re-enqueued verbatim instead.
-export async function deleteWorkoutNoteItem(id) {
-  const list = await Storage.loadWorkoutNotesRaw();
-  const note = list.find((n) => n.id === id);
-  if (!note) return;
-  if (isTombstone(note)) {
-    await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, note);
-    return;
-  }
-  const clientId = await getClientId();
-  const tombstone = stampTombstone(note, clientId);
-  const idx = list.findIndex((n) => n.id === id);
-  list[idx] = tombstone;
-  await Storage.replaceWorkoutNotesRaw(list);
-  await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, tombstone);
+export function deleteWorkoutNoteItem(id) {
+  return withWorkoutNotebookLock(async () => {
+    const list = await Storage.loadWorkoutNotesRaw();
+    const note = list.find((n) => n.id === id);
+    if (!note) return;
+    if (isTombstone(note)) {
+      await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, note);
+      return;
+    }
+    const clientId = await getClientId();
+    const tombstone = stampTombstone(note, clientId);
+    const idx = list.findIndex((n) => n.id === id);
+    list[idx] = tombstone;
+    await Storage.replaceWorkoutNotesRaw(list);
+    await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, tombstone);
+  });
 }
 
 // Cloud-mode deletion-outcome probe for the recovery operation journal (#696).

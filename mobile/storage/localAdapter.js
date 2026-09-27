@@ -12,6 +12,7 @@
 // storage seam without screens or hooks importing storage internals directly.
 
 import * as Storage from './entries';
+import { compareAndSetWorkoutNoteText } from './entries/workoutNotes';
 
 // The explicit adapter method surface. Keys mirror storage/entries.js named
 // exports so the cloud adapter shell can declare the same contract.
@@ -49,6 +50,7 @@ export const localAdapter = {
   loadWorkoutNotes: (...args) => Storage.loadWorkoutNotes(...args),
   saveWorkoutNoteItem: (...args) => Storage.saveWorkoutNoteItem(...args),
   deleteWorkoutNoteItem: (...args) => Storage.deleteWorkoutNoteItem(...args),
+  compareAndSetWorkoutNoteText: (...args) => compareAndSetWorkoutNoteText(...args),
   loadCurrentWorkoutId: (...args) => Storage.loadCurrentWorkoutId(...args),
   saveCurrentWorkoutId: (...args) => Storage.saveCurrentWorkoutId(...args),
   clearCurrentWorkoutId: (...args) => Storage.clearCurrentWorkoutId(...args),
