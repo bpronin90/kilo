@@ -182,6 +182,17 @@ describe('RoutinePromptToolsScreen', () => {
       expect(text(tree.root)).not.toContain('Updated Target routine 1');
     });
 
+    test('a failed post-apply re-read withholds the stale prompt', async () => {
+      let calls = 0;
+      const loadNotes = async () => { calls += 1; if (calls > 3) throw new Error('read failed'); return [CURRENT, TARGET]; };
+      const tree = await setup({ loadNotes, saveText: jest.fn().mockResolvedValue('saved') });
+      await paste(tree, REPLY);
+      await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
+      await act(async () => {});
+      expect(tree.root.findAll(node => node.props?.testID === 'routine-prompt-output')).toHaveLength(0);
+      expect(text(tree.root)).toContain('Couldn’t read routines');
+    });
+
     test('a picked text file uses the same review pipeline', async () => {
       const tree = await setup({ canPickFile: true, pickFile: jest.fn().mockResolvedValue(REPLY) });
       await act(async () => { button(tree.root, 'Choose normalized routines file').props.onPress(); });

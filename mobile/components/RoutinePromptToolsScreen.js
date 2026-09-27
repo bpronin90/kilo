@@ -217,7 +217,9 @@ export function RoutinePromptToolsScreen({
   const refreshNotes = () => {
     loadNotes()
       .then(loaded => { if (Array.isArray(loaded)) setNotes(loaded.filter(note => note && typeof note.raw_text === 'string')); })
-      .catch(() => {});
+      // A failed re-read must not leave the pre-apply text available for a
+      // new prompt/snapshot; show the read failure instead.
+      .catch(() => setLoadFailed(true));
   };
 
   useEffect(() => {
@@ -239,11 +241,12 @@ export function RoutinePromptToolsScreen({
   const authority = useMemo(() => notes.find(note => note.id === authorityId) || null, [notes, authorityId]);
   const targets = useMemo(() => notes.filter(note => targetIds.includes(note.id)), [notes, targetIds]);
   const prompt = useMemo(() => {
+    if (loadFailed && tool !== 'format') return '';
     if (tool === 'plan') return authority ? buildRoutinePlanningPrompt(authority) : '';
     if (tool === 'normalize') return authority && targets.length ? buildExerciseNameNormalizationPrompt({ authority, targets }) : '';
     if (tool === 'format') return buildKiloRoutineFormatPrompt();
     return '';
-  }, [tool, authority, targets]);
+  }, [tool, authority, targets, loadFailed]);
 
   const openTool = (nextTool) => {
     setNotice('');
