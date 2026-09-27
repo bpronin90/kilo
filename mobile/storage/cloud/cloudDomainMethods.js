@@ -88,6 +88,21 @@ export function saveWorkoutNoteItem(note) {
   });
 }
 
+// Cloud read-merge-write under the notebook lock (#1172); see the local one.
+export function updateWorkoutNoteItem(id, patch) {
+  return withWorkoutNotebookLock(async () => {
+    const list = await Storage.loadWorkoutNotesRaw();
+    const idx = list.findIndex((n) => n.id === id && !isTombstone(n));
+    if (idx < 0) return false;
+    const clientId = await getClientId();
+    const stamped = stampWrite({ ...list[idx], ...patch, updated_at: new Date().toISOString() }, clientId);
+    list[idx] = stamped;
+    await Storage.replaceWorkoutNotesRaw(list);
+    await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, stamped);
+    return stamped;
+  });
+}
+
 // Cloud compare-and-set (#1172): same contract as the local one, stamped and
 // enqueued after the local write. A retry whose text already landed (enqueue
 // failed) is re-stamped and re-enqueued.

@@ -60,6 +60,7 @@ describe('adapter surface', () => {
     'saveWorkoutNoteItem',
     'deleteWorkoutNoteItem',
     'compareAndSetWorkoutNoteText',
+    'updateWorkoutNoteItem',
     'loadCurrentWorkoutId',
     'saveCurrentWorkoutId',
     'setCurrentWorkoutNote',
@@ -128,6 +129,7 @@ describe('cloud adapter shell', () => {
     'saveWorkoutNoteItem',
     'deleteWorkoutNoteItem',
     'compareAndSetWorkoutNoteText',
+    'updateWorkoutNoteItem',
     // The recovery-block domain (#692) became cloud-backed in #693. These
     // delegate to the same storage module local mode uses; the sync engine picks
     // their writes up through the baseline reconciliation rather than a

@@ -40,6 +40,16 @@ describe.each([
     expect(await api.compareAndSetWorkoutNoteText('none', 'a', 'b')).toBe('missing');
   });
 
+  test('an editor patch merges into the note as it is at write time', async () => {
+    await api.saveWorkoutNoteItem(NOTE);
+    const cas = api.compareAndSetWorkoutNoteText('n1', NOTE.raw_text, NEXT);
+    const patched = api.updateWorkoutNoteItem('n1', { activeWeek: 1 });
+    expect(await cas).toBe('saved');
+    expect(await patched).toEqual(expect.objectContaining({ raw_text: NEXT, activeWeek: 1 }));
+    expect(await text()).toBe(NEXT);
+    expect(await api.updateWorkoutNoteItem('none', {})).toBe(false);
+  });
+
   test('a rejected step does not wedge the lock', async () => {
     await expect(LocalNotes.withWorkoutNotebookLock(async () => { throw new Error('boom'); })).rejects.toThrow('boom');
     await api.saveWorkoutNoteItem(NOTE);

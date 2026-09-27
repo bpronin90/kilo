@@ -6,7 +6,7 @@ import { maybeSyncCloud, readVia, writeVia } from './storageMode';
 import { safeNotify } from './shared';
 import { markStartupPhase } from '../../storage/entries/startupTiming';
 import { clearWorkoutNoteDraftsForNote } from '../../storage/entries/workoutNoteDrafts';
-import { compareAndSetWorkoutNoteText } from '../../storage/entries/workoutNotes';
+import { compareAndSetWorkoutNoteText, updateWorkoutNoteItem } from '../../storage/entries/workoutNotes';
 import { claimWorkoutNoteCreationAttemptId } from '../../storage/entries/workoutNoteCreationAttempts';
 
 // NOTE (#880 revised body): pending-cloud-convergence state deliberately
@@ -159,12 +159,11 @@ export function useWorkoutNotes() {
     return note;
   }, []);
 
+  // #1172: the patch is merged under the notebook lock at write time, so a
+  // concurrent compare-and-set is never overwritten by an earlier read.
   const update = useCallback(async (id, patch) => {
-    const list = await readVia('loadWorkoutNotes', Storage.loadWorkoutNotes);
-    const note = list.find(n => n.id === id);
-    if (!note) return false;
-    const updated = { ...note, ...patch, updated_at: new Date().toISOString() };
-    await writeVia('saveWorkoutNoteItem', Storage.saveWorkoutNoteItem, updated);
+    const updated = await writeVia('updateWorkoutNoteItem', updateWorkoutNoteItem, id, patch);
+    if (!updated) return false;
     notifyWorkoutNotes();
     return updated;
   }, []);

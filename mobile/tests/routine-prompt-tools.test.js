@@ -260,6 +260,21 @@ describe('RoutinePromptToolsScreen', () => {
       expect(text(tree.root)).toContain('Updated Target routine 1: Upper.');
     });
 
+    test('an all-failed apply keeps Retry reachable instead of accepting a new prompt', async () => {
+      const copy = jest.fn().mockResolvedValue();
+      const saveText = jest.fn().mockRejectedValueOnce(new Error('enqueue failed')).mockResolvedValue('saved');
+      const tree = await setup({ saveText, copy });
+      await paste(tree, REPLY);
+      await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
+      await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
+      expect(copy).toHaveBeenCalledTimes(1);
+      expect(text(tree.root)).toContain('Retry or resolve');
+      await act(async () => { button(tree.root, 'Retry failed routines').props.onPress(); });
+      await act(async () => {});
+      await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
+      expect(copy).toHaveBeenCalledTimes(2);
+    });
+
     test('a picked text file uses the same review pipeline', async () => {
       const tree = await setup({ canPickFile: true, pickFile: jest.fn().mockResolvedValue(REPLY) });
       await act(async () => { button(tree.root, 'Choose normalized routines file').props.onPress(); });

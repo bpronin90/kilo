@@ -138,6 +138,21 @@ export function saveWorkoutNoteItem(note) {
   });
 }
 
+// Read-merge-write of one live note under the notebook lock (#1172), so an
+// editor patch is merged into the note as it is at write time rather than a
+// copy read earlier. Returns the updated note, or false when it is missing.
+export function updateWorkoutNoteItem(id, patch) {
+  return withWorkoutNotebookLock(async () => {
+    const list = await readNotebook();
+    const idx = list.findIndex(n => n.id === id && !n.deleted_at);
+    if (idx < 0) return false;
+    const updated = { ...list[idx], ...patch, updated_at: new Date().toISOString() };
+    list[idx] = updated;
+    await writeNotebook(list);
+    return updated;
+  });
+}
+
 // Atomic compare-and-set of one note's text (#1172). Writes only while the note
 // still holds `expectedRawText`, or already holds `nextRawText` (a retry).
 // Returns 'saved' | 'stale' | 'missing'.

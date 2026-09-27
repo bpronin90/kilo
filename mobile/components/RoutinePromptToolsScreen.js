@@ -36,7 +36,7 @@ function ToolCard({ title, detail, onPress, label, testID }) {
 // #1172 return path: paste or pick the external reply, preview every rename
 // against the targets captured when the prompt was copied/shared, then apply
 // only the approved renames. Invalid or stale targets are listed, never written.
-function NormalizationImport({ snapshot, loadNotes, saveText, pickFile, canPickFile, onApplied }) {
+function NormalizationImport({ snapshot, loadNotes, saveText, pickFile, canPickFile, onApplied, onPendingRetry }) {
   const styles = useThemedStyles(createStyles);
   const inputStyle = useInputStyle();
   const [reply, setReply] = useState('');
@@ -116,6 +116,7 @@ function NormalizationImport({ snapshot, loadNotes, saveText, pickFile, canPickF
     }
     setBusy(false);
     setResult(outcome);
+    onPendingRetry(outcome.failed.length > 0);
     if (outcome.saved.length) onApplied();
   };
 
@@ -222,6 +223,9 @@ export function RoutinePromptToolsScreen({
   const [targetIds, setTargetIds] = useState([]);
   const [notice, setNotice] = useState('');
   const [snapshot, setSnapshot] = useState(null);
+  // A failed save may have landed locally without its upload intent; keep its
+  // Retry reachable by refusing a new prompt capture until it is resolved.
+  const [pendingRetry, setPendingRetry] = useState(false);
 
   // After an import writes, re-read so a new prompt/snapshot uses the saved
   // text instead of the text loaded when the screen mounted.
@@ -278,7 +282,15 @@ export function RoutinePromptToolsScreen({
     // never applies a preview built from an earlier snapshot.
     setSnapshot({ version: (snapshot?.version || 0) + 1, authority: pick(authority), targets: targets.map(pick) });
   };
+  const blockedByRetry = () => {
+    if (tool === 'normalize' && pendingRetry) {
+      setNotice('Retry or resolve the routines that couldn’t be saved before making a new prompt.');
+      return true;
+    }
+    return false;
+  };
   const handleCopy = async () => {
+    if (blockedByRetry()) return;
     try {
       await copy(prompt);
       captureSnapshot();
@@ -288,6 +300,7 @@ export function RoutinePromptToolsScreen({
     }
   };
   const handleShare = async () => {
+    if (blockedByRetry()) return;
     try {
       await (share || Share.share.bind(Share))({ message: prompt });
       captureSnapshot();
@@ -342,7 +355,7 @@ export function RoutinePromptToolsScreen({
           </View>
         </> : null}
         {isNormalize && snapshot ? (
-          <NormalizationImport key={snapshot.version} snapshot={snapshot} loadNotes={loadNotes} saveText={saveText} pickFile={pickFile} canPickFile={canPickFile} onApplied={refreshNotes} />
+          <NormalizationImport key={snapshot.version} snapshot={snapshot} loadNotes={loadNotes} saveText={saveText} pickFile={pickFile} canPickFile={canPickFile} onApplied={refreshNotes} onPendingRetry={setPendingRetry} />
         ) : null}
       </ScreenShell>
     );
