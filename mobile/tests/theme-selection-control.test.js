@@ -172,7 +172,7 @@ describe('ThemeSelectionControl KUA typography tokens', () => {
     const { Text: RNText } = require('react-native');
     const allTexts = component.root.findAllByType(RNText);
 
-    const labelNode = allTexts.find((n) => n.props.children === 'Court');
+    const labelNode = allTexts.find((n) => n.props.children === 'Theme');
     const labelStyle = StyleSheet.flatten(labelNode.props.style);
     // body-lg drives the label; fontFamily may be undefined for SG on fallback
     expect(labelStyle.fontFamily).toBe(typo['body-lg'].fontFamily);

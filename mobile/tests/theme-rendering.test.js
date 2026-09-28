@@ -1164,7 +1164,7 @@ describe('Settings Appearance control', () => {
     const labelColor = () => {
       const themeLabel = component.root
         .findAllByType(Text)
-        .find((n) => n.props.children === 'Theme');
+        .find((n) => n.props.children === 'Mode');
       return flatten(themeLabel.props.style).color;
     };
 

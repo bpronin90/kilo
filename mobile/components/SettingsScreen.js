@@ -195,7 +195,8 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
         <ThemeSelectionControl />
         <View style={[styles.settingRow, { marginBottom: 0 }]}>
           <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Theme</Text>
+            <Text style={styles.settingLabel}>Mode</Text>
+            <Text style={styles.settingHelp}>Light, dark, or match your device</Text>
           </View>
           {/* Same compact segmented pattern as the lb/kg and ft/cm selectors,
               extended to three options. Selection applies on press and persists. */}
