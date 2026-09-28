@@ -13,6 +13,11 @@ import {
 import { MAX_REPLY_LENGTH, applySelectedChanges, buildNormalizationPreview } from '../lib/interoperability/routineNormalizationImport';
 import { canPickTextFile, pickTextFile } from '../lib/platformFilePicker';
 import { applyWorkoutNoteTextBatch } from '../hooks/entries/workoutNoteHooks';
+import {
+  clearNormalizationImportSnapshot,
+  loadNormalizationImportSnapshot,
+  saveNormalizationImportSnapshot,
+} from '../storage/entries/normalizationImportSnapshot';
 
 function titleFor(routine, index, notes) {
   const title = String(routine?.title || 'Untitled Routine');
@@ -36,7 +41,7 @@ function ToolCard({ title, detail, onPress, label, testID }) {
 // #1172 return path: paste or pick the external reply, preview every rename
 // against the targets captured when the prompt was copied/shared, then apply
 // only the approved renames. Invalid or stale targets are listed, never written.
-function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile, canPickFile, onApplied, onPendingRetry }) {
+function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile, canPickFile, onApplied, onPendingRetry, onComplete, onDiscard }) {
   const styles = useThemedStyles(createStyles);
   const inputStyle = useInputStyle();
   const [reply, setReply] = useState('');
@@ -118,6 +123,7 @@ function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile, canPic
     };
     setResult(outcome);
     onPendingRetry(outcome.failed.length > 0);
+    if (!outcome.failed.length && (outcome.saved.length || outcome.skipped.length)) onComplete();
     // A failed item whose local text landed (enqueue failed) still changed the
     // notebook, so refresh for it too.
     if (response.saved.length || (response.failed || []).some(row => row.landed)) onApplied();
@@ -157,6 +163,7 @@ function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile, canPic
       <View style={styles.actions}>
         <Button title="Review changes" onPress={() => review(reply)} disabled={!reply.trim() || retryPending} accessibilityLabel="Review normalized routines" />
         {canPickFile ? <Button title="Choose text file" onPress={handlePick} disabled={retryPending} accessibilityLabel="Choose normalized routines file" /> : null}
+        {!retryPending ? <Button title="Discard saved prompt" onPress={onDiscard} accessibilityLabel="Discard saved normalization prompt" /> : null}
       </View>
       {message ? <Text style={styles.error}>{message}</Text> : null}
       {preview?.tooLarge ? <Text style={styles.error}>That reply is too large to be routine results. Nothing changed.</Text> : null}
@@ -215,6 +222,7 @@ function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile, canPic
 
 export function RoutinePromptToolsScreen({
   onBack,
+  initialTool = null,
   loadNotes = loadWorkoutNotes,
   loadCurrentId = loadCurrentWorkoutId,
   copy = copyTextToClipboard,
@@ -230,7 +238,7 @@ export function RoutinePromptToolsScreen({
   const [currentId, setCurrentId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [tool, setTool] = useState(null);
+  const [tool, setTool] = useState(initialTool);
   const [authorityId, setAuthorityId] = useState(null);
   const [targetIds, setTargetIds] = useState([]);
   const [notice, setNotice] = useState('');
@@ -268,6 +276,12 @@ export function RoutinePromptToolsScreen({
     return () => { cancelled = true; };
   }, [loadNotes, loadCurrentId]);
 
+  useEffect(() => {
+    loadNormalizationImportSnapshot().then((stored) => {
+      if (stored) setSnapshot(stored);
+    }).catch(() => {});
+  }, []);
+
   const authority = useMemo(() => notes.find(note => note.id === authorityId) || null, [notes, authorityId]);
   const targets = useMemo(() => notes.filter(note => targetIds.includes(note.id)), [notes, targetIds]);
   const prompt = useMemo(() => {
@@ -287,12 +301,14 @@ export function RoutinePromptToolsScreen({
   ));
   // Freeze the exact authority/targets the prompt was built from, in prompt
   // order, so the return path validates against what the LLM actually saw.
-  const captureSnapshot = () => {
+  const captureSnapshot = async () => {
     if (tool !== 'normalize' || !authority || !targets.length) return;
     const pick = note => ({ id: note.id, title: note.title, raw_text: note.raw_text });
     // Every capture gets a fresh identity so the import panel remounts and
     // never applies a preview built from an earlier snapshot.
-    setSnapshot({ version: (snapshot?.version || 0) + 1, authority: pick(authority), targets: targets.map(pick) });
+    const next = { version: (snapshot?.version || 0) + 1, authority: pick(authority), targets: targets.map(pick) };
+    await saveNormalizationImportSnapshot(next);
+    setSnapshot(next);
   };
   const blockedByRetry = () => {
     if (tool === 'normalize' && pendingRetry) {
@@ -305,7 +321,7 @@ export function RoutinePromptToolsScreen({
     if (blockedByRetry()) return;
     try {
       await copy(prompt);
-      captureSnapshot();
+      await captureSnapshot();
       setNotice('Prompt copied. Paste it into the LLM you choose.');
     } catch {
       setNotice('Couldn’t copy the prompt. Nothing else changed.');
@@ -315,7 +331,7 @@ export function RoutinePromptToolsScreen({
     if (blockedByRetry()) return;
     try {
       await (share || Share.share.bind(Share))({ message: prompt });
-      captureSnapshot();
+      await captureSnapshot();
     } catch {
       setNotice('Couldn’t open sharing. Nothing else changed.');
     }
@@ -372,8 +388,9 @@ export function RoutinePromptToolsScreen({
           </View>
         </> : null}
         {isNormalize && snapshot ? (
-          <NormalizationImport key={snapshot.version} snapshot={snapshot} loadNotes={loadNotes} applyBatch={applyBatch} pickFile={pickFile} canPickFile={canPickFile} onApplied={refreshNotes} onPendingRetry={setPendingRetry} />
+          <NormalizationImport key={snapshot.version} snapshot={snapshot} loadNotes={loadNotes} applyBatch={applyBatch} pickFile={pickFile} canPickFile={canPickFile} onApplied={refreshNotes} onPendingRetry={setPendingRetry} onComplete={() => { clearNormalizationImportSnapshot().catch(() => {}); }} onDiscard={() => { clearNormalizationImportSnapshot().catch(() => {}); setSnapshot(null); }} />
         ) : null}
+        {isNormalize && !snapshot ? <Card><Text style={styles.muted}>No saved normalization prompt is available. Choose an authoritative routine and targets, then copy the prompt to begin.</Text></Card> : null}
       </ScreenShell>
     );
   }

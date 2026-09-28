@@ -41,3 +41,6 @@ export const PLATE_CALCULATOR_PROFILE_KEY = 'kilo_plate_calculator_profile';
 // time and its scheduled notification id. Not synced, not part of JSON
 // backup — it is transient device utility state, not health history.
 export const REST_TIMER_KEY = 'kilo_rest_timer';
+// Exact routine snapshot captured when a normalization prompt is copied.
+// Device-local protocol state: it is neither synced nor included in a backup.
+export const NORMALIZATION_IMPORT_SNAPSHOT_KEY = 'kilo_normalization_import_snapshot_v1';
