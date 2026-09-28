@@ -320,6 +320,36 @@ describe('RoutinePromptToolsScreen', () => {
       expect(text(tree.root)).toContain('Updated Target routine 2: Upper.');
     });
 
+    test('an oversized paste is rejected before it is stored', async () => {
+      const tree = await setup({ saveText: jest.fn() });
+      const input = tree.root.findAll(node => node.props?.testID === 'normalization-reply-input' && node.props.onChangeText)[0];
+      await act(async () => { input.props.onChangeText('x'.repeat(1024 * 1024 + 1)); });
+      expect(input.props.value).toBe('');
+      expect(text(tree.root)).toContain('too large');
+    });
+
+    test('Back is refused while failed saves await Retry', async () => {
+      const saveText = jest.fn().mockRejectedValue(new Error('enqueue failed'));
+      const tree = await setup({ saveText });
+      await paste(tree, REPLY);
+      await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
+      const shell = tree.root.findAll(node => typeof node.props?.onBack === 'function' && node.props?.title === 'Prompt tools')[0];
+      await act(async () => { shell.props.onBack(); });
+      expect(button(tree.root, 'Retry failed routines')).toBeTruthy();
+      expect(text(tree.root)).toContain('before leaving');
+    });
+
+    test('a landed-but-unqueued failure still refreshes routines', async () => {
+      const loadNotes = jest.fn(async () => [CURRENT, TARGET]);
+      const applyBatch = jest.fn(async ({ items }) => ({ authority: 'unchanged', saved: [], skipped: [], failed: items.map(i => ({ id: i.id, landed: true, pending_sync: false })) }));
+      const tree = await setup({ loadNotes, applyBatch });
+      await paste(tree, REPLY);
+      const before = loadNotes.mock.calls.length;
+      await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
+      await act(async () => {});
+      expect(loadNotes.mock.calls.length).toBeGreaterThan(before);
+    });
+
     test('a picked text file uses the same review pipeline', async () => {
       const tree = await setup({ canPickFile: true, pickFile: jest.fn().mockResolvedValue(REPLY) });
       await act(async () => { button(tree.root, 'Choose normalized routines file').props.onPress(); });

@@ -193,6 +193,6 @@ export function useWorkoutNotes() {
 // enqueues); see applyWorkoutNoteTextBatchIfUnchanged for the result shape.
 export async function applyWorkoutNoteTextBatch(request) {
   const result = await writeVia('applyWorkoutNoteTextBatchIfUnchanged', applyWorkoutNoteTextBatchIfUnchanged, request);
-  if (result?.saved?.length || result?.failed?.some(row => row.pending_sync)) notifyWorkoutNotes();
+  if (result?.saved?.length || result?.failed?.some(row => row.landed)) notifyWorkoutNotes();
   return result;
 }

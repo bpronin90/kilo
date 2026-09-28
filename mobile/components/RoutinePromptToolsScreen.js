@@ -10,7 +10,7 @@ import {
   buildKiloRoutineFormatPrompt,
   buildRoutinePlanningPrompt,
 } from '../lib/interoperability/routinePrompts';
-import { applySelectedChanges, buildNormalizationPreview } from '../lib/interoperability/routineNormalizationImport';
+import { MAX_REPLY_LENGTH, applySelectedChanges, buildNormalizationPreview } from '../lib/interoperability/routineNormalizationImport';
 import { canPickTextFile, pickTextFile } from '../lib/platformFilePicker';
 import { applyWorkoutNoteTextBatch } from '../hooks/entries/workoutNoteHooks';
 
@@ -118,7 +118,9 @@ function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile, canPic
     };
     setResult(outcome);
     onPendingRetry(outcome.failed.length > 0);
-    if (response.saved.length) onApplied();
+    // A failed item whose local text landed (enqueue failed) still changed the
+    // notebook, so refresh for it too.
+    if (response.saved.length || (response.failed || []).some(row => row.landed)) onApplied();
   };
 
 
@@ -143,7 +145,11 @@ function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile, canPic
         multiline
         value={reply}
         editable={!retryPending}
-        onChangeText={(text) => { if (retryPending) return; reviewSeq.current += 1; setReply(text); setPreview(null); setResult(null); }}
+        onChangeText={(text) => {
+          if (retryPending) return;
+          // Never hold an oversized paste in state or render it.
+          if (text.length > MAX_REPLY_LENGTH) { setMessage('That reply is too large to be routine results. Nothing changed.'); return; }
+          reviewSeq.current += 1; setReply(text); setPreview(null); setResult(null); }}
         placeholder="Paste the normalized routines here"
         accessibilityLabel="Normalized routines reply"
         testID="normalization-reply-input"
@@ -318,7 +324,12 @@ export function RoutinePromptToolsScreen({
   if (tool) {
     const isNormalize = tool === 'normalize';
     return (
-      <ScreenShell title="Prompt tools" subtitle="Copy a local template into the LLM you choose." onBack={() => { setTool(null); setNotice(''); }}>
+      <ScreenShell title="Prompt tools" subtitle="Copy a local template into the LLM you choose." onBack={() => {
+        // Leaving would discard the only Retry for saves that failed (#1172).
+        if (pendingRetry) { setNotice('Retry or resolve the routines that couldn’t be saved before leaving.'); return; }
+        setTool(null);
+        setNotice('');
+      }}>
         {tool === 'format' ? (
           <Card><Text style={styles.muted}>This template contains no routine data. It explains Kilo’s importable format.</Text></Card>
         ) : loading ? (

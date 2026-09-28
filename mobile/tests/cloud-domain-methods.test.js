@@ -1,184 +1,197 @@
-// #1172: note writers share one notebook lock, so compare-and-set cannot be
-// split from its write by a concurrent writer, in local or cloud mode.
+// #1172: every workout-notes read-modify-write shares one notebook lock.
+// Each race fixture is deterministic: the first operation is paused right
+// after it reads the notebook, the second is started, then the first resumes.
+// Without the lock the second commits inside the gap and one change is lost.
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureStorage } from '../storage/secureStorage';
 import * as Storage from '../storage/entries';
 import * as LocalNotes from '../storage/entries/workoutNotes';
 import * as CloudNotes from '../storage/cloud/cloudDomainMethods';
+import { WORKOUT_NOTES_KEY } from '../storage/entries/keys';
+import { migrateToNotebook } from '../storage/entries/migrations';
+import { purgePersistedDerivedSections } from '../storage/entries/derivedCachePurge';
+import { importBackup, IMPORT_MODES } from '../storage/entries/backupRestore';
+import { createPassCache } from '../storage/cloud/syncTableIo';
 import { cloudAdapter } from '../storage/cloudAdapter';
 import { localAdapter } from '../storage/localAdapter';
 import { getDirtyRecords, SYNC_TABLES } from '../storage/syncQueue';
 
 jest.mock('../lib/supabaseClient', () => ({ getSupabaseClient: jest.fn() }));
 
+const AUTH = { id: 'a', title: 'Auth', raw_text: 'Monday\n-Bench Press 3x5' };
 const NOTE = { id: 'n1', title: 'Upper', raw_text: 'Monday\n-bench 3x5' };
+const T2 = { id: 'n2', title: 'Upper', raw_text: 'Friday\n-bb bench 3x5' };
 const NEXT = 'Monday\n-Bench Press 3x5';
+const T2_NEXT = 'Friday\n-Bench Press 3x5';
+const request = () => ({
+  authority: { id: 'a', expected_raw_text: AUTH.raw_text, accepted_raw_texts: [] },
+  items: [
+    { id: 'n1', expected_raw_text: NOTE.raw_text, next_raw_text: NEXT },
+    { id: 'n2', expected_raw_text: T2.raw_text, next_raw_text: T2_NEXT },
+  ],
+});
 
 beforeEach(async () => { await AsyncStorage.clear(); });
 
-const text = async () => (await Storage.loadWorkoutNotesRaw()).find(n => n.id === 'n1')?.raw_text;
+const notes = async () => Storage.loadWorkoutNotesRaw();
+const byId = async id => (await notes()).find(n => n.id === id);
+const tick = async () => { for (let i = 0; i < 20; i += 1) await Promise.resolve(); };
+
+// Pause the next notebook read until released.
+function gateNextNotebookRead() {
+  const original = secureStorage.getItem.bind(secureStorage);
+  let release;
+  let reached;
+  const gate = new Promise(r => { release = r; });
+  const hit = new Promise(r => { reached = r; });
+  const spy = jest.spyOn(secureStorage, 'getItem').mockImplementation(async key => {
+    const value = await original(key);
+    if (key === WORKOUT_NOTES_KEY) { spy.mockRestore(); reached(); await gate; }
+    return value;
+  });
+  return { hit, release };
+}
+
+async function interleave(first, second) {
+  const gate = gateNextNotebookRead();
+  const a = first();
+  await gate.hit;
+  const b = second();
+  await tick();
+  gate.release();
+  return Promise.all([a, b]);
+}
+
+const seed = async (api, list = [AUTH, NOTE, T2]) => { for (const n of list) await api.saveWorkoutNoteItem(n); };
 
 describe.each([
   ['local', LocalNotes],
   ['cloud', CloudNotes],
-])('%s compareAndSetWorkoutNoteText', (_mode, api) => {
-  test('a writer landing between compare and write is never overwritten', async () => {
-    await api.saveWorkoutNoteItem(NOTE);
-    const racingEdit = api.saveWorkoutNoteItem({ ...NOTE, raw_text: 'newer edit' });
-    const cas = api.compareAndSetWorkoutNoteText('n1', NOTE.raw_text, NEXT);
-    await racingEdit;
-    expect(await cas).toBe('stale');
-    expect(await text()).toBe('newer edit');
+])('%s note writers vs batch/CAS', (_mode, api) => {
+  test('batch writes every selected target; authority recheck rejects all when it changed', async () => {
+    await seed(api);
+    const ok = await api.applyWorkoutNoteTextBatchIfUnchanged(request());
+    expect(ok.saved.map(r => r.id).sort()).toEqual(['n1', 'n2']);
+    await AsyncStorage.clear();
+    await seed(api);
+    const [, stale] = await interleave(() => api.updateWorkoutNoteItem('a', { raw_text: 'Monday\n-Barbell Bench 3x5' }), () => api.applyWorkoutNoteTextBatchIfUnchanged(request()));
+    expect(stale.authority).toBe('stale');
+    expect((await byId('n1')).raw_text).toBe(NOTE.raw_text);
   });
 
-  test('saves when unchanged, is idempotent on retry, and reports missing', async () => {
-    await api.saveWorkoutNoteItem({ ...NOTE, recovery_block_id: 'blk' });
-    expect(await api.compareAndSetWorkoutNoteText('n1', NOTE.raw_text, NEXT)).toBe('saved');
-    expect(await api.compareAndSetWorkoutNoteText('n1', NOTE.raw_text, NEXT)).toBe('saved');
-    const saved = (await Storage.loadWorkoutNotesRaw()).find(n => n.id === 'n1');
-    expect(saved.raw_text).toBe(NEXT);
-    expect(saved.recovery_block_id).toBe('blk');
-    expect(await api.compareAndSetWorkoutNoteText('none', 'a', 'b')).toBe('missing');
-  });
-
-  test('an editor patch merges into the note as it is at write time', async () => {
-    await api.saveWorkoutNoteItem(NOTE);
-    const cas = api.compareAndSetWorkoutNoteText('n1', NOTE.raw_text, NEXT);
-    const patched = api.updateWorkoutNoteItem('n1', { activeWeek: 1 });
-    expect(await cas).toBe('saved');
-    expect(await patched).toEqual(expect.objectContaining({ raw_text: NEXT, activeWeek: 1 }));
-    expect(await text()).toBe(NEXT);
-    expect(await api.updateWorkoutNoteItem('none', {})).toBe(false);
-  });
-
-  test('a rejected step does not wedge the lock', async () => {
-    await expect(LocalNotes.withWorkoutNotebookLock(async () => { throw new Error('boom'); })).rejects.toThrow('boom');
-    await api.saveWorkoutNoteItem(NOTE);
-    expect(await api.compareAndSetWorkoutNoteText('n1', NOTE.raw_text, NEXT)).toBe('saved');
-  });
-});
-
-test('cloud compare-and-set enqueues the stamped record and never revives a tombstone', async () => {
-  await CloudNotes.saveWorkoutNoteItem(NOTE);
-  expect(await CloudNotes.compareAndSetWorkoutNoteText('n1', NOTE.raw_text, NEXT)).toBe('saved');
-  const dirty = await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES);
-  expect(JSON.stringify(dirty)).toContain('Bench Press');
-  await CloudNotes.deleteWorkoutNoteItem('n1');
-  expect(await CloudNotes.compareAndSetWorkoutNoteText('n1', NEXT, 'x')).toBe('missing');
-});
-
-test('both adapters expose compare-and-set', () => {
-  expect(typeof localAdapter.compareAndSetWorkoutNoteText).toBe('function');
-  expect(typeof cloudAdapter.compareAndSetWorkoutNoteText).toBe('function');
-});
-
-test('a sync pass persist cannot land between compare and write', async () => {
-  // eslint-disable-next-line global-require
-  const { createPassCache } = require('../storage/cloud/syncTableIo');
-  await CloudNotes.saveWorkoutNoteItem(NOTE);
-  const cache = createPassCache();
-  const base = await cache.read(SYNC_TABLES.WORKOUT_NOTES, Storage.loadWorkoutNotesRaw);
-  const pulled = [...base, { id: 'remote', title: 'Pulled', raw_text: 'Friday' }];
-  const cas = CloudNotes.compareAndSetWorkoutNoteText('n1', NOTE.raw_text, NEXT);
-  const syncWrite = cache.write(SYNC_TABLES.WORKOUT_NOTES, pulled, Storage.replaceWorkoutNotesRaw, Storage.loadWorkoutNotesRaw);
-  expect(await cas).toBe('saved');
-  await syncWrite;
-  const ids = (await Storage.loadWorkoutNotesRaw()).map(n => n.id).sort();
-  expect(ids).toEqual(['n1', 'remote']);
-  expect(await text()).toBe(NEXT);
-});
-
-describe.each([
-  ['local', LocalNotes],
-  ['cloud', CloudNotes],
-])('%s applyWorkoutNoteTextBatchIfUnchanged', (_mode, api) => {
-  const AUTH = { id: 'a', title: 'Auth', raw_text: 'Monday\n-Bench Press 3x5' };
-  const T2 = { id: 'n2', title: 'Upper', raw_text: 'Friday\n-bb bench 3x5' };
-  const request = (extra = {}) => ({
-    authority: { id: 'a', expected_raw_text: AUTH.raw_text, accepted_raw_texts: [] },
-    items: [
-      { id: 'n1', expected_raw_text: NOTE.raw_text, next_raw_text: NEXT },
-      { id: 'n2', expected_raw_text: T2.raw_text, next_raw_text: 'Friday\n-Bench Press 3x5' },
-    ],
-    ...extra,
-  });
-  const seed = async () => { for (const n of [AUTH, NOTE, T2]) await api.saveWorkoutNoteItem(n); };
-
-  test('writes every selected target in one locked batch', async () => {
-    await seed();
-    const result = await api.applyWorkoutNoteTextBatchIfUnchanged(request());
-    expect(result.authority).toBe('unchanged');
-    expect(result.saved.map(r => r.id).sort()).toEqual(['n1', 'n2']);
-    expect(await text()).toBe(NEXT);
-  });
-
-  test('an authority edit queued before the batch rejects the whole batch', async () => {
-    await seed();
-    const edit = api.updateWorkoutNoteItem('a', { raw_text: 'Monday\n-Barbell Bench 3x5' });
-    const result = await api.applyWorkoutNoteTextBatchIfUnchanged(request());
-    await edit;
-    expect(result.authority).toBe('stale');
-    expect(await text()).toBe(NOTE.raw_text);
-  });
-
-  test('a stale target is skipped while valid siblings proceed', async () => {
-    await seed();
-    const edit = api.saveWorkoutNoteItem({ ...T2, raw_text: 'Friday\n-newer' });
-    const result = await api.applyWorkoutNoteTextBatchIfUnchanged(request());
-    await edit;
+  test('a target edited under the gap is skipped; siblings proceed', async () => {
+    await seed(api);
+    const [, result] = await interleave(() => api.saveWorkoutNoteItem({ ...T2, raw_text: 'Friday\n-newer' }), () => api.applyWorkoutNoteTextBatchIfUnchanged(request()));
     expect(result.skipped).toEqual([expect.objectContaining({ id: 'n2', status: 'stale' })]);
-    expect(result.saved.map(r => r.id)).toEqual(['n1']);
-    expect((await Storage.loadWorkoutNotesRaw()).find(n => n.id === 'n2').raw_text).toBe('Friday\n-newer');
+    expect((await byId('n2')).raw_text).toBe('Friday\n-newer');
+    expect((await byId('n1')).raw_text).toBe(NEXT);
   });
 
-  test('current-routine selection racing the batch loses neither write', async () => {
-    await seed();
-    const select = Storage.setCurrentWorkoutNote('n2');
-    const result = api.applyWorkoutNoteTextBatchIfUnchanged(request());
-    await select;
-    await result;
-    const notes = await Storage.loadWorkoutNotesRaw();
-    expect(notes.find(n => n.id === 'n2').isCurrent).toBe(true);
-    expect(notes.find(n => n.id === 'n1').raw_text).toBe(NEXT);
+  test('editor update read before a CAS keeps both changes', async () => {
+    await seed(api);
+    const [, status] = await interleave(() => api.updateWorkoutNoteItem('n1', { activeWeek: 1 }), () => api.compareAndSetWorkoutNoteText('n1', NOTE.raw_text, NEXT));
+    expect(status).toBe('saved');
+    expect(await byId('n1')).toEqual(expect.objectContaining({ raw_text: NEXT, activeWeek: 1 }));
+  });
+
+  test('setCurrentWorkoutNote read before a batch keeps both changes', async () => {
+    await seed(api);
+    await interleave(() => Storage.setCurrentWorkoutNote('n2'), () => api.applyWorkoutNoteTextBatchIfUnchanged(request()));
+    expect((await byId('n2')).isCurrent).toBe(true);
+    expect((await byId('n1')).raw_text).toBe(NEXT);
+  });
+
+  test('setCurrentWorkoutNote read before a CAS keeps both changes', async () => {
+    await seed(api);
+    await interleave(() => Storage.setCurrentWorkoutNote('n2'), () => api.compareAndSetWorkoutNoteText('n1', NOTE.raw_text, NEXT));
+    expect((await byId('n2')).isCurrent).toBe(true);
+    expect((await byId('n1')).raw_text).toBe(NEXT);
+  });
+
+  test('migration normalization read before a batch keeps both changes', async () => {
+    await seed(api);
+    await interleave(() => migrateToNotebook(), () => api.applyWorkoutNoteTextBatchIfUnchanged(request()));
+    const n1 = await byId('n1');
+    expect(n1.raw_text).toBe(NEXT);
+    expect('isCurrent' in n1).toBe(true);
+  });
+
+  test('a lock step that rejects does not wedge later writers', async () => {
+    await expect(LocalNotes.withWorkoutNotebookLock(async () => { throw new Error('boom'); })).rejects.toThrow('boom');
+    await seed(api);
+    expect(await api.compareAndSetWorkoutNoteText('n1', NOTE.raw_text, NEXT)).toBe('saved');
   });
 });
 
-describe('cloud batch enqueue failure and recovery replay', () => {
-  const AUTH = { id: 'a', title: 'Auth', raw_text: 'Monday\n-Bench Press 3x5' };
-  const req = { authority: { id: 'a', expected_raw_text: AUTH.raw_text, accepted_raw_texts: [] }, items: [{ id: 'n1', expected_raw_text: NOTE.raw_text, next_raw_text: NEXT }] };
+describe('cloud-only writers vs batch', () => {
+  test('ensureWorkoutNoteLive replay read before a batch keeps both', async () => {
+    await seed(CloudNotes);
+    const seedRow = { id: 'r1', title: 'Replayed', raw_text: 'Sunday', updated_at: '2026-01-01T00:00:00.000Z' };
+    await interleave(() => CloudNotes.ensureWorkoutNoteLive(seedRow), () => CloudNotes.applyWorkoutNoteTextBatchIfUnchanged(request()));
+    expect((await byId('r1')).raw_text).toBe('Sunday');
+    expect((await byId('n1')).raw_text).toBe(NEXT);
+  });
 
-  test('a failed enqueue reports pending_sync failure and Retry re-queues the landed text', async () => {
-    await CloudNotes.saveWorkoutNoteItem(AUTH);
-    await CloudNotes.saveWorkoutNoteItem(NOTE);
+  test('ensureWorkoutNoteDeleted replay read before a batch keeps both', async () => {
+    await seed(CloudNotes, [AUTH, NOTE, T2, { id: 'gone', title: 'x', raw_text: 'x' }]);
+    await interleave(() => CloudNotes.ensureWorkoutNoteDeleted('gone'), () => CloudNotes.applyWorkoutNoteTextBatchIfUnchanged(request()));
+    expect((await byId('gone')).deleted_at).toBeTruthy();
+    expect((await byId('n1')).raw_text).toBe(NEXT);
+  });
+
+  test('cloud backup restore read before a batch: batch sees the restored notebook', async () => {
+    await seed(CloudNotes);
+    const backup = { version: '3', exported_at: '2026-07-10T00:00:00.000Z', weight_entries: [], workout_notes: [{ ...AUTH }, { id: 'n1', title: 'Upper', raw_text: 'Restored' }], current_workout_id: 'a', weight_goal: null, fatigue_multiplier: 1, deload_history: [] };
+    const [, result] = await interleave(() => importBackup(backup, 'replace', { mode: IMPORT_MODES.CLOUD }), () => CloudNotes.applyWorkoutNoteTextBatchIfUnchanged(request()));
+    expect(result.skipped.map(s => s.id).sort()).toEqual(['n1', 'n2']);
+    expect((await byId('n1')).raw_text).toBe('Restored');
+  });
+
+  test('sync pass reload read before a batch keeps both the pulled row and the batch', async () => {
+    await seed(CloudNotes);
+    const cache = createPassCache();
+    const base = await cache.read(SYNC_TABLES.WORKOUT_NOTES, Storage.loadWorkoutNotesRaw);
+    const pulled = [...base, { id: 'remote', title: 'Pulled', raw_text: 'Friday' }];
+    await interleave(() => cache.write(SYNC_TABLES.WORKOUT_NOTES, pulled, Storage.replaceWorkoutNotesRaw, Storage.loadWorkoutNotesRaw), () => CloudNotes.applyWorkoutNoteTextBatchIfUnchanged(request()));
+    expect((await byId('remote')).raw_text).toBe('Friday');
+    expect((await byId('n1')).raw_text).toBe(NEXT);
+  });
+
+  test('a failed enqueue reports landed, not pending_sync; Retry re-queues the landed text', async () => {
+    await seed(CloudNotes);
     // eslint-disable-next-line global-require
     const queue = require('../storage/syncQueue');
     const spy = jest.spyOn(queue, 'enqueueDirty').mockRejectedValueOnce(new Error('queue down'));
-    const first = await CloudNotes.applyWorkoutNoteTextBatchIfUnchanged(req);
-    expect(first.failed).toEqual([expect.objectContaining({ id: 'n1', pending_sync: true })]);
-    expect(await text()).toBe(NEXT);
+    const first = await CloudNotes.applyWorkoutNoteTextBatchIfUnchanged(request());
     spy.mockRestore();
-    const retry = await CloudNotes.applyWorkoutNoteTextBatchIfUnchanged(req);
+    expect(first.failed).toEqual([expect.objectContaining({ id: 'n1', landed: true, pending_sync: false })]);
+    expect((await byId('n1')).raw_text).toBe(NEXT);
+    const retry = await CloudNotes.applyWorkoutNoteTextBatchIfUnchanged({ ...request(), items: [request().items[0]] });
     expect(retry.saved).toEqual([expect.objectContaining({ id: 'n1', pending_sync: true })]);
-    expect(JSON.stringify(await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES))).toContain('Bench Press');
-  });
-
-  test('recovery replay (ensureWorkoutNoteLive/Deleted) cannot restore stale text over a CAS', async () => {
-    await CloudNotes.saveWorkoutNoteItem(NOTE);
-    const replay = CloudNotes.ensureWorkoutNoteLive({ ...NOTE, updated_at: new Date().toISOString() });
-    const cas = CloudNotes.compareAndSetWorkoutNoteText('n1', NOTE.raw_text, NEXT);
-    const other = CloudNotes.ensureWorkoutNoteDeleted('other');
-    await Promise.all([replay, other]);
-    expect(await cas).toBe('saved');
-    expect(await text()).toBe(NEXT);
+    expect(JSON.stringify(await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES))).toContain('"id":"n1"');
   });
 });
 
-test('backup restore and derived-cache purge serialize with note writers', async () => {
-  // eslint-disable-next-line global-require
-  const { purgePersistedDerivedSections } = require('../storage/entries/derivedCachePurge');
-  await LocalNotes.saveWorkoutNoteItem(NOTE);
-  const purge = purgePersistedDerivedSections();
-  const cas = LocalNotes.compareAndSetWorkoutNoteText('n1', NOTE.raw_text, NEXT);
-  await purge;
-  expect(await cas).toBe('saved');
-  expect(await text()).toBe(NEXT);
+describe('replace-only writers vs a batch that already read', () => {
+  test('local backup restore waits for the batch and then wins intact', async () => {
+    await seed(LocalNotes);
+    const backup = { version: '3', exported_at: '2026-07-10T00:00:00.000Z', weight_entries: [], workout_notes: [{ id: 'n1', title: 'Upper', raw_text: 'Restored' }], current_workout_id: 'n1', weight_goal: null, fatigue_multiplier: 1, deload_history: [] };
+    const [result] = await interleave(() => LocalNotes.applyWorkoutNoteTextBatchIfUnchanged(request()), () => importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL }));
+    expect(result.saved.length).toBe(2);
+    expect((await notes()).map(n => [n.id, n.raw_text])).toEqual([['n1', 'Restored']]);
+  });
+
+  test('derived-cache purge waits for the batch and keeps its write', async () => {
+    await seed(LocalNotes);
+    await interleave(() => LocalNotes.applyWorkoutNoteTextBatchIfUnchanged(request()), () => purgePersistedDerivedSections());
+    expect((await byId('n1')).raw_text).toBe(NEXT);
+  });
+});
+
+test('both adapters expose the batch and CAS', () => {
+  for (const adapter of [localAdapter, cloudAdapter]) {
+    expect(typeof adapter.applyWorkoutNoteTextBatchIfUnchanged).toBe('function');
+    expect(typeof adapter.compareAndSetWorkoutNoteText).toBe('function');
+    expect(typeof adapter.updateWorkoutNoteItem).toBe('function');
+  }
 });

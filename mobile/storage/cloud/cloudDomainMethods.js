@@ -104,10 +104,10 @@ export function updateWorkoutNoteItem(id, patch) {
 }
 
 // Cloud batch compare-and-set (#1172): one lock covers the authority check,
-// the stamped local write, and the enqueue. The local write commits first; a
-// failed enqueue then reports every written item as failed with
-// `pending_sync: true` (text landed, upload intent missing), which Retry
-// resolves because an already-landed `next_raw_text` is accepted and re-queued.
+// the stamped local write, and the enqueue. `pending_sync` is true only once
+// the dirty-queue record is durable. A failed enqueue reports the item as
+// failed with `landed: true, pending_sync: false` (local text committed, no
+// upload intent); Retry accepts the landed `next_raw_text` and re-queues it.
 export function applyWorkoutNoteTextBatchIfUnchanged(request) {
   return withWorkoutNotebookLock(async () => {
     const list = await Storage.loadWorkoutNotesRaw();
@@ -136,7 +136,7 @@ export function applyWorkoutNoteTextBatchIfUnchanged(request) {
         await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, row);
         saved.push({ id: row.id, pending_sync: true });
       } catch (error) {
-        failed.push({ id: row.id, message: error?.message || 'Enqueue failed', pending_sync: true });
+        failed.push({ id: row.id, message: error?.message || 'Enqueue failed', landed: true, pending_sync: false });
       }
     }
     return { authority: 'unchanged', saved, skipped, failed };
