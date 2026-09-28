@@ -1,6 +1,6 @@
 // Pick one local text file and return its contents (#1172). Web uses a
 // transient <input type="file">; Android and iOS use expo-document-picker,
-// copying the pick into the app cache and reading it locally. Nothing is
+// copying the pick into the app cache and reading it with expo-file-system. Nothing is
 // uploaded anywhere.
 import { Platform } from 'react-native';
 
@@ -40,8 +40,10 @@ async function pickNativeTextFile(deps) {
   if (!result || result.canceled || !result.assets?.length) return null;
   const asset = result.assets[0];
   if (asset.size != null && asset.size > MAX_BYTES) throw tooLarge();
-  const response = await (deps.fetch ?? globalThis.fetch)(asset.uri);
-  const text = await response.text();
+  // Expo's local-file API reads the cached pick; never a network fetch.
+  // eslint-disable-next-line global-require
+  const FileClass = deps.File ?? require('expo-file-system').File;
+  const text = await new FileClass(asset).text();
   if (text.length > MAX_BYTES) throw tooLarge();
   return text;
 }

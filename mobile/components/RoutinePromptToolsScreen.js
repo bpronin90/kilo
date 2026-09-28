@@ -12,7 +12,7 @@ import {
 } from '../lib/interoperability/routinePrompts';
 import { applySelectedChanges, buildNormalizationPreview } from '../lib/interoperability/routineNormalizationImport';
 import { canPickTextFile, pickTextFile } from '../lib/platformFilePicker';
-import { saveWorkoutNoteTextIfUnchanged } from '../hooks/entries/workoutNoteHooks';
+import { applyWorkoutNoteTextBatch } from '../hooks/entries/workoutNoteHooks';
 
 function titleFor(routine, index, notes) {
   const title = String(routine?.title || 'Untitled Routine');
@@ -36,7 +36,7 @@ function ToolCard({ title, detail, onPress, label, testID }) {
 // #1172 return path: paste or pick the external reply, preview every rename
 // against the targets captured when the prompt was copied/shared, then apply
 // only the approved renames. Invalid or stale targets are listed, never written.
-function NormalizationImport({ snapshot, loadNotes, saveText, pickFile, canPickFile, onApplied, onPendingRetry }) {
+function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile, canPickFile, onApplied, onPendingRetry }) {
   const styles = useThemedStyles(createStyles);
   const inputStyle = useInputStyle();
   const [reply, setReply] = useState('');
@@ -87,38 +87,40 @@ function NormalizationImport({ snapshot, loadNotes, saveText, pickFile, canPickF
     .filter(item => item.next != null);
 
   // Retry re-runs only the failed items; earlier outcomes stay reported.
+  // One storage batch (#1172): the authority check and every target write
+  // happen under one notebook lock. Retry re-submits only the failed items;
+  // the authority may already hold text this import wrote (it was a target).
   const apply = async (items, previous = null) => {
     setBusy(true);
     setMessage('');
+    const authorityId = snapshot.authority.id;
+    const accepted = [...(previous?.saved || []), ...items].filter(item => item.entry.id === authorityId).map(item => item.next);
+    let response;
     try {
-      const authority = (await loadNotes()).find(note => note?.id === snapshot.authority.id);
-      // The authority may itself be a target this import already wrote: saved
-      // earlier, or landed locally before a failed enqueue now being retried.
-      const written = [...(previous?.saved || []), ...items].filter(item => item.entry.id === snapshot.authority.id).map(item => item.next);
-      if (!authority || (authority.raw_text !== snapshot.authority.raw_text && !written.includes(authority.raw_text))) {
-        setMessage('The authoritative routine changed after the prompt was generated. Nothing was written. Generate a fresh prompt.');
-        setBusy(false);
-        return;
-      }
+      response = await applyBatch({
+        authority: { id: authorityId, expected_raw_text: snapshot.authority.raw_text, accepted_raw_texts: accepted },
+        items: items.map(item => ({ id: item.entry.id, expected_raw_text: item.entry.snapshot, next_raw_text: item.next })),
+      });
     } catch {
-      setMessage('Couldn’t read routines from this device. Nothing was written.');
-      setBusy(false);
-      return;
-    }
-    const outcome = { saved: [...(previous?.saved || [])], skipped: [...(previous?.skipped || [])], failed: [] };
-    for (const item of items) {
-      try {
-        const status = await saveText(item.entry.id, item.entry.snapshot, item.next);
-        (status === 'saved' ? outcome.saved : outcome.skipped).push(item);
-      } catch {
-        outcome.failed.push(item);
-      }
+      response = { authority: 'unchanged', saved: [], skipped: [], failed: items.map(item => ({ id: item.entry.id })) };
     }
     setBusy(false);
+    if (response.authority !== 'unchanged') {
+      setMessage('The authoritative routine changed after the prompt was generated. Nothing was written. Generate a fresh prompt.');
+      return;
+    }
+    const byId = new Map(items.map(item => [item.entry.id, item]));
+    const pick = list => (list || []).map(row => byId.get(row.id)).filter(Boolean);
+    const outcome = {
+      saved: [...(previous?.saved || []), ...pick(response.saved)],
+      skipped: [...(previous?.skipped || []), ...pick(response.skipped)],
+      failed: pick(response.failed),
+    };
     setResult(outcome);
     onPendingRetry(outcome.failed.length > 0);
-    if (outcome.saved.length) onApplied();
+    if (response.saved.length) onApplied();
   };
+
 
   const toggle = (setter, key) => setter(previous => {
     const next = new Set(previous);
@@ -211,7 +213,7 @@ export function RoutinePromptToolsScreen({
   loadCurrentId = loadCurrentWorkoutId,
   copy = copyTextToClipboard,
   share = null,
-  saveText = saveWorkoutNoteTextIfUnchanged,
+  applyBatch = applyWorkoutNoteTextBatch,
   pickFile = pickTextFile,
   canPickFile = canPickTextFile(),
 }) {
@@ -359,7 +361,7 @@ export function RoutinePromptToolsScreen({
           </View>
         </> : null}
         {isNormalize && snapshot ? (
-          <NormalizationImport key={snapshot.version} snapshot={snapshot} loadNotes={loadNotes} saveText={saveText} pickFile={pickFile} canPickFile={canPickFile} onApplied={refreshNotes} onPendingRetry={setPendingRetry} />
+          <NormalizationImport key={snapshot.version} snapshot={snapshot} loadNotes={loadNotes} applyBatch={applyBatch} pickFile={pickFile} canPickFile={canPickFile} onApplied={refreshNotes} onPendingRetry={setPendingRetry} />
         ) : null}
       </ScreenShell>
     );

@@ -54,8 +54,31 @@ describe('routine prompt builders', () => {
   });
 });
 
+// Test double for the storage batch: authority check against `loadNotes`,
+// then a per-item `saveOne` (resolves a status or throws = failed).
+function batchFrom(saveOne, loadNotes) {
+  return jest.fn(async ({ authority, items }) => {
+    const current = (await loadNotes()).find(note => note.id === authority.id);
+    if (!current || ![authority.expected_raw_text, ...authority.accepted_raw_texts].includes(current.raw_text)) {
+      return { authority: current ? 'stale' : 'missing', saved: [], skipped: [], failed: [] };
+    }
+    const result = { authority: 'unchanged', saved: [], skipped: [], failed: [] };
+    for (const item of items) {
+      try {
+        const status = await saveOne(item.id, item.expected_raw_text, item.next_raw_text);
+        (status === 'saved' ? result.saved : result.skipped).push({ id: item.id, status, pending_sync: false });
+      } catch {
+        result.failed.push({ id: item.id, pending_sync: true });
+      }
+    }
+    return result;
+  });
+}
+
 describe('RoutinePromptToolsScreen', () => {
-  const mount = (props = {}) => {
+  const mount = ({ saveText, ...props } = {}) => {
+    const loadNotes = props.loadNotes || (async () => [CURRENT, TARGET]);
+    if (saveText) props.applyBatch = batchFrom(saveText, loadNotes);
     let tree;
     act(() => {
       tree = render.create(<RoutinePromptToolsScreen
@@ -276,6 +299,25 @@ describe('RoutinePromptToolsScreen', () => {
       await act(async () => {});
       await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
       expect(copy).toHaveBeenCalledTimes(2);
+    });
+
+    test('several targets are applied in one storage batch', async () => {
+      const applyBatch = jest.fn(async ({ items }) => ({ authority: 'unchanged', saved: items.map(i => ({ id: i.id, pending_sync: false })), skipped: [], failed: [] }));
+      const tree = mount({ canPickFile: false, applyBatch });
+      await act(async () => {});
+      await act(async () => { button(tree.root, 'Normalize exercise names').props.onPress(); });
+      await act(async () => { button(tree.root, 'Normalize Upper (1)').props.onPress(); });
+      await act(async () => { button(tree.root, 'Normalize Upper (2)').props.onPress(); });
+      await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
+      await paste(tree, `Target routine 1\n${CURRENT.raw_text.replace('-Squat', '-Back Squat')}\nTarget routine 2\n${TARGET.raw_text.replace('-Bench press', '-Bench Press')}`);
+      await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
+      expect(applyBatch).toHaveBeenCalledTimes(1);
+      expect(applyBatch.mock.calls[0][0]).toEqual(expect.objectContaining({
+        authority: expect.objectContaining({ id: 'current', expected_raw_text: CURRENT.raw_text }),
+        items: [expect.objectContaining({ id: 'current' }), expect.objectContaining({ id: 'target' })],
+      }));
+      expect(text(tree.root)).toContain('Updated Target routine 1: Upper.');
+      expect(text(tree.root)).toContain('Updated Target routine 2: Upper.');
     });
 
     test('a picked text file uses the same review pipeline', async () => {

@@ -6,7 +6,7 @@ import { maybeSyncCloud, readVia, writeVia } from './storageMode';
 import { safeNotify } from './shared';
 import { markStartupPhase } from '../../storage/entries/startupTiming';
 import { clearWorkoutNoteDraftsForNote } from '../../storage/entries/workoutNoteDrafts';
-import { compareAndSetWorkoutNoteText, updateWorkoutNoteItem } from '../../storage/entries/workoutNotes';
+import { applyWorkoutNoteTextBatchIfUnchanged, updateWorkoutNoteItem } from '../../storage/entries/workoutNotes';
 import { claimWorkoutNoteCreationAttemptId } from '../../storage/entries/workoutNoteCreationAttempts';
 
 // NOTE (#880 revised body): pending-cloud-convergence state deliberately
@@ -188,12 +188,11 @@ export function useWorkoutNotes() {
   return { notes, currentId, currentNote, deloadNotes, loading, error, add, update, remove, selectCurrent, refresh, reload };
 }
 
-// #1172: compare-and-set text write for bulk exercise-name normalization.
-// Storage performs the compare and the write under one notebook lock (and, in
-// cloud mode, enqueues after the local write). Throws on a failed write or
-// enqueue; callers report it truthfully and may retry.
-export async function saveWorkoutNoteTextIfUnchanged(id, expectedRawText, nextRawText) {
-  const status = await writeVia('compareAndSetWorkoutNoteText', compareAndSetWorkoutNoteText, id, expectedRawText, nextRawText);
-  if (status === 'saved') notifyWorkoutNotes();
-  return status;
+// #1172: batch compare-and-set for a normalization import. Storage checks the
+// authority and writes every target under one notebook lock (cloud mode also
+// enqueues); see applyWorkoutNoteTextBatchIfUnchanged for the result shape.
+export async function applyWorkoutNoteTextBatch(request) {
+  const result = await writeVia('applyWorkoutNoteTextBatchIfUnchanged', applyWorkoutNoteTextBatchIfUnchanged, request);
+  if (result?.saved?.length || result?.failed?.some(row => row.pending_sync)) notifyWorkoutNotes();
+  return result;
 }

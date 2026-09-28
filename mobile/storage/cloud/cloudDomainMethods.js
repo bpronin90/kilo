@@ -8,7 +8,7 @@ import {
   enqueueDirty,
   getDirtyRecords,
 } from '../syncQueue';
-import { withWorkoutNotebookLock } from '../entries/workoutNotes';
+import { withWorkoutNotebookLock, planWorkoutNoteTextBatch } from '../entries/workoutNotes';
 
 function localDateToday() {
   const d = new Date();
@@ -100,6 +100,46 @@ export function updateWorkoutNoteItem(id, patch) {
     await Storage.replaceWorkoutNotesRaw(list);
     await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, stamped);
     return stamped;
+  });
+}
+
+// Cloud batch compare-and-set (#1172): one lock covers the authority check,
+// the stamped local write, and the enqueue. The local write commits first; a
+// failed enqueue then reports every written item as failed with
+// `pending_sync: true` (text landed, upload intent missing), which Retry
+// resolves because an already-landed `next_raw_text` is accepted and re-queued.
+export function applyWorkoutNoteTextBatchIfUnchanged(request) {
+  return withWorkoutNotebookLock(async () => {
+    const list = await Storage.loadWorkoutNotesRaw();
+    const plan = planWorkoutNoteTextBatch(list, request, (n) => !isTombstone(n));
+    if (plan.authority !== 'unchanged') return { authority: plan.authority, saved: [], skipped: [], failed: [] };
+    const skipped = plan.skipped.map((s) => ({ ...s, pending_sync: false }));
+    const clientId = await getClientId();
+    const now = new Date().toISOString();
+    const nextById = new Map(plan.writes.map((w) => [w.id, w.next_raw_text]));
+    const stamped = [];
+    const updated = list.map((n) => {
+      if (!nextById.has(n?.id) || isTombstone(n)) return n;
+      const row = stampWrite({ ...n, raw_text: nextById.get(n.id), updated_at: now }, clientId);
+      stamped.push(row);
+      return row;
+    });
+    try {
+      await Storage.replaceWorkoutNotesRaw(updated);
+    } catch (error) {
+      return { authority: 'unchanged', saved: [], skipped, failed: plan.writes.map((w) => ({ id: w.id, message: error?.message || 'Write failed', pending_sync: false })) };
+    }
+    const saved = [];
+    const failed = [];
+    for (const row of stamped) {
+      try {
+        await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, row);
+        saved.push({ id: row.id, pending_sync: true });
+      } catch (error) {
+        failed.push({ id: row.id, message: error?.message || 'Enqueue failed', pending_sync: true });
+      }
+    }
+    return { authority: 'unchanged', saved, skipped, failed };
   });
 }
 
@@ -197,7 +237,11 @@ export async function loadWorkoutNoteDeletionState(id) {
 // The reconstructed row carries only the id and the tombstone timestamps. It
 // needs no other field: a tombstone is a deletion marker, every reader filters
 // it out, and the journal never stored the note's text to restore anyway.
-export async function ensureWorkoutNoteDeleted(id, { deletedAt = null } = {}) {
+export function ensureWorkoutNoteDeleted(id, options) {
+  return withWorkoutNotebookLock(() => ensureWorkoutNoteDeletedUnlocked(id, options));
+}
+
+async function ensureWorkoutNoteDeletedUnlocked(id, { deletedAt = null } = {}) {
   const list = await Storage.loadWorkoutNotesRaw();
   const note = list.find((n) => n?.id === id);
   const clientId = await getClientId();
@@ -262,7 +306,11 @@ export async function loadWorkoutNotePresenceState(id) {
 //
 // The seed's own `updated_at` is reused as the stamp so a replay cannot slide the
 // row's timestamp forward past a copy another device already accepted.
-export async function ensureWorkoutNoteLive(seed) {
+export function ensureWorkoutNoteLive(seed) {
+  return withWorkoutNotebookLock(() => ensureWorkoutNoteLiveUnlocked(seed));
+}
+
+async function ensureWorkoutNoteLiveUnlocked(seed) {
   const list = await Storage.loadWorkoutNotesRaw();
   const existing = list.find((n) => n?.id === seed.id);
   const clientId = await getClientId();

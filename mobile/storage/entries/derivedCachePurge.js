@@ -1,5 +1,6 @@
 import { secureStorage as AsyncStorage } from '../secureStorage';
 import { WORKOUT_NOTES_KEY } from './keys';
+import { withWorkoutNotebookLock } from './workoutNotes';
 import { stripDerivedSectionsFromList } from './derivedCache';
 import { purgeDerivedSectionsFromWorkoutNoteSyncState } from '../syncQueue';
 import { markStartupPhase } from './startupTiming';
@@ -32,7 +33,8 @@ export async function purgePersistedDerivedSections() {
     markStartupPhase('derived-purge:skipped');
     return { skipped: true, notebook: false, snapshot: false, dirty: false };
   }
-  const notebook = await AsyncStorage.updateItem(WORKOUT_NOTES_KEY, (raw) => {
+  // #1172: serialized with every other notebook read-modify-write.
+  const notebook = await withWorkoutNotebookLock(() => AsyncStorage.updateItem(WORKOUT_NOTES_KEY, (raw) => {
     if (raw == null) return null;
     let list;
     try {
@@ -45,7 +47,7 @@ export async function purgePersistedDerivedSections() {
     if (!Array.isArray(list)) return null;
     const stripped = stripDerivedSectionsFromList(list);
     return stripped === list ? null : JSON.stringify(stripped);
-  });
+  }));
   const { snapshot, dirty } = await purgeDerivedSectionsFromWorkoutNoteSyncState();
   await AsyncStorage.setItem(DERIVED_CACHE_PURGE_KEY, PURGE_COMPLETE_VALUE);
   markStartupPhase('derived-purge:done');

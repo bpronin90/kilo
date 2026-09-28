@@ -114,7 +114,12 @@ export async function replaceWorkoutNotesRaw(list) {
   await writeNotebook(Array.isArray(list) ? list : []);
 }
 
-// #1172: serializes the notebook read-modify-write of the note writers (local
+// #1172: `loadWorkoutNotesRaw` / `replaceWorkoutNotesRaw` are the UNLOCKED
+// notebook primitives for code already inside this lock. Every public notebook
+// read-modify-write (here, cloud domain methods, sync pass writes, backup
+// restore, migration, derived-cache purge) takes the lock; the lock is not
+// reentrant, so a locked function must never call another locked one.
+// Serializes the notebook read-modify-write of the note writers (local
 // and cloud save/delete, and the compare-and-set below) so a compare can never
 // be split from its write by another writer. The chain survives a rejected
 // step. Callers inside the lock must use the unlocked raw helpers.
@@ -150,6 +155,49 @@ export function updateWorkoutNoteItem(id, patch) {
     list[idx] = updated;
     await writeNotebook(list);
     return updated;
+  });
+}
+
+// Batch compare-and-set for a normalization import (#1172). One lock covers
+// the authority check and every target write, so no note writer can interleave.
+// Pure planning helper shared by the local and cloud implementations: returns
+// the per-item plan without touching storage.
+export function planWorkoutNoteTextBatch(list, { authority, items }, isLive = n => !n.deleted_at) {
+  const byId = new Map(list.filter(n => n && isLive(n)).map(n => [n.id, n]));
+  const current = byId.get(authority?.id);
+  if (!current) return { authority: 'missing' };
+  const accepted = [authority.expected_raw_text, ...(authority.accepted_raw_texts || [])];
+  if (!accepted.includes(current.raw_text)) return { authority: 'stale' };
+  const writes = [];
+  const skipped = [];
+  for (const item of items || []) {
+    const note = byId.get(item.id);
+    if (!note) skipped.push({ id: item.id, status: 'missing' });
+    else if (note.raw_text !== item.expected_raw_text && note.raw_text !== item.next_raw_text) skipped.push({ id: item.id, status: 'stale' });
+    else writes.push({ id: item.id, next_raw_text: item.next_raw_text });
+  }
+  return { authority: 'unchanged', writes, skipped };
+}
+
+export function applyWorkoutNoteTextBatchIfUnchanged(request) {
+  return withWorkoutNotebookLock(async () => {
+    const list = await readNotebook();
+    const plan = planWorkoutNoteTextBatch(list, request);
+    if (plan.authority !== 'unchanged') return { authority: plan.authority, saved: [], skipped: [], failed: [] };
+    const now = new Date().toISOString();
+    const nextById = new Map(plan.writes.map(w => [w.id, w.next_raw_text]));
+    const updated = list.map(n => (nextById.has(n?.id) && !n.deleted_at ? { ...n, raw_text: nextById.get(n.id), updated_at: now } : n));
+    try {
+      await writeNotebook(updated);
+    } catch (error) {
+      return { authority: 'unchanged', saved: [], skipped: plan.skipped.map(s => ({ ...s, pending_sync: false })), failed: plan.writes.map(w => ({ id: w.id, message: error?.message || 'Write failed', pending_sync: false })) };
+    }
+    return {
+      authority: 'unchanged',
+      saved: plan.writes.map(w => ({ id: w.id, pending_sync: false })),
+      skipped: plan.skipped.map(s => ({ ...s, pending_sync: false })),
+      failed: [],
+    };
   });
 }
 
@@ -294,14 +342,16 @@ export async function clearCurrentWorkoutId() {
 // Mark a note as the current routine.
 // All other notes in the list are marked isCurrent: false.
 // Also updates CURRENT_WORKOUT_ID_KEY for backward compatibility.
-export async function setCurrentWorkoutNote(id) {
-  const list = await readNotebook();
-  const updated = list.map(n => {
-    if (n.id === id) {
-      return { ...n, isCurrent: true };
-    }
-    return { ...n, isCurrent: false };
+export function setCurrentWorkoutNote(id) {
+  return withWorkoutNotebookLock(async () => {
+    const list = await readNotebook();
+    const updated = list.map(n => {
+      if (n.id === id) {
+        return { ...n, isCurrent: true };
+      }
+      return { ...n, isCurrent: false };
+    });
+    await writeNotebook(updated);
+    await AsyncStorage.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(id));
   });
-  await writeNotebook(updated);
-  await AsyncStorage.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(id));
 }

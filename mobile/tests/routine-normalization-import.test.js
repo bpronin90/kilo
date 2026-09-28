@@ -4,7 +4,7 @@ import {
   diffTargetNames,
   splitNormalizationReply,
 } from '../lib/interoperability/routineNormalizationImport';
-import { saveWorkoutNoteTextIfUnchanged } from '../hooks/entries/workoutNoteHooks';
+import { compareAndSetWorkoutNoteText as saveWorkoutNoteTextIfUnchanged } from '../storage/entries/workoutNotes';
 import * as Storage from '../storage/entries';
 import { canPickTextFile, pickTextFile } from '../lib/platformFilePicker';
 
@@ -146,7 +146,7 @@ describe('saveWorkoutNoteTextIfUnchanged', () => {
 });
 
 describe('platformFilePicker (native)', () => {
-  const fetchText = body => jest.fn().mockResolvedValue({ text: async () => body });
+  const fileReading = body => jest.fn().mockImplementation(function File(asset) { this.asset = asset; this.text = async () => body; });
 
   test('android and ios offer file picking', () => {
     expect(canPickTextFile({ platform: 'android' })).toBe(true);
@@ -155,16 +155,19 @@ describe('platformFilePicker (native)', () => {
 
   test('reads the cached copy locally and returns null on cancel', async () => {
     const documentPicker = { getDocumentAsync: jest.fn().mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///cache/r.txt', size: 10 }] }) };
-    const fetch = fetchText('Target routine 1');
-    await expect(pickTextFile({ platform: 'android', documentPicker, fetch })).resolves.toBe('Target routine 1');
+    const File = fileReading('Target routine 1');
+    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(() => { throw new Error('fetch must not be used'); });
+    await expect(pickTextFile({ platform: 'android', documentPicker, File })).resolves.toBe('Target routine 1');
     expect(documentPicker.getDocumentAsync).toHaveBeenCalledWith(expect.objectContaining({ copyToCacheDirectory: true }));
-    expect(fetch).toHaveBeenCalledWith('file:///cache/r.txt');
+    expect(File).toHaveBeenCalledWith(expect.objectContaining({ uri: 'file:///cache/r.txt' }));
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
     documentPicker.getDocumentAsync.mockResolvedValue({ canceled: true, assets: null });
-    await expect(pickTextFile({ platform: 'ios', documentPicker, fetch })).resolves.toBeNull();
+    await expect(pickTextFile({ platform: 'ios', documentPicker, File })).resolves.toBeNull();
   });
 
   test('rejects oversized files', async () => {
     const documentPicker = { getDocumentAsync: jest.fn().mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///x', size: 5 * 1024 * 1024 }] }) };
-    await expect(pickTextFile({ platform: 'android', documentPicker, fetch: fetchText('') })).rejects.toThrow(/too large/);
+    await expect(pickTextFile({ platform: 'android', documentPicker, File: fileReading('') })).rejects.toThrow(/too large/);
   });
 });

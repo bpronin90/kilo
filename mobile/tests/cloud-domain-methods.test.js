@@ -86,3 +86,99 @@ test('a sync pass persist cannot land between compare and write', async () => {
   expect(ids).toEqual(['n1', 'remote']);
   expect(await text()).toBe(NEXT);
 });
+
+describe.each([
+  ['local', LocalNotes],
+  ['cloud', CloudNotes],
+])('%s applyWorkoutNoteTextBatchIfUnchanged', (_mode, api) => {
+  const AUTH = { id: 'a', title: 'Auth', raw_text: 'Monday\n-Bench Press 3x5' };
+  const T2 = { id: 'n2', title: 'Upper', raw_text: 'Friday\n-bb bench 3x5' };
+  const request = (extra = {}) => ({
+    authority: { id: 'a', expected_raw_text: AUTH.raw_text, accepted_raw_texts: [] },
+    items: [
+      { id: 'n1', expected_raw_text: NOTE.raw_text, next_raw_text: NEXT },
+      { id: 'n2', expected_raw_text: T2.raw_text, next_raw_text: 'Friday\n-Bench Press 3x5' },
+    ],
+    ...extra,
+  });
+  const seed = async () => { for (const n of [AUTH, NOTE, T2]) await api.saveWorkoutNoteItem(n); };
+
+  test('writes every selected target in one locked batch', async () => {
+    await seed();
+    const result = await api.applyWorkoutNoteTextBatchIfUnchanged(request());
+    expect(result.authority).toBe('unchanged');
+    expect(result.saved.map(r => r.id).sort()).toEqual(['n1', 'n2']);
+    expect(await text()).toBe(NEXT);
+  });
+
+  test('an authority edit queued before the batch rejects the whole batch', async () => {
+    await seed();
+    const edit = api.updateWorkoutNoteItem('a', { raw_text: 'Monday\n-Barbell Bench 3x5' });
+    const result = await api.applyWorkoutNoteTextBatchIfUnchanged(request());
+    await edit;
+    expect(result.authority).toBe('stale');
+    expect(await text()).toBe(NOTE.raw_text);
+  });
+
+  test('a stale target is skipped while valid siblings proceed', async () => {
+    await seed();
+    const edit = api.saveWorkoutNoteItem({ ...T2, raw_text: 'Friday\n-newer' });
+    const result = await api.applyWorkoutNoteTextBatchIfUnchanged(request());
+    await edit;
+    expect(result.skipped).toEqual([expect.objectContaining({ id: 'n2', status: 'stale' })]);
+    expect(result.saved.map(r => r.id)).toEqual(['n1']);
+    expect((await Storage.loadWorkoutNotesRaw()).find(n => n.id === 'n2').raw_text).toBe('Friday\n-newer');
+  });
+
+  test('current-routine selection racing the batch loses neither write', async () => {
+    await seed();
+    const select = Storage.setCurrentWorkoutNote('n2');
+    const result = api.applyWorkoutNoteTextBatchIfUnchanged(request());
+    await select;
+    await result;
+    const notes = await Storage.loadWorkoutNotesRaw();
+    expect(notes.find(n => n.id === 'n2').isCurrent).toBe(true);
+    expect(notes.find(n => n.id === 'n1').raw_text).toBe(NEXT);
+  });
+});
+
+describe('cloud batch enqueue failure and recovery replay', () => {
+  const AUTH = { id: 'a', title: 'Auth', raw_text: 'Monday\n-Bench Press 3x5' };
+  const req = { authority: { id: 'a', expected_raw_text: AUTH.raw_text, accepted_raw_texts: [] }, items: [{ id: 'n1', expected_raw_text: NOTE.raw_text, next_raw_text: NEXT }] };
+
+  test('a failed enqueue reports pending_sync failure and Retry re-queues the landed text', async () => {
+    await CloudNotes.saveWorkoutNoteItem(AUTH);
+    await CloudNotes.saveWorkoutNoteItem(NOTE);
+    // eslint-disable-next-line global-require
+    const queue = require('../storage/syncQueue');
+    const spy = jest.spyOn(queue, 'enqueueDirty').mockRejectedValueOnce(new Error('queue down'));
+    const first = await CloudNotes.applyWorkoutNoteTextBatchIfUnchanged(req);
+    expect(first.failed).toEqual([expect.objectContaining({ id: 'n1', pending_sync: true })]);
+    expect(await text()).toBe(NEXT);
+    spy.mockRestore();
+    const retry = await CloudNotes.applyWorkoutNoteTextBatchIfUnchanged(req);
+    expect(retry.saved).toEqual([expect.objectContaining({ id: 'n1', pending_sync: true })]);
+    expect(JSON.stringify(await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES))).toContain('Bench Press');
+  });
+
+  test('recovery replay (ensureWorkoutNoteLive/Deleted) cannot restore stale text over a CAS', async () => {
+    await CloudNotes.saveWorkoutNoteItem(NOTE);
+    const replay = CloudNotes.ensureWorkoutNoteLive({ ...NOTE, updated_at: new Date().toISOString() });
+    const cas = CloudNotes.compareAndSetWorkoutNoteText('n1', NOTE.raw_text, NEXT);
+    const other = CloudNotes.ensureWorkoutNoteDeleted('other');
+    await Promise.all([replay, other]);
+    expect(await cas).toBe('saved');
+    expect(await text()).toBe(NEXT);
+  });
+});
+
+test('backup restore and derived-cache purge serialize with note writers', async () => {
+  // eslint-disable-next-line global-require
+  const { purgePersistedDerivedSections } = require('../storage/entries/derivedCachePurge');
+  await LocalNotes.saveWorkoutNoteItem(NOTE);
+  const purge = purgePersistedDerivedSections();
+  const cas = LocalNotes.compareAndSetWorkoutNoteText('n1', NOTE.raw_text, NEXT);
+  await purge;
+  expect(await cas).toBe('saved');
+  expect(await text()).toBe(NEXT);
+});

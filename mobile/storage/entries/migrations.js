@@ -5,13 +5,19 @@ import {
   loadCurrentWorkoutId,
   loadWorkoutNote,
   saveWorkoutNote,
+  withWorkoutNotebookLock,
 } from './workoutNotes';
 
 // One-time migration: convert the legacy single workout note (kilo_workout_note) into
 // the first entry in the multi-note notebook (kilo_workout_notes), marked as current.
 // No-op if the notebook already contains entries.
 // Returns the notebook list after migration (empty array if nothing to migrate).
-export async function migrateToNotebook() {
+// #1172: serialized with every other notebook read-modify-write.
+export function migrateToNotebook() {
+  return withWorkoutNotebookLock(migrateToNotebookUnlocked);
+}
+
+async function migrateToNotebookUnlocked() {
   const existing = await readList(WORKOUT_NOTES_KEY);
 
   if (existing.length > 0) {
