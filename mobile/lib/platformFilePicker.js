@@ -43,7 +43,7 @@ async function pickNativeTextFile(deps) {
   // Expo's local-file API reads the cached pick; never a network fetch.
   // eslint-disable-next-line global-require
   const FileClass = deps.File ?? require('expo-file-system').File;
-  const text = await new FileClass(asset).text();
+  const text = await new FileClass(asset.uri).text();
   if (text.length > MAX_BYTES) throw tooLarge();
   return text;
 }

@@ -159,7 +159,7 @@ describe('platformFilePicker (native)', () => {
     const fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(() => { throw new Error('fetch must not be used'); });
     await expect(pickTextFile({ platform: 'android', documentPicker, File })).resolves.toBe('Target routine 1');
     expect(documentPicker.getDocumentAsync).toHaveBeenCalledWith(expect.objectContaining({ copyToCacheDirectory: true }));
-    expect(File).toHaveBeenCalledWith(expect.objectContaining({ uri: 'file:///cache/r.txt' }));
+    expect(File).toHaveBeenCalledWith('file:///cache/r.txt');
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
     documentPicker.getDocumentAsync.mockResolvedValue({ canceled: true, assets: null });
