@@ -125,6 +125,9 @@ function NormalizationImport({ snapshot, loadNotes, saveText, pickFile, canPickF
     if (next.has(key)) next.delete(key); else next.add(key);
     return next;
   });
+  // While failed saves await Retry the reply is frozen, so editing or
+  // re-reviewing can never discard the only Retry action.
+  const retryPending = Boolean(result?.failed.length);
   const label = item => `Target routine ${item.entry.number}: ${item.entry.title}`;
 
   return (
@@ -137,14 +140,15 @@ function NormalizationImport({ snapshot, loadNotes, saveText, pickFile, canPickF
         style={[inputStyle, styles.replyInput]}
         multiline
         value={reply}
-        onChangeText={(text) => { reviewSeq.current += 1; setReply(text); setPreview(null); setResult(null); }}
+        editable={!retryPending}
+        onChangeText={(text) => { if (retryPending) return; reviewSeq.current += 1; setReply(text); setPreview(null); setResult(null); }}
         placeholder="Paste the normalized routines here"
         accessibilityLabel="Normalized routines reply"
         testID="normalization-reply-input"
       />
       <View style={styles.actions}>
-        <Button title="Review changes" onPress={() => review(reply)} disabled={!reply.trim()} accessibilityLabel="Review normalized routines" />
-        {canPickFile ? <Button title="Choose text file" onPress={handlePick} accessibilityLabel="Choose normalized routines file" /> : null}
+        <Button title="Review changes" onPress={() => review(reply)} disabled={!reply.trim() || retryPending} accessibilityLabel="Review normalized routines" />
+        {canPickFile ? <Button title="Choose text file" onPress={handlePick} disabled={retryPending} accessibilityLabel="Choose normalized routines file" /> : null}
       </View>
       {message ? <Text style={styles.error}>{message}</Text> : null}
       {preview?.tooLarge ? <Text style={styles.error}>That reply is too large to be routine results. Nothing changed.</Text> : null}

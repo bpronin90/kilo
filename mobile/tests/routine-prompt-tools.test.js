@@ -269,6 +269,9 @@ describe('RoutinePromptToolsScreen', () => {
       await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
       expect(copy).toHaveBeenCalledTimes(1);
       expect(text(tree.root)).toContain('Retry or resolve');
+      const input = tree.root.findAll(node => node.props?.testID === 'normalization-reply-input' && node.props.onChangeText)[0];
+      await act(async () => { input.props.onChangeText('edited'); });
+      expect(button(tree.root, 'Review normalized routines').props.disabled).toBe(true);
       await act(async () => { button(tree.root, 'Retry failed routines').props.onPress(); });
       await act(async () => {});
       await act(async () => { button(tree.root, 'Copy prompt').props.onPress(); });
