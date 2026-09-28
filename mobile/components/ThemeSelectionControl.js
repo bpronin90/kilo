@@ -1,40 +1,58 @@
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useTheme } from '../theme/ThemeContext';
 import { useKuaTypography } from '../theme/typography';
+import { KUA_PALETTES } from '../theme/colors';
 import { setThemeSelection } from '../lib/themePreference';
 
+// paletteKey mirrors ThemeContext's private themeKey() mapping, duplicated here
+// (three entries) rather than exported, so this stays a display-only read of
+// the swatch color and never becomes a second source of truth for resolution.
 const THEME_OPTIONS = [
-  { value: 'hard-court', label: 'Hard Court', a11yLabel: 'Use Hard Court' },
-  { value: 'clay-court', label: 'Clay Court', a11yLabel: 'Use Clay Court' },
-  { value: 'grass-court', label: 'Grass Court', a11yLabel: 'Use Grass Court' },
+  { value: 'hard-court', label: 'Hard Court', a11yLabel: 'Use Hard Court', paletteKey: 'hardCourt' },
+  { value: 'clay-court', label: 'Clay Court', a11yLabel: 'Use Clay Court', paletteKey: 'clayCourt' },
+  { value: 'grass-court', label: 'Grass Court', a11yLabel: 'Use Grass Court', paletteKey: 'grassCourt' },
 ];
 
+// Stacked preview rows (#1173): each row shows the palette's own accent as a
+// swatch, its full name, and a checkmark when selected. Replaces the wrapping
+// pill row, which cramped onto two lines at narrow widths and large font
+// scales and read as three co-equal buttons rather than one palette choice
+// with three options.
 export function ThemeSelectionControl() {
-  const { themeSelection, kuaPalette: kua, colors } = useTheme();
+  const { themeSelection, kuaPalette: kua, colors, mode } = useTheme();
   const typography = useKuaTypography();
   const styles = useMemo(() => createStyles(kua, colors, typography), [kua, colors, typography]);
 
   return (
-    <View testID="theme-selection-control" style={styles.row}>
-      <View style={styles.labelContainer}>
-        <Text style={styles.label}>Court</Text>
-      </View>
-      <View style={styles.toggle}>
-        {THEME_OPTIONS.map(({ value, label, a11yLabel }) => {
+    <View testID="theme-selection-control" style={styles.section}>
+      <Text style={styles.label}>Theme</Text>
+      <View style={styles.optionList}>
+        {THEME_OPTIONS.map(({ value, label, a11yLabel, paletteKey }) => {
           const selected = themeSelection === value;
+          const swatchColor = KUA_PALETTES[paletteKey][mode].primary;
           return (
             <Pressable
               key={value}
               onPress={() => setThemeSelection(value)}
-              style={styles.tab}
+              style={[styles.optionRow, selected && styles.optionRowActive]}
               accessibilityRole="button"
               accessibilityState={{ selected }}
               accessibilityLabel={a11yLabel}
             >
-              <View style={[styles.pill, selected && styles.pillActive]}>
-                <Text style={[styles.tabText, selected && styles.tabTextActive]}>{label}</Text>
-              </View>
+              <View style={[styles.swatch, { backgroundColor: swatchColor }]} />
+              <Text style={[styles.optionText, selected && styles.optionTextActive]}>{label}</Text>
+              {selected ? (
+                <MaterialIcons
+                  name="check-circle"
+                  size={20}
+                  color={kua ? kua.primary : colors.accent}
+                  accessible={false}
+                />
+              ) : (
+                <View style={styles.checkPlaceholder} />
+              )}
             </Pressable>
           );
         })}
@@ -44,56 +62,55 @@ export function ThemeSelectionControl() {
 }
 
 const createStyles = (kua = null, colors = {}, typography = {}) => StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  section: {
     marginBottom: 20,
-  },
-  // Label takes its natural width; the toggle gets the remaining space.
-  labelContainer: {
-    flexShrink: 0,
   },
   label: {
     ...(typography['body-lg'] ?? { fontSize: 16 }),
     color: kua ? kua.onSurface : colors.text,
+    marginBottom: 10,
   },
-  // flex: 1 constrains the toggle to the available row width so that flexWrap
-  // can actually wrap the pills rather than growing the container off-screen.
-  toggle: {
-    flex: 1,
+  optionList: {
+    gap: 8,
+  },
+  // Each row is its own ≥44dp target (§15), full width so the longest label
+  // (Grass Court) never needs to wrap or crowd its neighbors at narrow widths.
+  optionRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end',
-    gap: 4,
-  },
-  tab: {
+    alignItems: 'center',
     minHeight: 44,
     minWidth: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pill: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
     borderWidth: 1,
+    gap: 12,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
   },
-  pillActive: {
-    backgroundColor: kua ? kua.primary : colors.accent,
+  optionRowActive: {
     borderColor: kua ? kua.primary : colors.accent,
+    backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
   },
-  tabText: {
+  swatch: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+  },
+  optionText: {
+    flex: 1,
     ...(typography['label-sm'] ?? { fontSize: 11 }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Selected: inherits label-sm metrics but upgrades to label-lg family/weight
   // for a real KUA medium-to-semibold change without hardcoded font names.
-  tabTextActive: {
+  optionTextActive: {
     fontFamily: (typography['label-lg'] ?? {}).fontFamily,
     fontWeight: (typography['label-lg'] ?? {}).fontWeight,
-    color: kua ? kua.onPrimary : colors.onAccent,
+    color: kua ? kua.onSurface : colors.text,
+  },
+  checkPlaceholder: {
+    width: 20,
+    height: 20,
   },
 });

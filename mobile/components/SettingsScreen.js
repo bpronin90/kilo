@@ -193,13 +193,18 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
       {kua ? <Text style={styles.sectionHeader}>APPEARANCE</Text> : <SectionTitle>Appearance</SectionTitle>}
       <Card style={cardStyle}>
         <ThemeSelectionControl />
-        <View style={[styles.settingRow, { marginBottom: 0 }]}>
+        {/* Stacked (label above, control below) rather than the side-by-side
+            row the lb/kg and ft/cm selectors use: Mode's three full words
+            (Light/Dark/System) need the card's full inner width to stay
+            orderly at narrow phone widths and large accessibility font
+            scales, which a row shared with the label column cannot guarantee
+            (#1173 review). */}
+        <View style={[styles.settingRow, styles.settingRowStacked, { marginBottom: 0 }]}>
           <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Theme</Text>
+            <Text style={styles.settingLabel}>Mode</Text>
+            <Text style={styles.settingHelp}>Light, dark, or match your device</Text>
           </View>
-          {/* Same compact segmented pattern as the lb/kg and ft/cm selectors,
-              extended to three options. Selection applies on press and persists. */}
-          <View style={styles.unitToggle}>
+          <View style={[styles.unitToggle, styles.unitToggleFullWidth]}>
             {APPEARANCE_OPTIONS.map(({ value, label, a11yLabel }) => {
               const selected = appearance === value;
               return (
@@ -313,6 +318,11 @@ const createStyles = (colors, kua = null, typography = {}) => StyleSheet.create(
     flex: 1,
     gap: 2,
   },
+  settingRowStacked: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 10,
+  },
   settingLabel: {
     fontSize: 16,
     fontWeight: '700',
@@ -359,9 +369,23 @@ const createStyles = (colors, kua = null, typography = {}) => StyleSheet.create(
   // and Profile's height-unit selector share this exact treatment (#1018). The
   // pressable is a transparent ≥44dp target box (§15); the visible pill inside
   // it stays compact and never stretches to the target height.
+  //
+  // flexWrap lets Mode's three labels (Light/Dark/System — the longest of the
+  // segmented rows here) drop to a second line instead of overflowing the
+  // card at narrow widths under large accessibility font scales (#1173
+  // review); the two-option lb/kg and ft/cm rows never need the second line.
   unitToggle: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
     gap: 4,
+  },
+  // Mode's toggle sits on its own full-width row (see settingRowStacked
+  // above), so it wraps within the card's actual inner width rather than
+  // whatever the label column leaves it, and reads left-to-right like the
+  // options it presents.
+  unitToggleFullWidth: {
+    justifyContent: 'flex-start',
   },
   unitTab: {
     minHeight: 44,
