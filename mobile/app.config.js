@@ -33,7 +33,13 @@
 //   (proguard-android.txt -> proguard-android-optimize.txt). The "preview" EAS
 //   build profile shares that release buildType, so preview-10 installs lack
 //   the R8-optimized native config and must be replaced with a fresh build.
-const PREVIEW_RUNTIME = 'preview-11';
+// preview-12: #1176 (2026-09-28) adds an expo-build-properties keep rule for
+//   Expo annotation types. preview-11's R8 optimization rewrote Expo Record
+//   conversion to throw, so every SecureStore call failed and the encrypted
+//   notebook could not be read. The rule changes the generated release
+//   proguard-rules.pro, so preview-11 installs need this rebuilt APK (installed
+//   over preview-11; no data is cleared).
+const PREVIEW_RUNTIME = 'preview-12';
 
 // Large-screen resizing (#1126). The SDK 54 template's MainActivity already
 // handles orientation|screenSize|screenLayout itself, but not

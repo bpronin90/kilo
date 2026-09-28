@@ -22,7 +22,7 @@ describe('app config', () => {
 
     const result = configFactory({ config: { plugins: [] } });
 
-    expect(result.runtimeVersion).toBe('preview-11');
+    expect(result.runtimeVersion).toBe('preview-12');
   });
 
   test('uses the appVersion runtime policy for production builds', () => {
@@ -183,6 +183,35 @@ describe('app config', () => {
   test('static config registers the R8 optimization plugin', () => {
     const appJson = require('../app.json');
     expect(appJson.expo.plugins).toContain('./plugins/withAndroidR8Optimization');
+  });
+
+  // #1176: R8 optimization treats runtime-only annotation types as never
+  // instantiated and rewrote Expo Record conversion to `throw null`, breaking
+  // every SecureStore call. Optimization must never ship without this rule.
+  const EXPO_ANNOTATION_KEEP_RULE = '-keep @interface expo.modules.** { *; }';
+
+  test('R8 optimization is never registered without the Expo annotation keep rule', () => {
+    const appJson = require('../app.json');
+    const buildPropsPlugin = appJson.expo.plugins.find(
+      (p) => Array.isArray(p) && p[0] === 'expo-build-properties',
+    );
+    expect(appJson.expo.plugins).toContain('./plugins/withAndroidR8Optimization');
+    const rules = buildPropsPlugin[1].android.extraProguardRules;
+    expect(rules.split('\n')).toContain(EXPO_ANNOTATION_KEEP_RULE);
+  });
+
+  test('expo-build-properties emits the Expo annotation keep rule into release proguard rules', () => {
+    const { updateAndroidProguardRules } = require('expo-build-properties/build/android');
+    const appJson = require('../app.json');
+    const buildPropsPlugin = appJson.expo.plugins.find(
+      (p) => Array.isArray(p) && p[0] === 'expo-build-properties',
+    );
+    const generated = updateAndroidProguardRules(
+      '# template rules\n',
+      buildPropsPlugin[1].android.extraProguardRules,
+      'append',
+    );
+    expect(generated.split('\n')).toContain(EXPO_ANNOTATION_KEEP_RULE);
   });
 
   describe('withAndroidR8Optimization', () => {
