@@ -18,7 +18,7 @@ import {
 } from './keys';
 import { writeList } from './jsonStorage';
 import { stripDerivedSectionsFromList } from './derivedCache';
-import { loadWorkoutNotesRaw, replaceWorkoutNotesRaw } from './workoutNotes';
+import { loadWorkoutNotesRaw, replaceWorkoutNotesRaw, withWorkoutNotebookLock } from './workoutNotes';
 import { loadWeightEntriesRaw, replaceWeightEntriesRaw } from './weightEntries';
 import {
   SYNC_TABLES,
@@ -476,13 +476,14 @@ export async function importBackup(payload, strategy = 'replace', { mode = IMPOR
       // v1 predates the notebook model, so it says nothing about workout notes.
       // Silence is not an instruction to delete them.
       if (isNotebookVersion) {
-        queued += await replaceCollectionForCloud({
+        // #1172: the notebook replace runs under the shared notebook lock.
+        queued += await withWorkoutNotebookLock(() => replaceCollectionForCloud({
           table: SYNC_TABLES.WORKOUT_NOTES,
           readRaw: loadWorkoutNotesRaw,
           writeRaw: replaceWorkoutNotesRaw,
           imported: payload.workout_notes,
           clientId,
-        });
+        }));
       }
       // Blocks BEFORE memberships, always. kilo.recovery_block_weeks carries a
       // real foreign key to kilo.recovery_blocks, and the push walks the dirty
@@ -517,7 +518,8 @@ export async function importBackup(payload, strategy = 'replace', { mode = IMPOR
         // re-enters storage (issue #813).
         pairs.push([WORKOUT_NOTES_KEY, JSON.stringify(stripDerivedSectionsFromList(payload.workout_notes))]);
       }
-      await AsyncStorage.multiSet(pairs);
+      // #1172: a notebook replacement is serialized with every note writer.
+      await (isNotebookVersion ? withWorkoutNotebookLock(() => AsyncStorage.multiSet(pairs)) : AsyncStorage.multiSet(pairs));
       // Same dependency order on the local side, for the same reason a reader
       // would hit: a membership is only interpretable once its block exists.
       if (hasRecovery) {

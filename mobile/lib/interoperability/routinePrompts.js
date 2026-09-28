@@ -45,7 +45,7 @@ export function buildExerciseNameNormalizationPrompt({ authority, targets = [] }
   const targetBlocks = targets.map((routine, index) => routineBlock(`Target routine ${index + 1}: ${text(routine?.title) || 'Untitled Routine'}`, routine)).join('');
   return `Use the authoritative routine below as the source of truth for exercise names. Normalize exercise names in every target routine to match that authority wherever the exercises correspond. Preserve every other character and structure in each target: weights, reps, dates, weekdays, comments/notes, marks, skipped sets, and Week A/B boundaries. Do not add, remove, reorder, or otherwise edit exercises or sets. If a target name has no clear authoritative match, leave it unchanged.
 
-Return each selected target as complete Kilo-importable routine text, one at a time. Label each result with its exact reference label, for example "Target routine 1: Upper", so duplicate routine titles remain distinguishable. Do not use Markdown fences or return any reference markers. ${FORMAT_GUIDE}${routineBlock(`Authoritative routine: ${text(authority?.title) || 'Untitled Routine'}`, authority)}${targetBlocks}`;
+Return each selected target as complete Kilo-importable routine text, one at a time. Label each result with its exact reference label, for example "Target routine 1: Upper", on its own line directly before that routine's text, so duplicate routine titles remain distinguishable. Return every target, even when nothing changed. Do not use Markdown fences or return any reference markers. ${FORMAT_GUIDE}${routineBlock(`Authoritative routine: ${text(authority?.title) || 'Untitled Routine'}`, authority)}${targetBlocks}`;
 }
 
 /**

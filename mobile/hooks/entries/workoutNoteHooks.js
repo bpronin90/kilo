@@ -6,6 +6,7 @@ import { maybeSyncCloud, readVia, writeVia } from './storageMode';
 import { safeNotify } from './shared';
 import { markStartupPhase } from '../../storage/entries/startupTiming';
 import { clearWorkoutNoteDraftsForNote } from '../../storage/entries/workoutNoteDrafts';
+import { applyWorkoutNoteTextBatchIfUnchanged, updateWorkoutNoteItem } from '../../storage/entries/workoutNotes';
 import { claimWorkoutNoteCreationAttemptId } from '../../storage/entries/workoutNoteCreationAttempts';
 
 // NOTE (#880 revised body): pending-cloud-convergence state deliberately
@@ -158,12 +159,11 @@ export function useWorkoutNotes() {
     return note;
   }, []);
 
+  // #1172: the patch is merged under the notebook lock at write time, so a
+  // concurrent compare-and-set is never overwritten by an earlier read.
   const update = useCallback(async (id, patch) => {
-    const list = await readVia('loadWorkoutNotes', Storage.loadWorkoutNotes);
-    const note = list.find(n => n.id === id);
-    if (!note) return false;
-    const updated = { ...note, ...patch, updated_at: new Date().toISOString() };
-    await writeVia('saveWorkoutNoteItem', Storage.saveWorkoutNoteItem, updated);
+    const updated = await writeVia('updateWorkoutNoteItem', updateWorkoutNoteItem, id, patch);
+    if (!updated) return false;
     notifyWorkoutNotes();
     return updated;
   }, []);
@@ -186,4 +186,13 @@ export function useWorkoutNotes() {
   }, []);
 
   return { notes, currentId, currentNote, deloadNotes, loading, error, add, update, remove, selectCurrent, refresh, reload };
+}
+
+// #1172: batch compare-and-set for a normalization import. Storage checks the
+// authority and writes every target under one notebook lock (cloud mode also
+// enqueues); see applyWorkoutNoteTextBatchIfUnchanged for the result shape.
+export async function applyWorkoutNoteTextBatch(request) {
+  const result = await writeVia('applyWorkoutNoteTextBatchIfUnchanged', applyWorkoutNoteTextBatchIfUnchanged, request);
+  if (result?.saved?.length || result?.failed?.some(row => row.landed)) notifyWorkoutNotes();
+  return result;
 }
