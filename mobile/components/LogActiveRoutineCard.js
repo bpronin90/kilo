@@ -112,6 +112,10 @@ export function LogActiveRoutineCard({
   // any item is chosen, and on header collapse (the menu has nothing to
   // attach to once the body it lives in is hidden).
   const [menuOpen, setMenuOpen] = useState(false);
+  // #1182: measured heights so the body reserves exactly the open menu's room
+  // (strip wrap and font scaling change both) and the card clip can't cut it.
+  const [stripH, setStripH] = useState(44);
+  const [menuH, setMenuH] = useState(176);
   // A single result line for the most recent explicit Apply attempt. Only an
   // `applied: true` result is allowed to read as success; every no-op, failure,
   // or thrown error explains that nothing was added. Every press reaches the
@@ -224,14 +228,14 @@ export function LogActiveRoutineCard({
 
         <Pressable
           onPress={handleNoteBodyPress}
-          style={[styles.currentNoteContent, menuOpen ? styles.currentNoteContentMenuOpen : null, isCollapsed ? { display: 'none' } : null]}
+          style={[styles.currentNoteContent, menuOpen ? { minHeight: 15 + stripH + menuH } : null, isCollapsed ? { display: 'none' } : null]}
         >
           {/* The card's one action strip. `Double-tap to edit` used to live on
               the left of this row; the explicit `Edit` control supersedes it as
               the advertised path. handleNoteBodyPress stays wired on the body
               above, so the double-tap gesture still works for users who know
               it — it is simply no longer the only way in. */}
-          <View style={styles.actionStrip}>
+          <View style={styles.actionStrip} onLayout={e => setStripH(e.nativeEvent.layout.height)}>
             <View style={styles.actionStripPrimary}>
               {hasABWeeks && (
                 <Pressable
@@ -264,6 +268,7 @@ export function LogActiveRoutineCard({
             {menuOpen && (
               <View
                 style={styles.actionMenu}
+                onLayout={e => setMenuH(e.nativeEvent.layout.height)}
                 accessibilityRole="menu"
                 testID="log-current-routine-menu"
               >
@@ -504,10 +509,6 @@ const createStyles = (kua, colors) => StyleSheet.create({
     fontSize: 12,
     fontWeight: kua ? '500' : '700',
     color: kua ? kua.primaryOnContainer : colors.chipAccentText,
-  },
-  // #1182: room for the open menu (10 + 44 + 4 + 4x44) so overflow can't clip it.
-  currentNoteContentMenuOpen: {
-    minHeight: 240,
   },
   currentNoteContent: {
     paddingHorizontal: 24,
