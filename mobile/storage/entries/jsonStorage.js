@@ -33,8 +33,10 @@ export function localDateToday() {
 // write silently overwrite salvageable data as though it were empty (#607). A
 // raw storage read failure is likewise propagated rather than swallowed, so the
 // same fail-closed guarantee holds when the backing store is unavailable.
-export async function readList(key) {
-  const raw = await AsyncStorage.getItem(key);
+// `store` (#1186) lets device-key recovery read and write a private overlay;
+// every ordinary caller omits it and uses the shared device store.
+export async function readList(key, store = AsyncStorage) {
+  const raw = await store.getItem(key);
   if (raw == null) return [];
   let parsed;
   try {
@@ -48,6 +50,6 @@ export async function readList(key) {
   return parsed;
 }
 
-export async function writeList(key, list) {
-  await AsyncStorage.setItem(key, JSON.stringify(list));
+export async function writeList(key, list, store = AsyncStorage) {
+  await store.setItem(key, JSON.stringify(list));
 }

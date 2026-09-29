@@ -130,8 +130,7 @@ export function createDeviceStorage({
     }
     return writeTail;
   }
-  // Non-null only while an explicit recovery populates its restored dataset.
-  let overlay = null;
+  let recovering = false;
   // Reads admitted after the current `writeTail` and not yet finished. A write
   // waits for these before it runs; see withReadLock/withWriteLock below.
   let activeReads = new Set();
@@ -387,11 +386,9 @@ export function createDeviceStorage({
 
   const storage = {
     getItem(key) {
-      if (overlay) return overlay.getItem(key);
       return coalescedRead(key);
     },
     setItem(key, value) {
-      if (overlay) return overlay.setItem(key, value);
       invalidatePendingRead(key);
       return withMutationLock(async () => {
         const next = encryptValues ? await encrypt(key, value) : String(value);
@@ -399,19 +396,16 @@ export function createDeviceStorage({
       });
     },
     removeItem(key) {
-      if (overlay) return overlay.removeItem(key);
       invalidatePendingRead(key);
       return withMutationLock(() => backingStore.removeItem(key));
     },
     getAllKeys() {
-      if (overlay) return overlay.getAllKeys();
       // Deliberately still exclusive rather than a concurrent reader. It is the
       // input to the wipe/ownership scans, never to Home's launch path, so
       // nothing is gained by relaxing it and the stronger barrier is free.
       return withWriteLock(() => backingStore.getAllKeys());
     },
     multiSet(pairs) {
-      if (overlay) return overlay.multiSet(pairs);
       for (const [key] of pairs) invalidatePendingRead(key);
       return withMutationLock(async () => {
         const encoded = [];
@@ -423,7 +417,6 @@ export function createDeviceStorage({
       });
     },
     multiRemove(keys) {
-      if (overlay) return overlay.multiRemove(keys);
       for (const key of keys) invalidatePendingRead(key);
       // Removing encrypted blobs does not require the encryption key.
       return withMutationLock(() => backingStore.multiRemove(keys));
@@ -438,7 +431,6 @@ export function createDeviceStorage({
     // mutation lock also discards the rewrite when a wipe advances the data
     // generation first, exactly like setItem.
     updateItem(key, transform) {
-      if (overlay) return overlay.updateItem(key, transform);
       invalidatePendingRead(key);
       return withMutationLock(async () => {
         const current = await getItemUnlocked(key);
@@ -451,27 +443,29 @@ export function createDeviceStorage({
     },
     isKeyUnavailable() { return deviceKeyUnavailable; },
     // Explicit, validated recovery from a lost key (#1186); unreachable from
-    // ordinary reads/writes or startup. `populate` writes into a reset-device
-    // overlay; only a resolved, non-`{ ok: false }` result is staged under a
-    // fresh key, verified, and committed over the orphans (deviceKeyRecovery.js).
+    // ordinary reads/writes or startup. `populate(store)` writes into a PRIVATE
+    // reset-device overlay while this shared store stays latched for everyone
+    // else; only a resolved, non-`{ ok: false }` result is staged under a fresh
+    // key, verified, and committed over the orphans (deviceKeyRecovery.js).
     async recoverDeviceData(populate) {
       if (!encryptValues || !deviceKeyUnavailable) {
         throw new Error('Device-key recovery is only available while the device key is unavailable.');
       }
-      if (overlay) throw new Error('Device-key recovery is already in progress.');
+      if (recovering) throw new Error('Device-key recovery is already in progress.');
       requireNativePrimitives();
-      const scratch = createRecoveryOverlay([['kilo_local_data_owner', 'unclaimed']]);
-      invalidateAllPendingReads();
-      await withWriteLock(() => { overlay = scratch; });
-      let result;
-      try { result = await populate(); } finally { overlay = null; invalidateAllPendingReads(); }
-      if (result?.ok === false) return result;
-      await withWriteLock(async () => {
-        // Writes queued against the orphaned state are stale once it is replaced.
-        dataGeneration += 1;
-        try { await journal.commit([...scratch.values]); setKeyLatch(false); } finally { keyPromise = null; validation = null; }
-      });
-      return result;
+      recovering = true;
+      try {
+        const scratch = createRecoveryOverlay([['kilo_local_data_owner', 'unclaimed']]);
+        const result = await populate(scratch);
+        if (result?.ok === false) return result;
+        invalidateAllPendingReads();
+        await withWriteLock(async () => {
+          // Writes queued against the orphaned state are stale once it is replaced.
+          dataGeneration += 1;
+          try { await journal.commit([...scratch.values]); setKeyLatch(false); } finally { keyPromise = null; validation = null; }
+        });
+        return result;
+      } finally { recovering = false; }
     },
     // Mounted screens learn about a later latch (e.g. a write that retried key
     // validation after a transient probe failure) without remounting.

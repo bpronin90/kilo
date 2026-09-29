@@ -271,8 +271,8 @@ export const IMPORT_MODES = Object.freeze({ LOCAL: 'local', CLOUD: 'cloud' });
 // records on import would be its own data bug.
 //
 // O(prior + imported) via a single keyed index; no nested scan.
-async function replaceCollectionForCloud({ table, readRaw, writeRaw, imported, clientId }) {
-  const prior = (await readRaw()) || [];
+async function replaceCollectionForCloud({ table, readRaw, writeRaw, imported, clientId, store }) {
+  const prior = (await readRaw(store)) || [];
   const priorById = new Map();
   for (const rec of prior) {
     if (rec && rec.id != null) priorById.set(rec.id, rec);
@@ -330,10 +330,10 @@ async function replaceCollectionForCloud({ table, readRaw, writeRaw, imported, c
     dirty.push(tombstone);
   }
 
-  await writeRaw(nextList);
+  await writeRaw(nextList, store);
   for (const record of dirty) {
     // eslint-disable-next-line no-await-in-loop
-    await enqueueDirty(table, record);
+    await enqueueDirty(table, record, store);
   }
   return dirty.length;
 }
@@ -346,7 +346,7 @@ async function replaceCollectionForCloud({ table, readRaw, writeRaw, imported, c
 // dropped all of it on the floor, so a reinstall lost them permanently.
 //
 // Fields are restored explicitly, never by wildcard copy (#471/#475).
-async function restoreCloudBlock(cloud) {
+async function restoreCloudBlock(cloud, store) {
   if (cloud.user_profile != null) {
     // Build the row explicitly rather than forwarding the imported object.
     // saveUserProfile spreads what it is given, so passing the payload through
@@ -358,7 +358,7 @@ async function restoreCloudBlock(cloud) {
     for (const key of PROFILE_ALLOWLIST) {
       if (p[key] != null) profile[key] = p[key];
     }
-    if (Object.keys(profile).length > 0) await saveUserProfile(profile);
+    if (Object.keys(profile).length > 0) await saveUserProfile(profile, store);
   }
 
   // #893: flags and records are restored as ONE authoritative pair.
@@ -379,45 +379,47 @@ async function restoreCloudBlock(cloud) {
     for (const [lift, value] of Object.entries(cloud.tracked_lifts)) {
       if (typeof value === 'boolean') tracked[lift] = value;
     }
-    await saveTrackedLifts(tracked);
+    await saveTrackedLifts(tracked, store);
     await saveTrackedLiftActivations(
       pruneTrackedLiftActivations(
         tracked,
         normalizeTrackedLiftActivations(cloud.tracked_lift_activations ?? {}),
       ),
+      store,
     );
   } else if (cloud.tracked_lift_activations != null) {
     // Records without flags: nothing authoritative to pair them to, so they are
     // pruned against whatever this device already has.
     await saveTrackedLiftActivations(
       pruneTrackedLiftActivations(
-        await loadTrackedLifts(),
+        await loadTrackedLifts(store),
         normalizeTrackedLiftActivations(cloud.tracked_lift_activations),
       ),
+      store,
     );
   }
 
   if (cloud.ui_state != null && typeof cloud.ui_state.log_current_collapsed === 'boolean') {
-    await saveWorkoutCollapsed(cloud.ui_state.log_current_collapsed);
+    await saveWorkoutCollapsed(cloud.ui_state.log_current_collapsed, store);
   }
 
   const toggles = cloud.feature_toggles;
   if (toggles != null) {
     if (typeof toggles.weight_date_edit_enabled === 'boolean')
-      await saveWeightDateEditEnabled(toggles.weight_date_edit_enabled);
+      await saveWeightDateEditEnabled(toggles.weight_date_edit_enabled, store);
     if (typeof toggles.deload_date_edit_enabled === 'boolean')
-      await saveDeloadDateEditEnabled(toggles.deload_date_edit_enabled);
+      await saveDeloadDateEditEnabled(toggles.deload_date_edit_enabled, store);
     if (typeof toggles.fatigue_tracking_enabled === 'boolean')
-      await saveFatigueTrackingEnabled(toggles.fatigue_tracking_enabled);
+      await saveFatigueTrackingEnabled(toggles.fatigue_tracking_enabled, store);
     if (typeof toggles.deload_mode_enabled === 'boolean')
-      await saveDeloadModeEnabled(toggles.deload_mode_enabled);
+      await saveDeloadModeEnabled(toggles.deload_mode_enabled, store);
   }
 
   if (cloud.current_deload_note != null && typeof cloud.current_deload_note.raw_text === 'string') {
     // #989: carry the frozen generation-time working_context through the restore
     // so a lossless export/import keeps it; an older backup without the field
     // passes undefined, which saveDeloadNote treats as "leave as-is".
-    await saveDeloadNote(cloud.current_deload_note.raw_text, cloud.current_deload_note.working_context);
+    await saveDeloadNote(cloud.current_deload_note.raw_text, cloud.current_deload_note.working_context, store);
   }
 }
 
@@ -451,19 +453,21 @@ async function restoreCloudBlock(cloud) {
 // membership exactly where it is.
 //
 // #1186: with the device key lost, a validated replace is the recovery path. It
-// runs against a reset-device overlay and replaces the orphaned data only once
-// the restored copy is staged and verified under a fresh key; no reset first.
+// writes into a PRIVATE reset-device overlay (the `store` threaded below; the
+// shared store stays latched for every other caller) and replaces the orphaned
+// data only once the restored copy is staged and verified under a fresh key.
 export async function importBackup(payload, strategy = 'replace', { mode = IMPORT_MODES.LOCAL } = {}) {
   const check = validateBackup(payload);
   if (!check.ok) return check;
   if (AsyncStorage.isKeyUnavailable?.()) {
     if (strategy !== 'replace') return { ok: false, error: 'Only a full backup restore can recover this device.' };
-    return AsyncStorage.recoverDeviceData(() => restoreValidatedBackup(payload, strategy, mode));
+    return AsyncStorage.recoverDeviceData((store) => restoreValidatedBackup(payload, strategy, mode, store));
   }
   return restoreValidatedBackup(payload, strategy, mode);
 }
 
-async function restoreValidatedBackup(payload, strategy, mode) {
+async function restoreValidatedBackup(payload, strategy, mode, store) {
+  const target = store || AsyncStorage;
   const cloudMode = mode === IMPORT_MODES.CLOUD;
   const resolvedMode = cloudMode ? IMPORT_MODES.CLOUD : IMPORT_MODES.LOCAL;
   let queued = 0;
@@ -476,13 +480,14 @@ async function restoreValidatedBackup(payload, strategy, mode) {
     const hasRecovery = RECOVERY_VERSIONS.has(payload.version) && 'recovery_blocks' in payload;
 
     if (cloudMode) {
-      const clientId = await getClientId();
+      const clientId = await getClientId(store);
       queued += await replaceCollectionForCloud({
         table: SYNC_TABLES.WEIGHT_ENTRIES,
         readRaw: loadWeightEntriesRaw,
         writeRaw: replaceWeightEntriesRaw,
         imported: payload.weight_entries,
         clientId,
+        store,
       });
       // v1 predates the notebook model, so it says nothing about workout notes.
       // Silence is not an instruction to delete them.
@@ -494,6 +499,7 @@ async function restoreValidatedBackup(payload, strategy, mode) {
           writeRaw: replaceWorkoutNotesRaw,
           imported: payload.workout_notes,
           clientId,
+          store,
         }));
       }
       // Blocks BEFORE memberships, always. kilo.recovery_block_weeks carries a
@@ -510,6 +516,7 @@ async function restoreValidatedBackup(payload, strategy, mode) {
           writeRaw: replaceRecoveryBlocksRaw,
           imported: payload.recovery_blocks.map((b) => normalizeImportedRecoveryBlock(projectFields(b, RECOVERY_BLOCK_FIELDS))),
           clientId,
+          store,
         });
       }
       if (hasRecovery) {
@@ -519,6 +526,7 @@ async function restoreValidatedBackup(payload, strategy, mode) {
           writeRaw: replaceRecoveryBlockWeeksRaw,
           imported: payload.recovery_block_weeks.map((w) => projectFields(w, RECOVERY_WEEK_FIELDS)),
           clientId,
+          store,
         });
       }
     } else {
@@ -530,44 +538,46 @@ async function restoreValidatedBackup(payload, strategy, mode) {
         pairs.push([WORKOUT_NOTES_KEY, JSON.stringify(stripDerivedSectionsFromList(payload.workout_notes))]);
       }
       // #1172: a notebook replacement is serialized with every note writer.
-      await (isNotebookVersion ? withWorkoutNotebookLock(() => AsyncStorage.multiSet(pairs)) : AsyncStorage.multiSet(pairs));
+      await (isNotebookVersion ? withWorkoutNotebookLock(() => target.multiSet(pairs)) : target.multiSet(pairs));
       // Same dependency order on the local side, for the same reason a reader
       // would hit: a membership is only interpretable once its block exists.
       if (hasRecovery) {
         await replaceRecoveryBlocksRaw(
           payload.recovery_blocks.map((b) => normalizeImportedRecoveryBlock(projectFields(b, RECOVERY_BLOCK_FIELDS))),
+          store,
         );
       }
       if (hasRecovery) {
         await replaceRecoveryBlockWeeksRaw(
           payload.recovery_block_weeks.map((w) => projectFields(w, RECOVERY_WEEK_FIELDS)),
+          store,
         );
       }
     }
 
     if (isNotebookVersion) {
       if (payload.current_workout_id != null) {
-        await AsyncStorage.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(payload.current_workout_id));
+        await target.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(payload.current_workout_id));
       } else {
-        await AsyncStorage.removeItem(CURRENT_WORKOUT_ID_KEY);
+        await target.removeItem(CURRENT_WORKOUT_ID_KEY);
       }
       if ('weight_goal' in payload) {
         if (payload.weight_goal != null) {
-          await AsyncStorage.setItem(WEIGHT_GOAL_KEY, JSON.stringify(payload.weight_goal));
+          await target.setItem(WEIGHT_GOAL_KEY, JSON.stringify(payload.weight_goal));
         } else {
-          await AsyncStorage.removeItem(WEIGHT_GOAL_KEY);
+          await target.removeItem(WEIGHT_GOAL_KEY);
         }
       }
       if ('fatigue_multiplier' in payload && payload.fatigue_multiplier != null) {
-        await saveFatigueMultiplier(payload.fatigue_multiplier);
+        await saveFatigueMultiplier(payload.fatigue_multiplier, store);
       }
       if (DELOAD_HISTORY_VERSIONS.has(payload.version) && 'deload_history' in payload) {
-        await writeList(WORKOUT_DELOAD_HISTORY_KEY, payload.deload_history);
+        await writeList(WORKOUT_DELOAD_HISTORY_KEY, payload.deload_history, store);
       }
     }
 
     if ('cloud' in payload && payload.cloud != null) {
-      await restoreCloudBlock(payload.cloud);
+      await restoreCloudBlock(payload.cloud, store);
     }
   }
 

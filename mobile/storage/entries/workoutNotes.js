@@ -86,12 +86,12 @@ export async function clearWorkoutNote() {
 // derivedCache.js). Stripping on read keeps a notebook that was written by an
 // older build lean in memory until the one-time purge below rewrites it; both
 // helpers return the list by identity when there is nothing to strip.
-async function readNotebook() {
-  return stripDerivedSectionsFromList(await readList(WORKOUT_NOTES_KEY));
+async function readNotebook(store) {
+  return stripDerivedSectionsFromList(await readList(WORKOUT_NOTES_KEY, store));
 }
 
-async function writeNotebook(list) {
-  await writeList(WORKOUT_NOTES_KEY, stripDerivedSectionsFromList(list));
+async function writeNotebook(list, store) {
+  await writeList(WORKOUT_NOTES_KEY, stripDerivedSectionsFromList(list), store);
 }
 
 export async function loadWorkoutNotes() {
@@ -106,12 +106,12 @@ export async function loadWorkoutNotes() {
 // unfiltered backing notebook list (including delete tombstones and sync
 // metadata) so the sync loop can merge, push, and advance cursors over the full
 // record set. Local mode never uses these.
-export async function loadWorkoutNotesRaw() {
-  return readNotebook();
+export async function loadWorkoutNotesRaw(store) {
+  return readNotebook(store);
 }
 
-export async function replaceWorkoutNotesRaw(list) {
-  await writeNotebook(Array.isArray(list) ? list : []);
+export async function replaceWorkoutNotesRaw(list, store) {
+  await writeNotebook(Array.isArray(list) ? list : [], store);
 }
 
 // #1172: `loadWorkoutNotesRaw` / `replaceWorkoutNotesRaw` are the UNLOCKED

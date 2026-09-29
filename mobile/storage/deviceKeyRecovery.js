@@ -13,7 +13,8 @@
 //   journal = committed   -> the stage was fully verified. Next launch rolls
 //                            FORWARD from the stage (idempotent), because the key
 //                            slot or the live keys may already be half-replaced.
-//   journal removed       -> commit done; any leftover stage is discarded.
+//   journal = 'cleanup'   -> commit done and verified; the leftover stage and
+//                            recovery key are discarded, journal removed last.
 //
 // Staged values and the journal live outside the `kilo_` namespace on purpose:
 // the key probe, wipe, and plaintext migration only ever scan `kilo_*`, so a stage
@@ -26,6 +27,7 @@ export const RECOVERY_JOURNAL_KEY = 'kilorecovery.journal';
 export const RECOVERY_STAGE_PREFIX = 'kilorecovery.stage:';
 const STAGING = 'staging';
 const COMMITTED = 'committed';
+const CLEANUP = 'cleanup';
 const KEY_BYTES = 32;
 const NONCE_BYTES = 12;
 
@@ -135,8 +137,12 @@ export function createRecoveryJournal({ backingStore, secureStore, crypto, keyOp
         throw new Error('Recovered device data failed verification.');
       }
     }
-    await backingStore.removeItem(RECOVERY_JOURNAL_KEY);
-    await discardStage();
+    // Downgrade, never remove, the journal: the commit is done, but the stage
+    // must stay tracked until discardStage() removes the journal last, so an
+    // interrupted cleanup is retried on the next launch rather than leaving a
+    // copy of the data behind that no reset would ever reach.
+    await backingStore.setItem(RECOVERY_JOURNAL_KEY, CLEANUP);
+    await discardStage().catch(() => {});
   }
 
   // Launch-time reconciliation. Never mints a key: it either finishes a commit
@@ -149,7 +155,7 @@ export function createRecoveryJournal({ backingStore, secureStore, crypto, keyOp
       await rollForward(journal);
       return { state: 'committed' };
     }
-    // 'staging', or a journal torn mid-write: never committed, so never trusted.
+    // 'staging', 'cleanup', or a journal torn mid-write: never (re)committed.
     await discardStage();
     return { state: 'discarded' };
   }

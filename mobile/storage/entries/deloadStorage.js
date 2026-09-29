@@ -4,18 +4,19 @@ import { readList, writeList } from './jsonStorage';
 
 // ── deload note (independent of routine note) ─────────────────────────────────
 
-export async function loadDeloadNote() {
+// `store`: the device-key recovery overlay (#1186); ordinary callers omit it.
+export async function loadDeloadNote(store = AsyncStorage) {
   try {
-    const raw = await AsyncStorage.getItem(WORKOUT_DELOAD_NOTE_KEY);
+    const raw = await store.getItem(WORKOUT_DELOAD_NOTE_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 }
 
-export async function saveDeloadNote(raw_text, working_context) {
+export async function saveDeloadNote(raw_text, working_context, store = AsyncStorage) {
   const now = new Date().toISOString();
-  const existing = await loadDeloadNote();
+  const existing = await loadDeloadNote(store);
   const note = {
     raw_text,
     saved_at: existing ? existing.saved_at : now,
@@ -29,7 +30,7 @@ export async function saveDeloadNote(raw_text, working_context) {
         ? working_context
         : (existing?.working_context ?? null),
   };
-  await AsyncStorage.setItem(WORKOUT_DELOAD_NOTE_KEY, JSON.stringify(note));
+  await store.setItem(WORKOUT_DELOAD_NOTE_KEY, JSON.stringify(note));
   return note;
 }
 

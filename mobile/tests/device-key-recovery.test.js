@@ -62,8 +62,9 @@ async function orphanedDevice({ stale = false } = {}) {
   return { backingStore, primitives, storage, orphans: new Map(backingStore.values) };
 }
 
-const restored = async (storage) => {
-  await storage.setItem('kilo_weight_entries', '[{"id":"restored"}]');
+// Recovery hands populate a PRIVATE overlay store; the shared store stays latched.
+const restored = async (store) => {
+  await store.setItem('kilo_weight_entries', '[{"id":"restored"}]');
   return { ok: true };
 };
 
@@ -81,7 +82,7 @@ describe.each([['missing', false], ['stale', true]])('recovery from a %s device 
     const keyBefore = primitives.secureValues.get(DEVICE_DATA_KEY_NAME);
     const wipe = jest.spyOn(storage, 'wipeKiloData');
 
-    await expect(storage.recoverDeviceData(() => restored(storage))).resolves.toEqual({ ok: true });
+    await expect(storage.recoverDeviceData(restored)).resolves.toEqual({ ok: true });
 
     expect(wipe).not.toHaveBeenCalled();
     const freshKey = primitives.secureValues.get(DEVICE_DATA_KEY_NAME);
@@ -137,13 +138,32 @@ describe('recovery refuses and preserves orphaned data', () => {
 
   test('restore writes never reach the device before the commit', async () => {
     const { backingStore, primitives, storage, orphans } = await orphanedDevice();
-    await expect(storage.recoverDeviceData(async () => {
-      await storage.setItem('kilo_weight_entries', '[{"id":"half"}]');
-      expect(await storage.getItem('kilo_workout_notes')).toBeNull();
+    await expect(storage.recoverDeviceData(async (store) => {
+      await store.setItem('kilo_weight_entries', '[{"id":"half"}]');
+      expect(await store.getItem('kilo_workout_notes')).toBeNull();
       expectOrphansUntouched(backingStore, orphans, primitives, undefined);
       throw new Error('interrupted');
     })).rejects.toThrow('interrupted');
     expectOrphansUntouched(backingStore, orphans, primitives, undefined);
+  });
+
+  test('unrelated traffic during recovery stays latched and is never committed', async () => {
+    const { storage } = await orphanedDevice();
+    let unrelated;
+    await storage.recoverDeviceData(async (store) => {
+      unrelated = await Promise.allSettled([
+        storage.getItem('kilo_workout_notes'),
+        storage.setItem('kilo_weight_goal', '{"target_weight":1}'),
+        storage.updateItem('kilo_workout_note_drafts', () => '{"stale":true}'),
+      ]);
+      await store.setItem('kilo_weight_entries', '[{"id":"restored"}]');
+      return { ok: true };
+    });
+    expect(unrelated.map((outcome) => outcome.status)).toEqual(['rejected', 'rejected', 'rejected']);
+    expect(await storage.getItem('kilo_weight_goal')).toBeNull();
+    expect(await storage.getItem('kilo_workout_note_drafts')).toBeNull();
+    expect(await storage.getItem('kilo_workout_notes')).toBeNull();
+    expect(await storage.getItem('kilo_weight_entries')).toBe('[{"id":"restored"}]');
   });
 
   test('a stage write failure discards the stage and leaves the orphans', async () => {
@@ -152,7 +172,7 @@ describe('recovery refuses and preserves orphaned data', () => {
       backingStore.values.set(key, value);
       throw new Error('disk full');
     });
-    await expect(storage.recoverDeviceData(() => restored(storage))).rejects.toThrow('disk full');
+    await expect(storage.recoverDeviceData(restored)).rejects.toThrow('disk full');
     expectOrphansUntouched(backingStore, orphans, primitives, undefined);
     expect(storage.isKeyUnavailable()).toBe(true);
   });
@@ -162,7 +182,7 @@ describe('recovery refuses and preserves orphaned data', () => {
     backingStore.multiSet.mockImplementationOnce(async (pairs) => {
       pairs.forEach(([key, value]) => backingStore.values.set(key, `${value.slice(0, -2)}00`));
     });
-    await expect(storage.recoverDeviceData(() => restored(storage))).rejects.toThrow();
+    await expect(storage.recoverDeviceData(restored)).rejects.toThrow();
     expectOrphansUntouched(backingStore, orphans, primitives, undefined);
   });
 });
@@ -217,9 +237,9 @@ describe('interrupted recovery on the next launch', () => {
       }
       return real(arg);
     });
-    await expect(storage.recoverDeviceData(async () => {
-      await storage.setItem('kilo_weight_entries', '[{"id":"restored"}]');
-      await storage.setItem('kilo_workout_notes', '[{"id":"restored-note"}]');
+    await expect(storage.recoverDeviceData(async (store) => {
+      await store.setItem('kilo_weight_entries', '[{"id":"restored"}]');
+      await store.setItem('kilo_workout_notes', '[{"id":"restored-note"}]');
       return { ok: true };
     })).rejects.toThrow('app killed');
     backingStore[failing].mockImplementation(real);
@@ -234,7 +254,7 @@ describe('interrupted recovery on the next launch', () => {
 
   test('a completed commit whose cleanup was interrupted only discards leftovers', async () => {
     const { backingStore, primitives, storage } = await orphanedDevice();
-    await storage.recoverDeviceData(() => restored(storage));
+    await storage.recoverDeviceData(restored);
     backingStore.values.set(`${RECOVERY_STAGE_PREFIX}kilo_weight_entries`, 'leftover');
     backingStore.values.set(RECOVERY_JOURNAL_KEY, 'staging');
     const key = primitives.secureValues.get(DEVICE_DATA_KEY_NAME);
@@ -242,6 +262,24 @@ describe('interrupted recovery on the next launch', () => {
     expect(await relaunched.getItem('kilo_weight_entries')).toBe('[{"id":"restored"}]');
     expect(primitives.secureValues.get(DEVICE_DATA_KEY_NAME)).toBe(key);
     expect(backingStore.values.has(`${RECOVERY_STAGE_PREFIX}kilo_weight_entries`)).toBe(false);
+  });
+
+  test('an interrupted stage cleanup after a verified commit is retried on the next launch', async () => {
+    const { backingStore, primitives, storage } = await orphanedDevice();
+    const real = primitives.secureStore.deleteItemAsync.getMockImplementation();
+    primitives.secureStore.deleteItemAsync.mockImplementationOnce(async () => { throw new Error('app killed'); });
+    // The commit itself succeeded; only the cleanup is deferred.
+    await expect(storage.recoverDeviceData(restored)).resolves.toEqual({ ok: true });
+    expect(storage.isKeyUnavailable()).toBe(false);
+    primitives.secureStore.deleteItemAsync.mockImplementation(real);
+    expect(backingStore.values.get(RECOVERY_JOURNAL_KEY)).toBe('cleanup');
+    const key = primitives.secureValues.get(DEVICE_DATA_KEY_NAME);
+
+    const relaunched = open(backingStore, primitives);
+    expect(await relaunched.getItem('kilo_weight_entries')).toBe('[{"id":"restored"}]');
+    expect(primitives.secureValues.get(DEVICE_DATA_KEY_NAME)).toBe(key);
+    expect(primitives.secureValues.has(RECOVERY_KEY_NAME)).toBe(false);
+    expect([...backingStore.values.keys()].some((name) => name.startsWith('kilorecovery'))).toBe(false);
   });
 
   test('launch reconciliation never mints a key', async () => {
