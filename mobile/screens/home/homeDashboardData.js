@@ -126,10 +126,11 @@ export function useHomeRecoverySummary(notes) {
     const comparisonWeeks = comparison.weeks || [];
     const current = comparisonWeeks.length > 0 ? comparisonWeeks[comparisonWeeks.length - 1] : null;
     // The Big 3 are the BASELINE routine's 1K picks — the block may have been
-    // started from a routine other than the current one, and its roster is
-    // that routine's exercises.
+    // started from a routine other than the current one. If that routine is
+    // gone, its picks are unknown: no lift is promoted (defaults could name
+    // the wrong ones) and every exercise folds into the count line.
     const baselineNote = (notes || []).find(n => n && n.id === activeBlock.baseline_note_id);
-    const selections = { ...DEFAULT_1K_EXERCISES, ...(baselineNote?.one_k_exercises || {}) };
+    const selections = baselineNote ? { ...DEFAULT_1K_EXERCISES, ...(baselineNote.one_k_exercises || {}) } : null;
 
     return {
       ...base,

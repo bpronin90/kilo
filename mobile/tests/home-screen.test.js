@@ -1885,7 +1885,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
 
   test('the Big 3 lead and every other exercise folds into one remaining line', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({
-      blocks: [block({ baseline: sixLiftBaseline, baseline_note_title: 'Routine B' })],
+      blocks: [block({ baseline: sixLiftBaseline, baseline_note_id: 'n6', baseline_note_title: 'Routine B' })],
       weeks: [week()],
     }));
     const component = await mount({
@@ -1904,6 +1904,19 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     ['back', 'below', 'At or above', 'Rebuilding', 'Early'].forEach(word => {
       expect(spoken(component).includes(word)).toBe(false);
     });
+  });
+
+  test('a missing baseline routine promotes no lift and counts every exercise instead', async () => {
+    // The block's baseline routine (n6) is gone, so its 1K picks are unknown.
+    // Defaults must not stand in for them.
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block({ baseline: sixLiftBaseline, baseline_note_id: 'n6' })],
+      weeks: [week()],
+    }));
+    const component = await mount({ notes: [NOTE, weekNote('nr1', SIX_LIFT_WEEK_TEXT)] });
+
+    expect(has(component, 'home-recovery-big3')).toBe(false);
+    expect(hasText(component, '6 exercises: 2 recovered · 2 in progress · 2 not started')).toBe(true);
   });
 
   test('the Big 3 follow the baseline routine\'s 1K picks, not the current routine\'s', async () => {
