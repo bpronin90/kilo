@@ -1,5 +1,173 @@
 # Changelog
 
+## 1.8.1 - 2026-09-29
+
+- Issue #1188: Clarified the lost-device-key recovery guidance to point to backup restore and, for account users, Sign Out & Wipe followed by Download My Account's Data.
+
+## 1.8.0 - 2026-09-29
+
+- Issue #1186: When Kilo can no longer unlock the encrypted data on this device, restoring a backup now recovers it directly: the backup is checked first, and the device data is replaced under a fresh key only after the restored copy is verified, with no reset beforehand.
+
+## 1.7.11 - 2026-09-29
+
+- Issue #1182: The current routine's three-dot Routine actions menu now opens as a compact menu anchored to its button instead of a full-width block inside the card.
+
+## 1.7.10 - 2026-09-29
+
+- Issue #1179: Saved exercise-name normalization prompts can now be resumed from Import Routine after leaving the prompt screen.
+
+## 1.7.9 - 2026-09-29
+
+- Issue #1177: Kilo no longer replaces a missing device encryption key while encrypted data exists on the device; Home now explains the situation without deleting anything.
+
+## 1.7.8 - 2026-09-29
+
+- Issue #1176: Fixed Android preview builds failing to load encrypted training data after R8 optimization was enabled; the notebook is preserved and readable again.
+
+## 1.7.7 - 2026-09-29
+
+- Issue #1173: Redesigned Settings → Appearance: the palette picker (Hard/Clay/Grass Court) is now labeled Theme with stacked, swatch-and-checkmark rows instead of a cramped wrapping pill row, and the Light/Dark/System control is now labeled Mode so the two settings no longer share the word "Theme".
+
+## 1.7.6 - 2026-09-29
+
+- Issue #1172: Normalize exercise names can now import the external LLM reply by paste or text file (web, Android, and iOS), preview every rename, and safely apply approved renames to the selected routines.
+
+## 1.7.5 - 2026-09-29
+
+- Issue #1171: The Home recovery card now leads with your Squat, Bench, and Deadlift, each showing how close it is to your pre-injury numbers, plus one line summarizing every other exercise.
+
+## 1.7.4 - 2026-09-29
+
+- Issue #1167: Enabled R8 optimization in generated production Android builds so new versions meet Google Play's February 2027 app-quality bar, while keeping existing minification and resource shrinking intact.
+
+## 1.7.3 - 2026-09-29
+
+- Issue #1164: Publish the Android Digital Asset Links file at kilo-app.pages.dev/.well-known/assetlinks.json so Android Restore Credentials can be used by the Kilo app.
+
+## 1.7.2 - 2026-09-29
+
+- Issue #1162: Android restore keys now stop working after a password change or reset, or a global sign-out, and enrolling one requires a sign-in within the last 10 minutes.
+
+## 1.7.1 - 2026-09-29
+
+- Issue #1159: Android users can now restore their Kilo account to a new device without re-entering their password, using Android Restore Credentials. The credential is enrolled automatically after sign-in and revoked on sign-out or account deletion.
+
+## 1.7.0 - 2026-09-29
+
+- Issue #1157: Add the server trust boundary for Android Restore Credentials: register a per-user restore key, verify one-time signed restore challenges, issue a session to the verified key owner, and revoke keys on sign-out and before account deletion, with audited security events and monitor thresholds.
+
+## 1.6.4 - 2026-09-29
+
+- Issue #1146: WeightGoalCard and analyticsRecoveryStyles now forward the KUA palette to the shared input-style factory, so input surfaces repaint on a fixed-mode court switch.
+
+## 1.6.3 - 2026-09-29
+
+- Issue #1143: Fixed Home wordmark and icons, Analytics fatigue and cross-day indicators, and Weight goal status treatments to resolve through the selected KUA court palette instead of the legacy Light/Dark colors.
+
+## 1.6.2 - 2026-09-29
+
+- Issue #1141: Extended the selected court theme to the nested account, More, Help, and data utility subviews that were still fixed to the legacy palette: the profile editor, About, Help, reminder controls, routine import/share, health-data consent, cloud-sync recovery, account deletion, legal links, set-new-password, and CAPTCHA error states now follow Hard/Clay/Grass and repaint on a court change. Hosted controls keep their own light/dark boundaries and the exported routine-share image keeps its fixed colors.
+
+## 1.6.1 - 2026-09-29
+
+- Issue #1140: Completed the court-identity (KUA) migration for the remaining Log, editor, workout, and utility surfaces: mounted Log screens, empty/loading/error states, routine management, the routine/deload editors, the recovery card and its week table, the syntax-help and plate-calculator modals, and workout read views now repaint when you switch court identity at a fixed light/dark mode instead of holding the previous theme.
+
+## 1.6.0 - 2026-09-29
+
+- Issue #1139: Wired the app shell and shared UI primitives to the selected court theme: the canvas, safe-area chrome, tab bar, web alerts, and the shared Card/Panel/Button/Chip/feedback/input surfaces now repaint to Hard/Clay/Grass instantly — including when the court changes while the light or dark mode is held constant — instead of staying on the old fixed chrome.
+
+## 1.5.12 - 2026-09-29
+
+- Issue #1138: Fixed a wrong-theme flash on cold start: a saved Clay/Grass theme or Light/Dark appearance now paints correctly on the first frame instead of briefly showing Hard Court or the system mode first.
+
+## 1.5.11 - 2026-09-29
+
+- Issue #1136: Added a Court theme picker to Settings → Appearance. Users can now select Hard Court, Clay Court, or Grass Court directly from Settings; the selection applies immediately and persists independently from the Light / Dark / System appearance choice. The development-only Dev Preview section has been removed.
+
+## 1.5.10 - 2026-09-29
+
+- Issue #1126: Kilo now rotates and resizes on Android tablets, foldables, landscape, and split-screen instead of being locked to portrait. Wide windows keep a centered, readable column, dialogs stay reachable in short landscape windows, and drafts, active workouts, and open screens survive rotation or resizing.
+
+## 1.5.9 - 2026-09-29
+
+- Issue #1125: Fixed Android top spacing to use window safe-area insets instead of the deprecated StatusBar.currentHeight, ensuring correct layout on Android 15/16 with gesture and three-button navigation.
+
+## 1.5.8 - 2026-09-29
+
+- Issue #1124: Enabled R8 code shrinking and resource shrinking for production Android App Bundles via expo-build-properties, so Google Play no longer reports near-zero DEX obfuscation.
+
+## 1.5.7 - 2026-09-29
+
+- Issue #1116: Migrated remaining Analytics tab components to KUA design tokens — recovery sub-components, line charts, weight trends, and overview panel now respond to all six court/mode palette combinations.
+
+## 1.5.6 - 2026-09-29
+
+- Issue #1115: Migrated Settings screen to KUA design tokens: background, surface-card row treatment, on-surface labels, on-surface-variant section headers and help text, and primary-driven segmented controls across all six theme/mode combinations.
+
+## 1.5.5 - 2026-09-29
+
+- Issue #1114: Applied the KUA design-system treatment to the Account screen (canvas, section headers, inputs, buttons, status text, and the Danger Zone container) across all six theme/mode combinations. Sign-in, sign-out, sign-up confirmation, password reset, CAPTCHA, OAuth, and session behavior are unchanged.
+
+## 1.5.4 - 2026-09-29
+
+- Issue #1113: Applied the KUA visual contract to the Weight screen: JetBrains Mono for numeric inputs and metric values, KUA surface/border/text tokens across entry, goal, history, and trend surfaces, all six theme/mode combinations.
+
+## 1.5.3 - 2026-09-29
+
+- Issue #1112: Migrated the Home surface to KUA visual tokens and restructured the hero so training leads: the week's classification pulse and daily-loop actions come first, with body weight demoted to a supporting metric grouped with its trend. The header now carries the week identity itself (no duplicate week label) and the classification info toggle moved out of its own row. Fixed a token-size regression where KUA font sizes were overwritten with `undefined` and fell back to the inherited size, so section headers, classification counts, goal values, and the 1K total now render at their intended scale. Also fixed the unit suffix that rendered "lb" in the metric mono face, moved linguistic labels to Space Grotesk, replaced the missing-glyph info toggle with an icon, enlarged the body weight trend line, and gave the untracked 1K total a clear empty state — across all six theme/mode combinations.
+
+## 1.5.2 - 2026-09-29
+
+- Issue #1111: Migrated the More menu to KUA: list-row cards, labels, secondary copy, and chevrons now use KUA surface and text tokens across all six theme/mode combinations.
+
+## 1.5.1 - 2026-09-29
+
+- Issue #1110: Applied the KUA visual treatment to the Data and Backup screen (canvas, section headers, cards, import input, status banners, and the destructive Danger Zone) across all six theme/mode combinations. Export/import, cloud sync, and device-wipe behavior are unchanged.
+
+## 1.5.0 - 2026-09-29
+
+- Issue #1109: Migrated the Log screen routine surface to the KUA design system: the segmented control (Recovery/Routine/Deload), primary routine card border, card header, routine title, status line, badges, action chips, and recovery entry rows now use KUA palette tokens across all six theme/mode combinations. Section headers (WorkoutSubheading), exercise names (WorkoutHeading/ExerciseBlock), and TRACK button states also apply KUA tokens when a palette is active.
+
+## 1.4.0 - 2026-09-29
+
+- Issue #1105: Added palette-theme selection (Hard Court / Clay Court / Grass Court) as a dimension independent from appearance mode. ThemeContext now exposes `themeSelection`, `setThemeSelection`, and `kuaPalette` for all six theme × mode combinations. A dev-only ThemePreviewControl in Settings lets the owner switch all six combinations without source edits or a rebuild.
+
+## 1.3.4 - 2026-09-29
+
+- Issue #1100: Migrated RestTimerBanner, PRMomentBanner, SessionCheckInModal, RecoveryBlockStartModal, RecoveryBlockWeekModal, RecoveryBlockEndModal, and RecoveryInclusionToggle to KUA semantic color tokens, typography, spacing, geometry, scrims, and reduced-motion behavior across all six theme/mode combinations.
+
+## 1.3.3 - 2026-09-29
+
+- Issue #1099: Added KUA icon foundation: the five tab-bar icons (Home, Log, Weight, Analytics, More) now display Material icon glyphs at 24dp using bundled @expo/vector-icons with semantic active/inactive colors.
+
+## 1.3.2 - 2026-09-29
+
+- Issue #1097: Bundled Space Grotesk and JetBrains Mono as offline-safe local font assets; registered KUA typography role tokens with exact specs from the foundation doc; wired font loading into the app shell with safe fallback on error.
+
+## 1.3.1 - 2026-09-29
+
+- Issue #1096: Added the KUA semantic token system — six complete palettes for Hard Court, Clay Court, and Grass Court in light and dark modes — as additive exports in mobile/theme/colors.js. Existing palettes and consumers are unchanged.
+
+## 1.3.0 - 2026-09-29
+
+- Issue #1095: Introduced the Kinetic Utilitarian Athletic three-theme design specification (Hard Court, Clay Court, Grass Court — light and dark each), replacing the retired Analog Iron direction. Rewrote the post-launch redesign roadmap around the new system.
+
+## 1.2.2 - 2026-09-29
+
+- Issue #1026: Redesigned the rest timer as one coherent control: the editor stopwatch now opens an anchored preset menu that layers above the editor without being clipped, and the running countdown and completion notice share a single compact pill that stays visible on every tab (tap it for Cancel, or Dismiss on completion). The bottom navigation no longer fades to near-transparent after a delay, scroll, or touch — it stays fully visible and opaque.
+
+## 1.2.1 - 2026-09-29
+
+- Issue #1025: Aligned the Analytics Overview card's rows so every row's value column ends at the same right edge, whether or not that row links to a section.
+
+## 1.2.0 - 2026-09-29
+
+- Issue #1024: Added local, copyable routine-planning and exercise-name prompt tools under More.
+
+## 1.1.0 - 2026-09-29
+
+- Issue #1019: Replaced the long-form App Guide with a compact Help screen: six expandable topic rows (Logging, Recovery & deloads, Progress & analytics, Weight, Backup/sync, Settings & privacy) that open one at a time inline, so answers are quick to find without scrolling through a manual.
+
 ## 1.0.0 - 2026-09-11
 
 - Issue #1042: Lowered the floating bottom navigation to sit closer to the safe-area edge with a deliberate small gap, so it no longer appears excessively high or overlaps screen content. This is the official Kilo 1.0.0 release.
