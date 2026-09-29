@@ -12,7 +12,7 @@
 // which sits on a `chipBackground` fill, takes `colors.chipAccentText`. The
 // card's 4px `accent` border and every other value here remain locked.
 //
-// #1021 owner-authorized exception, scoped to the action strip only: the
+// #1021 (menu now a compact in-flow row, #1194) owner-authorized exception, scoped to the action strip only: the
 // four individual action pills this card used to show inline (Edit, Share,
 // Copy, Share as Image) are consolidated into one 44dp three-dot menu
 // (`menuButton` / `actionMenu`), so the header's only ALWAYS-visible pill is
@@ -112,10 +112,6 @@ export function LogActiveRoutineCard({
   // any item is chosen, and on header collapse (the menu has nothing to
   // attach to once the body it lives in is hidden).
   const [menuOpen, setMenuOpen] = useState(false);
-  // #1182: measured heights so the body reserves exactly the open menu's room
-  // (strip wrap and font scaling change both) and the card clip can't cut it.
-  const [stripH, setStripH] = useState(44);
-  const [menuH, setMenuH] = useState(176);
   // A single result line for the most recent explicit Apply attempt. Only an
   // `applied: true` result is allowed to read as success; every no-op, failure,
   // or thrown error explains that nothing was added. Every press reaches the
@@ -228,14 +224,14 @@ export function LogActiveRoutineCard({
 
         <Pressable
           onPress={handleNoteBodyPress}
-          style={[styles.currentNoteContent, menuOpen ? { minHeight: 15 + stripH + menuH } : null, isCollapsed ? { display: 'none' } : null]}
+          style={[styles.currentNoteContent, isCollapsed ? { display: 'none' } : null]}
         >
           {/* The card's one action strip. `Double-tap to edit` used to live on
               the left of this row; the explicit `Edit` control supersedes it as
               the advertised path. handleNoteBodyPress stays wired on the body
               above, so the double-tap gesture still works for users who know
               it — it is simply no longer the only way in. */}
-          <View style={styles.actionStrip} onLayout={e => setStripH(e.nativeEvent.layout.height)}>
+          <View style={styles.actionStrip}>
             <View style={styles.actionStripPrimary}>
               {hasABWeeks && (
                 <Pressable
@@ -252,8 +248,8 @@ export function LogActiveRoutineCard({
                 </Pressable>
               )}
               {/* #1021: the one entry point for Edit, Copy, Share, and Share
-                  as Image; icon-only at the 44dp floor. #1182: the menu floats
-                  below the strip instead of sitting in the card flow. */}
+                  as Image; icon-only at the 44dp floor. #1194: opens a compact
+                  in-flow row under the strip, so nothing is reserved when closed. */}
               <Pressable
                 onPress={(e) => { e.stopPropagation(); setMenuOpen(o => !o); }}
                 style={styles.menuButton}
@@ -262,7 +258,7 @@ export function LogActiveRoutineCard({
                 accessibilityHint="Opens Edit, Copy, Share, and Share as Image"
                 accessibilityState={{ expanded: menuOpen }}
               >
-                <MaterialIcons name="more-vert" size={20} color={kua ? kua.onSurfaceVariant : colors.chipAccentText} accessible={false} />
+                <MaterialIcons name="more-horiz" size={20} color={kua ? kua.onSurfaceVariant : colors.chipAccentText} accessible={false} />
               </Pressable>
             </View>
             {/* One skip control, never two (#711). Previously both rendered and
@@ -303,8 +299,7 @@ export function LogActiveRoutineCard({
           </View>
           {menuOpen && (
             <View
-              style={[styles.actionMenu, { top: 14 + stripH }]}
-              onLayout={e => setMenuH(e.nativeEvent.layout.height)}
+              style={styles.actionMenu}
               accessibilityRole="menu"
               testID="log-current-routine-menu"
             >
@@ -545,32 +540,22 @@ const createStyles = (kua, colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // #1182: floats under the strip (top set inline) as a direct child of the
-  // body so its bounds contain it for native hit testing; zIndex keeps it above
-  // the routine text.
+  // #1194: compact in-flow row under the strip (wraps at large text). Nothing
+  // is reserved while closed and no absolute positioning is needed.
   actionMenu: {
-    position: 'absolute',
-    left: 24,
-    width: 172,
-    maxWidth: '100%',
-    zIndex: 10,
-    elevation: 6,
-    shadowColor: kua ? kua.onSurface : colors.text,
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
-    backgroundColor: kua ? kua.surfaceCard : colors.chipBackground,
-    overflow: 'hidden',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
   },
   actionMenuItem: {
     minHeight: 44,
     justifyContent: 'center',
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
+    backgroundColor: kua ? kua.surfaceCard : colors.chipBackground,
   },
   actionMenuItemText: {
     fontSize: 13,
