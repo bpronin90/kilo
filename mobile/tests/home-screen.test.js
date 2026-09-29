@@ -1424,6 +1424,9 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     title: 'Routine A',
     raw_text: 'Monday\n+Lifting\n-Bench\n135 5,5,5\n-Squat\n185 5,5,5',
     saved_at: '2026-06-01T12:00:00.000Z',
+    // #1171: Home's recovery rows follow the routine's 1K picks. Deadlift is
+    // picked but was never in this baseline, so it is never shown.
+    one_k_exercises: { bench: 'Bench', squat: 'Squat', deadlift: 'Deadlift' },
   };
   const baseline = captureRecoveryBaselineFromText(NOTE.raw_text);
 
@@ -1482,7 +1485,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
   };
 
   // Default notes give the default block()+week() a normal, partial-comparison
-  // rendering ("Week 1 — 1 of 2 baseline exercises met · 1 rebuilding"), so
+  // rendering ("Week 1. Squat 72% of baseline. Bench recovered."), so
   // tests about navigation/loading/stale/retry — not the copy itself — can
   // mount with no override and still get a real, non-empty summary.
   const props = (over = {}) => ({
@@ -1534,45 +1537,44 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     hooks._resetRecoveryAnalyticsFilterCache();
   });
 
-  // #1029: the met-count headline is gone. NOTE's baseline roster is only two
-  // exercises (Bench, Squat), so every fixture below trained fewer than four
-  // roster lifts — the sparse floor — and Home renders one plain sentence
-  // naming the trained lift(s), their #697 state word, and the roster
-  // denominator, rather than bucket bars. `deriveRecoveryWeekBands`'s own
-  // fixtures (tests/recovery-return-bands.test.js) cover the >=4-trained
-  // per-bucket-row path; the dedicated fixture below covers it on Home.
-  test('an active block names each trained lift, its state, and the roster denominator', async () => {
+  // #1171: Home leads with the user's Big 3 (their 1K picks), each against its
+  // own baseline, and folds every other roster exercise into one count line.
+  // NOTE's baseline is only Bench and Squat, so these fixtures have no
+  // remaining line; the six-exercise fixture further down covers it.
+  test('an active block shows each Big 3 lift against its own baseline', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     const component = await mount();
 
     expect(has(component, 'home-recovery-summary')).toBe(true);
     expect(hasText(component, 'Week 1')).toBe(true);
-    expect(has(component, 'home-recovery-sparse')).toBe(true);
-    expect(has(component, 'home-recovery-bands')).toBe(false);
+    expect(has(component, 'home-recovery-big3')).toBe(true);
+    expect(has(component, 'home-recovery-lift-squat')).toBe(true);
+    expect(has(component, 'home-recovery-lift-bench')).toBe(true);
+    // Picked as a 1K lift but never in this baseline: nothing true to show.
+    expect(has(component, 'home-recovery-lift-deadlift')).toBe(false);
+    expect(hasText(component, '72%')).toBe(true);
+    expect(hasText(component, 'Recovered')).toBe(true);
+    expect(has(component, 'home-recovery-remaining')).toBe(false);
     // Inclusion state is Analytics-owned content (#820): Home no longer states
     // it at all, in either direction.
     expect(hasText(component, 'Not counted in your normal analytics.')).toBe(false);
-    expect(spoken(component)).toBe(
-      'Week 1. Bench (at or above baseline), Squat (rebuilding) — 2 of 2 roster exercises trained.'
-    );
+    expect(spoken(component)).toBe('Week 1. Squat 72% of baseline. Bench recovered.');
   });
 
-  test('a fully recovered week names every lift as at or above baseline', async () => {
+  test('a fully recovered week marks every Big 3 lift recovered', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({
       blocks: [block({ include_in_normal_analytics: true })],
       weeks: [week()],
     }));
     const component = await mount({ notes: [NOTE, weekNote('nr1', FULL_TEXT)] });
 
-    expect(spoken(component)).toBe(
-      'Week 1. Bench (at or above baseline), Squat (at or above baseline) — 2 of 2 roster exercises trained.'
-    );
+    expect(spoken(component)).toBe('Week 1. Squat recovered. Bench recovered.');
     // Inclusion is never announced either way (#820: dropped from Home).
     expect(hasText(component, 'Counted in your normal analytics.')).toBe(false);
     expect(hasText(component, 'Not counted in your normal analytics.')).toBe(false);
   });
 
-  test('a lift that regresses after being met renders as rebuilding, not a new state', async () => {
+  test('a lift that regresses after being met shows its current distance, with no movement or band copy', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({
       blocks: [block()],
       weeks: [
@@ -1584,74 +1586,42 @@ describe('Home recovery summary (#757, #779, #782)', () => {
       notes: [NOTE, weekNote('nr1', FULL_TEXT), weekNote('nr2', PARTIAL_TEXT)],
     });
 
-    // The latest live week is what Home reports; #779 rules out a distinct
-    // "regressing" state, so a met lift that drops again is just rebuilding.
-    // Movement IS available here: two qualifying weeks, and the 2-exercise
-    // roster's whole matched population (2) meets the <3-roster exception.
-    expect(spoken(component)).toBe(
-      'Week 2. Bench (at or above baseline), Squat (rebuilding) — 2 of 2 roster exercises trained. '
-      + 'Since Week 1, on 2 lifts trained both weeks: 0 improved, 1 steady, 1 fell back.'
-    );
+    // The latest live week is what Home reports. Week-over-week movement and
+    // the return-band rows live on Analytics only (#1171).
+    expect(spoken(component)).toBe('Week 2. Squat 72% of baseline. Bench recovered.');
+    expect(hasText(component, 'Since Week 1')).toBe(false);
+    expect(hasText(component, 'At or above')).toBe(false);
+    expect(hasText(component, 'roster exercises trained')).toBe(false);
   });
 
-  // #1029 review finding 2: movement is deliberately never computed while
-  // stale (useHomeRecoverySummary gates it off `isStale`), but the fallback
-  // must not claim the wrong reason for its absence. These two cached weeks
-  // meet the full movement evidence bar (>=2 qualifying weeks, matched === 2
-  // === roster since roster < 3, a qualifying anchor) — the same fixture the
-  // "regresses" test above shows DOES print a real movement figure when not
-  // stale — so falling back to "not enough matched lifts" here would be false,
-  // not merely conservative.
-  test('a stale refresh suppresses movement without falsely claiming insufficient evidence', async () => {
-    AsyncStorage.getItem.mockImplementation(storageWith({
-      blocks: [block()],
-      weeks: [
-        week({ note_id: 'nr1' }),
-        week({ id: 'rw2', note_id: 'nr2', week_number: 2 }),
-      ],
-    }));
-    const component = await mount({
-      notes: [NOTE, weekNote('nr1', FULL_TEXT), weekNote('nr2', PARTIAL_TEXT)],
-    });
-    // Sanity: not stale yet, movement is real.
-    expect(hasText(component, 'Since Week 1')).toBe(true);
-
-    AsyncStorage.getItem.mockImplementation(storageWith({ fail: [BLOCKS_KEY, WEEKS_KEY] }));
-    await render.act(async () => { await hooks.refreshRecoveryState(); });
-
-    expect(hasText(component, hooks.RECOVERY_STALE_MESSAGE)).toBe(true);
-    expect(hasText(component, 'Not enough matched lifts to compare weeks yet')).toBe(false);
-  });
-
-  test('an exercise added during recovery never folds into the roster denominator or the sparse sentence', async () => {
+  test('an exercise added during recovery is never counted on Home', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     const component = await mount({ notes: [NOTE, weekNote('nr1', ADDED_TEXT)] });
 
-    expect(spoken(component)).toBe(
-      'Week 1. Bench (at or above baseline), Squat (at or above baseline) — 2 of 2 roster exercises trained.'
-    );
+    expect(spoken(component)).toBe('Week 1. Squat recovered. Bench recovered.');
+    expect(has(component, 'home-recovery-remaining')).toBe(false);
     expect(hasText(component, 'Curl')).toBe(false);
     expect(hasText(component, 'Added during recovery')).toBe(false);
   });
 
-  test('a baseline exercise never reintroduced this week is left out of the sparse sentence, not silently counted as trained', async () => {
+  test('a Big 3 lift not done yet this block reads as not started, with an empty bar', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     const component = await mount({ notes: [NOTE, weekNote('nr1', SKIPPED_TEXT)] });
 
-    expect(spoken(component)).toBe(
-      'Week 1. Bench (at or above baseline) — 1 of 2 roster exercises trained.'
-    );
-    expect(hasText(component, 'Squat')).toBe(false);
+    expect(spoken(component)).toBe('Week 1. Squat not started. Bench recovered.');
+    const squat = component.root.findByProps({ testID: 'home-recovery-lift-squat' });
+    expect(squat.findAll(n => n.type === 'View' && Array.isArray(n.props.style)
+      && n.props.style.some(st => st && st.width !== undefined))).toHaveLength(0);
   });
 
-  // #1029 review finding 1: the sparse sentence's candidate population must be
-  // the SAME roster/trained set `deriveRecoveryWeekBands` derives (via
+  // #1029 review finding 1, kept for #1171: the remaining count's population
+  // must be the SAME roster `deriveRecoveryWeekBands` derives (via
   // `deriveRecoveryTrainedRows`), never a parallel filter over
   // `week.exercises`. Splicing an unrecognized-class baseline row in mirrors
   // recovery-return-bands.test.js fixture 6 (reachable through the real
   // derivation, not hand-built) and proves it is excluded from the roster
   // here too; an added-during-recovery lift proves the same for that state.
-  test('the sparse sentence never names a baseline_value_unusable or added_during_recovery row', async () => {
+  test('the remaining count never includes a baseline_value_unusable or added_during_recovery row', async () => {
     const ghostRow = {
       key: 'ghost lift', name: 'Ghost Lift', exercise_class: 'weighted',
       top_weight: NaN, volume: NaN, sets_completed: 1,
@@ -1664,23 +1634,21 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     }));
     const component = await mount({ notes: [NOTE, weekNote('nr1', GHOST_ADDED_TEXT)] });
 
-    expect(spoken(component)).toBe(
-      'Week 1. Bench (at or above baseline), Squat (at or above baseline) — 2 of 2 roster exercises trained.'
-    );
+    expect(spoken(component)).toBe('Week 1. Squat recovered. Bench recovered.');
+    expect(has(component, 'home-recovery-remaining')).toBe(false);
     expect(hasText(component, 'Ghost Lift')).toBe(false);
     expect(hasText(component, 'Sled Push')).toBe(false);
   });
 
-  test('a not-comparable exercise still counts as trained and is named with its state', async () => {
+  test('a not-comparable Big 3 lift says so rather than showing a number', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({
       blocks: [block({ include_in_normal_analytics: false })],
       weeks: [week()],
     }));
     const component = await mount({ notes: [NOTE, weekNote('nr1', CLASS_CHANGED_TEXT)] });
 
-    expect(spoken(component)).toBe(
-      "Week 1. Bench (at or above baseline), Squat (can't compare) — 2 of 2 roster exercises trained."
-    );
+    expect(spoken(component)).toBe("Week 1. Squat can't compare. Bench recovered.");
+    expect(hasText(component, '%')).toBe(false);
   });
 
   test('a missing current-week note keeps the week identity, and never renders 0 of 0', async () => {
@@ -1738,10 +1706,10 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     const component = await mount({ notes: [NOTE, weekNote('nr1', ADDED_TEXT)] });
 
     expect(hasText(component, 'No baseline exercises were captured for this block.')).toBe(true);
-    // No roster exists to derive bands or a sparse sentence from, and
-    // added-during-recovery work is out of scope for the Home band/movement
-    // summary entirely (#1029) — it stays reported on Analytics only.
-    expect(hasText(component, 'roster exercises trained')).toBe(false);
+    // No roster exists to derive Big 3 rows or a count from, and
+    // added-during-recovery work stays reported on Analytics only.
+    expect(has(component, 'home-recovery-big3')).toBe(false);
+    expect(has(component, 'home-recovery-remaining')).toBe(false);
     expect(spoken(component)).toBe('Week 1. No baseline exercises were captured for this block.');
   });
 
@@ -1801,7 +1769,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
 
     expect(has(component, 'home-recovery-summary')).toBe(true);
     expect(hasText(component, hooks.RECOVERY_UNVERIFIED_MESSAGE)).toBe(true);
-    expect(hasText(component, 'roster exercises trained')).toBe(false);
+    expect(has(component, 'home-recovery-big3')).toBe(false);
   });
 
   test('the unknown state offers exactly the control its message names', async () => {
@@ -1822,16 +1790,14 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     await render.act(async () => { retry.props.onPress(); });
 
-    expect(spoken(component)).toBe(
-      'Week 1. Bench (at or above baseline), Squat (rebuilding) — 2 of 2 roster exercises trained.'
-    );
+    expect(spoken(component)).toBe('Week 1. Squat 72% of baseline. Bench recovered.');
     expect(hasText(component, hooks.RECOVERY_UNVERIFIED_MESSAGE)).toBe(false);
   });
 
   test('a failed refresh keeps the last verified summary and says why it may be behind', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     const component = await mount();
-    expect(has(component, 'home-recovery-sparse')).toBe(true);
+    expect(has(component, 'home-recovery-big3')).toBe(true);
 
     AsyncStorage.getItem.mockImplementation(storageWith({ fail: [BLOCKS_KEY, WEEKS_KEY] }));
     await render.act(async () => { await hooks.refreshRecoveryState(); });
@@ -1839,7 +1805,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     // Stale, not blank and not terminal: last-known-good stays on screen under
     // the reason the newest read did not land.
     expect(hasText(component, 'Week 1')).toBe(true);
-    expect(has(component, 'home-recovery-sparse')).toBe(true);
+    expect(has(component, 'home-recovery-big3')).toBe(true);
     expect(hasText(component, hooks.RECOVERY_STALE_MESSAGE)).toBe(true);
     expect(has(component, 'home-recovery-retry')).toBe(true);
   });
@@ -1876,10 +1842,10 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     // Inclusion state is Analytics-owned content (#820); Home never states it.
     expect(hasText(component, 'Not counted in your normal analytics.')).toBe(false);
     expect(hasText(component, hooks.RECOVERY_STALE_MESSAGE)).toBe(true);
-    // No bands/sparse sentence are derivable from a week whose note is gone —
+    // No Big 3 rows or count are derivable from a week whose note is gone —
     // nothing else stacks on top of the fallback and stale message.
-    expect(has(component, 'home-recovery-bands')).toBe(false);
-    expect(has(component, 'home-recovery-sparse')).toBe(false);
+    expect(has(component, 'home-recovery-big3')).toBe(false);
+    expect(has(component, 'home-recovery-remaining')).toBe(false);
   });
 
   test('a still-unresolved read reports loading, and offers no retry for a read that has not failed', async () => {
@@ -1897,48 +1863,107 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     expect(has(component, 'home-recovery-retry')).toBe(false);
 
     await render.act(async () => { releaseRecoveryRead(); await gate; });
-    expect(has(component, 'home-recovery-sparse')).toBe(true);
+    expect(has(component, 'home-recovery-big3')).toBe(true);
     expect(hasText(component, hooks.RECOVERY_LOADING_MESSAGE)).toBe(false);
   });
 
-  // A roster of four or more trained lifts renders per-bucket rows, sized
-  // against the trained total, at the SAME weight tier as the "N of Y roster
-  // exercises trained" denominator caption — never a subordinate footnote
-  // (#1029 acceptance criteria 1 and 12).
-  const FOUR_LIFT_NOTE = {
-    id: 'n4',
+  // A realistic roster (#1171): the default 1K picks (Squat, DB Bench Press,
+  // Deadlift — no routine override) lead, and the other three exercises fold
+  // into one count line whose parts add up to its total.
+  const SIX_LIFT_NOTE = {
+    id: 'n6',
     title: 'Routine B',
-    raw_text: 'Monday\n+Lifting\n-Bench\n135 5,5,5\n-Squat\n185 5,5,5\n-Row\n95 8,8,8\n-Press\n65 8,8,8',
+    raw_text: 'Monday\n+Lifting\n-Squat\n185 5,5,5\n-DB Bench Press\n60 8,8,8\n-Deadlift\n225 5,5,5\n'
+      + '-Row\n95 8,8,8\n-Press\n65 8,8,8\n-Curl\n30 10,10',
     saved_at: '2026-06-01T12:00:00.000Z',
   };
-  const fourLiftBaseline = captureRecoveryBaselineFromText(FOUR_LIFT_NOTE.raw_text);
-  // Bench and Squat at baseline (at or above), Row rebuilding, Press early.
-  const FOUR_LIFT_WEEK_TEXT =
-    'Monday\n+Lifting\n-Bench\n135 5,5,5\n-Squat\n185 5,5,5\n-Row\n70 8,8,8\n-Press\n15 8,8,8';
+  const sixLiftBaseline = captureRecoveryBaselineFromText(SIX_LIFT_NOTE.raw_text);
+  // Squat at baseline, bench at half the load, deadlift not done yet; Row at
+  // baseline, Press short, Curl not done yet.
+  const SIX_LIFT_WEEK_TEXT =
+    'Monday\n+Lifting\n-Squat\n185 5,5,5\n-DB Bench Press\n30 8,8,8\n-Row\n95 8,8,8\n-Press\n45 8,8,8';
 
-  test('four or more trained lifts render per-bucket rows against the trained total, at the denominator caption\'s weight tier', async () => {
+  test('the Big 3 lead and every other exercise folds into one remaining line', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({
-      blocks: [block({ baseline: fourLiftBaseline, baseline_note_title: 'Routine B' })],
+      blocks: [block({ baseline: sixLiftBaseline, baseline_note_id: 'n6', baseline_note_title: 'Routine B' })],
       weeks: [week()],
     }));
-    const component = await mount({ notes: [FOUR_LIFT_NOTE, weekNote('nr1', FOUR_LIFT_WEEK_TEXT)] });
+    const component = await mount({
+      workoutNote: SIX_LIFT_NOTE,
+      notes: [SIX_LIFT_NOTE, weekNote('nr1', SIX_LIFT_WEEK_TEXT)],
+    });
 
-    expect(has(component, 'home-recovery-bands')).toBe(true);
-    expect(has(component, 'home-recovery-sparse')).toBe(false);
-    expect(hasText(component, '4 of 4 roster exercises trained')).toBe(true);
-    expect(hasText(component, 'At or above')).toBe(true);
-    expect(hasText(component, 'Rebuilding')).toBe(true);
-    expect(hasText(component, 'Early')).toBe(true);
-    // No band ever prints a percentage or a mean of ratios.
-    expect(hasText(component, '%')).toBe(false);
+    expect(has(component, 'home-recovery-lift-deadlift')).toBe(true);
+    expect(hasText(component, 'Remaining 3: 1 recovered · 1 in progress · 1 not started')).toBe(true);
+    // Only the Big 3 are named; the rest are counts.
+    expect(spoken(component)).toBe(
+      'Week 1. Squat recovered. DB Bench Press 50% of baseline. Deadlift not started. '
+      + 'Remaining 3: 1 recovered, 1 in progress, 1 not started.'
+    );
+    // Retired vocabulary never returns.
+    ['back', 'below', 'At or above', 'Rebuilding', 'Early'].forEach(word => {
+      expect(spoken(component).includes(word)).toBe(false);
+    });
+  });
 
-    const flat = (style) => (Array.isArray(style) ? Object.assign({}, ...style.filter(Boolean)) : (style || {}));
-    const card = component.root.findByProps({ testID: 'home-recovery-summary' });
-    const byText = (needle) => card.find(n => n.type === 'Text'
-      && String(n.props.children ?? '') === needle);
-    const captionStyle = flat(byText('4 of 4 roster exercises trained').props.style);
-    const bandLabelStyle = flat(byText('At or above').props.style);
-    expect(captionStyle.fontWeight).toBe(bandLabelStyle.fontWeight);
+  test('a Big 3 slot mapped to another exercise is labeled with that exercise', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block({ baseline: sixLiftBaseline, baseline_note_id: 'n6' })],
+      weeks: [week()],
+    }));
+    const mapped = { ...SIX_LIFT_NOTE, one_k_exercises: { squat: 'Press' } };
+    const component = await mount({ workoutNote: mapped, notes: [mapped, weekNote('nr1', SIX_LIFT_WEEK_TEXT)] });
+
+    // Press's numbers never read as Squat recovery.
+    expect(spoken(component)).toContain('Press 69% of baseline.');
+    expect(spoken(component).startsWith('Week 1. Squat')).toBe(false);
+  });
+
+  test('a non-string 1K pick on the baseline routine falls back to the slot default instead of crashing', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block({ baseline: sixLiftBaseline, baseline_note_id: 'n6' })],
+      weeks: [week()],
+    }));
+    const restored = { ...SIX_LIFT_NOTE, one_k_exercises: { deadlift: true, squat: 42 } };
+    const component = await mount({ notes: [restored, weekNote('nr1', SIX_LIFT_WEEK_TEXT)] });
+
+    expect(spoken(component)).toContain('Squat recovered. DB Bench Press 50% of baseline. Deadlift not started.');
+  });
+
+  test('a remaining exercise that can\'t be compared is left out of the count line', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block({ baseline: sixLiftBaseline, baseline_note_id: 'n6' })],
+      weeks: [week()],
+    }));
+    // Row logged bodyweight-only against a weighted baseline: not comparable.
+    const text = SIX_LIFT_WEEK_TEXT.replace('-Row\n95 8,8,8', '-Row\nBW 8,8,8');
+    const component = await mount({ notes: [SIX_LIFT_NOTE, weekNote('nr1', text)] });
+
+    expect(hasText(component, 'Remaining 2: 1 in progress · 1 not started')).toBe(true);
+    expect(hasText(component, "can't compare")).toBe(false);
+  });
+
+  test('a missing baseline routine promotes no lift and counts every exercise instead', async () => {
+    // The block's baseline routine (n6) is gone, so its 1K picks are unknown.
+    // Defaults must not stand in for them.
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block({ baseline: sixLiftBaseline, baseline_note_id: 'n6' })],
+      weeks: [week()],
+    }));
+    const component = await mount({ notes: [NOTE, weekNote('nr1', SIX_LIFT_WEEK_TEXT)] });
+
+    expect(has(component, 'home-recovery-big3')).toBe(false);
+    expect(hasText(component, '6 exercises: 2 recovered · 2 in progress · 2 not started')).toBe(true);
+  });
+
+  test('the Big 3 follow the baseline routine\'s 1K picks, not the current routine\'s', async () => {
+    // The block was started from Routine A (Bench/Squat picks); the current
+    // routine picks different lifts, which must not reshape the card.
+    AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
+    const current = { ...SIX_LIFT_NOTE, id: 'n-current', one_k_exercises: { bench: 'Row', squat: 'Press', deadlift: 'Curl' } };
+    const component = await mount({ workoutNote: current, notes: [NOTE, current, weekNote('nr1', PARTIAL_TEXT)] });
+
+    expect(spoken(component)).toBe('Week 1. Squat 72% of baseline. Bench recovered.');
   });
 
   test('the one press target inside the card meets the touch minimum', async () => {
@@ -2391,8 +2416,8 @@ describe('HomeRecoverySummary threads the load-aware typography (#1112)', () => 
   const flat = (node) => [].concat(node.props.style ?? []).reduce(
     (acc, s) => (s ? Object.assign(acc, s) : acc), {});
 
-  // An active block with return-band rows, which render the JetBrains Mono
-  // count/label and week-label styles.
+  // An active block with a Big 3 row, whose name renders in the JetBrains Mono
+  // label style.
   const summary = {
     status: 'ready',
     active: true,
@@ -2401,11 +2426,8 @@ describe('HomeRecoverySummary threads the load-aware typography (#1112)', () => 
     comparisonStatus: 'ok',
     weekNumber: 2,
     weekNoteStatus: 'ok',
-    bands: { at_or_above: 3, rebuilding: 1 },
-    trained: 4,
-    rosterSize: 5,
-    trainedExercises: [],
-    movement: null,
+    big3: [{ slot: 'squat', label: 'Squat', state: 'baseline_met', percent: 100 }],
+    remaining: null,
     retry: null,
   };
 
@@ -2422,10 +2444,10 @@ describe('HomeRecoverySummary threads the load-aware typography (#1112)', () => 
       );
     });
 
-    // The count for the first band row is a JetBrains Mono value in the loaded
-    // map; under fallback it must carry the monospace fallback family.
+    // The lift name is a JetBrains Mono value in the loaded map; under
+    // fallback it must carry the monospace fallback family.
     const countNode = component.root.findAllByType('Text')
-      .find(n => String(n.props.children ?? '') === '3');
+      .find(n => String(n.props.children ?? '') === 'Squat');
     expect(countNode).toBeTruthy();
     const family = flat(countNode).fontFamily;
     expect(family).toBe(TYPOGRAPHY_FALLBACK['label-lg'].fontFamily);

@@ -9,20 +9,17 @@ import {
 } from '../../hooks/entries/recoveryBlockHooks';
 import {
   deriveRecoveryComparison,
+  RECOVERY_COMPARISON_STATES,
   RECOVERY_COMPARISON_STATUS,
   RECOVERY_WEEK_STATUS,
 } from '../../lib/data/recoveryAnalytics';
-import {
-  deriveRecoveryMovement,
-  deriveRecoveryTrainedRows,
-  deriveRecoveryWeekBands,
-} from '../../lib/data/recoveryReturnBands';
+import { deriveRecoveryTrainedRows } from '../../lib/data/recoveryReturnBands';
 
 // Re-exported so HomeScreen's active-branch copy can switch on the same
 // enums this module derives from, without HomeScreen importing a second
 // module directly (and shifting its own line numbers out from under
 // unrelated line-anchored assertions, e.g. theme-rendering.test.js).
-export { RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS };
+export { RECOVERY_COMPARISON_STATES, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS };
 import { normalizeExerciseKey, countWorkoutSessionsFromSections } from '../../lib/parser';
 import {
   deriveWeightGoalAnalytics,
@@ -88,11 +85,11 @@ export const HOME_RECOVERY_STATUS = Object.freeze({
   UNVERIFIED: 'unverified',
 });
 
-// Home's return-to-baseline content (#779/#782). Rather than inventing a
-// second vocabulary, this folds the same `deriveRecoveryComparison` result
-// Analytics already renders (`AnalyticsRecoverySection`) into the summary, for
-// the latest live week only. Home is the entry point, not a second evidence
-// surface — the per-exercise breakdown stays behind the `Recovery` handoff.
+// Home's return-to-baseline content (#779/#782, #1171). Home is the entry
+// point, not a second evidence surface: it folds the same
+// `deriveRecoveryComparison` result Analytics renders into the user's Big 3
+// (their 1K lifts) plus one count line for the rest of the roster. Every
+// exercise's full breakdown stays behind the `Recovery` handoff.
 export function useHomeRecoverySummary(notes) {
   const { activeBlock, weeks, ready, loading, stale, retryRecovery } = useRecoveryBlockState() || {};
   return useMemo(() => {
@@ -117,16 +114,8 @@ export function useHomeRecoverySummary(notes) {
       comparisonStatus: null,
       weekNumber: null,
       weekNoteStatus: null,
-      // #1029: the met-count headline is replaced by return bands sized
-      // against the trained total, plus movement since the anchor week when
-      // the evidence bar for it is met. `bands`/`trained`/`rosterSize` and
-      // `movement` are the shapes `HomeRecoverySummary` renders from now —
-      // `metCount`/`totalBaselineExercises`/`categoryCounts` are gone.
-      bands: null,
-      trained: 0,
-      rosterSize: 0,
-      trainedExercises: [],
-      movement: null,
+      big3: [],
+      remaining: null,
       includedInNormalAnalytics: false,
     };
     // An active block is only reported off a verified snapshot. While the read
@@ -136,21 +125,16 @@ export function useHomeRecoverySummary(notes) {
     const comparison = deriveRecoveryComparison({ block: activeBlock, weeks, notes });
     const comparisonWeeks = comparison.weeks || [];
     const current = comparisonWeeks.length > 0 ? comparisonWeeks[comparisonWeeks.length - 1] : null;
-    const bandResult = deriveRecoveryWeekBands(current);
-    // Movement is never derived off an unverified/stale snapshot (#1023 v2
-    // §4 requirement 4) — `isStale` above already covers "last refresh
-    // failed over a still-current last-known-good read".
-    const movement = (!isStale && current)
-      ? deriveRecoveryMovement(comparisonWeeks, { currentWeekId: current.week_id })
-      : null;
-    // Below the 4-trained-lift sparse floor (#1029 acceptance criterion 1),
-    // Home names the trained lift(s) and their band directly rather than
-    // rendering bucket rows/bars. Same source of truth as `bandResult`
-    // above — never a parallel filter over `current.exercises` (#1029 review
-    // finding 1: that would let a `baseline_value_unusable` row be named
-    // even though it is outside the roster/denominator this sentence
-    // itself states).
-    const trainedExercises = deriveRecoveryTrainedRows(current);
+    // The Big 3 are the BASELINE routine's 1K picks — the block may have been
+    // started from a routine other than the current one. If that routine is
+    // gone, its picks are unknown: no lift is promoted (defaults could name
+    // the wrong ones) and every exercise folds into the count line.
+    const baselineNote = (notes || []).find(n => n && n.id === activeBlock.baseline_note_id);
+    // Restored/synced notes can carry non-string picks (e.g. `{ deadlift: true }`);
+    // those fall back to the slot default rather than reaching normalization.
+    const overrides = Object.entries(baselineNote?.one_k_exercises || {})
+      .filter(([, name]) => typeof name === 'string' && name.trim());
+    const selections = baselineNote ? { ...DEFAULT_1K_EXERCISES, ...Object.fromEntries(overrides) } : null;
 
     return {
       ...base,
@@ -158,14 +142,64 @@ export function useHomeRecoverySummary(notes) {
       comparisonStatus: comparison.status,
       weekNumber: current ? current.week_number : null,
       weekNoteStatus: current ? current.status : null,
-      bands: bandResult.buckets,
-      trained: bandResult.trained,
-      rosterSize: bandResult.roster_size,
-      trainedExercises,
-      movement,
+      ...deriveHomeRecoveryBig3(current, selections),
       includedInNormalAnalytics: activeBlock.include_in_normal_analytics === true,
     };
   }, [activeBlock, weeks, notes, ready, loading, stale, retryRecovery]);
+}
+
+const BIG3_SLOTS = Object.freeze([
+  { slot: 'squat', label: 'Squat' },
+  { slot: 'bench', label: 'Bench' },
+  { slot: 'deadlift', label: 'Deadlift' },
+]);
+
+// A lift's distance from baseline is its weakest applicable dimension — the
+// same per-exercise `min(ratio)` selection the return bands use (#1029), never
+// a mean and never across exercises. `percent` is #697's own floored value.
+function _rowPercent(row) {
+  const percents = (row.metrics || [])
+    .map(m => m.percent)
+    .filter(p => typeof p === 'number' && Number.isFinite(p));
+  return percents.length > 0 ? Math.min(...percents) : null;
+}
+
+// #1171: the Big 3 rows and the one-line count of everything else, from ONE
+// week's comparison. The roster is `deriveRecoveryTrainedRows` (the single
+// source of truth that already excludes `baseline_value_unusable` rows) plus
+// the baseline rows not reintroduced yet. A Big 3 lift outside that roster is
+// left out entirely — it was never in the baseline, so there is nothing true
+// to say about its distance from it.
+export function deriveHomeRecoveryBig3(week, selections) {
+  if (!week || week.status !== RECOVERY_WEEK_STATUS.OK) return { big3: [], remaining: null };
+  const roster = [
+    ...deriveRecoveryTrainedRows(week),
+    ...(week.exercises || []).filter(row => row.state === RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED),
+  ];
+  const used = new Set();
+  const big3 = [];
+  for (const { slot, label } of BIG3_SLOTS) {
+    const key = typeof selections?.[slot] === 'string' ? normalizeExerciseKey(selections[slot]) : null;
+    const row = key ? roster.find(r => !used.has(r) && r.key === key) : null;
+    if (!row) continue;
+    used.add(row);
+    // Named by the mapped exercise itself: a slot can point at any routine
+    // exercise, and its numbers must never read as the slot's namesake.
+    big3.push({ slot, label: row.name || label, state: row.state, percent: _rowPercent(row) });
+  }
+  // Owner decision: an exercise whose work can't be compared to its baseline
+  // is left out of the count line entirely (Analytics still reports it).
+  const rest = roster.filter(r => !used.has(r) && r.state !== RECOVERY_COMPARISON_STATES.NOT_COMPARABLE);
+  const count = state => rest.filter(r => r.state === state).length;
+  return {
+    big3,
+    remaining: {
+      total: rest.length,
+      recovered: count(RECOVERY_COMPARISON_STATES.BASELINE_MET),
+      inProgress: count(RECOVERY_COMPARISON_STATES.REBUILDING),
+      notStarted: count(RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED),
+    },
+  };
 }
 
 // #894: mirrors deriveOverloadCounts' own per-appearance iteration
