@@ -346,4 +346,13 @@ describe('device key fails closed when encrypted local data exists', () => {
     await expect(storage.getItem('kilo_weight_entries')).resolves.toBe('fresh');
     expect(storage.isKeyUnavailable()).toBe(false);
   });
+
+  test('a malformed stored key with no encrypted data is safely replaced', async () => {
+    const { storage, secureValues } = makeStorage();
+    secureValues.set(DEVICE_DATA_KEY_NAME, '00');
+    await storage.setItem('kilo_weight_entries', 'fresh');
+    expect(secureValues.get(DEVICE_DATA_KEY_NAME)).toHaveLength(64);
+    await expect(storage.getItem('kilo_weight_entries')).resolves.toBe('fresh');
+    expect(storage.isKeyUnavailable()).toBe(false);
+  });
 });

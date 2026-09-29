@@ -119,9 +119,11 @@ export function createDeviceStorage({
       keyPromise = (async () => {
         const stored = await secureStore.getItemAsync(DEVICE_KEY_NAME);
         if (stored != null) {
-          const parsed = hexToBytes(stored);
-          if (parsed.length !== DEVICE_KEY_BYTES) throw new Error('Stored device encryption key is invalid.');
-          return parsed;
+          let parsed = null;
+          try { parsed = hexToBytes(stored); } catch { parsed = null; }
+          if (parsed?.length === DEVICE_KEY_BYTES) return parsed;
+          // Unusable stored key: fall through. With encrypted data it is the
+          // recovery state; with none it is safe to replace.
         }
         // No key. Only provision one when no kilo_* value already holds an
         // envelope; otherwise the new key could never decrypt existing data.
