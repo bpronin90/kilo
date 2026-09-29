@@ -3939,6 +3939,58 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     ]);
   });
 
+  // #1182: the open menu is a compact overlay anchored to the trigger, not an
+  // in-flow full-width block; rows keep 44dp targets; toggling and choosing an
+  // item both leave no menu behind.
+  test('the Routine actions menu is a compact anchored overlay that toggles and closes', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <LogActiveRoutineCard
+          workoutNoteTitle={LONG_TITLE}
+          hasABWeeks={true}
+          effectiveActiveWeek="A"
+          handleToggleWeek={jest.fn()}
+          enterCurrentEditor={jest.fn()}
+          handleNoteBodyPress={jest.fn()}
+          handleSkipWeek={jest.fn()}
+          handleUnskipWeek={jest.fn()}
+          canUnskipWeek={false}
+          toggleCollapsed={jest.fn()}
+          isCollapsed={false}
+          dayGroups={[]}
+          trackedLifts={{}}
+          handleToggleTrack={jest.fn()}
+          roughNoteId="n1"
+          currentId="n1"
+          roughFlaggedNames={new Set()}
+          activeEditText=""
+          recoveryWeekNumber={2}
+        />
+      );
+    });
+    const root = component.root;
+    const trigger = () => root.findAll(n => n.props && n.props.accessibilityLabel === 'Routine actions')[0];
+    const menu = () => root.findAll(n => n.props && n.props.testID === 'log-current-routine-menu')[0];
+    render.act(() => { trigger().props.onPress({ stopPropagation: jest.fn() }); });
+    expect(trigger().props.accessibilityState).toEqual({ expanded: true });
+    const menuStyle = flatStyle(menu());
+    expect(menuStyle.position).toBe('absolute');
+    expect(menuStyle.width).toBeLessThan(220);
+    expect(menuStyle.top).toBeGreaterThanOrEqual(44);
+    expect(menuStyle.maxWidth).toBe('100%');
+    const items = root.findAll(n => n.props && n.props.accessibilityRole === 'menuitem' && n.props.onPress);
+    expect(items.length).toBe(4);
+    items.forEach(i => expect(flatStyle(i).minHeight).toBeGreaterThanOrEqual(44));
+    render.act(() => { trigger().props.onPress({ stopPropagation: jest.fn() }); });
+    expect(menu()).toBeUndefined();
+    render.act(() => { trigger().props.onPress({ stopPropagation: jest.fn() }); });
+    const edit = root.findAll(n => n.props && n.props.accessibilityLabel === 'Edit routine' && n.props.onPress)[0];
+    render.act(() => { edit.props.onPress({ stopPropagation: jest.fn() }); });
+    expect(menu()).toBeUndefined();
+    expect(trigger().props.accessibilityState).toEqual({ expanded: false });
+  });
+
   test('LogPreviousRoutines: the header holds identity only; the expanded body carries the controls', () => {
     const note = { id: 'r1', title: LONG_TITLE, raw_text: 'MONDAY\n-Squat 3x5\n---\nMONDAY\n-Deadlift 3x5\n', updated_at: '2026-01-01T00:00:00.000Z' };
     let component;

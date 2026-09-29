@@ -112,6 +112,10 @@ export function LogActiveRoutineCard({
   // any item is chosen, and on header collapse (the menu has nothing to
   // attach to once the body it lives in is hidden).
   const [menuOpen, setMenuOpen] = useState(false);
+  // #1182: measured heights so the body reserves exactly the open menu's room
+  // (strip wrap and font scaling change both) and the card clip can't cut it.
+  const [stripH, setStripH] = useState(44);
+  const [menuH, setMenuH] = useState(176);
   // A single result line for the most recent explicit Apply attempt. Only an
   // `applied: true` result is allowed to read as success; every no-op, failure,
   // or thrown error explains that nothing was added. Every press reaches the
@@ -224,14 +228,14 @@ export function LogActiveRoutineCard({
 
         <Pressable
           onPress={handleNoteBodyPress}
-          style={[styles.currentNoteContent, isCollapsed ? { display: 'none' } : null]}
+          style={[styles.currentNoteContent, menuOpen ? { minHeight: 15 + stripH + menuH } : null, isCollapsed ? { display: 'none' } : null]}
         >
           {/* The card's one action strip. `Double-tap to edit` used to live on
               the left of this row; the explicit `Edit` control supersedes it as
               the advertised path. handleNoteBodyPress stays wired on the body
               above, so the double-tap gesture still works for users who know
               it — it is simply no longer the only way in. */}
-          <View style={styles.actionStrip}>
+          <View style={styles.actionStrip} onLayout={e => setStripH(e.nativeEvent.layout.height)}>
             <View style={styles.actionStripPrimary}>
               {hasABWeeks && (
                 <Pressable
@@ -247,11 +251,9 @@ export function LogActiveRoutineCard({
                   </Text>
                 </Pressable>
               )}
-              {/* #1021: the one consolidated entry point for Edit, Copy,
-                  Share, and Share as Image. Icon-only and sized to the 44dp
-                  floor via style rather than an oversized visible pill, so the
-                  Week A/B switch above stays the header's only prominent
-                  control. */}
+              {/* #1021: the one entry point for Edit, Copy, Share, and Share
+                  as Image; icon-only at the 44dp floor. #1182: the menu floats
+                  below the strip instead of sitting in the card flow. */}
               <Pressable
                 onPress={(e) => { e.stopPropagation(); setMenuOpen(o => !o); }}
                 style={styles.menuButton}
@@ -263,51 +265,6 @@ export function LogActiveRoutineCard({
                 <MaterialIcons name="more-vert" size={20} color={kua ? kua.onSurfaceVariant : colors.chipAccentText} accessible={false} />
               </Pressable>
             </View>
-            {menuOpen && (
-              <View
-                style={styles.actionMenu}
-                accessibilityRole="menu"
-                testID="log-current-routine-menu"
-              >
-                <Pressable
-                  onPress={(e) => { e.stopPropagation(); setMenuOpen(false); enterCurrentEditor(); }}
-                  style={styles.actionMenuItem}
-                  accessibilityRole="menuitem"
-                  accessibilityLabel="Edit routine"
-                >
-                  <Text style={styles.actionMenuItemText}>Edit</Text>
-                </Pressable>
-                {/* #956: Copy and Share stay distinct actions, not merged. */}
-                <Pressable
-                  onPress={(e) => { e.stopPropagation(); setMenuOpen(false); return handleCopyRoutine(); }}
-                  style={styles.actionMenuItem}
-                  accessibilityRole="menuitem"
-                  accessibilityLabel={`Copy routine ${workoutNoteTitle || 'Untitled Routine'}`}
-                >
-                  <Text style={styles.actionMenuItemText}>Copy</Text>
-                </Pressable>
-                <Pressable
-                  onPress={(e) => { e.stopPropagation(); setMenuOpen(false); handleShareRoutine(); }}
-                  style={styles.actionMenuItem}
-                  accessibilityRole="menuitem"
-                  accessibilityLabel="Share routine"
-                >
-                  <Text style={styles.actionMenuItemText}>Share</Text>
-                </Pressable>
-                <Pressable
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    setMenuOpen(false);
-                    setImageShare({ title: workoutNoteTitle, rawText: routineRawText ?? activeEditText });
-                  }}
-                  style={styles.actionMenuItem}
-                  accessibilityRole="menuitem"
-                  accessibilityLabel="Share routine as image"
-                >
-                  <Text style={styles.actionMenuItemText}>Share as Image</Text>
-                </Pressable>
-              </View>
-            )}
             {/* One skip control, never two (#711). Previously both rendered and
                 `canUnskipWeek` only dimmed `Remove skip` to opacity 0.4 over
                 already-muted text — two contradictory-looking controls, with the
@@ -344,6 +301,52 @@ export function LogActiveRoutineCard({
               )}
             </View>
           </View>
+          {menuOpen && (
+            <View
+              style={[styles.actionMenu, { top: 14 + stripH }]}
+              onLayout={e => setMenuH(e.nativeEvent.layout.height)}
+              accessibilityRole="menu"
+              testID="log-current-routine-menu"
+            >
+              <Pressable
+                onPress={(e) => { e.stopPropagation(); setMenuOpen(false); enterCurrentEditor(); }}
+                style={styles.actionMenuItem}
+                accessibilityRole="menuitem"
+                accessibilityLabel="Edit routine"
+              >
+                <Text style={styles.actionMenuItemText}>Edit</Text>
+              </Pressable>
+              {/* #956: Copy and Share stay distinct actions, not merged. */}
+              <Pressable
+                onPress={(e) => { e.stopPropagation(); setMenuOpen(false); return handleCopyRoutine(); }}
+                style={styles.actionMenuItem}
+                accessibilityRole="menuitem"
+                accessibilityLabel={`Copy routine ${workoutNoteTitle || 'Untitled Routine'}`}
+              >
+                <Text style={styles.actionMenuItemText}>Copy</Text>
+              </Pressable>
+              <Pressable
+                onPress={(e) => { e.stopPropagation(); setMenuOpen(false); handleShareRoutine(); }}
+                style={styles.actionMenuItem}
+                accessibilityRole="menuitem"
+                accessibilityLabel="Share routine"
+              >
+                <Text style={styles.actionMenuItemText}>Share</Text>
+              </Pressable>
+              <Pressable
+                onPress={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen(false);
+                  setImageShare({ title: workoutNoteTitle, rawText: routineRawText ?? activeEditText });
+                }}
+                style={styles.actionMenuItem}
+                accessibilityRole="menuitem"
+                accessibilityLabel="Share routine as image"
+              >
+                <Text style={styles.actionMenuItemText}>Share as Image</Text>
+              </Pressable>
+            </View>
+          )}
           {skipWeekStatus ? (
             <Text style={styles.skipWeekStatusText}>{skipWeekStatus}</Text>
           ) : null}
@@ -499,9 +502,7 @@ const createStyles = (kua, colors) => StyleSheet.create({
     borderColor: kua ? kua.primaryContainerBorder : colors.cardBorder,
     minHeight: 44,
     justifyContent: 'center',
-    // Lets a single pill shrink (its Text wraps) rather than overflow past
-    // the card's clipped right edge once the action row is squeezed below
-    // the pill's natural width (#710 review).
+    // Lets the pill shrink (text wraps) instead of overflowing the card (#710).
     flexShrink: 1,
   },
   inlineSwitchButtonText: {
@@ -516,11 +517,7 @@ const createStyles = (kua, colors) => StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
-  // The card's single action strip (#711), grown out of the former
-  // `editHintRow`: same row, same position, same 8px separation from the
-  // content below. `flexWrap` + `gap` are the containment props the header
-  // action row used to carry — the strip is now the only row that has to hold
-  // more than one control, so the wrap behavior belongs here.
+  // The card's single action strip (#711); flexWrap + gap contain its controls.
   actionStrip: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -528,8 +525,10 @@ const createStyles = (kua, colors) => StyleSheet.create({
     flexWrap: 'wrap',
     gap: 12,
     marginBottom: 8,
+    zIndex: 10,
   },
   actionStripPrimary: {
+    zIndex: 10,
     flexDirection: 'row',
     flexShrink: 1,
     flexWrap: 'wrap',
@@ -539,17 +538,27 @@ const createStyles = (kua, colors) => StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
   },
-  // #1021: icon-only trigger at the 44dp floor, no visible pill chrome — the
-  // header's only prominent control stays the Week A/B switch beside it.
+  // #1021: icon-only 44dp trigger, no pill chrome.
   menuButton: {
     minHeight: 44,
     minWidth: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // #1182: floats under the strip (top set inline) as a direct child of the
+  // body so its bounds contain it for native hit testing; zIndex keeps it above
+  // the routine text.
   actionMenu: {
-    marginTop: 4,
-    marginBottom: 8,
+    position: 'absolute',
+    left: 24,
+    width: 172,
+    maxWidth: '100%',
+    zIndex: 10,
+    elevation: 6,
+    shadowColor: kua ? kua.onSurface : colors.text,
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
     borderRadius: 8,
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
@@ -568,9 +577,7 @@ const createStyles = (kua, colors) => StyleSheet.create({
     fontWeight: '600',
     color: kua ? kua.onSurface : colors.chipAccentText,
   },
-  // 44dp floor and a text size matching the pills beside it (#823): this was
-  // previously a bare Pressable sized only by its 11px text, noticeably
-  // smaller and easier to mis-tap than Edit/Week A-B in the same row.
+  // 44dp floor, sized like the pills beside it (#823).
   skipWeekButton: {
     minHeight: 44,
     justifyContent: 'center',
