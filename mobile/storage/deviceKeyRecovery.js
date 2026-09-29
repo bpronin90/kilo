@@ -52,6 +52,15 @@ function parseKey(hex) {
   return bytes;
 }
 
+// A failure after the committed journal landed: the key may already be promoted
+// and the restore half-placed, so the store must refuse all traffic until a
+// roll-forward succeeds (see `interruptedCommit` in secureStorage.js).
+function committedFailure(error) {
+  const failure = error instanceof Error ? error : new Error(String(error));
+  failure.recoveryCommitted = true;
+  return failure;
+}
+
 function parseCommittedJournal(raw) {
   try {
     const journal = JSON.parse(raw);
@@ -85,6 +94,35 @@ export function createRecoveryOverlay(initial) {
       return { changed: true };
     },
   };
+}
+
+// Admission control for the shared store. Reconciles the journal before the
+// first operation of a launch, and after a failed commit keeps every operation
+// failing closed (retrying the roll-forward first) until the commit completes.
+export function createRecoveryGate(journal, UnavailableError, onInterrupted) {
+  let reconciled = false;
+  let interrupted = null;
+  const gate = {
+    noteFailure(error) {
+      if (!error?.recoveryCommitted) return;
+      interrupted = error;
+      reconciled = false;
+      onInterrupted();
+    },
+    reconcileIfNeeded(tail) {
+      if (reconciled) return tail;
+      reconciled = true;
+      return tail.then(() => journal.reconcile()).then(() => { interrupted = null; }, gate.noteFailure);
+    },
+    admit(operation) {
+      return () => {
+        if (interrupted) throw new UnavailableError(interrupted);
+        return operation();
+      };
+    },
+    clear() { interrupted = null; },
+  };
+  return gate;
 }
 
 export function createRecoveryJournal({ backingStore, secureStore, crypto, keyOptions, deviceKeyName, envelopePrefix }) {
@@ -152,7 +190,7 @@ export function createRecoveryJournal({ backingStore, secureStore, crypto, keyOp
     if (raw == null) return { state: 'idle' };
     const journal = parseCommittedJournal(raw);
     if (journal) {
-      await rollForward(journal);
+      await rollForward(journal).catch((error) => { throw committedFailure(error); });
       return { state: 'committed' };
     }
     // 'staging', 'cleanup', or a journal torn mid-write: never (re)committed.
@@ -195,8 +233,8 @@ export function createRecoveryJournal({ backingStore, secureStore, crypto, keyOp
       throw error;
     }
     await backingStore.setItem(RECOVERY_JOURNAL_KEY, JSON.stringify({ state: COMMITTED, keys: names }));
-    await rollForward({ keys: names });
+    await rollForward({ keys: names }).catch((error) => { throw committedFailure(error); });
   }
 
-  return { reconcile, commit };
+  return { reconcile, commit, discard: discardStage };
 }

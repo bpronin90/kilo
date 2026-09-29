@@ -8,7 +8,7 @@ import {
   utf8ToBytes,
 } from '@noble/ciphers/utils';
 import { markStartupPhase, recordStartupStorageRead } from './entries/startupTiming';
-import { createRecoveryJournal, createRecoveryOverlay } from './deviceKeyRecovery';
+import { createRecoveryGate, createRecoveryJournal, createRecoveryOverlay } from './deviceKeyRecovery';
 
 const ENVELOPE_PREFIX = 'kilo.enc.v1:';
 const DEVICE_KEY_NAME = 'kilo.device-data-key.v1';
@@ -119,18 +119,20 @@ export function createDeviceStorage({
   // wedge the boundary.
   let writeTail = Promise.resolve();
   // #1186: the first operation of a launch waits for any interrupted recovery to
-  // be rolled forward or discarded, so no read can see a half-replaced device.
+  // be rolled forward or discarded, and nothing is admitted while a committed
+  // recovery is still half-placed, so no read can see a half-replaced device.
   const journal = createRecoveryJournal({ backingStore, secureStore, crypto,
     keyOptions: secureStoreOptions(secureStore), deviceKeyName: DEVICE_KEY_NAME, envelopePrefix: ENVELOPE_PREFIX });
-  let reconciled = !encryptValues;
+  const gate = createRecoveryGate(journal, DeviceKeyUnavailableError, () => setKeyLatch(true));
   function barrier() {
-    if (!reconciled) {
-      reconciled = true;
-      writeTail = journal.reconcile().catch(() => {});
-    }
+    if (encryptValues) writeTail = gate.reconcileIfNeeded(writeTail);
     return writeTail;
   }
+  const admit = (operation) => gate.admit(operation);
+  // While set, removals are refused too: an orphan may only go once its
+  // verified replacement is committed.
   let recovering = false;
+  const refuseRemoval = () => Promise.reject(new DeviceKeyUnavailableError());
   // Reads admitted after the current `writeTail` and not yet finished. A write
   // waits for these before it runs; see withReadLock/withWriteLock below.
   let activeReads = new Set();
@@ -288,7 +290,7 @@ export function createDeviceStorage({
     // Captured at enqueue time, not execution time — the same rule
     // invalidatePendingRead relies on: this read is ordered behind exactly the
     // writes that were already enqueued when the caller asked.
-    const read = barrier().then(operation);
+    const read = barrier().then(admit(operation));
     // Tracked in its non-rejecting form so a failed read can neither wedge nor
     // reject the barrier a later write awaits.
     const tracked = read.catch(() => {});
@@ -297,8 +299,8 @@ export function createDeviceStorage({
     return read;
   }
 
-  function withWriteLock(operation) {
-    const next = Promise.all([barrier(), ...activeReads]).then(operation);
+  function withWriteLock(operation, guarded = true) {
+    const next = Promise.all([barrier(), ...activeReads]).then(guarded ? admit(operation) : operation);
     writeTail = next.catch(() => {});
     return next;
   }
@@ -396,8 +398,9 @@ export function createDeviceStorage({
       });
     },
     removeItem(key) {
+      if (recovering) return refuseRemoval();
       invalidatePendingRead(key);
-      return withMutationLock(() => backingStore.removeItem(key));
+      return withMutationLock(() => (recovering ? refuseRemoval() : backingStore.removeItem(key)));
     },
     getAllKeys() {
       // Deliberately still exclusive rather than a concurrent reader. It is the
@@ -417,9 +420,10 @@ export function createDeviceStorage({
       });
     },
     multiRemove(keys) {
+      if (recovering) return refuseRemoval();
       for (const key of keys) invalidatePendingRead(key);
       // Removing encrypted blobs does not require the encryption key.
-      return withMutationLock(() => backingStore.multiRemove(keys));
+      return withMutationLock(() => (recovering ? refuseRemoval() : backingStore.multiRemove(keys)));
     },
     // Rewrite one stored value as a single serialized operation (issue #813).
     // `transform` receives the current decrypted value (`null` when the key is
@@ -462,7 +466,10 @@ export function createDeviceStorage({
         await withWriteLock(async () => {
           // Writes queued against the orphaned state are stale once it is replaced.
           dataGeneration += 1;
-          try { await journal.commit([...scratch.values]); setKeyLatch(false); } finally { keyPromise = null; validation = null; }
+          try { await journal.commit([...scratch.values]); setKeyLatch(false); } catch (error) {
+            gate.noteFailure(error);
+            throw error;
+          } finally { keyPromise = null; validation = null; }
         });
         return result;
       } finally { recovering = false; }
@@ -494,8 +501,15 @@ export function createDeviceStorage({
     },
     wipeKiloData() {
       invalidateAllPendingReads();
+      // Unguarded: a confirmed reset must work even over an interrupted commit,
+      // and it drops any recovery stage first so nothing can roll it back in.
       return withWriteLock(async () => {
         dataGeneration += 1;
+        if (encryptValues) {
+          requireNativePrimitives();
+          await journal.discard();
+          gate.clear();
+        }
         const keys = await backingStore.getAllKeys();
         const kiloKeys = keys.filter((key) => key.startsWith('kilo_'));
         if (kiloKeys.length > 0) await backingStore.multiRemove(kiloKeys);
@@ -511,7 +525,7 @@ export function createDeviceStorage({
           ? await encrypt('kilo_local_data_owner', 'unclaimed')
           : 'unclaimed';
         await backingStore.setItem('kilo_local_data_owner', owner);
-      });
+      }, false);
     },
     // Deliberately does NOT invalidate pending reads (#818), unlike every other
     // mutating method above. This pass only ever re-ENCODES a value that is

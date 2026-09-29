@@ -166,6 +166,23 @@ describe('recovery refuses and preserves orphaned data', () => {
     expect(await storage.getItem('kilo_weight_entries')).toBe('[{"id":"restored"}]');
   });
 
+  test('removals during recovery are refused, so a failed restore keeps every orphan', async () => {
+    const { backingStore, primitives, storage, orphans } = await orphanedDevice();
+    let removals;
+    await expect(storage.recoverDeviceData(async () => {
+      removals = await Promise.allSettled([
+        storage.removeItem('kilo_weight_entries'),
+        storage.multiRemove(['kilo_workout_notes']),
+      ]);
+      return { ok: false, error: 'invalid restore' };
+    })).resolves.toEqual({ ok: false, error: 'invalid restore' });
+    expect(removals.map((outcome) => outcome.status)).toEqual(['rejected', 'rejected']);
+    expectOrphansUntouched(backingStore, orphans, primitives, undefined);
+    // Removal is open again once recovery has ended (#1177 behavior).
+    await storage.removeItem('kilo_workout_notes');
+    expect(backingStore.values.has('kilo_workout_notes')).toBe(false);
+  });
+
   test('a stage write failure discards the stage and leaves the orphans', async () => {
     const { backingStore, primitives, storage, orphans } = await orphanedDevice();
     backingStore.multiSet.mockImplementationOnce(async ([[key, value]]) => {
@@ -250,6 +267,44 @@ describe('interrupted recovery on the next launch', () => {
     expect(relaunched.isKeyUnavailable()).toBe(false);
     expect([...backingStore.values.keys()].some((key) => key.startsWith('kilorecovery'))).toBe(false);
     expect(primitives.secureValues.has(RECOVERY_KEY_NAME)).toBe(false);
+  });
+
+  test('a same-process read after an interrupted placement fails closed until the roll-forward completes', async () => {
+    const { backingStore, storage } = await orphanedDevice();
+    const real = backingStore.multiSet.getMockImplementation();
+    let calls = 0;
+    backingStore.multiSet.mockImplementation(async (pairs) => {
+      calls += 1;
+      if (calls === 1) return real(pairs);
+      await real(pairs.slice(0, 1));
+      throw new Error('disk error');
+    });
+    await expect(storage.recoverDeviceData(async (store) => {
+      await store.setItem('kilo_weight_entries', '[{"id":"restored"}]');
+      await store.setItem('kilo_workout_notes', '[{"id":"restored-note"}]');
+      return { ok: true };
+    })).rejects.toThrow('disk error');
+    // The fresh key is live and one restored value is placed, yet nothing is exposed.
+    await expect(storage.getItem('kilo_weight_entries')).rejects.toBeInstanceOf(EncryptedStorageError);
+    await expect(storage.getItem('kilo_local_data_owner')).rejects.toBeInstanceOf(EncryptedStorageError);
+    await expect(storage.setItem('kilo_weight_goal', '{}')).rejects.toBeInstanceOf(EncryptedStorageError);
+    expect(storage.isKeyUnavailable()).toBe(true);
+
+    backingStore.multiSet.mockImplementation(real);
+    expect(await storage.getItem('kilo_workout_notes')).toBe('[{"id":"restored-note"}]');
+    expect(await storage.getItem('kilo_weight_entries')).toBe('[{"id":"restored"}]');
+  });
+
+  test('a confirmed reset over an interrupted commit also discards the recovery stage', async () => {
+    const { backingStore, primitives, storage } = await orphanedDevice();
+    backingStore.multiRemove.mockImplementationOnce(async () => { throw new Error('app killed'); });
+    await expect(storage.recoverDeviceData(restored)).rejects.toThrow();
+    await storage.wipeKiloData();
+    expect(backingStore.values.has(RECOVERY_JOURNAL_KEY)).toBe(false);
+    expect(primitives.secureValues.has(RECOVERY_KEY_NAME)).toBe(false);
+    const relaunched = open(backingStore, primitives);
+    expect(await relaunched.getItem('kilo_weight_entries')).toBeNull();
+    expect(await relaunched.getItem('kilo_local_data_owner')).toBe('unclaimed');
   });
 
   test('a completed commit whose cleanup was interrupted only discards leftovers', async () => {
