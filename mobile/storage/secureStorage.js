@@ -56,7 +56,9 @@ export const DEVICE_KEY_RECOVERY_MESSAGE = 'Kilo cannot unlock the encrypted dat
 function isEnvelopeLike(raw) {
   if (typeof raw !== 'string') return false;
   if (raw.startsWith(ENVELOPE_PREFIX)) return true;
-  return raw.length >= 8 && ENVELOPE_PREFIX.startsWith(raw);
+  // Any non-empty prefix of the marker. Legitimate plaintext kilo_* values
+  // (JSON, cursors, timestamps, ids, counters) never begin as a prefix of it.
+  return raw.length > 0 && ENVELOPE_PREFIX.startsWith(raw);
 }
 
 function loadSecureStore() {
