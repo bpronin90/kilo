@@ -43,6 +43,7 @@ export function MoreScreen({
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const [activeView, setActiveView] = useState('menu');
+  const [routinePromptInitialTool, setRoutinePromptInitialTool] = useState(null);
 
   // Password recovery (#497): when the shell reports an active recovery
   // session or a failed recovery link, open the Account sub-view so the
@@ -146,12 +147,13 @@ export function MoreScreen({
       <RoutineImportScreen
         onBack={() => showView('menu')}
         onCreateRoutine={onCreateRoutineFromImport}
+        onImportNormalization={() => { setRoutinePromptInitialTool('normalize'); showView('routine-prompts'); }}
       />
     );
   }
 
   if (activeView === 'routine-prompts') {
-    return <RoutinePromptToolsScreen onBack={() => showView('menu')} />;
+    return <RoutinePromptToolsScreen onBack={() => showView(routinePromptInitialTool ? 'import-routine' : 'menu')} initialTool={routinePromptInitialTool} />;
   }
 
   if (activeView === 'settings') {
@@ -217,7 +219,7 @@ export function MoreScreen({
 
       <SectionTitle>Prompts</SectionTitle>
       <View style={styles.list}>
-        <Pressable style={styles.menuItem} onPress={() => showView('routine-prompts')} accessibilityRole="button" accessibilityLabel="Routine prompt tools">
+        <Pressable style={styles.menuItem} onPress={() => { setRoutinePromptInitialTool(null); showView('routine-prompts'); }} accessibilityRole="button" accessibilityLabel="Routine prompt tools">
           <View style={styles.menuCopy}>
             <Text style={styles.menuItemText}>Routine prompt tools</Text>
             <Text style={styles.menuItemHelp}>Copy local templates for an external LLM</Text>

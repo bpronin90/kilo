@@ -69,7 +69,7 @@ const IMPORT_UNFINISHED_MESSAGE =
   + 'Press Create new routine to finish it. To import something else instead, '
   + 'leave it as it is — you will find it under Log › Routines.';
 
-export function RoutineImportScreen({ onBack, onCreateRoutine }) {
+export function RoutineImportScreen({ onBack, onCreateRoutine, onImportNormalization }) {
   const styles = useThemedStyles(createStyles);
   const inputStyle = useInputStyle();
   const [pasted, setPasted] = useState('');
@@ -116,6 +116,7 @@ export function RoutineImportScreen({ onBack, onCreateRoutine }) {
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
+
 
   // The explicit abandonment boundary. It retires the attempt only — the
   // routine it created stays on the device, which is what the message says —
@@ -215,6 +216,11 @@ export function RoutineImportScreen({ onBack, onCreateRoutine }) {
       onBack={onBack}
       keyboardShouldPersistTaps="handled"
     >
+      <SectionTitle>Normalized exercise names</SectionTitle>
+      <Card>
+        <Text style={styles.mutedText}>Paste a normalized reply after copying a Normalize exercise names prompt. Your copied prompt is kept on this device until you apply or discard it.</Text>
+        <Button title="Import normalized exercise names" onPress={onImportNormalization} accessibilityLabel="Import normalized exercise names" />
+      </Card>
       <SectionTitle>Pasted text</SectionTitle>
       <Card>
         <TextInput

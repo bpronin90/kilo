@@ -77,6 +77,12 @@ export {
 } from './entries/workoutNoteCreationAttempts';
 
 export {
+  saveNormalizationImportSnapshot,
+  loadNormalizationImportSnapshot,
+  clearNormalizationImportSnapshot,
+} from './entries/normalizationImportSnapshot';
+
+export {
   loadDeloadNote,
   saveDeloadNote,
   clearDeloadNote,
