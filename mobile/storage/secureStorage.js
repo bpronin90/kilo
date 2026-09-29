@@ -52,8 +52,8 @@ export class DeviceKeyUnavailableError extends EncryptedStorageError {
 // #1186: restoring needs no reset first. The backup is checked, and this
 // device's data is replaced only once the restored copy is verified.
 export const DEVICE_KEY_RECOVERY_MESSAGE = 'Kilo cannot unlock the encrypted data saved on this device. Nothing has been deleted. '
-  + 'To restore a backup without any reset, use More > Data & Backup: Kilo validates it and replaces this data only after the restore is verified. Account users can instead choose Sign Out & Wipe in More > Data & Backup, sign back in, then choose Download My Account\'s Data. '
-  + 'Wiping removes only local data that cannot be read because the device key is missing.';
+  + 'To restore a backup without any reset, use More > Data & Backup: Kilo validates it and replaces this data only after the restore is verified. Account users can instead choose Sign Out & Wipe (or Wipe Device Data if signed out) in More > Data & Backup, sign in, then choose Download My Account\'s Data. '
+  + 'Wiping removes all local Kilo data on this device; your account\'s cloud copy stays intact.';
 
 // A truncated marker (partial write) is still encrypted data, never plaintext:
 // treating it as plaintext would mint a key and overwrite it (#1177).
