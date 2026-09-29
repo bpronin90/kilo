@@ -90,7 +90,7 @@ export const HOME_RECOVERY_STATUS = Object.freeze({
 // `deriveRecoveryComparison` result Analytics renders into the user's Big 3
 // (their 1K lifts) plus one count line for the rest of the roster. Every
 // exercise's full breakdown stays behind the `Recovery` handoff.
-export function useHomeRecoverySummary(notes, oneKOverrides = null) {
+export function useHomeRecoverySummary(notes) {
   const { activeBlock, weeks, ready, loading, stale, retryRecovery } = useRecoveryBlockState() || {};
   return useMemo(() => {
     const status = ready
@@ -125,7 +125,11 @@ export function useHomeRecoverySummary(notes, oneKOverrides = null) {
     const comparison = deriveRecoveryComparison({ block: activeBlock, weeks, notes });
     const comparisonWeeks = comparison.weeks || [];
     const current = comparisonWeeks.length > 0 ? comparisonWeeks[comparisonWeeks.length - 1] : null;
-    const selections = { ...DEFAULT_1K_EXERCISES, ...(oneKOverrides || {}) };
+    // The Big 3 are the BASELINE routine's 1K picks — the block may have been
+    // started from a routine other than the current one, and its roster is
+    // that routine's exercises.
+    const baselineNote = (notes || []).find(n => n && n.id === activeBlock.baseline_note_id);
+    const selections = { ...DEFAULT_1K_EXERCISES, ...(baselineNote?.one_k_exercises || {}) };
 
     return {
       ...base,
@@ -136,7 +140,7 @@ export function useHomeRecoverySummary(notes, oneKOverrides = null) {
       ...deriveHomeRecoveryBig3(current, selections),
       includedInNormalAnalytics: activeBlock.include_in_normal_analytics === true,
     };
-  }, [activeBlock, weeks, notes, oneKOverrides, ready, loading, stale, retryRecovery]);
+  }, [activeBlock, weeks, notes, ready, loading, stale, retryRecovery]);
 }
 
 const BIG3_SLOTS = Object.freeze([

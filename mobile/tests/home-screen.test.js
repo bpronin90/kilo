@@ -1906,6 +1906,16 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     });
   });
 
+  test('the Big 3 follow the baseline routine\'s 1K picks, not the current routine\'s', async () => {
+    // The block was started from Routine A (Bench/Squat picks); the current
+    // routine picks different lifts, which must not reshape the card.
+    AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
+    const current = { ...SIX_LIFT_NOTE, id: 'n-current', one_k_exercises: { bench: 'Row', squat: 'Press', deadlift: 'Curl' } };
+    const component = await mount({ workoutNote: current, notes: [NOTE, current, weekNote('nr1', PARTIAL_TEXT)] });
+
+    expect(spoken(component)).toBe('Week 1. Squat 72% of baseline. Bench recovered.');
+  });
+
   test('the one press target inside the card meets the touch minimum', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     const component = await mount();
