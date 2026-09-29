@@ -9,6 +9,7 @@ import { useWeightUnit } from '../lib/unitPreference';
 import { deriveHomeDashboardData, useHomeNormalNotes, useHomeRecoverySummary } from './home/homeDashboardData';
 import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
 import { markStartupPhase, markStartupStorageReads } from '../storage/entries/startupTiming';
+import { DEVICE_KEY_RECOVERY_MESSAGE, isDeviceKeyUnavailable, secureStorage } from '../storage/secureStorage';
 import { createStyles } from './home/homeStyles';
 import { useKuaTypography } from '../theme/typography';
 import { HomeHeader } from './home/HomeHeader';
@@ -18,7 +19,6 @@ import { HomeDashboard } from './home/HomeDashboard';
 // to a shape parseWorkoutNote silently rejects.
 export const WELCOME_EXAMPLE_EXERCISE_LINE = '-Squat';
 export const WELCOME_EXAMPLE_SETS_LINE = '315 5,5';
-
 function lerpColor(a, b, t) {
   const p = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
   const [ar,ag,ab] = p(a), [br,bg,bb] = p(b);
@@ -223,7 +223,17 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   // read zeroed the strength counts, in both cases looking exactly like a user
   // who has set nothing up. All four sources are one honest failure state here,
   // with one retry that re-runs everything Home renders from.
-  const hasLoadError = !!loadError || !!goalError || !!trackedLiftsError;
+  // A lost device key (#1177) is surfaced on its own: orphaned envelopes can sit
+  // under keys Home never reads, so no Home read would ever report it.
+  const [probedKeyLoss, setProbedKeyLoss] = useState(false);
+  useEffect(() => {
+    let live = true;
+    secureStorage.probeDeviceKey().then(() => { if (live) setProbedKeyLoss(isDeviceKeyUnavailable()); }, () => {});
+    const unsubscribe = secureStorage.subscribeKeyUnavailable?.((lost) => { if (live) setProbedKeyLoss(lost); });
+    return () => { live = false; unsubscribe?.(); };
+  }, []);
+  const keyLost = probedKeyLoss || isDeviceKeyUnavailable();
+  const hasLoadError = !!loadError || !!goalError || !!trackedLiftsError || keyLost;
   const handleRetryLoad = () => {
     onRetryLoad?.();
     refreshGoal?.();
@@ -399,7 +409,7 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
     >
       {hasLoadError ? (
         <ErrorBanner
-          message="Could not load your training data."
+          message={keyLost ? DEVICE_KEY_RECOVERY_MESSAGE : 'Could not load your training data.'}
           onRetry={handleRetryLoad}
         />
       ) : null}
