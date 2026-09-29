@@ -449,10 +449,21 @@ async function restoreCloudBlock(cloud) {
 // contract including omission tombstones — but a v1/v2/v3 file predates the
 // format and says nothing about recovery data, so it leaves every block and
 // membership exactly where it is.
+//
+// #1186: with the device key lost, a validated replace is the recovery path. It
+// runs against a reset-device overlay and replaces the orphaned data only once
+// the restored copy is staged and verified under a fresh key; no reset first.
 export async function importBackup(payload, strategy = 'replace', { mode = IMPORT_MODES.LOCAL } = {}) {
   const check = validateBackup(payload);
   if (!check.ok) return check;
+  if (AsyncStorage.isKeyUnavailable?.()) {
+    if (strategy !== 'replace') return { ok: false, error: 'Only a full backup restore can recover this device.' };
+    return AsyncStorage.recoverDeviceData(() => restoreValidatedBackup(payload, strategy, mode));
+  }
+  return restoreValidatedBackup(payload, strategy, mode);
+}
 
+async function restoreValidatedBackup(payload, strategy, mode) {
   const cloudMode = mode === IMPORT_MODES.CLOUD;
   const resolvedMode = cloudMode ? IMPORT_MODES.CLOUD : IMPORT_MODES.LOCAL;
   let queued = 0;

@@ -8,6 +8,7 @@ import {
   utf8ToBytes,
 } from '@noble/ciphers/utils';
 import { markStartupPhase, recordStartupStorageRead } from './entries/startupTiming';
+import { createRecoveryJournal, createRecoveryOverlay } from './deviceKeyRecovery';
 
 const ENVELOPE_PREFIX = 'kilo.enc.v1:';
 const DEVICE_KEY_NAME = 'kilo.device-data-key.v1';
@@ -48,8 +49,11 @@ export class DeviceKeyUnavailableError extends EncryptedStorageError {
   }
 }
 
+// #1186: restoring needs no reset first. The backup is checked, and this
+// device's data is replaced only once the restored copy is verified.
 export const DEVICE_KEY_RECOVERY_MESSAGE = 'Kilo cannot unlock the encrypted data saved on this device. '
-  + 'Nothing has been deleted. Reset local data, then restore a backup or sign in to sync; reset only if you no longer need what is stored here.';
+  + 'Nothing has been deleted. To recover, restore a backup from More > Data and Backup: Kilo checks the backup first '
+  + 'and replaces this data only after the restore is verified. Reset local data only if you no longer need what is stored here.';
 
 // A truncated marker (partial write) is still encrypted data, never plaintext:
 // treating it as plaintext would mint a key and overwrite it (#1177).
@@ -99,8 +103,8 @@ export function createDeviceStorage({
 } = {}) {
   const encryptValues = platformOS !== 'web'
     && (forceEncryption || process.env.NODE_ENV !== 'test');
-  // Latched per store so screens can explain the failure without owning
-  // storage errors; cleared only by a confirmed wipe or a fresh-key mint.
+  // Latched per store so screens can explain the failure without owning storage
+  // errors; cleared only by a wipe, a fresh-key mint, or a committed recovery.
   let deviceKeyUnavailable = false;
   const keyListeners = new Set();
   function setKeyLatch(value) {
@@ -114,6 +118,20 @@ export function createDeviceStorage({
   // settled-or-settling promise that never rejects, so a failed write cannot
   // wedge the boundary.
   let writeTail = Promise.resolve();
+  // #1186: the first operation of a launch waits for any interrupted recovery to
+  // be rolled forward or discarded, so no read can see a half-replaced device.
+  const journal = createRecoveryJournal({ backingStore, secureStore, crypto,
+    keyOptions: secureStoreOptions(secureStore), deviceKeyName: DEVICE_KEY_NAME, envelopePrefix: ENVELOPE_PREFIX });
+  let reconciled = !encryptValues;
+  function barrier() {
+    if (!reconciled) {
+      reconciled = true;
+      writeTail = journal.reconcile().catch(() => {});
+    }
+    return writeTail;
+  }
+  // Non-null only while an explicit recovery populates its restored dataset.
+  let overlay = null;
   // Reads admitted after the current `writeTail` and not yet finished. A write
   // waits for these before it runs; see withReadLock/withWriteLock below.
   let activeReads = new Set();
@@ -271,7 +289,7 @@ export function createDeviceStorage({
     // Captured at enqueue time, not execution time — the same rule
     // invalidatePendingRead relies on: this read is ordered behind exactly the
     // writes that were already enqueued when the caller asked.
-    const read = writeTail.then(operation);
+    const read = barrier().then(operation);
     // Tracked in its non-rejecting form so a failed read can neither wedge nor
     // reject the barrier a later write awaits.
     const tracked = read.catch(() => {});
@@ -281,8 +299,7 @@ export function createDeviceStorage({
   }
 
   function withWriteLock(operation) {
-    const barrier = Promise.all([writeTail, ...activeReads]);
-    const next = barrier.then(operation);
+    const next = Promise.all([barrier(), ...activeReads]).then(operation);
     writeTail = next.catch(() => {});
     return next;
   }
@@ -370,9 +387,11 @@ export function createDeviceStorage({
 
   const storage = {
     getItem(key) {
+      if (overlay) return overlay.getItem(key);
       return coalescedRead(key);
     },
     setItem(key, value) {
+      if (overlay) return overlay.setItem(key, value);
       invalidatePendingRead(key);
       return withMutationLock(async () => {
         const next = encryptValues ? await encrypt(key, value) : String(value);
@@ -380,16 +399,19 @@ export function createDeviceStorage({
       });
     },
     removeItem(key) {
+      if (overlay) return overlay.removeItem(key);
       invalidatePendingRead(key);
       return withMutationLock(() => backingStore.removeItem(key));
     },
     getAllKeys() {
+      if (overlay) return overlay.getAllKeys();
       // Deliberately still exclusive rather than a concurrent reader. It is the
       // input to the wipe/ownership scans, never to Home's launch path, so
       // nothing is gained by relaxing it and the stronger barrier is free.
       return withWriteLock(() => backingStore.getAllKeys());
     },
     multiSet(pairs) {
+      if (overlay) return overlay.multiSet(pairs);
       for (const [key] of pairs) invalidatePendingRead(key);
       return withMutationLock(async () => {
         const encoded = [];
@@ -401,6 +423,7 @@ export function createDeviceStorage({
       });
     },
     multiRemove(keys) {
+      if (overlay) return overlay.multiRemove(keys);
       for (const key of keys) invalidatePendingRead(key);
       // Removing encrypted blobs does not require the encryption key.
       return withMutationLock(() => backingStore.multiRemove(keys));
@@ -415,6 +438,7 @@ export function createDeviceStorage({
     // mutation lock also discards the rewrite when a wipe advances the data
     // generation first, exactly like setItem.
     updateItem(key, transform) {
+      if (overlay) return overlay.updateItem(key, transform);
       invalidatePendingRead(key);
       return withMutationLock(async () => {
         const current = await getItemUnlocked(key);
@@ -426,6 +450,29 @@ export function createDeviceStorage({
       }, { changed: false });
     },
     isKeyUnavailable() { return deviceKeyUnavailable; },
+    // Explicit, validated recovery from a lost key (#1186); unreachable from
+    // ordinary reads/writes or startup. `populate` writes into a reset-device
+    // overlay; only a resolved, non-`{ ok: false }` result is staged under a
+    // fresh key, verified, and committed over the orphans (deviceKeyRecovery.js).
+    async recoverDeviceData(populate) {
+      if (!encryptValues || !deviceKeyUnavailable) {
+        throw new Error('Device-key recovery is only available while the device key is unavailable.');
+      }
+      if (overlay) throw new Error('Device-key recovery is already in progress.');
+      requireNativePrimitives();
+      const scratch = createRecoveryOverlay([['kilo_local_data_owner', 'unclaimed']]);
+      invalidateAllPendingReads();
+      await withWriteLock(() => { overlay = scratch; });
+      let result;
+      try { result = await populate(); } finally { overlay = null; invalidateAllPendingReads(); }
+      if (result?.ok === false) return result;
+      await withWriteLock(async () => {
+        // Writes queued against the orphaned state are stale once it is replaced.
+        dataGeneration += 1;
+        try { await journal.commit([...scratch.values]); setKeyLatch(false); } finally { keyPromise = null; validation = null; }
+      });
+      return result;
+    },
     // Mounted screens learn about a later latch (e.g. a write that retried key
     // validation after a transient probe failure) without remounting.
     subscribeKeyUnavailable(listener) {
