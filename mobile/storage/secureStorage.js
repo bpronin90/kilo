@@ -51,17 +51,6 @@ export class DeviceKeyUnavailableError extends EncryptedStorageError {
 export const DEVICE_KEY_RECOVERY_MESSAGE = 'Kilo cannot unlock the encrypted data saved on this device. '
   + 'Nothing has been deleted. Reset local data, then restore a backup or sign in to sync; reset only if you no longer need what is stored here.';
 
-// Latched so screens can explain the failure without owning storage errors.
-let deviceKeyUnavailable = false;
-export function isDeviceKeyUnavailable() {
-  return deviceKeyUnavailable;
-}
-
-function isWellFormedEnvelope(envelope) {
-  const parts = envelope.slice(ENVELOPE_PREFIX.length).split(':');
-  return parts.length === 2 && parts[0].length === NONCE_BYTES * 2 && parts[1].length >= 32;
-}
-
 function loadSecureStore() {
   try {
     // eslint-disable-next-line global-require
@@ -100,6 +89,9 @@ export function createDeviceStorage({
 } = {}) {
   const encryptValues = platformOS !== 'web'
     && (forceEncryption || process.env.NODE_ENV !== 'test');
+  // Latched per store so screens can explain the failure without owning
+  // storage errors; cleared only by a confirmed wipe or a fresh-key mint.
+  let deviceKeyUnavailable = false;
   let keyPromise = null;
   // The write barrier every later operation is ordered behind (#984). Always a
   // settled-or-settling promise that never rejects, so a failed write cannot
@@ -163,6 +155,9 @@ export function createDeviceStorage({
   }
 
   async function encrypt(key, value) {
+    // Monotonic recovery state: no encrypting write may replace an envelope
+    // while the key cannot be trusted. Removal and confirmed wipe stay open.
+    if (deviceKeyUnavailable) throw new DeviceKeyUnavailableError();
     const encryptionKey = await deviceKey();
     const nonce = await crypto.getRandomBytesAsync(NONCE_BYTES);
     if (!(nonce instanceof Uint8Array) || nonce.length !== NONCE_BYTES) {
@@ -186,9 +181,7 @@ export function createDeviceStorage({
     } catch (error) {
       // AES-GCM rejection with a well-formed envelope means the stored key is
       // stale (or the value tampered): same non-destructive recovery state.
-      if (!(error instanceof DeviceKeyUnavailableError) && isWellFormedEnvelope(envelope)) {
-        deviceKeyUnavailable = true;
-      }
+      deviceKeyUnavailable = true;
       throw new EncryptedStorageError(key, error);
     }
   }
@@ -376,6 +369,7 @@ export function createDeviceStorage({
         return { changed: true };
       }, { changed: false });
     },
+    isKeyUnavailable() { return deviceKeyUnavailable; },
     // Lets a screen learn whether the device key is unavailable without waiting
     // for a read of the one key that happens to be orphaned (#1177). Latches
     // isDeviceKeyUnavailable(); never rejects.
@@ -383,7 +377,23 @@ export function createDeviceStorage({
       if (!encryptValues) return;
       try {
         await withReadLock(async () => {
-          await deviceKey();
+          try {
+            await deviceKey();
+          } catch (error) {
+            // A stored key that cannot even be parsed is unusable; if encrypted
+            // data exists the state is the same recovery state.
+            if (error instanceof DeviceKeyUnavailableError) throw error;
+            for (const name of await backingStore.getAllKeys()) {
+              if (!name.startsWith('kilo_')) continue;
+              // eslint-disable-next-line no-await-in-loop
+              const raw = await backingStore.getItem(name);
+              if (typeof raw === 'string' && raw.startsWith(ENVELOPE_PREFIX)) {
+                deviceKeyUnavailable = true;
+                return;
+              }
+            }
+            throw error;
+          }
           // A present key proves nothing until it authenticates a stored envelope.
           for (const name of await backingStore.getAllKeys()) {
             if (!name.startsWith('kilo_')) continue;
@@ -421,12 +431,12 @@ export function createDeviceStorage({
           await secureStore.deleteItemAsync(DEVICE_KEY_NAME);
           keyPromise = null;
         }
+        // Explicit recovery: old envelopes are gone and the old key is discarded.
+        deviceKeyUnavailable = false;
         const owner = encryptValues
           ? await encrypt('kilo_local_data_owner', 'unclaimed')
           : 'unclaimed';
         await backingStore.setItem('kilo_local_data_owner', owner);
-        // Explicit recovery: old envelopes are gone and a fresh key exists.
-        deviceKeyUnavailable = false;
       });
     },
     // Deliberately does NOT invalidate pending reads (#818), unlike every other
@@ -482,6 +492,10 @@ export function createDeviceStorage({
 }
 
 export const secureStorage = createDeviceStorage();
+
+export function isDeviceKeyUnavailable() {
+  return secureStorage.isKeyUnavailable();
+}
 
 // Explicit destructive device-data path used only after a user confirmation.
 // Remove all Kilo values, cryptographically discard the old key, then create a

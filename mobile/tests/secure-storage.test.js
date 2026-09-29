@@ -4,7 +4,6 @@ import {
   DEVICE_DATA_KEY_NAME,
   EncryptedStorageError,
   DeviceKeyUnavailableError,
-  isDeviceKeyUnavailable,
 } from '../storage/secureStorage';
 
 function makeBackingStore(seed = {}) {
@@ -244,7 +243,7 @@ describe('device key fails closed when encrypted local data exists', () => {
     const { storage, secureValues } = makeStorage({ kilo_other: 'plain', 'unrelated.enc': 'kilo.enc.v1:aa:bb' });
     await storage.setItem('kilo_weight_entries', 'x');
     expect(secureValues.has(DEVICE_DATA_KEY_NAME)).toBe(true);
-    expect(isDeviceKeyUnavailable()).toBe(false);
+    expect(storage.isKeyUnavailable()).toBe(false);
   });
 
   test('missing/stale key: does not mint or store a replacement and keeps the envelope', async () => {
@@ -259,7 +258,7 @@ describe('device key fails closed when encrypted local data exists', () => {
     expect(crypto.getRandomBytesAsync).not.toHaveBeenCalled();
     expect(secureValues.has(DEVICE_DATA_KEY_NAME)).toBe(false);
     expect(backingStore.values.get('kilo_weight_entries')).toBe(envelope);
-    expect(isDeviceKeyUnavailable()).toBe(true);
+    expect(storage.isKeyUnavailable()).toBe(true);
   });
 
   test('malformed/partial envelope also blocks a new key and is left untouched', async () => {
@@ -281,14 +280,14 @@ describe('device key fails closed when encrypted local data exists', () => {
     await storage.setItem('kilo_weight_entries', 'restored');
     expect(secureValues.has(DEVICE_DATA_KEY_NAME)).toBe(true);
     await expect(storage.getItem('kilo_weight_entries')).resolves.toBe('restored');
-    expect(isDeviceKeyUnavailable()).toBe(false);
+    expect(storage.isKeyUnavailable()).toBe(false);
   });
 
   test('probeDeviceKey latches key loss without any read of the orphaned key', async () => {
     const envelope = await withEnvelope();
     const { storage, secureValues } = makeStorage({ kilo_archived_weight_goals: envelope });
     await expect(storage.probeDeviceKey()).resolves.toBeUndefined();
-    expect(isDeviceKeyUnavailable()).toBe(true);
+    expect(storage.isKeyUnavailable()).toBe(true);
     expect(secureValues.size).toBe(0);
   });
 
@@ -297,7 +296,7 @@ describe('device key fails closed when encrypted local data exists', () => {
     const { storage, backingStore, secureValues } = makeStorage({ kilo_weight_entries: envelope });
     secureValues.set(DEVICE_DATA_KEY_NAME, '11'.repeat(32));
     await storage.probeDeviceKey();
-    expect(isDeviceKeyUnavailable()).toBe(true);
+    expect(storage.isKeyUnavailable()).toBe(true);
     expect(backingStore.values.get('kilo_weight_entries')).toBe(envelope);
     expect(secureValues.get(DEVICE_DATA_KEY_NAME)).toBe('11'.repeat(32));
   });
@@ -310,10 +309,41 @@ describe('device key fails closed when encrypted local data exists', () => {
     const { storage, secureValues } = makeStorage({ kilo_weight_entries: okEnvelope, kilo_workout_notes: other, kilo_archived_weight_goals: okEnvelope });
     secureValues.set(DEVICE_DATA_KEY_NAME, good.secureValues.get(DEVICE_DATA_KEY_NAME));
     await storage.probeDeviceKey();
-    expect(isDeviceKeyUnavailable()).toBe(true);
+    expect(storage.isKeyUnavailable()).toBe(true);
     await expect(storage.getItem('kilo_weight_entries').catch((e) => e)).resolves.toBeDefined();
-    expect(isDeviceKeyUnavailable()).toBe(true);
+    expect(storage.isKeyUnavailable()).toBe(true);
     await storage.wipeKiloData();
-    expect(isDeviceKeyUnavailable()).toBe(false);
+    expect(storage.isKeyUnavailable()).toBe(false);
+  });
+
+  test('latched state rejects every encrypting write but still allows removal', async () => {
+    const envelope = await withEnvelope();
+    const { storage, backingStore, secureValues } = makeStorage({ kilo_weight_entries: envelope });
+    secureValues.set(DEVICE_DATA_KEY_NAME, '11'.repeat(32));
+    await storage.probeDeviceKey();
+    await expect(storage.setItem('kilo_weight_entries', 'x')).rejects.toBeInstanceOf(DeviceKeyUnavailableError);
+    await expect(storage.multiSet([['kilo_weight_entries', 'x']])).rejects.toBeInstanceOf(DeviceKeyUnavailableError);
+    await expect(storage.updateItem('kilo_weight_entries', () => 'x')).rejects.toBeDefined();
+    expect(backingStore.values.get('kilo_weight_entries')).toBe(envelope);
+    await storage.removeItem('kilo_weight_entries');
+    expect(backingStore.values.has('kilo_weight_entries')).toBe(false);
+  });
+
+  test('a malformed stored key with an envelope under a dormant key latches recovery', async () => {
+    const envelope = await withEnvelope();
+    const { storage, secureValues } = makeStorage({ kilo_archived_weight_goals: envelope });
+    secureValues.set(DEVICE_DATA_KEY_NAME, '00');
+    await storage.probeDeviceKey();
+    expect(storage.isKeyUnavailable()).toBe(true);
+  });
+
+  test('a partial envelope is recovery-required and a wipe-then-write recovers', async () => {
+    const { storage } = makeStorage({ kilo_workout_notes: 'kilo.enc.v1:deadbeef' });
+    await storage.probeDeviceKey();
+    expect(storage.isKeyUnavailable()).toBe(true);
+    await storage.wipeKiloData();
+    await storage.setItem('kilo_weight_entries', 'fresh');
+    await expect(storage.getItem('kilo_weight_entries')).resolves.toBe('fresh');
+    expect(storage.isKeyUnavailable()).toBe(false);
   });
 });
