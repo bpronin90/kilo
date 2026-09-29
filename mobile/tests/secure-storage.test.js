@@ -291,4 +291,14 @@ describe('device key fails closed when encrypted local data exists', () => {
     expect(isDeviceKeyUnavailable()).toBe(true);
     expect(secureValues.size).toBe(0);
   });
+
+  test('a present but stale key latches key loss on authentication failure and probe', async () => {
+    const envelope = await withEnvelope();
+    const { storage, backingStore, secureValues } = makeStorage({ kilo_weight_entries: envelope });
+    secureValues.set(DEVICE_DATA_KEY_NAME, '11'.repeat(32));
+    await storage.probeDeviceKey();
+    expect(isDeviceKeyUnavailable()).toBe(true);
+    expect(backingStore.values.get('kilo_weight_entries')).toBe(envelope);
+    expect(secureValues.get(DEVICE_DATA_KEY_NAME)).toBe('11'.repeat(32));
+  });
 });

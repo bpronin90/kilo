@@ -57,6 +57,11 @@ export function isDeviceKeyUnavailable() {
   return deviceKeyUnavailable;
 }
 
+function isWellFormedEnvelope(envelope) {
+  const parts = envelope.slice(ENVELOPE_PREFIX.length).split(':');
+  return parts.length === 2 && parts[0].length === NONCE_BYTES * 2 && parts[1].length >= 32;
+}
+
 function loadSecureStore() {
   try {
     // eslint-disable-next-line global-require
@@ -124,7 +129,6 @@ export function createDeviceStorage({
         if (stored != null) {
           const parsed = hexToBytes(stored);
           if (parsed.length !== DEVICE_KEY_BYTES) throw new Error('Stored device encryption key is invalid.');
-          deviceKeyUnavailable = false;
           return parsed;
         }
         // No key. Only provision one when no kilo_* value already holds an
@@ -178,8 +182,14 @@ export function createDeviceStorage({
       const nonce = hexToBytes(parts[0]);
       const ciphertext = hexToBytes(parts[1]);
       const plaintext = gcm(await deviceKey(), nonce, utf8ToBytes(key)).decrypt(ciphertext);
+      deviceKeyUnavailable = false;
       return bytesToUtf8(plaintext);
     } catch (error) {
+      // AES-GCM rejection with a well-formed envelope means the stored key is
+      // stale (or the value tampered): same non-destructive recovery state.
+      if (!(error instanceof DeviceKeyUnavailableError) && isWellFormedEnvelope(envelope)) {
+        deviceKeyUnavailable = true;
+      }
       throw new EncryptedStorageError(key, error);
     }
   }
@@ -372,7 +382,21 @@ export function createDeviceStorage({
     // isDeviceKeyUnavailable(); never rejects.
     async probeDeviceKey() {
       if (!encryptValues) return;
-      try { await withReadLock(() => deviceKey()); } catch { /* latched or unrelated */ }
+      try {
+        await withReadLock(async () => {
+          await deviceKey();
+          // A present key proves nothing until it authenticates a stored envelope.
+          for (const name of await backingStore.getAllKeys()) {
+            if (!name.startsWith('kilo_')) continue;
+            // eslint-disable-next-line no-await-in-loop
+            const raw = await backingStore.getItem(name);
+            if (typeof raw === 'string' && raw.startsWith(ENVELOPE_PREFIX)) {
+              await decrypt(name, raw);
+              return;
+            }
+          }
+        });
+      } catch { /* latched or unrelated */ }
     },
     clearDeviceKey() {
       // Discarding the key changes what every stored envelope decrypts to (it
