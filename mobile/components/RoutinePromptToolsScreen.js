@@ -82,6 +82,14 @@ function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile, canPic
       setMessage(error?.message || 'Couldn’t read that file. Nothing changed.');
     }
   };
+  const discardSnapshot = async () => {
+    setMessage('');
+    try {
+      await onDiscard();
+    } catch {
+      setMessage('Couldn’t discard the saved prompt. It is still available to import.');
+    }
+  };
 
   const valid = preview ? preview.entries.filter(entry => entry.changes) : [];
   const invalid = preview ? preview.entries.filter(entry => entry.problems) : [];
@@ -123,7 +131,13 @@ function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile, canPic
     };
     setResult(outcome);
     onPendingRetry(outcome.failed.length > 0);
-    if (!outcome.failed.length && (outcome.saved.length || outcome.skipped.length)) onComplete();
+    if (!outcome.failed.length && (outcome.saved.length || outcome.skipped.length)) {
+      try {
+        await onComplete();
+      } catch {
+        setMessage('Changes were applied, but the saved prompt could not be cleared. It remains available to import.');
+      }
+    }
     // A failed item whose local text landed (enqueue failed) still changed the
     // notebook, so refresh for it too.
     if (response.saved.length || (response.failed || []).some(row => row.landed)) onApplied();
@@ -163,7 +177,7 @@ function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile, canPic
       <View style={styles.actions}>
         <Button title="Review changes" onPress={() => review(reply)} disabled={!reply.trim() || retryPending} accessibilityLabel="Review normalized routines" />
         {canPickFile ? <Button title="Choose text file" onPress={handlePick} disabled={retryPending} accessibilityLabel="Choose normalized routines file" /> : null}
-        {!retryPending ? <Button title="Discard saved prompt" onPress={onDiscard} accessibilityLabel="Discard saved normalization prompt" /> : null}
+        {!retryPending ? <Button title="Discard saved prompt" onPress={discardSnapshot} accessibilityLabel="Discard saved normalization prompt" /> : null}
       </View>
       {message ? <Text style={styles.error}>{message}</Text> : null}
       {preview?.tooLarge ? <Text style={styles.error}>That reply is too large to be routine results. Nothing changed.</Text> : null}
@@ -388,7 +402,7 @@ export function RoutinePromptToolsScreen({
           </View>
         </> : null}
         {isNormalize && snapshot ? (
-          <NormalizationImport key={snapshot.version} snapshot={snapshot} loadNotes={loadNotes} applyBatch={applyBatch} pickFile={pickFile} canPickFile={canPickFile} onApplied={refreshNotes} onPendingRetry={setPendingRetry} onComplete={() => { clearNormalizationImportSnapshot().catch(() => {}); }} onDiscard={() => { clearNormalizationImportSnapshot().catch(() => {}); setSnapshot(null); }} />
+          <NormalizationImport key={snapshot.version} snapshot={snapshot} loadNotes={loadNotes} applyBatch={applyBatch} pickFile={pickFile} canPickFile={canPickFile} onApplied={refreshNotes} onPendingRetry={setPendingRetry} onComplete={clearNormalizationImportSnapshot} onDiscard={async () => { await clearNormalizationImportSnapshot(); setSnapshot(null); }} />
         ) : null}
         {isNormalize && !snapshot ? <Card><Text style={styles.muted}>No saved normalization prompt is available. Choose an authoritative routine and targets, then copy the prompt to begin.</Text></Card> : null}
       </ScreenShell>
