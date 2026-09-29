@@ -1919,6 +1919,17 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     expect(spoken(component).startsWith('Week 1. Squat')).toBe(false);
   });
 
+  test('a non-string 1K pick on the baseline routine falls back to the slot default instead of crashing', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block({ baseline: sixLiftBaseline, baseline_note_id: 'n6' })],
+      weeks: [week()],
+    }));
+    const restored = { ...SIX_LIFT_NOTE, one_k_exercises: { deadlift: true, squat: 42 } };
+    const component = await mount({ notes: [restored, weekNote('nr1', SIX_LIFT_WEEK_TEXT)] });
+
+    expect(spoken(component)).toContain('Squat recovered. DB Bench Press 50% of baseline. Deadlift not started.');
+  });
+
   test('a missing baseline routine promotes no lift and counts every exercise instead', async () => {
     // The block's baseline routine (n6) is gone, so its 1K picks are unknown.
     // Defaults must not stand in for them.

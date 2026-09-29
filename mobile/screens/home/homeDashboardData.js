@@ -130,7 +130,11 @@ export function useHomeRecoverySummary(notes) {
     // gone, its picks are unknown: no lift is promoted (defaults could name
     // the wrong ones) and every exercise folds into the count line.
     const baselineNote = (notes || []).find(n => n && n.id === activeBlock.baseline_note_id);
-    const selections = baselineNote ? { ...DEFAULT_1K_EXERCISES, ...(baselineNote.one_k_exercises || {}) } : null;
+    // Restored/synced notes can carry non-string picks (e.g. `{ deadlift: true }`);
+    // those fall back to the slot default rather than reaching normalization.
+    const overrides = Object.entries(baselineNote?.one_k_exercises || {})
+      .filter(([, name]) => typeof name === 'string' && name.trim());
+    const selections = baselineNote ? { ...DEFAULT_1K_EXERCISES, ...Object.fromEntries(overrides) } : null;
 
     return {
       ...base,
@@ -175,7 +179,7 @@ export function deriveHomeRecoveryBig3(week, selections) {
   const used = new Set();
   const big3 = [];
   for (const { slot, label } of BIG3_SLOTS) {
-    const key = selections?.[slot] ? normalizeExerciseKey(selections[slot]) : null;
+    const key = typeof selections?.[slot] === 'string' ? normalizeExerciseKey(selections[slot]) : null;
     const row = key ? roster.find(r => !used.has(r) && r.key === key) : null;
     if (!row) continue;
     used.add(row);
