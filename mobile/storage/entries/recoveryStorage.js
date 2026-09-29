@@ -85,8 +85,8 @@ export async function loadRecoveryBlocks() {
 
 // Unfiltered backing list (tombstones and sync metadata included) for the cloud
 // sync engine.
-export async function loadRecoveryBlocksRaw(store) {
-  return readList(RECOVERY_BLOCKS_KEY, store);
+export async function loadRecoveryBlocksRaw() {
+  return readList(RECOVERY_BLOCKS_KEY);
 }
 
 export async function replaceRecoveryBlocksRaw(list, store) {
@@ -359,8 +359,8 @@ export async function loadRecoveryBlockWeeks() {
     );
 }
 
-export async function loadRecoveryBlockWeeksRaw(store) {
-  return readList(RECOVERY_BLOCK_WEEKS_KEY, store);
+export async function loadRecoveryBlockWeeksRaw() {
+  return readList(RECOVERY_BLOCK_WEEKS_KEY);
 }
 
 export async function replaceRecoveryBlockWeeksRaw(list, store) {

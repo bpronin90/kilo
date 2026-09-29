@@ -35,17 +35,17 @@ function stripDirtyMap(table, map) {
   return changed ? next : map;
 }
 
-async function readDirty(table, store = AsyncStorage) {
+async function readDirty(table) {
   try {
-    const raw = await store.getItem(dirtyKey(table));
+    const raw = await AsyncStorage.getItem(dirtyKey(table));
     return raw ? stripDirtyMap(table, JSON.parse(raw)) : {};
   } catch {
     return {};
   }
 }
 
-async function writeDirty(table, map, store = AsyncStorage) {
-  await store.setItem(dirtyKey(table), JSON.stringify(stripDirtyMap(table, map)));
+async function writeDirty(table, map) {
+  await AsyncStorage.setItem(dirtyKey(table), JSON.stringify(stripDirtyMap(table, map)));
 }
 
 let dirtyListeners = [];
@@ -71,8 +71,8 @@ export function subscribeDirtyQueue(listener) {
 // Queue a record id as needing push. We store the full record snapshot keyed by
 // id so the most recent local write is what gets pushed, and re-queuing the same
 // id simply overwrites the prior snapshot (no unbounded growth, no nested scan).
-export async function enqueueDirty(table, record, store) {
-  return enqueueDirtyMany(table, [record], store);
+export async function enqueueDirty(table, record) {
+  return enqueueDirtyMany(table, [record]);
 }
 
 // Queue a whole batch in ONE read/serialize/write of the persisted queue
@@ -93,11 +93,9 @@ export async function enqueueDirty(table, record, store) {
 // dirty listeners fire once for the batch rather than once per record — they are
 // change notifications for the pending-count UI, so one notification per durable
 // write is the correct granularity.
-// `store` (#1186): a device-key recovery overlay. Its queue is committed with
-// the recovery, so listeners are not told about a queue that is not live yet.
-export async function enqueueDirtyMany(table, records, store) {
+export async function enqueueDirtyMany(table, records) {
   if (!records || records.length === 0) return;
-  const map = await readDirty(table, store);
+  const map = await readDirty(table);
   let changed = false;
   for (const record of records) {
     if (!record || record.id == null) continue;
@@ -105,8 +103,8 @@ export async function enqueueDirtyMany(table, records, store) {
     changed = true;
   }
   if (!changed) return;
-  await writeDirty(table, map, store);
-  if (!store) notifyDirtyListeners();
+  await writeDirty(table, map);
+  notifyDirtyListeners();
 }
 
 export async function getDirtyRecords(table) {

@@ -271,8 +271,8 @@ export const IMPORT_MODES = Object.freeze({ LOCAL: 'local', CLOUD: 'cloud' });
 // records on import would be its own data bug.
 //
 // O(prior + imported) via a single keyed index; no nested scan.
-async function replaceCollectionForCloud({ table, readRaw, writeRaw, imported, clientId, store }) {
-  const prior = (await readRaw(store)) || [];
+async function replaceCollectionForCloud({ table, readRaw, writeRaw, imported, clientId }) {
+  const prior = (await readRaw()) || [];
   const priorById = new Map();
   for (const rec of prior) {
     if (rec && rec.id != null) priorById.set(rec.id, rec);
@@ -330,10 +330,10 @@ async function replaceCollectionForCloud({ table, readRaw, writeRaw, imported, c
     dirty.push(tombstone);
   }
 
-  await writeRaw(nextList, store);
+  await writeRaw(nextList);
   for (const record of dirty) {
     // eslint-disable-next-line no-await-in-loop
-    await enqueueDirty(table, record, store);
+    await enqueueDirty(table, record);
   }
   return dirty.length;
 }
@@ -456,12 +456,25 @@ async function restoreCloudBlock(cloud, store) {
 // writes into a PRIVATE reset-device overlay (the `store` threaded below; the
 // shared store stays latched for every other caller) and replaces the orphaned
 // data only once the restored copy is staged and verified under a fresh key.
+//
+// Recovery always takes the LOCAL contract. It rebuilds this device, owned by no
+// account, exactly as reset-then-restore would; it cannot honor a cloud replace,
+// whose omission tombstones need the prior rows it cannot read. The session
+// leaves cloud mode, so the ownership flow decides the account relationship at
+// the next sign-in, and a later ordinary cloud restore replaces the account.
 export async function importBackup(payload, strategy = 'replace', { mode = IMPORT_MODES.LOCAL } = {}) {
   const check = validateBackup(payload);
   if (!check.ok) return check;
   if (AsyncStorage.isKeyUnavailable?.()) {
     if (strategy !== 'replace') return { ok: false, error: 'Only a full backup restore can recover this device.' };
-    return AsyncStorage.recoverDeviceData((store) => restoreValidatedBackup(payload, strategy, mode, store));
+    const recovered = await AsyncStorage.recoverDeviceData((store) => restoreValidatedBackup(payload, strategy, IMPORT_MODES.LOCAL, store));
+    if (recovered?.ok) {
+      // Lazy: storageMode -> localAdapter -> entries -> this module is a cycle.
+      // eslint-disable-next-line global-require
+      const { setStorageMode, STORAGE_MODES } = require('./storageMode');
+      setStorageMode(STORAGE_MODES.LOCAL);
+    }
+    return recovered;
   }
   return restoreValidatedBackup(payload, strategy, mode);
 }
@@ -480,14 +493,13 @@ async function restoreValidatedBackup(payload, strategy, mode, store) {
     const hasRecovery = RECOVERY_VERSIONS.has(payload.version) && 'recovery_blocks' in payload;
 
     if (cloudMode) {
-      const clientId = await getClientId(store);
+      const clientId = await getClientId();
       queued += await replaceCollectionForCloud({
         table: SYNC_TABLES.WEIGHT_ENTRIES,
         readRaw: loadWeightEntriesRaw,
         writeRaw: replaceWeightEntriesRaw,
         imported: payload.weight_entries,
         clientId,
-        store,
       });
       // v1 predates the notebook model, so it says nothing about workout notes.
       // Silence is not an instruction to delete them.
@@ -499,7 +511,6 @@ async function restoreValidatedBackup(payload, strategy, mode, store) {
           writeRaw: replaceWorkoutNotesRaw,
           imported: payload.workout_notes,
           clientId,
-          store,
         }));
       }
       // Blocks BEFORE memberships, always. kilo.recovery_block_weeks carries a
@@ -516,7 +527,6 @@ async function restoreValidatedBackup(payload, strategy, mode, store) {
           writeRaw: replaceRecoveryBlocksRaw,
           imported: payload.recovery_blocks.map((b) => normalizeImportedRecoveryBlock(projectFields(b, RECOVERY_BLOCK_FIELDS))),
           clientId,
-          store,
         });
       }
       if (hasRecovery) {
@@ -526,7 +536,6 @@ async function restoreValidatedBackup(payload, strategy, mode, store) {
           writeRaw: replaceRecoveryBlockWeeksRaw,
           imported: payload.recovery_block_weeks.map((w) => projectFields(w, RECOVERY_WEEK_FIELDS)),
           clientId,
-          store,
         });
       }
     } else {

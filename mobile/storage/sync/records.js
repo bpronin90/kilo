@@ -89,16 +89,7 @@ function randomClientId() {
   return `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-// With a `store` (a device-key recovery overlay, #1186) the id is read from and
-// persisted into that store, reusing this session's id so the two agree.
-export async function getClientId(store) {
-  if (store) {
-    const existing = await store.getItem(CLIENT_ID_KEY);
-    if (existing) return existing;
-    const id = cachedClientId || randomClientId();
-    await store.setItem(CLIENT_ID_KEY, id);
-    return id;
-  }
+export async function getClientId() {
   if (cachedClientId) return cachedClientId;
   if (!clientIdPromise) {
     clientIdPromise = (async () => {

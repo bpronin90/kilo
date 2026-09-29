@@ -13,12 +13,12 @@ export async function loadWeightEntries() {
 // (including delete tombstones and sync metadata) so the sync loop can merge,
 // push, and advance cursors over the full record set. Local mode never uses
 // these; they exist only for the cloud adapter / sync engine.
-export async function loadWeightEntriesRaw(store) {
-  return readList(WEIGHT_KEY, store);
+export async function loadWeightEntriesRaw() {
+  return readList(WEIGHT_KEY);
 }
 
-export async function replaceWeightEntriesRaw(list, store) {
-  await writeList(WEIGHT_KEY, Array.isArray(list) ? list : [], store);
+export async function replaceWeightEntriesRaw(list) {
+  await writeList(WEIGHT_KEY, Array.isArray(list) ? list : []);
 }
 
 export async function saveWeightEntry(entry) {

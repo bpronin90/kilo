@@ -355,6 +355,8 @@ describe('importBackup as the recovery path', () => {
     const encrypted = open(device.backingStore, device.primitives);
     await encrypted.probeDeviceKey();
     let mod;
+    // backupRestore requires storageMode lazily, outside this isolated registry.
+    const storageMode = jest.requireActual('../storage/entries/storageMode');
     jest.isolateModules(() => {
       jest.doMock('../storage/secureStorage', () => ({
         ...jest.requireActual('../storage/secureStorage'),
@@ -362,7 +364,7 @@ describe('importBackup as the recovery path', () => {
       }));
       mod = require('../storage/entries/backupRestore');
     });
-    return { ...device, encrypted, importBackup: mod.importBackup, IMPORT_MODES: mod.IMPORT_MODES };
+    return { ...device, encrypted, storageMode, importBackup: mod.importBackup, IMPORT_MODES: mod.IMPORT_MODES };
   }
 
   const backup = (overrides = {}) => ({
@@ -390,12 +392,28 @@ describe('importBackup as the recovery path', () => {
     expect(JSON.parse(await encrypted.getItem('kilo_workout_notes'))[0].id).toBe('n1');
   });
 
-  test('a cloud export restores through the cloud contract', async () => {
-    const { importBackup, IMPORT_MODES, encrypted } = await loadImporter();
+  // A cloud replace needs the prior rows to tombstone what the backup omits, and
+  // recovery cannot read them, so it never claims one: the device is rebuilt
+  // unclaimed under the LOCAL contract and the session leaves cloud mode.
+  test('a cloud-mode restore recovers the device under the local contract and leaves cloud mode', async () => {
+    const { importBackup, IMPORT_MODES, encrypted, storageMode } = await loadImporter();
+    storageMode.setStorageMode(storageMode.STORAGE_MODES.CLOUD);
     const payload = backup({ cloud: { tracked_lifts: { squat: true } } });
-    await expect(importBackup(payload, 'replace', { mode: IMPORT_MODES.CLOUD })).resolves.toMatchObject({ ok: true, mode: 'cloud' });
+    await expect(importBackup(payload, 'replace', { mode: IMPORT_MODES.CLOUD })).resolves.toEqual({ ok: true, mode: 'local', queued: 0 });
+    expect(storageMode.getStorageMode()).toBe(storageMode.STORAGE_MODES.LOCAL);
     expect(encrypted.isKeyUnavailable()).toBe(false);
     expect(JSON.parse(await encrypted.getItem('kilo_weight_entries'))[0].id).toBe('w1');
+    expect(JSON.parse(await encrypted.getItem('kilo_tracked_lifts'))).toEqual({ squat: true });
+    expect(await encrypted.getItem('kilo_local_data_owner')).toBe('unclaimed');
+    const keys = await encrypted.getAllKeys();
+    expect(keys.some((key) => key.includes('dirty'))).toBe(false);
+  });
+
+  test('a failed recovery leaves the session storage mode alone', async () => {
+    const { importBackup, storageMode } = await loadImporter();
+    storageMode.setStorageMode(storageMode.STORAGE_MODES.CLOUD);
+    await expect(importBackup(backup({ version: '999' }))).resolves.toMatchObject({ ok: false });
+    expect(storageMode.getStorageMode()).toBe(storageMode.STORAGE_MODES.CLOUD);
   });
 
   test.each([
