@@ -552,6 +552,8 @@ const createStyles = (kua, colors) => StyleSheet.create({
     minHeight: 44,
     justifyContent: 'center',
     paddingHorizontal: 14,
+    maxWidth: '100%',
+    flexShrink: 1,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
