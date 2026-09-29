@@ -3,8 +3,7 @@ import { Pressable, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Card } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
-import { RETURN_BANDS } from '../../lib/data/recoveryReturnBands';
-import { HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './homeDashboardData';
+import { HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATES, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './homeDashboardData';
 import { createStyles } from './homeStyles';
 import { useKuaTypography } from '../../theme/typography';
 
@@ -33,15 +32,28 @@ import { useKuaTypography } from '../../theme/typography';
 // `Recovery` has to land on Recovery; leaving it unsectioned made it inherit
 // whatever position Analytics was last left at, which could be any other
 // section entirely.
-// #697 state words used only for the sparse below-4-trained-lifts sentence
-// (#1029) — permitted vocabulary (#1023 v2 §8), unchanged from what
-// `AnalyticsRecoverySection.js` already shows on each exercise's detail row.
-const STATE_LABEL = Object.freeze({
-  baseline_met: 'at or above baseline',
-  rebuilding: 'rebuilding',
-  not_comparable: "can't compare",
-  added_during_recovery: 'added during recovery',
-});
+// #1171: each Big 3 row's right-hand value. Plain words only — no return-band
+// names — and a percentage only where #697 produced a real per-lift ratio.
+function liftValue(lift) {
+  if (lift.state === RECOVERY_COMPARISON_STATES.BASELINE_MET) return 'Recovered';
+  if (lift.state === RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED) return 'Not started';
+  if (lift.state === RECOVERY_COMPARISON_STATES.NOT_COMPARABLE) return "Can't compare";
+  return lift.percent === null ? 'In progress' : `${lift.percent}%`;
+}
+
+// `Remaining N: X recovered · Y in progress · Z not started`, dropping zero
+// parts. `Can't compare` is kept when present so the parts always add up to N.
+function remainingLine(remaining, hasBig3) {
+  if (!remaining || remaining.total === 0) return null;
+  const parts = [
+    [remaining.recovered, 'recovered'],
+    [remaining.inProgress, 'in progress'],
+    [remaining.notStarted, 'not started'],
+    [remaining.cantCompare, "can't compare"],
+  ].filter(([n]) => n > 0).map(([n, word]) => `${n} ${word}`);
+  const lead = hasBig3 ? `Remaining ${remaining.total}` : `${remaining.total} exercises`;
+  return `${lead}: ${parts.join(' · ')}`;
+}
 
 export function HomeRecoverySummary({ summary, onNavigate }) {
   const { colors, kuaPalette: kua } = useTheme();
@@ -51,8 +63,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   if (!summary) return null;
   const {
     status, stale, message, active,
-    comparisonStatus, weekNumber, weekNoteStatus,
-    bands, trained, rosterSize, trainedExercises, movement,
+    comparisonStatus, weekNumber, weekNoteStatus, big3 = [], remaining,
   } = summary;
 
   // Verified, nothing is running, and the answer is CURRENT. This is the one
@@ -69,7 +80,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   const canRetry = !!summary.retry && !!message && !isLoadingStatus;
 
   // The result region (#803). Exactly one of two shapes, never both: the
-  // met/total figure when a week was genuinely compared, or a single plain-
+  // Big 3 rows when a week was genuinely compared, or a single plain-
   // language status when it was not. Baseline availability is checked first
   // because it is a property of the block, not of any one week; a
   // missing/unreadable note is only meaningful once a week has actually been
@@ -94,51 +105,22 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   // would both be false.
   const weekLabel = weekNumber === null ? null : `Week ${weekNumber}`;
 
-  // #1029: the met-count headline is replaced by per-bucket return-band rows
-  // sized against the TRAINED total (never the roster) plus, once available,
-  // weekly movement — bands lead in Week 1 without reserving space for
-  // movement, and movement gets equal real estate as soon as it exists.
-  const hasBands = fallbackStatus === null && !!bands;
-  // Below four trained lifts, no bucket bars: one plain sentence naming the
-  // lift(s) and their state, with the denominator in the sentence itself.
-  const sparse = hasBands && trained > 0 && trained < 4;
-  const bandRows = hasBands && !sparse
-    ? RETURN_BANDS
-        .filter(b => b.id !== 'not_trained_yet')
-        .map(b => ({ id: b.id, label: b.label, count: bands[b.id] || 0 }))
-        .filter(row => row.count > 0)
-    : [];
-  const trainedDenominatorCaption = hasBands
-    ? `${trained} of ${rosterSize} roster exercises trained`
-    : null;
-  const sparseSentence = sparse
-    ? `${trainedExercises.map(row => `${row.name} (${STATE_LABEL[row.state] || row.state})`).join(', ')} — ${trained} of ${rosterSize} roster exercises trained.`
-    : null;
-
-  // #1029 review finding 2: movement is never computed while stale (upstream,
-  // in useHomeRecoverySummary), but the "not enough matched lifts" copy must
-  // not fall through here either — that would falsely attribute the missing
-  // figure to insufficient evidence when the real cause is an unverified/
-  // stale snapshot. Nothing is claimed for stale state; the stale message
-  // already shown for this card carries the true reason.
-  const movementSentence = movement
-    ? `Since Week ${movement.anchor_week_number}, on ${movement.matched_size} lifts trained both weeks: ${movement.improved} improved, ${movement.steady} steady, ${movement.fell_back} fell back.`
-    : (!stale && hasBands && !fallbackStatus && weekNumber !== null && weekNumber > 1
-        ? 'Not enough matched lifts to compare weeks yet.'
-        : null);
+  // #1171: the user's Big 3 lead, each against its own baseline, and one line
+  // counts everything else. Nothing is derived while a fallback owns the slot.
+  const lifts = fallbackStatus === null ? big3 : [];
+  const remainingText = fallbackStatus === null ? remainingLine(remaining, lifts.length > 0) : null;
 
   // One announcement for the whole summary, assembled in reading order. The
   // visual hierarchy is a layout device; the spoken version has to carry the
-  // same facts as complete sentences. The inclusion clause (#820: dropped
-  // from Home's visible/spoken content — it stays stated on the Analytics
-  // Recovery section, which already reports inclusion per block) is no
-  // longer part of this summary.
+  // same facts as complete sentences.
   const accessibleContent = [
     weekLabel,
-    hasBands
-      ? (sparse ? sparseSentence : `${trainedDenominatorCaption}. ${bandRows.map(r => `${r.label} ${r.count}`).join(', ')}`)
-      : fallbackStatus,
-    movementSentence,
+    fallbackStatus,
+    ...lifts.map(lift => {
+      const value = liftValue(lift);
+      return `${lift.label} ${value.endsWith('%') ? `${value} of baseline` : value.toLowerCase()}`;
+    }),
+    remainingText ? remainingText.replace(/ · /g, ', ') : null,
   ].filter(Boolean)
     .map(part => (/[.!?]$/.test(part) ? part : `${part}.`))
     .join(' ');
@@ -180,34 +162,32 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
               {weekLabel ? (
                 <Text style={styles.recoveryWeekLabel}>{weekLabel}</Text>
               ) : null}
-              {!hasBands ? (
+              {fallbackStatus ? (
                 <Text style={styles.recoveryFallbackLine}>{fallbackStatus}</Text>
-              ) : sparse ? (
-                // Sparse visual floor (#1029): below four trained lifts, no
-                // bucket bars — one plain sentence names the lift(s), their
-                // state, and the roster denominator.
-                <Text testID="home-recovery-sparse" style={styles.recoveryFallbackLine}>
-                  {sparseSentence}
-                </Text>
-              ) : (
-                <View testID="home-recovery-bands" style={styles.recoveryStatsDivider}>
-                  {/* `Not trained yet` is a same-tier denominator caption, not
-                      a bucket row (#1029 acceptance criterion 1/12). */}
-                  <Text style={styles.recoveryHeroCaption}>{trainedDenominatorCaption}</Text>
-                  {bandRows.map(row => (
-                    <View key={row.id} style={styles.recoveryBandRow}>
-                      <Text style={styles.recoveryBandLabel}>{row.label}</Text>
-                      <Text style={styles.recoveryBandCount}>{row.count}</Text>
-                    </View>
-                  ))}
+              ) : null}
+              {lifts.length > 0 ? (
+                <View testID="home-recovery-big3" style={styles.recoveryLiftList}>
+                  {lifts.map(lift => {
+                    const done = lift.state === RECOVERY_COMPARISON_STATES.BASELINE_MET;
+                    // Only a real ratio fills the bar; unknowns stay an empty track.
+                    const fill = done ? 100 : lift.state === RECOVERY_COMPARISON_STATES.REBUILDING && lift.percent !== null
+                      ? Math.max(0, Math.min(lift.percent, 100)) : 0;
+                    return (
+                      <View key={lift.slot} testID={`home-recovery-lift-${lift.slot}`}>
+                        <View style={styles.recoveryLiftHead}>
+                          <Text style={styles.recoveryLiftName}>{lift.label}</Text>
+                          <Text style={[styles.recoveryLiftValue, done && styles.recoveryLiftDone]}>{liftValue(lift)}</Text>
+                        </View>
+                        <View style={styles.recoveryLiftTrack}>
+                          {fill > 0 ? <View style={[styles.recoveryLiftFill, done && styles.recoveryLiftFillDone, { width: `${fill}%` }]} /> : null}
+                        </View>
+                      </View>
+                    );
+                  })}
                 </View>
-              )}
-              {/* Movement gets EQUAL real estate to bands once it exists —
-                  never dead space reserved for it in Week 1 (#1029). */}
-              {movementSentence ? (
-                <Text testID="home-recovery-movement" style={styles.recoveryFallbackLine}>
-                  {movementSentence}
-                </Text>
+              ) : null}
+              {remainingText ? (
+                <Text testID="home-recovery-remaining" style={styles.recoveryRemaining}>{remainingText}</Text>
               ) : null}
             </View>
           </>

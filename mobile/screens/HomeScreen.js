@@ -242,7 +242,7 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   // read can fail terminally while the boundary read succeeded, and holding the
   // whole dashboard on it would leave Home permanently blank over a condition
   // this card can state honestly on its own.
-  const recoverySummary = useHomeRecoverySummary(notes);
+  const recoverySummary = useHomeRecoverySummary(notes, workoutNote?.one_k_exercises);
 
   // Product-wide "what am I training now?" context (#868), shared verbatim
   // with Log and Analytics — same authoritative Recovery snapshot as
