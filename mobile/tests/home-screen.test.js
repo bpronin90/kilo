@@ -1067,6 +1067,26 @@ describe('Home loading, failure, and cloud sync states (#737)', () => {
     }
   });
 
+  test('key loss latched after mount (missed by the probe) still surfaces recovery guidance', async () => {
+    const secure = require('../storage/secureStorage');
+    let lost = false;
+    let notify = () => {};
+    jest.spyOn(secure.secureStorage, 'probeDeviceKey').mockResolvedValue(undefined);
+    jest.spyOn(secure.secureStorage, 'subscribeKeyUnavailable').mockImplementation((cb) => { notify = cb; return () => {}; });
+    const flag = jest.spyOn(secure, 'isDeviceKeyUnavailable').mockImplementation(() => lost);
+    try {
+      const component = track(await mount({ loadError: false }));
+      expect(hasText(component, secure.DEVICE_KEY_RECOVERY_MESSAGE)).toBe(false);
+      lost = true;
+      render.act(() => { notify(true); });
+      expect(hasText(component, secure.DEVICE_KEY_RECOVERY_MESSAGE)).toBe(true);
+    } finally {
+      flag.mockRestore();
+      secure.secureStorage.probeDeviceKey.mockRestore();
+      secure.secureStorage.subscribeKeyUnavailable.mockRestore();
+    }
+  });
+
   test('a lost device key shows non-destructive recovery guidance instead of the generic error', async () => {
     const secure = require('../storage/secureStorage');
     const spy = jest.spyOn(secure, 'isDeviceKeyUnavailable').mockReturnValue(true);

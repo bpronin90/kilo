@@ -100,6 +100,12 @@ export function createDeviceStorage({
   // Latched per store so screens can explain the failure without owning
   // storage errors; cleared only by a confirmed wipe or a fresh-key mint.
   let deviceKeyUnavailable = false;
+  const keyListeners = new Set();
+  function setKeyLatch(value) {
+    if (deviceKeyUnavailable === value) return;
+    deviceKeyUnavailable = value;
+    keyListeners.forEach((listener) => listener(value));
+  }
   let keyPromise = null;
   let validation = null;
   // The write barrier every later operation is ordered behind (#984). Always a
@@ -142,7 +148,7 @@ export function createDeviceStorage({
           // eslint-disable-next-line no-await-in-loop
           const raw = await backingStore.getItem(name);
           if (isEnvelopeLike(raw)) {
-            deviceKeyUnavailable = true;
+            setKeyLatch(true);
             throw new DeviceKeyUnavailableError();
           }
         }
@@ -155,7 +161,7 @@ export function createDeviceStorage({
           bytesToHex(created),
           secureStoreOptions(secureStore),
         );
-        deviceKeyUnavailable = false;
+        setKeyLatch(false);
         return created;
       })().catch((error) => {
         keyPromise = null;
@@ -229,7 +235,7 @@ export function createDeviceStorage({
     } catch (error) {
       // AES-GCM rejection with a well-formed envelope means the stored key is
       // stale (or the value tampered): same non-destructive recovery state.
-      if (!keyAccessError || keyAccessError instanceof DeviceKeyUnavailableError) deviceKeyUnavailable = true;
+      if (!keyAccessError || keyAccessError instanceof DeviceKeyUnavailableError) setKeyLatch(true);
       throw new EncryptedStorageError(key, error);
     }
   }
@@ -418,6 +424,12 @@ export function createDeviceStorage({
       }, { changed: false });
     },
     isKeyUnavailable() { return deviceKeyUnavailable; },
+    // Mounted screens learn about a later latch (e.g. a write that retried key
+    // validation after a transient probe failure) without remounting.
+    subscribeKeyUnavailable(listener) {
+      keyListeners.add(listener);
+      return () => { keyListeners.delete(listener); };
+    },
     // Lets a screen learn whether the device key is unavailable without waiting
     // for a read of the one key that happens to be orphaned (#1177). Latches
     // isDeviceKeyUnavailable(); never rejects.
@@ -451,7 +463,7 @@ export function createDeviceStorage({
           validation = null;
         }
         // Explicit recovery: old envelopes are gone and the old key is discarded.
-        deviceKeyUnavailable = false;
+        setKeyLatch(false);
         const owner = encryptValues
           ? await encrypt('kilo_local_data_owner', 'unclaimed')
           : 'unclaimed';

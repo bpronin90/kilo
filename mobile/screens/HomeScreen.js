@@ -229,7 +229,8 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   useEffect(() => {
     let live = true;
     secureStorage.probeDeviceKey().then(() => { if (live) setProbedKeyLoss(isDeviceKeyUnavailable()); }, () => {});
-    return () => { live = false; };
+    const unsubscribe = secureStorage.subscribeKeyUnavailable?.((lost) => { if (live) setProbedKeyLoss(lost); });
+    return () => { live = false; unsubscribe?.(); };
   }, []);
   const keyLost = probedKeyLoss || isDeviceKeyUnavailable();
   const hasLoadError = !!loadError || !!goalError || !!trackedLiftsError || keyLost;

@@ -391,4 +391,20 @@ describe('device key fails closed when encrypted local data exists', () => {
     expect(backingStore.values.has('kilo_weight_entries')).toBe(false);
     expect(backingStore.values.get('kilo_archived_weight_goals')).toBe(envelope);
   });
+
+  test('subscribers are told when a later write latches key loss after a transient probe failure', async () => {
+    const envelope = await withEnvelope();
+    const { storage, secureStore, secureValues } = makeStorage({ kilo_archived_weight_goals: envelope });
+    secureValues.set(DEVICE_DATA_KEY_NAME, '11'.repeat(32));
+    const seen = [];
+    const unsubscribe = storage.subscribeKeyUnavailable((lost) => seen.push(lost));
+    secureStore.getItemAsync.mockRejectedValueOnce(new Error('keystore busy'));
+    await storage.probeDeviceKey();
+    expect(seen).toEqual([]);
+    await expect(storage.setItem('kilo_weight_entries', 'x')).rejects.toBeInstanceOf(DeviceKeyUnavailableError);
+    expect(seen).toEqual([true]);
+    unsubscribe();
+    await storage.wipeKiloData();
+    expect(seen).toEqual([true]);
+  });
 });
