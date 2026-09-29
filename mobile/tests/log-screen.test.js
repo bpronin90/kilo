@@ -3939,10 +3939,10 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     ]);
   });
 
-  // #1182: the open menu is a compact overlay anchored to the trigger, not an
-  // in-flow full-width block; rows keep 44dp targets; toggling and choosing an
+  // #1194: the open menu is a compact wrapping in-flow row (no absolute overlay,
+  // no reserved height); items keep 44dp targets; toggling and choosing an
   // item both leave no menu behind.
-  test('the Routine actions menu is a compact anchored overlay that toggles and closes', () => {
+  test('the Routine actions menu is a compact in-flow row that toggles and closes', () => {
     let component;
     render.act(() => {
       component = render.create(
@@ -3975,10 +3975,9 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     render.act(() => { trigger().props.onPress({ stopPropagation: jest.fn() }); });
     expect(trigger().props.accessibilityState).toEqual({ expanded: true });
     const menuStyle = flatStyle(menu());
-    expect(menuStyle.position).toBe('absolute');
-    expect(menuStyle.width).toBeLessThan(220);
-    expect(menuStyle.top).toBeGreaterThanOrEqual(44);
-    expect(menuStyle.maxWidth).toBe('100%');
+    expect(menuStyle.position).toBeUndefined();
+    expect(menuStyle.flexDirection).toBe('row');
+    expect(menuStyle.flexWrap).toBe('wrap');
     const items = root.findAll(n => n.props && n.props.accessibilityRole === 'menuitem' && n.props.onPress);
     expect(items.length).toBe(4);
     items.forEach(i => expect(flatStyle(i).minHeight).toBeGreaterThanOrEqual(44));
