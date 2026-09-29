@@ -170,6 +170,9 @@ export function createDeviceStorage({
   }
 
   async function decrypt(key, envelope) {
+    // Key access failures (transient Keystore/SecureStore errors) stay
+    // retryable: only definite key/envelope failures latch recovery.
+    let keyAccessError = null;
     try {
       const encoded = envelope.slice(ENVELOPE_PREFIX.length);
       const parts = encoded.split(':');
@@ -178,12 +181,19 @@ export function createDeviceStorage({
       }
       const nonce = hexToBytes(parts[0]);
       const ciphertext = hexToBytes(parts[1]);
-      const plaintext = gcm(await deviceKey(), nonce, utf8ToBytes(key)).decrypt(ciphertext);
+      let deviceKeyBytes;
+      try {
+        deviceKeyBytes = await deviceKey();
+      } catch (error) {
+        keyAccessError = error;
+        throw error;
+      }
+      const plaintext = gcm(deviceKeyBytes, nonce, utf8ToBytes(key)).decrypt(ciphertext);
       return bytesToUtf8(plaintext);
     } catch (error) {
       // AES-GCM rejection with a well-formed envelope means the stored key is
       // stale (or the value tampered): same non-destructive recovery state.
-      deviceKeyUnavailable = true;
+      if (!keyAccessError || keyAccessError instanceof DeviceKeyUnavailableError) deviceKeyUnavailable = true;
       throw new EncryptedStorageError(key, error);
     }
   }
@@ -379,23 +389,7 @@ export function createDeviceStorage({
       if (!encryptValues) return;
       try {
         await withReadLock(async () => {
-          try {
-            await deviceKey();
-          } catch (error) {
-            // A stored key that cannot even be parsed is unusable; if encrypted
-            // data exists the state is the same recovery state.
-            if (error instanceof DeviceKeyUnavailableError) throw error;
-            for (const name of await backingStore.getAllKeys()) {
-              if (!name.startsWith('kilo_')) continue;
-              // eslint-disable-next-line no-await-in-loop
-              const raw = await backingStore.getItem(name);
-              if (typeof raw === 'string' && raw.startsWith(ENVELOPE_PREFIX)) {
-                deviceKeyUnavailable = true;
-                return;
-              }
-            }
-            throw error;
-          }
+          await deviceKey();
           // A present key proves nothing until it authenticates a stored envelope.
           for (const name of await backingStore.getAllKeys()) {
             if (!name.startsWith('kilo_')) continue;
