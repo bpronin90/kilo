@@ -379,4 +379,16 @@ describe('device key fails closed when encrypted local data exists', () => {
     expect(secureValues.size).toBe(0);
     expect(backingStore.values.get('kilo_workout_notes')).toBe(marker);
   });
+
+  test('a transient probe failure cannot let a stale valid key overwrite a dormant orphan', async () => {
+    const envelope = await withEnvelope();
+    const { storage, backingStore, secureStore, secureValues } = makeStorage({ kilo_archived_weight_goals: envelope });
+    secureValues.set(DEVICE_DATA_KEY_NAME, '11'.repeat(32));
+    secureStore.getItemAsync.mockRejectedValueOnce(new Error('keystore busy'));
+    await storage.probeDeviceKey();
+    expect(storage.isKeyUnavailable()).toBe(false);
+    await expect(storage.setItem('kilo_weight_entries', 'x')).rejects.toBeInstanceOf(DeviceKeyUnavailableError);
+    expect(backingStore.values.has('kilo_weight_entries')).toBe(false);
+    expect(backingStore.values.get('kilo_archived_weight_goals')).toBe(envelope);
+  });
 });

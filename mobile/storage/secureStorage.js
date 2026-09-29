@@ -101,6 +101,7 @@ export function createDeviceStorage({
   // storage errors; cleared only by a confirmed wipe or a fresh-key mint.
   let deviceKeyUnavailable = false;
   let keyPromise = null;
+  let validation = null;
   // The write barrier every later operation is ordered behind (#984). Always a
   // settled-or-settling promise that never rejects, so a failed write cannot
   // wedge the boundary.
@@ -158,16 +159,43 @@ export function createDeviceStorage({
         return created;
       })().catch((error) => {
         keyPromise = null;
+        validation = null;
         throw error;
       });
     }
     return keyPromise;
   }
 
+  // A present key proves nothing until it authenticates every stored envelope.
+  // Every encrypting write runs this first, so a stale-but-valid key can never
+  // overwrite an orphan. Transient failures reject and are retried next write.
+  function ensureKeyValidated(knownKeys) {
+    if (!validation) {
+      validation = (async () => {
+        await deviceKey(knownKeys);
+        for (const name of knownKeys || await backingStore.getAllKeys()) {
+          if (!name.startsWith('kilo_')) continue;
+          // eslint-disable-next-line no-await-in-loop
+          const raw = await backingStore.getItem(name);
+          // eslint-disable-next-line no-await-in-loop
+          if (isEnvelopeLike(raw)) await decrypt(name, raw);
+        }
+      })().catch((error) => {
+        validation = null;
+        if (deviceKeyUnavailable && !(error instanceof DeviceKeyUnavailableError)) {
+          throw new DeviceKeyUnavailableError(error);
+        }
+        throw error;
+      });
+    }
+    return validation;
+  }
+
   async function encrypt(key, value) {
     // Monotonic recovery state: no encrypting write may replace an envelope
     // while the key cannot be trusted. Removal and confirmed wipe stay open.
     if (deviceKeyUnavailable) throw new DeviceKeyUnavailableError();
+    await ensureKeyValidated();
     const encryptionKey = await deviceKey();
     const nonce = await crypto.getRandomBytesAsync(NONCE_BYTES);
     if (!(nonce instanceof Uint8Array) || nonce.length !== NONCE_BYTES) {
@@ -395,22 +423,7 @@ export function createDeviceStorage({
     // isDeviceKeyUnavailable(); never rejects.
     async probeDeviceKey() {
       if (!encryptValues) return;
-      try {
-        await withReadLock(async () => {
-          await deviceKey();
-          // A present key proves nothing until it authenticates a stored envelope.
-          for (const name of await backingStore.getAllKeys()) {
-            if (!name.startsWith('kilo_')) continue;
-            // eslint-disable-next-line no-await-in-loop
-            const raw = await backingStore.getItem(name);
-            if (isEnvelopeLike(raw)) {
-              // Every envelope: a replacement key may coexist with orphans.
-              // eslint-disable-next-line no-await-in-loop
-              await decrypt(name, raw).catch(() => {});
-            }
-          }
-        });
-      } catch { /* latched or unrelated */ }
+      try { await withReadLock(() => ensureKeyValidated()); } catch { /* latched or transient: retried by the next write */ }
     },
     clearDeviceKey() {
       // Discarding the key changes what every stored envelope decrypts to (it
@@ -421,6 +434,7 @@ export function createDeviceStorage({
         requireNativePrimitives();
         await secureStore.deleteItemAsync(DEVICE_KEY_NAME);
         keyPromise = null;
+        validation = null;
       });
     },
     wipeKiloData() {
@@ -434,6 +448,7 @@ export function createDeviceStorage({
           requireNativePrimitives();
           await secureStore.deleteItemAsync(DEVICE_KEY_NAME);
           keyPromise = null;
+          validation = null;
         }
         // Explicit recovery: old envelopes are gone and the old key is discarded.
         deviceKeyUnavailable = false;
@@ -478,7 +493,7 @@ export function createDeviceStorage({
           // recoverable for the next startup attempt.
           // Reuse the key list this scan already read (#1177 key check).
           // eslint-disable-next-line no-await-in-loop
-          await deviceKey(keys);
+          await ensureKeyValidated(keys);
           // eslint-disable-next-line no-await-in-loop
           const envelope = await encrypt(key, raw);
           // eslint-disable-next-line no-await-in-loop
