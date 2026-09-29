@@ -371,4 +371,12 @@ describe('device key fails closed when encrypted local data exists', () => {
     expect(backingStore.values.get('kilo_weight_entries')).toBeDefined();
     expect(envelope).toBeDefined();
   });
+
+  test.each(['kilo.enc.v1', 'kilo.enc', 'kilo.enc.v1:'])('truncated marker %j is encrypted data: never minted over or overwritten', async (marker) => {
+    const { storage, backingStore, secureValues } = makeStorage({ kilo_workout_notes: marker });
+    await expect(storage.getItem('kilo_workout_notes')).rejects.toBeInstanceOf(EncryptedStorageError);
+    await expect(storage.setItem('kilo_weight_entries', 'x')).rejects.toBeInstanceOf(DeviceKeyUnavailableError);
+    expect(secureValues.size).toBe(0);
+    expect(backingStore.values.get('kilo_workout_notes')).toBe(marker);
+  });
 });

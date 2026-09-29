@@ -51,6 +51,14 @@ export class DeviceKeyUnavailableError extends EncryptedStorageError {
 export const DEVICE_KEY_RECOVERY_MESSAGE = 'Kilo cannot unlock the encrypted data saved on this device. '
   + 'Nothing has been deleted. Reset local data, then restore a backup or sign in to sync; reset only if you no longer need what is stored here.';
 
+// A truncated marker (partial write) is still encrypted data, never plaintext:
+// treating it as plaintext would mint a key and overwrite it (#1177).
+function isEnvelopeLike(raw) {
+  if (typeof raw !== 'string') return false;
+  if (raw.startsWith(ENVELOPE_PREFIX)) return true;
+  return raw.length >= 8 && ENVELOPE_PREFIX.startsWith(raw);
+}
+
 function loadSecureStore() {
   try {
     // eslint-disable-next-line global-require
@@ -132,7 +140,7 @@ export function createDeviceStorage({
           if (!name.startsWith('kilo_')) continue;
           // eslint-disable-next-line no-await-in-loop
           const raw = await backingStore.getItem(name);
-          if (typeof raw === 'string' && raw.startsWith(ENVELOPE_PREFIX)) {
+          if (isEnvelopeLike(raw)) {
             deviceKeyUnavailable = true;
             throw new DeviceKeyUnavailableError();
           }
@@ -313,7 +321,7 @@ export function createDeviceStorage({
   async function getItemUnlocked(key) {
     const raw = await backingStore.getItem(key);
     if (raw == null || !encryptValues) return raw;
-    if (raw.startsWith(ENVELOPE_PREFIX)) return decrypt(key, raw);
+    if (isEnvelopeLike(raw)) return decrypt(key, raw);
 
     // One-time, fail-closed plaintext migration. The original value is not
     // removed first, so an encryption/write failure leaves the recoverable
@@ -395,7 +403,7 @@ export function createDeviceStorage({
             if (!name.startsWith('kilo_')) continue;
             // eslint-disable-next-line no-await-in-loop
             const raw = await backingStore.getItem(name);
-            if (typeof raw === 'string' && raw.startsWith(ENVELOPE_PREFIX)) {
+            if (isEnvelopeLike(raw)) {
               // Every envelope: a replacement key may coexist with orphans.
               // eslint-disable-next-line no-await-in-loop
               await decrypt(name, raw).catch(() => {});
@@ -464,7 +472,7 @@ export function createDeviceStorage({
         for (const key of kiloKeys) {
           // eslint-disable-next-line no-await-in-loop
           const raw = await backingStore.getItem(key);
-          if (raw == null || raw.startsWith(ENVELOPE_PREFIX)) continue;
+          if (raw == null || isEnvelopeLike(raw)) continue;
           // Encrypt first and replace only after encryption succeeds. A failed
           // migration leaves this and every not-yet-visited plaintext value
           // recoverable for the next startup attempt.
