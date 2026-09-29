@@ -182,7 +182,6 @@ export function createDeviceStorage({
       const nonce = hexToBytes(parts[0]);
       const ciphertext = hexToBytes(parts[1]);
       const plaintext = gcm(await deviceKey(), nonce, utf8ToBytes(key)).decrypt(ciphertext);
-      deviceKeyUnavailable = false;
       return bytesToUtf8(plaintext);
     } catch (error) {
       // AES-GCM rejection with a well-formed envelope means the stored key is
@@ -391,8 +390,9 @@ export function createDeviceStorage({
             // eslint-disable-next-line no-await-in-loop
             const raw = await backingStore.getItem(name);
             if (typeof raw === 'string' && raw.startsWith(ENVELOPE_PREFIX)) {
-              await decrypt(name, raw);
-              return;
+              // Every envelope: a replacement key may coexist with orphans.
+              // eslint-disable-next-line no-await-in-loop
+              await decrypt(name, raw).catch(() => {});
             }
           }
         });
@@ -425,6 +425,8 @@ export function createDeviceStorage({
           ? await encrypt('kilo_local_data_owner', 'unclaimed')
           : 'unclaimed';
         await backingStore.setItem('kilo_local_data_owner', owner);
+        // Explicit recovery: old envelopes are gone and a fresh key exists.
+        deviceKeyUnavailable = false;
       });
     },
     // Deliberately does NOT invalidate pending reads (#818), unlike every other

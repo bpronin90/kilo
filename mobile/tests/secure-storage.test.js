@@ -301,4 +301,19 @@ describe('device key fails closed when encrypted local data exists', () => {
     expect(backingStore.values.get('kilo_weight_entries')).toBe(envelope);
     expect(secureValues.get(DEVICE_DATA_KEY_NAME)).toBe('11'.repeat(32));
   });
+
+  test('latch is order-independent and only cleared by explicit wipe', async () => {
+    const good = makeStorage();
+    await good.storage.setItem('kilo_weight_entries', 'ok');
+    const okEnvelope = good.backingStore.values.get('kilo_weight_entries');
+    const other = await withEnvelope();
+    const { storage, secureValues } = makeStorage({ kilo_weight_entries: okEnvelope, kilo_workout_notes: other, kilo_archived_weight_goals: okEnvelope });
+    secureValues.set(DEVICE_DATA_KEY_NAME, good.secureValues.get(DEVICE_DATA_KEY_NAME));
+    await storage.probeDeviceKey();
+    expect(isDeviceKeyUnavailable()).toBe(true);
+    await expect(storage.getItem('kilo_weight_entries').catch((e) => e)).resolves.toBeDefined();
+    expect(isDeviceKeyUnavailable()).toBe(true);
+    await storage.wipeKiloData();
+    expect(isDeviceKeyUnavailable()).toBe(false);
+  });
 });
