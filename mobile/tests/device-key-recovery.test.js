@@ -355,6 +355,7 @@ describe('importBackup as the recovery path', () => {
     const encrypted = open(device.backingStore, device.primitives);
     await encrypted.probeDeviceKey();
     let mod;
+    let sync;
     // backupRestore requires storageMode lazily, outside this isolated registry.
     const storageMode = jest.requireActual('../storage/entries/storageMode');
     jest.isolateModules(() => {
@@ -363,8 +364,9 @@ describe('importBackup as the recovery path', () => {
         secureStorage: encrypted,
       }));
       mod = require('../storage/entries/backupRestore');
+      sync = require('../storage/syncRecovery');
     });
-    return { ...device, encrypted, storageMode, importBackup: mod.importBackup, IMPORT_MODES: mod.IMPORT_MODES };
+    return { ...device, encrypted, storageMode, sync, importBackup: mod.importBackup, IMPORT_MODES: mod.IMPORT_MODES };
   }
 
   const backup = (overrides = {}) => ({
@@ -396,11 +398,17 @@ describe('importBackup as the recovery path', () => {
   // recovery cannot read them, so it never claims one: the device is rebuilt
   // unclaimed under the LOCAL contract and the session leaves cloud mode.
   test('a cloud-mode restore recovers the device under the local contract and leaves cloud mode', async () => {
-    const { importBackup, IMPORT_MODES, encrypted, storageMode } = await loadImporter();
+    const { importBackup, IMPORT_MODES, encrypted, storageMode, sync } = await loadImporter();
     storageMode.setStorageMode(storageMode.STORAGE_MODES.CLOUD);
+    sync.markComplete(sync.SYNC_PHASE.BOOTSTRAP);
+    expect(sync.getSyncState()[sync.SYNC_PHASE.BOOTSTRAP].status).toBe(sync.SYNC_STATUS.COMPLETE);
     const payload = backup({ cloud: { tracked_lifts: { squat: true } } });
     await expect(importBackup(payload, 'replace', { mode: IMPORT_MODES.CLOUD })).resolves.toEqual({ ok: true, mode: 'local', queued: 0 });
     expect(storageMode.getStorageMode()).toBe(storageMode.STORAGE_MODES.LOCAL);
+    // A bootstrap completed before the key was lost no longer vouches for this
+    // device: the ownership flow must re-check (and prompt for) the new owner.
+    expect(sync.getSyncState()[sync.SYNC_PHASE.BOOTSTRAP].status).toBe(sync.SYNC_STATUS.IDLE);
+    expect(sync.getSyncState()[sync.SYNC_PHASE.SYNC].status).toBe(sync.SYNC_STATUS.IDLE);
     expect(encrypted.isKeyUnavailable()).toBe(false);
     expect(JSON.parse(await encrypted.getItem('kilo_weight_entries'))[0].id).toBe('w1');
     expect(JSON.parse(await encrypted.getItem('kilo_tracked_lifts'))).toEqual({ squat: true });

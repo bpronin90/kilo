@@ -17,6 +17,7 @@ import {
   CURRENT_WORKOUT_ID_KEY,
 } from './keys';
 import { writeList } from './jsonStorage';
+import { resetPhase, SYNC_PHASE } from '../syncRecovery';
 import { stripDerivedSectionsFromList } from './derivedCache';
 import { loadWorkoutNotesRaw, replaceWorkoutNotesRaw, withWorkoutNotebookLock } from './workoutNotes';
 import { loadWeightEntriesRaw, replaceWeightEntriesRaw } from './weightEntries';
@@ -460,8 +461,9 @@ async function restoreCloudBlock(cloud, store) {
 // Recovery always takes the LOCAL contract. It rebuilds this device, owned by no
 // account, exactly as reset-then-restore would; it cannot honor a cloud replace,
 // whose omission tombstones need the prior rows it cannot read. The session
-// leaves cloud mode, so the ownership flow decides the account relationship at
-// the next sign-in, and a later ordinary cloud restore replaces the account.
+// leaves cloud mode and the bootstrap/sync phases reset, so the ownership flow
+// re-decides the account relationship (it prompts for an unclaimed device), and
+// a later ordinary cloud restore replaces the account.
 export async function importBackup(payload, strategy = 'replace', { mode = IMPORT_MODES.LOCAL } = {}) {
   const check = validateBackup(payload);
   if (!check.ok) return check;
@@ -473,6 +475,8 @@ export async function importBackup(payload, strategy = 'replace', { mode = IMPOR
       // eslint-disable-next-line global-require
       const { setStorageMode, STORAGE_MODES } = require('./storageMode');
       setStorageMode(STORAGE_MODES.LOCAL);
+      resetPhase(SYNC_PHASE.BOOTSTRAP);
+      resetPhase(SYNC_PHASE.SYNC);
     }
     return recovered;
   }
