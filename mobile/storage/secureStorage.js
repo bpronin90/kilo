@@ -49,7 +49,7 @@ export class DeviceKeyUnavailableError extends EncryptedStorageError {
 }
 
 export const DEVICE_KEY_RECOVERY_MESSAGE = 'Kilo cannot unlock the encrypted data saved on this device. '
-  + 'Nothing has been deleted. Restore from a backup or sign in to sync, or reset local data only if you no longer need it.';
+  + 'Nothing has been deleted. Reset local data, then restore a backup or sign in to sync; reset only if you no longer need what is stored here.';
 
 // Latched so screens can explain the failure without owning storage errors.
 let deviceKeyUnavailable = false;
@@ -116,7 +116,7 @@ export function createDeviceStorage({
     }
   }
 
-  async function deviceKey() {
+  async function deviceKey(knownKeys) {
     requireNativePrimitives();
     if (!keyPromise) {
       keyPromise = (async () => {
@@ -129,7 +129,7 @@ export function createDeviceStorage({
         }
         // No key. Only provision one when no kilo_* value already holds an
         // envelope; otherwise the new key could never decrypt existing data.
-        const keys = await backingStore.getAllKeys();
+        const keys = knownKeys || await backingStore.getAllKeys();
         for (const name of keys) {
           if (!name.startsWith('kilo_')) continue;
           // eslint-disable-next-line no-await-in-loop
@@ -367,6 +367,13 @@ export function createDeviceStorage({
         return { changed: true };
       }, { changed: false });
     },
+    // Lets a screen learn whether the device key is unavailable without waiting
+    // for a read of the one key that happens to be orphaned (#1177). Latches
+    // isDeviceKeyUnavailable(); never rejects.
+    async probeDeviceKey() {
+      if (!encryptValues) return;
+      try { await withReadLock(() => deviceKey()); } catch { /* latched or unrelated */ }
+    },
     clearDeviceKey() {
       // Discarding the key changes what every stored envelope decrypts to (it
       // stops decrypting at all), so no pending read may be shared across it.
@@ -429,6 +436,9 @@ export function createDeviceStorage({
           // Encrypt first and replace only after encryption succeeds. A failed
           // migration leaves this and every not-yet-visited plaintext value
           // recoverable for the next startup attempt.
+          // Reuse the key list this scan already read (#1177 key check).
+          // eslint-disable-next-line no-await-in-loop
+          await deviceKey(keys);
           // eslint-disable-next-line no-await-in-loop
           const envelope = await encrypt(key, raw);
           // eslint-disable-next-line no-await-in-loop

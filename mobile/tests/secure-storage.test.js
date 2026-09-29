@@ -283,4 +283,12 @@ describe('device key fails closed when encrypted local data exists', () => {
     await expect(storage.getItem('kilo_weight_entries')).resolves.toBe('restored');
     expect(isDeviceKeyUnavailable()).toBe(false);
   });
+
+  test('probeDeviceKey latches key loss without any read of the orphaned key', async () => {
+    const envelope = await withEnvelope();
+    const { storage, secureValues } = makeStorage({ kilo_archived_weight_goals: envelope });
+    await expect(storage.probeDeviceKey()).resolves.toBeUndefined();
+    expect(isDeviceKeyUnavailable()).toBe(true);
+    expect(secureValues.size).toBe(0);
+  });
 });

@@ -1052,6 +1052,21 @@ describe('Home loading, failure, and cloud sync states (#737)', () => {
     expect(onRetryLoad).toHaveBeenCalled();
   });
 
+  test('key loss found by the proactive probe shows recovery even when every Home read succeeds', async () => {
+    const secure = require('../storage/secureStorage');
+    let lost = false;
+    jest.spyOn(secure.secureStorage, 'probeDeviceKey').mockImplementation(async () => { lost = true; });
+    const flag = jest.spyOn(secure, 'isDeviceKeyUnavailable').mockImplementation(() => lost);
+    try {
+      const component = track(await mount({ loadError: false }));
+      expect(hasText(component, secure.DEVICE_KEY_RECOVERY_MESSAGE)).toBe(true);
+      expect(hasText(component, 'Welcome to Kilo')).toBe(false);
+    } finally {
+      flag.mockRestore();
+      secure.secureStorage.probeDeviceKey.mockRestore();
+    }
+  });
+
   test('a lost device key shows non-destructive recovery guidance instead of the generic error', async () => {
     const secure = require('../storage/secureStorage');
     const spy = jest.spyOn(secure, 'isDeviceKeyUnavailable').mockReturnValue(true);
