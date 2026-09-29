@@ -48,6 +48,7 @@ export async function readList(key) {
   return parsed;
 }
 
-export async function writeList(key, list) {
-  await AsyncStorage.setItem(key, JSON.stringify(list));
+// `store` (#1186): the device-key recovery overlay; ordinary callers omit it.
+export async function writeList(key, list, store = AsyncStorage) {
+  await store.setItem(key, JSON.stringify(list));
 }

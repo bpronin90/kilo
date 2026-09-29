@@ -10,9 +10,9 @@ export async function loadUserProfile() {
   }
 }
 
-export async function saveUserProfile(profile) {
+export async function saveUserProfile(profile, store = AsyncStorage) {
   const record = { ...profile, saved_at: new Date().toISOString() };
-  await AsyncStorage.setItem(USER_PROFILE_KEY, JSON.stringify(record));
+  await store.setItem(USER_PROFILE_KEY, JSON.stringify(record));
   return record;
 }
 

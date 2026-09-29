@@ -21,17 +21,19 @@ import {
 import { normalizePlateCalculatorProfile } from '../../lib/plateMath';
 import { normalizeRestTimerRecord } from '../../lib/restTimer';
 
-export async function loadTrackedLifts() {
+// The optional `store` on the loaders/savers a backup restore calls is the
+// device-key recovery overlay (#1186); ordinary callers omit it.
+export async function loadTrackedLifts(store = AsyncStorage) {
   try {
-    const raw = await AsyncStorage.getItem(TRACKED_LIFTS_KEY);
+    const raw = await store.getItem(TRACKED_LIFTS_KEY);
     return raw ? JSON.parse(raw) : {};
   } catch {
     return {};
   }
 }
 
-export async function saveTrackedLifts(map) {
-  await AsyncStorage.setItem(TRACKED_LIFTS_KEY, JSON.stringify(map));
+export async function saveTrackedLifts(map, store = AsyncStorage) {
+  await store.setItem(TRACKED_LIFTS_KEY, JSON.stringify(map));
 }
 
 // ── tracked-span activation records (#893) ──────────────────────────────────
@@ -114,8 +116,8 @@ export async function loadTrackedLiftActivations() {
   }
 }
 
-export async function saveTrackedLiftActivations(map) {
-  await AsyncStorage.setItem(
+export async function saveTrackedLiftActivations(map, store = AsyncStorage) {
+  await store.setItem(
     TRACKED_LIFT_ACTIVATIONS_KEY,
     JSON.stringify(normalizeTrackedLiftActivations(map)),
   );
@@ -130,8 +132,8 @@ export async function loadWorkoutCollapsed() {
   }
 }
 
-export async function saveWorkoutCollapsed(isCollapsed) {
-  await AsyncStorage.setItem(COLLAPSED_STATE_KEY, JSON.stringify(isCollapsed));
+export async function saveWorkoutCollapsed(isCollapsed, store = AsyncStorage) {
+  await store.setItem(COLLAPSED_STATE_KEY, JSON.stringify(isCollapsed));
 }
 
 export async function loadFatigueMultiplier() {
@@ -143,8 +145,8 @@ export async function loadFatigueMultiplier() {
   }
 }
 
-export async function saveFatigueMultiplier(multiplier) {
-  await AsyncStorage.setItem(FATIGUE_MULTIPLIER_KEY, JSON.stringify(multiplier));
+export async function saveFatigueMultiplier(multiplier, store = AsyncStorage) {
+  await store.setItem(FATIGUE_MULTIPLIER_KEY, JSON.stringify(multiplier));
 }
 
 export async function loadWeightDateEditEnabled() {
@@ -156,8 +158,8 @@ export async function loadWeightDateEditEnabled() {
   }
 }
 
-export async function saveWeightDateEditEnabled(enabled) {
-  await AsyncStorage.setItem(WEIGHT_DATE_EDIT_KEY, JSON.stringify(enabled));
+export async function saveWeightDateEditEnabled(enabled, store = AsyncStorage) {
+  await store.setItem(WEIGHT_DATE_EDIT_KEY, JSON.stringify(enabled));
 }
 
 export async function loadDeloadDateEditEnabled() {
@@ -169,8 +171,8 @@ export async function loadDeloadDateEditEnabled() {
   }
 }
 
-export async function saveDeloadDateEditEnabled(enabled) {
-  await AsyncStorage.setItem(DELOAD_DATE_EDIT_KEY, JSON.stringify(enabled));
+export async function saveDeloadDateEditEnabled(enabled, store = AsyncStorage) {
+  await store.setItem(DELOAD_DATE_EDIT_KEY, JSON.stringify(enabled));
 }
 
 export async function loadFatigueTrackingEnabled() {
@@ -182,8 +184,8 @@ export async function loadFatigueTrackingEnabled() {
   }
 }
 
-export async function saveFatigueTrackingEnabled(enabled) {
-  await AsyncStorage.setItem(FATIGUE_TRACKING_KEY, JSON.stringify(enabled));
+export async function saveFatigueTrackingEnabled(enabled, store = AsyncStorage) {
+  await store.setItem(FATIGUE_TRACKING_KEY, JSON.stringify(enabled));
 }
 
 // Local reminder settings (issue #440). Persisted locally like the other
@@ -224,8 +226,8 @@ export async function loadDeloadModeEnabled() {
   }
 }
 
-export async function saveDeloadModeEnabled(enabled) {
-  await AsyncStorage.setItem(DELOAD_MODE_KEY, JSON.stringify(enabled));
+export async function saveDeloadModeEnabled(enabled, store = AsyncStorage) {
+  await store.setItem(DELOAD_MODE_KEY, JSON.stringify(enabled));
 }
 
 // ── Synchronous cache + subscription for the progression-suggestion UI ──────

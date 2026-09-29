@@ -89,8 +89,8 @@ export async function loadRecoveryBlocksRaw() {
   return readList(RECOVERY_BLOCKS_KEY);
 }
 
-export async function replaceRecoveryBlocksRaw(list) {
-  await writeList(RECOVERY_BLOCKS_KEY, Array.isArray(list) ? list : []);
+export async function replaceRecoveryBlocksRaw(list, store) {
+  await writeList(RECOVERY_BLOCKS_KEY, Array.isArray(list) ? list : [], store);
 }
 
 export async function getActiveRecoveryBlock() {
@@ -363,8 +363,8 @@ export async function loadRecoveryBlockWeeksRaw() {
   return readList(RECOVERY_BLOCK_WEEKS_KEY);
 }
 
-export async function replaceRecoveryBlockWeeksRaw(list) {
-  await writeList(RECOVERY_BLOCK_WEEKS_KEY, Array.isArray(list) ? list : []);
+export async function replaceRecoveryBlockWeeksRaw(list, store) {
+  await writeList(RECOVERY_BLOCK_WEEKS_KEY, Array.isArray(list) ? list : [], store);
 }
 
 // Ordered live weeks of one block. This is the ordering later comparison
