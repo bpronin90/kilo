@@ -335,19 +335,29 @@ export function RoutinePromptToolsScreen({
     if (blockedByRetry()) return;
     try {
       await copy(prompt);
+    } catch {
+      setNotice('Couldn’t copy the prompt. Nothing else changed.');
+      return;
+    }
+    try {
       await captureSnapshot();
       setNotice('Prompt copied. Paste it into the LLM you choose.');
     } catch {
-      setNotice('Couldn’t copy the prompt. Nothing else changed.');
+      setNotice('Prompt copied, but it could not be saved for later import. Keep the prompt open and try copying again.');
     }
   };
   const handleShare = async () => {
     if (blockedByRetry()) return;
     try {
       await (share || Share.share.bind(Share))({ message: prompt });
-      await captureSnapshot();
     } catch {
       setNotice('Couldn’t open sharing. Nothing else changed.');
+      return;
+    }
+    try {
+      await captureSnapshot();
+    } catch {
+      setNotice('Shared prompt could not be saved for later import. Keep this screen open and try sharing again.');
     }
   };
 
