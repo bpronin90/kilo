@@ -335,36 +335,53 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
   },
-  recoveryHeroCaption: {
-    ...(kua ? { ...typography['body-sm'], fontSize: 12 } : { fontSize: 13, fontWeight: '700' }),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    marginTop: 2,
-    marginBottom: 6,
+  // Big 3 rows (#1171): name and value on one line, a thin bar underneath
+  // filled to the lift's own share of its pre-injury baseline.
+  recoveryLiftList: {
+    gap: 10,
+    marginTop: 6,
   },
-  recoveryBandRow: {
+  recoveryLiftHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 3,
+    alignItems: 'baseline',
+    marginBottom: 4,
   },
-  recoveryBandLabel: {
-    ...(kua ? { ...typography['label-lg'], fontSize: 13, lineHeight: 18 } : { fontSize: 13, fontWeight: '700' }),
+  recoveryLiftName: {
+    ...(kua ? { ...typography['label-lg'], fontSize: 14, lineHeight: 19 } : { fontSize: 14, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
-  recoveryBandCount: {
-    ...(kua ? { ...typography['label-lg'], fontSize: 13, lineHeight: 18 } : { fontSize: 13, fontWeight: '700' }),
-    color: kua ? kua.onSurface : colors.text,
+  recoveryLiftValue: {
+    ...(kua ? { ...typography['body-sm'], fontSize: 13 } : { fontSize: 13 }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+  },
+  recoveryLiftDone: {
+    color: kua ? kua.completion : colors.success,
+    fontWeight: '600',
+  },
+  recoveryLiftTrack: {
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+    backgroundColor: kua ? kua.surfaceBorder : colors.cardBorder,
+  },
+  recoveryLiftFill: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: kua ? kua.primary : colors.accent,
+  },
+  recoveryLiftFillDone: {
+    backgroundColor: kua ? kua.completion : colors.success,
+  },
+  recoveryRemaining: {
+    ...(kua ? { ...typography['body-sm'], fontSize: 12 } : { fontSize: 13 }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    marginTop: 10,
   },
   recoveryFallbackLine: {
     ...(kua ? { ...typography['body-md'], fontSize: 15, lineHeight: 21 } : { fontSize: 16, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
     marginTop: 2,
-  },
-  recoveryStatsDivider: {
-    borderTopWidth: 1,
-    borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
-    paddingTop: 12,
-    marginTop: 10,
   },
   recoveryStatusLine: {
     ...(kua ? { ...typography['body-sm'], fontSize: 12 } : { fontSize: 13 }),
