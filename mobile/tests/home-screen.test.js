@@ -1897,13 +1897,26 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     expect(hasText(component, 'Remaining 3: 1 recovered · 1 in progress · 1 not started')).toBe(true);
     // Only the Big 3 are named; the rest are counts.
     expect(spoken(component)).toBe(
-      'Week 1. Squat recovered. Bench 50% of baseline. Deadlift not started. '
+      'Week 1. Squat recovered. DB Bench Press 50% of baseline. Deadlift not started. '
       + 'Remaining 3: 1 recovered, 1 in progress, 1 not started.'
     );
     // Retired vocabulary never returns.
     ['back', 'below', 'At or above', 'Rebuilding', 'Early'].forEach(word => {
       expect(spoken(component).includes(word)).toBe(false);
     });
+  });
+
+  test('a Big 3 slot mapped to another exercise is labeled with that exercise', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block({ baseline: sixLiftBaseline, baseline_note_id: 'n6' })],
+      weeks: [week()],
+    }));
+    const mapped = { ...SIX_LIFT_NOTE, one_k_exercises: { squat: 'Press' } };
+    const component = await mount({ workoutNote: mapped, notes: [mapped, weekNote('nr1', SIX_LIFT_WEEK_TEXT)] });
+
+    // Press's numbers never read as Squat recovery.
+    expect(spoken(component)).toContain('Press 69% of baseline.');
+    expect(spoken(component).startsWith('Week 1. Squat')).toBe(false);
   });
 
   test('a missing baseline routine promotes no lift and counts every exercise instead', async () => {

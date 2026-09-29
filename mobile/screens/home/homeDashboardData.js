@@ -179,7 +179,9 @@ export function deriveHomeRecoveryBig3(week, selections) {
     const row = key ? roster.find(r => !used.has(r) && r.key === key) : null;
     if (!row) continue;
     used.add(row);
-    big3.push({ slot, label, state: row.state, percent: _rowPercent(row) });
+    // Named by the mapped exercise itself: a slot can point at any routine
+    // exercise, and its numbers must never read as the slot's namesake.
+    big3.push({ slot, label: row.name || label, state: row.state, percent: _rowPercent(row) });
   }
   const rest = roster.filter(r => !used.has(r));
   const count = state => rest.filter(r => r.state === state).length;
