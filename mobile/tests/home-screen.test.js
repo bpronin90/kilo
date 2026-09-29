@@ -1930,6 +1930,19 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     expect(spoken(component)).toContain('Squat recovered. DB Bench Press 50% of baseline. Deadlift not started.');
   });
 
+  test('a remaining exercise that can\'t be compared is left out of the count line', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block({ baseline: sixLiftBaseline, baseline_note_id: 'n6' })],
+      weeks: [week()],
+    }));
+    // Row logged bodyweight-only against a weighted baseline: not comparable.
+    const text = SIX_LIFT_WEEK_TEXT.replace('-Row\n95 8,8,8', '-Row\nBW 8,8,8');
+    const component = await mount({ notes: [SIX_LIFT_NOTE, weekNote('nr1', text)] });
+
+    expect(hasText(component, 'Remaining 2: 1 in progress · 1 not started')).toBe(true);
+    expect(hasText(component, "can't compare")).toBe(false);
+  });
+
   test('a missing baseline routine promotes no lift and counts every exercise instead', async () => {
     // The block's baseline routine (n6) is gone, so its 1K picks are unknown.
     // Defaults must not stand in for them.

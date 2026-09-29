@@ -187,7 +187,9 @@ export function deriveHomeRecoveryBig3(week, selections) {
     // exercise, and its numbers must never read as the slot's namesake.
     big3.push({ slot, label: row.name || label, state: row.state, percent: _rowPercent(row) });
   }
-  const rest = roster.filter(r => !used.has(r));
+  // Owner decision: an exercise whose work can't be compared to its baseline
+  // is left out of the count line entirely (Analytics still reports it).
+  const rest = roster.filter(r => !used.has(r) && r.state !== RECOVERY_COMPARISON_STATES.NOT_COMPARABLE);
   const count = state => rest.filter(r => r.state === state).length;
   return {
     big3,
@@ -196,7 +198,6 @@ export function deriveHomeRecoveryBig3(week, selections) {
       recovered: count(RECOVERY_COMPARISON_STATES.BASELINE_MET),
       inProgress: count(RECOVERY_COMPARISON_STATES.REBUILDING),
       notStarted: count(RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED),
-      cantCompare: count(RECOVERY_COMPARISON_STATES.NOT_COMPARABLE),
     },
   };
 }

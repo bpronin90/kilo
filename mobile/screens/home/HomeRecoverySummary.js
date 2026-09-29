@@ -42,14 +42,13 @@ function liftValue(lift) {
 }
 
 // `Remaining N: X recovered · Y in progress · Z not started`, dropping zero
-// parts. `Can't compare` is kept when present so the parts always add up to N.
+// parts. Can't-compare exercises are already excluded from N upstream.
 function remainingLine(remaining, hasBig3) {
   if (!remaining || remaining.total === 0) return null;
   const parts = [
     [remaining.recovered, 'recovered'],
     [remaining.inProgress, 'in progress'],
     [remaining.notStarted, 'not started'],
-    [remaining.cantCompare, "can't compare"],
   ].filter(([n]) => n > 0).map(([n, word]) => `${n} ${word}`);
   const lead = hasBig3 ? `Remaining ${remaining.total}` : `${remaining.total} exercises`;
   return `${lead}: ${parts.join(' · ')}`;
