@@ -3977,7 +3977,7 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     const menuStyle = flatStyle(menu());
     expect(menuStyle.position).toBe('absolute');
     expect(menuStyle.width).toBeLessThan(220);
-    expect(menuStyle.top).toBe('100%');
+    expect(menuStyle.top).toBeGreaterThanOrEqual(44);
     expect(menuStyle.maxWidth).toBe('100%');
     const items = root.findAll(n => n.props && n.props.accessibilityRole === 'menuitem' && n.props.onPress);
     expect(items.length).toBe(4);

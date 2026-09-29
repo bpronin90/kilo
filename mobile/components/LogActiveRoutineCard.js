@@ -265,52 +265,6 @@ export function LogActiveRoutineCard({
                 <MaterialIcons name="more-vert" size={20} color={kua ? kua.onSurfaceVariant : colors.chipAccentText} accessible={false} />
               </Pressable>
             </View>
-            {menuOpen && (
-              <View
-                style={styles.actionMenu}
-                onLayout={e => setMenuH(e.nativeEvent.layout.height)}
-                accessibilityRole="menu"
-                testID="log-current-routine-menu"
-              >
-                <Pressable
-                  onPress={(e) => { e.stopPropagation(); setMenuOpen(false); enterCurrentEditor(); }}
-                  style={styles.actionMenuItem}
-                  accessibilityRole="menuitem"
-                  accessibilityLabel="Edit routine"
-                >
-                  <Text style={styles.actionMenuItemText}>Edit</Text>
-                </Pressable>
-                {/* #956: Copy and Share stay distinct actions, not merged. */}
-                <Pressable
-                  onPress={(e) => { e.stopPropagation(); setMenuOpen(false); return handleCopyRoutine(); }}
-                  style={styles.actionMenuItem}
-                  accessibilityRole="menuitem"
-                  accessibilityLabel={`Copy routine ${workoutNoteTitle || 'Untitled Routine'}`}
-                >
-                  <Text style={styles.actionMenuItemText}>Copy</Text>
-                </Pressable>
-                <Pressable
-                  onPress={(e) => { e.stopPropagation(); setMenuOpen(false); handleShareRoutine(); }}
-                  style={styles.actionMenuItem}
-                  accessibilityRole="menuitem"
-                  accessibilityLabel="Share routine"
-                >
-                  <Text style={styles.actionMenuItemText}>Share</Text>
-                </Pressable>
-                <Pressable
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    setMenuOpen(false);
-                    setImageShare({ title: workoutNoteTitle, rawText: routineRawText ?? activeEditText });
-                  }}
-                  style={styles.actionMenuItem}
-                  accessibilityRole="menuitem"
-                  accessibilityLabel="Share routine as image"
-                >
-                  <Text style={styles.actionMenuItemText}>Share as Image</Text>
-                </Pressable>
-              </View>
-            )}
             {/* One skip control, never two (#711). Previously both rendered and
                 `canUnskipWeek` only dimmed `Remove skip` to opacity 0.4 over
                 already-muted text — two contradictory-looking controls, with the
@@ -347,6 +301,52 @@ export function LogActiveRoutineCard({
               )}
             </View>
           </View>
+          {menuOpen && (
+            <View
+              style={[styles.actionMenu, { top: 14 + stripH }]}
+              onLayout={e => setMenuH(e.nativeEvent.layout.height)}
+              accessibilityRole="menu"
+              testID="log-current-routine-menu"
+            >
+              <Pressable
+                onPress={(e) => { e.stopPropagation(); setMenuOpen(false); enterCurrentEditor(); }}
+                style={styles.actionMenuItem}
+                accessibilityRole="menuitem"
+                accessibilityLabel="Edit routine"
+              >
+                <Text style={styles.actionMenuItemText}>Edit</Text>
+              </Pressable>
+              {/* #956: Copy and Share stay distinct actions, not merged. */}
+              <Pressable
+                onPress={(e) => { e.stopPropagation(); setMenuOpen(false); return handleCopyRoutine(); }}
+                style={styles.actionMenuItem}
+                accessibilityRole="menuitem"
+                accessibilityLabel={`Copy routine ${workoutNoteTitle || 'Untitled Routine'}`}
+              >
+                <Text style={styles.actionMenuItemText}>Copy</Text>
+              </Pressable>
+              <Pressable
+                onPress={(e) => { e.stopPropagation(); setMenuOpen(false); handleShareRoutine(); }}
+                style={styles.actionMenuItem}
+                accessibilityRole="menuitem"
+                accessibilityLabel="Share routine"
+              >
+                <Text style={styles.actionMenuItemText}>Share</Text>
+              </Pressable>
+              <Pressable
+                onPress={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen(false);
+                  setImageShare({ title: workoutNoteTitle, rawText: routineRawText ?? activeEditText });
+                }}
+                style={styles.actionMenuItem}
+                accessibilityRole="menuitem"
+                accessibilityLabel="Share routine as image"
+              >
+                <Text style={styles.actionMenuItemText}>Share as Image</Text>
+              </Pressable>
+            </View>
+          )}
           {skipWeekStatus ? (
             <Text style={styles.skipWeekStatusText}>{skipWeekStatus}</Text>
           ) : null}
@@ -545,12 +545,12 @@ const createStyles = (kua, colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // #1182: floats under its trigger; zIndex on strip/group/anchor keeps it
-  // above the routine text and skip control.
+  // #1182: floats under the strip (top set inline) as a direct child of the
+  // body so its bounds contain it for native hit testing; zIndex keeps it above
+  // the routine text.
   actionMenu: {
     position: 'absolute',
-    top: '100%',
-    left: 0,
+    left: 24,
     width: 172,
     maxWidth: '100%',
     zIndex: 10,
