@@ -37,6 +37,26 @@ export class EncryptedStorageError extends Error {
   }
 }
 
+// The device key is gone (Keystore loss, BadPaddingException, stale entry) while
+// encrypted local data still exists. Minting a replacement would permanently
+// orphan that data, so this is a fail-closed, non-destructive state (#1177).
+export class DeviceKeyUnavailableError extends EncryptedStorageError {
+  constructor(cause) {
+    super(DEVICE_KEY_NAME, cause);
+    this.name = 'DeviceKeyUnavailableError';
+    this.message = 'The device encryption key is unavailable and encrypted local data exists';
+  }
+}
+
+export const DEVICE_KEY_RECOVERY_MESSAGE = 'Kilo cannot unlock the encrypted data saved on this device. '
+  + 'Nothing has been deleted. Restore from a backup or sign in to sync, or reset local data only if you no longer need it.';
+
+// Latched so screens can explain the failure without owning storage errors.
+let deviceKeyUnavailable = false;
+export function isDeviceKeyUnavailable() {
+  return deviceKeyUnavailable;
+}
+
 function loadSecureStore() {
   try {
     // eslint-disable-next-line global-require
@@ -104,7 +124,20 @@ export function createDeviceStorage({
         if (stored != null) {
           const parsed = hexToBytes(stored);
           if (parsed.length !== DEVICE_KEY_BYTES) throw new Error('Stored device encryption key is invalid.');
+          deviceKeyUnavailable = false;
           return parsed;
+        }
+        // No key. Only provision one when no kilo_* value already holds an
+        // envelope; otherwise the new key could never decrypt existing data.
+        const keys = await backingStore.getAllKeys();
+        for (const name of keys) {
+          if (!name.startsWith('kilo_')) continue;
+          // eslint-disable-next-line no-await-in-loop
+          const raw = await backingStore.getItem(name);
+          if (typeof raw === 'string' && raw.startsWith(ENVELOPE_PREFIX)) {
+            deviceKeyUnavailable = true;
+            throw new DeviceKeyUnavailableError();
+          }
         }
         const created = await crypto.getRandomBytesAsync(DEVICE_KEY_BYTES);
         if (!(created instanceof Uint8Array) || created.length !== DEVICE_KEY_BYTES) {
@@ -115,6 +148,7 @@ export function createDeviceStorage({
           bytesToHex(created),
           secureStoreOptions(secureStore),
         );
+        deviceKeyUnavailable = false;
         return created;
       })().catch((error) => {
         keyPromise = null;

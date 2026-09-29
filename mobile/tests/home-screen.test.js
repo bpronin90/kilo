@@ -1052,6 +1052,19 @@ describe('Home loading, failure, and cloud sync states (#737)', () => {
     expect(onRetryLoad).toHaveBeenCalled();
   });
 
+  test('a lost device key shows non-destructive recovery guidance instead of the generic error', async () => {
+    const secure = require('../storage/secureStorage');
+    const spy = jest.spyOn(secure, 'isDeviceKeyUnavailable').mockReturnValue(true);
+    try {
+      const component = track(await mount({ loadError: true }));
+      expect(hasText(component, secure.DEVICE_KEY_RECOVERY_MESSAGE)).toBe(true);
+      expect(hasText(component, 'Could not load your training data.')).toBe(false);
+      expect(hasText(component, 'Welcome to Kilo')).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   test('a failed read over already-loaded data keeps showing that data under the banner', async () => {
     const component = track(await mount({
       loadError: true,

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { DEVICE_KEY_RECOVERY_MESSAGE, isDeviceKeyUnavailable } from '../storage/secureStorage';
 import { Pressable, Text, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { ScreenShell } from '../components/ScreenShell';
@@ -399,7 +400,7 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
     >
       {hasLoadError ? (
         <ErrorBanner
-          message="Could not load your training data."
+          message={isDeviceKeyUnavailable() ? DEVICE_KEY_RECOVERY_MESSAGE : 'Could not load your training data.'}
           onRetry={handleRetryLoad}
         />
       ) : null}
