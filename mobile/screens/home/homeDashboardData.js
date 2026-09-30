@@ -90,7 +90,7 @@ export const HOME_RECOVERY_STATUS = Object.freeze({
 // `deriveRecoveryComparison` result Analytics renders into the user's Big 3
 // (their 1K lifts) plus one count line for the rest of the roster. Every
 // exercise's full breakdown stays behind the `Recovery` handoff.
-export function useHomeRecoverySummary(notes) {
+export function useHomeRecoverySummary(notes, workoutNote = null) {
   const { activeBlock, weeks, ready, loading, stale, retryRecovery } = useRecoveryBlockState() || {};
   return useMemo(() => {
     const status = ready
@@ -125,16 +125,11 @@ export function useHomeRecoverySummary(notes) {
     const comparison = deriveRecoveryComparison({ block: activeBlock, weeks, notes });
     const comparisonWeeks = comparison.weeks || [];
     const current = comparisonWeeks.length > 0 ? comparisonWeeks[comparisonWeeks.length - 1] : null;
-    // The Big 3 are the BASELINE routine's 1K picks — the block may have been
-    // started from a routine other than the current one. If that routine is
-    // gone, its picks are unknown: no lift is promoted (defaults could name
-    // the wrong ones) and every exercise folds into the count line.
-    const baselineNote = (notes || []).find(n => n && n.id === activeBlock.baseline_note_id);
-    // Restored/synced notes can carry non-string picks (e.g. `{ deadlift: true }`);
-    // those fall back to the slot default rather than reaching normalization.
-    const overrides = Object.entries(baselineNote?.one_k_exercises || {})
-      .filter(([, name]) => typeof name === 'string' && name.trim());
-    const selections = baselineNote ? { ...DEFAULT_1K_EXERCISES, ...Object.fromEntries(overrides) } : null;
+    // #1192: the Big 3 use the same effective 1K selection as Home's normal
+    // 1K total — the current routine's picks over the slot defaults — so the
+    // card names the lifts the user already recognizes. The frozen baseline
+    // still supplies the comparison values.
+    const selections = resolveHomeOneKSelections(workoutNote);
 
     return {
       ...base,
@@ -145,8 +140,20 @@ export function useHomeRecoverySummary(notes) {
       ...deriveHomeRecoveryBig3(current, selections),
       includedInNormalAnalytics: activeBlock.include_in_normal_analytics === true,
     };
-  }, [activeBlock, weeks, notes, ready, loading, stale, retryRecovery]);
+  }, [activeBlock, weeks, notes, workoutNote, ready, loading, stale, retryRecovery]);
 }
+
+// Effective 1K selection: slot defaults under the routine's own picks. Shared by
+// the normal 1K total and the Recovery card so the two cannot disagree. A
+// restored/synced note can carry non-string picks (e.g. `{ deadlift: true }`);
+// those fall back to the slot default rather than reaching normalization.
+export function resolveHomeOneKSelections(note) {
+  const picks = Object.entries(note?.one_k_exercises || {})
+    .filter(([, name]) => typeof name === 'string' && name.trim());
+  return { ...DEFAULT_1K_EXERCISES, ...Object.fromEntries(picks) };
+}
+
+export const HOME_BIG3_NOT_IN_BASELINE = 'not_in_baseline';
 
 const BIG3_SLOTS = Object.freeze([
   { slot: 'squat', label: 'Squat' },
@@ -168,8 +175,8 @@ function _rowPercent(row) {
 // week's comparison. The roster is `deriveRecoveryTrainedRows` (the single
 // source of truth that already excludes `baseline_value_unusable` rows) plus
 // the baseline rows not reintroduced yet. A Big 3 lift outside that roster is
-// left out entirely — it was never in the baseline, so there is nothing true
-// to say about its distance from it.
+// shown as `not_in_baseline` (#1192) — it was never in the baseline, so there
+// is no distance to report, but the slot still reads as the user's Big 3.
 export function deriveHomeRecoveryBig3(week, selections) {
   if (!week || week.status !== RECOVERY_WEEK_STATUS.OK) return { big3: [], remaining: null };
   const roster = [
@@ -180,8 +187,20 @@ export function deriveHomeRecoveryBig3(week, selections) {
   const big3 = [];
   for (const { slot, label } of BIG3_SLOTS) {
     const key = typeof selections?.[slot] === 'string' ? normalizeExerciseKey(selections[slot]) : null;
-    const row = key ? roster.find(r => !used.has(r) && r.key === key) : null;
-    if (!row) continue;
+    const row = key ? roster.find(r => r.key === key) : null;
+    if (!row) {
+      // Captured in the baseline but excluded from the roster (unusable
+      // baseline value): present, just not comparable — not absent.
+      const captured = key ? (week.exercises || []).find(r => r.key === key) : null;
+      if (captured) {
+        big3.push({ slot, label: captured.name || label, state: RECOVERY_COMPARISON_STATES.NOT_COMPARABLE, percent: null });
+        continue;
+      }
+      big3.push({ slot, label: selections?.[slot] || label, state: HOME_BIG3_NOT_IN_BASELINE, percent: null });
+      continue;
+    }
+    // Two slots may map to one exercise (the normal 1K total counts it for
+    // both); each still reports it, and the count line sees it once.
     used.add(row);
     // Named by the mapped exercise itself: a slot can point at any routine
     // exercise, and its numbers must never read as the slot's namesake.
@@ -276,10 +295,7 @@ export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal
     sections = getNoteSections(workoutNote);
   }
 
-  const oneKSelections = {
-    ...DEFAULT_1K_EXERCISES,
-    ...(workoutNote?.one_k_exercises || {}),
-  };
+  const oneKSelections = resolveHomeOneKSelections(workoutNote);
   oneK = noteSectionsList
     ? derive1kTotalFromSectionsList(noteSectionsList, oneKSelections)
     : derive1kTotal(allSections, oneKSelections);

@@ -9,7 +9,7 @@
 
 import { parseWorkoutNote, epleyPR } from '../lib/parser';
 import { derive1kTotal, DEFAULT_1K_EXERCISES } from '../lib/data';
-import { deriveHomeDashboardData } from '../screens/home/homeDashboardData';
+import { deriveHomeDashboardData, deriveHomeRecoveryBig3, resolveHomeOneKSelections, HOME_BIG3_NOT_IN_BASELINE } from '../screens/home/homeDashboardData';
 import { deriveAnalytics, deriveParsedSections } from '../screens/analytics/analyticsDerivations';
 
 // Historical note: all three Big-3 lifts logged in one session.
@@ -495,5 +495,40 @@ describe('deriveHomeDashboardData — post-deload re-entry wiring (#989)', () =>
       }],
     });
     expect(result.reentry.bench).toBeUndefined();
+  });
+});
+
+describe('Home Recovery Big 3 selection (#1192)', () => {
+  test('resolves slot defaults under the routine picks and ignores non-string picks', () => {
+    expect(resolveHomeOneKSelections(null)).toEqual(DEFAULT_1K_EXERCISES);
+    expect(resolveHomeOneKSelections({ one_k_exercises: { squat: 'Press', deadlift: true, bench: '  ' } }))
+      .toEqual({ ...DEFAULT_1K_EXERCISES, squat: 'Press' });
+  });
+
+  test('a mapped lift missing from the baseline stays a Big 3 slot without a number', () => {
+    const week = { status: 'ok', exercises: [] };
+    const { big3 } = deriveHomeRecoveryBig3(week, { squat: 'Press', bench: 'Bench', deadlift: 'Deadlift' });
+    expect(big3.map(l => [l.slot, l.label, l.state, l.percent])).toEqual([
+      ['squat', 'Press', HOME_BIG3_NOT_IN_BASELINE, null],
+      ['bench', 'Bench', HOME_BIG3_NOT_IN_BASELINE, null],
+      ['deadlift', 'Deadlift', HOME_BIG3_NOT_IN_BASELINE, null],
+    ]);
+  });
+
+  test('two slots mapped to the same baseline exercise both report it', () => {
+    const row = { key: 'squat', name: 'Squat', state: 'baseline_met', metrics: [] };
+    const week = { status: 'ok', exercises: [row] };
+    const { big3, remaining } = deriveHomeRecoveryBig3(week, { squat: 'Squat', bench: 'Squat', deadlift: 'Deadlift' });
+    expect(big3.map(l => [l.slot, l.state])).toEqual([
+      ['squat', 'baseline_met'], ['bench', 'baseline_met'], ['deadlift', HOME_BIG3_NOT_IN_BASELINE],
+    ]);
+    expect(remaining.total).toBe(0);
+  });
+
+  test('a mapped lift with an unusable baseline value is not comparable, not absent', () => {
+    const row = { key: 'squat', name: 'Squat', state: 'not_comparable', unavailable_reason: 'baseline_value_unusable', metrics: [] };
+    const { big3 } = deriveHomeRecoveryBig3({ status: 'ok', exercises: [row] }, { squat: 'Squat', bench: 'Bench', deadlift: 'Deadlift' });
+    expect(big3[0]).toMatchObject({ slot: 'squat', state: 'not_comparable', percent: null });
+    expect(big3[1].state).toBe(HOME_BIG3_NOT_IN_BASELINE);
   });
 });
