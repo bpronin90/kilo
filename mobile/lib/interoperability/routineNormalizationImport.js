@@ -174,14 +174,15 @@ export function diffTargetNames(originalText, returnedLines) {
     } else if (before !== after) {
       const a = splitHeader(before, oldName);
       const b = splitHeader(after, newName);
-      const tail = prescriptionTail(before);
-      // A descriptor the parser already excluded from the name may be dropped
-      // from the header, but only alongside its moved comment (checked below).
-      const shed = a && b && a.suffix !== b.suffix && a.suffix.endsWith(b.suffix) && b.suffix === tail && shedDescriptor(oldName, newName, a.suffix, tail).length > 0;
-      if (!a || !b || a.prefix !== b.prefix || (a.suffix !== b.suffix && !shed) || markTail(oldName) !== markTail(newName) || numbers(before) !== numbers(after) || prescriptionTail(before) !== prescriptionTail(after) || !newName.trim()) {
+      // A descriptor the parser already excluded from the name (any text,
+      // digits included) may be dropped from the header, but only alongside
+      // its moved comment (checked below). What follows it must be untouched.
+      const excluded = a && b && a.suffix.endsWith(b.suffix) ? a.suffix.slice(0, a.suffix.length - b.suffix.length) : '';
+      const shed = Boolean(a && b && a.suffix !== b.suffix && (b.suffix === '' || /^\s/.test(b.suffix)) && /^\s*[^\d\s]/.test(excluded) && shedDescriptor(oldName, newName, a.suffix, b.suffix).length > 0);
+      if (!a || !b || a.prefix !== b.prefix || (a.suffix !== b.suffix && !shed) || markTail(oldName) !== markTail(newName) || (!shed && (numbers(before) !== numbers(after) || prescriptionTail(before) !== prescriptionTail(after))) || !newName.trim()) {
         problems.push(`Line ${lineNumber} changed more than the exercise name: “${before}” → “${after}”.`);
       } else {
-        changeByHeader.set(i, { lineIndex: start + i, oldName, newName, newLine: after, descriptor: shedDescriptor(oldName, newName, a.suffix, a.suffix === b.suffix ? a.suffix : tail), shed });
+        changeByHeader.set(i, { lineIndex: start + i, oldName, newName, newLine: after, descriptor: shedDescriptor(oldName, newName, a.suffix, b.suffix), shed });
       }
     }
     const next = returnedLines[j];
