@@ -384,7 +384,7 @@ describe('scroll-direction auto-hide (#1209)', () => {
     act(() => component.unmount());
   });
 
-  test('ScreenShell forwards every scroll event to the tab-bar scroll context', () => {
+  test('ScreenShell forwards only user-driven scrolls (drag, fling) to the tab-bar scroll context', () => {
     const onScroll = jest.fn();
     let component;
     act(() => {
@@ -395,8 +395,25 @@ describe('scroll-direction auto-hide (#1209)', () => {
       );
     });
     const scroll = component.root.findAll((n) => typeof n.props.onScroll === 'function' && n.props.scrollEventThrottle)[0];
+    // Programmatic scrollTo / anchor jump: no drag or momentum began.
     act(() => scroll.props.onScroll(ev(120)));
+    expect(onScroll).not.toHaveBeenCalled();
+    // A finger drag.
+    act(() => scroll.props.onScrollBeginDrag());
+    act(() => scroll.props.onScroll(ev(140)));
     expect(onScroll).toHaveBeenCalledTimes(1);
+    // Release with velocity: the fling is still user-driven.
+    act(() => scroll.props.onScrollEndDrag({ nativeEvent: { velocity: { y: 2 } } }));
+    act(() => scroll.props.onScroll(ev(200)));
+    expect(onScroll).toHaveBeenCalledTimes(2);
+    act(() => scroll.props.onMomentumScrollEnd());
+    act(() => scroll.props.onScroll(ev(260)));
+    expect(onScroll).toHaveBeenCalledTimes(2);
+    // Release with no velocity: nothing follows, later programmatic scrolls stay ignored.
+    act(() => scroll.props.onScrollBeginDrag());
+    act(() => scroll.props.onScrollEndDrag({ nativeEvent: { velocity: { y: 0 } } }));
+    act(() => scroll.props.onScroll(ev(300)));
+    expect(onScroll).toHaveBeenCalledTimes(2);
     act(() => component.unmount());
   });
 

@@ -1,4 +1,4 @@
-import React, { useContext, createContext } from 'react';
+import React, { useContext, useRef, createContext } from 'react';
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useThemedStyles } from '../theme/ThemeContext';
@@ -32,11 +32,20 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
   const column = centeredColumnInsets(windowWidth, { left: leftInset, right: rightInset });
   const columnPadding = { paddingLeft: column.left, paddingRight: column.right };
 
+  // Only user-driven scrolling (drag, then fling momentum) may hide the tab bar
+  // (#1209); programmatic scrollTo/anchor jumps fire neither and are ignored.
+  const userScroll = useRef({ drag: false, momentum: false });
   const handleScroll = (e) => {
     if (contextOnScroll) contextOnScroll(e);
-    if (tabBarOnScroll) tabBarOnScroll(e);
+    if (tabBarOnScroll && (userScroll.current.drag || userScroll.current.momentum)) tabBarOnScroll(e);
     if (propOnScroll) propOnScroll(e);
   };
+  const handleBeginDrag = () => { userScroll.current = { drag: true, momentum: false }; };
+  const handleEndDrag = (e) => {
+    const vy = e?.nativeEvent?.velocity?.y;
+    userScroll.current = { drag: false, momentum: !!vy };
+  };
+  const handleMomentumEnd = () => { userScroll.current = { drag: false, momentum: false }; };
 
   return (
     <View style={[styles.outerContainer, style]}>
@@ -54,6 +63,9 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
         contentContainerStyle={[styles.container, { paddingBottom: bottomClearance }, columnPadding]}
         keyboardShouldPersistTaps={keyboardShouldPersistTaps}
         onScroll={handleScroll}
+        onScrollBeginDrag={handleBeginDrag}
+        onScrollEndDrag={handleEndDrag}
+        onMomentumScrollEnd={handleMomentumEnd}
         scrollEventThrottle={16}
         stickyHeaderIndices={stickyHeaderIndices}
       >
