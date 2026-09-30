@@ -1224,7 +1224,8 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
 
     expect(hasText(root, 'Load — the heaviest completed working set that week.')).toBe(true);
     expect(hasText(root, 'Not an all-time max or an estimated 1RM.')).toBe(true);
-    expect(hasText(root, "Total work — load × reps across that week's completed working sets.")).toBe(true);
+    expect(hasText(root, "Total work — this exercise's load × reps across the completed working sets of the selected week.")).toBe(true);
+    expect(hasText(root, 'Per exercise, per week; not a block total.')).toBe(true);
   });
 
   test('a week with no weighted work carries no weighted explanation', () => {
@@ -1698,5 +1699,125 @@ describe('AnalyticsRecoverySection — across-weeks band strip (#1029 amendment)
       inst => typeof inst.type === 'string' && flattenStyle(inst).borderColor === LightColors.cautionText
     );
     expect(rChipBox.length).toBeGreaterThan(0);
+  });
+});
+
+describe('AnalyticsRecoverySection — per-week vs block state (#1193)', () => {
+  function setupTwoWeeks() {
+    return setup({
+      blocks: [block()],
+      weeks: [week(1, 'note-w1'), week(2, 'note-w2')],
+      notes: [
+        note('note-w1', '-Bench\n- 135 5,5,5\n-Pull-up\n- 8,8,8'),
+        note('note-w2', '-Bench\n- 135 5,5,5\n-Curl\n- 20 10,10'),
+      ],
+    }).root;
+  }
+
+  test('states which linked week is selected and how many exist', () => {
+    const root = setupTwoWeeks();
+    expect(hasText(root, '2 linked weeks. Showing Week 2')).toBe(true);
+    act(() => { byLabel(root, 'Week 1').props.onPress(); });
+    expect(hasText(root, '2 linked weeks. Showing Week 1')).toBe(true);
+  });
+
+  test('a single linked week has no selection caption', () => {
+    const root = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', '-Bench\n- 135 5,5,5')] }).root;
+    expect(hasText(root, 'linked weeks')).toBe(false);
+  });
+
+  test('an exercise present only in another week is told apart from one never trained', () => {
+    const root = setupTwoWeeks();
+    expandDetails(root);
+    // Pull-up trained in Week 1 only; viewing Week 2 it is absent, not missing.
+    expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not reintroduced. Not in Week 2 · trained in Week 1'))).toBe(true);
+    expect(hasText(root, 'Not in Week 2 · trained in Week 1 · Baseline')).toBe(true);
+    // Added-during-recovery work stays its own group.
+    expect(rowLabels(root).some(l => l.startsWith('Curl, Added during recovery'))).toBe(true);
+
+    act(() => { byLabel(root, 'Week 1').props.onPress(); });
+    expect(hasText(root, 'Not trained in any linked week')).toBe(false);
+  });
+
+  test('a baseline exercise never trained in any week says so', () => {
+    const root = setup({
+      blocks: [block()],
+      weeks: [week(1, 'note-w1'), week(2, 'note-w2')],
+      notes: [note('note-w1', '-Bench\n- 135 5,5,5'), note('note-w2', '-Bench\n- 135 5,5,5')],
+    }).root;
+    expandDetails(root);
+    expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not reintroduced. Not trained in any linked week'))).toBe(true);
+  });
+
+  test('Total work is scoped to one exercise in one week, never a block total', () => {
+    const root = setupTwoWeeks();
+    expandDetails(root);
+    expect(hasText(root, "Total work is per exercise, per week — not a block total. Current values are Week 2's; “Baseline” figures are the frozen starting value.")).toBe(true);
+  });
+
+  test('logged but uncomparable work in another week still counts as trained there', () => {
+    const notComparable = mockRow({ key: 'pull-up', name: 'Pull-up', state: RECOVERY_COMPARISON_STATES.NOT_COMPARABLE, exercise_class: 'reps', unavailable_reason: 'exercise_class_changed' });
+    const absent = { ...mockRow({ key: 'pull-up', name: 'Pull-up', state: RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED, exercise_class: 'reps' }), week_name: null };
+    deriveRecoveryComparison.mockReturnValueOnce(mockComparison({ weeks: [
+      mockWeek({ week_id: 'rw1', week_number: 1, exercises: [{ ...notComparable, week_name: 'Pull-up' }] }),
+      mockWeek({ week_id: 'rw2', week_number: 2, exercises: [absent] }),
+    ] }));
+    const root = setup({ blocks: [block()], weeks: [week(1, 'n1'), week(2, 'n2')], notes: [] }).root;
+    expandDetails(root);
+    expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not reintroduced. Not in Week 2 · trained in Week 1'))).toBe(true);
+  });
+
+  test('an unavailable selected week is not described as compared', () => {
+    deriveRecoveryComparison.mockReturnValueOnce(mockComparison({ weeks: [
+      mockWeek({ week_id: 'rw1', week_number: 1 }),
+      mockWeek({ week_id: 'rw2', week_number: 2, status: RECOVERY_WEEK_STATUS.NOTE_MISSING }),
+    ] }));
+    const root = setup({ blocks: [block()], weeks: [week(1, 'n1'), week(2, 'n2')], notes: [] }).root;
+    expect(hasText(root, '2 linked weeks. Showing Week 2; pick a week')).toBe(true);
+    expect(hasText(root, 'compared with the baseline')).toBe(false);
+    expect(hasText(root, 'Showing Week 2; pick a week')).toBe(true);
+  });
+
+  test('an unreadable other week blocks the "never trained" claim', () => {
+    const absent = mockRow({ key: 'pull-up', name: 'Pull-up', state: RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED, exercise_class: 'reps' });
+    deriveRecoveryComparison.mockReturnValueOnce(mockComparison({ weeks: [
+      mockWeek({ week_id: 'rw1', week_number: 1, status: RECOVERY_WEEK_STATUS.NOTE_UNREADABLE }),
+      mockWeek({ week_id: 'rw2', week_number: 2, exercises: [absent] }),
+    ] }));
+    const root = setup({ blocks: [block()], weeks: [week(1, 'n1'), week(2, 'n2')], notes: [] }).root;
+    expandDetails(root);
+    expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not reintroduced. Not trained in any readable linked week'))).toBe(true);
+  });
+
+  test('the Total work scope note is not shown when only baseline values are on screen', () => {
+    const root = setup({
+      blocks: [block()],
+      weeks: [week(1, 'note-w1')],
+      notes: [note('note-w1', '-Chin-up\n- 8,8')],
+    }).root;
+    expandDetails(root);
+    expect(hasText(root, 'Total work is per exercise')).toBe(false);
+  });
+
+  test('a stale snapshot never claims an exercise was trained in no linked week', () => {
+    const root = (() => {
+      let c;
+      act(() => {
+        c = render.create(
+          <AnalyticsRecoverySection
+            blocks={[block()]}
+            weeks={[week(1, 'note-w1'), week(2, 'note-w2')]}
+            notes={[note('note-w1', '-Bench\n- 135 5,5,5'), note('note-w2', '-Bench\n- 135 5,5,5')]}
+            stateStale
+          />
+        );
+      });
+      return c.root;
+    })();
+    expandDetails(root);
+    expect(hasText(root, 'Not trained in any')).toBe(false);
+    expect(hasText(root, 'trained in Week')).toBe(false);
+    expect(hasText(root, '2 linked weeks as last loaded. Showing Week 2')).toBe(true);
+    expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not reintroduced. Not in Week 2'))).toBe(true);
   });
 });

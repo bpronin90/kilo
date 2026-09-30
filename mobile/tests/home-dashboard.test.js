@@ -532,3 +532,34 @@ describe('Home Recovery Big 3 selection (#1192)', () => {
     expect(big3[1].state).toBe(HOME_BIG3_NOT_IN_BASELINE);
   });
 });
+
+// #1193: Home's Recovery values describe only the latest linked week.
+describe('HomeRecoverySummary — latest linked week scope (#1193)', () => {
+  const { HomeRecoverySummary } = require('../screens/home/HomeRecoverySummary');
+  const base = {
+    status: 'ready', stale: false, message: null, active: true, retry: null,
+    comparisonStatus: 'ok', weekNumber: 4, weekNoteStatus: 'ok', big3: [], remaining: null,
+  };
+  const mount = summary => {
+    let c;
+    render.act(() => { c = render.create(<HomeRecoverySummary summary={summary} onNavigate={jest.fn()} />); });
+    return c.root;
+  };
+
+  test('names the latest linked week and says the values are not a block total', () => {
+    const root = mount(base);
+    expect(hasText(root, 'Latest linked week: Week 4')).toBe(true);
+    expect(hasText(root, 'Values describe the latest linked week (Week 4) only, not the whole block.')).toBe(true);
+  });
+
+  test('a stale summary calls it the last loaded week, not the latest', () => {
+    const root = mount({ ...base, stale: true, message: 'stale' });
+    expect(hasText(root, 'Last loaded linked week: Week 4')).toBe(true);
+    expect(hasText(root, 'Latest linked week')).toBe(false);
+  });
+
+  test('prints no scope line when there is no week or the baseline is unavailable', () => {
+    expect(hasText(mount({ ...base, weekNumber: null }), 'Values describe')).toBe(false);
+    expect(hasText(mount({ ...base, comparisonStatus: 'baseline_unavailable' }), 'Values describe')).toBe(false);
+  });
+});

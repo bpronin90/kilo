@@ -18,6 +18,7 @@ import {
   deriveRecoveryWeekBands,
 } from '../../lib/data/recoveryReturnBands';
 import { MetricLegend, WeekEvidence, WeekUnavailableNotice } from './RecoveryStateGroups';
+import { deriveTrainedElsewhere, weekSelectionCaption } from './RecoveryWeekIndex';
 import { createStyles } from './analyticsRecoveryStyles';
 
 // #697 state words, used only for the below-four-trained-lifts sparse
@@ -178,6 +179,8 @@ export function BlockEvidence({
   const provenance = isActive
     ? `Started ${formatDate(block.started_at)}`
     : `${formatDate(block.started_at)} – ${formatDate(block.completed_at)}`;
+  const trainedElsewhere = useMemo(() => deriveTrainedElsewhere(weekResults, selectedWeek, stateStale), [weekResults, selectedWeek, stateStale]);
+  const selectionCaption = weekSelectionCaption(weekResults, selectedWeek, stateStale);
   const weekRows = selectedWeek ? [...(selectedWeek.exercises || []), ...(selectedWeek.added || [])] : [];
 
   // #1029: the six-bucket derivation, one proportional row per TRAINED
@@ -417,6 +420,8 @@ export function BlockEvidence({
             )}
           </View>
 
+          {!!selectionCaption && <Text testID="recovery-week-selection" style={styles.summaryLine}>{selectionCaption}</Text>}
+
           {weekResults.length > 1 && (
             <View style={styles.chipRow}>
               {weekResults.map((w) => {
@@ -477,8 +482,8 @@ export function BlockEvidence({
                   {/* The removed first-screenful clause line, folded in here
                       (#1029 §10c). */}
                   {!!summaryLine && <Text style={styles.summaryLine}>{summaryLine}</Text>}
-                  <MetricLegend rows={weekRows} />
-                  <WeekEvidence rows={weekRows} unit={unit} />
+                  <MetricLegend rows={weekRows} weekNumber={selectedWeek.week_number} />
+                  <WeekEvidence rows={weekRows} unit={unit} weekNumber={selectedWeek.week_number} elsewhere={trainedElsewhere} />
                 </View>
               )}
             </View>

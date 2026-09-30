@@ -23,7 +23,7 @@ const METRIC_LABELS = Object.freeze({
 // completed working sets of that week.
 const METRIC_EXPLANATIONS = Object.freeze({
   top_load: 'Load — the heaviest completed working set that week. Not an all-time max or an estimated 1RM.',
-  volume: 'Total work — load × reps across that week\'s completed working sets.',
+  volume: 'Total work — this exercise\'s load × reps across the completed working sets of the selected week. Per exercise, per week; not a block total.',
 });
 
 const STATE_META = Object.freeze({
@@ -79,7 +79,18 @@ function _formatMetricNumber(metricKey, value, unit) {
 // the state chip alone is not enough — the Load/Volume/Reps/Time evidence and
 // any unavailable/not-reintroduced explanation must be spoken too, since that
 // evidence is the entire point of this surface (#698 review).
-function _rowAccessibilityLabel(row, unit) {
+function _absentNote(row, weekNumber, elsewhere) {
+  const weeks = elsewhere?.weeks.get(row.key);
+  const here = weekNumber == null ? 'this week' : `Week ${weekNumber}`;
+  // A stale snapshot may have lost or gained other weeks' work, so it makes no
+  // cross-week claim in either direction.
+  if (elsewhere?.stale) return `Not in ${here}`;
+  return weeks && weeks.length > 0
+    ? `Not in ${here} · trained in ${weeks.map(n => `Week ${n}`).join(', ')}`
+    : elsewhere?.unreadable ? 'Not trained in any readable linked week' : 'Not trained in any linked week';
+}
+
+function _rowAccessibilityLabel(row, unit, weekNumber, elsewhere) {
   const meta = STATE_META[row.state] || STATE_META[RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED];
   const parts = [`${row.name}, ${meta.label}`];
 
@@ -99,6 +110,7 @@ function _rowAccessibilityLabel(row, unit) {
   } else if (row.state === RECOVERY_COMPARISON_STATES.NOT_COMPARABLE) {
     parts.push(UNAVAILABLE_REASON_TEXT[row.unavailable_reason] || 'This exercise could not be compared.');
   } else if (row.state === RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED) {
+    parts.push(_absentNote(row, weekNumber, elsewhere));
     parts.push(
       `Baseline ${row.metrics.map(m => `${METRIC_LABELS[m.metric]} ${_formatMetricNumber(m.metric, m.baseline, unit)}`).join(', ')}`
     );
@@ -137,7 +149,7 @@ function MetricCell({ metric, unit }) {
   );
 }
 
-function ExerciseRow({ row, unit }) {
+function ExerciseRow({ row, unit, weekNumber, elsewhere }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const meta = STATE_META[row.state] || STATE_META[RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED];
@@ -150,7 +162,7 @@ function ExerciseRow({ row, unit }) {
     <View
       style={styles.exerciseRow}
       accessible
-      accessibilityLabel={_rowAccessibilityLabel(row, unit)}
+      accessibilityLabel={_rowAccessibilityLabel(row, unit, weekNumber, elsewhere)}
     >
       <View style={styles.exerciseRowHeader}>
         <Text style={styles.exerciseRowName} numberOfLines={1}>{row.name}</Text>
@@ -185,7 +197,7 @@ function ExerciseRow({ row, unit }) {
 
       {row.state === RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED && (
         <Text style={styles.unavailableText}>
-          {`Baseline · ${row.metrics.map(m => `${METRIC_LABELS[m.metric]} ${_formatMetricNumber(m.metric, m.baseline, unit)}`).join(' · ')}`}
+          {`${_absentNote(row, weekNumber, elsewhere)} · Baseline · ${row.metrics.map(m => `${METRIC_LABELS[m.metric]} ${_formatMetricNumber(m.metric, m.baseline, unit)}`).join(' · ')}`}
         </Text>
       )}
     </View>
@@ -220,7 +232,7 @@ export function WeekUnavailableNotice({ week }) {
 // Only the dimensions actually on screen are explained. A week of reps-only and
 // timed work has nothing to disambiguate, so it gets no legend — and neither
 // does a not-comparable row, which prints its reason instead of any metric.
-export function MetricLegend({ rows }) {
+export function MetricLegend({ rows, weekNumber }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   // Behind a disclosure rather than printed above every expansion (#821). The
@@ -233,7 +245,9 @@ export function MetricLegend({ rows }) {
 
   const shown = new Set();
   for (const row of rows) {
-    if (row.state === RECOVERY_COMPARISON_STATES.NOT_COMPARABLE) continue;
+    // Neither state shows this week's work: one prints a reason, the other only
+    // the frozen baseline value.
+    if (row.state === RECOVERY_COMPARISON_STATES.NOT_COMPARABLE || row.state === RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED) continue;
     for (const metric of row.metrics || []) shown.add(metric.metric);
   }
   const lines = ['top_load', 'volume'].filter(m => shown.has(m)).map(m => METRIC_EXPLANATIONS[m]);
@@ -241,6 +255,11 @@ export function MetricLegend({ rows }) {
 
   return (
     <View style={styles.legend}>
+      {shown.has('volume') && (
+        <Text style={styles.legendText}>
+          {`Total work is per exercise, per week — not a block total. Current values are ${weekNumber == null ? 'this week\'s' : `Week ${weekNumber}'s`}; “Baseline” figures are the frozen starting value.`}
+        </Text>
+      )}
       <Pressable
         onPress={() => setExpanded(e => !e)}
         style={styles.legendToggle}
@@ -266,7 +285,7 @@ export function MetricLegend({ rows }) {
 // replacement for what the removed status-filter chips did for sighted users
 // (#793/R5b). Renders nothing when this block's focused week has no rows in
 // this state, so an empty group never takes a slot.
-function StateGroup({ state, rows, unit }) {
+function StateGroup({ state, rows, unit, weekNumber, elsewhere }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   if (!rows || rows.length === 0) return null;
@@ -277,13 +296,13 @@ function StateGroup({ state, rows, unit }) {
         {`${meta.label} (${rows.length})`}
       </Text>
       <View style={styles.rowList}>
-        {rows.map(row => <ExerciseRow key={row.key} row={row} unit={unit} />)}
+        {rows.map(row => <ExerciseRow key={row.key} row={row} unit={unit} weekNumber={weekNumber} elsewhere={elsewhere} />)}
       </View>
     </View>
   );
 }
 
-export function WeekEvidence({ rows, unit }) {
+export function WeekEvidence({ rows, unit, weekNumber, elsewhere }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const groups = new Map();
@@ -296,7 +315,7 @@ export function WeekEvidence({ rows, unit }) {
   return (
     <View style={styles.evidenceGroup}>
       {DETAIL_GROUP_ORDER.map(state => (
-        <StateGroup key={state} state={state} rows={groups.get(state)} unit={unit} />
+        <StateGroup key={state} state={state} rows={groups.get(state)} unit={unit} weekNumber={weekNumber} elsewhere={elsewhere} />
       ))}
     </View>
   );
