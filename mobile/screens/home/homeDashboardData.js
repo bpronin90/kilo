@@ -189,6 +189,13 @@ export function deriveHomeRecoveryBig3(week, selections) {
     const key = typeof selections?.[slot] === 'string' ? normalizeExerciseKey(selections[slot]) : null;
     const row = key ? roster.find(r => r.key === key) : null;
     if (!row) {
+      // Captured in the baseline but excluded from the roster (unusable
+      // baseline value): present, just not comparable — not absent.
+      const captured = key ? (week.exercises || []).find(r => r.key === key) : null;
+      if (captured) {
+        big3.push({ slot, label: captured.name || label, state: RECOVERY_COMPARISON_STATES.NOT_COMPARABLE, percent: null });
+        continue;
+      }
       big3.push({ slot, label: selections?.[slot] || label, state: HOME_BIG3_NOT_IN_BASELINE, percent: null });
       continue;
     }

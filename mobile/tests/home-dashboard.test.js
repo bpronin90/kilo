@@ -524,4 +524,11 @@ describe('Home Recovery Big 3 selection (#1192)', () => {
     ]);
     expect(remaining.total).toBe(0);
   });
+
+  test('a mapped lift with an unusable baseline value is not comparable, not absent', () => {
+    const row = { key: 'squat', name: 'Squat', state: 'not_comparable', unavailable_reason: 'baseline_value_unusable', metrics: [] };
+    const { big3 } = deriveHomeRecoveryBig3({ status: 'ok', exercises: [row] }, { squat: 'Squat', bench: 'Bench', deadlift: 'Deadlift' });
+    expect(big3[0]).toMatchObject({ slot: 'squat', state: 'not_comparable', percent: null });
+    expect(big3[1].state).toBe(HOME_BIG3_NOT_IN_BASELINE);
+  });
 });
