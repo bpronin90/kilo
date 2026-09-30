@@ -33,6 +33,10 @@ describe('routine prompt builders', () => {
   test('normalization includes authoritative and selected routines while preserving everything except names', () => {
     const prompt = buildExerciseNameNormalizationPrompt({ authority: CURRENT, targets: [TARGET] });
     expect(prompt).toContain('weights, reps, dates, weekdays, comments/notes, marks, skipped sets, and Week A/B boundaries');
+    expect(prompt).toContain('with the authoritative name exactly; do not keep header suffixes or other descriptor text in the header');
+    expect(prompt).toContain('move that text into a "-- " comment line (two dashes and a space) directly under that exercise\'s logged sets');
+    expect(prompt).toContain('never becomes part of the exercise header');
+    expect(prompt).toContain('leave it unchanged');
     expect(prompt).toContain(CURRENT.raw_text);
     expect(prompt).toContain(TARGET.raw_text);
     expect(prompt).toContain('Label each result with its exact reference label');
