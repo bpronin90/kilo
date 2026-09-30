@@ -549,7 +549,7 @@ describe('HomeRecoverySummary — latest linked week scope (#1193)', () => {
   test('names the latest linked week and says the values are not a block total', () => {
     const root = mount(base);
     expect(hasText(root, 'Latest linked week: Week 4')).toBe(true);
-    expect(hasText(root, 'Values describe Week 4 only, not the whole block.')).toBe(true);
+    expect(hasText(root, 'Values describe the latest linked week (Week 4) only, not the whole block.')).toBe(true);
   });
 
   test('a stale summary calls it the last loaded week, not the latest', () => {

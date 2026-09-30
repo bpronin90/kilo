@@ -106,7 +106,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   const weekLabel = weekNumber === null ? null : `${stale ? 'Last loaded linked week' : 'Latest linked week'}: Week ${weekNumber}`;
   // #1193: the values below describe this one week, never the whole block.
   const weekScope = weekNumber !== null && fallbackStatus === null
-    ? `Values describe Week ${weekNumber} only, not the whole block.`
+    ? `Values describe ${stale ? 'the last loaded' : 'the latest'} linked week (Week ${weekNumber}) only, not the whole block.`
     : null;
 
   // #1171: the user's Big 3 lead, each against its own baseline, and one line
@@ -196,8 +196,8 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
                 <Text testID="home-recovery-remaining" style={styles.recoveryRemaining}>{remainingText}</Text>
               ) : null}
             </View>
-            {/* Its own node, spoken on its own, so the announcement above stays
-                the compact week-and-lifts sentence. */}
+            {/* Its own node, spoken on its own (it names the latest week), so the
+                announcement above stays the compact week-and-lifts sentence. */}
             {weekScope ? (
               <Text testID="home-recovery-week-scope" style={styles.recoveryStatusLine}>{weekScope}</Text>
             ) : null}
