@@ -90,6 +90,17 @@ function _absentNote(row, weekNumber, elsewhere) {
     : elsewhere?.unreadable ? 'Not trained in any readable linked week' : 'Not trained in any linked week';
 }
 
+// #1202: display-only explanation; state and counts stay exact-key.
+function _mismatchNote(row) {
+  if (row.likely_logged_name) {
+    return `Logged as "${row.likely_logged_name}" this week — names differ, so no direct comparison was made.`;
+  }
+  if (row.likely_baseline_name) {
+    return `Baseline has "${row.likely_baseline_name}" — names differ, so no direct comparison was made.`;
+  }
+  return null;
+}
+
 function _rowAccessibilityLabel(row, unit, weekNumber, elsewhere) {
   const meta = STATE_META[row.state] || STATE_META[RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED];
   const parts = [`${row.name}, ${meta.label}`];
@@ -115,6 +126,9 @@ function _rowAccessibilityLabel(row, unit, weekNumber, elsewhere) {
       `Baseline ${row.metrics.map(m => `${METRIC_LABELS[m.metric]} ${_formatMetricNumber(m.metric, m.baseline, unit)}`).join(', ')}`
     );
   }
+
+  const mismatch = _mismatchNote(row);
+  if (mismatch) parts.push(mismatch);
 
   return parts.join('. ');
 }
@@ -199,6 +213,10 @@ function ExerciseRow({ row, unit, weekNumber, elsewhere }) {
         <Text style={styles.unavailableText}>
           {`${_absentNote(row, weekNumber, elsewhere)} · Baseline · ${row.metrics.map(m => `${METRIC_LABELS[m.metric]} ${_formatMetricNumber(m.metric, m.baseline, unit)}`).join(' · ')}`}
         </Text>
+      )}
+
+      {_mismatchNote(row) && (
+        <Text style={styles.unavailableText}>{_mismatchNote(row)}</Text>
       )}
     </View>
   );
