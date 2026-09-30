@@ -97,7 +97,7 @@ export function deriveTrainedElsewhere(weekResults, selectedWeek, stale = false)
   return { weeks: map, unreadable, stale };
 }
 
-export function weekSelectionCaption(weekResults, selectedWeek) {
+export function weekSelectionCaption(weekResults, selectedWeek, stale = false) {
   if (!selectedWeek || weekResults.length < 2) return null;
-  return `${weekResults.length} linked weeks. Showing Week ${selectedWeek.week_number}; pick a week to see another.`;
+  return `${weekResults.length} linked weeks${stale ? ' as last loaded' : ''}. Showing Week ${selectedWeek.week_number}; pick a week to see another.`;
 }

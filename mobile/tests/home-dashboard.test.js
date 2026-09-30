@@ -552,6 +552,12 @@ describe('HomeRecoverySummary — latest linked week scope (#1193)', () => {
     expect(hasText(root, 'Values describe Week 4 only, not the whole block.')).toBe(true);
   });
 
+  test('a stale summary calls it the last loaded week, not the latest', () => {
+    const root = mount({ ...base, stale: true, message: 'stale' });
+    expect(hasText(root, 'Last loaded linked week: Week 4')).toBe(true);
+    expect(hasText(root, 'Latest linked week')).toBe(false);
+  });
+
   test('prints no scope line when there is no week or the baseline is unavailable', () => {
     expect(hasText(mount({ ...base, weekNumber: null }), 'Values describe')).toBe(false);
     expect(hasText(mount({ ...base, comparisonStatus: 'baseline_unavailable' }), 'Values describe')).toBe(false);

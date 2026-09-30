@@ -103,7 +103,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   // sentence — but only when a week exists. `Baseline captured. No week logged
   // yet.` has no week to name, and printing `Week null` or inventing `Week 1`
   // would both be false.
-  const weekLabel = weekNumber === null ? null : `Latest linked week: Week ${weekNumber}`;
+  const weekLabel = weekNumber === null ? null : `${stale ? 'Last loaded linked week' : 'Latest linked week'}: Week ${weekNumber}`;
   // #1193: the values below describe this one week, never the whole block.
   const weekScope = weekNumber !== null && fallbackStatus === null
     ? `Values describe Week ${weekNumber} only, not the whole block.`

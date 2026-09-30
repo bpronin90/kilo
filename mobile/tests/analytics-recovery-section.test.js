@@ -1816,6 +1816,7 @@ describe('AnalyticsRecoverySection — per-week vs block state (#1193)', () => {
     })();
     expandDetails(root);
     expect(hasText(root, 'Not trained in any')).toBe(false);
+    expect(hasText(root, '2 linked weeks as last loaded. Showing Week 2')).toBe(true);
     expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not reintroduced. Not in Week 2'))).toBe(true);
   });
 });
