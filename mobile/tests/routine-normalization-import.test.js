@@ -175,6 +175,25 @@ describe('descriptor comment moved out of a corrected header (#1201)', () => {
     expect(diffTargetNames(ORIG, lines(returned)).problems.length).toBeGreaterThan(0);
   });
 
+  test('a parser-excluded "| descriptor" suffix can move into the comment', () => {
+    const orig = 'Monday\n-Bench | paused 3x5\n- 135 5,5,5';
+    const out = diffTargetNames(orig, ['Monday', '-Bench Press 3x5', '- 135 5,5,5', '-- paused']);
+    expect(out.problems).toBeUndefined();
+    expect(out.changes).toEqual([expect.objectContaining({ oldName: 'Bench', newName: 'Bench Press', insert: expect.objectContaining({ line: '-- paused' }) })]);
+    // Dropping that descriptor without preserving it is data loss, so it is rejected.
+    expect(diffTargetNames(orig, ['Monday', '-Bench Press 3x5', '- 135 5,5,5']).problems).toHaveLength(1);
+    // A digit inside the descriptor is outside the supported forms and stays rejected.
+    expect(diffTargetNames('Monday\n-Bench | 2 sec pause 3x5\n- 135 5,5,5', ['Monday', '-Bench Press 3x5', '- 135 5,5,5', '-- 2 sec pause']).problems.length).toBeGreaterThan(0);
+  });
+
+  test('an invented or unrelated comment is rejected', () => {
+    const alias = 'Monday\n-BB Bench 3x5\n- 135 5,5,5';
+    expect(diffTargetNames(alias, ['Monday', '-Bench Press 3x5', '- 135 5,5,5', '-- increase weight']).problems.length).toBeGreaterThan(0);
+    expect(diffTargetNames(alias, ['Monday', '-Bench Press 3x5', '- 135 5,5,5', '-- BB Bench']).problems.length).toBeGreaterThan(0);
+    expect(diffTargetNames(ORIG, lines(GOOD.replace('-- paused', '-- increase weight'))).problems.length).toBeGreaterThan(0);
+    expect(diffTargetNames(ORIG, lines(GOOD.replace('-- low bar', '-- low bar heavy'))).problems.length).toBeGreaterThan(0);
+  });
+
   test('a header-only rename and an unchanged target stay valid', () => {
     expect(diffTargetNames(ORIG, lines(GOOD.replace(/\n-- (paused|low bar)/g, ''))).changes).toHaveLength(2);
     expect(diffTargetNames(ORIG, lines(ORIG.trimEnd())).changes).toEqual([]);

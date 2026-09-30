@@ -111,6 +111,37 @@ function insertionPoints(core, originalHeaders, offset) {
   return points;
 }
 
+function originalHeaderText(core, change, start) {
+  return core[change.lineIndex - start];
+}
+
+function words(text) {
+  return String(text).toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
+}
+
+// Descriptor text a corrected header shed: whatever followed the name the
+// parser kept ("Bench | paused" -> "paused"), or what the old name had beyond
+// the new one ("Bench Press (paused)" -> "paused").
+function shedDescriptor(oldName, newName, oldSuffix, tail) {
+  const inName = words(oldName);
+  const keep = words(newName);
+  const beyond = keep.length && keep.every((w, k) => inName[k] === w) ? inName.slice(keep.length) : [];
+  return [...beyond, ...words(oldSuffix.slice(0, oldSuffix.length - tail.length))];
+}
+
+// The moved comment may only rearrange words the header actually shed.
+function commentMatches(commentLine, descriptor) {
+  const pool = [...descriptor];
+  const used = words(commentLine.replace(/^--\s+/, ''));
+  if (!used.length) return false;
+  return used.every(w => {
+    const at = pool.indexOf(w);
+    if (at < 0) return false;
+    pool.splice(at, 1);
+    return true;
+  });
+}
+
 /**
  * Compare one target's original text with the returned text. Returns
  * `{ changes }` (header renames, each optionally with one descriptor comment
@@ -143,10 +174,14 @@ export function diffTargetNames(originalText, returnedLines) {
     } else if (before !== after) {
       const a = splitHeader(before, oldName);
       const b = splitHeader(after, newName);
-      if (!a || !b || a.prefix !== b.prefix || a.suffix !== b.suffix || markTail(oldName) !== markTail(newName) || numbers(before) !== numbers(after) || prescriptionTail(before) !== prescriptionTail(after) || !newName.trim()) {
+      const tail = prescriptionTail(before);
+      // A descriptor the parser already excluded from the name may be dropped
+      // from the header, but only alongside its moved comment (checked below).
+      const shed = a && b && a.suffix !== b.suffix && a.suffix.endsWith(b.suffix) && b.suffix === tail && shedDescriptor(oldName, newName, a.suffix, tail).length > 0;
+      if (!a || !b || a.prefix !== b.prefix || (a.suffix !== b.suffix && !shed) || markTail(oldName) !== markTail(newName) || numbers(before) !== numbers(after) || prescriptionTail(before) !== prescriptionTail(after) || !newName.trim()) {
         problems.push(`Line ${lineNumber} changed more than the exercise name: “${before}” → “${after}”.`);
       } else {
-        changeByHeader.set(i, { lineIndex: start + i, oldName, newName, newLine: after });
+        changeByHeader.set(i, { lineIndex: start + i, oldName, newName, newLine: after, descriptor: shedDescriptor(oldName, newName, a.suffix, a.suffix === b.suffix ? a.suffix : tail), shed });
       }
     }
     const next = returnedLines[j];
@@ -160,9 +195,14 @@ export function diffTargetNames(originalText, returnedLines) {
   }
   for (const insert of inserts) {
     const change = changeByHeader.get(insert.header);
-    if (change) change.insert = { afterIndex: insert.afterIndex, line: insert.line };
-    else if (!problems.length) problems.push(`Inserted comment “${insert.line}” is not attached to a corrected exercise header.`);
+    if (!change) problems.push(`Inserted comment “${insert.line}” is not attached to a corrected exercise header.`);
+    else if (!commentMatches(insert.line, change.descriptor)) problems.push(`Inserted comment “${insert.line}” does not match descriptor text removed from “${originalHeaderText(core, change, start)}”.`);
+    else change.insert = { afterIndex: insert.afterIndex, line: insert.line };
   }
+  for (const change of changeByHeader.values()) {
+    if (change.shed && !change.insert && !problems.length) problems.push(`Line ${change.lineIndex + 1} dropped header text without moving it to a “-- ” comment.`);
+  }
+  for (const change of changeByHeader.values()) { delete change.descriptor; delete change.shed; }
   return problems.length ? { problems } : { changes: [...changeByHeader.values()] };
 }
 
