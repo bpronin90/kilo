@@ -1775,6 +1775,7 @@ describe('AnalyticsRecoverySection — per-week vs block state (#1193)', () => {
     const root = setup({ blocks: [block()], weeks: [week(1, 'n1'), week(2, 'n2')], notes: [] }).root;
     expect(hasText(root, '2 linked weeks. Showing Week 2; pick a week')).toBe(true);
     expect(hasText(root, 'compared with the baseline')).toBe(false);
+    expect(hasText(root, 'Showing Week 2; pick a week')).toBe(true);
   });
 
   test('an unreadable other week blocks the "never trained" claim', () => {

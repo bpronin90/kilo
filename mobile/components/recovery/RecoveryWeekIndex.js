@@ -99,6 +99,5 @@ export function deriveTrainedElsewhere(weekResults, selectedWeek) {
 
 export function weekSelectionCaption(weekResults, selectedWeek) {
   if (!selectedWeek || weekResults.length < 2) return null;
-  const scope = selectedWeek.status === RECOVERY_WEEK_STATUS.OK ? ', compared with the baseline on its own' : '';
-  return `${weekResults.length} linked weeks. Showing Week ${selectedWeek.week_number}${scope}; pick a week to see another.`;
+  return `${weekResults.length} linked weeks. Showing Week ${selectedWeek.week_number}; pick a week to see another.`;
 }
