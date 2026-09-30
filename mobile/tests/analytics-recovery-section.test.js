@@ -964,7 +964,8 @@ describe('AnalyticsRecoverySection — light/dark appearance', () => {
 
     const darkComponent = setupWithColors(DarkColors, { blocks: [b], weeks: [w], notes: [n] });
     expect(segColor(darkComponent)).toContain(DarkColors.success);
-    expect(hasText(darkComponent.root, 'At or above 4')).toBe(true);
+    expect(hasText(darkComponent.root, 'At or above')).toBe(true);
+    expect(hasText(darkComponent.root, 'At or above 4')).toBe(false);
     expect(hasText(darkComponent.root, 'Trained this week')).toBe(false);
     expandDetails(darkComponent.root);
     expect(hasText(darkComponent.root, 'Trained this week: 4 of 4 roster exercises')).toBe(true);
@@ -1202,12 +1203,16 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     }).root;
 
     // Latest week first.
-    expect(hasText(root, 'Rebuilding 1')).toBe(true);
+    expect(hasText(root, 'Rebuilding')).toBe(true);
+    const barLabel = () => root.findAll(n => n.props.testID === 'recovery-bands-rows' && typeof n.type === 'string')[0].props.accessibilityLabel;
+    expect(barLabel()).toContain('Week 2 return bands');
+    expect(barLabel()).toContain('Rebuilding 1');
 
     act(() => { byLabel(root, 'Week 1').props.onPress(); });
 
-    expect(hasText(root, 'Rebuilding 1')).toBe(false);
-    expect(hasText(root, 'At or above 2')).toBe(true);
+    expect(barLabel()).toContain('Week 1 return bands');
+    expect(barLabel()).toContain('Rebuilding 0');
+    expect(hasText(root, 'At or above')).toBe(true);
     expect(hasText(root, 'Week 1')).toBe(true);
   });
 
@@ -1741,6 +1746,10 @@ describe('AnalyticsRecoverySection — across-weeks band strip (#1029 amendment)
   });
 });
 
+function flattenStyleOf(node) {
+  return [].concat(node.props.style ?? []).reduce((acc, st) => Object.assign(acc, st || {}), {});
+}
+
 describe('AnalyticsRecoverySection — scannable hierarchy (#1209)', () => {
   const twoWeeks = () => setup({
     blocks: [block()],
@@ -1753,8 +1762,9 @@ describe('AnalyticsRecoverySection — scannable hierarchy (#1209)', () => {
 
   test('hero states the current week first, above the comparison and bands', () => {
     const root = twoWeeks();
-    const hero = root.findByProps({ testID: 'recovery-hero' });
-    expect([].concat(hero.props.children).join('')).toMatch(/^Week 2: \d+ of \d+ trained exercises at or above baseline$/);
+    const hero = root.findAll(n => n.props.testID === 'recovery-hero' && typeof n.type === 'string')[0];
+    expect(hero.props.accessibilityLabel).toMatch(/^Week 2: \d+ of \d+ trained exercises at or above baseline$/);
+    expect(hasText(root, 'trained exercises at or above baseline')).toBe(true);
     const order = root.findAll(n => ['recovery-hero', 'recovery-movement', 'recovery-bands-rows'].includes(n.props.testID) && typeof n.type === 'string')
       .map(n => n.props.testID);
     expect(order.indexOf('recovery-hero')).toBe(0);
@@ -1778,6 +1788,19 @@ describe('AnalyticsRecoverySection — scannable hierarchy (#1209)', () => {
     for (const label of ['Improved', 'Steady', 'Fell back']) expect(hasText(root, label)).toBe(true);
     expect(root.findAll(n => n.props.testID === 'recovery-band-strip').length).toBeGreaterThan(0);
     for (const gone of ['roster exercises trained', 'not trained yet', 'Most common gap']) expect(hasText(root, gone)).toBe(false);
+    // #1215: removed captions and the prose they restated no longer render.
+    for (const gone of ['Across weeks', 'both weeks', 'Since Week', 'linked weeks', 'pick a week']) {
+      expect(hasText(root, gone)).toBe(false);
+    }
+    expect(findAllText(root).filter(t => /^\d+ trained exercises?$/.test(t))).toEqual([]);
+    // The bar is one thin band and the strip rows are thin horizontal bars.
+    expect(flattenStyleOf(bar.findAll(n => typeof n.type === 'string' && n.props.style && n.props.style.height === 10)[0]).height).toBe(10);
+    const weekBars = root.findAll(n => typeof n.type === 'string' && n.props.style && n.props.style.height === 6 && n.props.style.flexDirection === 'row');
+    expect(weekBars.length).toBeGreaterThan(0);
+    for (const label of ['Improved', 'Steady', 'Fell back']) {
+      expect(root.findAll(n => n.props.name && /^(arrow-upward|trending-flat|arrow-downward)$/.test(n.props.name)).length).toBeGreaterThan(0);
+      expect(hasText(root, label)).toBe(true);
+    }
   });
 
   test('week picker is one compact labelled row with numeric chips and full accessible names', () => {
@@ -1801,11 +1824,16 @@ describe('AnalyticsRecoverySection — per-week vs block state (#1193)', () => {
     }).root;
   }
 
-  test('states which linked week is selected and how many exist', () => {
+  test('the selected week is named by the hero and the picker state, with no selection sentence', () => {
     const root = setupTwoWeeks();
-    expect(hasText(root, '2 linked weeks. Showing Week 2')).toBe(true);
+    expect(hasText(root, 'linked weeks')).toBe(false);
+    expect(hasText(root, 'pick a week')).toBe(false);
+    expect(byLabel(root, 'Week 2').props.accessibilityState.selected).toBe(true);
+    expect(byLabel(root, 'Week 1').props.accessibilityState.selected).toBe(false);
     act(() => { byLabel(root, 'Week 1').props.onPress(); });
-    expect(hasText(root, '2 linked weeks. Showing Week 1')).toBe(true);
+    expect(byLabel(root, 'Week 1').props.accessibilityState.selected).toBe(true);
+    expect(root.findAll(n => n.props.testID === 'recovery-hero' && typeof n.type === 'string')[0].props.accessibilityLabel).toMatch(/^Week 1:/);
+    expect(hasText(root, 'linked weeks')).toBe(false);
   });
 
   test('a single linked week has no selection caption', () => {
@@ -1860,9 +1888,9 @@ describe('AnalyticsRecoverySection — per-week vs block state (#1193)', () => {
       mockWeek({ week_id: 'rw2', week_number: 2, status: RECOVERY_WEEK_STATUS.NOTE_MISSING }),
     ] }));
     const root = setup({ blocks: [block()], weeks: [week(1, 'n1'), week(2, 'n2')], notes: [] }).root;
-    expect(hasText(root, '2 linked weeks. Showing Week 2; pick a week')).toBe(true);
+    expect(hasText(root, 'linked weeks')).toBe(false);
     expect(hasText(root, 'compared with the baseline')).toBe(false);
-    expect(hasText(root, 'Showing Week 2; pick a week')).toBe(true);
+    expect(root.findAll(n => n.props.testID === 'recovery-hero' && typeof n.type === 'string').length).toBe(0);
   });
 
   test('an unreadable other week blocks the "never trained" claim', () => {
@@ -1904,7 +1932,8 @@ describe('AnalyticsRecoverySection — per-week vs block state (#1193)', () => {
     expandDetails(root);
     expect(hasText(root, 'Not trained in any')).toBe(false);
     expect(hasText(root, 'trained in Week')).toBe(false);
-    expect(hasText(root, '2 linked weeks as last loaded. Showing Week 2')).toBe(true);
+    expect(hasText(root, 'as last loaded. Showing')).toBe(false);
+    expect(root.findAll(n => n.props.testID === 'recovery-movement' && typeof n.type === 'string').length).toBe(0);
     expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not reintroduced. Not in Week 2'))).toBe(true);
   });
 });

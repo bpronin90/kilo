@@ -17,9 +17,9 @@ import {
   deriveRecoveryWeekBands,
 } from '../../lib/data/recoveryReturnBands';
 import { MetricLegend, WeekEvidence, WeekUnavailableNotice } from './RecoveryStateGroups';
-import { deriveTrainedElsewhere, weekSelectionCaption } from './RecoveryWeekIndex';
+import { deriveTrainedElsewhere } from './RecoveryWeekIndex';
 import { createStyles } from './analyticsRecoveryStyles';
-import { RecoveryBandBar, RecoveryChangeVisual, RecoveryWeeksStrip } from './RecoveryVisuals';
+import { presentBandIds, RecoveryBandBar, RecoveryChangeVisual, RecoveryHero, RecoveryWeeksStrip } from './RecoveryVisuals';
 
 // #697 state words, used only for the below-four-trained-lifts sparse
 // sentence and the details-panel group headings — permitted vocabulary
@@ -146,7 +146,6 @@ export function BlockEvidence({
     ? `Started ${formatDate(block.started_at)}`
     : `${formatDate(block.started_at)} – ${formatDate(block.completed_at)}`;
   const trainedElsewhere = useMemo(() => deriveTrainedElsewhere(weekResults, selectedWeek, stateStale), [weekResults, selectedWeek, stateStale]);
-  const selectionCaption = weekSelectionCaption(weekResults, selectedWeek, stateStale);
   const weekRows = selectedWeek ? [...(selectedWeek.exercises || []), ...(selectedWeek.added || [])] : [];
 
   // #1029: the six-bucket derivation, one proportional row per TRAINED
@@ -182,11 +181,6 @@ export function BlockEvidence({
       : null
   ), [stateStale, selectedWeek, weekResults]);
   const movementUnavailable = !movement && !stateStale && hasBands && !!weekLabel && (selectedWeek?.week_number || 0) > 1;
-  // Hero (#1209): the current state in one plain line, read first.
-  const heroText = !hasBands || !weekLabel ? null
-    : trained === 0 ? `${weekLabel}: no roster exercises trained yet`
-    : `${weekLabel}: ${bands.buckets.at_or_above || 0} of ${trained} trained exercises at or above baseline`;
-
   const mostCommonGapLine = hasBands && bands.most_common_gap
     ? `Most common gap: ${bands.most_common_gap}`
     : null;
@@ -308,14 +302,16 @@ export function BlockEvidence({
           <View style={styles.weekStatusRegion} accessibilityLiveRegion="polite">
             {showBandsRegion && (
               <View style={styles.summaryBlock}>
-                {!!heroText && <Text testID="recovery-hero" style={styles.heroText}>{heroText}</Text>}
-                {!!movement && <RecoveryChangeVisual movement={movement} />}
+                {hasBands && !!weekLabel && (
+                  <RecoveryHero weekLabel={weekLabel} atOrAbove={bands.buckets.at_or_above || 0} trained={trained} />
+                )}
                 {movementUnavailable && (
                   <Text testID="recovery-movement" style={styles.summaryLine}>Not enough matched lifts to compare weeks yet.</Text>
                 )}
                 {hasBands && trained > 0 && (
                   <RecoveryBandBar buckets={bands.buckets} trained={trained} weekLabel={weekLabel} />
                 )}
+                {!!movement && <RecoveryChangeVisual movement={movement} />}
               </View>
             )}
 
@@ -325,8 +321,6 @@ export function BlockEvidence({
               <Text style={styles.unavailablePanelText}>No exercise evidence for this week.</Text>
             )}
           </View>
-
-          {!!selectionCaption && <Text testID="recovery-week-selection" style={styles.summaryLine}>{selectionCaption}</Text>}
 
           {weekResults.length > 1 && (
             <View style={styles.chipRow}>
@@ -423,7 +417,7 @@ export function BlockEvidence({
         </View>
       )}
 
-      {bandSeries.length > 1 && <RecoveryWeeksStrip series={bandSeries} />}
+      {bandSeries.length > 1 && <RecoveryWeeksStrip series={bandSeries} shownBands={hasBands && trained > 0 ? presentBandIds(bands.buckets) : []} />}
 
       {/* One persistent line, above the provenance stamp (#1023 v2 §8). */}
       {(comparison.status === RECOVERY_COMPARISON_STATUS.OK || comparison.status === RECOVERY_COMPARISON_STATUS.BASELINE_EMPTY) && (

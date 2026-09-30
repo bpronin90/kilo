@@ -1,7 +1,7 @@
 import { StyleSheet } from 'react-native';
 
-// Styles for the Recovery card's visual summaries (#1209): segmented band bar,
-// Improved/Steady/Fell back visual, and across-weeks stacked mini-bars. Kept in
+// Styles for the Recovery card's visual summaries (#1209/#1215): hero, thin
+// segmented band bar, Improved/Steady/Fell back row, and thin per-week bars. Kept in
 // their own module so analyticsRecoveryStyles.js stays under the line cap.
 export const createVisualStyles = (colors, kua = null) => {
   const ink = kua ? kua.onSurface : colors.text;
@@ -9,12 +9,16 @@ export const createVisualStyles = (colors, kua = null) => {
   const track = kua ? kua.surfaceSection : colors.subtleBg;
   const border = kua ? kua.surfaceBorder : colors.cardBorder;
   return StyleSheet.create({
-    visualBlock: { gap: 8 },
-    visualCaption: { fontSize: 13, fontWeight: '700', color: inkMuted },
+    hero: { gap: 2 },
+    heroWeek: { fontSize: 13, fontWeight: '700', color: inkMuted },
+    heroNumber: { fontSize: 40, lineHeight: 46, fontWeight: '800', color: ink },
+    heroLabel: { fontSize: 15, fontWeight: '600', color: inkMuted },
+    heroEmpty: { fontSize: 20, fontWeight: '800', color: ink },
+    barBlock: { gap: 8 },
     segmentBar: {
       flexDirection: 'row',
-      height: 16,
-      borderRadius: 8,
+      height: 10,
+      borderRadius: 5,
       overflow: 'hidden',
       backgroundColor: track,
       gap: 2,
@@ -23,55 +27,31 @@ export const createVisualStyles = (colors, kua = null) => {
     legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     legendDot: { width: 10, height: 10, borderRadius: 5 },
     legendText: { fontSize: 13, fontWeight: '600', color: ink },
-    changeRow: { flexDirection: 'row', gap: 8 },
-    changeCell: {
+    changeRow: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 18, rowGap: 6 },
+    changeCell: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    changeCount: { fontSize: 16, fontWeight: '800', color: ink },
+    changeLabel: { fontSize: 13, fontWeight: '600', color: inkMuted },
+    weeksStrip: { gap: 8 },
+    weekRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    weekRowLabel: { width: 56, fontSize: 12, fontWeight: '600', color: inkMuted },
+    weekBar: {
       flex: 1,
-      minWidth: 0,
-      gap: 2,
-      paddingVertical: 8,
-      paddingHorizontal: 10,
-      borderRadius: 10,
-      backgroundColor: track,
-      borderWidth: 1,
-      borderColor: border,
-    },
-    changeMark: { height: 4, borderRadius: 2, marginBottom: 4 },
-    changeCount: { fontSize: 20, fontWeight: '800', color: ink },
-    changeLabel: { fontSize: 12, fontWeight: '700', color: inkMuted },
-    weeksStrip: { flexDirection: 'row', gap: 10, paddingRight: 4 },
-    weekCell: {
-      width: 64,
-      gap: 6,
-      alignItems: 'center',
-      paddingHorizontal: 6,
-      paddingVertical: 8,
-      borderRadius: 10,
-      backgroundColor: track,
-      borderWidth: 1,
-      borderColor: border,
-    },
-    weekCellLabel: { fontSize: 12, fontWeight: '700', color: ink },
-    weekStack: {
-      width: 26,
-      height: 64,
-      borderRadius: 6,
+      flexDirection: 'row',
+      height: 6,
+      borderRadius: 3,
       overflow: 'hidden',
-      flexDirection: 'column-reverse',
+      backgroundColor: track,
       gap: 1,
     },
-    weekNote: {
-      height: 64,
-      width: 40,
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 2,
-    },
-    weekNoteGap: {
-      borderRadius: 6,
+    weekGap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
+    weekGapBar: {
+      flex: 1,
+      height: 6,
+      borderRadius: 3,
       borderWidth: 1,
       borderStyle: 'dashed',
       borderColor: border,
     },
-    weekNoteText: { fontSize: 11, fontWeight: '600', color: inkMuted, textAlign: 'center' },
+    weekNoteText: { fontSize: 12, fontWeight: '600', color: inkMuted },
   });
 };
