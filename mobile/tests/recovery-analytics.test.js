@@ -781,3 +781,32 @@ describe('derivation is pure and unit-independent', () => {
     expect(metricOf(rowFor(inKilos.weeks[0], 'bench'), 'top_load').current).toBe(90);
   });
 });
+
+describe('likely descriptor-suffixed name mismatch (#1202)', () => {
+  const run = (baselineText, sections) =>
+    compareWeekWorkToBaseline(captureRecoveryBaselineFromText(baselineText), aggregateRecoveryWeekWork(sections));
+
+  test('unambiguous suffixed header is explained but state and counts stay exact-key', () => {
+    const result = run('-Bench Press\n- 135 5,5', [synthSection('Bench Press (paused)', [[durSet(30)]])]);
+    const base = rowFor(result, 'bench press');
+    expect(base.state).toBe(RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED);
+    expect(base.likely_logged_name).toBe('Bench Press (paused)');
+    expect(result.added).toHaveLength(1);
+    expect(result.added[0].state).toBe(RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY);
+    expect(result.added[0].likely_baseline_name).toBe(base.name);
+    expect(result.summary.not_reintroduced).toBe(1);
+    expect(result.summary.added_during_recovery).toBe(1);
+  });
+
+  test('unrelated added exercises and ambiguous candidates get no explanation', () => {
+    const unrelated = run('-Bench Press\n- 135 5,5', [synthSection('Benchmark Row', [[durSet(30)]])]);
+    expect(rowFor(unrelated, 'bench press').likely_logged_name).toBeUndefined();
+    expect(unrelated.added[0].likely_baseline_name).toBeUndefined();
+    const ambiguous = run('-Bench Press\n- 135 5,5', [
+      synthSection('Bench Press (paused)', [[durSet(30)]]),
+      synthSection('Bench Press (tempo)', [[durSet(30)]]),
+    ]);
+    expect(rowFor(ambiguous, 'bench press').likely_logged_name).toBeUndefined();
+    expect(ambiguous.added.every(a => a.likely_baseline_name === undefined)).toBe(true);
+  });
+});

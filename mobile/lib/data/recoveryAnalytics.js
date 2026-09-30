@@ -381,6 +381,29 @@ function _summarize(exercises, added) {
   return summary;
 }
 
+// Display-only evidence (#1202): a missing baseline exercise and exactly one
+// unmatched logged exercise whose key is that baseline key plus a descriptor
+// ("bench press" vs "bench press (paused)"). Comparison state and counts stay
+// exact-key; ambiguous or many-to-one candidates produce no evidence.
+function _likelyMismatches(baselineRows, exercises, added) {
+  const pairs = [];
+  const boundary = /^[\s,(\-\u2013:]/;
+  const candidatesFor = new Map();
+  const claimedBy = new Map();
+  exercises.forEach((row, i) => {
+    if (row.state !== RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED) return;
+    const bKey = baselineRows[i].key;
+    if (!bKey) return;
+    const found = added.filter(a => a.key.length > bKey.length && a.key.startsWith(bKey) && boundary.test(a.key.slice(bKey.length)));
+    candidatesFor.set(i, found);
+    for (const a of found) claimedBy.set(a.key, (claimedBy.get(a.key) || 0) + 1);
+  });
+  for (const [i, found] of candidatesFor) {
+    if (found.length === 1 && claimedBy.get(found[0].key) === 1) pairs.push([i, found[0]]);
+  }
+  return pairs;
+}
+
 // Compare one week's parsed sections against a frozen baseline snapshot.
 //
 // Baseline rows come back in snapshot order (normalized key), which is stable
@@ -401,6 +424,11 @@ export function compareWeekWorkToBaseline(baseline, work) {
     .filter(w => Object.keys(w.values).length > 0)
     .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
     .map(_addedExercise);
+
+  for (const [i, addedRow] of _likelyMismatches(baselineRows, exercises, added)) {
+    exercises[i].likely_logged_name = addedRow.name;
+    addedRow.likely_baseline_name = exercises[i].name;
+  }
 
   return { exercises, added, summary: _summarize(exercises, added) };
 }

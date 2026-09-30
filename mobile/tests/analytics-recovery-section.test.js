@@ -652,6 +652,39 @@ describe('AnalyticsRecoverySection — accessible labels expose the underlying e
   });
 });
 
+describe('AnalyticsRecoverySection — likely name mismatch explanation (#1202)', () => {
+  const mismatchWeek = () => {
+    const base = mockRow({
+      key: 'pull-up', name: 'Pull-up', state: RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED, exercise_class: 'weighted',
+      metrics: [metricRow('total_reps', null, 24, null, null)],
+    });
+    base.likely_logged_name = 'Pull-up (wide)';
+    const added = mockRow({
+      key: 'pull-up (wide)', name: 'Pull-up (wide)', state: RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY, exercise_class: 'weighted',
+      metrics: [metricRow('total_reps', 20, null, null, null)],
+    });
+    added.likely_baseline_name = 'Pull-up';
+    const plain = mockRow({
+      key: 'foam roll', name: 'Foam Roll', state: RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY, exercise_class: 'weighted',
+      metrics: [metricRow('total_reps', 20, null, null, null)],
+    });
+    return mockWeek({ exercises: [base], added: [added, plain] });
+  };
+
+  test('both rows explain the mismatch visibly and accessibly; ordinary rows do not', () => {
+    deriveRecoveryComparison.mockReturnValueOnce(mockComparison({ weeks: [mismatchWeek()] }));
+    const component = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] });
+    const root = component.root;
+    expandDetails(root);
+    expect(hasText(root, 'Logged as "Pull-up (wide)" this week — names differ, so no direct comparison was made.')).toBe(true);
+    expect(hasText(root, 'Baseline has "Pull-up" — names differ, so no direct comparison was made.')).toBe(true);
+    const labels = rowLabels(root);
+    expect(labels.find(l => l.startsWith('Pull-up, Not reintroduced'))).toContain('names differ');
+    expect(labels.find(l => l.startsWith('Pull-up (wide), Added during recovery'))).toContain('names differ');
+    expect(labels.find(l => l.startsWith('Foam Roll'))).not.toContain('names differ');
+  });
+});
+
 describe('AnalyticsRecoverySection — persisted week identity survives gaps', () => {
   test('week chips and metadata use the persisted week_number, not array position, after an earlier week was unlinked', () => {
     const b = block();
