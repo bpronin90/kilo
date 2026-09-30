@@ -365,6 +365,26 @@ describe('scroll-direction auto-hide (#1209)', () => {
     return null;
   }
 
+  test('programmatic scrolls re-baseline without changing visibility', () => {
+    const probe = { current: null };
+    let component;
+    act(() => { component = renderer.create(<Probe tab="Home" probe={probe} />); });
+    act(() => probe.current.onScroll(ev(100)));
+    act(() => probe.current.onScroll(ev(900), false));
+    expect(probe.current.hidden).toBe(false);
+    // A small user nudge from the jump's landing point is below the threshold,
+    // not a huge stale-baseline delta.
+    act(() => probe.current.onScroll(ev(903)));
+    expect(probe.current.hidden).toBe(false);
+    act(() => probe.current.onScroll(ev(1000)));
+    expect(probe.current.hidden).toBe(true);
+    act(() => probe.current.onScroll(ev(5), false));
+    expect(probe.current.hidden).toBe(true);
+    act(() => probe.current.onScroll(ev(0)));
+    expect(probe.current.hidden).toBe(false);
+    act(() => component.unmount());
+  });
+
   test('hook hides on down-scroll, shows on up-scroll, and resets on tab change', () => {
     const probe = { current: null };
     let component;
@@ -397,23 +417,23 @@ describe('scroll-direction auto-hide (#1209)', () => {
     const scroll = component.root.findAll((n) => typeof n.props.onScroll === 'function' && n.props.scrollEventThrottle)[0];
     // Programmatic scrollTo / anchor jump: no drag or momentum began.
     act(() => scroll.props.onScroll(ev(120)));
-    expect(onScroll).not.toHaveBeenCalled();
+    expect(onScroll).toHaveBeenLastCalledWith(expect.anything(), false);
     // A finger drag.
     act(() => scroll.props.onScrollBeginDrag());
     act(() => scroll.props.onScroll(ev(140)));
-    expect(onScroll).toHaveBeenCalledTimes(1);
+    expect(onScroll).toHaveBeenLastCalledWith(expect.anything(), true);
     // Release with velocity: the fling is still user-driven.
     act(() => scroll.props.onScrollEndDrag({ nativeEvent: { velocity: { y: 2 } } }));
     act(() => scroll.props.onScroll(ev(200)));
-    expect(onScroll).toHaveBeenCalledTimes(2);
+    expect(onScroll).toHaveBeenLastCalledWith(expect.anything(), true);
     act(() => scroll.props.onMomentumScrollEnd());
     act(() => scroll.props.onScroll(ev(260)));
-    expect(onScroll).toHaveBeenCalledTimes(2);
+    expect(onScroll).toHaveBeenLastCalledWith(expect.anything(), false);
     // Release with no velocity: nothing follows, later programmatic scrolls stay ignored.
     act(() => scroll.props.onScrollBeginDrag());
     act(() => scroll.props.onScrollEndDrag({ nativeEvent: { velocity: { y: 0 } } }));
     act(() => scroll.props.onScroll(ev(300)));
-    expect(onScroll).toHaveBeenCalledTimes(2);
+    expect(onScroll).toHaveBeenLastCalledWith(expect.anything(), false);
     act(() => component.unmount());
   });
 

@@ -1,5 +1,5 @@
 import React, { useContext, useRef, createContext } from 'react';
-import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useThemedStyles } from '../theme/ThemeContext';
 import { Button } from './UI';
@@ -35,9 +35,11 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
   // Only user-driven scrolling (drag, then fling momentum) may hide the tab bar
   // (#1209); programmatic scrollTo/anchor jumps fire neither and are ignored.
   const userScroll = useRef({ drag: false, momentum: false });
+  // Web has no drag events (wheel/trackpad scrolling), so every scroll counts there.
+  const isUserScroll = () => Platform.OS === 'web' || userScroll.current.drag || userScroll.current.momentum;
   const handleScroll = (e) => {
     if (contextOnScroll) contextOnScroll(e);
-    if (tabBarOnScroll && (userScroll.current.drag || userScroll.current.momentum)) tabBarOnScroll(e);
+    if (tabBarOnScroll) tabBarOnScroll(e, isUserScroll());
     if (propOnScroll) propOnScroll(e);
   };
   const handleBeginDrag = () => { userScroll.current = { drag: true, momentum: false }; };

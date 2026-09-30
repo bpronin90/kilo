@@ -57,9 +57,15 @@ export function useTabBarAutoHide(activeTab) {
     setHidden(false);
   }, [activeTab]);
 
-  const onScroll = useCallback((e) => {
+  // `userDriven` false (programmatic jumps) only re-baselines `lastY`, so the
+  // next real drag measures from where the jump landed, never a stale offset.
+  const onScroll = useCallback((e, userDriven = true) => {
     const n = e && e.nativeEvent;
     if (!n || !n.contentOffset) return;
+    if (!userDriven) {
+      stateRef.current = { ...stateRef.current, lastY: Math.max(0, n.contentOffset.y) };
+      return;
+    }
     const next = nextTabBarScrollState(stateRef.current, {
       y: n.contentOffset.y,
       contentHeight: n.contentSize ? n.contentSize.height : 0,
