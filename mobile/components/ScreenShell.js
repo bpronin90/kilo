@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-n
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useThemedStyles } from '../theme/ThemeContext';
 import { Button } from './UI';
-import { TabBarLayoutContext, TAB_BAR_VISUAL_GAP } from './TabBarLayout';
+import { TabBarLayoutContext, TabBarScrollContext, TAB_BAR_VISUAL_GAP } from './TabBarLayout';
 import { centeredColumnInsets } from './adaptiveLayout';
 import pkg from '../package.json';
 
@@ -26,6 +26,7 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
   const { onScroll: contextOnScroll } = useContext(ScrollContext);
   const { bottom: bottomInset = 0, left: leftInset = 0, right: rightInset = 0 } = useContext(SafeAreaInsetsContext) || {};
   const { tabBarHeight } = useContext(TabBarLayoutContext);
+  const { onScroll: tabBarOnScroll } = useContext(TabBarScrollContext);
   const bottomClearance = tabBarHeight + TAB_BAR_VISUAL_GAP + bottomInset;
   const { width: windowWidth } = useWindowDimensions();
   const column = centeredColumnInsets(windowWidth, { left: leftInset, right: rightInset });
@@ -33,6 +34,7 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
 
   const handleScroll = (e) => {
     if (contextOnScroll) contextOnScroll(e);
+    if (tabBarOnScroll) tabBarOnScroll(e);
     if (propOnScroll) propOnScroll(e);
   };
 

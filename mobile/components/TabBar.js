@@ -1,8 +1,8 @@
-import React, { useContext } from 'react';
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import React, { useContext, useEffect, useRef } from 'react';
+import { Animated, Easing, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useKuaStyle, useTheme, useThemedStyles } from '../theme/ThemeContext';
-import { TAB_BAR_VISUAL_GAP } from './TabBarLayout';
+import { TAB_BAR_VISUAL_GAP, TAB_BAR_HEIGHT_FALLBACK } from './TabBarLayout';
 import { Icon } from './Icon';
 import { centeredColumnInsets } from './adaptiveLayout';
 
@@ -12,11 +12,16 @@ import { centeredColumnInsets } from './adaptiveLayout';
 // content and made the bar feel like it was disappearing. That behavior — and
 // its scroll-activity plumbing in App.js — is removed; only the tabs, the
 // floating rounded shape, the position, and the safe-area offset remain.
+// #1209 reverses the always-visible rule: the bar is still fully opaque when
+// shown, but it slides off-screen with a translateY (never an opacity fade, and
+// never unmounted or re-laid-out) when `hidden` is set by scroll direction.
 // Compact bar (#1209): 20dp icon keeps the five tabs shorter than the prior
 // 24dp/10dp-padding layout while each tab stays a >=44dp touch target.
 const TAB_ICON_SIZE = 20;
 
-export function TabBar({ tabs, activeTab, onTabPress, onHeightChange }) {
+const HIDE_DURATION_MS = 180;
+
+export function TabBar({ tabs, activeTab, onTabPress, onHeightChange, hidden = false }) {
   const styles = useThemedStyles(createStyles);
   const { colors } = useTheme();
   const kua = useKuaStyle();
@@ -36,13 +41,27 @@ export function TabBar({ tabs, activeTab, onTabPress, onHeightChange }) {
   const activeColor = kua ? kua.primaryOnContainer : colors.chipText;
   const inactiveColor = kua ? kua.onSurfaceVariant : colors.textMuted;
 
+  // Slide distance covers the bar, its bottom offset and its shadow so nothing
+  // peeks above the screen edge. Measured height is reported unchanged.
+  const heightRef = useRef(TAB_BAR_HEIGHT_FALLBACK);
+  const translateY = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(translateY, {
+      toValue: hidden ? heightRef.current + TAB_BAR_VISUAL_GAP + bottomInset + 24 : 0,
+      duration: HIDE_DURATION_MS,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [hidden, bottomInset, translateY]);
+
   const handleLayout = (e) => {
+    heightRef.current = e.nativeEvent.layout.height;
     if (onHeightChange) onHeightChange(e.nativeEvent.layout.height);
   };
 
   return (
-    <View
-      style={[styles.container, { bottom: TAB_BAR_VISUAL_GAP + bottomInset, left: column.left, right: column.right }]}
+    <Animated.View
+      style={[styles.container, { bottom: TAB_BAR_VISUAL_GAP + bottomInset, left: column.left, right: column.right, transform: [{ translateY }] }]}
       onLayout={handleLayout}
       accessibilityRole="tablist"
     >
@@ -66,7 +85,7 @@ export function TabBar({ tabs, activeTab, onTabPress, onHeightChange }) {
           </Text>
         </Pressable>
       ))}
-    </View>
+    </Animated.View>
   );
 }
 
