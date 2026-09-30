@@ -187,11 +187,13 @@ export function deriveHomeRecoveryBig3(week, selections) {
   const big3 = [];
   for (const { slot, label } of BIG3_SLOTS) {
     const key = typeof selections?.[slot] === 'string' ? normalizeExerciseKey(selections[slot]) : null;
-    const row = key ? roster.find(r => !used.has(r) && r.key === key) : null;
+    const row = key ? roster.find(r => r.key === key) : null;
     if (!row) {
       big3.push({ slot, label: selections?.[slot] || label, state: HOME_BIG3_NOT_IN_BASELINE, percent: null });
       continue;
     }
+    // Two slots may map to one exercise (the normal 1K total counts it for
+    // both); each still reports it, and the count line sees it once.
     used.add(row);
     // Named by the mapped exercise itself: a slot can point at any routine
     // exercise, and its numbers must never read as the slot's namesake.

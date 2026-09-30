@@ -514,4 +514,14 @@ describe('Home Recovery Big 3 selection (#1192)', () => {
       ['deadlift', 'Deadlift', HOME_BIG3_NOT_IN_BASELINE, null],
     ]);
   });
+
+  test('two slots mapped to the same baseline exercise both report it', () => {
+    const row = { key: 'squat', name: 'Squat', state: 'baseline_met', metrics: [] };
+    const week = { status: 'ok', exercises: [row] };
+    const { big3, remaining } = deriveHomeRecoveryBig3(week, { squat: 'Squat', bench: 'Squat', deadlift: 'Deadlift' });
+    expect(big3.map(l => [l.slot, l.state])).toEqual([
+      ['squat', 'baseline_met'], ['bench', 'baseline_met'], ['deadlift', HOME_BIG3_NOT_IN_BASELINE],
+    ]);
+    expect(remaining.total).toBe(0);
+  });
 });
