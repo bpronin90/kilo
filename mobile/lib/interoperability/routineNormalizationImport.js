@@ -94,9 +94,58 @@ function markTail(name) {
   return (MARK_TAIL_RE.exec(name) || [''])[0];
 }
 
+const SET_ROW_RE = /^-\s/;
+// A parser-supported note line; a bare "---" (week divider) never qualifies.
+const INSERTED_COMMENT_RE = /^--\s+\S/;
+
+// Where a descriptor comment may land: directly after an exercise's set rows
+// (or its header when it has none). Maps that original line index -> header index.
+function insertionPoints(core, originalHeaders, offset) {
+  const points = new Map();
+  for (let i = 0; i < core.length; i += 1) {
+    if (!originalHeaders.has(offset + i + 1)) continue;
+    let last = i;
+    while (last + 1 < core.length && SET_ROW_RE.test(core[last + 1])) last += 1;
+    points.set(last, i);
+  }
+  return points;
+}
+
+function originalHeaderText(core, change, start) {
+  return core[change.lineIndex - start];
+}
+
+function words(text) {
+  return String(text).toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
+}
+
+// Descriptor text a corrected header shed: whatever followed the name the
+// parser kept ("Bench | paused" -> "paused"), or what the old name had beyond
+// the new one ("Bench Press (paused)" -> "paused").
+function shedDescriptor(oldName, newName, oldSuffix, tail) {
+  const inName = words(oldName);
+  const keep = words(newName);
+  const beyond = keep.length && keep.every((w, k) => inName[k] === w) ? inName.slice(keep.length) : [];
+  return [...beyond, ...words(oldSuffix.slice(0, oldSuffix.length - tail.length))];
+}
+
+// The moved comment may only rearrange words the header actually shed.
+function commentMatches(commentLine, descriptor) {
+  const pool = [...descriptor];
+  const used = words(commentLine.replace(/^--\s+/, ''));
+  if (!used.length) return false;
+  return used.every(w => {
+    const at = pool.indexOf(w);
+    if (at < 0) return false;
+    pool.splice(at, 1);
+    return true;
+  });
+}
+
 /**
  * Compare one target's original text with the returned text. Returns
- * `{ changes }` (header renames only, possibly empty) or `{ problems }`.
+ * `{ changes }` (header renames, each optionally with one descriptor comment
+ * inserted directly after that exercise's set rows) or `{ problems }`.
  */
 export function diffTargetNames(originalText, returnedLines) {
   const originalLines = String(originalText ?? '').split('\n');
@@ -104,34 +153,58 @@ export function diffTargetNames(originalText, returnedLines) {
   const { start, end } = trimBlankEdges(bare);
   const core = bare.slice(start, end);
   const problems = [];
-  if (returnedLines.length !== core.length) {
-    return { problems: [`Line count changed (${core.length} expected, ${returnedLines.length} returned). Only exercise names may change.`] };
-  }
   const originalHeaders = headerMap(bare.join('\n'));
   const returnedHeaders = headerMap([...bare.slice(0, start), ...returnedLines, ...bare.slice(end)].join('\n'));
-  const changes = [];
+  const points = insertionPoints(core, originalHeaders, start);
+  const changeByHeader = new Map();
+  const inserts = [];
+  let j = 0;
   for (let i = 0; i < core.length; i += 1) {
     const lineNumber = start + i + 1;
     const before = core[i];
-    const after = returnedLines[i];
+    const after = returnedLines[j];
     const oldName = originalHeaders.get(lineNumber);
-    const newName = returnedHeaders.get(lineNumber);
+    const newName = returnedHeaders.get(start + j + 1);
+    j += 1;
+    if (after == null) continue;
     if (oldName == null || newName == null) {
       if (before !== after || (oldName == null) !== (newName == null)) {
         problems.push(`Line ${lineNumber} changed: “${before}” → “${after}”.`);
       }
-      continue;
+    } else if (before !== after) {
+      const a = splitHeader(before, oldName);
+      const b = splitHeader(after, newName);
+      // A descriptor the parser already excluded from the name (any text,
+      // digits included) may be dropped from the header, but only alongside
+      // its moved comment (checked below). What follows it must be untouched.
+      const excluded = a && b && a.suffix.endsWith(b.suffix) ? a.suffix.slice(0, a.suffix.length - b.suffix.length) : '';
+      const shed = Boolean(a && b && a.suffix !== b.suffix && (b.suffix === '' || /^\s/.test(b.suffix)) && /^\s*[^\d\s]/.test(excluded) && shedDescriptor(oldName, newName, a.suffix, b.suffix).length > 0);
+      if (!a || !b || a.prefix !== b.prefix || (a.suffix !== b.suffix && !shed) || markTail(oldName) !== markTail(newName) || (!shed && (numbers(before) !== numbers(after) || prescriptionTail(before) !== prescriptionTail(after))) || !newName.trim()) {
+        problems.push(`Line ${lineNumber} changed more than the exercise name: “${before}” → “${after}”.`);
+      } else {
+        changeByHeader.set(i, { lineIndex: start + i, oldName, newName, newLine: after, descriptor: shedDescriptor(oldName, newName, a.suffix, b.suffix), shed });
+      }
     }
-    if (before === after) continue;
-    const a = splitHeader(before, oldName);
-    const b = splitHeader(after, newName);
-    if (!a || !b || a.prefix !== b.prefix || a.suffix !== b.suffix || markTail(oldName) !== markTail(newName) || numbers(before) !== numbers(after) || prescriptionTail(before) !== prescriptionTail(after) || !newName.trim()) {
-      problems.push(`Line ${lineNumber} changed more than the exercise name: “${before}” → “${after}”.`);
-      continue;
+    const next = returnedLines[j];
+    if (points.has(i) && next != null && INSERTED_COMMENT_RE.test(next) && next !== core[i + 1] && !returnedHeaders.has(start + j + 1)) {
+      inserts.push({ header: points.get(i), afterIndex: start + i, line: next });
+      j += 1;
     }
-    changes.push({ lineIndex: start + i, oldName, newName, newLine: after });
   }
-  return problems.length ? { problems } : { changes };
+  if (!problems.length && j !== returnedLines.length) {
+    problems.push(`Line count changed (${core.length} expected, ${returnedLines.length} returned). Only exercise names may change, plus one “-- ” comment directly after a corrected exercise's sets.`);
+  }
+  for (const insert of inserts) {
+    const change = changeByHeader.get(insert.header);
+    if (!change) problems.push(`Inserted comment “${insert.line}” is not attached to a corrected exercise header.`);
+    else if (!commentMatches(insert.line, change.descriptor)) problems.push(`Inserted comment “${insert.line}” does not match descriptor text removed from “${originalHeaderText(core, change, start)}”.`);
+    else change.insert = { afterIndex: insert.afterIndex, line: insert.line };
+  }
+  for (const change of changeByHeader.values()) {
+    if (change.shed && !change.insert && !problems.length) problems.push(`Line ${change.lineIndex + 1} dropped header text without moving it to a “-- ” comment.`);
+  }
+  for (const change of changeByHeader.values()) { delete change.descriptor; delete change.shed; }
+  return problems.length ? { problems } : { changes: [...changeByHeader.values()] };
 }
 
 /**
@@ -196,6 +269,12 @@ export function applySelectedChanges(entry, selectedKeys) {
   for (const change of chosen) {
     const cr = lines[change.lineIndex].endsWith('\r') ? '\r' : '';
     lines[change.lineIndex] = change.newLine + cr;
+  }
+  // Insert descriptor comments last, bottom-up, so earlier indices stay valid.
+  const inserts = chosen.filter(change => change.insert).map(change => change.insert).sort((x, y) => y.afterIndex - x.afterIndex);
+  for (const insert of inserts) {
+    const cr = lines[insert.afterIndex].endsWith('\r') ? '\r' : '';
+    lines.splice(insert.afterIndex + 1, 0, insert.line + cr);
   }
   return lines.join('\n');
 }
