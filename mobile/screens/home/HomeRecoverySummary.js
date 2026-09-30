@@ -3,7 +3,7 @@ import { Pressable, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Card } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
-import { HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATES, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './homeDashboardData';
+import { HOME_BIG3_NOT_IN_BASELINE, HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATES, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './homeDashboardData';
 import { createStyles } from './homeStyles';
 import { useKuaTypography } from '../../theme/typography';
 
@@ -35,6 +35,7 @@ import { useKuaTypography } from '../../theme/typography';
 // #1171: each Big 3 row's right-hand value. Plain words only — no return-band
 // names — and a percentage only where #697 produced a real per-lift ratio.
 function liftValue(lift) {
+  if (lift.state === HOME_BIG3_NOT_IN_BASELINE) return 'Not in baseline';
   if (lift.state === RECOVERY_COMPARISON_STATES.BASELINE_MET) return 'Recovered';
   if (lift.state === RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED) return 'Not started';
   if (lift.state === RECOVERY_COMPARISON_STATES.NOT_COMPARABLE) return "Can't compare";
@@ -115,6 +116,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   const accessibleContent = [
     weekLabel,
     fallbackStatus,
+    lifts.length > 0 ? 'Your Big 3 lifts' : null,
     ...lifts.map(lift => {
       const value = liftValue(lift);
       return `${lift.label} ${value.endsWith('%') ? `${value} of baseline` : value.toLowerCase()}`;
@@ -166,6 +168,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
               ) : null}
               {lifts.length > 0 ? (
                 <View testID="home-recovery-big3" style={styles.recoveryLiftList}>
+                  <Text style={styles.recoveryWeekLabel}>Your Big 3 lifts</Text>
                   {lifts.map(lift => {
                     const done = lift.state === RECOVERY_COMPARISON_STATES.BASELINE_MET;
                     // Only a real ratio fills the bar; unknowns stay an empty track.

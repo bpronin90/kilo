@@ -9,7 +9,7 @@
 
 import { parseWorkoutNote, epleyPR } from '../lib/parser';
 import { derive1kTotal, DEFAULT_1K_EXERCISES } from '../lib/data';
-import { deriveHomeDashboardData } from '../screens/home/homeDashboardData';
+import { deriveHomeDashboardData, deriveHomeRecoveryBig3, resolveHomeOneKSelections, HOME_BIG3_NOT_IN_BASELINE } from '../screens/home/homeDashboardData';
 import { deriveAnalytics, deriveParsedSections } from '../screens/analytics/analyticsDerivations';
 
 // Historical note: all three Big-3 lifts logged in one session.
@@ -495,5 +495,23 @@ describe('deriveHomeDashboardData — post-deload re-entry wiring (#989)', () =>
       }],
     });
     expect(result.reentry.bench).toBeUndefined();
+  });
+});
+
+describe('Home Recovery Big 3 selection (#1192)', () => {
+  test('resolves slot defaults under the routine picks and ignores non-string picks', () => {
+    expect(resolveHomeOneKSelections(null)).toEqual(DEFAULT_1K_EXERCISES);
+    expect(resolveHomeOneKSelections({ one_k_exercises: { squat: 'Press', deadlift: true, bench: '  ' } }))
+      .toEqual({ ...DEFAULT_1K_EXERCISES, squat: 'Press' });
+  });
+
+  test('a mapped lift missing from the baseline stays a Big 3 slot without a number', () => {
+    const week = { status: 'ok', exercises: [] };
+    const { big3 } = deriveHomeRecoveryBig3(week, { squat: 'Press', bench: 'Bench', deadlift: 'Deadlift' });
+    expect(big3.map(l => [l.slot, l.label, l.state, l.percent])).toEqual([
+      ['squat', 'Press', HOME_BIG3_NOT_IN_BASELINE, null],
+      ['bench', 'Bench', HOME_BIG3_NOT_IN_BASELINE, null],
+      ['deadlift', 'Deadlift', HOME_BIG3_NOT_IN_BASELINE, null],
+    ]);
   });
 });

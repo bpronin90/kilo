@@ -1598,15 +1598,18 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     expect(has(component, 'home-recovery-big3')).toBe(true);
     expect(has(component, 'home-recovery-lift-squat')).toBe(true);
     expect(has(component, 'home-recovery-lift-bench')).toBe(true);
-    // Picked as a 1K lift but never in this baseline: nothing true to show.
-    expect(has(component, 'home-recovery-lift-deadlift')).toBe(false);
+    // Picked as a 1K lift but never in this baseline: still a Big 3 slot, and
+    // stated as such rather than dropped or given a number (#1192).
+    expect(has(component, 'home-recovery-lift-deadlift')).toBe(true);
+    expect(hasText(component, 'Not in baseline')).toBe(true);
+    expect(hasText(component, 'Your Big 3 lifts')).toBe(true);
     expect(hasText(component, '72%')).toBe(true);
     expect(hasText(component, 'Recovered')).toBe(true);
     expect(has(component, 'home-recovery-remaining')).toBe(false);
     // Inclusion state is Analytics-owned content (#820): Home no longer states
     // it at all, in either direction.
     expect(hasText(component, 'Not counted in your normal analytics.')).toBe(false);
-    expect(spoken(component)).toBe('Week 1. Squat 72% of baseline. Bench recovered.');
+    expect(spoken(component)).toBe('Week 1. Your Big 3 lifts. Squat 72% of baseline. Bench recovered. Deadlift not in baseline.');
   });
 
   test('a fully recovered week marks every Big 3 lift recovered', async () => {
@@ -1616,7 +1619,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     }));
     const component = await mount({ notes: [NOTE, weekNote('nr1', FULL_TEXT)] });
 
-    expect(spoken(component)).toBe('Week 1. Squat recovered. Bench recovered.');
+    expect(spoken(component)).toBe('Week 1. Your Big 3 lifts. Squat recovered. Bench recovered. Deadlift not in baseline.');
     // Inclusion is never announced either way (#820: dropped from Home).
     expect(hasText(component, 'Counted in your normal analytics.')).toBe(false);
     expect(hasText(component, 'Not counted in your normal analytics.')).toBe(false);
@@ -1636,7 +1639,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
 
     // The latest live week is what Home reports. Week-over-week movement and
     // the return-band rows live on Analytics only (#1171).
-    expect(spoken(component)).toBe('Week 2. Squat 72% of baseline. Bench recovered.');
+    expect(spoken(component)).toBe('Week 2. Your Big 3 lifts. Squat 72% of baseline. Bench recovered. Deadlift not in baseline.');
     expect(hasText(component, 'Since Week 1')).toBe(false);
     expect(hasText(component, 'At or above')).toBe(false);
     expect(hasText(component, 'roster exercises trained')).toBe(false);
@@ -1646,7 +1649,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     const component = await mount({ notes: [NOTE, weekNote('nr1', ADDED_TEXT)] });
 
-    expect(spoken(component)).toBe('Week 1. Squat recovered. Bench recovered.');
+    expect(spoken(component)).toBe('Week 1. Your Big 3 lifts. Squat recovered. Bench recovered. Deadlift not in baseline.');
     expect(has(component, 'home-recovery-remaining')).toBe(false);
     expect(hasText(component, 'Curl')).toBe(false);
     expect(hasText(component, 'Added during recovery')).toBe(false);
@@ -1656,7 +1659,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     const component = await mount({ notes: [NOTE, weekNote('nr1', SKIPPED_TEXT)] });
 
-    expect(spoken(component)).toBe('Week 1. Squat not started. Bench recovered.');
+    expect(spoken(component)).toBe('Week 1. Your Big 3 lifts. Squat not started. Bench recovered. Deadlift not in baseline.');
     const squat = component.root.findByProps({ testID: 'home-recovery-lift-squat' });
     expect(squat.findAll(n => n.type === 'View' && Array.isArray(n.props.style)
       && n.props.style.some(st => st && st.width !== undefined))).toHaveLength(0);
@@ -1682,7 +1685,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     }));
     const component = await mount({ notes: [NOTE, weekNote('nr1', GHOST_ADDED_TEXT)] });
 
-    expect(spoken(component)).toBe('Week 1. Squat recovered. Bench recovered.');
+    expect(spoken(component)).toBe('Week 1. Your Big 3 lifts. Squat recovered. Bench recovered. Deadlift not in baseline.');
     expect(has(component, 'home-recovery-remaining')).toBe(false);
     expect(hasText(component, 'Ghost Lift')).toBe(false);
     expect(hasText(component, 'Sled Push')).toBe(false);
@@ -1695,7 +1698,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     }));
     const component = await mount({ notes: [NOTE, weekNote('nr1', CLASS_CHANGED_TEXT)] });
 
-    expect(spoken(component)).toBe("Week 1. Squat can't compare. Bench recovered.");
+    expect(spoken(component)).toBe("Week 1. Your Big 3 lifts. Squat can't compare. Bench recovered. Deadlift not in baseline.");
     expect(hasText(component, '%')).toBe(false);
   });
 
@@ -1838,7 +1841,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     await render.act(async () => { retry.props.onPress(); });
 
-    expect(spoken(component)).toBe('Week 1. Squat 72% of baseline. Bench recovered.');
+    expect(spoken(component)).toBe('Week 1. Your Big 3 lifts. Squat 72% of baseline. Bench recovered. Deadlift not in baseline.');
     expect(hasText(component, hooks.RECOVERY_UNVERIFIED_MESSAGE)).toBe(false);
   });
 
@@ -1945,7 +1948,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     expect(hasText(component, 'Remaining 3: 1 recovered · 1 in progress · 1 not started')).toBe(true);
     // Only the Big 3 are named; the rest are counts.
     expect(spoken(component)).toBe(
-      'Week 1. Squat recovered. DB Bench Press 50% of baseline. Deadlift not started. '
+      'Week 1. Your Big 3 lifts. Squat recovered. DB Bench Press 50% of baseline. Deadlift not started. '
       + 'Remaining 3: 1 recovered, 1 in progress, 1 not started.'
     );
     // Retired vocabulary never returns.
@@ -1967,13 +1970,13 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     expect(spoken(component).startsWith('Week 1. Squat')).toBe(false);
   });
 
-  test('a non-string 1K pick on the baseline routine falls back to the slot default instead of crashing', async () => {
+  test('a non-string 1K pick on the current routine falls back to the slot default instead of crashing', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({
       blocks: [block({ baseline: sixLiftBaseline, baseline_note_id: 'n6' })],
       weeks: [week()],
     }));
     const restored = { ...SIX_LIFT_NOTE, one_k_exercises: { deadlift: true, squat: 42 } };
-    const component = await mount({ notes: [restored, weekNote('nr1', SIX_LIFT_WEEK_TEXT)] });
+    const component = await mount({ workoutNote: restored, notes: [restored, weekNote('nr1', SIX_LIFT_WEEK_TEXT)] });
 
     expect(spoken(component)).toContain('Squat recovered. DB Bench Press 50% of baseline. Deadlift not started.');
   });
@@ -1985,33 +1988,32 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     }));
     // Row logged bodyweight-only against a weighted baseline: not comparable.
     const text = SIX_LIFT_WEEK_TEXT.replace('-Row\n95 8,8,8', '-Row\nBW 8,8,8');
-    const component = await mount({ notes: [SIX_LIFT_NOTE, weekNote('nr1', text)] });
+    const component = await mount({ workoutNote: SIX_LIFT_NOTE, notes: [SIX_LIFT_NOTE, weekNote('nr1', text)] });
 
     expect(hasText(component, 'Remaining 2: 1 in progress · 1 not started')).toBe(true);
     expect(hasText(component, "can't compare")).toBe(false);
   });
 
-  test('a missing baseline routine promotes no lift and counts every exercise instead', async () => {
-    // The block's baseline routine (n6) is gone, so its 1K picks are unknown.
-    // Defaults must not stand in for them.
+  test('a missing baseline routine still leads with the Big 3 from the effective 1K selection', async () => {
+    // #1192: selection comes from the same source as Home's normal 1K total
+    // (defaults under the current routine's picks), not from the baseline note.
     AsyncStorage.getItem.mockImplementation(storageWith({
       blocks: [block({ baseline: sixLiftBaseline, baseline_note_id: 'n6' })],
       weeks: [week()],
     }));
-    const component = await mount({ notes: [NOTE, weekNote('nr1', SIX_LIFT_WEEK_TEXT)] });
+    const component = await mount({ workoutNote: null, notes: [NOTE, weekNote('nr1', SIX_LIFT_WEEK_TEXT)] });
 
-    expect(has(component, 'home-recovery-big3')).toBe(false);
-    expect(hasText(component, '6 exercises: 2 recovered · 2 in progress · 2 not started')).toBe(true);
+    expect(has(component, 'home-recovery-big3')).toBe(true);
+    expect(spoken(component)).toContain('Squat recovered. DB Bench Press 50% of baseline. Deadlift not started.');
   });
 
-  test('the Big 3 follow the baseline routine\'s 1K picks, not the current routine\'s', async () => {
-    // The block was started from Routine A (Bench/Squat picks); the current
-    // routine picks different lifts, which must not reshape the card.
+  test('the Big 3 follow the current routine\'s 1K picks, the same as the normal 1K total', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     const current = { ...SIX_LIFT_NOTE, id: 'n-current', one_k_exercises: { bench: 'Row', squat: 'Press', deadlift: 'Curl' } };
     const component = await mount({ workoutNote: current, notes: [NOTE, current, weekNote('nr1', PARTIAL_TEXT)] });
 
-    expect(spoken(component)).toBe('Week 1. Squat 72% of baseline. Bench recovered.');
+    // Mapped lifts absent from this baseline are named, never given numbers.
+    expect(spoken(component)).toBe('Week 1. Your Big 3 lifts. Press not in baseline. Row not in baseline. Curl not in baseline. Remaining 2: 1 recovered, 1 in progress.');
   });
 
   test('the one press target inside the card meets the touch minimum', async () => {
