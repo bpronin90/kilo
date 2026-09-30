@@ -63,7 +63,10 @@ export function useTabBarAutoHide(activeTab) {
     const n = e && e.nativeEvent;
     if (!n || !n.contentOffset) return;
     if (!userDriven) {
-      stateRef.current = { ...stateRef.current, lastY: Math.max(0, n.contentOffset.y) };
+      // A jump to the very top also reveals the bar (#1209: shown at top of scroll).
+      const y = Math.max(0, n.contentOffset.y);
+      stateRef.current = { lastY: y, hidden: y <= 0 ? false : stateRef.current.hidden };
+      if (y <= 0) setHidden(false);
       return;
     }
     const next = nextTabBarScrollState(stateRef.current, {

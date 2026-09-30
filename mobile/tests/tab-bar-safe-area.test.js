@@ -385,6 +385,18 @@ describe('scroll-direction auto-hide (#1209)', () => {
     act(() => component.unmount());
   });
 
+  test('a programmatic jump to the top reveals an already-hidden bar', () => {
+    const probe = { current: null };
+    let component;
+    act(() => { component = renderer.create(<Probe tab="Home" probe={probe} />); });
+    act(() => probe.current.onScroll(ev(100)));
+    act(() => probe.current.onScroll(ev(400)));
+    expect(probe.current.hidden).toBe(true);
+    act(() => probe.current.onScroll(ev(0), false));
+    expect(probe.current.hidden).toBe(false);
+    act(() => component.unmount());
+  });
+
   test('hook hides on down-scroll, shows on up-scroll, and resets on tab change', () => {
     const probe = { current: null };
     let component;
