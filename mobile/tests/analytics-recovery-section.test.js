@@ -1665,31 +1665,22 @@ describe('AnalyticsRecoverySection — across-weeks band strip (#1029 amendment)
     expect(cells.find(c => c.props.testID === 'recovery-band-strip-week-3').props.accessibilityLabel).toContain('Week 3');
   });
 
-  test('Rebuilding and Early populate the same week and are distinguishable by both a letter code and distinct token colors, without a legend', () => {
+  test('Rebuilding and Early are named in full (no letter codes) and marked with distinct token-colored dots', () => {
     const root = setupStrip().root;
     const week1Cell = weekCells(root).find(c => c.props.testID === 'recovery-band-strip-week-1');
 
-    const chipTexts = week1Cell.findAllByType('Text').map(t => {
-      const c = t.props.children;
-      return Array.isArray(c) ? c.join('') : String(c ?? '');
-    });
-    expect(chipTexts).toContain('R');
-    expect(chipTexts).toContain('E');
+    const texts = week1Cell.findAllByType('Text').map(t => [].concat(t.props.children).join(''));
+    expect(texts).toContain('Rebuilding 1');
+    expect(texts).toContain('Early 1');
+    expect(texts).not.toContain('R');
+    expect(texts).not.toContain('E');
 
-    const rChip = week1Cell.findAllByType('Text').find(t => t.props.children === 'R');
-    const eChip = week1Cell.findAllByType('Text').find(t => t.props.children === 'E');
-    const rColor = flattenStyle(rChip).color;
-    const eColor = flattenStyle(eChip).color;
-    // Distinct tokens (cautionText vs error) — never the same value, and never
-    // the raw non-text-safe `accent`/`caution` marks (docs/design-system-map.md
-    // "Text vs. mark").
-    expect(rColor).toBe(LightColors.cautionText);
-    expect(eColor).toBe(HardCourtLightColors.error);
-    expect(rColor).not.toBe(eColor);
-    // The letter itself, not only the hue, is what a sighted reader without a
-    // legend actually distinguishes the two bands by — assert both are present
-    // as literal, distinct characters.
-    expect(rChip.props.children).not.toBe(eChip.props.children);
+    const dotColors = week1Cell
+      .findAll(inst => typeof inst.type === 'string' && flattenStyle(inst).width === 10)
+      .map(inst => flattenStyle(inst).backgroundColor);
+    // Distinct tokens (cautionText vs error), never the raw mark colors.
+    expect(dotColors).toContain(LightColors.cautionText);
+    expect(dotColors).toContain(HardCourtLightColors.error);
   });
 
   test('an unreadable-week gap is visually distinct from a readable zero-count week — different structure, different copy, never a bare empty box', () => {
@@ -1719,7 +1710,7 @@ describe('AnalyticsRecoverySection — across-weeks band strip (#1029 amendment)
     expect(gapInner.length).toBeGreaterThan(0);
   });
 
-  test('token-backed color, spacing, and type: chip border colors resolve to theme tokens, and text is never clipped by numberOfLines', () => {
+  test('token-backed color, spacing, and type: dot colors resolve to theme tokens, and text is never clipped by numberOfLines', () => {
     const root = setupStrip().root;
     const week1Cell = weekCells(root).find(c => c.props.testID === 'recovery-band-strip-week-1');
 
@@ -1729,9 +1720,37 @@ describe('AnalyticsRecoverySection — across-weeks band strip (#1029 amendment)
     }
 
     const rChipBox = week1Cell.findAll(
-      inst => typeof inst.type === 'string' && flattenStyle(inst).borderColor === LightColors.cautionText
+      inst => typeof inst.type === 'string' && flattenStyle(inst).backgroundColor === LightColors.cautionText
     );
     expect(rChipBox.length).toBeGreaterThan(0);
+  });
+});
+
+describe('AnalyticsRecoverySection — scannable hierarchy (#1209)', () => {
+  const twoWeeks = () => setup({
+    blocks: [block()],
+    weeks: [week(1, 'note-w1'), week(2, 'note-w2')],
+    notes: [
+      note('note-w1', '-Bench\n- 135 5,5,5\n-Pull-up\n- 8,8,8'),
+      note('note-w2', '-Bench\n- 135 5,5,5\n-Curl\n- 20 10,10'),
+    ],
+  }).root;
+
+  test('hero states the current week first, above the comparison and bands', () => {
+    const root = twoWeeks();
+    const hero = root.findByProps({ testID: 'recovery-hero' });
+    expect([].concat(hero.props.children).join('')).toMatch(/^Week 2: \d+ of \d+ trained exercises at or above baseline$/);
+    const order = root.findAll(n => ['recovery-hero', 'recovery-movement', 'recovery-bands-rows'].includes(n.props.testID) && typeof n.type === 'string')
+      .map(n => n.props.testID);
+    expect(order.indexOf('recovery-hero')).toBe(0);
+  });
+
+  test('week picker is one compact labelled row with numeric chips and full accessible names', () => {
+    const root = twoWeeks();
+    const chip = byLabel(root, 'Week 1');
+    expect(chip.props.accessibilityRole).toBe('button');
+    expect(hasText(root, 'Week')).toBe(true);
+    expect(hasText(root, '1')).toBe(true);
   });
 });
 

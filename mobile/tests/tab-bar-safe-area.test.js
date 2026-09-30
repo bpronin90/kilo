@@ -235,7 +235,7 @@ describe('KUA icon foundation', () => {
     expect(Object.keys(TAB_ICON_MAP)).toHaveLength(5);
   });
 
-  test('TabBar renders one icon per tab at 24dp', () => {
+  test('TabBar renders one icon per tab at 20dp', () => {
     const component = renderWithInsets(
       <TabBar tabs={KUA_TABS} activeTab="Home" onTabPress={() => {}} />,
       0
@@ -243,7 +243,7 @@ describe('KUA icon foundation', () => {
     const icons = findIcons(component);
     expect(icons).toHaveLength(KUA_TABS.length);
     icons.forEach((icon) => {
-      expect(icon.props['data-size']).toBe(24);
+      expect(icon.props['data-size']).toBe(20);
     });
     act(() => component.unmount());
   });

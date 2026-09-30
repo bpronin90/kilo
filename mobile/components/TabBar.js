@@ -12,8 +12,9 @@ import { centeredColumnInsets } from './adaptiveLayout';
 // content and made the bar feel like it was disappearing. That behavior — and
 // its scroll-activity plumbing in App.js — is removed; only the tabs, the
 // floating rounded shape, the position, and the safe-area offset remain.
-// KUA icon size for the tab bar per foundation.md: 22–24dp.
-const TAB_ICON_SIZE = 24;
+// Compact bar (#1209): 20dp icon keeps the five tabs shorter than the prior
+// 24dp/10dp-padding layout while each tab stays a >=44dp touch target.
+const TAB_ICON_SIZE = 20;
 
 export function TabBar({ tabs, activeTab, onTabPress, onHeightChange }) {
   const styles = useThemedStyles(createStyles);
@@ -73,10 +74,10 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   container: {
     position: 'absolute',
     flexDirection: 'row',
-    gap: 8,
+    gap: 4,
     backgroundColor: kua ? kua.tabBarBg : colors.card,
-    borderRadius: 24,
-    padding: 8,
+    borderRadius: 20,
+    padding: 4,
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     shadowColor: colors.shadowColor,
@@ -87,9 +88,11 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   tab: {
     flex: 1,
-    paddingVertical: 10,
-    borderRadius: 18,
+    minHeight: 46,
+    paddingVertical: 5,
+    borderRadius: 16,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   tabActive: {
     backgroundColor: kua ? kua.selection : colors.chipBackground,
@@ -97,6 +100,6 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   tabText: {
     fontSize: 11,
     fontWeight: '500',
-    marginTop: 2,
+    marginTop: 1,
   },
 });

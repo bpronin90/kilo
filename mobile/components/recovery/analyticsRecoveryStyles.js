@@ -137,22 +137,11 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  // Letter-coded chip (#1029 amendment): identity comes from the character,
-  // not the fill color, so two adjacent warm-family bands stay distinguishable
-  // even where the colors themselves read close together.
+  // Color dot (#1209); the adjacent full-label text carries the meaning.
   bandStripChip: {
-    minWidth: 18,
-    height: 18,
-    borderRadius: 4,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 3,
-    backgroundColor: kua ? kua.surfaceCard : colors.card,
-  },
-  bandStripChipText: {
-    fontSize: 11,
-    fontWeight: '800',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   bandStripCount: {
     fontSize: 12,
@@ -276,13 +265,37 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     fontSize: 13,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
-  chipRow: {
+  heroText: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: kua ? kua.onSurface : colors.text,
+  },
+  movementRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    columnGap: 14,
+  },
+  movementStat: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: kua ? kua.onSurface : colors.text,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  chipRowLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    marginRight: 2,
   },
   chip: {
-    paddingHorizontal: 12,
+    minWidth: 44,
+    alignItems: 'center',
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 14,
     borderWidth: 1,

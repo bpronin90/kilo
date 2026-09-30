@@ -31,22 +31,16 @@ const STATE_LABEL = Object.freeze({
   added_during_recovery: 'added during recovery',
 });
 
-// Across-weeks band strip (#1029 amendment): each band carries BOTH a token
-// color AND a one-letter code, so `Rebuilding` and `Early` never depend on hue
-// discrimination alone — the letter identifies the band even if the two
-// warm-family colors read close together at the strip's small rendered size.
-// Colors deliberately span the full semantic range rather than two more warm
-// tones: `success` → `accentText` → `cautionText` → `error` walks from "back
-// to baseline" to "furthest from it", with `cannot_compare` on the neutral
-// `textMuted` token since it is a data-quality flag, not a performance tier.
-// The *Text variants are used, never raw `accent`/`caution`, because those are
-// mark colors, not copy colors (docs/design-system-map.md "Text vs. mark").
+// Across-weeks strip (#1029, #1209): each band is a token-colored dot PLUS its
+// full label and count, so meaning never rests on hue or an abbreviation. The
+// *Text variants are used, never raw `accent`/`caution` (mark colors, not copy
+// colors — docs/design-system-map.md "Text vs. mark").
 const BAND_STRIP_META = Object.freeze({
-  at_or_above: { code: 'A', colorToken: 'success' },
-  close: { code: 'C', colorToken: 'accentText' },
-  rebuilding: { code: 'R', colorToken: 'cautionText' },
-  early: { code: 'E', colorToken: 'error' },
-  cannot_compare: { code: 'X', colorToken: 'textMuted' },
+  at_or_above: { colorToken: 'success' },
+  close: { colorToken: 'accentText' },
+  rebuilding: { colorToken: 'cautionText' },
+  early: { colorToken: 'error' },
+  cannot_compare: { colorToken: 'textMuted' },
 });
 
 // Maps a BAND_STRIP_META colorToken to the active palette color. `cautionText`
@@ -62,11 +56,8 @@ function _bandColor(colorToken, colors, kua) {
   }
 }
 
-// The one-line week-aware summary under the hero count. It states the week the
-// count belongs to and the remaining states in plain words, dropping any state
-// with nothing in it — a lifter reading "Week 3 · 2 rebuilding" should not also
-// have to read three zeroes. `Baseline met` is deliberately absent: it is the
-// hero, and repeating it here would read as a second, different number.
+// One-line week summary inside the details panel; zero-count states are dropped
+// and `Baseline met` is absent (it is the hero).
 function _summaryLine(weekLabel, summary) {
   if (!weekLabel) return null;
   const parts = [weekLabel];
@@ -209,30 +200,23 @@ export function BlockEvidence({
   const sparseSentence = sparse
     ? `${trainedExercises.map(row => `${row.name} (${STATE_LABEL[row.state] || row.state})`).join(', ')} — ${trained} of ${rosterSize} roster exercises trained.`
     : null;
-  const trainedDenominatorCaption = hasBands ? `Trained this week: ${trained} of ${rosterSize} roster exercises` : null;
-  const notTrainedCaption = hasBands && !sparse
-    ? `${notTrainedCount} of ${rosterSize} roster exercises not trained yet`
+  const trainedDenominatorCaption = hasBands
+    ? `Trained this week: ${trained} of ${rosterSize} roster exercises${notTrainedCount > 0 && !sparse ? ` · ${notTrainedCount} not trained yet` : ''}`
     : null;
 
-  // Movement since the most recent qualifying earlier week, for whichever
-  // week is currently selected. Never derived off an unverified/stale
-  // snapshot (#1023 v2 §4 requirement 4).
+  // Movement since the most recent qualifying earlier week. Never derived off
+  // an unverified/stale snapshot (#1023 v2 §4); stale shows nothing rather than
+  // blaming insufficient evidence (#1029) — the stale banner carries the cause.
   const movement = useMemo(() => (
     (!stateStale && selectedWeek)
       ? deriveRecoveryMovement(weekResults, { currentWeekId: selectedWeek.week_id })
       : null
   ), [stateStale, selectedWeek, weekResults]);
-  // #1029 review finding 2: while state is stale, movement is deliberately
-  // never computed (above), but the "not enough matched lifts" copy must not
-  // fall through here either — that falsely attributes the suppression to
-  // insufficient evidence when the real cause is an unverified/stale
-  // snapshot. Nothing is claimed for stale state; the existing stale banner
-  // elsewhere on this card already carries the true reason.
-  const movementSentence = movement
-    ? `Since Week ${movement.anchor_week_number}, on ${movement.matched_size} lifts trained both weeks: ${movement.improved} improved, ${movement.steady} steady, ${movement.fell_back} fell back.`
-    : (!stateStale && hasBands && weekLabel && (selectedWeek?.week_number || 0) > 1
-        ? 'Not enough matched lifts to compare weeks yet.'
-        : null);
+  const movementUnavailable = !movement && !stateStale && hasBands && !!weekLabel && (selectedWeek?.week_number || 0) > 1;
+  // Hero (#1209): the current state in one plain line, read first.
+  const heroText = !hasBands || !weekLabel ? null
+    : trained === 0 ? `${weekLabel}: no roster exercises trained yet`
+    : `${weekLabel}: ${bands.buckets.at_or_above || 0} of ${trained} trained exercises at or above baseline`;
 
   const mostCommonGapLine = hasBands && bands.most_common_gap
     ? `Most common gap: ${bands.most_common_gap}`
@@ -355,6 +339,20 @@ export function BlockEvidence({
           <View style={styles.weekStatusRegion} accessibilityLiveRegion="polite">
             {showBandsRegion && (
               <View style={styles.summaryBlock}>
+                {!!heroText && <Text testID="recovery-hero" style={styles.heroText}>{heroText}</Text>}
+                {!!movement && (
+                  <View testID="recovery-movement" accessible accessibilityLabel={`Since Week ${movement.anchor_week_number}, on ${movement.matched_size} exercises trained both weeks: ${movement.improved} improved, ${movement.steady} steady, ${movement.fell_back} fell back.`}>
+                    <Text style={styles.summaryLine}>{`Change since Week ${movement.anchor_week_number} · ${movement.matched_size} exercises trained both weeks`}</Text>
+                    <View style={styles.movementRow}>
+                      {[['Improved', movement.improved], ['Steady', movement.steady], ['Fell back', movement.fell_back]].map(([label, n]) => (
+                        <Text key={label} style={styles.movementStat}>{`${n} ${label}`}</Text>
+                      ))}
+                    </View>
+                  </View>
+                )}
+                {movementUnavailable && (
+                  <Text testID="recovery-movement" style={styles.summaryLine}>Not enough matched lifts to compare weeks yet.</Text>
+                )}
                 {hasBands && trained === 0 ? (
                   <Text style={styles.summaryLine}>{trainedDenominatorCaption}</Text>
                 ) : sparse ? (
@@ -376,7 +374,6 @@ export function BlockEvidence({
                     accessibilityLabel={[
                       trainedDenominatorCaption,
                       ...bandRows.map(r => `${r.label} ${r.count}`),
-                      notTrainedCaption,
                     ].filter(Boolean).join('. ')}
                   >
                     {/* Same weight tier as each bucket row (#1029 acceptance
@@ -397,19 +394,10 @@ export function BlockEvidence({
                         <Text style={styles.bandRowCount}>{row.count}</Text>
                       </View>
                     ))}
-                    {!!notTrainedCaption && (
-                      <Text style={styles.bandDenominatorCaption}>{notTrainedCaption}</Text>
-                    )}
                   </View>
                 ) : null}
 
                 {!!mostCommonGapLine && <Text style={styles.summaryLine}>{mostCommonGapLine}</Text>}
-
-                {/* Movement gets EQUAL real estate to bands once it exists —
-                    never dead space reserved for it in Week 1 (#1029). */}
-                {!!movementSentence && (
-                  <Text testID="recovery-movement" style={styles.summaryLine}>{movementSentence}</Text>
-                )}
               </View>
             )}
 
@@ -424,6 +412,7 @@ export function BlockEvidence({
 
           {weekResults.length > 1 && (
             <View style={styles.chipRow}>
+              <Text style={styles.chipRowLabel}>Week</Text>
               {weekResults.map((w) => {
                 const selected = selectedWeek && w.week_id === selectedWeek.week_id;
                 return (
@@ -436,7 +425,7 @@ export function BlockEvidence({
                     accessibilityLabel={`Week ${w.week_number}${w.completed_at ? ', completed' : ''}`}
                   >
                     <Text style={[styles.chipText, selected ? styles.chipTextSelected : null]}>
-                      {`Week ${w.week_number}`}
+                      {w.week_number}
                     </Text>
                   </Pressable>
                 );
@@ -511,17 +500,10 @@ export function BlockEvidence({
         </View>
       )}
 
-      {/* Band strip (#1023 v2 §3/§10c, redesigned per the #1029 amendment):
-          one column per live week, in week order — an "across weeks" element,
-          separate from the current-week bucket rows above. Each populated
-          band renders as its own row inside the column: a token-colored,
-          letter-coded chip plus the count, in `docs/design-system-map.md`
-          tokens throughout. Identity comes from the letter, not hue alone, so
-          `Rebuilding` and `Early` stay distinguishable at the strip's actual
-          rendered width without a legend. A week with no readable note is a
-          dashed, glyphed placeholder column — visually distinct from a
-          readable week that simply trained nothing (which still shows its own
-          zero-count row) — never a bar that silently shrinks to nothing. */}
+      {/* Across-weeks strip (#1023 v2 §3/§10c, #1029, #1209): one column per live
+          week; each band is a colored dot plus its full label and count. An
+          unreadable week is a dashed, glyphed "No data" cell — distinct from a
+          readable week that trained nothing ("0 trained"). */}
       {bandSeries.length > 1 && (
         <View>
           <Text style={styles.bandStripLegendHint}>Across weeks</Text>
@@ -554,12 +536,8 @@ export function BlockEvidence({
                           const meta = BAND_STRIP_META[b.id];
                           return (
                             <View key={b.id} style={styles.bandStripRow}>
-                              <View style={[styles.bandStripChip, { borderColor: _bandColor(meta.colorToken, colors, kua) }]}>
-                                <Text style={[styles.bandStripChipText, { color: _bandColor(meta.colorToken, colors, kua) }]}>
-                                  {meta.code}
-                                </Text>
-                              </View>
-                              <Text style={styles.bandStripCount}>{entry.buckets[b.id]}</Text>
+                              <View style={[styles.bandStripChip, { backgroundColor: _bandColor(meta.colorToken, colors, kua) }]} />
+                              <Text style={styles.bandStripCount}>{`${b.label} ${entry.buckets[b.id]}`}</Text>
                             </View>
                           );
                         })}

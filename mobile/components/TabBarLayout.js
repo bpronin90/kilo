@@ -5,7 +5,7 @@ import { createContext } from 'react';
 // it on top of the measured bar height for scroll clearance (#551).
 export const TAB_BAR_VISUAL_GAP = 4;
 
-// Approximate rendered TabBar height, used only until TabBar's own onLayout
+// Approximate rendered (compact bar ~55dp, #1209) TabBar height, used only until TabBar's own onLayout
 // measurement lands so ScreenShell has sufficient clearance before that
 // first measurement without visibly jumping once it arrives.
 export const TAB_BAR_HEIGHT_FALLBACK = 56;
