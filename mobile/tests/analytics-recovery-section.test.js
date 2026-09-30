@@ -1752,7 +1752,7 @@ describe('AnalyticsRecoverySection — per-week vs block state (#1193)', () => {
   test('Total work is scoped to one exercise in one week, never a block total', () => {
     const root = setupTwoWeeks();
     expandDetails(root);
-    expect(hasText(root, 'Week 2 only. Total work is per exercise, per week — not a block total.')).toBe(true);
+    expect(hasText(root, "Total work is per exercise, per week — not a block total. Current values are Week 2's; “Baseline” figures are the frozen starting value.")).toBe(true);
   });
 
   test('logged but uncomparable work in another week still counts as trained there', () => {

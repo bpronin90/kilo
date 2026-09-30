@@ -254,7 +254,7 @@ export function MetricLegend({ rows, weekNumber }) {
     <View style={styles.legend}>
       {shown.has('volume') && (
         <Text style={styles.legendText}>
-          {`${weekNumber == null ? 'This week' : `Week ${weekNumber}`} only. Total work is per exercise, per week — not a block total.`}
+          {`Total work is per exercise, per week — not a block total. Current values are ${weekNumber == null ? 'this week\'s' : `Week ${weekNumber}'s`}; “Baseline” figures are the frozen starting value.`}
         </Text>
       )}
       <Pressable
