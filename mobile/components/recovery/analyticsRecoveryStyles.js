@@ -283,6 +283,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   chipRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 6,
   },
   chipRowLabel: {
