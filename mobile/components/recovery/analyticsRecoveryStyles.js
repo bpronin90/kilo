@@ -104,73 +104,9 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // fixed-width row) so it stays legible rather than crushing columns at a
   // large accessibility text scale, and letter-coded chips so `Rebuilding`
   // and `Early` never depend on hue discrimination alone.
-  bandStripLegendHint: {
-    fontSize: 11,
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    marginBottom: 6,
-  },
-  bandStrip: {
-    flexDirection: 'row',
-    gap: 10,
-    paddingRight: 4,
-  },
-  bandStripCell: {
-    minWidth: 76,
-    gap: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
-    borderWidth: 1,
-    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
-  },
-  bandStripWeekLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: kua ? kua.onSurface : colors.text,
-  },
-  bandStripRows: {
-    gap: 4,
-  },
-  bandStripRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
   // Color dot (#1209); the adjacent full-label text carries the meaning.
-  bandStripChip: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  bandStripCount: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: kua ? kua.onSurface : colors.text,
-  },
-  bandStripZero: {
-    paddingVertical: 2,
-  },
-  bandStripZeroText: {
-    fontSize: 12,
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
   // Unreadable-note gap: dashed stroke plus its own glyph and text — never a
   // bare empty box, so it cannot be mistaken for the solid zero-count cell.
-  bandStripGap: {
-    alignItems: 'center',
-    gap: 3,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
-  },
-  bandStripGapText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
   // Reopen (#839): low-emphasis, non-destructive outline button — matching
   // the Log tab's own secondary styling for the same action — never the
   // filled/accent treatment a primary action would use.
@@ -226,41 +162,6 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // #1029: the denominator caption sits at the SAME weight tier as each
   // bucket row below it — a fact of equal standing, never a subordinate
   // footnote (acceptance criterion 1/12).
-  bandDenominatorCaption: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  bandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 3,
-  },
-  bandRowTrack: {
-    flex: 1,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
-    overflow: 'hidden',
-  },
-  bandRowFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  bandRowLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: kua ? kua.onSurface : colors.text,
-    minWidth: 90,
-  },
-  bandRowCount: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: kua ? kua.onSurface : colors.text,
-    minWidth: 20,
-    textAlign: 'right',
-  },
   summaryLine: {
     fontSize: 13,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
@@ -268,16 +169,6 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   heroText: {
     fontSize: 17,
     fontWeight: '800',
-    color: kua ? kua.onSurface : colors.text,
-  },
-  movementRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    columnGap: 14,
-  },
-  movementStat: {
-    fontSize: 14,
-    fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
   chipRow: {

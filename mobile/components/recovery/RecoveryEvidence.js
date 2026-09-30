@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Card } from '../UI';
 import { useTheme } from '../../theme/ThemeContext';
@@ -11,7 +11,6 @@ import {
   RECOVERY_WEEK_STATUS,
 } from '../../lib/data/recoveryAnalytics';
 import {
-  RETURN_BANDS,
   deriveRecoveryBandSeries,
   deriveRecoveryMovement,
   deriveRecoveryTrainedRows,
@@ -20,6 +19,7 @@ import {
 import { MetricLegend, WeekEvidence, WeekUnavailableNotice } from './RecoveryStateGroups';
 import { deriveTrainedElsewhere, weekSelectionCaption } from './RecoveryWeekIndex';
 import { createStyles } from './analyticsRecoveryStyles';
+import { RecoveryBandBar, RecoveryChangeVisual, RecoveryWeeksStrip } from './RecoveryVisuals';
 
 // #697 state words, used only for the below-four-trained-lifts sparse
 // sentence and the details-panel group headings — permitted vocabulary
@@ -30,31 +30,6 @@ const STATE_LABEL = Object.freeze({
   not_comparable: "can't compare",
   added_during_recovery: 'added during recovery',
 });
-
-// Across-weeks strip (#1029, #1209): each band is a token-colored dot PLUS its
-// full label and count, so meaning never rests on hue or an abbreviation. The
-// *Text variants are used, never raw `accent`/`caution` (mark colors, not copy
-// colors — docs/design-system-map.md "Text vs. mark").
-const BAND_STRIP_META = Object.freeze({
-  at_or_above: { colorToken: 'success' },
-  close: { colorToken: 'accentText' },
-  rebuilding: { colorToken: 'cautionText' },
-  early: { colorToken: 'error' },
-  cannot_compare: { colorToken: 'textMuted' },
-});
-
-// Maps a BAND_STRIP_META colorToken to the active palette color. `cautionText`
-// has no KUA equivalent across any palette; all others have a direct token.
-function _bandColor(colorToken, colors, kua) {
-  if (!kua) return colors[colorToken];
-  switch (colorToken) {
-    case 'success':    return kua.completion;
-    case 'accentText': return kua.primary;
-    case 'error':      return kua.error;
-    case 'textMuted':  return kua.onSurfaceVariant;
-    default:           return colors[colorToken];
-  }
-}
 
 // One-line week summary inside the details panel; zero-count states are dropped
 // and `Baseline met` is absent (it is the hero).
@@ -186,12 +161,6 @@ export function BlockEvidence({
   // Below four trained lifts, no bucket bars: one plain sentence names the
   // lift(s) and their state, with the denominator in the sentence itself.
   const sparse = hasBands && trained > 0 && trained < 4;
-  const bandRows = hasBands && !sparse
-    ? RETURN_BANDS
-        .filter(b => b.id !== 'not_trained_yet')
-        .map(b => ({ id: b.id, label: b.label, count: bands.buckets[b.id] || 0 }))
-        .filter(row => row.count > 0)
-    : [];
   // Same source of truth as `bands`/`trained` above — never a parallel filter
   // over `selectedWeek.exercises` (#1029 review finding 1: that would let a
   // `baseline_value_unusable` row be named even though it is outside the
@@ -340,64 +309,13 @@ export function BlockEvidence({
             {showBandsRegion && (
               <View style={styles.summaryBlock}>
                 {!!heroText && <Text testID="recovery-hero" style={styles.heroText}>{heroText}</Text>}
-                {!!movement && (
-                  <View testID="recovery-movement" accessible accessibilityLabel={`Since Week ${movement.anchor_week_number}, on ${movement.matched_size} exercises trained both weeks: ${movement.improved} improved, ${movement.steady} steady, ${movement.fell_back} fell back.`}>
-                    <Text style={styles.summaryLine}>{`Change since Week ${movement.anchor_week_number} · ${movement.matched_size} exercises trained both weeks`}</Text>
-                    <View style={styles.movementRow}>
-                      {[['Improved', movement.improved], ['Steady', movement.steady], ['Fell back', movement.fell_back]].map(([label, n]) => (
-                        <Text key={label} style={styles.movementStat}>{`${n} ${label}`}</Text>
-                      ))}
-                    </View>
-                  </View>
-                )}
+                {!!movement && <RecoveryChangeVisual movement={movement} />}
                 {movementUnavailable && (
                   <Text testID="recovery-movement" style={styles.summaryLine}>Not enough matched lifts to compare weeks yet.</Text>
                 )}
-                {hasBands && trained === 0 ? (
-                  <Text style={styles.summaryLine}>{trainedDenominatorCaption}</Text>
-                ) : sparse ? (
-                  // Sparse visual floor (#1029): below four trained lifts, no
-                  // bucket bars — one plain sentence names the lift(s), their
-                  // state, and the roster denominator, in visible AND
-                  // accessible copy.
-                  <Text
-                    testID="recovery-bands-sparse"
-                    style={styles.summaryLine}
-                    accessibilityLabel={sparseSentence}
-                  >
-                    {sparseSentence}
-                  </Text>
-                ) : hasBands ? (
-                  <View
-                    testID="recovery-bands-rows"
-                    accessible
-                    accessibilityLabel={[
-                      trainedDenominatorCaption,
-                      ...bandRows.map(r => `${r.label} ${r.count}`),
-                    ].filter(Boolean).join('. ')}
-                  >
-                    {/* Same weight tier as each bucket row (#1029 acceptance
-                        criteria 1/12) — a fact of equal standing, not a
-                        subordinate footnote. */}
-                    <Text style={styles.bandDenominatorCaption}>{trainedDenominatorCaption}</Text>
-                    {bandRows.map(row => (
-                      <View key={row.id} style={styles.bandRow}>
-                        <View style={styles.bandRowTrack}>
-                          <View
-                            style={[
-                              styles.bandRowFill,
-                              { width: `${Math.round((row.count / trained) * 100)}%`, backgroundColor: kua ? kua.primary : colors.accent },
-                            ]}
-                          />
-                        </View>
-                        <Text style={styles.bandRowLabel}>{row.label}</Text>
-                        <Text style={styles.bandRowCount}>{row.count}</Text>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
-
-                {!!mostCommonGapLine && <Text style={styles.summaryLine}>{mostCommonGapLine}</Text>}
+                {hasBands && trained > 0 && (
+                  <RecoveryBandBar buckets={bands.buckets} trained={trained} weekLabel={weekLabel} />
+                )}
               </View>
             )}
 
@@ -471,6 +389,11 @@ export function BlockEvidence({
                   {/* The removed first-screenful clause line, folded in here
                       (#1029 §10c). */}
                   {!!summaryLine && <Text style={styles.summaryLine}>{summaryLine}</Text>}
+                  {/* Roster, not-trained and most-common-gap facts moved here
+                      from the overview (#1209). */}
+                  {!!trainedDenominatorCaption && <Text style={styles.summaryLine}>{trainedDenominatorCaption}</Text>}
+                  {!!sparseSentence && <Text testID="recovery-bands-sparse" style={styles.summaryLine}>{sparseSentence}</Text>}
+                  {!!mostCommonGapLine && <Text style={styles.summaryLine}>{mostCommonGapLine}</Text>}
                   <MetricLegend rows={weekRows} weekNumber={selectedWeek.week_number} />
                   <WeekEvidence rows={weekRows} unit={unit} weekNumber={selectedWeek.week_number} elsewhere={trainedElsewhere} />
                 </View>
@@ -500,70 +423,7 @@ export function BlockEvidence({
         </View>
       )}
 
-      {/* Across-weeks strip (#1023 v2 §3/§10c, #1029, #1209): one column per live
-          week; each band is a colored dot plus its full label and count. An
-          unreadable week is a dashed, glyphed "No data" cell — distinct from a
-          readable week that trained nothing ("0 trained"). */}
-      {bandSeries.length > 1 && (
-        <View>
-          <Text style={styles.bandStripLegendHint}>Across weeks</Text>
-          <ScrollView
-            testID="recovery-band-strip"
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.bandStrip}
-          >
-            {bandSeries.map(entry => {
-              const populatedBands = entry.buckets
-                ? RETURN_BANDS.filter(b => b.id !== 'not_trained_yet' && (entry.buckets[b.id] || 0) > 0)
-                : [];
-              const a11yLabel = entry.buckets
-                ? `Week ${entry.week_number}: ${RETURN_BANDS.filter(b => b.id !== 'not_trained_yet').map(b => `${b.label} ${entry.buckets[b.id] || 0}`).join(', ')}`
-                : `Week ${entry.week_number}: no readable evidence`;
-              return (
-                <View
-                  key={entry.week_id}
-                  testID={`recovery-band-strip-week-${entry.week_number}`}
-                  style={styles.bandStripCell}
-                  accessible
-                  accessibilityLabel={a11yLabel}
-                >
-                  <Text style={styles.bandStripWeekLabel}>{`Week ${entry.week_number}`}</Text>
-                  {entry.buckets ? (
-                    populatedBands.length > 0 ? (
-                      <View style={styles.bandStripRows}>
-                        {populatedBands.map(b => {
-                          const meta = BAND_STRIP_META[b.id];
-                          return (
-                            <View key={b.id} style={styles.bandStripRow}>
-                              <View style={[styles.bandStripChip, { backgroundColor: _bandColor(meta.colorToken, colors, kua) }]} />
-                              <Text style={styles.bandStripCount}>{`${b.label} ${entry.buckets[b.id]}`}</Text>
-                            </View>
-                          );
-                        })}
-                      </View>
-                    ) : (
-                      // A readable week that simply trained nothing: a solid,
-                      // muted-token dash — a real zero, not a gap.
-                      <View style={styles.bandStripZero}>
-                        <Text style={styles.bandStripZeroText}>0 trained</Text>
-                      </View>
-                    )
-                  ) : (
-                    // Unreadable-note gap (#1029 amendment): dashed border,
-                    // muted glyph, and its own text — never mistakable for the
-                    // solid zero-count cell above.
-                    <View style={styles.bandStripGap}>
-                      <MaterialIcons name="help-outline" size={16} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
-                      <Text style={styles.bandStripGapText}>No data</Text>
-                    </View>
-                  )}
-                </View>
-              );
-            })}
-          </ScrollView>
-        </View>
-      )}
+      {bandSeries.length > 1 && <RecoveryWeeksStrip series={bandSeries} />}
 
       {/* One persistent line, above the provenance stamp (#1023 v2 §8). */}
       {(comparison.status === RECOVERY_COMPARISON_STATUS.OK || comparison.status === RECOVERY_COMPARISON_STATUS.BASELINE_EMPTY) && (

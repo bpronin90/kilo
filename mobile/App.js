@@ -9,7 +9,7 @@ import { ThemeHydrationGate } from './app/ThemeHydrationGate';
 import { useKuaFonts } from './theme/typography';
 import { TabBar } from './components/TabBar';
 import { OwnershipPrompt } from './components/OwnershipPrompt';
-import { TabBarLayoutContext, TAB_BAR_VISUAL_GAP } from './components/TabBarLayout';
+import { TabBarLayoutContext, TabBarScrollContext, TAB_BAR_VISUAL_GAP, useTabBarAutoHide } from './components/TabBarLayout';
 import { SafeAreaProvider, SafeAreaInsetsContext, initialWindowMetrics } from 'react-native-safe-area-context';
 
 import { HomeScreen } from './screens/HomeScreen';
@@ -149,6 +149,11 @@ function ShellView({ onDeviceDataWiped }) {
     analyticsTarget, analyticsTargetKey, logNoteTarget, logNoteTargetKey, logRecoveryTarget,
     logRecoveryTargetKey, moreSubviewTarget, moreSubviewTargetKey,
   } = useAppShell({ onDeviceDataWiped });
+
+  // #1209: scroll-direction auto-hide. ScreenShell forwards every scroll to
+  // tabBarScroll.onScroll; the bar shows again on tab change.
+  const { hidden: tabBarHidden, onScroll: onTabBarScroll } = useTabBarAutoHide(activeTab);
+  const tabBarScroll = useMemo(() => ({ onScroll: onTabBarScroll }), [onTabBarScroll]);
 
   // #577 review: the floating TabBar is `position: absolute`, so a normal-
   // flow sibling rendered near the bottom of the screen (the rest-timer
@@ -330,6 +335,7 @@ function ShellView({ onDeviceDataWiped }) {
 
   return (
     <TabBarLayoutContext.Provider value={{ tabBarHeight }}>
+    <TabBarScrollContext.Provider value={tabBarScroll}>
     <CloudSyncContext.Provider value={cloudSync}>
       <View style={styles.appContainer}>
         {/* Mounted at the app root, not per-screen: Alert.alert is called
@@ -399,6 +405,7 @@ function ShellView({ onDeviceDataWiped }) {
         <TabBar
           tabs={TABS}
           activeTab={activeTab}
+          hidden={tabBarHidden}
           onTabPress={handleTabPress}
           onHeightChange={(height) => setTabBarHeight((prev) => (prev === height ? prev : height))}
         />
@@ -414,6 +421,7 @@ function ShellView({ onDeviceDataWiped }) {
         ) : null}
       </View>
     </CloudSyncContext.Provider>
+    </TabBarScrollContext.Provider>
     </TabBarLayoutContext.Provider>
   );
 }

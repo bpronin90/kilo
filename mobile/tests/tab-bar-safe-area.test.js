@@ -1,9 +1,13 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
+import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { TabBar } from '../components/TabBar';
 import { ScreenShell } from '../components/ScreenShell';
-import { TabBarLayoutContext, TAB_BAR_VISUAL_GAP, TAB_BAR_HEIGHT_FALLBACK } from '../components/TabBarLayout';
+import {
+  TabBarLayoutContext, TabBarScrollContext, TAB_BAR_VISUAL_GAP, TAB_BAR_HEIGHT_FALLBACK,
+  TAB_BAR_SCROLL_THRESHOLD, nextTabBarScrollState, useTabBarAutoHide,
+} from '../components/TabBarLayout';
 import { TAB_ICON_MAP } from '../components/Icon';
 
 // Phone portrait window: jest-react-native's default 750dp width is past the
@@ -310,5 +314,209 @@ describe('KUA icon foundation', () => {
       );
       act(() => component.unmount());
     }).not.toThrow();
+  });
+});
+
+// #1209: opaque scroll-direction auto-hide (reverses #1026's always-visible bar).
+describe('scroll-direction auto-hide (#1209)', () => {
+  const ev = (y, contentHeight = 2000, layoutHeight = 800) => ({
+    nativeEvent: { contentOffset: { y }, contentSize: { height: contentHeight }, layoutMeasurement: { height: layoutHeight } },
+  });
+  const metricsFor = (y, contentHeight = 2000, layoutHeight = 800) => ({ y, contentHeight, layoutHeight });
+
+  test('first event only records a baseline; scrolling down hides, scrolling up shows', () => {
+    let st = { lastY: null, hidden: false };
+    st = nextTabBarScrollState(st, metricsFor(100));
+    expect(st).toEqual({ lastY: 100, hidden: false });
+    st = nextTabBarScrollState(st, metricsFor(200));
+    expect(st.hidden).toBe(true);
+    st = nextTabBarScrollState(st, metricsFor(150));
+    expect(st.hidden).toBe(false);
+  });
+
+  test('deltas under the threshold are ignored and accumulate against the old baseline', () => {
+    let st = { lastY: 300, hidden: false };
+    const tiny = TAB_BAR_SCROLL_THRESHOLD - 1;
+    st = nextTabBarScrollState(st, metricsFor(300 + tiny));
+    expect(st).toEqual({ lastY: 300, hidden: false });
+    st = nextTabBarScrollState(st, metricsFor(300 + tiny * 2));
+    expect(st.hidden).toBe(true);
+  });
+
+  test('the top of the scroll (including negative overscroll) always shows the bar', () => {
+    expect(nextTabBarScrollState({ lastY: 400, hidden: true }, metricsFor(0)).hidden).toBe(false);
+    expect(nextTabBarScrollState({ lastY: 400, hidden: true }, metricsFor(-40)).hidden).toBe(false);
+  });
+
+  test('bottom overscroll bounce does not flip direction', () => {
+    const maxY = 1200;
+    let st = nextTabBarScrollState({ lastY: 1100, hidden: false }, metricsFor(maxY));
+    expect(st.hidden).toBe(true);
+    // Rubber-band past the end, then settle back to the end: clamped, no change.
+    st = nextTabBarScrollState(st, metricsFor(maxY + 60));
+    expect(st).toEqual({ lastY: maxY, hidden: true });
+    st = nextTabBarScrollState(st, metricsFor(maxY));
+    expect(st.hidden).toBe(true);
+  });
+
+  function Probe({ tab, probe }) {
+    const value = useTabBarAutoHide(tab);
+    probe.current = value;
+    return null;
+  }
+
+  test('programmatic scrolls re-baseline without changing visibility', () => {
+    const probe = { current: null };
+    let component;
+    act(() => { component = renderer.create(<Probe tab="Home" probe={probe} />); });
+    act(() => probe.current.onScroll(ev(100)));
+    act(() => probe.current.onScroll(ev(900), false));
+    expect(probe.current.hidden).toBe(false);
+    // A small user nudge from the jump's landing point is below the threshold,
+    // not a huge stale-baseline delta.
+    act(() => probe.current.onScroll(ev(903)));
+    expect(probe.current.hidden).toBe(false);
+    act(() => probe.current.onScroll(ev(1000)));
+    expect(probe.current.hidden).toBe(true);
+    act(() => probe.current.onScroll(ev(5), false));
+    expect(probe.current.hidden).toBe(true);
+    act(() => probe.current.onScroll(ev(0)));
+    expect(probe.current.hidden).toBe(false);
+    act(() => component.unmount());
+  });
+
+  test('a programmatic jump to the top reveals an already-hidden bar', () => {
+    const probe = { current: null };
+    let component;
+    act(() => { component = renderer.create(<Probe tab="Home" probe={probe} />); });
+    act(() => probe.current.onScroll(ev(100)));
+    act(() => probe.current.onScroll(ev(400)));
+    expect(probe.current.hidden).toBe(true);
+    act(() => probe.current.onScroll(ev(0), false));
+    expect(probe.current.hidden).toBe(false);
+    act(() => component.unmount());
+  });
+
+  test('hook hides on down-scroll, shows on up-scroll, and resets on tab change', () => {
+    const probe = { current: null };
+    let component;
+    act(() => { component = renderer.create(<Probe tab="Home" probe={probe} />); });
+    act(() => probe.current.onScroll(ev(100)));
+    act(() => probe.current.onScroll(ev(300)));
+    expect(probe.current.hidden).toBe(true);
+    act(() => probe.current.onScroll(ev(250)));
+    expect(probe.current.hidden).toBe(false);
+    act(() => probe.current.onScroll(ev(500)));
+    expect(probe.current.hidden).toBe(true);
+    act(() => { component.update(<Probe tab="Log" probe={probe} />); });
+    expect(probe.current.hidden).toBe(false);
+    // The previous tab's baseline is forgotten: the next event records a new one.
+    act(() => probe.current.onScroll(ev(40)));
+    expect(probe.current.hidden).toBe(false);
+    act(() => component.unmount());
+  });
+
+  test('ScreenShell forwards only user-driven scrolls (drag, fling) to the tab-bar scroll context', () => {
+    const onScroll = jest.fn();
+    let component;
+    act(() => {
+      component = renderer.create(
+        <TabBarScrollContext.Provider value={{ onScroll }}>
+          <ScreenShell title="Test" />
+        </TabBarScrollContext.Provider>
+      );
+    });
+    const scroll = component.root.findAll((n) => typeof n.props.onScroll === 'function' && n.props.scrollEventThrottle)[0];
+    // Programmatic scrollTo / anchor jump: no drag or momentum began.
+    act(() => scroll.props.onScroll(ev(120)));
+    expect(onScroll).toHaveBeenLastCalledWith(expect.anything(), false);
+    // A finger drag.
+    act(() => scroll.props.onScrollBeginDrag());
+    act(() => scroll.props.onScroll(ev(140)));
+    expect(onScroll).toHaveBeenLastCalledWith(expect.anything(), true);
+    // Release that flings: momentum-begin keeps it user-driven.
+    act(() => scroll.props.onScrollEndDrag({ nativeEvent: { velocity: { y: 2 } } }));
+    act(() => scroll.props.onMomentumScrollBegin());
+    act(() => scroll.props.onScroll(ev(200)));
+    expect(onScroll).toHaveBeenLastCalledWith(expect.anything(), true);
+    act(() => scroll.props.onMomentumScrollEnd());
+    act(() => scroll.props.onScroll(ev(260)));
+    expect(onScroll).toHaveBeenLastCalledWith(expect.anything(), false);
+    // Release with no fling (no momentum-begin): later programmatic scrolls stay ignored.
+    act(() => scroll.props.onScrollBeginDrag());
+    act(() => scroll.props.onScrollEndDrag({ nativeEvent: { velocity: { y: 0 } } }));
+    act(() => scroll.props.onScroll(ev(300)));
+    expect(onScroll).toHaveBeenLastCalledWith(expect.anything(), false);
+    act(() => component.unmount());
+  });
+
+  test('hiding slides the opaque bar with a translateY, keeps opacity, and reports the same height', () => {
+    const onHeightChange = jest.fn();
+    const component = renderWithInsets(
+      <TabBar tabs={['Home', 'Log']} activeTab="Home" onTabPress={() => {}} onHeightChange={onHeightChange} hidden={false} />,
+      20
+    );
+    const surface = findSurface(component);
+    act(() => { surface.props.onLayout({ nativeEvent: { layout: { height: 55 } } }); });
+    expect(onHeightChange).toHaveBeenCalledWith(55);
+    const flat = (n) => StyleSheet.flatten(n.props.style);
+    expect(flat(findSurface(component)).opacity).toBeUndefined();
+    expect(flat(findSurface(component)).transform[0]).toHaveProperty('translateY');
+    act(() => {
+      component.update(
+        <SafeAreaProvider initialMetrics={metrics(20)}>
+          <TabBar tabs={['Home', 'Log']} activeTab="Home" onTabPress={() => {}} onHeightChange={onHeightChange} hidden />
+        </SafeAreaProvider>
+      );
+    });
+    // Still mounted with its tabs and tablist semantics, opacity untouched, and
+    // no additional height report (layout is unchanged by a transform).
+    expect(findTabs(component)).toHaveLength(2);
+    expect(flat(findSurface(component)).opacity).toBeUndefined();
+    expect(onHeightChange).toHaveBeenCalledTimes(1);
+    act(() => component.unmount());
+  });
+
+  test('hidden bar blocks touches and is hidden from screen readers; visible bar is not', () => {
+    const render = (hidden) => (
+      <SafeAreaProvider initialMetrics={metrics(0)}>
+        <TabBar tabs={['Home', 'Log']} activeTab="Home" onTabPress={() => {}} hidden={hidden} />
+      </SafeAreaProvider>
+    );
+    let component;
+    act(() => { component = renderer.create(render(false)); });
+    let surface = findSurface(component);
+    expect(surface.props.pointerEvents).toBe('auto');
+    expect(surface.props.importantForAccessibility).toBe('auto');
+    expect(surface.props.accessibilityElementsHidden).toBe(false);
+    act(() => { component.update(render(true)); });
+    surface = findSurface(component);
+    expect(surface.props.pointerEvents).toBe('none');
+    expect(surface.props.importantForAccessibility).toBe('no-hide-descendants');
+    expect(surface.props.accessibilityElementsHidden).toBe(true);
+    act(() => { component.update(render(false)); });
+    expect(findSurface(component).props.pointerEvents).toBe('auto');
+    act(() => component.unmount());
+  });
+
+  test('scroll clearance is identical whether or not the bar is hidden', () => {
+    const tree = (hidden) => (
+      <SafeAreaProvider initialMetrics={metrics(20)}>
+        <TabBarLayoutContext.Provider value={{ tabBarHeight: 55 }}>
+          <ScreenShell title="Test" />
+          <TabBar tabs={['Home', 'Log']} activeTab="Home" onTabPress={() => {}} hidden={hidden} />
+        </TabBarLayoutContext.Provider>
+      </SafeAreaProvider>
+    );
+    let component;
+    act(() => { component = renderer.create(tree(false)); });
+    const padding = () => StyleSheet.flatten(
+      component.root.findAll((n) => n.props.contentContainerStyle && n.props.scrollEventThrottle)[0].props.contentContainerStyle
+    ).paddingBottom;
+    const shown = padding();
+    act(() => { component.update(tree(true)); });
+    expect(padding()).toBe(shown);
+    expect(shown).toBe(55 + TAB_BAR_VISUAL_GAP + 20);
+    act(() => component.unmount());
   });
 });

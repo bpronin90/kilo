@@ -144,7 +144,7 @@ describe('#1052 refactor — export and boundary parity', () => {
     const styles = createStyles(LightColors);
     for (const key of [
       'container', 'card', 'stateBanner', 'identityCaption', 'summaryLine',
-      'bandStrip', 'bandRow', 'chip', 'detailsPanel', 'exerciseRow', 'metricCell',
+      'chip', 'detailsPanel', 'exerciseRow', 'metricCell',
       'historyPanel', 'weekIndexRow', 'nonMedicalText', 'provenanceText',
     ]) {
       expect(styles).toHaveProperty(key);

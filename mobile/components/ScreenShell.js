@@ -1,9 +1,9 @@
-import React, { useContext, createContext } from 'react';
-import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import React, { useContext, useRef, createContext } from 'react';
+import { Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useThemedStyles } from '../theme/ThemeContext';
 import { Button } from './UI';
-import { TabBarLayoutContext, TAB_BAR_VISUAL_GAP } from './TabBarLayout';
+import { TabBarLayoutContext, TabBarScrollContext, TAB_BAR_VISUAL_GAP } from './TabBarLayout';
 import { centeredColumnInsets } from './adaptiveLayout';
 import pkg from '../package.json';
 
@@ -26,15 +26,26 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
   const { onScroll: contextOnScroll } = useContext(ScrollContext);
   const { bottom: bottomInset = 0, left: leftInset = 0, right: rightInset = 0 } = useContext(SafeAreaInsetsContext) || {};
   const { tabBarHeight } = useContext(TabBarLayoutContext);
+  const { onScroll: tabBarOnScroll } = useContext(TabBarScrollContext);
   const bottomClearance = tabBarHeight + TAB_BAR_VISUAL_GAP + bottomInset;
   const { width: windowWidth } = useWindowDimensions();
   const column = centeredColumnInsets(windowWidth, { left: leftInset, right: rightInset });
   const columnPadding = { paddingLeft: column.left, paddingRight: column.right };
 
+  // Only user-driven scrolling (drag, then fling momentum) may hide the tab bar
+  // (#1209); programmatic scrollTo/anchor jumps fire neither and are ignored.
+  const userScroll = useRef({ drag: false, momentum: false });
+  // Web has no drag events (wheel/trackpad scrolling), so every scroll counts there.
+  const isUserScroll = () => Platform.OS === 'web' || userScroll.current.drag || userScroll.current.momentum;
   const handleScroll = (e) => {
     if (contextOnScroll) contextOnScroll(e);
+    if (tabBarOnScroll) tabBarOnScroll(e, isUserScroll());
     if (propOnScroll) propOnScroll(e);
   };
+  const handleBeginDrag = () => { userScroll.current = { drag: true, momentum: false }; };
+  const handleEndDrag = () => { userScroll.current = { drag: false, momentum: false }; };
+  const handleMomentumBegin = () => { userScroll.current = { drag: false, momentum: true }; };
+  const handleMomentumEnd = () => { userScroll.current = { drag: false, momentum: false }; };
 
   return (
     <View style={[styles.outerContainer, style]}>
@@ -52,6 +63,10 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
         contentContainerStyle={[styles.container, { paddingBottom: bottomClearance }, columnPadding]}
         keyboardShouldPersistTaps={keyboardShouldPersistTaps}
         onScroll={handleScroll}
+        onScrollBeginDrag={handleBeginDrag}
+        onScrollEndDrag={handleEndDrag}
+        onMomentumScrollBegin={handleMomentumBegin}
+        onMomentumScrollEnd={handleMomentumEnd}
         scrollEventThrottle={16}
         stickyHeaderIndices={stickyHeaderIndices}
       >
