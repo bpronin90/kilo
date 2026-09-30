@@ -434,14 +434,15 @@ describe('scroll-direction auto-hide (#1209)', () => {
     act(() => scroll.props.onScrollBeginDrag());
     act(() => scroll.props.onScroll(ev(140)));
     expect(onScroll).toHaveBeenLastCalledWith(expect.anything(), true);
-    // Release with velocity: the fling is still user-driven.
+    // Release that flings: momentum-begin keeps it user-driven.
     act(() => scroll.props.onScrollEndDrag({ nativeEvent: { velocity: { y: 2 } } }));
+    act(() => scroll.props.onMomentumScrollBegin());
     act(() => scroll.props.onScroll(ev(200)));
     expect(onScroll).toHaveBeenLastCalledWith(expect.anything(), true);
     act(() => scroll.props.onMomentumScrollEnd());
     act(() => scroll.props.onScroll(ev(260)));
     expect(onScroll).toHaveBeenLastCalledWith(expect.anything(), false);
-    // Release with no velocity: nothing follows, later programmatic scrolls stay ignored.
+    // Release with no fling (no momentum-begin): later programmatic scrolls stay ignored.
     act(() => scroll.props.onScrollBeginDrag());
     act(() => scroll.props.onScrollEndDrag({ nativeEvent: { velocity: { y: 0 } } }));
     act(() => scroll.props.onScroll(ev(300)));

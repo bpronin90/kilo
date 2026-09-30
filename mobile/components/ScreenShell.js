@@ -43,10 +43,8 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
     if (propOnScroll) propOnScroll(e);
   };
   const handleBeginDrag = () => { userScroll.current = { drag: true, momentum: false }; };
-  const handleEndDrag = (e) => {
-    const vy = e?.nativeEvent?.velocity?.y;
-    userScroll.current = { drag: false, momentum: !!vy };
-  };
+  const handleEndDrag = () => { userScroll.current = { drag: false, momentum: false }; };
+  const handleMomentumBegin = () => { userScroll.current = { drag: false, momentum: true }; };
   const handleMomentumEnd = () => { userScroll.current = { drag: false, momentum: false }; };
 
   return (
@@ -67,6 +65,7 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
         onScroll={handleScroll}
         onScrollBeginDrag={handleBeginDrag}
         onScrollEndDrag={handleEndDrag}
+        onMomentumScrollBegin={handleMomentumBegin}
         onMomentumScrollEnd={handleMomentumEnd}
         scrollEventThrottle={16}
         stickyHeaderIndices={stickyHeaderIndices}
