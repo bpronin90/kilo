@@ -94,9 +94,27 @@ function markTail(name) {
   return (MARK_TAIL_RE.exec(name) || [''])[0];
 }
 
+const SET_ROW_RE = /^-\s/;
+// A parser-supported note line; a bare "---" (week divider) never qualifies.
+const INSERTED_COMMENT_RE = /^--\s+\S/;
+
+// Where a descriptor comment may land: directly after an exercise's set rows
+// (or its header when it has none). Maps that original line index -> header index.
+function insertionPoints(core, originalHeaders, offset) {
+  const points = new Map();
+  for (let i = 0; i < core.length; i += 1) {
+    if (!originalHeaders.has(offset + i + 1)) continue;
+    let last = i;
+    while (last + 1 < core.length && SET_ROW_RE.test(core[last + 1])) last += 1;
+    points.set(last, i);
+  }
+  return points;
+}
+
 /**
  * Compare one target's original text with the returned text. Returns
- * `{ changes }` (header renames only, possibly empty) or `{ problems }`.
+ * `{ changes }` (header renames, each optionally with one descriptor comment
+ * inserted directly after that exercise's set rows) or `{ problems }`.
  */
 export function diffTargetNames(originalText, returnedLines) {
   const originalLines = String(originalText ?? '').split('\n');
@@ -104,34 +122,48 @@ export function diffTargetNames(originalText, returnedLines) {
   const { start, end } = trimBlankEdges(bare);
   const core = bare.slice(start, end);
   const problems = [];
-  if (returnedLines.length !== core.length) {
-    return { problems: [`Line count changed (${core.length} expected, ${returnedLines.length} returned). Only exercise names may change.`] };
-  }
   const originalHeaders = headerMap(bare.join('\n'));
   const returnedHeaders = headerMap([...bare.slice(0, start), ...returnedLines, ...bare.slice(end)].join('\n'));
-  const changes = [];
+  const points = insertionPoints(core, originalHeaders, start);
+  const changeByHeader = new Map();
+  const inserts = [];
+  let j = 0;
   for (let i = 0; i < core.length; i += 1) {
     const lineNumber = start + i + 1;
     const before = core[i];
-    const after = returnedLines[i];
+    const after = returnedLines[j];
     const oldName = originalHeaders.get(lineNumber);
-    const newName = returnedHeaders.get(lineNumber);
+    const newName = returnedHeaders.get(start + j + 1);
+    j += 1;
+    if (after == null) continue;
     if (oldName == null || newName == null) {
       if (before !== after || (oldName == null) !== (newName == null)) {
         problems.push(`Line ${lineNumber} changed: “${before}” → “${after}”.`);
       }
-      continue;
+    } else if (before !== after) {
+      const a = splitHeader(before, oldName);
+      const b = splitHeader(after, newName);
+      if (!a || !b || a.prefix !== b.prefix || a.suffix !== b.suffix || markTail(oldName) !== markTail(newName) || numbers(before) !== numbers(after) || prescriptionTail(before) !== prescriptionTail(after) || !newName.trim()) {
+        problems.push(`Line ${lineNumber} changed more than the exercise name: “${before}” → “${after}”.`);
+      } else {
+        changeByHeader.set(i, { lineIndex: start + i, oldName, newName, newLine: after });
+      }
     }
-    if (before === after) continue;
-    const a = splitHeader(before, oldName);
-    const b = splitHeader(after, newName);
-    if (!a || !b || a.prefix !== b.prefix || a.suffix !== b.suffix || markTail(oldName) !== markTail(newName) || numbers(before) !== numbers(after) || prescriptionTail(before) !== prescriptionTail(after) || !newName.trim()) {
-      problems.push(`Line ${lineNumber} changed more than the exercise name: “${before}” → “${after}”.`);
-      continue;
+    const next = returnedLines[j];
+    if (points.has(i) && next != null && INSERTED_COMMENT_RE.test(next) && next !== core[i + 1] && !returnedHeaders.has(start + j + 1)) {
+      inserts.push({ header: points.get(i), afterIndex: start + i, line: next });
+      j += 1;
     }
-    changes.push({ lineIndex: start + i, oldName, newName, newLine: after });
   }
-  return problems.length ? { problems } : { changes };
+  if (!problems.length && j !== returnedLines.length) {
+    problems.push(`Line count changed (${core.length} expected, ${returnedLines.length} returned). Only exercise names may change, plus one “-- ” comment directly after a corrected exercise's sets.`);
+  }
+  for (const insert of inserts) {
+    const change = changeByHeader.get(insert.header);
+    if (change) change.insert = { afterIndex: insert.afterIndex, line: insert.line };
+    else if (!problems.length) problems.push(`Inserted comment “${insert.line}” is not attached to a corrected exercise header.`);
+  }
+  return problems.length ? { problems } : { changes: [...changeByHeader.values()] };
 }
 
 /**
@@ -196,6 +228,12 @@ export function applySelectedChanges(entry, selectedKeys) {
   for (const change of chosen) {
     const cr = lines[change.lineIndex].endsWith('\r') ? '\r' : '';
     lines[change.lineIndex] = change.newLine + cr;
+  }
+  // Insert descriptor comments last, bottom-up, so earlier indices stay valid.
+  const inserts = chosen.filter(change => change.insert).map(change => change.insert).sort((x, y) => y.afterIndex - x.afterIndex);
+  for (const insert of inserts) {
+    const cr = lines[insert.afterIndex].endsWith('\r') ? '\r' : '';
+    lines.splice(insert.afterIndex + 1, 0, insert.line + cr);
   }
   return lines.join('\n');
 }

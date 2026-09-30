@@ -124,6 +124,63 @@ describe('diffTargetNames rejects structural edits disguised as renames', () => 
   });
 });
 
+describe('descriptor comment moved out of a corrected header (#1201)', () => {
+  const ORIG = 'Monday\n-Bench Press (paused) 3x5\n- 135 5,5,5\n- 140 5,5,5\n-Row 3x8\n- 100 8,8,8\n---\nTuesday\n-Squat (low bar) 3x5\n- 185 5,5,5\n-- felt heavy\n';
+  const GOOD = 'Monday\n-Bench Press 3x5\n- 135 5,5,5\n- 140 5,5,5\n-- paused\n-Row 3x8\n- 100 8,8,8\n---\nTuesday\n-Squat 3x5\n- 185 5,5,5\n-- low bar\n-- felt heavy';
+  const note = { id: 'd1', title: 'Upper', raw_text: ORIG };
+  const lines = text => text.split('\n');
+
+  test('header rename plus one following comment is accepted, for multiple exercises', () => {
+    const out = diffTargetNames(ORIG, lines(GOOD));
+    expect(out.problems).toBeUndefined();
+    expect(out.changes.map(c => `${c.oldName}>${c.newName}:${c.insert ? c.insert.line : ''}`)).toEqual([
+      'Bench Press (paused)>Bench Press:-- paused',
+      'Squat (low bar)>Squat:-- low bar',
+    ]);
+  });
+
+  test('preview and apply splice the comment into the original text', () => {
+    const preview = buildNormalizationPreview(`Target routine 1\n${GOOD}`, { authority: AUTH, targets: [note] }, [AUTH, note]);
+    const keys = new Set(preview.mappings.map(m => m.key));
+    expect(applySelectedChanges(preview.entries[0], keys)).toBe(`${GOOD}\n`);
+    const onlyBench = new Set([preview.mappings[0].key]);
+    expect(applySelectedChanges(preview.entries[0], onlyBench)).toBe(ORIG.replace('(paused) ', '').replace('140 5,5,5\n', '140 5,5,5\n-- paused\n'));
+  });
+
+  test('CRLF originals keep CRLF on the inserted line', () => {
+    const crlf = { ...note, raw_text: 'Monday\r\n-Bench (x) 3x5\r\n- 135 5,5,5\r\n' };
+    const preview = buildNormalizationPreview('Target routine 1\nMonday\n-Bench 3x5\n- 135 5,5,5\n-- x', { authority: AUTH, targets: [crlf] }, [AUTH, crlf]);
+    expect(applySelectedChanges(preview.entries[0], new Set(preview.mappings.map(m => m.key)))).toBe('Monday\r\n-Bench 3x5\r\n- 135 5,5,5\r\n-- x\r\n');
+  });
+
+  const bad = {
+    reorder: GOOD.replace('-Row 3x8\n- 100 8,8,8\n', '').replace('-Bench Press 3x5', '-Row 3x8\n- 100 8,8,8\n-Bench Press 3x5'),
+    exerciseRemoved: GOOD.replace('-Row 3x8\n- 100 8,8,8\n', ''),
+    exerciseAdded: GOOD.replace('---', '-Curl 3x8\n- 30 8,8,8\n---'),
+    setRemoved: GOOD.replace('- 140 5,5,5\n', ''),
+    setAdded: GOOD.replace('- 100 8,8,8', '- 100 8,8,8\n- 100 8,8,8'),
+    weight: GOOD.replace('135', '145'),
+    reps: GOOD.replace('100 8,8,8', '100 8,8,7'),
+    unrelatedComment: GOOD.replace('---\nTuesday', '-- new note\n---\nTuesday'),
+    misplacedComment: GOOD.replace('- 135 5,5,5\n- 140 5,5,5\n-- paused', '- 135 5,5,5\n-- paused\n- 140 5,5,5'),
+    beforeHeader: GOOD.replace('-Bench Press 3x5', '-- paused\n-Bench Press 3x5').replace('\n-- paused\n-Row', '\n-Row'),
+    duplicateComment: GOOD.replace('-- paused', '-- paused\n-- paused'),
+    multipleComments: GOOD.replace('-- paused', '-- paused\n-- more'),
+    uncorrectedHeader: ORIG.replace('- 185 5,5,5', '- 185 5,5,5\n-- extra'),
+    dividerInserted: GOOD.replace('-- paused', '---'),
+    emptyComment: GOOD.replace('-- paused', '-- '),
+    extraLine: `${GOOD}\n- 1 1`,
+  };
+  test.each(Object.entries(bad))('rejects %s', (_name, returned) => {
+    expect(diffTargetNames(ORIG, lines(returned)).problems.length).toBeGreaterThan(0);
+  });
+
+  test('a header-only rename and an unchanged target stay valid', () => {
+    expect(diffTargetNames(ORIG, lines(GOOD.replace(/\n-- (paused|low bar)/g, ''))).changes).toHaveLength(2);
+    expect(diffTargetNames(ORIG, lines(ORIG.trimEnd())).changes).toEqual([]);
+  });
+});
+
 describe('saveWorkoutNoteTextIfUnchanged', () => {
   beforeEach(async () => { await Storage.replaceWorkoutNotesRaw([]); });
 
