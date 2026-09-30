@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.6 - 2026-09-30
+
+- Issue #1202: Recovery details now explain when a logged exercise name looks like a descriptor-suffixed version of a missing baseline exercise, so it is clear no direct comparison was made.
+
+## 1.8.5 - 2026-09-30
+
+- Issue #1201: Fixed exercise-name normalization prompts so header descriptors move into `-- ` comments instead of becoming part of the exercise name.
+
 ## 1.8.4 - 2026-09-30
 
 - Issue #1194: Compacted the Current routine card actions into a tight row so expanding them no longer leaves an empty gap above the routine.
