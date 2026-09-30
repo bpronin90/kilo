@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.8.4 - 2026-09-30
+
+- Issue #1194: Compacted the Current routine card actions into a tight row so expanding them no longer leaves an empty gap above the routine.
+
+## 1.8.3 - 2026-09-30
+
+- Issue #1193: Recovery now says which linked week it is showing on Home and in Analytics, tells an exercise absent from the selected week apart from one trained in another week, and labels Total work as per-exercise, per-week rather than a block total.
+
+## 1.8.2 - 2026-09-30
+
+- Issue #1192: Home's active Recovery card now leads with your Big 3 lifts, using the same 1K lift picks as the rest of Kilo, and names the week it shows.
+
 ## 1.8.1 - 2026-09-29
 
 - Issue #1188: Clarified the lost-device-key recovery guidance to point to backup restore and, for account users, Sign Out & Wipe followed by Download My Account's Data.
