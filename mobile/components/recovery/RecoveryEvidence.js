@@ -179,7 +179,7 @@ export function BlockEvidence({
   const provenance = isActive
     ? `Started ${formatDate(block.started_at)}`
     : `${formatDate(block.started_at)} – ${formatDate(block.completed_at)}`;
-  const trainedElsewhere = useMemo(() => deriveTrainedElsewhere(weekResults, selectedWeek), [weekResults, selectedWeek]);
+  const trainedElsewhere = useMemo(() => deriveTrainedElsewhere(weekResults, selectedWeek, stateStale), [weekResults, selectedWeek, stateStale]);
   const selectionCaption = weekSelectionCaption(weekResults, selectedWeek);
   const weekRows = selectedWeek ? [...(selectedWeek.exercises || []), ...(selectedWeek.added || [])] : [];
 

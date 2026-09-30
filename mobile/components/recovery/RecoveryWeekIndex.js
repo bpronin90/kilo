@@ -76,7 +76,7 @@ export function WeekIndexRow({ block, week, notesById, onNavigate }) {
 // absent from the whole block or only from the week being viewed. Only compared
 // rows count, plus not-comparable rows that still carry logged work
 // (`week_name`) — that work exists, it just cannot be scored.
-export function deriveTrainedElsewhere(weekResults, selectedWeek) {
+export function deriveTrainedElsewhere(weekResults, selectedWeek, stale = false) {
   const map = new Map();
   // An unreadable/missing week's work is unknown, so "never trained" cannot be
   // claimed while one exists.
@@ -94,7 +94,7 @@ export function deriveTrainedElsewhere(weekResults, selectedWeek) {
       map.set(row.key, list);
     }
   }
-  return { weeks: map, unreadable };
+  return { weeks: map, unreadable, stale };
 }
 
 export function weekSelectionCaption(weekResults, selectedWeek) {

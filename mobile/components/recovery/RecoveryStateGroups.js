@@ -82,6 +82,9 @@ function _formatMetricNumber(metricKey, value, unit) {
 function _absentNote(row, weekNumber, elsewhere) {
   const weeks = elsewhere?.weeks.get(row.key);
   const here = weekNumber == null ? 'this week' : `Week ${weekNumber}`;
+  // A stale snapshot may be missing other weeks' work, so it can name where an
+  // exercise WAS trained but never claim it was trained nowhere.
+  if (elsewhere?.stale && !(weeks && weeks.length > 0)) return `Not in ${here}`;
   return weeks && weeks.length > 0
     ? `Not in ${here} · trained in ${weeks.map(n => `Week ${n}`).join(', ')}`
     : elsewhere?.unreadable ? 'Not trained in any readable linked week' : 'Not trained in any linked week';

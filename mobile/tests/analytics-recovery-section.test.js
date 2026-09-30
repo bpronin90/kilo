@@ -1798,4 +1798,24 @@ describe('AnalyticsRecoverySection — per-week vs block state (#1193)', () => {
     expandDetails(root);
     expect(hasText(root, 'Total work is per exercise')).toBe(false);
   });
+
+  test('a stale snapshot never claims an exercise was trained in no linked week', () => {
+    const root = (() => {
+      let c;
+      act(() => {
+        c = render.create(
+          <AnalyticsRecoverySection
+            blocks={[block()]}
+            weeks={[week(1, 'note-w1'), week(2, 'note-w2')]}
+            notes={[note('note-w1', '-Bench\n- 135 5,5,5'), note('note-w2', '-Bench\n- 135 5,5,5')]}
+            stateStale
+          />
+        );
+      });
+      return c.root;
+    })();
+    expandDetails(root);
+    expect(hasText(root, 'Not trained in any')).toBe(false);
+    expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not reintroduced. Not in Week 2'))).toBe(true);
+  });
 });
