@@ -427,6 +427,28 @@ describe('scroll-direction auto-hide (#1209)', () => {
     act(() => component.unmount());
   });
 
+  test('hidden bar blocks touches and is hidden from screen readers; visible bar is not', () => {
+    const render = (hidden) => (
+      <SafeAreaProvider initialMetrics={metrics(0)}>
+        <TabBar tabs={['Home', 'Log']} activeTab="Home" onTabPress={() => {}} hidden={hidden} />
+      </SafeAreaProvider>
+    );
+    let component;
+    act(() => { component = renderer.create(render(false)); });
+    let surface = findSurface(component);
+    expect(surface.props.pointerEvents).toBe('auto');
+    expect(surface.props.importantForAccessibility).toBe('auto');
+    expect(surface.props.accessibilityElementsHidden).toBe(false);
+    act(() => { component.update(render(true)); });
+    surface = findSurface(component);
+    expect(surface.props.pointerEvents).toBe('none');
+    expect(surface.props.importantForAccessibility).toBe('no-hide-descendants');
+    expect(surface.props.accessibilityElementsHidden).toBe(true);
+    act(() => { component.update(render(false)); });
+    expect(findSurface(component).props.pointerEvents).toBe('auto');
+    act(() => component.unmount());
+  });
+
   test('scroll clearance is identical whether or not the bar is hidden', () => {
     const tree = (hidden) => (
       <SafeAreaProvider initialMetrics={metrics(20)}>

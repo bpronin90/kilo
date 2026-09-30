@@ -64,6 +64,11 @@ export function TabBar({ tabs, activeTab, onTabPress, onHeightChange, hidden = f
       style={[styles.container, { bottom: TAB_BAR_VISUAL_GAP + bottomInset, left: column.left, right: column.right, transform: [{ translateY }] }]}
       onLayout={handleLayout}
       accessibilityRole="tablist"
+      // Off-screen while hidden (#1209): block touches and hide the tabs from
+      // TalkBack/VoiceOver so an invisible destination can't be focused or pressed.
+      pointerEvents={hidden ? 'none' : 'auto'}
+      importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}
+      accessibilityElementsHidden={!!hidden}
     >
       {tabs.map((tab) => (
         <Pressable
