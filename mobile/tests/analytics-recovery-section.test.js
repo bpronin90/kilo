@@ -361,7 +361,10 @@ describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b
     const component = setup({ blocks: [b], weeks: [w], notes: [n] });
     const root = component.root;
 
-    expect(hasText(root, 'Week 1 · Push Pull Legs')).toBe(true);
+    expect(hasText(root, 'Push Pull Legs')).toBe(true);
+    // The week is named once, by the hero — not repeated in the caption.
+    expect(hasText(root, 'Week 1 · Push Pull Legs')).toBe(false);
+    expect(findAllText(root).filter(t => t === 'Week 1').length).toBe(1);
     // The old two-line "Baseline routine" label + title pair is gone.
     expect(hasText(root, 'Baseline routine')).toBe(false);
   });
@@ -706,7 +709,8 @@ describe('AnalyticsRecoverySection — persisted week identity survives gaps', (
     expect(root.findAll(inst => inst.props.accessibilityLabel === 'Week 2').length).toBe(0);
     // Defaults to the latest live week, which is persisted week_number 3 — not
     // "week 2 of 2" from array position.
-    expect(hasText(root, 'Week 3 · Push Pull Legs')).toBe(true);
+    expect(hasText(root, 'Push Pull Legs')).toBe(true);
+    expect(hasText(root, 'Week 3 · Push Pull Legs')).toBe(false);
   });
 });
 
@@ -746,7 +750,8 @@ describe('AnalyticsRecoverySection — completed-block evidence uses that block\
     // week (also numbered 1, on a different note) is not pulled in.
     expect(root.findAll(inst => inst.props.accessibilityLabel === 'Week 1').length).toBeGreaterThan(0);
     expect(root.findAll(inst => inst.props.accessibilityLabel === 'Week 3').length).toBeGreaterThan(0);
-    expect(hasText(root, 'Week 3 · Old Routine')).toBe(true);
+    expect(hasText(root, 'Old Routine')).toBe(true);
+    expect(hasText(root, 'Week 3 · Old Routine')).toBe(false);
   });
 });
 
@@ -1145,7 +1150,9 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     expect(hasText(root, 'roster exercises trained.')).toBe(false);
     expect(hasText(root, 'baseline exercises met')).toBe(false);
     expect(hasText(root, 'Exercise details')).toBe(true);
-    expect(hasText(root, '1 of 2 at or above baseline')).toBe(true);
+    // The header no longer restates the hero's status.
+    expect(findAllText(root).filter(t => t.includes('at or above baseline')).length).toBe(1);
+    expect(hasText(root, 'of 2 at or above baseline')).toBe(false);
     expect(hasText(root, '3 exercises')).toBe(true);
 
     // The diagnostic panel this issue is about is not on screen yet — no
@@ -1764,7 +1771,8 @@ describe('AnalyticsRecoverySection — scannable hierarchy (#1209)', () => {
     const root = twoWeeks();
     const hero = root.findAll(n => n.props.testID === 'recovery-hero' && typeof n.type === 'string')[0];
     expect(hero.props.accessibilityLabel).toMatch(/^Week 2: \d+ of \d+ trained exercises at or above baseline$/);
-    expect(hasText(root, 'trained exercises at or above baseline')).toBe(true);
+    expect(hasText(root, 'at or above baseline')).toBe(true);
+    expect(hasText(root, 'trained exercises at or above baseline')).toBe(false);
     const order = root.findAll(n => ['recovery-hero', 'recovery-movement', 'recovery-bands-rows'].includes(n.props.testID) && typeof n.type === 'string')
       .map(n => n.props.testID);
     expect(order.indexOf('recovery-hero')).toBe(0);
@@ -1785,7 +1793,13 @@ describe('AnalyticsRecoverySection — scannable hierarchy (#1209)', () => {
     expect(segments.length).toBeGreaterThan(0);
     const movement = root.findAll(n => n.props.testID === 'recovery-movement' && typeof n.type === 'string')[0];
     expect(movement.props.accessibilityLabel).toMatch(/improved, \d+ steady, \d+ fell back\.$/);
-    for (const label of ['Improved', 'Steady', 'Fell back']) expect(hasText(root, label)).toBe(true);
+    // One improved, one steady, none fell back. Zero-count items are omitted
+    // visually while the accessible label still reads every count.
+    const movementTexts = movement.findAllByType('Text').map(t => [].concat(t.props.children).join(''));
+    expect(movementTexts).toContain('Steady');
+    expect(movementTexts).toContain('Improved');
+    expect(movementTexts).not.toContain('Fell back');
+    expect(movement.props.accessibilityLabel).toContain('0 fell back');
     expect(root.findAll(n => n.props.testID === 'recovery-band-strip').length).toBeGreaterThan(0);
     for (const gone of ['roster exercises trained', 'not trained yet', 'Most common gap']) expect(hasText(root, gone)).toBe(false);
     // #1215: removed captions and the prose they restated no longer render.
@@ -1797,10 +1811,10 @@ describe('AnalyticsRecoverySection — scannable hierarchy (#1209)', () => {
     expect(flattenStyleOf(bar.findAll(n => typeof n.type === 'string' && n.props.style && n.props.style.height === 10)[0]).height).toBe(10);
     const weekBars = root.findAll(n => typeof n.type === 'string' && n.props.style && n.props.style.height === 6 && n.props.style.flexDirection === 'row');
     expect(weekBars.length).toBeGreaterThan(0);
-    for (const label of ['Improved', 'Steady', 'Fell back']) {
-      expect(root.findAll(n => n.props.name && /^(arrow-upward|trending-flat|arrow-downward)$/.test(n.props.name)).length).toBeGreaterThan(0);
-      expect(hasText(root, label)).toBe(true);
-    }
+    expect(root.findAll(n => n.props.name === 'trending-flat').length).toBeGreaterThan(0);
+    // The strip sits above the drill-down header.
+    const order = root.findAll(n => typeof n.type === 'string' && (n.props.testID === 'recovery-band-strip' || n.props.accessibilityLabel === 'Expand exercise details'));
+    expect(order[0].props.testID).toBe('recovery-band-strip');
   });
 
   test('week picker is one compact labelled row with numeric chips and full accessible names', () => {

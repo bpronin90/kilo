@@ -19,7 +19,7 @@ import {
 import { MetricLegend, WeekEvidence, WeekUnavailableNotice } from './RecoveryStateGroups';
 import { deriveTrainedElsewhere } from './RecoveryWeekIndex';
 import { createStyles } from './analyticsRecoveryStyles';
-import { presentBandIds, RecoveryBandBar, RecoveryChangeVisual, RecoveryHero, RecoveryWeeksStrip } from './RecoveryVisuals';
+import { RecoveryBandBar, RecoveryChangeVisual, RecoveryHero, RecoveryWeeksStrip } from './RecoveryVisuals';
 
 // #697 state words, used only for the below-four-trained-lifts sparse
 // sentence and the details-panel group headings — permitted vocabulary
@@ -131,7 +131,6 @@ export function BlockEvidence({
   const routineTitle = block.baseline_note_title || 'Untitled Routine';
 
   const totalBaselineExercises = selectedWeek ? (selectedWeek.exercises || []).length : 0;
-  const metCount = selectedWeek ? (selectedWeek.summary?.baseline_met || 0) : 0;
   const addedCount = selectedWeek ? (selectedWeek.added || []).length : 0;
   const totalRows = totalBaselineExercises + addedCount;
   const weekLabel = selectedWeek ? `Week ${selectedWeek.week_number}` : null;
@@ -141,7 +140,6 @@ export function BlockEvidence({
   // One-line identity caption, replacing the old "Baseline routine" label +
   // title pair (#793/R5b cut list). The selected week is always named here so
   // the bands below are never ambiguous about which week they describe (§5).
-  const identityCaption = weekLabel ? `${weekLabel} · ${routineTitle}` : `Baseline: ${routineTitle}`;
   const provenance = isActive
     ? `Started ${formatDate(block.started_at)}`
     : `${formatDate(block.started_at)} – ${formatDate(block.completed_at)}`;
@@ -192,6 +190,11 @@ export function BlockEvidence({
   // Even a baseline-empty week still has something to say if it carries
   // recovery-only work: the merged clause line names it, with no hero above it.
   const showBandsRegion = selectedWeek && (totalBaselineExercises > 0 || addedCount > 0);
+  // The hero names the week, so the caption then carries only the routine title
+  // (#1215); otherwise the caption names the week so the card is never ambiguous.
+  const heroShown = !!showBandsRegion && hasBands && !!weekLabel;
+  const identityCaption = heroShown ? routineTitle
+    : weekLabel ? `${weekLabel} · ${routineTitle}` : `Baseline: ${routineTitle}`;
 
   return (
     <Card style={styles.card}>
@@ -345,6 +348,8 @@ export function BlockEvidence({
             </View>
           )}
 
+          {bandSeries.length > 1 && <RecoveryWeeksStrip series={bandSeries} />}
+
           {selectedWeek?.status === RECOVERY_WEEK_STATUS.OK && totalRows > 0 && (
             <View style={styles.detailsPanel}>
               <Pressable
@@ -356,14 +361,6 @@ export function BlockEvidence({
               >
                 <View style={styles.detailsHeaderContent}>
                   <Text style={styles.detailsHeaderTitle}>Exercise details</Text>
-                  {/* #1029 acceptance criterion 2: the removed met-count
-                      headline survives ONLY here, worded "X of Y at or above
-                      baseline". */}
-                  {totalBaselineExercises > 0 && (
-                    <Text style={styles.detailsHeaderCount}>
-                      {`${metCount} of ${totalBaselineExercises} at or above baseline`}
-                    </Text>
-                  )}
                   {!detailsExpanded && (
                     <Text style={styles.detailsHeaderCount}>
                       {`${totalRows} exercise${totalRows === 1 ? '' : 's'}`}
@@ -416,8 +413,6 @@ export function BlockEvidence({
           )}
         </View>
       )}
-
-      {bandSeries.length > 1 && <RecoveryWeeksStrip series={bandSeries} shownBands={hasBands && trained > 0 ? presentBandIds(bands.buckets) : []} />}
 
       {/* One persistent line, above the provenance stamp (#1023 v2 §8). */}
       {(comparison.status === RECOVERY_COMPARISON_STATUS.OK || comparison.status === RECOVERY_COMPARISON_STATUS.BASELINE_EMPTY) && (

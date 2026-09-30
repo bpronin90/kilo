@@ -39,10 +39,6 @@ function useVisual() {
   return { colors, kua, styles };
 }
 
-export function presentBandIds(buckets) {
-  return TRAINED_BANDS.filter(b => (buckets[b.id] || 0) > 0).map(b => b.id);
-}
-
 function Segments({ buckets, colors, kua, style }) {
   return (
     <View style={style}>
@@ -74,7 +70,7 @@ export function RecoveryHero({ weekLabel, atOrAbove, trained }) {
       ) : (
         <>
           <Text style={styles.heroNumber}>{`${atOrAbove} of ${trained}`}</Text>
-          <Text style={styles.heroLabel}>trained exercises at or above baseline</Text>
+          <Text style={styles.heroLabel}>at or above baseline</Text>
         </>
       )}
     </View>
@@ -115,11 +111,14 @@ export function RecoveryBandBar({ buckets, trained, weekLabel }) {
 // accessible label.
 export function RecoveryChangeVisual({ movement }) {
   const { colors, kua, styles } = useVisual();
-  const cells = [
+  const all = [
     { label: 'Improved', icon: 'arrow-upward', count: movement.improved, color: kua ? kua.completion : colors.success },
     { label: 'Steady', icon: 'trending-flat', count: movement.steady, color: kua ? kua.onSurfaceVariant : colors.textMuted },
     { label: 'Fell back', icon: 'arrow-downward', count: movement.fell_back, color: kua ? kua.error : colors.error },
   ];
+  // Zero counts are noise: omit them visually (the accessible label still
+  // reads every count).
+  const cells = all.filter(c => c.count > 0);
   return (
     <View
       testID="recovery-movement"
@@ -140,12 +139,11 @@ export function RecoveryChangeVisual({ movement }) {
 
 // Across weeks: one thin horizontal segmented bar per live week, labelled by
 // week number. An unreadable week is a dashed, glyphed "No data" bar, distinct
-// from a readable week that trained nothing. The legend names only bands that
-// appear here and are not already named by the hero legend (`shownBands`).
-export function RecoveryWeeksStrip({ series, shownBands = [] }) {
+// from a readable week that trained nothing. One shared legend sits directly
+// under the bars and names only the bands that appear in them.
+export function RecoveryWeeksStrip({ series }) {
   const { colors, kua, styles } = useVisual();
-  const extra = TRAINED_BANDS.filter(b => !shownBands.includes(b.id)
-    && series.some(e => e.buckets && (e.buckets[b.id] || 0) > 0));
+  const present = TRAINED_BANDS.filter(b => series.some(e => e.buckets && (e.buckets[b.id] || 0) > 0));
   return (
     <View testID="recovery-band-strip" style={styles.weeksStrip}>
       {series.map(entry => {
@@ -170,7 +168,7 @@ export function RecoveryWeeksStrip({ series, shownBands = [] }) {
           </View>
         );
       })}
-      <BandLegend bands={extra} colors={colors} kua={kua} styles={styles} />
+      <BandLegend bands={present} colors={colors} kua={kua} styles={styles} />
     </View>
   );
 }
