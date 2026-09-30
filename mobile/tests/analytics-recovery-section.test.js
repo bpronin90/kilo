@@ -1754,4 +1754,26 @@ describe('AnalyticsRecoverySection — per-week vs block state (#1193)', () => {
     expandDetails(root);
     expect(hasText(root, 'Week 2 only. Total work is per exercise, per week — not a block total.')).toBe(true);
   });
+
+  test('logged but uncomparable work in another week still counts as trained there', () => {
+    const notComparable = mockRow({ key: 'pull-up', name: 'Pull-up', state: RECOVERY_COMPARISON_STATES.NOT_COMPARABLE, exercise_class: 'reps', unavailable_reason: 'exercise_class_changed' });
+    const absent = { ...mockRow({ key: 'pull-up', name: 'Pull-up', state: RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED, exercise_class: 'reps' }), week_name: null };
+    deriveRecoveryComparison.mockReturnValueOnce(mockComparison({ weeks: [
+      mockWeek({ week_id: 'rw1', week_number: 1, exercises: [{ ...notComparable, week_name: 'Pull-up' }] }),
+      mockWeek({ week_id: 'rw2', week_number: 2, exercises: [absent] }),
+    ] }));
+    const root = setup({ blocks: [block()], weeks: [week(1, 'n1'), week(2, 'n2')], notes: [] }).root;
+    expandDetails(root);
+    expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not reintroduced. Not in Week 2 · trained in Week 1'))).toBe(true);
+  });
+
+  test('an unavailable selected week is not described as compared', () => {
+    deriveRecoveryComparison.mockReturnValueOnce(mockComparison({ weeks: [
+      mockWeek({ week_id: 'rw1', week_number: 1 }),
+      mockWeek({ week_id: 'rw2', week_number: 2, status: RECOVERY_WEEK_STATUS.NOTE_MISSING }),
+    ] }));
+    const root = setup({ blocks: [block()], weeks: [week(1, 'n1'), week(2, 'n2')], notes: [] }).root;
+    expect(hasText(root, '2 linked weeks. Showing Week 2; pick a week')).toBe(true);
+    expect(hasText(root, 'compared with the baseline')).toBe(false);
+  });
 });

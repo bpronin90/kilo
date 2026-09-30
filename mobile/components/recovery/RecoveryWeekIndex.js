@@ -74,13 +74,17 @@ export function WeekIndexRow({ block, week, notesById, onNavigate }) {
 // #1193: which weeks (other than the selected one) actually trained each
 // baseline exercise, so "Not reintroduced" can say whether the exercise is
 // absent from the whole block or only from the week being viewed. Only compared
-// rows count; not-comparable work is its own state and never "trained".
+// rows count, plus not-comparable rows that still carry logged work
+// (`week_name`) — that work exists, it just cannot be scored.
 export function deriveTrainedElsewhere(weekResults, selectedWeek) {
   const map = new Map();
   for (const w of weekResults) {
     if (!selectedWeek || w.week_id === selectedWeek.week_id || w.status !== RECOVERY_WEEK_STATUS.OK) continue;
     for (const row of w.exercises || []) {
-      if (row.state !== RECOVERY_COMPARISON_STATES.BASELINE_MET && row.state !== RECOVERY_COMPARISON_STATES.REBUILDING) continue;
+      const logged = row.state === RECOVERY_COMPARISON_STATES.BASELINE_MET
+        || row.state === RECOVERY_COMPARISON_STATES.REBUILDING
+        || (row.state === RECOVERY_COMPARISON_STATES.NOT_COMPARABLE && !!row.week_name);
+      if (!logged) continue;
       const list = map.get(row.key) || [];
       list.push(w.week_number);
       map.set(row.key, list);
@@ -91,5 +95,6 @@ export function deriveTrainedElsewhere(weekResults, selectedWeek) {
 
 export function weekSelectionCaption(weekResults, selectedWeek) {
   if (!selectedWeek || weekResults.length < 2) return null;
-  return `${weekResults.length} linked weeks. Showing Week ${selectedWeek.week_number}, compared with the baseline on its own; pick a week to see another.`;
+  const scope = selectedWeek.status === RECOVERY_WEEK_STATUS.OK ? ', compared with the baseline on its own' : '';
+  return `${weekResults.length} linked weeks. Showing Week ${selectedWeek.week_number}${scope}; pick a week to see another.`;
 }
