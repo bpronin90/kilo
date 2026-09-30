@@ -4,6 +4,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useTheme } from '../../theme/ThemeContext';
 import { formatDate } from '../../lib/format';
 import { parseWorkoutNote } from '../../lib/parser/workoutNote';
+import { RECOVERY_COMPARISON_STATES, RECOVERY_WEEK_STATUS } from '../../lib/data/recoveryAnalytics';
 import { createStyles } from './analyticsRecoveryStyles';
 
 function _weekNoteStatus(week, notesById) {
@@ -68,4 +69,27 @@ export function WeekIndexRow({ block, week, notesById, onNavigate }) {
       {rowContent}
     </View>
   );
+}
+
+// #1193: which weeks (other than the selected one) actually trained each
+// baseline exercise, so "Not reintroduced" can say whether the exercise is
+// absent from the whole block or only from the week being viewed. Only compared
+// rows count; not-comparable work is its own state and never "trained".
+export function deriveTrainedElsewhere(weekResults, selectedWeek) {
+  const map = new Map();
+  for (const w of weekResults) {
+    if (!selectedWeek || w.week_id === selectedWeek.week_id || w.status !== RECOVERY_WEEK_STATUS.OK) continue;
+    for (const row of w.exercises || []) {
+      if (row.state !== RECOVERY_COMPARISON_STATES.BASELINE_MET && row.state !== RECOVERY_COMPARISON_STATES.REBUILDING) continue;
+      const list = map.get(row.key) || [];
+      list.push(w.week_number);
+      map.set(row.key, list);
+    }
+  }
+  return map;
+}
+
+export function weekSelectionCaption(weekResults, selectedWeek) {
+  if (!selectedWeek || weekResults.length < 2) return null;
+  return `${weekResults.length} linked weeks. Showing Week ${selectedWeek.week_number}, compared with the baseline on its own; pick a week to see another.`;
 }

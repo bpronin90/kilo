@@ -103,7 +103,11 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   // sentence — but only when a week exists. `Baseline captured. No week logged
   // yet.` has no week to name, and printing `Week null` or inventing `Week 1`
   // would both be false.
-  const weekLabel = weekNumber === null ? null : `Week ${weekNumber}`;
+  const weekLabel = weekNumber === null ? null : `Latest linked week: Week ${weekNumber}`;
+  // #1193: the values below describe this one week, never the whole block.
+  const weekScope = weekNumber !== null && fallbackStatus === null
+    ? `Values describe Week ${weekNumber} only, not the whole block.`
+    : null;
 
   // #1171: the user's Big 3 lead, each against its own baseline, and one line
   // counts everything else. Nothing is derived while a fallback owns the slot.
@@ -114,7 +118,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   // visual hierarchy is a layout device; the spoken version has to carry the
   // same facts as complete sentences.
   const accessibleContent = [
-    weekLabel,
+    weekNumber === null ? null : `Week ${weekNumber}`,
     fallbackStatus,
     lifts.length > 0 ? 'Your Big 3 lifts' : null,
     ...lifts.map(lift => {
@@ -192,6 +196,11 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
                 <Text testID="home-recovery-remaining" style={styles.recoveryRemaining}>{remainingText}</Text>
               ) : null}
             </View>
+            {/* Its own node, spoken on its own, so the announcement above stays
+                the compact week-and-lifts sentence. */}
+            {weekScope ? (
+              <Text testID="home-recovery-week-scope" style={styles.recoveryStatusLine}>{weekScope}</Text>
+            ) : null}
           </>
         ) : (
           <View
