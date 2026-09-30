@@ -394,7 +394,15 @@ function _likelyMismatches(baselineRows, exercises, added) {
     if (row.state !== RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED) return;
     const bKey = baselineRows[i].key;
     if (!bKey) return;
-    const found = added.filter(a => a.key.length > bKey.length && a.key.startsWith(bKey) && boundary.test(a.key.slice(bKey.length)));
+    // The base portion is canonicalized so a recognized alias ("Barbell Bench
+    // Press (paused)" vs baseline key "bench press") still matches.
+    const found = added.filter(a => {
+      const name = String(a.name || '');
+      for (let j = 1; j < name.length; j++) {
+        if (boundary.test(name.slice(j)) && normalizeExerciseKey(name.slice(0, j)) === bKey) return true;
+      }
+      return false;
+    });
     candidatesFor.set(i, found);
     for (const a of found) claimedBy.set(a.key, (claimedBy.get(a.key) || 0) + 1);
   });

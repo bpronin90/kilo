@@ -798,6 +798,15 @@ describe('likely descriptor-suffixed name mismatch (#1202)', () => {
     expect(result.summary.added_during_recovery).toBe(1);
   });
 
+  test('alias-canonicalized base portion still matches a suffixed header', () => {
+    const result = run('-Barbell Bench Press\n- 135 5,5', [synthSection('Barbell Bench Press (paused)', [[durSet(30)]])]);
+    const base = rowFor(result, 'bench press');
+    expect(base.state).toBe(RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED);
+    expect(base.likely_logged_name).toBe('Barbell Bench Press (paused)');
+    expect(result.added[0].likely_baseline_name).toBe(base.name);
+    expect(result.summary.added_during_recovery).toBe(1);
+  });
+
   test('unrelated added exercises and ambiguous candidates get no explanation', () => {
     const unrelated = run('-Bench Press\n- 135 5,5', [synthSection('Benchmark Row', [[durSet(30)]])]);
     expect(rowFor(unrelated, 'bench press').likely_logged_name).toBeUndefined();
