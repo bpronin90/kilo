@@ -80,11 +80,11 @@ function _formatMetricNumber(metricKey, value, unit) {
 // any unavailable/not-reintroduced explanation must be spoken too, since that
 // evidence is the entire point of this surface (#698 review).
 function _absentNote(row, weekNumber, elsewhere) {
-  const weeks = elsewhere?.get(row.key);
+  const weeks = elsewhere?.weeks.get(row.key);
   const here = weekNumber == null ? 'this week' : `Week ${weekNumber}`;
   return weeks && weeks.length > 0
     ? `Not in ${here} · trained in ${weeks.map(n => `Week ${n}`).join(', ')}`
-    : `Not trained in any linked week`;
+    : elsewhere?.unreadable ? 'Not trained in any readable linked week' : 'Not trained in any linked week';
 }
 
 function _rowAccessibilityLabel(row, unit, weekNumber, elsewhere) {
@@ -242,7 +242,9 @@ export function MetricLegend({ rows, weekNumber }) {
 
   const shown = new Set();
   for (const row of rows) {
-    if (row.state === RECOVERY_COMPARISON_STATES.NOT_COMPARABLE) continue;
+    // Neither state shows this week's work: one prints a reason, the other only
+    // the frozen baseline value.
+    if (row.state === RECOVERY_COMPARISON_STATES.NOT_COMPARABLE || row.state === RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED) continue;
     for (const metric of row.metrics || []) shown.add(metric.metric);
   }
   const lines = ['top_load', 'volume'].filter(m => shown.has(m)).map(m => METRIC_EXPLANATIONS[m]);

@@ -78,8 +78,12 @@ export function WeekIndexRow({ block, week, notesById, onNavigate }) {
 // (`week_name`) — that work exists, it just cannot be scored.
 export function deriveTrainedElsewhere(weekResults, selectedWeek) {
   const map = new Map();
+  // An unreadable/missing week's work is unknown, so "never trained" cannot be
+  // claimed while one exists.
+  let unreadable = false;
   for (const w of weekResults) {
-    if (!selectedWeek || w.week_id === selectedWeek.week_id || w.status !== RECOVERY_WEEK_STATUS.OK) continue;
+    if (!selectedWeek || w.week_id === selectedWeek.week_id) continue;
+    if (w.status !== RECOVERY_WEEK_STATUS.OK) { unreadable = true; continue; }
     for (const row of w.exercises || []) {
       const logged = row.state === RECOVERY_COMPARISON_STATES.BASELINE_MET
         || row.state === RECOVERY_COMPARISON_STATES.REBUILDING
@@ -90,7 +94,7 @@ export function deriveTrainedElsewhere(weekResults, selectedWeek) {
       map.set(row.key, list);
     }
   }
-  return map;
+  return { weeks: map, unreadable };
 }
 
 export function weekSelectionCaption(weekResults, selectedWeek) {

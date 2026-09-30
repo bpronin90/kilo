@@ -1776,4 +1776,25 @@ describe('AnalyticsRecoverySection — per-week vs block state (#1193)', () => {
     expect(hasText(root, '2 linked weeks. Showing Week 2; pick a week')).toBe(true);
     expect(hasText(root, 'compared with the baseline')).toBe(false);
   });
+
+  test('an unreadable other week blocks the "never trained" claim', () => {
+    const absent = mockRow({ key: 'pull-up', name: 'Pull-up', state: RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED, exercise_class: 'reps' });
+    deriveRecoveryComparison.mockReturnValueOnce(mockComparison({ weeks: [
+      mockWeek({ week_id: 'rw1', week_number: 1, status: RECOVERY_WEEK_STATUS.NOTE_UNREADABLE }),
+      mockWeek({ week_id: 'rw2', week_number: 2, exercises: [absent] }),
+    ] }));
+    const root = setup({ blocks: [block()], weeks: [week(1, 'n1'), week(2, 'n2')], notes: [] }).root;
+    expandDetails(root);
+    expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not reintroduced. Not trained in any readable linked week'))).toBe(true);
+  });
+
+  test('the Total work scope note is not shown when only baseline values are on screen', () => {
+    const root = setup({
+      blocks: [block()],
+      weeks: [week(1, 'note-w1')],
+      notes: [note('note-w1', '-Chin-up\n- 8,8')],
+    }).root;
+    expandDetails(root);
+    expect(hasText(root, 'Total work is per exercise')).toBe(false);
+  });
 });
