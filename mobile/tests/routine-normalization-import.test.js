@@ -205,6 +205,41 @@ describe('descriptor comment moved out of a corrected header (#1201)', () => {
   });
 });
 
+describe('owner regression fixture: one intended header correction (#1210)', () => {
+  const AUTHORITY = { id: 'auth', title: 'Summer 2026 Routine', raw_text: 'MONDAY — Push\n+LIFTING (~30 min)\n-DB Bench Press 3x6-8\n100 8,8,7\n-Lateral Raise 2x12\n25 12,12' };
+  const TARGET = { id: 'rehab', title: 'Rehab 3', raw_text: 'MONDAY — Push\n+LIFTING\n-DB Bench press 3x6-8\n85 8,8 90 8\n-Lateral Raise 2x12\n20 12,12\n-Squat 3x8\n95 10, 165 8,8,8\n-- keep it slow\n---\nTUESDAY — Pull\n-Dead bugs 2x10\n' };
+  const snap = { authority: AUTHORITY, targets: [TARGET] };
+  const notes = [AUTHORITY, TARGET];
+  const FIXED = TARGET.raw_text.replace('DB Bench press', 'DB Bench Press');
+  const GOOD = FIXED.trimEnd();
+  const preview = out => buildNormalizationPreview(`Target routine 1: Rehab 3\n${out}`, snap, notes);
+
+  test('exactly one mapping is proposed and everything else stays byte-identical', () => {
+    const p = preview(GOOD);
+    expect(p.mappings).toEqual([expect.objectContaining({ oldName: 'DB Bench press', newName: 'DB Bench Press' })]);
+    expect(applySelectedChanges(p.entries[0], new Set(p.mappings.map(m => m.key)))).toBe(FIXED);
+  });
+
+  test('an unchanged reply proposes no change and writes nothing', () => {
+    const p = preview(TARGET.raw_text);
+    expect(p.entries[0].changes).toEqual([]);
+    expect(p.mappings).toEqual([]);
+    expect(applySelectedChanges(p.entries[0], new Set())).toBeNull();
+  });
+
+  test('an incorrect rename of an ambiguous header is listed and stays unapplied when deselected', () => {
+    const p = preview(GOOD.replace('-Squat 3x8', '-Single-Leg Press 3x8'));
+    expect(p.mappings.map(m => `${m.oldName}>${m.newName}`)).toEqual(['DB Bench press>DB Bench Press', 'Squat>Single-Leg Press']);
+    expect(applySelectedChanges(p.entries[0], new Set([p.mappings[0].key]))).toBe(FIXED);
+  });
+
+  test('a rename that also edits a prescription, set, comment, or boundary is rejected', () => {
+    for (const bad of [GOOD.replace('3x6-8', '3x8'), GOOD.replace('85 8,8', '95 8,8'), GOOD.replace('keep it slow', 'go fast'), GOOD.replace('---\n', ''), GOOD.replace('+LIFTING', '+LIFT')]) {
+      expect(preview(bad).entries[0].problems.length).toBeGreaterThan(0);
+    }
+  });
+});
+
 describe('saveWorkoutNoteTextIfUnchanged', () => {
   beforeEach(async () => { await Storage.replaceWorkoutNotesRaw([]); });
 

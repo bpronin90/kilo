@@ -36,7 +36,11 @@ describe('routine prompt builders', () => {
     expect(prompt).toContain('with the authoritative name exactly; do not keep header suffixes or other descriptor text in the header');
     expect(prompt).toContain('move that text into a "-- " comment line (two dashes and a space) directly under that exercise\'s logged sets');
     expect(prompt).toContain('never becomes part of the exercise header');
-    expect(prompt).toContain('leave it unchanged');
+    expect(prompt).toContain('only when you have a high-confidence match');
+    expect(prompt).toContain('merely related or similar, leave that header exactly as it is');
+    expect(prompt).toContain('only edit allowed is the name portion of a matching exercise header');
+    expect(prompt).toContain('order, day headings, section markers');
+    expect(prompt).toContain('must be returned completely unchanged');
     expect(prompt).toContain(CURRENT.raw_text);
     expect(prompt).toContain(TARGET.raw_text);
     expect(prompt).toContain('Label each result with its exact reference label');
@@ -163,6 +167,15 @@ describe('RoutinePromptToolsScreen', () => {
       await act(async () => { button(tree.root, 'Apply normalized names').props.onPress(); });
       expect(saveText).toHaveBeenCalledWith('target', TARGET.raw_text, TARGET.raw_text.replace('-Bench press', '-Bench Press'));
       expect(text(tree.root)).toContain('Updated Target routine 1: Upper.');
+    });
+
+    test('a target returned unchanged is shown as having no proposed change', async () => {
+      const saveText = jest.fn().mockResolvedValue('saved');
+      const tree = await setup({ saveText });
+      await paste(tree, 'Target routine 1: Upper\n' + TARGET.raw_text);
+      expect(text(tree.root)).toContain('No proposed change. This routine is returned unchanged.');
+      expect(button(tree.root, 'Apply normalized names').props.disabled).toBe(true);
+      expect(saveText).not.toHaveBeenCalled();
     });
 
     test('a failed save is reported and can be retried without re-writing saved notes', async () => {
