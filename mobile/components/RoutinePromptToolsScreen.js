@@ -205,7 +205,7 @@ function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile, canPic
               const next = applySelectedChanges(entry, selectedKeys);
               return <Pressable key={entry.id} style={styles.choice} onPress={() => toggle(setOffTargets, entry.id)} accessibilityRole="checkbox" accessibilityState={{ checked }} accessibilityLabel={`Update Target routine ${entry.number}: ${entry.title}`}>
                 <Text style={styles.choiceTitle}>{checked ? '✓ ' : ''}Target routine {entry.number}: {entry.title}</Text>
-                <Text selectable style={styles.prompt} testID={`normalization-preview-${entry.number}`}>{next ?? 'No selected changes.'}</Text>
+                <Text selectable style={styles.prompt} testID={`normalization-preview-${entry.number}`}>{entry.changes.length === 0 ? 'No proposed change. This routine is returned unchanged.' : (next ?? 'No selected changes.')}</Text>
               </Pressable>;
             })}
           </View>
