@@ -831,13 +831,12 @@ meters; Fatigue keeps `SessionGauge` + its check-in card.
 
 Progressive disclosure (#758, R5b): the section answers "how close am I to my
 normal training?" before it shows any evidence. Reading order inside the block
-card is **identity caption → hero/summary → week selector → details
-disclosure → provenance**, and both disclosures start collapsed.
+card is **hero/summary → week selector → details disclosure → bottom
+context (`Baseline: {routine} · {dates}`, then the reason)**, and both disclosures start collapsed.
 
 | Element | Property | Value |
 |---|---|---|
-| Identity caption | fontSize / weight | `13` / `700`, `textMuted` — `Week N · {routine}`, or `Baseline: {routine}` before any week is logged |
-| Hero count | style | `HeroMetric.statPrimary`, `colors.accentText` — `X of Y`, never a composite score |
+| Hero count | style | Same as Weight Trends `weightValueLarge` (#1219): KUA `metric-display-mobile` `32`/`36` `onSurface`; legacy `36`/`800` `accentText` — `X of Y`, never a composite score; the first in-card content, no title-like caption above it |
 | Hero caption | fontSize / weight | `13` / `600`, uppercase, `letterSpacing: 0.5`, `textMuted` |
 | Hero/summary group | accessibility | `accessible` + `accessibilityLabel` + `accessibilityLiveRegion="polite"` so a week change is announced without scrolling |
 | Summary line | fontSize | `13`, `textMuted` — `Week N · <non-zero states>` |
@@ -846,7 +845,7 @@ disclosure → provenance**, and both disclosures start collapsed.
 | Details collapse | icon | `MaterialIcons` `expand-more`/`expand-less`, `18`, `textMuted` (app-wide convention) |
 | Metric legend | fontSize / lineHeight | `12` / `17`, `textMuted` |
 | **State group header** | fontSize / weight | `11` / `800`, uppercase, `letterSpacing: 0.5`, `textMuted`, `accessibilityRole="header"` — `{State} (N)` |
-| Provenance line | fontSize | `12`, `textMuted` — card's last line: `Started {date}` (active) or `{start} – {end}` (completed) |
+| Bottom context | fontSize | `13`, `textMuted` — `Baseline: {routine} · Started {date}` (active) or `Baseline: {routine} · {start} – {end}` (completed), then `Reason: …` / `Add a reason` beneath it (`minHeight: 44` target); shared `Card` chrome, no local gap |
 | Completed-block history | default | collapsed, summary header states the count and the latest block |
 
 **State group header** (R5b, #793) is the pattern that replaced the removed

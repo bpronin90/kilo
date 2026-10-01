@@ -143,7 +143,7 @@ describe('#1052 refactor — export and boundary parity', () => {
   test('the extracted stylesheet still carries the keys every state depends on', () => {
     const styles = createStyles(LightColors);
     for (const key of [
-      'container', 'card', 'stateBanner', 'identityCaption', 'summaryLine',
+      'container', 'stateBanner', 'summaryLine',
       'chip', 'detailsPanel', 'exerciseRow', 'metricCell',
       'historyPanel', 'weekIndexRow', 'nonMedicalText', 'provenanceText',
     ]) {
