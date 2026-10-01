@@ -198,13 +198,9 @@ export function BlockEvidence({
 
   return (
     <Card style={styles.card}>
-      {/* Card header (#1217): the same identity-first 18sp/700 title tier the
-          sibling Analytics sections use. The routine name is secondary context
-          beneath it, never the header itself. Non-interactive. */}
-      <View style={styles.cardHeaderBlock}>
-        <Text style={styles.cardHeader} accessibilityRole="header">Recovery</Text>
-        <Text style={styles.identityCaption}>{identityCaption}</Text>
-      </View>
+      {/* The section's only Recovery header is the outer SectionTitle (#1217);
+          the routine name is a quiet secondary caption, never a card header. */}
+      <Text style={styles.identityCaption}>{identityCaption}</Text>
       {/* The optional reason (#872), on the active and the completed block
           alike — this card is the same evidence surface for both. Rendered
           only when the block carries one, so a block started without an

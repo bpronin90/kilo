@@ -40,16 +40,8 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   card: {
     gap: 12,
   },
-  // #1217: top summary uses three text tiers — this header (18/700, the shared
-  // SectionTitle scale), the 28sp hero, and 13sp supporting captions.
-  cardHeaderBlock: {
-    gap: 2,
-  },
-  cardHeader: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: kua ? kua.onSurface : colors.text,
-  },
+  // #1217: top summary uses three text tiers — the outer SectionTitle (18/700),
+  // the 28sp hero, and 13sp supporting captions like this one.
   identityCaption: {
     fontSize: 13,
     fontWeight: '600',
