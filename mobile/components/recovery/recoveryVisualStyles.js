@@ -39,7 +39,7 @@ export const createVisualStyles = (colors, kua = null) => {
     changeLabel: { fontSize: 12, fontWeight: '600', color: inkMuted },
     weeksStrip: { gap: 10 },
     weekRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    weekRowLabel: { width: 56, fontSize: 12, fontWeight: '600', color: inkMuted },
+    weekRowLabel: { width: 64, fontSize: 12, fontWeight: '600', color: inkMuted },
     weekBar: {
       flex: 1,
       flexDirection: 'row',
@@ -58,6 +58,37 @@ export const createVisualStyles = (colors, kua = null) => {
       borderStyle: 'dashed',
       borderColor: border,
     },
+    // Exercise-details rows (#1219): name + status mark/word, one thin
+    // current-vs-baseline bar with its percent, and one numbers line. Same thin
+    // bar, band colors and calm weights as the card's summary above.
+    exRow: {
+      gap: 6,
+      paddingVertical: 10,
+      borderTopWidth: 1,
+      borderTopColor: border,
+    },
+    exHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    exName: { flex: 1, fontSize: 15, fontWeight: '700', color: ink },
+    exStatus: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    exStatusDot: { width: 8, height: 8, borderRadius: 4 },
+    exStatusText: { fontSize: 13, fontWeight: '600', color: inkMuted },
+    exBarRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    exBarTrack: {
+      flex: 1,
+      height: 6,
+      borderRadius: 3,
+      overflow: 'hidden',
+      backgroundColor: track,
+    },
+    exBarFill: { height: '100%', borderRadius: 3 },
+    exPercent: { width: 44, textAlign: 'right', fontSize: 13, fontWeight: '800', color: ink },
+    exNumbers: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 2 },
+    exNumberText: { fontSize: 13, color: inkMuted },
+    rosterBlock: { gap: 8, paddingTop: 2 },
+    rosterTrack: { height: 6, borderRadius: 3, overflow: 'hidden', backgroundColor: track },
+    rosterStat: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
+    rosterNum: { fontSize: 13, fontWeight: '800', color: ink },
+    exNote: { fontSize: 13, color: inkMuted },
     weekNoteText: { fontSize: 12, fontWeight: '600', color: inkMuted },
   });
 };

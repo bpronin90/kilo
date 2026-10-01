@@ -13,36 +13,13 @@ import {
 import {
   deriveRecoveryBandSeries,
   deriveRecoveryMovement,
-  deriveRecoveryTrainedRows,
   deriveRecoveryWeekBands,
 } from '../../lib/data/recoveryReturnBands';
-import { MetricLegend, WeekEvidence, WeekUnavailableNotice } from './RecoveryStateGroups';
+import { WeekEvidence, WeekUnavailableNotice } from './RecoveryStateGroups';
+import { WeekPicker } from './RecoveryWeekPicker';
 import { deriveTrainedElsewhere } from './RecoveryWeekIndex';
 import { createStyles } from './analyticsRecoveryStyles';
-import { RecoveryBandBar, RecoveryChangeVisual, RecoveryHero, RecoveryWeeksStrip } from './RecoveryVisuals';
-
-// #697 state words, used only for the below-four-trained-lifts sparse
-// sentence and the details-panel group headings — permitted vocabulary
-// (#1023 v2 §8), unchanged from the detail row it names.
-const STATE_LABEL = Object.freeze({
-  baseline_met: 'at or above baseline',
-  rebuilding: 'rebuilding',
-  not_comparable: "can't compare",
-  added_during_recovery: 'added during recovery',
-});
-
-// One-line week summary inside the details panel; zero-count states are dropped
-// and `Baseline met` is absent (it is the hero).
-function _summaryLine(weekLabel, summary) {
-  if (!weekLabel) return null;
-  const parts = [weekLabel];
-  const add = (count, noun) => { if (count > 0) parts.push(`${count} ${noun}`); };
-  add(summary?.rebuilding, 'rebuilding');
-  add(summary?.not_reintroduced, 'not reintroduced');
-  add(summary?.not_comparable, 'not comparable');
-  add(summary?.added_during_recovery, 'added during recovery');
-  return parts.join(' · ');
-}
+import { RecoveryBandBar, RecoveryChangeVisual, RecoveryHero, RecoveryRosterSummary, RecoveryWeeksStrip } from './RecoveryVisuals';
 
 // Every piece of state below — selected week, disclosure — is a view onto ONE
 // block, so the caller mounts this keyed by `block.id`. Reusing the instance
@@ -134,11 +111,9 @@ export function BlockEvidence({
   const addedCount = selectedWeek ? (selectedWeek.added || []).length : 0;
   const totalRows = totalBaselineExercises + addedCount;
   const weekLabel = selectedWeek ? `Week ${selectedWeek.week_number}` : null;
-  // Folded into the collapsed "Exercise details" header instead of the first
-  // screenful (#1029 §10c).
-  const summaryLine = _summaryLine(weekLabel, selectedWeek?.summary);
-  // Bottom context line (#1219): routine + dates. The hero names the selected
-  // week, so the bands above are never ambiguous about which week they describe.
+  // Bottom context line (#1219): dates (and the routine only when the hero does
+  // not already name it). The hero names the selected week, so the bands above
+  // are never ambiguous about which week they describe.
   const provenance = isActive
     ? `Started ${formatDate(block.started_at)}`
     : `${formatDate(block.started_at)} – ${formatDate(block.completed_at)}`;
@@ -154,20 +129,6 @@ export function BlockEvidence({
   const trained = bands.trained;
   const rosterSize = bands.roster_size;
   const notTrainedCount = hasBands ? (bands.buckets.not_trained_yet || 0) : 0;
-  // Below four trained lifts, no bucket bars: one plain sentence names the
-  // lift(s) and their state, with the denominator in the sentence itself.
-  const sparse = hasBands && trained > 0 && trained < 4;
-  // Same source of truth as `bands`/`trained` above — never a parallel filter
-  // over `selectedWeek.exercises` (#1029 review finding 1: that would let a
-  // `baseline_value_unusable` row be named even though it is outside the
-  // roster/denominator this sentence itself states).
-  const trainedExercises = deriveRecoveryTrainedRows(selectedWeek);
-  const sparseSentence = sparse
-    ? `${trainedExercises.map(row => `${row.name} (${STATE_LABEL[row.state] || row.state})`).join(', ')} — ${trained} of ${rosterSize} roster exercises trained.`
-    : null;
-  const trainedDenominatorCaption = hasBands
-    ? `Trained this week: ${trained} of ${rosterSize} roster exercises${notTrainedCount > 0 && !sparse ? ` · ${notTrainedCount} not trained yet` : ''}`
-    : null;
 
   // Movement since the most recent qualifying earlier week. Never derived off
   // an unverified/stale snapshot (#1023 v2 §4); stale shows nothing rather than
@@ -178,9 +139,6 @@ export function BlockEvidence({
       : null
   ), [stateStale, selectedWeek, weekResults]);
   const movementUnavailable = !movement && !stateStale && hasBands && !!weekLabel && (selectedWeek?.week_number || 0) > 1;
-  const mostCommonGapLine = hasBands && bands.most_common_gap
-    ? `Most common gap: ${bands.most_common_gap}`
-    : null;
 
   // Band strip (#1023 v2 §3/§10c) — one small stacked mini-bar per live week,
   // Analytics-only, separate from the current-week bucket rows above.
@@ -189,6 +147,9 @@ export function BlockEvidence({
   // Even a baseline-empty week still has something to say if it carries
   // recovery-only work: the merged clause line names it, with no hero above it.
   const showBandsRegion = selectedWeek && (totalBaselineExercises > 0 || addedCount > 0);
+  // The hero label names the anchor routine (#1219) whenever it shows a count;
+  // only then does the bottom line stop repeating it.
+  const heroNamesRoutine = !!showBandsRegion && hasBands && !!weekLabel && trained > 0;
   return (
     <Card>
       {/* The section's only Recovery header is the outer SectionTitle (#1217);
@@ -226,7 +187,7 @@ export function BlockEvidence({
             {showBandsRegion && (
               <View style={styles.summaryBlock}>
                 {hasBands && !!weekLabel && (
-                  <RecoveryHero weekLabel={weekLabel} atOrAbove={bands.buckets.at_or_above || 0} trained={trained} />
+                  <RecoveryHero weekLabel={weekLabel} atOrAbove={bands.buckets.at_or_above || 0} trained={trained} routineTitle={routineTitle} />
                 )}
                 {movementUnavailable && (
                   <Text testID="recovery-movement" style={styles.summaryLine}>Not enough matched lifts to compare weeks yet.</Text>
@@ -246,26 +207,11 @@ export function BlockEvidence({
           </View>
 
           {weekResults.length > 1 && (
-            <View style={styles.chipRow}>
-              <Text style={styles.chipRowLabel}>Week</Text>
-              {weekResults.map((w) => {
-                const selected = selectedWeek && w.week_id === selectedWeek.week_id;
-                return (
-                  <Pressable
-                    key={w.week_id}
-                    onPress={() => setSelectedWeekId(w.week_id)}
-                    style={[styles.chip, selected ? styles.chipSelected : null]}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={`Week ${w.week_number}${w.completed_at ? ', completed' : ''}`}
-                  >
-                    <Text style={[styles.chipText, selected ? styles.chipTextSelected : null]}>
-                      {w.week_number}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            <WeekPicker
+              weeks={weekResults}
+              selectedWeekId={selectedWeek ? selectedWeek.week_id : null}
+              onSelect={setSelectedWeekId}
+            />
           )}
 
           {bandSeries.length > 1 && <RecoveryWeeksStrip series={bandSeries} />}
@@ -297,15 +243,18 @@ export function BlockEvidence({
 
               {detailsExpanded && (
                 <View style={styles.detailsBody}>
-                  {/* The removed first-screenful clause line, folded in here
-                      (#1029 §10c). */}
-                  {!!summaryLine && <Text style={styles.summaryLine}>{summaryLine}</Text>}
-                  {/* Roster, not-trained and most-common-gap facts moved here
-                      from the overview (#1209). */}
-                  {!!trainedDenominatorCaption && <Text style={styles.summaryLine}>{trainedDenominatorCaption}</Text>}
-                  {!!sparseSentence && <Text testID="recovery-bands-sparse" style={styles.summaryLine}>{sparseSentence}</Text>}
-                  {!!mostCommonGapLine && <Text style={styles.summaryLine}>{mostCommonGapLine}</Text>}
-                  <MetricLegend rows={weekRows} weekNumber={selectedWeek.week_number} />
+                  {/* Visual-first (#1219): each row carries its own status mark,
+                      bar and numbers, so the clause-count line, sparse sentence
+                      and metric legend are gone. The roster denominator and
+                      most-common-gap facts are one compact bar + stat row. */}
+                  {hasBands && (
+                    <RecoveryRosterSummary
+                      trained={trained}
+                      rosterSize={rosterSize}
+                      notTrained={notTrainedCount}
+                      gap={bands.most_common_gap}
+                    />
+                  )}
                   <WeekEvidence rows={weekRows} unit={unit} weekNumber={selectedWeek.week_number} elsewhere={trainedElsewhere} />
                 </View>
               )}
@@ -340,7 +289,7 @@ export function BlockEvidence({
           Training numbers only. Not a medical judgment — only you end a Recovery block.
         </Text>
       )}
-      <Text style={styles.provenanceText}>{`Baseline: ${routineTitle} · ${provenance}`}</Text>
+      <Text style={styles.provenanceText}>{heroNamesRoutine ? provenance : `Baseline: ${routineTitle} · ${provenance}`}</Text>
       {/* The optional reason (#872), on the active and the completed block
           alike — this card is the same evidence surface for both. Rendered
           only when the block carries one, so a block started without an

@@ -18,6 +18,7 @@ const BAND_COLOR_TOKEN = Object.freeze({
   rebuilding: 'cautionText',
   early: 'error',
   cannot_compare: 'textMuted',
+  not_trained_yet: 'textMuted',
 });
 
 // `cautionText` has no KUA equivalent in any palette; the rest map directly.
@@ -53,15 +54,28 @@ function Segments({ buckets, colors, kua, style }) {
   );
 }
 
+// The routine anchors the hero label (#1219): "at or above <routine> baseline".
+// The visible name is cut at a sensible length so the label stays on a phone
+// line; the complete name always rides on the accessible label.
+export const ROUTINE_LABEL_MAX = 24;
+export function routineLabel(title) {
+  const full = (title || '').trim() || 'Untitled Routine';
+  const visible = full.length > ROUTINE_LABEL_MAX
+    ? `${full.slice(0, ROUTINE_LABEL_MAX - 1).trimEnd()}…`
+    : full;
+  return { full, visible };
+}
+
 // Hero: the one dominant element. A big factual number and one plain label;
 // the full sentence rides on the accessible label so nothing is lost to
 // screen readers. `trained === 0` has no number to show, only the plain fact.
-export function RecoveryHero({ weekLabel, atOrAbove, trained }) {
+export function RecoveryHero({ weekLabel, atOrAbove, trained, routineTitle }) {
   const { styles } = useVisual();
   const empty = trained === 0;
+  const { full, visible } = routineLabel(routineTitle);
   const label = empty
     ? `${weekLabel}: no roster exercises trained yet`
-    : `${weekLabel}: ${atOrAbove} of ${trained} trained exercises at or above baseline`;
+    : `${weekLabel}: ${atOrAbove} of ${trained} trained exercises at or above ${full} baseline`;
   return (
     <View testID="recovery-hero" style={styles.hero} accessible accessibilityLabel={label}>
       <Text style={styles.heroWeek}>{weekLabel}</Text>
@@ -70,7 +84,7 @@ export function RecoveryHero({ weekLabel, atOrAbove, trained }) {
       ) : (
         <>
           <Text style={styles.heroNumber}>{`${atOrAbove} of ${trained}`}</Text>
-          <Text style={styles.heroLabel}>at or above baseline</Text>
+          <Text style={styles.heroLabel} numberOfLines={2}>{`at or above ${visible} baseline`}</Text>
         </>
       )}
     </View>
@@ -102,6 +116,38 @@ export function RecoveryBandBar({ buckets, trained, weekLabel }) {
     <View testID="recovery-bands-rows" style={styles.barBlock} accessible accessibilityLabel={label}>
       <Segments buckets={buckets} colors={colors} kua={kua} style={styles.segmentBar} />
       <BandLegend bands={populated} colors={colors} kua={kua} styles={styles} />
+    </View>
+  );
+}
+
+// Roster summary at the head of the exercise details (#1219): one thin bar of
+// trained-vs-roster plus a compact stat row, replacing the two sentence lines
+// ("Trained this week: 7 of 9 roster exercises · 2 not trained yet", "Most
+// common gap: …"). Same 13sp tier as the exercise rows (800 number, 600 label);
+// the full wording rides on the accessible label.
+export function RecoveryRosterSummary({ trained, rosterSize, notTrained, gap }) {
+  const { colors, kua, styles } = useVisual();
+  if (!rosterSize) return null;
+  const fill = Math.max(0, Math.min(100, Math.round((trained / rosterSize) * 100)));
+  const label = `Trained this week: ${trained} of ${rosterSize} roster exercises${notTrained > 0 ? `, ${notTrained} not trained yet` : ''}.${gap ? ` Most common gap: ${gap}.` : ''}`;
+  const stats = [
+    { n: String(trained), text: 'trained' },
+    ...(notTrained > 0 ? [{ n: String(notTrained), text: 'not yet' }] : []),
+    ...(gap ? [{ n: null, text: `Gap: ${gap}` }] : []),
+  ];
+  return (
+    <View testID="recovery-roster-summary" style={styles.rosterBlock} accessible accessibilityLabel={label}>
+      <View testID="recovery-roster-bar" style={styles.rosterTrack}>
+        <View style={[styles.exBarFill, { width: `${fill}%`, backgroundColor: kua ? kua.primary : colors.accentText }]} />
+      </View>
+      <View style={styles.exNumbers}>
+        {stats.map(st => (
+          <View key={st.text} style={styles.rosterStat}>
+            {st.n != null && <Text style={styles.rosterNum}>{st.n}</Text>}
+            <Text style={styles.exStatusText}>{st.text}</Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }

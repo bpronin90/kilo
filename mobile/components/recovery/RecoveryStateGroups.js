@@ -1,11 +1,13 @@
-import React, { useMemo, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import React, { useMemo } from 'react';
+import { Text, View } from 'react-native';
 import { useTheme } from '../../theme/ThemeContext';
 import { displayWeight, formatLiftWeightValue } from '../../lib/units';
 import { formatDuration } from '../../lib/format';
 import { RECOVERY_COMPARISON_STATES, RECOVERY_WEEK_STATUS } from '../../lib/data/recoveryAnalytics';
+import { deriveRecoveryWeekBands } from '../../lib/data/recoveryReturnBands';
 import { createStyles } from './analyticsRecoveryStyles';
+import { createVisualStyles } from './recoveryVisualStyles';
+import { bandColor } from './RecoveryVisuals';
 
 // "Total work" replaces the unexplained "Volume" (#758): the number is a sum of
 // load × reps, and the label now says so rather than borrowing a training term
@@ -17,28 +19,18 @@ const METRIC_LABELS = Object.freeze({
   total_seconds: 'Time',
 });
 
-// Shown with the details, so the two weighted dimensions are never read as an
-// all-time max or an estimated 1RM (#758). Both describe exactly what #697
-// computes: the heaviest completed working set, and load × reps summed over the
-// completed working sets of that week.
-const METRIC_EXPLANATIONS = Object.freeze({
-  top_load: 'Load — the heaviest completed working set that week. Not an all-time max or an estimated 1RM.',
-  volume: 'Total work — this exercise\'s load × reps across the completed working sets of the selected week. Per exercise, per week; not a block total.',
-});
-
+// Accessible-label state words (the full sentence each row speaks).
 const STATE_META = Object.freeze({
-  [RECOVERY_COMPARISON_STATES.BASELINE_MET]: { label: 'Baseline met', dot: 'success' },
-  [RECOVERY_COMPARISON_STATES.REBUILDING]: { label: 'Rebuilding', dot: 'caution' },
-  [RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED]: { label: 'Not reintroduced', dot: 'muted' },
-  [RECOVERY_COMPARISON_STATES.NOT_COMPARABLE]: { label: 'Not comparable', dot: 'error' },
-  [RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY]: { label: 'Added during recovery', dot: 'accent' },
+  [RECOVERY_COMPARISON_STATES.BASELINE_MET]: { label: 'Baseline met' },
+  [RECOVERY_COMPARISON_STATES.REBUILDING]: { label: 'Rebuilding' },
+  [RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED]: { label: 'Not reintroduced' },
+  [RECOVERY_COMPARISON_STATES.NOT_COMPARABLE]: { label: 'Not comparable' },
+  [RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY]: { label: 'Added during recovery' },
 });
 
-// Two forms of the same fact (#821). The panel was carrying a full sentence on
-// every un-comparable row, which is what made a dense evidence surface read as
-// a wall of prose. The short form is what a sighted reader scans; the long form
-// is unchanged and still spoken, because a screen-reader user cannot glance at
-// the surrounding table to infer what "No comparable metric" meant.
+// Two forms of the same fact (#821). The short form is what a sighted reader
+// scans; the long form is still spoken, because a screen-reader user cannot
+// glance at the surrounding rows to infer what "No comparable metric" meant.
 const UNAVAILABLE_REASON_TEXT = Object.freeze({
   exercise_class_changed: 'Logged as a different kind of exercise than the baseline.',
   no_comparable_metric: "This week's entry has no usable Load, Total work, Reps, or Time value.",
@@ -51,12 +43,10 @@ const UNAVAILABLE_REASON_SHORT = Object.freeze({
   baseline_value_unusable: 'Baseline unusable',
 });
 
-// Replaces the removed status-filter chips (#793/R5b): every row is always
-// shown, grouped under a counted, screen-reader-navigable heading instead of
-// hidden behind a mode the user has to enter and exit. Baseline-met leads
-// (it answers "which exercises are back"), then the R3a clause order
-// (rebuilding, not reintroduced, not comparable) that already governs the
-// merged summary line, then added-during-recovery work last.
+// Rows are ordered by state instead of sitting under counted headings (#1219):
+// every row now carries its own band mark and status word, so a heading would
+// only repeat it. Baseline-met leads (it answers "which exercises are back"),
+// then rebuilding, not reintroduced, not comparable, then added work last.
 const DETAIL_GROUP_ORDER = Object.freeze([
   RECOVERY_COMPARISON_STATES.BASELINE_MET,
   RECOVERY_COMPARISON_STATES.REBUILDING,
@@ -64,6 +54,17 @@ const DETAIL_GROUP_ORDER = Object.freeze([
   RECOVERY_COMPARISON_STATES.NOT_COMPARABLE,
   RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY,
 ]);
+
+// Plain-word status shown beside the band-colored mark (#1219) — never color
+// alone, no abbreviations. Words follow the card's own band legend.
+const BAND_STATUS_WORD = Object.freeze({
+  at_or_above: 'At or above baseline',
+  close: 'Close to baseline',
+  rebuilding: 'Rebuilding',
+  early: 'Early',
+  cannot_compare: "Can't compare",
+  not_trained_yet: 'Not trained yet',
+});
 
 function _formatMetricNumber(metricKey, value, unit) {
   if (value === null || value === undefined) return '—';
@@ -76,8 +77,8 @@ function _formatMetricNumber(metricKey, value, unit) {
 
 // Full accessible description of one exercise row, for VoiceOver/TalkBack.
 // The row collapses its children into a single accessible element (below), so
-// the state chip alone is not enough — the Load/Volume/Reps/Time evidence and
-// any unavailable/not-reintroduced explanation must be spoken too, since that
+// the status alone is not enough — the Load/Volume/Reps/Time evidence and any
+// unavailable/not-reintroduced explanation must be spoken too, since that
 // evidence is the entire point of this surface (#698 review).
 function _absentNote(row, weekNumber, elsewhere) {
   const weeks = elsewhere?.weeks.get(row.key);
@@ -133,91 +134,94 @@ function _rowAccessibilityLabel(row, unit, weekNumber, elsewhere) {
   return parts.join('. ');
 }
 
-function MetricCell({ metric, unit }) {
-  const { colors, kuaPalette: kua } = useTheme();
-  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
-  // Visual fill is capped at 100% (`cappedPct`) so a lifter who came back
-  // stronger doesn't overflow the bar, but the exact percent text is never
-  // capped — a value above baseline stays numerically visible (#698).
-  const cappedPct = Math.max(0, Math.min(metric.percent ?? 0, 100));
-  return (
-    <View style={styles.metricCell}>
-      <View style={styles.metricHeaderRow}>
-        <Text style={styles.metricLabel}>{METRIC_LABELS[metric.metric] || metric.metric}</Text>
-        <Text style={[styles.metricPercent, metric.met ? styles.metricPercentMet : null]}>
-          {metric.percent}%
-        </Text>
-      </View>
-      <View style={styles.meterTrack}>
-        <View
-          style={[
-            styles.meterFill,
-            { width: `${cappedPct}%`, backgroundColor: metric.met ? (kua ? kua.completion : colors.success) : colors.caution },
-          ]}
-        />
-      </View>
-      <Text style={styles.metricNumbers}>
-        {_formatMetricNumber(metric.metric, metric.current, unit)} / {_formatMetricNumber(metric.metric, metric.baseline, unit)}
-      </Text>
-    </View>
-  );
+// The row's band comes from the existing return-band derivation run on this one
+// row (never a second threshold implementation). Added work has no band and
+// takes the neutral accent mark.
+export function rowBandId(row) {
+  if (row.state === RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY) return null;
+  const { buckets } = deriveRecoveryWeekBands({ status: RECOVERY_WEEK_STATUS.OK, exercises: [row] });
+  return Object.keys(buckets).find(id => buckets[id] > 0) || 'cannot_compare';
+}
+
+// One bar per row: the limiting dimension (lowest ratio), the same selection
+// the band itself is decided on — a choice among existing metrics, not a mean.
+function _barMetric(row) {
+  const metrics = row.metrics || [];
+  if (metrics.length === 0) return null;
+  const score = m => (typeof m.ratio === 'number' ? m.ratio : (m.percent ?? 0) / 100);
+  return metrics.reduce((lo, m) => (score(m) < score(lo) ? m : lo), metrics[0]);
+}
+
+function _numbers(row, unit) {
+  const metrics = row.metrics || [];
+  const label = m => METRIC_LABELS[m.metric] || m.metric;
+  if (row.state === RECOVERY_COMPARISON_STATES.BASELINE_MET || row.state === RECOVERY_COMPARISON_STATES.REBUILDING) {
+    return metrics.map(m => `${label(m)} ${_formatMetricNumber(m.metric, m.current, unit)} / ${_formatMetricNumber(m.metric, m.baseline, unit)}`);
+  }
+  if (row.state === RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY) {
+    return metrics.map(m => `${label(m)} ${_formatMetricNumber(m.metric, m.current, unit)}`);
+  }
+  if (row.state === RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED) {
+    return metrics.map(m => `Baseline ${label(m)} ${_formatMetricNumber(m.metric, m.baseline, unit)}`);
+  }
+  return [];
 }
 
 function ExerciseRow({ row, unit, weekNumber, elsewhere }) {
   const { colors, kuaPalette: kua } = useTheme();
-  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
-  const meta = STATE_META[row.state] || STATE_META[RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED];
-  const showComparedMetrics =
+  const styles = useMemo(() => createVisualStyles(colors, kua), [colors, kua]);
+  const bandId = rowBandId(row);
+  const markColor = bandId ? bandColor(bandId, colors, kua) : (kua ? kua.primary : colors.accentText);
+  const status = bandId ? BAND_STATUS_WORD[bandId] : 'Added during recovery';
+  const compared =
     row.state === RECOVERY_COMPARISON_STATES.BASELINE_MET ||
     row.state === RECOVERY_COMPARISON_STATES.REBUILDING;
-  const showAddedMetrics = row.state === RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY;
+  const barMetric = compared ? _barMetric(row) : null;
+  // Fill is capped at 100% so a lifter who came back stronger doesn't overflow
+  // the bar; the percent text is never capped (#698).
+  const fillPct = barMetric ? Math.max(0, Math.min(barMetric.percent ?? 0, 100)) : 0;
+  const numbers = _numbers(row, unit);
+  const note = row.state === RECOVERY_COMPARISON_STATES.NOT_COMPARABLE
+    ? (UNAVAILABLE_REASON_SHORT[row.unavailable_reason] || 'Could not be compared')
+    : null;
+  // Names only, never the full "— names differ, so no direct comparison was
+  // made" sentence (it stays in the accessible label).
+  const nameNote = row.likely_logged_name
+    ? `Logged as “${row.likely_logged_name}”`
+    : row.likely_baseline_name ? `Baseline has “${row.likely_baseline_name}”` : null;
 
   return (
     <View
-      style={styles.exerciseRow}
+      testID="recovery-exercise-row"
+      style={styles.exRow}
       accessible
       accessibilityLabel={_rowAccessibilityLabel(row, unit, weekNumber, elsewhere)}
     >
-      <View style={styles.exerciseRowHeader}>
-        <Text style={styles.exerciseRowName} numberOfLines={1}>{row.name}</Text>
-        <View style={styles.stateChip}>
-          <View style={[styles.stateDot, styles[`stateDot_${meta.dot}`]]} />
-          <Text style={styles.stateChipText}>{meta.label}</Text>
+      <View style={styles.exHeader}>
+        <Text style={styles.exName} numberOfLines={1}>{row.name}</Text>
+        <View style={styles.exStatus}>
+          <View testID="recovery-exercise-mark" style={[styles.exStatusDot, { backgroundColor: markColor }]} />
+          <Text style={styles.exStatusText}>{status}</Text>
         </View>
       </View>
 
-      {showComparedMetrics && (
-        <View style={styles.metricsRow}>
-          {row.metrics.map(m => <MetricCell key={m.metric} metric={m} unit={unit} />)}
+      {barMetric && (
+        <View style={styles.exBarRow}>
+          <View testID="recovery-exercise-bar" style={styles.exBarTrack}>
+            <View style={[styles.exBarFill, { width: `${fillPct}%`, backgroundColor: markColor }]} />
+          </View>
+          <Text style={styles.exPercent}>{`${barMetric.percent}%`}</Text>
         </View>
       )}
 
-      {showAddedMetrics && (
-        <View style={styles.metricsRow}>
-          {row.metrics.map(m => (
-            <View key={m.metric} style={styles.metricCell}>
-              <Text style={styles.metricLabel}>{METRIC_LABELS[m.metric] || m.metric}</Text>
-              <Text style={styles.addedMetricValue}>{_formatMetricNumber(m.metric, m.current, unit)}</Text>
-            </View>
-          ))}
+      {numbers.length > 0 && (
+        <View style={styles.exNumbers}>
+          {numbers.map(n => <Text key={n} style={styles.exNumberText}>{n}</Text>)}
         </View>
       )}
 
-      {row.state === RECOVERY_COMPARISON_STATES.NOT_COMPARABLE && (
-        <Text style={styles.unavailableText}>
-          {UNAVAILABLE_REASON_SHORT[row.unavailable_reason] || 'Could not be compared'}
-        </Text>
-      )}
-
-      {row.state === RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED && (
-        <Text style={styles.unavailableText}>
-          {`${_absentNote(row, weekNumber, elsewhere)} · Baseline · ${row.metrics.map(m => `${METRIC_LABELS[m.metric]} ${_formatMetricNumber(m.metric, m.baseline, unit)}`).join(' · ')}`}
-        </Text>
-      )}
-
-      {_mismatchNote(row) && (
-        <Text style={styles.unavailableText}>{_mismatchNote(row)}</Text>
-      )}
+      {!!note && <Text style={styles.exNote}>{note}</Text>}
+      {!!nameNote && <Text style={styles.exNote}>{nameNote}</Text>}
     </View>
   );
 }
@@ -247,93 +251,12 @@ export function WeekUnavailableNotice({ week }) {
   return null;
 }
 
-// Only the dimensions actually on screen are explained. A week of reps-only and
-// timed work has nothing to disambiguate, so it gets no legend — and neither
-// does a not-comparable row, which prints its reason instead of any metric.
-export function MetricLegend({ rows, weekNumber }) {
-  const { colors, kuaPalette: kua } = useTheme();
-  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
-  // Behind a disclosure rather than printed above every expansion (#821). The
-  // definitions still matter — they are why "Total work" replaced the
-  // undefined "Volume" in #758 — but they are read once and then known, and
-  // permanent prose at the head of a data panel is what made this surface feel
-  // like reading rather than looking. Same affordance the 1K card already uses
-  // for "How is this calculated?".
-  const [expanded, setExpanded] = useState(false);
-
-  const shown = new Set();
-  for (const row of rows) {
-    // Neither state shows this week's work: one prints a reason, the other only
-    // the frozen baseline value.
-    if (row.state === RECOVERY_COMPARISON_STATES.NOT_COMPARABLE || row.state === RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED) continue;
-    for (const metric of row.metrics || []) shown.add(metric.metric);
-  }
-  const lines = ['top_load', 'volume'].filter(m => shown.has(m)).map(m => METRIC_EXPLANATIONS[m]);
-  if (lines.length === 0) return null;
-
-  return (
-    <View style={styles.legend}>
-      {shown.has('volume') && (
-        <Text style={styles.legendText}>
-          {`Total work is per exercise, per week — not a block total. Current values are ${weekNumber == null ? 'this week\'s' : `Week ${weekNumber}'s`}; “Baseline” figures are the frozen starting value.`}
-        </Text>
-      )}
-      <Pressable
-        onPress={() => setExpanded(e => !e)}
-        style={styles.legendToggle}
-        hitSlop={8}
-        accessibilityRole="button"
-        accessibilityState={{ expanded }}
-        accessibilityLabel={expanded ? 'Hide what these measurements mean' : 'What do these measurements mean?'}
-      >
-        <Text style={styles.legendToggleText}>What do these mean?</Text>
-        <MaterialIcons
-          name={expanded ? 'expand-less' : 'expand-more'}
-          size={16}
-          color={kua ? kua.onSurfaceVariant : colors.textMuted}
-          accessible={false}
-        />
-      </Pressable>
-      {expanded && lines.map(line => <Text key={line} style={styles.legendText}>{line}</Text>)}
-    </View>
-  );
-}
-
-// One state's rows under a counted, screen-reader-navigable heading — the
-// replacement for what the removed status-filter chips did for sighted users
-// (#793/R5b). Renders nothing when this block's focused week has no rows in
-// this state, so an empty group never takes a slot.
-function StateGroup({ state, rows, unit, weekNumber, elsewhere }) {
-  const { colors, kuaPalette: kua } = useTheme();
-  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
-  if (!rows || rows.length === 0) return null;
-  const meta = STATE_META[state] || STATE_META[RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED];
-  return (
-    <View style={styles.detailGroup}>
-      <Text style={styles.detailGroupLabel} accessibilityRole="header">
-        {`${meta.label} (${rows.length})`}
-      </Text>
-      <View style={styles.rowList}>
-        {rows.map(row => <ExerciseRow key={row.key} row={row} unit={unit} weekNumber={weekNumber} elsewhere={elsewhere} />)}
-      </View>
-    </View>
-  );
-}
-
 export function WeekEvidence({ rows, unit, weekNumber, elsewhere }) {
-  const { colors, kuaPalette: kua } = useTheme();
-  const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
-  const groups = new Map();
-  for (const row of rows) {
-    const list = groups.get(row.state);
-    if (list) list.push(row);
-    else groups.set(row.state, [row]);
-  }
-
+  const ordered = DETAIL_GROUP_ORDER.flatMap(state => rows.filter(row => row.state === state));
   return (
-    <View style={styles.evidenceGroup}>
-      {DETAIL_GROUP_ORDER.map(state => (
-        <StateGroup key={state} state={state} rows={groups.get(state)} unit={unit} weekNumber={weekNumber} elsewhere={elsewhere} />
+    <View testID="recovery-exercise-list">
+      {ordered.map(row => (
+        <ExerciseRow key={row.key} row={row} unit={unit} weekNumber={weekNumber} elsewhere={elsewhere} />
       ))}
     </View>
   );

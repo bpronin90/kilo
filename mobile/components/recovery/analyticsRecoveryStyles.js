@@ -161,29 +161,29 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     fontSize: 13,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
+  // Week picker (#1219): rows never wrap on their own — RecoveryWeekPicker sizes
+  // each chip from the measured width and decides the row split.
+  chipBlock: {
+    gap: 6,
+  },
   chipRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
+    gap: 4,
   },
   chipRowLabel: {
     fontSize: 13,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    marginRight: 2,
   },
   chip: {
     minWidth: 44,
+    minHeight: 44,
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    justifyContent: 'center',
     borderRadius: 14,
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
-    minHeight: 44,
-    justifyContent: 'center',
   },
   chipSelected: {
     backgroundColor: kua ? kua.primary : colors.accent,
@@ -227,152 +227,8 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 12,
     paddingTop: 12,
   },
-  legend: {
-    gap: 4,
-  },
-  legendToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    minHeight: 44,
-  },
-  legendToggleText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  legendText: {
-    fontSize: 12,
-    lineHeight: 17,
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
   evidenceGroup: {
     gap: 16,
-  },
-  rowList: {
-    gap: 12,
-  },
-  exerciseRow: {
-    gap: 8,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: kua ? kua.surfaceBorder : colors.divider,
-  },
-  exerciseRowHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  exerciseRowName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: kua ? kua.onSurface : colors.text,
-    flex: 1,
-  },
-  stateChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  stateDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  stateDot_success: {
-    backgroundColor: kua ? kua.completion : colors.success,
-  },
-  stateDot_caution: {
-    backgroundColor: colors.caution,
-  },
-  stateDot_error: {
-    backgroundColor: kua ? kua.error : colors.error,
-  },
-  stateDot_muted: {
-    backgroundColor: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  stateDot_accent: {
-    backgroundColor: kua ? kua.primary : colors.accent,
-  },
-  stateChipText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  // Wraps instead of crushing (#821). Up to four metric cells could sit in one
-  // fixed row, so at a large font scale the label, percent and "current /
-  // baseline" line inside each one had nowhere to go. `flexWrap` plus a
-  // `minWidth` floor lets a cell drop to the next line rather than compress
-  // below the point where its numbers are readable — the same failure the
-  // Recovery category columns already had to be fixed for.
-  metricsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 16,
-  },
-  metricCell: {
-    flex: 1,
-    minWidth: 128,
-    gap: 4,
-  },
-  metricHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  metricLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  metricPercent: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: colors.cautionText,
-  },
-  metricPercentMet: {
-    color: kua ? kua.completion : colors.success,
-  },
-  meterTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
-    overflow: 'hidden',
-  },
-  meterFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  metricNumbers: {
-    fontSize: 12,
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  addedMetricValue: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: kua ? kua.onSurface : colors.text,
-  },
-  detailGroup: {
-    gap: 12,
-  },
-  detailGroupLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  unavailableText: {
-    fontSize: 12,
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    fontStyle: 'italic',
   },
   historyPanel: {
     borderRadius: 24,

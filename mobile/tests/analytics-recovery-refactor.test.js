@@ -16,10 +16,10 @@ import { AnalyticsRecoverySection } from '../components/AnalyticsRecoverySection
 import { BlockEvidence } from '../components/recovery/RecoveryEvidence';
 import { WeekIndexRow } from '../components/recovery/RecoveryWeekIndex';
 import {
-  MetricLegend,
   WeekEvidence,
   WeekUnavailableNotice,
 } from '../components/recovery/RecoveryStateGroups';
+import { WeekPicker } from '../components/recovery/RecoveryWeekPicker';
 import { createStyles } from '../components/recovery/analyticsRecoveryStyles';
 import { RecoveryInclusionToggle } from '../components/RecoveryInclusionToggle';
 import { captureRecoveryBaselineFromText } from '../lib/data/recoveryBlocks';
@@ -135,7 +135,7 @@ describe('#1052 refactor — export and boundary parity', () => {
     expect(typeof BlockEvidence).toBe('function');
     expect(typeof WeekIndexRow).toBe('function');
     expect(typeof WeekEvidence).toBe('function');
-    expect(typeof MetricLegend).toBe('function');
+    expect(typeof WeekPicker).toBe('function');
     expect(typeof WeekUnavailableNotice).toBe('function');
     expect(typeof createStyles).toBe('function');
   });
@@ -144,7 +144,7 @@ describe('#1052 refactor — export and boundary parity', () => {
     const styles = createStyles(LightColors);
     for (const key of [
       'container', 'stateBanner', 'summaryLine',
-      'chip', 'detailsPanel', 'exerciseRow', 'metricCell',
+      'chip', 'chipRow', 'chipBlock', 'detailsPanel',
       'historyPanel', 'weekIndexRow', 'nonMedicalText', 'provenanceText',
     ]) {
       expect(styles).toHaveProperty(key);
@@ -161,12 +161,11 @@ describe('#1052 refactor — the boundary renders the extracted components', () 
     expect(evidence[0].props.block.id).toBe('rb1');
   });
 
-  test('expanding details mounts the extracted WeekEvidence + MetricLegend', () => {
+  test('expanding details mounts the extracted WeekEvidence (the metric legend is gone, #1219)', () => {
     const component = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] });
     const root = component.root;
     act(() => { byLabel(root, 'Expand exercise details').props.onPress(); });
     expect(root.findAllByType(WeekEvidence)).toHaveLength(1);
-    expect(root.findAllByType(MetricLegend)).toHaveLength(1);
   });
 
   test('completed history renders one extracted WeekIndexRow per live week, in ascending week order', () => {
@@ -255,10 +254,10 @@ describe('#1052 refactor — preserved states reach the screen', () => {
     expect(hasText(component.root, 'The frozen baseline for this recovery block is unavailable.')).toBe(true);
   });
 
-  test('complete/active: an active block shows its identity caption and the non-medical line', () => {
+  test('complete/active: an active block shows the routine-anchored hero label and the non-medical line', () => {
     const component = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] });
     const root = component.root;
-    expect(hasText(root, 'Push Pull Legs')).toBe(true);
+    expect(hasText(root, 'at or above Push Pull Legs baseline')).toBe(true);
     expect(hasText(root, 'Not a medical judgment')).toBe(true);
   });
 
