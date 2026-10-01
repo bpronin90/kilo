@@ -17,14 +17,14 @@ export const WEEK_PICKER_LARGE_FONT_SCALE = 1.3;
 // its real width.
 const FALLBACK_CHROME = 68;
 
-// Pure layout decision, exported for tests. Forced-scroll conditions are
-// evaluated FIRST, then the fit checks:
-//   scroll  - 12+ weeks (13+), a large font scale, or a width too narrow for a
-//             legible grid; also 1-6 weeks whose 44dp chips cannot all fit on
-//             one row. A horizontally scrollable strip of fixed-size chips.
-//   single  - 2-6 weeks that fit one row, sized to the width (cap WEEK_CHIP_MAX)
-//   grid    - 7-12 weeks as balanced rows (sizes differ by at most one, never
-//             an orphan row), same chip sizing
+// Pure layout decision, exported for tests. Order matters:
+//   1. scroll - forced for 13+ weeks, a large font scale, or a width too narrow
+//               for three chips: a horizontally scrollable strip of fixed chips.
+//   2. single - ONE row whenever every chip fits at the 44dp minimum (any
+//               count up to 12), sized to the width (cap WEEK_CHIP_MAX).
+//   3. scroll - 1-6 weeks that do not fit one row never wrap: strip.
+//   4. grid   - 7-12 weeks that do not fit one row: balanced rows whose sizes
+//               differ by at most one (never a lone orphan chip).
 export function computeWeekPickerLayout({ count, width, fontScale = 1 }) {
   const safeWidth = Math.max(0, Math.floor(width || 0));
   const perRowMax = Math.max(1, Math.floor((safeWidth + WEEK_CHIP_GAP) / (WEEK_CHIP_MIN + WEEK_CHIP_GAP)));
