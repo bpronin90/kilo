@@ -19,15 +19,6 @@ const METRIC_LABELS = Object.freeze({
   total_seconds: 'Time',
 });
 
-// Accessible-label state words (the full sentence each row speaks).
-const STATE_META = Object.freeze({
-  [RECOVERY_COMPARISON_STATES.BASELINE_MET]: { label: 'Baseline met' },
-  [RECOVERY_COMPARISON_STATES.REBUILDING]: { label: 'Rebuilding' },
-  [RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED]: { label: 'Not reintroduced' },
-  [RECOVERY_COMPARISON_STATES.NOT_COMPARABLE]: { label: 'Not comparable' },
-  [RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY]: { label: 'Added during recovery' },
-});
-
 // Two forms of the same fact (#821). The short form is what a sighted reader
 // scans; the long form is still spoken, because a screen-reader user cannot
 // glance at the surrounding rows to infer what "No comparable metric" meant.
@@ -66,6 +57,22 @@ const BAND_STATUS_WORD = Object.freeze({
   not_trained_yet: 'Not trained yet',
 });
 
+// The row's band comes from the existing return-band derivation run on this one
+// row (never a second threshold implementation). Added work has no band and
+// takes the neutral accent mark.
+export function rowBandId(row) {
+  if (row.state === RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY) return null;
+  const { buckets } = deriveRecoveryWeekBands({ status: RECOVERY_WEEK_STATUS.OK, exercises: [row] });
+  return Object.keys(buckets).find(id => buckets[id] > 0) || 'cannot_compare';
+}
+
+// ONE mapping feeds both the visible status word and the spoken label, so a
+// screen reader hears exactly the status a sighted user sees (#1219).
+export function rowStatusWord(row) {
+  const bandId = rowBandId(row);
+  return bandId ? BAND_STATUS_WORD[bandId] : 'Added during recovery';
+}
+
 function _formatMetricNumber(metricKey, value, unit) {
   if (value === null || value === undefined) return '—';
   if (metricKey === 'top_load') return `${formatLiftWeightValue(value, unit)} ${unit}`;
@@ -77,7 +84,7 @@ function _formatMetricNumber(metricKey, value, unit) {
 
 // Full accessible description of one exercise row, for VoiceOver/TalkBack.
 // The row collapses its children into a single accessible element (below), so
-// the status alone is not enough — the Load/Volume/Reps/Time evidence and any
+// the status word alone is not enough — the Load/Volume/Reps/Time evidence and any
 // unavailable/not-reintroduced explanation must be spoken too, since that
 // evidence is the entire point of this surface (#698 review).
 function _absentNote(row, weekNumber, elsewhere) {
@@ -103,8 +110,7 @@ function _mismatchNote(row) {
 }
 
 function _rowAccessibilityLabel(row, unit, weekNumber, elsewhere) {
-  const meta = STATE_META[row.state] || STATE_META[RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED];
-  const parts = [`${row.name}, ${meta.label}`];
+  const parts = [`${row.name}, ${rowStatusWord(row)}`];
 
   if (
     row.state === RECOVERY_COMPARISON_STATES.BASELINE_MET ||
@@ -132,15 +138,6 @@ function _rowAccessibilityLabel(row, unit, weekNumber, elsewhere) {
   if (mismatch) parts.push(mismatch);
 
   return parts.join('. ');
-}
-
-// The row's band comes from the existing return-band derivation run on this one
-// row (never a second threshold implementation). Added work has no band and
-// takes the neutral accent mark.
-export function rowBandId(row) {
-  if (row.state === RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY) return null;
-  const { buckets } = deriveRecoveryWeekBands({ status: RECOVERY_WEEK_STATUS.OK, exercises: [row] });
-  return Object.keys(buckets).find(id => buckets[id] > 0) || 'cannot_compare';
 }
 
 // One bar per row: the limiting dimension (lowest ratio), the same selection
@@ -172,7 +169,7 @@ function ExerciseRow({ row, unit, weekNumber, elsewhere }) {
   const styles = useMemo(() => createVisualStyles(colors, kua), [colors, kua]);
   const bandId = rowBandId(row);
   const markColor = bandId ? bandColor(bandId, colors, kua) : (kua ? kua.primary : colors.accentText);
-  const status = bandId ? BAND_STATUS_WORD[bandId] : 'Added during recovery';
+  const status = rowStatusWord(row);
   const compared =
     row.state === RECOVERY_COMPARISON_STATES.BASELINE_MET ||
     row.state === RECOVERY_COMPARISON_STATES.REBUILDING;
