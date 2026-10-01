@@ -157,7 +157,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 12,
   },
   summaryBlock: {
-    gap: 4,
+    gap: 14,
   },
   // #1029: the denominator caption sits at the SAME weight tier as each
   // bucket row below it — a fact of equal standing, never a subordinate
@@ -165,11 +165,6 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   summaryLine: {
     fontSize: 13,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  heroText: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: kua ? kua.onSurface : colors.text,
   },
   chipRow: {
     flexDirection: 'row',
