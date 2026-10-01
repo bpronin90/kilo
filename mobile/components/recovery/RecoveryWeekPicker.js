@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { useTheme } from '../../theme/ThemeContext';
 import { createStyles } from './analyticsRecoveryStyles';
@@ -10,31 +10,36 @@ export const WEEK_CHIP_MIN = 44;
 export const WEEK_CHIP_MAX = 72;
 export const WEEK_CHIP_GAP = 4;
 export const WEEK_PICKER_MAX_GRID = 12;
+export const WEEK_PICKER_SINGLE_ROW_MAX = 6;
 // Beyond this font scale a wrapped grid of chips stops being legible.
 export const WEEK_PICKER_LARGE_FONT_SCALE = 1.3;
 // Card padding (18 x 2) + screen gutters, used only until the picker measures
 // its real width.
 const FALLBACK_CHROME = 68;
 
-// Pure layout decision, exported for tests.
-//   single  - every chip on one row, sized to fill the width (cap WEEK_CHIP_MAX)
-//   grid    - 7..12 weeks as balanced rows (no orphan row), same chip size
-//   scroll  - 12+ weeks, large font scale, or a constrained width: a
-//             horizontally scrollable strip of fixed-size chips
+// Pure layout decision, exported for tests. Forced-scroll conditions are
+// evaluated FIRST, then the fit checks:
+//   scroll  - 12+ weeks (13+), a large font scale, or a width too narrow for a
+//             legible grid; also 1-6 weeks whose 44dp chips cannot all fit on
+//             one row. A horizontally scrollable strip of fixed-size chips.
+//   single  - 2-6 weeks that fit one row, sized to the width (cap WEEK_CHIP_MAX)
+//   grid    - 7-12 weeks as balanced rows (sizes differ by at most one, never
+//             an orphan row), same chip sizing
 export function computeWeekPickerLayout({ count, width, fontScale = 1 }) {
   const safeWidth = Math.max(0, Math.floor(width || 0));
   const perRowMax = Math.max(1, Math.floor((safeWidth + WEEK_CHIP_GAP) / (WEEK_CHIP_MIN + WEEK_CHIP_GAP)));
-  const constrained = perRowMax < 3;
-  const largeFont = fontScale >= WEEK_PICKER_LARGE_FONT_SCALE;
-  if (count <= perRowMax && !constrained) {
-    return { mode: 'single', perRow: count, rows: 1, chipWidth: _chipWidth(safeWidth, count) };
+  const scroll = { mode: 'scroll', perRow: count, rows: 1, rowSizes: [count], chipWidth: WEEK_CHIP_MIN + 4 };
+  if (count > WEEK_PICKER_MAX_GRID || fontScale >= WEEK_PICKER_LARGE_FONT_SCALE || perRowMax < 3) return scroll;
+  if (count <= perRowMax) {
+    return { mode: 'single', perRow: count, rows: 1, rowSizes: [count], chipWidth: _chipWidth(safeWidth, count) };
   }
-  if (count > WEEK_PICKER_MAX_GRID || constrained || largeFont) {
-    return { mode: 'scroll', perRow: count, rows: 1, chipWidth: WEEK_CHIP_MIN + 4 };
-  }
+  // Up to six weeks never wrap: no room for one row means the strip.
+  if (count <= WEEK_PICKER_SINGLE_ROW_MAX) return scroll;
   const rows = Math.ceil(count / perRowMax);
-  const perRow = Math.ceil(count / rows);
-  return { mode: 'grid', perRow, rows, chipWidth: _chipWidth(safeWidth, perRow) };
+  const base = Math.floor(count / rows);
+  const extra = count % rows;
+  const rowSizes = Array.from({ length: rows }, (_, i) => base + (i < extra ? 1 : 0));
+  return { mode: 'grid', perRow: rowSizes[0], rows, rowSizes, chipWidth: _chipWidth(safeWidth, rowSizes[0]) };
 }
 
 function _chipWidth(width, perRow) {
@@ -42,9 +47,10 @@ function _chipWidth(width, perRow) {
   return Math.max(WEEK_CHIP_MIN, Math.min(WEEK_CHIP_MAX, fit));
 }
 
-function _chunk(items, size) {
+function _chunkBySizes(items, sizes) {
   const out = [];
-  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  let i = 0;
+  for (const size of sizes) { out.push(items.slice(i, i + size)); i += size; }
   return out;
 }
 
@@ -55,6 +61,16 @@ export function WeekPicker({ weeks, selectedWeekId, onSelect }) {
   const [measured, setMeasured] = useState(null);
   const width = measured != null ? measured : Math.max(0, windowWidth - FALLBACK_CHROME);
   const layout = computeWeekPickerLayout({ count: weeks.length, width, fontScale });
+  // In strip mode keep the selected chip in view (initial selection is the
+  // newest week, which sits at the far end).
+  const scrollRef = useRef(null);
+  const selectedIndex = weeks.findIndex(w => w.week_id === selectedWeekId);
+  useEffect(() => {
+    if (layout.mode !== 'scroll' || selectedIndex < 0 || !scrollRef.current || !scrollRef.current.scrollTo) return;
+    const pitch = layout.chipWidth + WEEK_CHIP_GAP;
+    const x = Math.max(0, selectedIndex * pitch - Math.max(0, (width - layout.chipWidth) / 2));
+    scrollRef.current.scrollTo({ x, animated: false });
+  }, [layout.mode, layout.chipWidth, selectedIndex, width]);
 
   const renderChip = (w) => {
     const selected = w.week_id === selectedWeekId;
@@ -87,6 +103,7 @@ export function WeekPicker({ weeks, selectedWeekId, onSelect }) {
       <Text style={styles.chipRowLabel}>Week</Text>
       {layout.mode === 'scroll' ? (
         <ScrollView
+          ref={scrollRef}
           testID="recovery-week-picker-scroll"
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -95,7 +112,7 @@ export function WeekPicker({ weeks, selectedWeekId, onSelect }) {
           {weeks.map(renderChip)}
         </ScrollView>
       ) : (
-        _chunk(weeks, layout.perRow).map((row, i) => (
+        _chunkBySizes(weeks, layout.rowSizes).map((row, i) => (
           <View key={i} testID={`recovery-week-picker-row-${i}`} style={styles.chipRow}>
             {row.map(renderChip)}
           </View>

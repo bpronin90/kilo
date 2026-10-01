@@ -74,13 +74,16 @@ export function RecoveryHero({ weekLabel, atOrAbove, trained, routineTitle }) {
   const empty = trained === 0;
   const { full, visible } = routineLabel(routineTitle);
   const label = empty
-    ? `${weekLabel}: no roster exercises trained yet`
+    ? `${weekLabel}: no roster exercises trained yet against ${full} baseline`
     : `${weekLabel}: ${atOrAbove} of ${trained} trained exercises at or above ${full} baseline`;
   return (
     <View testID="recovery-hero" style={styles.hero} accessible accessibilityLabel={label}>
       <Text style={styles.heroWeek}>{weekLabel}</Text>
       {empty ? (
-        <Text style={styles.heroEmpty}>Nothing trained yet</Text>
+        <>
+          <Text style={styles.heroEmpty}>Nothing trained yet</Text>
+          <Text style={styles.heroLabel} numberOfLines={2}>{`against ${visible} baseline`}</Text>
+        </>
       ) : (
         <>
           <Text style={styles.heroNumber}>{`${atOrAbove} of ${trained}`}</Text>

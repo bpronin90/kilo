@@ -147,9 +147,9 @@ export function BlockEvidence({
   // Even a baseline-empty week still has something to say if it carries
   // recovery-only work: the merged clause line names it, with no hero above it.
   const showBandsRegion = selectedWeek && (totalBaselineExercises > 0 || addedCount > 0);
-  // The hero label names the anchor routine (#1219) whenever it shows a count;
+  // The hero names the anchor routine (#1219) on every path that renders it (including zero trained);
   // only then does the bottom line stop repeating it.
-  const heroNamesRoutine = !!showBandsRegion && hasBands && !!weekLabel && trained > 0;
+  const heroNamesRoutine = !!showBandsRegion && hasBands && !!weekLabel;
   return (
     <Card>
       {/* The section's only Recovery header is the outer SectionTitle (#1217);

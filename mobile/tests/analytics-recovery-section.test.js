@@ -2129,6 +2129,44 @@ describe('AnalyticsRecoverySection — routine-anchored hero label (#1219)', () 
     }
   });
 
+  test('zero-trained hero path names the routine once and the bottom line does not repeat it', () => {
+    // Nothing from the baseline was trained: hero shows "Nothing trained yet".
+    const root = setup({
+      blocks: [block({ baseline_note_title: 'Push Pull Legs' })],
+      weeks: [week(1, 'note-w1')],
+      notes: [note('note-w1', '-Sled Push\n- 100 5,5')],
+    }).root;
+    expect(hasText(root, 'Nothing trained yet')).toBe(true);
+    expect(findAllText(root).filter(t => t.includes('Push Pull Legs'))).toEqual(['against Push Pull Legs baseline']);
+    expect(heroNode(root).props.accessibilityLabel).toBe('Week 1: no roster exercises trained yet against Push Pull Legs baseline');
+    expect(findAllText(root).some(t => t.startsWith('Baseline:'))).toBe(false);
+    expect(hasText(root, 'Started 05-01-2026')).toBe(true);
+  });
+
+  test('zero-trained hero with a long or untitled routine keeps the same single-naming rule', () => {
+    for (const [title, visibleHas, full] of [['Upper Lower Push Pull Legs Hypertrophy Block', '…', 'Upper Lower Push Pull Legs Hypertrophy Block'], ['', 'Untitled Routine', 'Untitled Routine']]) {
+      const root = setup({
+        blocks: [block({ baseline_note_title: title })],
+        weeks: [week(1, 'note-w1')],
+        notes: [note('note-w1', '-Sled Push\n- 100 5,5')],
+      }).root;
+      const named = findAllText(root).filter(t => t.startsWith('against'));
+      expect(named).toHaveLength(1);
+      expect(named[0]).toContain(visibleHas);
+      expect(heroNode(root).props.accessibilityLabel).toContain(full);
+      expect(findAllText(root).some(t => t.startsWith('Baseline:'))).toBe(false);
+    }
+  });
+
+  test('every no-hero path (missing note, unreadable note) names the routine exactly once, in the bottom line', () => {
+    const missing = setup({ blocks: [block()], weeks: [week(1, 'ghost')], notes: [] }).root;
+    const unreadable = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', 'x'.repeat(MAX_RAW_TEXT_LENGTH + 1))] }).root;
+    for (const root of [missing, unreadable]) {
+      expect(root.findAll(n => n.props.testID === 'recovery-hero' && typeof n.type === 'string')).toHaveLength(0);
+      expect(findAllText(root).filter(t => t.includes('Push Pull Legs'))).toEqual(['Baseline: Push Pull Legs · Started 05-01-2026']);
+    }
+  });
+
   test('with no hero (no week logged) the routine is still named once, in the bottom line', () => {
     const root = setup({ blocks: [block()], weeks: [], notes: [] }).root;
     expect(findAllText(root).filter(t => t.includes('Push Pull Legs'))).toEqual(['Baseline: Push Pull Legs · Started 05-01-2026']);
@@ -2150,38 +2188,47 @@ describe('AnalyticsRecoverySection — phone-safe week picker (#1219)', () => {
 
   beforeEach(() => { mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 }; });
 
-  describe('layout decision', () => {
-    // 390 window minus card/gutter chrome is about 322dp of picker width.
-    test.each([2, 3, 4, 5, 6])('%i weeks sit on ONE row at phone width, every chip >= 44dp', (count) => {
-      const l = computeWeekPickerLayout({ count, width: 322 });
-      expect(l).toMatchObject({ mode: 'single', rows: 1, perRow: count });
-      expect(l.chipWidth).toBeGreaterThanOrEqual(WEEK_CHIP_MIN);
-    });
-
-    test('six weeks fit even on a compact phone (chips shrink to fit, never below 44dp)', () => {
-      const l = computeWeekPickerLayout({ count: 6, width: 292 });
-      expect(l.mode).toBe('single');
-      expect(l.chipWidth).toBeGreaterThanOrEqual(WEEK_CHIP_MIN);
-      expect(l.chipWidth * 6 + 5 * 4).toBeLessThanOrEqual(292);
-    });
-
-    test.each([7, 8, 9, 10, 11, 12])('%i weeks use balanced rows with no orphan row', (count) => {
-      const l = computeWeekPickerLayout({ count, width: 322 });
-      expect(l.mode).toBe('grid');
-      expect(l.rows).toBe(2);
-      const last = count - l.perRow * (l.rows - 1);
-      expect(last).toBeGreaterThanOrEqual(l.perRow - 1);
-      expect(l.chipWidth).toBeGreaterThanOrEqual(WEEK_CHIP_MIN);
-    });
-
-    test('12+ weeks, large font scale, and constrained widths degrade to a scrollable strip', () => {
-      expect(computeWeekPickerLayout({ count: 13, width: 322 }).mode).toBe('scroll');
-      expect(computeWeekPickerLayout({ count: 24, width: 322 }).mode).toBe('scroll');
-      expect(computeWeekPickerLayout({ count: 8, width: 322, fontScale: 1.5 }).mode).toBe('scroll');
-      expect(computeWeekPickerLayout({ count: 3, width: 120 }).mode).toBe('scroll');
-      for (const count of [8, 13]) {
-        expect(computeWeekPickerLayout({ count, width: 322, fontScale: 2 }).chipWidth).toBeGreaterThanOrEqual(WEEK_CHIP_MIN);
+  describe('layout decision (weeks x width x font scale)', () => {
+    // Expected mode per contract: forced scroll first (13+ weeks, fontScale >=
+    // 1.3, width too narrow for 3 chips), then 1-6 weeks single-row when 44dp
+    // chips fit else the strip, then 7-12 balanced rows. Width 252 is a
+    // compact phone card, 322/390 are ordinary, 640 is a wide layout.
+    const MODE = (count, width, fs) => {
+      if (count > 12 || fs >= 1.3) return 'scroll';
+      const perRowMax = Math.floor((width + 4) / 48);
+      if (perRowMax < 3) return 'scroll';
+      if (count <= perRowMax) return 'single';
+      return count <= 6 ? 'scroll' : 'grid';
+    };
+    const cases = [];
+    for (const count of [1, 2, 6, 7, 9, 12, 13]) {
+      for (const width of [252, 322, 390, 640]) {
+        for (const fs of [1, 1.5, 2]) cases.push([count, width, fs, MODE(count, width, fs)]);
       }
+    }
+    test.each(cases)('%i weeks @ %idp, %sx font -> %s, never a wrapped orphan', (count, width, fs, mode) => {
+      const l = computeWeekPickerLayout({ count, width, fontScale: fs });
+      expect(l.mode).toBe(mode);
+      expect(l.chipWidth).toBeGreaterThanOrEqual(WEEK_CHIP_MIN);
+      expect(l.rowSizes.reduce((n, x) => n + x, 0)).toBe(count);
+      if (mode === 'single' || mode === 'scroll') expect(l.rows).toBe(1);
+      if (mode === 'grid') {
+        // Balanced: sizes differ by at most one and no row is a lone chip.
+        expect(Math.max(...l.rowSizes) - Math.min(...l.rowSizes)).toBeLessThanOrEqual(1);
+        expect(Math.min(...l.rowSizes)).toBeGreaterThanOrEqual(2);
+        expect(l.rowSizes[0] * l.chipWidth + (l.rowSizes[0] - 1) * 4).toBeLessThanOrEqual(width);
+      }
+      if (mode === 'single') expect(l.chipWidth * count + (count - 1) * 4).toBeLessThanOrEqual(width);
+      // Ordinary 1-6 week sets never become a wrapped grid.
+      if (count <= 6) expect(l.mode).not.toBe('grid');
+    });
+
+    test('the spec examples: 6 @ 322 / 1.5x scrolls, 13 on a wide layout scrolls, 6 @ 252 scrolls', () => {
+      expect(computeWeekPickerLayout({ count: 6, width: 322, fontScale: 1.5 }).mode).toBe('scroll');
+      expect(computeWeekPickerLayout({ count: 13, width: 640 }).mode).toBe('scroll');
+      expect(computeWeekPickerLayout({ count: 6, width: 252 }).mode).toBe('scroll');
+      expect(computeWeekPickerLayout({ count: 6, width: 322 }).mode).toBe('single');
+      expect(computeWeekPickerLayout({ count: 6, width: 292 }).mode).toBe('single');
     });
   });
 
@@ -2228,6 +2275,18 @@ describe('AnalyticsRecoverySection — phone-safe week picker (#1219)', () => {
       expect(host(root, 'recovery-week-picker-row-0')).toHaveLength(0);
       expect(chips(root)).toHaveLength(13);
       chips(root).forEach(c => expect(styleOf(c).width).toBeGreaterThanOrEqual(44));
+    });
+
+    test('in strip mode the selected chip is scrolled into view', () => {
+      const { ScrollView } = require('react-native');
+      const root = mountWeeks(13);
+      const calls = () => root.findByType(ScrollView).instance.scrollTo.mock.calls;
+      expect(host(root, 'recovery-week-picker-scroll').length).toBeGreaterThan(0);
+      // Newest week (13) is selected by default, far from the origin.
+      expect(calls().length).toBeGreaterThan(0);
+      expect(calls()[calls().length - 1][0].x).toBeGreaterThan(300);
+      act(() => { byLabel(root, 'Week 1, completed').props.onPress(); });
+      expect(calls()[calls().length - 1][0].x).toBe(0);
     });
 
     test('a large font scale degrades a multi-row set to the scrollable strip', () => {
