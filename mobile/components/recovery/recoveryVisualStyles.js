@@ -10,10 +10,12 @@ export const createVisualStyles = (colors, kua = null) => {
   const border = kua ? kua.surfaceBorder : colors.cardBorder;
   return StyleSheet.create({
     hero: { gap: 2 },
-    heroWeek: { fontSize: 13, fontWeight: '700', color: inkMuted },
-    heroNumber: { fontSize: 40, lineHeight: 46, fontWeight: '800', color: ink },
-    heroLabel: { fontSize: 15, fontWeight: '600', color: inkMuted },
-    heroEmpty: { fontSize: 20, fontWeight: '800', color: ink },
+    // #1217: hero is the one metric emphasis (28sp); week/label are 13sp
+    // supporting captions, so the top summary has only three text tiers.
+    heroWeek: { fontSize: 13, fontWeight: '600', color: inkMuted },
+    heroNumber: { fontSize: 28, lineHeight: 34, fontWeight: '800', color: ink },
+    heroLabel: { fontSize: 13, fontWeight: '600', color: inkMuted },
+    heroEmpty: { fontSize: 18, fontWeight: '700', color: ink },
     barBlock: { gap: 8 },
     segmentBar: {
       flexDirection: 'row',

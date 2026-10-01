@@ -198,6 +198,8 @@ export function BlockEvidence({
 
   return (
     <Card style={styles.card}>
+      {/* The section's only Recovery header is the outer SectionTitle (#1217);
+          the routine name is a quiet secondary caption, never a card header. */}
       <Text style={styles.identityCaption}>{identityCaption}</Text>
       {/* The optional reason (#872), on the active and the completed block
           alike — this card is the same evidence surface for both. Rendered
