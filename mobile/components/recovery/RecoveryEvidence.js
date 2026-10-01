@@ -137,9 +137,8 @@ export function BlockEvidence({
   // Folded into the collapsed "Exercise details" header instead of the first
   // screenful (#1029 §10c).
   const summaryLine = _summaryLine(weekLabel, selectedWeek?.summary);
-  // One-line identity caption, replacing the old "Baseline routine" label +
-  // title pair (#793/R5b cut list). The selected week is always named here so
-  // the bands below are never ambiguous about which week they describe (§5).
+  // Bottom context line (#1219): routine + dates. The hero names the selected
+  // week, so the bands above are never ambiguous about which week they describe.
   const provenance = isActive
     ? `Started ${formatDate(block.started_at)}`
     : `${formatDate(block.started_at)} – ${formatDate(block.completed_at)}`;
@@ -190,92 +189,11 @@ export function BlockEvidence({
   // Even a baseline-empty week still has something to say if it carries
   // recovery-only work: the merged clause line names it, with no hero above it.
   const showBandsRegion = selectedWeek && (totalBaselineExercises > 0 || addedCount > 0);
-  // The hero names the week, so the caption then carries only the routine title
-  // (#1215); otherwise the caption names the week so the card is never ambiguous.
-  const heroShown = !!showBandsRegion && hasBands && !!weekLabel;
-  const identityCaption = heroShown ? routineTitle
-    : weekLabel ? `${weekLabel} · ${routineTitle}` : `Baseline: ${routineTitle}`;
-
   return (
-    <Card style={styles.card}>
+    <Card>
       {/* The section's only Recovery header is the outer SectionTitle (#1217);
-          the routine name is a quiet secondary caption, never a card header. */}
-      <Text style={styles.identityCaption}>{identityCaption}</Text>
-      {/* The optional reason (#872), on the active and the completed block
-          alike — this card is the same evidence surface for both. Rendered
-          only when the block carries one, so a block started without an
-          explanation (including every block written before the field existed)
-          shows nothing rather than an empty placeholder. It is context for
-          reading the comparison, never an input to it: no metric, week status,
-          or summary line below reads this value. */}
-      {editingReason ? (
-        <View style={styles.reasonEditor}>
-          <TextInput
-            style={styles.reasonInput}
-            value={reasonDraft}
-            onChangeText={setReasonDraft}
-            placeholder="e.g. torn hamstring, 8 weeks off"
-            placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
-            maxLength={MAX_RECOVERY_REASON_LENGTH}
-            editable={!reasonDisabled}
-            accessibilityLabel="Reason for this recovery block"
-          />
-          <Text style={styles.reasonCaption}>
-            Only for your own records. Leave it empty to remove it.
-          </Text>
-          {reasonError ? <Text style={styles.reasonErrorText}>{reasonError}</Text> : null}
-          <View style={styles.reasonEditorActions}>
-            <Pressable
-              onPress={closeReasonEditor}
-              disabled={reasonBusy}
-              style={styles.reasonEditorButton}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel editing the reason"
-              accessibilityState={{ disabled: reasonBusy }}
-            >
-              <Text style={styles.reasonEditorCancelText}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              onPress={handleSaveReason}
-              disabled={reasonDisabled}
-              style={styles.reasonEditorButton}
-              accessibilityRole="button"
-              accessibilityLabel="Save the reason"
-              accessibilityState={{ disabled: reasonDisabled, busy: reasonBusy }}
-            >
-              <Text style={styles.reasonEditorSaveText}>
-                {reasonBusy ? 'Saving…' : 'Save'}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      ) : reasonEditable ? (
-        /* Tapping the caption opens the editor in place. A block with no reason
-           still offers the affordance — that is the only way to ADD one to a
-           completed block — but it reads as an invitation, not as a field
-           claiming a value it does not have. */
-        <Pressable
-          onPress={openReasonEditor}
-          disabled={reasonDisabled}
-          accessibilityRole="button"
-          accessibilityLabel={block.reason
-            ? `Edit reason for this recovery block: ${block.reason}`
-            : 'Add a reason for this recovery block'}
-          accessibilityState={{ disabled: reasonDisabled }}
-        >
-          <Text
-            style={[styles.reasonCaption, reasonDisabled && styles.reasonCaptionDisabled]}
-            numberOfLines={2}
-          >
-            {block.reason ? `Reason: ${block.reason}` : 'Add a reason'}
-          </Text>
-        </Pressable>
-      ) : block.reason ? (
-        <Text style={styles.reasonCaption} numberOfLines={2}>
-          Reason: {block.reason}
-        </Text>
-      ) : null}
-
+          the card opens with the hero, and the routine + reason are quiet
+          context at the bottom (#1219). */}
       {comparison.status === RECOVERY_COMPARISON_STATUS.BASELINE_UNAVAILABLE && (
         <Text style={styles.unavailablePanelText}>
           The frozen baseline for this recovery block is unavailable.
@@ -422,7 +340,82 @@ export function BlockEvidence({
           Training numbers only. Not a medical judgment — only you end a Recovery block.
         </Text>
       )}
-      <Text style={styles.provenanceText}>{provenance}</Text>
+      <Text style={styles.provenanceText}>{`Baseline: ${routineTitle} · ${provenance}`}</Text>
+      {/* The optional reason (#872), on the active and the completed block
+          alike — this card is the same evidence surface for both. Rendered
+          only when the block carries one, so a block started without an
+          explanation (including every block written before the field existed)
+          shows nothing rather than an empty placeholder. It is context for
+          reading the comparison, never an input to it: no metric, week status,
+          or summary line below reads this value. */}
+      {editingReason ? (
+        <View style={styles.reasonEditor}>
+          <TextInput
+            style={styles.reasonInput}
+            value={reasonDraft}
+            onChangeText={setReasonDraft}
+            placeholder="e.g. torn hamstring, 8 weeks off"
+            placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
+            maxLength={MAX_RECOVERY_REASON_LENGTH}
+            editable={!reasonDisabled}
+            accessibilityLabel="Reason for this recovery block"
+          />
+          <Text style={styles.reasonCaption}>
+            Only for your own records. Leave it empty to remove it.
+          </Text>
+          {reasonError ? <Text style={styles.reasonErrorText}>{reasonError}</Text> : null}
+          <View style={styles.reasonEditorActions}>
+            <Pressable
+              onPress={closeReasonEditor}
+              disabled={reasonBusy}
+              style={styles.reasonEditorButton}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel editing the reason"
+              accessibilityState={{ disabled: reasonBusy }}
+            >
+              <Text style={styles.reasonEditorCancelText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleSaveReason}
+              disabled={reasonDisabled}
+              style={styles.reasonEditorButton}
+              accessibilityRole="button"
+              accessibilityLabel="Save the reason"
+              accessibilityState={{ disabled: reasonDisabled, busy: reasonBusy }}
+            >
+              <Text style={styles.reasonEditorSaveText}>
+                {reasonBusy ? 'Saving…' : 'Save'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : reasonEditable ? (
+        /* Tapping the caption opens the editor in place. A block with no reason
+           still offers the affordance — that is the only way to ADD one to a
+           completed block — but it reads as an invitation, not as a field
+           claiming a value it does not have. */
+        <Pressable
+          onPress={openReasonEditor}
+          disabled={reasonDisabled}
+          style={styles.reasonPressable}
+          accessibilityRole="button"
+          accessibilityLabel={block.reason
+            ? `Edit reason for this recovery block: ${block.reason}`
+            : 'Add a reason for this recovery block'}
+          accessibilityState={{ disabled: reasonDisabled }}
+        >
+          <Text
+            style={[styles.reasonCaption, reasonDisabled && styles.reasonCaptionDisabled]}
+            numberOfLines={2}
+          >
+            {block.reason ? `Reason: ${block.reason}` : 'Add a reason'}
+          </Text>
+        </Pressable>
+      ) : block.reason ? (
+        <Text style={styles.reasonCaption} numberOfLines={2}>
+          Reason: {block.reason}
+        </Text>
+      ) : null}
     </Card>
   );
 }

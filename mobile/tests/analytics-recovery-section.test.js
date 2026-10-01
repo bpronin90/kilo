@@ -367,22 +367,61 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
     expect(findAllText(root).filter(t => t === 'Recovery').length).toBe(1);
     const title = hostText(root, 'Recovery')[0];
     expect(sizeOf(title)).toMatchObject({ fontSize: 18, fontWeight: '700' });
-    // The routine is a quiet 13sp caption, below the section title in order.
+    // #1219: the hero is the first in-card content; the routine is quiet 13sp
+    // context at the bottom, never a title-like caption above the hero.
     const texts = findAllText(root);
-    expect(texts.indexOf('Recovery')).toBeLessThan(texts.indexOf('Push Pull Legs'));
-    const routine = hostText(root, 'Push Pull Legs')[0];
-    expect(sizeOf(routine).fontSize).toBe(13);
+    expect(texts.indexOf('Recovery')).toBeLessThan(texts.indexOf('Week 1'));
+    expect(texts.indexOf('Week 1')).toBeLessThan(texts.indexOf('2 of 2'));
+    const ctxText = texts.find(t => t.startsWith('Baseline: Push Pull Legs'));
+    expect(texts.indexOf('2 of 2')).toBeLessThan(texts.indexOf(ctxText));
+    const routine = hostText(root, ctxText)[0];
+    expect(sizeOf(routine).fontSize).toBeGreaterThanOrEqual(13);
     expect(sizeOf(routine).fontSize).toBeLessThan(sizeOf(title).fontSize);
   });
 
-  test('the top summary has three tiers: 18sp header, 28sp hero, 13sp supporting captions', () => {
+  test('the top summary uses only sibling sizes: 18sp header, 32sp hero (Weight Trends KUA), 13sp captions', () => {
     const b = block({ reason: 'torn hamstring' });
     const root = setup({ blocks: [b], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
     const hero = sizeOf(hostText(root, '2 of 2')[0]);
-    expect(hero.fontSize).toBe(28);
+    // Same KUA hero as Weight Trends `weightValueLarge`: metric-display 32/36.
+    expect(hero).toMatchObject({ fontSize: 32, lineHeight: 36 });
+    expect(hero.fontSize).not.toBe(28);
     expect(sizeOf(hostText(root, 'Week 1')[0]).fontSize).toBe(13);
     expect(sizeOf(hostText(root, 'at or above baseline')[0]).fontSize).toBe(13);
     expect(sizeOf(hostText(root, 'Reason: torn hamstring')[0]).fontSize).toBeGreaterThanOrEqual(13);
+  });
+
+  test('the reason and routine sit at the bottom: hero first, then Baseline context, then Reason', () => {
+    const b = block({ reason: 'torn hamstring', started_at: '2026-05-01T00:00:00Z' });
+    const root = setup({ blocks: [b], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
+    const texts = findAllText(root);
+    const hero = texts.indexOf('2 of 2');
+    const ctx = texts.indexOf('Baseline: Push Pull Legs · Started 05-01-2026');
+    const reason = texts.indexOf('Reason: torn hamstring');
+    expect(hero).toBeGreaterThan(-1);
+    expect(ctx).toBeGreaterThan(hero);
+    expect(reason).toBeGreaterThan(ctx);
+    // The routine name appears only inside the bottom context line.
+    expect(texts.filter(t => t.includes('Push Pull Legs')).length).toBe(1);
+  });
+
+  test('the bottom reason keeps its edit behavior and a >=44dp target', () => {
+    const onSaveReason = jest.fn(async () => ({ ok: true }));
+    const b = block({ reason: 'torn hamstring' });
+    let component;
+    act(() => {
+      component = render.create(
+        <AnalyticsRecoverySection blocks={[b]} weeks={[]} notes={[]} onSaveReason={onSaveReason} />
+      );
+    });
+    const root = component.root;
+    const open = byLabel(root, 'Edit reason for this recovery block: torn hamstring');
+    expect(open).toBeDefined();
+    expect(sizeOf(open).minHeight).toBeGreaterThanOrEqual(44);
+    act(() => { open.props.onPress(); });
+    expect(byLabel(root, 'Reason for this recovery block')).toBeDefined();
+    expect(byLabel(root, 'Cancel editing the reason')).toBeDefined();
+    expect(byLabel(root, 'Save the reason')).toBeDefined();
   });
 
   test('the reason affordance is at least 13sp and keeps its accessible label', () => {

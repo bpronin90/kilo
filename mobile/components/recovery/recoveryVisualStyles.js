@@ -1,4 +1,5 @@
 import { StyleSheet } from 'react-native';
+import { TYPOGRAPHY } from '../../theme/typography';
 
 // Styles for the Recovery card's visual summaries (#1209/#1215): hero, thin
 // segmented band bar, Improved/Steady/Fell back row, and thin per-week bars. Kept in
@@ -10,10 +11,13 @@ export const createVisualStyles = (colors, kua = null) => {
   const border = kua ? kua.surfaceBorder : colors.cardBorder;
   return StyleSheet.create({
     hero: { gap: 2 },
-    // #1217: hero is the one metric emphasis (28sp); week/label are 13sp
-    // supporting captions, so the top summary has only three text tiers.
+    // #1219: the hero matches the sibling Analytics hero (Weight Trends
+    // `weightValueLarge`: KUA metric-display 32/36 on-surface, legacy 36/800
+    // accentText); week/label are 13sp supporting captions.
     heroWeek: { fontSize: 13, fontWeight: '600', color: inkMuted },
-    heroNumber: { fontSize: 28, lineHeight: 34, fontWeight: '800', color: ink },
+    heroNumber: kua
+      ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 32, lineHeight: 36, color: kua.onSurface }
+      : { fontSize: 36, fontWeight: '800', color: colors.accentText },
     heroLabel: { fontSize: 13, fontWeight: '600', color: inkMuted },
     heroEmpty: { fontSize: 18, fontWeight: '700', color: ink },
     barBlock: { gap: 8 },

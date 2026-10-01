@@ -37,23 +37,16 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     fontWeight: '700',
     color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },
-  card: {
-    gap: 12,
-  },
-  // #1217: top summary uses three text tiers — the outer SectionTitle (18/700),
-  // the 28sp hero, and 13sp supporting captions like this one.
-  identityCaption: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  // Deliberately lighter than `identityCaption` (#872): the reason is context
-  // for the comparison above it, not a second heading competing with the
-  // block's identity.
+  // Bottom-of-card context (#872/#1219): the reason is quiet context for the
+  // comparison above it. minHeight makes the whole row a real >=44dp target.
   reasonCaption: {
     fontSize: 13,
     lineHeight: 18,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
+  },
+  reasonPressable: {
+    minHeight: 44,
+    justifyContent: 'center',
   },
   reasonCaptionDisabled: {
     opacity: 0.5,
@@ -93,7 +86,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.primary : colors.accentText,
   },
   provenanceText: {
-    fontSize: 12,
+    fontSize: 13,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   nonMedicalText: {
