@@ -58,10 +58,16 @@ function Segments({ buckets, colors, kua, style }) {
 // The visible name is cut at a sensible length so the label stays on a phone
 // line; the complete name always rides on the accessible label.
 export const ROUTINE_LABEL_MAX = 24;
+// Length and cut are counted in Unicode CODE POINTS (Array.from), never UTF-16
+// units, so a surrogate pair (an emoji) is never split into a replacement glyph.
+// A cut may still fall inside a multi-code-point grapheme cluster (ZWJ emoji,
+// combining accents): Intl.Segmenter is not available on every Hermes build, so
+// that is accepted and documented — the full title is in the accessible label.
 export function routineLabel(title) {
   const full = (title || '').trim() || 'Untitled Routine';
-  const visible = full.length > ROUTINE_LABEL_MAX
-    ? `${full.slice(0, ROUTINE_LABEL_MAX - 1).trimEnd()}…`
+  const points = Array.from(full);
+  const visible = points.length > ROUTINE_LABEL_MAX
+    ? `${points.slice(0, ROUTINE_LABEL_MAX - 1).join('').trimEnd()}…`
     : full;
   return { full, visible };
 }

@@ -2155,6 +2155,53 @@ describe('AnalyticsRecoverySection — routine-anchored hero label (#1219)', () 
     expect(findAllText(root).some(t => t.includes(full))).toBe(false);
   });
 
+  describe('routine label truncation by code point', () => {
+    const { routineLabel, ROUTINE_LABEL_MAX } = require('../components/recovery/RecoveryVisuals');
+    const hasLoneSurrogate = (t) => /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(t);
+    const ascii = (n) => 'a'.repeat(n);
+
+    test('exactly at the limit keeps the whole title with no ellipsis; one over is cut with one', () => {
+      expect(routineLabel(ascii(ROUTINE_LABEL_MAX)).visible).toBe(ascii(ROUTINE_LABEL_MAX));
+      const over = routineLabel(ascii(ROUTINE_LABEL_MAX + 1));
+      expect(over.visible).toBe(`${ascii(ROUTINE_LABEL_MAX - 1)}…`);
+      expect(over.full).toBe(ascii(ROUTINE_LABEL_MAX + 1));
+    });
+
+    test.each([21, 22, 23, 24])('an emoji straddling the cut after %i ASCII chars is never split', (n) => {
+      const title = `${ascii(n)}💪${ascii(10)}`;
+      const { visible, full } = routineLabel(title);
+      expect(hasLoneSurrogate(visible)).toBe(false);
+      expect(visible).not.toContain('\uFFFD');
+      expect(full).toBe(title);
+      expect(Array.from(visible).length).toBeLessThanOrEqual(ROUTINE_LABEL_MAX);
+      expect(visible.endsWith('…')).toBe(true);
+    });
+
+    test('an astral emoji at exactly the limit is counted as one character, so it is not cut', () => {
+      const title = `${ascii(ROUTINE_LABEL_MAX - 1)}💪`;
+      expect(title.length).toBe(ROUTINE_LABEL_MAX + 1); // UTF-16 length would wrongly trip a slice
+      expect(routineLabel(title).visible).toBe(title);
+    });
+
+    test('ZWJ emoji and accented text are cut only between code points, never inside a surrogate pair', () => {
+      const family = '👨‍👩‍👧‍👦';
+      for (const title of [`${ascii(20)}${family}${family}`, `${'é'.repeat(30)}`, `${ascii(22)}e\u0301${ascii(5)}`]) {
+        const { visible, full } = routineLabel(title);
+        expect(hasLoneSurrogate(visible)).toBe(false);
+        expect(full).toBe(title);
+      }
+    });
+
+    test('the rendered hero shows the safely cut name and the accessible label the full emoji title', () => {
+      const title = `${ascii(22)}💪 Hypertrophy Block`;
+      const root = setup({ blocks: [block({ baseline_note_title: title })], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
+      const visible = findAllText(root).find(t => t.startsWith('at or above') && t.endsWith('baseline'));
+      expect(hasLoneSurrogate(visible)).toBe(false);
+      expect(visible).toContain('…');
+      expect(heroNode(root).props.accessibilityLabel).toContain(`at or above ${title} baseline`);
+    });
+  });
+
   test('an untitled routine falls back to "Untitled Routine" visibly and accessibly', () => {
     for (const title of ['', '   ', null]) {
       const root = oneWeek(title);
