@@ -67,9 +67,12 @@ export const createVisualStyles = (colors, kua = null) => {
       borderTopWidth: 1,
       borderTopColor: border,
     },
-    exHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    exName: { flex: 1, fontSize: 15, fontWeight: '700', color: ink },
-    exStatus: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    // The header wraps (#1219): at large font scales a long name plus the longest
+    // status word cannot share a line, so the status drops under the name
+    // (dot + word stay together) instead of clipping or crowding the name.
+    exHeader: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, rowGap: 2 },
+    exName: { flexGrow: 1, flexShrink: 1, fontSize: 15, fontWeight: '700', color: ink },
+    exStatus: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
     exStatusDot: { width: 8, height: 8, borderRadius: 4 },
     exStatusText: { fontSize: 13, fontWeight: '600', color: inkMuted },
     exBarRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },

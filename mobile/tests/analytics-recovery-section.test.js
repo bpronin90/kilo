@@ -2355,6 +2355,33 @@ describe('AnalyticsRecoverySection — visual exercise details (#1219)', () => {
     expect(curl).toContain('Baseline Load 20 lb');
   });
 
+  test('at fontScale 2 a long exercise name is never clipped and the header wraps so the status can stack under it', () => {
+    mockWindow = { width: 390, height: 844, scale: 3, fontScale: 2 };
+    const longName = 'Single-Arm Dumbbell Incline Neutral-Grip Press (paused)';
+    const root = setup({
+      blocks: [block({ baseline: captureRecoveryBaselineFromText(`-${longName}\n- 50 8,8,8\n-Pull-up\n- 8,8,8`) })],
+      weeks: [week(1, 'note-w1')],
+      notes: [note('note-w1', `-${longName}\n- 50 8,8,8\n-Foam Roll\n- 10,10`)],
+    }).root;
+    expandDetails(root);
+    const rows = hostRows(root);
+    const names = rows.map(r => r.findAll(n => typeof n.type === 'string' && n.type === 'Text')[0]);
+    // No numberOfLines clipping on any exercise name.
+    names.forEach(n => expect(n.props.numberOfLines).toBeUndefined());
+    expect(hostTextsIn(rows[0])[0]).toBe(longName);
+    // Header can wrap; name shrinks/grows rather than owning a fixed flex slot;
+    // the dot and the status word stay one unit.
+    const header = rows[0].findAll(n => typeof n.type === 'string' && StyleSheet.flatten(n.props.style || {}).flexWrap === 'wrap')[0];
+    expect(header).toBeDefined();
+    expect(StyleSheet.flatten(names[0].props.style)).toMatchObject({ flexShrink: 1, flexGrow: 1 });
+    const status = rows[0].findAll(n => typeof n.type === 'string' && n.props.testID === 'recovery-exercise-mark')[0].parent.parent;
+    expect(StyleSheet.flatten(status.props.style)).toMatchObject({ flexDirection: 'row', flexShrink: 0 });
+    // Longest status words are present and unabbreviated.
+    expect(statusWords(root)).toEqual(expect.arrayContaining(['Added during recovery']));
+    expect(statusWords(root).every(w => !/\.\.\.|…/.test(w))).toBe(true);
+    mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+  });
+
   test('the status mark pairs a band color with the word and differs between bands', () => {
     const root = mount();
     const marks = hostById(root, 'recovery-exercise-mark').map(m => StyleSheet.flatten(m.props.style).backgroundColor);

@@ -198,7 +198,7 @@ function ExerciseRow({ row, unit, weekNumber, elsewhere }) {
       accessibilityLabel={_rowAccessibilityLabel(row, unit, weekNumber, elsewhere)}
     >
       <View style={styles.exHeader}>
-        <Text style={styles.exName} numberOfLines={1}>{row.name}</Text>
+        <Text style={styles.exName}>{row.name}</Text>
         <View style={styles.exStatus}>
           <View testID="recovery-exercise-mark" style={[styles.exStatusDot, { backgroundColor: markColor }]} />
           <Text style={styles.exStatusText}>{status}</Text>
