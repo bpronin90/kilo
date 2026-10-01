@@ -353,6 +353,50 @@ describe('AnalyticsRecoverySection — unavailable and error states', () => {
   });
 });
 
+// #1217: the card carries its own non-interactive header, the routine name is
+// secondary context, and the top summary uses three readable text tiers.
+describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', () => {
+  const { StyleSheet } = require('react-native');
+  const sizeOf = (inst) => StyleSheet.flatten(inst.props.style) || {};
+  const hostText = (root, text) => root.findAll(inst => (
+    typeof inst.type === 'string' && inst.type === 'Text'
+    && (Array.isArray(inst.props.children) ? inst.props.children.join('') : inst.props.children) === text
+  ));
+  const cardHeader = (root) => root.findAll(inst => (
+    typeof inst.type === 'string' && inst.props.accessibilityRole === 'header' && inst.props.children === 'Recovery'
+  ))[0];
+
+  test('the card has a non-interactive 18sp/700 Recovery header above the routine name', () => {
+    const root = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
+    const header = cardHeader(root);
+    expect(header).toBeDefined();
+    expect(sizeOf(header)).toMatchObject({ fontSize: 18, fontWeight: '700' });
+    expect(header.props.onPress).toBeUndefined();
+    const texts = findAllText(root);
+    expect(texts.lastIndexOf('Recovery')).toBeLessThan(texts.indexOf('Push Pull Legs'));
+    // The routine is demoted to a readable 13sp supporting caption, not the header.
+    const routine = hostText(root, 'Push Pull Legs')[0];
+    expect(sizeOf(routine).fontSize).toBe(13);
+    expect(sizeOf(routine).fontSize).toBeLessThan(sizeOf(header).fontSize);
+  });
+
+  test('the top summary has three tiers: 18sp header, 28sp hero, 13sp supporting captions', () => {
+    const b = block({ reason: 'torn hamstring' });
+    const root = setup({ blocks: [b], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
+    const hero = sizeOf(hostText(root, '2 of 2')[0]);
+    expect(hero.fontSize).toBe(28);
+    expect(sizeOf(hostText(root, 'Week 1')[0]).fontSize).toBe(13);
+    expect(sizeOf(hostText(root, 'at or above baseline')[0]).fontSize).toBe(13);
+    expect(sizeOf(hostText(root, 'Reason: torn hamstring')[0]).fontSize).toBeGreaterThanOrEqual(13);
+  });
+
+  test('the reason affordance is at least 13sp and keeps its accessible label', () => {
+    const root = setup({ blocks: [block()], weeks: [], notes: [] }).root;
+    expect(sizeOf(hostText(root, 'Add a reason')[0]).fontSize).toBeGreaterThanOrEqual(13);
+    expect(byLabel(root, 'Add a reason for this recovery block')).toBeDefined();
+  });
+});
+
 describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b)', () => {
   test('an active block with a logged week shows a one-line "Week N · routine" identity caption', () => {
     const b = block();
@@ -1228,7 +1272,8 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     expandDetails(root);
 
     const headers = groupHeaders(root).map(h => h.props.children);
-    expect(headers).toEqual(['Baseline met (1)', 'Rebuilding (1)', 'Added during recovery (1)']);
+    // The card's own non-interactive `Recovery` header (#1217) leads; the state groups follow.
+    expect(headers).toEqual(['Recovery', 'Baseline met (1)', 'Rebuilding (1)', 'Added during recovery (1)']);
     // A state with nothing in it renders no group at all — never a zero-count header.
     expect(headers.some(h => h.startsWith('Not reintroduced'))).toBe(false);
     expect(headers.some(h => h.startsWith('Not comparable'))).toBe(false);
