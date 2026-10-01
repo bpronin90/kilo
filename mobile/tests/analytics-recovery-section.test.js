@@ -32,6 +32,15 @@ import {
 import { DarkColors, HardCourtLightColors, LightColors } from '../theme/colors';
 import { ThemeContext } from '../theme/ThemeContext';
 
+// Controllable window metrics for the week picker's width/font-scale sizing
+// (#1219). RN's jest default reports fontScale 2, which would force every
+// picker into its large-font fallback.
+let mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => mockWindow,
+}));
+
 jest.mock('@react-native-async-storage/async-storage', () => ({
   getItem: jest.fn(),
   setItem: jest.fn(),
@@ -168,10 +177,31 @@ function rowLabels(root) {
     .map(inst => inst.props.accessibilityLabel);
 }
 
-// The counted state-group headers rendered inside the expanded details panel
-// (#793/R5b), e.g. "Rebuilding (2)". Scoped to host nodes only — the test
-// renderer otherwise reports both the composite `Text` and its underlying host
-// node for the same element.
+// Host-node lookups (the test renderer otherwise reports both the composite and
+// its underlying host node for the same element).
+function hostRows(root) {
+  return root.findAll(inst => typeof inst.type === 'string' && inst.props.testID === 'recovery-exercise-row');
+}
+function hostTextsIn(inst) {
+  return inst.findAll(n => typeof n.type === 'string' && n.type === 'Text')
+    .map(n => [].concat(n.props.children).join(''));
+}
+// The plain-word status each exercise row shows beside its band mark (#1219),
+// in on-screen order. Row text order is: name, status, [percent], [numbers…].
+function statusWords(root) {
+  return hostRows(root).map(r => hostTextsIn(r)[1]);
+}
+// The roster summary at the head of the details (#1219): a thin bar plus a
+// compact stat row; its full sentence is the accessible label only.
+function rosterNode(root) {
+  return root.findAll(n => typeof n.type === 'string' && n.props.testID === 'recovery-roster-summary')[0];
+}
+function rosterLabel(root) {
+  const n = rosterNode(root);
+  return n ? n.props.accessibilityLabel : null;
+}
+// Counted state-group headings were removed in #1219 (each row carries its own
+// status); the details panel must contain no header-role node.
 function groupHeaders(root) {
   return root.findAll(inst => typeof inst.type === 'string' && inst.props.accessibilityRole === 'header');
 }
@@ -209,7 +239,12 @@ describe('AnalyticsRecoverySection — active block evidence', () => {
     expect(hasText(root, 'roster exercises trained.')).toBe(false);
     expect(hasText(root, '%')).toBe(false);
     expandDetails(root);
-    expect(hasText(root, 'Bench (at or above baseline), Pull-up (at or above baseline) — 2 of 2 roster exercises trained.')).toBe(true);
+    // #1219: the sentence is gone for good — each row carries its own mark and
+    // status word, and the roster denominator is one short caption.
+    expect(rosterLabel(root)).toBe('Trained this week: 2 of 2 roster exercises.');
+    expect(hasText(root, 'Trained this week')).toBe(false);
+    expect(hasText(root, 'roster exercises trained.')).toBe(false);
+    expect(statusWords(root)).toEqual(['At or above baseline', 'At or above baseline']);
     expect(hasText(root, 'baseline exercises met')).toBe(false);
   });
 
@@ -241,9 +276,10 @@ describe('AnalyticsRecoverySection — active block evidence', () => {
     const root = component.root;
 
     expandDetails(root);
-    expect(hasText(root, 'Bench (at or above baseline) — 1 of 1 roster exercises trained.')).toBe(true);
-    // Rows may name them in the evidence list; the sentence itself must not.
-    expect(findAllText(root).filter(t => t.includes('roster exercises trained')).some(t => t.includes('Ghost Lift') || t.includes('Sled Push'))).toBe(false);
+    // The denominator caption stays consistent with the roster (the unusable
+    // row is outside it, the added row never was in it) and names no exercise.
+    expect(rosterLabel(root)).toBe('Trained this week: 1 of 1 roster exercises.');
+    expect(rosterLabel(root)).not.toMatch(/Ghost Lift|Sled Push|Bench/);
   });
 
   test('weighted rows show independent Load and Total work; reps-only rows show only their applicable metric', () => {
@@ -281,8 +317,14 @@ describe('AnalyticsRecoverySection — active block evidence', () => {
     const root = component.root;
     expandDetails(root);
 
-    expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not reintroduced'))).toBe(true);
-    expect(hasText(root, 'Baseline ·')).toBe(true);
+    expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not trained yet'))).toBe(true);
+    // Concise baseline numbers only: no percent, no bar (missing is not zero),
+    // and none of the old "Not in Week N · trained in …" prose on screen.
+    expect(statusWords(root)).toContain('Not trained yet');
+    expect(hasText(root, 'Baseline Reps 24 reps')).toBe(true);
+    expect(hasText(root, 'Not in Week')).toBe(false);
+    expect(hasText(root, 'Not trained in any')).toBe(false);
+    expect(root.findAll(i => typeof i.type === 'string' && i.props.testID === 'recovery-exercise-bar')).toHaveLength(1);
   });
 
   test('an exercise added during recovery renders separately with no baseline ratio', () => {
@@ -372,7 +414,8 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
     const texts = findAllText(root);
     expect(texts.indexOf('Recovery')).toBeLessThan(texts.indexOf('Week 1'));
     expect(texts.indexOf('Week 1')).toBeLessThan(texts.indexOf('2 of 2'));
-    const ctxText = texts.find(t => t.startsWith('Baseline: Push Pull Legs'));
+    // The hero label names the routine, so the bottom line is dates only.
+    const ctxText = texts.find(t => t.startsWith('Started'));
     expect(texts.indexOf('2 of 2')).toBeLessThan(texts.indexOf(ctxText));
     const routine = hostText(root, ctxText)[0];
     expect(sizeOf(routine).fontSize).toBeGreaterThanOrEqual(13);
@@ -387,7 +430,7 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
     expect(hero).toMatchObject({ fontSize: 32, lineHeight: 36 });
     expect(hero.fontSize).not.toBe(28);
     expect(sizeOf(hostText(root, 'Week 1')[0]).fontSize).toBe(13);
-    expect(sizeOf(hostText(root, 'at or above baseline')[0]).fontSize).toBe(13);
+    expect(sizeOf(hostText(root, 'at or above Push Pull Legs baseline')[0]).fontSize).toBe(13);
     expect(sizeOf(hostText(root, 'Reason: torn hamstring')[0]).fontSize).toBeGreaterThanOrEqual(13);
   });
 
@@ -396,13 +439,15 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
     const root = setup({ blocks: [b], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
     const texts = findAllText(root);
     const hero = texts.indexOf('2 of 2');
-    const ctx = texts.indexOf('Baseline: Push Pull Legs · Started 05-01-2026');
+    const ctx = texts.indexOf('Started 05-01-2026');
     const reason = texts.indexOf('Reason: torn hamstring');
     expect(hero).toBeGreaterThan(-1);
     expect(ctx).toBeGreaterThan(hero);
     expect(reason).toBeGreaterThan(ctx);
-    // The routine name appears only inside the bottom context line.
-    expect(texts.filter(t => t.includes('Push Pull Legs')).length).toBe(1);
+    // The routine is named once, by the hero label (#1219) — never again in the
+    // bottom provenance line.
+    expect(texts.filter(t => t.includes('Push Pull Legs'))).toEqual(['at or above Push Pull Legs baseline']);
+    expect(texts.some(t => t.startsWith('Baseline:'))).toBe(false);
   });
 
   test('the bottom reason keeps its edit behavior and a >=44dp target', () => {
@@ -439,7 +484,7 @@ describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b
     const component = setup({ blocks: [b], weeks: [w], notes: [n] });
     const root = component.root;
 
-    expect(hasText(root, 'Push Pull Legs')).toBe(true);
+    expect(hasText(root, 'at or above Push Pull Legs baseline')).toBe(true);
     // The week is named once, by the hero — not repeated in the caption.
     expect(hasText(root, 'Week 1 · Push Pull Legs')).toBe(false);
     expect(findAllText(root).filter(t => t === 'Week 1').length).toBe(1);
@@ -619,9 +664,43 @@ describe('AnalyticsRecoverySection — every exercise class/state (mocked compar
     // Scoped to the row: the status-filter chips name every state, so a
     // whole-tree text search can no longer tell them apart.
     const labels = rowLabels(root);
-    expect(labels.some(l => l.startsWith('Bench, Rebuilding'))).toBe(true);
-    expect(labels.some(l => l.includes('Baseline met'))).toBe(false);
+    expect(labels.some(l => l.startsWith('Bench, Early'))).toBe(true);
+    expect(labels.filter(l => l.startsWith('Bench,')).some(l => l.includes('Baseline met') || l.includes('At or above'))).toBe(false);
     expect(hasText(root, '49%')).toBe(true);
+  });
+
+  // #1219 review: the row is ONE accessible element, so its label must carry the
+  // exact status word a sighted user sees, for every source-state/band case.
+  test('every row\'s spoken label starts with the same status word it shows, for each source-state vs derived-band case', () => {
+    const R = RECOVERY_COMPARISON_STATES;
+    const cases = [
+      ['close', R.REBUILDING, [metricRow('top_load', 128, 135, 95, false)], 'Close to baseline'],
+      ['mid', R.REBUILDING, [metricRow('top_load', 95, 135, 70, false)], 'Rebuilding'],
+      ['low', R.REBUILDING, [metricRow('top_load', 40, 135, 29, false)], 'Early'],
+      ['met', R.BASELINE_MET, [metricRow('top_load', 135, 135, 100, true)], 'At or above baseline'],
+      ['absent', R.NOT_REINTRODUCED, [metricRow('top_load', null, 135, null, null)], 'Not trained yet'],
+      ['added', R.ADDED_DURING_RECOVERY, [metricRow('top_load', 50, null, null, null)], 'Added during recovery'],
+      ['nocomp', R.NOT_COMPARABLE, [metricRow('top_load', null, 135, null, null)], "Can't compare"],
+    ];
+    const rows = cases.map(([key, state, metrics]) => mockRow({
+      key, name: `Lift ${key}`, state, exercise_class: 'weighted', metrics,
+      unavailable_reason: state === R.NOT_COMPARABLE ? 'exercise_class_changed' : null,
+    }));
+    const exercises = rows.filter(r => r.state !== R.ADDED_DURING_RECOVERY);
+    const added = rows.filter(r => r.state === R.ADDED_DURING_RECOVERY);
+    deriveRecoveryComparison.mockReturnValueOnce(mockComparison({ weeks: [mockWeek({ exercises, added })] }));
+    const root = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
+    expandDetails(root);
+    const shown = Object.fromEntries(hostRows(root).map(r => [hostTextsIn(r)[0], hostTextsIn(r)[1]]));
+    const labels = rowLabels(root);
+    for (const [key, , , word] of cases) {
+      expect(shown[`Lift ${key}`]).toBe(word);
+      const label = labels.find(l => l.startsWith(`Lift ${key},`));
+      expect(label).toBeDefined();
+      // Exactly the visible word, right after the name, never a divergent source-state word.
+      expect(label.startsWith(`Lift ${key}, ${word}`)).toBe(true);
+      expect(label).not.toMatch(/Baseline met|Not reintroduced|Not comparable/);
+    }
   });
 
   test('a not-comparable row surfaces its unavailable reason instead of a fabricated ratio', () => {
@@ -639,7 +718,7 @@ describe('AnalyticsRecoverySection — every exercise class/state (mocked compar
     const root = component.root;
     expandDetails(root);
 
-    expect(hasText(root, 'Not comparable')).toBe(true);
+    expect(statusWords(root)).toEqual(["Can't compare"]);
     // The reason is now short on screen and full in the spoken label (#821):
     // the visible panel was carrying a sentence per un-comparable row. Both
     // halves are asserted, because dropping the long form would silently cost
@@ -648,10 +727,12 @@ describe('AnalyticsRecoverySection — every exercise class/state (mocked compar
     expect(
       rowLabels(root).some(l => l.includes('Logged as a different kind of exercise than the baseline.'))
     ).toBe(true);
-    // The summary line counts it, and it gets its own state group.
-    expect(hasText(root, '1 not comparable')).toBe(true);
-    const notComparableHeader = groupHeaders(root).find(h => h.props.children === 'Not comparable (1)');
-    expect(notComparableHeader).toBeDefined();
+    // No fabricated ratio on screen: no bar, no percent.
+    expect(hasText(root, '%')).toBe(false);
+    expect(root.findAll(i => typeof i.type === 'string' && i.props.testID === 'recovery-exercise-bar')).toHaveLength(0);
+    // #1219: no clause-count line or counted group heading; the row states it.
+    expect(hasText(root, '1 not comparable')).toBe(false);
+    expect(groupHeaders(root).map(h => h.props.children)).not.toContain('Not comparable (1)');
   });
 
   test('an empty-but-supported baseline snapshot is reported without a hero or exercise rows', () => {
@@ -666,7 +747,7 @@ describe('AnalyticsRecoverySection — every exercise class/state (mocked compar
     expect(hasText(root, 'baseline exercises met')).toBe(false);
   });
 
-  test('a baseline-empty week that still carries added work: the summary line is folded into Exercise details, not the first screenful', () => {
+  test('a baseline-empty week that still carries added work: the added row is reachable in Exercise details, with no clause-count prose', () => {
     const addedRow = mockRow({
       key: 'foam-roll', name: 'Foam Roll', state: RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY, exercise_class: 'reps_based',
       metrics: [metricRow('total_reps', 20, null, null, null)],
@@ -679,12 +760,13 @@ describe('AnalyticsRecoverySection — every exercise class/state (mocked compar
     const root = component.root;
 
     // No hero (there is no baseline denominator), and the #1029 bucket
-    // rows/sparse sentence are absent too (zero roster) — but the clause
-    // line naming the added work is still reachable via Exercise details.
+    // rows are absent too (zero roster) — but the added work is still
+    // reachable via Exercise details as its own status row.
     expect(hasText(root, 'baseline exercises met')).toBe(false);
-    expect(hasText(root, 'Week 1 · 1 added during recovery')).toBe(false);
     expandDetails(root);
-    expect(hasText(root, 'Week 1 · 1 added during recovery')).toBe(true);
+    expect(hasText(root, 'Week 1 · 1 added during recovery')).toBe(false);
+    expect(statusWords(root)).toEqual(['Added during recovery']);
+    expect(hasText(root, 'Reps 20 reps')).toBe(true);
     expect(rowLabels(root).some(l => l.startsWith('Foam Roll, Added during recovery'))).toBe(true);
   });
 });
@@ -699,7 +781,7 @@ describe('AnalyticsRecoverySection — accessible labels expose the underlying e
     expandDetails(root);
 
     const benchRow = root.findAll(
-      inst => typeof inst.props.accessibilityLabel === 'string' && inst.props.accessibilityLabel.startsWith('Bench, Baseline met')
+      inst => typeof inst.props.accessibilityLabel === 'string' && inst.props.accessibilityLabel.startsWith('Bench, At or above baseline')
     )[0];
     expect(benchRow).toBeDefined();
     expect(benchRow.props.accessibilityLabel).toContain('Load 100%');
@@ -716,7 +798,7 @@ describe('AnalyticsRecoverySection — accessible labels expose the underlying e
     expandDetails(root);
 
     const pullUpRow = root.findAll(
-      inst => typeof inst.props.accessibilityLabel === 'string' && inst.props.accessibilityLabel.startsWith('Pull-up, Not reintroduced')
+      inst => typeof inst.props.accessibilityLabel === 'string' && inst.props.accessibilityLabel.startsWith('Pull-up, Not trained yet')
     )[0];
     expect(pullUpRow).toBeDefined();
     expect(pullUpRow.props.accessibilityLabel).toContain('Baseline Reps 24 reps');
@@ -762,10 +844,14 @@ describe('AnalyticsRecoverySection — likely name mismatch explanation (#1202)'
     const component = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] });
     const root = component.root;
     expandDetails(root);
-    expect(hasText(root, 'Logged as "Pull-up (wide)" this week — names differ, so no direct comparison was made.')).toBe(true);
-    expect(hasText(root, 'Baseline has "Pull-up" — names differ, so no direct comparison was made.')).toBe(true);
+    // Visible form is just the names (#1219); the full sentence stays spoken.
+    expect(hasText(root, 'Logged as “Pull-up (wide)”')).toBe(true);
+    expect(hasText(root, 'Baseline has “Pull-up”')).toBe(true);
+    expect(hasText(root, 'names differ')).toBe(false);
     const labels = rowLabels(root);
-    expect(labels.find(l => l.startsWith('Pull-up, Not reintroduced'))).toContain('names differ');
+    expect(labels.find(l => l.startsWith('Pull-up, Not trained yet'))).toContain('Logged as "Pull-up (wide)" this week — names differ, so no direct comparison was made.');
+    expect(labels.find(l => l.startsWith('Pull-up (wide), Added during recovery'))).toContain('Baseline has "Pull-up" — names differ, so no direct comparison was made.');
+    expect(labels.find(l => l.startsWith('Pull-up, Not trained yet'))).toContain('names differ');
     expect(labels.find(l => l.startsWith('Pull-up (wide), Added during recovery'))).toContain('names differ');
     expect(labels.find(l => l.startsWith('Foam Roll'))).not.toContain('names differ');
   });
@@ -787,7 +873,7 @@ describe('AnalyticsRecoverySection — persisted week identity survives gaps', (
     expect(root.findAll(inst => inst.props.accessibilityLabel === 'Week 2').length).toBe(0);
     // Defaults to the latest live week, which is persisted week_number 3 — not
     // "week 2 of 2" from array position.
-    expect(hasText(root, 'Push Pull Legs')).toBe(true);
+    expect(hasText(root, 'at or above Push Pull Legs baseline')).toBe(true);
     expect(hasText(root, 'Week 3 · Push Pull Legs')).toBe(false);
   });
 });
@@ -1051,7 +1137,7 @@ describe('AnalyticsRecoverySection — light/dark appearance', () => {
     expect(hasText(darkComponent.root, 'At or above 4')).toBe(false);
     expect(hasText(darkComponent.root, 'Trained this week')).toBe(false);
     expandDetails(darkComponent.root);
-    expect(hasText(darkComponent.root, 'Trained this week: 4 of 4 roster exercises')).toBe(true);
+    expect(rosterLabel(darkComponent.root)).toBe('Trained this week: 4 of 4 roster exercises.');
   });
 });
 
@@ -1135,7 +1221,7 @@ describe('AnalyticsRecoverySection — authoritative Recovery state (#716)', () 
     const rendered = texts(component);
     expect(rendered).toContain(RECOVERY_STALE_MESSAGE);
     // The block's own evidence is still rendered, not replaced by the notice.
-    expect(rendered.some(t => t.includes('Push Pull Legs'))).toBe(true);
+    expect(rendered.some(t => t.includes('at or above Push Pull Legs baseline'))).toBe(true);
     expect(retryButton(component)).toBeTruthy();
   });
 
@@ -1229,7 +1315,7 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     expect(hasText(root, 'baseline exercises met')).toBe(false);
     expect(hasText(root, 'Exercise details')).toBe(true);
     // The header no longer restates the hero's status.
-    expect(findAllText(root).filter(t => t.includes('at or above baseline')).length).toBe(1);
+    expect(findAllText(root).filter(t => t.startsWith('at or above') && t.endsWith('baseline')).length).toBe(1);
     expect(hasText(root, 'of 2 at or above baseline')).toBe(false);
     expect(hasText(root, '3 exercises')).toBe(true);
 
@@ -1243,8 +1329,12 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     expect(byLabel(root, 'Expand exercise details')).toBeDefined();
     // The roster/gap facts live in the drill-down now (#1209).
     expandDetails(root);
-    expect(hasText(root, 'Most common gap: Total work')).toBe(true);
-    expect(hasText(root, 'Bench (rebuilding), Pull-up (at or above baseline) — 2 of 2 roster exercises trained.')).toBe(true);
+    // #1219: a compact stat row (visible) with the full sentence spoken only.
+    expect(rosterLabel(root)).toBe('Trained this week: 2 of 2 roster exercises. Most common gap: Total work.');
+    expect(hasText(root, 'Gap: Total work')).toBe(true);
+    expect(hasText(root, 'Most common gap')).toBe(false);
+    expect(hasText(root, 'Trained this week')).toBe(false);
+    expect(hasText(root, 'roster exercises')).toBe(false);
   });
 
   test('details expand and collapse again on demand', () => {
@@ -1274,7 +1364,9 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     expect(byLabel(root, "Week 1 return bands across 2 trained exercises: At or above 1, Close 0, Rebuilding 1, Early 0, Can't compare 0")).toBeDefined();
 
     expandDetails(root);
-    expect(hasText(root, 'Week 1 · 1 rebuilding · 1 added during recovery')).toBe(true);
+    // #1219: the clause line is gone everywhere; the rows carry the states.
+    expect(hasText(root, 'Week 1 · 1 rebuilding · 1 added during recovery')).toBe(false);
+    expect(statusWords(root)).toEqual(['At or above baseline', 'Rebuilding', 'Added during recovery']);
     // States with nothing in them are not listed as zeroes.
     expect(hasText(root, '0 not reintroduced')).toBe(false);
     expect(hasText(root, '0 not comparable')).toBe(false);
@@ -1301,15 +1393,14 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     expect(hasText(root, 'Week 1')).toBe(true);
   });
 
-  test('rows are grouped under counted, accessibilityRole="header" state groups, in Baseline met / R3a clause / Added order', () => {
+  test('rows keep the Baseline met / R3a clause / Added order, each with its own status word and no counted group headings (#1219)', () => {
     const root = setupMixed();
     expandDetails(root);
 
+    expect(statusWords(root)).toEqual(['At or above baseline', 'Rebuilding', 'Added during recovery']);
+    expect(hostRows(root).map(r => hostTextsIn(r)[0])).toEqual(['Pull-up', 'Bench', 'Foam Roll']);
     const headers = groupHeaders(root).map(h => h.props.children);
-    expect(headers).toEqual(['Baseline met (1)', 'Rebuilding (1)', 'Added during recovery (1)']);
-    // A state with nothing in it renders no group at all — never a zero-count header.
-    expect(headers.some(h => h.startsWith('Not reintroduced'))).toBe(false);
-    expect(headers.some(h => h.startsWith('Not comparable'))).toBe(false);
+    expect(headers.some(h => /\(\d+\)$/.test(String(h)))).toBe(false);
   });
 
   test('every row is always visible — there is no filter that can hide one', () => {
@@ -1318,11 +1409,11 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
 
     const labels = rowLabels(root);
     expect(labels.some(l => l.startsWith('Bench, Rebuilding'))).toBe(true);
-    expect(labels.some(l => l.startsWith('Pull-up, Baseline met'))).toBe(true);
+    expect(labels.some(l => l.startsWith('Pull-up, At or above baseline'))).toBe(true);
     expect(labels.some(l => l.startsWith('Foam Roll, Added during recovery'))).toBe(true);
   });
 
-  test('the not-reintroduced group holds exactly the baseline work that never came back', () => {
+  test('the not-reintroduced row holds exactly the baseline work that never came back', () => {
     const root = setup({
       blocks: [block()],
       weeks: [week(1, 'note-w1')],
@@ -1330,11 +1421,10 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     }).root;
     expandDetails(root);
 
-    const headers = groupHeaders(root).map(h => h.props.children);
-    expect(headers).toContain('Not reintroduced (1)');
+    expect(statusWords(root)).toEqual(['At or above baseline', 'Not trained yet']);
     const labels = rowLabels(root);
-    expect(labels.some(l => l.startsWith('Pull-up, Not reintroduced'))).toBe(true);
-    expect(labels.some(l => l.startsWith('Bench, Baseline met'))).toBe(true);
+    expect(labels.some(l => l.startsWith('Pull-up, Not trained yet'))).toBe(true);
+    expect(labels.some(l => l.startsWith('Bench, At or above baseline'))).toBe(true);
   });
 
   // The explanations moved behind a disclosure (#821) — permanent prose at the
@@ -1345,19 +1435,16 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     const root = setupMixed();
     expandDetails(root);
 
-    // Collapsed by default: the definitions are not competing with the evidence.
+    // #1219: the legend sentences and their disclosure are gone entirely; the
+    // rows carry short metric names with numbers instead.
+    expect(root.findAllByProps({ accessibilityLabel: 'What do these measurements mean?' })).toHaveLength(0);
+    expect(hasText(root, 'What do these mean?')).toBe(false);
     expect(hasText(root, 'Load — the heaviest completed working set that week.')).toBe(false);
-
-    const toggle = root
-      .findAllByProps({ accessibilityLabel: 'What do these measurements mean?' })
-      .find(node => typeof node.props.onPress === 'function');
-    expect(toggle).toBeDefined();
-    render.act(() => { toggle.props.onPress(); });
-
-    expect(hasText(root, 'Load — the heaviest completed working set that week.')).toBe(true);
-    expect(hasText(root, 'Not an all-time max or an estimated 1RM.')).toBe(true);
-    expect(hasText(root, "Total work — this exercise's load × reps across the completed working sets of the selected week.")).toBe(true);
-    expect(hasText(root, 'Per exercise, per week; not a block total.')).toBe(true);
+    expect(hasText(root, 'Not an all-time max or an estimated 1RM.')).toBe(false);
+    expect(hasText(root, 'Per exercise, per week')).toBe(false);
+    expect(hasText(root, 'Total work is per exercise')).toBe(false);
+    expect(hasText(root, 'Load 135 lb / 135 lb')).toBe(true);
+    expect(hasText(root, 'Total work')).toBe(true);
   });
 
   test('a week with no weighted work carries no weighted explanation', () => {
@@ -1406,7 +1493,7 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     expect(hasText(root, '2 of 2')).toBe(true);
 
     expandDetails(root);
-    expect(rowLabels(root).some(l => l.startsWith('Bench, Baseline met'))).toBe(true);
+    expect(rowLabels(root).some(l => l.startsWith('Bench, At or above baseline'))).toBe(true);
   });
 
   test('a week whose note is unreadable states the R3a-worded notice above the disclosure, with no details to expand', () => {
@@ -1848,8 +1935,8 @@ describe('AnalyticsRecoverySection — scannable hierarchy (#1209)', () => {
   test('hero states the current week first, above the comparison and bands', () => {
     const root = twoWeeks();
     const hero = root.findAll(n => n.props.testID === 'recovery-hero' && typeof n.type === 'string')[0];
-    expect(hero.props.accessibilityLabel).toMatch(/^Week 2: \d+ of \d+ trained exercises at or above baseline$/);
-    expect(hasText(root, 'at or above baseline')).toBe(true);
+    expect(hero.props.accessibilityLabel).toMatch(/^Week 2: \d+ of \d+ trained exercises at or above [A-Za-z ]+ baseline$/);
+    expect(hasText(root, 'at or above Push Pull Legs baseline')).toBe(true);
     expect(hasText(root, 'trained exercises at or above baseline')).toBe(false);
     const order = root.findAll(n => ['recovery-hero', 'recovery-movement', 'recovery-bands-rows'].includes(n.props.testID) && typeof n.type === 'string')
       .map(n => n.props.testID);
@@ -1937,9 +2024,13 @@ describe('AnalyticsRecoverySection — per-week vs block state (#1193)', () => {
     const root = setupTwoWeeks();
     expandDetails(root);
     // Pull-up trained in Week 1 only; viewing Week 2 it is absent, not missing.
-    expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not reintroduced. Not in Week 2 · trained in Week 1'))).toBe(true);
-    expect(hasText(root, 'Not in Week 2 · trained in Week 1 · Baseline')).toBe(true);
-    // Added-during-recovery work stays its own group.
+    expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not trained yet. Not in Week 2 · trained in Week 1'))).toBe(true);
+    // The cross-week prose is spoken only (#1219); the row shows the status
+    // word and the baseline number.
+    expect(hasText(root, 'Not in Week 2')).toBe(false);
+    expect(hasText(root, 'trained in Week 1')).toBe(false);
+    expect(hasText(root, 'Baseline Reps 24 reps')).toBe(true);
+    // Added-during-recovery work stays its own row.
     expect(rowLabels(root).some(l => l.startsWith('Curl, Added during recovery'))).toBe(true);
 
     act(() => { byLabel(root, 'Week 1').props.onPress(); });
@@ -1953,13 +2044,17 @@ describe('AnalyticsRecoverySection — per-week vs block state (#1193)', () => {
       notes: [note('note-w1', '-Bench\n- 135 5,5,5'), note('note-w2', '-Bench\n- 135 5,5,5')],
     }).root;
     expandDetails(root);
-    expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not reintroduced. Not trained in any linked week'))).toBe(true);
+    expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not trained yet. Not trained in any linked week'))).toBe(true);
   });
 
-  test('Total work is scoped to one exercise in one week, never a block total', () => {
+  test('Total work stays per exercise and per week in each row\'s own numbers, with no scope paragraph', () => {
     const root = setupTwoWeeks();
     expandDetails(root);
-    expect(hasText(root, "Total work is per exercise, per week — not a block total. Current values are Week 2's; “Baseline” figures are the frozen starting value.")).toBe(true);
+    expect(hasText(root, 'Total work is per exercise')).toBe(false);
+    expect(hasText(root, 'not a block total')).toBe(false);
+    expect(hasText(root, 'frozen starting value')).toBe(false);
+    // Each weighted row carries its own current / baseline Total work figures.
+    expect(hasText(root, 'Total work 2025 lb / 2025 lb')).toBe(true);
   });
 
   test('logged but uncomparable work in another week still counts as trained there', () => {
@@ -1971,7 +2066,7 @@ describe('AnalyticsRecoverySection — per-week vs block state (#1193)', () => {
     ] }));
     const root = setup({ blocks: [block()], weeks: [week(1, 'n1'), week(2, 'n2')], notes: [] }).root;
     expandDetails(root);
-    expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not reintroduced. Not in Week 2 · trained in Week 1'))).toBe(true);
+    expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not trained yet. Not in Week 2 · trained in Week 1'))).toBe(true);
   });
 
   test('an unavailable selected week is not described as compared', () => {
@@ -1993,7 +2088,7 @@ describe('AnalyticsRecoverySection — per-week vs block state (#1193)', () => {
     ] }));
     const root = setup({ blocks: [block()], weeks: [week(1, 'n1'), week(2, 'n2')], notes: [] }).root;
     expandDetails(root);
-    expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not reintroduced. Not trained in any readable linked week'))).toBe(true);
+    expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not trained yet. Not trained in any readable linked week'))).toBe(true);
   });
 
   test('the Total work scope note is not shown when only baseline values are on screen', () => {
@@ -2026,6 +2121,398 @@ describe('AnalyticsRecoverySection — per-week vs block state (#1193)', () => {
     expect(hasText(root, 'trained in Week')).toBe(false);
     expect(hasText(root, 'as last loaded. Showing')).toBe(false);
     expect(root.findAll(n => n.props.testID === 'recovery-movement' && typeof n.type === 'string').length).toBe(0);
-    expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not reintroduced. Not in Week 2'))).toBe(true);
+    expect(rowLabels(root).some(l => l.startsWith('Pull-up, Not trained yet. Not in Week 2'))).toBe(true);
+  });
+});
+
+// ── #1219 amendment: routine-anchored hero, phone-safe week picker, visual rows ──
+
+describe('AnalyticsRecoverySection — routine-anchored hero label (#1219)', () => {
+  const heroNode = (root) => root.findAll(n => n.props.testID === 'recovery-hero' && typeof n.type === 'string')[0];
+  const oneWeek = (title) => setup({
+    blocks: [block({ baseline_note_title: title })],
+    weeks: [week(1, 'note-w1')],
+    notes: [note('note-w1', BASELINE_TEXT)],
+  }).root;
+
+  test('the hero label names the routine and the bottom line no longer repeats it', () => {
+    const root = oneWeek('Push Pull Legs');
+    expect(hasText(root, 'at or above Push Pull Legs baseline')).toBe(true);
+    expect(heroNode(root).props.accessibilityLabel).toBe('Week 1: 2 of 2 trained exercises at or above Push Pull Legs baseline');
+    expect(findAllText(root).some(t => t.startsWith('Baseline:'))).toBe(false);
+    expect(hasText(root, 'Started 05-01-2026')).toBe(true);
+  });
+
+  test('a long routine name ellipsizes on screen while the accessible label keeps the whole name', () => {
+    const full = 'Upper Lower Push Pull Legs Hypertrophy Block';
+    const root = oneWeek(full);
+    const visible = findAllText(root).find(t => t.startsWith('at or above') && t.endsWith('baseline'));
+    expect(visible).toContain('…');
+    expect(visible).not.toContain(full);
+    expect(visible.length).toBeLessThanOrEqual('at or above  baseline'.length + 24);
+    expect(heroNode(root).props.accessibilityLabel).toContain(`at or above ${full} baseline`);
+    // The full name appears nowhere visible.
+    expect(findAllText(root).some(t => t.includes(full))).toBe(false);
+  });
+
+  describe('routine label truncation by code point', () => {
+    const { routineLabel, ROUTINE_LABEL_MAX } = require('../components/recovery/RecoveryVisuals');
+    const hasLoneSurrogate = (t) => /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(t);
+    const ascii = (n) => 'a'.repeat(n);
+
+    test('exactly at the limit keeps the whole title with no ellipsis; one over is cut with one', () => {
+      expect(routineLabel(ascii(ROUTINE_LABEL_MAX)).visible).toBe(ascii(ROUTINE_LABEL_MAX));
+      const over = routineLabel(ascii(ROUTINE_LABEL_MAX + 1));
+      expect(over.visible).toBe(`${ascii(ROUTINE_LABEL_MAX - 1)}…`);
+      expect(over.full).toBe(ascii(ROUTINE_LABEL_MAX + 1));
+    });
+
+    test.each([21, 22, 23, 24])('an emoji straddling the cut after %i ASCII chars is never split', (n) => {
+      const title = `${ascii(n)}💪${ascii(10)}`;
+      const { visible, full } = routineLabel(title);
+      expect(hasLoneSurrogate(visible)).toBe(false);
+      expect(visible).not.toContain('\uFFFD');
+      expect(full).toBe(title);
+      expect(Array.from(visible).length).toBeLessThanOrEqual(ROUTINE_LABEL_MAX);
+      expect(visible.endsWith('…')).toBe(true);
+    });
+
+    test('an astral emoji at exactly the limit is counted as one character, so it is not cut', () => {
+      const title = `${ascii(ROUTINE_LABEL_MAX - 1)}💪`;
+      expect(title.length).toBe(ROUTINE_LABEL_MAX + 1); // UTF-16 length would wrongly trip a slice
+      expect(routineLabel(title).visible).toBe(title);
+    });
+
+    test('ZWJ emoji and accented text are cut only between code points, never inside a surrogate pair', () => {
+      const family = '👨‍👩‍👧‍👦';
+      for (const title of [`${ascii(20)}${family}${family}`, `${'é'.repeat(30)}`, `${ascii(22)}e\u0301${ascii(5)}`]) {
+        const { visible, full } = routineLabel(title);
+        expect(hasLoneSurrogate(visible)).toBe(false);
+        expect(full).toBe(title);
+      }
+    });
+
+    test('the rendered hero shows the safely cut name and the accessible label the full emoji title', () => {
+      const title = `${ascii(22)}💪 Hypertrophy Block`;
+      const root = setup({ blocks: [block({ baseline_note_title: title })], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
+      const visible = findAllText(root).find(t => t.startsWith('at or above') && t.endsWith('baseline'));
+      expect(hasLoneSurrogate(visible)).toBe(false);
+      expect(visible).toContain('…');
+      expect(heroNode(root).props.accessibilityLabel).toContain(`at or above ${title} baseline`);
+    });
+  });
+
+  test('an untitled routine falls back to "Untitled Routine" visibly and accessibly', () => {
+    for (const title of ['', '   ', null]) {
+      const root = oneWeek(title);
+      expect(hasText(root, 'at or above Untitled Routine baseline')).toBe(true);
+      expect(heroNode(root).props.accessibilityLabel).toContain('at or above Untitled Routine baseline');
+    }
+  });
+
+  test('zero-trained hero path names the routine once and the bottom line does not repeat it', () => {
+    // Nothing from the baseline was trained: hero shows "Nothing trained yet".
+    const root = setup({
+      blocks: [block({ baseline_note_title: 'Push Pull Legs' })],
+      weeks: [week(1, 'note-w1')],
+      notes: [note('note-w1', '-Sled Push\n- 100 5,5')],
+    }).root;
+    expect(hasText(root, 'Nothing trained yet')).toBe(true);
+    expect(findAllText(root).filter(t => t.includes('Push Pull Legs'))).toEqual(['against Push Pull Legs baseline']);
+    expect(heroNode(root).props.accessibilityLabel).toBe('Week 1: no roster exercises trained yet against Push Pull Legs baseline');
+    expect(findAllText(root).some(t => t.startsWith('Baseline:'))).toBe(false);
+    expect(hasText(root, 'Started 05-01-2026')).toBe(true);
+  });
+
+  test('zero-trained hero with a long or untitled routine keeps the same single-naming rule', () => {
+    for (const [title, visibleHas, full] of [['Upper Lower Push Pull Legs Hypertrophy Block', '…', 'Upper Lower Push Pull Legs Hypertrophy Block'], ['', 'Untitled Routine', 'Untitled Routine']]) {
+      const root = setup({
+        blocks: [block({ baseline_note_title: title })],
+        weeks: [week(1, 'note-w1')],
+        notes: [note('note-w1', '-Sled Push\n- 100 5,5')],
+      }).root;
+      const named = findAllText(root).filter(t => t.startsWith('against'));
+      expect(named).toHaveLength(1);
+      expect(named[0]).toContain(visibleHas);
+      expect(heroNode(root).props.accessibilityLabel).toContain(full);
+      expect(findAllText(root).some(t => t.startsWith('Baseline:'))).toBe(false);
+    }
+  });
+
+  test('every no-hero path (missing note, unreadable note) names the routine exactly once, in the bottom line', () => {
+    const missing = setup({ blocks: [block()], weeks: [week(1, 'ghost')], notes: [] }).root;
+    const unreadable = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', 'x'.repeat(MAX_RAW_TEXT_LENGTH + 1))] }).root;
+    for (const root of [missing, unreadable]) {
+      expect(root.findAll(n => n.props.testID === 'recovery-hero' && typeof n.type === 'string')).toHaveLength(0);
+      expect(findAllText(root).filter(t => t.includes('Push Pull Legs'))).toEqual(['Baseline: Push Pull Legs · Started 05-01-2026']);
+    }
+  });
+
+  test('with no hero (no week logged) the routine is still named once, in the bottom line', () => {
+    const root = setup({ blocks: [block()], weeks: [], notes: [] }).root;
+    expect(findAllText(root).filter(t => t.includes('Push Pull Legs'))).toEqual(['Baseline: Push Pull Legs · Started 05-01-2026']);
+  });
+});
+
+describe('AnalyticsRecoverySection — phone-safe week picker (#1219)', () => {
+  const { StyleSheet } = require('react-native');
+  const {
+    computeWeekPickerLayout, WEEK_CHIP_MIN,
+  } = require('../components/recovery/RecoveryWeekPicker');
+
+  const weekSet = (n) => Array.from({ length: n }, (_, i) => week(i + 1, `note-w${i + 1}`, i === 0 ? { completed_at: '2026-05-09T00:00:00Z' } : {}));
+  const notesFor = (n) => Array.from({ length: n }, (_, i) => note(`note-w${i + 1}`, BASELINE_TEXT));
+  const mountWeeks = (n) => setup({ blocks: [block()], weeks: weekSet(n), notes: notesFor(n) }).root;
+  const host = (root, id) => root.findAll(n => typeof n.type === 'string' && n.props.testID === id);
+  const chips = (root) => root.findAll(n => typeof n.type === 'string' && /^recovery-week-chip-\d+$/.test(n.props.testID || ''));
+  const styleOf = (c) => StyleSheet.flatten(c.props.style);
+
+  beforeEach(() => { mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 }; });
+
+  describe('layout decision (weeks x width x font scale)', () => {
+    // Expected mode per contract: forced scroll first (13+ weeks, fontScale >=
+    // 1.3, width too narrow for 3 chips), then 1-6 weeks single-row when 44dp
+    // chips fit else the strip, then 7-12 balanced rows. Width 252 is a
+    // compact phone card, 322/390 are ordinary, 640 is a wide layout.
+    const MODE = (count, width, fs) => {
+      if (count > 12 || fs >= 1.3) return 'scroll';
+      const perRowMax = Math.floor((width + 4) / 48);
+      if (perRowMax < 3) return 'scroll';
+      if (count <= perRowMax) return 'single';
+      return count <= 6 ? 'scroll' : 'grid';
+    };
+    const cases = [];
+    for (const count of [1, 2, 6, 7, 9, 12, 13]) {
+      for (const width of [252, 322, 390, 640]) {
+        for (const fs of [1, 1.5, 2]) cases.push([count, width, fs, MODE(count, width, fs)]);
+      }
+    }
+    test.each(cases)('%i weeks @ %idp, %sx font -> %s, never a wrapped orphan', (count, width, fs, mode) => {
+      const l = computeWeekPickerLayout({ count, width, fontScale: fs });
+      expect(l.mode).toBe(mode);
+      expect(l.chipWidth).toBeGreaterThanOrEqual(WEEK_CHIP_MIN);
+      expect(l.rowSizes.reduce((n, x) => n + x, 0)).toBe(count);
+      if (mode === 'single' || mode === 'scroll') expect(l.rows).toBe(1);
+      if (mode === 'grid') {
+        // Balanced: sizes differ by at most one and no row is a lone chip.
+        expect(Math.max(...l.rowSizes) - Math.min(...l.rowSizes)).toBeLessThanOrEqual(1);
+        expect(Math.min(...l.rowSizes)).toBeGreaterThanOrEqual(2);
+        expect(l.rowSizes[0] * l.chipWidth + (l.rowSizes[0] - 1) * 4).toBeLessThanOrEqual(width);
+      }
+      if (mode === 'single') expect(l.chipWidth * count + (count - 1) * 4).toBeLessThanOrEqual(width);
+      // Ordinary 1-6 week sets never become a wrapped grid.
+      if (count <= 6) expect(l.mode).not.toBe('grid');
+    });
+
+    test('the spec examples: 6 @ 322 / 1.5x scrolls, 13 on a wide layout scrolls, 6 @ 252 scrolls', () => {
+      expect(computeWeekPickerLayout({ count: 6, width: 322, fontScale: 1.5 }).mode).toBe('scroll');
+      expect(computeWeekPickerLayout({ count: 13, width: 640 }).mode).toBe('scroll');
+      expect(computeWeekPickerLayout({ count: 6, width: 252 }).mode).toBe('scroll');
+      expect(computeWeekPickerLayout({ count: 6, width: 322 }).mode).toBe('single');
+      expect(computeWeekPickerLayout({ count: 6, width: 292 }).mode).toBe('single');
+    });
+  });
+
+  describe('rendered picker', () => {
+    test('one week has no picker (nothing to choose)', () => {
+      expect(host(mountWeeks(1), 'recovery-week-picker')).toHaveLength(0);
+    });
+
+    test('six weeks render on a single row with >= 44dp chips, labels, selection and completed state', () => {
+      const root = mountWeeks(6);
+      expect(host(root, 'recovery-week-picker-row-0')).toHaveLength(1);
+      expect(host(root, 'recovery-week-picker-row-1')).toHaveLength(0);
+      expect(chips(root)).toHaveLength(6);
+      chips(root).forEach(c => {
+        expect(styleOf(c).width).toBeGreaterThanOrEqual(44);
+        expect(styleOf(c).minHeight).toBeGreaterThanOrEqual(44);
+      });
+      expect(byLabel(root, 'Week 1, completed')).toBeDefined();
+      expect(byLabel(root, 'Week 2')).toBeDefined();
+      expect(byLabel(root, 'Week 6').props.accessibilityState).toEqual({ selected: true });
+      expect(byLabel(root, 'Week 5').props.accessibilityState).toEqual({ selected: false });
+      act(() => { byLabel(root, 'Week 2').props.onPress(); });
+      expect(byLabel(root, 'Week 2').props.accessibilityState).toEqual({ selected: true });
+      expect(byLabel(root, 'Week 6').props.accessibilityState).toEqual({ selected: false });
+      // The week change is announced through the existing live region.
+      expect(root.findAll(n => n.props.accessibilityLiveRegion === 'polite' && typeof n.type === 'string').length).toBe(1);
+      expect(host(root, 'recovery-hero')[0].props.accessibilityLabel).toMatch(/^Week 2:/);
+    });
+
+    test.each([7, 12])('%i weeks render as two balanced rows with every chip present', (count) => {
+      const root = mountWeeks(count);
+      const r0 = host(root, 'recovery-week-picker-row-0')[0];
+      const r1 = host(root, 'recovery-week-picker-row-1')[0];
+      expect(host(root, 'recovery-week-picker-row-2')).toHaveLength(0);
+      const inRow = (r) => r.findAll(n => typeof n.type === 'string' && /^recovery-week-chip-/.test(n.props.testID || '')).length;
+      expect(inRow(r0) + inRow(r1)).toBe(count);
+      expect(inRow(r1)).toBeGreaterThanOrEqual(inRow(r0) - 1);
+      for (let i = 1; i <= count; i++) expect(byLabel(root, i === 1 ? 'Week 1, completed' : `Week ${i}`)).toBeDefined();
+    });
+
+    test('13 weeks use a horizontally scrollable strip rather than compressed chips', () => {
+      const root = mountWeeks(13);
+      expect(host(root, 'recovery-week-picker-scroll').length).toBeGreaterThan(0);
+      expect(host(root, 'recovery-week-picker-row-0')).toHaveLength(0);
+      expect(chips(root)).toHaveLength(13);
+      chips(root).forEach(c => expect(styleOf(c).width).toBeGreaterThanOrEqual(44));
+    });
+
+    test('in strip mode the selected chip is scrolled into view', () => {
+      const { ScrollView } = require('react-native');
+      const root = mountWeeks(13);
+      const calls = () => root.findByType(ScrollView).instance.scrollTo.mock.calls;
+      expect(host(root, 'recovery-week-picker-scroll').length).toBeGreaterThan(0);
+      // Newest week (13) is selected by default, far from the origin.
+      expect(calls().length).toBeGreaterThan(0);
+      expect(calls()[calls().length - 1][0].x).toBeGreaterThan(300);
+      act(() => { byLabel(root, 'Week 1, completed').props.onPress(); });
+      expect(calls()[calls().length - 1][0].x).toBe(0);
+    });
+
+    test('a large font scale degrades a multi-row set to the scrollable strip', () => {
+      mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1.6 };
+      const root = mountWeeks(8);
+      expect(host(root, 'recovery-week-picker-scroll').length).toBeGreaterThan(0);
+      expect(chips(root)).toHaveLength(8);
+    });
+
+    test('a constrained measured width degrades to the strip and keeps the selected week', () => {
+      const root = mountWeeks(8);
+      expect(host(root, 'recovery-week-picker-row-1')).toHaveLength(1);
+      act(() => { byLabel(root, 'Week 3').props.onPress(); });
+      expect(byLabel(root, 'Week 3').props.accessibilityState).toEqual({ selected: true });
+      act(() => { host(root, 'recovery-week-picker')[0].props.onLayout({ nativeEvent: { layout: { width: 100 } } }); });
+      expect(host(root, 'recovery-week-picker-scroll').length).toBeGreaterThan(0);
+      expect(byLabel(root, 'Week 3').props.accessibilityState).toEqual({ selected: true });
+      act(() => { host(root, 'recovery-week-picker')[0].props.onLayout({ nativeEvent: { layout: { width: 322 } } }); });
+      expect(host(root, 'recovery-week-picker-row-0')).toHaveLength(1);
+      expect(byLabel(root, 'Week 3').props.accessibilityState).toEqual({ selected: true });
+    });
+  });
+});
+
+describe('AnalyticsRecoverySection — visual exercise details (#1219)', () => {
+  const { StyleSheet } = require('react-native');
+  // Bench: load back, total work two thirds, floored to 66% (rebuilding). Pull-up fully back.
+  // Foam Roll is added work. Curl exists only in the baseline.
+  const BASE = '-Bench\n- 135 5,5,5\n-Pull-up\n- 8,8,8\n-Curl\n- 20 10,10';
+  const WEEK = '-Bench\n- 135 5,5\n-Pull-up\n- 8,8,8\n-Foam Roll\n- 10,10';
+  const props = () => ({
+    blocks: [block({ baseline: captureRecoveryBaselineFromText(BASE) })],
+    weeks: [week(1, 'note-w1')],
+    notes: [note('note-w1', WEEK)],
+  });
+  const mount = () => {
+    const root = setup(props()).root;
+    expandDetails(root);
+    return root;
+  };
+  const rowTexts = (root) => hostRows(root).map(r => hostTextsIn(r));
+  const hostById = (root, id) => root.findAll(n => typeof n.type === 'string' && n.props.testID === id);
+
+  test('each row is name + status word, and compared rows add one thin bar with its percent and concise numbers', () => {
+    const rows = rowTexts(mount());
+    expect(rows.map(r => r[0])).toEqual(['Pull-up', 'Bench', 'Curl', 'Foam Roll']);
+    expect(rows.map(r => r[1])).toEqual(['At or above baseline', 'Rebuilding', 'Not trained yet', 'Added during recovery']);
+    const bench = rows[1];
+    expect(bench).toContain('66%');
+    expect(bench).toContain('Load 135 lb / 135 lb');
+    expect(bench.some(t => t.startsWith('Total work '))).toBe(true);
+    // Rows stay short: only tokens, never sentences.
+    for (const r of rows) for (const t of r) expect(t.length).toBeLessThanOrEqual(40);
+    expect(rows.every(r => r.length <= 5)).toBe(true);
+  });
+
+  test('one bar per compared row, filled to the limiting metric; absent and added rows get no bar', () => {
+    const root = mount();
+    const bars = hostById(root, 'recovery-exercise-bar');
+    expect(bars).toHaveLength(2);
+    const fills = bars.map(b => StyleSheet.flatten(b.children[0].props.style).width);
+    expect(fills).toEqual(['100%', '66%']);
+    // Missing is not zero: the not-trained row shows baseline numbers only.
+    const curl = rowTexts(root)[2];
+    expect(curl.some(t => t.includes('%'))).toBe(false);
+    expect(curl).toContain('Baseline Load 20 lb');
+  });
+
+  test('at fontScale 2 a long exercise name is never clipped and the header wraps so the status can stack under it', () => {
+    mockWindow = { width: 390, height: 844, scale: 3, fontScale: 2 };
+    const longName = 'Single-Arm Dumbbell Incline Neutral-Grip Press (paused)';
+    const root = setup({
+      blocks: [block({ baseline: captureRecoveryBaselineFromText(`-${longName}\n- 50 8,8,8\n-Pull-up\n- 8,8,8`) })],
+      weeks: [week(1, 'note-w1')],
+      notes: [note('note-w1', `-${longName}\n- 50 8,8,8\n-Foam Roll\n- 10,10`)],
+    }).root;
+    expandDetails(root);
+    const rows = hostRows(root);
+    const names = rows.map(r => r.findAll(n => typeof n.type === 'string' && n.type === 'Text')[0]);
+    // No numberOfLines clipping on any exercise name.
+    names.forEach(n => expect(n.props.numberOfLines).toBeUndefined());
+    expect(hostTextsIn(rows[0])[0]).toBe(longName);
+    // Header can wrap; name shrinks/grows rather than owning a fixed flex slot;
+    // the dot and the status word stay one unit.
+    const header = rows[0].findAll(n => typeof n.type === 'string' && StyleSheet.flatten(n.props.style || {}).flexWrap === 'wrap')[0];
+    expect(header).toBeDefined();
+    expect(StyleSheet.flatten(names[0].props.style)).toMatchObject({ flexShrink: 1, flexGrow: 1 });
+    const status = rows[0].findAll(n => typeof n.type === 'string' && n.props.testID === 'recovery-exercise-mark')[0].parent.parent;
+    expect(StyleSheet.flatten(status.props.style)).toMatchObject({ flexDirection: 'row', flexShrink: 0 });
+    // Longest status words are present and unabbreviated.
+    expect(statusWords(root)).toEqual(expect.arrayContaining(['Added during recovery']));
+    expect(statusWords(root).every(w => !/\.\.\.|…/.test(w))).toBe(true);
+    mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+  });
+
+  test('the status mark pairs a band color with the word and differs between bands', () => {
+    const root = mount();
+    const marks = hostById(root, 'recovery-exercise-mark').map(m => StyleSheet.flatten(m.props.style).backgroundColor);
+    expect(marks).toHaveLength(4);
+    expect(marks.every(Boolean)).toBe(true);
+    expect(new Set([marks[0], marks[1], marks[2]]).size).toBe(3);
+    // Every mark has adjacent status text, so color is never alone.
+    expect(statusWords(root).every(w => typeof w === 'string' && w.length > 3)).toBe(true);
+  });
+
+  test('the roster lines became one bar + stat row on the same 13sp tier as the rows', () => {
+    const root = mount();
+    // BASE has 3 roster exercises; Curl is not trained this week.
+    expect(rosterLabel(root)).toBe('Trained this week: 2 of 3 roster exercises, 1 not trained yet. Most common gap: Total work.');
+    const texts = hostTextsIn(rosterNode(root));
+    expect(texts).toEqual(['2', 'trained', '1', 'not yet', 'Gap: Total work']);
+    const sizes = rosterNode(root)
+      .findAll(n => typeof n.type === 'string' && n.type === 'Text')
+      .map(n => StyleSheet.flatten(n.props.style).fontSize);
+    expect(new Set(sizes)).toEqual(new Set([13]));
+    const rowSize = StyleSheet.flatten(hostRows(root)[0].findAll(n => n.type === 'Text')[1].props.style).fontSize;
+    expect(rowSize).toBe(13);
+    expect(hasText(root, 'Trained this week')).toBe(false);
+    expect(hasText(root, 'Most common gap')).toBe(false);
+  });
+
+  test('paragraph copy is gone from the panel but full sentences stay in the row labels', () => {
+    const root = mount();
+    for (const prose of [
+      'Total work is per exercise', 'not a block total', 'What do these mean?', 'frozen starting value',
+      'heaviest completed working set', 'Not in Week', 'trained in Week', 'Not trained in any',
+      'names differ', 'Week 1 · ',
+    ]) {
+      expect(hasText(root, prose)).toBe(false);
+    }
+    const labels = rowLabels(root);
+    expect(labels.find(l => l.startsWith('Bench, Rebuilding'))).toContain('Total work 66%');
+    expect(labels.find(l => l.startsWith('Curl, Not trained yet'))).toContain('Not trained in any linked week');
+    expect(labels.find(l => l.startsWith('Pull-up, At or above baseline'))).toContain('Reps 100%');
+  });
+
+  test('a stale snapshot keeps the rows but makes no cross-week claim in the label', () => {
+    let c;
+    act(() => {
+      c = render.create(<AnalyticsRecoverySection {...props()} stateStale />);
+    });
+    expandDetails(c.root);
+    expect(statusWords(c.root)).toContain('Not trained yet');
+    const label = rowLabels(c.root).find(l => l.startsWith('Curl, Not trained yet'));
+    expect(label).toContain('Not in Week 1');
+    expect(label).not.toContain('Not trained in any');
   });
 });

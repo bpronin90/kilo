@@ -832,37 +832,40 @@ meters; Fatigue keeps `SessionGauge` + its check-in card.
 Progressive disclosure (#758, R5b): the section answers "how close am I to my
 normal training?" before it shows any evidence. Reading order inside the block
 card is **hero/summary → week selector → details disclosure → bottom
-context (`Baseline: {routine} · {dates}`, then the reason)**, and both disclosures start collapsed.
+context (`{dates}`, then the reason)**, and both disclosures start collapsed.
+The hero label names the anchor routine (`at or above {routine} baseline`, #1219),
+so the routine appears once, in the hero; the bottom line repeats it only when no
+hero is shown (e.g. no week logged yet).
 
 | Element | Property | Value |
 |---|---|---|
 | Hero count | style | Same as Weight Trends `weightValueLarge` (#1219): KUA `metric-display-mobile` `32`/`36` `onSurface`; legacy `36`/`800` `accentText` — `X of Y`, never a composite score; the first in-card content, no title-like caption above it |
-| Hero caption | fontSize / weight | `13` / `600`, uppercase, `letterSpacing: 0.5`, `textMuted` |
+| Hero caption | fontSize / weight | `13` / `600`, `textMuted` — `at or above {routine} baseline`; routine cut at 24 characters with `…` (full name, or `Untitled Routine`, in the accessible label); a zero-trained week reads `Nothing trained yet` / `against {routine} baseline` |
 | Hero/summary group | accessibility | `accessible` + `accessibilityLabel` + `accessibilityLiveRegion="polite"` so a week change is announced without scrolling |
-| Summary line | fontSize | `13`, `textMuted` — `Week N · <non-zero states>` |
-| Week chips | shared `chip` styles | radius `14`, 1px `cardBorder`, `subtleBg`, `minHeight: 44`; selected = `accent` fill / `onAccent` text; shown only when the focused block has more than one week |
+| Summary line | fontSize | `13`, `textMuted` — roster denominator and most-common-gap only (one short line each, inside the details) |
+| Week picker | `RecoveryWeekPicker.js` | `Week` caption above chips; chips sized from the measured width (`minWidth`/`minHeight` `44`, `4` gap, cap `72`), radius `14`, 1px `cardBorder`, `subtleBg`; selected = `accent` fill / `onAccent` text; shown only for more than one week. layout is decided in this order: (1) forced horizontal scroll strip for 13+ weeks, `fontScale >= 1.3`, or a width under three 44dp chips; (2) ONE row whenever all chips fit at the 44dp minimum, for any count up to 12; (3) 1-6 weeks that do not fit one row use the scroll strip (never a wrapped grid); (4) 7-12 weeks that do not fit one row use balanced multi-row (row sizes differ by at most one, never a lone orphan chip). The selected chip is kept in view in strip mode |
 | Details header | title / count | `13` / `700` `text`; collapsed count `12` / `600` `textMuted` |
 | Details collapse | icon | `MaterialIcons` `expand-more`/`expand-less`, `18`, `textMuted` (app-wide convention) |
-| Metric legend | fontSize / lineHeight | `12` / `17`, `textMuted` |
-| **State group header** | fontSize / weight | `11` / `800`, uppercase, `letterSpacing: 0.5`, `textMuted`, `accessibilityRole="header"` — `{State} (N)` |
-| Bottom context | fontSize | `13`, `textMuted` — `Baseline: {routine} · Started {date}` (active) or `Baseline: {routine} · {start} – {end}` (completed), then `Reason: …` / `Add a reason` beneath it (`minHeight: 44` target); shared `Card` chrome, no local gap |
+| **Exercise row** | `recoveryVisualStyles.js` `ex*` | name `15` / `700` `text`; band-colored `8` dot + plain status word `13` / `600` `textMuted`; one thin `6` bar (band color on `surfaceSection` track, fill capped at 100%) with the exact percent `13` / `800`; numbers `13` `textMuted` (`Load 135 lb / 135 lb`); full sentences only in `accessibilityLabel` |
+| Bottom context | fontSize | `13`, `textMuted` — `Started {date}` (active) or `{start} – {end}` (completed), prefixed `Baseline: {routine} · ` only when no hero names the routine; then `Reason: …` / `Add a reason` beneath it (`minHeight: 44` target); shared `Card` chrome, no local gap |
 | Completed-block history | default | collapsed, summary header states the count and the latest block |
 
-**State group header** (R5b, #793) is the pattern that replaced the removed
-status-filter chip row: every exercise row is always shown, grouped under a
-counted, `accessibilityRole="header"` heading instead of hidden behind a
-filter mode. Groups render in order `Baseline met`, `Rebuilding`,
-`Not reintroduced`, `Not comparable`, `Added during recovery`, and an empty
-group renders nothing.
+**Exercise row** (#1219) replaced the counted state-group headers and the metric
+legend: each row carries its own band mark and status word (`At or above
+baseline`, `Close to baseline`, `Rebuilding`, `Early`, `Can't compare`, `Not
+trained yet`, `Added during recovery`), taken from the existing return-band
+derivation for that one row. Rows are ordered Baseline met, Rebuilding, Not
+reintroduced, Not comparable, Added. Only compared rows draw a bar (the limiting
+metric); a not-trained row shows baseline numbers and no bar, so missing is
+never drawn as zero.
 
 Wording is part of the contract, not decoration:
 
 - The hero is the count of baseline exercises met. No composite recovery score
   exists on this surface.
-- `Total work` replaces `Volume`, and the legend defines it as load × reps
-  across completed working sets.
-- `Load` is defined as the heaviest completed working set that week — explicitly
-  not an all-time max or an estimated 1RM.
+- `Total work` replaces `Volume` (load × reps across completed working sets) and
+  `Load` is the heaviest completed working set that week. The visible rows no
+  longer print definition sentences; they use only these short labels.
 - No-week, note-missing, and note-unreadable copy matches Home's R3a wording
   exactly: `Baseline captured. No week logged yet.`; `Week N — This week's
   note is no longer available.`; `Week N — This week's note couldn't be
