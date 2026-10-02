@@ -278,7 +278,7 @@ describe('AnalyticsRecoverySection — active block evidence', () => {
     expandDetails(root);
     // The denominator caption stays consistent with the roster (the unusable
     // row is outside it, the added row never was in it) and names no exercise.
-    expect(rosterLabel(root)).toBe("Trained this week: 1 of 2 roster exercises, 1 can't compare. By status: At or above 1, Can't compare 1. 1 added during recovery.");
+    expect(rosterLabel(root)).toBe('Trained this week: 1 of 1 roster exercises. By status: At or above 1. 1 can\'t compare. 1 added during recovery.');
     expect(rosterLabel(root)).not.toMatch(/Ghost Lift|Sled Push|Bench/);
   });
 
@@ -2620,12 +2620,12 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
   const VISIBLE_TOKENS = {
     at_or_above: ['1', 'trained'], close: ['1', 'trained'], rebuilding: ['1', 'trained'], early: ['1', 'trained'],
     not_trained_yet: ['0', 'trained', '1', 'not yet'],
-    cannot_compare: ['0', 'trained', '1', "can't compare"],
+    cannot_compare: ['1', "can't compare"],
     added: ['1', 'added'],
   };
   const LABEL_COUNT = {
     at_or_above: 'At or above 1', close: 'Close 1', rebuilding: 'Rebuilding 1', early: 'Early 1',
-    not_trained_yet: '1 not trained yet', cannot_compare: "1 can't compare", added: '1 added during recovery',
+    not_trained_yet: '1 not trained yet', cannot_compare: "1 can't compare.", added: '1 added during recovery',
   };
   const mountRows = (exercises, added) => {
     deriveRecoveryComparison.mockReturnValueOnce(
@@ -2657,10 +2657,35 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
     expect(hostById(root, 'recovery-roster-bar')).toHaveLength(1);
   });
 
+  test('hero and summary agree on trained / roster; can\'t-compare and added rows never change them', () => {
+    const met = { ...KIND_ROWS.at_or_above(), key: 'c1', name: 'Bench' };
+    const reb = { ...KIND_ROWS.rebuilding(), key: 'c2', name: 'Squat' };
+    const bad = { ...KIND_ROWS.cannot_compare(), key: 'c3', name: 'Row' };
+    const add = { ...KIND_ROWS.added(), key: 'c4' };
+    const readings = [
+      mountRows([met, reb], []),
+      mountRows([met, reb, bad], []),
+      mountRows([met, reb, bad], [add]),
+    ].map(root => ({
+      hero: hostTextsIn(root.findAll(n => typeof n.type === 'string' && n.props.testID === 'recovery-hero')[0]),
+      tokens: hostTextsIn(rosterNode(root)),
+      label: rosterLabel(root),
+    }));
+    for (const r of readings) {
+      // Hero "1 of 2" = at-or-above of trained; summary says the same trained and roster.
+      expect(r.hero).toContain('1 of 2');
+      expect(r.tokens.slice(0, 2)).toEqual(['2', 'trained']);
+      expect(r.label).toContain('Trained this week: 2 of 2 roster exercises');
+      expect(r.label).not.toMatch(/of 3 roster/);
+    }
+    expect(readings[1].tokens).toEqual(['2', 'trained', '1', "can't compare"]);
+    expect(readings[2].tokens).toEqual(['2', 'trained', '1', "can't compare", '1', 'added']);
+  });
+
   test('a week with only a can\'t-compare row still shows the summary and no bar', () => {
     const root = mountRows([KIND_ROWS.cannot_compare()], []);
     expect(hostById(root, 'recovery-roster-bar')).toHaveLength(0);
-    expect(hostTextsIn(rosterNode(root))).toEqual(['0', 'trained', '1', "can't compare"]);
+    expect(hostTextsIn(rosterNode(root))).toEqual(['1', "can't compare"]);
   });
 
   test('the header keeps its >=44dp target and accessibilityState.expanded', () => {

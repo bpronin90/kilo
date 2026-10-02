@@ -242,7 +242,7 @@ export function BlockEvidence({
 
               {/* One shared summary (#1219), rendered identically under the
                   header whether the details are collapsed or expanded. */}
-              <RecoveryRosterSummary summary={summarizeDetailRows(weekRows)} gap={bands.most_common_gap} />
+              <RecoveryRosterSummary summary={summarizeDetailRows(weekRows)} bands={bands} gap={bands.most_common_gap} />
 
               {detailsExpanded && (
                 <View style={styles.detailsBody}>
