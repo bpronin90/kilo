@@ -8,6 +8,7 @@ import { createVisualStyles } from './recoveryVisualStyles';
 // Trained bands only; `Not trained yet` is a roster fact, not a performance
 // band, and lives in the exercise drill-down (#1209).
 const TRAINED_BANDS = RETURN_BANDS.filter(b => b.id !== 'not_trained_yet');
+const COMPARABLE_BANDS = TRAINED_BANDS.filter(b => b.id !== 'cannot_compare');
 
 // Each band color is a mark color paired with visible full-name text, never a
 // hue on its own. *Text variants are used, not raw `accent`/`caution`
@@ -160,10 +161,15 @@ export function RecoveryRosterSummary({ summary, bands, gap }) {
   if (rosterSize > 0) {
     sentences.push(`Trained this week: ${trained} of ${rosterSize} roster exercises${notYet > 0 ? `, ${notYet} not trained yet` : ''}.`);
   }
-  const byStatus = buckets ? TRAINED_BANDS.filter(b => buckets[b.id] > 0).map(b => `${b.label} ${buckets[b.id]}`) : [];
+  // Each status is announced exactly once: the four comparable bands come from
+  // the hero's buckets, "Can't compare" from the all-rows count (it covers
+  // unusable-baseline rows the roster excludes).
+  const byStatus = [
+    ...(buckets ? COMPARABLE_BANDS.filter(b => buckets[b.id] > 0).map(b => `${b.label} ${buckets[b.id]}`) : []),
+    ...(c.cannot_compare > 0 ? [`Can't compare ${c.cannot_compare}`] : []),
+  ];
   if (byStatus.length > 0) sentences.push(`By status: ${byStatus.join(', ')}.`);
   if (gap) sentences.push(`Most common gap: ${gap}.`);
-  if (c.cannot_compare > 0) sentences.push(`${c.cannot_compare} can't compare.`);
   if (c.added > 0) sentences.push(`${c.added} added during recovery.`);
   if (sentences.length === 0) sentences.push(`${summary.total} exercise${summary.total === 1 ? '' : 's'}.`);
   const label = sentences.join(' ');
