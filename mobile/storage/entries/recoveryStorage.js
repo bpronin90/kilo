@@ -19,20 +19,21 @@
 // note, sequential week numbers) are enforced here because they need to see the
 // whole collection. The shape and metric rules live in lib/data/recoveryBlocks.
 
-import { RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEEKS_KEY, WORKOUT_NOTES_KEY } from './keys';
+import { RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEEKS_KEY } from './keys';
 import { readList, writeList } from './jsonStorage';
-import { withRecoveryOperationLock } from './recoveryJournalStore';
 import {
-  RECOVERY_BASELINE_LEGACY_VERSION, RECOVERY_ERROR_CODES, RecoveryBlockError, buildRecoveryBlock,
-  buildRecoveryWeek, captureRecoveryBaselineFromText, findActiveBlock, findLiveMembershipForNote,
-  isLiveRecord, nextWeekNumber, normalizeRecoveryReason, orderedLiveWeeks,
-  planRecoveryBaselineUpgrades, syncSafeBlockIds,
+  RECOVERY_ERROR_CODES,
+  RecoveryBlockError,
+  buildRecoveryBlock,
+  buildRecoveryWeek,
+  captureRecoveryBaselineFromText,
+  findActiveBlock,
+  findLiveMembershipForNote,
+  isLiveRecord,
+  nextWeekNumber,
+  normalizeRecoveryReason,
+  orderedLiveWeeks,
 } from '../../lib/data/recoveryBlocks';
-import { SYNC_TABLES, payloadFingerprint } from '../sync/records';
-import { getSyncSnapshot } from '../sync/snapshots';
-import { getCursor } from '../sync/cursors';
-import { getDirtyRecords } from '../sync/dirtyQueue';
-import { SYNC_PHASE, SYNC_STATUS, getSyncState } from '../syncRecovery';
 
 // Fields a caller may never patch through the generic update APIs. Three
 // groups, all of which a naive `update(id, {...wholeRecord})` would otherwise
@@ -74,49 +75,9 @@ function _stripImmutable(patch, fields) {
 
 // ── recovery blocks ───────────────────────────────────────────────────────────
 
-// One-time v1 -> v2 baseline write migration (#1225), run ONLY by a caller that
-// just reconciled cleanly (`migrateBaselines`) — never by a plain read, restore,
-// or sync pass. The read-plan-write holds the recovery-operation lock that the
-// sync pass, guarded lifecycle actions, and backup restore (backupImport.js) also
-// hold: each rewrites the WHOLE block list, so an interleaving erases the other's
-// change. Blocks with sync history are also gated on sync state (syncSafeBlockIds).
-// The notebook is read only when a live legacy block exists; any failed read,
-// gate, or write publishes nothing and the next verified read retries.
-async function _syncGate() {
-  const table = SYNC_TABLES.RECOVERY_BLOCKS;
-  const [snapshot, cursor, dirty] = await Promise.all([getSyncSnapshot(table), getCursor(table), getDirtyRecords(table)]);
-  if (snapshot == null && cursor == null && dirty.length === 0) return null;
-  return {
-    snapshot, dirtyIds: new Set(dirty.map(d => d.id)), fingerprint: payloadFingerprint,
-    complete: getSyncState()[SYNC_PHASE.SYNC].status === SYNC_STATUS.COMPLETE,
-  };
-}
-
-function _upgradeLegacyBaselines() {
-  return withRecoveryOperationLock(async () => {
-    const current = await readList(RECOVERY_BLOCKS_KEY);
-    if (!current.some(b => isLiveRecord(b) && b.baseline?.version === RECOVERY_BASELINE_LEGACY_VERSION)) {
-      return current;
-    }
-    try {
-      const notes = await readList(WORKOUT_NOTES_KEY);
-      const gate = await _syncGate();
-      const blocks = await readList(RECOVERY_BLOCKS_KEY);
-      const plan = planRecoveryBaselineUpgrades({ blocks, notes, allowIds: syncSafeBlockIds(blocks, gate) });
-      if (plan.upgraded.length === 0) return blocks;
-      await writeList(RECOVERY_BLOCKS_KEY, plan.blocks);
-      return plan.blocks;
-    } catch (e) {
-      return readList(RECOVERY_BLOCKS_KEY);
-    }
-  });
-}
-
 // User-facing read: live blocks only, newest-started first.
-export async function loadRecoveryBlocks({ migrateBaselines = false } = {}) {
-  const list = migrateBaselines === true
-    ? await _upgradeLegacyBaselines()
-    : await readList(RECOVERY_BLOCKS_KEY);
+export async function loadRecoveryBlocks() {
+  const list = await readList(RECOVERY_BLOCKS_KEY);
   return list
     .filter(isLiveRecord)
     .sort((a, b) => String(b.started_at || '').localeCompare(String(a.started_at || '')));

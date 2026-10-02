@@ -32,7 +32,6 @@ import {
 } from '../storage/entries/backupImport';
 import * as backupExport from '../storage/entries/backupExport';
 import * as backupRestore from '../storage/entries/backupRestore';
-import { withRecoveryOperationLock } from '../storage/entries/recoveryJournalStore';
 import * as backupValidation from '../storage/entries/backupValidation';
 
 import { setStorageMode, STORAGE_MODES } from '../storage/entries';
@@ -118,26 +117,8 @@ describe('public boundary is preserved (#1060)', () => {
     expect(exportBackup).toBe(backupExport.exportBackup);
     expect(buildCloudExport).toBe(backupExport.buildCloudExport);
     expect(hydrateProfileFromCloud).toBe(backupExport.hydrateProfileFromCloud);
-    // importBackup is the one deliberate exception (#1225): a thin wrapper that runs
-    // the restore pipeline inside the recovery-operation lock; see the test below.
-    expect(typeof importBackup).toBe('function');
+    expect(importBackup).toBe(backupRestore.importBackup);
     expect(IMPORT_MODES).toBe(backupRestore.IMPORT_MODES);
-  });
-
-  test('importBackup delegates to the restore pipeline only INSIDE the recovery-operation lock (#1225)', async () => {
-    let release;
-    const gate = new Promise((r) => { release = r; });
-    const holder = withRecoveryOperationLock(() => gate);
-    const spy = jest.spyOn(backupRestore, 'importBackup');
-    const pending = importBackup(cleanV4Payload());
-    for (let i = 0; i < 6; i += 1) await new Promise((r) => setImmediate(r));
-    expect(spy).not.toHaveBeenCalled(); // queued behind the lock holder, not started
-    release();
-    await holder;
-    const result = await pending;
-    expect(spy).toHaveBeenCalledTimes(1);
-    expect(result.ok).toBe(true);
-    spy.mockRestore();
   });
 
   test('IMPORT_MODES keeps its frozen storage-mode values', () => {

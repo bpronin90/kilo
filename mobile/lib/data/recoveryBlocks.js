@@ -12,7 +12,7 @@
 
 import {
   parseWorkoutNote, deriveWorkoutAnalytics, normalizeExerciseKey,
-  parseHeaderDeclaration, parseExerciseHeader, MAX_RAW_TEXT_LENGTH,
+  parseHeaderDeclaration, parseExerciseHeader,
 } from '../parser.js';
 import { _occurrenceEntries } from './workoutAnalytics.js';
 
@@ -21,11 +21,10 @@ import { _occurrenceEntries } from './workoutAnalytics.js';
 // non-comparable to a newly captured one; consumers branch on it rather than
 // guessing from which fields happen to be present. Version 2 (#1225) captures
 // the latest COMPLETE session per exercise and carries `routine_order` + `basis`
-// on every row. Version 1 snapshots (latest comparable work, alphabetical) stay
-// readable forever; they are replaced only by the one-time write migration
-// `planRecoveryBaselineUpgrades` below, and only when provably safe.
+// on every row, and is captured ONLY for a new block. Existing version 1
+// snapshots (latest comparable work, alphabetical) stay frozen and readable
+// forever: nothing rewrites them.
 export const RECOVERY_BASELINE_VERSION = 2;
-export const RECOVERY_BASELINE_LEGACY_VERSION = 1;
 export const RECOVERY_BASELINE_SUPPORTED_VERSIONS = Object.freeze([1, 2]);
 
 // Deterministic failure codes for the domain invariants. Callers (and the later
@@ -241,6 +240,44 @@ export const RECOVERY_BASELINE_BASIS = Object.freeze({
 });
 export const RECOVERY_BASELINE_BASIS_VALUES = Object.freeze(Object.values(RECOVERY_BASELINE_BASIS));
 
+// Declaration-aware timed normalization. Under a timed header (`-Plank: 3x45s`)
+// the real parser reads a lone bare integer as `duration_seconds`, but a comma
+// row (`- 45,45,45`) as REPS whose values are, by the declaration, seconds.
+// Baseline capture and week aggregation both normalize such unloaded rep sets to
+// `duration_seconds` BEFORE classifying, so the frozen row and a same-shaped week
+// log are both `time_based` total_seconds and compare like for like. Loaded
+// (weighted) sets, skipped sets, and every exercise without a timed declaration
+// are untouched. Pure: returns new sections and never mutates the parse result.
+export function normalizeTimedSections(sections) {
+  if (!Array.isArray(sections)) return sections;
+  const seen = new Map();
+  const toSeconds = (sets) => {
+    if (!Array.isArray(sets)) return sets;
+    if (!seen.has(sets)) {
+      seen.set(sets, sets.map(s => (
+        s && !s.skipped && !(s.duration_seconds > 0) && s.rep_count > 0
+          && !(s.weight_value > 0) && s.assistance_value == null
+          ? { ...s, duration_seconds: s.rep_count, rep_count: null }
+          : s
+      )));
+    }
+    return seen.get(sets);
+  };
+  return sections.map(section => ({
+    ...section,
+    exercises: (section.exercises || []).map(ex => (
+      parseHeaderDeclaration(ex.raw_header)?.type === 'duration'
+        ? {
+          ...ex,
+          sets: toSeconds(ex.sets),
+          rows: (ex.rows || []).map(r => ({ ...r, sets: toSeconds(r.sets) })),
+          session_entries: (ex.session_entries || []).map(e => ({ ...e, sets: toSeconds(e.sets) })),
+        }
+        : ex
+    )),
+  }));
+}
+
 // Freeze the pre-recovery baseline from a parsed routine (v2).
 //
 // For each normalized exercise identity the baseline is the latest COMPLETE
@@ -259,12 +296,13 @@ export const RECOVERY_BASELINE_BASIS_VALUES = Object.freeze(Object.values(RECOVE
 //
 // `sections` is `parseWorkoutNote(text).sections`. Returns a plain, structurally
 // frozen snapshot.
-export function captureRecoveryBaseline(sections) {
+export function captureRecoveryBaseline(rawSections) {
   const snapshot = {
     version: RECOVERY_BASELINE_VERSION,
     exercises: [],
   };
-  if (!Array.isArray(sections) || sections.length === 0) return _deepFreeze(snapshot);
+  if (!Array.isArray(rawSections) || rawSections.length === 0) return _deepFreeze(snapshot);
+  const sections = normalizeTimedSections(rawSections);
 
   const names = new Map(deriveWorkoutAnalytics(sections).exercises.map(ex => [normalizeExerciseKey(ex.name), ex.name]));
   // key -> { order, units: [{ sets, spec }] } in chronological (note) order.
@@ -316,99 +354,6 @@ export function captureRecoveryBaseline(sections) {
 export function captureRecoveryBaselineFromText(rawText) {
   const parsed = parseWorkoutNote(rawText || '');
   return captureRecoveryBaseline(parsed.sections || []);
-}
-
-// ── v1 -> v2 write migration (#1225) ──────────────────────────────────────────
-//
-// Pure planner: given the raw block list and the raw note list, returns the list
-// with every PROVABLY safe legacy block upgraded to a v2 snapshot, plus the ids
-// it touched. It never reads clocks beyond `now`, never writes, and never
-// recomputes from anything but the block's own source note.
-//
-// A v1 block is upgraded only when ALL hold:
-//   - the block is live (tombstones are never rewritten or resurrected), has
-//     string ids, a parseable `started_at`, and a structurally valid v1 snapshot;
-//   - exactly ONE note carries `baseline_note_id` (a duplicated id is an
-//     ambiguous identity), it is live, its `raw_text` is a string within the
-//     parser size bound and parses, and its `updated_at` is a valid timestamp;
-//   - `note.updated_at <= block.started_at` — affirmative evidence the note's
-//     CURRENT text is still what it was when recovery began. Later edits may be
-//     recovery work, so they leave the frozen v1 snapshot alone (equality is
-//     allowed: a note saved in the same instant the block started predates it).
-// Everything else keeps its exact v1 snapshot and legacy alphabetical order.
-// Idempotent: a v2 (or unknown-version) snapshot is never touched.
-const _ISO_INSTANT_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|([+-])(\d{2}):(\d{2}))$/;
-// Strict: a full date-time with an explicit `Z`/`±hh:mm` offset and a REAL
-// calendar date. `Date.parse` alone normalizes `2026-02-30` to March 2 and reads
-// a zone-less string as local time, either of which would turn corrupt state
-// into false "unedited" evidence, so the fields are validated before parsing.
-function _ts(value) {
-  const m = typeof value === 'string' ? _ISO_INSTANT_RE.exec(value) : null;
-  if (!m) return null;
-  const [y, mo, d, h, mi, sec] = m.slice(1, 7).map(Number);
-  const [oh, om] = [m[8], m[9]].map(x => (x == null ? 0 : Number(x)));
-  const day = new Date(Date.UTC(y, mo - 1, d));
-  if (mo < 1 || mo > 12 || day.getUTCMonth() !== mo - 1 || day.getUTCDate() !== d) return null;
-  if (h > 23 || mi > 59 || sec > 59 || oh > 23 || om > 59) return null;
-  const t = Date.parse(value);
-  return Number.isFinite(t) ? t : null;
-}
-
-function _isValidLegacySnapshot(baseline) {
-  return !!baseline && typeof baseline === 'object' && !Array.isArray(baseline)
-    && baseline.version === RECOVERY_BASELINE_LEGACY_VERSION && Array.isArray(baseline.exercises)
-    && baseline.exercises.every(row => !!row && typeof row === 'object' && !Array.isArray(row));
-}
-
-// Sync-state gate for the migration (#1225). The sync engine always submits a
-// pending local edit and lets it win on arrival ("last write to REACH the server
-// wins"), so a migrated row could overwrite a remote completion/reason/tombstone
-// this device has not pulled. The migration therefore never creates that
-// exposure: `sync` is null when the device has no sync history for blocks (no
-// remote copy can exist, so every block is allowed). Otherwise a block is
-// allowed only when a sync pass has COMPLETED in this session, a server-confirmed
-// snapshot exists, and the block still equals its snapshot row (no unsynced or
-// queued edit) — everything else defers and keeps its exact v1 snapshot.
-export function syncSafeBlockIds(blocks, sync) {
-  if (!sync) return null;
-  const safe = new Set();
-  if (!sync.complete || !Array.isArray(sync.snapshot)) return safe;
-  const baseById = new Map(sync.snapshot.filter(r => r && r.id != null).map(r => [r.id, r]));
-  for (const b of blocks || []) {
-    const base = b && baseById.get(b.id);
-    if (base && !sync.dirtyIds.has(b.id) && sync.fingerprint(base) === sync.fingerprint(b)) safe.add(b.id);
-  }
-  return safe;
-}
-
-export function planRecoveryBaselineUpgrades({ blocks, notes, now = new Date().toISOString(), allowIds = null } = {}) {
-  const list = Array.isArray(blocks) ? blocks : [];
-  const byId = new Map();
-  for (const note of Array.isArray(notes) ? notes : []) {
-    if (!note || typeof note.id !== 'string') continue;
-    byId.set(note.id, byId.has(note.id) ? null : note);
-  }
-  const upgraded = [];
-  const next = list.map(block => {
-    if (!block || typeof block !== 'object' || !isLiveRecord(block)) return block;
-    if (typeof block.id !== 'string' || typeof block.baseline_note_id !== 'string') return block;
-    if (allowIds && !allowIds.has(block.id)) return block;
-    if (!_isValidLegacySnapshot(block.baseline)) return block;
-    const startedAt = _ts(block.started_at);
-    const note = byId.get(block.baseline_note_id);
-    if (startedAt == null || !note || note.deleted_at) return block;
-    const noteUpdatedAt = _ts(note.updated_at);
-    if (noteUpdatedAt == null || noteUpdatedAt > startedAt) return block;
-    if (typeof note.raw_text !== 'string' || note.raw_text.length > MAX_RAW_TEXT_LENGTH) return block;
-    const parsed = parseWorkoutNote(note.raw_text);
-    if (!parsed || parsed.ok !== true) return block;
-
-    // Stamped exactly like every other local recovery edit (`new Date().toISOString()`);
-    // the sync engine re-stamps a changed row at sync time, so no clock is invented here.
-    upgraded.push(block.id);
-    return { ...block, baseline: captureRecoveryBaseline(parsed.sections || []), updated_at: now };
-  });
-  return { blocks: upgraded.length > 0 ? next : list, upgraded };
 }
 
 // Recursively freeze the snapshot. The frozen baseline is authoritative after

@@ -15,7 +15,7 @@
 
 import { parseWorkoutNote, deriveWorkoutAnalytics, normalizeExerciseKey } from '../parser.js';
 import { _occurrenceEntries } from './workoutAnalytics.js';
-import { RECOVERY_BASELINE_SUPPORTED_VERSIONS, orderedLiveWeeks } from './recoveryBlocks.js';
+import { RECOVERY_BASELINE_SUPPORTED_VERSIONS, normalizeTimedSections, orderedLiveWeeks } from './recoveryBlocks.js';
 
 // Version stamped onto every comparison result. Bump when the row/metric shape
 // below changes in a way a stored or cached consumer could misread.
@@ -158,11 +158,13 @@ function _completedSets(sets) {
 // Warmup sections are dropped outright, as are skipped exercises, skipped sets,
 // unparsed rows, and zero/invalid work. Returns a Map so callers get keyed
 // lookups instead of rescanning per baseline exercise.
-export function aggregateRecoveryWeekWork(sections) {
+export function aggregateRecoveryWeekWork(rawSections) {
   const work = new Map();
-  if (!Array.isArray(sections) || sections.length === 0) return work;
+  if (!Array.isArray(rawSections) || rawSections.length === 0) return work;
 
-  const { exercises } = deriveWorkoutAnalytics(sections);
+  // A timed header's comma rows are seconds (see normalizeTimedSections), so a
+  // week logged the way the baseline was captured classifies the same way.
+  const { exercises } = deriveWorkoutAnalytics(normalizeTimedSections(rawSections));
 
   for (const ex of exercises) {
     const occurrences = (ex.occurrences || []).filter(occ => occ.kind !== 'warmup');

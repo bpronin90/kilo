@@ -880,3 +880,70 @@ describe('deriveRecoveryComparison — baseline v1 and v2 (#1225)', () => {
     expect(metricOf(row, 'top_load').baseline).toBe(325);
   });
 });
+
+// ── #1225: timed declarations end to end — real parser -> capture -> comparison ──
+//
+// Under a timed header the parser reads a comma row (`45,45,45`) as reps but a
+// lone bare integer as duration_seconds. Capture and week aggregation both read
+// the values as the declared seconds, so a baseline and a same-shaped week
+// compare like for like (time_based total_seconds), whichever shape logged it.
+
+describe('timed declarations: parser -> capture -> comparison (#1225)', () => {
+  const run = (baselineText, weekText) => {
+    const block = blockWith(captureRecoveryBaselineFromText(baselineText));
+    const result = deriveRecoveryComparison({ block, weeks: [weekLink(1, 'n1')], notes: [noteWith('n1', weekText)] });
+    return { block, week: result.weeks[0], row: result.weeks[0].exercises[0] };
+  };
+  const secondsOf = (row) => metricOf(row, 'total_seconds');
+
+  test('`3x45s` with 45,45,45: baseline time_based 135 s, and the same week log compares 1.0 / baseline_met', () => {
+    const { block, row } = run('-Plank: 3x45s\n- 45,45,45', '-Plank: 3x45s\n- 45,45,45');
+    expect(block.baseline.exercises[0]).toMatchObject({ exercise_class: 'time_based', total_seconds: 135 });
+    expect(row.exercise_class).toBe('time_based');
+    expect(secondsOf(row)).toMatchObject({ baseline: 135, current: 135, ratio: 1, percent: 100, met: true });
+    expect(row.state).toBe(RECOVERY_COMPARISON_STATES.BASELINE_MET);
+  });
+
+  test('a shorter week of the same shape reports the exact ratio and a non-met band, identical to bare-row logging', () => {
+    const comma = run('-Plank: 3x45s\n- 45,45,45', '-Plank: 3x45s\n- 45,45').row;
+    const bare = run('-Plank: 3x45s\n- 45,45,45', '-Plank: 3x45s\n45\n45').row;
+    expect(secondsOf(comma)).toMatchObject({ baseline: 135, current: 90, percent: 66, met: false });
+    expect(comma.state).not.toBe(RECOVERY_COMPARISON_STATES.BASELINE_MET);
+    // Real bare-row logging (duration_seconds from the parser) lands on the same numbers and state.
+    expect(secondsOf(bare)).toEqual(secondsOf(comma));
+    expect(bare.state).toBe(comma.state);
+  });
+
+  test('`3x1min` with 60,60,60: baseline 180 s; a 180 s week is met, a 120 s week is not', () => {
+    const met = run('-Wall Sit: 3x1min\n- 60,60,60', '-Wall Sit: 3x1min\n- 60,60,60').row;
+    expect(secondsOf(met)).toMatchObject({ baseline: 180, current: 180, ratio: 1, met: true });
+    expect(met.state).toBe(RECOVERY_COMPARISON_STATES.BASELINE_MET);
+    const short = run('-Wall Sit: 3x1min\n- 60,60,60', '-Wall Sit: 3x1min\n- 60,60').row;
+    expect(secondsOf(short)).toMatchObject({ baseline: 180, current: 120, percent: 66, met: false });
+  });
+
+  test('a single held set: baseline 60 s (bare duration row) against a 45 s week is 75%', () => {
+    const { block, row } = run('-Plank: 1x60s\n60', '-Plank: 1x60s\n45');
+    expect(block.baseline.exercises[0]).toMatchObject({ exercise_class: 'time_based', total_seconds: 60, basis: 'complete' });
+    expect(secondsOf(row)).toMatchObject({ baseline: 60, current: 45, ratio: 0.75, percent: 75, met: false });
+  });
+
+  test('a short/skipped hold in the newest baseline session is ignored: the earlier complete 150 s session is the baseline', () => {
+    const { block, row } = run('-Plank: 3x45s\n- 50,50,50\n- 45,-,45', '-Plank: 3x45s\n- 50,50,50');
+    expect(block.baseline.exercises[0]).toMatchObject({ exercise_class: 'time_based', total_seconds: 150, basis: 'complete' });
+    expect(secondsOf(row)).toMatchObject({ baseline: 150, current: 150, met: true });
+  });
+
+  test('separate bare rows: baseline is the latest single 45 s hold (never_complete); a three-row week sums to 135 s', () => {
+    const { block, row } = run('-Plank: 3x45s\n45\n45\n45', '-Plank: 3x45s\n45\n45\n45');
+    expect(block.baseline.exercises[0]).toMatchObject({ exercise_class: 'time_based', total_seconds: 45, basis: 'never_complete' });
+    expect(secondsOf(row)).toMatchObject({ baseline: 45, current: 135, ratio: 3, met: true });
+    expect(row.exercise_class).toBe('time_based');
+  });
+
+  test('NEGATIVE: a reps-shaped week against a time_based baseline is a class change, never silently compared', () => {
+    const { row } = run('-Plank: 3x45s\n- 45,45,45', '-Plank\n- 45,45,45');
+    expect(row.state).toBe(RECOVERY_COMPARISON_STATES.NOT_COMPARABLE);
+    expect(row.unavailable_reason).toBe(RECOVERY_UNAVAILABLE_REASONS.EXERCISE_CLASS_CHANGED);
+  });
+});
