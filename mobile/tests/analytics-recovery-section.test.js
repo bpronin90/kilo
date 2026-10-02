@@ -278,7 +278,7 @@ describe('AnalyticsRecoverySection — active block evidence', () => {
     expandDetails(root);
     // The denominator caption stays consistent with the roster (the unusable
     // row is outside it, the added row never was in it) and names no exercise.
-    expect(rosterLabel(root)).toBe('Trained this week: 1 of 1 roster exercises.');
+    expect(rosterLabel(root)).toBe('Trained this week: 1 of 1 roster exercises. 1 added during recovery.');
     expect(rosterLabel(root)).not.toMatch(/Ghost Lift|Sled Push|Bench/);
   });
 
@@ -1334,7 +1334,7 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     // The roster/gap facts live in the drill-down now (#1209).
     expandDetails(root);
     // #1219: a compact stat row (visible) with the full sentence spoken only.
-    expect(rosterLabel(root)).toBe('Trained this week: 2 of 2 roster exercises. Most common gap: Total work.');
+    expect(rosterLabel(root)).toBe('Trained this week: 2 of 2 roster exercises. Most common gap: Total work. 1 added during recovery.');
     // The visible Gap stat was removed (#1219); the gap rides on the label only.
     expect(hasText(root, 'Gap: Total work')).toBe(false);
     expect(hasText(root, 'Most common gap')).toBe(false);
@@ -2481,9 +2481,9 @@ describe('AnalyticsRecoverySection — visual exercise details (#1219)', () => {
   test('the roster lines became one bar + stat row on the same 13sp tier as the rows', () => {
     const root = mount();
     // BASE has 3 roster exercises; Curl is not trained this week.
-    expect(rosterLabel(root)).toBe('Trained this week: 2 of 3 roster exercises, 1 not trained yet. Most common gap: Total work.');
+    expect(rosterLabel(root)).toBe('Trained this week: 2 of 3 roster exercises, 1 not trained yet. Most common gap: Total work. 1 added during recovery.');
     const texts = hostTextsIn(rosterNode(root));
-    expect(texts).toEqual(['2', 'trained', '1', 'not yet']);
+    expect(texts).toEqual(['2', 'trained', '1', 'not yet', '1', 'added']);
     const sizes = rosterNode(root)
       .findAll(n => typeof n.type === 'string' && n.type === 'Text')
       .map(n => StyleSheet.flatten(n.props.style).fontSize);
@@ -2551,7 +2551,7 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
     const root = mountWith();
     const collapsedTexts = hostTextsIn(rosterNode(root));
     const collapsedSegments = segmentIds(root);
-    expect(collapsedTexts).toEqual(['2', 'trained', '1', 'not yet']);
+    expect(collapsedTexts).toEqual(['2', 'trained', '1', 'not yet', '1', 'added']);
     expect(collapsedSegments.length).toBeGreaterThan(0);
     // No count sentence or Gap stat while collapsed.
     expect(hasText(root, '3 exercises')).toBe(false);
@@ -2566,8 +2566,43 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
 
   test('"not yet" is omitted when nothing is untrained, and "0 trained" shows when nothing is trained', () => {
     const one = '-Bench\n- 135 5,5,5';
-    expect(hostTextsIn(rosterNode(mountWith({}, {}, one, '-Bench\n- 135 5,5,5\n-Foam Roll\n- 10,10')))).toEqual(['1', 'trained']);
-    expect(hostTextsIn(rosterNode(mountWith({}, {}, one, '-Foam Roll\n- 10,10')))).toEqual(['0', 'trained', '1', 'not yet']);
+    expect(hostTextsIn(rosterNode(mountWith({}, {}, one, '-Bench\n- 135 5,5,5\n-Foam Roll\n- 10,10')))).toEqual(['1', 'trained', '1', 'added']);
+    expect(hostTextsIn(rosterNode(mountWith({}, {}, one, '-Foam Roll\n- 10,10')))).toEqual(['0', 'trained', '1', 'not yet', '1', 'added']);
+  });
+
+  const tokenParity = (root) => {
+    const collapsed = hostTextsIn(rosterNode(root));
+    expandDetails(root);
+    expect(hostById(root, 'recovery-roster-summary')).toHaveLength(1);
+    expect(hostTextsIn(rosterNode(root))).toEqual(collapsed);
+    return collapsed;
+  };
+
+  test('the summary covers ALL week rows: baseline-only, mixed baseline + added, added-only, nothing trained', () => {
+    const one = '-Bench\n- 135 5,5,5';
+    // baseline-only: no "added" token.
+    expect(tokenParity(mountWith({}, {}, one, one))).toEqual(['1', 'trained']);
+    // mixed: trained / not yet / added in one row, bar present.
+    const mixed = mountWith();
+    expect(hostById(mixed, 'recovery-roster-bar')).toHaveLength(1);
+    expect(tokenParity(mixed)).toEqual(['2', 'trained', '1', 'not yet', '1', 'added']);
+    expect(rosterLabel(mixed)).toBe('Trained this week: 2 of 3 roster exercises, 1 not trained yet. Most common gap: Total work. 1 added during recovery.');
+    // nothing trained (only added work): "0 trained", "1 not yet", "1 added".
+    expect(tokenParity(mountWith({}, {}, one, '-Foam Roll\n- 10,10'))).toEqual(['0', 'trained', '1', 'not yet', '1', 'added']);
+  });
+
+  test('a baseline-empty week with only added work shows "K added" (no bar) in both states', () => {
+    const addedRow = mockRow({
+      key: 'foam-roll', name: 'Foam Roll', state: RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY, exercise_class: 'reps_based',
+      metrics: [metricRow('total_reps', 20, null, null, null)],
+    });
+    deriveRecoveryComparison.mockReturnValueOnce(
+      mockComparison({ status: RECOVERY_COMPARISON_STATUS.BASELINE_EMPTY, weeks: [mockWeek({ exercises: [], added: [addedRow] })] })
+    );
+    const root = mountWith();
+    expect(hostById(root, 'recovery-roster-bar')).toHaveLength(0);
+    expect(tokenParity(root)).toEqual(['1', 'added']);
+    expect(rosterLabel(root)).toBe('1 added during recovery.');
   });
 
   test('the header keeps its >=44dp target and accessibilityState.expanded', () => {

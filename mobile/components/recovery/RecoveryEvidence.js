@@ -242,15 +242,14 @@ export function BlockEvidence({
 
               {/* One shared summary (#1219), rendered identically under the
                   header whether the details are collapsed or expanded. */}
-              {hasBands && (
-                <RecoveryRosterSummary
-                  buckets={bands.buckets}
-                  trained={trained}
-                  rosterSize={rosterSize}
-                  notTrained={notTrainedCount}
-                  gap={bands.most_common_gap}
-                />
-              )}
+              <RecoveryRosterSummary
+                buckets={bands.buckets}
+                trained={trained}
+                rosterSize={hasBands ? rosterSize : 0}
+                notTrained={notTrainedCount}
+                gap={bands.most_common_gap}
+                added={addedCount}
+              />
 
               {detailsExpanded && (
                 <View style={styles.detailsBody}>

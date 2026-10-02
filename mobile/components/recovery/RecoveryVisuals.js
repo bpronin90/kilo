@@ -136,19 +136,32 @@ export function RecoveryBandBar({ buckets, trained, weekLabel }) {
 // removed (owner could not read it); the full sentence incl. the most common
 // gap rides on the accessible label. Same 13sp tier as the exercise rows (800
 // number, 600 label).
-export function RecoveryRosterSummary({ buckets, trained, rosterSize, notTrained, gap }) {
+export function RecoveryRosterSummary({ buckets, trained, rosterSize, notTrained, gap, added = 0 }) {
   const { colors, kua, styles } = useVisual();
-  if (!rosterSize) return null;
-  const label = `Trained this week: ${trained} of ${rosterSize} roster exercises${notTrained > 0 ? `, ${notTrained} not trained yet` : ''}.${gap ? ` Most common gap: ${gap}.` : ''}`;
+  const hasRoster = !!rosterSize;
+  // Covers ALL week rows: baseline exercises (trained / not yet) and
+  // recovery-only added work. Zero tokens are omitted; an added-only week
+  // (empty baseline) shows just "K added" and no band bar.
+  if (!hasRoster && !(added > 0)) return null;
+  const sentences = [];
+  if (hasRoster) {
+    sentences.push(`Trained this week: ${trained} of ${rosterSize} roster exercises${notTrained > 0 ? `, ${notTrained} not trained yet` : ''}.`);
+    if (gap) sentences.push(`Most common gap: ${gap}.`);
+  }
+  if (added > 0) sentences.push(`${added} added during recovery.`);
+  const label = sentences.join(' ');
   const stats = [
-    { n: String(trained), text: 'trained' },
-    ...(notTrained > 0 ? [{ n: String(notTrained), text: 'not yet' }] : []),
+    ...(hasRoster ? [{ n: String(trained), text: 'trained' }] : []),
+    ...(hasRoster && notTrained > 0 ? [{ n: String(notTrained), text: 'not yet' }] : []),
+    ...(added > 0 ? [{ n: String(added), text: 'added' }] : []),
   ];
   return (
     <View testID="recovery-roster-summary" style={styles.rosterBlock} accessible accessibilityLabel={label}>
-      <View testID="recovery-roster-bar">
-        <Segments buckets={buckets || {}} colors={colors} kua={kua} style={styles.miniBar} />
-      </View>
+      {hasRoster && (
+        <View testID="recovery-roster-bar">
+          <Segments buckets={buckets || {}} colors={colors} kua={kua} style={styles.miniBar} />
+        </View>
+      )}
       <View style={styles.exNumbers}>
         {stats.map(st => (
           <View key={st.text} style={styles.rosterStat}>
