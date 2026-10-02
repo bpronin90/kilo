@@ -158,13 +158,17 @@ function _completedSets(sets) {
 // Warmup sections are dropped outright, as are skipped exercises, skipped sets,
 // unparsed rows, and zero/invalid work. Returns a Map so callers get keyed
 // lookups instead of rescanning per baseline exercise.
-export function aggregateRecoveryWeekWork(rawSections) {
+//
+// `declarationAware` (default false = the historical parse) is true only when the
+// week is compared against a v2 baseline: v2 freezes a timed header's comma rows
+// as seconds (see normalizeTimedSections), so the week must classify the same
+// way. A v1 snapshot was frozen with those rows as reps and is compared AS STORED,
+// so its weeks keep the historical parse and metric family exactly.
+export function aggregateRecoveryWeekWork(rawSections, { declarationAware = false } = {}) {
   const work = new Map();
   if (!Array.isArray(rawSections) || rawSections.length === 0) return work;
 
-  // A timed header's comma rows are seconds (see normalizeTimedSections), so a
-  // week logged the way the baseline was captured classifies the same way.
-  const { exercises } = deriveWorkoutAnalytics(normalizeTimedSections(rawSections));
+  const { exercises } = deriveWorkoutAnalytics(declarationAware ? normalizeTimedSections(rawSections) : rawSections);
 
   for (const ex of exercises) {
     const occurrences = (ex.occurrences || []).filter(occ => occ.kind !== 'warmup');
@@ -459,7 +463,7 @@ export function deriveRecoveryWeekComparison({ baseline, rawText }) {
       summary: _summarize([], []),
     };
   }
-  const work = aggregateRecoveryWeekWork(parsed.sections || []);
+  const work = aggregateRecoveryWeekWork(parsed.sections || [], { declarationAware: baseline?.version >= 2 });
   return {
     status: RECOVERY_WEEK_STATUS.OK,
     note_error: null,

@@ -947,3 +947,44 @@ describe('timed declarations: parser -> capture -> comparison (#1225)', () => {
     expect(row.unavailable_reason).toBe(RECOVERY_UNAVAILABLE_REASONS.EXERCISE_CLASS_CHANGED);
   });
 });
+
+// v1 parity: a legacy snapshot is compared AS STORED. The v1 row below is exactly
+// what origin/main froze from `-Plank: 3x45s` / `- 45,45,45` (reps_only), so weeks
+// keep the historical parse and metric family; only v2 baselines get declaration-
+// aware week normalization.
+describe('v1 baselines keep the historical week parse (#1225 parity)', () => {
+  const V1_PLANK = {
+    version: 1,
+    exercises: [{ key: 'plank', name: 'Plank', exercise_class: 'reps_only', best_set_reps: 45, total_reps: 135, sets_completed: 3 }],
+  };
+  const against = (weekText) => deriveRecoveryComparison({
+    block: blockWith(V1_PLANK), weeks: [weekLink(1, 'n1')], notes: [noteWith('n1', weekText)],
+  });
+
+  test('the identical comma-row week still compares as reps (135/135, baseline_met) — not a class change', () => {
+    const result = against('-Plank: 3x45s\n- 45,45,45');
+    expect(result.status).toBe(RECOVERY_COMPARISON_STATUS.OK);
+    const row = result.weeks[0].exercises[0];
+    expect(row.exercise_class).toBe('reps_only');
+    expect(metricOf(row, 'total_reps')).toMatchObject({ baseline: 135, current: 135, ratio: 1, percent: 100, met: true });
+    expect(row.state).toBe(RECOVERY_COMPARISON_STATES.BASELINE_MET);
+  });
+
+  test('a shorter comma-row week keeps its historical ratio and band', () => {
+    const row = against('-Plank: 3x45s\n- 45,45').weeks[0].exercises[0];
+    expect(metricOf(row, 'total_reps')).toMatchObject({ baseline: 135, current: 90, percent: 66, met: false });
+    expect(row.state).not.toBe(RECOVERY_COMPARISON_STATES.BASELINE_MET);
+  });
+
+  test('a bare-row week (duration_seconds sets) against the v1 reps baseline is not_comparable, exactly as before', () => {
+    const row = against('-Plank: 3x45s\n45\n45\n45').weeks[0].exercises[0];
+    expect(row.state).toBe(RECOVERY_COMPARISON_STATES.NOT_COMPARABLE);
+    expect(row.unavailable_reason).toBe(RECOVERY_UNAVAILABLE_REASONS.EXERCISE_CLASS_CHANGED);
+  });
+
+  test('aggregateRecoveryWeekWork defaults to the historical (non-declaration-aware) parse', () => {
+    const sections = parseWorkoutNote('-Plank: 3x45s\n- 45,45,45').sections;
+    expect(aggregateRecoveryWeekWork(sections).get('plank')).toMatchObject({ exercise_class: 'reps_only', values: { total_reps: 135 } });
+    expect(aggregateRecoveryWeekWork(sections, { declarationAware: true }).get('plank')).toMatchObject({ exercise_class: 'time_based', values: { total_seconds: 135 } });
+  });
+});
