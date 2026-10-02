@@ -15,7 +15,7 @@ import {
   deriveRecoveryMovement,
   deriveRecoveryWeekBands,
 } from '../../lib/data/recoveryReturnBands';
-import { WeekEvidence, WeekUnavailableNotice } from './RecoveryStateGroups';
+import { summarizeDetailRows, WeekEvidence, WeekUnavailableNotice } from './RecoveryStateGroups';
 import { WeekPicker } from './RecoveryWeekPicker';
 import { deriveTrainedElsewhere } from './RecoveryWeekIndex';
 import { createStyles } from './analyticsRecoveryStyles';
@@ -63,6 +63,9 @@ export function BlockEvidence({
   // close am I to my normal training — is answered by the summary above; the
   // per-exercise diagnostic panel is the follow-up, not the opening statement.
   const [detailsExpanded, setDetailsExpanded] = useState(false);
+  // The non-medical note sits behind an info button in the footer row (#1219,
+  // owner-directed change of the earlier "one persistent line", #1023 v2 §8).
+  const [aboutShown, setAboutShown] = useState(false);
 
   // Seeded from the STORED value, so Cancel is a true discard — the record is
   // the only source of what the field currently says.
@@ -150,6 +153,7 @@ export function BlockEvidence({
   // The hero names the anchor routine (#1219) on every path that renders it (including zero trained);
   // only then does the bottom line stop repeating it.
   const heroNamesRoutine = !!showBandsRegion && hasBands && !!weekLabel;
+  const provenanceText = heroNamesRoutine ? provenance : `Baseline: ${routineTitle} · ${provenance}`;
   return (
     <Card>
       {/* The section's only Recovery header is the outer SectionTitle (#1217);
@@ -227,11 +231,6 @@ export function BlockEvidence({
               >
                 <View style={styles.detailsHeaderContent}>
                   <Text style={styles.detailsHeaderTitle}>Exercise details</Text>
-                  {!detailsExpanded && (
-                    <Text style={styles.detailsHeaderCount}>
-                      {`${totalRows} exercise${totalRows === 1 ? '' : 's'}`}
-                    </Text>
-                  )}
                 </View>
                 <MaterialIcons
                   name={detailsExpanded ? 'expand-less' : 'expand-more'}
@@ -241,20 +240,12 @@ export function BlockEvidence({
                 />
               </Pressable>
 
+              {/* One shared summary (#1219), rendered identically under the
+                  header whether the details are collapsed or expanded. */}
+              <RecoveryRosterSummary summary={summarizeDetailRows(weekRows)} bands={bands} gap={bands.most_common_gap} />
+
               {detailsExpanded && (
                 <View style={styles.detailsBody}>
-                  {/* Visual-first (#1219): each row carries its own status mark,
-                      bar and numbers, so the clause-count line, sparse sentence
-                      and metric legend are gone. The roster denominator and
-                      most-common-gap facts are one compact bar + stat row. */}
-                  {hasBands && (
-                    <RecoveryRosterSummary
-                      trained={trained}
-                      rosterSize={rosterSize}
-                      notTrained={notTrainedCount}
-                      gap={bands.most_common_gap}
-                    />
-                  )}
                   <WeekEvidence rows={weekRows} unit={unit} weekNumber={selectedWeek.week_number} elsewhere={trainedElsewhere} />
                 </View>
               )}
@@ -283,20 +274,67 @@ export function BlockEvidence({
         </View>
       )}
 
-      {/* One persistent line, above the provenance stamp (#1023 v2 §8). */}
-      {(comparison.status === RECOVERY_COMPARISON_STATUS.OK || comparison.status === RECOVERY_COMPARISON_STATUS.BASELINE_EMPTY) && (
-        <Text style={styles.nonMedicalText}>
-          Training numbers only. Not a medical judgment — only you end a Recovery block.
+      {/* One quiet footer row (#1219): provenance · reason · info button. */}
+      <View testID="recovery-footer-row" style={styles.footerRow}>
+        <Text
+          style={[styles.provenanceText, styles.footerProvenance]}
+          numberOfLines={1}
+          accessibilityLabel={provenanceText}
+        >
+          {provenanceText}
         </Text>
-      )}
-      <Text style={styles.provenanceText}>{heroNamesRoutine ? provenance : `Baseline: ${routineTitle} · ${provenance}`}</Text>
-      {/* The optional reason (#872), on the active and the completed block
-          alike — this card is the same evidence surface for both. Rendered
-          only when the block carries one, so a block started without an
-          explanation (including every block written before the field existed)
-          shows nothing rather than an empty placeholder. It is context for
-          reading the comparison, never an input to it: no metric, week status,
-          or summary line below reads this value. */}
+        {!editingReason && (reasonEditable || !!block.reason) && <Text style={styles.footerSeparator}>·</Text>}
+        {!editingReason && reasonEditable && (
+          <Pressable
+            onPress={openReasonEditor}
+            disabled={reasonDisabled}
+            style={[styles.reasonPressable, styles.footerReason]}
+            accessibilityRole="button"
+            accessibilityLabel={block.reason
+              ? `Edit reason for this recovery block: ${block.reason}`
+              : 'Add a reason for this recovery block'}
+            accessibilityState={{ disabled: reasonDisabled }}
+          >
+            <Text
+              style={[styles.reasonCaption, reasonDisabled && styles.reasonCaptionDisabled]}
+              numberOfLines={1}
+            >
+              {block.reason ? `Reason: ${block.reason}` : 'Add a reason'}
+            </Text>
+          </Pressable>
+        )}
+        {!editingReason && !reasonEditable && !!block.reason && (
+          <Text style={[styles.reasonCaption, styles.footerReason]} numberOfLines={1}>
+            Reason: {block.reason}
+          </Text>
+        )}
+        {(comparison.status === RECOVERY_COMPARISON_STATUS.OK || comparison.status === RECOVERY_COMPARISON_STATUS.BASELINE_EMPTY) && (
+          <Pressable
+            onPress={() => setAboutShown(shown => !shown)}
+            style={styles.infoButton}
+            accessibilityRole="button"
+            accessibilityLabel="About these numbers"
+            accessibilityState={{ expanded: aboutShown }}
+          >
+            <MaterialIcons
+              name="info-outline"
+              size={18}
+              color={kua ? kua.onSurfaceVariant : colors.textMuted}
+              accessible={false}
+            />
+          </Pressable>
+        )}
+      </View>
+      {/* Always mounted so revealing the note is announced (live region). */}
+      <View testID="recovery-about-note" accessibilityLiveRegion="polite">
+        {aboutShown && (
+          <Text style={styles.nonMedicalText}>
+            Training numbers only. Not a medical judgment — only you end a Recovery block.
+          </Text>
+        )}
+      </View>
+      {/* The optional reason (#872) is context only — no metric or week status
+          reads it. The footer row shows/edits it; the editor opens here. */}
       {editingReason ? (
         <View style={styles.reasonEditor}>
           <TextInput
@@ -338,32 +376,6 @@ export function BlockEvidence({
             </Pressable>
           </View>
         </View>
-      ) : reasonEditable ? (
-        /* Tapping the caption opens the editor in place. A block with no reason
-           still offers the affordance — that is the only way to ADD one to a
-           completed block — but it reads as an invitation, not as a field
-           claiming a value it does not have. */
-        <Pressable
-          onPress={openReasonEditor}
-          disabled={reasonDisabled}
-          style={styles.reasonPressable}
-          accessibilityRole="button"
-          accessibilityLabel={block.reason
-            ? `Edit reason for this recovery block: ${block.reason}`
-            : 'Add a reason for this recovery block'}
-          accessibilityState={{ disabled: reasonDisabled }}
-        >
-          <Text
-            style={[styles.reasonCaption, reasonDisabled && styles.reasonCaptionDisabled]}
-            numberOfLines={2}
-          >
-            {block.reason ? `Reason: ${block.reason}` : 'Add a reason'}
-          </Text>
-        </Pressable>
-      ) : block.reason ? (
-        <Text style={styles.reasonCaption} numberOfLines={2}>
-          Reason: {block.reason}
-        </Text>
       ) : null}
     </Card>
   );

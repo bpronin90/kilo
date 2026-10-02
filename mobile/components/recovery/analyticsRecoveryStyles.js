@@ -90,7 +90,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   nonMedicalText: {
-    fontSize: 12,
+    fontSize: 13,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontStyle: 'italic',
   },
@@ -217,11 +217,37 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
-  detailsHeaderCount: {
-    fontSize: 12,
-    fontWeight: '600',
+  // One quiet footer row (#1219): provenance, reason and the info button.
+  footerRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 6,
+  },
+  // Bounded, shrinkable single line: a long routine title or date range
+  // ellipsizes (full value on its label) instead of squeezing out the reason or
+  // the info button; if the row cannot fit, it wraps rather than clip a control.
+  footerProvenance: {
+    flexShrink: 1,
+    maxWidth: '100%',
+  },
+  footerReason: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 96,
+  },
+  footerSeparator: {
+    fontSize: 13,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    marginTop: 2,
+  },
+  infoButton: {
+    minWidth: 44,
+    minHeight: 44,
+    marginLeft: 'auto',
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   detailsBody: {
     gap: 12,

@@ -8,6 +8,7 @@ import { createVisualStyles } from './recoveryVisualStyles';
 // Trained bands only; `Not trained yet` is a roster fact, not a performance
 // band, and lives in the exercise drill-down (#1209).
 const TRAINED_BANDS = RETURN_BANDS.filter(b => b.id !== 'not_trained_yet');
+const COMPARABLE_BANDS = TRAINED_BANDS.filter(b => b.id !== 'cannot_compare');
 
 // Each band color is a mark color paired with visible full-name text, never a
 // hue on its own. *Text variants are used, not raw `accent`/`caution`
@@ -129,26 +130,56 @@ export function RecoveryBandBar({ buckets, trained, weekLabel }) {
   );
 }
 
-// Roster summary at the head of the exercise details (#1219): one thin bar of
-// trained-vs-roster plus a compact stat row, replacing the two sentence lines
-// ("Trained this week: 7 of 9 roster exercises · 2 not trained yet", "Most
-// common gap: …"). Same 13sp tier as the exercise rows (800 number, 600 label);
-// the full wording rides on the accessible label.
-export function RecoveryRosterSummary({ trained, rosterSize, notTrained, gap }) {
+// The ONE details summary (#1219): a thin band mini-bar (same buckets, colors
+// and order as the hero bar) over "N trained  M not yet". The panel renders this
+// single element right under the header whether Exercise details is collapsed
+// or expanded, so the two states cannot drift. The visible Gap stat was
+// removed (owner could not read it); the full sentence incl. the most common
+// gap rides on the accessible label. Same 13sp tier as the exercise rows (800
+// number, 600 label).
+export function RecoveryRosterSummary({ summary, bands, gap }) {
   const { colors, kua, styles } = useVisual();
-  if (!rosterSize) return null;
-  const fill = Math.max(0, Math.min(100, Math.round((trained / rosterSize) * 100)));
-  const label = `Trained this week: ${trained} of ${rosterSize} roster exercises${notTrained > 0 ? `, ${notTrained} not trained yet` : ''}.${gap ? ` Most common gap: ${gap}.` : ''}`;
+  if (!summary || !(summary.total > 0)) return null;
+  const c = summary.counts;
+  // "trained" / "not yet" / the roster denominator come from the SAME
+  // `deriveRecoveryWeekBands` values the hero uses, so hero and summary cannot
+  // disagree and an unusable baseline row stays out of the roster. "can't
+  // compare" and "added" are separate additive tokens counted from ALL visible
+  // rows (see `summarizeDetailRows`); they never feed trained / not yet.
+  const rosterSize = bands?.roster_size || 0;
+  const trained = bands?.trained || 0;
+  const notYet = Math.max(0, rosterSize - trained);
+  const buckets = bands?.buckets || null;
   const stats = [
-    { n: String(trained), text: 'trained' },
-    ...(notTrained > 0 ? [{ n: String(notTrained), text: 'not yet' }] : []),
-    ...(gap ? [{ n: null, text: `Gap: ${gap}` }] : []),
+    ...(rosterSize > 0 ? [{ n: String(trained), text: 'trained' }] : []),
+    ...(notYet > 0 ? [{ n: String(notYet), text: 'not yet' }] : []),
+    ...(c.cannot_compare > 0 ? [{ n: String(c.cannot_compare), text: "can't compare" }] : []),
+    ...(c.added > 0 ? [{ n: String(c.added), text: 'added' }] : []),
   ];
+  if (stats.length === 0) stats.push({ n: String(summary.total), text: summary.total === 1 ? 'exercise' : 'exercises' });
+  const sentences = [];
+  if (rosterSize > 0) {
+    sentences.push(`Trained this week: ${trained} of ${rosterSize} roster exercises${notYet > 0 ? `, ${notYet} not trained yet` : ''}.`);
+  }
+  // Each status is announced exactly once: the four comparable bands come from
+  // the hero's buckets, "Can't compare" from the all-rows count (it covers
+  // unusable-baseline rows the roster excludes).
+  const byStatus = [
+    ...(buckets ? COMPARABLE_BANDS.filter(b => buckets[b.id] > 0).map(b => `${b.label} ${buckets[b.id]}`) : []),
+    ...(c.cannot_compare > 0 ? [`Can't compare ${c.cannot_compare}`] : []),
+  ];
+  if (byStatus.length > 0) sentences.push(`By status: ${byStatus.join(', ')}.`);
+  if (gap) sentences.push(`Most common gap: ${gap}.`);
+  if (c.added > 0) sentences.push(`${c.added} added during recovery.`);
+  if (sentences.length === 0) sentences.push(`${summary.total} exercise${summary.total === 1 ? '' : 's'}.`);
+  const label = sentences.join(' ');
   return (
     <View testID="recovery-roster-summary" style={styles.rosterBlock} accessible accessibilityLabel={label}>
-      <View testID="recovery-roster-bar" style={styles.rosterTrack}>
-        <View style={[styles.exBarFill, { width: `${fill}%`, backgroundColor: kua ? kua.primary : colors.accentText }]} />
-      </View>
+      {buckets && trained > 0 && (
+        <View testID="recovery-roster-bar">
+          <Segments buckets={buckets} colors={colors} kua={kua} style={styles.miniBar} />
+        </View>
+      )}
       <View style={styles.exNumbers}>
         {stats.map(st => (
           <View key={st.text} style={styles.rosterStat}>
