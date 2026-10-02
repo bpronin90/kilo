@@ -5,10 +5,7 @@
 // top-level `validateBackup` gate that composes these lives with the import
 // pipeline in backupRestore.js; backupExport.js reuses BACKUP_VERSION and
 // validateFatigueMultiplier. Strictness, error strings and allowlists preserved.
-import {
-  MAX_RECOVERY_REASON_LENGTH,
-  RECOVERY_BASELINE_VERSION,
-} from '../../lib/data/recoveryBlocks';
+import { MAX_RECOVERY_REASON_LENGTH, RECOVERY_BASELINE_BASIS_VALUES, RECOVERY_BASELINE_VERSION } from '../../lib/data/recoveryBlocks';
 
 // v4 adds the two recovery collections (#694). Everything a v3 file carries is
 // unchanged, so a v4 file is a strict superset and a v3 importer would simply
@@ -61,7 +58,8 @@ const MAX_IMPORT_BASELINE_EXERCISES = 1000;
 
 // Everything a baseline exercise row carries beyond these three is a numeric
 // metric (top_weight, volume, sets_completed, best_set_reps, total_reps,
-// best_hold_seconds, total_seconds — see lib/data/recoveryBlocks).
+// best_hold_seconds, total_seconds, v2 routine_order — see lib/data/recoveryBlocks)
+// except v2's own `basis` provenance string, checked against its closed enum (#1225).
 const BASELINE_EXERCISE_STRING_FIELDS = ['key', 'name', 'exercise_class'];
 
 // Untrusted-input bounds for imported backups. importBackup() receives arbitrary
@@ -290,8 +288,11 @@ function validateRecoveryBaseline(baseline) {
       if (typeof exercise[field] !== 'string')
         return { ok: false, error: `Invalid backup: recovery baseline exercise missing ${field}` };
     }
+    const v2 = baseline.version >= 2;
+    if (v2 && (!RECOVERY_BASELINE_BASIS_VALUES.includes(exercise.basis) || !Number.isInteger(exercise.routine_order) || exercise.routine_order < 0))
+      return { ok: false, error: 'Invalid backup: recovery baseline v2 row needs a known basis and a non-negative integer routine_order' };
     for (const [field, value] of Object.entries(exercise)) {
-      if (BASELINE_EXERCISE_STRING_FIELDS.includes(field)) continue;
+      if (BASELINE_EXERCISE_STRING_FIELDS.includes(field) || (v2 && field === 'basis')) continue;
       if (typeof value !== 'number' || !Number.isFinite(value))
         return { ok: false, error: `Invalid backup: recovery baseline metric ${field} must be a finite number` };
     }

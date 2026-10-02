@@ -592,3 +592,74 @@ describe('persistence representation is unchanged by the extraction', () => {
     expect(Storage.loadRecoveryBlocks).not.toHaveBeenCalled(); // default not used
   });
 });
+
+// ── #1225: baseline migration is gated on a clean, settled verified read ──────
+//
+// State-transition rows asserted here: stale/unverified lifecycle (read, journal,
+// note, or sync failure) never migrates; corrupt or pending operation
+// reconciliation never migrates; only a pass that reconciled cleanly with nothing
+// pending asks storage to migrate; filter-only reads never migrate.
+
+describe('baseline migration gate (#1225)', () => {
+  const migrateArgs = () => Storage.loadRecoveryBlocks.mock.calls.map((c) => c[0]);
+
+  test('a clean, settled authoritative read asks storage to migrate exactly once', async () => {
+    setReadSource(ownerASnapshot());
+    await barrel.refreshRecoveryState();
+    expect(migrateArgs()).toEqual([{ migrateBaselines: true }]);
+  });
+
+  test('NEGATIVE CONTROL: pending operation reconciliation never migrates, yet the snapshot still publishes', async () => {
+    Journal.reconcileRecoveryOperations.mockImplementation(async () => ({ pending: [{ id: 'op1' }], corrupt: false, error: null }));
+    setReadSource(ownerASnapshot());
+    const outcome = await barrel.refreshRecoveryState();
+    expect(outcome.ok).toBe(false);
+    expect(migrateArgs()).toEqual([{ migrateBaselines: false }]);
+  });
+
+  test('a corrupt journal never reaches the storage read at all', async () => {
+    Journal.reconcileRecoveryOperations.mockImplementation(async () => ({ corrupt: true, code: 'JOURNAL_CORRUPT', error: 'unreadable' }));
+    await barrel.refreshRecoveryState();
+    expect(Storage.loadRecoveryBlocks).not.toHaveBeenCalled();
+  });
+
+  test('a failed reconciliation (journal read error) never reaches the storage read at all', async () => {
+    Journal.reconcileRecoveryOperations.mockImplementation(async () => { throw new Error('journal down'); });
+    await barrel.refreshRecoveryState();
+    expect(Storage.loadRecoveryBlocks).not.toHaveBeenCalled();
+  });
+
+  test('a failed storage read leaves the last-known-good snapshot, stale, with no upgraded block published', async () => {
+    setReadSource(ownerASnapshot());
+    const { ref } = mountHook(barrel.useRecoveryBlockState);
+    await flush();
+    const before = ref.current.blocks;
+    failReadSource();
+    await barrel.refreshRecoveryState();
+    await flush();
+    expect(ref.current.stale).toBe(true);
+    expect(ref.current.blocks).toBe(before);
+  });
+
+  test('filter-only reads and the exclusion read never request a migration', async () => {
+    setReadSource(ownerASnapshot());
+    await barrel.loadRecoveryExcludedNoteIds();
+    mountHook(barrel.useRecoveryAnalyticsFilter);
+    await flush();
+    expect(migrateArgs().filter((a) => a && a.migrateBaselines === true)).toEqual([]);
+  });
+
+  test('an upgraded block (new updated_at) republishes as a new snapshot to every subscriber', async () => {
+    const v1 = ownerASnapshot();
+    setReadSource(v1);
+    const { ref } = mountHook(barrel.useRecoveryBlockState);
+    await flush();
+    const first = ref.current.blocks;
+    const upgraded = { ...v1, blocks: [{ ...v1.blocks[0], updated_at: '3', baseline: { version: 2, exercises: [] } }] };
+    setReadSource(upgraded);
+    await barrel.refreshRecoveryState();
+    await flush();
+    expect(ref.current.blocks).not.toBe(first);
+    expect(ref.current.blocks[0].baseline.version).toBe(2);
+  });
+});

@@ -819,3 +819,64 @@ describe('likely descriptor-suffixed name mismatch (#1202)', () => {
     expect(ambiguous.added.every(a => a.likely_baseline_name === undefined)).toBe(true);
   });
 });
+
+// ── #1225: v1 and v2 snapshots are both readable; v2 exposes routine order ────
+
+describe('deriveRecoveryComparison — baseline v1 and v2 (#1225)', () => {
+  const V1 = {
+    version: 1,
+    exercises: [
+      { key: 'bench', name: 'Bench', exercise_class: 'weighted', top_weight: 100, volume: 1000, sets_completed: 2 },
+      { key: 'squat', name: 'Squat', exercise_class: 'weighted', top_weight: 225, volume: 1125, sets_completed: 1 },
+    ],
+  };
+  const WEEK = '-Squat\n- 225 5\n-Bench\n- 100 5,5';
+  const run = (baseline) => deriveRecoveryComparison({
+    block: blockWith(baseline), weeks: [weekLink(1, 'n1')], notes: [noteWith('n1', WEEK)],
+  });
+
+  test('a valid legacy v1 fallback snapshot is compared, never reported as baseline_unsupported', () => {
+    const result = run(V1);
+    expect(result.status).toBe(RECOVERY_COMPARISON_STATUS.OK);
+    expect(result.baseline_version).toBe(1);
+    // Legacy alphabetical order is preserved exactly as stored.
+    expect(result.weeks[0].exercises.map(e => e.key)).toEqual(['bench', 'squat']);
+    expect(rowFor(result.weeks[0], 'bench').state).toBe(RECOVERY_COMPARISON_STATES.BASELINE_MET);
+  });
+
+  test('a v2 snapshot is compared and its rows come out in routine order, not alphabetical', () => {
+    const v2 = captureRecoveryBaselineFromText('-Squat\n- 225 5\n-Bench\n- 100 5,5');
+    expect(v2.version).toBe(2);
+    const result = run(v2);
+    expect(result.status).toBe(RECOVERY_COMPARISON_STATUS.OK);
+    expect(result.baseline_version).toBe(2);
+    expect(result.weeks[0].exercises.map(e => e.key)).toEqual(['squat', 'bench']);
+  });
+
+  test('only versions 1 and 2 are read: 0, 3, and non-integer versions are unsupported', () => {
+    for (const version of [0, 3, 99, '2', '1', null, 1.5]) {
+      const result = run({ ...V1, version });
+      expect(result.status).toBe(RECOVERY_COMPARISON_STATUS.BASELINE_UNSUPPORTED);
+      expect(result.weeks).toEqual([]);
+    }
+  });
+
+  test('baseline_met still needs BOTH top load and volume on a v2 snapshot (state derivation unchanged)', () => {
+    const v2 = captureRecoveryBaselineFromText('-Deadlift: 3x6\n- 325 6,6,6');
+    const derive = (text) => deriveRecoveryComparison({
+      block: blockWith(v2), weeks: [weekLink(1, 'n1')], notes: [noteWith('n1', text)],
+    }).weeks[0].exercises[0].state;
+    expect(derive('-Deadlift\n- 325 6,6,6')).toBe(RECOVERY_COMPARISON_STATES.BASELINE_MET);
+    expect(derive('-Deadlift\n- 335 6')).not.toBe(RECOVERY_COMPARISON_STATES.BASELINE_MET);
+    expect(derive('-Deadlift\n- 225 6,6,6,6,6,6,6,6,6')).not.toBe(RECOVERY_COMPARISON_STATES.BASELINE_MET);
+  });
+
+  test('the corrected Deadlift baseline is what a week is measured against (5850, not the aborted 670)', () => {
+    const v2 = captureRecoveryBaselineFromText('-Deadlift: 3x6\n- 325 6,6,6\n- 335 2,-,-');
+    const row = deriveRecoveryComparison({
+      block: blockWith(v2), weeks: [weekLink(1, 'n1')], notes: [noteWith('n1', '-Deadlift\n- 315 6,6,6')],
+    }).weeks[0].exercises[0];
+    expect(metricOf(row, 'volume').baseline).toBe(5850);
+    expect(metricOf(row, 'top_load').baseline).toBe(325);
+  });
+});

@@ -10,15 +10,23 @@
 // block, one live membership per note, sequential week numbers) live in
 // storage/entries/recoveryStorage.js.
 
-import { parseWorkoutNote, deriveWorkoutAnalytics, normalizeExerciseKey } from '../parser.js';
+import {
+  parseWorkoutNote, deriveWorkoutAnalytics, normalizeExerciseKey,
+  parseHeaderDeclaration, parseExerciseHeader, MAX_RAW_TEXT_LENGTH,
+} from '../parser.js';
 import { _occurrenceEntries } from './workoutAnalytics.js';
 
 // Version stamped onto every frozen baseline snapshot. Bump only when the
 // per-exercise metric shape below changes in a way that makes an old snapshot
 // non-comparable to a newly captured one; consumers branch on it rather than
-// guessing from which fields happen to be present. Frozen snapshots are never
-// rewritten in place, so old versions stay readable forever.
-export const RECOVERY_BASELINE_VERSION = 1;
+// guessing from which fields happen to be present. Version 2 (#1225) captures
+// the latest COMPLETE session per exercise and carries `routine_order` + `basis`
+// on every row. Version 1 snapshots (latest comparable work, alphabetical) stay
+// readable forever; they are replaced only by the one-time write migration
+// `planRecoveryBaselineUpgrades` below, and only when provably safe.
+export const RECOVERY_BASELINE_VERSION = 2;
+export const RECOVERY_BASELINE_LEGACY_VERSION = 1;
+export const RECOVERY_BASELINE_SUPPORTED_VERSIONS = Object.freeze([1, 2]);
 
 // Deterministic failure codes for the domain invariants. Callers (and the later
 // sync layer) branch on `code`, never on message text.
@@ -158,23 +166,78 @@ function _baselineMetrics(sets) {
   };
 }
 
-// Freeze the pre-recovery baseline from a parsed routine.
+// ── complete-session rule (#1225) ─────────────────────────────────────────────
 //
-// For each normalized exercise identity, the baseline is the LATEST session that
-// actually recorded completed work. Walking backwards from the newest session is
-// what makes trailing skips harmless: a lifter who tapped "skip week" twice
-// before starting recovery still gets the last real session they logged, not an
-// empty one (that is the whole point of freezing at block creation).
+// The header declaration that governs one occurrence, read ONLY through the
+// existing parser (`parseHeaderDeclaration` / `parseExerciseHeader`); recovery
+// adds no grammar of its own beyond naming what the parser already leaves
+// undeclared. Returns `{ kind, sets, min }` or null when no usable declaration
+// exists (no header, a timed range with no set count, a zero set count):
+//   reps      `3x6` / `3x6-8`  — `min` is the LOWER bound; the upper is not a gate
+//   duration  `2x60s`          — `min` is the declared hold in seconds
+//   amrap     `3xAMRAP`        — no fixed rep minimum, so `min` is never invented
+const _TIMED_HOLDS_RE = /(\d+)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*(sec|secs|seconds?|s|min|mins|minutes?|m)\b/i;
+function _declarationSpec(rawHeader) {
+  if (!rawHeader) return null;
+  if (/amrap/i.test(rawHeader)) {
+    const m = /(\d+)\s*[xX×]\s*amrap/i.exec(rawHeader);
+    const sets = m ? parseInt(m[1], 10) : 1;
+    return sets >= 1 ? { kind: 'amrap', sets, min: null } : null;
+  }
+  if (parseHeaderDeclaration(rawHeader)?.type === 'duration') {
+    const m = _TIMED_HOLDS_RE.exec(rawHeader);
+    if (!m) return null;
+    const sets = parseInt(m[1], 10);
+    const unit = m[3].toLowerCase();
+    const min = parseFloat(m[2]) * (unit === 'm' || unit.startsWith('min') ? 60 : 1);
+    return sets >= 1 && min > 0 ? { kind: 'duration', sets, min } : null;
+  }
+  const p = parseExerciseHeader(rawHeader);
+  return p && p.sets >= 1 && p.repLo >= 1 ? { kind: 'reps', sets: p.sets, min: p.repLo } : null;
+}
+
+// Every prescribed working set present, unskipped, comparable, and at or above
+// its minimum. Counting qualifying sets (rather than demanding the entry hold
+// exactly `sets`) means a stray extra set never fails a session, while a `-`,
+// a short set, or fewer sets than prescribed always does.
+function _sessionIsComplete(sets, spec, metrics) {
+  const qualifying = _completedSets(sets).filter(s => {
+    if (metrics.exercise_class === 'weighted' && !(s.weight_value > 0)) return false;
+    if (spec.kind === 'amrap') return true;
+    if (spec.kind === 'duration') return s.duration_seconds != null && s.duration_seconds >= spec.min;
+    return s.rep_count != null && s.rep_count >= spec.min;
+  });
+  return qualifying.length >= spec.sets;
+}
+
+// Why a row carries the numbers it does. A consumer must never mistake a
+// fallback for a complete session, so the reason is stored on the row itself.
+export const RECOVERY_BASELINE_BASIS = Object.freeze({
+  COMPLETE: 'complete',
+  NO_DECLARATION: 'no_declaration',
+  AMRAP: 'amrap_no_minimum',
+  NEVER_COMPLETE: 'never_complete',
+});
+export const RECOVERY_BASELINE_BASIS_VALUES = Object.freeze(Object.values(RECOVERY_BASELINE_BASIS));
+
+// Freeze the pre-recovery baseline from a parsed routine (v2).
 //
-// Warmup sections are excluded entirely — warmup load is not a baseline the
-// lifter is returning to. Exercise identity, and the merging of the same lift
-// across an A/B routine or repeated occurrences within a note, comes from the
-// existing parser rules (`deriveWorkoutAnalytics` groups by
-// `normalizeExerciseKey`), so recovery never invents a second naming scheme.
+// For each normalized exercise identity the baseline is the latest COMPLETE
+// session: walking newest-first, the first session that is comparable AND meets
+// its occurrence's prescribed set count and minimum. A later aborted session
+// (`335 2,-,-` after `325 6,6,6` on `3x6`) therefore never replaces the full one.
+// When no session is complete (no usable declaration, AMRAP, or never complete)
+// the row falls back to the latest comparable completed work, exactly as v1 did,
+// and its `basis` says so.
+//
+// Rows keep the routine's own order: `routine_order` is the position of the
+// exercise's first NON-warmup occurrence among the routine's distinct exercise
+// identities, and `exercises` is sorted by it. Warmup sections define neither
+// presence nor order. Exercise identity still comes from the parser rules
+// (`normalizeExerciseKey`), so recovery never invents a second naming scheme.
 //
 // `sections` is `parseWorkoutNote(text).sections`. Returns a plain, structurally
-// frozen snapshot; exercises are ordered by normalized key so two captures of
-// the same routine are byte-identical.
+// frozen snapshot.
 export function captureRecoveryBaseline(sections) {
   const snapshot = {
     version: RECOVERY_BASELINE_VERSION,
@@ -182,36 +245,45 @@ export function captureRecoveryBaseline(sections) {
   };
   if (!Array.isArray(sections) || sections.length === 0) return _deepFreeze(snapshot);
 
-  const { exercises } = deriveWorkoutAnalytics(sections);
-
-  const rows = [];
-  for (const ex of exercises) {
-    // Drop warmup occurrences before flattening so a warmup-only exercise
-    // disappears rather than contributing a light "baseline".
-    const occurrences = (ex.occurrences || []).filter(occ => occ.kind !== 'warmup');
-    if (occurrences.length === 0) continue;
-
-    const entries = occurrences.flatMap(occ => _occurrenceEntries(occ));
-
-    // Newest-first walk: the first session that yields comparable completed work
-    // wins. Skipped and unparsed entries are stepped over, not counted.
-    let metrics = null;
-    for (let i = entries.length - 1; i >= 0; i--) {
-      const entry = entries[i];
-      if (!entry || entry.skipped || entry.unparsed) continue;
-      metrics = _baselineMetrics(entry.sets);
-      if (metrics) break;
+  const names = new Map(deriveWorkoutAnalytics(sections).exercises.map(ex => [normalizeExerciseKey(ex.name), ex.name]));
+  // key -> { order, units: [{ sets, spec }] } in chronological (note) order.
+  const groups = new Map();
+  for (const section of sections) {
+    if (section.kind === 'warmup') continue;
+    for (const ex of section.exercises || []) {
+      const key = normalizeExerciseKey(ex.name);
+      if (!groups.has(key)) groups.set(key, { order: groups.size, units: [] });
+      const spec = _declarationSpec(ex.raw_header);
+      const entries = _occurrenceEntries({ rows: ex.rows, sets: ex.sets || [], session_entries: ex.session_entries, kind: section.kind });
+      for (const entry of entries) {
+        if (!entry || entry.skipped || entry.unparsed) continue;
+        groups.get(key).units.push({ sets: entry.sets, spec });
+      }
     }
-    if (!metrics) continue;
-
-    rows.push({
-      key: normalizeExerciseKey(ex.name),
-      name: ex.name,
-      ...metrics,
-    });
   }
 
-  rows.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  const rows = [];
+  for (const [key, { order, units }] of groups) {
+    let picked = null;
+    for (let i = units.length - 1; i >= 0 && !picked; i--) {
+      const metrics = _baselineMetrics(units[i].sets);
+      if (metrics && units[i].spec && _sessionIsComplete(units[i].sets, units[i].spec, metrics)) {
+        picked = { metrics, spec: units[i].spec, complete: true };
+      }
+    }
+    for (let i = units.length - 1; i >= 0 && !picked; i--) {
+      const metrics = _baselineMetrics(units[i].sets);
+      if (metrics) picked = { metrics, spec: units[i].spec, complete: false };
+    }
+    if (!picked) continue;
+    const BASIS = RECOVERY_BASELINE_BASIS;
+    const basis = picked.spec?.kind === 'amrap' ? BASIS.AMRAP
+      : picked.complete ? BASIS.COMPLETE
+        : picked.spec ? BASIS.NEVER_COMPLETE : BASIS.NO_DECLARATION;
+    rows.push({ key, name: names.get(key) ?? key, ...picked.metrics, routine_order: order, basis });
+  }
+
+  rows.sort((a, b) => a.routine_order - b.routine_order);
   snapshot.exercises = rows;
   return _deepFreeze(snapshot);
 }
@@ -223,6 +295,68 @@ export function captureRecoveryBaseline(sections) {
 export function captureRecoveryBaselineFromText(rawText) {
   const parsed = parseWorkoutNote(rawText || '');
   return captureRecoveryBaseline(parsed.sections || []);
+}
+
+// ── v1 -> v2 write migration (#1225) ──────────────────────────────────────────
+//
+// Pure planner: given the raw block list and the raw note list, returns the list
+// with every PROVABLY safe legacy block upgraded to a v2 snapshot, plus the ids
+// it touched. It never reads clocks beyond `now`, never writes, and never
+// recomputes from anything but the block's own source note.
+//
+// A v1 block is upgraded only when ALL hold:
+//   - the block is live (tombstones are never rewritten or resurrected), has
+//     string ids, a parseable `started_at`, and a structurally valid v1 snapshot;
+//   - exactly ONE note carries `baseline_note_id` (a duplicated id is an
+//     ambiguous identity), it is live, its `raw_text` is a string within the
+//     parser size bound and parses, and its `updated_at` is a valid timestamp;
+//   - `note.updated_at <= block.started_at` — affirmative evidence the note's
+//     CURRENT text is still what it was when recovery began. Later edits may be
+//     recovery work, so they leave the frozen v1 snapshot alone (equality is
+//     allowed: a note saved in the same instant the block started predates it).
+// Everything else keeps its exact v1 snapshot and legacy alphabetical order.
+// Idempotent: a v2 (or unknown-version) snapshot is never touched.
+function _ts(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T/.test(value)) return null;
+  const t = Date.parse(value);
+  return Number.isFinite(t) ? t : null;
+}
+
+function _isValidLegacySnapshot(baseline) {
+  return !!baseline && typeof baseline === 'object' && !Array.isArray(baseline)
+    && baseline.version === RECOVERY_BASELINE_LEGACY_VERSION && Array.isArray(baseline.exercises)
+    && baseline.exercises.every(row => !!row && typeof row === 'object' && !Array.isArray(row));
+}
+
+export function planRecoveryBaselineUpgrades({ blocks, notes, now = new Date().toISOString() } = {}) {
+  const list = Array.isArray(blocks) ? blocks : [];
+  const byId = new Map();
+  for (const note of Array.isArray(notes) ? notes : []) {
+    if (!note || typeof note.id !== 'string') continue;
+    byId.set(note.id, byId.has(note.id) ? null : note);
+  }
+  const upgraded = [];
+  const next = list.map(block => {
+    if (!block || typeof block !== 'object' || !isLiveRecord(block)) return block;
+    if (typeof block.id !== 'string' || typeof block.baseline_note_id !== 'string') return block;
+    if (!_isValidLegacySnapshot(block.baseline)) return block;
+    const startedAt = _ts(block.started_at);
+    const note = byId.get(block.baseline_note_id);
+    if (startedAt == null || !note || note.deleted_at) return block;
+    const noteUpdatedAt = _ts(note.updated_at);
+    if (noteUpdatedAt == null || noteUpdatedAt > startedAt) return block;
+    if (typeof note.raw_text !== 'string' || note.raw_text.length > MAX_RAW_TEXT_LENGTH) return block;
+    const parsed = parseWorkoutNote(note.raw_text);
+    if (!parsed || parsed.ok !== true) return block;
+
+    // Strictly newer than what the record carried, so last-write-wins sync sees
+    // the upgrade as an ordinary update even under clock skew.
+    const prev = _ts(block.updated_at);
+    const stamp = prev != null && prev >= Date.parse(now) ? new Date(prev + 1).toISOString() : now;
+    upgraded.push(block.id);
+    return { ...block, baseline: captureRecoveryBaseline(parsed.sections || []), updated_at: stamp };
+  });
+  return { blocks: upgraded.length > 0 ? next : list, upgraded };
 }
 
 // Recursively freeze the snapshot. The frozen baseline is authoritative after

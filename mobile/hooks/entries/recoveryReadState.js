@@ -147,7 +147,8 @@ function runAuthoritativeRecoveryRead() {
       // everything while still explaining itself once.
       pending = reconciliation.pending || [];
       pendingError = reconciliation.error || null;
-      return Promise.all([Storage.loadRecoveryBlocks(), Storage.loadRecoveryBlockWeeks()]);
+      // Baseline migration (#1225) only after a clean, fully settled pass.
+      return Promise.all([Storage.loadRecoveryBlocks({ migrateBaselines: pending.length === 0 }), Storage.loadRecoveryBlockWeeks()]);
     })
     .then(([blocks, weeks]) => {
       publishRecoverySnapshot(blocks, weeks);

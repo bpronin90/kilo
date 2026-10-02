@@ -12,10 +12,12 @@ import {
   isLiveRecord,
   nextWeekNumber,
   orderedLiveWeeks,
+  planRecoveryBaselineUpgrades,
 } from '../lib/data/recoveryBlocks';
 import {
   RECOVERY_BLOCKS_KEY,
   RECOVERY_BLOCK_WEEKS_KEY,
+  WORKOUT_NOTES_KEY,
 } from '../storage/entries/keys';
 import {
   addRecoveryWeek,
@@ -139,6 +141,8 @@ describe('captureRecoveryBaseline — weighted metrics', () => {
       top_weight: 185,
       volume: 185 * 3 + 185 * 3,
       sets_completed: 2,
+      routine_order: 0,
+      basis: 'no_declaration',
     });
   });
 
@@ -161,7 +165,7 @@ describe('captureRecoveryBaseline — weighted metrics', () => {
   test('weighted rows retain only weighted metrics', () => {
     const row = baselineFor(captureRecoveryBaselineFromText('-Bench\n- 135 5'), 'bench');
     expect(Object.keys(row).sort()).toEqual(
-      ['exercise_class', 'key', 'name', 'sets_completed', 'top_weight', 'volume']
+      ['basis', 'exercise_class', 'key', 'name', 'routine_order', 'sets_completed', 'top_weight', 'volume']
     );
     expect(row.best_set_reps).toBeUndefined();
     expect(row.best_hold_seconds).toBeUndefined();
@@ -178,6 +182,8 @@ describe('captureRecoveryBaseline — reps-only and timed metrics', () => {
       best_set_reps: 8,
       total_reps: 20,
       sets_completed: 3,
+      routine_order: 0,
+      basis: 'no_declaration',
     });
   });
 
@@ -190,6 +196,8 @@ describe('captureRecoveryBaseline — reps-only and timed metrics', () => {
       best_hold_seconds: 60,
       total_seconds: 135,
       sets_completed: 3,
+      routine_order: 0,
+      basis: 'no_declaration',
     });
   });
 
@@ -293,11 +301,13 @@ describe('captureRecoveryBaseline — identity and A/B routines', () => {
     expect(squats[0].name).toBe('Squat');
   });
 
-  test('exercises are ordered deterministically by normalized key', () => {
+  test('v2 exercises keep the routine order (not alphabetical) and capture is deterministic', () => {
     const a = captureRecoveryBaselineFromText('-Squat\n- 225 5\n-Bench\n- 135 5');
     const b = captureRecoveryBaselineFromText('-Bench\n- 135 5\n-Squat\n- 225 5');
-    expect(a.exercises.map(e => e.key)).toEqual(['bench', 'squat']);
-    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+    expect(a.exercises.map(e => e.key)).toEqual(['squat', 'bench']);
+    expect(b.exercises.map(e => e.key)).toEqual(['bench', 'squat']);
+    expect(a.exercises.map(e => e.routine_order)).toEqual([0, 1]);
+    expect(JSON.stringify(a)).toBe(JSON.stringify(captureRecoveryBaselineFromText('-Squat\n- 225 5\n-Bench\n- 135 5')));
   });
 });
 
@@ -2502,5 +2512,388 @@ describe('isolation', () => {
     captureRecoveryBaselineFromText(text);
     expect(text).toBe('-Bench\n- 135 5,5\n- 185 3');
     expect(parseWorkoutNote(text).ok).toBe(true);
+  });
+});
+
+// ── #1225: latest COMPLETE session, v2 routine order, v1 -> v2 write migration ──
+//
+// State-transition matrix and production-caller matrix are on the issue; every
+// row is asserted below. The negative controls named there (aborted-vs-complete
+// Deadlift, skipped/missing/short sets, range/AMRAP/time/reps-only/bodyweight/
+// warmup/lone/never-complete, stale id/revision, malformed state, failed write,
+// tombstone, clean restore) each have a fixture here or in the suites that own
+// the boundary (recovery-analytics, backup-import, sync-recovery, hooks contract).
+
+const BASIS = { COMPLETE: 'complete', NO_DECL: 'no_declaration', AMRAP: 'amrap_no_minimum', NEVER: 'never_complete' };
+
+// A section built from a literal header so the declaration reaches the same
+// parser-derived `raw_header` a real note would carry.
+function declSection(header, sessions, { kind = 'general', name } = {}) {
+  const base = synthSection(name || header.replace(/^-/, '').split(/[:\s]/)[0], sessions, { kind });
+  base.exercises[0].raw_header = header;
+  return base;
+}
+const cap = (...sections) => captureRecoveryBaseline(sections);
+
+describe('captureRecoveryBaseline (v2) — latest complete session', () => {
+  test('mandatory Deadlift fixture: 325 6,6,6 is the baseline, not the later 335 2,-,-', () => {
+    const snap = captureRecoveryBaselineFromText('-Deadlift: 3x6\n- 315 6,6,5\n- 325 6,6,6\n- 335 2,-,-');
+    expect(snap.version).toBe(2);
+    expect(baselineFor(snap, 'deadlift')).toEqual({
+      key: 'deadlift', name: 'Deadlift', exercise_class: 'weighted',
+      top_weight: 325, volume: 325 * 18, sets_completed: 3, routine_order: 0, basis: BASIS.COMPLETE,
+    });
+    expect(baselineFor(snap, 'deadlift').volume).toBe(5850);
+    expect(baselineFor(snap, 'deadlift').volume).not.toBe(670);
+  });
+
+  test('a skipped, missing, or short set makes a session incomplete; the earlier complete one wins', () => {
+    for (const aborted of ['335 6,6,-', '335 6,6', '335 6,6,5', '335 -,-,-']) {
+      const snap = captureRecoveryBaselineFromText(`-Deadlift: 3x6\n- 325 6,6,6\n- ${aborted}`);
+      expect(baselineFor(snap, 'deadlift').top_weight).toBe(325);
+      expect(baselineFor(snap, 'deadlift').basis).toBe(BASIS.COMPLETE);
+    }
+  });
+
+  test('a later complete session replaces an earlier one (newest-first walk)', () => {
+    const snap = captureRecoveryBaselineFromText('-Deadlift: 3x6\n- 315 6,6,6\n- 325 6,6,6');
+    expect(baselineFor(snap, 'deadlift').top_weight).toBe(325);
+  });
+
+  test('range 3x6-8: the LOWER bound is the minimum and the upper bound is not a failure condition', () => {
+    const ok = captureRecoveryBaselineFromText('-Squat: 3x6-8\n- 200 6,6,6\n- 210 5,5,5');
+    expect(baselineFor(ok, 'squat')).toMatchObject({ top_weight: 200, basis: BASIS.COMPLETE });
+    const high = captureRecoveryBaselineFromText('-Squat: 3x6-8\n- 200 6,6,6\n- 210 8,8,8');
+    expect(baselineFor(high, 'squat')).toMatchObject({ top_weight: 210, basis: BASIS.COMPLETE });
+  });
+
+  test('fewer completed sets than prescribed is incomplete, even when every set met the minimum', () => {
+    const snap = captureRecoveryBaselineFromText('-Bench: 4x5\n- 135 5,5,5,5\n- 145 5,5,5');
+    expect(baselineFor(snap, 'bench')).toMatchObject({ top_weight: 135, sets_completed: 4, basis: BASIS.COMPLETE });
+  });
+
+  test('reps-only and bodyweight use the same set-count / minimum-rep rule', () => {
+    const snap = cap(declSection('-Pull-up 3x8', [[repSet(8), repSet(8), repSet(8)], [repSet(8), repSet(8), repSet(6)], 'skip']));
+    expect(baselineFor(snap, 'pull-up')).toMatchObject({ exercise_class: 'reps_only', total_reps: 24, basis: BASIS.COMPLETE });
+  });
+
+  test('time-based: every prescribed set must hold the declared duration; total stays seconds', () => {
+    const snap = cap(declSection('-Plank 3x30s', [[durSet(30), durSet(35), durSet(40)], [durSet(30), durSet(20), durSet(30)]]));
+    expect(baselineFor(snap, 'plank')).toMatchObject({ exercise_class: 'time_based', total_seconds: 105, basis: BASIS.COMPLETE });
+    const mins = cap(declSection('-Wall Sit 2x1 min', [[durSet(60), durSet(60)], [durSet(60), durSet(45)]], { name: 'Wall Sit' }));
+    expect(baselineFor(mins, 'wall sit')).toMatchObject({ total_seconds: 120, basis: BASIS.COMPLETE });
+  });
+
+  test('a timed RANGE with no set count is not a usable declaration (explicit fallback, nothing fabricated)', () => {
+    const snap = cap(declSection('-Plank 3x45-60s', [[durSet(60)], [durSet(10)]]));
+    expect(baselineFor(snap, 'plank')).toMatchObject({ total_seconds: 10, basis: BASIS.NO_DECL });
+  });
+
+  test('AMRAP has no fixed minimum: prescribed sets just need positive work, and the row says so', () => {
+    const snap = cap(declSection('-Pull-up 3xAMRAP', [[repSet(9), repSet(7), repSet(6)], [repSet(8), repSet(5)]]));
+    const row = baselineFor(snap, 'pull-up');
+    expect(row).toMatchObject({ total_reps: 22, sets_completed: 3, basis: BASIS.AMRAP });
+    expect(row.basis).not.toBe(BASIS.COMPLETE);
+    expect(row.min).toBeUndefined();
+    expect(row.target).toBeUndefined();
+  });
+
+  test('AMRAP with no complete session falls back to latest comparable work, still marked amrap', () => {
+    const snap = cap(declSection('-Pull-up 3xAMRAP', [[repSet(8)]]));
+    expect(baselineFor(snap, 'pull-up')).toMatchObject({ total_reps: 8, basis: BASIS.AMRAP });
+  });
+
+  test('no usable declaration: today\'s latest comparable work, marked no_declaration', () => {
+    const snap = captureRecoveryBaselineFromText('-Deadlift\n- 325 6,6,6\n- 335 2,-,-');
+    expect(baselineFor(snap, 'deadlift')).toMatchObject({ top_weight: 335, volume: 670, basis: BASIS.NO_DECL });
+  });
+
+  test('never complete: latest comparable work with an explicit never_complete basis', () => {
+    const snap = captureRecoveryBaselineFromText('-Deadlift: 3x6\n- 325 6,6\n- 335 2,-,-');
+    expect(baselineFor(snap, 'deadlift')).toMatchObject({ top_weight: 335, volume: 670, basis: BASIS.NEVER });
+  });
+
+  test('a lone session is a complete baseline only if it meets the rule', () => {
+    expect(baselineFor(captureRecoveryBaselineFromText('-Deadlift: 3x6\n- 325 6,6,6'), 'deadlift').basis).toBe(BASIS.COMPLETE);
+    const lone = baselineFor(captureRecoveryBaselineFromText('-Deadlift: 3x6\n- 335 2,-,-'), 'deadlift');
+    expect(lone).toMatchObject({ top_weight: 335, volume: 670, basis: BASIS.NEVER });
+  });
+
+  test('completeness is judged per occurrence declaration: an older declared session beats a newer undeclared one', () => {
+    const snap = cap(
+      declSection('-Squat 3x5', [[wSet(225, 5), wSet(225, 5), wSet(225, 5)]], { name: 'Squat' }),
+      declSection('-Squat', [[wSet(275, 2)]], { name: 'Squat' }),
+    );
+    expect(baselineFor(snap, 'squat')).toMatchObject({ top_weight: 225, basis: BASIS.COMPLETE });
+  });
+
+  test('warmup sections are excluded before completeness, metrics, presence, and order', () => {
+    const snap = cap(
+      declSection('-Squat 3x5', [[wSet(95, 5), wSet(95, 5), wSet(95, 5)]], { kind: 'warmup', name: 'Squat' }),
+      declSection('-Bench 3x5', [[wSet(135, 5), wSet(135, 5), wSet(135, 5)]], { name: 'Bench' }),
+      declSection('-Squat 3x5', [[wSet(225, 5), wSet(225, 5), wSet(225, 5)]], { name: 'Squat' }),
+      declSection('-Face Pull 3x12', [[repSet(12), repSet(12), repSet(12)]], { kind: 'warmup', name: 'Face Pull' }),
+    );
+    expect(snap.exercises.map(r => [r.key, r.routine_order, r.top_weight ?? null])).toEqual([['bench', 0, 135], ['squat', 1, 225]]);
+    expect(baselineFor(snap, 'face pull')).toBeUndefined();
+  });
+
+  test('routine order: repeated identities sit at their FIRST non-warmup occurrence; nothing is alphabetical', () => {
+    const snap = captureRecoveryBaselineFromText('-Squat\n- 225 5\n-Bench\n- 135 5\n---\n-Squat\n- 245 3\n-Curl\n- 30 10');
+    expect(snap.exercises.map(r => r.key)).toEqual(['squat', 'bench', 'curl']);
+    expect(snap.exercises.map(r => r.routine_order)).toEqual([0, 1, 2]);
+  });
+
+  test('a row never carries an invented target, minimum, or free-form provenance', () => {
+    const snap = captureRecoveryBaselineFromText('-Deadlift: 3x6\n- 325 6,6,6');
+    expect(Object.keys(baselineFor(snap, 'deadlift')).sort()).toEqual(
+      ['basis', 'exercise_class', 'key', 'name', 'routine_order', 'sets_completed', 'top_weight', 'volume']
+    );
+  });
+});
+
+describe('planRecoveryBaselineUpgrades — v1 -> v2 write migration (pure planner)', () => {
+  const T0 = '2026-08-01T08:00:00.000Z';
+  const STARTED = '2026-08-01T09:00:00.000Z';
+  const NOW = '2026-09-01T00:00:00.000Z';
+  const ROUTINE = '-Squat: 3x5\n- 225 5,5,5\n-Deadlift: 3x6\n- 325 6,6,6\n- 335 2,-,-';
+  const V1 = Object.freeze({
+    version: 1,
+    exercises: [
+      { key: 'deadlift', name: 'Deadlift', exercise_class: 'weighted', top_weight: 335, volume: 670, sets_completed: 1 },
+      { key: 'squat', name: 'Squat', exercise_class: 'weighted', top_weight: 225, volume: 3375, sets_completed: 3 },
+    ],
+  });
+  const note = (over = {}) => ({ id: 'n1', title: 'Routine', raw_text: ROUTINE, saved_at: T0, updated_at: T0, deleted_at: null, ...over });
+  const block = (over = {}) => ({
+    id: 'rb1', baseline_note_id: 'n1', baseline_note_title: 'Routine', baseline: V1,
+    include_in_normal_analytics: true, reason: 'torn hamstring', started_at: STARTED, completed_at: null,
+    saved_at: STARTED, updated_at: STARTED, deleted_at: null, ...over,
+  });
+  const plan = (blocks, notes) => planRecoveryBaselineUpgrades({ blocks, notes, now: NOW });
+  const unchanged = (blocks, notes) => {
+    const result = plan(blocks, notes);
+    expect(result.upgraded).toEqual([]);
+    expect(result.blocks).toBe(blocks);
+    expect(JSON.stringify(result.blocks)).toBe(JSON.stringify(blocks));
+  };
+
+  test('an eligible live v1 block gets ONE v2 snapshot and keeps every lifecycle field', () => {
+    const b = block();
+    const { blocks, upgraded } = plan([b], [note()]);
+    expect(upgraded).toEqual(['rb1']);
+    const [out] = blocks;
+    expect(out.baseline.version).toBe(2);
+    expect(out.baseline.exercises.map(r => r.key)).toEqual(['squat', 'deadlift']);
+    expect(baselineFor(out.baseline, 'deadlift')).toMatchObject({ top_weight: 325, volume: 5850, basis: BASIS.COMPLETE });
+    expect(out.updated_at).toBe(NOW);
+    expect({ ...out, baseline: null, updated_at: null }).toEqual({ ...b, baseline: null, updated_at: null });
+    expect(b.baseline).toBe(V1); // input untouched
+  });
+
+  test('a COMPLETED block upgrades too and stays completed', () => {
+    const b = block({ completed_at: '2026-08-20T00:00:00.000Z' });
+    const out = plan([b], [note()]).blocks[0];
+    expect(out.baseline.version).toBe(2);
+    expect(out.completed_at).toBe('2026-08-20T00:00:00.000Z');
+  });
+
+  test('equality is allowed: a note saved in the same instant the block started predates it', () => {
+    expect(plan([block()], [note({ updated_at: STARTED })]).upgraded).toEqual(['rb1']);
+  });
+
+  test('NEGATIVE CONTROL (guard): a note edited even 1ms after started_at keeps the exact v1 snapshot', () => {
+    unchanged([block()], [note({ updated_at: '2026-08-01T09:00:00.001Z' })]);
+    unchanged([block()], [note({ updated_at: '2026-09-15T00:00:00.000Z' })]);
+  });
+
+  test('timestamps compare as instants, not strings (offset spellings of the same moment)', () => {
+    expect(plan([block()], [note({ updated_at: '2026-08-01T04:30:00.000-04:00' })]).upgraded).toEqual(['rb1']);
+    unchanged([block()], [note({ updated_at: '2026-08-01T05:30:00.000-04:00' })]);
+  });
+
+  test('ineligible sources keep v1: missing, deleted, wrong id (stale identity), duplicated id', () => {
+    unchanged([block()], []);
+    unchanged([block()], [note({ deleted_at: '2026-08-01T08:30:00.000Z' })]);
+    unchanged([block()], [note({ id: 'n2' })]);
+    unchanged([block({ baseline_note_id: 'N1' })], [note()]);
+    unchanged([block()], [note(), note({ raw_text: '-Bench\n- 135 5' })]);
+    unchanged([block()], [null, 7, 'x']);
+  });
+
+  test('ineligible sources keep v1: malformed or oversized text, bad or missing updated_at', () => {
+    unchanged([block()], [note({ raw_text: null })]);
+    unchanged([block()], [note({ raw_text: 12 })]);
+    unchanged([block()], [note({ raw_text: 'x'.repeat(200001) })]);
+    unchanged([block()], [note({ updated_at: undefined })]);
+    unchanged([block()], [note({ updated_at: 'yesterday' })]);
+    unchanged([block()], [note({ updated_at: 1722499200000 })]);
+    unchanged([block()], [note({ updated_at: '' })]);
+  });
+
+  test('malformed block state is never rewritten', () => {
+    unchanged([block({ started_at: 'soon' })], [note()]);
+    unchanged([block({ started_at: undefined })], [note()]);
+    unchanged([block({ baseline_note_id: null })], [note()]);
+    unchanged([block({ id: 7 })], [note()]);
+    unchanged([block({ baseline: null })], [note()]);
+    unchanged([block({ baseline: { version: 1, exercises: 'corrupt' } })], [note()]);
+    unchanged([block({ baseline: { version: 1, exercises: [null] } })], [note()]);
+    unchanged([null, 5, 'x'], [note()]);
+  });
+
+  test('a tombstoned block is never rewritten or resurrected', () => {
+    const dead = block({ deleted_at: '2026-08-10T00:00:00.000Z' });
+    unchanged([dead], [note()]);
+  });
+
+  test('idempotent: v2 and unknown-future snapshots are untouched, and a second pass is a no-op', () => {
+    const first = plan([block()], [note()]).blocks;
+    const second = plan(first, [note()]);
+    expect(second.upgraded).toEqual([]);
+    expect(second.blocks).toBe(first);
+    unchanged([block({ baseline: { version: 3, exercises: [] } })], [note()]);
+  });
+
+  test('only eligible blocks in a mixed list change, in place and in order', () => {
+    const a = block({ id: 'rbA' });
+    const b = block({ id: 'rbB', baseline_note_id: 'gone' });
+    const c = block({ id: 'rbC', deleted_at: '2026-08-10T00:00:00.000Z' });
+    const { blocks, upgraded } = plan([a, b, c], [note()]);
+    expect(upgraded).toEqual(['rbA']);
+    expect(blocks.map(x => x.id)).toEqual(['rbA', 'rbB', 'rbC']);
+    expect(blocks[1]).toBe(b);
+    expect(blocks[2]).toBe(c);
+  });
+
+  test('last-write-wins stays honest under clock skew: updated_at is strictly newer than the record had', () => {
+    const future = '2027-01-01T00:00:00.000Z';
+    const out = plan([block({ updated_at: future })], [note()]).blocks[0];
+    expect(Date.parse(out.updated_at)).toBeGreaterThan(Date.parse(future));
+  });
+
+  test('the migrated snapshot is deeply frozen', () => {
+    const out = plan([block()], [note()]).blocks[0];
+    expect(Object.isFrozen(out.baseline)).toBe(true);
+    expect(Object.isFrozen(out.baseline.exercises[0])).toBe(true);
+  });
+});
+
+describe('storage: migration runs only on an explicit verified read, once, and fails closed', () => {
+  const T0 = '2026-08-01T08:00:00.000Z';
+  const STARTED = '2026-08-01T09:00:00.000Z';
+  const V1 = { version: 1, exercises: [{ key: 'deadlift', name: 'Deadlift', exercise_class: 'weighted', top_weight: 335, volume: 670, sets_completed: 1 }] };
+  const ROUTINE = '-Deadlift: 3x6\n- 325 6,6,6\n- 335 2,-,-';
+
+  async function seed({ noteUpdated = T0, extra = [] } = {}) {
+    await AsyncStorage.setItem(WORKOUT_NOTES_KEY, JSON.stringify([
+      { id: 'n1', title: 'R', raw_text: ROUTINE, saved_at: T0, updated_at: noteUpdated, deleted_at: null },
+    ]));
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify([{
+      id: 'rb1', baseline_note_id: 'n1', baseline_note_title: 'R', baseline: V1,
+      include_in_normal_analytics: false, reason: null, started_at: STARTED, completed_at: null,
+      saved_at: STARTED, updated_at: STARTED, deleted_at: null,
+    }, ...extra]));
+  }
+  const raw = async () => JSON.parse(await AsyncStorage.getItem(RECOVERY_BLOCKS_KEY));
+
+  test('a plain read (and a read with the flag off) never migrates', async () => {
+    await seed();
+    await loadRecoveryBlocks();
+    await loadRecoveryBlocks({ migrateBaselines: false });
+    await loadRecoveryBlocks({ migrateBaselines: 'yes' });
+    expect((await raw())[0].baseline).toEqual(V1);
+  });
+
+  test('the verified read upgrades once, persists it, and a repeat read writes nothing', async () => {
+    await seed();
+    const [first] = await loadRecoveryBlocks({ migrateBaselines: true });
+    expect(first.baseline.version).toBe(2);
+    expect(baselineFor(first.baseline, 'deadlift')).toMatchObject({ top_weight: 325, volume: 5850 });
+    expect(Date.parse(first.updated_at)).toBeGreaterThan(Date.parse(STARTED));
+    expect((await raw())[0].baseline).toEqual(first.baseline);
+
+    const writeSpy = jest.spyOn(writeListModule, 'writeList');
+    const [second] = await loadRecoveryBlocks({ migrateBaselines: true });
+    expect(second).toEqual(first);
+    expect(writeSpy).not.toHaveBeenCalled();
+  });
+
+  test('a post-start note edit leaves the stored v1 snapshot byte-for-byte (negative control for the guard)', async () => {
+    await seed({ noteUpdated: '2026-08-02T00:00:00.000Z' });
+    const before = await AsyncStorage.getItem(RECOVERY_BLOCKS_KEY);
+    const [out] = await loadRecoveryBlocks({ migrateBaselines: true });
+    expect(out.baseline).toEqual(V1);
+    expect(await AsyncStorage.getItem(RECOVERY_BLOCKS_KEY)).toBe(before);
+  });
+
+  test('a tombstone stays a tombstone, and recovery weeks are never touched', async () => {
+    await seed({ extra: [{ id: 'rbDead', baseline_note_id: 'n1', baseline: V1, started_at: STARTED, saved_at: STARTED, updated_at: STARTED, deleted_at: '2026-08-05T00:00:00.000Z' }] });
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([{ id: 'rw1', block_id: 'rb1', note_id: 'n9', week_number: 1 }]));
+    await loadRecoveryBlocks({ migrateBaselines: true });
+    const stored = await raw();
+    expect(stored.find(b => b.id === 'rbDead')).toMatchObject({ baseline: V1, deleted_at: '2026-08-05T00:00:00.000Z', updated_at: STARTED });
+    expect(stored.find(b => b.id === 'rb1').baseline.version).toBe(2);
+    expect(JSON.parse(await AsyncStorage.getItem(RECOVERY_BLOCK_WEEKS_KEY))).toEqual([{ id: 'rw1', block_id: 'rb1', note_id: 'n9', week_number: 1 }]);
+    expect((await loadRecoveryBlocks({ migrateBaselines: true })).map(b => b.id)).toEqual(['rb1']);
+  });
+
+  test('a failed (partial) write publishes no upgraded block, keeps the old snapshot, and retries later', async () => {
+    await seed();
+    const spy = failWritesFor([RECOVERY_BLOCKS_KEY], { times: 1 });
+    const [out] = await loadRecoveryBlocks({ migrateBaselines: true });
+    expect(out.baseline).toEqual(V1);
+    expect((await raw())[0].baseline).toEqual(V1);
+    spy.mockRestore();
+    const [retry] = await loadRecoveryBlocks({ migrateBaselines: true });
+    expect(retry.baseline.version).toBe(2);
+  });
+
+  test('an unreadable or corrupt notebook blocks the migration without breaking the read', async () => {
+    await seed();
+    await AsyncStorage.setItem(WORKOUT_NOTES_KEY, '{not json');
+    const [out] = await loadRecoveryBlocks({ migrateBaselines: true });
+    expect(out.baseline).toEqual(V1);
+    await AsyncStorage.setItem(WORKOUT_NOTES_KEY, JSON.stringify({ not: 'an array' }));
+    expect((await loadRecoveryBlocks({ migrateBaselines: true }))[0].baseline).toEqual(V1);
+    const failing = failReadsFor([WORKOUT_NOTES_KEY]);
+    expect((await loadRecoveryBlocks({ migrateBaselines: true }))[0].baseline).toEqual(V1);
+    failing.mockRestore();
+  });
+
+  test('the notebook is never read unless a live legacy block exists (cold-start read budget)', async () => {
+    const spy = jest.spyOn(readListModule, 'readList');
+    await loadRecoveryBlocks({ migrateBaselines: true });
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify([
+      { id: 'rb2', baseline_note_id: 'n1', baseline: { version: 2, exercises: [] }, started_at: STARTED, updated_at: STARTED, deleted_at: null },
+      { id: 'rbDead', baseline_note_id: 'n1', baseline: V1, started_at: STARTED, updated_at: STARTED, deleted_at: '2026-08-05T00:00:00.000Z' },
+    ]));
+    await loadRecoveryBlocks({ migrateBaselines: true });
+    expect(spy.mock.calls.map(c => c[0]).filter(k => k === WORKOUT_NOTES_KEY)).toEqual([]);
+  });
+
+  test('a corrupt block list still fails closed exactly as an ordinary read does', async () => {
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, '{not json');
+    await expect(loadRecoveryBlocks({ migrateBaselines: true })).rejects.toThrow();
+    await expect(loadRecoveryBlocks()).rejects.toThrow();
+  });
+
+  test('a note edited after the upgrade cannot move the already-upgraded snapshot', async () => {
+    await seed();
+    await loadRecoveryBlocks({ migrateBaselines: true });
+    await AsyncStorage.setItem(WORKOUT_NOTES_KEY, JSON.stringify([
+      { id: 'n1', raw_text: '-Deadlift: 3x6\n- 400 6,6,6', updated_at: '2026-09-09T00:00:00.000Z', deleted_at: null },
+    ]));
+    const [out] = await loadRecoveryBlocks({ migrateBaselines: true });
+    expect(baselineFor(out.baseline, 'deadlift').top_weight).toBe(325);
+  });
+
+  test('new blocks freeze v2 at creation and later note edits never recapture', async () => {
+    const block = await createRecoveryBlock({ baselineNoteId: 'n1', baselineNoteText: ROUTINE });
+    expect(block.baseline.version).toBe(2);
+    expect(baselineFor(block.baseline, 'deadlift')).toMatchObject({ top_weight: 325, basis: BASIS.COMPLETE });
+    await AsyncStorage.setItem(WORKOUT_NOTES_KEY, JSON.stringify([{ id: 'n1', raw_text: '-Deadlift: 3x6\n- 400 6,6,6', updated_at: '2020-01-01T00:00:00.000Z' }]));
+    const [out] = await loadRecoveryBlocks({ migrateBaselines: true });
+    expect(out.baseline).toEqual(block.baseline);
   });
 });

@@ -653,7 +653,7 @@ describe('recovery data in the backup format', () => {
 
     // Spot-check the parts a shape-only comparison would not notice.
     const restoredBlock = (await Storage.loadRecoveryBlocksRaw())[0];
-    expect(restoredBlock.baseline.version).toBe(1);
+    expect(restoredBlock.baseline.version).toBe(2);
     expect(restoredBlock.baseline.exercises.map((e) => e.name).sort()).toEqual(['Bench', 'Squat']);
     expect(restoredBlock.include_in_normal_analytics).toBe(true);
     expect(restoredBlock.completed_at).toBe(completed.completed_at);
@@ -841,6 +841,33 @@ describe('recovery data: malformed payloads write nothing', () => {
         version: 1,
         exercises: [{ key: 'squat', name: 'Squat', exercise_class: 'weighted', top_weight: 'heavy' }],
       };
+    }],
+    // #1225: v2 rows carry explicit provenance and routine position, and a row
+    // that claims v2 without them (or with invented ones) is not a snapshot this
+    // app captured.
+    ['a v2 baseline row with no basis', (b) => {
+      delete b.recovery_blocks[0].baseline.exercises[0].basis;
+    }],
+    ['a v2 baseline row with an unrecognized basis', (b) => {
+      b.recovery_blocks[0].baseline.exercises[0].basis = 'trust_me';
+    }],
+    ['a v2 baseline row with no routine_order', (b) => {
+      delete b.recovery_blocks[0].baseline.exercises[0].routine_order;
+    }],
+    ['a v2 baseline row with a fractional routine_order', (b) => {
+      b.recovery_blocks[0].baseline.exercises[0].routine_order = 1.5;
+    }],
+    ['a v2 baseline row with a negative routine_order', (b) => {
+      b.recovery_blocks[0].baseline.exercises[0].routine_order = -1;
+    }],
+    ['a v1 baseline row carrying a free-form string field', (b) => {
+      b.recovery_blocks[0].baseline = {
+        version: 1,
+        exercises: [{ key: 'squat', name: 'Squat', exercise_class: 'weighted', top_weight: 100, basis: 'complete' }],
+      };
+    }],
+    ['a baseline snapshot one version past the supported range', (b) => {
+      b.recovery_blocks[0].baseline = { version: 3, exercises: [] };
     }],
     ['a duplicate block id', (b) => {
       b.recovery_blocks.push({ ...b.recovery_blocks[0] });
@@ -1284,5 +1311,80 @@ describe('#989 deload pre_deload_context in the backup format', () => {
     const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
     expect(result.ok).toBe(true);
     expect((await Storage.loadDeloadHistory()).find(r => r.id === 'dl_empty').pre_deload_context).toEqual({ version: 1, source_note_id: 'wn_src', exercises: {} });
+  });
+});
+
+// ── #1225: v1 and v2 baselines survive backup/restore without recapture ──────
+
+describe('recovery baselines across backup and restore (#1225)', () => {
+  const V1 = {
+    version: 1,
+    exercises: [
+      { key: 'bench', name: 'Bench', exercise_class: 'weighted', top_weight: 80, volume: 800, sets_completed: 2 },
+      { key: 'squat', name: 'Squat', exercise_class: 'weighted', top_weight: 100, volume: 1000, sets_completed: 2 },
+    ],
+  };
+
+  it('a legacy v1 snapshot restores byte-for-byte: no eager rewrite, no recapture, alphabetical order kept', async () => {
+    await seedRecoveryData();
+    const backup = await Storage.exportBackup();
+    backup.recovery_blocks[0].baseline = V1;
+
+    await Storage.replaceRecoveryBlocksRaw([]);
+    await Storage.replaceRecoveryBlockWeeksRaw([]);
+    const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+    expect(result.ok).toBe(true);
+
+    const [restored] = await Storage.loadRecoveryBlocksRaw();
+    expect(restored.baseline).toEqual(V1);
+    expect(restored.updated_at).toBe(backup.recovery_blocks[0].updated_at);
+    // The ordinary (non-verified) read path does not migrate either.
+    expect((await Storage.loadRecoveryBlocks())[0].baseline).toEqual(V1);
+  });
+
+  it('a v2 snapshot round-trips exactly, including routine order and fallback provenance', async () => {
+    await seedWorkoutNotes(['wn-keep']);
+    const block = await Storage.createRecoveryBlock({
+      baselineNoteId: 'wn-keep',
+      baselineNoteText: '-Squat\n- 100 5,5\n-Deadlift: 3x6\n- 325 6,6,6\n- 335 2,-,-\n-Bench: 3x5\n- 80 5,5',
+    });
+    expect(block.baseline.exercises.map((e) => [e.key, e.routine_order, e.basis])).toEqual([
+      ['squat', 0, 'no_declaration'],
+      ['deadlift', 1, 'complete'],
+      ['bench', 2, 'never_complete'],
+    ]);
+
+    const backup = await Storage.exportBackup();
+    await Storage.replaceRecoveryBlocksRaw([]);
+    await Storage.replaceRecoveryBlockWeeksRaw([]);
+    expect((await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL })).ok).toBe(true);
+
+    expect((await Storage.loadRecoveryBlocksRaw())[0].baseline).toEqual(block.baseline);
+  });
+
+  it('a restored tombstoned v1 block stays a tombstone and is never migrated or resurrected', async () => {
+    const { block } = await seedRecoveryData();
+    await Storage.deleteRecoveryBlock(block.id);
+    const backup = await Storage.exportBackup();
+    backup.recovery_blocks[0].baseline = V1;
+
+    await Storage.replaceRecoveryBlocksRaw([]);
+    await Storage.replaceRecoveryBlockWeeksRaw([]);
+    expect((await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL })).ok).toBe(true);
+    await Storage.loadRecoveryBlocks({ migrateBaselines: true });
+
+    const [restored] = await Storage.loadRecoveryBlocksRaw();
+    expect(restored.baseline).toEqual(V1);
+    expect(restored.deleted_at).toBeTruthy();
+    expect(await Storage.loadRecoveryBlocks()).toEqual([]);
+  });
+
+  it('export is an explicit allowlist: a stray field on a block or a baseline row never reaches the artifact', async () => {
+    const { block } = await seedRecoveryData();
+    await Storage.replaceRecoveryBlocksRaw([{ ...block, stray_local_field: 'secret' }]);
+    const backup = await Storage.exportBackup();
+    expect(backup.recovery_blocks[0].stray_local_field).toBeUndefined();
+    expect('stray_local_field' in backup.recovery_blocks[0]).toBe(false);
+    expect(backup.recovery_blocks[0].baseline).toEqual(block.baseline);
   });
 });

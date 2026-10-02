@@ -15,7 +15,7 @@
 
 import { parseWorkoutNote, deriveWorkoutAnalytics, normalizeExerciseKey } from '../parser.js';
 import { _occurrenceEntries } from './workoutAnalytics.js';
-import { RECOVERY_BASELINE_VERSION, orderedLiveWeeks } from './recoveryBlocks.js';
+import { RECOVERY_BASELINE_SUPPORTED_VERSIONS, orderedLiveWeeks } from './recoveryBlocks.js';
 
 // Version stamped onto every comparison result. Bump when the row/metric shape
 // below changes in a way a stored or cached consumer could misread.
@@ -510,7 +510,7 @@ export function deriveRecoveryComparison({ block, weeks = [], notes = [] } = {})
   // The version is the discriminator, so it is read before this module assumes
   // anything about the snapshot's shape: a future format that no longer carries
   // an `exercises` array is present-but-unsupported, not missing.
-  if (baseline.version !== RECOVERY_BASELINE_VERSION) {
+  if (!RECOVERY_BASELINE_SUPPORTED_VERSIONS.includes(baseline.version)) {
     return empty(RECOVERY_COMPARISON_STATUS.BASELINE_UNSUPPORTED);
   }
   // Right version, unreadable contents: there is no snapshot to compare against.
