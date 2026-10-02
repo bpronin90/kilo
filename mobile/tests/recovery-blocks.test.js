@@ -13,6 +13,7 @@ import {
   nextWeekNumber,
   orderedLiveWeeks,
   planRecoveryBaselineUpgrades,
+  syncSafeBlockIds,
 } from '../lib/data/recoveryBlocks';
 import {
   RECOVERY_BLOCKS_KEY,
@@ -2768,12 +2769,6 @@ describe('planRecoveryBaselineUpgrades — v1 -> v2 write migration (pure planne
     expect(blocks[2]).toBe(c);
   });
 
-  test('last-write-wins stays honest under clock skew: updated_at is strictly newer than the record had', () => {
-    const future = '2027-01-01T00:00:00.000Z';
-    const out = plan([block({ updated_at: future })], [note()]).blocks[0];
-    expect(Date.parse(out.updated_at)).toBeGreaterThan(Date.parse(future));
-  });
-
   test('the migrated snapshot is deeply frozen', () => {
     const out = plan([block()], [note()]).blocks[0];
     expect(Object.isFrozen(out.baseline)).toBe(true);
@@ -3114,5 +3109,115 @@ describe('storage: the migration is serialized with sync and lifecycle writers',
     const [stored] = await raw();
     expect(stored.reason).toBe('edited under guard');
     expect(stored.baseline.version).toBe(2);
+  });
+});
+
+// ── #1225 review round 2: timed sessions on what the REAL parser emits, the sync ─
+// gate, and the migration's stamp ───────────────────────────────────────────────
+
+describe('captureRecoveryBaseline (v2) — timed declarations through the real parse path', () => {
+  const plank = (text) => baselineFor(captureRecoveryBaselineFromText(text), 'plank');
+
+  test('real shape: `3x45s` with a comma row `45,45,45` (parsed as one 3-set entry) is complete', () => {
+    const row = plank('-Plank: 3x45s\n- 45,45,45');
+    expect(row).toMatchObject({ basis: BASIS.COMPLETE, sets_completed: 3 });
+  });
+
+  test('a comma row with a short, skipped, or missing hold is incomplete: the earlier complete session wins', () => {
+    for (const bad of ['45,40,45', '45,-,45', '45,45']) {
+      const row = plank(`-Plank: 3x45s\n- 50,50,50\n- ${bad}`);
+      expect(row).toMatchObject({ basis: BASIS.COMPLETE, total_reps: 150 });
+    }
+    // Extras beyond N are extra work, as for reps.
+    expect(plank('-Plank: 3x45s\n- 50,50,50\n- 45,45,45,45')).toMatchObject({ total_reps: 180, basis: BASIS.COMPLETE });
+  });
+
+  test('`3x1min` declares 60 seconds per hold; logged numbers are seconds', () => {
+    const wall = (text) => baselineFor(captureRecoveryBaselineFromText(text), 'wall sit');
+    expect(wall('-Wall Sit: 3x1min\n- 60,60,60')).toMatchObject({ basis: BASIS.COMPLETE });
+    expect(wall('-Wall Sit: 3x1min\n- 70,70,70\n- 60,60,45')).toMatchObject({ total_reps: 210, basis: BASIS.COMPLETE });
+  });
+
+  test('a single held set (`1x60s` + bare `60`, parsed as duration_seconds) is complete only at/above the declared hold', () => {
+    expect(plank('-Plank: 1x60s\n60')).toMatchObject({ exercise_class: 'time_based', total_seconds: 60, basis: BASIS.COMPLETE });
+    expect(plank('-Plank: 1x60s\n75\n45')).toMatchObject({ total_seconds: 75, basis: BASIS.COMPLETE });
+    expect(plank('-Plank: 1x60s\n45')).toMatchObject({ total_seconds: 45, basis: BASIS.NEVER });
+  });
+
+  test('separate bare rows are separate ONE-set sessions: they never complete an `Nx` declaration with N > 1', () => {
+    const row = plank('-Plank: 3x45s\n45\n45\n45');
+    expect(row).toMatchObject({ exercise_class: 'time_based', total_seconds: 45, basis: BASIS.NEVER });
+    expect(baselineFor(captureRecoveryBaselineFromText('-Wall Sit: 2x1 min\n60'), 'wall sit')).toMatchObject({ basis: BASIS.NEVER });
+  });
+
+  test('no timed declaration at all: latest comparable work, explicitly no_declaration', () => {
+    expect(plank('-Plank\n- 60,60\n- 45,45')).toMatchObject({ total_reps: 90, basis: BASIS.NO_DECL });
+  });
+});
+
+describe('sync gate for the migration (#1225)', () => {
+  const fp = (r) => JSON.stringify({ ...r, updated_at: undefined, client_id: undefined });
+  const rows = [{ id: 'a', x: 1, updated_at: '1' }, { id: 'b', x: 2, updated_at: '1' }];
+  const blocks = [{ id: 'a', x: 1, updated_at: '9', client_id: 'me' }, { id: 'b', x: 2, updated_at: '1' }, { id: 'c', x: 3, updated_at: '1' }];
+  const gate = (over) => syncSafeBlockIds(blocks, { snapshot: rows, dirtyIds: new Set(), complete: true, fingerprint: fp, ...over });
+
+  test('no sync history: every block is allowed (null means unrestricted)', () => {
+    expect(syncSafeBlockIds(blocks, null)).toBeNull();
+  });
+  test('with history, only blocks equal to their snapshot row (ignoring sync metadata) and not queued are allowed', () => {
+    expect([...gate({})].sort()).toEqual(['a', 'b']); // c is not in the snapshot (never synced)
+    expect([...gate({ dirtyIds: new Set(['a']) })]).toEqual(['b']);
+    expect([...syncSafeBlockIds([{ id: 'a', x: 99 }], { snapshot: rows, dirtyIds: new Set(), complete: true, fingerprint: fp })]).toEqual([]);
+  });
+  test('with history, nothing is allowed before a pass has completed or without a snapshot', () => {
+    expect([...gate({ complete: false })]).toEqual([]);
+    expect([...gate({ snapshot: null })]).toEqual([]);
+  });
+  test('the planner honours allowIds and stamps with plain `now` even when the record carries a future updated_at', () => {
+    const note = { id: 'n1', raw_text: '-Deadlift: 3x6\n- 325 6,6,6', updated_at: '2026-08-01T08:00:00.000Z', deleted_at: null };
+    const mk = (id, over = {}) => ({ id, baseline_note_id: 'n1', baseline: { version: 1, exercises: [] }, started_at: '2026-08-01T09:00:00.000Z', completed_at: null, saved_at: 'x', updated_at: '2026-08-01T09:00:00.000Z', deleted_at: null, ...over });
+    const NOW = '2026-09-01T00:00:00.000Z';
+    const { blocks: out, upgraded } = planRecoveryBaselineUpgrades({ blocks: [mk('a'), mk('b'), mk('c', { updated_at: '2099-01-01T00:00:00.000Z' })], notes: [note], now: NOW, allowIds: new Set(['a', 'c']) });
+    expect(upgraded).toEqual(['a', 'c']);
+    expect(out[1].baseline.version).toBe(1);
+    expect(out[0].updated_at).toBe(NOW);
+    expect(out[2].updated_at).toBe(NOW); // no clock invented, no bump past the record's own stamp
+  });
+});
+
+describe('storage: the migration honours the sync gate (#1225)', () => {
+  const T0 = '2026-08-01T08:00:00.000Z';
+  const STARTED = '2026-08-01T09:00:00.000Z';
+  const V1 = { version: 1, exercises: [{ key: 'deadlift', name: 'Deadlift', exercise_class: 'weighted', top_weight: 335, volume: 670, sets_completed: 1 }] };
+  const block = { id: 'rb1', baseline_note_id: 'n1', baseline: V1, include_in_normal_analytics: false, reason: null, started_at: STARTED, completed_at: null, saved_at: STARTED, updated_at: STARTED, deleted_at: null };
+  const sync = require('../storage/syncRecovery');
+  const { setSyncSnapshot } = require('../storage/sync/snapshots');
+  const { setCursor } = require('../storage/sync/cursors');
+  const { SYNC_TABLES } = require('../storage/sync/records');
+
+  beforeEach(async () => {
+    sync.__resetSyncQueue();
+    await AsyncStorage.setItem(WORKOUT_NOTES_KEY, JSON.stringify([{ id: 'n1', raw_text: '-Deadlift: 3x6\n- 325 6,6,6', updated_at: T0, deleted_at: null }]));
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify([block]));
+  });
+  const stored = async () => JSON.parse(await AsyncStorage.getItem(RECOVERY_BLOCKS_KEY))[0];
+
+  test('a cursor alone (sync history, no snapshot) defers; so does history before a completed pass', async () => {
+    await setCursor(SYNC_TABLES.RECOVERY_BLOCKS, '2026-08-01T00:00:00.000Z');
+    await loadRecoveryBlocks({ migrateBaselines: true });
+    expect((await stored()).baseline).toEqual(V1);
+    await setSyncSnapshot(SYNC_TABLES.RECOVERY_BLOCKS, [block]);
+    await loadRecoveryBlocks({ migrateBaselines: true });
+    expect((await stored()).baseline).toEqual(V1); // snapshot present but no completed pass
+  });
+
+  test('history + completed pass + block equal to its snapshot: migrates; a differing block defers', async () => {
+    await setSyncSnapshot(SYNC_TABLES.RECOVERY_BLOCKS, [{ ...block, reason: 'server copy differs' }]);
+    sync.markComplete(sync.SYNC_PHASE.SYNC);
+    await loadRecoveryBlocks({ migrateBaselines: true });
+    expect((await stored()).baseline).toEqual(V1);
+    await setSyncSnapshot(SYNC_TABLES.RECOVERY_BLOCKS, [{ ...block, updated_at: '2020-01-01T00:00:00.000Z' }]);
+    await loadRecoveryBlocks({ migrateBaselines: true });
+    expect((await stored()).baseline.version).toBe(2);
   });
 });

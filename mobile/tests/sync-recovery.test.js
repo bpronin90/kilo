@@ -59,6 +59,7 @@ import {
   clearSyncSnapshot,
   getCursor,
   setCursor,
+  enqueueDirty,
   getDirtyRecords,
   getSyncSnapshot,
   isTombstone,
@@ -2106,146 +2107,181 @@ describe('recovery block reason crosses the sync boundary intact', () => {
 
 // ── #1225: the v1 -> v2 baseline migration at the sync boundary ───────────────
 //
-// State-transition rows: a migrated row syncs as an ordinary block update (exact
-// stored `baseline`, no source-note re-derivation in transport, no new column);
-// a remote row that wins is taken as-is; a tombstone is never resurrected.
+// The sync engine always submits a PENDING local edit and lets it win on arrival
+// (tableSync.js: "last write to REACH the server wins"), so a migrated row pushed
+// over a remote completion/reason/tombstone this device has not pulled would
+// erase it. The comparator cannot be changed from here, so the migration never
+// creates that exposure: with sync history it runs only for a block that equals
+// its server-confirmed snapshot, has nothing queued, after a pass has COMPLETED.
+// Everything else defers, keeping the exact v1 snapshot.
 
-describe('baseline v1 -> v2 migration crosses the sync boundary as an ordinary update (#1225)', () => {
+describe('baseline v1 -> v2 migration at the sync boundary (#1225)', () => {
   const T0 = '2026-08-01T08:00:00.000Z';
-  // The fake server stamps every pushed row with the real clock, and a synced
-  // note adopts that stamp locally. A block that "started after the note was
-  // last synced" therefore has to start in the (far) future of that stamp; the
-  // post-start-revision case below uses a past start instead.
+  // A synced note adopts the server's stamp (the real clock); the block must
+  // start after it for the guard (note.updated_at <= block.started_at) to hold.
   const STARTED = '2099-01-01T00:00:00.000Z';
-  const PAST_STARTED = '2026-08-01T09:00:00.000Z';
   const ROUTINE = '-Deadlift: 3x6\n- 325 6,6,6\n- 335 2,-,-';
   const V1 = {
     version: 1,
     exercises: [{ key: 'deadlift', name: 'Deadlift', exercise_class: 'weighted', top_weight: 335, volume: 670, sets_completed: 1 }],
   };
   const NOTES_KEY = 'kilo_workout_notes';
+  const T = () => SYNC_TABLES.RECOVERY_BLOCKS;
+  const markSyncComplete = () => runPhase(SYNC_PHASE.SYNC, async () => {});
+  const migrate = () => Storage.loadRecoveryBlocks({ migrateBaselines: true });
+  const localBlock = async () => (await Storage.loadRecoveryBlocksRaw())[0];
+  const pushCount = () => cloud.pushedIds(T()).filter((id) => id === 'rb-mig').length;
 
   const v1Block = (over = {}) => ({
-    id: 'rb-mig',
-    baseline_note_id: 'wn-mig',
-    baseline_note_title: 'Routine',
-    baseline: V1,
-    include_in_normal_analytics: false,
-    reason: null,
-    started_at: STARTED,
-    completed_at: null,
-    saved_at: STARTED,
-    updated_at: STARTED,
-    deleted_at: null,
-    ...over,
+    id: 'rb-mig', baseline_note_id: 'wn-mig', baseline_note_title: 'Routine', baseline: V1,
+    include_in_normal_analytics: false, reason: null, started_at: STARTED, completed_at: null,
+    saved_at: STARTED, updated_at: STARTED, deleted_at: null, ...over,
   });
 
-  async function seedUnsyncedLegacyBlock(blockOver, { noteSyncedFirst = true } = {}) {
-    // The note is written verbatim and (normally) synced BEFORE the block exists,
-    // exactly like a routine that was uploaded long before recovery started; the
-    // block is the legacy v1 shape.
+  // The routine reaches the server long before recovery starts; the block is then
+  // synced too, and a pass has completed in this session.
+  async function seedSyncedLegacyBlock({ complete = true, blockOver } = {}) {
     await AsyncStorage.setItem(NOTES_KEY, JSON.stringify([
       { id: 'wn-mig', title: 'Routine', raw_text: ROUTINE, saved_at: T0, updated_at: T0, deleted_at: null },
     ]));
-    if (noteSyncedFirst) await sync();
+    await sync();
     await Storage.replaceRecoveryBlocksRaw([v1Block(blockOver)]);
+    await sync();
+    if (complete) await markSyncComplete();
   }
 
-  it('a migrated block pushes the exact stored v2 baseline and no extra columns', async () => {
-    await seedUnsyncedLegacyBlock();
-    await sync();
-    const before = cloud.remoteRow(SYNC_TABLES.RECOVERY_BLOCKS, 'rb-mig');
+  it('a synced-clean block migrates after a completed pass and pushes as an ordinary update', async () => {
+    await seedSyncedLegacyBlock();
+    const before = cloud.remoteRow(T(), 'rb-mig');
     expect(before.baseline).toEqual(V1);
+    const pushesBefore = pushCount();
 
-    await Storage.loadRecoveryBlocks({ migrateBaselines: true });
-    const local = (await Storage.loadRecoveryBlocksRaw())[0];
+    await migrate();
+    const local = await localBlock();
     expect(local.baseline.version).toBe(2);
     await sync();
 
-    const after = cloud.remoteRow(SYNC_TABLES.RECOVERY_BLOCKS, 'rb-mig');
+    const after = cloud.remoteRow(T(), 'rb-mig');
     expect(after.baseline).toEqual(local.baseline);
     expect(after.baseline.exercises[0]).toMatchObject({ top_weight: 325, volume: 5850, basis: 'complete', routine_order: 0 });
-    // Same columns as the pre-migration row: nothing new travelled.
-    expect(Object.keys(after).sort()).toEqual(Object.keys(before).sort());
-    expect(after.baseline_note_id).toBe('wn-mig');
+    expect(Object.keys(after).sort()).toEqual(Object.keys(before).sort()); // nothing new travelled
     expect(after.completed_at).toBeNull();
-    expect(cloud.pushedIds(SYNC_TABLES.RECOVERY_BLOCKS).filter((id) => id === 'rb-mig')).toHaveLength(2);
+    expect(pushCount()).toBe(pushesBefore + 1);
   });
 
   it('is idempotent across sync: a second verified read and sync push nothing more', async () => {
-    await seedUnsyncedLegacyBlock();
+    await seedSyncedLegacyBlock();
+    await migrate();
     await sync();
-    await Storage.loadRecoveryBlocks({ migrateBaselines: true });
+    await markSyncComplete();
+    const pushes = pushCount();
+    await migrate();
     await sync();
-    const pushesAfterFirst = cloud.pushedIds(SYNC_TABLES.RECOVERY_BLOCKS).length;
-
-    await Storage.loadRecoveryBlocks({ migrateBaselines: true });
-    await sync();
-    expect(cloud.pushedIds(SYNC_TABLES.RECOVERY_BLOCKS)).toHaveLength(pushesAfterFirst);
+    expect(pushCount()).toBe(pushes);
   });
 
-  it('a note already carrying a post-start revision never migrates, and nothing is pushed for it', async () => {
-    // The routine reaches the server only AFTER the block started, so its synced
-    // revision (a server stamp) postdates started_at.
-    await seedUnsyncedLegacyBlock({ started_at: PAST_STARTED, saved_at: PAST_STARTED, updated_at: PAST_STARTED }, { noteSyncedFirst: false });
+  it('DEFERS until a sync pass has completed in this session (remote state unseen)', async () => {
+    await seedSyncedLegacyBlock({ complete: false });
+    const pushes = pushCount();
+    await migrate();
+    expect((await localBlock()).baseline).toEqual(V1);
     await sync();
-    const pushed = cloud.pushedIds(SYNC_TABLES.RECOVERY_BLOCKS).length;
-
-    await Storage.loadRecoveryBlocks({ migrateBaselines: true });
-    await sync();
-    expect((await Storage.loadRecoveryBlocksRaw())[0].baseline).toEqual(V1);
-    expect(cloud.remoteRow(SYNC_TABLES.RECOVERY_BLOCKS, 'rb-mig').baseline).toEqual(V1);
-    expect(cloud.pushedIds(SYNC_TABLES.RECOVERY_BLOCKS)).toHaveLength(pushed);
+    expect(cloud.remoteRow(T(), 'rb-mig').baseline).toEqual(V1);
+    expect(pushCount()).toBe(pushes);
   });
 
-  it('remote sync conflict: another device\'s newer write is taken as stored; the account converges on ONE whole snapshot', async () => {
-    await seedUnsyncedLegacyBlock();
-    await sync();
-    await Storage.loadRecoveryBlocks({ migrateBaselines: true });
-    const migrated = (await Storage.loadRecoveryBlocksRaw())[0];
-
-    // Another device rewrites the same block (a reason edit, still v1) after this
-    // device migrated but before this device synced.
-    const remote = cloud.remoteRow(SYNC_TABLES.RECOVERY_BLOCKS, 'rb-mig');
-    await cloud.transport.push(SYNC_TABLES.RECOVERY_BLOCKS, [{ ...remote, reason: 'other device' }]);
+  it('DEFERS while the block has an unsynced local edit, then migrates once that edit has synced', async () => {
+    await seedSyncedLegacyBlock();
+    await Storage.updateRecoveryBlock('rb-mig', { reason: 'pending local edit' });
+    await migrate();
+    const deferred = await localBlock();
+    expect(deferred.baseline).toEqual(V1);
+    expect(deferred.reason).toBe('pending local edit');
 
     await sync();
-    await sync();
-    const local = (await Storage.loadRecoveryBlocksRaw())[0];
-    const server = cloud.remoteRow(SYNC_TABLES.RECOVERY_BLOCKS, 'rb-mig');
-    expect(local.baseline).toEqual(server.baseline);
-    // Never a hybrid: it is exactly the whole v1 or exactly the whole migrated v2.
-    expect([V1, migrated.baseline]).toContainEqual(local.baseline);
+    await markSyncComplete();
+    expect(cloud.remoteRow(T(), 'rb-mig')).toMatchObject({ reason: 'pending local edit', baseline: V1 });
+    await migrate();
+    const migrated = await localBlock();
+    expect(migrated.baseline.version).toBe(2);
+    expect(migrated.reason).toBe('pending local edit');
   });
 
-  it('a tombstoned block is neither migrated nor resurrected, locally or remotely', async () => {
-    await seedUnsyncedLegacyBlock({ deleted_at: '2026-08-05T00:00:00.000Z', updated_at: '2026-08-05T00:00:00.000Z' });
-    await sync();
-    await Storage.loadRecoveryBlocks({ migrateBaselines: true });
-    await sync();
+  it('DEFERS a block that is queued dirty even when its payload equals the snapshot', async () => {
+    await seedSyncedLegacyBlock();
+    await enqueueDirty(T(), { ...(await localBlock()) });
+    await migrate();
+    expect((await localBlock()).baseline).toEqual(V1);
+  });
 
-    const local = (await Storage.loadRecoveryBlocksRaw())[0];
-    expect(local.baseline).toEqual(V1);
-    expect(local.deleted_at).toBe('2026-08-05T00:00:00.000Z');
+  it('a remote completion/reason that a pass pulled WINS: the migration keeps it and the server keeps it', async () => {
+    await seedSyncedLegacyBlock();
+    const remote = cloud.remoteRow(T(), 'rb-mig');
+    await cloud.transport.push(T(), [{ ...remote, reason: 'remote reason', completed_at: '2099-02-01T00:00:00.000Z' }]);
+    await sync();
+    await markSyncComplete();
+
+    await migrate();
+    const local = await localBlock();
+    expect(local).toMatchObject({ reason: 'remote reason', completed_at: '2099-02-01T00:00:00.000Z' });
+    expect(local.baseline.version).toBe(2);
+    await sync();
+    expect(cloud.remoteRow(T(), 'rb-mig')).toMatchObject({ reason: 'remote reason', completed_at: '2099-02-01T00:00:00.000Z' });
+    expect(cloud.remoteRow(T(), 'rb-mig').baseline.version).toBe(2);
+  });
+
+  it('a remote tombstone that a pass pulled is never resurrected or migrated', async () => {
+    await seedSyncedLegacyBlock();
+    const remote = cloud.remoteRow(T(), 'rb-mig');
+    await cloud.transport.push(T(), [{ ...remote, deleted_at: '2099-02-01T00:00:00.000Z' }]);
+    await sync();
+    await markSyncComplete();
+
+    await migrate();
     expect(await Storage.loadRecoveryBlocks()).toEqual([]);
-    expect(cloud.remoteRow(SYNC_TABLES.RECOVERY_BLOCKS, 'rb-mig').baseline).toEqual(V1);
-    expect(cloud.liveRemoteRows(SYNC_TABLES.RECOVERY_BLOCKS)).toEqual([]);
+    const local = await localBlock();
+    expect(local.deleted_at).toBeTruthy();
+    expect(local.baseline).toEqual(V1);
+    await sync();
+    expect(cloud.remoteRow(T(), 'rb-mig').deleted_at).toBeTruthy();
+    expect(cloud.remoteRow(T(), 'rb-mig').baseline).toEqual(V1);
+  });
+
+  it('a note whose synced revision postdates the block start never migrates', async () => {
+    await AsyncStorage.setItem(NOTES_KEY, JSON.stringify([
+      { id: 'wn-mig', title: 'Routine', raw_text: ROUTINE, saved_at: T0, updated_at: T0, deleted_at: null },
+    ]));
+    await Storage.replaceRecoveryBlocksRaw([v1Block({ started_at: '2026-08-01T09:00:00.000Z', saved_at: '2026-08-01T09:00:00.000Z', updated_at: '2026-08-01T09:00:00.000Z' })]);
+    await sync(); // the note's synced (server-stamped) revision is now after the start
+    await markSyncComplete();
+    await migrate();
+    expect((await localBlock()).baseline).toEqual(V1);
+    expect(cloud.remoteRow(T(), 'rb-mig').baseline).toEqual(V1);
   });
 
   it('a failed migration write leaves the old snapshot syncing unchanged, and a later read retries', async () => {
-    await seedUnsyncedLegacyBlock();
-    await sync();
+    await seedSyncedLegacyBlock();
     const writeListModule = require('../storage/entries/jsonStorage');
     const original = writeListModule.writeList;
     const spy = jest.spyOn(writeListModule, 'writeList').mockImplementationOnce(async () => { throw new Error('disk full'); });
-    const [first] = await Storage.loadRecoveryBlocks({ migrateBaselines: true });
+    const [first] = await migrate();
     spy.mockImplementation(original);
     expect(first.baseline).toEqual(V1);
     await sync();
-    expect(cloud.remoteRow(SYNC_TABLES.RECOVERY_BLOCKS, 'rb-mig').baseline).toEqual(V1);
-
-    const [retry] = await Storage.loadRecoveryBlocks({ migrateBaselines: true });
+    expect(cloud.remoteRow(T(), 'rb-mig').baseline).toEqual(V1);
+    await markSyncComplete();
+    const [retry] = await migrate();
     expect(retry.baseline.version).toBe(2);
     spy.mockRestore();
+  });
+
+  it('a device with NO sync history for blocks (never signed in) migrates freely', async () => {
+    Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
+    await AsyncStorage.setItem(NOTES_KEY, JSON.stringify([
+      { id: 'wn-mig', title: 'Routine', raw_text: ROUTINE, saved_at: T0, updated_at: T0, deleted_at: null },
+    ]));
+    await Storage.replaceRecoveryBlocksRaw([v1Block()]);
+    await migrate();
+    expect((await localBlock()).baseline.version).toBe(2);
   });
 });

@@ -1388,3 +1388,97 @@ describe('recovery baselines across backup and restore (#1225)', () => {
     expect(backup.recovery_blocks[0].baseline).toEqual(block.baseline);
   });
 });
+
+// ── #1225 review: restore vs baseline migration share ONE exclusion ───────────
+//
+// importBackup replaces the WHOLE recovery_blocks list (as do the sync pass and
+// the journaled lifecycle actions), so it must hold the recovery-operation lock
+// the baseline migration holds. Both orders are forced below.
+
+describe('restore and the baseline migration cannot interleave (#1225)', () => {
+  const OLD_T = '2026-07-01T08:00:00.000Z';
+  const OLD_STARTED = '2026-07-01T09:00:00.000Z';
+  const V1_OLD = { version: 1, exercises: [{ key: 'deadlift', name: 'Deadlift', exercise_class: 'weighted', top_weight: 335, volume: 670, sets_completed: 1 }] };
+  const jsonStorage = require('../storage/entries/jsonStorage');
+  const tick = async () => { for (let i = 0; i < 12; i += 1) await new Promise((r) => setImmediate(r)); };
+  const gateOn = () => { let release; const gate = new Promise((r) => { release = r; }); return { gate, release }; };
+  const rawBlocks = async () => JSON.parse(await AsyncStorage.getItem('kilo_recovery_blocks'));
+
+  // A backup whose single block is an ELIGIBLE legacy v1 block (its note predates
+  // the block), then a device that holds a different eligible legacy block.
+  async function setup() {
+    await seedRecoveryData();
+    const backup = await Storage.exportBackup();
+    backup.recovery_blocks[0].baseline = V1_OLD;
+    backup.recovery_blocks[0].started_at = '2099-01-01T00:00:00.000Z';
+    backup.recovery_blocks[0].saved_at = '2099-01-01T00:00:00.000Z';
+    backup.recovery_blocks[0].updated_at = '2099-01-01T00:00:00.000Z';
+    for (const n of backup.workout_notes) n.updated_at = OLD_T;
+    const restoredId = backup.recovery_blocks[0].id;
+
+    await AsyncStorage.clear();
+    await AsyncStorage.setItem('kilo_workout_notes', JSON.stringify([
+      { id: 'n-old', raw_text: '-Deadlift: 3x6\n- 325 6,6,6\n- 335 2,-,-', updated_at: OLD_T, deleted_at: null },
+    ]));
+    await AsyncStorage.setItem('kilo_recovery_blocks', JSON.stringify([{
+      id: 'rb-old', baseline_note_id: 'n-old', baseline: V1_OLD, include_in_normal_analytics: false, reason: null,
+      started_at: OLD_STARTED, completed_at: null, saved_at: OLD_STARTED, updated_at: OLD_STARTED, deleted_at: null,
+    }]));
+    return { backup, restoredId };
+  }
+
+  it('ORDER 1 — migration mid-flight: the restore queues behind it and its list is not clobbered', async () => {
+    const { backup, restoredId } = await setup();
+    const { gate, release } = gateOn();
+    const original = jsonStorage.readList;
+    let notesRead = false;
+    const spy = jest.spyOn(jsonStorage, 'readList').mockImplementation(async (key) => {
+      if (key === 'kilo_workout_notes' && !notesRead) { notesRead = true; await gate; }
+      return original(key);
+    });
+    const migration = Storage.loadRecoveryBlocks({ migrateBaselines: true });
+    await tick();
+    expect(notesRead).toBe(true);
+    const restore = importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+    await tick();
+    // The restore has not touched the list underneath the migration.
+    expect((await rawBlocks()).map((b) => b.id)).toEqual(['rb-old']);
+    release();
+    await migration;
+    expect((await restore).ok).toBe(true);
+    spy.mockRestore();
+    const stored = await rawBlocks();
+    expect(stored.map((b) => b.id)).toEqual([restoredId]);
+    expect(stored[0].baseline).toEqual(V1_OLD); // restored exactly; restore never rewrites
+  });
+
+  it('ORDER 2 — restore mid-flight: the migration queues behind it and then upgrades the RESTORED block, not the old list', async () => {
+    const { backup, restoredId } = await setup();
+    const { gate, release } = gateOn();
+    const original = jsonStorage.writeList;
+    let paused = false;
+    const spy = jest.spyOn(jsonStorage, 'writeList').mockImplementation(async (key, list, store) => {
+      if (key === 'kilo_recovery_blocks' && Array.isArray(list) && list.some((b) => b.id === restoredId) && !paused) {
+        paused = true;
+        await gate; // the restore is mid-write of the whole blocks list
+      }
+      return original(key, list, store);
+    });
+    const restore = importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+    await tick();
+    expect(paused).toBe(true);
+    const migration = Storage.loadRecoveryBlocks({ migrateBaselines: true });
+    await tick();
+    // The migration has not read-modified-written the OLD list underneath the restore.
+    expect((await rawBlocks()).map((b) => b.id)).toEqual(['rb-old']);
+    expect((await rawBlocks())[0].baseline).toEqual(V1_OLD);
+    release();
+    expect((await restore).ok).toBe(true);
+    await migration;
+    spy.mockRestore();
+    const stored = await rawBlocks();
+    expect(stored.map((b) => b.id)).toEqual([restoredId]); // nothing of the old list survives or is resurrected
+    expect(stored[0].baseline.version).toBe(2); // the migration ran on the restored state
+    expect(stored[0].started_at).toBe('2099-01-01T00:00:00.000Z');
+  });
+});

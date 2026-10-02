@@ -208,6 +208,14 @@ function _declarationSpec(rawHeader) {
 // the count (`6,-,6,6` on `3x6` is incomplete). Sets BEYOND the prescribed count
 // are extra work: they neither complete a session nor fail one (`6,6,6,-` is
 // complete) — they still count in the row's metrics, as before.
+//
+// Timed declarations are read on what the real parser emits: under a timed header
+// a lone bare integer is `duration_seconds`, but a comma row (`45,45,45`) parses
+// as REPS, and separate bare rows are separate one-set sessions. In both
+// set-shapes the logged number is SECONDS, so a position's hold is
+// `duration_seconds` when present and `rep_count` otherwise. A multi-set timed
+// session therefore completes in its single comma row; one-set rows complete only
+// a one-set declaration (`1x60s`), and never an `Nx` declaration with N > 1.
 function _sessionIsComplete(sets, spec, metrics) {
   const prescribed = (sets || []).slice(0, spec.sets);
   if (prescribed.length < spec.sets) return false;
@@ -216,9 +224,9 @@ function _sessionIsComplete(sets, spec, metrics) {
     const reps = s.rep_count != null && s.rep_count > 0;
     const held = s.duration_seconds != null && s.duration_seconds > 0;
     if (!reps && !held) return false;
-    if (metrics.exercise_class === 'weighted' && !(s.weight_value > 0 && reps)) return false;
+    if (metrics.exercise_class === 'weighted' && !(s.weight_value > 0)) return false;
     if (spec.kind === 'amrap') return true;
-    if (spec.kind === 'duration') return held && s.duration_seconds >= spec.min;
+    if (spec.kind === 'duration') return (held ? s.duration_seconds : s.rep_count) >= spec.min;
     return reps && s.rep_count >= spec.min;
   });
 }
@@ -352,7 +360,28 @@ function _isValidLegacySnapshot(baseline) {
     && baseline.exercises.every(row => !!row && typeof row === 'object' && !Array.isArray(row));
 }
 
-export function planRecoveryBaselineUpgrades({ blocks, notes, now = new Date().toISOString() } = {}) {
+// Sync-state gate for the migration (#1225). The sync engine always submits a
+// pending local edit and lets it win on arrival ("last write to REACH the server
+// wins"), so a migrated row could overwrite a remote completion/reason/tombstone
+// this device has not pulled. The migration therefore never creates that
+// exposure: `sync` is null when the device has no sync history for blocks (no
+// remote copy can exist, so every block is allowed). Otherwise a block is
+// allowed only when a sync pass has COMPLETED in this session, a server-confirmed
+// snapshot exists, and the block still equals its snapshot row (no unsynced or
+// queued edit) — everything else defers and keeps its exact v1 snapshot.
+export function syncSafeBlockIds(blocks, sync) {
+  if (!sync) return null;
+  const safe = new Set();
+  if (!sync.complete || !Array.isArray(sync.snapshot)) return safe;
+  const baseById = new Map(sync.snapshot.filter(r => r && r.id != null).map(r => [r.id, r]));
+  for (const b of blocks || []) {
+    const base = b && baseById.get(b.id);
+    if (base && !sync.dirtyIds.has(b.id) && sync.fingerprint(base) === sync.fingerprint(b)) safe.add(b.id);
+  }
+  return safe;
+}
+
+export function planRecoveryBaselineUpgrades({ blocks, notes, now = new Date().toISOString(), allowIds = null } = {}) {
   const list = Array.isArray(blocks) ? blocks : [];
   const byId = new Map();
   for (const note of Array.isArray(notes) ? notes : []) {
@@ -363,6 +392,7 @@ export function planRecoveryBaselineUpgrades({ blocks, notes, now = new Date().t
   const next = list.map(block => {
     if (!block || typeof block !== 'object' || !isLiveRecord(block)) return block;
     if (typeof block.id !== 'string' || typeof block.baseline_note_id !== 'string') return block;
+    if (allowIds && !allowIds.has(block.id)) return block;
     if (!_isValidLegacySnapshot(block.baseline)) return block;
     const startedAt = _ts(block.started_at);
     const note = byId.get(block.baseline_note_id);
@@ -373,12 +403,10 @@ export function planRecoveryBaselineUpgrades({ blocks, notes, now = new Date().t
     const parsed = parseWorkoutNote(note.raw_text);
     if (!parsed || parsed.ok !== true) return block;
 
-    // Strictly newer than what the record carried, so last-write-wins sync sees
-    // the upgrade as an ordinary update even under clock skew.
-    const prev = _ts(block.updated_at);
-    const stamp = prev != null && prev >= Date.parse(now) ? new Date(prev + 1).toISOString() : now;
+    // Stamped exactly like every other local recovery edit (`new Date().toISOString()`);
+    // the sync engine re-stamps a changed row at sync time, so no clock is invented here.
     upgraded.push(block.id);
-    return { ...block, baseline: captureRecoveryBaseline(parsed.sections || []), updated_at: stamp };
+    return { ...block, baseline: captureRecoveryBaseline(parsed.sections || []), updated_at: now };
   });
   return { blocks: upgraded.length > 0 ? next : list, upgraded };
 }
