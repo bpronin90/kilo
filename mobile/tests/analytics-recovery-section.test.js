@@ -531,7 +531,9 @@ describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b
   // for the same element.
   function liveRegions(root) {
     return root.findAll(
-      inst => typeof inst.type === 'string' && inst.props.accessibilityLiveRegion === 'polite'
+      // The "About these numbers" note has its own live region (#1219); this
+      // helper is about the week-status region only.
+      inst => typeof inst.type === 'string' && inst.props.accessibilityLiveRegion === 'polite' && inst.props.testID !== 'recovery-about-note'
     );
   }
 
@@ -1317,7 +1319,9 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     // The header no longer restates the hero's status.
     expect(findAllText(root).filter(t => t.startsWith('at or above') && t.endsWith('baseline')).length).toBe(1);
     expect(hasText(root, 'of 2 at or above baseline')).toBe(false);
-    expect(hasText(root, '3 exercises')).toBe(true);
+    // #1219: collapsed shows the one shared bar + "N trained" stat, not a count sentence.
+    expect(hasText(root, '3 exercises')).toBe(false);
+    expect(hasText(root, 'trained')).toBe(true);
 
     // The diagnostic panel this issue is about is not on screen yet — no
     // per-row Load metric cell (the "Most common gap: Total work" summary
@@ -1331,7 +1335,8 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     expandDetails(root);
     // #1219: a compact stat row (visible) with the full sentence spoken only.
     expect(rosterLabel(root)).toBe('Trained this week: 2 of 2 roster exercises. Most common gap: Total work.');
-    expect(hasText(root, 'Gap: Total work')).toBe(true);
+    // The visible Gap stat was removed (#1219); the gap rides on the label only.
+    expect(hasText(root, 'Gap: Total work')).toBe(false);
     expect(hasText(root, 'Most common gap')).toBe(false);
     expect(hasText(root, 'Trained this week')).toBe(false);
     expect(hasText(root, 'roster exercises')).toBe(false);
@@ -2335,7 +2340,7 @@ describe('AnalyticsRecoverySection — phone-safe week picker (#1219)', () => {
       expect(byLabel(root, 'Week 2').props.accessibilityState).toEqual({ selected: true });
       expect(byLabel(root, 'Week 6').props.accessibilityState).toEqual({ selected: false });
       // The week change is announced through the existing live region.
-      expect(root.findAll(n => n.props.accessibilityLiveRegion === 'polite' && typeof n.type === 'string').length).toBe(1);
+      expect(root.findAll(n => n.props.accessibilityLiveRegion === 'polite' && n.props.testID !== 'recovery-about-note' && typeof n.type === 'string').length).toBe(1);
       expect(host(root, 'recovery-hero')[0].props.accessibilityLabel).toMatch(/^Week 2:/);
     });
 
@@ -2478,7 +2483,7 @@ describe('AnalyticsRecoverySection — visual exercise details (#1219)', () => {
     // BASE has 3 roster exercises; Curl is not trained this week.
     expect(rosterLabel(root)).toBe('Trained this week: 2 of 3 roster exercises, 1 not trained yet. Most common gap: Total work.');
     const texts = hostTextsIn(rosterNode(root));
-    expect(texts).toEqual(['2', 'trained', '1', 'not yet', 'Gap: Total work']);
+    expect(texts).toEqual(['2', 'trained', '1', 'not yet']);
     const sizes = rosterNode(root)
       .findAll(n => typeof n.type === 'string' && n.type === 'Text')
       .map(n => StyleSheet.flatten(n.props.style).fontSize);
@@ -2514,5 +2519,94 @@ describe('AnalyticsRecoverySection — visual exercise details (#1219)', () => {
     const label = rowLabels(c.root).find(l => l.startsWith('Curl, Not trained yet'));
     expect(label).toContain('Not in Week 1');
     expect(label).not.toContain('Not trained in any');
+  });
+});
+
+describe('AnalyticsRecoverySection — collapsed details summary and footer (#1219)', () => {
+  const { StyleSheet } = require('react-native');
+  const BASE = '-Bench\n- 135 5,5,5\n-Pull-up\n- 8,8,8\n-Curl\n- 20 10,10';
+  const WEEK = '-Bench\n- 135 5,5\n-Pull-up\n- 8,8,8\n-Foam Roll\n- 10,10';
+  const mountWith = (blockOver = {}, extra = {}, base = BASE, weekText = WEEK) => {
+    let component;
+    act(() => {
+      component = render.create(
+        <AnalyticsRecoverySection
+          blocks={[block({ baseline: captureRecoveryBaselineFromText(base), ...blockOver })]}
+          weeks={[week(1, 'note-w1')]}
+          notes={[note('note-w1', weekText)]}
+          {...extra}
+        />
+      );
+    });
+    return component.root;
+  };
+  const hostById = (root, id) => root.findAll(n => typeof n.type === 'string' && n.props.testID === id);
+  const segmentIds = (root) => hostById(root, 'recovery-roster-bar')[0]
+    .findAll(n => typeof n.type === 'string' && /^recovery-segment-/.test(n.props.testID || ''))
+    .map(n => n.props.testID);
+  const NOTE = 'Training numbers only. Not a medical judgment — only you end a Recovery block.';
+  const saveReason = async () => ({ ok: true });
+
+  test('collapsed and expanded render the SAME bar + "N trained  M not yet" row; expanding does not change it', () => {
+    const root = mountWith();
+    const collapsedTexts = hostTextsIn(rosterNode(root));
+    const collapsedSegments = segmentIds(root);
+    expect(collapsedTexts).toEqual(['2', 'trained', '1', 'not yet']);
+    expect(collapsedSegments.length).toBeGreaterThan(0);
+    // No count sentence or Gap stat while collapsed.
+    expect(hasText(root, '3 exercises')).toBe(false);
+    expect(hasText(root, 'Gap: Total work')).toBe(false);
+    expandDetails(root);
+    expect(hostById(root, 'recovery-roster-summary')).toHaveLength(1);
+    expect(hostTextsIn(rosterNode(root))).toEqual(collapsedTexts);
+    expect(segmentIds(root)).toEqual(collapsedSegments);
+    // The full sentence (including the gap) stays on the accessible label.
+    expect(rosterLabel(root)).toContain('Most common gap');
+  });
+
+  test('"not yet" is omitted when nothing is untrained, and "0 trained" shows when nothing is trained', () => {
+    const one = '-Bench\n- 135 5,5,5';
+    expect(hostTextsIn(rosterNode(mountWith({}, {}, one, '-Bench\n- 135 5,5,5\n-Foam Roll\n- 10,10')))).toEqual(['1', 'trained']);
+    expect(hostTextsIn(rosterNode(mountWith({}, {}, one, '-Foam Roll\n- 10,10')))).toEqual(['0', 'trained', '1', 'not yet']);
+  });
+
+  test('the header keeps its >=44dp target and accessibilityState.expanded', () => {
+    const header = byLabel(mountWith(), 'Expand exercise details');
+    expect(StyleSheet.flatten(header.props.style).minHeight).toBeGreaterThanOrEqual(44);
+    expect(header.props.accessibilityState).toEqual({ expanded: false });
+  });
+
+  test('the footer is one row (provenance, reason, info button) and the note is hidden by default', () => {
+    const root = mountWith({ reason: 'torn hamstring' }, { onSaveReason: saveReason });
+    expect(hasText(root, 'Not a medical judgment')).toBe(false);
+    const row = hostById(root, 'recovery-footer-row')[0];
+    expect(StyleSheet.flatten(row.props.style)).toMatchObject({ flexDirection: 'row' });
+    expect(StyleSheet.flatten(row.props.style).flexWrap).toBeUndefined();
+    expect(row.findAll(m => m.props.accessibilityLabel === 'About these numbers').length).toBeGreaterThan(0);
+    expect(findAllText(row)).toEqual(['Started 05-01-2026', '·', 'Reason: torn hamstring']);
+    const texts = findAllText(root);
+    expect(texts.indexOf('Started 05-01-2026')).toBeGreaterThan(-1);
+    expect(texts.indexOf('Reason: torn hamstring')).toBeGreaterThan(texts.indexOf('Started 05-01-2026'));
+  });
+
+  test('a long reason is one ellipsized line with the full text on its label', () => {
+    const long = 'x'.repeat(200);
+    const root = mountWith({ reason: long }, { onSaveReason: saveReason });
+    const t = root.findAll(n => n.type === 'Text' && [].concat(n.props.children).join('') === `Reason: ${long}`)[0];
+    expect(t.props.numberOfLines).toBe(1);
+    expect(byLabel(root, `Edit reason for this recovery block: ${long}`)).toBeDefined();
+  });
+
+  test('the info button reveals the exact note inline in a live region and toggles it closed', () => {
+    const root = mountWith();
+    const info = byLabel(root, 'About these numbers');
+    expect(info.props.accessibilityRole).toBe('button');
+    expect(StyleSheet.flatten(info.props.style)).toMatchObject({ minHeight: 44, minWidth: 44 });
+    expect(hostById(root, 'recovery-about-note')[0].props.accessibilityLiveRegion).toBe('polite');
+    act(() => { byLabel(root, 'About these numbers').props.onPress(); });
+    expect(hasText(root, NOTE)).toBe(true);
+    expect(byLabel(root, 'About these numbers').props.accessibilityState).toEqual({ expanded: true });
+    act(() => { byLabel(root, 'About these numbers').props.onPress(); });
+    expect(hasText(root, NOTE)).toBe(false);
   });
 });

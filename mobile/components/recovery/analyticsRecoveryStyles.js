@@ -90,7 +90,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   nonMedicalText: {
-    fontSize: 12,
+    fontSize: 13,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontStyle: 'italic',
   },
@@ -217,11 +217,30 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
-  detailsHeaderCount: {
-    fontSize: 12,
-    fontWeight: '600',
+  // One quiet footer row (#1219): provenance, reason and the info button.
+  footerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 6,
+  },
+  footerProvenance: {
+    flexShrink: 0,
+  },
+  footerReason: {
+    flexShrink: 1,
+    flexGrow: 1,
+    minWidth: 0,
+  },
+  footerSeparator: {
+    fontSize: 13,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    marginTop: 2,
+  },
+  infoButton: {
+    minWidth: 44,
+    minHeight: 44,
+    marginLeft: 'auto',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   detailsBody: {
     gap: 12,

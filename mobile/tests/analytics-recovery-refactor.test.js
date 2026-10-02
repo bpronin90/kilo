@@ -258,7 +258,13 @@ describe('#1052 refactor — preserved states reach the screen', () => {
     const component = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] });
     const root = component.root;
     expect(hasText(root, 'at or above Push Pull Legs baseline')).toBe(true);
-    expect(hasText(root, 'Not a medical judgment')).toBe(true);
+    // #1219 (owner-directed): the non-medical note sits behind an info button
+    // instead of a persistent line — hidden by default, revealed inline on tap.
+    expect(hasText(root, 'Not a medical judgment')).toBe(false);
+    act(() => { byLabel(root, 'About these numbers').props.onPress(); });
+    expect(hasText(root, 'Training numbers only. Not a medical judgment — only you end a Recovery block.')).toBe(true);
+    act(() => { byLabel(root, 'About these numbers').props.onPress(); });
+    expect(hasText(root, 'Not a medical judgment')).toBe(false);
   });
 
   test('included/excluded: a completed block exposes its inclusion toggle in history', () => {

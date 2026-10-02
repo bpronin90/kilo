@@ -129,25 +129,25 @@ export function RecoveryBandBar({ buckets, trained, weekLabel }) {
   );
 }
 
-// Roster summary at the head of the exercise details (#1219): one thin bar of
-// trained-vs-roster plus a compact stat row, replacing the two sentence lines
-// ("Trained this week: 7 of 9 roster exercises · 2 not trained yet", "Most
-// common gap: …"). Same 13sp tier as the exercise rows (800 number, 600 label);
-// the full wording rides on the accessible label.
-export function RecoveryRosterSummary({ trained, rosterSize, notTrained, gap }) {
+// The ONE details summary (#1219): a thin band mini-bar (same buckets, colors
+// and order as the hero bar) over "N trained  M not yet". The panel renders this
+// single element right under the header whether Exercise details is collapsed
+// or expanded, so the two states cannot drift. The visible Gap stat was
+// removed (owner could not read it); the full sentence incl. the most common
+// gap rides on the accessible label. Same 13sp tier as the exercise rows (800
+// number, 600 label).
+export function RecoveryRosterSummary({ buckets, trained, rosterSize, notTrained, gap }) {
   const { colors, kua, styles } = useVisual();
   if (!rosterSize) return null;
-  const fill = Math.max(0, Math.min(100, Math.round((trained / rosterSize) * 100)));
   const label = `Trained this week: ${trained} of ${rosterSize} roster exercises${notTrained > 0 ? `, ${notTrained} not trained yet` : ''}.${gap ? ` Most common gap: ${gap}.` : ''}`;
   const stats = [
     { n: String(trained), text: 'trained' },
     ...(notTrained > 0 ? [{ n: String(notTrained), text: 'not yet' }] : []),
-    ...(gap ? [{ n: null, text: `Gap: ${gap}` }] : []),
   ];
   return (
     <View testID="recovery-roster-summary" style={styles.rosterBlock} accessible accessibilityLabel={label}>
-      <View testID="recovery-roster-bar" style={styles.rosterTrack}>
-        <View style={[styles.exBarFill, { width: `${fill}%`, backgroundColor: kua ? kua.primary : colors.accentText }]} />
+      <View testID="recovery-roster-bar">
+        <Segments buckets={buckets || {}} colors={colors} kua={kua} style={styles.miniBar} />
       </View>
       <View style={styles.exNumbers}>
         {stats.map(st => (
