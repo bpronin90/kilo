@@ -179,11 +179,6 @@ function _baselineMetrics(sets) {
 const _TIMED_HOLDS_RE = /(\d+)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*(sec|secs|seconds?|s|min|mins|minutes?|m)\b/i;
 function _declarationSpec(rawHeader) {
   if (!rawHeader) return null;
-  if (/amrap/i.test(rawHeader)) {
-    const m = /(\d+)\s*[xX×]\s*amrap/i.exec(rawHeader);
-    const sets = m ? parseInt(m[1], 10) : 1;
-    return sets >= 1 ? { kind: 'amrap', sets, min: null } : null;
-  }
   if (parseHeaderDeclaration(rawHeader)?.type === 'duration') {
     const m = _TIMED_HOLDS_RE.exec(rawHeader);
     if (!m) return null;
@@ -193,21 +188,39 @@ function _declarationSpec(rawHeader) {
     return sets >= 1 && min > 0 ? { kind: 'duration', sets, min } : null;
   }
   const p = parseExerciseHeader(rawHeader);
-  return p && p.sets >= 1 && p.repLo >= 1 ? { kind: 'reps', sets: p.sets, min: p.repLo } : null;
+  if (p) return p.sets >= 1 && p.repLo >= 1 ? { kind: 'reps', sets: p.sets, min: p.repLo } : null;
+  // Only the declaration token itself is AMRAP: `NxAMRAP`, or a header whose
+  // declaration (the text after the name's colon) is exactly `AMRAP`. A mention
+  // inside a note or parenthetical never is, and a rep declaration (above) wins.
+  const counted = /(?:^|[\s:])(\d+)\s*[xX×]\s*amrap\b/i.exec(rawHeader);
+  if (counted) {
+    const sets = parseInt(counted[1], 10);
+    return sets >= 1 ? { kind: 'amrap', sets, min: null } : null;
+  }
+  return /:\s*amrap\s*$/i.test(rawHeader) ? { kind: 'amrap', sets: 1, min: null } : null;
 }
 
-// Every prescribed working set present, unskipped, comparable, and at or above
-// its minimum. Counting qualifying sets (rather than demanding the entry hold
-// exactly `sets`) means a stray extra set never fails a session, while a `-`,
-// a short set, or fewer sets than prescribed always does.
+// Every prescribed working set POSITION must be a completed, qualifying set: the
+// first `spec.sets` sets of the session are each present, not skipped (`-`),
+// comparable (positive reps or duration, plus a load for weighted work), and at
+// or above the minimum. A skip, zero, short set, or missing set anywhere in those
+// positions makes the session incomplete, even if later sets would have made up
+// the count (`6,-,6,6` on `3x6` is incomplete). Sets BEYOND the prescribed count
+// are extra work: they neither complete a session nor fail one (`6,6,6,-` is
+// complete) — they still count in the row's metrics, as before.
 function _sessionIsComplete(sets, spec, metrics) {
-  const qualifying = _completedSets(sets).filter(s => {
-    if (metrics.exercise_class === 'weighted' && !(s.weight_value > 0)) return false;
+  const prescribed = (sets || []).slice(0, spec.sets);
+  if (prescribed.length < spec.sets) return false;
+  return prescribed.every(s => {
+    if (!s || s.skipped) return false;
+    const reps = s.rep_count != null && s.rep_count > 0;
+    const held = s.duration_seconds != null && s.duration_seconds > 0;
+    if (!reps && !held) return false;
+    if (metrics.exercise_class === 'weighted' && !(s.weight_value > 0 && reps)) return false;
     if (spec.kind === 'amrap') return true;
-    if (spec.kind === 'duration') return s.duration_seconds != null && s.duration_seconds >= spec.min;
-    return s.rep_count != null && s.rep_count >= spec.min;
+    if (spec.kind === 'duration') return held && s.duration_seconds >= spec.min;
+    return reps && s.rep_count >= spec.min;
   });
-  return qualifying.length >= spec.sets;
 }
 
 // Why a row carries the numbers it does. A consumer must never mistake a
@@ -316,8 +329,19 @@ export function captureRecoveryBaselineFromText(rawText) {
 //     allowed: a note saved in the same instant the block started predates it).
 // Everything else keeps its exact v1 snapshot and legacy alphabetical order.
 // Idempotent: a v2 (or unknown-version) snapshot is never touched.
+const _ISO_INSTANT_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|([+-])(\d{2}):(\d{2}))$/;
+// Strict: a full date-time with an explicit `Z`/`±hh:mm` offset and a REAL
+// calendar date. `Date.parse` alone normalizes `2026-02-30` to March 2 and reads
+// a zone-less string as local time, either of which would turn corrupt state
+// into false "unedited" evidence, so the fields are validated before parsing.
 function _ts(value) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T/.test(value)) return null;
+  const m = typeof value === 'string' ? _ISO_INSTANT_RE.exec(value) : null;
+  if (!m) return null;
+  const [y, mo, d, h, mi, sec] = m.slice(1, 7).map(Number);
+  const [oh, om] = [m[8], m[9]].map(x => (x == null ? 0 : Number(x)));
+  const day = new Date(Date.UTC(y, mo - 1, d));
+  if (mo < 1 || mo > 12 || day.getUTCMonth() !== mo - 1 || day.getUTCDate() !== d) return null;
+  if (h > 23 || mi > 59 || sec > 59 || oh > 23 || om > 59) return null;
   const t = Date.parse(value);
   return Number.isFinite(t) ? t : null;
 }

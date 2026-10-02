@@ -21,6 +21,7 @@
 
 import { RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEEKS_KEY, WORKOUT_NOTES_KEY } from './keys';
 import { readList, writeList } from './jsonStorage';
+import { withRecoveryOperationLock } from './recoveryJournalStore';
 import {
   RECOVERY_BASELINE_LEGACY_VERSION,
   RECOVERY_ERROR_CODES,
@@ -78,29 +79,36 @@ function _stripImmutable(patch, fields) {
 // ── recovery blocks ───────────────────────────────────────────────────────────
 
 // One-time v1 -> v2 baseline write migration (#1225). Runs ONLY when a caller
-// that has just completed a clean operation-journal reconciliation asks for it
+// that just completed a clean operation-journal reconciliation asks for it
 // (`migrateBaselines`; see hooks/entries/recoveryReadState.js) — never from a
-// plain read, a stale/unverified refresh, a restore, or a sync pass. The
-// notebook is read ONLY when a live legacy block exists (a device with no
-// recovery history pays no extra read), and the blocks are re-read right before
-// the write so the list the plan rewrites is the one written back. A failed note
-// read or failed write publishes nothing: the previous list stays authoritative
-// and is returned unchanged, and the next verified read simply retries.
-async function _upgradeLegacyBaselines() {
-  const current = await readList(RECOVERY_BLOCKS_KEY);
-  if (!current.some(b => isLiveRecord(b) && b.baseline?.version === RECOVERY_BASELINE_LEGACY_VERSION)) {
-    return current;
-  }
-  try {
-    const notes = await readList(WORKOUT_NOTES_KEY);
-    const blocks = await readList(RECOVERY_BLOCKS_KEY);
-    const plan = planRecoveryBaselineUpgrades({ blocks, notes });
-    if (plan.upgraded.length === 0) return blocks;
-    await writeList(RECOVERY_BLOCKS_KEY, plan.blocks);
-    return plan.blocks;
-  } catch (e) {
-    return readList(RECOVERY_BLOCKS_KEY);
-  }
+// plain read, a stale/unverified refresh, a restore, or a sync pass.
+//
+// The whole read-plan-write runs inside the recovery-operation lock: the cloud
+// sync pass (withRecoveryReconciliation) and every journaled lifecycle action
+// hold that same lock because both sides rewrite the WHOLE block list, so an
+// interleaving silently erases whichever change is written first. Under the
+// lock a remote completion/reason/tombstone can neither land between this read
+// and write nor be overwritten by it, and the plan always uses the list as it is
+// NOW. The notebook is read ONLY when a live legacy block exists. A failed note
+// read or write publishes nothing: the previous list stays authoritative and the
+// next verified read retries.
+function _upgradeLegacyBaselines() {
+  return withRecoveryOperationLock(async () => {
+    const current = await readList(RECOVERY_BLOCKS_KEY);
+    if (!current.some(b => isLiveRecord(b) && b.baseline?.version === RECOVERY_BASELINE_LEGACY_VERSION)) {
+      return current;
+    }
+    try {
+      const notes = await readList(WORKOUT_NOTES_KEY);
+      const blocks = await readList(RECOVERY_BLOCKS_KEY);
+      const plan = planRecoveryBaselineUpgrades({ blocks, notes });
+      if (plan.upgraded.length === 0) return blocks;
+      await writeList(RECOVERY_BLOCKS_KEY, plan.blocks);
+      return plan.blocks;
+    } catch (e) {
+      return readList(RECOVERY_BLOCKS_KEY);
+    }
+  });
 }
 
 // User-facing read: live blocks only, newest-started first.

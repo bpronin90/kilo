@@ -50,7 +50,9 @@ import {
   __resetRecoveryOperationJournal,
   readRecoveryJournal,
   reconcileRecoveryOperations,
+  runGuardedRecoveryAction,
   setRecoveryNoteOperations,
+  withExclusiveRecoveryAccess,
 } from '../storage/entries/recoveryOperationJournal';
 import {
   addRecoveryWeekCore,
@@ -2895,5 +2897,222 @@ describe('storage: migration runs only on an explicit verified read, once, and f
     await AsyncStorage.setItem(WORKOUT_NOTES_KEY, JSON.stringify([{ id: 'n1', raw_text: '-Deadlift: 3x6\n- 400 6,6,6', updated_at: '2020-01-01T00:00:00.000Z' }]));
     const [out] = await loadRecoveryBlocks({ migrateBaselines: true });
     expect(out.baseline).toEqual(block.baseline);
+  });
+});
+
+// ── #1225 review round 1: positional completeness, explicit AMRAP, strict ───────
+// timestamps, and serialized migration ─────────────────────────────────────────
+
+describe('captureRecoveryBaseline (v2) — every prescribed POSITION must be complete', () => {
+  const pick = (text) => baselineFor(captureRecoveryBaselineFromText(text), 'bench');
+  const GOOD = '-Bench: 3x6\n- 135 6,6,6';
+
+  test('a skip in the middle is incomplete even when extra good sets follow (6,-,6,6)', () => {
+    const row = pick(`${GOOD}\n- 145 6,-,6,6`);
+    expect(row).toMatchObject({ top_weight: 135, volume: 135 * 18, basis: BASIS.COMPLETE });
+  });
+
+  test('a skipped last prescribed set is incomplete (6,6,-)', () => {
+    expect(pick(`${GOOD}\n- 145 6,6,-`)).toMatchObject({ top_weight: 135, basis: BASIS.COMPLETE });
+  });
+
+  test('a skipped FIRST prescribed set is incomplete (-,6,6,6)', () => {
+    expect(pick(`${GOOD}\n- 145 -,6,6,6`)).toMatchObject({ top_weight: 135 });
+  });
+
+  test('zero reps in a prescribed position is incomplete', () => {
+    const snap = cap(declSection('-Bench 3x6', [[wSet(135, 6), wSet(135, 6), wSet(135, 6)], [wSet(145, 6), wSet(145, 0), wSet(145, 6)]], { name: 'Bench' }));
+    expect(baselineFor(snap, 'bench')).toMatchObject({ top_weight: 135, basis: BASIS.COMPLETE });
+  });
+
+  test('a short rep set in a prescribed position is incomplete (6,5,6)', () => {
+    expect(pick(`${GOOD}\n- 145 6,5,6`)).toMatchObject({ top_weight: 135 });
+  });
+
+  test('exactly N complete sets is complete and, being newest, wins', () => {
+    expect(pick(`${GOOD}\n- 145 6,6,6`)).toMatchObject({ top_weight: 145, sets_completed: 3, basis: BASIS.COMPLETE });
+  });
+
+  test('more than N complete sets is complete', () => {
+    expect(pick(`${GOOD}\n- 145 6,6,6,6`)).toMatchObject({ top_weight: 145, sets_completed: 4, basis: BASIS.COMPLETE });
+  });
+
+  test('EXTRA sets beyond N neither complete nor fail a session: a skipped extra leaves it complete', () => {
+    expect(pick(`${GOOD}\n- 145 6,6,6,-`)).toMatchObject({ top_weight: 145, sets_completed: 3, basis: BASIS.COMPLETE });
+  });
+
+  test('fewer than N sets present is incomplete', () => {
+    expect(pick(`${GOOD}\n- 145 6,6`)).toMatchObject({ top_weight: 135 });
+  });
+
+  test('timed and AMRAP use the same positional rule', () => {
+    const timed = cap(declSection('-Plank 3x30s', [[durSet(30), durSet(30), durSet(30)], [durSet(30), { ...durSet(30), skipped: true }, durSet(30), durSet(30)]]));
+    expect(baselineFor(timed, 'plank')).toMatchObject({ total_seconds: 90, basis: BASIS.COMPLETE });
+    const amrap = cap(declSection('-Pull-up 3xAMRAP', [[repSet(9), repSet(7), repSet(6)], [repSet(8), { ...repSet(0), skipped: true }, repSet(5), repSet(5)]]));
+    expect(baselineFor(amrap, 'pull-up')).toMatchObject({ total_reps: 22, basis: BASIS.AMRAP });
+  });
+});
+
+describe('captureRecoveryBaseline (v2) — only an EXPLICIT AMRAP declaration takes the AMRAP path', () => {
+  test('a rep declaration plus an AMRAP mention in a parenthetical keeps the rep rule', () => {
+    const snap = cap(declSection('-Pull-up: 3x8 (last set AMRAP)', [[repSet(8), repSet(8), repSet(8)], [repSet(1)]]));
+    expect(baselineFor(snap, 'pull-up')).toMatchObject({ total_reps: 24, basis: BASIS.COMPLETE });
+  });
+
+  test('the same through the real parser: `-Pull-up: 3x8 (last set AMRAP)` then a 0/1 session', () => {
+    const snap = captureRecoveryBaselineFromText('-Pull-up: 3x8 (last set AMRAP)\n- 8,8,8\n- 1');
+    expect(baselineFor(snap, 'pull-up')).toMatchObject({ total_reps: 24, basis: BASIS.COMPLETE });
+  });
+
+  test('an AMRAP word in a name or note with no declaration is no declaration at all', () => {
+    for (const header of ['-Pull-up (AMRAP finisher)', '-AMRAP Pull-ups', '-Pull-up amraps']) {
+      const snap = cap(declSection(header, [[repSet(8), repSet(8)], [repSet(3)]], { name: 'Pull-up' }));
+      expect(baselineFor(snap, 'pull-up')).toMatchObject({ total_reps: 3, basis: BASIS.NO_DECL });
+    }
+  });
+
+  test('explicit forms still work: `3xAMRAP`, `3 x AMRAP`, and a declaration that is exactly AMRAP', () => {
+    for (const header of ['-Pull-up 3xAMRAP', '-Pull-up: 3 x AMRAP', '-Pull-up: 3×amrap (strict)']) {
+      const snap = cap(declSection(header, [[repSet(9), repSet(7), repSet(6)], [repSet(4)]], { name: 'Pull-up' }));
+      expect(baselineFor(snap, 'pull-up')).toMatchObject({ total_reps: 22, basis: BASIS.AMRAP });
+    }
+    const bare = cap(declSection('-Pull-up: AMRAP', [[repSet(9)], [repSet(4)]], { name: 'Pull-up' }));
+    expect(baselineFor(bare, 'pull-up')).toMatchObject({ total_reps: 4, basis: BASIS.AMRAP });
+  });
+});
+
+describe('planRecoveryBaselineUpgrades — strict explicit-offset ISO instants only', () => {
+  const ROUTINE = '-Deadlift: 3x6\n- 325 6,6,6';
+  const V1 = { version: 1, exercises: [{ key: 'deadlift', name: 'Deadlift', exercise_class: 'weighted', top_weight: 335, volume: 670, sets_completed: 1 }] };
+  const note = (updated_at) => ({ id: 'n1', raw_text: ROUTINE, updated_at, deleted_at: null });
+  const block = (started_at) => ({ id: 'rb1', baseline_note_id: 'n1', baseline: V1, started_at, completed_at: null, saved_at: started_at, updated_at: started_at, deleted_at: null });
+  const run = (noteTs, startedTs) => planRecoveryBaselineUpgrades({ blocks: [block(startedTs)], notes: [note(noteTs)], now: '2026-09-01T00:00:00.000Z' }).upgraded;
+  const STARTED = '2026-08-01T09:00:00.000Z';
+
+  test('the reviewer example: an overflow date that Date.parse normalizes past started_at must not migrate', () => {
+    // 2026-02-30 normalizes to March 2, which is "before" this started_at.
+    expect(run('2026-02-30T00:00:00Z', '2026-03-03T00:00:00Z')).toEqual([]);
+  });
+
+  test('malformed calendar dates and clock values fail closed (note side)', () => {
+    for (const bad of [
+      '2026-02-30T00:00:00Z', '2025-02-29T00:00:00Z', '2026-04-31T00:00:00Z', '2026-13-01T00:00:00Z', '2026-00-10T00:00:00Z',
+      '2026-07-00T00:00:00Z', '2026-07-28T24:00:00Z', '2026-07-28T23:60:00Z', '2026-07-28T23:59:60Z',
+      '2026-07-28T00:00:00+24:00', '2026-07-28T00:00:00+05:60',
+    ]) expect(run(bad, STARTED)).toEqual([]);
+  });
+
+  test('the same malformed values on the block side fail closed too', () => {
+    for (const bad of ['2026-02-30T00:00:00Z', '2026-13-01T00:00:00Z', '2026-07-28T24:00:00Z']) {
+      expect(run('2026-01-01T00:00:00Z', bad)).toEqual([]);
+    }
+  });
+
+  test('zone-less, date-only, whitespace-padded, lowercase, and non-ISO forms fail closed', () => {
+    for (const bad of [
+      '2026-07-28T08:00:00', '2026-07-28T08:00:00.000', '2026-07-28', '2026-07-28T08:00Z', '2026-07-28 08:00:00Z',
+      ' 2026-07-28T08:00:00Z', '2026-07-28T08:00:00Z ', '2026-07-28T08:00:00Z\n', '2026-07-28t08:00:00z',
+      '2026-07-28T08:00:00+0000', '2026-07-28T08:00:00+00', 'Tue, 28 Jul 2026 08:00:00 GMT', '07/28/2026', '20260728T080000Z',
+    ]) {
+      expect(run(bad, STARTED)).toEqual([]);
+      expect(run('2026-01-01T00:00:00Z', bad)).toEqual([]);
+    }
+  });
+
+  test('valid explicit-offset forms (Z, +00:00, fractional seconds, real leap day, other offsets) still compare as instants', () => {
+    for (const ok of [
+      '2026-08-01T08:00:00Z', '2026-08-01T08:00:00+00:00', '2026-08-01T08:00:00.123456Z', '2024-02-29T00:00:00Z',
+      '2026-08-01T13:30:00+05:30', '2026-08-01T04:00:00-04:00',
+    ]) expect(run(ok, STARTED)).toEqual(['rb1']);
+    // Offset spellings of an instant AFTER the start do not migrate.
+    expect(run('2026-08-01T15:00:00+05:30', STARTED)).toEqual([]);
+    expect(run('2026-08-01T05:30:00-04:00', STARTED)).toEqual([]);
+  });
+});
+
+describe('storage: the migration is serialized with sync and lifecycle writers', () => {
+  const T0 = '2026-08-01T08:00:00.000Z';
+  const STARTED = '2026-08-01T09:00:00.000Z';
+  const V1 = { version: 1, exercises: [{ key: 'deadlift', name: 'Deadlift', exercise_class: 'weighted', top_weight: 335, volume: 670, sets_completed: 1 }] };
+  const ROUTINE = '-Deadlift: 3x6\n- 325 6,6,6\n- 335 2,-,-';
+  const tick = async () => { for (let i = 0; i < 8; i += 1) await new Promise(r => setImmediate(r)); };
+  const raw = async () => JSON.parse(await AsyncStorage.getItem(RECOVERY_BLOCKS_KEY));
+  const gateOn = () => { let release; const gate = new Promise(r => { release = r; }); return { gate, release }; };
+
+  beforeEach(async () => {
+    await AsyncStorage.setItem(WORKOUT_NOTES_KEY, JSON.stringify([{ id: 'n1', raw_text: ROUTINE, saved_at: T0, updated_at: T0, deleted_at: null }]));
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify([{
+      id: 'rb1', baseline_note_id: 'n1', baseline: V1, include_in_normal_analytics: false, reason: null,
+      started_at: STARTED, completed_at: null, saved_at: STARTED, updated_at: STARTED, deleted_at: null,
+    }]));
+  });
+
+  // The sync pass reads the whole list, then (after pulling) replaces the whole
+  // list: exactly the shape syncTableIo uses, held under the same lock.
+  test('FORCED INTERLEAVING: a sync pass that read the list first cannot be erased by, nor erase, the migration', async () => {
+    const { gate, release } = gateOn();
+    const pass = withExclusiveRecoveryAccess(async () => {
+      const list = await loadRecoveryBlocksRaw();
+      await gate; // the migration is attempted while the pass is mid-flight
+      await replaceRecoveryBlocksRaw(list.map(b => ({ ...b, deleted_at: '2026-08-05T00:00:00.000Z', updated_at: '2026-08-05T00:00:00.000Z' })));
+    });
+    await tick();
+    const migration = loadRecoveryBlocks({ migrateBaselines: true });
+    await tick();
+    // The migration has not read-and-written underneath the pass.
+    expect((await raw())[0].baseline).toEqual(V1);
+    release();
+    await pass;
+    const out = await migration;
+    // The remote tombstone survives and the migration defers (a tombstone is never rewritten).
+    expect(out).toEqual([]);
+    const [stored] = await raw();
+    expect(stored.deleted_at).toBe('2026-08-05T00:00:00.000Z');
+    expect(stored.baseline).toEqual(V1);
+  });
+
+  test('FORCED INTERLEAVING: a remote reason/completion landing while the migration is mid-flight survives alongside the upgrade', async () => {
+    const { gate, release } = gateOn();
+    const original = readListModule.readList;
+    let notesReadStarted = false;
+    const spy = jest.spyOn(readListModule, 'readList').mockImplementation(async (key) => {
+      if (key === WORKOUT_NOTES_KEY) { notesReadStarted = true; await gate; }
+      return original(key);
+    });
+    const migration = loadRecoveryBlocks({ migrateBaselines: true });
+    await tick();
+    expect(notesReadStarted).toBe(true);
+    const pass = withExclusiveRecoveryAccess(async () => {
+      const list = await loadRecoveryBlocksRaw();
+      await replaceRecoveryBlocksRaw(list.map(b => ({ ...b, reason: 'remote edit', completed_at: '2026-08-20T00:00:00.000Z', updated_at: '2099-01-01T00:00:00.000Z' })));
+    });
+    await tick();
+    expect((await raw())[0].reason).toBeNull(); // the pass is queued behind the migration
+    release();
+    await migration;
+    await pass;
+    spy.mockRestore();
+    const [stored] = await raw();
+    expect(stored.baseline.version).toBe(2);
+    expect(stored.reason).toBe('remote edit');
+    expect(stored.completed_at).toBe('2026-08-20T00:00:00.000Z');
+  });
+
+  test('a lifecycle writer holding the guard blocks the migration the same way', async () => {
+    const { gate, release } = gateOn();
+    const action = runGuardedRecoveryAction({ blockId: 'rb1' }, async () => {
+      await gate;
+      return updateRecoveryBlock('rb1', { reason: 'edited under guard' });
+    });
+    await tick();
+    const migration = loadRecoveryBlocks({ migrateBaselines: true });
+    await tick();
+    expect((await raw())[0].baseline).toEqual(V1);
+    release();
+    await action;
+    await migration;
+    const [stored] = await raw();
+    expect(stored.reason).toBe('edited under guard');
+    expect(stored.baseline.version).toBe(2);
   });
 });
