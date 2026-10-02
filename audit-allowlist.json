@@ -1,3 +1,10 @@
 {
-  "accepted": []
+  "accepted": [
+    {
+      "id": "GHSA-86w9-cpqp-85rv",
+      "package": "node-forge",
+      "reviewBy": "2026-11-01",
+      "reason": "Owner-approved, time-boxed acceptance of residual risk (not a remediation): node-forge <= 1.4.0 (RSA PKCS#1 v1.5 signature verification accepts extra nested DigestAlgorithm elements, high, CVSS 7.5) has no patched release; npm latest is 1.4.0 and the advisory lists no first patched version. Verified at 65d968f7: node-forge@1.4.0 enters the mobile graph only via expo-updates -> @expo/code-signing-certificates and expo -> @expo/cli. Neither mobile/app.json nor mobile/app.config.js defines updates.codeSigningCertificate, and no app source imports node-forge, so exposure is build/CLI tooling only. Re-review, or bump if a patched release exists, before 2026-11-01; the gate fails after that date."
+    }
+  ]
 }
