@@ -15,7 +15,7 @@ import {
   deriveRecoveryMovement,
   deriveRecoveryWeekBands,
 } from '../../lib/data/recoveryReturnBands';
-import { WeekEvidence, WeekUnavailableNotice } from './RecoveryStateGroups';
+import { summarizeDetailRows, WeekEvidence, WeekUnavailableNotice } from './RecoveryStateGroups';
 import { WeekPicker } from './RecoveryWeekPicker';
 import { deriveTrainedElsewhere } from './RecoveryWeekIndex';
 import { createStyles } from './analyticsRecoveryStyles';
@@ -242,14 +242,7 @@ export function BlockEvidence({
 
               {/* One shared summary (#1219), rendered identically under the
                   header whether the details are collapsed or expanded. */}
-              <RecoveryRosterSummary
-                buckets={bands.buckets}
-                trained={trained}
-                rosterSize={hasBands ? rosterSize : 0}
-                notTrained={notTrainedCount}
-                gap={bands.most_common_gap}
-                added={addedCount}
-              />
+              <RecoveryRosterSummary summary={summarizeDetailRows(weekRows)} gap={bands.most_common_gap} />
 
               {detailsExpanded && (
                 <View style={styles.detailsBody}>

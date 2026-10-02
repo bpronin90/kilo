@@ -73,6 +73,18 @@ export function rowStatusWord(row) {
   return bandId ? BAND_STATUS_WORD[bandId] : 'Added during recovery';
 }
 
+// Every status kind a visible row can carry: the shared band ids plus
+// "added" (rows with no band). The details summary counts rows through this
+// SAME mapping (`rowBandId`) the row status word uses, so a new kind cannot be
+// shown in the list yet missed by the summary (#1219, structural fix).
+export const ROW_STATUS_KINDS = Object.freeze([...Object.keys(BAND_STATUS_WORD), 'added']);
+
+export function summarizeDetailRows(rows) {
+  const counts = Object.fromEntries(ROW_STATUS_KINDS.map(kind => [kind, 0]));
+  for (const row of rows) counts[rowBandId(row) || 'added'] += 1;
+  return { counts, total: rows.length };
+}
+
 function _formatMetricNumber(metricKey, value, unit) {
   if (value === null || value === undefined) return '—';
   if (metricKey === 'top_load') return `${formatLiftWeightValue(value, unit)} ${unit}`;

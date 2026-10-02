@@ -136,30 +136,38 @@ export function RecoveryBandBar({ buckets, trained, weekLabel }) {
 // removed (owner could not read it); the full sentence incl. the most common
 // gap rides on the accessible label. Same 13sp tier as the exercise rows (800
 // number, 600 label).
-export function RecoveryRosterSummary({ buckets, trained, rosterSize, notTrained, gap, added = 0 }) {
+export function RecoveryRosterSummary({ summary, gap }) {
   const { colors, kua, styles } = useVisual();
-  const hasRoster = !!rosterSize;
-  // Covers ALL week rows: baseline exercises (trained / not yet) and
-  // recovery-only added work. Zero tokens are omitted; an added-only week
-  // (empty baseline) shows just "K added" and no band bar.
-  if (!hasRoster && !(added > 0)) return null;
-  const sentences = [];
-  if (hasRoster) {
-    sentences.push(`Trained this week: ${trained} of ${rosterSize} roster exercises${notTrained > 0 ? `, ${notTrained} not trained yet` : ''}.`);
-    if (gap) sentences.push(`Most common gap: ${gap}.`);
-  }
-  if (added > 0) sentences.push(`${added} added during recovery.`);
-  const label = sentences.join(' ');
+  if (!summary || !(summary.total > 0)) return null;
+  const c = summary.counts;
+  // Counted from ALL visible rows (see `summarizeDetailRows`): the four
+  // comparable bands are "trained"; not-yet, can't-compare and added work are
+  // their own tokens. Zero tokens are omitted; the bar covers only the
+  // comparable rows and is absent when there are none.
+  const trained = c.at_or_above + c.close + c.rebuilding + c.early;
+  const baselineRows = trained + c.not_trained_yet + c.cannot_compare;
   const stats = [
-    ...(hasRoster ? [{ n: String(trained), text: 'trained' }] : []),
-    ...(hasRoster && notTrained > 0 ? [{ n: String(notTrained), text: 'not yet' }] : []),
-    ...(added > 0 ? [{ n: String(added), text: 'added' }] : []),
+    ...(baselineRows > 0 ? [{ n: String(trained), text: 'trained' }] : []),
+    ...(c.not_trained_yet > 0 ? [{ n: String(c.not_trained_yet), text: 'not yet' }] : []),
+    ...(c.cannot_compare > 0 ? [{ n: String(c.cannot_compare), text: "can't compare" }] : []),
+    ...(c.added > 0 ? [{ n: String(c.added), text: 'added' }] : []),
   ];
+  if (stats.length === 0) stats.push({ n: String(summary.total), text: summary.total === 1 ? 'exercise' : 'exercises' });
+  const sentences = [];
+  if (baselineRows > 0) {
+    sentences.push(`Trained this week: ${trained} of ${baselineRows} roster exercises${c.not_trained_yet > 0 ? `, ${c.not_trained_yet} not trained yet` : ''}${c.cannot_compare > 0 ? `, ${c.cannot_compare} can't compare` : ''}.`);
+  }
+  const byStatus = TRAINED_BANDS.filter(b => c[b.id] > 0).map(b => `${b.label} ${c[b.id]}`);
+  if (byStatus.length > 0) sentences.push(`By status: ${byStatus.join(', ')}.`);
+  if (gap) sentences.push(`Most common gap: ${gap}.`);
+  if (c.added > 0) sentences.push(`${c.added} added during recovery.`);
+  if (sentences.length === 0) sentences.push(`${summary.total} exercise${summary.total === 1 ? '' : 's'}.`);
+  const label = sentences.join(' ');
   return (
     <View testID="recovery-roster-summary" style={styles.rosterBlock} accessible accessibilityLabel={label}>
-      {hasRoster && (
+      {trained > 0 && (
         <View testID="recovery-roster-bar">
-          <Segments buckets={buckets || {}} colors={colors} kua={kua} style={styles.miniBar} />
+          <Segments buckets={c} colors={colors} kua={kua} style={styles.miniBar} />
         </View>
       )}
       <View style={styles.exNumbers}>

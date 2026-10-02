@@ -241,7 +241,7 @@ describe('AnalyticsRecoverySection — active block evidence', () => {
     expandDetails(root);
     // #1219: the sentence is gone for good — each row carries its own mark and
     // status word, and the roster denominator is one short caption.
-    expect(rosterLabel(root)).toBe('Trained this week: 2 of 2 roster exercises.');
+    expect(rosterLabel(root)).toBe('Trained this week: 2 of 2 roster exercises. By status: At or above 2.');
     expect(hasText(root, 'Trained this week')).toBe(false);
     expect(hasText(root, 'roster exercises trained.')).toBe(false);
     expect(statusWords(root)).toEqual(['At or above baseline', 'At or above baseline']);
@@ -278,7 +278,7 @@ describe('AnalyticsRecoverySection — active block evidence', () => {
     expandDetails(root);
     // The denominator caption stays consistent with the roster (the unusable
     // row is outside it, the added row never was in it) and names no exercise.
-    expect(rosterLabel(root)).toBe('Trained this week: 1 of 1 roster exercises. 1 added during recovery.');
+    expect(rosterLabel(root)).toBe("Trained this week: 1 of 2 roster exercises, 1 can't compare. By status: At or above 1, Can't compare 1. 1 added during recovery.");
     expect(rosterLabel(root)).not.toMatch(/Ghost Lift|Sled Push|Bench/);
   });
 
@@ -1139,7 +1139,7 @@ describe('AnalyticsRecoverySection — light/dark appearance', () => {
     expect(hasText(darkComponent.root, 'At or above 4')).toBe(false);
     expect(hasText(darkComponent.root, 'Trained this week')).toBe(false);
     expandDetails(darkComponent.root);
-    expect(rosterLabel(darkComponent.root)).toBe('Trained this week: 4 of 4 roster exercises.');
+    expect(rosterLabel(darkComponent.root)).toBe('Trained this week: 4 of 4 roster exercises. By status: At or above 4.');
   });
 });
 
@@ -1334,7 +1334,7 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     // The roster/gap facts live in the drill-down now (#1209).
     expandDetails(root);
     // #1219: a compact stat row (visible) with the full sentence spoken only.
-    expect(rosterLabel(root)).toBe('Trained this week: 2 of 2 roster exercises. Most common gap: Total work. 1 added during recovery.');
+    expect(rosterLabel(root)).toBe('Trained this week: 2 of 2 roster exercises. By status: At or above 1, Rebuilding 1. Most common gap: Total work. 1 added during recovery.');
     // The visible Gap stat was removed (#1219); the gap rides on the label only.
     expect(hasText(root, 'Gap: Total work')).toBe(false);
     expect(hasText(root, 'Most common gap')).toBe(false);
@@ -2481,7 +2481,7 @@ describe('AnalyticsRecoverySection — visual exercise details (#1219)', () => {
   test('the roster lines became one bar + stat row on the same 13sp tier as the rows', () => {
     const root = mount();
     // BASE has 3 roster exercises; Curl is not trained this week.
-    expect(rosterLabel(root)).toBe('Trained this week: 2 of 3 roster exercises, 1 not trained yet. Most common gap: Total work. 1 added during recovery.');
+    expect(rosterLabel(root)).toBe('Trained this week: 2 of 3 roster exercises, 1 not trained yet. By status: At or above 1, Rebuilding 1. Most common gap: Total work. 1 added during recovery.');
     const texts = hostTextsIn(rosterNode(root));
     expect(texts).toEqual(['2', 'trained', '1', 'not yet', '1', 'added']);
     const sizes = rosterNode(root)
@@ -2586,7 +2586,7 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
     const mixed = mountWith();
     expect(hostById(mixed, 'recovery-roster-bar')).toHaveLength(1);
     expect(tokenParity(mixed)).toEqual(['2', 'trained', '1', 'not yet', '1', 'added']);
-    expect(rosterLabel(mixed)).toBe('Trained this week: 2 of 3 roster exercises, 1 not trained yet. Most common gap: Total work. 1 added during recovery.');
+    expect(rosterLabel(mixed)).toBe('Trained this week: 2 of 3 roster exercises, 1 not trained yet. By status: At or above 1, Rebuilding 1. Most common gap: Total work. 1 added during recovery.');
     // nothing trained (only added work): "0 trained", "1 not yet", "1 added".
     expect(tokenParity(mountWith({}, {}, one, '-Foam Roll\n- 10,10'))).toEqual(['0', 'trained', '1', 'not yet', '1', 'added']);
   });
@@ -2603,6 +2603,64 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
     expect(hostById(root, 'recovery-roster-bar')).toHaveLength(0);
     expect(tokenParity(root)).toEqual(['1', 'added']);
     expect(rosterLabel(root)).toBe('1 added during recovery.');
+  });
+
+  // Table-driven (#1219): one single-kind week per status kind in the SHARED
+  // row mapping, derived from ROW_STATUS_KINDS so a newly added kind fails here
+  // until the summary handles it.
+  const KIND_ROWS = {
+    at_or_above: () => mockRow({ key: 'k1', name: 'Bench', state: RECOVERY_COMPARISON_STATES.BASELINE_MET, exercise_class: 'weighted', metrics: [metricRow('top_load', 135, 135, 100, true)] }),
+    close: () => mockRow({ key: 'k1', name: 'Bench', state: RECOVERY_COMPARISON_STATES.REBUILDING, exercise_class: 'weighted', metrics: [metricRow('top_load', 125, 135, 93, false)] }),
+    rebuilding: () => mockRow({ key: 'k1', name: 'Bench', state: RECOVERY_COMPARISON_STATES.REBUILDING, exercise_class: 'weighted', metrics: [metricRow('top_load', 95, 135, 70, false)] }),
+    early: () => mockRow({ key: 'k1', name: 'Bench', state: RECOVERY_COMPARISON_STATES.REBUILDING, exercise_class: 'weighted', metrics: [metricRow('top_load', 40, 135, 30, false)] }),
+    not_trained_yet: () => mockRow({ key: 'k1', name: 'Bench', state: RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED, exercise_class: 'weighted', metrics: [metricRow('top_load', null, 135, null, false)] }),
+    cannot_compare: () => mockRow({ key: 'k1', name: 'Bench', state: RECOVERY_COMPARISON_STATES.NOT_COMPARABLE, exercise_class: 'weighted', unavailable_reason: RECOVERY_UNAVAILABLE_REASONS.BASELINE_VALUE_UNUSABLE }),
+    added: () => mockRow({ key: 'k1', name: 'Foam Roll', state: RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY, exercise_class: 'reps_based', metrics: [metricRow('total_reps', 20, null, null, null)] }),
+  };
+  const VISIBLE_TOKENS = {
+    at_or_above: ['1', 'trained'], close: ['1', 'trained'], rebuilding: ['1', 'trained'], early: ['1', 'trained'],
+    not_trained_yet: ['0', 'trained', '1', 'not yet'],
+    cannot_compare: ['0', 'trained', '1', "can't compare"],
+    added: ['1', 'added'],
+  };
+  const LABEL_COUNT = {
+    at_or_above: 'At or above 1', close: 'Close 1', rebuilding: 'Rebuilding 1', early: 'Early 1',
+    not_trained_yet: '1 not trained yet', cannot_compare: "1 can't compare", added: '1 added during recovery',
+  };
+  const mountRows = (exercises, added) => {
+    deriveRecoveryComparison.mockReturnValueOnce(
+      mockComparison({ weeks: [mockWeek({ exercises, added })] })
+    );
+    return mountWith();
+  };
+  const { ROW_STATUS_KINDS } = require('../components/recovery/RecoveryStateGroups');
+
+  test('every status kind in the shared mapping has a table entry (new kinds must be handled)', () => {
+    expect([...ROW_STATUS_KINDS].sort()).toEqual(Object.keys(KIND_ROWS).sort());
+  });
+
+  test.each(Object.keys(KIND_ROWS))('single-kind week "%s": summary renders, tokens match collapsed vs expanded, label has the count', (kind) => {
+    const row = KIND_ROWS[kind]();
+    const root = kind === 'added' ? mountRows([], [row]) : mountRows([row], []);
+    expect(rosterNode(root)).toBeDefined();
+    expect(tokenParity(root)).toEqual(VISIBLE_TOKENS[kind]);
+    expect(rosterLabel(root)).toContain(LABEL_COUNT[kind]);
+  });
+
+  test('a mixed week with every kind counts each one in the tokens and the label', () => {
+    const exercises = ['at_or_above', 'close', 'rebuilding', 'early', 'not_trained_yet', 'cannot_compare']
+      .map((k, i) => ({ ...KIND_ROWS[k](), key: `m${i}`, name: `Lift ${i}` }));
+    const root = mountRows(exercises, [{ ...KIND_ROWS.added(), key: 'ma' }]);
+    expect(tokenParity(root)).toEqual(['4', 'trained', '1', 'not yet', '1', "can't compare", '1', 'added']);
+    const label = rosterLabel(root);
+    for (const k of Object.keys(LABEL_COUNT)) expect(label).toContain(LABEL_COUNT[k]);
+    expect(hostById(root, 'recovery-roster-bar')).toHaveLength(1);
+  });
+
+  test('a week with only a can\'t-compare row still shows the summary and no bar', () => {
+    const root = mountRows([KIND_ROWS.cannot_compare()], []);
+    expect(hostById(root, 'recovery-roster-bar')).toHaveLength(0);
+    expect(hostTextsIn(rosterNode(root))).toEqual(['0', 'trained', '1', "can't compare"]);
   });
 
   test('the header keeps its >=44dp target and accessibilityState.expanded', () => {
