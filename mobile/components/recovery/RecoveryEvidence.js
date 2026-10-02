@@ -153,6 +153,7 @@ export function BlockEvidence({
   // The hero names the anchor routine (#1219) on every path that renders it (including zero trained);
   // only then does the bottom line stop repeating it.
   const heroNamesRoutine = !!showBandsRegion && hasBands && !!weekLabel;
+  const provenanceText = heroNamesRoutine ? provenance : `Baseline: ${routineTitle} · ${provenance}`;
   return (
     <Card>
       {/* The section's only Recovery header is the outer SectionTitle (#1217);
@@ -283,7 +284,13 @@ export function BlockEvidence({
 
       {/* One quiet footer row (#1219): provenance · reason · info button. */}
       <View testID="recovery-footer-row" style={styles.footerRow}>
-        <Text style={[styles.provenanceText, styles.footerProvenance]}>{heroNamesRoutine ? provenance : `Baseline: ${routineTitle} · ${provenance}`}</Text>
+        <Text
+          style={[styles.provenanceText, styles.footerProvenance]}
+          numberOfLines={1}
+          accessibilityLabel={provenanceText}
+        >
+          {provenanceText}
+        </Text>
         {!editingReason && (reasonEditable || !!block.reason) && <Text style={styles.footerSeparator}>·</Text>}
         {!editingReason && reasonEditable && (
           <Pressable

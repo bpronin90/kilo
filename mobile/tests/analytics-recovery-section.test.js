@@ -2581,7 +2581,7 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
     expect(hasText(root, 'Not a medical judgment')).toBe(false);
     const row = hostById(root, 'recovery-footer-row')[0];
     expect(StyleSheet.flatten(row.props.style)).toMatchObject({ flexDirection: 'row' });
-    expect(StyleSheet.flatten(row.props.style).flexWrap).toBeUndefined();
+    expect(StyleSheet.flatten(row.props.style).flexWrap).toBe('wrap');
     expect(row.findAll(m => m.props.accessibilityLabel === 'About these numbers').length).toBeGreaterThan(0);
     expect(findAllText(row)).toEqual(['Started 05-01-2026', '·', 'Reason: torn hamstring']);
     const texts = findAllText(root);
@@ -2608,5 +2608,42 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
     expect(byLabel(root, 'About these numbers').props.accessibilityState).toEqual({ expanded: true });
     act(() => { byLabel(root, 'About these numbers').props.onPress(); });
     expect(hasText(root, NOTE)).toBe(false);
+  });
+
+  test('no-hero footer: a long routine title and completed date range stay one bounded, shrinkable line with the full value on its label; reason and info button stay reachable', () => {
+    const longTitle = 'Hypertrophy Block With An Extremely Long Routine Name '.repeat(3).trim();
+    const longReason = 'returning after a long layoff and a slow ramp-up '.repeat(4).trim();
+    for (const fontScale of [1, 2]) {
+      mockWindow = { ...mockWindow, fontScale, width: 320 };
+      const root = (() => {
+        let c;
+        act(() => {
+          c = render.create(
+            <AnalyticsRecoverySection
+              blocks={[block({ baseline_note_title: longTitle, reason: longReason, completed_at: '2026-06-01T00:00:00Z' })]}
+              weeks={[]}
+              notes={[]}
+              onSaveReason={saveReason}
+            />
+          );
+        });
+        return c.root;
+      })();
+      const row = hostById(root, 'recovery-footer-row')[0];
+      const full = `Baseline: ${longTitle} · 05-01-2026 – 06-01-2026`;
+      const prov = row.findAll(n => n.type === 'Text' && n.props.accessibilityLabel === full)[0];
+      expect(prov).toBeDefined();
+      expect(prov.props.numberOfLines).toBe(1);
+      expect(StyleSheet.flatten(prov.props.style)).toMatchObject({ flexShrink: 1, maxWidth: '100%' });
+      const reason = byLabel(root, `Edit reason for this recovery block: ${longReason}`);
+      expect(reason).toBeDefined();
+      expect(row.findAll(n => n.type === 'Text' && n.props.numberOfLines === 1 && [].concat(n.props.children).join('') === `Reason: ${longReason}`)).toHaveLength(1);
+      expect(StyleSheet.flatten(reason.props.style)).toMatchObject({ minHeight: 44, minWidth: 96, flexShrink: 1 });
+      const info = byLabel(root, 'About these numbers');
+      expect(StyleSheet.flatten(info.props.style)).toMatchObject({ minWidth: 44, minHeight: 44, flexShrink: 0 });
+      // The row wraps instead of clipping a control when it cannot fit.
+      expect(StyleSheet.flatten(row.props.style).flexWrap).toBe('wrap');
+    }
+    mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
   });
 });

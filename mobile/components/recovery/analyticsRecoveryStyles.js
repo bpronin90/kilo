@@ -220,16 +220,22 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // One quiet footer row (#1219): provenance, reason and the info button.
   footerRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     columnGap: 6,
   },
+  // Bounded, shrinkable single line: a long routine title or date range
+  // ellipsizes (full value on its label) instead of squeezing out the reason or
+  // the info button; if the row cannot fit, it wraps rather than clip a control.
   footerProvenance: {
-    flexShrink: 0,
+    flexShrink: 1,
+    maxWidth: '100%',
   },
   footerReason: {
-    flexShrink: 1,
     flexGrow: 1,
-    minWidth: 0,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 96,
   },
   footerSeparator: {
     fontSize: 13,
@@ -239,6 +245,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     minWidth: 44,
     minHeight: 44,
     marginLeft: 'auto',
+    flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
