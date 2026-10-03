@@ -802,6 +802,7 @@ describe('bottom reveal and hysteresis (#1231)', () => {
     function mountWeb(probe) {
       const listeners = {};
       const node = {
+        clientWidth: 400, clientHeight: 800,
         addEventListener: (n, fn) => { (listeners[n] = listeners[n] || []).push(fn); },
         removeEventListener: (n, fn) => { listeners[n] = (listeners[n] || []).filter((f) => f !== fn); },
       };
@@ -809,7 +810,7 @@ describe('bottom reveal and hysteresis (#1231)', () => {
       jest.spyOn(ScrollView.prototype, 'getScrollableNode').mockReturnValue(node);
       let component;
       act(() => { component = renderer.create(<Harness probe={probe} />); });
-      return { component, listeners, scroll: findScroll(component) };
+      return { component, listeners, node, scroll: findScroll(component) };
     }
 
     test('wheel input drives auto-hide; a programmatic animated jump and a jump to y: 0 do not hide', () => {
@@ -862,6 +863,26 @@ describe('bottom reveal and hysteresis (#1231)', () => {
       now += 50; act(() => listeners.keydown[0]({ key: ' ', target: { tagName: 'DIV', getAttribute: () => null } })); act(() => scroll.props.onScroll(ev(300)));
       expect(probe.current).toBe(true);
       act(() => component.unmount());
+    });
+
+    test('a scrollbar thumb drag stays user-driven until release, however long it lasts', () => {
+      const probe = { current: null };
+      const { component, listeners, node, scroll } = mountWeb(probe);
+      act(() => listeners.pointerdown[0]({ target: node, offsetX: 410, offsetY: 5 }));
+      act(() => scroll.props.onScroll(ev(100)));
+      now += 2000; act(() => scroll.props.onScroll(ev(400)));
+      expect(probe.current).toBe(true);
+      now += 2000; act(() => scroll.props.onScroll(ev(700)));
+      expect(probe.current).toBe(true);
+      // After release the hold ends once the window lapses (jump to top reveals).
+      act(() => listeners.pointerup[0]());
+      now += 1000; act(() => scroll.props.onScroll(ev(0)));
+      expect(probe.current).toBe(false);
+      act(() => scroll.props.onScroll(ev(300))); act(() => scroll.props.onScroll(ev(600)));
+      expect(probe.current).toBe(false);
+      act(() => component.unmount());
+      expect(listeners.pointerdown).toHaveLength(0);
+      expect(listeners.pointerup).toHaveLength(0);
     });
 
     test('input stamps expire so later scroll events are programmatic', () => {

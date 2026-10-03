@@ -98,27 +98,49 @@ const WEB_USER_SCROLL_LISTENERS = {
   wheel: () => true,
   touchmove: () => true,
   keydown: (node, e) => isScrollKey(e),
-  pointerdown: onScrollbar,
-  mousedown: onScrollbar,
 };
+const WEB_SCROLLBAR_PRESS = ['pointerdown', 'mousedown'];
+const WEB_SCROLLBAR_RELEASE = ['pointerup', 'pointercancel', 'mouseup'];
 
 // Returns { attach, isActive }. `attach(node)` binds the input listeners to a
 // DOM node (or detaches when null); nodes without addEventListener are ignored.
+// A scrollbar press holds intent until release, since dragging the thumb emits
+// scroll events with no further input events on the node.
 export function useWebUserScrollIntent() {
   const lastInputAt = useRef(-Infinity);
+  const held = useRef(false);
   const detach = useRef(null);
   const attach = useCallback((instance) => {
     if (detach.current) { detach.current(); detach.current = null; }
     const node = instance && typeof instance.getScrollableNode === 'function' ? instance.getScrollableNode() : instance;
     if (!node || typeof node.addEventListener !== 'function') return;
+    const stamp = () => { lastInputAt.current = Date.now(); };
     const bound = Object.entries(WEB_USER_SCROLL_LISTENERS).map(([name, counts]) => {
-      const fn = (e) => { if (counts(node, e || {})) lastInputAt.current = Date.now(); };
+      const fn = (e) => { if (counts(node, e || {})) stamp(); };
       node.addEventListener(name, fn, { passive: true });
       return [name, fn];
     });
-    detach.current = () => bound.forEach(([name, fn]) => node.removeEventListener(name, fn));
+    const win = (node.ownerDocument && node.ownerDocument.defaultView) || node;
+    const release = () => {
+      held.current = false;
+      stamp();
+      WEB_SCROLLBAR_RELEASE.forEach((n) => win.removeEventListener(n, release));
+    };
+    const press = (e) => {
+      if (!onScrollbar(node, e || {}) || held.current) return;
+      held.current = true;
+      stamp();
+      WEB_SCROLLBAR_RELEASE.forEach((n) => win.addEventListener(n, release));
+    };
+    WEB_SCROLLBAR_PRESS.forEach((n) => node.addEventListener(n, press, { passive: true }));
+    detach.current = () => {
+      bound.forEach(([name, fn]) => node.removeEventListener(name, fn));
+      WEB_SCROLLBAR_PRESS.forEach((n) => node.removeEventListener(n, press));
+      WEB_SCROLLBAR_RELEASE.forEach((n) => win.removeEventListener(n, release));
+      held.current = false;
+    };
   }, []);
-  const isActive = useCallback(() => Date.now() - lastInputAt.current <= WEB_USER_SCROLL_WINDOW_MS, []);
+  const isActive = useCallback(() => held.current || Date.now() - lastInputAt.current <= WEB_USER_SCROLL_WINDOW_MS, []);
   return { attach, isActive };
 }
 
