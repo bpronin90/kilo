@@ -269,13 +269,14 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   reasonEditIcon: {
     flexShrink: 0,
   },
-  // Directly after the date text (never margin-pushed to the card edge); the
-  // 18dp glyph sits in a real 44x44 target.
+  // Directly after the date text (ordinary row gap, never margin-pushed to the
+  // card edge); the 18dp glyph sits in a real 44x44 target that reserves its
+  // whole box — no negative margins, so it can never overlap the date or start
+  // outside the row. When label + date + button cannot share a line the WHOLE
+  // button wraps to the next line, left-aligned at the row edge.
   infoButton: {
     minWidth: 44,
     minHeight: 44,
-    marginLeft: -8,
-    marginRight: -8,
     flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',

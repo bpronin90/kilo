@@ -3384,12 +3384,15 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
     const tokens = tokenViews(root);
     expect(tokens.map(t => hostTextsIn(t))).toEqual(expected);
     for (const t of tokens) {
-      // Non-shrinking whole token whose text cannot wrap or truncate inside it.
-      expect(flat(t)).toMatchObject({ flexDirection: 'row', flexShrink: 0 });
-      for (const text of t.findAll(n => typeof n.type === 'string' && n.type === 'Text')) {
-        expect(flat(text).flexShrink).toBe(0);
-        expect(text.props.numberOfLines).toBeUndefined();
-      }
+      // A whole token: it keeps its text intact whenever it fits (the container
+      // wraps whole tokens to the next line BEFORE any shrink applies). Only a
+      // token wider than the card itself may shrink — `maxWidth: 100%` bounds it
+      // and ONLY its label may wrap, as a last resort. Nothing truncates.
+      expect(flat(t)).toMatchObject({ flexDirection: 'row', flexShrink: 1, maxWidth: '100%' });
+      const [num, label] = t.findAll(n => typeof n.type === 'string' && n.type === 'Text');
+      expect(flat(num).flexShrink).toBe(0);
+      expect(flat(label).flexShrink).toBe(1);
+      for (const text of [num, label]) expect(text.props.numberOfLines).toBeUndefined();
     }
     // The tokens are direct children of the one wrapping row: nothing else (no
     // separator glyph or view that could start or end a wrapped row).
@@ -3418,6 +3421,34 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
     const root = mountOwner();
     mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
     assertIntrinsicTokens(root, [['7', 'trained'], ['20', 'not yet'], ['5', 'added']]);
+  });
+
+  test('an individually oversized token is bounded by the card and wraps ITS OWN label as a last resort (fontScale 2, ~252dp, long wording)', () => {
+    mockWindow = { width: 252, height: 844, scale: 3, fontScale: 2 };
+    // 20 "can't compare" rows: the widest quiet token the summary can show.
+    deriveRecoveryComparison.mockReturnValueOnce(mockComparison({ weeks: [mockWeek({
+      week_number: 6,
+      exercises: Array.from({ length: 20 }, (_, i) => mockRow({
+        key: `C${i}`, name: `C${i}`, state: S.NOT_COMPARABLE, exercise_class: 'weighted',
+        unavailable_reason: RECOVERY_UNAVAILABLE_REASONS.EXERCISE_CLASS_CHANGED,
+      })),
+    })] }));
+    const root = (() => {
+      let c;
+      act(() => { c = render.create(<AnalyticsRecoverySection blocks={[block()]} weeks={[week(6, 'note-w6')]} notes={[note('note-w6', BASELINE_TEXT)]} />); });
+      return c.root;
+    })();
+    mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+    const token = tokenViews(root).find(t => hostTextsIn(t)[1] === "can't compare");
+    expect(hostTextsIn(token)).toEqual(['20', "can't compare"]);
+    // Bounded by the row: cannot be wider than the card; shrinks only if it alone must.
+    expect(flat(token)).toMatchObject({ maxWidth: '100%', flexShrink: 1 });
+    const [num, label] = token.findAll(n => typeof n.type === 'string' && n.type === 'Text');
+    expect(flat(num).flexShrink).toBe(0); // the count itself never shrinks or wraps
+    expect(flat(label).flexShrink).toBe(1); // only the label may wrap, never truncate
+    expect(label.props.numberOfLines).toBeUndefined();
+    // The full wording is unaffected.
+    expect(rosterLabel(root)).toContain("Can't compare 20");
   });
 
   test('no width-estimate balancing helper remains and the count layout has no row bookkeeping', () => {
@@ -3454,9 +3485,16 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
     expect(flat(dateRow)).toMatchObject({ flexDirection: 'row', flexWrap: 'wrap', minHeight: 44 });
     const info = byLabel(root, 'About these numbers');
     expect(dateRow.findAll(n => n === info || n.props.accessibilityLabel === 'About these numbers').length).toBeGreaterThan(0);
-    // Adjacent, not pushed to the edge.
-    expect(flat(info).marginLeft).not.toBe('auto');
-    expect(flat(info).marginLeft).toBeLessThanOrEqual(0);
+    // Adjacent by ordinary row gap — never margin-pushed to the edge, and NO
+    // negative margin: the 44x44 box is fully reserved (cannot overlap the date or
+    // start outside the row), and wraps whole to the next line when it cannot fit.
+    const infoStyle = flat(info);
+    expect(infoStyle.marginLeft).not.toBe('auto');
+    for (const side of ['margin', 'marginLeft', 'marginRight', 'marginTop', 'marginBottom', 'marginHorizontal', 'marginVertical']) {
+      expect(infoStyle[side] === undefined || infoStyle[side] >= 0).toBe(true);
+    }
+    expect(infoStyle).toMatchObject({ minWidth: 44, minHeight: 44, flexShrink: 0 });
+    expect(flat(dateRow).columnGap).toBeGreaterThan(0);
     // No row in the block uses space-between / auto margins to float a control away from its text.
     const floaters = ctx.findAll(n => typeof n.type === 'string' && (flat(n).justifyContent === 'space-between' || flat(n).marginLeft === 'auto'));
     expect(floaters).toHaveLength(0);

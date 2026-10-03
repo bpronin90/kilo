@@ -101,15 +101,18 @@ export const createVisualStyles = (colors, kua = null) => {
     exNumberText: { fontSize: 13, color: inkMuted },
     // Collapsed/expanded evidence line (#1219): text only. The trained count
     // carries the ink; the not-graded counts take the shared neutral so the line
-    // has one quiet hierarchy. Whole tokens, separated by a small dot.
+    // has one quiet hierarchy.
     rosterBlock: { paddingBottom: 4 },
     // A plain wrapping row of unsplittable tokens (no glyph separators, so none can
     // start or end a wrapped row): consistent column/row gaps divide the counts.
     rosterTokens: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 2 },
-    rosterStat: { flexDirection: 'row', alignItems: 'baseline', gap: 4, flexShrink: 0 },
+    // A token keeps its whole text and never shrinks while it fits; only a token
+    // wider than the card ITSELF may shrink (maxWidth 100% bounds it) so its label
+    // wraps as a last resort instead of overflowing.
+    rosterStat: { flexDirection: 'row', alignItems: 'baseline', gap: 4, flexShrink: 1, maxWidth: '100%' },
     rosterNum: { flexShrink: 0, fontSize: 13, fontWeight: '800', color: ink },
     rosterNumQuiet: { flexShrink: 0, fontSize: 13, fontWeight: '700', color: inkMuted },
-    rosterLabel: { flexShrink: 0, fontSize: 13, fontWeight: '600', color: inkMuted },
+    rosterLabel: { flexShrink: 1, fontSize: 13, fontWeight: '600', color: inkMuted },
     exNote: { fontSize: 13, color: inkMuted },
     weekNoteText: { fontSize: 12, fontWeight: '600', color: inkMuted },
   });
