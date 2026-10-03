@@ -47,8 +47,16 @@ each one is good for.
 | GitHub Actions logs | Deployment, audit-gate, migration-drift, and monitor runs | GitHub default | Repository maintainers |
 
 Kilo's mobile crash reporting (Sentry) is a diagnostics surface, not a security
-log: it excludes default PII capture and user-authored health content, and
-nothing in this document depends on it.
+log. Release builds use a deny-by-default outbound policy in
+`mobile/lib/errorReporting.js`: error messages, request data, user identity,
+arbitrary contexts, extras, fingerprints, and breadcrumb message/data are never
+sent. The allow-list retains only bounded exception type, mechanism, function
+and line/column metadata, standard breadcrumb classification, the app release,
+and Expo update tags. Exception values are replaced with `[redacted]`; unknown event and
+breadcrumb fields are discarded. Default PII, performance traces, logs, and
+automatic session tracking are disabled. The focused error-reporting tests use
+representative workout notes, weights, and identity values to enforce this
+boundary, and nothing in this document depends on Sentry.
 
 ## Requirements for a security event
 
