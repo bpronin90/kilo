@@ -1,3 +1,5 @@
+const APP_VERSION = require('../app.json').expo.version;
+
 describe('error reporting bootstrap', () => {
   const originalDev = global.__DEV__;
   const originalDsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
@@ -39,7 +41,7 @@ describe('error reporting bootstrap', () => {
     expect(initErrorReporting()).toBe(true);
     expect(Sentry.init).toHaveBeenCalledWith(expect.objectContaining({
       dsn: 'https://public@example.ingest.sentry.io/1',
-      release: 'com.benpronin.kilo@1.8.6',
+      release: `com.benpronin.kilo@${APP_VERSION}`,
       sendDefaultPii: false,
       enableNative: false,
       enableAutoSessionTracking: false,
@@ -62,7 +64,7 @@ describe('error reporting bootstrap', () => {
 
     expect(Sentry.init.mock.calls[0][0]).toEqual(expect.objectContaining({
       enableNative: false,
-      release: 'com.benpronin.kilo@1.8.6',
+      release: `com.benpronin.kilo@${APP_VERSION}`,
       beforeSend: expect.any(Function),
       beforeBreadcrumb: expect.any(Function),
     }));
@@ -90,7 +92,7 @@ describe('error reporting bootstrap', () => {
       timestamp: 42,
       platform: 'javascript',
       level: 'error',
-      release: 'com.benpronin.kilo@1.8.6+12',
+      release: `com.benpronin.kilo@${APP_VERSION}+12`,
       message: sensitiveValues[0],
       transaction: sensitiveValues[1],
       logger: sensitiveValues[2],
@@ -147,7 +149,7 @@ describe('error reporting bootstrap', () => {
       timestamp: 42,
       platform: 'javascript',
       level: 'error',
-      release: 'com.benpronin.kilo@1.8.6+12',
+      release: `com.benpronin.kilo@${APP_VERSION}+12`,
       exception: {
         values: [{
           type: 'TypeError',
