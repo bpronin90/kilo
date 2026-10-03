@@ -29,20 +29,9 @@ export const createVisualStyles = (colors, kua = null) => {
       backgroundColor: track,
       gap: 2,
     },
-    // Collapsed Exercise details mini-bar (#1219): thinner than the hero bar.
-    miniBar: {
-      flexDirection: 'row',
-      height: 6,
-      borderRadius: 3,
-      overflow: 'hidden',
-      backgroundColor: track,
-      gap: 1,
-    },
     legend: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 6 },
     legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     legendDot: { width: 10, height: 10, borderRadius: 5 },
-    // The shared neutral mark beside a not-graded status count (#1219).
-    quietDot: { width: 8, height: 8, borderRadius: 4, alignSelf: 'center' },
     legendText: { fontSize: 13, fontWeight: '600', color: ink },
     changeRow: { flexDirection: 'row', columnGap: 12, alignItems: 'center' },
     changeCell: { flexDirection: 'row', alignItems: 'center', gap: 3 },
@@ -110,9 +99,16 @@ export const createVisualStyles = (colors, kua = null) => {
     exPercent: { flexShrink: 0, minWidth: 124, maxWidth: '100%', textAlign: 'right', fontSize: 13, fontWeight: '800', color: ink },
     exNumbers: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 2 },
     exNumberText: { fontSize: 13, color: inkMuted },
-    rosterBlock: { gap: 6, paddingTop: 2, paddingBottom: 4 },
-    rosterStat: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
+    // Collapsed/expanded evidence line (#1219): text only. The trained count
+    // carries the ink; the not-graded counts take the shared neutral so the line
+    // has one quiet hierarchy. Whole tokens, separated by a small dot.
+    rosterBlock: { paddingBottom: 4 },
+    rosterTokens: { gap: 2 },
+    rosterRow: { flexDirection: 'row', alignItems: 'center' },
+    rosterStat: { flexDirection: 'row', alignItems: 'baseline', gap: 4, flexShrink: 1 },
     rosterNum: { fontSize: 13, fontWeight: '800', color: ink },
+    rosterNumQuiet: { fontSize: 13, fontWeight: '700', color: inkMuted },
+    rosterSeparator: { width: 3, height: 3, borderRadius: 2, marginHorizontal: 8, backgroundColor: inkMuted },
     exNote: { fontSize: 13, color: inkMuted },
     weekNoteText: { fontSize: 12, fontWeight: '600', color: inkMuted },
   });

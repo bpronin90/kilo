@@ -415,7 +415,7 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
     expect(texts.indexOf('Recovery')).toBeLessThan(texts.indexOf('Week 1'));
     expect(texts.indexOf('Week 1')).toBeLessThan(texts.indexOf('2 of 2'));
     // The hero label names the routine, so the bottom line is dates only.
-    const ctxText = texts.find(t => t.startsWith('Started'));
+    const ctxText = texts.find(t => t === '05-01-2026');
     expect(texts.indexOf('2 of 2')).toBeLessThan(texts.indexOf(ctxText));
     const routine = hostText(root, ctxText)[0];
     expect(sizeOf(routine).fontSize).toBeGreaterThanOrEqual(13);
@@ -430,8 +430,8 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
     expect(hero).toMatchObject({ fontSize: 32, lineHeight: 36 });
     expect(hero.fontSize).not.toBe(28);
     expect(sizeOf(hostText(root, 'Week 1')[0]).fontSize).toBe(13);
-    expect(sizeOf(hostText(root, 'at or above Push Pull Legs baseline')[0]).fontSize).toBe(13);
-    expect(sizeOf(hostText(root, 'Reason: torn hamstring')[0]).fontSize).toBeGreaterThanOrEqual(13);
+    expect(sizeOf(hostText(root, 'Push Pull Legs baseline')[0]).fontSize).toBe(13);
+    expect(sizeOf(hostText(root, 'torn hamstring')[0]).fontSize).toBeGreaterThanOrEqual(13);
   });
 
   test('the reason and routine sit at the bottom: hero first, then Baseline context, then Reason', () => {
@@ -439,15 +439,15 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
     const root = setup({ blocks: [b], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
     const texts = findAllText(root);
     const hero = texts.indexOf('2 of 2');
-    const ctx = texts.indexOf('Started 05-01-2026');
-    const reason = texts.indexOf('Reason: torn hamstring');
+    const ctx = texts.indexOf('05-01-2026');
+    const reason = texts.indexOf('torn hamstring');
     expect(hero).toBeGreaterThan(-1);
     expect(ctx).toBeGreaterThan(hero);
     expect(reason).toBeGreaterThan(ctx);
     // The routine is named once, by the hero label (#1219) — never again in the
     // bottom provenance line.
-    expect(texts.filter(t => t.includes('Push Pull Legs'))).toEqual(['at or above Push Pull Legs baseline']);
-    expect(texts.some(t => t.startsWith('Baseline:'))).toBe(false);
+    expect(texts.filter(t => t.includes('Push Pull Legs'))).toEqual(['Push Pull Legs baseline']);
+    expect(texts.includes('Baseline')).toBe(false);
   });
 
   test('the bottom reason keeps its edit behavior and a >=44dp target', () => {
@@ -484,7 +484,7 @@ describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b
     const component = setup({ blocks: [b], weeks: [w], notes: [n] });
     const root = component.root;
 
-    expect(hasText(root, 'at or above Push Pull Legs baseline')).toBe(true);
+    expect(hasText(root, 'Push Pull Legs baseline')).toBe(true);
     // The week is named once, by the hero — not repeated in the caption.
     expect(hasText(root, 'Week 1 · Push Pull Legs')).toBe(false);
     expect(findAllText(root).filter(t => t === 'Week 1').length).toBe(1);
@@ -497,7 +497,8 @@ describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b
     const component = setup({ blocks: [b], weeks: [], notes: [] });
     const root = component.root;
 
-    expect(hasText(root, 'Baseline: Push Pull Legs')).toBe(true);
+    expect(findAllText(root).filter(t => t.includes('Push Pull Legs'))).toEqual(['Push Pull Legs']);
+    expect(findAllText(root)).toContain('Baseline');
     expect(hasText(root, 'Baseline captured. No week logged yet.')).toBe(true);
     expect(hasText(root, 'baseline exercises met')).toBe(false);
     expect(byLabel(root, 'Expand exercise details')).toBeUndefined();
@@ -510,7 +511,7 @@ describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b
     const component = setup({ blocks: [b], weeks: [w], notes: [n] });
     const root = component.root;
 
-    expect(hasText(root, 'Started 05-01-2026')).toBe(true);
+    expect(hasText(root, '05-01-2026')).toBe(true);
     // The old combined "Active · Week N · N weeks logged · Started ..." line is gone.
     expect(hasText(root, 'weeks logged')).toBe(false);
   });
@@ -523,7 +524,8 @@ describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b
     const component = setup({ blocks: [b], weeks: [], notes: [] });
     const root = component.root;
 
-    expect(hasText(root, '04-01-2026 – 04-29-2026')).toBe(true);
+    expect(hasText(root, '04-01-2026 –')).toBe(true);
+    expect(hasText(root, '04-29-2026')).toBe(true);
   });
 
   // Scoped to host nodes only, matching the `groupHeaders` dedup pattern —
@@ -875,7 +877,7 @@ describe('AnalyticsRecoverySection — persisted week identity survives gaps', (
     expect(root.findAll(inst => inst.props.accessibilityLabel === 'Week 2').length).toBe(0);
     // Defaults to the latest live week, which is persisted week_number 3 — not
     // "week 2 of 2" from array position.
-    expect(hasText(root, 'at or above Push Pull Legs baseline')).toBe(true);
+    expect(hasText(root, 'Push Pull Legs baseline')).toBe(true);
     expect(hasText(root, 'Week 3 · Push Pull Legs')).toBe(false);
   });
 });
@@ -1223,7 +1225,7 @@ describe('AnalyticsRecoverySection — authoritative Recovery state (#716)', () 
     const rendered = texts(component);
     expect(rendered).toContain(RECOVERY_STALE_MESSAGE);
     // The block's own evidence is still rendered, not replaced by the notice.
-    expect(rendered.some(t => t.includes('at or above Push Pull Legs baseline'))).toBe(true);
+    expect(rendered.some(t => t.includes('Push Pull Legs baseline'))).toBe(true);
     expect(retryButton(component)).toBeTruthy();
   });
 
@@ -1317,7 +1319,7 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     expect(hasText(root, 'baseline exercises met')).toBe(false);
     expect(hasText(root, 'Exercise details')).toBe(true);
     // The header no longer restates the hero's status.
-    expect(findAllText(root).filter(t => t.startsWith('at or above') && t.endsWith('baseline')).length).toBe(1);
+    expect(findAllText(root).filter(t => t === 'trained this week at or above').length).toBe(1);
     expect(hasText(root, 'of 2 at or above baseline')).toBe(false);
     // #1219: collapsed shows the one shared bar + "N trained" stat, not a count sentence.
     expect(hasText(root, '3 exercises')).toBe(false);
@@ -1797,7 +1799,7 @@ describe('AnalyticsRecoverySection — reopen the newest completed block (#839)'
     expect(reopenButton(component.root)).toBeUndefined();
     // Provenance reads as an open-ended active block ("Started …"), not a
     // completed date range.
-    expect(hasText(component.root, 'Started ')).toBe(true);
+    expect(hasText(component.root, 'Started')).toBe(true);
   });
 });
 
@@ -1940,8 +1942,8 @@ describe('AnalyticsRecoverySection — scannable hierarchy (#1209)', () => {
   test('hero states the current week first, above the comparison and bands', () => {
     const root = twoWeeks();
     const hero = root.findAll(n => n.props.testID === 'recovery-hero' && typeof n.type === 'string')[0];
-    expect(hero.props.accessibilityLabel).toMatch(/^Week 2: \d+ of \d+ trained exercises at or above [A-Za-z ]+ baseline$/);
-    expect(hasText(root, 'at or above Push Pull Legs baseline')).toBe(true);
+    expect(hero.props.accessibilityLabel).toMatch(/^Week 2: \d+ of \d+ exercises trained this week at or above [A-Za-z ]+ baseline\. The count covers only exercises trained this week\.$/);
+    expect(hasText(root, 'Push Pull Legs baseline')).toBe(true);
     expect(hasText(root, 'trained exercises at or above baseline')).toBe(false);
     const order = root.findAll(n => ['recovery-hero', 'recovery-movement', 'recovery-bands-rows'].includes(n.props.testID) && typeof n.type === 'string')
       .map(n => n.props.testID);
@@ -1971,7 +1973,7 @@ describe('AnalyticsRecoverySection — scannable hierarchy (#1209)', () => {
     expect(movementTexts).not.toContain('Fell back');
     expect(movement.props.accessibilityLabel).toContain('0 fell back');
     expect(root.findAll(n => n.props.testID === 'recovery-band-strip').length).toBeGreaterThan(0);
-    for (const gone of ['roster exercises trained', 'not trained yet', 'Most common gap']) expect(hasText(root, gone)).toBe(false);
+    for (const gone of ['roster exercises trained', 'not yet', 'Most common gap']) expect(hasText(root, gone)).toBe(false);
     // #1215: removed captions and the prose they restated no longer render.
     for (const gone of ['Across weeks', 'both weeks', 'Since Week', 'linked weeks', 'pick a week']) {
       expect(hasText(root, gone)).toBe(false);
@@ -2142,19 +2144,19 @@ describe('AnalyticsRecoverySection — routine-anchored hero label (#1219)', () 
 
   test('the hero label names the routine and the bottom line no longer repeats it', () => {
     const root = oneWeek('Push Pull Legs');
-    expect(hasText(root, 'at or above Push Pull Legs baseline')).toBe(true);
-    expect(heroNode(root).props.accessibilityLabel).toBe('Week 1: 2 of 2 trained exercises at or above Push Pull Legs baseline');
+    expect(hasText(root, 'Push Pull Legs baseline')).toBe(true);
+    expect(heroNode(root).props.accessibilityLabel).toBe('Week 1: 2 of 2 exercises trained this week at or above Push Pull Legs baseline. The count covers only exercises trained this week.');
     expect(findAllText(root).some(t => t.startsWith('Baseline:'))).toBe(false);
-    expect(hasText(root, 'Started 05-01-2026')).toBe(true);
+    expect(hasText(root, '05-01-2026')).toBe(true);
   });
 
   test('a long routine name ellipsizes on screen while the accessible label keeps the whole name', () => {
     const full = 'Upper Lower Push Pull Legs Hypertrophy Block';
     const root = oneWeek(full);
-    const visible = findAllText(root).find(t => t.startsWith('at or above') && t.endsWith('baseline'));
+    const visible = findAllText(root).find(t => t.endsWith(' baseline') && t.includes('…'));
     expect(visible).toContain('…');
     expect(visible).not.toContain(full);
-    expect(visible.length).toBeLessThanOrEqual('at or above  baseline'.length + 24);
+    expect(visible.length).toBeLessThanOrEqual(' baseline'.length + 24);
     expect(heroNode(root).props.accessibilityLabel).toContain(`at or above ${full} baseline`);
     // The full name appears nowhere visible.
     expect(findAllText(root).some(t => t.includes(full))).toBe(false);
@@ -2200,7 +2202,7 @@ describe('AnalyticsRecoverySection — routine-anchored hero label (#1219)', () 
     test('the rendered hero shows the safely cut name and the accessible label the full emoji title', () => {
       const title = `${ascii(22)}💪 Hypertrophy Block`;
       const root = setup({ blocks: [block({ baseline_note_title: title })], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
-      const visible = findAllText(root).find(t => t.startsWith('at or above') && t.endsWith('baseline'));
+      const visible = findAllText(root).find(t => t.endsWith(' baseline') && t.includes('…'));
       expect(hasLoneSurrogate(visible)).toBe(false);
       expect(visible).toContain('…');
       expect(heroNode(root).props.accessibilityLabel).toContain(`at or above ${title} baseline`);
@@ -2210,8 +2212,8 @@ describe('AnalyticsRecoverySection — routine-anchored hero label (#1219)', () 
   test('an untitled routine falls back to "Untitled Routine" visibly and accessibly', () => {
     for (const title of ['', '   ', null]) {
       const root = oneWeek(title);
-      expect(hasText(root, 'at or above Untitled Routine baseline')).toBe(true);
-      expect(heroNode(root).props.accessibilityLabel).toContain('at or above Untitled Routine baseline');
+      expect(hasText(root, 'Untitled Routine baseline')).toBe(true);
+      expect(heroNode(root).props.accessibilityLabel).toContain('Untitled Routine baseline');
     }
   });
 
@@ -2224,9 +2226,9 @@ describe('AnalyticsRecoverySection — routine-anchored hero label (#1219)', () 
     }).root;
     expect(hasText(root, 'Nothing trained yet')).toBe(true);
     expect(findAllText(root).filter(t => t.includes('Push Pull Legs'))).toEqual(['against Push Pull Legs baseline']);
-    expect(heroNode(root).props.accessibilityLabel).toBe('Week 1: no roster exercises trained yet against Push Pull Legs baseline');
+    expect(heroNode(root).props.accessibilityLabel).toBe('Week 1: no roster exercises trained yet this week against Push Pull Legs baseline');
     expect(findAllText(root).some(t => t.startsWith('Baseline:'))).toBe(false);
-    expect(hasText(root, 'Started 05-01-2026')).toBe(true);
+    expect(hasText(root, '05-01-2026')).toBe(true);
   });
 
   test('zero-trained hero with a long or untitled routine keeps the same single-naming rule', () => {
@@ -2249,13 +2251,13 @@ describe('AnalyticsRecoverySection — routine-anchored hero label (#1219)', () 
     const unreadable = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', 'x'.repeat(MAX_RAW_TEXT_LENGTH + 1))] }).root;
     for (const root of [missing, unreadable]) {
       expect(root.findAll(n => n.props.testID === 'recovery-hero' && typeof n.type === 'string')).toHaveLength(0);
-      expect(findAllText(root).filter(t => t.includes('Push Pull Legs'))).toEqual(['Baseline: Push Pull Legs · Started 05-01-2026']);
+      expect(findAllText(root).filter(t => t.includes('Push Pull Legs'))).toEqual(['Push Pull Legs']);
     }
   });
 
   test('with no hero (no week logged) the routine is still named once, in the bottom line', () => {
     const root = setup({ blocks: [block()], weeks: [], notes: [] }).root;
-    expect(findAllText(root).filter(t => t.includes('Push Pull Legs'))).toEqual(['Baseline: Push Pull Legs · Started 05-01-2026']);
+    expect(findAllText(root).filter(t => t.includes('Push Pull Legs'))).toEqual(['Push Pull Legs']);
   });
 });
 
@@ -2483,7 +2485,7 @@ describe('AnalyticsRecoverySection — visual exercise details (#1219)', () => {
     // BASE has 3 roster exercises; Curl is not trained this week.
     expect(rosterLabel(root)).toBe("Trained this week: 2 of 3 roster exercises, 1 not trained yet. By status: At or above 1, Rebuilding 1, Early 0, Not trained yet 1, Can't compare 0, Added during recovery 1. Most common gap: Total work.");
     const texts = hostTextsIn(rosterNode(root));
-    expect(texts).toEqual(['2', 'trained', '1', 'not trained yet', '1', 'added during recovery']);
+    expect(texts).toEqual(['2', 'trained', '1', 'not yet', '1', 'added']);
     const sizes = rosterNode(root)
       .findAll(n => typeof n.type === 'string' && n.type === 'Text')
       .map(n => StyleSheet.flatten(n.props.style).fontSize);
@@ -2541,33 +2543,32 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
     return component.root;
   };
   const hostById = (root, id) => root.findAll(n => typeof n.type === 'string' && n.props.testID === id);
-  const segmentIds = (root) => hostById(root, 'recovery-roster-bar')[0]
-    .findAll(n => typeof n.type === 'string' && /^recovery-segment-/.test(n.props.testID || ''))
-    .map(n => n.props.testID);
+  const segsOf = (node) => node.findAll(n => typeof n.type === 'string' && /^recovery-segment-/.test(n.props.testID || ''));
   const NOTE = 'Training numbers only. Not a medical judgment — only you end a Recovery block.';
   const saveReason = async () => ({ ok: true });
 
-  test('collapsed and expanded render the SAME bar + "N trained  M not yet" row; expanding does not change it', () => {
+  test('collapsed and expanded render the SAME text-led count line; expanding does not change it', () => {
     const root = mountWith();
     const collapsedTexts = hostTextsIn(rosterNode(root));
-    const collapsedSegments = segmentIds(root);
-    expect(collapsedTexts).toEqual(['2', 'trained', '1', 'not trained yet', '1', 'added during recovery']);
-    expect(collapsedSegments.length).toBeGreaterThan(0);
+    expect(collapsedTexts).toEqual(['2', 'trained', '1', 'not yet', '1', 'added']);
+    // No second progress bar: the hero's bar is the only one (#1219 owner review).
+    expect(hostById(root, 'recovery-roster-bar')).toHaveLength(0);
+    expect(segsOf(rosterNode(root))).toHaveLength(0);
     // No count sentence or Gap stat while collapsed.
     expect(hasText(root, '3 exercises')).toBe(false);
     expect(hasText(root, 'Gap: Total work')).toBe(false);
     expandDetails(root);
     expect(hostById(root, 'recovery-roster-summary')).toHaveLength(1);
     expect(hostTextsIn(rosterNode(root))).toEqual(collapsedTexts);
-    expect(segmentIds(root)).toEqual(collapsedSegments);
+    expect(segsOf(rosterNode(root))).toHaveLength(0);
     // The full sentence (including the gap) stays on the accessible label.
     expect(rosterLabel(root)).toContain('Most common gap');
   });
 
   test('"not yet" is omitted when nothing is untrained, and "0 trained" shows when nothing is trained', () => {
     const one = '-Bench\n- 135 5,5,5';
-    expect(hostTextsIn(rosterNode(mountWith({}, {}, one, '-Bench\n- 135 5,5,5\n-Foam Roll\n- 10,10')))).toEqual(['1', 'trained', '1', 'added during recovery']);
-    expect(hostTextsIn(rosterNode(mountWith({}, {}, one, '-Foam Roll\n- 10,10')))).toEqual(['0', 'trained', '1', 'not trained yet', '1', 'added during recovery']);
+    expect(hostTextsIn(rosterNode(mountWith({}, {}, one, '-Bench\n- 135 5,5,5\n-Foam Roll\n- 10,10')))).toEqual(['1', 'trained', '1', 'added']);
+    expect(hostTextsIn(rosterNode(mountWith({}, {}, one, '-Foam Roll\n- 10,10')))).toEqual(['0', 'trained', '1', 'not yet', '1', 'added']);
   });
 
   const tokenParity = (root) => {
@@ -2584,11 +2585,11 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
     expect(tokenParity(mountWith({}, {}, one, one))).toEqual(['1', 'trained']);
     // mixed: trained / not yet / added in one row, bar present.
     const mixed = mountWith();
-    expect(hostById(mixed, 'recovery-roster-bar')).toHaveLength(1);
-    expect(tokenParity(mixed)).toEqual(['2', 'trained', '1', 'not trained yet', '1', 'added during recovery']);
+    expect(hostById(mixed, 'recovery-roster-bar')).toHaveLength(0);
+    expect(tokenParity(mixed)).toEqual(['2', 'trained', '1', 'not yet', '1', 'added']);
     expect(rosterLabel(mixed)).toBe("Trained this week: 2 of 3 roster exercises, 1 not trained yet. By status: At or above 1, Rebuilding 1, Early 0, Not trained yet 1, Can't compare 0, Added during recovery 1. Most common gap: Total work.");
     // nothing trained (only added work): "0 trained", "1 not yet", "1 added".
-    expect(tokenParity(mountWith({}, {}, one, '-Foam Roll\n- 10,10'))).toEqual(['0', 'trained', '1', 'not trained yet', '1', 'added during recovery']);
+    expect(tokenParity(mountWith({}, {}, one, '-Foam Roll\n- 10,10'))).toEqual(['0', 'trained', '1', 'not yet', '1', 'added']);
   });
 
   test('a baseline-empty week with only added work shows "K added" (no bar) in both states', () => {
@@ -2601,7 +2602,7 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
     );
     const root = mountWith();
     expect(hostById(root, 'recovery-roster-bar')).toHaveLength(0);
-    expect(tokenParity(root)).toEqual(['1', 'added during recovery']);
+    expect(tokenParity(root)).toEqual(['1', 'added']);
     expect(rosterLabel(root)).toBe("By status: At or above 0, Rebuilding 0, Early 0, Not trained yet 0, Can't compare 0, Added during recovery 1.");
   });
 
@@ -2619,9 +2620,9 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
   };
   const VISIBLE_TOKENS = {
     at_or_above: ['1', 'trained'], close: ['1', 'trained'], rebuilding: ['1', 'trained'], early: ['1', 'trained'],
-    not_trained_yet: ['0', 'trained', '1', 'not trained yet'],
+    not_trained_yet: ['0', 'trained', '1', 'not yet'],
     cannot_compare: ['1', "can't compare"],
-    added: ['1', 'added during recovery'],
+    added: ['1', 'added'],
   };
   const LABEL_COUNT = {
     at_or_above: 'At or above 1', close: 'Rebuilding 1', rebuilding: 'Rebuilding 1', early: 'Early 1',
@@ -2654,13 +2655,13 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
     const exercises = ['at_or_above', 'close', 'rebuilding', 'early', 'not_trained_yet', 'cannot_compare']
       .map((k, i) => ({ ...KIND_ROWS[k](), key: `m${i}`, name: `Lift ${i}` }));
     const root = mountRows(exercises, [{ ...KIND_ROWS.added(), key: 'ma' }]);
-    expect(tokenParity(root)).toEqual(['4', 'trained', '1', 'not trained yet', '1', "can't compare", '1', 'added during recovery']);
+    expect(tokenParity(root)).toEqual(['4', 'trained', '1', 'not yet', '1', "can't compare", '1', 'added']);
     const label = rosterLabel(root);
     // Close (derived) + Rebuilding are ONE visible count, never two.
     expect(label).toContain("By status: At or above 1, Rebuilding 2, Early 1, Not trained yet 1, Can't compare 1, Added during recovery 1.");
     expect(label).not.toContain('Close');
     for (const k of ['at_or_above', 'early', 'not_trained_yet', 'cannot_compare', 'added']) expect(label).toContain(LABEL_COUNT[k]);
-    expect(hostById(root, 'recovery-roster-bar')).toHaveLength(1);
+    expect(hostById(root, 'recovery-roster-bar')).toHaveLength(0);
   });
 
   test('hero and summary agree on trained / roster; can\'t-compare and added rows never change them', () => {
@@ -2685,7 +2686,7 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
       expect(r.label).not.toMatch(/of 3 roster/);
     }
     expect(readings[1].tokens).toEqual(['2', 'trained', '1', "can't compare"]);
-    expect(readings[2].tokens).toEqual(['2', 'trained', '1', "can't compare", '1', 'added during recovery']);
+    expect(readings[2].tokens).toEqual(['2', 'trained', '1', "can't compare", '1', 'added']);
   });
 
   test('each kind is announced exactly once in the label (non-unusable, unusable and mixed weeks)', () => {
@@ -2720,24 +2721,57 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
     expect(header.props.accessibilityState).toEqual({ expanded: false });
   });
 
-  test('the footer is one row (provenance, reason, info button) and the note is hidden by default', () => {
+  test('the context block is a labelled list (Started / Reason) with the info button beside the date and the note hidden by default', () => {
     const root = mountWith({ reason: 'torn hamstring' }, { onSaveReason: saveReason });
     expect(hasText(root, 'Not a medical judgment')).toBe(false);
-    const row = hostById(root, 'recovery-footer-row')[0];
-    expect(StyleSheet.flatten(row.props.style)).toMatchObject({ flexDirection: 'row' });
-    expect(StyleSheet.flatten(row.props.style).flexWrap).toBe('wrap');
-    expect(row.findAll(m => m.props.accessibilityLabel === 'About these numbers').length).toBeGreaterThan(0);
-    expect(findAllText(row)).toEqual(['Started 05-01-2026', '·', 'Reason: torn hamstring']);
-    const texts = findAllText(root);
-    expect(texts.indexOf('Started 05-01-2026')).toBeGreaterThan(-1);
-    expect(texts.indexOf('Reason: torn hamstring')).toBeGreaterThan(texts.indexOf('Started 05-01-2026'));
+    const block = hostById(root, 'recovery-footer-row')[0];
+    expect(StyleSheet.flatten(block.props.style)).toMatchObject({ borderTopWidth: 1 });
+    // Row order: date (with info), then the note slot, then the reason row.
+    expect(findAllText(block)).toEqual(['Started', '05-01-2026', 'Reason', 'torn hamstring']);
+    const dateRow = hostById(root, 'recovery-context-date')[0];
+    // The info control is INSIDE the date row, right after its text — not margin-pushed to the edge.
+    expect(dateRow.findAll(m => m.props.accessibilityLabel === 'About these numbers').length).toBeGreaterThan(0);
+    const info = byLabel(root, 'About these numbers');
+    expect(StyleSheet.flatten(info.props.style).marginLeft).not.toBe('auto');
+    expect(StyleSheet.flatten(info.props.style)).toMatchObject({ minHeight: 44, minWidth: 44 });
+    // Reason row: labelled, one tappable >=44dp row with a visible edit glyph.
+    const reasonRow = hostById(root, 'recovery-reason-row')[0];
+    expect(reasonRow.props.accessibilityRole).toBe('button');
+    expect(StyleSheet.flatten(reasonRow.props.style).minHeight).toBeGreaterThanOrEqual(44);
+    expect(reasonRow.props.accessibilityLabel).toBe('Edit reason for this recovery block: torn hamstring');
   });
 
-  test('a long reason is one ellipsized line with the full text on its label', () => {
+  test('no reason: the Reason row invites "Add a reason" with an add glyph; a read-only block shows the reason without a control', () => {
+    const empty = mountWith({ reason: null }, { onSaveReason: saveReason });
+    const row = hostById(empty, 'recovery-reason-row')[0];
+    expect(findAllText(row)).toEqual(['Reason', 'Add a reason']);
+    expect(row.props.accessibilityLabel).toBe('Add a reason for this recovery block');
+    expect(StyleSheet.flatten(row.props.style).minHeight).toBeGreaterThanOrEqual(44);
+    // BlockEvidence without an `onSaveReason` (read-only): no reason and nothing to
+    // edit means no Reason row; a reason shows as a plain labelled row, not a button.
+    const { BlockEvidence } = require('../components/recovery/RecoveryEvidence');
+    const evidence = (reason) => {
+      let c;
+      act(() => { c = render.create(<BlockEvidence block={block({ reason })} weeks={[]} notes={[]} unit="lb" />); });
+      return c.root;
+    };
+    expect(hostById(evidence(null), 'recovery-reason-row')).toHaveLength(0);
+    const readOnly = hostById(evidence('torn hamstring'), 'recovery-reason-row')[0];
+    expect(readOnly.props.accessibilityRole).toBeUndefined();
+    expect(findAllText(readOnly)).toEqual(['Reason', 'torn hamstring']);
+  });
+
+  test('locked or busy reason keeps the row visible but disabled', () => {
+    const root = mountWith({ reason: 'torn hamstring' }, { onSaveReason: saveReason });
+    // (mutations are allowed in this harness; the disabled path is covered in recovery-reason.test.js)
+    expect(hostById(root, 'recovery-reason-row')[0].props.accessibilityState).toEqual({ disabled: false });
+  });
+
+  test('a long reason gets two ellipsized lines with the full text on its label', () => {
     const long = 'x'.repeat(200);
     const root = mountWith({ reason: long }, { onSaveReason: saveReason });
-    const t = root.findAll(n => n.type === 'Text' && [].concat(n.props.children).join('') === `Reason: ${long}`)[0];
-    expect(t.props.numberOfLines).toBe(1);
+    const t = root.findAll(n => n.type === 'Text' && [].concat(n.props.children).join('') === long)[0];
+    expect(t.props.numberOfLines).toBe(2);
     expect(byLabel(root, `Edit reason for this recovery block: ${long}`)).toBeDefined();
   });
 
@@ -2754,7 +2788,7 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
     expect(hasText(root, NOTE)).toBe(false);
   });
 
-  test('no-hero footer: a long routine title and completed date range stay one bounded, shrinkable line with the full value on its label; reason and info button stay reachable', () => {
+  test('no-hero context: a long routine title ellipsizes with its full name on the label; a completed range is never truncated; reason and info stay reachable at fontScale 2', () => {
     const longTitle = 'Hypertrophy Block With An Extremely Long Routine Name '.repeat(3).trim();
     const longReason = 'returning after a long layoff and a slow ramp-up '.repeat(4).trim();
     for (const fontScale of [1, 2]) {
@@ -2773,20 +2807,22 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
         });
         return c.root;
       })();
-      const row = hostById(root, 'recovery-footer-row')[0];
-      const full = `Baseline: ${longTitle} · 05-01-2026 – 06-01-2026`;
-      const prov = row.findAll(n => n.type === 'Text' && n.props.accessibilityLabel === full)[0];
-      expect(prov).toBeDefined();
-      expect(prov.props.numberOfLines).toBe(1);
-      expect(StyleSheet.flatten(prov.props.style)).toMatchObject({ flexShrink: 1, maxWidth: '100%' });
+      const routine = hostById(root, 'recovery-context-routine')[0];
+      const title = routine.findAll(n => n.type === 'Text' && n.props.accessibilityLabel === `Baseline: ${longTitle}`)[0];
+      expect(title).toBeDefined();
+      expect(title.props.numberOfLines).toBe(1);
+      expect(StyleSheet.flatten(title.props.style)).toMatchObject({ flexShrink: 1 });
+      // The completed range is a plain, untruncated value (wraps instead).
+      const date = hostById(root, 'recovery-context-date')[0]
+        .findAll(n => typeof n.type === 'string' && n.props.accessibilityLabel === 'Dates 05-01-2026 – 06-01-2026')[0];
+      expect(date).toBeDefined();
+      expect(date.findAll(n => n.type === 'Text' && n.props.numberOfLines !== undefined)).toHaveLength(0);
+      expect(StyleSheet.flatten(date.props.style).flexWrap).toBe('wrap');
       const reason = byLabel(root, `Edit reason for this recovery block: ${longReason}`);
       expect(reason).toBeDefined();
-      expect(row.findAll(n => n.type === 'Text' && n.props.numberOfLines === 1 && [].concat(n.props.children).join('') === `Reason: ${longReason}`)).toHaveLength(1);
-      expect(StyleSheet.flatten(reason.props.style)).toMatchObject({ minHeight: 44, minWidth: 96, flexShrink: 1 });
+      expect(StyleSheet.flatten(reason.props.style).minHeight).toBeGreaterThanOrEqual(44);
       const info = byLabel(root, 'About these numbers');
       expect(StyleSheet.flatten(info.props.style)).toMatchObject({ minWidth: 44, minHeight: 44, flexShrink: 0 });
-      // The row wraps instead of clipping a control when it cannot fit.
-      expect(StyleSheet.flatten(row.props.style).flexWrap).toBe('wrap');
     }
     mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
   });
@@ -3083,12 +3119,13 @@ describe('AnalyticsRecoverySection — routine order, Total work bar, band token
     expect(flat(barOf(root, 1).children[0]).backgroundColor).toBe(kua.recoveryBandRebuilding);
     // Hero bar and summary mini-bar: only the three graded segments, Close merged
     // into Rebuilding (1 + 1 = 2), and never a quiet status.
-    for (const bar of [hostById(root, 'recovery-bands-rows')[0], hostById(root, 'recovery-roster-bar')[0]]) {
-      const segs = segsIn(bar);
-      expect(segs.map(s => s.props.testID)).toEqual(['recovery-segment-at_or_above', 'recovery-segment-rebuilding', 'recovery-segment-early']);
-      expect(segs.map(s => flat(s).flex)).toEqual([1, 2, 1]);
-      expect(segs.map(s => flat(s).backgroundColor)).toEqual([kua.recoveryBandAtOrAbove, kua.recoveryBandRebuilding, kua.recoveryBandEarly]);
-    }
+    const hero = segsIn(hostById(root, 'recovery-bands-rows')[0]);
+    expect(hero.map(s => s.props.testID)).toEqual(['recovery-segment-at_or_above', 'recovery-segment-rebuilding', 'recovery-segment-early']);
+    expect(hero.map(s => flat(s).flex)).toEqual([1, 2, 1]);
+    expect(hero.map(s => flat(s).backgroundColor)).toEqual([kua.recoveryBandAtOrAbove, kua.recoveryBandRebuilding, kua.recoveryBandEarly]);
+    // The collapsed/expanded summary no longer repeats the bar.
+    expect(hostById(root, 'recovery-roster-bar')).toHaveLength(0);
+    expect(segsIn(hostById(root, 'recovery-roster-summary')[0])).toHaveLength(0);
   });
 
   test('all surfaces use the same three names, the merged count and complete labels; Close is never named', () => {
@@ -3275,5 +3312,174 @@ describe('AnalyticsRecoverySection — routine order, Total work bar, band token
     expect(bands.buckets).toEqual({ at_or_above: 1, close: 1, rebuilding: 1, early: 1, cannot_compare: 1, not_trained_yet: 1 });
     expect(Object.values(bands.buckets).reduce((a, b) => a + b, 0)).toBe(bands.roster_size);
     expect(bands.trained).toBe(5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #1219 owner phone review: text-led collapsed evidence, one-line counts, the
+// hero's stated scope, and a considered Reason / date context block.
+// ---------------------------------------------------------------------------
+describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, context (#1219)', () => {
+  const { StyleSheet } = require('react-native');
+  const { balancedTokenRows, estimateTokenWidth } = require('../components/recovery/RecoveryVisuals');
+  const S = RECOVERY_COMPARISON_STATES;
+  const hostById = (root, id) => root.findAll(n => typeof n.type === 'string' && n.props.testID === id);
+  const flat = (n) => StyleSheet.flatten(n.props.style || {});
+  const rebuilding = (name) => mockRow({
+    key: name, name, state: S.REBUILDING, exercise_class: 'weighted',
+    metrics: [metricRow('top_load', 100, 100, 100, true), metricRow('volume', 66, 100, 66, false)], unmet: ['volume'],
+  });
+  const untrained = (name) => ({
+    ...mockRow({ key: name, name, state: S.NOT_REINTRODUCED, exercise_class: 'weighted', metrics: [metricRow('top_load', 0, 100, 0, false), metricRow('volume', 0, 100, 0, false)], unmet: ['top_load', 'volume'] }),
+    week_name: null, week_exercise_class: null,
+  });
+  const added = (name) => mockRow({ key: name, name, state: S.ADDED_DURING_RECOVERY, exercise_class: 'reps_only', metrics: [metricRow('total_reps', 10, null, null, null)] });
+  // The owner's Week 6: 7 trained rows all Rebuilding, 20 not trained yet, 5 added.
+  const ownerWeek = () => mockComparison({ weeks: [mockWeek({
+    week_number: 6,
+    exercises: [
+      ...Array.from({ length: 7 }, (_, i) => rebuilding(`T${i}`)),
+      ...Array.from({ length: 20 }, (_, i) => untrained(`U${i}`)),
+    ],
+    added: Array.from({ length: 5 }, (_, i) => added(`A${i}`)),
+  })] });
+  const mountOwner = (blockOver = {}, extra = {}) => {
+    deriveRecoveryComparison.mockReturnValueOnce(ownerWeek());
+    let c;
+    act(() => {
+      c = render.create(
+        <AnalyticsRecoverySection
+          blocks={[block({ baseline_note_title: 'Summer 2026 Routine', reason: 'Back injury', started_at: '2026-08-08T12:00:00Z', ...blockOver })]}
+          weeks={[week(6, 'note-w6')]}
+          notes={[note('note-w6', BASELINE_TEXT)]}
+          {...extra}
+        />
+      );
+    });
+    return c.root;
+  };
+  const rowsOf = (root) => hostById(root, 'recovery-count-tokens')[0]
+    .findAll(n => typeof n.type === 'string' && /^recovery-count-row-/.test(n.props.testID || ''))
+    .map(r => hostTextsIn(r));
+
+  // --- 1. no duplicate bar ----------------------------------------------------
+  test('the collapsed Exercise details row has no bar: only the hero draws the graded segments', () => {
+    const root = mountOwner();
+    expect(hostById(root, 'recovery-roster-bar')).toHaveLength(0);
+    const summary = hostById(root, 'recovery-roster-summary')[0];
+    expect(summary.findAll(n => typeof n.type === 'string' && /^recovery-segment-/.test(n.props.testID || ''))).toHaveLength(0);
+    // Nothing in the summary is a filled strip: no row-direction view with a hidden-overflow height of 6 or 10.
+    expect(summary.findAll(n => typeof n.type === 'string' && flat(n).overflow === 'hidden' && [6, 10].includes(flat(n).height))).toHaveLength(0);
+    // The hero bar is still there, once.
+    expect(hostById(root, 'recovery-bands-rows')).toHaveLength(1);
+  });
+
+  // --- 2. one-line counts ------------------------------------------------------
+  test('owner Week 6 at 390dp: "7 trained · 20 not yet · 5 added" is ONE row; the full wording stays on the label', () => {
+    mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+    const root = mountOwner();
+    expect(rowsOf(root)).toEqual([['7', 'trained', '20', 'not yet', '5', 'added']]);
+    expect(hostById(root, 'recovery-count-sep')).toHaveLength(2);
+    const label = rosterLabel(root);
+    expect(label).toContain('Trained this week: 7 of 27 roster exercises, 20 not trained yet.');
+    expect(label).toContain('Not trained yet 20');
+    expect(label).toContain('Added during recovery 5');
+    // Expanding changes nothing.
+    expandDetails(root);
+    expect(rowsOf(root)).toEqual([['7', 'trained', '20', 'not yet', '5', 'added']]);
+  });
+
+  // [label, token count, available width, fontScale, expected row sizes]
+  const ROW_TABLE = [
+    ['3 tokens fit', 3, 318, 1, [3]],
+    ['3 tokens at 252dp wrap as a plain list, never 2 + 1', 3, 180, 1, [1, 1, 1]],
+    ['3 tokens at fontScale 2 wrap as a plain list', 3, 318, 2, [1, 1, 1]],
+    ['4 tokens at a medium width wrap 2 + 2', 4, 220, 1, [2, 2]],
+    ['4 tokens at 252dp / large font wrap as a list', 4, 150, 2, [1, 1, 1, 1]],
+    ['2 tokens that cannot share a line wrap 1 + 1', 2, 120, 1, [1, 1]],
+    ['1 token is always one row', 1, 40, 2, [1]],
+  ];
+  const mkTokens = (n) => [
+    { n: '7', text: 'trained' }, { n: '20', text: 'not yet', quiet: true },
+    { n: '3', text: "can't compare", quiet: true }, { n: '5', text: 'added', quiet: true },
+  ].slice(0, n);
+  test.each(ROW_TABLE)('count rows: %s', (_l, count, available, fontScale, sizes) => {
+    const tokens = mkTokens(count);
+    const rows = balancedTokenRows(tokens, available, fontScale);
+    expect(rows.map(r => r.length)).toEqual(sizes);
+    // Whole tokens, original order, none lost.
+    expect(rows.flat()).toEqual(tokens);
+    // The no-orphan rule: a lone token only when EVERY row is a lone token.
+    if (rows.length > 1 && rows.some(r => r.length > 1)) expect(rows.every(r => r.length >= 2)).toBe(true);
+  });
+
+  test('rendered at fontScale 2 on a 252dp card, the owner counts stack whole, one per row, none orphaned or lost', () => {
+    mockWindow = { width: 252, height: 844, scale: 3, fontScale: 2 };
+    const root = mountOwner();
+    mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+    expect(rowsOf(root)).toEqual([['7', 'trained'], ['20', 'not yet'], ['5', 'added']]);
+    expect(hostById(root, 'recovery-count-sep')).toHaveLength(0);
+  });
+
+  test('a full-wording third count would have been orphaned at 390dp (the old behavior): the estimate stays above one line', () => {
+    const old = [{ n: '7', text: 'trained' }, { n: '20', text: 'not trained yet', quiet: true }, { n: '5', text: 'added during recovery', quiet: true }];
+    expect(old.reduce((w, t) => w + estimateTokenWidth(t), 0)).toBeGreaterThan(318 - 40);
+    expect(balancedTokenRows(old, 318, 1).map(r => r.length)).not.toEqual([3]);
+  });
+
+  // --- 3. hero scope ------------------------------------------------------------
+  test('the hero states its scope, names the routine once, and the label carries the full scope and name', () => {
+    const root = mountOwner();
+    const hero = hostById(root, 'recovery-hero')[0];
+    expect(hostTextsIn(hero)).toEqual(['Week 6', '0 of 7', 'trained this week at or above', 'Summer 2026 Routine baseline']);
+    expect(findAllText(root).filter(t => t.includes('Summer 2026 Routine'))).toEqual(['Summer 2026 Routine baseline']);
+    expect(hero.props.accessibilityLabel).toBe(
+      'Week 6: 0 of 7 exercises trained this week at or above Summer 2026 Routine baseline. The count covers only exercises trained this week.'
+    );
+    // Long names ellipsize on their own single line; the label keeps the whole name.
+    const long = 'A Very Long Routine Name That Cannot Fit On One Phone Line';
+    const longRoot = mountOwner({ baseline_note_title: long });
+    const routineLine = hostById(longRoot, 'recovery-hero')[0].findAll(n => typeof n.type === 'string' && n.type === 'Text' && n.props.numberOfLines === 1)[0];
+    expect(routineLine.props.ellipsizeMode).toBe('tail');
+    expect([].concat(routineLine.props.children).join('')).toContain('…');
+    expect(hostById(longRoot, 'recovery-hero')[0].props.accessibilityLabel).toContain(`at or above ${long} baseline`);
+  });
+
+  // --- 4. context block -----------------------------------------------------------
+  test('owner context: Started + date + info on one row, Reason + value + edit glyph on the next, no far-edge floating control', () => {
+    const root = mountOwner({}, { onSaveReason: async () => ({ ok: true }) });
+    const ctx = hostById(root, 'recovery-footer-row')[0];
+    expect(findAllText(ctx)).toEqual(['Started', '08-08-2026', 'Reason', 'Back injury']);
+    const dateRow = hostById(root, 'recovery-context-date')[0];
+    expect(flat(dateRow)).toMatchObject({ flexDirection: 'row', minHeight: 44 });
+    const info = byLabel(root, 'About these numbers');
+    expect(dateRow.findAll(n => n === info || n.props.accessibilityLabel === 'About these numbers').length).toBeGreaterThan(0);
+    // Adjacent, not pushed to the edge.
+    expect(flat(info).marginLeft).not.toBe('auto');
+    expect(flat(info).marginLeft).toBeLessThanOrEqual(0);
+    // No row in the block uses space-between / auto margins to float a control away from its text.
+    const floaters = ctx.findAll(n => typeof n.type === 'string' && (flat(n).justifyContent === 'space-between' || flat(n).marginLeft === 'auto'));
+    expect(floaters).toHaveLength(0);
+  });
+
+  test('opening the editor swaps the Reason row for the editor, Cancel restores it, and the disclosure stays a polite live region', () => {
+    const root = mountOwner({}, { onSaveReason: async () => ({ ok: true }) });
+    act(() => { byLabel(root, 'Edit reason for this recovery block: Back injury').props.onPress(); });
+    expect(hostById(root, 'recovery-reason-row')).toHaveLength(0);
+    expect(byLabel(root, 'Reason for this recovery block')).toBeDefined();
+    act(() => { byLabel(root, 'Cancel editing the reason').props.onPress(); });
+    expect(hostById(root, 'recovery-reason-row')).toHaveLength(1);
+    // The note appears directly under the date row, inside the same polite live region.
+    const note = hostById(root, 'recovery-about-note')[0];
+    expect(note.props.accessibilityLiveRegion).toBe('polite');
+    act(() => { byLabel(root, 'About these numbers').props.onPress(); });
+    expect(hasText(root, 'Not a medical judgment')).toBe(true);
+    expect(findAllText(hostById(root, 'recovery-about-note')[0])).toEqual(['Training numbers only. Not a medical judgment — only you end a Recovery block.']);
+  });
+
+  test('completed block: "Dates" row with the range, Reason row, and the Reopen control stay above the context block', () => {
+    const root = mountOwner({ completed_at: '2026-09-20T12:00:00Z' }, { onSaveReason: async () => ({ ok: true }) });
+    const ctx = hostById(root, 'recovery-footer-row')[0];
+    expect(findAllText(ctx)).toEqual(['Dates', '08-08-2026 –', '09-20-2026', 'Reason', 'Back injury']);
   });
 });

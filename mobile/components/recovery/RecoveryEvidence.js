@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Card } from '../UI';
 import { useTheme } from '../../theme/ThemeContext';
@@ -51,6 +51,13 @@ export function BlockEvidence({
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
+  // The labels share one column start so the values line up; on a very narrow
+  // card or at large text that column would squeeze the date, so it relaxes to
+  // each label's own width there.
+  const { width: windowWidth, fontScale } = useWindowDimensions();
+  const labelStyle = (windowWidth < 300 || fontScale >= 1.6)
+    ? [styles.contextLabel, { minWidth: 0 }]
+    : styles.contextLabel;
   const [selectedWeekId, setSelectedWeekId] = useState(null);
   // Editor state is local to this component, and the parent renders it with
   // `key={focusedBlock.id}` — so switching which block is in focus remounts and
@@ -117,8 +124,9 @@ export function BlockEvidence({
   // Bottom context line (#1219): dates (and the routine only when the hero does
   // not already name it). The hero names the selected week, so the bands above
   // are never ambiguous about which week they describe.
-  const provenance = isActive
-    ? `Started ${formatDate(block.started_at)}`
+  const dateLabel = isActive ? 'Started' : 'Dates';
+  const dateValue = isActive
+    ? formatDate(block.started_at)
     : `${formatDate(block.started_at)} – ${formatDate(block.completed_at)}`;
   const trainedElsewhere = useMemo(() => deriveTrainedElsewhere(weekResults, selectedWeek, stateStale), [weekResults, selectedWeek, stateStale]);
   const weekRows = selectedWeek ? [...(selectedWeek.exercises || []), ...(selectedWeek.added || [])] : [];
@@ -153,7 +161,9 @@ export function BlockEvidence({
   // The hero names the anchor routine (#1219) on every path that renders it (including zero trained);
   // only then does the bottom line stop repeating it.
   const heroNamesRoutine = !!showBandsRegion && hasBands && !!weekLabel;
-  const provenanceText = heroNamesRoutine ? provenance : `Baseline: ${routineTitle} · ${provenance}`;
+  const showInfo = comparison.status === RECOVERY_COMPARISON_STATUS.OK || comparison.status === RECOVERY_COMPARISON_STATUS.BASELINE_EMPTY;
+  const showReasonRow = !editingReason && (reasonEditable || !!block.reason);
+  const reasonValue = block.reason || 'Add a reason';
   return (
     <Card>
       {/* The section's only Recovery header is the outer SectionTitle (#1217);
@@ -274,64 +284,102 @@ export function BlockEvidence({
         </View>
       )}
 
-      {/* One quiet footer row (#1219): provenance · reason · info button. */}
-      <View testID="recovery-footer-row" style={styles.footerRow}>
-        <Text
-          style={[styles.provenanceText, styles.footerProvenance]}
-          numberOfLines={1}
-          accessibilityLabel={provenanceText}
-        >
-          {provenanceText}
-        </Text>
-        {!editingReason && (reasonEditable || !!block.reason) && <Text style={styles.footerSeparator}>·</Text>}
-        {!editingReason && reasonEditable && (
+      {/* Block context (#1219): a quiet two-row "label  value" list under one
+          divider. Row 1 is the start date with the info button directly after
+          it (the control sits beside the text it explains, not at the card
+          edge) and the disclosure opens right under it; row 2 is the labelled,
+          editable Reason. Every row is a real >=44dp target; nothing floats. */}
+      <View testID="recovery-footer-row" style={styles.contextBlock}>
+        {!heroNamesRoutine && (
+          <View testID="recovery-context-routine" style={styles.contextRow}>
+            <Text style={labelStyle}>Baseline</Text>
+            <Text
+              style={[styles.contextValue, styles.contextValueShrink]}
+              numberOfLines={1}
+              accessibilityLabel={`Baseline: ${routineTitle}`}
+            >
+              {routineTitle}
+            </Text>
+          </View>
+        )}
+        <View testID="recovery-context-date" style={styles.contextRow}>
+          <Text style={labelStyle}>{dateLabel}</Text>
+          {/* A date is never ellipsized: at narrow widths or large text a
+              completed range wraps to a second line instead. */}
+          <View
+            style={[styles.contextDates, styles.contextValueShrink]}
+            accessible
+            accessibilityLabel={`${dateLabel} ${dateValue}`}
+          >
+            {/* A completed range is two whole dates, so a narrow card wraps
+                BETWEEN them ("08-08-2026 –" / "09-20-2026"), never mid-date. */}
+            <Text style={styles.contextValue}>{isActive ? dateValue : `${formatDate(block.started_at)} –`}</Text>
+            {!isActive && <Text style={styles.contextValue}>{formatDate(block.completed_at)}</Text>}
+          </View>
+          {showInfo && (
+            <Pressable
+              onPress={() => setAboutShown(shown => !shown)}
+              style={styles.infoButton}
+              accessibilityRole="button"
+              accessibilityLabel="About these numbers"
+              accessibilityState={{ expanded: aboutShown }}
+            >
+              <MaterialIcons
+                name="info-outline"
+                size={18}
+                color={kua ? kua.onSurfaceVariant : colors.textMuted}
+                accessible={false}
+              />
+            </Pressable>
+          )}
+        </View>
+        {/* Always mounted so revealing the note is announced (live region). */}
+        <View testID="recovery-about-note" accessibilityLiveRegion="polite">
+          {aboutShown && (
+            <Text style={styles.nonMedicalText}>
+              Training numbers only. Not a medical judgment — only you end a Recovery block.
+            </Text>
+          )}
+        </View>
+        {showReasonRow && (reasonEditable ? (
           <Pressable
+            testID="recovery-reason-row"
             onPress={openReasonEditor}
             disabled={reasonDisabled}
-            style={[styles.reasonPressable, styles.footerReason]}
+            style={[styles.contextRow, styles.reasonRow]}
             accessibilityRole="button"
             accessibilityLabel={block.reason
               ? `Edit reason for this recovery block: ${block.reason}`
               : 'Add a reason for this recovery block'}
             accessibilityState={{ disabled: reasonDisabled }}
           >
+            <Text style={labelStyle}>Reason</Text>
             <Text
-              style={[styles.reasonCaption, reasonDisabled && styles.reasonCaptionDisabled]}
-              numberOfLines={1}
+              style={[
+                styles.contextValue, styles.contextValueShrink,
+                !block.reason && styles.contextPlaceholder,
+                reasonDisabled && styles.reasonCaptionDisabled,
+              ]}
+              numberOfLines={2}
             >
-              {block.reason ? `Reason: ${block.reason}` : 'Add a reason'}
+              {reasonValue}
             </Text>
-          </Pressable>
-        )}
-        {!editingReason && !reasonEditable && !!block.reason && (
-          <Text style={[styles.reasonCaption, styles.footerReason]} numberOfLines={1}>
-            Reason: {block.reason}
-          </Text>
-        )}
-        {(comparison.status === RECOVERY_COMPARISON_STATUS.OK || comparison.status === RECOVERY_COMPARISON_STATUS.BASELINE_EMPTY) && (
-          <Pressable
-            onPress={() => setAboutShown(shown => !shown)}
-            style={styles.infoButton}
-            accessibilityRole="button"
-            accessibilityLabel="About these numbers"
-            accessibilityState={{ expanded: aboutShown }}
-          >
             <MaterialIcons
-              name="info-outline"
-              size={18}
+              name={block.reason ? 'edit' : 'add'}
+              size={16}
               color={kua ? kua.onSurfaceVariant : colors.textMuted}
+              style={[styles.reasonEditIcon, reasonDisabled && styles.reasonCaptionDisabled]}
               accessible={false}
             />
           </Pressable>
-        )}
-      </View>
-      {/* Always mounted so revealing the note is announced (live region). */}
-      <View testID="recovery-about-note" accessibilityLiveRegion="polite">
-        {aboutShown && (
-          <Text style={styles.nonMedicalText}>
-            Training numbers only. Not a medical judgment — only you end a Recovery block.
-          </Text>
-        )}
+        ) : (
+          <View testID="recovery-reason-row" style={[styles.contextRow, styles.reasonRow]}>
+            <Text style={labelStyle}>Reason</Text>
+            <Text style={[styles.contextValue, styles.contextValueShrink]} numberOfLines={2}>
+              {block.reason}
+            </Text>
+          </View>
+        ))}
       </View>
       {/* The optional reason (#872) is context only — no metric or week status
           reads it. The footer row shows/edits it; the editor opens here. */}

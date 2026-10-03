@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Text, View } from 'react-native';
+import { Text, View, useWindowDimensions } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useTheme } from '../../theme/ThemeContext';
 import { createVisualStyles } from './recoveryVisualStyles';
@@ -128,13 +128,16 @@ export function routineLabel(title) {
 // Hero: the one dominant element. A big factual number and one plain label;
 // the full sentence rides on the accessible label so nothing is lost to
 // screen readers. `trained === 0` has no number to show, only the plain fact.
+// The label states its SCOPE (#1219): the denominator counts only the exercises
+// trained in the selected week, not the whole routine, so "0 of 7" cannot be
+// misread against a roster of 27. The routine is named once, ellipsized.
 export function RecoveryHero({ weekLabel, atOrAbove, trained, routineTitle }) {
   const { styles } = useVisual();
   const empty = trained === 0;
   const { full, visible } = routineLabel(routineTitle);
   const label = empty
-    ? `${weekLabel}: no roster exercises trained yet against ${full} baseline`
-    : `${weekLabel}: ${atOrAbove} of ${trained} trained exercises at or above ${full} baseline`;
+    ? `${weekLabel}: no roster exercises trained yet this week against ${full} baseline`
+    : `${weekLabel}: ${atOrAbove} of ${trained} exercises trained this week at or above ${full} baseline. The count covers only exercises trained this week.`;
   return (
     <View testID="recovery-hero" style={styles.hero} accessible accessibilityLabel={label}>
       <Text style={styles.heroWeek}>{weekLabel}</Text>
@@ -146,7 +149,8 @@ export function RecoveryHero({ weekLabel, atOrAbove, trained, routineTitle }) {
       ) : (
         <>
           <Text style={styles.heroNumber}>{`${atOrAbove} of ${trained}`}</Text>
-          <Text style={styles.heroLabel} numberOfLines={2}>{`at or above ${visible} baseline`}</Text>
+          <Text style={styles.heroLabel}>trained this week at or above</Text>
+          <Text style={styles.heroLabel} numberOfLines={1} ellipsizeMode="tail">{`${visible} baseline`}</Text>
         </>
       )}
     </View>
@@ -197,15 +201,88 @@ export function RecoveryBandBar({ buckets, trained, weekLabel, added = 0 }) {
   );
 }
 
-// The ONE details summary (#1219): a thin band mini-bar (same buckets, colors
-// and order as the hero bar) over "N trained  M not yet". The panel renders this
-// single element right under the header whether Exercise details is collapsed
-// or expanded, so the two states cannot drift. The visible Gap stat was
-// removed (owner could not read it); the full sentence incl. the most common
-// gap rides on the accessible label. Same 13sp tier as the exercise rows (800
-// number, 600 label).
+// Count tokens flow as ONE intentional line ("7 trained · 20 not yet · 5 added")
+// and only ever break between whole tokens, in balanced rows (#1219 owner phone
+// review: a long third count wrapped to its own line and read as an orphan).
+// There is no layout measurement API in the test renderer and Text widths vary
+// by platform font, so the split is decided from a conservative width estimate:
+//   - everything fits one row -> one row;
+//   - else balanced rows of >= 2 tokens (4 tokens -> 2 + 2);
+//   - else one token per row (a plain list, never a lone count under a row).
+const TOKEN_CHAR_WIDTH = 7.4; // 13sp average glyph advance, 600-800 weights
+const TOKEN_SEPARATOR_WIDTH = 20; // dot + its margins
+export function estimateTokenWidth(token, fontScale = 1) {
+  return Math.ceil((token.n.length + token.text.length + 1) * TOKEN_CHAR_WIDTH * fontScale);
+}
+export function balancedTokenRows(tokens, available, fontScale = 1) {
+  const n = tokens.length;
+  const widths = tokens.map(t => estimateTokenWidth(t, fontScale));
+  const rowWidth = (row) => row.reduce((w, i) => w + widths[i], 0) + (row.length - 1) * TOKEN_SEPARATOR_WIDTH * fontScale;
+  const split = (rowCount) => {
+    const base = Math.floor(n / rowCount);
+    const extra = n % rowCount;
+    const rows = [];
+    let next = 0;
+    for (let r = 0; r < rowCount; r++) {
+      const size = base + (r < extra ? 1 : 0);
+      rows.push(Array.from({ length: size }, () => next++));
+    }
+    return rows;
+  };
+  const candidates = [1];
+  for (let r = 2; r < n; r++) if (Math.floor(n / r) >= 2) candidates.push(r);
+  if (n > 1) candidates.push(n);
+  for (const rowCount of candidates) {
+    const rows = split(rowCount);
+    if (rows.every(row => rowWidth(row) <= available)) return rows.map(row => row.map(i => tokens[i]));
+  }
+  return split(n).map(row => row.map(i => tokens[i]));
+}
+
+function CountTokens({ stats, styles }) {
+  const window = useWindowDimensions();
+  const fontScale = window.fontScale || 1;
+  // Container width once laid out; before that, the window minus the card chrome.
+  const [measured, setMeasured] = React.useState(null);
+  const available = measured ?? Math.max(0, window.width - 72);
+  const rows = balancedTokenRows(stats, available, fontScale);
+  return (
+    <View
+      testID="recovery-count-tokens"
+      style={styles.rosterTokens}
+      onLayout={e => {
+        const w = e?.nativeEvent?.layout?.width;
+        if (typeof w === 'number' && w > 0) setMeasured(w);
+      }}
+    >
+      {rows.map((row, r) => (
+        <View key={r} testID={`recovery-count-row-${r}`} style={styles.rosterRow}>
+          {row.map((st, i) => (
+            <React.Fragment key={st.text}>
+              {i > 0 && <View testID="recovery-count-sep" style={styles.rosterSeparator} />}
+              <View style={styles.rosterStat}>
+                <Text style={st.quiet ? styles.rosterNumQuiet : styles.rosterNum}>{st.n}</Text>
+                <Text style={styles.exStatusText}>{st.text}</Text>
+              </View>
+            </React.Fragment>
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// The ONE details summary (#1219): a TEXT-LED evidence line — "7 trained · 20 not
+// yet · 5 added" — with no bar. The hero above already draws the week's graded
+// bar; repeating it here read as a second progress control and added nothing, so
+// the collapsed row now carries only what the hero cannot: how the exercise ROWS
+// below divide (trained / not yet / can't compare / added). The panel renders
+// this single element right under the header whether Exercise details is
+// collapsed or expanded, so the two states cannot drift. Short words on screen;
+// the full wording, every state with zeros and the most common gap ride on the
+// accessible label. Same 13sp tier as the exercise rows.
 export function RecoveryRosterSummary({ summary, bands, gap }) {
-  const { colors, kua, styles } = useVisual();
+  const { styles } = useVisual();
   if (!summary || !(summary.total > 0)) return null;
   const c = summary.counts;
   // "trained" / "not yet" / the roster denominator come from the SAME
@@ -219,9 +296,9 @@ export function RecoveryRosterSummary({ summary, bands, gap }) {
   const buckets = bands?.buckets || null;
   const stats = [
     ...(rosterSize > 0 ? [{ n: String(trained), text: 'trained' }] : []),
-    ...(notYet > 0 ? [{ n: String(notYet), text: QUIET_STATUS_LABELS.not_trained_yet.toLowerCase(), quiet: true }] : []),
+    ...(notYet > 0 ? [{ n: String(notYet), text: 'not yet', quiet: true }] : []),
     ...(c.cannot_compare > 0 ? [{ n: String(c.cannot_compare), text: QUIET_STATUS_LABELS.cannot_compare.toLowerCase(), quiet: true }] : []),
-    ...(c.added > 0 ? [{ n: String(c.added), text: QUIET_STATUS_LABELS.added.toLowerCase(), quiet: true }] : []),
+    ...(c.added > 0 ? [{ n: String(c.added), text: 'added', quiet: true }] : []),
   ];
   if (stats.length === 0) stats.push({ n: String(summary.total), text: summary.total === 1 ? 'exercise' : 'exercises' });
   const sentences = [];
@@ -242,20 +319,7 @@ export function RecoveryRosterSummary({ summary, bands, gap }) {
   const label = sentences.join(' ');
   return (
     <View testID="recovery-roster-summary" style={styles.rosterBlock} accessible accessibilityLabel={label}>
-      {buckets && sumGraded(graded) > 0 && (
-        <View testID="recovery-roster-bar">
-          <Segments buckets={buckets} colors={colors} kua={kua} style={styles.miniBar} />
-        </View>
-      )}
-      <View style={styles.exNumbers}>
-        {stats.map(st => (
-          <View key={st.text} style={styles.rosterStat}>
-            {st.quiet && <View testID="recovery-quiet-mark" style={[styles.quietDot, { backgroundColor: quietColor(colors, kua) }]} />}
-            {st.n != null && <Text style={styles.rosterNum}>{st.n}</Text>}
-            <Text style={styles.exStatusText}>{st.text}</Text>
-          </View>
-        ))}
-      </View>
+      <CountTokens stats={stats} styles={styles} />
     </View>
   );
 }

@@ -85,14 +85,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     fontWeight: '700',
     color: kua ? kua.primary : colors.accentText,
   },
-  provenanceText: {
-    fontSize: 13,
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
+  // Revealed under the date row it belongs to (the info button sits beside it).
   nonMedicalText: {
     fontSize: 13,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontStyle: 'italic',
+    paddingBottom: 8,
   },
   // #1029 amendment: the across-weeks strip is a finished design-system
   // surface — token color/spacing/type throughout, a `ScrollView` (never a
@@ -217,34 +215,58 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
-  // One quiet footer row (#1219): provenance, reason and the info button.
-  footerRow: {
+  // Block context (#1219): a quiet "label  value" list under one divider. Rows
+  // are full-width >=44dp lines so nothing floats and no gap is dead; the info
+  // button sits directly after the date it accompanies.
+  contextBlock: {
+    borderTopWidth: 1,
+    borderTopColor: kua ? kua.surfaceBorder : colors.divider,
+  },
+  contextRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 44,
+    columnGap: 10,
+  },
+  contextLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    // Labels share one column start so the values line up.
+    minWidth: 68,
+    flexShrink: 0,
+  },
+  contextValue: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: kua ? kua.onSurface : colors.text,
+  },
+  // Bounded and shrinkable: a long routine title or reason ellipsizes (the full
+  // text rides on the accessible label) instead of pushing the controls out.
+  contextValueShrink: {
+    flexShrink: 1,
+  },
+  contextDates: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    alignItems: 'center',
-    columnGap: 6,
+    columnGap: 4,
   },
-  // Bounded, shrinkable single line: a long routine title or date range
-  // ellipsizes (full value on its label) instead of squeezing out the reason or
-  // the info button; if the row cannot fit, it wraps rather than clip a control.
-  footerProvenance: {
-    flexShrink: 1,
-    maxWidth: '100%',
-  },
-  footerReason: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: 0,
-    minWidth: 96,
-  },
-  footerSeparator: {
-    fontSize: 13,
+  contextPlaceholder: {
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
+  // The whole reason row is the tap target; a long reason gets two lines.
+  reasonRow: {
+    paddingVertical: 4,
+  },
+  reasonEditIcon: {
+    flexShrink: 0,
+  },
+  // Directly after the date text (never margin-pushed to the card edge); the
+  // 18dp glyph sits in a real 44x44 target.
   infoButton: {
     minWidth: 44,
     minHeight: 44,
-    marginLeft: 'auto',
+    marginLeft: -6,
     flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
