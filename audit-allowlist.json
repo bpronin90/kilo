@@ -1,12 +1,6 @@
 {
   "accepted": [
     {
-      "id": "GHSA-86w9-cpqp-85rv",
-      "package": "node-forge",
-      "reviewBy": "2026-11-01",
-      "reason": "Owner-approved, time-boxed acceptance of residual risk (not a remediation): node-forge <= 1.4.0 (RSA PKCS#1 v1.5 signature verification accepts extra nested DigestAlgorithm elements, high, CVSS 7.5) has no patched release; npm latest is 1.4.0 and the advisory lists no first patched version. Verified at 65d968f7: node-forge@1.4.0 enters the mobile graph only via expo-updates -> @expo/code-signing-certificates and expo -> @expo/cli. Neither mobile/app.json nor mobile/app.config.js defines updates.codeSigningCertificate, and no app source imports node-forge, so exposure is build/CLI tooling only. Re-review, or bump if a patched release exists, before 2026-11-01; the gate fails after that date."
-    },
-    {
       "id": "GHSA-vfj7-8cjw-p6xm",
       "package": "braces",
       "reviewBy": "2026-11-01",
@@ -17,6 +11,12 @@
       "package": "http-cache-semantics",
       "reviewBy": "2026-11-01",
       "reason": "Owner-approved, time-boxed acceptance of residual risk (not a remediation): http-cache-semantics <= 4.2.0 (max-stale handling can disclose cross-user cached responses, high, CVSS 7.5, published 2026-09-18) has no patched release; the advisory lists no first patched version and npm latest is 4.2.0. Verified at 55a5a32a with npm --prefix mobile ls --package-lock-only --all: http-cache-semantics@4.2.0 occurs only through the declared devDependency @expo/ngrok@4.1.3 -> got@11.8.6 -> cacheable-request@7.0.4 -> http-cache-semantics@4.2.0. @expo/ngrok is a dev dependency used by the start:tunnel development command (expo start --tunnel); the graph has no other path, the package is absent with --omit=dev, and the root package has an empty dependency graph. No mobile application source imports @expo/ngrok, got, cacheable-request, or http-cache-semantics. Shipping uses EAS build profiles (mobile/eas.json) and Expo configuration (mobile/app.json, mobile/app.config.js); a shipped app artifact has not been exhaustively inspected, so these are dependency-graph, configuration, and source-import facts only. Re-review, or bump if a patched release exists, before 2026-11-01; the gate fails after that date."
+    },
+    {
+      "id": "GHSA-86w9-cpqp-85rv",
+      "package": "node-forge",
+      "reviewBy": "2026-11-01",
+      "reason": "Owner-approved, time-boxed acceptance of residual risk (not a remediation): node-forge <= 1.4.0 (RSA PKCS#1 v1.5 signature verification accepts extra nested DigestAlgorithm elements, high, CVSS 7.5) has no patched release; npm latest is 1.4.0 and the advisory lists no first patched version. Verified at 65d968f7: node-forge@1.4.0 enters the mobile graph only via expo-updates -> @expo/code-signing-certificates and expo -> @expo/cli. Neither mobile/app.json nor mobile/app.config.js defines updates.codeSigningCertificate, and no app source imports node-forge, so exposure is build/CLI tooling only. Re-review, or bump if a patched release exists, before 2026-11-01; the gate fails after that date."
     }
   ]
 }
