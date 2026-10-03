@@ -220,21 +220,21 @@ const KUA_SHARED_DARK = {
   chartSeries3: '#A78BFA',
 };
 
-// Recovery band marks (#1219). Five MARK-ONLY fills for the Recovery card's
-// return bands, defined independently per court x mode (no shared status
-// colors). They paint bars, segments and dots only; the plain-word status
-// beside every mark is the text and uses onSurface/onSurfaceVariant ink, so
-// color is never the sole carrier. `recoveryBandUnavailable` serves both
-// "Can't compare" and "Not trained yet". Enforced with computed WCAG ratios in
-// tests/theme-rendering.test.js: each mark >= 3:1 (non-text) against the card
-// surface and the bar track (surfaceSection), and the five marks of one palette
-// are pairwise distinct above a documented CIE76 distance floor.
+// Recovery band marks (#1219). Three MARK-ONLY fills for the Recovery card's
+// graded states (At or above, Rebuilding = derived close + rebuilding, Early),
+// defined independently per court x mode (no shared status colors). They paint
+// bars, segments and dots only; the plain-word status beside every mark is the
+// text and uses onSurface/onSurfaceVariant ink, so color is never the sole
+// carrier. Not trained yet, Can't compare and Added during recovery are not
+// graded and use the existing `onSurfaceVariant` neutral instead. Enforced with
+// computed WCAG ratios in tests/theme-rendering.test.js: each mark (and the
+// neutral) >= 3:1 non-text against the card surface and the bar track
+// (surfaceSection), and the three graded marks of one palette are pairwise
+// distinct above a documented CIE76 distance floor.
 export const RECOVERY_BAND_TOKENS = Object.freeze([
   'recoveryBandAtOrAbove',
-  'recoveryBandClose',
   'recoveryBandRebuilding',
   'recoveryBandEarly',
-  'recoveryBandUnavailable',
 ]);
 
 export const HardCourtLightColors = {
@@ -258,10 +258,8 @@ export const HardCourtLightColors = {
   error: '#BA1A1A',
   selection: '#E1ECFB',
   recoveryBandAtOrAbove: '#00704C',
-  recoveryBandClose: '#0A4ABF',
   recoveryBandRebuilding: '#A66300',
   recoveryBandEarly: '#B3261E',
-  recoveryBandUnavailable: '#667689',
   ...KUA_SHARED_LIGHT,
 };
 
@@ -286,10 +284,8 @@ export const HardCourtDarkColors = {
   error: '#BA1A1A',
   selection: '#17233D',
   recoveryBandAtOrAbove: '#34D399',
-  recoveryBandClose: '#60A5FA',
   recoveryBandRebuilding: '#FBBF24',
   recoveryBandEarly: '#F2705C',
-  recoveryBandUnavailable: '#8C9BB3',
   ...KUA_SHARED_DARK,
 };
 
@@ -316,10 +312,8 @@ export const ClayCourtLightColors = {
   error: '#BA1A1A',
   selection: '#FBECE5',
   recoveryBandAtOrAbove: '#1E6B43',
-  recoveryBandClose: '#0F6E80',
   recoveryBandRebuilding: '#9A5F00',
   recoveryBandEarly: '#A8311C',
-  recoveryBandUnavailable: '#7A6F63',
   ...KUA_SHARED_LIGHT,
 };
 
@@ -345,10 +339,8 @@ export const ClayCourtDarkColors = {
   error: '#BA1A1A',
   selection: '#341B13',
   recoveryBandAtOrAbove: '#4FBF7F',
-  recoveryBandClose: '#4FB3C8',
   recoveryBandRebuilding: '#E5A93C',
   recoveryBandEarly: '#F0805F',
-  recoveryBandUnavailable: '#A89F96',
   ...KUA_SHARED_DARK,
 };
 
@@ -376,10 +368,8 @@ export const GrassCourtLightColors = {
   error: '#BA1A1A',
   selection: '#E8F4EC',
   recoveryBandAtOrAbove: '#17692F',
-  recoveryBandClose: '#0B6A85',
   recoveryBandRebuilding: '#8F6A00',
   recoveryBandEarly: '#B52A2A',
-  recoveryBandUnavailable: '#5F7466',
   ...KUA_SHARED_LIGHT,
 };
 
@@ -406,10 +396,8 @@ export const GrassCourtDarkColors = {
   error: '#BA1A1A',
   selection: '#132B1C',
   recoveryBandAtOrAbove: '#4ADE80',
-  recoveryBandClose: '#4FC1D6',
   recoveryBandRebuilding: '#E5B83C',
   recoveryBandEarly: '#F26E6E',
-  recoveryBandUnavailable: '#91A398',
   ...KUA_SHARED_DARK,
 };
 

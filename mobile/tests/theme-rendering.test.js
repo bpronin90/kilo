@@ -1542,8 +1542,7 @@ const KUA_REQUIRED_ROLES = [
   'success', 'warning', 'errorText', 'selection',
   'chartSeries1', 'chartSeries2', 'chartSeries3',
   // Recovery band marks (#1219): defined per court x mode.
-  'recoveryBandAtOrAbove', 'recoveryBandClose', 'recoveryBandRebuilding',
-  'recoveryBandEarly', 'recoveryBandUnavailable',
+  'recoveryBandAtOrAbove', 'recoveryBandRebuilding', 'recoveryBandEarly',
 ];
 
 // Per-palette complete approved token tables from the spec.
@@ -3272,24 +3271,27 @@ describe('mounted surfaces repaint Hard→Clay→Grass at a fixed mode (#1142)',
 });
 
 // ---------------------------------------------------------------------------
-// Recovery band marks (#1219): five court x mode tokens with COMPUTED contrast
-// and distinguishability. Nothing here is a prose assertion — every row calls
-// `contrastRatio` / `deltaE76` on the real palette values.
+// Recovery band marks (#1219): three graded court x mode tokens (At or above,
+// Rebuilding, Early) plus the existing `onSurfaceVariant` neutral for the
+// not-graded statuses, with COMPUTED contrast and distinguishability. Nothing
+// here is a prose assertion — every row calls `contrastRatio` / `deltaE76` on
+// the real palette values.
 //
 // Documented floors:
 //  - MARK_MIN_CONTRAST 3:1 — WCAG 2.1 1.4.11 non-text contrast, because a band
-//    fill is a graphical mark (bar fill, segment, status dot), not text.
+//    fill is a graphical mark (bar fill, segment, status dot), not text. It is
+//    asserted against BOTH the card surface and the Recovery bar track
+//    (`surfaceSection`), for the three graded marks and the shared neutral.
 //  - LABEL_MIN_CONTRAST 4.5:1 — WCAG AA for the plain-word status and number
 //    text printed beside every mark (onSurface / onSurfaceVariant on the card).
-//  - BAND_MIN_DELTA_E 25 — CIE76 Lab distance between ANY two of the five marks
-//    in one palette (adjacent bars sit next to each other, and the hero bar
-//    places up to five different fills side by side). 25 is well above the
-//    roughly 2.3 just-noticeable difference and ~10 "clearly different", so
-//    bands stay separable for small marks; the shipped minimum is ~28.
+//  - GRADED_MIN_DELTA_E 30 — CIE76 Lab distance between any two of the three
+//    graded marks in one palette (the hero bar places all three side by side).
+//    30 is far above the ~2.3 just-noticeable difference and ~10 "clearly
+//    different"; the shipped minimum is ~33.
 // ---------------------------------------------------------------------------
 const MARK_MIN_CONTRAST = 3;
 const LABEL_MIN_CONTRAST = 4.5;
-const BAND_MIN_DELTA_E = 25;
+const GRADED_MIN_DELTA_E = 30;
 
 function srgbToLinear(value) {
   const c = value / 255;
@@ -3317,11 +3319,14 @@ describe('Recovery band marks: court x mode tokens (#1219)', () => {
   const { RECOVERY_BAND_TOKENS } = require('../theme/colors');
   const HEX = /^#[0-9A-Fa-f]{6}$/;
 
-  test('the five named tokens', () => {
+  test('exactly the three graded tokens exist; Close and Unavailable tokens are gone', () => {
     expect(RECOVERY_BAND_TOKENS).toEqual([
-      'recoveryBandAtOrAbove', 'recoveryBandClose', 'recoveryBandRebuilding',
-      'recoveryBandEarly', 'recoveryBandUnavailable',
+      'recoveryBandAtOrAbove', 'recoveryBandRebuilding', 'recoveryBandEarly',
     ]);
+    for (const [name, palette] of KUA_ALL_PALETTES) {
+      expect({ name, close: palette.recoveryBandClose }).toEqual({ name, close: undefined });
+      expect({ name, unavailable: palette.recoveryBandUnavailable }).toEqual({ name, unavailable: undefined });
+    }
   });
 
   test('delta-E helper sanity', () => {
@@ -3336,14 +3341,16 @@ describe('Recovery band marks: court x mode tokens (#1219)', () => {
     expect(palette[token]).toMatch(HEX);
   });
 
-  const contrastCases = markCases.flatMap(([name, token, palette]) => [
-    [name, token, 'surfaceCard', palette],
-    [name, token, 'surfaceSection (bar track)', palette],
-  ]);
+  // The three graded marks plus the shared neutral the quiet statuses use.
+  const MARKS = [...RECOVERY_BAND_TOKENS, 'onSurfaceVariant'];
+  const contrastCases = KUA_ALL_PALETTES.flatMap(([name, palette]) =>
+    MARKS.flatMap((token) => [
+      [name, token, 'surfaceCard', palette],
+      [name, token, 'surfaceSection', palette],
+    ]));
 
-  test.each(contrastCases)('%s: %s is a >=3:1 mark on %s', (_name, token, surfaceLabel, palette) => {
-    const surface = surfaceLabel.startsWith('surfaceCard') ? palette.surfaceCard : palette.surfaceSection;
-    expect(contrastRatio(palette[token], surface)).toBeGreaterThanOrEqual(MARK_MIN_CONTRAST);
+  test.each(contrastCases)('%s: %s is a >=3:1 mark on %s (card / Recovery bar track)', (_name, token, surfaceRole, palette) => {
+    expect(contrastRatio(palette[token], palette[surfaceRole])).toBeGreaterThanOrEqual(MARK_MIN_CONTRAST);
   });
 
   test.each(KUA_ALL_PALETTES)('%s: label ink beside every mark stays AA on the card', (_name, palette) => {
@@ -3352,19 +3359,19 @@ describe('Recovery band marks: court x mode tokens (#1219)', () => {
     expect(contrastRatio(palette.onSurface, palette.surfaceCard)).toBeGreaterThanOrEqual(LABEL_MIN_CONTRAST);
   });
 
-  test.each(KUA_ALL_PALETTES)('%s: all five bands are mutually distinguishable (no equal values, delta-E floor)', (_name, palette) => {
+  test.each(KUA_ALL_PALETTES)('%s: the three graded marks are pairwise distinct (no equal values, delta-E floor)', (_name, palette) => {
     const values = RECOVERY_BAND_TOKENS.map((t) => palette[t].toLowerCase());
     expect(new Set(values).size).toBe(RECOVERY_BAND_TOKENS.length);
     for (let i = 0; i < RECOVERY_BAND_TOKENS.length; i++) {
       for (let j = i + 1; j < RECOVERY_BAND_TOKENS.length; j++) {
         const pair = `${RECOVERY_BAND_TOKENS[i]} vs ${RECOVERY_BAND_TOKENS[j]}`;
-        expect({ pair, ok: deltaE76(palette[RECOVERY_BAND_TOKENS[i]], palette[RECOVERY_BAND_TOKENS[j]]) >= BAND_MIN_DELTA_E })
+        expect({ pair, ok: deltaE76(palette[RECOVERY_BAND_TOKENS[i]], palette[RECOVERY_BAND_TOKENS[j]]) >= GRADED_MIN_DELTA_E })
           .toEqual({ pair, ok: true });
       }
     }
   });
 
-  test.each(['light', 'dark'])('%s mode: every court defines its own value for every band (no shared status colors)', (mode) => {
+  test.each(['light', 'dark'])('%s mode: every court defines its own value for every graded band (no shared status colors)', (mode) => {
     for (const token of RECOVERY_BAND_TOKENS) {
       const perCourt = Object.values(KUA_PALETTES).map((court) => court[mode][token].toLowerCase());
       expect({ token, distinct: new Set(perCourt).size }).toEqual({ token, distinct: 3 });

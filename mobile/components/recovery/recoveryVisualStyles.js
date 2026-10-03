@@ -41,6 +41,8 @@ export const createVisualStyles = (colors, kua = null) => {
     legend: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 6 },
     legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     legendDot: { width: 10, height: 10, borderRadius: 5 },
+    // The shared neutral mark beside a not-graded status count (#1219).
+    quietDot: { width: 8, height: 8, borderRadius: 4, alignSelf: 'center' },
     legendText: { fontSize: 13, fontWeight: '600', color: ink },
     changeRow: { flexDirection: 'row', columnGap: 12, alignItems: 'center' },
     changeCell: { flexDirection: 'row', alignItems: 'center', gap: 3 },

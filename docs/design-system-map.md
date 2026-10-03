@@ -530,22 +530,19 @@ region (`home-recovery-analytics`, a single `accessible` node), in this order:
 - **Week eyebrow** — `Week N`, the micro-label treatment. Omitted when no week
   exists (`Baseline captured. No week logged yet.`): there is nothing to name,
   and `Week 1` would be invented.
-- **Result** (`#1029`, replacing the old `X of Y baseline exercises met` hero)
-  — one of three mutually exclusive shapes, chosen by `deriveRecoveryWeekBands`/
-  `deriveRecoveryMovement` (`lib/data/recoveryReturnBands.js`):
-  - `home-recovery-bands` — four or more trained roster lifts: one row per
-    nonzero return band (`At or above`/`Close`/`Rebuilding`/`Early`/`Can't
-    compare`), sized against the TRAINED total, never the roster. A
-    same-weight-tier denominator caption ("N of Y roster exercises trained")
-    sits above the rows — `Not trained yet` is never a bucket row, only this
-    caption.
-  - `home-recovery-sparse` — fewer than four trained lifts: one plain
-    sentence naming each trained lift and its #697 state word, ending with
-    the same roster denominator. No bars at all below this floor.
-  - a fallback (unchanged): baseline unavailable/unsupported, no week
-    logged, or a missing/unreadable note takes precedence, since those are
-    properties of the block or the week, not of the trained population.
-  A fallback prints no count at all rather than `0 of 0`.
+- **Result** — Home does NOT render return bands, band names or band colors
+  (#1219: the earlier #1029 wording that described Home five-band rows is stale
+  against the current implementation, `screens/home/HomeRecoverySummary.js`).
+  It reads `deriveRecoveryComparison` for a separate Big 3 summary: one row per
+  Big 3 lift (`home-recovery-lift-*`) whose right-hand value is plain words
+  only (`Recovered`, `Not started`, `Can't compare`, `Not in baseline`,
+  `In progress`, or a real per-lift percentage), and one `Remaining N:`
+  line of `recovered`/`in progress`/`not started` counts. The three-state band
+  vocabulary and the `recoveryBand*` tokens are Analytics-only (below). A
+  fallback (baseline unavailable/unsupported, no week logged, or a
+  missing/unreadable note) takes precedence, since those are properties of the
+  block or the week, not of the trained population, and prints no count at
+  all rather than `0 of 0`.
 - **Movement** (`home-recovery-movement`, `#1029`) — appears only once its
   evidence bar is met (`deriveRecoveryMovement` returns non-null): a sentence
   naming the anchor week, the matched population, and the improved/steady/
@@ -555,11 +552,8 @@ region (`home-recovery-analytics`, a single `accessible` node), in this order:
 
 **Dropped from Home (#1029):** the `rebuilding`/`not reintroduced`/`not
 comparable`/`added during recovery` category columns (`home-recovery-stats`)
-are gone — `not reintroduced` and `not comparable` lifts are now represented
-inside the band rows/sparse sentence themselves (as `Not trained yet`'s
-denominator and the `Can't compare` band respectively), and
-`added_during_recovery` work is out of scope for this summary entirely; it
-stays Analytics-only.
+are gone, and `added_during_recovery` work is out of scope for this summary
+entirely; it stays Analytics-only.
 
 **Dropped from Home (#820):** the exclusion clause (`Not counted in your
 normal analytics.`) no longer renders here or in the composed
@@ -845,23 +839,51 @@ hero is shown (e.g. no week logged yet).
 | Summary line | fontSize | `13`, `textMuted` — roster denominator and most-common-gap only (one short line each, inside the details) |
 | Week picker | `RecoveryWeekPicker.js` | `Week` caption above chips; chips sized from the measured width (`minWidth`/`minHeight` `44`, `4` gap, cap `72`), radius `14`, 1px `cardBorder`, `subtleBg`; selected = `accent` fill / `onAccent` text; shown only for more than one week. layout is decided in this order: (1) forced horizontal scroll strip for 13+ weeks, `fontScale >= 1.3`, or a width under three 44dp chips; (2) ONE row whenever all chips fit at the 44dp minimum, for any count up to 12; (3) 1-6 weeks that do not fit one row use the scroll strip (never a wrapped grid); (4) 7-12 weeks that do not fit one row use balanced multi-row (row sizes differ by at most one, never a lone orphan chip). The selected chip is kept in view in strip mode |
 | Details header | title | `13` / `700` `text`, `minHeight 44`, `accessibilityState.expanded`; no count sentence |
-| Details summary | `RecoveryRosterSummary` | ONE element rendered under the header identically collapsed and expanded, derived from ALL rows the expanded list renders (`summarizeDetailRows`, counted through the same `rowBandId`/status mapping as each row's status word; never null when rows exist). Thin `6` band mini-bar over the comparable bands (hero band colors/order; absent when nothing is trained) above stat tokens (`13`; number `800`, label `600`; zero tokens omitted): `N trained` and `M not yet` (roster minus trained) come from the SAME `deriveRecoveryWeekBands` values as the hero, so hero and summary cannot disagree and unusable-baseline rows stay out of the roster denominator; `J can't compare` and `K added` are separate additive tokens counted from all rows that never feed trained / not yet; if no token applies, a `T exercises` total is shown. The visible Gap stat was removed; the accessible label states the trained-of-roster sentence, `By status:` (each status once, incl. `Can't compare N`), the most common gap, and `K added during recovery` |
+| Details summary | `RecoveryRosterSummary` | ONE element rendered under the header identically collapsed and expanded, derived from ALL rows the expanded list renders (`summarizeDetailRows`, counted through the same `rowBandId`/status mapping as each row's status word; never null when rows exist). Thin `6` mini-bar of the three graded states only (same merged counts, tokens and order as the hero bar; absent when nothing is graded) above stat tokens (`13`; number `800`, label `600`; zero tokens omitted): `N trained` and `M not trained yet` (roster minus trained) come from the SAME `deriveRecoveryWeekBands` values as the hero, so hero and summary cannot disagree and unusable-baseline rows stay out of the roster denominator; `J can't compare` and `K added during recovery` are separate additive tokens counted from all rows that never feed trained / not yet. The three not-graded tokens carry the shared neutral dot (`onSurfaceVariant`), never a band color; if no token applies, a `T exercises` total is shown. The visible Gap stat was removed; the accessible label states the trained-of-roster sentence, `By status:` (each graded state once with Close folded into Rebuilding, incl. `Can't compare N`), the most common gap, and `K added during recovery` |
 | Details collapse | icon | `MaterialIcons` `expand-more`/`expand-less`, `18`, `textMuted` (app-wide convention) |
-| **Exercise row** | `recoveryVisualStyles.js` `ex*` | name `15` / `700` `text`; band-colored `8` dot + plain status word `13` / `600` `textMuted`; one thin `6` bar (band token on `surfaceSection` track, fill capped at 100%) with the measure-named uncapped percent `13` / `800` (`Total work 11%`, `Reps 66%`, `Time 45%`); numbers `13` `textMuted` (`Load 135 lb / 135 lb`); full sentences only in `accessibilityLabel` |
+| **Exercise row** | `recoveryVisualStyles.js` `ex*` | name `15` / `700` `text`; `8` dot (graded token, or the shared neutral for not-graded rows) + plain status word `13` / `600` `textMuted`; one thin `6` bar (band token on `surfaceSection` track, fill capped at 100%) with the measure-named uncapped percent `13` / `800` (`Total work 11%`, `Reps 66%`, `Time 45%`); numbers `13` `textMuted` (`Load 135 lb / 135 lb`); full sentences only in `accessibilityLabel` |
 | Bottom context | fontSize | ONE quiet footer row, `13`, `textMuted`: `Started {date}` (active) or `{start} – {end}` (completed), prefixed `Baseline: {routine} · ` only when no hero names the routine, then `· Reason: …` / `Add a reason` (one line, ellipsized, `minHeight: 44` target), then an info icon button (`About these numbers`, `44x44`) that toggles the non-medical note (`Training numbers only. Not a medical judgment — only you end a Recovery block.`) inline in a polite live region — an owner-directed change from the earlier always-visible line (#1023 v2 §8); shared `Card` chrome, no local gap |
 | Completed-block history | default | collapsed, summary header states the count and the latest block |
 
 **Exercise row** (#1219) replaced the counted state-group headers and the metric
-legend: each row carries its own band mark and status word (`At or above
-baseline`, `Close to baseline`, `Rebuilding`, `Early`, `Can't compare`, `Not
-trained yet`, `Added during recovery`), taken from the existing return-band
-derivation for that one row.
+legend: each row carries its own mark and plain status word. Three are graded
+(`At or above`, `Rebuilding`, `Early`); three are not graded and keep their
+plain words (`Not trained yet`, `Can't compare`, `Added during recovery`). The
+status comes from the existing return-band derivation for that one row, with the
+derived `close` bucket folded into `Rebuilding` (below).
+
+**Three visible bands and a quiet bucket** (#1219): Analytics shows graded states
+`At or above`, `Rebuilding`, `Early`. This is a PRESENTATION-ONLY grouping:
+`deriveRecoveryWeekBands`, its six buckets (`at_or_above`, `close`, `rebuilding`,
+`early`, `cannot_compare`, `not_trained_yet`), `RETURN_BANDS`, `_bandForRow` and
+the 90% / 50% thresholds are unchanged and still sum to the roster; Home,
+Overview and history read them as before. At render time `close + rebuilding`
+becomes the single `Rebuilding` count (`gradedCounts` / `displayBandId`,
+`RecoveryVisuals.js`), so a trained-but-not-met row at 50% or more of its
+limiting measure reads `Rebuilding`, `Close` is never named or colored, and two
+adjacent counts are never shown. `Not trained yet`, `Can't compare` and `Added
+during recovery` are not judgments: they keep their words, share ONE quiet
+neutral mark/count (the existing `onSurfaceVariant`; no new token), and never
+enter a colored hero/summary/strip segment. Only Analytics Recovery shows these
+names and colors, on four surfaces that share the same names, merged counts,
+tokens and quiet wording: the hero `RecoveryBandBar` (segments + legend, where
+`Can't compare` is a neutral-dot legend item, never a segment), the
+`RecoveryRosterSummary` mini-bar and tokens (collapsed and expanded),
+`RecoveryWeeksStrip` (segments + one shared legend; a week with only a
+not-graded status shows neutral text, no segment), and the exercise rows. Their
+accessible labels name every state count (the hero bar and strip labels include
+zeros: `At or above 1, Rebuilding 2, Early 0, Not trained yet 0, Can't compare
+0`; the summary label names the non-zero ones plus `K added during recovery`) and
+never announce a separate Close count. Home renders none of this (see Recovery
+Status Card).
 
 **Detail order** (#1219): rows follow the routine, not a state ranking. Baseline
 exercises the week logged come first, then baseline exercises not yet trained
 this week, each group in the baseline's own row order, then added-during-recovery
-rows, in the order the week supplies them (`orderDetailRows`,
-`RecoveryStateGroups.js`). Nothing is alphabetized. A v2 baseline stores rows in
+rows in the order they first appear in the selected week's note
+(`compareWeekWorkToBaseline` keeps the parsed note's `Map` insertion order; it no
+longer sorts `added` by normalized key; `orderDetailRows`, `RecoveryStateGroups.js`,
+adds no sort of its own). Nothing is alphabetized. A v2 baseline stores rows in
 the routine's original order (`routine_order` equals the array index), which the
 comparison preserves; a retained v1 baseline is alphabetical and has no routine
 order, so it is shown exactly as stored. A not-comparable row counts as logged
@@ -875,41 +897,47 @@ that same measure (`Total work 11% of baseline, 670 lb of 5850 lb`); the fill is
 capped at 100% while the text is not. This is presentation only: the band and
 `baseline_met` (weighted needs BOTH load and volume) are derived upstream and
 unchanged, so a deadlift above baseline load but at 11% Total work reads `Early`
-with an 11% bar. A not-trained row shows baseline numbers and no bar, so missing
+with an 11% bar. Because the band is graded on the limiting measure while the bar
+shows Total work, the two can differ (load 66% but Total work 133% reads
+`Rebuilding` with a full bar); the visible `Total work 133%` and the spoken label
+name the measure the bar shows. A not-trained row shows baseline numbers and no bar, so missing
 is never drawn as zero.
 
-**Recovery band tokens** (#1219): every band mark (row dot, bar fill, hero and
-summary segments, legend dots) resolves through five KUA tokens in
+**Recovery band tokens** (#1219): every graded mark (row dot, bar fill, hero and
+summary segments, legend dots) resolves through three KUA tokens in
 `mobile/theme/colors.js`, defined independently per court and mode (no shared
-status colors; legacy palette fallback only when no court palette is resolved).
-They are marks, never text ink: the plain status word beside every mark uses
-`onSurface` / `onSurfaceVariant`, so color is never the sole carrier of status.
+graded colors; legacy palette fallback only when no court palette is resolved).
+Every not-graded mark/count (`Not trained yet`, `Can't compare`, `Added during
+recovery`) uses the EXISTING `onSurfaceVariant` neutral; `recoveryBandClose` and
+`recoveryBandUnavailable` do not exist. Tokens are marks, never text ink: the
+plain status word beside every mark uses `onSurface` / `onSurfaceVariant`, so
+color is never the sole carrier of status.
 
-| Token | Band |
+| Token | State |
 |---|---|
-| `recoveryBandAtOrAbove` | At or above baseline |
-| `recoveryBandClose` | Close to baseline |
-| `recoveryBandRebuilding` | Rebuilding |
+| `recoveryBandAtOrAbove` | At or above |
+| `recoveryBandRebuilding` | Rebuilding (derived close + rebuilding) |
 | `recoveryBandEarly` | Early |
-| `recoveryBandUnavailable` | Can't compare and Not trained yet (shared) |
+| `onSurfaceVariant` (existing) | Not trained yet, Can't compare, Added during recovery |
 
-| Palette | At or above | Close | Rebuilding | Early | Unavailable |
-|---|---|---|---|---|---|
-| Hard Court light | `#00704C` | `#0A4ABF` | `#A66300` | `#B3261E` | `#667689` |
-| Hard Court dark | `#34D399` | `#60A5FA` | `#FBBF24` | `#F2705C` | `#8C9BB3` |
-| Clay Court light | `#1E6B43` | `#0F6E80` | `#9A5F00` | `#A8311C` | `#7A6F63` |
-| Clay Court dark | `#4FBF7F` | `#4FB3C8` | `#E5A93C` | `#F0805F` | `#A89F96` |
-| Grass Court light | `#17692F` | `#0B6A85` | `#8F6A00` | `#B52A2A` | `#5F7466` |
-| Grass Court dark | `#4ADE80` | `#4FC1D6` | `#E5B83C` | `#F26E6E` | `#91A398` |
+| Palette | At or above | Rebuilding | Early |
+|---|---|---|---|
+| Hard Court light | `#00704C` | `#A66300` | `#B3261E` |
+| Hard Court dark | `#34D399` | `#FBBF24` | `#F2705C` |
+| Clay Court light | `#1E6B43` | `#9A5F00` | `#A8311C` |
+| Clay Court dark | `#4FBF7F` | `#E5A93C` | `#F0805F` |
+| Grass Court light | `#17692F` | `#8F6A00` | `#B52A2A` |
+| Grass Court dark | `#4ADE80` | `#E5B83C` | `#F26E6E` |
 
 Contrast and distinguishability contract, computed (not asserted in prose) in
-`tests/theme-rendering.test.js` for all six palettes: each mark is at least
-**3:1** (WCAG non-text) against both `surfaceCard` and the `surfaceSection` bar
-track (shipped minimums: 4.65:1 / 4.17:1 light, 5.77:1 / 6.12:1 dark); the
-status label ink (`onSurface`, `onSurfaceVariant`) stays at least **4.5:1** on
-`surfaceCard`; and any two of a palette's five marks differ by at least CIE76
-**delta-E 25** (shipped minimum 28.0) with no equal values, and no court shares
-a band value with another court in the same mode.
+`tests/theme-rendering.test.js` for all six palettes: each of the three graded
+marks AND the shared neutral is at least **3:1** (WCAG non-text) against both
+`surfaceCard` and the `surfaceSection` bar track (shipped minimums: 4.77:1 card /
+4.27:1 track light, 5.77:1 / 6.12:1 dark); the status label ink (`onSurface`,
+`onSurfaceVariant`) stays at least **4.5:1** on `surfaceCard`; the three graded
+marks of a palette differ pairwise by at least CIE76 **delta-E 30** (shipped
+minimum 33.3, Clay Court light) with no equal values; and no court shares a
+graded value with another court in the same mode.
 
 Wording is part of the contract, not decoration:
 

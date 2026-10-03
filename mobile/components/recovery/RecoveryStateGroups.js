@@ -7,7 +7,7 @@ import { RECOVERY_COMPARISON_STATES, RECOVERY_WEEK_STATUS } from '../../lib/data
 import { deriveRecoveryWeekBands } from '../../lib/data/recoveryReturnBands';
 import { createStyles } from './analyticsRecoveryStyles';
 import { createVisualStyles } from './recoveryVisualStyles';
-import { bandColor } from './RecoveryVisuals';
+import { QUIET_STATUS_LABELS, bandColor, displayBandId } from './RecoveryVisuals';
 
 // "Total work" replaces the unexplained "Volume" (#758): the number is a sum of
 // load × reps, and the label now says so rather than borrowing a training term
@@ -63,31 +63,33 @@ export function orderDetailRows(rows) {
   ];
 }
 
-// Plain-word status shown beside the band-colored mark (#1219) — never color
-// alone, no abbreviations. Words follow the card's own band legend.
+// Plain-word status shown beside the mark (#1219) — never color alone, no
+// abbreviations. The three graded words are the SAME names the bars, legends
+// and summary use; the three not-graded words keep their plain wording and
+// share one neutral mark.
 const BAND_STATUS_WORD = Object.freeze({
-  at_or_above: 'At or above baseline',
-  close: 'Close to baseline',
+  at_or_above: 'At or above',
   rebuilding: 'Rebuilding',
   early: 'Early',
-  cannot_compare: "Can't compare",
-  not_trained_yet: 'Not trained yet',
+  cannot_compare: QUIET_STATUS_LABELS.cannot_compare,
+  not_trained_yet: QUIET_STATUS_LABELS.not_trained_yet,
 });
 
 // The row's band comes from the existing return-band derivation run on this one
-// row (never a second threshold implementation). Added work has no band and
-// takes the neutral accent mark.
+// row (never a second threshold implementation); the derived `close` bucket is
+// folded into Rebuilding at presentation (`displayBandId`). Added work has no
+// band and takes the neutral mark.
 export function rowBandId(row) {
   if (row.state === RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY) return null;
   const { buckets } = deriveRecoveryWeekBands({ status: RECOVERY_WEEK_STATUS.OK, exercises: [row] });
-  return Object.keys(buckets).find(id => buckets[id] > 0) || 'cannot_compare';
+  return displayBandId(Object.keys(buckets).find(id => buckets[id] > 0) || 'cannot_compare');
 }
 
 // ONE mapping feeds both the visible status word and the spoken label, so a
 // screen reader hears exactly the status a sighted user sees (#1219).
 export function rowStatusWord(row) {
   const bandId = rowBandId(row);
-  return bandId ? BAND_STATUS_WORD[bandId] : 'Added during recovery';
+  return bandId ? BAND_STATUS_WORD[bandId] : QUIET_STATUS_LABELS.added;
 }
 
 // Every status kind a visible row can carry: the shared band ids plus
@@ -209,7 +211,9 @@ function ExerciseRow({ row, unit, weekNumber, elsewhere }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createVisualStyles(colors, kua), [colors, kua]);
   const bandId = rowBandId(row);
-  const markColor = bandId ? bandColor(bandId, colors, kua) : (kua ? kua.primary : colors.accentText);
+  // Graded rows take their band token; not-trained, can't-compare and added rows
+  // share the one neutral mark (`bandColor` returns it for any non-graded id).
+  const markColor = bandColor(bandId || 'added', colors, kua);
   const status = rowStatusWord(row);
   const compared =
     row.state === RECOVERY_COMPARISON_STATES.BASELINE_MET ||
