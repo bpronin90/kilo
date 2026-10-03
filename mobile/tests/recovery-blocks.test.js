@@ -2575,13 +2575,20 @@ describe('captureRecoveryBaseline (v2) — latest complete session', () => {
   test('time-based: every prescribed set must hold the declared duration; total stays seconds', () => {
     const snap = cap(declSection('-Plank 3x30s', [[durSet(30), durSet(35), durSet(40)], [durSet(30), durSet(20), durSet(30)]]));
     expect(baselineFor(snap, 'plank')).toMatchObject({ exercise_class: 'time_based', total_seconds: 105, basis: BASIS.COMPLETE });
+    // The parser applies no unit conversion: `2x1 min` is sets 2, minimum 1 (logged unit).
     const mins = cap(declSection('-Wall Sit 2x1 min', [[durSet(60), durSet(60)], [durSet(60), durSet(45)]], { name: 'Wall Sit' }));
-    expect(baselineFor(mins, 'wall sit')).toMatchObject({ total_seconds: 120, basis: BASIS.COMPLETE });
+    expect(baselineFor(mins, 'wall sit')).toMatchObject({ total_seconds: 105, basis: BASIS.COMPLETE });
   });
 
   test('a timed RANGE with no set count is not a usable declaration (explicit fallback, nothing fabricated)', () => {
-    const snap = cap(declSection('-Plank 3x45-60s', [[durSet(60)], [durSet(10)]]));
+    const snap = cap(declSection('-Plank 45-60s', [[durSet(60)], [durSet(10)]]));
     expect(baselineFor(snap, 'plank')).toMatchObject({ total_seconds: 10, basis: BASIS.NO_DECL });
+  });
+
+  test('a timed range WITH a set count (`3x45-60s`) is the parser\'s declaration: 3 sets, minimum 45', () => {
+    const sets = (n, v) => Array.from({ length: n }, () => durSet(v));
+    const snap = cap(declSection('-Plank 3x45-60s', [sets(3, 60), sets(3, 10)]));
+    expect(baselineFor(snap, 'plank')).toMatchObject({ total_seconds: 180, basis: BASIS.COMPLETE });
   });
 
   test('AMRAP has no fixed minimum: prescribed sets just need positive work, and the row says so', () => {
@@ -2813,15 +2820,28 @@ describe('captureRecoveryBaseline (v2) — timed declarations through the real p
     expect(plank('-Plank: 3x45s\n- 45,40,45')).toMatchObject({ exercise_class: 'time_based', total_seconds: 130, basis: BASIS.NEVER });
   });
 
-  test('`3x1min` declares 60 seconds per hold; logged numbers are seconds', () => {
+  test('`3x1min`: the parser applies no unit conversion (sets 3, minimum 1, logged seconds)', () => {
     expect(wall('-Wall Sit: 3x1min\n- 60,60,60')).toMatchObject({ exercise_class: 'time_based', total_seconds: 180, basis: BASIS.COMPLETE });
-    expect(wall('-Wall Sit: 3x1min\n- 70,70,70\n- 60,60,45')).toMatchObject({ total_seconds: 210, basis: BASIS.COMPLETE });
+    expect(wall('-Wall Sit: 3x1min\n- 70,70,70\n- 60,60,45')).toMatchObject({ total_seconds: 165, basis: BASIS.COMPLETE });
+    expect(wall('-Wall Sit: 3x1min\n- 70,70,70\n- 60,60')).toMatchObject({ total_seconds: 210, basis: BASIS.COMPLETE }); // 2 sets < 3
+  });
+
+  test('`3x30-45 sec` (parser-accepted range): the earlier complete 3x30 session beats a later 10 s row', () => {
+    expect(plank('-Plank: 3x30-45 sec\n- 30,30,30\n- 10,10,10')).toMatchObject({ exercise_class: 'time_based', total_seconds: 90, basis: BASIS.COMPLETE });
+    expect(plank('-Plank: 3x30-45 sec\n- 30,30,30\n- 45,45,45')).toMatchObject({ total_seconds: 135, basis: BASIS.COMPLETE });
+    expect(plank('-Plank: 3x30-45 sec\n- 30,30,30\n- 45,10,45')).toMatchObject({ total_seconds: 90, basis: BASIS.COMPLETE });
+  });
+
+  test('`2x45-60 sec`: the lower bound is the minimum, the upper is not a gate', () => {
+    expect(plank('-Plank: 2x45-60 sec\n- 45,45\n- 40,60')).toMatchObject({ total_seconds: 90, basis: BASIS.COMPLETE });
+    expect(plank('-Plank: 2x45-60 sec\n- 45,45\n- 70,70')).toMatchObject({ total_seconds: 140, basis: BASIS.COMPLETE });
   });
 
   test('a single held set (`1x60s` + bare `60`, already duration_seconds) completes only at/above the declared hold', () => {
     expect(plank('-Plank: 1x60s\n60')).toMatchObject({ exercise_class: 'time_based', total_seconds: 60, basis: BASIS.COMPLETE });
     expect(plank('-Plank: 1x60s\n75\n45')).toMatchObject({ total_seconds: 75, basis: BASIS.COMPLETE });
     expect(plank('-Plank: 1x60s\n45')).toMatchObject({ total_seconds: 45, basis: BASIS.NEVER });
+    expect(plank('-Plank: 1x60s\n60\n10')).toMatchObject({ total_seconds: 60, basis: BASIS.COMPLETE });
   });
 
   test('separate bare rows are separate ONE-set sessions: they never complete an `Nx` declaration with N > 1', () => {
@@ -2840,5 +2860,86 @@ describe('captureRecoveryBaseline (v2) — timed declarations through the real p
     const snap = captureRecoveryBaseline(parsed.sections);
     expect(JSON.stringify(parsed.sections)).toBe(before);
     expect(baselineFor(snap, 'plank')).toMatchObject({ exercise_class: 'weighted', top_weight: 25 });
+  });
+});
+
+// ── PARITY: capture never disagrees with the app's own parser about a header ───
+//
+// Owner invariant (#1225): recoveryBlocks.js adds NO declaration grammar of its
+// own. Every header form the parser's own tests accept is run through the REAL
+// parser and through capture, and the prescription capture derives (kind, sets,
+// minimum) must equal what the parser itself reports for that header. AMRAP is
+// the one bespoke matcher (the parser has no grammar for it) and is consulted only
+// when the parser recognizes no declaration.
+
+describe('declaration parity with the parser (#1225)', () => {
+  const { parseExerciseHeader, parseHeaderDeclaration } = require('../lib/parser');
+  const { declaredPrescription } = require('../lib/data/recoveryBlocks');
+  // Forms taken from the parser's own tests/fixtures plus spacing/case variants.
+  const HEADERS = [
+    '-Bench 3x6-8', '-Bench 4×6–8', '-Bench Press 2x12', '-Curl 2x10', '-Lat Pulldown 3x8-10', '-Squat 4x6-8',
+    '-Hammer Curl 2 8-10', '-Bench: 3x6', '-Bench:3x6', '-Bench 5X5', '-Bench 3 x 6', '-Bench 3 X 6 - 8', '-Bench 3x6–8',
+    '-Pull-up: 3x8', '-Core: In-and-outs on bench * 2x10-12',
+    '-Plank 2×30 sec', '-Plank 2×60s', '-Plank 3x30 sec', '-Plank: 3x45s', '-Plank: 3x30-45 sec', '-Plank: 2x45-60 sec',
+    '-Plank: 1x60s', '-Wall Sit: 3x1min', '-Wall Sit: 2x1 min', '-Plank 3X45S', '-Plank 3x45-60s', '-Plank 3 x 30 SEC',
+    '-Hold 30-45s', '-Hold 60-90 sec', '-Walk 10min', '-Walk 5 min', '-Plank 45s',
+    '-Bench', '-Band pull-aparts', '-RDL', '-Bike', '-Pull-up: 3xAMRAP', '-Pull-up: AMRAP', '-Pull-up (AMRAP)', '-Bench 0x5',
+  ];
+  const expected = (raw) => {
+    const p = parseExerciseHeader(raw);
+    if (p) {
+      return p.sets >= 1 && p.repLo >= 1
+        ? { kind: parseHeaderDeclaration(raw)?.type === 'duration' ? 'duration' : 'reps', sets: p.sets, min: p.repLo }
+        : null;
+    }
+    return null;
+  };
+
+  test.each(HEADERS)('%s: capture reads the same prescription as the parser', (header) => {
+    const parsed = parseWorkoutNote(`${header}\n- 5,5,5`);
+    const raw = parsed.sections.flatMap(sec => sec.exercises)[0]?.raw_header ?? header;
+    const got = declaredPrescription(raw);
+    const want = expected(raw);
+    if (want || parseHeaderDeclaration(raw)) {
+      // The parser recognizes a declaration (usable or not): capture must agree, never invent or override it.
+      expect(got).toEqual(want);
+    } else {
+      // The parser sees none: only an explicit AMRAP may fill the gap.
+      expect(got === null || got.kind === 'amrap').toBe(true);
+    }
+  });
+
+  // Behavioural parity for every usable declaration: a session meeting the parser's
+  // sets x minimum is complete, and one short by 1 on any position is not, so the
+  // older complete session wins. Timed headers log comma rows (seconds).
+  const USABLE = HEADERS.filter(h => {
+    const raw = parseWorkoutNote(`${h}\n- 5,5,5`).sections.flatMap(sec => sec.exercises)[0]?.raw_header ?? h;
+    return expected(raw) && expected(raw).min >= 2;
+  });
+  test.each(USABLE)('%s: boundary sessions complete exactly at the parser\'s sets and minimum', (header) => {
+    const raw = parseWorkoutNote(`${header}\n- 5,5,5`).sections.flatMap(sec => sec.exercises)[0].raw_header;
+    const { sets, min } = expected(raw);
+    const row = (n) => Array(n).fill(String(min)).join(',');
+    const short = Array(sets).fill(String(min)).map((v, i) => (i === sets - 1 ? String(min - 1) : v)).join(',');
+    const note = `${header}\n- ${row(sets + 1)}\n- ${row(sets)}\n- ${short}\n- ${row(sets - 1 || 1)}`;
+    const snap = captureRecoveryBaselineFromText(note);
+    expect(snap.exercises).toHaveLength(1);
+    // Newest two sessions are short by one set / one rep, so the newest complete one (exactly N sets at the minimum) is chosen.
+    expect(snap.exercises[0]).toMatchObject({ basis: BASIS.COMPLETE, sets_completed: sets });
+    expect(snap.exercises[0].total_reps ?? snap.exercises[0].total_seconds).toBe(sets * min);
+  });
+
+  test('SOURCE GUARD: recoveryBlocks.js defines no declaration regex of its own besides AMRAP', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'data', 'recoveryBlocks.js'), 'utf8');
+    // Strip comments, then collect regex-literal-looking declarations assigned to constants.
+    const code = src.replace(/\/\/.*$/gm, '');
+    const regexConsts = [...code.matchAll(/const\s+([A-Za-z0-9_]+)\s*=\s*\/(?!\/)/g)].map(m => m[1]);
+    expect(regexConsts.sort()).toEqual(['_AMRAP_COLON_RE', '_AMRAP_SPACE_RE']);
+    // No inline timed/rep declaration grammar (unit words or the sets x reps shape) outside the AMRAP matchers.
+    const nonAmrap = code.split('\n').filter(l => !/AMRAP|amrap/.test(l)).join('\n');
+    expect(nonAmrap).not.toMatch(/\[xX×\]/);
+    expect(nonAmrap).not.toMatch(/sec\|secs|minutes\?|mins\?/);
   });
 });

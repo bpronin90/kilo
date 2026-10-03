@@ -167,27 +167,28 @@ function _baselineMetrics(sets) {
 
 // ── complete-session rule (#1225) ─────────────────────────────────────────────
 //
-// The header declaration that governs one occurrence, read ONLY through the
-// existing parser (`parseHeaderDeclaration` / `parseExerciseHeader`); recovery
-// adds no grammar of its own beyond naming what the parser already leaves
-// undeclared. Returns `{ kind, sets, min }` or null when no usable declaration
-// exists (no header, a timed range with no set count, a zero set count):
-//   reps      `3x6` / `3x6-8`  — `min` is the LOWER bound; the upper is not a gate
-//   duration  `2x60s`          — `min` is the declared hold in seconds
-//   amrap     `3xAMRAP`        — no fixed rep minimum, so `min` is never invented
-const _TIMED_HOLDS_RE = /(\d+)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*(sec|secs|seconds?|s|min|mins|minutes?|m)\b/i;
-function _declarationSpec(rawHeader) {
+// The header declaration that governs one occurrence. INVARIANT: baseline capture
+// never disagrees with the app's own parser about what a header means, so it adds
+// NO declaration grammar of its own — sets and minimum come from
+// `parseExerciseHeader` (sets, lower bound) and the family from
+// `parseHeaderDeclaration` (`duration` vs reps), exactly as routineShare reads
+// them. The parser applies no unit conversion (`3x1min` is sets 3, minimum 1, in
+// the same unit logged rows use), so neither does this. The one bespoke matcher
+// is AMRAP, which the parser has no grammar for; it is consulted only when the
+// parser recognizes NO declaration. Returns `{ kind, sets, min }` or null:
+//   reps      `3x6` / `3x6-8`        — `min` is the LOWER bound; the upper is not a gate
+//   duration  `2x60s` / `3x30-45 sec` — `min` is the lower bound, in logged (seconds) units
+//   amrap     `3xAMRAP`              — no fixed rep minimum, so `min` is never invented
+// A parser declaration with no usable set count (a timed range such as `45-60s`,
+// or a zero count) is no usable declaration, and is never reinterpreted as AMRAP.
+export function declaredPrescription(rawHeader) {
   if (!rawHeader) return null;
-  if (parseHeaderDeclaration(rawHeader)?.type === 'duration') {
-    const m = _TIMED_HOLDS_RE.exec(rawHeader);
-    if (!m) return null;
-    const sets = parseInt(m[1], 10);
-    const unit = m[3].toLowerCase();
-    const min = parseFloat(m[2]) * (unit === 'm' || unit.startsWith('min') ? 60 : 1);
-    return sets >= 1 && min > 0 ? { kind: 'duration', sets, min } : null;
+  const parsed = parseExerciseHeader(rawHeader);
+  if (parsed) {
+    const kind = parseHeaderDeclaration(rawHeader)?.type === 'duration' ? 'duration' : 'reps';
+    return parsed.sets >= 1 && parsed.repLo >= 1 ? { kind, sets: parsed.sets, min: parsed.repLo } : null;
   }
-  const p = parseExerciseHeader(rawHeader);
-  if (p) return p.sets >= 1 && p.repLo >= 1 ? { kind: 'reps', sets: p.sets, min: p.repLo } : null;
+  if (parseHeaderDeclaration(rawHeader)) return null;
   const amrapSets = _explicitAmrapSets(rawHeader);
   return amrapSets ? { kind: 'amrap', sets: amrapSets, min: null } : null;
 }
@@ -339,7 +340,7 @@ export function captureRecoveryBaseline(rawSections) {
     for (const ex of section.exercises || []) {
       const key = normalizeExerciseKey(ex.name);
       if (!groups.has(key)) groups.set(key, { order: groups.size, units: [] });
-      const spec = _declarationSpec(ex.raw_header);
+      const spec = declaredPrescription(ex.raw_header);
       const entries = _occurrenceEntries({ rows: ex.rows, sets: ex.sets || [], session_entries: ex.session_entries, kind: section.kind });
       for (const entry of entries) {
         if (!entry || entry.skipped || entry.unparsed) continue;
