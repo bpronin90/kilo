@@ -6,7 +6,8 @@ import { TabBar } from '../components/TabBar';
 import { ScreenShell } from '../components/ScreenShell';
 import {
   TabBarLayoutContext, TabBarScrollContext, TAB_BAR_VISUAL_GAP, TAB_BAR_HEIGHT_FALLBACK,
-  TAB_BAR_SCROLL_THRESHOLD, nextTabBarScrollState, useTabBarAutoHide,
+  TAB_BAR_SCROLL_THRESHOLD, TAB_BAR_BOTTOM_EPSILON, nextTabBarScrollState, nextTabBarProgrammaticState,
+  useTabBarAutoHide,
 } from '../components/TabBarLayout';
 import { TAB_ICON_MAP } from '../components/Icon';
 
@@ -348,17 +349,6 @@ describe('scroll-direction auto-hide (#1209)', () => {
     expect(nextTabBarScrollState({ lastY: 400, hidden: true }, metricsFor(-40)).hidden).toBe(false);
   });
 
-  test('bottom overscroll bounce does not flip direction', () => {
-    const maxY = 1200;
-    let st = nextTabBarScrollState({ lastY: 1100, hidden: false }, metricsFor(maxY));
-    expect(st.hidden).toBe(true);
-    // Rubber-band past the end, then settle back to the end: clamped, no change.
-    st = nextTabBarScrollState(st, metricsFor(maxY + 60));
-    expect(st).toEqual({ lastY: maxY, hidden: true });
-    st = nextTabBarScrollState(st, metricsFor(maxY));
-    expect(st.hidden).toBe(true);
-  });
-
   function Probe({ tab, probe }) {
     const value = useTabBarAutoHide(tab);
     probe.current = value;
@@ -517,6 +507,284 @@ describe('scroll-direction auto-hide (#1209)', () => {
     act(() => { component.update(tree(true)); });
     expect(padding()).toBe(shown);
     expect(shown).toBe(55 + TAB_BAR_VISUAL_GAP + 20);
+    act(() => component.unmount());
+  });
+});
+
+// #1231: the bar must reappear at the content bottom, not only on scroll up.
+describe('bottom reveal and hysteresis (#1231)', () => {
+  // content 2000 / viewport 800 => maxY 1200.
+  const MAX_Y = 1200;
+  const m = (y, contentHeight = 2000, layoutHeight = 800) => ({ y, contentHeight, layoutHeight });
+  const ev = (y, contentHeight = 2000, layoutHeight = 800) => ({
+    nativeEvent: { contentOffset: { y }, contentSize: { height: contentHeight }, layoutMeasurement: { height: layoutHeight } },
+  });
+  // Feed a stream of metrics through the pure transition; returns every state.
+  const run = (start, metricsList) => {
+    const states = [];
+    let st = start;
+    metricsList.forEach((metrics) => { st = nextTabBarScrollState(st, metrics); states.push(st); });
+    return states;
+  };
+
+  function Probe({ tab, probe }) {
+    probe.current = useTabBarAutoHide(tab);
+    return null;
+  }
+  const mountProbe = () => {
+    const probe = { current: null };
+    let component;
+    act(() => { component = renderer.create(<Probe tab="Home" probe={probe} />); });
+    return { probe, component };
+  };
+  // Hide the bar mid-content with a user drag so each case starts hidden.
+  const hideMidContent = (probe) => {
+    act(() => probe.current.onScroll(ev(100)));
+    act(() => probe.current.onScroll(ev(400)));
+    expect(probe.current.hidden).toBe(true);
+  };
+
+  test('the fixed epsilon is 1dp', () => {
+    expect(TAB_BAR_BOTTOM_EPSILON).toBe(1);
+  });
+
+  // A hidden bar with a mid-content baseline receives one user-driven event.
+  test.each([
+    ['at bottom exactly', m(MAX_Y), false],
+    ['exactly 1dp from the bottom', m(MAX_Y - TAB_BAR_BOTTOM_EPSILON), false],
+    ['fractional rounding inside the epsilon', m(MAX_Y - 0.4), false],
+    ['beyond the bottom (iOS rubber-band)', m(MAX_Y + 80), false],
+    ['content shorter than the viewport, bounced down', m(30, 500, 800), false],
+    ['content exactly the viewport height, bounced down', m(30, 800, 800), false],
+    ['content shorter than the viewport at rest', m(0, 500, 800), false],
+    ['content only fractionally taller than the viewport (maxY 0.4)', m(25, 800.4, 800), false],
+    ['1.5dp from the bottom is outside the epsilon: normal 8dp rule hides', m(MAX_Y - 1.5), true],
+    ['mid-content, down over the threshold stays hidden', m(700), true],
+  ])('hidden bar, user event: %s', (_name, metrics, expectedHidden) => {
+    expect(nextTabBarScrollState({ lastY: 400, hidden: true }, metrics).hidden).toBe(expectedHidden);
+  });
+
+  test('reaching the bottom reveals and re-baselines exactly at maxY', () => {
+    [MAX_Y, MAX_Y - 1, MAX_Y + 80].forEach((y) => {
+      expect(nextTabBarScrollState({ lastY: 400, hidden: true }, m(y))).toEqual({ hidden: false, lastY: MAX_Y });
+    });
+    // First event after mount/tab change that lands at the bottom also shows.
+    expect(nextTabBarScrollState({ lastY: null, hidden: false }, m(MAX_Y))).toEqual({ hidden: false, lastY: MAX_Y });
+  });
+
+  test('content that cannot scroll always shows the bar, including overscroll', () => {
+    [m(0, 500, 800), m(25, 500, 800), m(25, 800, 800), m(-25, 800, 800), m(25, 0, 0)].forEach((metrics) => {
+      expect(nextTabBarScrollState({ lastY: 300, hidden: true }, metrics)).toEqual({ hidden: false, lastY: 0 });
+      expect(nextTabBarScrollState({ lastY: null, hidden: false }, metrics).hidden).toBe(false);
+    });
+  });
+
+  test('iOS bounce past the bottom, then settle: stays visible, no flicker', () => {
+    const states = run({ lastY: 1100, hidden: true }, [
+      m(MAX_Y), m(MAX_Y + 20), m(MAX_Y + 60), m(MAX_Y + 25), m(MAX_Y), m(MAX_Y), m(MAX_Y + 3), m(MAX_Y),
+    ]);
+    states.forEach((st) => expect(st).toEqual({ hidden: false, lastY: MAX_Y }));
+  });
+
+  test('settling a hair off the bottom after a bounce cannot re-hide (hysteresis baseline is maxY)', () => {
+    // Stale mid-scroll baseline (1000) and a rounding-sized rest position
+    // outside the 1dp epsilon: measured from maxY the delta is far under the
+    // threshold; measured from the stale baseline it would hide.
+    const states = run({ lastY: 1000, hidden: true }, [
+      m(MAX_Y), m(MAX_Y + 60), m(MAX_Y), m(MAX_Y - 2), m(MAX_Y - 2.5), m(MAX_Y),
+    ]);
+    states.forEach((st) => expect(st.hidden).toBe(false));
+  });
+
+  test('downward bottom-bounce stream while at the bottom never re-hides', () => {
+    const states = run({ lastY: MAX_Y, hidden: false }, [
+      m(MAX_Y + 10), m(MAX_Y + 30), m(MAX_Y + 50), m(MAX_Y + 70), m(MAX_Y + 90), m(MAX_Y + 12), m(MAX_Y),
+    ]);
+    states.forEach((st) => expect(st).toEqual({ hidden: false, lastY: MAX_Y }));
+  });
+
+  test('scrolling up from the bottom stays visible', () => {
+    const states = run({ lastY: MAX_Y, hidden: false }, [m(MAX_Y - 3), m(MAX_Y - 40), m(MAX_Y - 200)]);
+    states.forEach((st) => expect(st.hidden).toBe(false));
+    expect(states[2].lastY).toBe(MAX_Y - 200);
+  });
+
+  test('moving off the bottom, then a fresh downward drag over 8dp, may hide again', () => {
+    let st = { lastY: MAX_Y, hidden: false };
+    st = nextTabBarScrollState(st, m(MAX_Y - 300));
+    expect(st).toEqual({ hidden: false, lastY: MAX_Y - 300 });
+    // Under the threshold: still visible; accumulates against the same baseline.
+    st = nextTabBarScrollState(st, m(MAX_Y - 300 + TAB_BAR_SCROLL_THRESHOLD - 1));
+    expect(st.hidden).toBe(false);
+    st = nextTabBarScrollState(st, m(MAX_Y - 300 + TAB_BAR_SCROLL_THRESHOLD));
+    expect(st.hidden).toBe(true);
+    // And reaching the bottom again reveals.
+    st = nextTabBarScrollState(st, m(MAX_Y));
+    expect(st.hidden).toBe(false);
+  });
+
+  test('large scrollable content away from both boundaries keeps the 8dp down-hide / up-show rule', () => {
+    let st = { lastY: null, hidden: false };
+    st = nextTabBarScrollState(st, m(5000, 20000, 800));
+    expect(st).toEqual({ hidden: false, lastY: 5000 });
+    st = nextTabBarScrollState(st, m(5000 + TAB_BAR_SCROLL_THRESHOLD - 1, 20000, 800));
+    expect(st.hidden).toBe(false);
+    st = nextTabBarScrollState(st, m(5000 + TAB_BAR_SCROLL_THRESHOLD, 20000, 800));
+    expect(st.hidden).toBe(true);
+    st = nextTabBarScrollState(st, m(5000, 20000, 800));
+    expect(st.hidden).toBe(false);
+    // The top still reveals.
+    expect(nextTabBarScrollState({ lastY: 900, hidden: true }, m(0, 20000, 800)).hidden).toBe(false);
+  });
+
+  test('window/orientation change that moves maxY is recomputed from the current event', () => {
+    // Taller viewport (1100 => maxY 900): offset 1000 is now beyond the new
+    // bottom, so the next event reveals a bar hidden under the old maxY (1200).
+    expect(nextTabBarScrollState({ lastY: 900, hidden: true }, m(1000, 2000, 1100)))
+      .toEqual({ hidden: false, lastY: 900 });
+    // Content now fits the viewport entirely: always visible.
+    expect(nextTabBarScrollState({ lastY: 500, hidden: true }, m(500, 2000, 2000)))
+      .toEqual({ hidden: false, lastY: 0 });
+    // A shorter viewport raises maxY (1600): an offset that was at the old
+    // bottom is no longer there, so a stale maxY must not reveal it.
+    expect(nextTabBarScrollState({ lastY: 400, hidden: true }, m(1200, 2000, 400)).hidden).toBe(true);
+  });
+
+  describe('programmatic events (userDriven=false)', () => {
+    test.each([
+      ['scrollToEnd (exactly maxY)', m(MAX_Y), { hidden: false, lastY: MAX_Y }],
+      ['within epsilon of the end', m(MAX_Y - 1), { hidden: false, lastY: MAX_Y }],
+      ['beyond the end', m(MAX_Y + 50), { hidden: false, lastY: MAX_Y }],
+      ['jump to the top', m(0), { hidden: false, lastY: 0 }],
+      ['unscrollable content', m(20, 500, 800), { hidden: false, lastY: 0 }],
+      ['jump elsewhere re-baselines and keeps it hidden', m(700), { hidden: true, lastY: 700 }],
+    ])('%s', (_name, metrics, expected) => {
+      expect(nextTabBarProgrammaticState({ hidden: true }, metrics)).toEqual(expected);
+    });
+
+    test('a programmatic move elsewhere never hides a visible bar', () => {
+      expect(nextTabBarProgrammaticState({ hidden: false }, m(700))).toEqual({ hidden: false, lastY: 700 });
+    });
+  });
+
+  test('hook: user drag hides, then a drag that reaches the bottom reveals', () => {
+    const { probe, component } = mountProbe();
+    hideMidContent(probe);
+    act(() => probe.current.onScroll(ev(900)));
+    expect(probe.current.hidden).toBe(true);
+    act(() => probe.current.onScroll(ev(MAX_Y)));
+    expect(probe.current.hidden).toBe(false);
+    act(() => component.unmount());
+  });
+
+  test('hook: bounce past the bottom and settle never re-hides; a fresh drag away then down does', () => {
+    const { probe, component } = mountProbe();
+    hideMidContent(probe);
+    [MAX_Y, MAX_Y + 40, MAX_Y + 80, MAX_Y + 10, MAX_Y, MAX_Y - 2].forEach((y) => {
+      act(() => probe.current.onScroll(ev(y)));
+      expect(probe.current.hidden).toBe(false);
+    });
+    act(() => probe.current.onScroll(ev(MAX_Y - 300)));
+    expect(probe.current.hidden).toBe(false);
+    act(() => probe.current.onScroll(ev(MAX_Y - 300 + TAB_BAR_SCROLL_THRESHOLD + 2)));
+    expect(probe.current.hidden).toBe(true);
+    act(() => component.unmount());
+  });
+
+  test('hook: programmatic scrollToEnd reveals a hidden bar and re-baselines without a hide', () => {
+    const { probe, component } = mountProbe();
+    hideMidContent(probe);
+    act(() => probe.current.onScroll(ev(MAX_Y), false));
+    expect(probe.current.hidden).toBe(false);
+    // The baseline is the end: a small nudge off it is not a stale-baseline hide.
+    act(() => probe.current.onScroll(ev(MAX_Y - 3)));
+    expect(probe.current.hidden).toBe(false);
+    act(() => probe.current.onScroll(ev(MAX_Y - 100)));
+    expect(probe.current.hidden).toBe(false);
+    act(() => component.unmount());
+  });
+
+  test('hook: content that fits the viewport is never hidden by a user scroll', () => {
+    const { probe, component } = mountProbe();
+    [10, 60, 200, 5].forEach((y) => {
+      act(() => probe.current.onScroll(ev(y, 600, 800)));
+      expect(probe.current.hidden).toBe(false);
+    });
+    act(() => component.unmount());
+  });
+
+  test('hook: tab change shows the bar and resets the baseline after a bottom reveal', () => {
+    const { probe, component } = mountProbe();
+    hideMidContent(probe);
+    act(() => probe.current.onScroll(ev(MAX_Y)));
+    expect(probe.current.hidden).toBe(false);
+    act(() => probe.current.onScroll(ev(700)));
+    act(() => probe.current.onScroll(ev(900)));
+    expect(probe.current.hidden).toBe(true);
+    act(() => { component.update(<Probe tab="Log" probe={probe} />); });
+    expect(probe.current.hidden).toBe(false);
+    // Fresh baseline on the new tab: the first event only records it.
+    act(() => probe.current.onScroll(ev(500)));
+    expect(probe.current.hidden).toBe(false);
+    act(() => probe.current.onScroll(ev(520)));
+    expect(probe.current.hidden).toBe(true);
+    act(() => component.unmount());
+  });
+
+  // End to end through ScreenShell's real drag/momentum gating and the TabBar.
+  function Harness({ probe }) {
+    const { hidden, onScroll } = useTabBarAutoHide('Home');
+    probe.current = hidden;
+    return (
+      <SafeAreaProvider initialMetrics={metrics(0)}>
+        <TabBarScrollContext.Provider value={{ onScroll }}>
+          <ScreenShell title="Test" />
+          <TabBar tabs={['Home', 'Log']} activeTab="Home" onTabPress={() => {}} hidden={hidden} />
+        </TabBarScrollContext.Provider>
+      </SafeAreaProvider>
+    );
+  }
+  const findScroll = (component) => component.root.findAll((n) => typeof n.props.onScroll === 'function' && n.props.scrollEventThrottle)[0];
+
+  test('ScreenShell: a fling whose momentum lands at the bottom reveals the bar and restores touch/a11y state', () => {
+    const probe = { current: null };
+    let component;
+    act(() => { component = renderer.create(<Harness probe={probe} />); });
+    const scroll = findScroll(component);
+    act(() => scroll.props.onScrollBeginDrag());
+    act(() => scroll.props.onScroll(ev(100)));
+    act(() => scroll.props.onScroll(ev(400)));
+    expect(findSurface(component).props.pointerEvents).toBe('none');
+    expect(findSurface(component).props.importantForAccessibility).toBe('no-hide-descendants');
+    act(() => scroll.props.onScrollEndDrag({ nativeEvent: { velocity: { y: 3 } } }));
+    act(() => scroll.props.onMomentumScrollBegin());
+    act(() => scroll.props.onScroll(ev(900)));
+    expect(probe.current).toBe(true);
+    act(() => scroll.props.onScroll(ev(MAX_Y)));
+    act(() => scroll.props.onScroll(ev(MAX_Y + 30))); // rubber-band
+    act(() => scroll.props.onScroll(ev(MAX_Y)));
+    act(() => scroll.props.onMomentumScrollEnd());
+    expect(probe.current).toBe(false);
+    const surface = findSurface(component);
+    expect(surface.props.pointerEvents).toBe('auto');
+    expect(surface.props.importantForAccessibility).toBe('auto');
+    expect(surface.props.accessibilityElementsHidden).toBe(false);
+    expect(StyleSheet.flatten(surface.props.style).opacity).toBeUndefined();
+    act(() => component.unmount());
+  });
+
+  test('ScreenShell: a programmatic scrollToEnd (no drag or momentum) reveals the bar', () => {
+    const probe = { current: null };
+    let component;
+    act(() => { component = renderer.create(<Harness probe={probe} />); });
+    const scroll = findScroll(component);
+    act(() => scroll.props.onScrollBeginDrag());
+    act(() => scroll.props.onScroll(ev(100)));
+    act(() => scroll.props.onScroll(ev(400)));
+    act(() => scroll.props.onScrollEndDrag({ nativeEvent: { velocity: { y: 0 } } }));
+    expect(probe.current).toBe(true);
+    act(() => scroll.props.onScroll(ev(MAX_Y)));
+    expect(probe.current).toBe(false);
     act(() => component.unmount());
   });
 });
