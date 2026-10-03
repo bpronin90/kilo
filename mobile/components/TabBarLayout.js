@@ -19,26 +19,64 @@ export const TabBarLayoutContext = createContext({
 // Scroll-direction auto-hide (#1209, reverses #1026's always-visible bar). The
 // bar stays fully opaque whenever it is shown; it slides off-screen (a
 // translateY, never an opacity fade) while the user scrolls down and returns on
-// scroll up, at the top of a scroll, and on tab change. Hiding is purely a
+// scroll up, at the top or bottom of a scroll, and on tab change. Hiding is purely a
 // transform, so the measured height and ScreenShell's scroll clearance never
 // change and content cannot jump.
 export const TAB_BAR_SCROLL_THRESHOLD = 8;
 
+// Bottom reveal (#1231): a scroll within this many logical dp of the content
+// end (or beyond it, during iOS rubber-banding) counts as "at the bottom". It is
+// a fixed dp value, deliberately not viewport- or content-scaled: it only
+// absorbs scroll-metric rounding, so the reveal never starts early on tall
+// screens.
+export const TAB_BAR_BOTTOM_EPSILON = 1;
+
+// Scroll metrics -> { y, maxY, atTop, atBottom }. maxY <= 0 means nothing can
+// scroll (content shorter than or equal to the viewport): that is both
+// boundaries at once, so the bar is always shown.
+function boundaries({ y, contentHeight = 0, layoutHeight = 0 }) {
+  const maxY = Math.max(0, contentHeight - layoutHeight);
+  const unscrollable = maxY <= 0;
+  return {
+    maxY,
+    atTop: unscrollable || y <= 0,
+    atBottom: y >= maxY - TAB_BAR_BOTTOM_EPSILON,
+  };
+}
+
 // Pure transition: given the previous scroll offset/visibility and a new scroll
 // event's metrics, return the next { hidden, lastY }. Rules:
 // - lastY null (first event after mount/tab change) only records a baseline.
-// - y is clamped into [0, maxY] so top/bottom overscroll bounce cannot flip
-//   direction; at or above the top (y <= 0) the bar always shows.
+// - Top (y <= 0, including negative overscroll) and unscrollable content always
+//   show the bar.
+// - Bottom (y within TAB_BAR_BOTTOM_EPSILON of maxY, or beyond it) also always
+//   shows the bar (#1231) and resets the baseline to exactly maxY. That reset is
+//   the hysteresis: bounce/settle events and sub-epsilon jitter around the end
+//   are measured from maxY, never a stale mid-scroll offset, so they can neither
+//   hide nor flicker the bar. It can hide again only from a non-bottom baseline
+//   after a fresh downward drag over the threshold.
 // - deltas under the threshold are ignored and do not move the baseline, so
 //   slow drags still accumulate into a decision.
-export function nextTabBarScrollState({ lastY, hidden }, { y, contentHeight = 0, layoutHeight = 0 }) {
-  const maxY = Math.max(0, contentHeight - layoutHeight);
-  const clampedY = Math.min(Math.max(y, 0), maxY || Math.max(y, 0));
-  if (clampedY <= 0) return { hidden: false, lastY: 0 };
-  if (lastY == null) return { hidden, lastY: clampedY };
-  const delta = clampedY - lastY;
+export function nextTabBarScrollState({ lastY, hidden }, metrics) {
+  const { y } = metrics;
+  const { maxY, atTop, atBottom } = boundaries(metrics);
+  if (atTop) return { hidden: false, lastY: 0 };
+  if (atBottom) return { hidden: false, lastY: maxY };
+  if (lastY == null) return { hidden, lastY: y };
+  const delta = y - lastY;
   if (Math.abs(delta) < TAB_BAR_SCROLL_THRESHOLD) return { hidden, lastY };
-  return { hidden: delta > 0, lastY: clampedY };
+  return { hidden: delta > 0, lastY: y };
+}
+
+// Programmatic scrolls (scrollTo/scrollToEnd/anchor jumps, userDriven=false)
+// never hide the bar; they only re-baseline, and a jump to the top or the
+// bottom reveals it like a user scroll there would.
+export function nextTabBarProgrammaticState({ hidden }, metrics) {
+  const y = Math.max(0, metrics.y);
+  const { maxY, atTop, atBottom } = boundaries({ ...metrics, y });
+  if (atTop) return { hidden: false, lastY: 0 };
+  if (atBottom) return { hidden: false, lastY: maxY };
+  return { hidden, lastY: y };
 }
 
 // Owned by App.js. `onScroll` takes a ScrollView scroll event; ScreenShell
@@ -57,23 +95,18 @@ export function useTabBarAutoHide(activeTab) {
     setHidden(false);
   }, [activeTab]);
 
-  // `userDriven` false (programmatic jumps) only re-baselines `lastY`, so the
-  // next real drag measures from where the jump landed, never a stale offset.
+  // `userDriven` false (programmatic jumps) only re-baselines `lastY` (and
+  // reveals at the top/bottom), so the next real drag measures from where the
+  // jump landed, never a stale offset.
   const onScroll = useCallback((e, userDriven = true) => {
     const n = e && e.nativeEvent;
     if (!n || !n.contentOffset) return;
-    if (!userDriven) {
-      // A jump to the very top also reveals the bar (#1209: shown at top of scroll).
-      const y = Math.max(0, n.contentOffset.y);
-      stateRef.current = { lastY: y, hidden: y <= 0 ? false : stateRef.current.hidden };
-      if (y <= 0) setHidden(false);
-      return;
-    }
-    const next = nextTabBarScrollState(stateRef.current, {
+    const metrics = {
       y: n.contentOffset.y,
       contentHeight: n.contentSize ? n.contentSize.height : 0,
       layoutHeight: n.layoutMeasurement ? n.layoutMeasurement.height : 0,
-    });
+    };
+    const next = (userDriven ? nextTabBarScrollState : nextTabBarProgrammaticState)(stateRef.current, metrics);
     const changed = next.hidden !== stateRef.current.hidden;
     stateRef.current = next;
     if (changed) setHidden(next.hidden);

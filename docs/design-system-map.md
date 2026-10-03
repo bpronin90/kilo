@@ -306,6 +306,26 @@ adds it to the shared 4px gap and the bottom inset for scroll clearance.
 `SafeAreaProvider` is owned by `mobile/App.js`; `ScreenShell` consumes only
 the bottom inset so existing top spacing is unchanged.
 
+The compact `TabBar` auto-hides on user-driven scroll (`useTabBarAutoHide` and
+`nextTabBarScrollState` in `mobile/components/TabBarLayout.js`): a downward
+drag past `TAB_BAR_SCROLL_THRESHOLD` (8dp) slides it off with a translateY
+only, never a fade, and it stays opaque whenever shown. It is shown again on
+scroll up, on tab change, and at both scroll boundaries (#1231). The top
+boundary is `y <= 0`. The bottom boundary is `y` within the fixed
+`TAB_BAR_BOTTOM_EPSILON` (1dp, logical points, deliberately not scaled by
+viewport or content height) of `maxY = max(0, contentHeight - layoutHeight)`,
+including any iOS rubber-band offset beyond it. Content that cannot scroll
+(`maxY <= 0`) always shows the bar, and `maxY` is recomputed from every scroll
+event so a window/orientation change re-evaluates the boundary. Reaching the
+bottom resets the scroll baseline to exactly `maxY`; that is the hysteresis:
+bounce and settle events at the end can neither hide nor flicker the bar, and
+it can hide again only after the user moves off the bottom and drags down
+more than 8dp from that new baseline. Programmatic scrolls (`userDriven` false,
+for example `scrollToEnd`) re-baseline and reveal at either boundary but never
+hide. A hidden bar keeps `pointerEvents="none"` and no-hide-descendants
+accessibility semantics, and scroll clearance above is unchanged by hidden
+state.
+
 ---
 
 ## More Screen
