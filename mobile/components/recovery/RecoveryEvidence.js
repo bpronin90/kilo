@@ -197,7 +197,7 @@ export function BlockEvidence({
                   <Text testID="recovery-movement" style={styles.summaryLine}>Not enough matched lifts to compare weeks yet.</Text>
                 )}
                 {hasBands && trained > 0 && (
-                  <RecoveryBandBar buckets={bands.buckets} trained={trained} weekLabel={weekLabel} />
+                  <RecoveryBandBar buckets={bands.buckets} trained={trained} weekLabel={weekLabel} added={addedCount} />
                 )}
                 {!!movement && <RecoveryChangeVisual movement={movement} />}
               </View>

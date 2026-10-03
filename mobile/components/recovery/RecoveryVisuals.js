@@ -68,16 +68,21 @@ export function bandColor(bandId, colors, kua) {
   return kua ? kua[GRADED_KUA_TOKEN[id]] : colors[GRADED_LEGACY_TOKEN[id]];
 }
 
-// One plain-word list of every state count, graded first then the quiet ones,
-// shared by the hero bar and the weeks strip labels so they cannot drift.
-function stateCountSentence(buckets) {
-  const g = gradedCounts(buckets);
+// One plain-word list of every state count, zeros included: the three graded
+// states (Close folded into Rebuilding), then the quiet ones. Shared by the hero
+// bar, the roster summary and the weeks strip so the labels cannot drift. `added`
+// is optional because the historical series carries no added count; when a
+// caller has one (hero bar, summary) it is always named.
+function stateCountSentence({ graded, notTrained, cannotCompare, added }) {
   return [
-    ...GRADED_BANDS.map(b => `${b.label} ${g[b.id]}`),
-    `${QUIET_STATUS_LABELS.not_trained_yet} ${buckets.not_trained_yet || 0}`,
-    `${QUIET_STATUS_LABELS.cannot_compare} ${buckets.cannot_compare || 0}`,
+    ...GRADED_BANDS.map(b => `${b.label} ${graded[b.id]}`),
+    `${QUIET_STATUS_LABELS.not_trained_yet} ${notTrained}`,
+    `${QUIET_STATUS_LABELS.cannot_compare} ${cannotCompare}`,
+    ...(added == null ? [] : [`${QUIET_STATUS_LABELS.added} ${added}`]),
   ].join(', ');
 }
+
+const sumGraded = (g) => g.at_or_above + g.rebuilding + g.early;
 
 function useVisual() {
   const { colors, kuaPalette: kua } = useTheme();
@@ -169,19 +174,24 @@ const CANNOT_COMPARE_ITEM = Object.freeze({ id: 'cannot_compare', label: QUIET_S
 
 // Current-week segmented bar: one thin bar sized by the three graded counts
 // (Close folded into Rebuilding), with a legend naming only the states present
-// ("Can't compare" with the neutral dot, never a segment). The accessible label
-// names every state count, zeros included.
-export function RecoveryBandBar({ buckets, trained, weekLabel }) {
+// ("Can't compare" with the neutral dot, never a segment). The track is hidden
+// entirely when no graded state exists (nothing to draw). The accessible label
+// names every state count, zeros included, with the selected week's added count.
+export function RecoveryBandBar({ buckets, trained, weekLabel, added = 0 }) {
   const { colors, kua, styles } = useVisual();
   const graded = gradedCounts(buckets);
   const items = [
     ...GRADED_BANDS.filter(b => graded[b.id] > 0),
     ...((buckets.cannot_compare || 0) > 0 ? [CANNOT_COMPARE_ITEM] : []),
   ];
-  const label = `${weekLabel} return bands across ${trained} trained exercises: ${stateCountSentence(buckets)}`;
+  const label = `${weekLabel} return bands across ${trained} trained exercises: ${stateCountSentence({
+    graded, notTrained: buckets.not_trained_yet || 0, cannotCompare: buckets.cannot_compare || 0, added,
+  })}`;
   return (
     <View testID="recovery-bands-rows" style={styles.barBlock} accessible accessibilityLabel={label}>
-      <Segments buckets={buckets} colors={colors} kua={kua} style={styles.segmentBar} />
+      {sumGraded(graded) > 0 && (
+        <Segments buckets={buckets} colors={colors} kua={kua} style={styles.segmentBar} />
+      )}
       <BandLegend items={items} colors={colors} kua={kua} styles={styles} />
     </View>
   );
@@ -218,23 +228,21 @@ export function RecoveryRosterSummary({ summary, bands, gap }) {
   if (rosterSize > 0) {
     sentences.push(`Trained this week: ${trained} of ${rosterSize} roster exercises${notYet > 0 ? `, ${notYet} not trained yet` : ''}.`);
   }
-  // Each status is announced exactly once: the three graded states come from
-  // the hero's buckets with Close folded into Rebuilding (the sum), "Can't
-  // compare" from the all-rows count (it covers unusable-baseline rows the
+  // Every state is announced exactly once, zeros included, in the same order and
+  // words as the hero label: the three graded states come from the hero's
+  // buckets with Close folded into Rebuilding (the sum); "Not trained yet" is the
+  // hero's roster-minus-trained; "Can't compare" and "Added during recovery" come
+  // from the all-rows count (can't-compare covers unusable-baseline rows the
   // roster excludes).
   const graded = gradedCounts(buckets);
-  const byStatus = [
-    ...(buckets ? GRADED_BANDS.filter(b => graded[b.id] > 0).map(b => `${b.label} ${graded[b.id]}`) : []),
-    ...(c.cannot_compare > 0 ? [`Can't compare ${c.cannot_compare}`] : []),
-  ];
-  if (byStatus.length > 0) sentences.push(`By status: ${byStatus.join(', ')}.`);
+  sentences.push(`By status: ${stateCountSentence({
+    graded, notTrained: notYet, cannotCompare: c.cannot_compare, added: c.added,
+  })}.`);
   if (gap) sentences.push(`Most common gap: ${gap}.`);
-  if (c.added > 0) sentences.push(`${c.added} added during recovery.`);
-  if (sentences.length === 0) sentences.push(`${summary.total} exercise${summary.total === 1 ? '' : 's'}.`);
   const label = sentences.join(' ');
   return (
     <View testID="recovery-roster-summary" style={styles.rosterBlock} accessible accessibilityLabel={label}>
-      {buckets && trained > 0 && (
+      {buckets && sumGraded(graded) > 0 && (
         <View testID="recovery-roster-bar">
           <Segments buckets={buckets} colors={colors} kua={kua} style={styles.miniBar} />
         </View>
@@ -301,7 +309,9 @@ export function RecoveryWeeksStrip({ series }) {
         const gradedTotal = g ? g.at_or_above + g.rebuilding + g.early : 0;
         const cannot = entry.buckets ? entry.buckets.cannot_compare || 0 : 0;
         const a11yLabel = entry.buckets
-          ? `Week ${entry.week_number}: ${stateCountSentence(entry.buckets)}`
+          ? `Week ${entry.week_number}: ${stateCountSentence({
+            graded: g, notTrained: entry.buckets.not_trained_yet || 0, cannotCompare: cannot,
+          })}`
           : `Week ${entry.week_number}: no readable evidence`;
         return (
           <View key={entry.week_id} testID={`recovery-band-strip-week-${entry.week_number}`} style={styles.weekRow} accessible accessibilityLabel={a11yLabel}>

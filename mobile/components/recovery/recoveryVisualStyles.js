@@ -86,10 +86,15 @@ export const createVisualStyles = (colors, kua = null) => {
     exStatus: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
     exStatusDot: { width: 8, height: 8, borderRadius: 4 },
     exStatusText: { fontSize: 13, fontWeight: '600', color: inkMuted },
-    exBarRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    // The bar line WRAPS (#1219): at large text or a narrow card the measure label
+    // ("Total work 1133%") drops under the bar instead of overflowing or being
+    // clipped; the track keeps a sane minimum (96) and grows to fill the line.
+    exBarRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 10, rowGap: 4 },
     exBarTrack: {
-      flex: 1,
-      minWidth: 48,
+      flexGrow: 1,
+      flexShrink: 1,
+      flexBasis: 96,
+      minWidth: 96,
       height: 6,
       borderRadius: 3,
       overflow: 'hidden',
@@ -98,9 +103,11 @@ export const createVisualStyles = (colors, kua = null) => {
     exBarFill: { height: '100%', borderRadius: 3 },
     // Names its measure ("Total work 133%"). A shared minimum width keeps every
     // row's bar the same length at ordinary scales (so bars compare at a
-    // glance); it still grows with the text at large font scales, and the track
-    // keeps a floor width so it can never be squeezed away.
-    exPercent: { flexShrink: 0, minWidth: 124, textAlign: 'right', fontSize: 13, fontWeight: '800', color: ink },
+    // glance); it grows with the text at large font scales, wraps onto its own
+    // line when it cannot sit beside the 96dp track, and `maxWidth: '100%'` lets a
+    // very long label wrap inside the card rather than overflow it. The number is
+    // never truncated (no numberOfLines).
+    exPercent: { flexShrink: 0, minWidth: 124, maxWidth: '100%', textAlign: 'right', fontSize: 13, fontWeight: '800', color: ink },
     exNumbers: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 2 },
     exNumberText: { fontSize: 13, color: inkMuted },
     rosterBlock: { gap: 6, paddingTop: 2, paddingBottom: 4 },
