@@ -7,6 +7,7 @@ import React, { useMemo, useState } from 'react';
 import { AccessibilityInfo, Pressable, Text, View } from 'react-native';
 import { useTheme } from '../../theme/ThemeContext';
 import { RECOVERY_BASELINE_BASIS, planBaselineRebuild } from '../../lib/data/recoveryBlocks';
+import { displayWeight, formatLiftWeightValue } from '../../lib/units';
 import { createStyles } from './analyticsRecoveryStyles';
 
 const BASIS_LABELS = {
@@ -18,14 +19,14 @@ const BASIS_LABELS = {
 const WARNING = 'This routine was edited after Recovery began, so the rebuilt values may include recovery-period work.';
 
 const _n = (v) => Number(v).toLocaleString();
-function _metrics(row) {
+function _metrics(row, unit) {
   if (!row) return 'not in the old baseline';
-  if (row.exercise_class === 'weighted') return `${_n(row.top_weight)} top, ${_n(row.volume)} volume`;
+  if (row.exercise_class === 'weighted') return `${formatLiftWeightValue(row.top_weight, unit)} ${unit} top, ${_n(Math.round(displayWeight(row.volume, unit)))} ${unit} volume`;
   if (row.exercise_class === 'reps_only') return `${_n(row.best_set_reps)} best, ${_n(row.total_reps)} reps`;
   return `${_n(row.best_hold_seconds)}s best, ${_n(row.total_seconds)}s total`;
 }
 
-export function RebuildBaselineAction({ block, notes, locked = false, onRebuild }) {
+export function RebuildBaselineAction({ block, notes, unit = 'lb', locked = false, onRebuild }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const note = useMemo(() => (notes || []).find(n => n.id === block.baseline_note_id), [notes, block.baseline_note_id]);
@@ -39,13 +40,13 @@ export function RebuildBaselineAction({ block, notes, locked = false, onRebuild 
     if (!plan.eligible) return [];
     const old = new Map(plan.previous.map(r => [r.key, r]));
     const next = plan.baseline.exercises.map(r => ({
-      key: r.key, text: `${r.routine_order + 1}. ${r.name}: ${_metrics(old.get(r.key))} → ${_metrics(r)} (${BASIS_LABELS[r.basis] || r.basis})`,
+      key: r.key, text: `${r.routine_order + 1}. ${r.name}: ${_metrics(old.get(r.key), unit)} → ${_metrics(r, unit)} (${BASIS_LABELS[r.basis] || r.basis})`,
     }));
     const kept = new Set(plan.baseline.exercises.map(r => r.key));
     const dropped = plan.previous.filter(r => !kept.has(r.key))
-      .map(r => ({ key: `old-${r.key}`, text: `${r.name}: ${_metrics(r)} → removed (not in the routine)` }));
+      .map(r => ({ key: `old-${r.key}`, text: `${r.name}: ${_metrics(r, unit)} → removed (not in the routine)` }));
     return [...next, ...dropped];
-  }, [plan]);
+  }, [plan, unit]);
 
   const announce = (message) => { try { AccessibilityInfo.announceForAccessibility(message); } catch (_e) { /* best-effort */ } };
   const close = () => { setOpen(false); setError(null); };
@@ -54,7 +55,7 @@ export function RebuildBaselineAction({ block, notes, locked = false, onRebuild 
     setError(null);
     setBusy(true);
     try {
-      const result = await onRebuild({ blockId: block.id });
+      const result = await onRebuild({ blockId: block.id, expectedBaseline: plan.baseline });
       if (!result || result.ok === false) {
         const message = (result && result.error) || 'Could not rebuild this baseline.';
         setError(message);

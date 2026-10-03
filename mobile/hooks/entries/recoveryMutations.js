@@ -265,14 +265,10 @@ export function addRecoveryWeekWithNewNoteCore(storage, { blockId, title }) {
 // Complete the block's current (still-open) week and the block itself as one
 // atomic storage operation (storage/entries/recoveryStorage.js
 // completeRecoveryBlockWithCurrentWeek): either both land, or neither does.
-// The domain-forbidden combination — a completed block whose current week is
-// still open — can never be observed, including when the block write fails
-// after its week write already landed, since that write is reverted before
-// the error propagates. The one exception is a `RecoveryReconciliationError`:
-// the storage layer's own revert write also failed, which is surfaced as its
-// own distinct code so the caller can tell "cleanly failed, retry freely"
-// apart from "left in an unknown state, needs manual reconciliation" — never
-// the same generic error either way.
+// A completed block with an open week is never observable: a failed block write
+// reverts the week write first. A `RecoveryReconciliationError` (the revert also
+// failed) keeps its own code, so "cleanly failed, retry" differs from "needs
+// manual reconciliation".
 export function completeRecoveryBlockCore(storage, { blockId }) {
   return startRecoveryOperation({
     scope: { blockId },
@@ -475,14 +471,18 @@ export function setRecoveryBlockReasonCore(storage, { blockId, reason }) {
 // Explicit v1 -> v2 baseline rebuild (#1227). Inside the same guarded lock as every
 // other Recovery edit it re-reads the authoritative block + exact baseline note,
 // re-plans with the v2 capture, and replaces ONLY `baseline`. Stale/ineligible
-// state (v2, tombstone, note gone/unreadable) writes nothing.
-export function rebuildRecoveryBaselineCore(storage, { blockId }) {
+// state (v2, tombstone, note gone/unreadable) or a snapshot that differs from the
+// previewed `expectedBaseline` writes nothing.
+export function rebuildRecoveryBaselineCore(storage, { blockId, expectedBaseline }) {
   return runGuardedRecoveryAction({ blockId }, async () => {
     try {
       const block = (await storage.loadRecoveryBlocks()).find(b => b.id === blockId);
       const notes = await storage.loadWorkoutNotes();
       const plan = planBaselineRebuild(block, notes.find(n => n.id === block?.baseline_note_id));
       if (!plan.eligible) return { ok: false, error: plan.message };
+      if (JSON.stringify(plan.baseline) !== JSON.stringify(expectedBaseline)) {
+        return { ok: false, error: 'The routine changed since this preview. Review the updated values and try again.' };
+      }
       const updated = await storage.replaceRecoveryBlockBaseline(blockId, plan.baseline);
       return { ok: true, block: updated };
     } catch (e) {

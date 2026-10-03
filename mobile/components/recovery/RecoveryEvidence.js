@@ -440,7 +440,7 @@ export function BlockEvidence({
         </View>
       ) : null}
       {onRebuildBaseline ? (
-        <RebuildBaselineAction block={block} notes={notes} locked={reasonLocked} onRebuild={onRebuildBaseline} />
+        <RebuildBaselineAction block={block} notes={notes} unit={unit} locked={reasonLocked} onRebuild={onRebuildBaseline} />
       ) : null}
     </Card>
   );

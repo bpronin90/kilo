@@ -2958,6 +2958,7 @@ describe('baseline rebuild (#1227)', () => {
     started_at: '2026-05-01T00:00:00Z', completed_at: null, saved_at: '2026-05-01T00:00:00Z',
     updated_at: '2026-05-01T00:00:00Z', deleted_at: null, include_in_normal_analytics: false, reason: 'knee', ...over,
   });
+  const EXPECTED = captureRecoveryBaselineFromText(ROUTINE);
   const storageFor = (notes) => ({ ...journalStorage, loadWorkoutNotes: async () => notes, replaceRecoveryBlockBaseline });
 
   describe('planBaselineRebuild', () => {
@@ -3024,7 +3025,7 @@ describe('baseline rebuild (#1227)', () => {
     test.each([['active', null], ['completed', '2026-06-01T00:00:00Z']])('%s block rebuilds, preserving every other field', async (_n, completed_at) => {
       const original = v1Block({ completed_at });
       await replaceRecoveryBlocksRaw([original]);
-      const result = await rebuildRecoveryBaselineCore(storageFor([note()]), { blockId: 'rb1' });
+      const result = await rebuildRecoveryBaselineCore(storageFor([note()]), { blockId: 'rb1', expectedBaseline: EXPECTED });
       expect(result.ok).toBe(true);
       const [stored] = await loadRecoveryBlocksRaw();
       expect(stored.baseline).toEqual(captureRecoveryBaselineFromText(ROUTINE));
@@ -3033,9 +3034,9 @@ describe('baseline rebuild (#1227)', () => {
 
     test('a second confirm after success writes nothing (idempotent)', async () => {
       await replaceRecoveryBlocksRaw([v1Block()]);
-      await rebuildRecoveryBaselineCore(storageFor([note()]), { blockId: 'rb1' });
+      await rebuildRecoveryBaselineCore(storageFor([note()]), { blockId: 'rb1', expectedBaseline: EXPECTED });
       const after = JSON.stringify(await loadRecoveryBlocksRaw());
-      const again = await rebuildRecoveryBaselineCore(storageFor([note()]), { blockId: 'rb1' });
+      const again = await rebuildRecoveryBaselineCore(storageFor([note()]), { blockId: 'rb1', expectedBaseline: EXPECTED });
       expect(again.ok).toBe(false);
       expect(JSON.stringify(await loadRecoveryBlocksRaw())).toBe(after);
     });
@@ -3046,14 +3047,24 @@ describe('baseline rebuild (#1227)', () => {
     ])('stale state (%s) writes nothing', async (_n, notes) => {
       await replaceRecoveryBlocksRaw([v1Block()]);
       const before = JSON.stringify(await loadRecoveryBlocksRaw());
-      const result = await rebuildRecoveryBaselineCore(storageFor(notes), { blockId: 'rb1' });
+      const result = await rebuildRecoveryBaselineCore(storageFor(notes), { blockId: 'rb1', expectedBaseline: EXPECTED });
       expect(result.ok).toBe(false);
+      expect(JSON.stringify(await loadRecoveryBlocksRaw())).toBe(before);
+    });
+
+    test('a routine changed after the preview is rejected without writing', async () => {
+      await replaceRecoveryBlocksRaw([v1Block()]);
+      const before = JSON.stringify(await loadRecoveryBlocksRaw());
+      const changed = note({ raw_text: '-Squat 3x5\n- 245 5,5,5' });
+      const result = await rebuildRecoveryBaselineCore(storageFor([changed]), { blockId: 'rb1', expectedBaseline: EXPECTED });
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/changed since this preview/);
       expect(JSON.stringify(await loadRecoveryBlocksRaw())).toBe(before);
     });
 
     test('tombstoned and unknown blocks are rejected', async () => {
       await replaceRecoveryBlocksRaw([v1Block({ deleted_at: '2026-06-01T00:00:00Z' })]);
-      expect((await rebuildRecoveryBaselineCore(storageFor([note()]), { blockId: 'rb1' })).ok).toBe(false);
+      expect((await rebuildRecoveryBaselineCore(storageFor([note()]), { blockId: 'rb1', expectedBaseline: EXPECTED })).ok).toBe(false);
       expect((await rebuildRecoveryBaselineCore(storageFor([note()]), { blockId: 'nope' })).ok).toBe(false);
     });
 
@@ -3061,7 +3072,7 @@ describe('baseline rebuild (#1227)', () => {
       await replaceRecoveryBlocksRaw([v1Block()]);
       const before = JSON.stringify(await loadRecoveryBlocksRaw());
       const failing = { ...storageFor([note()]), replaceRecoveryBlockBaseline: async () => { throw new Error('disk full'); } };
-      const result = await rebuildRecoveryBaselineCore(failing, { blockId: 'rb1' });
+      const result = await rebuildRecoveryBaselineCore(failing, { blockId: 'rb1', expectedBaseline: EXPECTED });
       expect(result).toMatchObject({ ok: false, error: 'disk full' });
       expect(JSON.stringify(await loadRecoveryBlocksRaw())).toBe(before);
     });

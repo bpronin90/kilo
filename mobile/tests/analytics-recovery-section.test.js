@@ -3600,12 +3600,19 @@ describe('AnalyticsRecoverySection — rebuild a v1 baseline (#1227)', () => {
   test('preview shows old → new per exercise with order, makes no write, and cancel closes it', () => {
     const { root } = mount();
     press(root, 'Rebuild baseline');
-    expect(hasText(root, '1. Squat: not in the old baseline → 225 top, 3,375 volume')).toBe(true);
-    expect(hasText(root, '2. Bench: 100 top, 300 volume → 135 top, 1,890 volume (latest session (target never completed))')).toBe(true);
+    expect(hasText(root, '1. Squat: not in the old baseline → 225 lb top, 3,375 lb volume')).toBe(true);
+    expect(hasText(root, '2. Bench: 100 lb top, 300 lb volume → 135 lb top, 1,890 lb volume (latest session (target never completed))')).toBe(true);
     expect(hasText(root, 'edited after Recovery began')).toBe(false);
     press(root, 'Cancel rebuilding the baseline');
     expect(mockRebuild).not.toHaveBeenCalled();
     expect(byLabel(root, 'Rebuild baseline')).toBeDefined();
+  });
+
+  test('preview weights follow the selected display unit', () => {
+    jest.spyOn(require('../lib/unitPreference'), 'useWeightUnit').mockReturnValue('kg');
+    const { root } = mount();
+    press(root, 'Rebuild baseline');
+    expect(hasText(root, '1. Squat: not in the old baseline → 102.1 kg top, 1,531 kg volume')).toBe(true);
   });
 
   test('warns when the routine was edited after Recovery began; confirm stays explicit', () => {
@@ -3620,7 +3627,7 @@ describe('AnalyticsRecoverySection — rebuild a v1 baseline (#1227)', () => {
     press(root, 'Rebuild baseline');
     await act(async () => { await byLabel(root, 'Confirm rebuilding the baseline').props.onPress(); });
     expect(mockRebuild).toHaveBeenCalledTimes(1);
-    expect(mockRebuild).toHaveBeenCalledWith({ blockId: 'rb1' });
+    expect(mockRebuild).toHaveBeenCalledWith({ blockId: 'rb1', expectedBaseline: captureRecoveryBaselineFromText(ROUTINE) });
     expect(hasText(root, 'Baseline rebuilt from the routine.')).toBe(true);
     expect(byLabel(root, 'Confirm rebuilding the baseline')).toBeUndefined();
   });
