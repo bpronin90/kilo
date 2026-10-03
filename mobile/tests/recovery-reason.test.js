@@ -137,7 +137,7 @@ describe('createRecoveryBlock: with, without, and with an empty reason', () => {
     const block = await createRecoveryBlock({ baselineNoteId: 'wn-1', baselineNoteText: '' });
     expect(block.reason).toBeNull();
     expect(block.completed_at).toBeNull();
-    expect(block.baseline).toEqual({ version: 1, exercises: [] });
+    expect(block.baseline).toEqual({ version: 2, exercises: [] });
   });
 
   test('an empty reason creates a block with none, not one claiming a blank one', async () => {

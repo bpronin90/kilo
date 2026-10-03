@@ -15,7 +15,7 @@
 
 import { parseWorkoutNote, deriveWorkoutAnalytics, normalizeExerciseKey } from '../parser.js';
 import { _occurrenceEntries } from './workoutAnalytics.js';
-import { RECOVERY_BASELINE_VERSION, orderedLiveWeeks } from './recoveryBlocks.js';
+import { RECOVERY_BASELINE_SUPPORTED_VERSIONS, normalizeTimedSections, orderedLiveWeeks } from './recoveryBlocks.js';
 
 // Version stamped onto every comparison result. Bump when the row/metric shape
 // below changes in a way a stored or cached consumer could misread.
@@ -158,11 +158,17 @@ function _completedSets(sets) {
 // Warmup sections are dropped outright, as are skipped exercises, skipped sets,
 // unparsed rows, and zero/invalid work. Returns a Map so callers get keyed
 // lookups instead of rescanning per baseline exercise.
-export function aggregateRecoveryWeekWork(sections) {
+//
+// `declarationAware` (default false = the historical parse) is true only when the
+// week is compared against a v2 baseline: v2 freezes a timed header's comma rows
+// as seconds (see normalizeTimedSections), so the week must classify the same
+// way. A v1 snapshot was frozen with those rows as reps and is compared AS STORED,
+// so its weeks keep the historical parse and metric family exactly.
+export function aggregateRecoveryWeekWork(rawSections, { declarationAware = false } = {}) {
   const work = new Map();
-  if (!Array.isArray(sections) || sections.length === 0) return work;
+  if (!Array.isArray(rawSections) || rawSections.length === 0) return work;
 
-  const { exercises } = deriveWorkoutAnalytics(sections);
+  const { exercises } = deriveWorkoutAnalytics(declarationAware ? normalizeTimedSections(rawSections) : rawSections);
 
   for (const ex of exercises) {
     const occurrences = (ex.occurrences || []).filter(occ => occ.kind !== 'warmup');
@@ -457,7 +463,7 @@ export function deriveRecoveryWeekComparison({ baseline, rawText }) {
       summary: _summarize([], []),
     };
   }
-  const work = aggregateRecoveryWeekWork(parsed.sections || []);
+  const work = aggregateRecoveryWeekWork(parsed.sections || [], { declarationAware: baseline?.version >= 2 });
   return {
     status: RECOVERY_WEEK_STATUS.OK,
     note_error: null,
@@ -510,7 +516,7 @@ export function deriveRecoveryComparison({ block, weeks = [], notes = [] } = {})
   // The version is the discriminator, so it is read before this module assumes
   // anything about the snapshot's shape: a future format that no longer carries
   // an `exercises` array is present-but-unsupported, not missing.
-  if (baseline.version !== RECOVERY_BASELINE_VERSION) {
+  if (!RECOVERY_BASELINE_SUPPORTED_VERSIONS.includes(baseline.version)) {
     return empty(RECOVERY_COMPARISON_STATUS.BASELINE_UNSUPPORTED);
   }
   // Right version, unreadable contents: there is no snapshot to compare against.

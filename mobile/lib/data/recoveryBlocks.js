@@ -10,15 +10,22 @@
 // block, one live membership per note, sequential week numbers) live in
 // storage/entries/recoveryStorage.js.
 
-import { parseWorkoutNote, deriveWorkoutAnalytics, normalizeExerciseKey } from '../parser.js';
+import {
+  parseWorkoutNote, deriveWorkoutAnalytics, normalizeExerciseKey,
+  parseHeaderDeclaration, parseExerciseHeader,
+} from '../parser.js';
 import { _occurrenceEntries } from './workoutAnalytics.js';
 
 // Version stamped onto every frozen baseline snapshot. Bump only when the
 // per-exercise metric shape below changes in a way that makes an old snapshot
 // non-comparable to a newly captured one; consumers branch on it rather than
-// guessing from which fields happen to be present. Frozen snapshots are never
-// rewritten in place, so old versions stay readable forever.
-export const RECOVERY_BASELINE_VERSION = 1;
+// guessing from which fields happen to be present. Version 2 (#1225) captures
+// the latest COMPLETE session per exercise and carries `routine_order` + `basis`
+// on every row, and is captured ONLY for a new block. Existing version 1
+// snapshots (latest comparable work, alphabetical) stay frozen and readable
+// forever: nothing rewrites them.
+export const RECOVERY_BASELINE_VERSION = 2;
+export const RECOVERY_BASELINE_SUPPORTED_VERSIONS = Object.freeze([1, 2]);
 
 // Deterministic failure codes for the domain invariants. Callers (and the later
 // sync layer) branch on `code`, never on message text.
@@ -158,60 +165,213 @@ function _baselineMetrics(sets) {
   };
 }
 
-// Freeze the pre-recovery baseline from a parsed routine.
+// ── complete-session rule (#1225) ─────────────────────────────────────────────
 //
-// For each normalized exercise identity, the baseline is the LATEST session that
-// actually recorded completed work. Walking backwards from the newest session is
-// what makes trailing skips harmless: a lifter who tapped "skip week" twice
-// before starting recovery still gets the last real session they logged, not an
-// empty one (that is the whole point of freezing at block creation).
+// The header declaration that governs one occurrence. INVARIANT: baseline capture
+// never disagrees with the app's own parser about what a header means, so it adds
+// NO declaration grammar of its own — sets and minimum come from
+// `parseExerciseHeader` (sets, lower bound) and the family from
+// `parseHeaderDeclaration` (`duration` vs reps), exactly as routineShare reads
+// them. The parser applies no unit conversion (`3x1min` is sets 3, minimum 1, in
+// the same unit logged rows use), so neither does this. The one bespoke matcher
+// is AMRAP, which the parser has no grammar for; it is consulted only when the
+// parser recognizes NO declaration. Returns `{ kind, sets, min }` or null:
+//   reps      `3x6` / `3x6-8`        — `min` is the LOWER bound; the upper is not a gate
+//   duration  `2x60s` / `3x30-45 sec` — `min` is the lower bound, in logged (seconds) units
+//   amrap     `3xAMRAP`              — no fixed rep minimum, so `min` is never invented
+// A parser declaration with no usable set count (a timed range such as `45-60s`,
+// or a zero count) is no usable declaration, and is never reinterpreted as AMRAP.
+export function declaredPrescription(rawHeader) {
+  if (!rawHeader) return null;
+  const parsed = parseExerciseHeader(rawHeader);
+  if (parsed) {
+    const kind = parseHeaderDeclaration(rawHeader)?.type === 'duration' ? 'duration' : 'reps';
+    return parsed.sets >= 1 && parsed.repLo >= 1 ? { kind, sets: parsed.sets, min: parsed.repLo } : null;
+  }
+  if (parseHeaderDeclaration(rawHeader)) return null;
+  const amrapSets = _explicitAmrapSets(rawHeader);
+  return amrapSets ? { kind: 'amrap', sets: amrapSets, min: null } : null;
+}
+
+// AMRAP is explicit-declaration-only, and the declaration occupies exactly the
+// position the parser gives every declaration: the TRAILING segment of the header
+// (`_normalizeExerciseName` strips a declaration only after the last colon
+// `: 3x8…`, or as the final space-separated token ` 3x8`). So AMRAP counts only as
+// that whole trailing segment, never as text the parser treats as name, note,
+// parenthetical, or prose:
+//   colon form   `…: 3xAMRAP` / `…: AMRAP`  — everything after the last colon is it
+//   space form   `… 3xAMRAP`                 — the final token; a bare `… AMRAP` with
+//                                              no colon is a name/prose, not a declaration
+// The text before the declaration must have balanced (), [] and must not end in a
+// dash note separator, so `(finisher: AMRAP` and `Pull-up - 3xAMRAP` cannot
+// smuggle one in. Anything trailing the token (`3xAMRAP (strict)`, `AMRAP — note`)
+// makes it prose, and a rep or duration declaration is resolved before this.
+const _AMRAP_COLON_RE = /^(.*):\s*(?:(\d+)\s*[xX×]\s*)?amrap$/i;
+const _AMRAP_SPACE_RE = /^(.*\S)\s+(\d+)\s*[xX×]\s*amrap$/i;
+function _explicitAmrapSets(rawHeader) {
+  const header = rawHeader.trim();
+  const m = _AMRAP_COLON_RE.exec(header) || _AMRAP_SPACE_RE.exec(header);
+  if (!m || /[-–—]\s*$/.test(m[1])) return null; // a dash right before it makes it a note
+  let depth = 0;
+  let square = 0;
+  for (const ch of m[1]) {
+    if (ch === '(') depth += 1;
+    else if (ch === ')') depth -= 1;
+    else if (ch === '[') square += 1;
+    else if (ch === ']') square -= 1;
+    if (depth < 0 || square < 0) return null;
+  }
+  if (depth !== 0 || square !== 0) return null;
+  const sets = m[2] ? parseInt(m[2], 10) : 1;
+  return sets >= 1 ? sets : null;
+}
+
+// Every prescribed working set POSITION must be a completed, qualifying set: the
+// first `spec.sets` sets of the session are each present, not skipped (`-`),
+// comparable (positive reps or duration, plus a load for weighted work), and at
+// or above the minimum. A skip, zero, short set, or missing set anywhere in those
+// positions makes the session incomplete, even if later sets would have made up
+// the count (`6,-,6,6` on `3x6` is incomplete). Sets BEYOND the prescribed count
+// are extra work: they neither complete a session nor fail one (`6,6,6,-` is
+// complete) — they still count in the row's metrics, as before.
 //
-// Warmup sections are excluded entirely — warmup load is not a baseline the
-// lifter is returning to. Exercise identity, and the merging of the same lift
-// across an A/B routine or repeated occurrences within a note, comes from the
-// existing parser rules (`deriveWorkoutAnalytics` groups by
-// `normalizeExerciseKey`), so recovery never invents a second naming scheme.
+// Timed declarations are read on what the real parser emits: under a timed header
+// a lone bare integer is `duration_seconds`, but a comma row (`45,45,45`) parses
+// as REPS, and separate bare rows are separate one-set sessions. In both
+// set-shapes the logged number is SECONDS, so a position's hold is
+// `duration_seconds` when present and `rep_count` otherwise. A multi-set timed
+// session therefore completes in its single comma row; one-set rows complete only
+// a one-set declaration (`1x60s`), and never an `Nx` declaration with N > 1.
+function _sessionIsComplete(sets, spec, metrics) {
+  const prescribed = (sets || []).slice(0, spec.sets);
+  if (prescribed.length < spec.sets) return false;
+  return prescribed.every(s => {
+    if (!s || s.skipped) return false;
+    const reps = s.rep_count != null && s.rep_count > 0;
+    const held = s.duration_seconds != null && s.duration_seconds > 0;
+    if (!reps && !held) return false;
+    if (metrics.exercise_class === 'weighted' && !(s.weight_value > 0)) return false;
+    if (spec.kind === 'amrap') return true;
+    if (spec.kind === 'duration') return (held ? s.duration_seconds : s.rep_count) >= spec.min;
+    return reps && s.rep_count >= spec.min;
+  });
+}
+
+// Why a row carries the numbers it does. A consumer must never mistake a
+// fallback for a complete session, so the reason is stored on the row itself.
+export const RECOVERY_BASELINE_BASIS = Object.freeze({
+  COMPLETE: 'complete',
+  NO_DECLARATION: 'no_declaration',
+  AMRAP: 'amrap_no_minimum',
+  NEVER_COMPLETE: 'never_complete',
+});
+export const RECOVERY_BASELINE_BASIS_VALUES = Object.freeze(Object.values(RECOVERY_BASELINE_BASIS));
+
+// Declaration-aware timed normalization. Under a timed header (`-Plank: 3x45s`)
+// the real parser reads a lone bare integer as `duration_seconds`, but a comma
+// row (`- 45,45,45`) as REPS whose values are, by the declaration, seconds.
+// Baseline capture and week aggregation both normalize such unloaded rep sets to
+// `duration_seconds` BEFORE classifying, so the frozen row and a same-shaped week
+// log are both `time_based` total_seconds and compare like for like. Loaded
+// (weighted) sets, skipped sets, and every exercise without a timed declaration
+// are untouched. Pure: returns new sections and never mutates the parse result.
+export function normalizeTimedSections(sections) {
+  if (!Array.isArray(sections)) return sections;
+  const seen = new Map();
+  const toSeconds = (sets) => {
+    if (!Array.isArray(sets)) return sets;
+    if (!seen.has(sets)) {
+      seen.set(sets, sets.map(s => (
+        s && !s.skipped && !(s.duration_seconds > 0) && s.rep_count > 0
+          && !(s.weight_value > 0) && s.assistance_value == null
+          ? { ...s, duration_seconds: s.rep_count, rep_count: null }
+          : s
+      )));
+    }
+    return seen.get(sets);
+  };
+  return sections.map(section => ({
+    ...section,
+    exercises: (section.exercises || []).map(ex => (
+      parseHeaderDeclaration(ex.raw_header)?.type === 'duration'
+        ? {
+          ...ex,
+          sets: toSeconds(ex.sets),
+          rows: (ex.rows || []).map(r => ({ ...r, sets: toSeconds(r.sets) })),
+          session_entries: (ex.session_entries || []).map(e => ({ ...e, sets: toSeconds(e.sets) })),
+        }
+        : ex
+    )),
+  }));
+}
+
+// Freeze the pre-recovery baseline from a parsed routine (v2).
+//
+// For each normalized exercise identity the baseline is the latest COMPLETE
+// session: walking newest-first, the first session that is comparable AND meets
+// its occurrence's prescribed set count and minimum. A later aborted session
+// (`335 2,-,-` after `325 6,6,6` on `3x6`) therefore never replaces the full one.
+// When no session is complete (no usable declaration, AMRAP, or never complete)
+// the row falls back to the latest comparable completed work, exactly as v1 did,
+// and its `basis` says so.
+//
+// Rows keep the routine's own order: rows are sorted by the position of each
+// exercise's first NON-warmup occurrence, then `routine_order` is renumbered
+// 0..n-1 over the rows that survive into the snapshot, so it is unique,
+// contiguous, and equal to the row's array index (backup validation enforces the
+// same). Warmup sections define neither presence nor order. Exercise identity still comes from the parser rules
+// (`normalizeExerciseKey`), so recovery never invents a second naming scheme.
 //
 // `sections` is `parseWorkoutNote(text).sections`. Returns a plain, structurally
-// frozen snapshot; exercises are ordered by normalized key so two captures of
-// the same routine are byte-identical.
-export function captureRecoveryBaseline(sections) {
+// frozen snapshot.
+export function captureRecoveryBaseline(rawSections) {
   const snapshot = {
     version: RECOVERY_BASELINE_VERSION,
     exercises: [],
   };
-  if (!Array.isArray(sections) || sections.length === 0) return _deepFreeze(snapshot);
+  if (!Array.isArray(rawSections) || rawSections.length === 0) return _deepFreeze(snapshot);
+  const sections = normalizeTimedSections(rawSections);
 
-  const { exercises } = deriveWorkoutAnalytics(sections);
-
-  const rows = [];
-  for (const ex of exercises) {
-    // Drop warmup occurrences before flattening so a warmup-only exercise
-    // disappears rather than contributing a light "baseline".
-    const occurrences = (ex.occurrences || []).filter(occ => occ.kind !== 'warmup');
-    if (occurrences.length === 0) continue;
-
-    const entries = occurrences.flatMap(occ => _occurrenceEntries(occ));
-
-    // Newest-first walk: the first session that yields comparable completed work
-    // wins. Skipped and unparsed entries are stepped over, not counted.
-    let metrics = null;
-    for (let i = entries.length - 1; i >= 0; i--) {
-      const entry = entries[i];
-      if (!entry || entry.skipped || entry.unparsed) continue;
-      metrics = _baselineMetrics(entry.sets);
-      if (metrics) break;
+  const names = new Map(deriveWorkoutAnalytics(sections).exercises.map(ex => [normalizeExerciseKey(ex.name), ex.name]));
+  // key -> { order, units: [{ sets, spec }] } in chronological (note) order.
+  const groups = new Map();
+  for (const section of sections) {
+    if (section.kind === 'warmup') continue;
+    for (const ex of section.exercises || []) {
+      const key = normalizeExerciseKey(ex.name);
+      if (!groups.has(key)) groups.set(key, { order: groups.size, units: [] });
+      const spec = declaredPrescription(ex.raw_header);
+      const entries = _occurrenceEntries({ rows: ex.rows, sets: ex.sets || [], session_entries: ex.session_entries, kind: section.kind });
+      for (const entry of entries) {
+        if (!entry || entry.skipped || entry.unparsed) continue;
+        groups.get(key).units.push({ sets: entry.sets, spec });
+      }
     }
-    if (!metrics) continue;
-
-    rows.push({
-      key: normalizeExerciseKey(ex.name),
-      name: ex.name,
-      ...metrics,
-    });
   }
 
-  rows.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  const rows = [];
+  for (const [key, { order, units }] of groups) {
+    let picked = null;
+    for (let i = units.length - 1; i >= 0 && !picked; i--) {
+      const metrics = _baselineMetrics(units[i].sets);
+      if (metrics && units[i].spec && _sessionIsComplete(units[i].sets, units[i].spec, metrics)) {
+        picked = { metrics, spec: units[i].spec, complete: true };
+      }
+    }
+    for (let i = units.length - 1; i >= 0 && !picked; i--) {
+      const metrics = _baselineMetrics(units[i].sets);
+      if (metrics) picked = { metrics, spec: units[i].spec, complete: false };
+    }
+    if (!picked) continue;
+    const BASIS = RECOVERY_BASELINE_BASIS;
+    const basis = picked.spec?.kind === 'amrap' ? BASIS.AMRAP
+      : picked.complete ? BASIS.COMPLETE
+        : picked.spec ? BASIS.NEVER_COMPLETE : BASIS.NO_DECLARATION;
+    rows.push({ key, name: names.get(key) ?? key, ...picked.metrics, routine_order: order, basis });
+  }
+
+  rows.sort((a, b) => a.routine_order - b.routine_order);
+  rows.forEach((row, i) => { row.routine_order = i; });
   snapshot.exercises = rows;
   return _deepFreeze(snapshot);
 }

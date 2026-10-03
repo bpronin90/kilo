@@ -139,6 +139,8 @@ describe('captureRecoveryBaseline — weighted metrics', () => {
       top_weight: 185,
       volume: 185 * 3 + 185 * 3,
       sets_completed: 2,
+      routine_order: 0,
+      basis: 'no_declaration',
     });
   });
 
@@ -161,7 +163,7 @@ describe('captureRecoveryBaseline — weighted metrics', () => {
   test('weighted rows retain only weighted metrics', () => {
     const row = baselineFor(captureRecoveryBaselineFromText('-Bench\n- 135 5'), 'bench');
     expect(Object.keys(row).sort()).toEqual(
-      ['exercise_class', 'key', 'name', 'sets_completed', 'top_weight', 'volume']
+      ['basis', 'exercise_class', 'key', 'name', 'routine_order', 'sets_completed', 'top_weight', 'volume']
     );
     expect(row.best_set_reps).toBeUndefined();
     expect(row.best_hold_seconds).toBeUndefined();
@@ -178,6 +180,8 @@ describe('captureRecoveryBaseline — reps-only and timed metrics', () => {
       best_set_reps: 8,
       total_reps: 20,
       sets_completed: 3,
+      routine_order: 0,
+      basis: 'no_declaration',
     });
   });
 
@@ -190,6 +194,8 @@ describe('captureRecoveryBaseline — reps-only and timed metrics', () => {
       best_hold_seconds: 60,
       total_seconds: 135,
       sets_completed: 3,
+      routine_order: 0,
+      basis: 'no_declaration',
     });
   });
 
@@ -293,11 +299,13 @@ describe('captureRecoveryBaseline — identity and A/B routines', () => {
     expect(squats[0].name).toBe('Squat');
   });
 
-  test('exercises are ordered deterministically by normalized key', () => {
+  test('v2 exercises keep the routine order (not alphabetical) and capture is deterministic', () => {
     const a = captureRecoveryBaselineFromText('-Squat\n- 225 5\n-Bench\n- 135 5');
     const b = captureRecoveryBaselineFromText('-Bench\n- 135 5\n-Squat\n- 225 5');
-    expect(a.exercises.map(e => e.key)).toEqual(['bench', 'squat']);
-    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+    expect(a.exercises.map(e => e.key)).toEqual(['squat', 'bench']);
+    expect(b.exercises.map(e => e.key)).toEqual(['bench', 'squat']);
+    expect(a.exercises.map(e => e.routine_order)).toEqual([0, 1]);
+    expect(JSON.stringify(a)).toBe(JSON.stringify(captureRecoveryBaselineFromText('-Squat\n- 225 5\n-Bench\n- 135 5')));
   });
 });
 
@@ -2502,5 +2510,436 @@ describe('isolation', () => {
     captureRecoveryBaselineFromText(text);
     expect(text).toBe('-Bench\n- 135 5,5\n- 185 3');
     expect(parseWorkoutNote(text).ok).toBe(true);
+  });
+});
+
+// ── #1225: latest COMPLETE session and v2 routine order for NEW blocks ─────────
+//
+// Existing v1 snapshots are never rewritten; the mandatory negative controls
+// (aborted-vs-complete Deadlift, skipped/missing/short sets, range/AMRAP/time/
+// reps-only/bodyweight/warmup/lone/never-complete) each have a fixture below.
+
+const BASIS = { COMPLETE: 'complete', NO_DECL: 'no_declaration', AMRAP: 'amrap_no_minimum', NEVER: 'never_complete' };
+
+// A section built from a literal header so the declaration reaches the same
+// parser-derived `raw_header` a real note would carry.
+function declSection(header, sessions, { kind = 'general', name } = {}) {
+  const base = synthSection(name || header.replace(/^-/, '').split(/[:\s]/)[0], sessions, { kind });
+  base.exercises[0].raw_header = header;
+  return base;
+}
+const cap = (...sections) => captureRecoveryBaseline(sections);
+
+describe('captureRecoveryBaseline (v2) — latest complete session', () => {
+  test('mandatory Deadlift fixture: 325 6,6,6 is the baseline, not the later 335 2,-,-', () => {
+    const snap = captureRecoveryBaselineFromText('-Deadlift: 3x6\n- 315 6,6,5\n- 325 6,6,6\n- 335 2,-,-');
+    expect(snap.version).toBe(2);
+    expect(baselineFor(snap, 'deadlift')).toEqual({
+      key: 'deadlift', name: 'Deadlift', exercise_class: 'weighted',
+      top_weight: 325, volume: 325 * 18, sets_completed: 3, routine_order: 0, basis: BASIS.COMPLETE,
+    });
+    expect(baselineFor(snap, 'deadlift').volume).toBe(5850);
+    expect(baselineFor(snap, 'deadlift').volume).not.toBe(670);
+  });
+
+  test('a skipped, missing, or short set makes a session incomplete; the earlier complete one wins', () => {
+    for (const aborted of ['335 6,6,-', '335 6,6', '335 6,6,5', '335 -,-,-']) {
+      const snap = captureRecoveryBaselineFromText(`-Deadlift: 3x6\n- 325 6,6,6\n- ${aborted}`);
+      expect(baselineFor(snap, 'deadlift').top_weight).toBe(325);
+      expect(baselineFor(snap, 'deadlift').basis).toBe(BASIS.COMPLETE);
+    }
+  });
+
+  test('a later complete session replaces an earlier one (newest-first walk)', () => {
+    const snap = captureRecoveryBaselineFromText('-Deadlift: 3x6\n- 315 6,6,6\n- 325 6,6,6');
+    expect(baselineFor(snap, 'deadlift').top_weight).toBe(325);
+  });
+
+  test('range 3x6-8: the LOWER bound is the minimum and the upper bound is not a failure condition', () => {
+    const ok = captureRecoveryBaselineFromText('-Squat: 3x6-8\n- 200 6,6,6\n- 210 5,5,5');
+    expect(baselineFor(ok, 'squat')).toMatchObject({ top_weight: 200, basis: BASIS.COMPLETE });
+    const high = captureRecoveryBaselineFromText('-Squat: 3x6-8\n- 200 6,6,6\n- 210 8,8,8');
+    expect(baselineFor(high, 'squat')).toMatchObject({ top_weight: 210, basis: BASIS.COMPLETE });
+  });
+
+  test('fewer completed sets than prescribed is incomplete, even when every set met the minimum', () => {
+    const snap = captureRecoveryBaselineFromText('-Bench: 4x5\n- 135 5,5,5,5\n- 145 5,5,5');
+    expect(baselineFor(snap, 'bench')).toMatchObject({ top_weight: 135, sets_completed: 4, basis: BASIS.COMPLETE });
+  });
+
+  test('reps-only and bodyweight use the same set-count / minimum-rep rule', () => {
+    const snap = cap(declSection('-Pull-up 3x8', [[repSet(8), repSet(8), repSet(8)], [repSet(8), repSet(8), repSet(6)], 'skip']));
+    expect(baselineFor(snap, 'pull-up')).toMatchObject({ exercise_class: 'reps_only', total_reps: 24, basis: BASIS.COMPLETE });
+  });
+
+  test('time-based: every prescribed set must hold the declared duration; total stays seconds', () => {
+    const snap = cap(declSection('-Plank 3x30s', [[durSet(30), durSet(35), durSet(40)], [durSet(30), durSet(20), durSet(30)]]));
+    expect(baselineFor(snap, 'plank')).toMatchObject({ exercise_class: 'time_based', total_seconds: 105, basis: BASIS.COMPLETE });
+    // The parser applies no unit conversion: `2x1 min` is sets 2, minimum 1 (logged unit).
+    const mins = cap(declSection('-Wall Sit 2x1 min', [[durSet(60), durSet(60)], [durSet(60), durSet(45)]], { name: 'Wall Sit' }));
+    expect(baselineFor(mins, 'wall sit')).toMatchObject({ total_seconds: 105, basis: BASIS.COMPLETE });
+  });
+
+  test('a timed RANGE with no set count is not a usable declaration (explicit fallback, nothing fabricated)', () => {
+    const snap = cap(declSection('-Plank 45-60s', [[durSet(60)], [durSet(10)]]));
+    expect(baselineFor(snap, 'plank')).toMatchObject({ total_seconds: 10, basis: BASIS.NO_DECL });
+  });
+
+  test('a timed range WITH a set count (`3x45-60s`) is the parser\'s declaration: 3 sets, minimum 45', () => {
+    const sets = (n, v) => Array.from({ length: n }, () => durSet(v));
+    const snap = cap(declSection('-Plank 3x45-60s', [sets(3, 60), sets(3, 10)]));
+    expect(baselineFor(snap, 'plank')).toMatchObject({ total_seconds: 180, basis: BASIS.COMPLETE });
+  });
+
+  test('AMRAP has no fixed minimum: prescribed sets just need positive work, and the row says so', () => {
+    const snap = cap(declSection('-Pull-up 3xAMRAP', [[repSet(9), repSet(7), repSet(6)], [repSet(8), repSet(5)]]));
+    const row = baselineFor(snap, 'pull-up');
+    expect(row).toMatchObject({ total_reps: 22, sets_completed: 3, basis: BASIS.AMRAP });
+    expect(row.basis).not.toBe(BASIS.COMPLETE);
+    expect(row.min).toBeUndefined();
+    expect(row.target).toBeUndefined();
+  });
+
+  test('AMRAP with no complete session falls back to latest comparable work, still marked amrap', () => {
+    const snap = cap(declSection('-Pull-up 3xAMRAP', [[repSet(8)]]));
+    expect(baselineFor(snap, 'pull-up')).toMatchObject({ total_reps: 8, basis: BASIS.AMRAP });
+  });
+
+  test('no usable declaration: today\'s latest comparable work, marked no_declaration', () => {
+    const snap = captureRecoveryBaselineFromText('-Deadlift\n- 325 6,6,6\n- 335 2,-,-');
+    expect(baselineFor(snap, 'deadlift')).toMatchObject({ top_weight: 335, volume: 670, basis: BASIS.NO_DECL });
+  });
+
+  test('never complete: latest comparable work with an explicit never_complete basis', () => {
+    const snap = captureRecoveryBaselineFromText('-Deadlift: 3x6\n- 325 6,6\n- 335 2,-,-');
+    expect(baselineFor(snap, 'deadlift')).toMatchObject({ top_weight: 335, volume: 670, basis: BASIS.NEVER });
+  });
+
+  test('a lone session is a complete baseline only if it meets the rule', () => {
+    expect(baselineFor(captureRecoveryBaselineFromText('-Deadlift: 3x6\n- 325 6,6,6'), 'deadlift').basis).toBe(BASIS.COMPLETE);
+    const lone = baselineFor(captureRecoveryBaselineFromText('-Deadlift: 3x6\n- 335 2,-,-'), 'deadlift');
+    expect(lone).toMatchObject({ top_weight: 335, volume: 670, basis: BASIS.NEVER });
+  });
+
+  test('completeness is judged per occurrence declaration: an older declared session beats a newer undeclared one', () => {
+    const snap = cap(
+      declSection('-Squat 3x5', [[wSet(225, 5), wSet(225, 5), wSet(225, 5)]], { name: 'Squat' }),
+      declSection('-Squat', [[wSet(275, 2)]], { name: 'Squat' }),
+    );
+    expect(baselineFor(snap, 'squat')).toMatchObject({ top_weight: 225, basis: BASIS.COMPLETE });
+  });
+
+  test('warmup sections are excluded before completeness, metrics, presence, and order', () => {
+    const snap = cap(
+      declSection('-Squat 3x5', [[wSet(95, 5), wSet(95, 5), wSet(95, 5)]], { kind: 'warmup', name: 'Squat' }),
+      declSection('-Bench 3x5', [[wSet(135, 5), wSet(135, 5), wSet(135, 5)]], { name: 'Bench' }),
+      declSection('-Squat 3x5', [[wSet(225, 5), wSet(225, 5), wSet(225, 5)]], { name: 'Squat' }),
+      declSection('-Face Pull 3x12', [[repSet(12), repSet(12), repSet(12)]], { kind: 'warmup', name: 'Face Pull' }),
+    );
+    expect(snap.exercises.map(r => [r.key, r.routine_order, r.top_weight ?? null])).toEqual([['bench', 0, 135], ['squat', 1, 225]]);
+    expect(baselineFor(snap, 'face pull')).toBeUndefined();
+  });
+
+  test('routine order: repeated identities sit at their FIRST non-warmup occurrence; nothing is alphabetical', () => {
+    const snap = captureRecoveryBaselineFromText('-Squat\n- 225 5\n-Bench\n- 135 5\n---\n-Squat\n- 245 3\n-Curl\n- 30 10');
+    expect(snap.exercises.map(r => r.key)).toEqual(['squat', 'bench', 'curl']);
+    expect(snap.exercises.map(r => r.routine_order)).toEqual([0, 1, 2]);
+  });
+
+  test('routine_order is renumbered contiguous 0..n-1 over the surviving rows and equals the array index', () => {
+    // Bench has no comparable work, so it never becomes a row; Curl must not inherit a gap.
+    const snap = captureRecoveryBaselineFromText('-Squat\n- 225 5\n-Bench\n- garbage nonsense\n-Curl\n- 30 10');
+    expect(snap.exercises.map(r => r.key)).toEqual(['squat', 'curl']);
+    expect(snap.exercises.map(r => r.routine_order)).toEqual([0, 1]);
+    const warm = cap(
+      declSection('-Face Pull 3x12', [[repSet(12), repSet(12), repSet(12)]], { kind: 'warmup', name: 'Face Pull' }),
+      declSection('-Bench 3x5', [[wSet(135, 5), wSet(135, 5), wSet(135, 5)]], { name: 'Bench' }),
+    );
+    warm.exercises.forEach((r, i) => expect(r.routine_order).toBe(i));
+  });
+
+  test('a row never carries an invented target, minimum, or free-form provenance', () => {
+    const snap = captureRecoveryBaselineFromText('-Deadlift: 3x6\n- 325 6,6,6');
+    expect(Object.keys(baselineFor(snap, 'deadlift')).sort()).toEqual(
+      ['basis', 'exercise_class', 'key', 'name', 'routine_order', 'sets_completed', 'top_weight', 'volume']
+    );
+  });
+});
+
+// ── #1225 review: positional completeness and explicit-only AMRAP ─────────────────────────────────────────
+
+describe('captureRecoveryBaseline (v2) — every prescribed POSITION must be complete', () => {
+  const pick = (text) => baselineFor(captureRecoveryBaselineFromText(text), 'bench');
+  const GOOD = '-Bench: 3x6\n- 135 6,6,6';
+
+  test('a skip in the middle is incomplete even when extra good sets follow (6,-,6,6)', () => {
+    const row = pick(`${GOOD}\n- 145 6,-,6,6`);
+    expect(row).toMatchObject({ top_weight: 135, volume: 135 * 18, basis: BASIS.COMPLETE });
+  });
+
+  test('a skipped last prescribed set is incomplete (6,6,-)', () => {
+    expect(pick(`${GOOD}\n- 145 6,6,-`)).toMatchObject({ top_weight: 135, basis: BASIS.COMPLETE });
+  });
+
+  test('a skipped FIRST prescribed set is incomplete (-,6,6,6)', () => {
+    expect(pick(`${GOOD}\n- 145 -,6,6,6`)).toMatchObject({ top_weight: 135 });
+  });
+
+  test('zero reps in a prescribed position is incomplete', () => {
+    const snap = cap(declSection('-Bench 3x6', [[wSet(135, 6), wSet(135, 6), wSet(135, 6)], [wSet(145, 6), wSet(145, 0), wSet(145, 6)]], { name: 'Bench' }));
+    expect(baselineFor(snap, 'bench')).toMatchObject({ top_weight: 135, basis: BASIS.COMPLETE });
+  });
+
+  test('a short rep set in a prescribed position is incomplete (6,5,6)', () => {
+    expect(pick(`${GOOD}\n- 145 6,5,6`)).toMatchObject({ top_weight: 135 });
+  });
+
+  test('exactly N complete sets is complete and, being newest, wins', () => {
+    expect(pick(`${GOOD}\n- 145 6,6,6`)).toMatchObject({ top_weight: 145, sets_completed: 3, basis: BASIS.COMPLETE });
+  });
+
+  test('more than N complete sets is complete', () => {
+    expect(pick(`${GOOD}\n- 145 6,6,6,6`)).toMatchObject({ top_weight: 145, sets_completed: 4, basis: BASIS.COMPLETE });
+  });
+
+  test('EXTRA sets beyond N neither complete nor fail a session: a skipped extra leaves it complete', () => {
+    expect(pick(`${GOOD}\n- 145 6,6,6,-`)).toMatchObject({ top_weight: 145, sets_completed: 3, basis: BASIS.COMPLETE });
+  });
+
+  test('fewer than N sets present is incomplete', () => {
+    expect(pick(`${GOOD}\n- 145 6,6`)).toMatchObject({ top_weight: 135 });
+  });
+
+  test('timed and AMRAP use the same positional rule', () => {
+    const timed = cap(declSection('-Plank 3x30s', [[durSet(30), durSet(30), durSet(30)], [durSet(30), { ...durSet(30), skipped: true }, durSet(30), durSet(30)]]));
+    expect(baselineFor(timed, 'plank')).toMatchObject({ total_seconds: 90, basis: BASIS.COMPLETE });
+    const amrap = cap(declSection('-Pull-up 3xAMRAP', [[repSet(9), repSet(7), repSet(6)], [repSet(8), { ...repSet(0), skipped: true }, repSet(5), repSet(5)]]));
+    expect(baselineFor(amrap, 'pull-up')).toMatchObject({ total_reps: 22, basis: BASIS.AMRAP });
+  });
+});
+
+describe('captureRecoveryBaseline (v2) — only an EXPLICIT AMRAP declaration takes the AMRAP path', () => {
+  test('a rep declaration plus an AMRAP mention in a parenthetical keeps the rep rule', () => {
+    const snap = cap(declSection('-Pull-up: 3x8 (last set AMRAP)', [[repSet(8), repSet(8), repSet(8)], [repSet(1)]]));
+    expect(baselineFor(snap, 'pull-up')).toMatchObject({ total_reps: 24, basis: BASIS.COMPLETE });
+  });
+
+  test('the same through the real parser: `-Pull-up: 3x8 (last set AMRAP)` then a 0/1 session', () => {
+    const snap = captureRecoveryBaselineFromText('-Pull-up: 3x8 (last set AMRAP)\n- 8,8,8\n- 1');
+    expect(baselineFor(snap, 'pull-up')).toMatchObject({ total_reps: 24, basis: BASIS.COMPLETE });
+  });
+
+  test('an AMRAP word in a name or note with no declaration is no declaration at all', () => {
+    for (const header of ['-Pull-up (AMRAP finisher)', '-AMRAP Pull-ups', '-Pull-up amraps']) {
+      const snap = cap(declSection(header, [[repSet(8), repSet(8)], [repSet(3)]], { name: 'Pull-up' }));
+      expect(baselineFor(snap, 'pull-up')).toMatchObject({ total_reps: 3, basis: BASIS.NO_DECL });
+    }
+  });
+
+  test('explicit forms still work through the synthetic path: `3xAMRAP`, `3 x AMRAP`, and a declaration that is exactly AMRAP', () => {
+    for (const header of ['-Pull-up 3xAMRAP', '-Pull-up: 3 x AMRAP', '-Pull-up: 3×amrap']) {
+      const snap = cap(declSection(header, [[repSet(9), repSet(7), repSet(6)], [repSet(4)]], { name: 'Pull-up' }));
+      expect(baselineFor(snap, 'pull-up')).toMatchObject({ total_reps: 22, basis: BASIS.AMRAP });
+    }
+    const bare = cap(declSection('-Pull-up: AMRAP', [[repSet(9)], [repSet(4)]], { name: 'Pull-up' }));
+    expect(baselineFor(bare, 'pull-up')).toMatchObject({ total_reps: 4, basis: BASIS.AMRAP });
+  });
+
+  // TABLE-DRIVEN through the REAL parser. The note logs 8,8,8 then a 3,2 session (5 reps, 2 sets).
+  //  - an explicit `3xAMRAP` needs 3 positive sets, so the older 8,8,8 (24 reps) is chosen
+  //  - an explicit bare `AMRAP` is one prescribed set, so the newest 3,2 session is chosen (5 reps)
+  //  - anything the parser treats as name/note/parenthetical/prose is NO declaration:
+  //    the latest comparable session (5 reps) is frozen as no_declaration
+  //  - a real rep declaration beats any AMRAP mention: 3x8 selects the complete 8,8,8
+  // (The parser has no AMRAP grammar, so it leaves `: 3xAMRAP` in the exercise name;
+  // rows are read by position, not by name.)
+  const SESSIONS = '\n- 8,8,8\n- 3,2';
+  const ROW = (header) => captureRecoveryBaselineFromText(header + SESSIONS).exercises;
+  const EXPLICIT = [
+    ['-Pull-up: 3xAMRAP', 24], ['-Pull-up: 3XAMRAP', 24], ['-Pull-up: 3xamrap', 24], ['-Pull-up: 3 x AMRAP', 24],
+    ['-Pull-up: 3×AMRAP', 24], ['-Pull-up 3xAMRAP', 24], ['-Pull-up (finisher) 3xAMRAP', 24], ['-Pull-up (finisher): 3xAMRAP', 24],
+    ['-Pull-up: AMRAP', 5], ['-Pull-up: amrap', 5], ['-Pull-up (note): AMRAP', 5],
+  ];
+  test.each(EXPLICIT)('explicit AMRAP declaration %s is amrap_no_minimum (total_reps %i)', (header, reps) => {
+    const rows = ROW(header);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ basis: BASIS.AMRAP, total_reps: reps });
+  });
+
+  const PROSE = [
+    '-AMRAP Pull-up', '-amrap pull-up', '-Pull-up (3xAMRAP finisher)', '-Pull-up (AMRAP)', '-Pull-up (amrap)',
+    '-PULL-UP (3XAMRAP FINISHER)', '-Pull-up [AMRAP]', '-Pull-up [3xAMRAP]', '-Pull-up (note: AMRAP)',
+    '-Pull-up (finisher: AMRAP', '-Pull-up (finisher: 3xAMRAP', '-Pull-up: (AMRAP)', '-Pull-up: (3xAMRAP)',
+    '-Pull-up - AMRAP', '-Pull-up — AMRAP', '-Pull-up - 3xAMRAP', '-Pull-up — 3xAMRAP note',
+    '-Pull-up: AMRAP — strict', '-Pull-up: AMRAP finisher', '-Pull-up: 3xAMRAP finisher', '-Pull-up: 3xAMRAP (strict)',
+    '-Pull-up: 3xAMRAP - strict', '-Pull-up AMRAP', '-Pull-up amraps', '-Pull-up AMRAPx3', '-Pull-up: AMRAPx3',
+    '-Pull-up: x3AMRAP', '-Pull-up: 0xAMRAP',
+  ];
+  test.each(PROSE)('AMRAP in name/note/prose %s is NOT a declaration (no_declaration, latest session)', (header) => {
+    const rows = ROW(header);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ basis: BASIS.NO_DECL, total_reps: 5 });
+  });
+
+  test.each([
+    '-Pull-up: 3x8 (last set AMRAP)', '-Pull-up (3xAMRAP finisher): 3x8', '-AMRAP Pull-up: 3x8', '-Pull-up: 3x8-AMRAP',
+    '-Pull-up: 3x8 AMRAP', '-Pull-up: 3x6-8 (AMRAP last set)',
+  ])('a real rep declaration beats an AMRAP mention: %s keeps the 3x8 rule', (header) => {
+    const rows = ROW(header);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ basis: BASIS.COMPLETE, total_reps: 24 });
+  });
+
+});
+
+// ── #1225 review: timed sessions on what the REAL parser emits, end to end ───
+
+describe('captureRecoveryBaseline (v2) — timed declarations through the real parse path', () => {
+  const plank = (text) => baselineFor(captureRecoveryBaselineFromText(text), 'plank');
+  const wall = (text) => baselineFor(captureRecoveryBaselineFromText(text), 'wall sit');
+
+  test('real shape: `3x45s` with comma row `45,45,45` freezes as time_based total_seconds 135, not reps', () => {
+    const row = plank('-Plank: 3x45s\n- 45,45,45');
+    expect(row).toEqual({
+      key: 'plank', name: 'Plank', exercise_class: 'time_based', best_hold_seconds: 45, total_seconds: 135,
+      sets_completed: 3, routine_order: 0, basis: BASIS.COMPLETE,
+    });
+    expect(row.total_reps).toBeUndefined();
+  });
+
+  test('a comma row with a short, skipped, or missing hold is incomplete: the earlier complete session wins (seconds)', () => {
+    for (const bad of ['45,40,45', '45,-,45', '45,45']) {
+      const row = plank(`-Plank: 3x45s\n- 50,50,50\n- ${bad}`);
+      expect(row).toMatchObject({ exercise_class: 'time_based', basis: BASIS.COMPLETE, total_seconds: 150 });
+    }
+    // Extras beyond N are extra work, as for reps.
+    expect(plank('-Plank: 3x45s\n- 50,50,50\n- 45,45,45,45')).toMatchObject({ total_seconds: 180, basis: BASIS.COMPLETE });
+  });
+
+  test('an incomplete-only history falls back to latest comparable work, still time_based seconds', () => {
+    expect(plank('-Plank: 3x45s\n- 45,40,45')).toMatchObject({ exercise_class: 'time_based', total_seconds: 130, basis: BASIS.NEVER });
+  });
+
+  test('`3x1min`: the parser applies no unit conversion (sets 3, minimum 1, logged seconds)', () => {
+    expect(wall('-Wall Sit: 3x1min\n- 60,60,60')).toMatchObject({ exercise_class: 'time_based', total_seconds: 180, basis: BASIS.COMPLETE });
+    expect(wall('-Wall Sit: 3x1min\n- 70,70,70\n- 60,60,45')).toMatchObject({ total_seconds: 165, basis: BASIS.COMPLETE });
+    expect(wall('-Wall Sit: 3x1min\n- 70,70,70\n- 60,60')).toMatchObject({ total_seconds: 210, basis: BASIS.COMPLETE }); // 2 sets < 3
+  });
+
+  test('`3x30-45 sec` (parser-accepted range): the earlier complete 3x30 session beats a later 10 s row', () => {
+    expect(plank('-Plank: 3x30-45 sec\n- 30,30,30\n- 10,10,10')).toMatchObject({ exercise_class: 'time_based', total_seconds: 90, basis: BASIS.COMPLETE });
+    expect(plank('-Plank: 3x30-45 sec\n- 30,30,30\n- 45,45,45')).toMatchObject({ total_seconds: 135, basis: BASIS.COMPLETE });
+    expect(plank('-Plank: 3x30-45 sec\n- 30,30,30\n- 45,10,45')).toMatchObject({ total_seconds: 90, basis: BASIS.COMPLETE });
+  });
+
+  test('`2x45-60 sec`: the lower bound is the minimum, the upper is not a gate', () => {
+    expect(plank('-Plank: 2x45-60 sec\n- 45,45\n- 40,60')).toMatchObject({ total_seconds: 90, basis: BASIS.COMPLETE });
+    expect(plank('-Plank: 2x45-60 sec\n- 45,45\n- 70,70')).toMatchObject({ total_seconds: 140, basis: BASIS.COMPLETE });
+  });
+
+  test('a single held set (`1x60s` + bare `60`, already duration_seconds) completes only at/above the declared hold', () => {
+    expect(plank('-Plank: 1x60s\n60')).toMatchObject({ exercise_class: 'time_based', total_seconds: 60, basis: BASIS.COMPLETE });
+    expect(plank('-Plank: 1x60s\n75\n45')).toMatchObject({ total_seconds: 75, basis: BASIS.COMPLETE });
+    expect(plank('-Plank: 1x60s\n45')).toMatchObject({ total_seconds: 45, basis: BASIS.NEVER });
+    expect(plank('-Plank: 1x60s\n60\n10')).toMatchObject({ total_seconds: 60, basis: BASIS.COMPLETE });
+  });
+
+  test('separate bare rows are separate ONE-set sessions: they never complete an `Nx` declaration with N > 1', () => {
+    expect(plank('-Plank: 3x45s\n45\n45\n45')).toMatchObject({ exercise_class: 'time_based', total_seconds: 45, basis: BASIS.NEVER });
+    expect(wall('-Wall Sit: 2x1 min\n60')).toMatchObject({ total_seconds: 60, basis: BASIS.NEVER });
+  });
+
+  test('NEGATIVE: no timed declaration means comma rows stay reps (nothing is reinterpreted as seconds)', () => {
+    expect(plank('-Plank\n- 60,60\n- 45,45')).toMatchObject({ exercise_class: 'reps_only', total_reps: 90, basis: BASIS.NO_DECL });
+    expect(plank('-Plank: 3x8\n- 8,8,8')).toMatchObject({ exercise_class: 'reps_only', total_reps: 24, basis: BASIS.COMPLETE });
+  });
+
+  test('NEGATIVE: loaded (weighted) holds and the parse result itself are not rewritten', () => {
+    const parsed = parseWorkoutNote('-Plank: 3x45s\n- 25 45,45,45');
+    const before = JSON.stringify(parsed.sections);
+    const snap = captureRecoveryBaseline(parsed.sections);
+    expect(JSON.stringify(parsed.sections)).toBe(before);
+    expect(baselineFor(snap, 'plank')).toMatchObject({ exercise_class: 'weighted', top_weight: 25 });
+  });
+});
+
+// ── PARITY: capture never disagrees with the app's own parser about a header ───
+//
+// Owner invariant (#1225): recoveryBlocks.js adds NO declaration grammar of its
+// own. Every header form the parser's own tests accept is run through the REAL
+// parser and through capture, and the prescription capture derives (kind, sets,
+// minimum) must equal what the parser itself reports for that header. AMRAP is
+// the one bespoke matcher (the parser has no grammar for it) and is consulted only
+// when the parser recognizes no declaration.
+
+describe('declaration parity with the parser (#1225)', () => {
+  const { parseExerciseHeader, parseHeaderDeclaration } = require('../lib/parser');
+  const { declaredPrescription } = require('../lib/data/recoveryBlocks');
+  // Forms taken from the parser's own tests/fixtures plus spacing/case variants.
+  const HEADERS = [
+    '-Bench 3x6-8', '-Bench 4×6–8', '-Bench Press 2x12', '-Curl 2x10', '-Lat Pulldown 3x8-10', '-Squat 4x6-8',
+    '-Hammer Curl 2 8-10', '-Bench: 3x6', '-Bench:3x6', '-Bench 5X5', '-Bench 3 x 6', '-Bench 3 X 6 - 8', '-Bench 3x6–8',
+    '-Pull-up: 3x8', '-Core: In-and-outs on bench * 2x10-12',
+    '-Plank 2×30 sec', '-Plank 2×60s', '-Plank 3x30 sec', '-Plank: 3x45s', '-Plank: 3x30-45 sec', '-Plank: 2x45-60 sec',
+    '-Plank: 1x60s', '-Wall Sit: 3x1min', '-Wall Sit: 2x1 min', '-Plank 3X45S', '-Plank 3x45-60s', '-Plank 3 x 30 SEC',
+    '-Hold 30-45s', '-Hold 60-90 sec', '-Walk 10min', '-Walk 5 min', '-Plank 45s',
+    '-Bench', '-Band pull-aparts', '-RDL', '-Bike', '-Pull-up: 3xAMRAP', '-Pull-up: AMRAP', '-Pull-up (AMRAP)', '-Bench 0x5',
+  ];
+  const expected = (raw) => {
+    const p = parseExerciseHeader(raw);
+    if (p) {
+      return p.sets >= 1 && p.repLo >= 1
+        ? { kind: parseHeaderDeclaration(raw)?.type === 'duration' ? 'duration' : 'reps', sets: p.sets, min: p.repLo }
+        : null;
+    }
+    return null;
+  };
+
+  test.each(HEADERS)('%s: capture reads the same prescription as the parser', (header) => {
+    const parsed = parseWorkoutNote(`${header}\n- 5,5,5`);
+    const raw = parsed.sections.flatMap(sec => sec.exercises)[0]?.raw_header ?? header;
+    const got = declaredPrescription(raw);
+    const want = expected(raw);
+    if (want || parseHeaderDeclaration(raw)) {
+      // The parser recognizes a declaration (usable or not): capture must agree, never invent or override it.
+      expect(got).toEqual(want);
+    } else {
+      // The parser sees none: only an explicit AMRAP may fill the gap.
+      expect(got === null || got.kind === 'amrap').toBe(true);
+    }
+  });
+
+  // Behavioural parity for every usable declaration: a session meeting the parser's
+  // sets x minimum is complete, and one short by 1 on any position is not, so the
+  // older complete session wins. Timed headers log comma rows (seconds).
+  const USABLE = HEADERS.filter(h => {
+    const raw = parseWorkoutNote(`${h}\n- 5,5,5`).sections.flatMap(sec => sec.exercises)[0]?.raw_header ?? h;
+    return expected(raw) && expected(raw).min >= 2;
+  });
+  test.each(USABLE)('%s: boundary sessions complete exactly at the parser\'s sets and minimum', (header) => {
+    const raw = parseWorkoutNote(`${header}\n- 5,5,5`).sections.flatMap(sec => sec.exercises)[0].raw_header;
+    const { sets, min } = expected(raw);
+    const row = (n) => Array(n).fill(String(min)).join(',');
+    const short = Array(sets).fill(String(min)).map((v, i) => (i === sets - 1 ? String(min - 1) : v)).join(',');
+    const note = `${header}\n- ${row(sets + 1)}\n- ${row(sets)}\n- ${short}\n- ${row(sets - 1 || 1)}`;
+    const snap = captureRecoveryBaselineFromText(note);
+    expect(snap.exercises).toHaveLength(1);
+    // Newest two sessions are short by one set / one rep, so the newest complete one (exactly N sets at the minimum) is chosen.
+    expect(snap.exercises[0]).toMatchObject({ basis: BASIS.COMPLETE, sets_completed: sets });
+    expect(snap.exercises[0].total_reps ?? snap.exercises[0].total_seconds).toBe(sets * min);
+  });
+
+  test('SOURCE GUARD: recoveryBlocks.js defines no declaration regex of its own besides AMRAP', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'data', 'recoveryBlocks.js'), 'utf8');
+    // Strip comments, then collect regex-literal-looking declarations assigned to constants.
+    const code = src.replace(/\/\/.*$/gm, '');
+    const regexConsts = [...code.matchAll(/const\s+([A-Za-z0-9_]+)\s*=\s*\/(?!\/)/g)].map(m => m[1]);
+    expect(regexConsts.sort()).toEqual(['_AMRAP_COLON_RE', '_AMRAP_SPACE_RE']);
+    // No inline timed/rep declaration grammar (unit words or the sets x reps shape) outside the AMRAP matchers.
+    const nonAmrap = code.split('\n').filter(l => !/AMRAP|amrap/.test(l)).join('\n');
+    expect(nonAmrap).not.toMatch(/\[xX×\]/);
+    expect(nonAmrap).not.toMatch(/sec\|secs|minutes\?|mins\?/);
   });
 });
