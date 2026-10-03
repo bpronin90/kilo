@@ -834,6 +834,28 @@ describe('bottom reveal and hysteresis (#1231)', () => {
       expect(listeners.wheel).toHaveLength(0);
     });
 
+    test('presses on content (link/button taps, Enter) do not mark user scrolling; scrollbar and scroll keys do', () => {
+      const probe = { current: null };
+      const { component, listeners, scroll } = mountWeb(probe);
+      act(() => listeners.wheel[0]()); act(() => scroll.props.onScroll(ev(100)));
+      now += 50; act(() => listeners.wheel[0]()); act(() => scroll.props.onScroll(ev(400)));
+      expect(probe.current).toBe(true);
+      now += 1000; act(() => scroll.props.onScroll(ev(0)));
+      expect(probe.current).toBe(false);
+      // An anchor click (pointerdown on a child, Enter keydown) then a jump: no hide.
+      act(() => listeners.pointerdown[0]({ target: {}, offsetX: 10, offsetY: 10 }));
+      act(() => listeners.mousedown[0]({ target: {}, offsetX: 10, offsetY: 10 }));
+      act(() => listeners.keydown[0]({ key: 'Enter' }));
+      act(() => scroll.props.onScroll(ev(300))); act(() => scroll.props.onScroll(ev(600)));
+      expect(probe.current).toBe(false);
+      expect(listeners.touchstart).toBeUndefined();
+      // Arrow keys and a press on the scroller's own scrollbar gutter do count.
+      now += 1000; act(() => listeners.keydown[0]({ key: 'ArrowDown' })); act(() => scroll.props.onScroll(ev(20)));
+      now += 50; act(() => listeners.keydown[0]({ key: 'ArrowDown' })); act(() => scroll.props.onScroll(ev(300)));
+      expect(probe.current).toBe(true);
+      act(() => component.unmount());
+    });
+
     test('input stamps expire so later scroll events are programmatic', () => {
       const probe = { current: null };
       const { component, listeners, scroll } = mountWeb(probe);
