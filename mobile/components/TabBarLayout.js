@@ -123,7 +123,10 @@ export function useWebUserScrollIntent() {
     if (!node || typeof node.addEventListener !== 'function') return;
     const stamp = () => { lastInputAt.current = Date.now(); };
     const bound = Object.entries(WEB_USER_SCROLL_LISTENERS).map(([name, counts]) => {
-      const fn = (e) => { if (counts(node, e || {})) stamp(); };
+      const fn = (e) => {
+        if (counts(node, e || {})) stamp();
+        else if (name === 'keydown' && !held.current) lastInputAt.current = -Infinity; // e.g. Enter/Space activating a control
+      };
       node.addEventListener(name, fn, { passive: true });
       return [name, fn];
     });
@@ -134,7 +137,13 @@ export function useWebUserScrollIntent() {
       WEB_SCROLLBAR_RELEASE.forEach((n) => win.removeEventListener(n, release));
     };
     const press = (e) => {
-      if (!onScrollbar(node, e || {}) || held.current) return;
+      if (!onScrollbar(node, e || {})) {
+        // A content press (link/button tap) starts a possible jump: drop any
+        // stale wheel/key stamp so that jump is not read as user scrolling.
+        if (!held.current) lastInputAt.current = -Infinity;
+        return;
+      }
+      if (held.current) return;
       held.current = true;
       stamp();
       WEB_SCROLLBAR_RELEASE.forEach((n) => win.addEventListener(n, release));

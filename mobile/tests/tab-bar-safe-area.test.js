@@ -893,6 +893,25 @@ describe('bottom reveal and hysteresis (#1231)', () => {
       expect(listeners.pointerup).toHaveLength(0);
     });
 
+    test('a content press right after wheel input clears the stamp so its jump is programmatic', () => {
+      const probe = { current: null };
+      const { component, listeners, scroll } = mountWeb(probe);
+      act(() => listeners.wheel[0]()); act(() => scroll.props.onScroll(ev(100)));
+      now += 50; act(() => listeners.wheel[0]()); act(() => scroll.props.onScroll(ev(400)));
+      expect(probe.current).toBe(true);
+      now += 1000; act(() => scroll.props.onScroll(ev(0)));
+      expect(probe.current).toBe(false);
+      now += 10; act(() => listeners.wheel[0]());
+      now += 10; act(() => listeners.pointerdown[0]({ target: {}, offsetX: 5, offsetY: 5 }));
+      act(() => scroll.props.onScroll(ev(300))); now += 16; act(() => scroll.props.onScroll(ev(600)));
+      expect(probe.current).toBe(false);
+      now += 10; act(() => listeners.wheel[0]());
+      now += 10; act(() => listeners.keydown[0]({ key: 'Enter' }));
+      act(() => scroll.props.onScroll(ev(0))); act(() => scroll.props.onScroll(ev(300))); now += 16; act(() => scroll.props.onScroll(ev(600)));
+      expect(probe.current).toBe(false);
+      act(() => component.unmount());
+    });
+
     test('input stamps expire so later scroll events are programmatic', () => {
       const probe = { current: null };
       const { component, listeners, scroll } = mountWeb(probe);
