@@ -80,20 +80,24 @@ export function nextTabBarProgrammaticState({ hidden }, metrics) {
 }
 
 // Web has no drag/momentum events, so user scrolling is inferred from input on
-// the scroll node (#1214): wheel/trackpad, touch drags, scroll keys and
-// scrollbar presses stamp a window; scroll events inside it are user-driven.
+// the scroll node (#1214): wheel/trackpad, touch drags, scroll keys
+// (arrows, Page/Home/End, Space off controls) and scrollbar presses stamp a window; scroll events inside it are user-driven.
 // Anchor/animated section jumps fire scroll events with no preceding scroll
 // input, so they stay programmatic. Plain presses on content (links, buttons,
-// taps, Enter/Space) deliberately do not stamp: they are what trigger jumps.
+// taps, Enter, Space on controls) deliberately do not stamp: they are what trigger jumps.
 // The window outlasts trackpad inertia gaps between wheel events but not a
 // multi-frame animated scrollTo.
 export const WEB_USER_SCROLL_WINDOW_MS = 200;
 const WEB_SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End']);
+// Space scrolls a page only when it is not activating a control or typing.
+const isControl = (t) => !!t && (/^(A|BUTTON|INPUT|TEXTAREA|SELECT|SUMMARY)$/.test(t.tagName || '')
+  || t.isContentEditable === true || /^(button|link|textbox|checkbox|switch|tab)$/.test((t.getAttribute && t.getAttribute('role')) || ''));
+const isScrollKey = (e) => WEB_SCROLL_KEYS.has(e.key) || ((e.key === ' ' || e.key === 'Spacebar') && !isControl(e.target));
 const onScrollbar = (node, e) => e.target === node && (e.offsetX >= node.clientWidth || e.offsetY >= node.clientHeight);
 const WEB_USER_SCROLL_LISTENERS = {
   wheel: () => true,
   touchmove: () => true,
-  keydown: (node, e) => WEB_SCROLL_KEYS.has(e.key),
+  keydown: (node, e) => isScrollKey(e),
   pointerdown: onScrollbar,
   mousedown: onScrollbar,
 };

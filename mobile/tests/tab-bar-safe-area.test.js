@@ -846,12 +846,20 @@ describe('bottom reveal and hysteresis (#1231)', () => {
       act(() => listeners.pointerdown[0]({ target: {}, offsetX: 10, offsetY: 10 }));
       act(() => listeners.mousedown[0]({ target: {}, offsetX: 10, offsetY: 10 }));
       act(() => listeners.keydown[0]({ key: 'Enter' }));
+      act(() => listeners.keydown[0]({ key: ' ', target: { tagName: 'BUTTON' } }));
+      act(() => listeners.keydown[0]({ key: ' ', target: { tagName: 'DIV', getAttribute: () => 'link' } }));
       act(() => scroll.props.onScroll(ev(300))); act(() => scroll.props.onScroll(ev(600)));
       expect(probe.current).toBe(false);
       expect(listeners.touchstart).toBeUndefined();
       // Arrow keys and a press on the scroller's own scrollbar gutter do count.
       now += 1000; act(() => listeners.keydown[0]({ key: 'ArrowDown' })); act(() => scroll.props.onScroll(ev(20)));
       now += 50; act(() => listeners.keydown[0]({ key: 'ArrowDown' })); act(() => scroll.props.onScroll(ev(300)));
+      expect(probe.current).toBe(true);
+      // Space on non-control content scrolls the page.
+      now += 1000; act(() => scroll.props.onScroll(ev(0)));
+      expect(probe.current).toBe(false);
+      act(() => listeners.keydown[0]({ key: ' ', target: { tagName: 'DIV', getAttribute: () => null } })); act(() => scroll.props.onScroll(ev(20)));
+      now += 50; act(() => listeners.keydown[0]({ key: ' ', target: { tagName: 'DIV', getAttribute: () => null } })); act(() => scroll.props.onScroll(ev(300)));
       expect(probe.current).toBe(true);
       act(() => component.unmount());
     });
