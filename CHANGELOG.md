@@ -1,5 +1,61 @@
 # Changelog
 
+## 1.8.20 - 2026-10-03
+
+- Issue #1234: Protected workout details and other personal data from mobile crash reports with a deny-by-default Sentry redaction policy.
+
+## 1.8.19 - 2026-10-03
+
+- Issue #1231: Fixed the bottom navigation staying hidden when you scroll to the bottom of a screen; it now reappears when you reach the end of the content.
+
+## 1.8.18 - 2026-10-03
+
+- Issue #1229: The dependency-audit gate now carries reviewed, time-boxed exceptions for the braces advisory GHSA-vfj7-8cjw-p6xm and the http-cache-semantics advisory GHSA-ch52-4w7c-c8xp, neither of which has a patched release. braces reaches only Jest test tooling and Expo Metro build tooling, and http-cache-semantics reaches only the @expo/ngrok development tunnel; no app source imports either. Both exceptions expire on 2026-11-01 and must be re-reviewed or replaced by a dependency bump before then.
+
+## 1.8.17 - 2026-10-03
+
+- Issue #1227: Added a Rebuild baseline action on Analytics Recovery cards that previews and, on confirmation, rebuilds an older Recovery baseline from its routine.
+
+## 1.8.16 - 2026-10-03
+
+- Issue #1225: Fixed Recovery baselines for newly started blocks so each exercise is measured against its latest complete pre-recovery session instead of a later aborted one, kept the exercises in your routine order, and measured timed holds in seconds. Existing recovery blocks keep their saved baseline unchanged.
+
+## 1.8.15 - 2026-10-03
+
+- Issue #1223: The dependency-audit gate now carries a reviewed exception for the node-forge advisory GHSA-86w9-cpqp-85rv, which has no patched release and only reaches build and CLI tooling. The exception expires on 2026-11-01 and must be re-reviewed or replaced by a dependency bump before then.
+
+## 1.8.14 - 2026-10-03
+
+- Issue #1219: Clearer Recovery card: the collapsed Exercise details no longer repeats the progress bar and shows one short count line (for example 7 trained, 20 not yet, 5 added), the headline says it counts exercises trained this week, and the start date and injury reason sit together in a tidy labelled block with the info button next to the date and an obvious way to edit the reason.
+
+## 1.8.13 - 2026-10-03
+
+- Issue #1219: Recovery exercise details now list exercises in your routine's original order (trained this week first, then not yet trained, then anything added during recovery in the order you logged it), and each exercise's bar shows progress on Total work (or reps / time) toward your baseline instead of its weakest measure. Recovery now shows three simple states, At or above, Rebuilding and Early, in a color chosen for each court theme in light and dark; Not trained yet, Can't compare and Added during recovery stay plain-worded in a quiet neutral color, and the status word always sits beside every mark.
+
+## 1.8.12 - 2026-10-03
+
+- Issue #1219: Restored the Recovery analytics card to the shared hierarchy: the recovery hero metric now leads the card and names the baseline routine (at or above your routine's baseline), the week picker fits on one row on a phone, and the Exercise details list is now a quick visual scan of each exercise's status, progress bar, and numbers instead of paragraphs of text. The collapsed Exercise details row now shows just a thin colored band bar with "N trained / M not yet" (identical when expanded), the dates and reason share one quiet footer line, and the "not a medical judgment" note sits behind a small info button.
+
+## 1.8.11 - 2026-10-03
+
+- Issue #1217: The Recovery card on Analytics now has a proper Recovery header like the other cards, shows the routine name as secondary context, and uses larger, more readable text with a smaller "X of N" figure.
+
+## 1.8.10 - 2026-10-03
+
+- Issue #1215: Simplified the Recovery analytics card so the current week reads at a glance: one large headline number with a single thin return-band bar, a compact Improved, Steady, and Fell back row, and slim per-week bars, with the explanatory captions removed.
+
+## 1.8.9 - 2026-10-03
+
+- Issue #1214: Fixed the web tab bar hiding when anchor or section jumps move the page; only wheel, trackpad, touch and keyboard scrolling now auto-hide it.
+
+## 1.8.8 - 2026-10-03
+
+- Issue #1210: Made the exercise-name normalization prompt more conservative so only clearly matching exercise header names are changed, and the import preview now says when a routine has no proposed change.
+
+## 1.8.7 - 2026-10-03
+
+- Issue #1209: Recovery now shows a labeled, colored segmented bar per week, a three-part Improved/Steady/Fell back summary, and across-weeks stacked bars with every band named in full; roster and gap details moved into Exercise details. The bottom navigation stays opaque and compact, hides while you scroll down, and returns when you scroll up, reach the top, or switch tabs.
+
 ## 1.8.6 - 2026-09-30
 
 - Issue #1202: Recovery details now explain when a logged exercise name looks like a descriptor-suffixed version of a missing baseline exercise, so it is clear no direct comparison was made.
