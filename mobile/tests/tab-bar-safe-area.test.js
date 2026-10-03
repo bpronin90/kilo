@@ -1,6 +1,6 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
-import { StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { TabBar } from '../components/TabBar';
 import { ScreenShell } from '../components/ScreenShell';
@@ -786,5 +786,65 @@ describe('bottom reveal and hysteresis (#1231)', () => {
     act(() => scroll.props.onScroll(ev(MAX_Y)));
     expect(probe.current).toBe(false);
     act(() => component.unmount());
+  });
+
+  describe('web user vs programmatic scrolling (#1214)', () => {
+    const { Platform } = require('react-native');
+    const realOS = Platform.OS;
+    let now;
+    beforeEach(() => {
+      Platform.OS = 'web';
+      now = 1000;
+      jest.spyOn(Date, 'now').mockImplementation(() => now);
+    });
+    afterEach(() => { Platform.OS = realOS; jest.restoreAllMocks(); });
+
+    function mountWeb(probe) {
+      const listeners = {};
+      const node = {
+        addEventListener: (n, fn) => { (listeners[n] = listeners[n] || []).push(fn); },
+        removeEventListener: (n, fn) => { listeners[n] = (listeners[n] || []).filter((f) => f !== fn); },
+      };
+      // RNW's ScrollView exposes its DOM node through getScrollableNode().
+      jest.spyOn(ScrollView.prototype, 'getScrollableNode').mockReturnValue(node);
+      let component;
+      act(() => { component = renderer.create(<Harness probe={probe} />); });
+      return { component, listeners, scroll: findScroll(component) };
+    }
+
+    test('wheel input drives auto-hide; a programmatic animated jump and a jump to y: 0 do not hide', () => {
+      const probe = { current: null };
+      const { component, listeners, scroll } = mountWeb(probe);
+      expect(listeners.wheel).toHaveLength(1);
+      act(() => listeners.wheel[0]()); act(() => scroll.props.onScroll(ev(100)));
+      now += 50; act(() => listeners.wheel[0]()); act(() => scroll.props.onScroll(ev(400)));
+      expect(probe.current).toBe(true);
+      // Restoration jump to the top reveals the bar.
+      now += 1000; act(() => scroll.props.onScroll(ev(0)));
+      expect(probe.current).toBe(false);
+      // Animated lower-section jump: several scroll events, no input, never hides.
+      [150, 300, 450, 600].forEach((y) => { now += 16; act(() => scroll.props.onScroll(ev(y))); });
+      expect(probe.current).toBe(false);
+      // The next real wheel measures from where the jump landed.
+      now += 1000; act(() => listeners.wheel[0]()); act(() => scroll.props.onScroll(ev(604)));
+      expect(probe.current).toBe(false);
+      now += 50; act(() => listeners.wheel[0]()); act(() => scroll.props.onScroll(ev(700)));
+      expect(probe.current).toBe(true);
+      act(() => component.unmount());
+      expect(listeners.wheel).toHaveLength(0);
+    });
+
+    test('input stamps expire so later scroll events are programmatic', () => {
+      const probe = { current: null };
+      const { component, listeners, scroll } = mountWeb(probe);
+      act(() => listeners.wheel[0]()); act(() => scroll.props.onScroll(ev(100)));
+      now += 50; act(() => listeners.wheel[0]()); act(() => scroll.props.onScroll(ev(400)));
+      expect(probe.current).toBe(true);
+      now += 500; act(() => scroll.props.onScroll(ev(700)));
+      expect(probe.current).toBe(true); // programmatic, mid-scroll: no change
+      act(() => scroll.props.onScroll(ev(0)));
+      expect(probe.current).toBe(false);
+      act(() => component.unmount());
+    });
   });
 });

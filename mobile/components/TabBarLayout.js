@@ -79,6 +79,32 @@ export function nextTabBarProgrammaticState({ hidden }, metrics) {
   return { hidden, lastY: y };
 }
 
+// Web has no drag/momentum events, so user scrolling is inferred from input on
+// the scroll node (#1214): wheel/trackpad, touch, keyboard and scrollbar
+// presses stamp a window; scroll events inside it are user-driven. Anchor and
+// animated section jumps fire scroll events with no preceding input, so they
+// stay programmatic. The window outlasts trackpad inertia gaps between wheel
+// events but not a multi-frame animated scrollTo.
+export const WEB_USER_SCROLL_WINDOW_MS = 200;
+const WEB_USER_SCROLL_EVENTS = ['wheel', 'touchstart', 'touchmove', 'touchend', 'keydown', 'pointerdown', 'mousedown'];
+
+// Returns { attach, isActive }. `attach(node)` binds the input listeners to a
+// DOM node (or detaches when null); nodes without addEventListener are ignored.
+export function useWebUserScrollIntent() {
+  const lastInputAt = useRef(-Infinity);
+  const detach = useRef(null);
+  const attach = useCallback((instance) => {
+    if (detach.current) { detach.current(); detach.current = null; }
+    const node = instance && typeof instance.getScrollableNode === 'function' ? instance.getScrollableNode() : instance;
+    if (!node || typeof node.addEventListener !== 'function') return;
+    const mark = () => { lastInputAt.current = Date.now(); };
+    WEB_USER_SCROLL_EVENTS.forEach((name) => node.addEventListener(name, mark, { passive: true }));
+    detach.current = () => WEB_USER_SCROLL_EVENTS.forEach((name) => node.removeEventListener(name, mark));
+  }, []);
+  const isActive = useCallback(() => Date.now() - lastInputAt.current <= WEB_USER_SCROLL_WINDOW_MS, []);
+  return { attach, isActive };
+}
+
 // Owned by App.js. `onScroll` takes a ScrollView scroll event; ScreenShell
 // forwards every scroll to it. Default is a no-op so isolated ScreenShell
 // renders (and tests) need no provider.
