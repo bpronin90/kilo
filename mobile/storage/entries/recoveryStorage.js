@@ -22,6 +22,7 @@
 import { RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEEKS_KEY } from './keys';
 import { readList, writeList } from './jsonStorage';
 import {
+  RECOVERY_BASELINE_VERSION,
   RECOVERY_ERROR_CODES,
   RecoveryBlockError,
   buildRecoveryBlock,
@@ -183,6 +184,28 @@ export async function updateRecoveryBlock(id, patch) {
     ...effective,
     updated_at: new Date().toISOString(),
   };
+  list[idx] = updated;
+  await writeList(RECOVERY_BLOCKS_KEY, list);
+  return updated;
+}
+
+// Replace a live v1 block's frozen baseline with a v2 snapshot (#1227). The ONE
+// sanctioned baseline write: the generic patch path still drops `baseline`. Only
+// `baseline` and `updated_at` change, so an already-v2 block (repeat confirm) or a
+// tombstone is rejected rather than rewritten.
+export async function replaceRecoveryBlockBaseline(id, baseline) {
+  const list = await readList(RECOVERY_BLOCKS_KEY);
+  const idx = list.findIndex(b => b.id === id);
+  if (idx < 0 || !isLiveRecord(list[idx])) {
+    throw new RecoveryBlockError(RECOVERY_ERROR_CODES.BLOCK_NOT_FOUND, `No live recovery block with id ${id}.`);
+  }
+  if (list[idx].baseline?.version !== 1 || baseline?.version !== RECOVERY_BASELINE_VERSION || !Array.isArray(baseline.exercises)) {
+    throw new RecoveryBlockError(
+      RECOVERY_ERROR_CODES.BASELINE_NOT_REBUILDABLE,
+      'This block’s baseline cannot be rebuilt.'
+    );
+  }
+  const updated = { ...list[idx], baseline, updated_at: new Date().toISOString() };
   list[idx] = updated;
   await writeList(RECOVERY_BLOCKS_KEY, list);
   return updated;

@@ -666,6 +666,19 @@ describe('recovery data in the backup format', () => {
     expect(isTombstone(restoredWeeks.find((w) => w.id === w2.id))).toBe(true);
   });
 
+  it('restores a rebuilt v2 baseline exactly (#1227)', async () => {
+    const { block } = await seedRecoveryData();
+    await Storage.replaceRecoveryBlocksRaw([{ ...(await Storage.loadRecoveryBlocksRaw())[0], baseline: { version: 1, exercises: [] } }]);
+    const { replaceRecoveryBlockBaseline } = require('../storage/entries/recoveryStorage');
+    const { captureRecoveryBaselineFromText } = require('../lib/data/recoveryBlocks');
+    const v2 = captureRecoveryBaselineFromText('-Squat 3x5\n- 225 5,5,5');
+    await replaceRecoveryBlockBaseline(block.id, v2);
+    const backup = await Storage.exportBackup();
+    await Storage.replaceRecoveryBlocksRaw([]);
+    expect((await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL })).ok).toBe(true);
+    expect((await Storage.loadRecoveryBlocksRaw())[0].baseline).toEqual(v2);
+  });
+
   // The mirror image of the invariant rejections below: the uniqueness rules are
   // scoped to LIVE rows, exactly as the partial indexes are, so accumulated
   // history is never a conflict. A validator that read tombstoned and completed

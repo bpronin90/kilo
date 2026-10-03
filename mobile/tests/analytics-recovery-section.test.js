@@ -3559,3 +3559,84 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
     expect(findAllText(ctx)).toEqual(['Dates', '08-08-2026 –', '09-20-2026', 'Reason', 'Back injury']);
   });
 });
+
+describe('AnalyticsRecoverySection — rebuild a v1 baseline (#1227)', () => {
+  const ROUTINE = '-Squat 3x5\n- 225 5,5,5\n-Bench 3x5\n- 135 5,5,4';
+  const V1 = { version: 1, exercises: [{ key: 'bench', name: 'Bench', exercise_class: 'weighted', top_weight: 100, volume: 300, sets_completed: 3 }] };
+  let mockRebuild;
+
+  const mount = ({ blk = block({ baseline: V1 }), notes = [{ ...note('note-baseline', ROUTINE), updated_at: '2026-04-01T00:00:00Z' }], ...props } = {}) => {
+    let component;
+    act(() => {
+      component = render.create(
+        <AnalyticsRecoverySection blocks={[blk]} weeks={[]} notes={notes} {...props} />
+      );
+    });
+    return component;
+  };
+  const press = (root, label) => act(() => { byLabel(root, label).props.onPress(); });
+
+  beforeEach(() => {
+    mockRebuild = jest.fn().mockResolvedValue({ ok: true });
+    jest.spyOn(require('../hooks/entries/recoveryBlockHooks'), 'useRecoveryBlockLifecycle')
+      .mockReturnValue({ rebuildBaseline: mockRebuild });
+  });
+  afterEach(() => { jest.restoreAllMocks(); });
+
+  test('offers the action for an eligible v1 block, active or completed', () => {
+    expect(byLabel(mount().root, 'Rebuild baseline')).toBeDefined();
+    expect(byLabel(mount({ blk: block({ baseline: V1, completed_at: '2026-06-01T00:00:00Z' }) }).root, 'Rebuild baseline')).toBeDefined();
+  });
+
+  test.each([
+    ['v2 block', { blk: block() }],
+    ['missing note', { notes: [] }],
+    ['oversized note', { notes: [note('note-baseline', 'x'.repeat(MAX_RAW_TEXT_LENGTH + 1))] }],
+    ['deleted note', { notes: [{ ...note('note-baseline', ROUTINE), deleted_at: '2026-06-01T00:00:00Z' }] }],
+  ])('no action for %s', (_n, props) => {
+    expect(byLabel(mount(props).root, 'Rebuild baseline')).toBeUndefined();
+  });
+
+  test('preview shows old → new per exercise with order, makes no write, and cancel closes it', () => {
+    const { root } = mount();
+    press(root, 'Rebuild baseline');
+    expect(hasText(root, '1. Squat: not in the old baseline → 225 top, 3,375 volume')).toBe(true);
+    expect(hasText(root, '2. Bench: 100 top, 300 volume → 135 top, 1,890 volume (latest session (target never completed))')).toBe(true);
+    expect(hasText(root, 'edited after Recovery began')).toBe(false);
+    press(root, 'Cancel rebuilding the baseline');
+    expect(mockRebuild).not.toHaveBeenCalled();
+    expect(byLabel(root, 'Rebuild baseline')).toBeDefined();
+  });
+
+  test('warns when the routine was edited after Recovery began; confirm stays explicit', () => {
+    const { root } = mount({ notes: [{ ...note('note-baseline', ROUTINE), updated_at: '2026-06-01T00:00:00Z' }] });
+    press(root, 'Rebuild baseline');
+    expect(hasText(root, 'edited after Recovery began')).toBe(true);
+    expect(mockRebuild).not.toHaveBeenCalled();
+  });
+
+  test('confirm calls the rebuild once and announces success; no second action offered', async () => {
+    const { root } = mount();
+    press(root, 'Rebuild baseline');
+    await act(async () => { await byLabel(root, 'Confirm rebuilding the baseline').props.onPress(); });
+    expect(mockRebuild).toHaveBeenCalledTimes(1);
+    expect(mockRebuild).toHaveBeenCalledWith({ blockId: 'rb1' });
+    expect(hasText(root, 'Baseline rebuilt from the routine.')).toBe(true);
+    expect(byLabel(root, 'Confirm rebuilding the baseline')).toBeUndefined();
+  });
+
+  test('a failed write shows the error and keeps the preview open', async () => {
+    mockRebuild.mockResolvedValue({ ok: false, error: 'disk full' });
+    const { root } = mount();
+    press(root, 'Rebuild baseline');
+    await act(async () => { await byLabel(root, 'Confirm rebuilding the baseline').props.onPress(); });
+    expect(hasText(root, 'disk full')).toBe(true);
+    expect(hasText(root, 'Baseline rebuilt')).toBe(false);
+    expect(byLabel(root, 'Confirm rebuilding the baseline')).toBeDefined();
+  });
+
+  test('the action is disabled while Recovery state is pending', () => {
+    const { root } = mount({ pendingRecovery: [{ id: 'op' }] });
+    expect(byLabel(root, 'Rebuild baseline').props.disabled).toBe(true);
+  });
+});

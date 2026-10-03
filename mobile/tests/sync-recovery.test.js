@@ -50,6 +50,8 @@ import {
   saveWeightGoal,
   replaceArchivedWeightGoalsRaw,
 } from '../storage/entries/weightGoal';
+import { replaceRecoveryBlockBaseline } from '../storage/entries/recoveryStorage';
+import { captureRecoveryBaselineFromText } from '../lib/data/recoveryBlocks';
 import { makeWorkoutNoteItem } from '../lib/data/exerciseCatalog';
 import {
   SYNC_TABLES,
@@ -2101,5 +2103,39 @@ describe('recovery block reason crosses the sync boundary intact', () => {
     });
     await sync();
     expect((await Storage.loadRecoveryBlocksRaw())[0].reason).toBe('corrected on this device');
+  });
+});
+
+describe('rebuilt v2 baseline crosses the sync boundary as an ordinary edit (#1227)', () => {
+  const V2 = captureRecoveryBaselineFromText('-Squat 3x5\n- 225 5,5,5');
+  async function seedV1() {
+    await Storage.replaceRecoveryBlocksRaw([{
+      id: 'rb-rebuild', baseline_note_id: 'wn-r', baseline_note_title: 'R',
+      baseline: { version: 1, exercises: [] }, include_in_normal_analytics: false,
+      started_at: '2026-08-01T09:00:00.000Z', completed_at: null, saved_at: '2026-08-01T09:00:00.000Z',
+      updated_at: '2026-08-01T09:00:00.000Z', deleted_at: null,
+    }]);
+  }
+
+  it('uploads a baseline rebuilt while signed out', async () => {
+    await seedV1();
+    await sync();
+    signOut();
+    await replaceRecoveryBlockBaseline('rb-rebuild', V2);
+    signInAsSameOwner();
+    await sync();
+    expect(cloud.remoteRow(SYNC_TABLES.RECOVERY_BLOCKS, 'rb-rebuild').baseline).toEqual(V2);
+  });
+
+  it('a pending local rebuild wins over a remote row it never saw (existing LWW)', async () => {
+    await seedV1();
+    await sync();
+    const remote = cloud.remoteRow(SYNC_TABLES.RECOVERY_BLOCKS, 'rb-rebuild');
+    await cloud.transport.push(SYNC_TABLES.RECOVERY_BLOCKS, [{ ...remote, reason: 'other device' }]);
+    signOut();
+    await replaceRecoveryBlockBaseline('rb-rebuild', V2);
+    signInAsSameOwner();
+    await sync();
+    expect(cloud.remoteRow(SYNC_TABLES.RECOVERY_BLOCKS, 'rb-rebuild').baseline).toEqual(V2);
   });
 });

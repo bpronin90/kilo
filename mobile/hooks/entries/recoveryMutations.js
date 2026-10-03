@@ -23,7 +23,9 @@ import {
   isLiveRecord,
   nextWeekNumber,
   orderedLiveWeeks,
+  planBaselineRebuild,
 } from '../../lib/data/recoveryBlocks';
+import { replaceRecoveryBlockBaseline } from '../../storage/entries/recoveryStorage';
 import { makeWorkoutNoteItem } from '../../lib/data';
 // Imported for its module-load side effect: it registers the mode-aware
 // note-deletion operations into the recovery journal (see
@@ -34,27 +36,15 @@ import { reloadWorkoutNotes } from './workoutNoteHooks';
 import { ensureVerifiedRecoveryState, notifyRecoveryBlocks } from './recoveryReadState';
 
 const RecoveryStorage = Storage;
+const RebuildStorage = { ...Storage, replaceRecoveryBlockBaseline };
 
-// Create the block, then attach exactly one week. On a Week-1 failure the
-// just-created block is rolled back (deleted) so no orphan active block is
-// left behind — the two writes must land as one unit from the caller's
-// perspective, even though the storage layer does them as two calls.
-//
-// The whole flow — the optional "New note" Week-1 write, the block create,
-// the week attach, and both rollback paths — runs behind the SAME
-// process-wide recovery-operation lock Reopen uses (#839), via
-// `runGuardedRecoveryAction`. That is what makes Start and Reopen's
-// "no active block" checks serialize instead of racing: nothing else that
-// takes this lock (including a concurrent reopen) can observe persisted state
-// in between this function's own read and write.
-//
-// `createWeekNote` (optional): when the caller has no existing `weekNoteId`
-// yet — the "New note" Week-1 path — it supplies an async factory instead of
-// creating the note itself beforehand. `removeWeekNote` (optional) is the
-// rollback for a note this call created, used only when the subsequent
-// block/week write fails. `reason` (optional, #872) is the user's own
-// free-text note on why this recovery started; it is carried straight through
-// to the block record and normalized there, and nothing here branches on it.
+// Create the block, then attach exactly one week; a Week-1 failure rolls the
+// just-created block back so no orphan active block is left. The whole flow (the
+// optional "New note" write, block create, week attach, both rollbacks) runs behind
+// the process-wide lock Reopen uses (#839) via `runGuardedRecoveryAction`, so Start
+// and Reopen's "no active block" checks serialize. `createWeekNote`/`removeWeekNote`
+// (optional) create/roll back a Week-1 note this call made. `reason` (#872) goes
+// straight to the block record, which normalizes it.
 export function startRecoveryBlockCore(storage, {
   baselineNoteId, baselineNoteTitle = null, baselineNoteText = '', weekNoteId = null,
   reason = null, createWeekNote, removeWeekNote,
@@ -115,13 +105,9 @@ export function startRecoveryBlockCore(storage, {
 }
 
 export function useStartRecoveryBlock() {
-  // Same confirm-time recheck as every other recovery mutation: the start modal
-  // can sit open while the authoritative read goes stale, and freezing a
-  // baseline against unverified state is exactly the write this boundary exists
-  // to prevent. Everything after this gate — including the optional new-note
-  // write — runs inside `startRecoveryBlockCore`'s own guarded lock, so there
-  // is exactly one gate and one lock acquisition; nothing downstream re-checks
-  // or can reject after a write has already landed (#711 review finding 2).
+  // Confirm-time recheck: freezing a baseline against unverified state is the write
+  // this gate prevents. Everything after it runs inside `startRecoveryBlockCore`'s
+  // own lock, so there is exactly one gate and one lock acquisition (#711).
   const startBlock = useCallback(async ({
     baselineNoteId, baselineNoteTitle = null, baselineNoteText = '', weekNoteId = null,
     reason = null, createWeekNote, removeWeekNote,
@@ -138,13 +124,9 @@ export function useStartRecoveryBlock() {
 
 // ── Week 2+ lifecycle (#696) ──────────────────────────────────────────────────
 //
-// None of the cores below accept a caller-supplied `weeks`/`blocks` snapshot. A
-// native confirmation (or the Add Week modal) can sit open for as long as the
-// user takes, and a background cloud sync can land new records during that whole
-// window — trusting a render-time array captured before the dialog opened
-// would let a stale read decide what "the current week" is. Every mutation
-// therefore re-reads the relevant records from storage immediately before it
-// acts, so it always decides against what is actually persisted right now.
+// No core below accepts a caller-supplied `weeks`/`blocks` snapshot: a confirm can
+// sit open while background sync lands records, so every mutation re-reads storage
+// immediately before it acts.
 
 // Complete the block's current week (its single latest live week, if any — the
 // same definition `nextWeekNumber` builds off of). A no-op (still ok:true)
@@ -175,12 +157,8 @@ export function completeCurrentWeekCore(storage, { blockId }) {
 // actually completed, so a stale button press explains itself rather than
 // pretending to have done something.
 //
-// Also refuses on a block that is no longer active (review finding): the
-// reopen confirmation can sit open long enough for `completeRecoveryBlockCore`
-// to complete the block AND this same week together in the meantime, and
-// without this check a stale confirm would still clear `completed_at` on that
-// week — leaving a COMPLETED block with an IN-PROGRESS week, a combination the
-// domain otherwise guarantees can never happen (recoveryBlocks.js `isBlockActive`).
+// Also refuses on a no-longer-active block: a stale confirm would otherwise leave a
+// COMPLETED block with an IN-PROGRESS week, which the domain forbids (`isBlockActive`).
 export function uncompleteCurrentWeekCore(storage, { blockId }) {
   return runGuardedRecoveryAction({ blockId }, async () => {
     const [blocks, ordered] = await Promise.all([
@@ -494,6 +472,25 @@ export function setRecoveryBlockReasonCore(storage, { blockId, reason }) {
   });
 }
 
+// Explicit v1 -> v2 baseline rebuild (#1227). Inside the same guarded lock as every
+// other Recovery edit it re-reads the authoritative block + exact baseline note,
+// re-plans with the v2 capture, and replaces ONLY `baseline`. Stale/ineligible
+// state (v2, tombstone, note gone/unreadable) writes nothing.
+export function rebuildRecoveryBaselineCore(storage, { blockId }) {
+  return runGuardedRecoveryAction({ blockId }, async () => {
+    try {
+      const block = (await storage.loadRecoveryBlocks()).find(b => b.id === blockId);
+      const notes = await storage.loadWorkoutNotes();
+      const plan = planBaselineRebuild(block, notes.find(n => n.id === block?.baseline_note_id));
+      if (!plan.eligible) return { ok: false, error: plan.message };
+      const updated = await storage.replaceRecoveryBlockBaseline(blockId, plan.baseline);
+      return { ok: true, block: updated };
+    } catch (e) {
+      return { ok: false, code: e?.code || null, error: e?.message || 'Could not rebuild this baseline.' };
+    }
+  });
+}
+
 export function useRecoveryBlockLifecycle() {
   const completeCurrentWeek = useCallback(async (params) => {
     const gate = await ensureVerifiedRecoveryState();
@@ -522,8 +519,7 @@ export function useRecoveryBlockLifecycle() {
     const result = await addRecoveryWeekWithNewNoteCore(RecoveryStorage, params);
     if (result.ok) {
       notifyRecoveryBlocks();
-      // This operation also writes the notebook, so every mounted workout-note
-      // instance reloads — after the verified result, never before it.
+      // This also writes the notebook: mounted note instances reload after the verified result.
       reloadWorkoutNotes();
     }
     return result;
@@ -563,8 +559,7 @@ export function useRecoveryBlockLifecycle() {
     }
     return result;
   }, []);
-  // Step 7 for the failure side, and the `Retry recovery` affordance's engine:
-  // the SAME reconciler startup, sync, and every pre-action gate use.
+  // Step 7 failure side and `Retry recovery`'s engine: the SAME reconciler every gate uses.
   const retryRecovery = useCallback(async () => {
     const result = await reconcileRecoveryOperations();
     notifyRecoveryBlocks();
@@ -572,10 +567,7 @@ export function useRecoveryBlockLifecycle() {
     return result;
   }, []);
 
-  // Toggling inclusion changes no note and no baseline, so the notebook is not
-  // reloaded — only the recovery subscribers (including every mounted
-  // `useRecoveryAnalyticsFilter`) refresh, which is what makes Home/Analytics
-  // repopulate immediately.
+  // Inclusion changes no note/baseline: only recovery subscribers refresh.
   const setIncludeInNormalAnalytics = useCallback(async (params) => {
     const gate = await ensureVerifiedRecoveryState();
     if (!gate.ok) return gate;
@@ -584,9 +576,7 @@ export function useRecoveryBlockLifecycle() {
     return result;
   }, []);
 
-  // Editing the reason changes no note and no baseline, so — exactly like the
-  // inclusion preference above — the notebook is not reloaded; only the recovery
-  // subscribers refresh, which is what repaints the Log and Analytics captions.
+  // Like inclusion, the reason repaints only the Log/Analytics captions.
   const setBlockReason = useCallback(async (params) => {
     const gate = await ensureVerifiedRecoveryState();
     if (!gate.ok) return gate;
@@ -595,5 +585,13 @@ export function useRecoveryBlockLifecycle() {
     return result;
   }, []);
 
-  return { completeCurrentWeek, uncompleteCurrentWeek, addWeek, addWeekWithNewNote, completeBlock, reopenBlock, unlinkWeek, unlinkNoteForDelete, setIncludeInNormalAnalytics, setBlockReason, retryRecovery };
+  const rebuildBaseline = useCallback(async (params) => {
+    const gate = await ensureVerifiedRecoveryState();
+    if (!gate.ok) return gate;
+    const result = await rebuildRecoveryBaselineCore(RebuildStorage, params);
+    if (result.ok) notifyRecoveryBlocks();
+    return result;
+  }, []);
+
+  return { completeCurrentWeek, uncompleteCurrentWeek, addWeek, addWeekWithNewNote, completeBlock, reopenBlock, unlinkWeek, unlinkNoteForDelete, setIncludeInNormalAnalytics, setBlockReason, rebuildBaseline, retryRecovery };
 }

@@ -57,4 +57,5 @@ export const unlinkRecoveryWeekCore = Mutations.unlinkRecoveryWeekCore;
 export const unlinkNoteForDeleteCore = Mutations.unlinkNoteForDeleteCore;
 export const setRecoveryNormalAnalyticsInclusionCore = Mutations.setRecoveryNormalAnalyticsInclusionCore;
 export const setRecoveryBlockReasonCore = Mutations.setRecoveryBlockReasonCore;
+export const rebuildRecoveryBaselineCore = Mutations.rebuildRecoveryBaselineCore;
 export const useRecoveryBlockLifecycle = Mutations.useRecoveryBlockLifecycle;
