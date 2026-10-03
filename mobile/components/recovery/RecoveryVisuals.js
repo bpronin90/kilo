@@ -2,38 +2,87 @@ import React, { useMemo } from 'react';
 import { Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useTheme } from '../../theme/ThemeContext';
-import { RETURN_BANDS } from '../../lib/data/recoveryReturnBands';
 import { createVisualStyles } from './recoveryVisualStyles';
 
-// Trained bands only; `Not trained yet` is a roster fact, not a performance
-// band, and lives in the exercise drill-down (#1209).
-const TRAINED_BANDS = RETURN_BANDS.filter(b => b.id !== 'not_trained_yet');
-const COMPARABLE_BANDS = TRAINED_BANDS.filter(b => b.id !== 'cannot_compare');
+// THREE visible graded states (#1219): At or above, Rebuilding, Early. The
+// merge is PRESENTATION ONLY: `deriveRecoveryWeekBands` still emits its six
+// buckets (`close` stays a derived bucket and every other consumer is
+// unchanged); every Analytics Recovery surface folds `close` into Rebuilding at
+// render time through `gradedCounts`, so a Rebuilding count is always the sum
+// and Close is never named or colored.
+export const GRADED_BANDS = Object.freeze([
+  Object.freeze({ id: 'at_or_above', label: 'At or above' }),
+  Object.freeze({ id: 'rebuilding', label: 'Rebuilding' }),
+  Object.freeze({ id: 'early', label: 'Early' }),
+]);
 
-// Each band color is a mark color paired with visible full-name text, never a
-// hue on its own. *Text variants are used, not raw `accent`/`caution`
-// (docs/design-system-map.md "Text vs. mark").
-const BAND_COLOR_TOKEN = Object.freeze({
-  at_or_above: 'success',
-  close: 'accentText',
-  rebuilding: 'cautionText',
-  early: 'error',
-  cannot_compare: 'textMuted',
-  not_trained_yet: 'textMuted',
+// Not-graded statuses are plain facts, not judgments. They keep their words,
+// share ONE neutral mark (`onSurfaceVariant`) and never enter a colored segment.
+export const QUIET_STATUS_LABELS = Object.freeze({
+  cannot_compare: "Can't compare",
+  not_trained_yet: 'Not trained yet',
+  added: 'Added during recovery',
 });
 
-// `cautionText` has no KUA equivalent in any palette; the rest map directly.
-export function bandColor(bandId, colors, kua) {
-  const token = BAND_COLOR_TOKEN[bandId];
-  if (!kua) return colors[token];
-  switch (token) {
-    case 'success':    return kua.completion;
-    case 'accentText': return kua.primary;
-    case 'error':      return kua.error;
-    case 'textMuted':  return kua.onSurfaceVariant;
-    default:           return colors[token];
-  }
+// Map any derived band id (six buckets) to its visible id: close -> rebuilding.
+export function displayBandId(bandId) {
+  return bandId === 'close' ? 'rebuilding' : bandId;
 }
+
+// The three graded counts from the six derived buckets; Rebuilding = close +
+// rebuilding.
+export function gradedCounts(buckets) {
+  const b = buckets || {};
+  return {
+    at_or_above: b.at_or_above || 0,
+    rebuilding: (b.close || 0) + (b.rebuilding || 0),
+    early: b.early || 0,
+  };
+}
+
+// Every band color is a MARK paired with visible full-name text, never a hue on
+// its own. Under a KUA court palette each graded state resolves through its own
+// named per-court/per-mode token (`theme/colors.js` RECOVERY_BAND_TOKENS); the
+// not-graded statuses use the existing `onSurfaceVariant` neutral.
+const GRADED_KUA_TOKEN = Object.freeze({
+  at_or_above: 'recoveryBandAtOrAbove',
+  rebuilding: 'recoveryBandRebuilding',
+  early: 'recoveryBandEarly',
+});
+
+// Legacy (non-KUA) palette fallback, used only when no court palette is
+// resolved (isolated renders): *Text variants, not raw `accent`/`caution`.
+const GRADED_LEGACY_TOKEN = Object.freeze({
+  at_or_above: 'success',
+  rebuilding: 'cautionText',
+  early: 'error',
+});
+
+export function quietColor(colors, kua) {
+  return kua ? kua.onSurfaceVariant : colors.textMuted;
+}
+
+export function bandColor(bandId, colors, kua) {
+  const id = displayBandId(bandId);
+  if (!GRADED_KUA_TOKEN[id]) return quietColor(colors, kua);
+  return kua ? kua[GRADED_KUA_TOKEN[id]] : colors[GRADED_LEGACY_TOKEN[id]];
+}
+
+// One plain-word list of every state count, zeros included: the three graded
+// states (Close folded into Rebuilding), then the quiet ones. Shared by the hero
+// bar, the roster summary and the weeks strip so the labels cannot drift. `added`
+// is optional because the historical series carries no added count; when a
+// caller has one (hero bar, summary) it is always named.
+function stateCountSentence({ graded, notTrained, cannotCompare, added }) {
+  return [
+    ...GRADED_BANDS.map(b => `${b.label} ${graded[b.id]}`),
+    `${QUIET_STATUS_LABELS.not_trained_yet} ${notTrained}`,
+    `${QUIET_STATUS_LABELS.cannot_compare} ${cannotCompare}`,
+    ...(added == null ? [] : [`${QUIET_STATUS_LABELS.added} ${added}`]),
+  ].join(', ');
+}
+
+const sumGraded = (g) => g.at_or_above + g.rebuilding + g.early;
 
 function useVisual() {
   const { colors, kuaPalette: kua } = useTheme();
@@ -41,14 +90,17 @@ function useVisual() {
   return { colors, kua, styles };
 }
 
+// Colored segments are the three GRADED states only (merged Rebuilding); a quiet
+// status never becomes a segment.
 function Segments({ buckets, colors, kua, style }) {
+  const counts = gradedCounts(buckets);
   return (
     <View style={style}>
-      {TRAINED_BANDS.filter(b => (buckets[b.id] || 0) > 0).map(b => (
+      {GRADED_BANDS.filter(b => counts[b.id] > 0).map(b => (
         <View
           key={b.id}
           testID={`recovery-segment-${b.id}`}
-          style={{ flex: buckets[b.id], backgroundColor: bandColor(b.id, colors, kua) }}
+          style={{ flex: counts[b.id], backgroundColor: bandColor(b.id, colors, kua) }}
         />
       ))}
     </View>
@@ -76,13 +128,16 @@ export function routineLabel(title) {
 // Hero: the one dominant element. A big factual number and one plain label;
 // the full sentence rides on the accessible label so nothing is lost to
 // screen readers. `trained === 0` has no number to show, only the plain fact.
+// The label states its SCOPE (#1219): the denominator counts only the exercises
+// trained in the selected week, not the whole routine, so "0 of 7" cannot be
+// misread against a roster of 27. The routine is named once, ellipsized.
 export function RecoveryHero({ weekLabel, atOrAbove, trained, routineTitle }) {
   const { styles } = useVisual();
   const empty = trained === 0;
   const { full, visible } = routineLabel(routineTitle);
   const label = empty
-    ? `${weekLabel}: no roster exercises trained yet against ${full} baseline`
-    : `${weekLabel}: ${atOrAbove} of ${trained} trained exercises at or above ${full} baseline`;
+    ? `${weekLabel}: no roster exercises trained yet this week against ${full} baseline`
+    : `${weekLabel}: ${atOrAbove} of ${trained} exercises trained this week at or above ${full} baseline. The count covers only exercises trained this week.`;
   return (
     <View testID="recovery-hero" style={styles.hero} accessible accessibilityLabel={label}>
       <Text style={styles.heroWeek}>{weekLabel}</Text>
@@ -94,18 +149,22 @@ export function RecoveryHero({ weekLabel, atOrAbove, trained, routineTitle }) {
       ) : (
         <>
           <Text style={styles.heroNumber}>{`${atOrAbove} of ${trained}`}</Text>
-          <Text style={styles.heroLabel} numberOfLines={2}>{`at or above ${visible} baseline`}</Text>
+          <Text style={styles.heroLabel}>trained this week at or above</Text>
+          <Text style={styles.heroLabel} numberOfLines={1} ellipsizeMode="tail">{`${visible} baseline`}</Text>
         </>
       )}
     </View>
   );
 }
 
-function BandLegend({ bands, colors, kua, styles }) {
-  if (bands.length === 0) return null;
+// Legend items: the graded states present (colored dot) and any quiet status
+// present (the shared neutral dot). Names are the same plain words every
+// Recovery surface uses.
+function BandLegend({ items, colors, kua, styles }) {
+  if (items.length === 0) return null;
   return (
     <View style={styles.legend}>
-      {bands.map(b => (
+      {items.map(b => (
         <View key={b.id} style={styles.legendItem}>
           <View style={[styles.legendDot, { backgroundColor: bandColor(b.id, colors, kua) }]} />
           <Text style={styles.legendText}>{b.label}</Text>
@@ -115,30 +174,68 @@ function BandLegend({ bands, colors, kua, styles }) {
   );
 }
 
-// Current-week segmented bar: one thin bar sized by trained count, with a
-// legend naming only the bands present. The accessible label names all five
-// bands (zeros included) so screen readers get the complete picture.
-export function RecoveryBandBar({ buckets, trained, weekLabel }) {
+const CANNOT_COMPARE_ITEM = Object.freeze({ id: 'cannot_compare', label: QUIET_STATUS_LABELS.cannot_compare });
+
+// Current-week segmented bar: one thin bar sized by the three graded counts
+// (Close folded into Rebuilding), with a legend naming only the states present
+// ("Can't compare" with the neutral dot, never a segment). The track is hidden
+// entirely when no graded state exists (nothing to draw). The accessible label
+// names every state count, zeros included, with the selected week's added count.
+export function RecoveryBandBar({ buckets, trained, weekLabel, added = 0 }) {
   const { colors, kua, styles } = useVisual();
-  const populated = TRAINED_BANDS.filter(b => (buckets[b.id] || 0) > 0);
-  const label = `${weekLabel} return bands across ${trained} trained exercises: ${TRAINED_BANDS.map(b => `${b.label} ${buckets[b.id] || 0}`).join(', ')}`;
+  const graded = gradedCounts(buckets);
+  const items = [
+    ...GRADED_BANDS.filter(b => graded[b.id] > 0),
+    ...((buckets.cannot_compare || 0) > 0 ? [CANNOT_COMPARE_ITEM] : []),
+  ];
+  const label = `${weekLabel} return bands across ${trained} trained exercises: ${stateCountSentence({
+    graded, notTrained: buckets.not_trained_yet || 0, cannotCompare: buckets.cannot_compare || 0, added,
+  })}`;
   return (
     <View testID="recovery-bands-rows" style={styles.barBlock} accessible accessibilityLabel={label}>
-      <Segments buckets={buckets} colors={colors} kua={kua} style={styles.segmentBar} />
-      <BandLegend bands={populated} colors={colors} kua={kua} styles={styles} />
+      {sumGraded(graded) > 0 && (
+        <Segments buckets={buckets} colors={colors} kua={kua} style={styles.segmentBar} />
+      )}
+      <BandLegend items={items} colors={colors} kua={kua} styles={styles} />
     </View>
   );
 }
 
-// The ONE details summary (#1219): a thin band mini-bar (same buckets, colors
-// and order as the hero bar) over "N trained  M not yet". The panel renders this
-// single element right under the header whether Exercise details is collapsed
-// or expanded, so the two states cannot drift. The visible Gap stat was
-// removed (owner could not read it); the full sentence incl. the most common
-// gap rides on the accessible label. Same 13sp tier as the exercise rows (800
-// number, 600 label).
+// Count tokens (#1219 owner phone review): each count is its own UNSPLITTABLE
+// token view ("7 trained", "20 not yet", "5 added"): it does not shrink and its
+// text does not wrap, so a count can never break mid-token or overflow on any
+// device or font scale. The tokens sit in a plain wrapping row with consistent
+// column/row gaps, so they stay on one line when they fit (the owner's 390dp
+// data) and flow whole-token onto further lines when they cannot. There are no
+// glyph separators — a separator could start or end a wrapped row, and React
+// Native gives no per-row information to avoid that — so spacing alone divides
+// the tokens. An orphaned last token is therefore possible at narrow widths and
+// is deliberately accepted: the layout guarantees "never split, never overflow",
+// not "never alone" (an estimate-based balancer could not guarantee either).
+function CountTokens({ stats, styles }) {
+  return (
+    <View testID="recovery-count-tokens" style={styles.rosterTokens}>
+      {stats.map(st => (
+        <View key={st.text} testID="recovery-count-token" style={styles.rosterStat}>
+          <Text style={st.quiet ? styles.rosterNumQuiet : styles.rosterNum}>{st.n}</Text>
+          <Text style={styles.rosterLabel}>{st.text}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// The ONE details summary (#1219): a TEXT-LED evidence line — "7 trained · 20 not
+// yet · 5 added" — with no bar. The hero above already draws the week's graded
+// bar; repeating it here read as a second progress control and added nothing, so
+// the collapsed row now carries only what the hero cannot: how the exercise ROWS
+// below divide (trained / not yet / can't compare / added). The panel renders
+// this single element right under the header whether Exercise details is
+// collapsed or expanded, so the two states cannot drift. Short words on screen;
+// the full wording, every state with zeros and the most common gap ride on the
+// accessible label. Same 13sp tier as the exercise rows.
 export function RecoveryRosterSummary({ summary, bands, gap }) {
-  const { colors, kua, styles } = useVisual();
+  const { styles } = useVisual();
   if (!summary || !(summary.total > 0)) return null;
   const c = summary.counts;
   // "trained" / "not yet" / the roster denominator come from the SAME
@@ -152,42 +249,30 @@ export function RecoveryRosterSummary({ summary, bands, gap }) {
   const buckets = bands?.buckets || null;
   const stats = [
     ...(rosterSize > 0 ? [{ n: String(trained), text: 'trained' }] : []),
-    ...(notYet > 0 ? [{ n: String(notYet), text: 'not yet' }] : []),
-    ...(c.cannot_compare > 0 ? [{ n: String(c.cannot_compare), text: "can't compare" }] : []),
-    ...(c.added > 0 ? [{ n: String(c.added), text: 'added' }] : []),
+    ...(notYet > 0 ? [{ n: String(notYet), text: 'not yet', quiet: true }] : []),
+    ...(c.cannot_compare > 0 ? [{ n: String(c.cannot_compare), text: QUIET_STATUS_LABELS.cannot_compare.toLowerCase(), quiet: true }] : []),
+    ...(c.added > 0 ? [{ n: String(c.added), text: 'added', quiet: true }] : []),
   ];
   if (stats.length === 0) stats.push({ n: String(summary.total), text: summary.total === 1 ? 'exercise' : 'exercises' });
   const sentences = [];
   if (rosterSize > 0) {
     sentences.push(`Trained this week: ${trained} of ${rosterSize} roster exercises${notYet > 0 ? `, ${notYet} not trained yet` : ''}.`);
   }
-  // Each status is announced exactly once: the four comparable bands come from
-  // the hero's buckets, "Can't compare" from the all-rows count (it covers
-  // unusable-baseline rows the roster excludes).
-  const byStatus = [
-    ...(buckets ? COMPARABLE_BANDS.filter(b => buckets[b.id] > 0).map(b => `${b.label} ${buckets[b.id]}`) : []),
-    ...(c.cannot_compare > 0 ? [`Can't compare ${c.cannot_compare}`] : []),
-  ];
-  if (byStatus.length > 0) sentences.push(`By status: ${byStatus.join(', ')}.`);
+  // Every state is announced exactly once, zeros included, in the same order and
+  // words as the hero label: the three graded states come from the hero's
+  // buckets with Close folded into Rebuilding (the sum); "Not trained yet" is the
+  // hero's roster-minus-trained; "Can't compare" and "Added during recovery" come
+  // from the all-rows count (can't-compare covers unusable-baseline rows the
+  // roster excludes).
+  const graded = gradedCounts(buckets);
+  sentences.push(`By status: ${stateCountSentence({
+    graded, notTrained: notYet, cannotCompare: c.cannot_compare, added: c.added,
+  })}.`);
   if (gap) sentences.push(`Most common gap: ${gap}.`);
-  if (c.added > 0) sentences.push(`${c.added} added during recovery.`);
-  if (sentences.length === 0) sentences.push(`${summary.total} exercise${summary.total === 1 ? '' : 's'}.`);
   const label = sentences.join(' ');
   return (
     <View testID="recovery-roster-summary" style={styles.rosterBlock} accessible accessibilityLabel={label}>
-      {buckets && trained > 0 && (
-        <View testID="recovery-roster-bar">
-          <Segments buckets={buckets} colors={colors} kua={kua} style={styles.miniBar} />
-        </View>
-      )}
-      <View style={styles.exNumbers}>
-        {stats.map(st => (
-          <View key={st.text} style={styles.rosterStat}>
-            {st.n != null && <Text style={styles.rosterNum}>{st.n}</Text>}
-            <Text style={styles.exStatusText}>{st.text}</Text>
-          </View>
-        ))}
-      </View>
+      <CountTokens stats={stats} styles={styles} />
     </View>
   );
 }
@@ -229,19 +314,32 @@ export function RecoveryChangeVisual({ movement }) {
 // under the bars and names only the bands that appear in them.
 export function RecoveryWeeksStrip({ series }) {
   const { colors, kua, styles } = useVisual();
-  const present = TRAINED_BANDS.filter(b => series.some(e => e.buckets && (e.buckets[b.id] || 0) > 0));
+  const live = series.filter(e => e.buckets);
+  const items = [
+    ...GRADED_BANDS.filter(b => live.some(e => gradedCounts(e.buckets)[b.id] > 0)),
+    ...(live.some(e => (e.buckets.cannot_compare || 0) > 0) ? [CANNOT_COMPARE_ITEM] : []),
+  ];
   return (
     <View testID="recovery-band-strip" style={styles.weeksStrip}>
       {series.map(entry => {
-        const total = entry.buckets ? TRAINED_BANDS.reduce((n, b) => n + (entry.buckets[b.id] || 0), 0) : 0;
+        const g = entry.buckets ? gradedCounts(entry.buckets) : null;
+        const gradedTotal = g ? g.at_or_above + g.rebuilding + g.early : 0;
+        const cannot = entry.buckets ? entry.buckets.cannot_compare || 0 : 0;
         const a11yLabel = entry.buckets
-          ? `Week ${entry.week_number}: ${TRAINED_BANDS.map(b => `${b.label} ${entry.buckets[b.id] || 0}`).join(', ')}`
+          ? `Week ${entry.week_number}: ${stateCountSentence({
+            graded: g, notTrained: entry.buckets.not_trained_yet || 0, cannotCompare: cannot,
+          })}`
           : `Week ${entry.week_number}: no readable evidence`;
         return (
           <View key={entry.week_id} testID={`recovery-band-strip-week-${entry.week_number}`} style={styles.weekRow} accessible accessibilityLabel={a11yLabel}>
             <Text style={styles.weekRowLabel}>{`Week ${entry.week_number}`}</Text>
-            {entry.buckets && total > 0 ? (
+            {entry.buckets && gradedTotal > 0 ? (
               <Segments buckets={entry.buckets} colors={colors} kua={kua} style={styles.weekBar} />
+            ) : entry.buckets && cannot > 0 ? (
+              <View style={styles.weekGap}>
+                <View style={[styles.legendDot, { backgroundColor: quietColor(colors, kua) }]} />
+                <Text style={styles.weekNoteText}>{`${cannot} ${QUIET_STATUS_LABELS.cannot_compare.toLowerCase()}`}</Text>
+              </View>
             ) : entry.buckets ? (
               <Text style={styles.weekNoteText}>0 trained</Text>
             ) : (
@@ -254,7 +352,7 @@ export function RecoveryWeeksStrip({ series }) {
           </View>
         );
       })}
-      <BandLegend bands={present} colors={colors} kua={kua} styles={styles} />
+      <BandLegend items={items} colors={colors} kua={kua} styles={styles} />
     </View>
   );
 }

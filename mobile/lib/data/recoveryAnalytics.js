@@ -422,7 +422,9 @@ function _likelyMismatches(baselineRows, exercises, added) {
 //
 // Baseline rows come back in snapshot order (normalized key), which is stable
 // across devices and independent of how the note happens to be written. Added
-// exercises are sorted by normalized key for the same reason.
+// exercises keep the order they first appear in the week's note (the `Map`
+// insertion order of `work`), so the UI can list them as the lifter logged them
+// (#1219).
 export function compareWeekWorkToBaseline(baseline, work) {
   const baselineRows = (baseline && Array.isArray(baseline.exercises)) ? baseline.exercises : [];
   const exercises = baselineRows.map(row => _compareExercise(row, work.get(row.key) || null));
@@ -436,7 +438,6 @@ export function compareWeekWorkToBaseline(baseline, work) {
     // evidence. A baseline exercise in the same position is kept, because there
     // the absence of a comparison is itself the finding.
     .filter(w => Object.keys(w.values).length > 0)
-    .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
     .map(_addedExercise);
 
   for (const [i, addedRow] of _likelyMismatches(baselineRows, exercises, added)) {

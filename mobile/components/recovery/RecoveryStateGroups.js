@@ -7,7 +7,7 @@ import { RECOVERY_COMPARISON_STATES, RECOVERY_WEEK_STATUS } from '../../lib/data
 import { deriveRecoveryWeekBands } from '../../lib/data/recoveryReturnBands';
 import { createStyles } from './analyticsRecoveryStyles';
 import { createVisualStyles } from './recoveryVisualStyles';
-import { bandColor } from './RecoveryVisuals';
+import { QUIET_STATUS_LABELS, bandColor, displayBandId } from './RecoveryVisuals';
 
 // "Total work" replaces the unexplained "Volume" (#758): the number is a sum of
 // load × reps, and the label now says so rather than borrowing a training term
@@ -34,43 +34,62 @@ const UNAVAILABLE_REASON_SHORT = Object.freeze({
   baseline_value_unusable: 'Baseline unusable',
 });
 
-// Rows are ordered by state instead of sitting under counted headings (#1219):
-// every row now carries its own band mark and status word, so a heading would
-// only repeat it. Baseline-met leads (it answers "which exercises are back"),
-// then rebuilding, not reintroduced, not comparable, then added work last.
-const DETAIL_GROUP_ORDER = Object.freeze([
-  RECOVERY_COMPARISON_STATES.BASELINE_MET,
-  RECOVERY_COMPARISON_STATES.REBUILDING,
-  RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED,
-  RECOVERY_COMPARISON_STATES.NOT_COMPARABLE,
-  RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY,
-]);
+// Rows follow the ROUTINE, not a state ranking (#1219). Every row carries its
+// own band mark and status word, so neither headings nor state groups are
+// needed to read it. `compareWeekWorkToBaseline` emits baseline rows in the
+// frozen snapshot's own array order: for a v2 baseline that is the routine's
+// original order (`routine_order === array index`, enforced at capture and by
+// backup validation); a retained v1 snapshot is alphabetical and carries no
+// routine order, so its order is shown as stored, never invented.
+//
+// Presentation order: (1) baseline exercises with activity this week, (2)
+// baseline exercises not yet trained this week, each group in snapshot order,
+// then (3) added-during-recovery rows, in the order the week supplies them.
+// "Activity" = the week logged the exercise at all: a comparable row, or a
+// not-comparable row the week did log (`week_name` is only set when it did).
+function _hasWeekActivity(row) {
+  if (row.state === RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED) return false;
+  if (row.state === RECOVERY_COMPARISON_STATES.NOT_COMPARABLE) return row.week_name != null;
+  return true;
+}
 
-// Plain-word status shown beside the band-colored mark (#1219) — never color
-// alone, no abbreviations. Words follow the card's own band legend.
+export function orderDetailRows(rows) {
+  const isAdded = row => row.state === RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY;
+  const baseline = rows.filter(row => !isAdded(row));
+  return [
+    ...baseline.filter(_hasWeekActivity),
+    ...baseline.filter(row => !_hasWeekActivity(row)),
+    ...rows.filter(isAdded),
+  ];
+}
+
+// Plain-word status shown beside the mark (#1219) — never color alone, no
+// abbreviations. The three graded words are the SAME names the bars, legends
+// and summary use; the three not-graded words keep their plain wording and
+// share one neutral mark.
 const BAND_STATUS_WORD = Object.freeze({
-  at_or_above: 'At or above baseline',
-  close: 'Close to baseline',
+  at_or_above: 'At or above',
   rebuilding: 'Rebuilding',
   early: 'Early',
-  cannot_compare: "Can't compare",
-  not_trained_yet: 'Not trained yet',
+  cannot_compare: QUIET_STATUS_LABELS.cannot_compare,
+  not_trained_yet: QUIET_STATUS_LABELS.not_trained_yet,
 });
 
 // The row's band comes from the existing return-band derivation run on this one
-// row (never a second threshold implementation). Added work has no band and
-// takes the neutral accent mark.
+// row (never a second threshold implementation); the derived `close` bucket is
+// folded into Rebuilding at presentation (`displayBandId`). Added work has no
+// band and takes the neutral mark.
 export function rowBandId(row) {
   if (row.state === RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY) return null;
   const { buckets } = deriveRecoveryWeekBands({ status: RECOVERY_WEEK_STATUS.OK, exercises: [row] });
-  return Object.keys(buckets).find(id => buckets[id] > 0) || 'cannot_compare';
+  return displayBandId(Object.keys(buckets).find(id => buckets[id] > 0) || 'cannot_compare');
 }
 
 // ONE mapping feeds both the visible status word and the spoken label, so a
 // screen reader hears exactly the status a sighted user sees (#1219).
 export function rowStatusWord(row) {
   const bandId = rowBandId(row);
-  return bandId ? BAND_STATUS_WORD[bandId] : 'Added during recovery';
+  return bandId ? BAND_STATUS_WORD[bandId] : QUIET_STATUS_LABELS.added;
 }
 
 // Every status kind a visible row can carry: the shared band ids plus
@@ -128,9 +147,13 @@ function _rowAccessibilityLabel(row, unit, weekNumber, elsewhere) {
     row.state === RECOVERY_COMPARISON_STATES.BASELINE_MET ||
     row.state === RECOVERY_COMPARISON_STATES.REBUILDING
   ) {
-    for (const m of row.metrics) {
+    // The bar's measure is spoken first, so the percent a listener hears is the
+    // one the bar shows; the remaining dimensions follow.
+    const bar = _barMetric(row);
+    const ordered = bar ? [bar, ...row.metrics.filter(m => m !== bar)] : row.metrics;
+    for (const m of ordered) {
       parts.push(
-        `${METRIC_LABELS[m.metric] || m.metric} ${m.percent}%, ${_formatMetricNumber(m.metric, m.current, unit)} of ${_formatMetricNumber(m.metric, m.baseline, unit)} baseline`
+        `${METRIC_LABELS[m.metric] || m.metric} ${m.percent}% of baseline, ${_formatMetricNumber(m.metric, m.current, unit)} of ${_formatMetricNumber(m.metric, m.baseline, unit)}`
       );
     }
   } else if (row.state === RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY) {
@@ -152,13 +175,21 @@ function _rowAccessibilityLabel(row, unit, weekNumber, elsewhere) {
   return parts.join('. ');
 }
 
-// One bar per row: the limiting dimension (lowest ratio), the same selection
-// the band itself is decided on — a choice among existing metrics, not a mean.
+// One bar per row: progress toward the baseline as the weighted-work measure
+// (#1219) — Total work (`volume`) for weighted exercises, total reps for
+// reps-only, total seconds for time-based. It is deliberately NOT the limiting
+// (lowest-ratio) dimension: a deadlift at a heavier top load but one set of
+// work shows how much work is back. Presentation only; the band and
+// `baseline_met` (weighted needs BOTH load and volume) stay derived upstream.
+const BAR_METRIC_PRIORITY = Object.freeze(['volume', 'total_reps', 'total_seconds']);
+
 function _barMetric(row) {
   const metrics = row.metrics || [];
-  if (metrics.length === 0) return null;
-  const score = m => (typeof m.ratio === 'number' ? m.ratio : (m.percent ?? 0) / 100);
-  return metrics.reduce((lo, m) => (score(m) < score(lo) ? m : lo), metrics[0]);
+  for (const key of BAR_METRIC_PRIORITY) {
+    const found = metrics.find(m => m.metric === key);
+    if (found) return found;
+  }
+  return null;
 }
 
 function _numbers(row, unit) {
@@ -180,14 +211,17 @@ function ExerciseRow({ row, unit, weekNumber, elsewhere }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createVisualStyles(colors, kua), [colors, kua]);
   const bandId = rowBandId(row);
-  const markColor = bandId ? bandColor(bandId, colors, kua) : (kua ? kua.primary : colors.accentText);
+  // Graded rows take their band token; not-trained, can't-compare and added rows
+  // share the one neutral mark (`bandColor` returns it for any non-graded id).
+  const markColor = bandColor(bandId || 'added', colors, kua);
   const status = rowStatusWord(row);
   const compared =
     row.state === RECOVERY_COMPARISON_STATES.BASELINE_MET ||
     row.state === RECOVERY_COMPARISON_STATES.REBUILDING;
   const barMetric = compared ? _barMetric(row) : null;
   // Fill is capped at 100% so a lifter who came back stronger doesn't overflow
-  // the bar; the percent text is never capped (#698).
+  // the bar; the percent text is never capped (#698). The text names the same
+  // measure the bar shows ("Total work 11%").
   const fillPct = barMetric ? Math.max(0, Math.min(barMetric.percent ?? 0, 100)) : 0;
   const numbers = _numbers(row, unit);
   const note = row.state === RECOVERY_COMPARISON_STATES.NOT_COMPARABLE
@@ -219,7 +253,7 @@ function ExerciseRow({ row, unit, weekNumber, elsewhere }) {
           <View testID="recovery-exercise-bar" style={styles.exBarTrack}>
             <View style={[styles.exBarFill, { width: `${fillPct}%`, backgroundColor: markColor }]} />
           </View>
-          <Text style={styles.exPercent}>{`${barMetric.percent}%`}</Text>
+          <Text style={styles.exPercent}>{`${METRIC_LABELS[barMetric.metric]} ${barMetric.percent}%`}</Text>
         </View>
       )}
 
@@ -261,7 +295,7 @@ export function WeekUnavailableNotice({ week }) {
 }
 
 export function WeekEvidence({ rows, unit, weekNumber, elsewhere }) {
-  const ordered = DETAIL_GROUP_ORDER.flatMap(state => rows.filter(row => row.state === state));
+  const ordered = orderDetailRows(rows);
   return (
     <View testID="recovery-exercise-list">
       {ordered.map(row => (

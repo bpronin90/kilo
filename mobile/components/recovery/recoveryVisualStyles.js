@@ -29,15 +29,6 @@ export const createVisualStyles = (colors, kua = null) => {
       backgroundColor: track,
       gap: 2,
     },
-    // Collapsed Exercise details mini-bar (#1219): thinner than the hero bar.
-    miniBar: {
-      flexDirection: 'row',
-      height: 6,
-      borderRadius: 3,
-      overflow: 'hidden',
-      backgroundColor: track,
-      gap: 1,
-    },
     legend: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 6 },
     legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     legendDot: { width: 10, height: 10, borderRadius: 5 },
@@ -84,21 +75,44 @@ export const createVisualStyles = (colors, kua = null) => {
     exStatus: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
     exStatusDot: { width: 8, height: 8, borderRadius: 4 },
     exStatusText: { fontSize: 13, fontWeight: '600', color: inkMuted },
-    exBarRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    // The bar line WRAPS (#1219): at large text or a narrow card the measure label
+    // ("Total work 1133%") drops under the bar instead of overflowing or being
+    // clipped; the track keeps a sane minimum (96) and grows to fill the line.
+    exBarRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 10, rowGap: 4 },
     exBarTrack: {
-      flex: 1,
+      flexGrow: 1,
+      flexShrink: 1,
+      flexBasis: 96,
+      minWidth: 96,
       height: 6,
       borderRadius: 3,
       overflow: 'hidden',
       backgroundColor: track,
     },
     exBarFill: { height: '100%', borderRadius: 3 },
-    exPercent: { width: 44, textAlign: 'right', fontSize: 13, fontWeight: '800', color: ink },
+    // Names its measure ("Total work 133%"). A shared minimum width keeps every
+    // row's bar the same length at ordinary scales (so bars compare at a
+    // glance); it grows with the text at large font scales, wraps onto its own
+    // line when it cannot sit beside the 96dp track, and `maxWidth: '100%'` lets a
+    // very long label wrap inside the card rather than overflow it. The number is
+    // never truncated (no numberOfLines).
+    exPercent: { flexShrink: 0, minWidth: 124, maxWidth: '100%', textAlign: 'right', fontSize: 13, fontWeight: '800', color: ink },
     exNumbers: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 2 },
     exNumberText: { fontSize: 13, color: inkMuted },
-    rosterBlock: { gap: 6, paddingTop: 2, paddingBottom: 4 },
-    rosterStat: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
-    rosterNum: { fontSize: 13, fontWeight: '800', color: ink },
+    // Collapsed/expanded evidence line (#1219): text only. The trained count
+    // carries the ink; the not-graded counts take the shared neutral so the line
+    // has one quiet hierarchy.
+    rosterBlock: { paddingBottom: 4 },
+    // A plain wrapping row of unsplittable tokens (no glyph separators, so none can
+    // start or end a wrapped row): consistent column/row gaps divide the counts.
+    rosterTokens: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 2 },
+    // A token keeps its whole text and never shrinks while it fits; only a token
+    // wider than the card ITSELF may shrink (maxWidth 100% bounds it) so its label
+    // wraps as a last resort instead of overflowing.
+    rosterStat: { flexDirection: 'row', alignItems: 'baseline', gap: 4, flexShrink: 1, maxWidth: '100%' },
+    rosterNum: { flexShrink: 0, fontSize: 13, fontWeight: '800', color: ink },
+    rosterNumQuiet: { flexShrink: 0, fontSize: 13, fontWeight: '700', color: inkMuted },
+    rosterLabel: { flexShrink: 1, fontSize: 13, fontWeight: '600', color: inkMuted },
     exNote: { fontSize: 13, color: inkMuted },
     weekNoteText: { fontSize: 12, fontWeight: '600', color: inkMuted },
   });
