@@ -847,6 +847,8 @@ describe('bottom reveal and hysteresis (#1231)', () => {
       act(() => listeners.pointerdown[0]({ target: {}, offsetX: 10, offsetY: 10 }));
       act(() => listeners.mousedown[0]({ target: {}, offsetX: 10, offsetY: 10 }));
       act(() => listeners.keydown[0]({ key: 'Enter' }));
+      act(() => listeners.keydown[0]({ key: 'ArrowDown', target: { tagName: 'INPUT' } }));
+      act(() => listeners.keydown[0]({ key: 'End', target: { tagName: 'DIV', isContentEditable: true } }));
       act(() => listeners.keydown[0]({ key: ' ', target: { tagName: 'BUTTON' } }));
       act(() => listeners.keydown[0]({ key: ' ', target: { tagName: 'DIV', getAttribute: () => 'link' } }));
       act(() => scroll.props.onScroll(ev(300))); act(() => scroll.props.onScroll(ev(600)));
