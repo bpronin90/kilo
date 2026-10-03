@@ -10,10 +10,22 @@ import { createVisualStyles } from './recoveryVisualStyles';
 const TRAINED_BANDS = RETURN_BANDS.filter(b => b.id !== 'not_trained_yet');
 const COMPARABLE_BANDS = TRAINED_BANDS.filter(b => b.id !== 'cannot_compare');
 
-// Each band color is a mark color paired with visible full-name text, never a
-// hue on its own. *Text variants are used, not raw `accent`/`caution`
-// (docs/design-system-map.md "Text vs. mark").
-const BAND_COLOR_TOKEN = Object.freeze({
+// Each band color is a MARK color paired with visible full-name text, never a
+// hue on its own. Under a KUA court palette every band resolves through its own
+// named per-court/per-mode token (#1219, `theme/colors.js` RECOVERY_BAND_TOKENS);
+// "Can't compare" and "Not trained yet" share `recoveryBandUnavailable`.
+const BAND_KUA_TOKEN = Object.freeze({
+  at_or_above: 'recoveryBandAtOrAbove',
+  close: 'recoveryBandClose',
+  rebuilding: 'recoveryBandRebuilding',
+  early: 'recoveryBandEarly',
+  cannot_compare: 'recoveryBandUnavailable',
+  not_trained_yet: 'recoveryBandUnavailable',
+});
+
+// Legacy (non-KUA) palette fallback, used only when no court palette is
+// resolved (isolated renders): *Text variants, not raw `accent`/`caution`.
+const BAND_LEGACY_TOKEN = Object.freeze({
   at_or_above: 'success',
   close: 'accentText',
   rebuilding: 'cautionText',
@@ -22,17 +34,8 @@ const BAND_COLOR_TOKEN = Object.freeze({
   not_trained_yet: 'textMuted',
 });
 
-// `cautionText` has no KUA equivalent in any palette; the rest map directly.
 export function bandColor(bandId, colors, kua) {
-  const token = BAND_COLOR_TOKEN[bandId];
-  if (!kua) return colors[token];
-  switch (token) {
-    case 'success':    return kua.completion;
-    case 'accentText': return kua.primary;
-    case 'error':      return kua.error;
-    case 'textMuted':  return kua.onSurfaceVariant;
-    default:           return colors[token];
-  }
+  return kua ? kua[BAND_KUA_TOKEN[bandId]] : colors[BAND_LEGACY_TOKEN[bandId]];
 }
 
 function useVisual() {

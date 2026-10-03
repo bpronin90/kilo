@@ -87,13 +87,18 @@ export const createVisualStyles = (colors, kua = null) => {
     exBarRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
     exBarTrack: {
       flex: 1,
+      minWidth: 48,
       height: 6,
       borderRadius: 3,
       overflow: 'hidden',
       backgroundColor: track,
     },
     exBarFill: { height: '100%', borderRadius: 3 },
-    exPercent: { width: 44, textAlign: 'right', fontSize: 13, fontWeight: '800', color: ink },
+    // Names its measure ("Total work 133%"). A shared minimum width keeps every
+    // row's bar the same length at ordinary scales (so bars compare at a
+    // glance); it still grows with the text at large font scales, and the track
+    // keeps a floor width so it can never be squeezed away.
+    exPercent: { flexShrink: 0, minWidth: 124, textAlign: 'right', fontSize: 13, fontWeight: '800', color: ink },
     exNumbers: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 2 },
     exNumberText: { fontSize: 13, color: inkMuted },
     rosterBlock: { gap: 6, paddingTop: 2, paddingBottom: 4 },

@@ -787,8 +787,8 @@ describe('AnalyticsRecoverySection — accessible labels expose the underlying e
     )[0];
     expect(benchRow).toBeDefined();
     expect(benchRow.props.accessibilityLabel).toContain('Load 100%');
-    expect(benchRow.props.accessibilityLabel).toContain('135 lb of 135 lb baseline');
-    expect(benchRow.props.accessibilityLabel).toContain('Total work 100%');
+    expect(benchRow.props.accessibilityLabel).toContain('Load 100% of baseline, 135 lb of 135 lb');
+    expect(benchRow.props.accessibilityLabel).toContain('Total work 100% of baseline, 2025 lb of 2025 lb');
   });
 
   test('a not-reintroduced row announces its baseline reference values', () => {
@@ -1371,7 +1371,7 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     expandDetails(root);
     // #1219: the clause line is gone everywhere; the rows carry the states.
     expect(hasText(root, 'Week 1 · 1 rebuilding · 1 added during recovery')).toBe(false);
-    expect(statusWords(root)).toEqual(['At or above baseline', 'Rebuilding', 'Added during recovery']);
+    expect(statusWords(root)).toEqual(['Rebuilding', 'At or above baseline', 'Added during recovery']);
     // States with nothing in them are not listed as zeroes.
     expect(hasText(root, '0 not reintroduced')).toBe(false);
     expect(hasText(root, '0 not comparable')).toBe(false);
@@ -1398,12 +1398,12 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     expect(hasText(root, 'Week 1')).toBe(true);
   });
 
-  test('rows keep the Baseline met / R3a clause / Added order, each with its own status word and no counted group headings (#1219)', () => {
+  test('rows follow the baseline routine order then added (#1219), each with its own status word and no counted group headings (#1219)', () => {
     const root = setupMixed();
     expandDetails(root);
 
-    expect(statusWords(root)).toEqual(['At or above baseline', 'Rebuilding', 'Added during recovery']);
-    expect(hostRows(root).map(r => hostTextsIn(r)[0])).toEqual(['Pull-up', 'Bench', 'Foam Roll']);
+    expect(statusWords(root)).toEqual(['Rebuilding', 'At or above baseline', 'Added during recovery']);
+    expect(hostRows(root).map(r => hostTextsIn(r)[0])).toEqual(['Bench', 'Pull-up', 'Foam Roll']);
     const headers = groupHeaders(root).map(h => h.props.children);
     expect(headers.some(h => /\(\d+\)$/.test(String(h)))).toBe(false);
   });
@@ -1875,9 +1875,9 @@ describe('AnalyticsRecoverySection — across-weeks band strip (#1029 amendment)
     const dotColors = root
       .findAll(inst => typeof inst.type === 'string' && flattenStyle(inst).width === 10)
       .map(inst => flattenStyle(inst).backgroundColor);
-    // Distinct tokens (cautionText vs error), never the raw mark colors.
-    expect(dotColors).toContain(LightColors.cautionText);
-    expect(dotColors).toContain(HardCourtLightColors.error);
+    // Distinct per-court band tokens (#1219), never shared status colors.
+    expect(dotColors).toContain(HardCourtLightColors.recoveryBandRebuilding);
+    expect(dotColors).toContain(HardCourtLightColors.recoveryBandEarly);
   });
 
   test('an unreadable-week gap is visually distinct from a readable zero-count week — different structure, different copy, never a bare empty box', () => {
@@ -1917,7 +1917,7 @@ describe('AnalyticsRecoverySection — across-weeks band strip (#1029 amendment)
     }
 
     const rChipBox = week1Cell.findAll(
-      inst => typeof inst.type === 'string' && flattenStyle(inst).backgroundColor === LightColors.cautionText
+      inst => typeof inst.type === 'string' && flattenStyle(inst).backgroundColor === HardCourtLightColors.recoveryBandRebuilding
     );
     expect(rChipBox.length).toBeGreaterThan(0);
   });
@@ -2418,10 +2418,10 @@ describe('AnalyticsRecoverySection — visual exercise details (#1219)', () => {
 
   test('each row is name + status word, and compared rows add one thin bar with its percent and concise numbers', () => {
     const rows = rowTexts(mount());
-    expect(rows.map(r => r[0])).toEqual(['Pull-up', 'Bench', 'Curl', 'Foam Roll']);
-    expect(rows.map(r => r[1])).toEqual(['At or above baseline', 'Rebuilding', 'Not trained yet', 'Added during recovery']);
-    const bench = rows[1];
-    expect(bench).toContain('66%');
+    expect(rows.map(r => r[0])).toEqual(['Bench', 'Pull-up', 'Curl', 'Foam Roll']);
+    expect(rows.map(r => r[1])).toEqual(['Rebuilding', 'At or above baseline', 'Not trained yet', 'Added during recovery']);
+    const bench = rows[0];
+    expect(bench).toContain('Total work 66%');
     expect(bench).toContain('Load 135 lb / 135 lb');
     expect(bench.some(t => t.startsWith('Total work '))).toBe(true);
     // Rows stay short: only tokens, never sentences.
@@ -2429,12 +2429,12 @@ describe('AnalyticsRecoverySection — visual exercise details (#1219)', () => {
     expect(rows.every(r => r.length <= 5)).toBe(true);
   });
 
-  test('one bar per compared row, filled to the limiting metric; absent and added rows get no bar', () => {
+  test('one bar per compared row, filled to its Total work measure; absent and added rows get no bar', () => {
     const root = mount();
     const bars = hostById(root, 'recovery-exercise-bar');
     expect(bars).toHaveLength(2);
     const fills = bars.map(b => StyleSheet.flatten(b.children[0].props.style).width);
-    expect(fills).toEqual(['100%', '66%']);
+    expect(fills).toEqual(['66%', '100%']);
     // Missing is not zero: the not-trained row shows baseline numbers only.
     const curl = rowTexts(root)[2];
     expect(curl.some(t => t.includes('%'))).toBe(false);
@@ -2783,5 +2783,267 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
       expect(StyleSheet.flatten(row.props.style).flexWrap).toBe('wrap');
     }
     mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #1219 D / F / H: routine order, the Total work bar, court-themed band marks.
+// ---------------------------------------------------------------------------
+describe('AnalyticsRecoverySection — routine order, Total work bar, band tokens (#1219 D/F/H)', () => {
+  const { StyleSheet } = require('react-native');
+  const { orderDetailRows } = require('../components/recovery/RecoveryStateGroups');
+  const { bandColor } = require('../components/recovery/RecoveryVisuals');
+  const { KUA_PALETTES, RECOVERY_BAND_TOKENS } = require('../theme/colors');
+  const S = RECOVERY_COMPARISON_STATES;
+  const hostById = (root, id) => root.findAll(n => typeof n.type === 'string' && n.props.testID === id);
+  const rowNames = (root) => hostRows(root).map(r => hostTextsIn(r)[0]);
+  const flat = (n) => StyleSheet.flatten(n.props.style || {});
+
+  // --- helpers -------------------------------------------------------------
+  const W = (top, vol) => [
+    metricRow('top_load', top[0], top[1], Math.floor((top[0] / top[1]) * 100), top[0] >= top[1]),
+    metricRow('volume', vol[0], vol[1], Math.floor((vol[0] / vol[1]) * 100), vol[0] >= vol[1]),
+  ];
+  const mocked = (rows, added = []) => {
+    deriveRecoveryComparison.mockReturnValueOnce(
+      mockComparison({ weeks: [mockWeek({ exercises: rows, added })] })
+    );
+    const root = setup({
+      blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)],
+    }).root;
+    expandDetails(root);
+    return root;
+  };
+  const met = (name) => mockRow({ key: name, name, state: S.BASELINE_MET, exercise_class: 'weighted', metrics: W([100, 100], [100, 100]) });
+  const rebuilding = (name) => mockRow({ key: name, name, state: S.REBUILDING, exercise_class: 'weighted', metrics: W([100, 100], [50, 100]), unmet: ['volume'] });
+  // A rebuilding row whose limiting (and only unmet) dimension is `pct` percent.
+  const at = (name, pct) => mockRow({ key: name, name, state: S.REBUILDING, exercise_class: 'weighted', metrics: W([100, 100], [pct, 100]), unmet: ['volume'] });
+  const classChanged = (name) => mockRow({ key: name, name, state: S.NOT_COMPARABLE, exercise_class: 'weighted', unavailable_reason: RECOVERY_UNAVAILABLE_REASONS.EXERCISE_CLASS_CHANGED });
+  // A baseline row whose frozen value is unusable AND that the week never logged.
+  const unusableUntrained = (name) => ({ ...mockRow({ key: name, name, state: S.NOT_COMPARABLE, exercise_class: 'weighted', unavailable_reason: RECOVERY_UNAVAILABLE_REASONS.BASELINE_VALUE_UNUSABLE }), week_name: null, week_exercise_class: null });
+  const untrained = (name) => ({ ...mockRow({ key: name, name, state: S.NOT_REINTRODUCED, exercise_class: 'weighted', metrics: W([0, 100], [0, 100]), unmet: ['top_load', 'volume'] }), week_name: null, week_exercise_class: null });
+  const addedRow = (name) => mockRow({ key: name, name, state: S.ADDED_DURING_RECOVERY, exercise_class: 'reps_only', metrics: [metricRow('total_reps', 10, null, null, null)] });
+
+  // --- D: order ------------------------------------------------------------
+  // Every row state x activity case: [label, row, has week activity].
+  const ORDER_TABLE = [
+    ['baseline_met', met('R'), true],
+    ['rebuilding', rebuilding('R'), true],
+    ['not_comparable the week logged', classChanged('R'), true],
+    ['not_comparable, week never logged it', unusableUntrained('R'), false],
+    ['not_reintroduced', untrained('R'), false],
+  ];
+
+  test.each(ORDER_TABLE)('orderDetailRows places a %s row by week activity (active=%s)', (_label, row, active) => {
+    const a = { ...row, key: 'a', name: 'A' };
+    const b = { ...row, key: 'b', name: 'B' };
+    // Opposite-class sentinel so the group split is observable either way.
+    const other = active ? untrained('Z') : met('Z');
+    const ordered = orderDetailRows([a, other, b]).map(r => r.name);
+    expect(ordered).toEqual(active ? ['A', 'B', 'Z'] : ['Z', 'A', 'B']);
+  });
+
+  test('orderDetailRows keeps added rows last, in the order supplied, and never sorts any group', () => {
+    const rows = [untrained('Squat'), met('Bench'), classChanged('Row'), unusableUntrained('Dip'), rebuilding('Deadlift'), untrained('Curl'),
+      addedRow('Zebra Stretch'), addedRow('Aaa Mobility')];
+    expect(orderDetailRows(rows).map(r => r.name)).toEqual([
+      'Bench', 'Row', 'Deadlift', // activity, snapshot order
+      'Squat', 'Dip', 'Curl',     // not trained this week, snapshot order
+      'Zebra Stretch', 'Aaa Mobility', // added, as supplied
+    ]);
+  });
+
+  test('every state interleaved in the rendered details: activity group, idle group, then added', () => {
+    const root = mocked([untrained('Squat'), met('Bench'), classChanged('Row'), unusableUntrained('Dip'), rebuilding('Deadlift'), untrained('Curl')],
+      [addedRow('Zebra Stretch'), addedRow('Aaa Mobility')]);
+    expect(rowNames(root)).toEqual(['Bench', 'Row', 'Deadlift', 'Squat', 'Dip', 'Curl', 'Zebra Stretch', 'Aaa Mobility']);
+    expect(statusWords(root)).toEqual([
+      'At or above baseline', "Can't compare", 'Rebuilding', 'Not trained yet', "Can't compare", 'Not trained yet',
+      'Added during recovery', 'Added during recovery',
+    ]);
+  });
+
+  // A routine deliberately NOT alphabetical, 8 exercises.
+  const ROUTINE = [
+    ['Squat', '- 225 5,5'], ['Bench', '- 135 5,5'], ['Deadlift', '- 315 3'], ['Row', '- 100 8,8'],
+    ['Curl', '- 20 10'], ['Ab Wheel', '- 10,10'], ['Pull-up', '- 8,8'], ['Overhead Press', '- 95 5,5'],
+  ];
+  const noteOf = (pairs) => pairs.map(([n, s]) => `-${n}\n${s}`).join('\n');
+  const TRAINED = ['Bench', 'Row', 'Ab Wheel', 'Overhead Press'];
+  // Trained exercises alternate between "still rebuilding" and "met" so a
+  // state-ranked order (met first) cannot coincide with routine order.
+  const WEEK_NOTE = noteOf([
+    ['Bench', '- 135 5'], ['Row', '- 100 8,8'], ['Ab Wheel', '- 10,-'], ['Overhead Press', '- 95 5,5'],
+    ['Foam Roll', '- 10,10'],
+  ]);
+  const mountReal = (baseline) => {
+    const root = setup({
+      blocks: [block({ baseline })], weeks: [week(1, 'note-w1')], notes: [note('note-w1', WEEK_NOTE)],
+    }).root;
+    expandDetails(root);
+    return root;
+  };
+
+  test('v2 baseline: rows follow the saved routine_order (not alphabetical) within the trained and not-yet groups', () => {
+    const baseline = captureRecoveryBaselineFromText(noteOf(ROUTINE));
+    expect(baseline.version).toBe(2);
+    // The order comes from the baseline's own routine_order, which equals the array index.
+    expect(baseline.exercises.map(e => e.routine_order)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    const byRoutine = [...baseline.exercises].sort((a, b) => a.routine_order - b.routine_order).map(e => e.name);
+    expect(byRoutine).toEqual(ROUTINE.map(([n]) => n));
+    const expected = [
+      ...byRoutine.filter(n => TRAINED.includes(n)),
+      ...byRoutine.filter(n => !TRAINED.includes(n)),
+      'Foam Roll',
+    ];
+    expect(expected).toEqual(['Bench', 'Row', 'Ab Wheel', 'Overhead Press', 'Squat', 'Deadlift', 'Curl', 'Pull-up', 'Foam Roll']);
+    expect(rowNames(mountReal(baseline))).toEqual(expected);
+  });
+
+  test('v1 baseline keeps its stored alphabetical order and gains no invented routine order', () => {
+    const v2 = captureRecoveryBaselineFromText(noteOf(ROUTINE));
+    const v1 = {
+      version: 1,
+      exercises: v2.exercises
+        .map(({ routine_order, basis, ...row }) => row)
+        .sort((a, b) => (a.key < b.key ? -1 : 1)),
+    };
+    expect(v1.exercises.every(e => e.routine_order === undefined)).toBe(true);
+    expect(rowNames(mountReal(v1))).toEqual([
+      'Ab Wheel', 'Bench', 'Overhead Press', 'Row', // trained, alphabetical as stored
+      'Curl', 'Deadlift', 'Pull-up', 'Squat',       // not yet, alphabetical as stored
+      'Foam Roll',
+    ]);
+  });
+
+  // --- F: bar measure ------------------------------------------------------
+  const barOf = (root, i = 0) => hostById(root, 'recovery-exercise-bar')[i];
+  const fillOf = (bar) => flat(bar.children[0]).width;
+  const percentTextOf = (root, i = 0) => hostTextsIn(hostRows(root)[i]).find(t => /\d+%$/.test(t));
+  const lastWeek = () => deriveRecoveryComparison.mock.results[deriveRecoveryComparison.mock.results.length - 1].value.weeks[0];
+
+  // [label, exercise_class, metrics, expected measure label, expected percent, expected fill]
+  const BAR_TABLE = [
+    ['weighted: load back, work not (deadlift-style)', 'weighted', W([335, 325], [670, 5850]), 'Total work', 11, '11%'],
+    ['weighted: work back, load short', 'weighted', W([200, 300], [4000, 4500]), 'Total work', 88, '88%'],
+    ['weighted above baseline caps the fill, not the text', 'weighted', W([300, 300], [6750, 4500]), 'Total work', 150, '100%'],
+    ['reps-only', 'reps_only', [metricRow('total_reps', 16, 24, 66, false)], 'Reps', 66, '66%'],
+    ['time-based', 'time_based', [metricRow('total_seconds', 45, 100, 45, false)], 'Time', 45, '45%'],
+    ['reps-only above baseline', 'reps_only', [metricRow('total_reps', 36, 24, 150, true)], 'Reps', 150, '100%'],
+  ];
+
+  test.each(BAR_TABLE)('bar measure — %s', (_l, cls, metrics, label, percent, fill) => {
+    const state = metrics.every(m => m.met) ? S.BASELINE_MET : S.REBUILDING;
+    const root = mocked([mockRow({ key: 'x', name: 'X', state, exercise_class: cls, metrics, unmet: metrics.filter(m => !m.met).map(m => m.metric) })]);
+    expect(hostById(root, 'recovery-exercise-bar')).toHaveLength(1);
+    expect(fillOf(barOf(root))).toBe(fill);
+    // The visible percent names the same measure the bar shows ...
+    expect(percentTextOf(root)).toBe(`${label} ${percent}%`);
+    // ... and so does the first evidence sentence of the spoken label.
+    const spoken = hostRows(root)[0].props.accessibilityLabel;
+    expect(spoken.split('. ')[1].startsWith(`${label} ${percent}% of baseline,`)).toBe(true);
+  });
+
+  test('deadlift 325 6,6,6 vs 335 2: the bar is Total work 11% while the band/state stay derived unchanged', () => {
+    const root = setup({
+      blocks: [block({ baseline: captureRecoveryBaselineFromText('-Deadlift\n- 325 6,6,6') })],
+      weeks: [week(1, 'note-w1')],
+      notes: [note('note-w1', '-Deadlift\n- 335 2,-,-')],
+    }).root;
+    expandDetails(root);
+    // Load is ABOVE baseline (103%) but Total work is not: not "at or above".
+    expect(fillOf(barOf(root))).toBe('11%');
+    expect(percentTextOf(root)).toBe('Total work 11%');
+    expect(statusWords(root)).toEqual(['Early']);
+    const spoken = hostRows(root)[0].props.accessibilityLabel;
+    expect(spoken).toContain('Total work 11% of baseline, 670 lb of 5850 lb');
+    expect(spoken).toContain('Load 103% of baseline, 335 lb of 325 lb');
+    expect(spoken.indexOf('Total work')).toBeLessThan(spoken.indexOf('Load 103%'));
+    expect(lastWeek().exercises[0].state).toBe(S.REBUILDING);
+  });
+
+  test('load short but work back: bar follows Total work (full) yet baseline_met still needs BOTH dimensions', () => {
+    const root = setup({
+      blocks: [block({ baseline: captureRecoveryBaselineFromText('-Squat\n- 300 5,5,5') })],
+      weeks: [week(1, 'note-w1')],
+      notes: [note('note-w1', '-Squat\n- 200 10,10,10')],
+    }).root;
+    expandDetails(root);
+    const row = lastWeek().exercises[0];
+    expect(row.metrics.find(m => m.metric === 'volume').met).toBe(true);
+    expect(row.metrics.find(m => m.metric === 'top_load').met).toBe(false);
+    expect(row.state).toBe(S.REBUILDING);
+    expect(fillOf(barOf(root))).toBe('100%');
+    expect(percentTextOf(root)).toBe('Total work 133%');
+    expect(statusWords(root)).not.toContain('At or above baseline');
+  });
+
+  test('the bar is never the lowest-ratio metric: load 40%, work 90% fills to 90', () => {
+    const root = mocked([mockRow({ key: 'x', name: 'X', state: S.REBUILDING, exercise_class: 'weighted', metrics: W([40, 100], [90, 100]), unmet: ['top_load', 'volume'] })]);
+    expect(fillOf(barOf(root))).toBe('90%');
+    expect(percentTextOf(root)).toBe('Total work 90%');
+  });
+
+  test('absent, not-comparable and added rows still draw no bar', () => {
+    const root = mocked([untrained('A'), classChanged('B')], [addedRow('C')]);
+    expect(hostById(root, 'recovery-exercise-bar')).toHaveLength(0);
+  });
+
+  // --- H: band tokens ------------------------------------------------------
+  const BAND_TOKEN = {
+    at_or_above: 'recoveryBandAtOrAbove', close: 'recoveryBandClose', rebuilding: 'recoveryBandRebuilding',
+    early: 'recoveryBandEarly', cannot_compare: 'recoveryBandUnavailable', not_trained_yet: 'recoveryBandUnavailable',
+  };
+  const PALETTE_ROWS = Object.entries(KUA_PALETTES).flatMap(([court, modes]) =>
+    Object.entries(modes).map(([mode, kua]) => [`${court}/${mode}`, kua, mode]));
+
+  test.each(PALETTE_ROWS)('%s: every band mark resolves to its named court/mode token', (_n, kua) => {
+    for (const [band, token] of Object.entries(BAND_TOKEN)) {
+      expect(RECOVERY_BAND_TOKENS).toContain(token);
+      expect(bandColor(band, LightColors, kua)).toBe(kua[token]);
+    }
+  });
+
+  // Rendered check: the row mark, bar fill and roster segments in the live
+  // component take the SELECTED court's tokens (not shared status colors).
+  const renderIn = (kua, mode, props) => {
+    let c;
+    act(() => {
+      c = render.create(
+        <ThemeContext.Provider value={{ colors: mode === 'dark' ? DarkColors : LightColors, kuaPalette: kua, mode, preference: mode, setPreference: () => {} }}>
+          <AnalyticsRecoverySection {...props} />
+        </ThemeContext.Provider>
+      );
+    });
+    return c.root;
+  };
+
+  test.each(PALETTE_ROWS)("%s: a mixed week paints marks, bar fill and segments with that palette's band tokens", (_n, kua, mode) => {
+    deriveRecoveryComparison.mockReturnValueOnce(mockComparison({ weeks: [mockWeek({
+      // One row per band: at or above (A), close 95% (B), rebuilding 50% (C),
+      // early 20% (D), can't compare (F), not trained yet (E).
+      exercises: [met('A'), at('B', 95), at('C', 50), at('D', 20), untrained('E'), classChanged('F')],
+    })] }));
+    const root = renderIn(kua, mode, { blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] });
+    expandDetails(root);
+    const marks = hostById(root, 'recovery-exercise-mark').map(m => flat(m).backgroundColor);
+    expect(marks).toEqual([
+      kua.recoveryBandAtOrAbove, kua.recoveryBandClose, kua.recoveryBandRebuilding, kua.recoveryBandEarly,
+      kua.recoveryBandUnavailable, kua.recoveryBandUnavailable,
+    ]);
+    // Every mark is a real color (a dropped token paints nothing), and the five
+    // bands carry five different colors in this palette.
+    expect(marks.every(c => /^#[0-9A-Fa-f]{6}$/.test(c))).toBe(true);
+    expect(new Set(marks).size).toBe(5);
+    expect(flat(barOf(root, 0).children[0]).backgroundColor).toBe(kua.recoveryBandAtOrAbove);
+    const segs = hostById(root, 'recovery-roster-bar')[0]
+      .findAll(n => typeof n.type === 'string' && /^recovery-segment-/.test(n.props.testID || ''));
+    expect(segs.map(s => flat(s).backgroundColor)).toEqual([
+      kua.recoveryBandAtOrAbove, kua.recoveryBandClose, kua.recoveryBandRebuilding, kua.recoveryBandEarly, kua.recoveryBandUnavailable,
+    ]);
+    // Color is never alone: each mark's row also carries its plain word.
+    expect(statusWords(root)).toEqual([
+      'At or above baseline', 'Close to baseline', 'Rebuilding', 'Early', "Can't compare", 'Not trained yet',
+    ]);
   });
 });

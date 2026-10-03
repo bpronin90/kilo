@@ -847,7 +847,7 @@ hero is shown (e.g. no week logged yet).
 | Details header | title | `13` / `700` `text`, `minHeight 44`, `accessibilityState.expanded`; no count sentence |
 | Details summary | `RecoveryRosterSummary` | ONE element rendered under the header identically collapsed and expanded, derived from ALL rows the expanded list renders (`summarizeDetailRows`, counted through the same `rowBandId`/status mapping as each row's status word; never null when rows exist). Thin `6` band mini-bar over the comparable bands (hero band colors/order; absent when nothing is trained) above stat tokens (`13`; number `800`, label `600`; zero tokens omitted): `N trained` and `M not yet` (roster minus trained) come from the SAME `deriveRecoveryWeekBands` values as the hero, so hero and summary cannot disagree and unusable-baseline rows stay out of the roster denominator; `J can't compare` and `K added` are separate additive tokens counted from all rows that never feed trained / not yet; if no token applies, a `T exercises` total is shown. The visible Gap stat was removed; the accessible label states the trained-of-roster sentence, `By status:` (each status once, incl. `Can't compare N`), the most common gap, and `K added during recovery` |
 | Details collapse | icon | `MaterialIcons` `expand-more`/`expand-less`, `18`, `textMuted` (app-wide convention) |
-| **Exercise row** | `recoveryVisualStyles.js` `ex*` | name `15` / `700` `text`; band-colored `8` dot + plain status word `13` / `600` `textMuted`; one thin `6` bar (band color on `surfaceSection` track, fill capped at 100%) with the exact percent `13` / `800`; numbers `13` `textMuted` (`Load 135 lb / 135 lb`); full sentences only in `accessibilityLabel` |
+| **Exercise row** | `recoveryVisualStyles.js` `ex*` | name `15` / `700` `text`; band-colored `8` dot + plain status word `13` / `600` `textMuted`; one thin `6` bar (band token on `surfaceSection` track, fill capped at 100%) with the measure-named uncapped percent `13` / `800` (`Total work 11%`, `Reps 66%`, `Time 45%`); numbers `13` `textMuted` (`Load 135 lb / 135 lb`); full sentences only in `accessibilityLabel` |
 | Bottom context | fontSize | ONE quiet footer row, `13`, `textMuted`: `Started {date}` (active) or `{start} – {end}` (completed), prefixed `Baseline: {routine} · ` only when no hero names the routine, then `· Reason: …` / `Add a reason` (one line, ellipsized, `minHeight: 44` target), then an info icon button (`About these numbers`, `44x44`) that toggles the non-medical note (`Training numbers only. Not a medical judgment — only you end a Recovery block.`) inline in a polite live region — an owner-directed change from the earlier always-visible line (#1023 v2 §8); shared `Card` chrome, no local gap |
 | Completed-block history | default | collapsed, summary header states the count and the latest block |
 
@@ -855,10 +855,61 @@ hero is shown (e.g. no week logged yet).
 legend: each row carries its own band mark and status word (`At or above
 baseline`, `Close to baseline`, `Rebuilding`, `Early`, `Can't compare`, `Not
 trained yet`, `Added during recovery`), taken from the existing return-band
-derivation for that one row. Rows are ordered Baseline met, Rebuilding, Not
-reintroduced, Not comparable, Added. Only compared rows draw a bar (the limiting
-metric); a not-trained row shows baseline numbers and no bar, so missing is
-never drawn as zero.
+derivation for that one row.
+
+**Detail order** (#1219): rows follow the routine, not a state ranking. Baseline
+exercises the week logged come first, then baseline exercises not yet trained
+this week, each group in the baseline's own row order, then added-during-recovery
+rows, in the order the week supplies them (`orderDetailRows`,
+`RecoveryStateGroups.js`). Nothing is alphabetized. A v2 baseline stores rows in
+the routine's original order (`routine_order` equals the array index), which the
+comparison preserves; a retained v1 baseline is alphabetical and has no routine
+order, so it is shown exactly as stored. A not-comparable row counts as logged
+only when the week did log that exercise.
+
+**Exercise bar** (#1219): only compared rows draw a bar, and it is the weighted
+work measure, never the limiting (lowest-ratio) dimension: `Total work`
+(`volume`) for weighted exercises, `Reps` for reps-only, `Time` for time-based.
+The visible percent and the first evidence sentence of the accessible label name
+that same measure (`Total work 11% of baseline, 670 lb of 5850 lb`); the fill is
+capped at 100% while the text is not. This is presentation only: the band and
+`baseline_met` (weighted needs BOTH load and volume) are derived upstream and
+unchanged, so a deadlift above baseline load but at 11% Total work reads `Early`
+with an 11% bar. A not-trained row shows baseline numbers and no bar, so missing
+is never drawn as zero.
+
+**Recovery band tokens** (#1219): every band mark (row dot, bar fill, hero and
+summary segments, legend dots) resolves through five KUA tokens in
+`mobile/theme/colors.js`, defined independently per court and mode (no shared
+status colors; legacy palette fallback only when no court palette is resolved).
+They are marks, never text ink: the plain status word beside every mark uses
+`onSurface` / `onSurfaceVariant`, so color is never the sole carrier of status.
+
+| Token | Band |
+|---|---|
+| `recoveryBandAtOrAbove` | At or above baseline |
+| `recoveryBandClose` | Close to baseline |
+| `recoveryBandRebuilding` | Rebuilding |
+| `recoveryBandEarly` | Early |
+| `recoveryBandUnavailable` | Can't compare and Not trained yet (shared) |
+
+| Palette | At or above | Close | Rebuilding | Early | Unavailable |
+|---|---|---|---|---|---|
+| Hard Court light | `#00704C` | `#0A4ABF` | `#A66300` | `#B3261E` | `#667689` |
+| Hard Court dark | `#34D399` | `#60A5FA` | `#FBBF24` | `#F2705C` | `#8C9BB3` |
+| Clay Court light | `#1E6B43` | `#0F6E80` | `#9A5F00` | `#A8311C` | `#7A6F63` |
+| Clay Court dark | `#4FBF7F` | `#4FB3C8` | `#E5A93C` | `#F0805F` | `#A89F96` |
+| Grass Court light | `#17692F` | `#0B6A85` | `#8F6A00` | `#B52A2A` | `#5F7466` |
+| Grass Court dark | `#4ADE80` | `#4FC1D6` | `#E5B83C` | `#F26E6E` | `#91A398` |
+
+Contrast and distinguishability contract, computed (not asserted in prose) in
+`tests/theme-rendering.test.js` for all six palettes: each mark is at least
+**3:1** (WCAG non-text) against both `surfaceCard` and the `surfaceSection` bar
+track (shipped minimums: 4.65:1 / 4.17:1 light, 5.77:1 / 6.12:1 dark); the
+status label ink (`onSurface`, `onSurfaceVariant`) stays at least **4.5:1** on
+`surfaceCard`; and any two of a palette's five marks differ by at least CIE76
+**delta-E 25** (shipped minimum 28.0) with no equal values, and no court shares
+a band value with another court in the same mode.
 
 Wording is part of the contract, not decoration:
 
