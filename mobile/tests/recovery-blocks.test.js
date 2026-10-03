@@ -2729,14 +2729,60 @@ describe('captureRecoveryBaseline (v2) — only an EXPLICIT AMRAP declaration ta
     }
   });
 
-  test('explicit forms still work: `3xAMRAP`, `3 x AMRAP`, and a declaration that is exactly AMRAP', () => {
-    for (const header of ['-Pull-up 3xAMRAP', '-Pull-up: 3 x AMRAP', '-Pull-up: 3×amrap (strict)']) {
+  test('explicit forms still work through the synthetic path: `3xAMRAP`, `3 x AMRAP`, and a declaration that is exactly AMRAP', () => {
+    for (const header of ['-Pull-up 3xAMRAP', '-Pull-up: 3 x AMRAP', '-Pull-up: 3×amrap']) {
       const snap = cap(declSection(header, [[repSet(9), repSet(7), repSet(6)], [repSet(4)]], { name: 'Pull-up' }));
       expect(baselineFor(snap, 'pull-up')).toMatchObject({ total_reps: 22, basis: BASIS.AMRAP });
     }
     const bare = cap(declSection('-Pull-up: AMRAP', [[repSet(9)], [repSet(4)]], { name: 'Pull-up' }));
     expect(baselineFor(bare, 'pull-up')).toMatchObject({ total_reps: 4, basis: BASIS.AMRAP });
   });
+
+  // TABLE-DRIVEN through the REAL parser. The note logs 8,8,8 then a 3,2 session (5 reps, 2 sets).
+  //  - an explicit `3xAMRAP` needs 3 positive sets, so the older 8,8,8 (24 reps) is chosen
+  //  - an explicit bare `AMRAP` is one prescribed set, so the newest 3,2 session is chosen (5 reps)
+  //  - anything the parser treats as name/note/parenthetical/prose is NO declaration:
+  //    the latest comparable session (5 reps) is frozen as no_declaration
+  //  - a real rep declaration beats any AMRAP mention: 3x8 selects the complete 8,8,8
+  // (The parser has no AMRAP grammar, so it leaves `: 3xAMRAP` in the exercise name;
+  // rows are read by position, not by name.)
+  const SESSIONS = '\n- 8,8,8\n- 3,2';
+  const ROW = (header) => captureRecoveryBaselineFromText(header + SESSIONS).exercises;
+  const EXPLICIT = [
+    ['-Pull-up: 3xAMRAP', 24], ['-Pull-up: 3XAMRAP', 24], ['-Pull-up: 3xamrap', 24], ['-Pull-up: 3 x AMRAP', 24],
+    ['-Pull-up: 3×AMRAP', 24], ['-Pull-up 3xAMRAP', 24], ['-Pull-up (finisher) 3xAMRAP', 24], ['-Pull-up (finisher): 3xAMRAP', 24],
+    ['-Pull-up: AMRAP', 5], ['-Pull-up: amrap', 5], ['-Pull-up (note): AMRAP', 5],
+  ];
+  test.each(EXPLICIT)('explicit AMRAP declaration %s is amrap_no_minimum (total_reps %i)', (header, reps) => {
+    const rows = ROW(header);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ basis: BASIS.AMRAP, total_reps: reps });
+  });
+
+  const PROSE = [
+    '-AMRAP Pull-up', '-amrap pull-up', '-Pull-up (3xAMRAP finisher)', '-Pull-up (AMRAP)', '-Pull-up (amrap)',
+    '-PULL-UP (3XAMRAP FINISHER)', '-Pull-up [AMRAP]', '-Pull-up [3xAMRAP]', '-Pull-up (note: AMRAP)',
+    '-Pull-up (finisher: AMRAP', '-Pull-up (finisher: 3xAMRAP', '-Pull-up: (AMRAP)', '-Pull-up: (3xAMRAP)',
+    '-Pull-up - AMRAP', '-Pull-up — AMRAP', '-Pull-up - 3xAMRAP', '-Pull-up — 3xAMRAP note',
+    '-Pull-up: AMRAP — strict', '-Pull-up: AMRAP finisher', '-Pull-up: 3xAMRAP finisher', '-Pull-up: 3xAMRAP (strict)',
+    '-Pull-up: 3xAMRAP - strict', '-Pull-up AMRAP', '-Pull-up amraps', '-Pull-up AMRAPx3', '-Pull-up: AMRAPx3',
+    '-Pull-up: x3AMRAP', '-Pull-up: 0xAMRAP',
+  ];
+  test.each(PROSE)('AMRAP in name/note/prose %s is NOT a declaration (no_declaration, latest session)', (header) => {
+    const rows = ROW(header);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ basis: BASIS.NO_DECL, total_reps: 5 });
+  });
+
+  test.each([
+    '-Pull-up: 3x8 (last set AMRAP)', '-Pull-up (3xAMRAP finisher): 3x8', '-AMRAP Pull-up: 3x8', '-Pull-up: 3x8-AMRAP',
+    '-Pull-up: 3x8 AMRAP', '-Pull-up: 3x6-8 (AMRAP last set)',
+  ])('a real rep declaration beats an AMRAP mention: %s keeps the 3x8 rule', (header) => {
+    const rows = ROW(header);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ basis: BASIS.COMPLETE, total_reps: 24 });
+  });
+
 });
 
 // ── #1225 review: timed sessions on what the REAL parser emits, end to end ───

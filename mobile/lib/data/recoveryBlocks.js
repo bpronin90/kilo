@@ -188,15 +188,41 @@ function _declarationSpec(rawHeader) {
   }
   const p = parseExerciseHeader(rawHeader);
   if (p) return p.sets >= 1 && p.repLo >= 1 ? { kind: 'reps', sets: p.sets, min: p.repLo } : null;
-  // Only the declaration token itself is AMRAP: `NxAMRAP`, or a header whose
-  // declaration (the text after the name's colon) is exactly `AMRAP`. A mention
-  // inside a note or parenthetical never is, and a rep declaration (above) wins.
-  const counted = /(?:^|[\s:])(\d+)\s*[xX×]\s*amrap\b/i.exec(rawHeader);
-  if (counted) {
-    const sets = parseInt(counted[1], 10);
-    return sets >= 1 ? { kind: 'amrap', sets, min: null } : null;
+  const amrapSets = _explicitAmrapSets(rawHeader);
+  return amrapSets ? { kind: 'amrap', sets: amrapSets, min: null } : null;
+}
+
+// AMRAP is explicit-declaration-only, and the declaration occupies exactly the
+// position the parser gives every declaration: the TRAILING segment of the header
+// (`_normalizeExerciseName` strips a declaration only after the last colon
+// `: 3x8…`, or as the final space-separated token ` 3x8`). So AMRAP counts only as
+// that whole trailing segment, never as text the parser treats as name, note,
+// parenthetical, or prose:
+//   colon form   `…: 3xAMRAP` / `…: AMRAP`  — everything after the last colon is it
+//   space form   `… 3xAMRAP`                 — the final token; a bare `… AMRAP` with
+//                                              no colon is a name/prose, not a declaration
+// The text before the declaration must have balanced (), [] and must not end in a
+// dash note separator, so `(finisher: AMRAP` and `Pull-up - 3xAMRAP` cannot
+// smuggle one in. Anything trailing the token (`3xAMRAP (strict)`, `AMRAP — note`)
+// makes it prose, and a rep or duration declaration is resolved before this.
+const _AMRAP_COLON_RE = /^(.*):\s*(?:(\d+)\s*[xX×]\s*)?amrap$/i;
+const _AMRAP_SPACE_RE = /^(.*\S)\s+(\d+)\s*[xX×]\s*amrap$/i;
+function _explicitAmrapSets(rawHeader) {
+  const header = rawHeader.trim();
+  const m = _AMRAP_COLON_RE.exec(header) || _AMRAP_SPACE_RE.exec(header);
+  if (!m || /[-–—]\s*$/.test(m[1])) return null; // a dash right before it makes it a note
+  let depth = 0;
+  let square = 0;
+  for (const ch of m[1]) {
+    if (ch === '(') depth += 1;
+    else if (ch === ')') depth -= 1;
+    else if (ch === '[') square += 1;
+    else if (ch === ']') square -= 1;
+    if (depth < 0 || square < 0) return null;
   }
-  return /:\s*amrap\s*$/i.test(rawHeader) ? { kind: 'amrap', sets: 1, min: null } : null;
+  if (depth !== 0 || square !== 0) return null;
+  const sets = m[2] ? parseInt(m[2], 10) : 1;
+  return sets >= 1 ? sets : null;
 }
 
 // Every prescribed working set POSITION must be a completed, qualifying set: the
