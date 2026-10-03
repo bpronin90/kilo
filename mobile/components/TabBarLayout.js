@@ -79,6 +79,87 @@ export function nextTabBarProgrammaticState({ hidden }, metrics) {
   return { hidden, lastY: y };
 }
 
+// Web has no drag/momentum events, so user scrolling is inferred from input on
+// the scroll node (#1214): wheel/trackpad, touch drags, scroll keys
+// (arrows, Page/Home/End, Space; see focus rules below) and scrollbar presses stamp a window; scroll events inside it are user-driven.
+// Anchor/animated section jumps fire scroll events with no preceding scroll
+// input, so they stay programmatic. Plain presses on content (links, buttons,
+// taps, Enter, Space on controls) deliberately do not stamp: they are what trigger jumps.
+// The window outlasts trackpad inertia gaps between wheel events but not a
+// multi-frame animated scrollTo.
+export const WEB_USER_SCROLL_WINDOW_MS = 200;
+const WEB_SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End']);
+// Focus decides what a key does. Text entry and widgets that own the arrow keys
+// consume every scroll key; buttons and links only claim Space/Enter, so
+// arrows/Page/Home/End still scroll the page there.
+const roleOf = (t) => (t.getAttribute && t.getAttribute('role')) || '';
+const consumesArrows = (t) => !!t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || '')
+  || t.isContentEditable === true
+  || /^(textbox|combobox|listbox|slider|spinbutton|radio|tab|menu|menuitem|searchbox)$/.test(roleOf(t)));
+const claimsSpace = (t) => consumesArrows(t) || (!!t && (/^(A|BUTTON|SUMMARY)$/.test(t.tagName || '')
+  || /^(button|link|checkbox|switch)$/.test(roleOf(t))));
+const isScrollKey = (e) => (WEB_SCROLL_KEYS.has(e.key) && !consumesArrows(e.target))
+  || ((e.key === ' ' || e.key === 'Spacebar') && !claimsSpace(e.target));
+const onScrollbar = (node, e) => e.target === node && (e.offsetX >= node.clientWidth || e.offsetY >= node.clientHeight);
+const WEB_USER_SCROLL_LISTENERS = {
+  wheel: () => true,
+  touchmove: () => true,
+  keydown: (node, e) => isScrollKey(e),
+};
+const WEB_SCROLLBAR_PRESS = ['pointerdown', 'mousedown'];
+const WEB_SCROLLBAR_RELEASE = ['pointerup', 'pointercancel', 'mouseup'];
+
+// Returns { attach, isActive }. `attach(node)` binds the input listeners to a
+// DOM node (or detaches when null); nodes without addEventListener are ignored.
+// A scrollbar press holds intent until release, since dragging the thumb emits
+// scroll events with no further input events on the node.
+export function useWebUserScrollIntent() {
+  const lastInputAt = useRef(-Infinity);
+  const held = useRef(false);
+  const detach = useRef(null);
+  const attach = useCallback((instance) => {
+    if (detach.current) { detach.current(); detach.current = null; }
+    const node = instance && typeof instance.getScrollableNode === 'function' ? instance.getScrollableNode() : instance;
+    if (!node || typeof node.addEventListener !== 'function') return;
+    const stamp = () => { lastInputAt.current = Date.now(); };
+    const bound = Object.entries(WEB_USER_SCROLL_LISTENERS).map(([name, counts]) => {
+      const fn = (e) => {
+        if (counts(node, e || {})) stamp();
+        else if (name === 'keydown' && !held.current) lastInputAt.current = -Infinity; // e.g. Enter/Space activating a control
+      };
+      node.addEventListener(name, fn, { passive: true });
+      return [name, fn];
+    });
+    const win = (node.ownerDocument && node.ownerDocument.defaultView) || node;
+    const release = () => {
+      held.current = false;
+      stamp();
+      WEB_SCROLLBAR_RELEASE.forEach((n) => win.removeEventListener(n, release));
+    };
+    const press = (e) => {
+      if (!onScrollbar(node, e || {})) {
+        // A content press (link/button tap) starts a possible jump: drop any
+        // stale wheel/key stamp so that jump is not read as user scrolling.
+        if (!held.current) lastInputAt.current = -Infinity;
+        return;
+      }
+      if (held.current) return;
+      held.current = true;
+      stamp();
+      WEB_SCROLLBAR_RELEASE.forEach((n) => win.addEventListener(n, release));
+    };
+    WEB_SCROLLBAR_PRESS.forEach((n) => node.addEventListener(n, press, { passive: true }));
+    detach.current = () => {
+      bound.forEach(([name, fn]) => node.removeEventListener(name, fn));
+      WEB_SCROLLBAR_PRESS.forEach((n) => node.removeEventListener(n, press));
+      WEB_SCROLLBAR_RELEASE.forEach((n) => win.removeEventListener(n, release));
+      held.current = false;
+    };
+  }, []);
+  const isActive = useCallback(() => held.current || Date.now() - lastInputAt.current <= WEB_USER_SCROLL_WINDOW_MS, []);
+  return { attach, isActive };
+}
+
 // Owned by App.js. `onScroll` takes a ScrollView scroll event; ScreenShell
 // forwards every scroll to it. Default is a no-op so isolated ScreenShell
 // renders (and tests) need no provider.

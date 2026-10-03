@@ -1,9 +1,9 @@
-import React, { useContext, useRef, createContext } from 'react';
+import React, { useCallback, useContext, useRef, createContext } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useThemedStyles } from '../theme/ThemeContext';
 import { Button } from './UI';
-import { TabBarLayoutContext, TabBarScrollContext, TAB_BAR_VISUAL_GAP } from './TabBarLayout';
+import { TabBarLayoutContext, TabBarScrollContext, TAB_BAR_VISUAL_GAP, useWebUserScrollIntent } from './TabBarLayout';
 import { centeredColumnInsets } from './adaptiveLayout';
 import pkg from '../package.json';
 
@@ -35,8 +35,17 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
   // Only user-driven scrolling (drag, then fling momentum) may hide the tab bar
   // (#1209); programmatic scrollTo/anchor jumps fire neither and are ignored.
   const userScroll = useRef({ drag: false, momentum: false });
-  // Web has no drag events (wheel/trackpad scrolling), so every scroll counts there.
-  const isUserScroll = () => Platform.OS === 'web' || userScroll.current.drag || userScroll.current.momentum;
+  // Web has no drag events: wheel/trackpad/touch/key input marks user scrolling
+  // (#1214); scroll events with no recent input are programmatic jumps.
+  const { attach: attachWebIntent, isActive: webInputActive } = useWebUserScrollIntent();
+  const setScrollRef = useCallback((node) => {
+    if (Platform.OS === 'web') attachWebIntent(node);
+    if (typeof ref === 'function') ref(node);
+    else if (ref) ref.current = node;
+  }, [ref, attachWebIntent]);
+  const isUserScroll = () => (Platform.OS === 'web'
+    ? webInputActive()
+    : userScroll.current.drag || userScroll.current.momentum);
   const handleScroll = (e) => {
     if (contextOnScroll) contextOnScroll(e);
     if (tabBarOnScroll) tabBarOnScroll(e, isUserScroll());
@@ -58,7 +67,7 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
         </View>
       )}
       <ScrollView
-        ref={ref}
+        ref={setScrollRef}
         style={styles.scroll}
         contentContainerStyle={[styles.container, { paddingBottom: bottomClearance }, columnPadding]}
         keyboardShouldPersistTaps={keyboardShouldPersistTaps}

@@ -1,6 +1,6 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
-import { StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { TabBar } from '../components/TabBar';
 import { ScreenShell } from '../components/ScreenShell';
@@ -786,5 +786,143 @@ describe('bottom reveal and hysteresis (#1231)', () => {
     act(() => scroll.props.onScroll(ev(MAX_Y)));
     expect(probe.current).toBe(false);
     act(() => component.unmount());
+  });
+
+  describe('web user vs programmatic scrolling (#1214)', () => {
+    const { Platform } = require('react-native');
+    const realOS = Platform.OS;
+    let now;
+    beforeEach(() => {
+      Platform.OS = 'web';
+      now = 1000;
+      jest.spyOn(Date, 'now').mockImplementation(() => now);
+    });
+    afterEach(() => { Platform.OS = realOS; jest.restoreAllMocks(); });
+
+    function mountWeb(probe) {
+      const listeners = {};
+      const node = {
+        clientWidth: 400, clientHeight: 800,
+        addEventListener: (n, fn) => { (listeners[n] = listeners[n] || []).push(fn); },
+        removeEventListener: (n, fn) => { listeners[n] = (listeners[n] || []).filter((f) => f !== fn); },
+      };
+      // RNW's ScrollView exposes its DOM node through getScrollableNode().
+      jest.spyOn(ScrollView.prototype, 'getScrollableNode').mockReturnValue(node);
+      let component;
+      act(() => { component = renderer.create(<Harness probe={probe} />); });
+      return { component, listeners, node, scroll: findScroll(component) };
+    }
+
+    test('wheel input drives auto-hide; a programmatic animated jump and a jump to y: 0 do not hide', () => {
+      const probe = { current: null };
+      const { component, listeners, scroll } = mountWeb(probe);
+      expect(listeners.wheel).toHaveLength(1);
+      act(() => listeners.wheel[0]()); act(() => scroll.props.onScroll(ev(100)));
+      now += 50; act(() => listeners.wheel[0]()); act(() => scroll.props.onScroll(ev(400)));
+      expect(probe.current).toBe(true);
+      // Restoration jump to the top reveals the bar.
+      now += 1000; act(() => scroll.props.onScroll(ev(0)));
+      expect(probe.current).toBe(false);
+      // Animated lower-section jump: several scroll events, no input, never hides.
+      [150, 300, 450, 600].forEach((y) => { now += 16; act(() => scroll.props.onScroll(ev(y))); });
+      expect(probe.current).toBe(false);
+      // The next real wheel measures from where the jump landed.
+      now += 1000; act(() => listeners.wheel[0]()); act(() => scroll.props.onScroll(ev(604)));
+      expect(probe.current).toBe(false);
+      now += 50; act(() => listeners.wheel[0]()); act(() => scroll.props.onScroll(ev(700)));
+      expect(probe.current).toBe(true);
+      act(() => component.unmount());
+      expect(listeners.wheel).toHaveLength(0);
+    });
+
+    test('presses on content (link/button taps, Enter) do not mark user scrolling; scrollbar and scroll keys do', () => {
+      const probe = { current: null };
+      const { component, listeners, scroll } = mountWeb(probe);
+      act(() => listeners.wheel[0]()); act(() => scroll.props.onScroll(ev(100)));
+      now += 50; act(() => listeners.wheel[0]()); act(() => scroll.props.onScroll(ev(400)));
+      expect(probe.current).toBe(true);
+      now += 1000; act(() => scroll.props.onScroll(ev(0)));
+      expect(probe.current).toBe(false);
+      // An anchor click (pointerdown on a child, Enter keydown) then a jump: no hide.
+      act(() => listeners.pointerdown[0]({ target: {}, offsetX: 10, offsetY: 10 }));
+      act(() => listeners.mousedown[0]({ target: {}, offsetX: 10, offsetY: 10 }));
+      act(() => listeners.keydown[0]({ key: 'Enter' }));
+      act(() => listeners.keydown[0]({ key: 'ArrowDown', target: { tagName: 'INPUT' } }));
+      act(() => listeners.keydown[0]({ key: 'End', target: { tagName: 'DIV', isContentEditable: true } }));
+      act(() => listeners.keydown[0]({ key: ' ', target: { tagName: 'BUTTON' } }));
+      act(() => listeners.keydown[0]({ key: ' ', target: { tagName: 'DIV', getAttribute: () => 'link' } }));
+      act(() => scroll.props.onScroll(ev(300))); act(() => scroll.props.onScroll(ev(600)));
+      expect(probe.current).toBe(false);
+      expect(listeners.touchstart).toBeUndefined();
+      // Arrow keys and a press on the scroller's own scrollbar gutter do count.
+      now += 1000; act(() => listeners.keydown[0]({ key: 'ArrowDown' })); act(() => scroll.props.onScroll(ev(20)));
+      now += 50; act(() => listeners.keydown[0]({ key: 'ArrowDown' })); act(() => scroll.props.onScroll(ev(300)));
+      expect(probe.current).toBe(true);
+      // Arrows scroll the page even with a button/link focused; Space does not there.
+      now += 1000; act(() => scroll.props.onScroll(ev(0)));
+      expect(probe.current).toBe(false);
+      act(() => listeners.keydown[0]({ key: 'ArrowDown', target: { tagName: 'BUTTON' } })); act(() => scroll.props.onScroll(ev(20)));
+      now += 50; act(() => listeners.keydown[0]({ key: 'PageDown', target: { tagName: 'A' } })); act(() => scroll.props.onScroll(ev(300)));
+      expect(probe.current).toBe(true);
+      // Space on non-control content scrolls the page.
+      now += 1000; act(() => scroll.props.onScroll(ev(0)));
+      expect(probe.current).toBe(false);
+      act(() => listeners.keydown[0]({ key: ' ', target: { tagName: 'DIV', getAttribute: () => null } })); act(() => scroll.props.onScroll(ev(20)));
+      now += 50; act(() => listeners.keydown[0]({ key: ' ', target: { tagName: 'DIV', getAttribute: () => null } })); act(() => scroll.props.onScroll(ev(300)));
+      expect(probe.current).toBe(true);
+      act(() => component.unmount());
+    });
+
+    test('a scrollbar thumb drag stays user-driven until release, however long it lasts', () => {
+      const probe = { current: null };
+      const { component, listeners, node, scroll } = mountWeb(probe);
+      act(() => listeners.pointerdown[0]({ target: node, offsetX: 410, offsetY: 5 }));
+      act(() => scroll.props.onScroll(ev(100)));
+      now += 2000; act(() => scroll.props.onScroll(ev(400)));
+      expect(probe.current).toBe(true);
+      now += 2000; act(() => scroll.props.onScroll(ev(700)));
+      expect(probe.current).toBe(true);
+      // After release the hold ends once the window lapses (jump to top reveals).
+      act(() => listeners.pointerup[0]());
+      now += 1000; act(() => scroll.props.onScroll(ev(0)));
+      expect(probe.current).toBe(false);
+      act(() => scroll.props.onScroll(ev(300))); act(() => scroll.props.onScroll(ev(600)));
+      expect(probe.current).toBe(false);
+      act(() => component.unmount());
+      expect(listeners.pointerdown).toHaveLength(0);
+      expect(listeners.pointerup).toHaveLength(0);
+    });
+
+    test('a content press right after wheel input clears the stamp so its jump is programmatic', () => {
+      const probe = { current: null };
+      const { component, listeners, scroll } = mountWeb(probe);
+      act(() => listeners.wheel[0]()); act(() => scroll.props.onScroll(ev(100)));
+      now += 50; act(() => listeners.wheel[0]()); act(() => scroll.props.onScroll(ev(400)));
+      expect(probe.current).toBe(true);
+      now += 1000; act(() => scroll.props.onScroll(ev(0)));
+      expect(probe.current).toBe(false);
+      now += 10; act(() => listeners.wheel[0]());
+      now += 10; act(() => listeners.pointerdown[0]({ target: {}, offsetX: 5, offsetY: 5 }));
+      act(() => scroll.props.onScroll(ev(300))); now += 16; act(() => scroll.props.onScroll(ev(600)));
+      expect(probe.current).toBe(false);
+      now += 10; act(() => listeners.wheel[0]());
+      now += 10; act(() => listeners.keydown[0]({ key: 'Enter' }));
+      act(() => scroll.props.onScroll(ev(0))); act(() => scroll.props.onScroll(ev(300))); now += 16; act(() => scroll.props.onScroll(ev(600)));
+      expect(probe.current).toBe(false);
+      act(() => component.unmount());
+    });
+
+    test('input stamps expire so later scroll events are programmatic', () => {
+      const probe = { current: null };
+      const { component, listeners, scroll } = mountWeb(probe);
+      act(() => listeners.wheel[0]()); act(() => scroll.props.onScroll(ev(100)));
+      now += 50; act(() => listeners.wheel[0]()); act(() => scroll.props.onScroll(ev(400)));
+      expect(probe.current).toBe(true);
+      now += 500; act(() => scroll.props.onScroll(ev(700)));
+      expect(probe.current).toBe(true); // programmatic, mid-scroll: no change
+      act(() => scroll.props.onScroll(ev(0)));
+      expect(probe.current).toBe(false);
+      act(() => component.unmount());
+    });
   });
 });
