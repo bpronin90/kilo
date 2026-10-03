@@ -705,7 +705,9 @@ describe('AnalyticsRecoverySection: completed history carries the reason', () =>
 
   test('the evidence card names the reason for a completed block', () => {
     const root = renderSection([completed({ reason: 'torn hamstring' })]).root;
-    expect(hasText(root, 'Reason: torn hamstring')).toBe(true);
+    // #1219: a labelled Reason row ("Reason" + value), no longer one "Reason: …" string.
+    expect(hasText(root, 'Reason')).toBe(true);
+    expect(hasText(root, 'torn hamstring')).toBe(true);
   });
 
   test('a completed block without one shows no placeholder', () => {

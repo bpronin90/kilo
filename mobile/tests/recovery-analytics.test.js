@@ -510,9 +510,20 @@ describe('recovery-only exercises', () => {
     expect(result.added[0].metrics.every(m => m.ratio === null)).toBe(true);
   });
 
-  test('added exercises are ordered by normalized identity, not note order', () => {
-    const result = compareOneWeek(WEIGHTED_BASELINE, '-Zercher Hold\n- 10,10\n-Ankle Circles\n- 12,12');
-    expect(result.added.map(a => a.key)).toEqual(['ankle circles', 'zercher hold']);
+  test('added exercises keep the week note order, even when it is the reverse of normalized identity', () => {
+    // Note order is Zercher, Mobility, Ankle; normalized identity order would be
+    // ankle, mobility, zercher.
+    const result = compareOneWeek(
+      WEIGHTED_BASELINE,
+      '-Zercher Hold\n- 10,10\n-Mobility Flow\n- 8,8\n-Ankle Circles\n- 12,12'
+    );
+    expect(result.added.map(a => a.key)).toEqual(['zercher hold', 'mobility flow', 'ankle circles']);
+    // A repeated added exercise stays where it FIRST appeared.
+    const repeated = compareOneWeek(
+      WEIGHTED_BASELINE,
+      '-Zercher Hold\n- 10,10\n-Ankle Circles\n- 12,12\n-Zercher Hold\n- 8,8'
+    );
+    expect(repeated.added.map(a => a.key)).toEqual(['zercher hold', 'ankle circles']);
   });
 
   test('summary counts every state without averaging them into a score', () => {

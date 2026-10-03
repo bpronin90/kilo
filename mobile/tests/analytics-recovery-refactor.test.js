@@ -145,7 +145,7 @@ describe('#1052 refactor — export and boundary parity', () => {
     for (const key of [
       'container', 'stateBanner', 'summaryLine',
       'chip', 'chipRow', 'chipBlock', 'detailsPanel',
-      'historyPanel', 'weekIndexRow', 'nonMedicalText', 'provenanceText',
+      'historyPanel', 'weekIndexRow', 'nonMedicalText', 'contextBlock', 'contextRow',
     ]) {
       expect(styles).toHaveProperty(key);
     }
@@ -257,7 +257,7 @@ describe('#1052 refactor — preserved states reach the screen', () => {
   test('complete/active: an active block shows the routine-anchored hero label and the non-medical line', () => {
     const component = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] });
     const root = component.root;
-    expect(hasText(root, 'at or above Push Pull Legs baseline')).toBe(true);
+    expect(hasText(root, 'Push Pull Legs baseline')).toBe(true);
     // #1219 (owner-directed): the non-medical note sits behind an info button
     // instead of a persistent line — hidden by default, revealed inline on tap.
     expect(hasText(root, 'Not a medical judgment')).toBe(false);
