@@ -854,6 +854,29 @@ describe('recovery data: malformed payloads write nothing', () => {
     ['a v2 baseline row with no routine_order', (b) => {
       delete b.recovery_blocks[0].baseline.exercises[0].routine_order;
     }],
+    // routine_order must be unique, contiguous 0..n-1, and equal to the row's array
+    // index: analytics preserves the stored array order, so any disagreement would
+    // restore a snapshot that violates the frozen routine order.
+    ['a v2 baseline with a duplicate routine_order position', (b) => {
+      const ex = b.recovery_blocks[0].baseline.exercises;
+      ex.push({ ...ex[0], key: 'row', name: 'Row' });
+    }],
+    ['a v2 baseline whose rows are out of routine order', (b) => {
+      b.recovery_blocks[0].baseline.exercises.reverse();
+    }],
+    ['a v2 baseline with a gap in routine_order', (b) => {
+      b.recovery_blocks[0].baseline.exercises[1].routine_order = 2;
+    }],
+    ['a v2 baseline whose routine_order disagrees with the array order', (b) => {
+      const ex = b.recovery_blocks[0].baseline.exercises;
+      [ex[0].routine_order, ex[1].routine_order] = [1, 0];
+    }],
+    ['a v2 baseline row with a string routine_order', (b) => {
+      b.recovery_blocks[0].baseline.exercises[1].routine_order = '1';
+    }],
+    ['a v2 baseline whose first row does not start at 0', (b) => {
+      for (const e of b.recovery_blocks[0].baseline.exercises) e.routine_order += 1;
+    }],
     ['a v2 baseline row with a fractional routine_order', (b) => {
       b.recovery_blocks[0].baseline.exercises[0].routine_order = 1.5;
     }],

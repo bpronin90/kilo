@@ -2639,6 +2639,18 @@ describe('captureRecoveryBaseline (v2) — latest complete session', () => {
     expect(snap.exercises.map(r => r.routine_order)).toEqual([0, 1, 2]);
   });
 
+  test('routine_order is renumbered contiguous 0..n-1 over the surviving rows and equals the array index', () => {
+    // Bench has no comparable work, so it never becomes a row; Curl must not inherit a gap.
+    const snap = captureRecoveryBaselineFromText('-Squat\n- 225 5\n-Bench\n- garbage nonsense\n-Curl\n- 30 10');
+    expect(snap.exercises.map(r => r.key)).toEqual(['squat', 'curl']);
+    expect(snap.exercises.map(r => r.routine_order)).toEqual([0, 1]);
+    const warm = cap(
+      declSection('-Face Pull 3x12', [[repSet(12), repSet(12), repSet(12)]], { kind: 'warmup', name: 'Face Pull' }),
+      declSection('-Bench 3x5', [[wSet(135, 5), wSet(135, 5), wSet(135, 5)]], { name: 'Bench' }),
+    );
+    warm.exercises.forEach((r, i) => expect(r.routine_order).toBe(i));
+  });
+
   test('a row never carries an invented target, minimum, or free-form provenance', () => {
     const snap = captureRecoveryBaselineFromText('-Deadlift: 3x6\n- 325 6,6,6');
     expect(Object.keys(baselineFor(snap, 'deadlift')).sort()).toEqual(

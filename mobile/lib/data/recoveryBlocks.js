@@ -288,10 +288,11 @@ export function normalizeTimedSections(sections) {
 // the row falls back to the latest comparable completed work, exactly as v1 did,
 // and its `basis` says so.
 //
-// Rows keep the routine's own order: `routine_order` is the position of the
-// exercise's first NON-warmup occurrence among the routine's distinct exercise
-// identities, and `exercises` is sorted by it. Warmup sections define neither
-// presence nor order. Exercise identity still comes from the parser rules
+// Rows keep the routine's own order: rows are sorted by the position of each
+// exercise's first NON-warmup occurrence, then `routine_order` is renumbered
+// 0..n-1 over the rows that survive into the snapshot, so it is unique,
+// contiguous, and equal to the row's array index (backup validation enforces the
+// same). Warmup sections define neither presence nor order. Exercise identity still comes from the parser rules
 // (`normalizeExerciseKey`), so recovery never invents a second naming scheme.
 //
 // `sections` is `parseWorkoutNote(text).sections`. Returns a plain, structurally
@@ -343,6 +344,7 @@ export function captureRecoveryBaseline(rawSections) {
   }
 
   rows.sort((a, b) => a.routine_order - b.routine_order);
+  rows.forEach((row, i) => { row.routine_order = i; });
   snapshot.exercises = rows;
   return _deepFreeze(snapshot);
 }

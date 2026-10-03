@@ -58,7 +58,7 @@ const MAX_IMPORT_BASELINE_EXERCISES = 1000;
 
 // Everything a baseline exercise row carries beyond these three is a numeric
 // metric (top_weight, volume, sets_completed, best_set_reps, total_reps,
-// best_hold_seconds, total_seconds, v2 routine_order — see lib/data/recoveryBlocks)
+// best_hold_seconds, total_seconds, v2 routine_order == its row index — recoveryBlocks)
 // except v2's own `basis` provenance string, checked against its closed enum (#1225).
 const BASELINE_EXERCISE_STRING_FIELDS = ['key', 'name', 'exercise_class'];
 
@@ -281,7 +281,7 @@ function validateRecoveryBaseline(baseline) {
       ok: false,
       error: `Invalid backup: recovery block baseline too large (${baseline.exercises.length}; limit ${MAX_IMPORT_BASELINE_EXERCISES})`,
     };
-  for (const exercise of baseline.exercises) {
+  for (const [index, exercise] of baseline.exercises.entries()) {
     if (!exercise || typeof exercise !== 'object' || Array.isArray(exercise))
       return { ok: false, error: 'Invalid backup: recovery baseline exercise is not an object' };
     for (const field of BASELINE_EXERCISE_STRING_FIELDS) {
@@ -289,8 +289,8 @@ function validateRecoveryBaseline(baseline) {
         return { ok: false, error: `Invalid backup: recovery baseline exercise missing ${field}` };
     }
     const v2 = baseline.version >= 2;
-    if (v2 && (!RECOVERY_BASELINE_BASIS_VALUES.includes(exercise.basis) || !Number.isInteger(exercise.routine_order) || exercise.routine_order < 0))
-      return { ok: false, error: 'Invalid backup: recovery baseline v2 row needs a known basis and a non-negative integer routine_order' };
+    if (v2 && (!RECOVERY_BASELINE_BASIS_VALUES.includes(exercise.basis) || exercise.routine_order !== index))
+      return { ok: false, error: 'Invalid backup: recovery baseline v2 row needs a known basis and a routine_order equal to its position' };
     for (const [field, value] of Object.entries(exercise)) {
       if (BASELINE_EXERCISE_STRING_FIELDS.includes(field) || (v2 && field === 'basis')) continue;
       if (typeof value !== 'number' || !Number.isFinite(value))
