@@ -39,7 +39,9 @@ describe('error reporting bootstrap', () => {
     expect(initErrorReporting()).toBe(true);
     expect(Sentry.init).toHaveBeenCalledWith(expect.objectContaining({
       dsn: 'https://public@example.ingest.sentry.io/1',
+      release: 'com.benpronin.kilo@1.8.6',
       sendDefaultPii: false,
+      enableNative: false,
       enableAutoSessionTracking: false,
       tracesSampleRate: 0,
       enableLogs: false,
@@ -50,6 +52,20 @@ describe('error reporting bootstrap', () => {
     expect(Sentry.getGlobalScope().setTag).toHaveBeenCalledWith('expo-is-embedded-update', 'true');
     expect(Sentry.getGlobalScope().setTag).toHaveBeenCalledWith('expo-runtime-version', '0.88.0');
     expect(Sentry.getGlobalScope().setTag).toHaveBeenCalledWith('expo-channel', 'production');
+  });
+
+  test('disables the native event pipeline that bypasses JavaScript redaction', () => {
+    const Sentry = require('@sentry/react-native');
+    const { initErrorReporting } = require('../lib/errorReporting');
+
+    initErrorReporting();
+
+    expect(Sentry.init.mock.calls[0][0]).toEqual(expect.objectContaining({
+      enableNative: false,
+      release: 'com.benpronin.kilo@1.8.6',
+      beforeSend: expect.any(Function),
+      beforeBreadcrumb: expect.any(Function),
+    }));
   });
 
   test('removes user-authored health data and identity from error events', () => {

@@ -1,7 +1,9 @@
 import * as Sentry from '@sentry/react-native';
 import * as Updates from 'expo-updates';
+import appConfig from '../app.json';
 
 const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
+const APP_RELEASE = `${appConfig.expo.android.package}@${appConfig.expo.version}`;
 const REDACTED = '[redacted]';
 const SAFE_LEVELS = new Set(['fatal', 'error', 'warning', 'log', 'info', 'debug']);
 const SAFE_ERROR_TYPES = new Set([
@@ -183,7 +185,11 @@ export function initErrorReporting() {
 
   Sentry.init({
     dsn: SENTRY_DSN,
+    release: APP_RELEASE,
     sendDefaultPii: false,
+    // Native events do not pass through the JavaScript redaction hooks below.
+    // Keep the native SDK disabled until equivalent native filtering exists.
+    enableNative: false,
     enableAutoSessionTracking: false,
     tracesSampleRate: 0,
     enableLogs: false,

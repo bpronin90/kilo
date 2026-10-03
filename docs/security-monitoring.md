@@ -56,7 +56,11 @@ and Expo update tags. Exception values are replaced with `[redacted]`; unknown e
 breadcrumb fields are discarded. Default PII, performance traces, logs, and
 automatic session tracking are disabled. The focused error-reporting tests use
 representative workout notes, weights, and identity values to enforce this
-boundary, and nothing in this document depends on Sentry.
+boundary. The native Sentry SDK is also disabled because native crash events and
+breadcrumbs do not traverse these JavaScript scrubbers; JavaScript crash
+reporting remains enabled, with the app release supplied explicitly. Native
+crash diagnostics remain deliberately excluded until an equivalent native
+allow-list is configured. Nothing in this document depends on Sentry.
 
 ## Requirements for a security event
 
