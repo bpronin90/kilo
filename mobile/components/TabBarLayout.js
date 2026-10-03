@@ -81,7 +81,7 @@ export function nextTabBarProgrammaticState({ hidden }, metrics) {
 
 // Web has no drag/momentum events, so user scrolling is inferred from input on
 // the scroll node (#1214): wheel/trackpad, touch drags, scroll keys
-// (arrows, Page/Home/End, Space; not on controls) and scrollbar presses stamp a window; scroll events inside it are user-driven.
+// (arrows, Page/Home/End, Space; see focus rules below) and scrollbar presses stamp a window; scroll events inside it are user-driven.
 // Anchor/animated section jumps fire scroll events with no preceding scroll
 // input, so they stay programmatic. Plain presses on content (links, buttons,
 // taps, Enter, Space on controls) deliberately do not stamp: they are what trigger jumps.
@@ -89,11 +89,17 @@ export function nextTabBarProgrammaticState({ hidden }, metrics) {
 // multi-frame animated scrollTo.
 export const WEB_USER_SCROLL_WINDOW_MS = 200;
 const WEB_SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End']);
-// Scroll keys scroll the page only when focus is not on a control or editable
-// (there they move a caret/selection or activate it).
-const isControl = (t) => !!t && (/^(A|BUTTON|INPUT|TEXTAREA|SELECT|SUMMARY)$/.test(t.tagName || '')
-  || t.isContentEditable === true || /^(button|link|textbox|checkbox|switch|tab)$/.test((t.getAttribute && t.getAttribute('role')) || ''));
-const isScrollKey = (e) => (WEB_SCROLL_KEYS.has(e.key) || e.key === ' ' || e.key === 'Spacebar') && !isControl(e.target);
+// Focus decides what a key does. Text entry and widgets that own the arrow keys
+// consume every scroll key; buttons and links only claim Space/Enter, so
+// arrows/Page/Home/End still scroll the page there.
+const roleOf = (t) => (t.getAttribute && t.getAttribute('role')) || '';
+const consumesArrows = (t) => !!t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || '')
+  || t.isContentEditable === true
+  || /^(textbox|combobox|listbox|slider|spinbutton|radio|tab|menu|menuitem|searchbox)$/.test(roleOf(t)));
+const claimsSpace = (t) => consumesArrows(t) || (!!t && (/^(A|BUTTON|SUMMARY)$/.test(t.tagName || '')
+  || /^(button|link|checkbox|switch)$/.test(roleOf(t))));
+const isScrollKey = (e) => (WEB_SCROLL_KEYS.has(e.key) && !consumesArrows(e.target))
+  || ((e.key === ' ' || e.key === 'Spacebar') && !claimsSpace(e.target));
 const onScrollbar = (node, e) => e.target === node && (e.offsetX >= node.clientWidth || e.offsetY >= node.clientHeight);
 const WEB_USER_SCROLL_LISTENERS = {
   wheel: () => true,

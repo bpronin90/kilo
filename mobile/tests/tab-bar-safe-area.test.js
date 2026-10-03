@@ -858,6 +858,12 @@ describe('bottom reveal and hysteresis (#1231)', () => {
       now += 1000; act(() => listeners.keydown[0]({ key: 'ArrowDown' })); act(() => scroll.props.onScroll(ev(20)));
       now += 50; act(() => listeners.keydown[0]({ key: 'ArrowDown' })); act(() => scroll.props.onScroll(ev(300)));
       expect(probe.current).toBe(true);
+      // Arrows scroll the page even with a button/link focused; Space does not there.
+      now += 1000; act(() => scroll.props.onScroll(ev(0)));
+      expect(probe.current).toBe(false);
+      act(() => listeners.keydown[0]({ key: 'ArrowDown', target: { tagName: 'BUTTON' } })); act(() => scroll.props.onScroll(ev(20)));
+      now += 50; act(() => listeners.keydown[0]({ key: 'PageDown', target: { tagName: 'A' } })); act(() => scroll.props.onScroll(ev(300)));
+      expect(probe.current).toBe(true);
       // Space on non-control content scrolls the page.
       now += 1000; act(() => scroll.props.onScroll(ev(0)));
       expect(probe.current).toBe(false);
