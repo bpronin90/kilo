@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Text, View, useWindowDimensions } from 'react-native';
+import { Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useTheme } from '../../theme/ThemeContext';
 import { createVisualStyles } from './recoveryVisualStyles';
@@ -201,71 +201,24 @@ export function RecoveryBandBar({ buckets, trained, weekLabel, added = 0 }) {
   );
 }
 
-// Count tokens flow as ONE intentional line ("7 trained · 20 not yet · 5 added")
-// and only ever break between whole tokens, in balanced rows (#1219 owner phone
-// review: a long third count wrapped to its own line and read as an orphan).
-// There is no layout measurement API in the test renderer and Text widths vary
-// by platform font, so the split is decided from a conservative width estimate:
-//   - everything fits one row -> one row;
-//   - else balanced rows of >= 2 tokens (4 tokens -> 2 + 2);
-//   - else one token per row (a plain list, never a lone count under a row).
-const TOKEN_CHAR_WIDTH = 7.4; // 13sp average glyph advance, 600-800 weights
-const TOKEN_SEPARATOR_WIDTH = 20; // dot + its margins
-export function estimateTokenWidth(token, fontScale = 1) {
-  return Math.ceil((token.n.length + token.text.length + 1) * TOKEN_CHAR_WIDTH * fontScale);
-}
-export function balancedTokenRows(tokens, available, fontScale = 1) {
-  const n = tokens.length;
-  const widths = tokens.map(t => estimateTokenWidth(t, fontScale));
-  const rowWidth = (row) => row.reduce((w, i) => w + widths[i], 0) + (row.length - 1) * TOKEN_SEPARATOR_WIDTH * fontScale;
-  const split = (rowCount) => {
-    const base = Math.floor(n / rowCount);
-    const extra = n % rowCount;
-    const rows = [];
-    let next = 0;
-    for (let r = 0; r < rowCount; r++) {
-      const size = base + (r < extra ? 1 : 0);
-      rows.push(Array.from({ length: size }, () => next++));
-    }
-    return rows;
-  };
-  const candidates = [1];
-  for (let r = 2; r < n; r++) if (Math.floor(n / r) >= 2) candidates.push(r);
-  if (n > 1) candidates.push(n);
-  for (const rowCount of candidates) {
-    const rows = split(rowCount);
-    if (rows.every(row => rowWidth(row) <= available)) return rows.map(row => row.map(i => tokens[i]));
-  }
-  return split(n).map(row => row.map(i => tokens[i]));
-}
-
+// Count tokens (#1219 owner phone review): each count is its own UNSPLITTABLE
+// token view ("7 trained", "20 not yet", "5 added"): it does not shrink and its
+// text does not wrap, so a count can never break mid-token or overflow on any
+// device or font scale. The tokens sit in a plain wrapping row with consistent
+// column/row gaps, so they stay on one line when they fit (the owner's 390dp
+// data) and flow whole-token onto further lines when they cannot. There are no
+// glyph separators — a separator could start or end a wrapped row, and React
+// Native gives no per-row information to avoid that — so spacing alone divides
+// the tokens. An orphaned last token is therefore possible at narrow widths and
+// is deliberately accepted: the layout guarantees "never split, never overflow",
+// not "never alone" (an estimate-based balancer could not guarantee either).
 function CountTokens({ stats, styles }) {
-  const window = useWindowDimensions();
-  const fontScale = window.fontScale || 1;
-  // Container width once laid out; before that, the window minus the card chrome.
-  const [measured, setMeasured] = React.useState(null);
-  const available = measured ?? Math.max(0, window.width - 72);
-  const rows = balancedTokenRows(stats, available, fontScale);
   return (
-    <View
-      testID="recovery-count-tokens"
-      style={styles.rosterTokens}
-      onLayout={e => {
-        const w = e?.nativeEvent?.layout?.width;
-        if (typeof w === 'number' && w > 0) setMeasured(w);
-      }}
-    >
-      {rows.map((row, r) => (
-        <View key={r} testID={`recovery-count-row-${r}`} style={styles.rosterRow}>
-          {row.map((st, i) => (
-            <React.Fragment key={st.text}>
-              {i > 0 && <View testID="recovery-count-sep" style={styles.rosterSeparator} />}
-              <View style={styles.rosterStat}>
-                <Text style={st.quiet ? styles.rosterNumQuiet : styles.rosterNum}>{st.n}</Text>
-                <Text style={styles.exStatusText}>{st.text}</Text>
-              </View>
-            </React.Fragment>
-          ))}
+    <View testID="recovery-count-tokens" style={styles.rosterTokens}>
+      {stats.map(st => (
+        <View key={st.text} testID="recovery-count-token" style={styles.rosterStat}>
+          <Text style={st.quiet ? styles.rosterNumQuiet : styles.rosterNum}>{st.n}</Text>
+          <Text style={styles.rosterLabel}>{st.text}</Text>
         </View>
       ))}
     </View>

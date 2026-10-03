@@ -103,12 +103,13 @@ export const createVisualStyles = (colors, kua = null) => {
     // carries the ink; the not-graded counts take the shared neutral so the line
     // has one quiet hierarchy. Whole tokens, separated by a small dot.
     rosterBlock: { paddingBottom: 4 },
-    rosterTokens: { gap: 2 },
-    rosterRow: { flexDirection: 'row', alignItems: 'center' },
-    rosterStat: { flexDirection: 'row', alignItems: 'baseline', gap: 4, flexShrink: 1 },
-    rosterNum: { fontSize: 13, fontWeight: '800', color: ink },
-    rosterNumQuiet: { fontSize: 13, fontWeight: '700', color: inkMuted },
-    rosterSeparator: { width: 3, height: 3, borderRadius: 2, marginHorizontal: 8, backgroundColor: inkMuted },
+    // A plain wrapping row of unsplittable tokens (no glyph separators, so none can
+    // start or end a wrapped row): consistent column/row gaps divide the counts.
+    rosterTokens: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 2 },
+    rosterStat: { flexDirection: 'row', alignItems: 'baseline', gap: 4, flexShrink: 0 },
+    rosterNum: { flexShrink: 0, fontSize: 13, fontWeight: '800', color: ink },
+    rosterNumQuiet: { flexShrink: 0, fontSize: 13, fontWeight: '700', color: inkMuted },
+    rosterLabel: { flexShrink: 0, fontSize: 13, fontWeight: '600', color: inkMuted },
     exNote: { fontSize: 13, color: inkMuted },
     weekNoteText: { fontSize: 12, fontWeight: '600', color: inkMuted },
   });

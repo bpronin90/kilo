@@ -226,7 +226,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: 44,
-    columnGap: 10,
+    columnGap: 8,
   },
   contextLabel: {
     fontSize: 13,
@@ -245,6 +245,14 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // text rides on the accessible label) instead of pushing the controls out.
   contextValueShrink: {
     flexShrink: 1,
+  },
+  // The date row wraps (never squeezes a date mid-digit): if label + date + info
+  // cannot share a line the info button drops under, and each date stays whole.
+  contextRowWrap: {
+    flexWrap: 'wrap',
+  },
+  contextDateText: {
+    flexShrink: 0,
   },
   contextDates: {
     flexDirection: 'row',
@@ -266,7 +274,8 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   infoButton: {
     minWidth: 44,
     minHeight: 44,
-    marginLeft: -6,
+    marginLeft: -8,
+    marginRight: -8,
     flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',

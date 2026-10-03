@@ -21,6 +21,12 @@ import { deriveTrainedElsewhere } from './RecoveryWeekIndex';
 import { createStyles } from './analyticsRecoveryStyles';
 import { RecoveryBandBar, RecoveryChangeVisual, RecoveryHero, RecoveryRosterSummary, RecoveryWeeksStrip } from './RecoveryVisuals';
 
+// A context row is announced ONCE: its visible label ("Started", "Dates",
+// "Baseline") is hidden from assistive tech because the adjacent value's own
+// accessible label already carries it ("Started 08-08-2026"); exposing both made
+// a screen reader say the label twice.
+const LABEL_HIDDEN = { accessibilityElementsHidden: true, importantForAccessibility: 'no' };
+
 // Every piece of state below — selected week, disclosure — is a view onto ONE
 // block, so the caller mounts this keyed by `block.id`. Reusing the instance
 // across a history switch would carry the previous block's open disclosure and
@@ -292,7 +298,7 @@ export function BlockEvidence({
       <View testID="recovery-footer-row" style={styles.contextBlock}>
         {!heroNamesRoutine && (
           <View testID="recovery-context-routine" style={styles.contextRow}>
-            <Text style={labelStyle}>Baseline</Text>
+            <Text style={labelStyle} {...LABEL_HIDDEN}>Baseline</Text>
             <Text
               style={[styles.contextValue, styles.contextValueShrink]}
               numberOfLines={1}
@@ -302,8 +308,8 @@ export function BlockEvidence({
             </Text>
           </View>
         )}
-        <View testID="recovery-context-date" style={styles.contextRow}>
-          <Text style={labelStyle}>{dateLabel}</Text>
+        <View testID="recovery-context-date" style={[styles.contextRow, styles.contextRowWrap]}>
+          <Text style={labelStyle} {...LABEL_HIDDEN}>{dateLabel}</Text>
           {/* A date is never ellipsized: at narrow widths or large text a
               completed range wraps to a second line instead. */}
           <View
@@ -313,8 +319,8 @@ export function BlockEvidence({
           >
             {/* A completed range is two whole dates, so a narrow card wraps
                 BETWEEN them ("08-08-2026 –" / "09-20-2026"), never mid-date. */}
-            <Text style={styles.contextValue}>{isActive ? dateValue : `${formatDate(block.started_at)} –`}</Text>
-            {!isActive && <Text style={styles.contextValue}>{formatDate(block.completed_at)}</Text>}
+            <Text style={[styles.contextValue, styles.contextDateText]}>{isActive ? dateValue : `${formatDate(block.started_at)} –`}</Text>
+            {!isActive && <Text style={[styles.contextValue, styles.contextDateText]}>{formatDate(block.completed_at)}</Text>}
           </View>
           {showInfo && (
             <Pressable
@@ -373,7 +379,12 @@ export function BlockEvidence({
             />
           </Pressable>
         ) : (
-          <View testID="recovery-reason-row" style={[styles.contextRow, styles.reasonRow]}>
+          <View
+            testID="recovery-reason-row"
+            style={[styles.contextRow, styles.reasonRow]}
+            accessible
+            accessibilityLabel={`Reason: ${block.reason}`}
+          >
             <Text style={labelStyle}>Reason</Text>
             <Text style={[styles.contextValue, styles.contextValueShrink]} numberOfLines={2}>
               {block.reason}

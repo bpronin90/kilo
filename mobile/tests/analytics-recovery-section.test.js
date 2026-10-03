@@ -3321,7 +3321,6 @@ describe('AnalyticsRecoverySection — routine order, Total work bar, band token
 // ---------------------------------------------------------------------------
 describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, context (#1219)', () => {
   const { StyleSheet } = require('react-native');
-  const { balancedTokenRows, estimateTokenWidth } = require('../components/recovery/RecoveryVisuals');
   const S = RECOVERY_COMPARISON_STATES;
   const hostById = (root, id) => root.findAll(n => typeof n.type === 'string' && n.props.testID === id);
   const flat = (n) => StyleSheet.flatten(n.props.style || {});
@@ -3358,9 +3357,8 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
     });
     return c.root;
   };
-  const rowsOf = (root) => hostById(root, 'recovery-count-tokens')[0]
-    .findAll(n => typeof n.type === 'string' && /^recovery-count-row-/.test(n.props.testID || ''))
-    .map(r => hostTextsIn(r));
+  const tokensOf = (root) => hostById(root, 'recovery-count-tokens')[0];
+  const tokenViews = (root) => hostById(root, 'recovery-count-token');
 
   // --- 1. no duplicate bar ----------------------------------------------------
   test('the collapsed Exercise details row has no bar: only the hero draws the graded segments', () => {
@@ -3374,57 +3372,59 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
     expect(hostById(root, 'recovery-bands-rows')).toHaveLength(1);
   });
 
-  // --- 2. one-line counts ------------------------------------------------------
-  test('owner Week 6 at 390dp: "7 trained · 20 not yet · 5 added" is ONE row; the full wording stays on the label', () => {
+  // --- 2. counts: intrinsic whole-token flow ---------------------------------
+  // The layout guarantee is STRUCTURAL (no estimate, no per-row logic): a plain
+  // `flexWrap: 'wrap'` row of unsplittable tokens. Real wrapping depends on the
+  // platform's layout engine, so the tests pin the structure that guarantees it.
+  const assertIntrinsicTokens = (root, expected) => {
+    const container = tokensOf(root);
+    expect(flat(container)).toMatchObject({ flexDirection: 'row', flexWrap: 'wrap' });
+    expect(flat(container).columnGap).toBeGreaterThan(0);
+    expect(flat(container).rowGap).toBeGreaterThanOrEqual(0);
+    const tokens = tokenViews(root);
+    expect(tokens.map(t => hostTextsIn(t))).toEqual(expected);
+    for (const t of tokens) {
+      // Non-shrinking whole token whose text cannot wrap or truncate inside it.
+      expect(flat(t)).toMatchObject({ flexDirection: 'row', flexShrink: 0 });
+      for (const text of t.findAll(n => typeof n.type === 'string' && n.type === 'Text')) {
+        expect(flat(text).flexShrink).toBe(0);
+        expect(text.props.numberOfLines).toBeUndefined();
+      }
+    }
+    // The tokens are direct children of the one wrapping row: nothing else (no
+    // separator glyph or view that could start or end a wrapped row).
+    expect(container.children.map(c => c.props.testID)).toEqual(expected.map(() => 'recovery-count-token'));
+    expect(hostById(root, 'recovery-count-sep')).toHaveLength(0);
+    expect(hostTextsIn(container).includes('·')).toBe(false);
+  };
+
+  test('owner Week 6: "7 trained · 20 not yet · 5 added" are three whole tokens in one wrapping row; the full wording stays on the label', () => {
+    for (const width of [390, 252]) {
+      mockWindow = { width, height: 844, scale: 3, fontScale: 1 };
+      const root = mountOwner();
+      assertIntrinsicTokens(root, [['7', 'trained'], ['20', 'not yet'], ['5', 'added']]);
+      const label = rosterLabel(root);
+      expect(label).toContain('Trained this week: 7 of 27 roster exercises, 20 not trained yet.');
+      expect(label).toContain('Not trained yet 20');
+      expect(label).toContain('Added during recovery 5');
+      expandDetails(root);
+      assertIntrinsicTokens(root, [['7', 'trained'], ['20', 'not yet'], ['5', 'added']]);
+    }
     mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
-    const root = mountOwner();
-    expect(rowsOf(root)).toEqual([['7', 'trained', '20', 'not yet', '5', 'added']]);
-    expect(hostById(root, 'recovery-count-sep')).toHaveLength(2);
-    const label = rosterLabel(root);
-    expect(label).toContain('Trained this week: 7 of 27 roster exercises, 20 not trained yet.');
-    expect(label).toContain('Not trained yet 20');
-    expect(label).toContain('Added during recovery 5');
-    // Expanding changes nothing.
-    expandDetails(root);
-    expect(rowsOf(root)).toEqual([['7', 'trained', '20', 'not yet', '5', 'added']]);
   });
 
-  // [label, token count, available width, fontScale, expected row sizes]
-  const ROW_TABLE = [
-    ['3 tokens fit', 3, 318, 1, [3]],
-    ['3 tokens at 252dp wrap as a plain list, never 2 + 1', 3, 180, 1, [1, 1, 1]],
-    ['3 tokens at fontScale 2 wrap as a plain list', 3, 318, 2, [1, 1, 1]],
-    ['4 tokens at a medium width wrap 2 + 2', 4, 220, 1, [2, 2]],
-    ['4 tokens at 252dp / large font wrap as a list', 4, 150, 2, [1, 1, 1, 1]],
-    ['2 tokens that cannot share a line wrap 1 + 1', 2, 120, 1, [1, 1]],
-    ['1 token is always one row', 1, 40, 2, [1]],
-  ];
-  const mkTokens = (n) => [
-    { n: '7', text: 'trained' }, { n: '20', text: 'not yet', quiet: true },
-    { n: '3', text: "can't compare", quiet: true }, { n: '5', text: 'added', quiet: true },
-  ].slice(0, n);
-  test.each(ROW_TABLE)('count rows: %s', (_l, count, available, fontScale, sizes) => {
-    const tokens = mkTokens(count);
-    const rows = balancedTokenRows(tokens, available, fontScale);
-    expect(rows.map(r => r.length)).toEqual(sizes);
-    // Whole tokens, original order, none lost.
-    expect(rows.flat()).toEqual(tokens);
-    // The no-orphan rule: a lone token only when EVERY row is a lone token.
-    if (rows.length > 1 && rows.some(r => r.length > 1)) expect(rows.every(r => r.length >= 2)).toBe(true);
-  });
-
-  test('rendered at fontScale 2 on a 252dp card, the owner counts stack whole, one per row, none orphaned or lost', () => {
+  test('the same structure holds at fontScale 2 on a 252dp card (tokens flow whole; nothing is measured or estimated)', () => {
     mockWindow = { width: 252, height: 844, scale: 3, fontScale: 2 };
     const root = mountOwner();
     mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
-    expect(rowsOf(root)).toEqual([['7', 'trained'], ['20', 'not yet'], ['5', 'added']]);
-    expect(hostById(root, 'recovery-count-sep')).toHaveLength(0);
+    assertIntrinsicTokens(root, [['7', 'trained'], ['20', 'not yet'], ['5', 'added']]);
   });
 
-  test('a full-wording third count would have been orphaned at 390dp (the old behavior): the estimate stays above one line', () => {
-    const old = [{ n: '7', text: 'trained' }, { n: '20', text: 'not trained yet', quiet: true }, { n: '5', text: 'added during recovery', quiet: true }];
-    expect(old.reduce((w, t) => w + estimateTokenWidth(t), 0)).toBeGreaterThan(318 - 40);
-    expect(balancedTokenRows(old, 318, 1).map(r => r.length)).not.toEqual([3]);
+  test('no width-estimate balancing helper remains and the count layout has no row bookkeeping', () => {
+    const visuals = require('../components/recovery/RecoveryVisuals');
+    expect(visuals.balancedTokenRows).toBeUndefined();
+    expect(visuals.estimateTokenWidth).toBeUndefined();
+    expect(hostById(mountOwner(), 'recovery-count-row-0')).toHaveLength(0);
   });
 
   // --- 3. hero scope ------------------------------------------------------------
@@ -3451,7 +3451,7 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
     const ctx = hostById(root, 'recovery-footer-row')[0];
     expect(findAllText(ctx)).toEqual(['Started', '08-08-2026', 'Reason', 'Back injury']);
     const dateRow = hostById(root, 'recovery-context-date')[0];
-    expect(flat(dateRow)).toMatchObject({ flexDirection: 'row', minHeight: 44 });
+    expect(flat(dateRow)).toMatchObject({ flexDirection: 'row', flexWrap: 'wrap', minHeight: 44 });
     const info = byLabel(root, 'About these numbers');
     expect(dateRow.findAll(n => n === info || n.props.accessibilityLabel === 'About these numbers').length).toBeGreaterThan(0);
     // Adjacent, not pushed to the edge.
@@ -3475,6 +3475,44 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
     act(() => { byLabel(root, 'About these numbers').props.onPress(); });
     expect(hasText(root, 'Not a medical judgment')).toBe(true);
     expect(findAllText(hostById(root, 'recovery-about-note')[0])).toEqual(['Training numbers only. Not a medical judgment — only you end a Recovery block.']);
+  });
+
+  // One announcement per context row: the visible label is hidden from assistive
+  // tech and the adjacent value's own label carries it, so "Started" etc. is
+  // never spoken twice.
+  test.each([
+    ['Started', () => mountOwner(), 'Started 08-08-2026'],
+    ['Dates', () => mountOwner({ completed_at: '2026-09-20T12:00:00Z' }), 'Dates 08-08-2026 – 09-20-2026'],
+    ['Baseline', () => {
+      let c;
+      act(() => { c = render.create(<AnalyticsRecoverySection blocks={[block({ baseline_note_title: 'Summer 2026 Routine' })]} weeks={[]} notes={[]} />); });
+      return c.root;
+    }, 'Baseline: Summer 2026 Routine'],
+  ])('the %s context row is announced once', (label, mount, spoken) => {
+    const root = mount();
+    // Every visible bare label is hidden from accessibility (both platforms).
+    const labels = root.findAll(n => typeof n.type === 'string' && n.type === 'Text' && [].concat(n.props.children).join('') === label);
+    expect(labels.length).toBeGreaterThan(0);
+    for (const l of labels) {
+      expect(l.props.accessibilityElementsHidden).toBe(true);
+      expect(l.props.importantForAccessibility).toBe('no');
+    }
+    // Exactly one element speaks the row, and it carries label + value together.
+    const speakers = root.findAll(n => typeof n.type === 'string' && n.props.accessibilityLabel === spoken);
+    expect(speakers).toHaveLength(1);
+    // No second element in the row repeats the label text on its own.
+    const stray = root.findAll(n => typeof n.type === 'string' && typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.startsWith(label) && n.props.accessibilityLabel !== spoken);
+    expect(stray).toHaveLength(0);
+  });
+
+  test('a read-only Reason row is one grouped announcement', () => {
+    const { BlockEvidence } = require('../components/recovery/RecoveryEvidence');
+    let c;
+    act(() => { c = render.create(<BlockEvidence block={block({ reason: 'torn hamstring' })} weeks={[]} notes={[]} unit="lb" />); });
+    const row = hostById(c.root, 'recovery-reason-row')[0];
+    expect(row.props.accessible).toBe(true);
+    expect(row.props.accessibilityLabel).toBe('Reason: torn hamstring');
   });
 
   test('completed block: "Dates" row with the range, Reason row, and the Reopen control stay above the context block', () => {
