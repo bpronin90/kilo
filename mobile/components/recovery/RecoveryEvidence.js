@@ -17,6 +17,7 @@ import {
 } from '../../lib/data/recoveryReturnBands';
 import { summarizeDetailRows, WeekEvidence, WeekUnavailableNotice } from './RecoveryStateGroups';
 import { WeekPicker } from './RecoveryWeekPicker';
+import { RebuildBaselineAction } from './RebuildBaseline';
 import { deriveTrainedElsewhere } from './RecoveryWeekIndex';
 import { createStyles } from './analyticsRecoveryStyles';
 import { RecoveryBandBar, RecoveryChangeVisual, RecoveryHero, RecoveryRosterSummary, RecoveryWeeksStrip } from './RecoveryVisuals';
@@ -54,6 +55,8 @@ export function BlockEvidence({
   // that reached them (Codex review, PR #877).
   reasonLocked = false,
   onSaveReason,
+  // v1 baseline rebuild (#1227): offered only when the block + routine qualify.
+  onRebuildBaseline,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
@@ -435,6 +438,9 @@ export function BlockEvidence({
             </Pressable>
           </View>
         </View>
+      ) : null}
+      {onRebuildBaseline ? (
+        <RebuildBaselineAction block={block} notes={notes} unit={unit} locked={reasonLocked} onRebuild={onRebuildBaseline} />
       ) : null}
     </Card>
   );

@@ -12,6 +12,7 @@ import {
   isLiveRecord,
   nextWeekNumber,
   orderedLiveWeeks,
+  planBaselineRebuild,
 } from '../lib/data/recoveryBlocks';
 import {
   RECOVERY_BLOCKS_KEY,
@@ -39,6 +40,7 @@ import {
   uncompleteRecoveryWeek,
   updateRecoveryBlock,
   updateRecoveryWeek,
+  replaceRecoveryBlockBaseline,
 } from '../storage/entries/recoveryStorage';
 import * as readListModule from '../storage/entries/jsonStorage';
 import * as writeListModule from '../storage/entries/jsonStorage';
@@ -55,6 +57,7 @@ import {
   addRecoveryWeekWithNewNoteCore,
   completeCurrentWeekCore,
   completeRecoveryBlockCore,
+  rebuildRecoveryBaselineCore,
   reopenRecoveryBlockCore,
   startRecoveryBlockCore,
   uncompleteCurrentWeekCore,
@@ -2941,5 +2944,137 @@ describe('declaration parity with the parser (#1225)', () => {
     const nonAmrap = code.split('\n').filter(l => !/AMRAP|amrap/.test(l)).join('\n');
     expect(nonAmrap).not.toMatch(/\[xX×\]/);
     expect(nonAmrap).not.toMatch(/sec\|secs|minutes\?|mins\?/);
+  });
+});
+
+// ── on-demand v1 -> v2 baseline rebuild (#1227) ───────────────────────────────
+
+describe('baseline rebuild (#1227)', () => {
+  const ROUTINE = '-Squat 3x5\n- 225 5,5,5\n-Bench 3x5\n- 135 5,5,4';
+  const V1 = { version: 1, exercises: [{ key: 'bench', name: 'Bench', exercise_class: 'weighted', top_weight: 100, volume: 300, sets_completed: 3 }] };
+  const note = (over = {}) => ({ id: 'n1', title: 'Routine', raw_text: ROUTINE, updated_at: '2026-04-01T00:00:00Z', deleted_at: null, ...over });
+  const v1Block = (over = {}) => ({
+    id: 'rb1', baseline_note_id: 'n1', baseline_note_title: 'Routine', baseline: V1,
+    started_at: '2026-05-01T00:00:00Z', completed_at: null, saved_at: '2026-05-01T00:00:00Z',
+    updated_at: '2026-05-01T00:00:00Z', deleted_at: null, include_in_normal_analytics: false, reason: 'knee', ...over,
+  });
+  const EXPECTED = captureRecoveryBaselineFromText(ROUTINE);
+  const storageFor = (notes) => ({ ...journalStorage, loadWorkoutNotes: async () => notes, replaceRecoveryBlockBaseline });
+
+  describe('planBaselineRebuild', () => {
+    test('eligible v1 plan uses the exact v2 capture and carries the previous rows', () => {
+      const plan = planBaselineRebuild(v1Block(), note());
+      expect(plan.eligible).toBe(true);
+      expect(plan.baseline).toEqual(captureRecoveryBaselineFromText(ROUTINE));
+      expect(plan.baseline.version).toBe(2);
+      expect(plan.baseline.exercises.map(e => e.key)).toEqual(['squat', 'bench']);
+      expect(plan.previous).toEqual(V1.exercises);
+      expect(plan.editedAfterStart).toBe(false);
+    });
+
+    test('warns only when both timestamps parse and the note is newer than the start', () => {
+      expect(planBaselineRebuild(v1Block(), note({ updated_at: '2026-06-01T00:00:00Z' })).editedAfterStart).toBe(true);
+      expect(planBaselineRebuild(v1Block(), note({ updated_at: undefined })).editedAfterStart).toBe(false);
+      expect(planBaselineRebuild(v1Block(), note({ updated_at: 'garbage' })).editedAfterStart).toBe(false);
+      expect(planBaselineRebuild(v1Block({ started_at: 'garbage' }), note({ updated_at: '2026-06-01T00:00:00Z' })).editedAfterStart).toBe(false);
+    });
+
+    test.each([
+      ['v2 block', v1Block({ baseline: captureRecoveryBaselineFromText(ROUTINE) }), note()],
+      ['tombstoned block', v1Block({ deleted_at: '2026-06-01T00:00:00Z' }), note()],
+      ['missing note', v1Block(), undefined],
+      ['deleted note', v1Block(), note({ deleted_at: '2026-06-01T00:00:00Z' })],
+      ['different note id', v1Block(), note({ id: 'other' })],
+      ['oversized note', v1Block(), note({ raw_text: 'x'.repeat(200001) })],
+      ['note with nothing to capture', v1Block(), note({ raw_text: '-Bench\n- garbage' })],
+      ['non-string note text', v1Block(), note({ raw_text: null })],
+    ])('%s is ineligible', (_name, blk, n) => {
+      expect(planBaselineRebuild(blk, n).eligible).toBe(false);
+    });
+  });
+
+  describe('replaceRecoveryBlockBaseline', () => {
+    const v2 = captureRecoveryBaselineFromText(ROUTINE);
+
+    test('replaces only baseline and stamps updated_at', async () => {
+      await replaceRecoveryBlocksRaw([v1Block({ completed_at: '2026-06-01T00:00:00Z' })]);
+      const updated = await replaceRecoveryBlockBaseline('rb1', v2);
+      expect(updated.baseline).toEqual(v2);
+      expect(updated.updated_at).not.toBe('2026-05-01T00:00:00Z');
+      expect({ ...updated, baseline: null, updated_at: null }).toEqual({ ...v1Block({ completed_at: '2026-06-01T00:00:00Z' }), baseline: null, updated_at: null });
+    });
+
+    test('rejects v2 (repeat), tombstone, unknown id, and non-v2 replacement without writing', async () => {
+      await replaceRecoveryBlocksRaw([v1Block({ id: 'a', baseline: v2 }), v1Block({ id: 'b', deleted_at: '2026-06-01T00:00:00Z' }), v1Block({ id: 'c' })]);
+      const before = JSON.stringify(await loadRecoveryBlocksRaw());
+      await expect(replaceRecoveryBlockBaseline('a', v2)).rejects.toMatchObject({ code: RECOVERY_ERROR_CODES.BASELINE_NOT_REBUILDABLE });
+      await expect(replaceRecoveryBlockBaseline('b', v2)).rejects.toMatchObject({ code: RECOVERY_ERROR_CODES.BLOCK_NOT_FOUND });
+      await expect(replaceRecoveryBlockBaseline('zz', v2)).rejects.toMatchObject({ code: RECOVERY_ERROR_CODES.BLOCK_NOT_FOUND });
+      await expect(replaceRecoveryBlockBaseline('c', V1)).rejects.toMatchObject({ code: RECOVERY_ERROR_CODES.BASELINE_NOT_REBUILDABLE });
+      expect(JSON.stringify(await loadRecoveryBlocksRaw())).toBe(before);
+    });
+
+    test('the generic patch path still cannot replace a baseline', async () => {
+      await replaceRecoveryBlocksRaw([v1Block()]);
+      const result = await updateRecoveryBlock('rb1', { baseline: v2 });
+      expect(result.baseline).toEqual(V1);
+    });
+  });
+
+  describe('rebuildRecoveryBaselineCore', () => {
+    test.each([['active', null], ['completed', '2026-06-01T00:00:00Z']])('%s block rebuilds, preserving every other field', async (_n, completed_at) => {
+      const original = v1Block({ completed_at });
+      await replaceRecoveryBlocksRaw([original]);
+      const result = await rebuildRecoveryBaselineCore(storageFor([note()]), { blockId: 'rb1', expectedBaseline: EXPECTED });
+      expect(result.ok).toBe(true);
+      const [stored] = await loadRecoveryBlocksRaw();
+      expect(stored.baseline).toEqual(captureRecoveryBaselineFromText(ROUTINE));
+      expect({ ...stored, baseline: null, updated_at: null }).toEqual({ ...original, baseline: null, updated_at: null });
+    });
+
+    test('a second confirm after success writes nothing (idempotent)', async () => {
+      await replaceRecoveryBlocksRaw([v1Block()]);
+      await rebuildRecoveryBaselineCore(storageFor([note()]), { blockId: 'rb1', expectedBaseline: EXPECTED });
+      const after = JSON.stringify(await loadRecoveryBlocksRaw());
+      const again = await rebuildRecoveryBaselineCore(storageFor([note()]), { blockId: 'rb1', expectedBaseline: EXPECTED });
+      expect(again.ok).toBe(false);
+      expect(JSON.stringify(await loadRecoveryBlocksRaw())).toBe(after);
+    });
+
+    test.each([
+      ['note deleted after the preview opened', []],
+      ['note replaced by an unreadable one', [{ id: 'n1', raw_text: 'x'.repeat(200001) }]],
+    ])('stale state (%s) writes nothing', async (_n, notes) => {
+      await replaceRecoveryBlocksRaw([v1Block()]);
+      const before = JSON.stringify(await loadRecoveryBlocksRaw());
+      const result = await rebuildRecoveryBaselineCore(storageFor(notes), { blockId: 'rb1', expectedBaseline: EXPECTED });
+      expect(result.ok).toBe(false);
+      expect(JSON.stringify(await loadRecoveryBlocksRaw())).toBe(before);
+    });
+
+    test('a routine changed after the preview is rejected without writing', async () => {
+      await replaceRecoveryBlocksRaw([v1Block()]);
+      const before = JSON.stringify(await loadRecoveryBlocksRaw());
+      const changed = note({ raw_text: '-Squat 3x5\n- 245 5,5,5' });
+      const result = await rebuildRecoveryBaselineCore(storageFor([changed]), { blockId: 'rb1', expectedBaseline: EXPECTED });
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/changed since this preview/);
+      expect(JSON.stringify(await loadRecoveryBlocksRaw())).toBe(before);
+    });
+
+    test('tombstoned and unknown blocks are rejected', async () => {
+      await replaceRecoveryBlocksRaw([v1Block({ deleted_at: '2026-06-01T00:00:00Z' })]);
+      expect((await rebuildRecoveryBaselineCore(storageFor([note()]), { blockId: 'rb1', expectedBaseline: EXPECTED })).ok).toBe(false);
+      expect((await rebuildRecoveryBaselineCore(storageFor([note()]), { blockId: 'nope' })).ok).toBe(false);
+    });
+
+    test('a storage failure reports an error and changes nothing', async () => {
+      await replaceRecoveryBlocksRaw([v1Block()]);
+      const before = JSON.stringify(await loadRecoveryBlocksRaw());
+      const failing = { ...storageFor([note()]), replaceRecoveryBlockBaseline: async () => { throw new Error('disk full'); } };
+      const result = await rebuildRecoveryBaselineCore(failing, { blockId: 'rb1', expectedBaseline: EXPECTED });
+      expect(result).toMatchObject({ ok: false, error: 'disk full' });
+      expect(JSON.stringify(await loadRecoveryBlocksRaw())).toBe(before);
+    });
   });
 });

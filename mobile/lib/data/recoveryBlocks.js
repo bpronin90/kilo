@@ -38,6 +38,7 @@ export const RECOVERY_ERROR_CODES = Object.freeze({
   WEEK_NOT_FOUND: 'WEEK_NOT_FOUND',
   INVALID_BASELINE_NOTE: 'INVALID_BASELINE_NOTE',
   INVALID_NOTE_ID: 'INVALID_NOTE_ID',
+  BASELINE_NOT_REBUILDABLE: 'BASELINE_NOT_REBUILDABLE',
 });
 
 // ── the optional "why this block started" reason (#872) ───────────────────────
@@ -383,6 +384,35 @@ export function captureRecoveryBaseline(rawSections) {
 export function captureRecoveryBaselineFromText(rawText) {
   const parsed = parseWorkoutNote(rawText || '');
   return captureRecoveryBaseline(parsed.sections || []);
+}
+
+// ── on-demand v1 -> v2 baseline rebuild (#1227) ───────────────────────────────
+//
+// Pure plan for rebuilding a live v1 block's frozen baseline from its baseline
+// routine. It reuses `captureRecoveryBaseline` (the exact v2 capture path, never a
+// second derivation). `eligible` is false for a tombstoned or already-v2 block,
+// and for a missing/deleted/other-id, oversized, unparseable or empty routine.
+// `editedAfterStart` is true only when BOTH timestamps parse and the note is newer.
+export function planBaselineRebuild(block, note) {
+  const no = (message) => ({ eligible: false, message });
+  if (!block || !isLiveRecord(block) || block.baseline?.version !== 1) {
+    return no('This block’s baseline cannot be rebuilt.');
+  }
+  if (!note || note.deleted_at || note.id !== block.baseline_note_id || typeof note.raw_text !== 'string') {
+    return no('The baseline routine is no longer available.');
+  }
+  const parsed = parseWorkoutNote(note.raw_text);
+  if (parsed.ok === false) return no('The baseline routine could not be read.');
+  const baseline = captureRecoveryBaseline(parsed.sections || []);
+  if (baseline.exercises.length === 0) return no('The baseline routine has no exercises to rebuild from.');
+  const noteTime = Date.parse(note.updated_at);
+  const startTime = Date.parse(block.started_at);
+  return {
+    eligible: true,
+    baseline,
+    previous: block.baseline.exercises || [],
+    editedAfterStart: Number.isFinite(noteTime) && Number.isFinite(startTime) && noteTime > startTime,
+  };
 }
 
 // Recursively freeze the snapshot. The frozen baseline is authoritative after

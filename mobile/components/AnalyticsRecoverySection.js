@@ -61,7 +61,7 @@ export function AnalyticsRecoverySection({
   // names the latest, which is the whole answer for most visits.
   const [historyCollapsed, setHistoryCollapsed] = useState(true);
   const [focusedBlockId, setFocusedBlockId] = useState(null);
-  const { setIncludeInNormalAnalytics, reopenBlock, setBlockReason } = useRecoveryBlockLifecycle();
+  const { setIncludeInNormalAnalytics, reopenBlock, setBlockReason, rebuildBaseline } = useRecoveryBlockLifecycle();
   const [inclusionBusyBlockId, setInclusionBusyBlockId] = useState(null);
   const [inclusionError, setInclusionError] = useState(null);
   const [reopenBusy, setReopenBusy] = useState(false);
@@ -243,6 +243,7 @@ export function AnalyticsRecoverySection({
         // advertised as available.
         reasonLocked={!mutationsAllowed || hasPendingRecovery}
         onSaveReason={setBlockReason}
+        onRebuildBaseline={rebuildBaseline}
       />
 
       {completedBlocks.length > 0 && (

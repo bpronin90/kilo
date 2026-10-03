@@ -98,7 +98,7 @@ const ALL_EXPORTS = [
   'startRecoveryBlockCore', 'useStartRecoveryBlock', 'completeCurrentWeekCore', 'uncompleteCurrentWeekCore',
   'addRecoveryWeekCore', 'addRecoveryWeekWithNewNoteCore', 'completeRecoveryBlockCore', 'reopenRecoveryBlockCore',
   'unlinkRecoveryWeekCore', 'unlinkNoteForDeleteCore', 'setRecoveryNormalAnalyticsInclusionCore',
-  'setRecoveryBlockReasonCore', 'useRecoveryBlockLifecycle',
+  'setRecoveryBlockReasonCore', 'rebuildRecoveryBaselineCore', 'useRecoveryBlockLifecycle',
 ];
 
 // A live, active block owned by "owner A" plus one live week whose note is
