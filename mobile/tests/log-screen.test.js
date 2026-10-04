@@ -1319,8 +1319,8 @@ describe('Log web edit path: explicit edit control is wired (#314)', () => {
   test('active routine card renders an explicit Edit control bound to enterCurrentEditor', () => {
     // LogActiveRoutineCard exposes a single-press "Edit" button (web-usable path)
     // separate from the double-tap body handler.
-    expect(src).toMatch(/enterCurrentEditor\(\)/);
-    expect(src).toMatch(/>Edit</);
+    // #1244: the Edit item is a data-driven Routine actions menu entry.
+    expect(src).toMatch(/label: 'Edit', a11y: 'Edit routine', run: enterCurrentEditor/);
   });
 });
 
@@ -3885,6 +3885,9 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     // Identity only: title, subtitle, badge — and not one nested control.
     const header = pressableAround(root, t => t.includes('Current routine'));
     expect(nestedPressablesUnder(header).length).toBe(0);
+    // #1244: the Routine actions trigger is the header's sibling, not in the body.
+    const headerRow = header.parent.parent;
+    expect(headerRow.findAll(n => n.props && n.props.accessibilityLabel === 'Routine actions').length).toBeGreaterThan(0);
     expect(header.findAll(n => n.type === 'Text' && String(n.props.children).includes('Recovery Week')).length)
       .toBeGreaterThan(0);
 
@@ -3939,47 +3942,55 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     ]);
   });
 
-  // #1194: the open menu is a compact wrapping in-flow row (no absolute overlay,
-  // no reserved height); items keep 44dp targets; toggling and choosing an
-  // item both leave no menu behind.
-  test('the Routine actions menu is a compact in-flow row that toggles and closes', () => {
-    let component;
-    render.act(() => {
-      component = render.create(
-        <LogActiveRoutineCard
-          workoutNoteTitle={LONG_TITLE}
-          hasABWeeks={true}
-          effectiveActiveWeek="A"
-          handleToggleWeek={jest.fn()}
-          enterCurrentEditor={jest.fn()}
-          handleNoteBodyPress={jest.fn()}
-          handleSkipWeek={jest.fn()}
-          handleUnskipWeek={jest.fn()}
-          canUnskipWeek={false}
-          toggleCollapsed={jest.fn()}
-          isCollapsed={false}
-          dayGroups={[]}
-          trackedLifts={{}}
-          handleToggleTrack={jest.fn()}
-          roughNoteId="n1"
-          currentId="n1"
-          roughFlaggedNames={new Set()}
-          activeEditText=""
-          recoveryWeekNumber={2}
-        />
-      );
-    });
+  // #1244: the open menu is a compact Modal sheet, so the card's own layout is
+  // untouched (no content shift); items keep 44dp targets; Remove skip is a
+  // menu item only when a skip exists; toggling and choosing both close it.
+  test('the Routine actions menu is a compact sheet that toggles, closes, and gates Remove skip', () => {
+    const { Modal } = require('react-native');
+    const renderIt = (canUnskipWeek, handleUnskipWeek = jest.fn()) => {
+      let component;
+      render.act(() => {
+        component = render.create(
+          <LogActiveRoutineCard
+            workoutNoteTitle={LONG_TITLE}
+            hasABWeeks={true}
+            effectiveActiveWeek="A"
+            handleToggleWeek={jest.fn()}
+            enterCurrentEditor={jest.fn()}
+            handleNoteBodyPress={jest.fn()}
+            handleSkipWeek={jest.fn()}
+            handleUnskipWeek={handleUnskipWeek}
+            canUnskipWeek={canUnskipWeek}
+            toggleCollapsed={jest.fn()}
+            isCollapsed={false}
+            dayGroups={[]}
+            trackedLifts={{}}
+            handleToggleTrack={jest.fn()}
+            roughNoteId="n1"
+            currentId="n1"
+            roughFlaggedNames={new Set()}
+            activeEditText=""
+            recoveryWeekNumber={2}
+          />
+        );
+      });
+      return component;
+    };
+    const component = renderIt(false);
     const root = component.root;
     const trigger = () => root.findAll(n => n.props && n.props.accessibilityLabel === 'Routine actions')[0];
     const menu = () => root.findAll(n => n.props && n.props.testID === 'log-current-routine-menu')[0];
     render.act(() => { trigger().props.onPress({ stopPropagation: jest.fn() }); });
     expect(trigger().props.accessibilityState).toEqual({ expanded: true });
-    const menuStyle = flatStyle(menu());
-    expect(menuStyle.position).toBeUndefined();
-    expect(menuStyle.flexDirection).toBe('row');
-    expect(menuStyle.flexWrap).toBe('wrap');
+    // The menu renders inside a Modal, never in the card's in-flow layout.
+    expect(menu()).toBeTruthy();
+    let p = menu().parent; while (p && p.type !== Modal) p = p.parent;
+    expect(p).toBeTruthy();
+    expect(p.props.visible).toBe(true);
     const items = root.findAll(n => n.props && n.props.accessibilityRole === 'menuitem' && n.props.onPress);
-    expect(items.length).toBe(4);
+    expect(items.map(i => i.props.accessibilityLabel)).toEqual([
+      'Edit routine', `Copy routine ${LONG_TITLE}`, 'Share routine', 'Share routine as image',
+    ]);
     items.forEach(i => expect(flatStyle(i).minHeight).toBeGreaterThanOrEqual(44));
     render.act(() => { trigger().props.onPress({ stopPropagation: jest.fn() }); });
     expect(menu()).toBeUndefined();
@@ -3988,6 +3999,15 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     render.act(() => { edit.props.onPress({ stopPropagation: jest.fn() }); });
     expect(menu()).toBeUndefined();
     expect(trigger().props.accessibilityState).toEqual({ expanded: false });
+
+    const unskip = jest.fn();
+    const skipped = renderIt(true, unskip).root;
+    const t2 = skipped.findAll(n => n.props && n.props.accessibilityLabel === 'Routine actions')[0];
+    render.act(() => { t2.props.onPress({ stopPropagation: jest.fn() }); });
+    const remove = skipped.findAll(n => n.props && n.props.accessibilityRole === 'menuitem' && n.props.accessibilityLabel === 'Remove skip' && n.props.onPress)[0];
+    expect(flatStyle(remove).minHeight).toBeGreaterThanOrEqual(44);
+    render.act(() => { remove.props.onPress({ stopPropagation: jest.fn() }); });
+    expect(unskip).toHaveBeenCalledTimes(1);
   });
 
   test('LogPreviousRoutines: the header holds identity only; the expanded body carries the controls', () => {
@@ -4255,8 +4275,11 @@ describe('Log action hierarchy (#711)', () => {
       expect(props.handleUnskipWeek).not.toHaveBeenCalled();
     });
 
-    test('with a trailing skip present, only "Remove skip" is on screen', () => {
+    test('with a trailing skip present, only "Remove skip" is offered, inside the Routine actions menu', () => {
       const { root, props } = renderActiveCard({ canUnskipWeek: true });
+      // #1244: no standalone row — Remove skip is a menu item.
+      expect(textNodes(root, 'Remove skip').length).toBe(0);
+      openCurrentRoutineMenu(root);
       expect(textNodes(root, 'Remove skip').length).toBe(1);
       expect(textNodes(root, 'Skip week').length).toBe(0);
 
@@ -4275,6 +4298,7 @@ describe('Log action hierarchy (#711)', () => {
 
     test('neither control renders when the screen supplies no skip handlers', () => {
       const { root } = renderActiveCard({ handleSkipWeek: undefined, handleUnskipWeek: undefined, canUnskipWeek: true });
+      openCurrentRoutineMenu(root);
       expect(textNodes(root, 'Skip week').length).toBe(0);
       expect(textNodes(root, 'Remove skip').length).toBe(0);
     });

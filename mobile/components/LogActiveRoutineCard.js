@@ -1,8 +1,7 @@
-// The active routine card (#711 information hierarchy): the header carries
-// identity only — title, `Week X · Current routine`, recovery badge — and every
-// action lives in the one action strip directly under it. The header stays a
-// press target for collapse/expand; it hosts no controls of its own, so a
-// header can never win a width fight with its own title.
+// The active routine card (#711 information hierarchy): the collapse target
+// carries identity only — title, `Week X · Current routine`, recovery badge. Its
+// one sibling is the 44dp Routine actions trigger (#1244); Week A/B and Skip
+// week live in the strip under it. The title column keeps a width floor.
 //
 // This is the Current routine card, which the Log tab's style lock
 // (`screens/LogScreen.js` lines 1-46) holds tighter than the rest of the tab:
@@ -12,7 +11,7 @@
 // which sits on a `chipBackground` fill, takes `colors.chipAccentText`. The
 // card's 4px `accent` border and every other value here remain locked.
 //
-// #1021 (menu now a compact in-flow row, #1194) owner-authorized exception, scoped to the action strip only: the
+// #1021 (trigger in header + compact sheet, #1244) owner-authorized exception, scoped to the action strip only: the
 // four individual action pills this card used to show inline (Edit, Share,
 // Copy, Share as Image) are consolidated into one 44dp three-dot menu
 // (`menuButton` / `actionMenu`), so the header's only ALWAYS-visible pill is
@@ -29,7 +28,7 @@
 // surfaceCard bg / surfaceBorder dividers; skip and status lines use
 // on-surface-variant. No behavioral, data, or navigation change.
 import React, { useEffect, useMemo, useState } from 'react';
-import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Card } from './UI';
 import { useTheme } from '../theme/ThemeContext';
@@ -191,7 +190,43 @@ export function LogActiveRoutineCard({
   return (
     <View style={styles.mirrorContainer}>
       {imageShare && <RoutineShareModal {...imageShare} onClose={() => setImageShare(null)} />}
+      {/* #1244: a compact sheet over a dismissable scrim, so opening it never
+          shifts card content and the card's overflow clip cannot cut it off. */}
+      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+        <Pressable style={styles.menuScrim} onPress={() => setMenuOpen(false)} accessibilityLabel="Close routine actions">
+          <View style={styles.actionMenu} accessibilityRole="menu" testID="log-current-routine-menu">
+            {[
+              { label: 'Edit', a11y: 'Edit routine', run: enterCurrentEditor },
+              // #956: Copy and Share stay distinct actions, not merged.
+              { label: 'Copy', a11y: `Copy routine ${workoutNoteTitle || 'Untitled Routine'}`, run: handleCopyRoutine },
+              { label: 'Share', a11y: 'Share routine', run: handleShareRoutine },
+              {
+                label: 'Share as Image',
+                a11y: 'Share routine as image',
+                run: () => setImageShare({ title: workoutNoteTitle, rawText: routineRawText ?? activeEditText }),
+              },
+              // "Remove skip", not "Undo skip": that text collides with the editor's "Undo".
+              canUnskipWeek && handleUnskipWeek
+                ? { label: 'Remove skip', a11y: 'Remove skip', run: handleUnskipWeek }
+                : null,
+            ].filter(Boolean).map(item => (
+              <Pressable
+                key={item.label}
+                onPress={(e) => { e?.stopPropagation?.(); setMenuOpen(false); return item.run(); }}
+                style={styles.actionMenuItem}
+                accessibilityRole="menuitem"
+                accessibilityLabel={item.a11y}
+              >
+                <Text style={styles.actionMenuItemText}>{item.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
       <Card style={styles.currentRoutineCard}>
+        {/* #1244: the header row pairs the collapse target with the Routine
+            actions trigger as siblings, so the collapse press hosts no nested control. */}
+        <View style={styles.headerRow}>
         <Pressable
           onPress={() => { setMenuOpen(false); toggleCollapsed(); }} // Tapping the header collapses/expands the card body
           style={styles.otherNoteHeader}
@@ -221,16 +256,26 @@ export function LogActiveRoutineCard({
             )}
           </View>
         </Pressable>
+          <Pressable
+            onPress={() => setMenuOpen(o => !o)}
+            style={styles.menuButton}
+            accessibilityRole="button"
+            accessibilityLabel="Routine actions"
+            accessibilityHint="Opens Edit, Copy, Share, and Share as Image"
+            accessibilityState={{ expanded: menuOpen }}
+          >
+            <MaterialIcons name="more-horiz" size={20} color={kua ? kua.onSurfaceVariant : colors.chipAccentText} accessible={false} />
+          </Pressable>
+        </View>
 
         <Pressable
           onPress={handleNoteBodyPress}
           style={[styles.currentNoteContent, isCollapsed ? { display: 'none' } : null]}
         >
-          {/* The card's one action strip. `Double-tap to edit` used to live on
-              the left of this row; the explicit `Edit` control supersedes it as
-              the advertised path. handleNoteBodyPress stays wired on the body
-              above, so the double-tap gesture still works for users who know
-              it — it is simply no longer the only way in. */}
+          {/* The card's action strip: Week A/B and Skip week only. #1244 moved
+              the Routine actions trigger to the header and Remove skip into the
+              menu, so a skipped single-week routine renders no strip at all. */}
+          {(hasABWeeks || (!canUnskipWeek && handleSkipWeek)) && (
           <View style={styles.actionStrip}>
             <View style={styles.actionStripPrimary}>
               {hasABWeeks && (
@@ -247,100 +292,23 @@ export function LogActiveRoutineCard({
                   </Text>
                 </Pressable>
               )}
-              {/* #1021: the one entry point for Edit, Copy, Share, and Share
-                  as Image; icon-only at the 44dp floor. #1194: opens a compact
-                  in-flow row under the strip, so nothing is reserved when closed. */}
-              <Pressable
-                onPress={(e) => { e.stopPropagation(); setMenuOpen(o => !o); }}
-                style={styles.menuButton}
-                accessibilityRole="button"
-                accessibilityLabel="Routine actions"
-                accessibilityHint="Opens Edit, Copy, Share, and Share as Image"
-                accessibilityState={{ expanded: menuOpen }}
-              >
-                <MaterialIcons name="more-horiz" size={20} color={kua ? kua.onSurfaceVariant : colors.chipAccentText} accessible={false} />
-              </Pressable>
             </View>
-            {/* One skip control, never two (#711). Previously both rendered and
-                `canUnskipWeek` only dimmed `Remove skip` to opacity 0.4 over
-                already-muted text — two contradictory-looking controls, with the
-                disabled state carried by opacity alone (ui-design-rules §13
-                contrast). The state now decides which single control exists. */}
-            <View style={styles.skipWeekActions}>
-              {canUnskipWeek ? (
-                handleUnskipWeek && (
-                  <Pressable
-                    onPress={(e) => { e.stopPropagation(); handleUnskipWeek(); }}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    style={styles.skipWeekButton}
-                    accessibilityLabel="Remove skip"
-                    accessibilityRole="button"
-                  >
-                    {/* Deliberately not "Undo skip": that text collides with the
-                        unrelated editor-header "Undo" button substring-matched
-                        by tests elsewhere in this screen tree. */}
-                    <Text style={styles.skipWeekText}>Remove skip</Text>
-                  </Pressable>
-                )
-              ) : (
-                handleSkipWeek && (
-                  <Pressable
-                    onPress={(e) => { e.stopPropagation(); handleSkipWeek(); }}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    style={styles.skipWeekButton}
-                    accessibilityLabel="Skip week"
-                    accessibilityRole="button"
-                  >
-                    <Text style={styles.skipWeekText}>Skip week</Text>
-                  </Pressable>
-                )
-              )}
-            </View>
+            {/* One skip control, never two (#711): Skip week here, or Remove
+                skip in the Routine actions menu (#1244). */}
+            {!canUnskipWeek && handleSkipWeek && (
+              <View style={styles.skipWeekActions}>
+                <Pressable
+                  onPress={(e) => { e.stopPropagation(); handleSkipWeek(); }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={styles.skipWeekButton}
+                  accessibilityLabel="Skip week"
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.skipWeekText}>Skip week</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
-          {menuOpen && (
-            <View
-              style={styles.actionMenu}
-              accessibilityRole="menu"
-              testID="log-current-routine-menu"
-            >
-              <Pressable
-                onPress={(e) => { e.stopPropagation(); setMenuOpen(false); enterCurrentEditor(); }}
-                style={styles.actionMenuItem}
-                accessibilityRole="menuitem"
-                accessibilityLabel="Edit routine"
-              >
-                <Text style={styles.actionMenuItemText}>Edit</Text>
-              </Pressable>
-              {/* #956: Copy and Share stay distinct actions, not merged. */}
-              <Pressable
-                onPress={(e) => { e.stopPropagation(); setMenuOpen(false); return handleCopyRoutine(); }}
-                style={styles.actionMenuItem}
-                accessibilityRole="menuitem"
-                accessibilityLabel={`Copy routine ${workoutNoteTitle || 'Untitled Routine'}`}
-              >
-                <Text style={styles.actionMenuItemText}>Copy</Text>
-              </Pressable>
-              <Pressable
-                onPress={(e) => { e.stopPropagation(); setMenuOpen(false); handleShareRoutine(); }}
-                style={styles.actionMenuItem}
-                accessibilityRole="menuitem"
-                accessibilityLabel="Share routine"
-              >
-                <Text style={styles.actionMenuItemText}>Share</Text>
-              </Pressable>
-              <Pressable
-                onPress={(e) => {
-                  e.stopPropagation();
-                  setMenuOpen(false);
-                  setImageShare({ title: workoutNoteTitle, rawText: routineRawText ?? activeEditText });
-                }}
-                style={styles.actionMenuItem}
-                accessibilityRole="menuitem"
-                accessibilityLabel="Share routine as image"
-              >
-                <Text style={styles.actionMenuItemText}>Share as Image</Text>
-              </Pressable>
-            </View>
           )}
           {skipWeekStatus ? (
             <Text style={styles.skipWeekStatusText}>{skipWeekStatus}</Text>
@@ -441,6 +409,7 @@ const createStyles = (kua, colors) => StyleSheet.create({
     backgroundColor: kua ? kua.surfaceCard : undefined,
   },
   otherNoteHeader: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'flex-start',
     paddingVertical: 10,
@@ -540,24 +509,32 @@ const createStyles = (kua, colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // #1194: compact in-flow row under the strip (wraps at large text). Nothing
-  // is reserved while closed and no absolute positioning is needed.
-  actionMenu: {
+  // #1244: header row = collapse target + Routine actions trigger.
+  headerRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 8,
+    alignItems: 'flex-start',
+    paddingRight: 12,
+    backgroundColor: kua ? kua.surfaceCardHeader : undefined,
+  },
+  menuScrim: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.32)',
+  },
+  // #1244: compact bottom sheet — one 44dp row per action.
+  actionMenu: {
+    paddingVertical: 8,
+    paddingBottom: 24,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    backgroundColor: kua ? kua.surfaceCard : colors.card,
   },
   actionMenuItem: {
     minHeight: 44,
     justifyContent: 'center',
-    paddingHorizontal: 14,
-    maxWidth: '100%',
-    flexShrink: 1,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
-    backgroundColor: kua ? kua.surfaceCard : colors.chipBackground,
+    paddingHorizontal: 24,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   actionMenuItemText: {
     fontSize: 13,
