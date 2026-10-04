@@ -242,7 +242,7 @@ export function applyProgressionSuggestionToNoteText(rawText, suggestion) {
           _EXERCISE_CORE_RE.test(header);
         // 3 = non-warmup, header declares a rep range (the working exercise);
         // 2 = non-warmup, no declaration; 1 = warmup; 0 = cannot host a row.
-        const rank = !opensExercise ? 0 : isWarmup ? 1 : parseHeaderDeclaration(header) ? 3 : 2;
+        const rank = !opensExercise ? 0 : isWarmup ? 1 : (d => d && d.type !== 'timed')(parseHeaderDeclaration(header)) ? 3 : 2;
         if (rank > bestRank) {
           bestRank = rank;
           bestIdx = occ;
