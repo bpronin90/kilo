@@ -626,12 +626,13 @@ describe('parseWorkoutRow', () => {
 
   test('progression row targets the lifting block, not a same-name timed header (#1251)', () => {
     const { applyProgressionSuggestionToNoteText } = require('../lib/parser/workoutNote');
-    const lines = ['-Bench Press 5 min', '-Bench Press: 3x8-10', '135 10,10,10', '135 10,10,10'];
+    const lines = ['-Bench 5 min', '-Bench 5 min 3x8-10', '135 10,10,10', '135 10,10,10'];
     const { sections } = parseWorkoutNote(lines.join('\n'));
-    const suggestion = require('../lib/data/progressionSuggestions').deriveProgressionSuggestion(sections, 'Bench Press');
+    const suggestion = require('../lib/data/progressionSuggestions').deriveProgressionSuggestion(sections, 'Bench 5 min');
     const result = applyProgressionSuggestionToNoteText(lines.join('\n'), suggestion);
     expect(result.applied).toBe(true);
     expect(result.text.endsWith('\n140 8,8,8')).toBe(true);
+    expect(result.text.indexOf('140 8,8,8')).toBeGreaterThan(result.text.indexOf('3x8-10'));
   });
 
   test('weight + single-rep group', () => {
