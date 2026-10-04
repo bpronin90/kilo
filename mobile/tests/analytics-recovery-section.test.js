@@ -413,10 +413,10 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
     // context at the bottom, never a title-like caption above the hero.
     const texts = findAllText(root);
     expect(texts.indexOf('Recovery')).toBeLessThan(texts.indexOf('Week 1'));
-    expect(texts.indexOf('Week 1')).toBeLessThan(texts.indexOf('2 of 2'));
+    expect(texts.indexOf('Week 1')).toBeLessThan(texts.indexOf('2/2'));
     // The hero label names the routine, so the bottom line is dates only.
     const ctxText = texts.find(t => t === '05-01-2026');
-    expect(texts.indexOf('2 of 2')).toBeLessThan(texts.indexOf(ctxText));
+    expect(texts.indexOf('2/2')).toBeLessThan(texts.indexOf(ctxText));
     const routine = hostText(root, ctxText)[0];
     expect(sizeOf(routine).fontSize).toBeGreaterThanOrEqual(13);
     expect(sizeOf(routine).fontSize).toBeLessThan(sizeOf(title).fontSize);
@@ -425,7 +425,7 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
   test('the top summary uses only sibling sizes: 18sp header, 32sp hero (Weight Trends KUA), 13sp captions', () => {
     const b = block({ reason: 'torn hamstring' });
     const root = setup({ blocks: [b], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
-    const hero = sizeOf(hostText(root, '2 of 2')[0]);
+    const hero = sizeOf(hostText(root, '2/2')[0]);
     // Same KUA hero as Weight Trends `weightValueLarge`: metric-display 32/36.
     expect(hero).toMatchObject({ fontSize: 32, lineHeight: 36 });
     expect(hero.fontSize).not.toBe(28);
@@ -438,7 +438,7 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
     const b = block({ reason: 'torn hamstring', started_at: '2026-05-01T00:00:00Z' });
     const root = setup({ blocks: [b], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
     const texts = findAllText(root);
-    const hero = texts.indexOf('2 of 2');
+    const hero = texts.indexOf('2/2');
     const ctx = texts.indexOf('05-01-2026');
     const reason = texts.indexOf('torn hamstring');
     expect(hero).toBeGreaterThan(-1);
@@ -576,7 +576,7 @@ describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b
     // Week 1 has a hero. Still exactly one live-region wrapper — it was
     // never unmounted and remounted across the branch switch.
     expect(liveRegions(root).length).toBe(1);
-    expect(hasText(root, '2 of 2')).toBe(true);
+    expect(hasText(root, '2/2')).toBe(true);
     expect(hasText(root, "note is no longer available")).toBe(false);
   });
 });
@@ -1276,7 +1276,7 @@ describe('AnalyticsRecoverySection — authoritative Recovery state (#716)', () 
       stateReady: true, stateRefreshing: true,
     });
 
-    expect(hasText(component.root, '2 of 2')).toBe(true);
+    expect(hasText(component.root, '2/2')).toBe(true);
     expect(texts(component)).not.toContain(RECOVERY_LOADING_MESSAGE);
     expect(texts(component)).not.toContain(RECOVERY_UNVERIFIED_MESSAGE);
     expect(texts(component)).not.toContain(RECOVERY_STALE_MESSAGE);
@@ -1292,7 +1292,7 @@ describe('AnalyticsRecoverySection — authoritative Recovery state (#716)', () 
     });
 
     expect(texts(component)).toContain(RECOVERY_LOADING_MESSAGE);
-    expect(hasText(component.root, '2 of 2')).toBe(false);
+    expect(hasText(component.root, '2/2')).toBe(false);
     expect(hasText(component.root, 'Push Pull Legs')).toBe(false);
   });
 });
@@ -1319,7 +1319,7 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     expect(hasText(root, 'baseline exercises met')).toBe(false);
     expect(hasText(root, 'Exercise details')).toBe(true);
     // The header no longer restates the hero's status.
-    expect(findAllText(root).filter(t => t === 'trained this week at or above').length).toBe(1);
+    expect(findAllText(root).filter(t => t === 'at baseline').length).toBe(1);
     expect(hasText(root, 'of 2 at or above baseline')).toBe(false);
     // #1219: collapsed shows the one shared bar + "N trained" stat, not a count sentence.
     expect(hasText(root, '3 exercises')).toBe(false);
@@ -1497,7 +1497,7 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     // Collapsed again, on the new block's own summary.
     expect(byLabel(root, 'Expand exercise details')).toBeDefined();
     expect(byLabel(root, 'Collapse exercise details')).toBeUndefined();
-    expect(hasText(root, '2 of 2')).toBe(true);
+    expect(hasText(root, '2/2')).toBe(true);
 
     expandDetails(root);
     expect(rowLabels(root).some(l => l.startsWith('Bench, At or above'))).toBe(true);
@@ -2679,8 +2679,8 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
       label: rosterLabel(root),
     }));
     for (const r of readings) {
-      // Hero "1 of 2" = at-or-above of trained; summary says the same trained and roster.
-      expect(r.hero).toContain('1 of 2');
+      // Hero "1/2" = at-or-above of trained; summary says the same trained and roster.
+      expect(r.hero).toContain('1/2');
       expect(r.tokens.slice(0, 2)).toEqual(['2', 'trained']);
       expect(r.label).toContain('Trained this week: 2 of 2 roster exercises');
       expect(r.label).not.toMatch(/of 3 roster/);
@@ -2705,7 +2705,7 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
       expect(count(label, "can't compare")).toBe(1);
       expect(count(label, 'added during recovery')).toBe(1);
       expect(label).toContain(`Trained this week: ${trained} of ${roster} roster exercises`);
-      expect(hostTextsIn(root.findAll(n => typeof n.type === 'string' && n.props.testID === 'recovery-hero')[0])).toContain(`1 of ${trained}`);
+      expect(hostTextsIn(root.findAll(n => typeof n.type === 'string' && n.props.testID === 'recovery-hero')[0])).toContain(`1/${trained}`);
     }
   });
 
@@ -3462,7 +3462,7 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
   test('the hero states its scope, names the routine once, and the label carries the full scope and name', () => {
     const root = mountOwner();
     const hero = hostById(root, 'recovery-hero')[0];
-    expect(hostTextsIn(hero)).toEqual(['Week 6', '0 of 7', 'trained this week at or above', 'Summer 2026 Routine baseline']);
+    expect(hostTextsIn(hero)).toEqual(['Week 6', '0/7', 'at baseline', 'Summer 2026 Routine baseline']);
     expect(findAllText(root).filter(t => t.includes('Summer 2026 Routine'))).toEqual(['Summer 2026 Routine baseline']);
     expect(hero.props.accessibilityLabel).toBe(
       'Week 6: 0 of 7 exercises trained this week at or above Summer 2026 Routine baseline. The count covers only exercises trained this week.'

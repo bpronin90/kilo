@@ -520,7 +520,7 @@ describe('deriveOverviewRows (#821)', () => {
     const oneK = rowFor(rows, 'oneK');
     expect(oneK.value).toBe(1000);
     expect(oneK.paused).toBe(true);
-    expect(oneK.pausedCaption).toBe('Baseline training paused during Recovery');
+    expect(oneK.pausedCaption).toBe('Paused');
     expect(oneK.delta).toBeNull();
     expect(oneK.deltaCaption).toBeNull();
   });
@@ -546,8 +546,8 @@ describe('deriveOverviewRows (#821)', () => {
     });
     const recovery = rowFor(rows, 'recovery');
     // #1242: the value stays the shared roster count Home prints.
-    expect(recovery.value).toBe(5);
-    expect(recovery.valueSuffix).toBe('of 5 trained');
+    expect(recovery.value).toBe('5/5');
+    expect(recovery.valueSuffix).toBe('trained');
     expect(recovery.infoCaption).toBe('Week 3 · 2 improved since Week 1 · 3 lifts matched');
     expect(recovery.valueSuffix).not.toMatch(/Week 3/);
     expect(recovery.valueSuffix).not.toMatch(/since Week/);
@@ -2639,7 +2639,7 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
     mockActiveTraining();
     const component = renderScreen();
     const root = component.root;
-    expect(hasText(root, 'Baseline training paused during Recovery')).toBe(true);
+    expect(hasText(root, 'Paused')).toBe(true);
   });
 
   // Review finding on PR #876: the 1K row rendered its frozen value and
@@ -2654,7 +2654,7 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
       const c = t.props.children;
       return Array.isArray(c) ? c.join('') : String(c ?? '');
     }).join(' ');
-    expect(oneKTexts).toContain('Baseline training paused during Recovery');
+    expect(oneKTexts).toContain('Paused');
     expect(oneKTexts.toLowerCase()).not.toContain('since your last session');
   });
 
@@ -2731,8 +2731,8 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
       expect(joined).toContain('Week 2');
       expect(joined).toContain('since Week 1');
       expect(joined).toContain('2 lifts matched');
-      // Never folded into valueSuffix, which stays the shared roster count (#1242).
-      expect(texts).toContain('of 2 trained');
+      // Never folded into valueSuffix, which stays the compact roster count (#1243).
+      expect(texts).toContain('trained');
       expect(texts.some(t => t.startsWith('of ') && /Week|improved/.test(t))).toBe(false);
 
       const infoCaptionNode = textNodesOf(row).find(t => {
@@ -2836,7 +2836,7 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
     const root = component.root;
     expect(root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).length).toBe(0);
     expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
-    expect(hasText(root, 'Baseline training paused during Recovery')).toBe(false);
+    expect(hasText(root, 'Paused')).toBe(false);
   });
 
   test('active Recovery suppresses the deload advisory on the session gauge but keeps the count', () => {

@@ -125,14 +125,15 @@ export function routineLabel(title) {
   return { full, visible };
 }
 
-// Hero: the one dominant element. A big factual number and one plain label;
+// Hero: the one dominant element. A compact fraction ("0/7 at baseline"), a
+// fill bar from that same fraction, then the routine as a secondary line;
 // the full sentence rides on the accessible label so nothing is lost to
 // screen readers. `trained === 0` has no number to show, only the plain fact.
 // The label states its SCOPE (#1219): the denominator counts only the exercises
 // trained in the selected week, not the whole routine, so "0 of 7" cannot be
 // misread against a roster of 27. The routine is named once, ellipsized.
 export function RecoveryHero({ weekLabel, atOrAbove, trained, routineTitle }) {
-  const { styles } = useVisual();
+  const { colors, kua, styles } = useVisual();
   const empty = trained === 0;
   const { full, visible } = routineLabel(routineTitle);
   const label = empty
@@ -148,9 +149,13 @@ export function RecoveryHero({ weekLabel, atOrAbove, trained, routineTitle }) {
         </>
       ) : (
         <>
-          <Text style={styles.heroNumber}>{`${atOrAbove} of ${trained}`}</Text>
-          <Text style={styles.heroLabel}>trained this week at or above</Text>
-          <Text style={styles.heroLabel} numberOfLines={1} ellipsizeMode="tail">{`${visible} baseline`}</Text>
+          <Text style={styles.heroNumber}>{`${atOrAbove}/${trained}`}</Text>
+          <Text style={styles.heroLabel}>at baseline</Text>
+          <View testID="recovery-hero-fill-track" style={[styles.segmentBar, { gap: 0 }]}>
+            <View testID="recovery-hero-fill" style={{ flex: atOrAbove, backgroundColor: bandColor('at_or_above', colors, kua) }} />
+            <View style={{ flex: Math.max(trained - atOrAbove, 0) }} />
+          </View>
+          <Text style={styles.heroWeek} numberOfLines={1} ellipsizeMode="tail">{`${visible} baseline`}</Text>
         </>
       )}
     </View>

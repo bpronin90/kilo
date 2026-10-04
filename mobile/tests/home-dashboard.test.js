@@ -600,7 +600,8 @@ describe('shared derived analytics (#1242)', () => {
     const analyticsLine = `${recoveryRow.value} ${recoveryRow.valueSuffix}`;
 
     expect(homeLine).toBe('4 of 7 trained · 3 not yet');
-    expect(analyticsLine).toBe(homeLine);
+    // #1243: Analytics prints the same numbers as a compact fraction.
+    expect(analyticsLine).toBe(`${counts.trained}/${counts.rosterSize} trained`);
 
     // Movement history only adds a caption; the count stays the shared one.
     const withMovement = deriveOverviewRows({
@@ -608,7 +609,7 @@ describe('shared derived analytics (#1242)', () => {
       recoveryBands: deriveRecoveryWeekBands(WEEK),
       recoveryMovement: { improved: 2, steady: 1, fell_back: 0, matched_size: 3, anchor_week_number: 1 },
     }).find(r => r.key === 'recovery');
-    expect(`${withMovement.value} ${withMovement.valueSuffix}`).toBe(homeLine);
+    expect(`${withMovement.value} ${withMovement.valueSuffix}`).toBe(analyticsLine);
     expect(deriveRecoverySummary(WEEK)).toEqual(counts);
   });
 

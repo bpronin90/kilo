@@ -2359,7 +2359,7 @@ describe('HomeScreen follows the shared active-training context (#869)', () => {
     const component = await mount();
 
     expect(has(component, 'home-baseline-paused-link')).toBe(true);
-    expect(hasText(component, 'Baseline training paused during Recovery')).toBe(true);
+    expect(hasText(component, 'Paused for recovery')).toBe(true);
     // home-strength-summary-link removed in KUA mode.
     expect(has(component, 'home-one-k-link')).toBe(false);
   });
@@ -2385,7 +2385,7 @@ describe('HomeScreen follows the shared active-training context (#869)', () => {
     expect(hasText(component, 'Recovery')).toBe(true);
     expect(hasText(component, 'Between weeks')).toBe(true);
     const link = component.root.findByProps({ testID: 'home-current-routine-link' });
-    expect(link.props.accessibilityLabel).toBe('Add week or end Recovery');
+    expect(link.props.accessibilityLabel).toBe('Next week');
 
     render.act(() => { link.props.onPress(); });
     // Never the frozen baseline note: lands on Recovery with no note target.
