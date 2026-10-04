@@ -20,6 +20,7 @@
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card } from './UI';
+import { InfoButton, InfoNote, useInfoExplainer } from './InfoExplainer';
 import { useTheme } from '../theme/ThemeContext';
 
 // A rendered suggestion instance is its normalized exercise identity plus the
@@ -131,6 +132,7 @@ export function ProgressionSuggestionCard({
   const { colors, kuaPalette: kua } = useTheme();
   const effectiveKua = surface === 'analytics' ? kua : null;
   const styles = useMemo(() => createStyles(colors, effectiveKua), [colors, effectiveKua]);
+  const [noteShown, toggleNote] = useInfoExplainer();
   if (!isRenderableProgressionSuggestion(suggestion) && !muted) return null;
   // A muted exercise renders nothing on the consuming surface — the mute
   // control itself lives elsewhere (the card is simply gone). This guard keeps
@@ -169,12 +171,24 @@ export function ProgressionSuggestionCard({
       >
       <View style={styles.headerRow}>
         <Text style={styles.exerciseName} numberOfLines={2}>{name}</Text>
+        <View style={styles.badgeGroup}>
         <View style={styles.heuristicBadge} accessible accessibilityLabel="Heuristic suggestion, not guaranteed">
           <Text style={styles.heuristicBadgeText}>HEURISTIC</Text>
         </View>
+        {/* #1245: the caveat sits behind the shared info icon beside the badge.
+            The card's grouped label above still speaks it in full. */}
+        <InfoButton
+          testID={`progression-suggestion-info-${surface}`}
+          expanded={noteShown}
+          onPress={toggleNote}
+          label="About heuristic suggestions"
+        />
+        </View>
       </View>
 
-      <Text style={styles.heuristicNote}>{heuristicNote}</Text>
+      <InfoNote shown={noteShown} testID={`progression-suggestion-note-${surface}`}>
+        <Text style={styles.heuristicNote}>{heuristicNote}</Text>
+      </InfoNote>
 
       {chips.length > 0 && (
         <View style={styles.chipRow}>
@@ -266,6 +280,11 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   cardBody: {
     gap: 8,
+  },
+  badgeGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
   },
   headerRow: {
     flexDirection: 'row',

@@ -809,9 +809,11 @@ describe('AnalyticsScreen 1K Progress Card', () => {
     const root = component.root;
 
     // The affordance is discoverable on the 1K Progress card.
-    const toggle = root.findByProps({ testID: 'onek-info-toggle' });
+    const toggle = root.findAll(n => n.props.testID === 'onek-info-toggle' && n.props.accessibilityRole === 'button')[0];
     expect(toggle).toBeTruthy();
-    expect(hasText(root, 'How is this calculated?')).toBe(true);
+    // #1245: shared info icon beside the 1K heading, no inline toggle copy.
+    expect(toggle.props.accessibilityLabel).toBe('How is the 1K calculated?');
+    expect(hasText(root, 'How is this calculated?')).toBe(false);
 
     // Explanation is collapsed until the user opens it.
     expect(hasText(root, 'most recent complete cycle')).toBe(false);
@@ -3081,6 +3083,10 @@ describe('AnalyticsScreen — progression-suggestion cards (#960)', () => {
     expect(rendered.length).toBe(2);
     expect(hasText(component.root, 'Consider 140 lb for 3x8 next time.')).toBe(true);
     expect(hasText(component.root, 'Consider 160 lb for 3x8 next time.')).toBe(true);
+    // #1245: the caveat sits behind each card's shared info icon.
+    expect(findAllText(component.root).some((t) => /not a guaranteed prescription/i.test(t))).toBe(false);
+    const info = component.root.findAll((n) => n.props.testID === 'progression-suggestion-info-analytics' && typeof n.props.onPress === 'function')[0];
+    await render.act(async () => { info.props.onPress(); });
     expect(findAllText(component.root).some((t) => /not a guaranteed prescription/i.test(t))).toBe(true);
   });
 

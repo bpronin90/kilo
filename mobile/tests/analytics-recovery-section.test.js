@@ -2732,6 +2732,10 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
     // The info control is INSIDE the date row, right after its text — not margin-pushed to the edge.
     expect(dateRow.findAll(m => m.props.accessibilityLabel === 'About these numbers').length).toBeGreaterThan(0);
     const info = byLabel(root, 'About these numbers');
+    // #1245: anchored beside the "Started" label, before the date value.
+    const order = dateRow.findAll(n => n.type === 'Text' || n.props.accessibilityLabel === 'About these numbers', { deep: true })
+      .map(n => (n.type === 'Text' ? [].concat(n.props.children).join('') : 'INFO'));
+    expect(order.indexOf('INFO')).toBe(order.indexOf('Started') + 1);
     expect(StyleSheet.flatten(info.props.style).marginLeft).not.toBe('auto');
     expect(StyleSheet.flatten(info.props.style)).toMatchObject({ minHeight: 44, minWidth: 44 });
     // Reason row: labelled, one tappable >=44dp row with a visible edit glyph.

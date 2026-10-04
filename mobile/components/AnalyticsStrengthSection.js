@@ -9,6 +9,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight } from '../lib/units';
 import { ProgressionSuggestionCard, MutedProgressionRow } from './ProgressionSuggestionCard';
+import { InfoButton, InfoNote, useInfoExplainer } from './InfoExplainer';
 
 export function AnalyticsStrengthSection({
   handleStrengthLayout,
@@ -29,7 +30,7 @@ export function AnalyticsStrengthSection({
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const [selectedSeriesPoint, setSelectedSeriesPoint] = useState(null);
-  const [oneKInfoExpanded, setOneKInfoExpanded] = useState(false);
+  const [oneKInfoExpanded, toggleOneKInfo] = useInfoExplainer();
   const [plateWeightLb, setPlateWeightLb] = useState(null);
 
   // oneK and oneKChartData arrive already converted into display space by
@@ -66,7 +67,27 @@ export function AnalyticsStrengthSection({
             <ActivityIndicator size="large" color={kua ? kua.primary : colors.accent} />
           ) : (
             <>
-              <Text style={styles.oneKLabel}>1K Progress</Text>
+              {/* #1245: the explainer sits behind the shared info icon beside its heading. */}
+              <View style={styles.oneKLabelRow}>
+                <Text style={styles.oneKLabel}>1K Progress</Text>
+                <InfoButton
+                  testID="onek-info-toggle"
+                  expanded={oneKInfoExpanded}
+                  onPress={toggleOneKInfo}
+                  label="How is the 1K calculated?"
+                />
+              </View>
+              <InfoNote shown={oneKInfoExpanded} testID="onek-info-body" style={styles.oneKInfoBody}>
+                <Text style={styles.oneKInfoText}>
+                  Your 1K sums the estimated 1-rep maxes from your most recent complete cycle of all three Big 3 lifts.
+                </Text>
+                <Text style={styles.oneKInfoText}>
+                  If you train one lift more often than the others within a routine, it can read one session behind until the others catch up. This evens out as you log them and resets when you start a new routine.
+                </Text>
+                <Text style={styles.oneKInfoText}>
+                  Deload sessions don't count toward strength stats like Kilo Max, but they still appear as their own point on the graph.
+                </Text>
+              </InfoNote>
               <Text style={[styles.oneKValue, { color: lerpColor(kua ? kua.primary : colors.accentText, kua ? kua.success : colors.success, Math.min(1, (displayOneK.total || 0) / oneKTarget)) }]}>
                 {displayOneK.total.toFixed(0)}<Text style={styles.oneKUnit}> {unit}</Text>
               </Text>
@@ -112,38 +133,6 @@ export function AnalyticsStrengthSection({
                 </View>
               )}
 
-              <View style={styles.oneKInfoBlock}>
-                <Pressable
-                  style={styles.oneKInfoToggle}
-                  onPress={() => setOneKInfoExpanded(e => !e)}
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: oneKInfoExpanded }}
-                  accessibilityLabel={oneKInfoExpanded ? 'Hide how the 1K is calculated' : 'How is the 1K calculated?'}
-                  testID="onek-info-toggle"
-                >
-                  <MaterialIcons name="info-outline" size={14} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
-                  <Text style={styles.oneKInfoToggleText}>How is this calculated?</Text>
-                  <MaterialIcons
-                    name={oneKInfoExpanded ? 'expand-less' : 'expand-more'}
-                    size={16}
-                    color={kua ? kua.onSurfaceVariant : colors.textMuted}
-                    accessible={false}
-                  />
-                </Pressable>
-                {oneKInfoExpanded && (
-                  <View style={styles.oneKInfoBody} testID="onek-info-body">
-                    <Text style={styles.oneKInfoText}>
-                      Your 1K sums the estimated 1-rep maxes from your most recent complete cycle of all three Big 3 lifts.
-                    </Text>
-                    <Text style={styles.oneKInfoText}>
-                      If you train one lift more often than the others within a routine, it can read one session behind until the others catch up. This evens out as you log them and resets when you start a new routine.
-                    </Text>
-                    <Text style={styles.oneKInfoText}>
-                      Deload sessions don't count toward strength stats like Kilo Max, but they still appear as their own point on the graph.
-                    </Text>
-                  </View>
-                )}
-              </View>
             </>
           )}
         </ArtisanalPanel>
@@ -362,29 +351,15 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
   },
-  oneKInfoBlock: {
-    width: '100%',
-    marginTop: 16,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: kua ? kua.surfaceBorder : colors.divider,
-  },
-  oneKInfoToggle: {
+  oneKLabelRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    minHeight: 44,
-  },
-  oneKInfoToggleText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    columnGap: 4,
   },
   oneKInfoBody: {
-    marginTop: 12,
+    width: '100%',
+    marginBottom: 12,
     gap: 8,
   },
   oneKInfoText: {
