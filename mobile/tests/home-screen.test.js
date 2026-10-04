@@ -1824,6 +1824,9 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     expect(has(component, 'home-recovery-summary')).toBe(true);
     expect(hasText(component, hooks.RECOVERY_UNVERIFIED_MESSAGE)).toBe(true);
     expect(has(component, 'home-recovery-big3')).toBe(false);
+    // #1241: unknown is not "normal" — the skeleton holds, never the normal hero.
+    expect(has(component, 'home-skeleton')).toBe(true);
+    expect(hasText(component, 'Log workout')).toBe(false);
   });
 
   test('the unknown state offers exactly the control its message names', async () => {
@@ -1846,6 +1849,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
 
     expect(spoken(component)).toBe('Week 1. Your Big 3 lifts. Squat 72% of baseline. Bench recovered. Deadlift not in baseline. 2 of 2 trained.');
     expect(hasText(component, hooks.RECOVERY_UNVERIFIED_MESSAGE)).toBe(false);
+    expect(has(component, 'home-skeleton')).toBe(false);
   });
 
   test('a failed refresh keeps the last verified summary and says why it may be behind', async () => {
@@ -1902,7 +1906,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     expect(has(component, 'home-recovery-remaining')).toBe(false);
   });
 
-  test('a still-unresolved read reports loading, and offers no retry for a read that has not failed', async () => {
+  test('a still-unresolved read holds the skeleton, never the normal hero, and offers no retry', async () => {
     let releaseRecoveryRead;
     const gate = new Promise(resolve => { releaseRecoveryRead = resolve; });
     AsyncStorage.getItem.mockImplementation(async (key) => {
@@ -1913,12 +1917,40 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     });
 
     const component = await mount({ loading: false });
-    expect(hasText(component, hooks.RECOVERY_LOADING_MESSAGE)).toBe(true);
-    expect(has(component, 'home-recovery-retry')).toBe(false);
-
-    await render.act(async () => { releaseRecoveryRead(); await gate; });
+    try {
+      // #1241: the cold-start flash. The boundary read has resolved, but the
+      // authoritative Recovery read has not, so the hero mode is unknown.
+      expect(has(component, 'home-skeleton')).toBe(true);
+      expect(hasText(component, 'Log workout')).toBe(false);
+      expect(has(component, 'home-recovery-retry')).toBe(false);
+    } finally {
+      await render.act(async () => { releaseRecoveryRead(); await gate; });
+    }
+    expect(has(component, 'home-skeleton')).toBe(false);
     expect(has(component, 'home-recovery-big3')).toBe(true);
     expect(hasText(component, hooks.RECOVERY_LOADING_MESSAGE)).toBe(false);
+  });
+
+  test('a pending Recovery operation holds the skeleton with its own message and retry', async () => {
+    const replay = require('../storage/entries/recoveryOperationJournal');
+    const spy = jest.spyOn(replay, 'reconcileRecoveryOperations')
+      .mockResolvedValue({ ok: false, pending: [{ ok: false, code: 'X' }], cancelled: [], error: null });
+    AsyncStorage.getItem.mockImplementation(storageWith({}));
+    try {
+      const component = await mount();
+      expect(has(component, 'home-skeleton')).toBe(true);
+      expect(hasText(component, 'Log workout')).toBe(false);
+      expect(hasText(component, require('../screens/HomeScreen').RECOVERY_PENDING_HOLD_MESSAGE)).toBe(true);
+      const retry = component.root.findByProps({ testID: 'home-recovery-retry' });
+
+      // Resolved non-Recovery: the normal hero paints.
+      spy.mockResolvedValue({ ok: true, pending: [], cancelled: [], error: null });
+      await render.act(async () => { retry.props.onPress(); });
+      expect(has(component, 'home-skeleton')).toBe(false);
+      expect(hasText(component, 'Log workout')).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   // A realistic roster (#1171): the default 1K picks (Squat, DB Bench Press,
