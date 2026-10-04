@@ -10,6 +10,9 @@ import {
 import { normalizeExerciseKey } from '../../lib/parser';
 import { filterNotesForNormalAnalytics } from '../../lib/data/recoveryAnalyticsFilter';
 import { ACTIVE_TRAINING_STATUS } from '../../lib/data/activeTrainingContext';
+import {
+  formatRecoveryCountSuffix, recoveryWeekStatusText, summarizeRecoveryBands, weightDirection, weightTrendTone,
+} from '../../lib/data/derivedAnalytics';
 
 // `excludedNoteIds` (#699) is the set of recovery-linked note ids whose block
 // keeps `include_in_normal_analytics` off. It is applied ONCE here, so every
@@ -302,6 +305,9 @@ export function deriveOverviewRows({
   // other row above reads an already-derived value.
   recoveryBands = null,
   recoveryMovement = null,
+  // #1242: the active weight goal's direction ('gain' | 'loss' | 'maintain' |
+  // null) so the weight delta takes the shared goal-aware tone.
+  weightGoalDirection = null,
 } = {}) {
   const isRecoveryActive = activeTraining?.status === ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK
     || activeTraining?.status === ACTIVE_TRAINING_STATUS.RECOVERY_BETWEEN_WEEKS;
@@ -389,6 +395,9 @@ export function deriveOverviewRows({
     showUnit: true,
     decimals: 1,
     delta: latestPoint && priorPoint ? Number((latestPoint.value - priorPoint.value).toFixed(1)) : null,
+    deltaTone: latestPoint && priorPoint
+      ? weightTrendTone({ direction: weightDirection(latestPoint.value, priorPoint.value), goalDirection: weightGoalDirection })
+      : null,
     deltaCaption: latestPoint && priorPoint ? '7-day average' : null,
     emptyCaption: 'Log a weigh-in to start a trend',
   };
@@ -417,6 +426,7 @@ export function deriveOverviewRows({
   // that renders independently of `delta`, at the bucket-row font-weight
   // tier — so week identity, anchor week, and matched population are real
   // caption text via `infoCaption`, never folded into `valueSuffix`.
+  const recoverySummary = summarizeRecoveryBands(recoveryBands);
   let recoveryRow;
   if (!isOpenWeek) {
     recoveryRow = {
@@ -428,7 +438,7 @@ export function deriveOverviewRows({
       showUnit: false,
       valueSuffix: null,
       infoCaption: null,
-      emptyCaption: 'Between weeks — add the next week or end Recovery',
+      emptyCaption: recoveryWeekStatusText({ weekNumber, open: false }),
     };
   } else if (recoveryMovement) {
     recoveryRow = {
@@ -443,16 +453,16 @@ export function deriveOverviewRows({
         + `${recoveryMovement.matched_size} lifts matched`,
       emptyCaption: null,
     };
-  } else if (recoveryBands) {
+  } else if (recoverySummary) {
+    // #1242: the shared roster summary — the same count and words Home prints.
     recoveryRow = {
       key: 'recovery',
       label: 'Recovery',
       section: 'recovery',
       unavailable: false,
-      value: recoveryBands.trained,
+      value: recoverySummary.trained,
       showUnit: false,
-      valueSuffix: `of ${recoveryBands.roster_size} lifts trained · `
-        + `${recoveryBands.buckets?.at_or_above ?? 0} at or above`,
+      valueSuffix: formatRecoveryCountSuffix(recoverySummary),
       infoCaption: `Week ${weekNumber}`,
       emptyCaption: null,
     };

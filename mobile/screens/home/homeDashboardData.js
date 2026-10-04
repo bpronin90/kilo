@@ -14,6 +14,7 @@ import {
   RECOVERY_WEEK_STATUS,
 } from '../../lib/data/recoveryAnalytics';
 import { deriveRecoveryTrainedRows } from '../../lib/data/recoveryReturnBands';
+import { deriveRecoverySummary } from '../../lib/data/derivedAnalytics';
 
 // Re-exported so HomeScreen's active-branch copy can switch on the same
 // enums this module derives from, without HomeScreen importing a second
@@ -115,7 +116,7 @@ export function useHomeRecoverySummary(notes, workoutNote = null) {
       weekNumber: null,
       weekNoteStatus: null,
       big3: [],
-      remaining: null,
+      counts: null,
       includedInNormalAnalytics: false,
     };
     // An active block is only reported off a verified snapshot. While the read
@@ -171,19 +172,18 @@ function _rowPercent(row) {
   return percents.length > 0 ? Math.min(...percents) : null;
 }
 
-// #1171: the Big 3 rows and the one-line count of everything else, from ONE
+// #1171: the Big 3 rows and the one-line roster count, from ONE
 // week's comparison. The roster is `deriveRecoveryTrainedRows` (the single
 // source of truth that already excludes `baseline_value_unusable` rows) plus
 // the baseline rows not reintroduced yet. A Big 3 lift outside that roster is
 // shown as `not_in_baseline` (#1192) — it was never in the baseline, so there
 // is no distance to report, but the slot still reads as the user's Big 3.
 export function deriveHomeRecoveryBig3(week, selections) {
-  if (!week || week.status !== RECOVERY_WEEK_STATUS.OK) return { big3: [], remaining: null };
+  if (!week || week.status !== RECOVERY_WEEK_STATUS.OK) return { big3: [], counts: null };
   const roster = [
     ...deriveRecoveryTrainedRows(week),
     ...(week.exercises || []).filter(row => row.state === RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED),
   ];
-  const used = new Set();
   const big3 = [];
   for (const { slot, label } of BIG3_SLOTS) {
     const key = typeof selections?.[slot] === 'string' ? normalizeExerciseKey(selections[slot]) : null;
@@ -200,25 +200,14 @@ export function deriveHomeRecoveryBig3(week, selections) {
       continue;
     }
     // Two slots may map to one exercise (the normal 1K total counts it for
-    // both); each still reports it, and the count line sees it once.
-    used.add(row);
+    // both); each still reports it.
     // Named by the mapped exercise itself: a slot can point at any routine
     // exercise, and its numbers must never read as the slot's namesake.
     big3.push({ slot, label: row.name || label, state: row.state, percent: _rowPercent(row) });
   }
-  // Owner decision: an exercise whose work can't be compared to its baseline
-  // is left out of the count line entirely (Analytics still reports it).
-  const rest = roster.filter(r => !used.has(r) && r.state !== RECOVERY_COMPARISON_STATES.NOT_COMPARABLE);
-  const count = state => rest.filter(r => r.state === state).length;
-  return {
-    big3,
-    remaining: {
-      total: rest.length,
-      recovered: count(RECOVERY_COMPARISON_STATES.BASELINE_MET),
-      inProgress: count(RECOVERY_COMPARISON_STATES.REBUILDING),
-      notStarted: count(RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED),
-    },
-  };
+  // #1242: the count line is the shared roster summary — the same counts and
+  // words Analytics and the Recovery detail print — not a Home-local tally.
+  return { big3, counts: deriveRecoverySummary(week) };
 }
 
 // #894: mirrors deriveOverloadCounts' own per-appearance iteration

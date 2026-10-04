@@ -46,6 +46,7 @@ jest.mock('../hooks/useEntries', () => {
     useFeatureToggles: jest.fn(),
     useRecoveryBlockState: jest.fn(),
     useActiveTrainingContext: jest.fn(actual.useActiveTrainingContext),
+    useWeightGoal: jest.fn(() => ({ goal: null })),
   };
 });
 
@@ -70,6 +71,7 @@ function setup({ entries = [], hookOverrides = {}, featureToggles = {} } = {}) {
     ...featureToggles,
   });
   useEntries.useWeightEntries.mockReturnValue({ entries, loading: false, error: null });
+  useEntries.useWeightGoal.mockReturnValue({ goal: hookOverrides.weightGoal || null });
   useEntries.useTrackedLifts.mockReturnValue({
     trackedLifts: hookOverrides.trackedLifts || {},
     activations: hookOverrides.trackedLiftActivations || {},
@@ -2783,7 +2785,8 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
     const component = renderScreen();
     const root = component.root;
     expect(root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).length).toBeGreaterThan(0);
-    expect(hasText(root, 'Between weeks')).toBe(true);
+    // #1242: the shared week-status wording, identical to Log's headline.
+    expect(hasText(root, 'Week 1 complete — add the next week')).toBe(true);
   });
 
   test('a stale read with no active block (STALE status) is treated as unreliable, not active Recovery — normal hierarchy stays', () => {

@@ -1710,6 +1710,8 @@ describe('WeightScreen "See full trends" handoff (#717)', () => {
 });
 
 describe('TrendSection goal-direction aware colors (#406, H-3)', () => {
+  // #1242: the direction comes from the shared layer (buildTrendSections), not
+  // parsed back out of the cue text.
   const renderSection = (props) => {
     let component;
     render.act(() => {
@@ -1736,22 +1738,22 @@ describe('TrendSection goal-direction aware colors (#406, H-3)', () => {
   };
 
   test('upward trend is success (green) for a gain goal', () => {
-    const root = renderSection({ goalDirection: 'gain', col3: { label: 'Trend', value: '↑ Gaining' } });
+    const root = renderSection({ goalDirection: 'gain', direction: 'up', col3: { label: 'Trend', value: '↑ Gaining' } });
     expect(col3Color(root, '↑ Gaining')).toBe(LightColors.success);
   });
 
   test('upward trend is error (red) for a loss goal', () => {
-    const root = renderSection({ goalDirection: 'loss', col3: { label: 'Trend', value: '↑ Gaining' } });
+    const root = renderSection({ goalDirection: 'loss', direction: 'up', col3: { label: 'Trend', value: '↑ Gaining' } });
     expect(col3Color(root, '↑ Gaining')).toBe(LightColors.error);
   });
 
   test('downward trend is success (green) for a loss goal', () => {
-    const root = renderSection({ goalDirection: 'loss', col3: { label: 'Trend', value: '↓ Losing' } });
+    const root = renderSection({ goalDirection: 'loss', direction: 'down', col3: { label: 'Trend', value: '↓ Losing' } });
     expect(col3Color(root, '↓ Losing')).toBe(LightColors.success);
   });
 
   test('downward trend is error (red) for a gain goal', () => {
-    const root = renderSection({ goalDirection: 'gain', col3: { label: 'Trend', value: '↓ Losing' } });
+    const root = renderSection({ goalDirection: 'gain', direction: 'down', col3: { label: 'Trend', value: '↓ Losing' } });
     expect(col3Color(root, '↓ Losing')).toBe(LightColors.error);
   });
 
@@ -1759,21 +1761,21 @@ describe('TrendSection goal-direction aware colors (#406, H-3)', () => {
   // a visible directional cue (gaining = error tone, losing = success tone)
   // rather than falling back to flat neutral text.
   test('with no goal direction ↑ Gaining keeps a visible directional color (#408)', () => {
-    const root = renderSection({ col3: { label: 'Trend', value: '↑ Gaining' } });
+    const root = renderSection({ direction: 'up', col3: { label: 'Trend', value: '↑ Gaining' } });
     const color = col3Color(root, '↑ Gaining');
     expect(color).toBe(LightColors.error);
     expect(color).not.toBe(LightColors.text);
   });
 
   test('with no goal direction ↓ Losing keeps a visible directional color (#408)', () => {
-    const root = renderSection({ col3: { label: 'Trend', value: '↓ Losing' } });
+    const root = renderSection({ direction: 'down', col3: { label: 'Trend', value: '↓ Losing' } });
     const color = col3Color(root, '↓ Losing');
     expect(color).toBe(LightColors.success);
     expect(color).not.toBe(LightColors.text);
   });
 
   test('with no goal direction → Stable stays neutral (#408)', () => {
-    const root = renderSection({ col3: { label: 'Trend', value: '→ Stable' } });
+    const root = renderSection({ direction: 'flat', col3: { label: 'Trend', value: '→ Stable' } });
     const color = col3Color(root, '→ Stable');
     expect(color).toBe(KUA_PALETTES.hardCourt.light.onSurface);
     expect(color).not.toBe(LightColors.success);

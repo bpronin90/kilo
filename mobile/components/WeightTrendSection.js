@@ -2,44 +2,30 @@ import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { useKuaTypography } from '../theme/typography';
+import { WEIGHT_TONE, weightTrendTone } from '../lib/data/derivedAnalytics';
 
-// Resolve the col3 trend color.
-// Pace anomalies (spike/notable) are severity badges and keep their fixed
-// error/caution treatment. Otherwise the success/error meaning of a trend
-// direction depends on the user's goal: an upward trend is success for a gain
-// goal but error for a loss goal, and vice versa.
-// When there is no active goal direction the goal-relative meaning is absent,
-// but a bare ↑/↓ still reads clearer with a visible directional cue than flat
-// neutral text, so we fall back to the directional coloring (gaining/losing).
-// Stable (→) and missing data (-) stay neutral in every case.
-// `styles` is passed in rather than closed over: the sheet is now built per
-// palette by the calling component, not at module load (#689).
-function resolveCol3ColorStyle({ value, paceLevel, goalDirection, styles }) {
-  if (paceLevel === 'spike') return styles.paceSpike;
-  if (paceLevel === 'notable') return styles.paceNotable;
-
-  if (goalDirection === 'gain' || goalDirection === 'loss') {
-    if (value?.startsWith('↑')) {
-      return goalDirection === 'gain' ? styles.trendPositive : styles.trendNegative;
-    }
-    if (value?.startsWith('↓')) {
-      return goalDirection === 'loss' ? styles.trendPositive : styles.trendNegative;
-    }
-    // Stable (→) under an active goal: neutral.
-    return null;
+// The col3 color is the shared goal-aware tone (#1242): pace anomalies keep
+// their fixed severity treatment; under a gain/loss goal, movement toward it is
+// success and away is error; without one a bare ↑/↓ keeps a directional cue.
+// Stable and missing data stay neutral. `styles` is passed in rather than
+// closed over: the sheet is built per palette by the calling component (#689).
+function toneStyle(tone, styles) {
+  switch (tone) {
+    case WEIGHT_TONE.SPIKE: return styles.paceSpike;
+    case WEIGHT_TONE.NOTABLE: return styles.paceNotable;
+    case WEIGHT_TONE.POSITIVE: return styles.trendPositive;
+    case WEIGHT_TONE.NEGATIVE: return styles.trendNegative;
+    case WEIGHT_TONE.GAINING: return styles.trendGaining;
+    case WEIGHT_TONE.LOSING: return styles.trendLosing;
+    default: return null;
   }
-
-  // No active goal: restore a visible directional cue for ↑/↓; stable stays neutral.
-  if (value?.startsWith('↑')) return styles.trendGaining;
-  if (value?.startsWith('↓')) return styles.trendLosing;
-  return null;
 }
 
-export function TrendSection({ title, col1, col2, col3, isLast, paceLevel, goalDirection }) {
+export function TrendSection({ title, col1, col2, col3, isLast, direction, paceLevel, goalDirection }) {
   const { colors, kuaPalette: kua } = useTheme();
   const typo = useKuaTypography();
   const styles = useMemo(() => createStyles(colors, kua, typo), [colors, kua, typo]);
-  const col3ColorStyle = resolveCol3ColorStyle({ value: col3.value, paceLevel, goalDirection, styles });
+  const col3ColorStyle = toneStyle(weightTrendTone({ direction, goalDirection, paceLevel }), styles);
 
   return (
     <View style={[styles.trendSection, !isLast && styles.trendSectionDivider]}>

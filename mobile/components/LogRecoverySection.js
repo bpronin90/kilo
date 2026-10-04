@@ -39,6 +39,7 @@ import {
 import { createStyles } from './recovery/logRecoveryStyles';
 import { LogRecoveryWeeks, noteTitle } from './recovery/LogRecoveryWeeks';
 import { LogRecoveryLifecycle } from './recovery/LogRecoveryLifecycle';
+import { recoveryWeekStatusText } from '../lib/data/derivedAnalytics';
 export { RECOVERY_INCLUSION_LABEL } from './RecoveryInclusionToggle';
 
 export function LogRecoverySection({
@@ -250,11 +251,12 @@ export function LogRecoverySection({
   // guarantee at most one non-completed week per block, so `currentWeek` is
   // always either the open week or the just-completed one — never a list to
   // scan, and never ambiguous between the two headline states.
-  const headline = currentWeek
-    ? (currentWeek.completed_at
-      ? `Week ${currentWeek.week_number} complete — add the next week`
-      : `Week ${currentWeek.week_number} in progress`)
-    : 'No recovery week yet — add a week';
+  // Worded by the shared layer (#1242) so Analytics' between-weeks caption
+  // reads the same sentence.
+  const headline = recoveryWeekStatusText({
+    weekNumber: currentWeek ? currentWeek.week_number : null,
+    open: !!currentWeek && !currentWeek.completed_at,
+  });
 
   const runAction = async (action) => {
     setActionError(null);

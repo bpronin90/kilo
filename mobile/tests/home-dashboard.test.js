@@ -10,7 +10,13 @@
 import { parseWorkoutNote, epleyPR } from '../lib/parser';
 import { derive1kTotal, DEFAULT_1K_EXERCISES } from '../lib/data';
 import { deriveHomeDashboardData, deriveHomeRecoveryBig3, resolveHomeOneKSelections, HOME_BIG3_NOT_IN_BASELINE } from '../screens/home/homeDashboardData';
-import { deriveAnalytics, deriveParsedSections } from '../screens/analytics/analyticsDerivations';
+import { deriveAnalytics, deriveOverviewRows, deriveParsedSections } from '../screens/analytics/analyticsDerivations';
+import { deriveRecoveryWeekBands } from '../lib/data/recoveryReturnBands';
+import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
+import { buildTrendSections } from '../lib/WeightScreenHelpers';
+import {
+  deriveRecoverySummary, formatRecoveryCountLine, recoveryWeekStatusText, WEIGHT_DIRECTION, weightTrendTone,
+} from '../lib/data/derivedAnalytics';
 
 // Historical note: all three Big-3 lifts logged in one session.
 const HISTORICAL_TEXT = '-DB Bench Press\n135 5\n-Squat\n225 5\n-Deadlift\n315 5';
@@ -518,11 +524,12 @@ describe('Home Recovery Big 3 selection (#1192)', () => {
   test('two slots mapped to the same baseline exercise both report it', () => {
     const row = { key: 'squat', name: 'Squat', state: 'baseline_met', metrics: [] };
     const week = { status: 'ok', exercises: [row] };
-    const { big3, remaining } = deriveHomeRecoveryBig3(week, { squat: 'Squat', bench: 'Squat', deadlift: 'Deadlift' });
+    const { big3, counts } = deriveHomeRecoveryBig3(week, { squat: 'Squat', bench: 'Squat', deadlift: 'Deadlift' });
     expect(big3.map(l => [l.slot, l.state])).toEqual([
       ['squat', 'baseline_met'], ['bench', 'baseline_met'], ['deadlift', HOME_BIG3_NOT_IN_BASELINE],
     ]);
-    expect(remaining.total).toBe(0);
+    // #1242: the count line is the whole roster, so the exercise counts once.
+    expect(counts).toMatchObject({ rosterSize: 1, trained: 1, notYet: 0 });
   });
 
   test('a mapped lift with an unusable baseline value is not comparable, not absent', () => {
@@ -561,5 +568,80 @@ describe('HomeRecoverySummary — latest linked week scope (#1193)', () => {
   test('prints no scope line when there is no week or the baseline is unavailable', () => {
     expect(hasText(mount({ ...base, weekNumber: null }), 'Values describe')).toBe(false);
     expect(hasText(mount({ ...base, comparisonStatus: 'baseline_unavailable' }), 'Values describe')).toBe(false);
+  });
+});
+
+// #1242: one fixture, one answer. Home, Analytics, Weight, and Log all read the
+// shared derived-analytics layer, so the same week prints the same Recovery
+// counts and the same weight series reads the same direction and tone.
+describe('shared derived analytics (#1242)', () => {
+  const metRow = key => ({ key, name: key, state: 'baseline_met', metrics: [{ ratio: 1 }] });
+  const rebuildingRow = key => ({ key, name: key, state: 'rebuilding', metrics: [{ ratio: 0.5 }] });
+  const notYetRow = key => ({ key, name: key, state: 'not_reintroduced', metrics: [] });
+  const WEEK = {
+    status: 'ok',
+    exercises: [
+      metRow('squat'), rebuildingRow('db bench press'), notYetRow('deadlift'),
+      metRow('row'), rebuildingRow('press'), notYetRow('curl'), notYetRow('lunge'),
+      { key: 'ghost', name: 'Ghost', state: 'not_comparable', unavailable_reason: 'baseline_value_unusable', metrics: [] },
+    ],
+  };
+  const SELECTIONS = { squat: 'Squat', bench: 'DB Bench Press', deadlift: 'Deadlift' };
+
+  test('Home and Analytics print identical Recovery counts and words from one week', () => {
+    const { counts } = deriveHomeRecoveryBig3(WEEK, SELECTIONS);
+    const homeLine = formatRecoveryCountLine(counts);
+
+    const rows = deriveOverviewRows({
+      activeTraining: { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 1 },
+      recoveryBands: deriveRecoveryWeekBands(WEEK),
+    });
+    const recoveryRow = rows.find(r => r.key === 'recovery');
+    const analyticsLine = `${recoveryRow.value} ${recoveryRow.valueSuffix}`;
+
+    expect(homeLine).toBe('4 of 7 trained · 3 not yet');
+    expect(analyticsLine).toBe(homeLine);
+    expect(deriveRecoverySummary(WEEK)).toEqual(counts);
+  });
+
+  test('Log and Analytics share the between-weeks wording', () => {
+    const rows = deriveOverviewRows({
+      activeTraining: { status: ACTIVE_TRAINING_STATUS.RECOVERY_BETWEEN_WEEKS, recoveryWeekNumber: 2 },
+    });
+    expect(rows.find(r => r.key === 'recovery').emptyCaption)
+      .toBe(recoveryWeekStatusText({ weekNumber: 2, open: false }));
+    expect(recoveryWeekStatusText({ weekNumber: 2, open: false })).toBe('Week 2 complete — add the next week');
+    expect(recoveryWeekStatusText({ weekNumber: 3, open: true })).toBe('Week 3 in progress');
+  });
+
+  // Rising series: prior 7-day average 180, latest 181.
+  const WEIGHT_POINTS = [{ value: 180, label: 'a' }, { value: 181, label: 'b' }];
+  const TRENDS = {
+    avg7: 181, priorAvg7: 180, avg30: 181, priorAvg30: 180,
+    recentDateWeight: 181, priorDateWeight: 180, paceFlag: null,
+  };
+
+  test.each([
+    [null, 'gaining'],
+    ['gain', 'positive'],
+    ['loss', 'negative'],
+    ['maintain', 'gaining'],
+  ])('weight direction and tone agree across Weight and Analytics (goal: %s)', (goalDirection, expectedTone) => {
+    const weightSection = buildTrendSections(TRENDS, null).find(s => s.title === '7-day rolling');
+    const weightTone = weightTrendTone({ direction: weightSection.direction, goalDirection });
+
+    const analyticsRow = deriveOverviewRows({ weightPoints: WEIGHT_POINTS, currentWeight: 181, weightGoalDirection: goalDirection })
+      .find(r => r.key === 'weight');
+
+    expect(weightSection.direction).toBe(WEIGHT_DIRECTION.UP);
+    expect(weightSection.col3.value).toBe('↑ Gaining');
+    expect(weightTone).toBe(expectedTone);
+    expect(analyticsRow.deltaTone).toBe(weightTone);
+  });
+
+  test('pace anomalies keep their severity tone over any goal', () => {
+    expect(weightTrendTone({ direction: 'up', goalDirection: 'gain', paceLevel: 'spike' })).toBe('spike');
+    expect(weightTrendTone({ direction: 'down', goalDirection: null, paceLevel: 'notable' })).toBe('notable');
+    expect(weightTrendTone({ direction: 'flat', goalDirection: 'gain' })).toBeNull();
   });
 });

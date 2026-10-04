@@ -5,6 +5,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { TYPOGRAPHY } from '../theme/typography';
 import { useWeightUnit } from '../lib/unitPreference';
 import { formatPaceElapsed } from '../lib/format';
+import { paceDirection, WEIGHT_TONE, weightPaceBadgeText, weightTrendTone } from '../lib/data/derivedAnalytics';
 
 // One insufficient-data treatment for both charts (#821). It replaces the bare
 // "Not enough data", which named no threshold and offered nothing to do about
@@ -108,11 +109,12 @@ export function AnalyticsWeightTrendsCard({
             </Text>
           </View>
           {display.paceFlag && (() => {
-            const isSpike = display.paceLevel === 'spike';
+            // Direction and severity tone from the shared layer (#1242).
+            const isSpike = weightTrendTone({ direction: paceDirection(display.paceFlag), paceLevel: display.paceLevel }) === WEIGHT_TONE.SPIKE;
             return (
               <View style={[styles.paceBadge, isSpike ? styles.paceSpike : styles.paceNotable]}>
                 <Text style={[styles.paceText, !isSpike && styles.paceTextNotable]}>
-                  {display.paceFlag === 'gain' ? '↑ Gaining fast' : '↓ Losing fast'}
+                  {weightPaceBadgeText(paceDirection(display.paceFlag))}
                 </Text>
                 <Text style={[styles.pacePeriodText, !isSpike && styles.paceTextNotable]}>
                   {formatPaceElapsed(display.paceElapsedDays)}

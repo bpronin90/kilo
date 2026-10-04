@@ -17,6 +17,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { ArtisanalPanel } from './UI';
 import { useTheme } from '../theme/ThemeContext';
 import { useWeightUnit } from '../lib/unitPreference';
+import { isGoodWeightTone } from '../lib/data/derivedAnalytics';
 
 function formatValue(row) {
   if (row.value == null) return null;
@@ -27,6 +28,16 @@ function formatDelta(row) {
   if (row.delta == null || row.delta === 0) return null;
   const magnitude = row.decimals ? Math.abs(row.delta).toFixed(row.decimals) : String(Math.abs(row.delta));
   return { up: row.delta > 0, text: `${row.delta > 0 ? '▲' : '▼'} ${magnitude}` };
+}
+
+// A row that carries the shared goal-aware `deltaTone` (#1242, weight) is
+// colored by it; every other row keeps the plain up-is-good reading.
+function deltaStyleFor(row, delta, styles) {
+  if (row.deltaTone !== undefined) {
+    if (!row.deltaTone) return null;
+    return isGoodWeightTone(row.deltaTone) ? styles.rowDeltaUp : styles.rowDeltaDown;
+  }
+  return delta.up ? styles.rowDeltaUp : styles.rowDeltaDown;
 }
 
 function OverviewRow({ row, unit, onPress }) {
@@ -92,7 +103,7 @@ function OverviewRow({ row, unit, onPress }) {
         {(delta || caption || row.infoCaption) && (
           <View style={styles.rowSub}>
             {!!delta && (
-              <Text style={[styles.rowDelta, delta.up ? styles.rowDeltaUp : styles.rowDeltaDown]}>
+              <Text style={[styles.rowDelta, deltaStyleFor(row, delta, styles)]}>
                 {delta.text}{row.showUnit ? ` ${unit}` : ''}{row.deltaCaption ? ` · ${row.deltaCaption}` : ''}
               </Text>
             )}
