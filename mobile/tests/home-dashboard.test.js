@@ -601,6 +601,14 @@ describe('shared derived analytics (#1242)', () => {
 
     expect(homeLine).toBe('4 of 7 trained · 3 not yet');
     expect(analyticsLine).toBe(homeLine);
+
+    // Movement history only adds a caption; the count stays the shared one.
+    const withMovement = deriveOverviewRows({
+      activeTraining: { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 3 },
+      recoveryBands: deriveRecoveryWeekBands(WEEK),
+      recoveryMovement: { improved: 2, steady: 1, fell_back: 0, matched_size: 3, anchor_week_number: 1 },
+    }).find(r => r.key === 'recovery');
+    expect(`${withMovement.value} ${withMovement.valueSuffix}`).toBe(homeLine);
     expect(deriveRecoverySummary(WEEK)).toEqual(counts);
   });
 

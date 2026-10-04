@@ -419,9 +419,9 @@ export function deriveOverviewRows({
   const isOpenWeek = activeTraining.status === ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK;
   const weekNumber = activeTraining.recoveryWeekNumber ?? null;
 
-  // #1029 amendment: two shapes, chosen by whether movement's evidence bar is
-  // met. Neither shape ever prints a composite percentage, and neither ever
-  // fabricates a numeric `delta`. `AnalyticsOverviewCard` now (amendment to
+  // #1029 amendment / #1242: one shape — the shared roster count — with
+  // movement added to the caption when its evidence bar is met. It never
+  // prints a composite percentage and never fabricates a numeric `delta`. `AnalyticsOverviewCard` now (amendment to
   // this issue's Allowed Files) carries a purely additive `infoCaption` field
   // that renders independently of `delta`, at the bucket-row font-weight
   // tier — so week identity, anchor week, and matched population are real
@@ -440,21 +440,14 @@ export function deriveOverviewRows({
       infoCaption: null,
       emptyCaption: recoveryWeekStatusText({ weekNumber, open: false }),
     };
-  } else if (recoveryMovement) {
-    recoveryRow = {
-      key: 'recovery',
-      label: 'Recovery',
-      section: 'recovery',
-      unavailable: false,
-      value: recoveryMovement.improved,
-      showUnit: false,
-      valueSuffix: 'lifts improved',
-      infoCaption: `Week ${weekNumber} · since Week ${recoveryMovement.anchor_week_number} · `
-        + `${recoveryMovement.matched_size} lifts matched`,
-      emptyCaption: null,
-    };
   } else if (recoverySummary) {
-    // #1242: the shared roster summary — the same count and words Home prints.
+    // #1242: the value is always the shared roster summary — the same count and
+    // words Home prints — so the two never disagree. Movement, when its
+    // evidence bar is met, rides in the caption instead of replacing it.
+    const movementCaption = recoveryMovement
+      ? ` · ${recoveryMovement.improved} improved since Week ${recoveryMovement.anchor_week_number}`
+        + ` · ${recoveryMovement.matched_size} lifts matched`
+      : '';
     recoveryRow = {
       key: 'recovery',
       label: 'Recovery',
@@ -463,7 +456,7 @@ export function deriveOverviewRows({
       value: recoverySummary.trained,
       showUnit: false,
       valueSuffix: formatRecoveryCountSuffix(recoverySummary),
-      infoCaption: `Week ${weekNumber}`,
+      infoCaption: `Week ${weekNumber}${movementCaption}`,
       emptyCaption: null,
     };
   } else {

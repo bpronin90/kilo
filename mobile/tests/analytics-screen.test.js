@@ -545,7 +545,10 @@ describe('deriveOverviewRows (#821)', () => {
       recoveryMovement: { improved: 2, steady: 1, fell_back: 0, matched_size: 3, anchor_week_number: 1 },
     });
     const recovery = rowFor(rows, 'recovery');
-    expect(recovery.infoCaption).toBe('Week 3 · since Week 1 · 3 lifts matched');
+    // #1242: the value stays the shared roster count Home prints.
+    expect(recovery.value).toBe(5);
+    expect(recovery.valueSuffix).toBe('of 5 trained');
+    expect(recovery.infoCaption).toBe('Week 3 · 2 improved since Week 1 · 3 lifts matched');
     expect(recovery.valueSuffix).not.toMatch(/Week 3/);
     expect(recovery.valueSuffix).not.toMatch(/since Week/);
     expect(recovery.valueSuffix).not.toMatch(/3 lifts matched/);
@@ -2728,8 +2731,9 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
       expect(joined).toContain('Week 2');
       expect(joined).toContain('since Week 1');
       expect(joined).toContain('2 lifts matched');
-      // Never folded into valueSuffix.
-      expect(texts.some(t => /Week 2/.test(t) && /improved/i.test(t))).toBe(false);
+      // Never folded into valueSuffix, which stays the shared roster count (#1242).
+      expect(texts).toContain('of 2 trained');
+      expect(texts.some(t => t.startsWith('of ') && /Week|improved/.test(t))).toBe(false);
 
       const infoCaptionNode = textNodesOf(row).find(t => {
         const c = t.props.children;
