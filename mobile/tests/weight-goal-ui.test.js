@@ -499,7 +499,19 @@ describe('WeightScreen', () => {
       // Form inputs present
       const root = component.root;
       const inputs = root.findAll(n => n.type === 'TextInput');
-      expect(inputs.some(i => i.props.placeholder === '175.0')).toBe(true);
+      expect(inputs.some(i => i.props.placeholder === 'e.g. 175.0')).toBe(true);
+    });
+
+    test('no-goal Target field matches Weight field size and marks its placeholder as an example (#1249)', () => {
+      const component = setup(null, []);
+      const target = component.root
+        .findAll(n => n.type === 'TextInput')
+        .find(i => i.props.placeholder === 'e.g. 175.0');
+      const style = StyleSheet.flatten(target.props.style);
+      expect(style.fontSize).toBe(17);
+      expect(style.fontFamily).toBe('JetBrainsMono-SemiBold');
+      expect(target.props.value || '').toBe('');
+      expect(/^e\.g\. /.test(target.props.placeholder)).toBe(true);
     });
   });
 
