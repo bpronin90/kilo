@@ -1,5 +1,6 @@
 import { formatDelta, formatPaceElapsed } from './format';
 import { displayWeight } from './units';
+import { paceDirection, weightDirection, weightDirectionCue } from './data/derivedAnalytics';
 
 export function localDateToday() {
   const d = new Date();
@@ -16,11 +17,9 @@ export function formatTrendDeltaValue(currentValue, priorValue, unit = 'lb') {
     : '-';
 }
 
+// Direction and cue come from the shared derived-analytics layer (#1242).
 export function formatTrendCue(currentValue, priorValue) {
-  if (currentValue === null || priorValue === null) return '-';
-  if (currentValue > priorValue) return '↑ Gaining';
-  if (currentValue < priorValue) return '↓ Losing';
-  return '→ Stable';
+  return weightDirectionCue(weightDirection(currentValue, priorValue));
 }
 
 export function buildTrendSections(trends, paceInfo, unit = 'lb') {
@@ -28,9 +27,8 @@ export function buildTrendSections(trends, paceInfo, unit = 'lb') {
   // The elapsed span rides as its own caption, not concatenated into the value:
   // the Today trend column is narrow and single-line, so a joined string would
   // tail-ellipsize the period away and defeat the point of showing it.
-  const paceValue = trends.paceFlag
-    ? (trends.paceFlag === 'gain' ? '↑ Gaining' : '↓ Losing')
-    : '-';
+  const paceDir = paceDirection(trends.paceFlag);
+  const paceValue = weightDirectionCue(paceDir);
   const paceCaption = trends.paceFlag ? formatPaceElapsed(paceInfo?.elapsedDays) : null;
   return [
     {
@@ -42,6 +40,7 @@ export function buildTrendSections(trends, paceInfo, unit = 'lb') {
       col1: { label: 'Current', value: formatTrendValue(trends.recentDateWeight, unit) },
       col2: { label: 'Vs Previous', value: formatTrendDeltaValue(trends.recentDateWeight, trends.priorDateWeight, unit) },
       col3: { label: 'Trend', value: paceValue, caption: paceCaption },
+      direction: paceDir,
       paceLevel,
     },
     {
@@ -49,12 +48,14 @@ export function buildTrendSections(trends, paceInfo, unit = 'lb') {
       col1: { label: 'Average', value: formatTrendValue(trends.avg7, unit) },
       col2: { label: 'Vs Prior 7d', value: formatTrendDeltaValue(trends.avg7, trends.priorAvg7, unit) },
       col3: { label: 'Trend', value: formatTrendCue(trends.avg7, trends.priorAvg7) },
+      direction: weightDirection(trends.avg7, trends.priorAvg7),
     },
     {
       title: '30-day rolling',
       col1: { label: 'Average', value: formatTrendValue(trends.avg30, unit) },
       col2: { label: 'Vs Prior 30d', value: formatTrendDeltaValue(trends.avg30, trends.priorAvg30, unit) },
       col3: { label: 'Trend', value: formatTrendCue(trends.avg30, trends.priorAvg30) },
+      direction: weightDirection(trends.avg30, trends.priorAvg30),
       isLast: true,
     },
   ];

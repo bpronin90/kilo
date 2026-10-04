@@ -10,6 +10,9 @@ import {
 import { normalizeExerciseKey } from '../../lib/parser';
 import { filterNotesForNormalAnalytics } from '../../lib/data/recoveryAnalyticsFilter';
 import { ACTIVE_TRAINING_STATUS } from '../../lib/data/activeTrainingContext';
+import {
+  formatRecoveryCountSuffix, recoveryWeekStatusText, summarizeRecoveryBands, weightDirection, weightTrendTone,
+} from '../../lib/data/derivedAnalytics';
 
 // `excludedNoteIds` (#699) is the set of recovery-linked note ids whose block
 // keeps `include_in_normal_analytics` off. It is applied ONCE here, so every
@@ -302,6 +305,9 @@ export function deriveOverviewRows({
   // other row above reads an already-derived value.
   recoveryBands = null,
   recoveryMovement = null,
+  // #1242: the active weight goal's direction ('gain' | 'loss' | 'maintain' |
+  // null) so the weight delta takes the shared goal-aware tone.
+  weightGoalDirection = null,
 } = {}) {
   const isRecoveryActive = activeTraining?.status === ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK
     || activeTraining?.status === ACTIVE_TRAINING_STATUS.RECOVERY_BETWEEN_WEEKS;
@@ -389,6 +395,9 @@ export function deriveOverviewRows({
     showUnit: true,
     decimals: 1,
     delta: latestPoint && priorPoint ? Number((latestPoint.value - priorPoint.value).toFixed(1)) : null,
+    deltaTone: latestPoint && priorPoint
+      ? weightTrendTone({ direction: weightDirection(latestPoint.value, priorPoint.value), goalDirection: weightGoalDirection })
+      : null,
     deltaCaption: latestPoint && priorPoint ? '7-day average' : null,
     emptyCaption: 'Log a weigh-in to start a trend',
   };
@@ -410,13 +419,14 @@ export function deriveOverviewRows({
   const isOpenWeek = activeTraining.status === ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK;
   const weekNumber = activeTraining.recoveryWeekNumber ?? null;
 
-  // #1029 amendment: two shapes, chosen by whether movement's evidence bar is
-  // met. Neither shape ever prints a composite percentage, and neither ever
-  // fabricates a numeric `delta`. `AnalyticsOverviewCard` now (amendment to
+  // #1029 amendment / #1242: one shape — the shared roster count — with
+  // movement added to the caption when its evidence bar is met. It never
+  // prints a composite percentage and never fabricates a numeric `delta`. `AnalyticsOverviewCard` now (amendment to
   // this issue's Allowed Files) carries a purely additive `infoCaption` field
   // that renders independently of `delta`, at the bucket-row font-weight
   // tier — so week identity, anchor week, and matched population are real
   // caption text via `infoCaption`, never folded into `valueSuffix`.
+  const recoverySummary = summarizeRecoveryBands(recoveryBands);
   let recoveryRow;
   if (!isOpenWeek) {
     recoveryRow = {
@@ -428,32 +438,25 @@ export function deriveOverviewRows({
       showUnit: false,
       valueSuffix: null,
       infoCaption: null,
-      emptyCaption: 'Between weeks — add the next week or end Recovery',
+      emptyCaption: recoveryWeekStatusText({ weekNumber, open: false }),
     };
-  } else if (recoveryMovement) {
+  } else if (recoverySummary) {
+    // #1242: the value is always the shared roster summary — the same count and
+    // words Home prints — so the two never disagree. Movement, when its
+    // evidence bar is met, rides in the caption instead of replacing it.
+    const movementCaption = recoveryMovement
+      ? ` · ${recoveryMovement.improved} improved since Week ${recoveryMovement.anchor_week_number}`
+        + ` · ${recoveryMovement.matched_size} lifts matched`
+      : '';
     recoveryRow = {
       key: 'recovery',
       label: 'Recovery',
       section: 'recovery',
       unavailable: false,
-      value: recoveryMovement.improved,
+      value: recoverySummary.trained,
       showUnit: false,
-      valueSuffix: 'lifts improved',
-      infoCaption: `Week ${weekNumber} · since Week ${recoveryMovement.anchor_week_number} · `
-        + `${recoveryMovement.matched_size} lifts matched`,
-      emptyCaption: null,
-    };
-  } else if (recoveryBands) {
-    recoveryRow = {
-      key: 'recovery',
-      label: 'Recovery',
-      section: 'recovery',
-      unavailable: false,
-      value: recoveryBands.trained,
-      showUnit: false,
-      valueSuffix: `of ${recoveryBands.roster_size} lifts trained · `
-        + `${recoveryBands.buckets?.at_or_above ?? 0} at or above`,
-      infoCaption: `Week ${weekNumber}`,
+      valueSuffix: formatRecoveryCountSuffix(recoverySummary),
+      infoCaption: `Week ${weekNumber}${movementCaption}`,
       emptyCaption: null,
     };
   } else {

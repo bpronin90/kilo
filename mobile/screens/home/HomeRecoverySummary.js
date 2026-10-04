@@ -5,6 +5,7 @@ import { Card } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
 import { HOME_BIG3_NOT_IN_BASELINE, HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATES, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './homeDashboardData';
 import { createStyles } from './homeStyles';
+import { formatRecoveryCountLine } from '../../lib/data/derivedAnalytics';
 import { useKuaTypography } from '../../theme/typography';
 
 // Active-recovery status on Home (#757).
@@ -42,19 +43,6 @@ function liftValue(lift) {
   return lift.percent === null ? 'In progress' : `${lift.percent}%`;
 }
 
-// `Remaining N: X recovered · Y in progress · Z not started`, dropping zero
-// parts. Can't-compare exercises are already excluded from N upstream.
-function remainingLine(remaining, hasBig3) {
-  if (!remaining || remaining.total === 0) return null;
-  const parts = [
-    [remaining.recovered, 'recovered'],
-    [remaining.inProgress, 'in progress'],
-    [remaining.notStarted, 'not started'],
-  ].filter(([n]) => n > 0).map(([n, word]) => `${n} ${word}`);
-  const lead = hasBig3 ? `Remaining ${remaining.total}` : `${remaining.total} exercises`;
-  return `${lead}: ${parts.join(' · ')}`;
-}
-
 export function HomeRecoverySummary({ summary, onNavigate }) {
   const { colors, kuaPalette: kua } = useTheme();
   const typography = useKuaTypography();
@@ -63,7 +51,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   if (!summary) return null;
   const {
     status, stale, message, active,
-    comparisonStatus, weekNumber, weekNoteStatus, big3 = [], remaining,
+    comparisonStatus, weekNumber, weekNoteStatus, big3 = [], counts,
   } = summary;
 
   // Verified, nothing is running, and the answer is CURRENT. This is the one
@@ -109,10 +97,11 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
     ? `Values describe ${stale ? 'the last loaded' : 'the latest'} linked week (Week ${weekNumber}) only, not the whole block.`
     : null;
 
-  // #1171: the user's Big 3 lead, each against its own baseline, and one line
-  // counts everything else. Nothing is derived while a fallback owns the slot.
+  // #1171: the user's Big 3 lead, each against its own baseline. #1242: the
+  // count line is the shared roster summary, worded exactly as Analytics and
+  // the Recovery detail word it. Nothing prints while a fallback owns the slot.
   const lifts = fallbackStatus === null ? big3 : [];
-  const remainingText = fallbackStatus === null ? remainingLine(remaining, lifts.length > 0) : null;
+  const remainingText = fallbackStatus === null ? formatRecoveryCountLine(counts) : null;
 
   // One announcement for the whole summary, assembled in reading order. The
   // visual hierarchy is a layout device; the spoken version has to carry the

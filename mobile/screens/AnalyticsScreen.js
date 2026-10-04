@@ -3,7 +3,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { HeroMetric } from '../components/UI';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { deriveWeightGoalAnalytics, DEFAULT_1K_EXERCISES, deriveCheckInHistory, deriveRoutineStatus } from '../lib/data';
-import { useTrackedLifts, useWorkoutNotes, useWeightEntries, useDeloadHistory, useFeatureToggles, useRecoveryBlockState, useActiveTrainingContext } from '../hooks/useEntries';
+import { useTrackedLifts, useWorkoutNotes, useWeightEntries, useWeightGoal, useDeloadHistory, useFeatureToggles, useRecoveryBlockState, useActiveTrainingContext } from '../hooks/useEntries';
 import { useRecoveryAnalyticsFilter } from '../hooks/entries/recoveryBlockHooks';
 import { findActiveBlock, isLiveRecord } from '../lib/data/recoveryBlocks';
 import { deriveRecoveryComparison } from '../lib/data/recoveryAnalytics';
@@ -65,6 +65,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     error: weightError,
     refresh: refreshWeightEntries,
   } = useWeightEntries();
+  const { goal: weightGoal } = useWeightGoal();
   const { trackedLifts, activations: trackedLiftActivations, loading: loadingTracked } = useTrackedLifts();
   const { history: deloadHistory } = useDeloadHistory();
   const { fatigueTrackingEnabled, deloadModeEnabled } = useFeatureToggles();
@@ -262,10 +263,10 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     );
   }
 
-  // null goal: Analytics renders trend data only, not goal-relative info
-  const { trendSummary: weightTrends, paceLevel: weightPaceLevel, paceInfo: weightPaceInfo, rollingSeries, rollingSeries30 } = useMemo(
-    () => deriveWeightGoalAnalytics(weightEntries, null),
-    [weightEntries]
+  // #1242: the goal is read for its direction only (shared goal-aware weight tone).
+  const { trendSummary: weightTrends, paceLevel: weightPaceLevel, paceInfo: weightPaceInfo, rollingSeries, rollingSeries30, goalInfo: weightGoalInfo } = useMemo(
+    () => deriveWeightGoalAnalytics(weightEntries, weightGoal),
+    [weightEntries, weightGoal]
   );
   // Converted into display space here (identity in lb mode) so LineChart
   // labels and the trends card read in the selected unit.
@@ -494,11 +495,12 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       activeTraining: { status: activeTrainingContext.status, recoveryWeekNumber: activeTrainingContext.recoveryWeekNumber },
       recoveryBands: recoveryOverviewInfo.bands,
       recoveryMovement: recoveryOverviewInfo.movement,
+      weightGoalDirection: weightGoalInfo?.direction ?? null,
     }),
     [
       oneKChartData, analytics.signals, sinceDeload, deloadModeEnabled, weightTrends, unit, rolling7,
       notesError, weightError, activeTrainingContext.status, activeTrainingContext.recoveryWeekNumber,
-      recoveryOverviewInfo,
+      recoveryOverviewInfo, weightGoalInfo,
     ]
   );
   const overviewLoading = isNotesLoading || isWeightLoading;
