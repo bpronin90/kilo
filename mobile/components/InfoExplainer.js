@@ -4,7 +4,7 @@
 // are separate pieces so a caller can place the icon inline with its label and
 // the note wherever the layout has room for a full-width line.
 import React, { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useTheme } from '../theme/ThemeContext';
 
@@ -26,7 +26,7 @@ export function InfoButton({ expanded, onPress, label, testID, style }) {
         if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
         onPress();
       }}
-      style={[styles.button, style]}
+      style={[BUTTON, style]}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ expanded: !!expanded }}
@@ -50,12 +50,11 @@ export function InfoNote({ shown, testID, style, children }) {
   );
 }
 
-const styles = StyleSheet.create({
-  button: {
-    minWidth: 44,
-    minHeight: 44,
-    flexShrink: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+// Theme-free, so a plain constant (no module-scope StyleSheet; see theme-rendering test).
+const BUTTON = {
+  minWidth: 44,
+  minHeight: 44,
+  flexShrink: 0,
+  alignItems: 'center',
+  justifyContent: 'center',
+};
