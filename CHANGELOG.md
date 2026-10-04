@@ -1,5 +1,49 @@
 # Changelog
 
+## 1.8.31 - 2026-10-04
+
+- Issue #1251: Timed cardio and warmup lines such as "Bike 5 min" no longer show their entries as pound-weighted sets in Log.
+
+## 1.8.30 - 2026-10-04
+
+- Issue #1250: The Home weight chart now labels dates in the same MM-DD-YYYY format as Weight and Recovery.
+
+## 1.8.29 - 2026-10-04
+
+- Issue #1249: Target and Target Date fields in the weight goal form now match the Weight entry field size, and the Target placeholder reads as an example instead of saved data.
+
+## 1.8.28 - 2026-10-04
+
+- Issue #1248: The Analytics 1K chart now marks deload sessions with a distinct square marker and no longer lets them stretch the chart range, so your normal-session trend stays readable.
+
+## 1.8.27 - 2026-10-04
+
+- Issue #1247: During Recovery, the Analytics Routine Health card now shows your paused routine stats (sessions logged and sessions since the last deload) instead of a lone Total, and uses the standard card surface color.
+
+## 1.8.26 - 2026-10-04
+
+- Issue #1246: Analytics now shows Big 3 Mapping right under the 1K panel, with a tighter Strength header, and hides the empty Progressive Overload search and column headers until there are tracked exercises.
+
+## 1.8.25 - 2026-10-04
+
+- Issue #1245: Explainers outside More (1K Progress, progression suggestions, Recovery Started, and the Home linked-week note) now sit behind one shared info icon beside the label they explain, instead of always-visible paragraphs.
+
+## 1.8.24 - 2026-10-04
+
+- Issue #1244: Log routine actions (Edit, Copy, Share, Share as Image, and Remove skip when a week is skipped) now open from a ••• button in the routine header as a compact sheet, instead of a separate row.
+
+## 1.8.23 - 2026-10-04
+
+- Issue #1243: Recovery copy is now compact: paused baseline rows read "Paused", the Analytics Recovery row shows a short "N/M trained" value, the Recovery detail hero shows "X/Y at baseline" with a matching fill bar, and the Home between-weeks action reads "Next week" so it no longer clips.
+
+## 1.8.22 - 2026-10-04
+
+- Issue #1242: Recovery counts now read the same on Home, Analytics, and the Recovery detail ("7 of 33 trained · 26 not yet"), and the Analytics weight change is colored by your weight goal, matching the Weight screen.
+
+## 1.8.21 - 2026-10-04
+
+- Issue #1241: Home no longer flashes the normal dashboard while an active Recovery block is still loading at startup; it keeps the loading placeholder until Recovery status is known, and shows a Retry recovery option if that read fails or a Recovery change is still finishing.
+
 ## 1.8.20 - 2026-10-03
 
 - Issue #1234: Protected workout details and other personal data from mobile crash reports with a deny-by-default Sentry redaction policy.
