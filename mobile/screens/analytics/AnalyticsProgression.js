@@ -107,7 +107,7 @@ export function AnalyticsProgression({
       // are actively accumulating, which is untrue for the duration of an
       // active Recovery block. The count itself still renders (as paused
       // history), only the "you should deload soon" advisory is withheld.
-      <SessionGauge key="session-gauge" count={sinceDeload} total={sessionCount} showDeload={deloadModeEnabled && !isActiveRecovery} />
+      <SessionGauge key="session-gauge" count={sinceDeload} total={sessionCount} showDeload={deloadModeEnabled && !isActiveRecovery} paused={isActiveRecovery} />
     ) : null,
 
     baselineExpanded && fatigueTrackingEnabled ? (

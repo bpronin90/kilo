@@ -53,7 +53,10 @@ function sessionGaugeToneColor(tone, colors) {
 // are proportional to their session ranges (1–6 / 7–9 / 10+) and the boundaries
 // (6, 9) mirror getSessionTone. The knob is positioned on a 0–11 unit scale so
 // session counts map linearly onto the zone segments.
-export function SessionGauge({ count, total, showDeload = true }) {
+//
+// `paused` (active Recovery, #1247): baseline sessions have stopped accumulating,
+// so the card reports the frozen routine stats instead of a lone Total.
+export function SessionGauge({ count, total, showDeload = true, paused = false }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const tone = getSessionTone(count);
@@ -63,17 +66,17 @@ export function SessionGauge({ count, total, showDeload = true }) {
 
   return (
     <Card style={styles.sessionGauge}>
-      <Text style={styles.sessionGaugePanelTitle}>Routine Health</Text>
+      <Text style={styles.sessionGaugePanelTitle}>{paused ? 'Routine Health · Paused' : 'Routine Health'}</Text>
       <View style={styles.sessionGaugeHeader}>
-        {showDeload && (
+        {(showDeload || paused) && (
           <View style={styles.sessionGaugeStat}>
-            <Text style={styles.sessionGaugeLabel}>Since deload</Text>
-            <Text style={[styles.sessionGaugeCount, { color: toneColor }]}>{count}</Text>
+            <Text style={styles.sessionGaugeLabel}>{paused ? 'Since last deload' : 'Since deload'}</Text>
+            <Text style={[styles.sessionGaugeCount, paused ? null : { color: toneColor }]}>{count}</Text>
           </View>
         )}
         {total != null && (
           <View style={[styles.sessionGaugeStat, styles.sessionGaugeStatRight]}>
-            <Text style={styles.sessionGaugeLabel}>Total</Text>
+            <Text style={styles.sessionGaugeLabel}>{paused ? 'Sessions logged' : 'Total'}</Text>
             <Text style={styles.sessionGaugeCount}>{total}</Text>
           </View>
         )}
@@ -105,6 +108,7 @@ export function SessionGauge({ count, total, showDeload = true }) {
           <Text style={[styles.sessionGaugeCaption, { color: toneColor }]}>{caption}</Text>
         </>
       )}
+      {paused && <Text style={[styles.sessionGaugeCaption, { color: colors.textMuted }]}>Baseline training is paused during Recovery.</Text>}
     </Card>
   );
 }
@@ -321,7 +325,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   sessionGauge: {
     flex: 1,
     gap: 10,
-    backgroundColor: colors.panelBackground,
+    backgroundColor: kua ? kua.surfaceCard : colors.panelBackground,
   },
   sessionGaugePanelTitle: {
     fontSize: 11,

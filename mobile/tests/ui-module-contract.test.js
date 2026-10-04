@@ -249,6 +249,21 @@ describe('UI.js compatibility barrel: rendered structure parity', () => {
     expect(hiddenTexts).toContain(20);
   });
 
+  test('SessionGauge paused shows the frozen routine stats instead of a lone Total (#1247)', () => {
+    let paused;
+    renderer.act(() => {
+      paused = renderer.create(<UI.SessionGauge count={8} total={20} showDeload={false} paused />);
+    });
+    const texts = paused.root.findAllByType(Text).map((t) => t.props.children);
+    expect(texts).toContain('Routine Health · Paused');
+    expect(texts).toContain('Sessions logged');
+    expect(texts).toContain('Since last deload');
+    expect(texts).toContain(8);
+    expect(texts).toContain(20);
+    expect(texts).not.toContain('Building');
+    expect(texts).not.toContain('Total');
+  });
+
   test('UnparsedRow adds the warning glyph and accessibility label only with an error', () => {
     let plain;
     renderer.act(() => {
