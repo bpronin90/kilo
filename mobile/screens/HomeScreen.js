@@ -366,7 +366,8 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   // one flashed the wrong mode on an active-Recovery cold start. A failed or
   // still-pending read keeps the skeleton but shows the Recovery card's own
   // message and `Retry recovery` above it, so Home is never blank without a way
-  // out. STALE is last-known-good and paints normally with its warning.
+  // out. STALE is last-known-good and paints normally with its warning; an
+  // active block with a pending change already paints Recovery mode, not normal.
   const recoveryStatus = activeTrainingContext.status;
   const recoveryUnresolved = recoveryStatus === ACTIVE_TRAINING_STATUS.LOADING
     || recoveryStatus === ACTIVE_TRAINING_STATUS.UNVERIFIED
