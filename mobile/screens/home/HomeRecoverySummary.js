@@ -46,6 +46,8 @@ function liftValue(lift) {
 
 // Label and its info icon on one line, adjacent by gap (never edge-floated).
 const WEEK_LABEL_ROW = { flexDirection: 'row', alignItems: 'center', columnGap: 2 };
+// Shrinks and wraps within the card so a long stale label never overflows.
+const WEEK_LABEL_TEXT = { flexShrink: 1, minWidth: 0 };
 
 export function HomeRecoverySummary({ summary, onNavigate }) {
   const { colors, kuaPalette: kua } = useTheme();
@@ -156,7 +158,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
                 because the summary announcement below already names the week. */}
             {weekLabel ? (
               <View style={WEEK_LABEL_ROW}>
-                <Text style={styles.recoveryWeekLabel} accessibilityElementsHidden importantForAccessibility="no">{weekLabel}</Text>
+                <Text style={[styles.recoveryWeekLabel, WEEK_LABEL_TEXT]} accessibilityElementsHidden importantForAccessibility="no">{weekLabel}</Text>
                 {weekScope ? (
                   <InfoButton
                     testID="home-recovery-week-scope-info"
