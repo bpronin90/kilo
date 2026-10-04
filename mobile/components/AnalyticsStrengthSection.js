@@ -17,6 +17,9 @@ export function AnalyticsStrengthSection({
   oneK,
   oneKCanonical,
   oneKChartData,
+  // #1246: Big 3 Mapping slots in directly under the 1K panel, ahead of the
+  // suggestion cards below.
+  big3Mapping = null,
   // #960: explainable progression-suggestion cards for the strength surface.
   // `progressionSuggestions` arrives already filtered by AnalyticsScreen
   // (feature on, renderable, not muted, not dismissed); each entry is
@@ -143,6 +146,8 @@ export function AnalyticsStrengthSection({
           </Text>
         </Card>
       )}
+
+      {big3Mapping}
 
       {(progressionSuggestions.length > 0 || mutedProgressionRows.length > 0) && (
         <View style={styles.progressionSuggestions} testID="analytics-progression-suggestions">

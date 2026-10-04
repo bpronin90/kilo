@@ -123,8 +123,8 @@ export function AnalyticsProgression({
     // Strength and Progressive Overload are one section (#821): the 1K
     // total, then every lift that feeds it. Only the 1K panel carries the
     // section title now — the sticky header below is a heading inside this
-    // section, not a second top-level one. Big 3 Mapping sits directly under
-    // the 1K panel (#1246) since it configures the lifts that feed the total.
+    // section, not a second top-level one. Big 3 Mapping renders inside the
+    // strength section, directly under the 1K panel (#1246) since it configures the lifts that feed the total.
     baselineExpanded ? (
       <AnalyticsStrengthSection
         key="strength-section"
@@ -133,24 +133,22 @@ export function AnalyticsProgression({
         oneK={oneK}
         oneKCanonical={oneKCanonical}
         oneKChartData={oneKChartData}
+        big3Mapping={(
+          <AnalyticsBig3MappingCard
+            key="big3-mapping"
+            activeSlot={activeSlot}
+            handleSlotTap={handleSlotTap}
+            SLOT_LABELS={SLOT_LABELS}
+            oneKSelections={oneKSelections}
+            noteExerciseNames={noteExerciseNames}
+            handleSelectExercise={handleSelectExercise}
+          />
+        )}
         progressionSuggestions={progressionSuggestionView.visible}
         mutedProgressionRows={progressionSuggestionView.muted}
         onMuteProgression={onMuteProgression}
         onUnmuteProgression={onUnmuteProgression}
         onDismissProgression={onDismissProgression}
-      />
-    ) : null,
-
-    // Directly under the 1K panel (#1246).
-    baselineExpanded ? (
-      <AnalyticsBig3MappingCard
-        key="big3-mapping"
-        activeSlot={activeSlot}
-        handleSlotTap={handleSlotTap}
-        SLOT_LABELS={SLOT_LABELS}
-        oneKSelections={oneKSelections}
-        noteExerciseNames={noteExerciseNames}
-        handleSelectExercise={handleSelectExercise}
       />
     ) : null,
 

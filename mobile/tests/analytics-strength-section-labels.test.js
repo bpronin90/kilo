@@ -1,5 +1,6 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
+import { Text } from 'react-native';
 import { ThemeProvider } from '../theme/ThemeContext';
 import { AnalyticsStrengthSection } from '../components/AnalyticsStrengthSection';
 import { setWeightUnitPreference, __resetWeightUnitForTests } from '../lib/unitPreference';
@@ -101,5 +102,32 @@ describe('AnalyticsStrengthSection — 1K explainer uses the shared info icon', 
     expect(texts(root.root).some(t => t.includes('most recent complete cycle'))).toBe(false);
     await act(async () => { toggle.props.onPress(); });
     expect(texts(root.root).some(t => t.includes('most recent complete cycle'))).toBe(true);
+  });
+});
+
+// #1246: Big 3 Mapping sits directly under the 1K panel, ahead of suggestion rows.
+describe('AnalyticsStrengthSection — Big 3 Mapping placement (#1246)', () => {
+  test('renders the mapping slot after the 1K panel and before progression rows', async () => {
+    let root;
+    await act(async () => {
+      root = renderer.create(
+        <ThemeProvider>
+          <AnalyticsStrengthSection
+            handleStrengthLayout={() => {}}
+            isNotesLoading={false}
+            oneK={oneK}
+            oneKCanonical={oneKCanonical}
+            oneKChartData={[]}
+            big3Mapping={<Text testID="big3-slot">Big 3 Mapping</Text>}
+            mutedProgressionRows={[{ key: 'bench', name: 'Bench Press' }]}
+          />
+        </ThemeProvider>
+      );
+    });
+    const json = JSON.stringify(root.toJSON());
+    const at = (s) => json.indexOf(s);
+    expect(at('1K Progress')).toBeGreaterThan(-1);
+    expect(at('big3-slot')).toBeGreaterThan(at('1K Progress'));
+    expect(at('analytics-progression-suggestions')).toBeGreaterThan(at('big3-slot'));
   });
 });
