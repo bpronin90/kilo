@@ -175,10 +175,9 @@ export function AnalyticsStrengthSection({
   );
 }
 
-// Split out of AnalyticsStrengthSection (#821). Strength and Progressive
-// Overload are now one section — the 1K total, then every lift that feeds it —
-// and this is configuration rather than analysis, so it sits at the foot of the
-// section instead of between the total and its contributors.
+// Split out of AnalyticsStrengthSection (#821). It sits directly under the 1K
+// panel (#1246), ahead of Progressive Overload, since it picks the lifts that
+// feed the total.
 export function AnalyticsBig3MappingCard({
   activeSlot,
   handleSlotTap,
@@ -189,8 +188,7 @@ export function AnalyticsBig3MappingCard({
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
-  // Expanded by default, per ui-design-rules §6. Moving the card to the foot of
-  // the section changes where it sits, not whether it opens closed.
+  // Expanded by default, per ui-design-rules §6.
   const [big3Collapsed, setBig3Collapsed] = useState(false);
 
   return (
@@ -262,7 +260,7 @@ export function AnalyticsBig3MappingCard({
 
 export const createStyles = (colors, kua = null) => StyleSheet.create({
   strengthSection: {
-    gap: 16,
+    gap: 12,
   },
   // #960: a plain vertical stack of suggestion cards under the 1K panel.
   progressionSuggestions: {
@@ -389,7 +387,6 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
     minHeight: 44,
   },
   slotCardTitle: {

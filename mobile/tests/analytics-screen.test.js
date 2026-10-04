@@ -949,6 +949,30 @@ describe('AnalyticsScreen empty state copy — no tracked exercises', () => {
     // the exact Track / Tracked labels.
     expect(hasText(root, "Logging alone doesn't track it")).toBe(true);
   });
+
+  // #1246: a zero-row Progressive Overload renders no table chrome.
+  test('zero rows render no search box or 1RM/Kilo/Best/Trend headers', () => {
+    const component = setup({ hookOverrides: { notes: [], currentNote: null, trackedLifts: {} } });
+    const root = component.root;
+
+    expect(hasText(root, 'Progressive Overload')).toBe(true);
+    expect(root.findAllByProps({ testID: 'po-search' }).length).toBe(0);
+    // Exact match: "Kilo"/"Best"/"Trend" appear as substrings elsewhere on the screen.
+    const exact = (label) => root.findAll(() => true)
+      .some(n => n.props && n.props.children === label);
+    ['1RM', 'Kilo', 'Best', 'Trend'].forEach(label => expect(exact(label)).toBe(false));
+  });
+
+  test('Big 3 Mapping renders before Progressive Overload', () => {
+    const component = setup({ hookOverrides: { notes: [], currentNote: null, trackedLifts: {} } });
+    const root = component.root;
+    const pos = (label) => {
+      const idx = JSON.stringify(component.toJSON()).indexOf(label);
+      expect(idx).toBeGreaterThan(-1);
+      return idx;
+    };
+    expect(pos('Big 3 Mapping')).toBeLessThan(pos('Progressive Overload'));
+  });
 });
 
 // ── #894: inherited vs. newly tracked Progressive Overload rows ─────────────

@@ -231,13 +231,13 @@ describe('AnalyticsOverview / AnalyticsProgression return flat arrays (card #105
     expect(Array.isArray(items)).toBe(true);
     // Not in active Recovery, so the baseline disclosure toggle is absent (null)
     // and everything else — Fatigue title, gauge, fatigue card, strength
-    // section, sticky header, overload-list anchor, big3 card — renders: 8
+    // section, big3 card, sticky header, overload-list anchor — renders: 8
     // flat top-level siblings, always.
     expect(items).toHaveLength(8);
     const keys = items.map(el => el?.key ?? null);
     expect(keys).toEqual([
       null, 'combined-section-title', 'session-gauge', 'fatigue-card',
-      'strength-section', 'sticky-header', 'overload-list', 'big3-mapping',
+      'strength-section', 'big3-mapping', 'sticky-header', 'overload-list',
     ]);
 
     // The exact adjacency `AnalyticsScreen`'s stickyHeaderIndices depends on:

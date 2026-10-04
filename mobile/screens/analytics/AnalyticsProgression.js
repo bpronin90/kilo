@@ -9,7 +9,7 @@ import { renderOverloadListContent } from './AnalyticsStates';
 // The baseline-training presentation for Analytics (#821, #871): the
 // Recovery-collapsible disclosure, Fatigue, the merged Strength/Progressive
 // Overload section (1K total, sticky search/collapse-all header, the
-// tracked-exercise rows, and Big 3 Mapping at the foot). Moved verbatim out
+// tracked-exercise rows, with Big 3 Mapping under the 1K panel). Moved verbatim out
 // of AnalyticsScreen.js (card #1051) — same conditions, keys, testIDs and
 // child-component props as before, only the module boundary changed.
 //
@@ -65,6 +65,9 @@ export function AnalyticsProgression({
   handleSelectExercise,
 }) {
   const baselineExpanded = !isActiveRecovery || !baselineCollapsed;
+  // #1246: with no rows to search or label, the search box and 1RM/Kilo/Best/
+  // Trend headers are empty chrome. An active query stays (it must be clearable).
+  const showTableChrome = groupedSignals.length > 0 || Boolean(searchQuery);
 
   return [
     // Baseline-training disclosure (#871, Zero Friction F9). Fatigue,
@@ -120,9 +123,8 @@ export function AnalyticsProgression({
     // Strength and Progressive Overload are one section (#821): the 1K
     // total, then every lift that feeds it. Only the 1K panel carries the
     // section title now — the sticky header below is a heading inside this
-    // section, not a second top-level one — and Big 3 Mapping moves to the
-    // foot, because it is configuration rather than analysis and was sitting
-    // between the total and its contributors.
+    // section, not a second top-level one. Big 3 Mapping sits directly under
+    // the 1K panel (#1246) since it configures the lifts that feed the total.
     baselineExpanded ? (
       <AnalyticsStrengthSection
         key="strength-section"
@@ -136,6 +138,19 @@ export function AnalyticsProgression({
         onMuteProgression={onMuteProgression}
         onUnmuteProgression={onUnmuteProgression}
         onDismissProgression={onDismissProgression}
+      />
+    ) : null,
+
+    // Directly under the 1K panel (#1246).
+    baselineExpanded ? (
+      <AnalyticsBig3MappingCard
+        key="big3-mapping"
+        activeSlot={activeSlot}
+        handleSlotTap={handleSlotTap}
+        SLOT_LABELS={SLOT_LABELS}
+        oneKSelections={oneKSelections}
+        noteExerciseNames={noteExerciseNames}
+        handleSelectExercise={handleSelectExercise}
       />
     ) : null,
 
@@ -179,6 +194,8 @@ export function AnalyticsProgression({
             </Pressable>
           )}
         </View>
+        {showTableChrome && (
+        <>
         <View style={styles.searchContainer}>
           <TextInput
             testID="po-search"
@@ -198,6 +215,8 @@ export function AnalyticsProgression({
             <Text style={styles.signalColumnLabel}>Trend</Text>
           </View>
         </View>
+        </>
+        )}
       </View>
     ) : null,
 
@@ -229,17 +248,5 @@ export function AnalyticsProgression({
       </View>
     ) : null,
 
-    // Foot of the merged Strength section.
-    baselineExpanded ? (
-      <AnalyticsBig3MappingCard
-        key="big3-mapping"
-        activeSlot={activeSlot}
-        handleSlotTap={handleSlotTap}
-        SLOT_LABELS={SLOT_LABELS}
-        oneKSelections={oneKSelections}
-        noteExerciseNames={noteExerciseNames}
-        handleSelectExercise={handleSelectExercise}
-      />
-    ) : null,
   ];
 }
