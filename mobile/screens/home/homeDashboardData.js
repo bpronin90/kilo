@@ -15,6 +15,7 @@ import {
 } from '../../lib/data/recoveryAnalytics';
 import { deriveRecoveryTrainedRows } from '../../lib/data/recoveryReturnBands';
 import { deriveRecoverySummary } from '../../lib/data/derivedAnalytics';
+import { formatDate } from '../../lib/format';
 
 // Re-exported so HomeScreen's active-branch copy can switch on the same
 // enums this module derives from, without HomeScreen importing a second
@@ -49,6 +50,26 @@ import {
 // unverified boundary must not publish aggregates, because "no records read"
 // and "nothing is excluded" are the same empty snapshot and only one of them is
 // true.
+// The rolling series only carries an MM/DD label; re-label it through the shared
+// formatter (#1250). The series is built from the last 7 distinct weigh-in dates
+// and may drop points, so match each point to its source date in order by its
+// MM/DD label rather than by position. Unmatched points keep their label.
+const ROLLING_SERIES_DATE_LIMIT = 7;
+function relabelWeightSeriesDates(series, entries) {
+  if (!Array.isArray(series) || series.length === 0) return series;
+  const dates = [...new Set((entries || []).map(e => e.date))].sort().slice(-ROLLING_SERIES_DATE_LIMIT);
+  let next = 0;
+  return series.map((point) => {
+    for (let i = next; i < dates.length; i++) {
+      if (String(dates[i]).split('-').slice(1).join('/') === point.label) {
+        next = i + 1;
+        return { ...point, label: formatDate(dates[i]) || point.label };
+      }
+    }
+    return point;
+  });
+}
+
 export function useHomeNormalNotes(notes) {
   const filter = useRecoveryAnalyticsFilter();
   return useMemo(() => ({
@@ -289,7 +310,8 @@ export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal
     ? derive1kTotalFromSectionsList(noteSectionsList, oneKSelections)
     : derive1kTotal(allSections, oneKSelections);
 
-  const { rollingSeries: weightSeries, trendSummary: weightTrends, goalInfo } = deriveWeightGoalAnalytics(weightEntries, weightGoal);
+  const { rollingSeries: rawWeightSeries, trendSummary: weightTrends, goalInfo } = deriveWeightGoalAnalytics(weightEntries, weightGoal);
+  const weightSeries = relabelWeightSeriesDates(rawWeightSeries, weightEntries);
   const latestWeight = weightTrends.currentWeight;
   const { weeksIn } = deriveWorkoutNoteAnalytics(sections, []);
 
