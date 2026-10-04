@@ -141,10 +141,10 @@ export function HomeHeader({
             style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart]}
             hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
             accessibilityRole="button"
-            accessibilityLabel="Baseline training paused during Recovery"
+            accessibilityLabel="Paused for recovery"
             accessibilityHint="Opens the Progressive Overload section of the Analytics tab"
           >
-            <Text style={[styles.classifSectionLabel, styles.sectionHeaderLabel]}>Baseline training paused during Recovery</Text>
+            <Text style={[styles.classifSectionLabel, styles.sectionHeaderLabel]}>Paused for recovery</Text>
             <View style={styles.sectionHeaderChevron}>
               <Chevron color={mutedStroke} />
             </View>

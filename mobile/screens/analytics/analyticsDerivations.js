@@ -11,7 +11,7 @@ import { normalizeExerciseKey } from '../../lib/parser';
 import { filterNotesForNormalAnalytics } from '../../lib/data/recoveryAnalyticsFilter';
 import { ACTIVE_TRAINING_STATUS } from '../../lib/data/activeTrainingContext';
 import {
-  formatRecoveryCountSuffix, recoveryWeekStatusText, summarizeRecoveryBands, weightDirection, weightTrendTone,
+  recoveryWeekStatusText, summarizeRecoveryBands, weightDirection, weightTrendTone,
 } from '../../lib/data/derivedAnalytics';
 
 // `excludedNoteIds` (#699) is the set of recovery-linked note ids whose block
@@ -334,7 +334,7 @@ export function deriveOverviewRows({
     deltaCaption: (!isRecoveryActive && latestOneK && priorOneK) ? 'since your last session' : null,
     emptyCaption: 'Map your three lifts and log one full cycle',
     paused: isRecoveryActive,
-    pausedCaption: isRecoveryActive ? 'Baseline training paused during Recovery' : null,
+    pausedCaption: isRecoveryActive ? 'Paused' : null,
   };
 
   // Exercise progress — the same overload_trend classification the table
@@ -359,7 +359,7 @@ export function deriveOverviewRows({
     counts,
     emptyCaption: 'Tap Track on an exercise in your log',
     paused: isRecoveryActive,
-    pausedCaption: isRecoveryActive ? 'Baseline training paused during Recovery' : null,
+    pausedCaption: isRecoveryActive ? 'Paused' : null,
   };
 
   // Routine depth. Suppressed entirely when deload mode is off — the count only
@@ -376,7 +376,7 @@ export function deriveOverviewRows({
     valueSuffix: sessionsSinceDeload === 1 ? 'session' : 'sessions',
     emptyCaption: null,
     paused: isRecoveryActive,
-    pausedCaption: isRecoveryActive ? 'Baseline training paused during Recovery' : null,
+    pausedCaption: isRecoveryActive ? 'Paused' : null,
   } : null;
 
   // Bodyweight — latest 7-day rolling average against the previous point of the
@@ -453,9 +453,10 @@ export function deriveOverviewRows({
       label: 'Recovery',
       section: 'recovery',
       unavailable: false,
-      value: recoverySummary.trained,
+      // #1243: a short fraction that never truncates beside the label.
+      value: `${recoverySummary.trained}/${recoverySummary.rosterSize}`,
       showUnit: false,
-      valueSuffix: formatRecoveryCountSuffix(recoverySummary),
+      valueSuffix: 'trained',
       infoCaption: `Week ${weekNumber}${movementCaption}`,
       emptyCaption: null,
     };
