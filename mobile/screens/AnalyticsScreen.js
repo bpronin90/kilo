@@ -26,6 +26,8 @@ import { displayWeight, formatBodyweightValue, displayChartSeries, lbToKg } from
 import { AnalyticsRecoverySection } from '../components/AnalyticsRecoverySection';
 import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
 import { normalizeExerciseKey } from '../lib/parser';
+import { derive1kTotalSeriesFromSectionsList } from '../lib/data/oneK';
+import { DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
 import {
   hydrateProgressionSuggestionSettings,
   subscribeProgressionSuggestionSettings,
@@ -100,11 +102,9 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     retryRecovery: retryRecoveryState,
   } = useRecoveryBlockState() || {};
   // Product-wide "what am I training now?" context (#868), shared with Home and
-  // Log. Resolved from the STORED current-routine id, not `currentNote?.id`: a
-  // restored profile whose `current_workout_id` points at a missing/tombstoned
-  // note leaves `currentNote` null while `currentId` stays set, and this must
-  // resolve the same activeNoteId Log does rather than silently losing it
-  // (review finding, PR #873).
+  // Log. Resolved from the STORED current-routine id, not `currentNote?.id`, so a
+  // missing/tombstoned current note still resolves the same activeNoteId Log does
+  // (PR #873).
   const activeTrainingContext = useActiveTrainingContext({ currentId, notes });
   // Zero Friction F9 (#871): whether Analytics is inside an active Recovery
   // block (live open week, or between weeks with the block still active) —
@@ -119,12 +119,9 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   // see. Only meaningful while `isActiveRecovery`, so Recovery ending always
   // restores the plain, always-expanded normal hierarchy.
   const [baselineCollapsed, setBaselineCollapsed] = useState(true);
-  // Identity of the current active-Recovery PERIOD, distinct from
-  // `isActiveRecovery` (review finding, PR #876): `activeBlock.id` stays the
-  // same across an open-week/between-weeks flip, but is a NEW id (or null) once
-  // that block ends and a later one starts. Resetting only on this identity
-  // change lets a fresh Recovery period open collapsed while leaving
-  // mid-period toggles alone.
+  // Identity of the active-Recovery PERIOD (review finding, PR #876): same id
+  // across an open-week/between-weeks flip, a NEW id (or null) once the block
+  // ends and a later one starts — resets only on that change.
   const activeRecoveryBlockId = isActiveRecovery ? (activeTrainingContext.activeBlock?.id ?? null) : null;
   const prevActiveRecoveryBlockId = useRef(null);
   useEffect(() => {
@@ -177,13 +174,10 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     hasScrolled.current = true;
   }
 
-  // One navigation path for every section request, external `section` prop
-  // handoff or same-screen tap (Overview's rows, #871 review finding). Both
-  // resolve a destination inside the collapsed baseline disclosure the same
-  // way: expand it first and let the layout that follows fulfill the
-  // still-pending request, rather than reading `sectionOffsets` directly while
-  // unmounted — which is exactly what let Overview's rows no-op or scroll
-  // stale before.
+  // One navigation path for every section request (prop handoff or same-screen
+  // tap, #871). A destination inside the collapsed baseline disclosure expands
+  // it first and lets the layout that follows fulfill the pending request,
+  // rather than reading `sectionOffsets` while unmounted.
   function navigateToSection(sectionId) {
     pendingSection.current = sectionId;
     hasScrolled.current = false;
@@ -241,12 +235,9 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     recordSectionOffset('recovery', e.nativeEvent.layout.y);
   }
 
-  // Progressive Overload can't report its own position: its sticky header's
-  // onLayout reports y:0 (laid out inside ScrollView's own wrapper), but its
-  // HEIGHT is true, and the ordinary list beneath it has an ordinary offset —
-  // so the destination is the list's top minus the header's height. Either
-  // measurement can arrive first; whichever completes the pair resolves the
-  // pending request.
+  // Progressive Overload can't report its own position (its sticky header's
+  // onLayout reports y:0, but its HEIGHT is true): destination is the list's
+  // top minus the header height; whichever measurement lands second resolves it.
   function handleProgressiveOverloadHeaderLayout(e) {
     overloadHeaderHeight.current = e.nativeEvent.layout.height;
     resolveOverloadOffset();
@@ -417,15 +408,22 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   }
 
   const oneKChartData = useMemo(() => {
-    // Boundaries are session ordinals INTO the 1K series (built from
-    // parsedSections.noteSectionsList), so they must count the same
-    // recovery-filtered note population or the markers would slide.
+    // Boundaries are ordinals INTO the 1K series, so they must count the same
+    // recovery-filtered notes or the markers would slide.
     const boundaries = deriveRoutineStartBoundaries(parsedSections.normalNotes, oneKSelections);
-    const series = deriveOneKChartData(analytics.oneKSeries, boundaries);
-    // #577: carry canonical-lb figures alongside display-space ones on every
-    // point so a plate-calculator tap reads the exact canonical value.
-    const withCanonical = series.map((p) => ({
+    // #1248: a deload note keeps its own point; flag its session ordinals.
+    const deloadSessions = new Set();
+    let offset = 0;
+    parsedSections.normalNotes.forEach((n, i) => {
+      // Real (possibly sparse) ordinals, mirroring the cross-note merge's offset.
+      const noteSeries = derive1kTotalSeriesFromSectionsList([parsedSections.noteSectionsList[i]], oneKSelections);
+      if (n.title?.startsWith(DELOAD_NOTE_PREFIX)) noteSeries.forEach(pt => deloadSessions.add(offset + pt.session));
+      if (noteSeries.length > 0) offset += noteSeries[noteSeries.length - 1].session;
+    });
+    // #577: canonical-lb figures ride along for the plate calculator.
+    const withCanonical = deriveOneKChartData(analytics.oneKSeries, boundaries).map((p, i) => ({
       ...p,
+      isDeload: deloadSessions.has(analytics.oneKSeries[i].session),
       valueLb: p.value,
       benchLb: p.bench,
       squatLb: p.squat,
@@ -433,15 +431,16 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     }));
     if (unit !== 'kg') return withCanonical;
     // Display-space conversion for kg (#441): per-lift values convert too.
+    const kg = (v) => (v != null ? lbToKg(v) : v);
     return withCanonical.map((p) => ({
       ...p,
       value: Math.round(lbToKg(p.value)),
       unit: 'kg',
-      bench: p.bench != null ? lbToKg(p.bench) : p.bench,
-      squat: p.squat != null ? lbToKg(p.squat) : p.squat,
-      deadlift: p.deadlift != null ? lbToKg(p.deadlift) : p.deadlift,
+      bench: kg(p.bench),
+      squat: kg(p.squat),
+      deadlift: kg(p.deadlift),
     }));
-  }, [analytics.oneKSeries, parsedSections.normalNotes, oneKSelections, unit]);
+  }, [analytics.oneKSeries, parsedSections.normalNotes, parsedSections.noteSectionsList, oneKSelections, unit]);
 
   // 1K card values in display space (identity in lb mode); the 1,000 lb club
   // itself stays lb-defined, and AnalyticsStrengthSection converts the same way.
