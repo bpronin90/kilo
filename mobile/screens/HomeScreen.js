@@ -6,7 +6,8 @@ import { Card, Button, ErrorBanner, getSessionTone } from '../components/UI';
 import { useTheme } from '../theme/ThemeContext';
 import { CLOUD_SYNC_NOTICE, useWeightGoal, useTrackedLifts, getNoteSections, useCloudSyncSummary, useActiveTrainingContext, useDeloadHistory, useRecoveryBlockState } from '../hooks/useEntries';
 import { useWeightUnit } from '../lib/unitPreference';
-import { deriveHomeDashboardData, useHomeNormalNotes, useHomeRecoverySummary } from './home/homeDashboardData';
+import { deriveHomeDashboardData, HOME_RECOVERY_STATUS, useHomeNormalNotes, useHomeRecoverySummary } from './home/homeDashboardData';
+import { HomeRecoverySummary } from './home/HomeRecoverySummary';
 import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
 import { markStartupPhase, markStartupStorageReads } from '../storage/entries/startupTiming';
 import { DEVICE_KEY_RECOVERY_MESSAGE, isDeviceKeyUnavailable, secureStorage } from '../storage/secureStorage';
@@ -14,9 +15,8 @@ import { createStyles } from './home/homeStyles';
 import { useKuaTypography } from '../theme/typography';
 import { HomeHeader } from './home/HomeHeader';
 import { HomeDashboard } from './home/HomeDashboard';
-// The exact example the welcome card teaches (issue #517). Exported so tests
-// can round-trip it through the real parser — the copy must never drift back
-// to a shape parseWorkoutNote silently rejects.
+// The exact example the welcome card teaches (issue #517), exported so tests can round-trip
+// it through the real parser — the copy must never drift to a shape parseWorkoutNote rejects.
 export const WELCOME_EXAMPLE_EXERCISE_LINE = '-Squat';
 export const WELCOME_EXAMPLE_SETS_LINE = '315 5,5';
 function lerpColor(a, b, t) {
@@ -52,6 +52,10 @@ export function KiloWordmark({ width = 140, height = 48 }) {
     </View>
   );
 }
+
+// Names the same `Retry recovery` control as every other Recovery message.
+export const RECOVERY_PENDING_HOLD_MESSAGE =
+  'A recovery change is still finishing, so recovery status is not confirmed yet. Tap Retry recovery.';
 
 function BarbellIcon({ color, size = 22 }) {
   const { colors, kuaPalette: kua } = useTheme();
@@ -248,10 +252,9 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   const { normalNotes, recoveryBoundaryReady } = useHomeNormalNotes(notes);
 
   // Recovery STATUS is a separate question from the analytics boundary above
-  // (#757). It is deliberately not folded into `isLoading`: the authoritative
-  // read can fail terminally while the boundary read succeeded, and holding the
-  // whole dashboard on it would leave Home permanently blank over a condition
-  // this card can state honestly on its own.
+  // (#757). Until it resolves, Home cannot know whether the hero should be the
+  // normal one or the active-Recovery one, so it holds the skeleton (#1241) —
+  // see `recoveryUnresolved` below for how a terminal failure keeps its retry.
   const recoverySummary = useHomeRecoverySummary(notes, workoutNote);
 
   // Product-wide "what am I training now?" context (#868), shared verbatim
@@ -358,7 +361,20 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   // dashboard's aggregates are derived from a note population that is not yet
   // known to be correct, so painting them would show numbers that can include
   // work the user chose to exclude (#699).
-  const isLoading = loading || goalLoading || trackedLiftsLoading || !recoveryBoundaryReady;
+  // `recoveryUnresolved` (#1241): loading, unverified, and pending are not an
+  // answer to "is a Recovery block active?", and painting the normal hero over
+  // one flashed the wrong mode on an active-Recovery cold start. A failed or
+  // still-pending read keeps the skeleton but shows the Recovery card's own
+  // message and `Retry recovery` above it, so Home is never blank without a way
+  // out. STALE is last-known-good and paints normally with its warning.
+  const recoveryStatus = activeTrainingContext.status;
+  const recoveryUnresolved = recoveryStatus === ACTIVE_TRAINING_STATUS.LOADING
+    || recoveryStatus === ACTIVE_TRAINING_STATUS.UNVERIFIED
+    || recoveryStatus === ACTIVE_TRAINING_STATUS.PENDING;
+  const isLoading = loading || goalLoading || trackedLiftsLoading || !recoveryBoundaryReady || recoveryUnresolved;
+  const recoveryHoldSummary = recoveryStatus === ACTIVE_TRAINING_STATUS.PENDING
+    ? { ...recoverySummary, status: HOME_RECOVERY_STATUS.UNVERIFIED, message: RECOVERY_PENDING_HOLD_MESSAGE }
+    : recoveryStatus === ACTIVE_TRAINING_STATUS.UNVERIFIED ? recoverySummary : null;
 
   // Marks the moment the skeleton is replaced by real content (#809), so a
   // device timing run can compare this against the encrypted-storage/reload
@@ -419,7 +435,12 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
           above and nothing else — no fabricated zeroes), and a verified read
           (welcome or dashboard). A failed read that still has cached data keeps
           rendering it under the banner, which is stale but true. */}
-      {isLoading ? <HomeSkeleton /> : (hasLoadError && !hasLoadedData) ? null : isEmptyState ? (
+      {isLoading ? (
+        <>
+          {recoveryHoldSummary ? <HomeRecoverySummary summary={recoveryHoldSummary} onNavigate={onNavigate} /> : null}
+          <HomeSkeleton />
+        </>
+      ) :(hasLoadError && !hasLoadedData) ? null : isEmptyState ? (
         <Card style={styles.welcomeCard}>
           <View style={styles.welcomeHeader}>
             <Text style={styles.welcomeTitle}>Welcome to Kilo</Text>

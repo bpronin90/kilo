@@ -221,8 +221,9 @@ function HomeProbe() {
   const goal = useWeightGoal();
   const tracked = useTrackedLifts();
   const filter = useRecoveryAnalyticsFilter();
-  useRecoveryBlockState();
+  const recovery = useRecoveryBlockState();
   gate.goalLoading = goal.loading;
+  gate.recoveryStatusReady = recovery.ready;
   gate.trackedLiftsLoading = tracked.loading;
   gate.recoveryBoundaryReady = filter.ready;
   return null;
@@ -294,6 +295,8 @@ describe("Home's first-paint gate (#984)", () => {
     expect(gate.goalLoading).toBe(false);
     expect(gate.trackedLiftsLoading).toBe(false);
     expect(gate.recoveryBoundaryReady).toBe(true);
+    // #1241: the authoritative Recovery status is a fifth term of the gate.
+    expect(gate.recoveryStatusReady).toBe(true);
 
     // And the launch still issues one read per key: overlapping reads must not
     // reintroduce the duplicates #818 removed by defeating the coalescing map.
