@@ -2873,6 +2873,7 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
     render.act(() => { toggle.props.onPress(); });
     const gauge = root.findByType(require('../components/UI').SessionGauge);
     expect(gauge.props.showDeload).toBe(false);
+    expect(gauge.props.paused).toBe(true);
   });
 
   // Review finding on PR #876: Overview's 1K and Exercise Progress rows drove
