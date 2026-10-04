@@ -615,6 +615,15 @@ describe('parseWorkoutRow', () => {
     expect(r.sets[0].weight_value).toBeNull();
   });
 
+  test('timed cardio header keeps weight/rep-looking rows out of lb sets', () => {
+    const r = parseWorkoutNote('+WARMUP\n-Bike 5 min\n15 2, 14 3\n10 5');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.sets).toEqual([]);
+    expect(ex.unparsed_rows).toHaveLength(2);
+    expect(parseHeaderDeclaration('-Bike 5 min')).toEqual({ type: 'timed' });
+    expect(parseHeaderDeclaration('-Bike')).toBeNull();
+  });
+
   test('weight + single-rep group', () => {
     const r = parseWorkoutRow('135 5');
     expect(r.ok).toBe(true);
@@ -3817,9 +3826,9 @@ describe('#854: F2b grammar contract (per #853 decision table)', () => {
       }]);
     });
 
-    test('rule 4: a scalar time prescription alone declares nothing (G1-p)', () => {
-      expect(parseHeaderDeclaration('-Walk 5 min')).toBeNull();
-      expect(parseHeaderDeclaration('-Walk 10min')).toBeNull();
+    test('rule 4: a scalar time prescription alone is timed, not duration/reps (#1251)', () => {
+      expect(parseHeaderDeclaration('-Walk 5 min')).toEqual({ type: 'timed' });
+      expect(parseHeaderDeclaration('-Walk 10min')).toEqual({ type: 'timed' });
     });
 
     test('rule 5: no declaration at all', () => {

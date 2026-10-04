@@ -69,7 +69,7 @@ function _trailingCommaMessage(tok) {
 //   1. "N x M T"  — sets x timed holds        -> duration (M, in T)
 //   2. "N-M T"    — timed target range         -> duration (in T)
 //   3. "N x M" / "N x M-P" — rep prescription  -> reps
-//   4. "N T" alone — scalar time prescription  -> no declaration (G1-p)
+//   4. "N T" alone — scalar time prescription  -> timed (no weighted sets)
 //   5. no declaration                          -> no declaration (G1-p)
 // [xX×]: the "x" multiplier in a set×rep/hold prescription is authored as
 // either the ASCII letter or the canonical "×" (U+00D7) the repo already
@@ -79,6 +79,10 @@ const _TIME_UNIT = '(?:sec|secs|seconds?|s|min|mins|minutes?|m)';
 const _HEADER_TIMED_HOLDS_RE = new RegExp(`\\d+\\s*[xX×]\\s*\\d+(?:\\.\\d+)?\\s*${_TIME_UNIT}\\b`, 'i');
 const _HEADER_TIMED_RANGE_RE = new RegExp(`\\d+\\s*[-–]\\s*\\d+(?:\\.\\d+)?\\s*${_TIME_UNIT}\\b`, 'i');
 const _HEADER_REP_PRESCRIPTION_RE = /\d+\s*[xX×]\s*\d+(?:\s*[-–]\s*\d+)?/;
+// A trailing scalar time ("Bike 5 min") marks a timed cardio/warmup line. It
+// declares nothing about its rows, but a weight/rep pair under it is not a
+// weighted set, so it gets its own declaration type (see _parseSetTokens).
+const _HEADER_SCALAR_TIME_RE = new RegExp(`\\d+(?:\\.\\d+)?\\s*${_TIME_UNIT}\\s*$`, 'i');
 
 export function parseHeaderDeclaration(rawHeader) {
   if (!rawHeader) return null;
@@ -86,7 +90,8 @@ export function parseHeaderDeclaration(rawHeader) {
   if (_HEADER_TIMED_HOLDS_RE.test(header)) return { type: 'duration' };
   if (_HEADER_TIMED_RANGE_RE.test(header)) return { type: 'duration' };
   if (_HEADER_REP_PRESCRIPTION_RE.test(header)) return { type: 'reps' };
-  return null; // scalar-time prescription or no declaration -> G1-p
+  if (_HEADER_SCALAR_TIME_RE.test(header)) return { type: 'timed' };
+  return null; // no declaration -> G1-p
 }
 
 // Complete row-grammar classifier. Takes an already-cleaned set string (leading
@@ -181,6 +186,12 @@ function _parseSetTokens(setStr, raw, declaration = null) {
       return { ok: false, raw, error: _rangeMessage(), category: 'invalid_field_value' };
     }
     return { ok: false, raw, error: 'Enter reps as reps,reps or weight reps,reps', category: 'invalid_field_value' };
+  }
+
+  // A timed cardio/warmup header ("Bike 5 min") never carries weighted sets:
+  // keep the row as unparsed text instead of reading "15 2" as 15 lb x 2.
+  if (declaration && declaration.type === 'timed') {
+    return { ok: true, skipped: false, preserved: true, sets: [] };
   }
 
   const LOAD_RE = /^\d+(\.\d+)?$/;
