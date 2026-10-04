@@ -25,7 +25,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 
 jest.mock('../components/LineChart', () => {
   const React = require('react');
-  return { LineChart: () => null };
+  return { LineChart: jest.fn(() => null) };
 });
 
 jest.mock('@expo/vector-icons/MaterialIcons', () => {
@@ -1539,6 +1539,20 @@ describe('AnalyticsScreen 1K total over sessions chart', () => {
     const component = setup();
     const root = component.root;
     expect(hasText(root, '1K total over sessions')).toBe(true);
+  });
+
+  test('flags the deload note\'s 1K point as isDeload (#1248)', () => {
+    const { LineChart } = require('../components/LineChart');
+    LineChart.mockClear();
+    const raw = (b, s, d) => `-DB Bench Press\n${b} 5\n-Squat\n${s} 5\n-Deadlift\n${d} 5`;
+    const notes = [
+      { id: 'n1', title: 'R-1', raw_text: raw(135, 225, 315), one_k_exercises: null },
+      { id: 'dl', title: 'Deload · week', raw_text: raw(95, 135, 185), one_k_exercises: null },
+      { id: 'n2', title: 'R-2', raw_text: raw(155, 255, 365), one_k_exercises: null },
+    ];
+    setup({ hookOverrides: { notes, currentNote: notes[2] } });
+    const chartCall = LineChart.mock.calls.map(c => c[0]).find(p => p.seriesLabel === '1K total by session');
+    expect(chartCall.data.map(p => p.isDeload)).toEqual([false, true, false]);
   });
 
   test('omits the chart label when fewer than two session points exist', () => {

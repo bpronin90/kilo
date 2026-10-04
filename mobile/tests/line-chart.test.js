@@ -462,3 +462,41 @@ describe('LineChart — point selection is perceivable and operable (#906)', () 
     expect(onSelect).toHaveBeenLastCalledWith(null);
   });
 });
+
+describe('LineChart — deload points (#1248)', () => {
+  const series = [
+    { value: 900, label: '#1', unit: 'lb' },
+    { value: 505, label: '#2', unit: 'lb', isDeload: true },
+    { value: 950, label: '#3', unit: 'lb' },
+    { value: 1000, label: '#4', unit: 'lb' },
+  ];
+
+  test('the deload keeps its own point but is marked distinctly', () => {
+    const component = mountChart({ data: series, showScale: true, seriesLabel: 'test' });
+    expect(component.root.findAll(n => n.props.testID === 'line-chart-deload-marker' && typeof n.type === 'string')).toHaveLength(1);
+  });
+
+  test('the y-domain is set by non-deload values only', () => {
+    const component = mountChart({ data: series, showScale: true, seriesLabel: 'test' });
+    expect(component.root.findByProps({ testID: 'line-chart-scale-min' }).props.children).toBe('900');
+    expect(component.root.findByProps({ testID: 'line-chart-scale-max' }).props.children).toBe('1000');
+    const label = component.root.findByProps({ accessibilityRole: 'image' }).props.accessibilityLabel;
+    expect(label).toContain('4 points, 1 marked as deload');
+    expect(label).toContain('Ranges from 900 lb to 1000 lb');
+  });
+
+  test('the deload marker stays inside the plot even far below the domain', () => {
+    const component = mountChart({ data: series, height: 80, seriesLabel: 'test' });
+    const marker = component.root.findAllByProps({ testID: 'line-chart-deload-marker' })[0];
+    expect(marker.props.y + marker.props.height).toBeLessThanOrEqual(80);
+  });
+
+  test('a series of only deloads falls back to its own range', () => {
+    const only = [
+      { value: 500, label: '#1', unit: 'lb', isDeload: true },
+      { value: 520, label: '#2', unit: 'lb', isDeload: true },
+    ];
+    const component = mountChart({ data: only, showScale: true, seriesLabel: 'test' });
+    expect(component.root.findByProps({ testID: 'line-chart-scale-min' }).props.children).toBe('500');
+  });
+});

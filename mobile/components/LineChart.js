@@ -40,6 +40,7 @@ export function LineChart({
   // body-scoped `colors` binding in its temporal dead zone and throw for every
   // caller that omits `color` (#689).
   const strokeColor = color || (kua ? kua.primary : colors.accent);
+  const mutedColor = kua ? kua.onSurfaceVariant : colors.textMuted;
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [chartWidth, setChartWidth] = useState(0);
 
@@ -57,8 +58,14 @@ export function LineChart({
   };
 
   const values = data.map(d => d.value);
-  const dataMin = Math.min(...values);
-  const dataMax = Math.max(...values);
+  // #1248: deload points (`isDeload`) stay in the series but never set the
+  // domain, so one intentionally light session cannot flatten the real trend.
+  // They are drawn off the trend line, clamped to the plot edge. A series with
+  // nothing but deloads falls back to its own range.
+  const trendValues = data.filter(d => !d.isDeload).map(d => d.value);
+  const domainValues = trendValues.length > 0 ? trendValues : values;
+  const dataMin = Math.min(...domainValues);
+  const dataMax = Math.max(...domainValues);
   const minVal = dataMin;
   const maxVal = dataMax;
   const range = maxVal - minVal;
@@ -71,9 +78,11 @@ export function LineChart({
   // Text alternative for a chart that is otherwise invisible to a screen
   // reader (#821). Always built — it has no visual effect, so the Home
   // sparkline gains a description without its rendering changing.
+  const deloadCount = data.filter(d => d.isDeload).length;
   const unitSuffix = data[data.length - 1]?.unit ? ` ${data[data.length - 1].unit}` : '';
   const chartDescription =
-    `${seriesLabel ? `${seriesLabel}. ` : ''}Line chart, ${data.length} points. ` +
+    `${seriesLabel ? `${seriesLabel}. ` : ''}Line chart, ${data.length} points` +
+    `${deloadCount > 0 ? `, ${deloadCount} marked as deload` : ''}. ` +
     `Ranges from ${formatScale(dataMin)}${unitSuffix} to ${formatScale(dataMax)}${unitSuffix}. ` +
     `Starts at ${formatScale(values[0])}${unitSuffix}, ends at ${formatScale(values[values.length - 1])}${unitSuffix}.`;
 
@@ -100,9 +109,12 @@ export function LineChart({
   const getY = (value) =>
     range === 0
       ? height / 2
-      : height - effPaddingVertical - ((value - minVal) / range * (height - 2 * effPaddingVertical));
+      : height - effPaddingVertical - (Math.min(Math.max(value - minVal, 0), range) / range * (height - 2 * effPaddingVertical));
 
-  const points = data.map((d, i) => `${getX(i)},${getY(d.value)}`).join(' ');
+  const points = data
+    .map((d, i) => (d.isDeload ? null : `${getX(i)},${getY(d.value)}`))
+    .filter(Boolean)
+    .join(' ');
 
   const select = (next) => {
     setSelectedIndex(next);
@@ -135,6 +147,7 @@ export function LineChart({
   const selectionAnnouncement =
     `${selectedIndex !== null ? 'Selected' : 'Latest'}` +
     `${displayPoint.label ? `, ${displayPoint.label}` : ''}` +
+    `${displayPoint.isDeload ? ', deload' : ''}` +
     `, ${formatScale(displayPoint.value)}${pointUnit}`;
 
   const accessibilityActions = interactive
@@ -253,7 +266,21 @@ export function LineChart({
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
-              {data.map((d, i) => (
+              {data.map((d, i) => d.isDeload ? (
+                // Deload: a square marker, outlined in the muted tone, so it
+                // reads as "not a normal session" at any value (#1248).
+                <Rect
+                  key={i}
+                  testID="line-chart-deload-marker"
+                  x={getX(i) - (i === displayIndex ? 5 : 4)}
+                  y={getY(d.value) - (i === displayIndex ? 5 : 4)}
+                  width={i === displayIndex ? 10 : 8}
+                  height={i === displayIndex ? 10 : 8}
+                  fill={i === displayIndex ? mutedColor : (kua ? kua.surfaceCard : colors.card)}
+                  stroke={mutedColor}
+                  strokeWidth={2}
+                />
+              ) : (
                 <Circle
                   key={i}
                   cx={getX(i)}
@@ -332,10 +359,11 @@ export function LineChart({
       {(selectedIndex !== null && hideHeader) ? (
         <Text style={styles.selectionLabel}>
           {displayPoint.label ? `${displayPoint.label} · ` : ''}
+          {displayPoint.isDeload ? 'Deload · ' : ''}
           <Text style={styles.selectionValue}>{displayPoint.value}{displayPoint.unit || ''}</Text>
         </Text>
       ) : displayPoint.label ? (
-        <Text style={styles.dateLabel}>{displayPoint.label}</Text>
+        <Text style={styles.dateLabel}>{displayPoint.label}{displayPoint.isDeload ? ' · Deload' : ''}</Text>
       ) : null}
     </View>
   );
