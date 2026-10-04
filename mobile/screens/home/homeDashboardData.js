@@ -15,6 +15,7 @@ import {
 } from '../../lib/data/recoveryAnalytics';
 import { deriveRecoveryTrainedRows } from '../../lib/data/recoveryReturnBands';
 import { deriveRecoverySummary } from '../../lib/data/derivedAnalytics';
+import { formatDate } from '../../lib/format';
 
 // Re-exported so HomeScreen's active-branch copy can switch on the same
 // enums this module derives from, without HomeScreen importing a second
@@ -49,6 +50,16 @@ import {
 // unverified boundary must not publish aggregates, because "no records read"
 // and "nothing is excluded" are the same empty snapshot and only one of them is
 // true.
+// The rolling series only carries an MM/DD label; re-label it through the shared
+// formatter (#1250). It spans the last N distinct weigh-in dates, so the dates
+// are recoverable by position. If the lengths ever disagree, keep the labels.
+function relabelWeightSeriesDates(series, entries) {
+  if (!Array.isArray(series) || series.length === 0) return series;
+  const dates = [...new Set((entries || []).map(e => e.date))].sort().slice(-series.length);
+  if (dates.length !== series.length) return series;
+  return series.map((point, i) => ({ ...point, label: formatDate(dates[i]) || point.label }));
+}
+
 export function useHomeNormalNotes(notes) {
   const filter = useRecoveryAnalyticsFilter();
   return useMemo(() => ({
@@ -289,7 +300,8 @@ export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal
     ? derive1kTotalFromSectionsList(noteSectionsList, oneKSelections)
     : derive1kTotal(allSections, oneKSelections);
 
-  const { rollingSeries: weightSeries, trendSummary: weightTrends, goalInfo } = deriveWeightGoalAnalytics(weightEntries, weightGoal);
+  const { rollingSeries: rawWeightSeries, trendSummary: weightTrends, goalInfo } = deriveWeightGoalAnalytics(weightEntries, weightGoal);
+  const weightSeries = relabelWeightSeriesDates(rawWeightSeries, weightEntries);
   const latestWeight = weightTrends.currentWeight;
   const { weeksIn } = deriveWorkoutNoteAnalytics(sections, []);
 

@@ -663,3 +663,20 @@ describe('shared derived analytics (#1242)', () => {
     expect(weightTrendTone({ direction: 'flat', goalDirection: 'gain' })).toBeNull();
   });
 });
+
+describe('deriveHomeDashboardData — weight chart dates use the shared formatter (#1250)', () => {
+  test('labels each weight point through formatDate, not MM/DD', () => {
+    const weightEntries = [
+      { date: '2026-10-01', weight: 180 },
+      { date: '2026-10-03', weight: 181 },
+    ];
+    const { weightSeries } = deriveHomeDashboardData({
+      weightEntries,
+      workoutNote: null,
+      weightGoal: null,
+      allSections: [],
+      trackedLifts: {},
+    });
+    expect(weightSeries.map(p => p.label)).toEqual(['10-01-2026', '10-03-2026']);
+  });
+});
