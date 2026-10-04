@@ -680,3 +680,19 @@ describe('deriveHomeDashboardData — weight chart dates use the shared formatte
     expect(weightSeries.map(p => p.label)).toEqual(['10-01-2026', '10-03-2026']);
   });
 });
+
+describe('deriveHomeDashboardData — weight chart labels stay with their points (#1250)', () => {
+  test('a malformed-date entry does not shift later labels', () => {
+    const weightEntries = [
+      { date: '2026-10-01', weight: 180 },
+      { date: 'bad', weight: 181 },
+      { date: '2026-10-03', weight: 182 },
+    ];
+    const { weightSeries } = deriveHomeDashboardData({
+      weightEntries, workoutNote: null, weightGoal: null, allSections: [], trackedLifts: {},
+    });
+    const labels = weightSeries.map(p => p.label);
+    expect(labels).toContain('10-03-2026');
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+});

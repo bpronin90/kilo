@@ -51,13 +51,23 @@ import {
 // and "nothing is excluded" are the same empty snapshot and only one of them is
 // true.
 // The rolling series only carries an MM/DD label; re-label it through the shared
-// formatter (#1250). It spans the last N distinct weigh-in dates, so the dates
-// are recoverable by position. If the lengths ever disagree, keep the labels.
+// formatter (#1250). The series is built from the last 7 distinct weigh-in dates
+// and may drop points, so match each point to its source date in order by its
+// MM/DD label rather than by position. Unmatched points keep their label.
+const ROLLING_SERIES_DATE_LIMIT = 7;
 function relabelWeightSeriesDates(series, entries) {
   if (!Array.isArray(series) || series.length === 0) return series;
-  const dates = [...new Set((entries || []).map(e => e.date))].sort().slice(-series.length);
-  if (dates.length !== series.length) return series;
-  return series.map((point, i) => ({ ...point, label: formatDate(dates[i]) || point.label }));
+  const dates = [...new Set((entries || []).map(e => e.date))].sort().slice(-ROLLING_SERIES_DATE_LIMIT);
+  let next = 0;
+  return series.map((point) => {
+    for (let i = next; i < dates.length; i++) {
+      if (String(dates[i]).split('-').slice(1).join('/') === point.label) {
+        next = i + 1;
+        return { ...point, label: formatDate(dates[i]) || point.label };
+      }
+    }
+    return point;
+  });
 }
 
 export function useHomeNormalNotes(notes) {
