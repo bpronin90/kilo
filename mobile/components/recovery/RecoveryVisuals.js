@@ -151,7 +151,7 @@ export function RecoveryHero({ weekLabel, atOrAbove, trained, routineTitle }) {
         <>
           <Text style={styles.heroNumber}>{`${atOrAbove}/${trained}`}</Text>
           <Text style={styles.heroLabel}>at baseline</Text>
-          <View testID="recovery-hero-fill-track" style={styles.segmentBar}>
+          <View testID="recovery-hero-fill-track" style={[styles.segmentBar, { gap: 0 }]}>
             <View testID="recovery-hero-fill" style={{ flex: atOrAbove, backgroundColor: bandColor('at_or_above', colors, kua) }} />
             <View style={{ flex: Math.max(trained - atOrAbove, 0) }} />
           </View>
