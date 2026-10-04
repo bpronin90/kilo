@@ -499,4 +499,15 @@ describe('LineChart — deload points (#1248)', () => {
     const component = mountChart({ data: only, showScale: true, seriesLabel: 'test' });
     expect(component.root.findByProps({ testID: 'line-chart-scale-min' }).props.children).toBe('500');
   });
+
+  test('on a flat trend the deload sits at the plot edge, not on the line', () => {
+    const flat = [
+      { value: 1000, label: '#1', unit: 'lb' },
+      { value: 500, label: '#2', unit: 'lb', isDeload: true },
+      { value: 1000, label: '#3', unit: 'lb' },
+    ];
+    const component = mountChart({ data: flat, height: 80, seriesLabel: 'test' });
+    const marker = component.root.findAllByProps({ testID: 'line-chart-deload-marker' })[0];
+    expect(marker.props.y + marker.props.height / 2).toBeGreaterThan(40);
+  });
 });

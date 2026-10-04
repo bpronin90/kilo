@@ -108,7 +108,9 @@ export function LineChart({
   // edge (every `value - minVal` is 0, not NaN, so nothing here throws).
   const getY = (value) =>
     range === 0
-      ? height / 2
+      // Flat trend: normal points center; an off-domain (deload) value goes to
+      // the edge on its side so it never sits on the line.
+      ? (value < minVal ? height - effPaddingVertical : value > maxVal ? effPaddingVertical : height / 2)
       : height - effPaddingVertical - (Math.min(Math.max(value - minVal, 0), range) / range * (height - 2 * effPaddingVertical));
 
   const points = data

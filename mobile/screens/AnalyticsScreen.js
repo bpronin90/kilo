@@ -408,20 +408,19 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   }
 
   const oneKChartData = useMemo(() => {
-    // Boundaries are session ordinals INTO the 1K series (built from
-    // parsedSections.noteSectionsList), so they must count the same
-    // recovery-filtered note population or the markers would slide.
+    // Boundaries are ordinals INTO the 1K series, so they must count the same
+    // recovery-filtered notes or the markers would slide.
     const boundaries = deriveRoutineStartBoundaries(parsedSections.normalNotes, oneKSelections);
     // #1248: a deload note keeps its own point; flag its session ordinals.
     const deloadSessions = new Set();
     let offset = 0;
     parsedSections.normalNotes.forEach((n, i) => {
-      const len = derive1kTotalSeriesFromSectionsList([parsedSections.noteSectionsList[i]], oneKSelections).length;
-      if (n.title?.startsWith(DELOAD_NOTE_PREFIX)) for (let k = 1; k <= len; k++) deloadSessions.add(offset + k);
-      offset += len;
+      // Real (possibly sparse) ordinals, mirroring the cross-note merge's offset.
+      const noteSeries = derive1kTotalSeriesFromSectionsList([parsedSections.noteSectionsList[i]], oneKSelections);
+      if (n.title?.startsWith(DELOAD_NOTE_PREFIX)) noteSeries.forEach(pt => deloadSessions.add(offset + pt.session));
+      if (noteSeries.length > 0) offset += noteSeries[noteSeries.length - 1].session;
     });
-    // #577: carry canonical-lb figures alongside display-space ones on every
-    // point so a plate-calculator tap reads the exact canonical value.
+    // #577: canonical-lb figures ride along for the plate calculator.
     const withCanonical = deriveOneKChartData(analytics.oneKSeries, boundaries).map((p, i) => ({
       ...p,
       isDeload: deloadSessions.has(analytics.oneKSeries[i].session),
