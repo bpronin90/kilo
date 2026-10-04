@@ -556,7 +556,14 @@ describe('HomeRecoverySummary — latest linked week scope (#1193)', () => {
   test('names the latest linked week and says the values are not a block total', () => {
     const root = mount(base);
     expect(hasText(root, 'Latest linked week: Week 4')).toBe(true);
+    // #1245: the scope line sits behind the shared info icon beside the week label.
+    expect(hasText(root, 'Values describe')).toBe(false);
+    const info = root.findAll(n => n.props.testID === 'home-recovery-week-scope-info' && n.props.accessibilityRole === 'button')[0];
+    expect(info.props.accessibilityLabel).toBe("About this week's values");
+    render.act(() => { info.props.onPress(); });
     expect(hasText(root, 'Values describe the latest linked week (Week 4) only, not the whole block.')).toBe(true);
+    render.act(() => { info.props.onPress(); });
+    expect(hasText(root, 'Values describe')).toBe(false);
   });
 
   test('a stale summary calls it the last loaded week, not the latest', () => {
@@ -568,6 +575,8 @@ describe('HomeRecoverySummary — latest linked week scope (#1193)', () => {
   test('prints no scope line when there is no week or the baseline is unavailable', () => {
     expect(hasText(mount({ ...base, weekNumber: null }), 'Values describe')).toBe(false);
     expect(hasText(mount({ ...base, comparisonStatus: 'baseline_unavailable' }), 'Values describe')).toBe(false);
+    expect(mount({ ...base, weekNumber: null }).findAllByProps({ testID: 'home-recovery-week-scope-info' })).toHaveLength(0);
+    expect(mount({ ...base, comparisonStatus: 'baseline_unavailable' }).findAllByProps({ testID: 'home-recovery-week-scope-info' })).toHaveLength(0);
   });
 });
 

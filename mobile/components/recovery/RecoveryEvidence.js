@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Card } from '../UI';
+import { InfoButton, InfoNote, useInfoExplainer } from '../InfoExplainer';
 import { useTheme } from '../../theme/ThemeContext';
 import { formatDate } from '../../lib/format';
 import { MAX_RECOVERY_REASON_LENGTH } from '../../lib/data/recoveryBlocks';
@@ -81,7 +82,7 @@ export function BlockEvidence({
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   // The non-medical note sits behind an info button in the footer row (#1219,
   // owner-directed change of the earlier "one persistent line", #1023 v2 §8).
-  const [aboutShown, setAboutShown] = useState(false);
+  const [aboutShown, toggleAbout] = useInfoExplainer();
 
   // Seeded from the STORED value, so Cancel is a true discard — the record is
   // the only source of what the field currently says.
@@ -313,6 +314,10 @@ export function BlockEvidence({
         )}
         <View testID="recovery-context-date" style={[styles.contextRow, styles.contextRowWrap]}>
           <Text style={labelStyle} {...LABEL_HIDDEN}>{dateLabel}</Text>
+          {/* #1245: the shared info icon is anchored beside the label it explains. */}
+          {showInfo && (
+            <InfoButton expanded={aboutShown} onPress={toggleAbout} label="About these numbers" />
+          )}
           {/* A date is never ellipsized: at narrow widths or large text a
               completed range wraps to a second line instead. */}
           <View
@@ -325,31 +330,12 @@ export function BlockEvidence({
             <Text style={[styles.contextValue, styles.contextDateText]}>{isActive ? dateValue : `${formatDate(block.started_at)} –`}</Text>
             {!isActive && <Text style={[styles.contextValue, styles.contextDateText]}>{formatDate(block.completed_at)}</Text>}
           </View>
-          {showInfo && (
-            <Pressable
-              onPress={() => setAboutShown(shown => !shown)}
-              style={styles.infoButton}
-              accessibilityRole="button"
-              accessibilityLabel="About these numbers"
-              accessibilityState={{ expanded: aboutShown }}
-            >
-              <MaterialIcons
-                name="info-outline"
-                size={18}
-                color={kua ? kua.onSurfaceVariant : colors.textMuted}
-                accessible={false}
-              />
-            </Pressable>
-          )}
         </View>
-        {/* Always mounted so revealing the note is announced (live region). */}
-        <View testID="recovery-about-note" accessibilityLiveRegion="polite">
-          {aboutShown && (
-            <Text style={styles.nonMedicalText}>
-              Training numbers only. Not a medical judgment — only you end a Recovery block.
-            </Text>
-          )}
-        </View>
+        <InfoNote shown={aboutShown} testID="recovery-about-note">
+          <Text style={styles.nonMedicalText}>
+            Training numbers only. Not a medical judgment — only you end a Recovery block.
+          </Text>
+        </InfoNote>
         {showReasonRow && (reasonEditable ? (
           <Pressable
             testID="recovery-reason-row"

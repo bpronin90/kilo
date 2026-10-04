@@ -3,6 +3,7 @@ import { Pressable, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Card } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
+import { InfoButton, InfoNote, useInfoExplainer } from '../../components/InfoExplainer';
 import { HOME_BIG3_NOT_IN_BASELINE, HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATES, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './homeDashboardData';
 import { createStyles } from './homeStyles';
 import { formatRecoveryCountLine } from '../../lib/data/derivedAnalytics';
@@ -43,10 +44,16 @@ function liftValue(lift) {
   return lift.percent === null ? 'In progress' : `${lift.percent}%`;
 }
 
+// Label and its info icon on one line, adjacent by gap (never edge-floated).
+const WEEK_LABEL_ROW = { flexDirection: 'row', alignItems: 'center', columnGap: 2 };
+// Shrinks and wraps within the card so a long stale label never overflows.
+const WEEK_LABEL_TEXT = { flexShrink: 1, minWidth: 0 };
+
 export function HomeRecoverySummary({ summary, onNavigate }) {
   const { colors, kuaPalette: kua } = useTheme();
   const typography = useKuaTypography();
   const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
+  const [scopeShown, toggleScope] = useInfoExplainer();
 
   if (!summary) return null;
   const {
@@ -146,6 +153,27 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
                 <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
               </View>
             </Pressable>
+            {/* #1245: the week-scope explainer sits behind the shared info icon
+                beside the week label. The label is hidden from screen readers
+                because the summary announcement below already names the week. */}
+            {weekLabel ? (
+              <View style={WEEK_LABEL_ROW}>
+                <Text style={[styles.recoveryWeekLabel, WEEK_LABEL_TEXT]} accessibilityElementsHidden importantForAccessibility="no">{weekLabel}</Text>
+                {weekScope ? (
+                  <InfoButton
+                    testID="home-recovery-week-scope-info"
+                    expanded={scopeShown}
+                    onPress={toggleScope}
+                    label="About this week's values"
+                  />
+                ) : null}
+              </View>
+            ) : null}
+            {weekScope ? (
+              <InfoNote shown={scopeShown} testID="home-recovery-week-scope-note">
+                <Text testID="home-recovery-week-scope" style={styles.recoveryStatusLine}>{weekScope}</Text>
+              </InfoNote>
+            ) : null}
             {/* One announcement for the whole summary: separate nodes read as
                 unrelated fragments. */}
             <View
@@ -153,9 +181,6 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
               accessible
               accessibilityLabel={accessibleContent}
             >
-              {weekLabel ? (
-                <Text style={styles.recoveryWeekLabel}>{weekLabel}</Text>
-              ) : null}
               {fallbackStatus ? (
                 <Text style={styles.recoveryFallbackLine}>{fallbackStatus}</Text>
               ) : null}
@@ -185,11 +210,6 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
                 <Text testID="home-recovery-remaining" style={styles.recoveryRemaining}>{remainingText}</Text>
               ) : null}
             </View>
-            {/* Its own node, spoken on its own (it names the latest week), so the
-                announcement above stays the compact week-and-lifts sentence. */}
-            {weekScope ? (
-              <Text testID="home-recovery-week-scope" style={styles.recoveryStatusLine}>{weekScope}</Text>
-            ) : null}
           </>
         ) : (
           <View

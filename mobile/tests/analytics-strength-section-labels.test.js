@@ -71,3 +71,35 @@ describe('AnalyticsStrengthSection — plate-calculator tap announces the correc
     }
   });
 });
+
+// #1245: the 1K explainer uses the shared info icon anchored beside its heading.
+describe('AnalyticsStrengthSection — 1K explainer uses the shared info icon', () => {
+  const texts = (node) => node.findAll(n => n.type === 'Text').map(n => [].concat(n.props.children).join('')).filter(Boolean);
+  test('the icon sits beside "1K Progress"; the explanation is hidden until tapped', async () => {
+    let root;
+    await act(async () => {
+      root = renderer.create(
+        <ThemeProvider>
+          <AnalyticsStrengthSection
+            handleStrengthLayout={() => {}}
+            isNotesLoading={false}
+            oneK={oneK}
+            oneKCanonical={oneKCanonical}
+            oneKChartData={[]}
+          />
+        </ThemeProvider>
+      );
+    });
+    const toggle = root.root.findAll(n => n.props.testID === 'onek-info-toggle' && n.props.accessibilityRole === 'button')[0];
+    expect(toggle.props.accessibilityLabel).toBe('How is the 1K calculated?');
+    // Same row as the heading: the nearest ancestor holding the heading holds
+    // nothing else from the card (not the 1K value below it).
+    let row = toggle.parent;
+    while (!texts(row).includes('1K Progress')) row = row.parent;
+    expect(texts(row).some(t => t.includes('900'))).toBe(false);
+    expect(texts(root.root)).not.toContain('How is this calculated?');
+    expect(texts(root.root).some(t => t.includes('most recent complete cycle'))).toBe(false);
+    await act(async () => { toggle.props.onPress(); });
+    expect(texts(root.root).some(t => t.includes('most recent complete cycle'))).toBe(true);
+  });
+});

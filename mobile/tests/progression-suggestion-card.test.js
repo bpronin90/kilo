@@ -116,7 +116,11 @@ describe('ProgressionSuggestionCard rendering', () => {
     const allText = texts(root);
     expect(allText).toContain(WEIGHTED.explanation);
     expect(allText.some((t) => /heuristic/i.test(t))).toBe(true);
-    expect(allText.some((t) => /not a guaranteed prescription/i.test(t))).toBe(true);
+    // #1245: the caveat is behind the shared info icon beside the badge.
+    expect(allText.some((t) => /not a guaranteed prescription/i.test(t))).toBe(false);
+    const info = root.root.findAll(n => n.props.testID === 'progression-suggestion-info-log' && typeof n.props.onPress === 'function')[0];
+    await act(async () => { info.props.onPress(); });
+    expect(texts(root).some((t) => /not a guaranteed prescription/i.test(t))).toBe(true);
     // Evidence formatted straight from the record's own numbers.
     expect(allText.some((t) => t.includes('135 lb'))).toBe(true);
     expect(allText.some((t) => t.includes('10, 10, 10'))).toBe(true);
