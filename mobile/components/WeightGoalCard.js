@@ -33,7 +33,8 @@ function WebGoalDateInput({ value, onChangeDate, accessibilityLabel }) {
       borderStyle: 'solid',
       borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
       padding: 14,
-      fontSize: 16,
+      minHeight: 48,
+      fontSize: 17,
       colorScheme: colors.scheme,
       color: kua ? kua.onSurface : colors.text,
       fontFamily: 'inherit',
@@ -218,7 +219,7 @@ export function WeightGoalCard({
             keyboardAppearance={colors.scheme}
             value={goalTargetWeight}
             onChangeText={setGoalTargetWeight}
-            placeholder={unit === 'kg' ? '80.0' : '175.0'}
+            placeholder={unit === 'kg' ? 'e.g. 80.0' : 'e.g. 175.0'}
             placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
             keyboardType="decimal-pad"
             style={styles.numericInput}
@@ -319,12 +320,21 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   },
   input: {
     ...createInputStyle(colors, kua),
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    minHeight: 48,
     justifyContent: 'center',
   },
+  // Matches the Weight entry panel's numeric field (17pt JetBrains Mono).
   numericInput: {
     ...createInputStyle(colors, kua),
     ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
-    fontSize: 10,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    minHeight: 48,
+    fontSize: 17,
     justifyContent: 'center',
   },
   goalCard: {
@@ -409,11 +419,13 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     padding: 4,
   },
   pickerText: {
-    fontSize: 16,
+    fontSize: 17,
     color: kua ? kua.onSurface : colors.text,
   },
   pickerTextPlaceholder: {
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    opacity: 0.6,
+    fontStyle: 'italic',
   },
   goalErrorText: {
     color: kua ? kua.error : colors.error,
