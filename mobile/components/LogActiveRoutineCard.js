@@ -41,6 +41,7 @@ import {
   ROUTINE_COPY_FAILURE_MESSAGE,
 } from '../lib/interoperability/routineShare';
 import { RoutineShareModal } from './RoutineShareCard';
+import { MODAL_SUPPORTED_ORIENTATIONS } from './adaptiveLayout';
 import { ProgressionSuggestionCard, MutedProgressionRow } from './ProgressionSuggestionCard';
 
 export function LogActiveRoutineCard({
@@ -192,8 +193,22 @@ export function LogActiveRoutineCard({
       {imageShare && <RoutineShareModal {...imageShare} onClose={() => setImageShare(null)} />}
       {/* #1244: a compact sheet over a dismissable scrim, so opening it never
           shifts card content and the card's overflow clip cannot cut it off. */}
-      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
-        <Pressable style={styles.menuScrim} onPress={() => setMenuOpen(false)} accessibilityLabel="Close routine actions">
+      <Modal
+        visible={menuOpen}
+        transparent
+        supportedOrientations={MODAL_SUPPORTED_ORIENTATIONS}
+        animationType="fade"
+        onRequestClose={() => setMenuOpen(false)}
+      >
+        <View style={styles.menuScrim}>
+          {/* Sibling scrim behind the sheet, not its parent, so TalkBack keeps
+              each item focusable (RestTimerBanner pattern); back dismisses. */}
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setMenuOpen(false)}
+            accessible={false}
+            importantForAccessibility="no"
+          />
           <View style={styles.actionMenu} accessibilityRole="menu" testID="log-current-routine-menu">
             {[
               { label: 'Edit', a11y: 'Edit routine', run: enterCurrentEditor },
@@ -221,7 +236,7 @@ export function LogActiveRoutineCard({
               </Pressable>
             ))}
           </View>
-        </Pressable>
+        </View>
       </Modal>
       <Card style={styles.currentRoutineCard}>
         {/* #1244: the header row pairs the collapse target with the Routine
@@ -519,7 +534,7 @@ const createStyles = (kua, colors) => StyleSheet.create({
   menuScrim: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.32)',
+    backgroundColor: colors.overlay,
   },
   // #1244: compact bottom sheet — one 44dp row per action.
   actionMenu: {
