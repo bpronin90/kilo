@@ -324,6 +324,10 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     backgroundColor: kua ? kua.surfaceCard : undefined,
     borderColor: kua ? kua.surfaceBorder : undefined,
   },
+  // 44dp target, text bottom-aligned: slack sits above the title, not below.
+  recoveryHeaderLink: {
+    alignItems: 'flex-end', marginTop: -12,
+  },
   recoveryLabel: {
     ...(kua ? { ...typography['headline-sm'], fontSize: 13, lineHeight: 17 } : { fontSize: 12, fontWeight: '700', letterSpacing: 0.5 }),
     color: kua ? kua.onSurface : colors.text,

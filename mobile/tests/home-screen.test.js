@@ -1602,7 +1602,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     // stated as such rather than dropped or given a number (#1192).
     expect(has(component, 'home-recovery-lift-deadlift')).toBe(true);
     expect(hasText(component, 'Not in baseline')).toBe(true);
-    expect(hasText(component, 'Your Big 3 lifts')).toBe(true);
+    expect(hasText(component, 'Big 3')).toBe(true);
     expect(hasText(component, '72%')).toBe(true);
     expect(hasText(component, 'Recovered')).toBe(true);
     // #1242: the shared roster count, the same line Analytics prints.
@@ -1610,7 +1610,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     // Inclusion state is Analytics-owned content (#820): Home no longer states
     // it at all, in either direction.
     expect(hasText(component, 'Not counted in your normal analytics.')).toBe(false);
-    expect(spoken(component)).toBe('Week 1. Your Big 3 lifts. Squat 72% of baseline. Bench recovered. Deadlift not in baseline. 2 of 2 trained.');
+    expect(spoken(component)).toBe('Recovery nr1. Big 3. Squat 72% of baseline. Bench recovered. Deadlift not in baseline. All exercises 2 of 2 trained.');
   });
 
   test('a fully recovered week marks every Big 3 lift recovered', async () => {
@@ -1620,7 +1620,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     }));
     const component = await mount({ notes: [NOTE, weekNote('nr1', FULL_TEXT)] });
 
-    expect(spoken(component)).toBe('Week 1. Your Big 3 lifts. Squat recovered. Bench recovered. Deadlift not in baseline. 2 of 2 trained.');
+    expect(spoken(component)).toBe('Recovery nr1. Big 3. Squat recovered. Bench recovered. Deadlift not in baseline. All exercises 2 of 2 trained.');
     // Inclusion is never announced either way (#820: dropped from Home).
     expect(hasText(component, 'Counted in your normal analytics.')).toBe(false);
     expect(hasText(component, 'Not counted in your normal analytics.')).toBe(false);
@@ -1640,7 +1640,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
 
     // The latest live week is what Home reports. Week-over-week movement and
     // the return-band rows live on Analytics only (#1171).
-    expect(spoken(component)).toBe('Week 2. Your Big 3 lifts. Squat 72% of baseline. Bench recovered. Deadlift not in baseline. 2 of 2 trained.');
+    expect(spoken(component)).toBe('Recovery nr2. Big 3. Squat 72% of baseline. Bench recovered. Deadlift not in baseline. All exercises 2 of 2 trained.');
     expect(hasText(component, 'Since Week 1')).toBe(false);
     expect(hasText(component, 'At or above')).toBe(false);
     expect(hasText(component, 'roster exercises trained')).toBe(false);
@@ -1650,7 +1650,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     const component = await mount({ notes: [NOTE, weekNote('nr1', ADDED_TEXT)] });
 
-    expect(spoken(component)).toBe('Week 1. Your Big 3 lifts. Squat recovered. Bench recovered. Deadlift not in baseline. 2 of 2 trained.');
+    expect(spoken(component)).toBe('Recovery nr1. Big 3. Squat recovered. Bench recovered. Deadlift not in baseline. All exercises 2 of 2 trained.');
     // #1242: the roster count is 2 of 2 — the added exercise is never in it.
     expect(hasText(component, '2 of 2 trained')).toBe(true);
     expect(hasText(component, 'Curl')).toBe(false);
@@ -1661,7 +1661,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     const component = await mount({ notes: [NOTE, weekNote('nr1', SKIPPED_TEXT)] });
 
-    expect(spoken(component)).toBe('Week 1. Your Big 3 lifts. Squat not started. Bench recovered. Deadlift not in baseline. 1 of 2 trained, 1 not yet.');
+    expect(spoken(component)).toBe('Recovery nr1. Big 3. Squat not started. Bench recovered. Deadlift not in baseline. All exercises 1 of 2 trained, 1 not yet.');
     const squat = component.root.findByProps({ testID: 'home-recovery-lift-squat' });
     expect(squat.findAll(n => n.type === 'View' && Array.isArray(n.props.style)
       && n.props.style.some(st => st && st.width !== undefined))).toHaveLength(0);
@@ -1687,7 +1687,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     }));
     const component = await mount({ notes: [NOTE, weekNote('nr1', GHOST_ADDED_TEXT)] });
 
-    expect(spoken(component)).toBe('Week 1. Your Big 3 lifts. Squat recovered. Bench recovered. Deadlift not in baseline. 2 of 2 trained.');
+    expect(spoken(component)).toBe('Recovery nr1. Big 3. Squat recovered. Bench recovered. Deadlift not in baseline. All exercises 2 of 2 trained.');
     // #1242: neither the unusable nor the added row enters the roster count.
     expect(hasText(component, '2 of 2 trained')).toBe(true);
     expect(hasText(component, 'Ghost Lift')).toBe(false);
@@ -1701,7 +1701,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     }));
     const component = await mount({ notes: [NOTE, weekNote('nr1', CLASS_CHANGED_TEXT)] });
 
-    expect(spoken(component)).toBe("Week 1. Your Big 3 lifts. Squat can't compare. Bench recovered. Deadlift not in baseline. 2 of 2 trained.");
+    expect(spoken(component)).toBe("Recovery nr1. Big 3. Squat can't compare. Bench recovered. Deadlift not in baseline. All exercises 2 of 2 trained.");
     expect(hasText(component, '%')).toBe(false);
   });
 
@@ -1764,7 +1764,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     // added-during-recovery work stays reported on Analytics only.
     expect(has(component, 'home-recovery-big3')).toBe(false);
     expect(has(component, 'home-recovery-remaining')).toBe(false);
-    expect(spoken(component)).toBe('Week 1. No baseline exercises were captured for this block.');
+    expect(spoken(component)).toBe('Recovery nr1. No baseline exercises were captured for this block.');
   });
 
   test('no weeks logged yet shows the baseline-captured fallback and names no week', async () => {
@@ -1783,7 +1783,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
 
     const link = component.root.findByProps({ testID: 'home-recovery-link' });
     expect(link.props.accessibilityRole).toBe('button');
-    expect(link.props.accessibilityLabel).toBe('Recovery');
+    expect(link.props.accessibilityLabel).toBe('1K recovery');
     expect(link.props.accessibilityHint).toBe('Opens the Recovery section of the Analytics tab');
     // #770: an unsectioned press inherited whatever position Analytics was last
     // left at, so a control labeled `Recovery` could land anywhere but Recovery.
@@ -1847,7 +1847,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     await render.act(async () => { retry.props.onPress(); });
 
-    expect(spoken(component)).toBe('Week 1. Your Big 3 lifts. Squat 72% of baseline. Bench recovered. Deadlift not in baseline. 2 of 2 trained.');
+    expect(spoken(component)).toBe('Recovery nr1. Big 3. Squat 72% of baseline. Bench recovered. Deadlift not in baseline. All exercises 2 of 2 trained.');
     expect(hasText(component, hooks.RECOVERY_UNVERIFIED_MESSAGE)).toBe(false);
     expect(has(component, 'home-skeleton')).toBe(false);
   });
@@ -1984,8 +1984,8 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     expect(hasText(component, '4 of 6 trained · 2 not yet')).toBe(true);
     // Only the Big 3 are named; the rest are counts.
     expect(spoken(component)).toBe(
-      'Week 1. Your Big 3 lifts. Squat recovered. DB Bench Press 50% of baseline. Deadlift not started. '
-      + '4 of 6 trained, 2 not yet.'
+      'Recovery nr1. Big 3. Squat recovered. DB Bench Press 50% of baseline. Deadlift not started. '
+      + 'All exercises 4 of 6 trained, 2 not yet.'
     );
     // Retired vocabulary never returns.
     ['back', 'below', 'At or above', 'Rebuilding', 'Early'].forEach(word => {
@@ -2050,7 +2050,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     const component = await mount({ workoutNote: current, notes: [NOTE, current, weekNote('nr1', PARTIAL_TEXT)] });
 
     // Mapped lifts absent from this baseline are named, never given numbers.
-    expect(spoken(component)).toBe('Week 1. Your Big 3 lifts. Press not in baseline. Row not in baseline. Curl not in baseline. 2 of 2 trained.');
+    expect(spoken(component)).toBe('Recovery nr1. Big 3. Press not in baseline. Row not in baseline. Curl not in baseline. All exercises 2 of 2 trained.');
   });
 
   test('the one press target inside the card meets the touch minimum', async () => {
@@ -2359,7 +2359,7 @@ describe('HomeScreen follows the shared active-training context (#869)', () => {
     const component = await mount();
 
     expect(has(component, 'home-baseline-paused-link')).toBe(true);
-    expect(hasText(component, 'Paused for recovery')).toBe(true);
+    expect(hasText(component, 'Paused for recovery')).toBe(false);
     // home-strength-summary-link removed in KUA mode.
     expect(has(component, 'home-one-k-link')).toBe(false);
   });
@@ -2381,11 +2381,11 @@ describe('HomeScreen follows the shared active-training context (#869)', () => {
     const onNavigate = jest.fn();
     const component = await mount({ onNavigate });
 
-    // #1112: split header — "Recovery" label + "Between weeks" week identity.
+    // #1265: ordinary action, no "Between weeks" copy.
     expect(hasText(component, 'Recovery')).toBe(true);
-    expect(hasText(component, 'Between weeks')).toBe(true);
+    expect(hasText(component, 'Between weeks')).toBe(false);
     const link = component.root.findByProps({ testID: 'home-current-routine-link' });
-    expect(link.props.accessibilityLabel).toBe('Next week');
+    expect(link.props.accessibilityLabel).toBe('Log workout');
 
     render.act(() => { link.props.onPress(); });
     // Never the frozen baseline note: lands on Recovery with no note target.
