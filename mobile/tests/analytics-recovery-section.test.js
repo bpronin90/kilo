@@ -793,6 +793,25 @@ describe('AnalyticsRecoverySection — accessible labels expose the underlying e
     expect(benchRow.props.accessibilityLabel).toContain('Total work 100% of baseline, 2025 lb this week against 2025 lb pre-recovery baseline');
   });
 
+  test('#1264: the selected week compares against the frozen pre-recovery baseline, never an earlier recovery week', () => {
+    // Frozen Bench 135 / 2025; earlier recovery Week 1 = 60 (900); selected Week 2 = 100 (1500).
+    const component = setup({
+      blocks: [block()],
+      weeks: [week(1, 'note-w1'), week(2, 'note-w2')],
+      notes: [note('note-w1', '-Bench\n- 60 5,5,5'), note('note-w2', '-Bench\n- 100 5,5,5')],
+    });
+    const root = component.root;
+    expandDetails(root);
+    const benchRow = root.findAll(
+      inst => typeof inst.props.accessibilityLabel === 'string' && inst.props.accessibilityLabel.startsWith('Bench,')
+    )[0];
+    expect(benchRow.props.accessibilityLabel).toContain('Load 74% of baseline, 100 lb this week against 135 lb pre-recovery baseline');
+    expect(benchRow.props.accessibilityLabel).not.toContain('60 lb');
+    expect(hasText(root, 'Load 100 lb vs baseline 135 lb')).toBe(true);
+    expect(hasText(root, 'Total work 1500 lb vs baseline 2025 lb')).toBe(true);
+    expect(hasText(root, 'Load 100 lb vs baseline 60 lb')).toBe(false);
+  });
+
   test('a not-reintroduced row announces its baseline reference values', () => {
     const b = block();
     const w = week(1, 'note-w1');
