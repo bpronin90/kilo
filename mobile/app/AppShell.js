@@ -49,7 +49,7 @@ export function useAppShell({ onDeviceDataWiped }) {
     if (tab === current) return;
     let history = tabHistoryRef.current;
     if (tab === 'Home') history = [];
-    else if (record) history = [...history, current].slice(-20);
+    else if (record) history = [...history, current];
     tabHistoryRef.current = history;
     activeTabRef.current = tab;
     setBackTarget(history.length ? history[history.length - 1] : 'Home');

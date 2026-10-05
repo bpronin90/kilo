@@ -427,6 +427,17 @@ describe('App shell back handler (Android)', () => {
     expect(getTabStyle(component, 'Log').display).toBe('none');
   });
 
+  test('a long run of tab switches unwinds fully, one tab per back (#1267)', () => {
+    const run = [];
+    for (let i = 0; i < 12; i += 1) run.push('Log', 'Weight');
+    run.forEach((t) => { renderer.act(() => { capturedTabPress(t); }); });
+    // 24 transitions from Home; the last tab is Weight, so 24 backs end on Home.
+    for (let i = 0; i < 23; i += 1) renderer.act(() => { getLatestBackHandler()(); });
+    expect(getTabStyle(component, 'Home').display).toBe('none');
+    renderer.act(() => { getLatestBackHandler()(); });
+    expect(getTabStyle(component, 'Home').display).not.toBe('none');
+  });
+
   test('back on Home after unwinding still shows the exit confirmation (#1267)', () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     renderer.act(() => { capturedTabPress('Log'); });
