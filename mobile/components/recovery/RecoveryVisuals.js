@@ -125,15 +125,16 @@ export function routineLabel(title) {
   return { full, visible };
 }
 
-// Hero: the one dominant element. A compact fraction ("0/7 at baseline"), a
-// fill bar from that same fraction, then the routine as a secondary line;
+// Hero: the one dominant element. A compact count ("0 of 7 at baseline") then
+// the routine as a secondary line; the graded bar below it is the only progress
+// visualization (#1264), so the hero draws none of its own;
 // the full sentence rides on the accessible label so nothing is lost to
 // screen readers. `trained === 0` has no number to show, only the plain fact.
 // The label states its SCOPE (#1219): the denominator counts only the exercises
 // trained in the selected week, not the whole routine, so "0 of 7" cannot be
 // misread against a roster of 27. The routine is named once, ellipsized.
 export function RecoveryHero({ weekLabel, atOrAbove, trained, routineTitle }) {
-  const { colors, kua, styles } = useVisual();
+  const { styles } = useVisual();
   const empty = trained === 0;
   const { full, visible } = routineLabel(routineTitle);
   const label = empty
@@ -149,12 +150,8 @@ export function RecoveryHero({ weekLabel, atOrAbove, trained, routineTitle }) {
         </>
       ) : (
         <>
-          <Text style={styles.heroNumber}>{`${atOrAbove}/${trained}`}</Text>
+          <Text style={styles.heroNumber}>{`${atOrAbove} of ${trained}`}</Text>
           <Text style={styles.heroLabel}>at baseline</Text>
-          <View testID="recovery-hero-fill-track" style={[styles.segmentBar, { gap: 0 }]}>
-            <View testID="recovery-hero-fill" style={{ flex: atOrAbove, backgroundColor: bandColor('at_or_above', colors, kua) }} />
-            <View style={{ flex: Math.max(trained - atOrAbove, 0) }} />
-          </View>
           <Text style={styles.heroWeek} numberOfLines={1} ellipsizeMode="tail">{`${visible} baseline`}</Text>
         </>
       )}
@@ -283,13 +280,15 @@ export function RecoveryRosterSummary({ summary, bands, gap }) {
 }
 
 // Compact Improved / Steady / Fell back row for a comparable earlier week:
-// icon + count + visible label each. No prose; the full sentence is the
+// icon + count + visible label each. The marks are the Progressive Overload
+// ones (`formatOverload`): arrow-upward/arrow-downward at 16 and the warning
+// "↔" text glyph for flat (#1264). No prose; the full sentence is the
 // accessible label.
 export function RecoveryChangeVisual({ movement }) {
   const { colors, kua, styles } = useVisual();
   const all = [
     { label: 'Improved', icon: 'arrow-upward', count: movement.improved, color: kua ? kua.completion : colors.success },
-    { label: 'Steady', icon: 'trending-flat', count: movement.steady, color: kua ? kua.onSurfaceVariant : colors.textMuted },
+    { label: 'Steady', glyph: '↔', count: movement.steady, color: kua ? kua.warning : colors.caution },
     { label: 'Fell back', icon: 'arrow-downward', count: movement.fell_back, color: kua ? kua.error : colors.error },
   ];
   // Zero counts are noise: omit them visually (the accessible label still
@@ -304,7 +303,9 @@ export function RecoveryChangeVisual({ movement }) {
     >
       {cells.map(c => (
         <View key={c.label} style={styles.changeCell}>
-          <MaterialIcons name={c.icon} size={18} color={c.color} accessible={false} />
+          {c.icon
+            ? <MaterialIcons name={c.icon} size={16} color={c.color} accessible={false} />
+            : <Text style={{ color: c.color, fontSize: 14 }} accessible={false}>{c.glyph}</Text>}
           <Text style={styles.changeCount}>{c.count}</Text>
           <Text style={styles.changeLabel}>{c.label}</Text>
         </View>

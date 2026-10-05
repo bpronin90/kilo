@@ -413,10 +413,10 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
     // context at the bottom, never a title-like caption above the hero.
     const texts = findAllText(root);
     expect(texts.indexOf('Recovery')).toBeLessThan(texts.indexOf('Week 1'));
-    expect(texts.indexOf('Week 1')).toBeLessThan(texts.indexOf('2/2'));
+    expect(texts.indexOf('Week 1')).toBeLessThan(texts.indexOf('2 of 2'));
     // The hero label names the routine, so the bottom line is dates only.
     const ctxText = texts.find(t => t === '05-01-2026');
-    expect(texts.indexOf('2/2')).toBeLessThan(texts.indexOf(ctxText));
+    expect(texts.indexOf('2 of 2')).toBeLessThan(texts.indexOf(ctxText));
     const routine = hostText(root, ctxText)[0];
     expect(sizeOf(routine).fontSize).toBeGreaterThanOrEqual(13);
     expect(sizeOf(routine).fontSize).toBeLessThan(sizeOf(title).fontSize);
@@ -425,7 +425,7 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
   test('the top summary uses only sibling sizes: 18sp header, 32sp hero (Weight Trends KUA), 13sp captions', () => {
     const b = block({ reason: 'torn hamstring' });
     const root = setup({ blocks: [b], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
-    const hero = sizeOf(hostText(root, '2/2')[0]);
+    const hero = sizeOf(hostText(root, '2 of 2')[0]);
     // Same KUA hero as Weight Trends `weightValueLarge`: metric-display 32/36.
     expect(hero).toMatchObject({ fontSize: 32, lineHeight: 36 });
     expect(hero.fontSize).not.toBe(28);
@@ -438,7 +438,7 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
     const b = block({ reason: 'torn hamstring', started_at: '2026-05-01T00:00:00Z' });
     const root = setup({ blocks: [b], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
     const texts = findAllText(root);
-    const hero = texts.indexOf('2/2');
+    const hero = texts.indexOf('2 of 2');
     const ctx = texts.indexOf('05-01-2026');
     const reason = texts.indexOf('torn hamstring');
     expect(hero).toBeGreaterThan(-1);
@@ -576,7 +576,7 @@ describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b
     // Week 1 has a hero. Still exactly one live-region wrapper — it was
     // never unmounted and remounted across the branch switch.
     expect(liveRegions(root).length).toBe(1);
-    expect(hasText(root, '2/2')).toBe(true);
+    expect(hasText(root, '2 of 2')).toBe(true);
     expect(hasText(root, "note is no longer available")).toBe(false);
   });
 });
@@ -789,8 +789,8 @@ describe('AnalyticsRecoverySection — accessible labels expose the underlying e
     )[0];
     expect(benchRow).toBeDefined();
     expect(benchRow.props.accessibilityLabel).toContain('Load 100%');
-    expect(benchRow.props.accessibilityLabel).toContain('Load 100% of baseline, 135 lb of 135 lb');
-    expect(benchRow.props.accessibilityLabel).toContain('Total work 100% of baseline, 2025 lb of 2025 lb');
+    expect(benchRow.props.accessibilityLabel).toContain('Load 100% of baseline, 135 lb this week against 135 lb pre-recovery baseline');
+    expect(benchRow.props.accessibilityLabel).toContain('Total work 100% of baseline, 2025 lb this week against 2025 lb pre-recovery baseline');
   });
 
   test('a not-reintroduced row announces its baseline reference values', () => {
@@ -1276,7 +1276,7 @@ describe('AnalyticsRecoverySection — authoritative Recovery state (#716)', () 
       stateReady: true, stateRefreshing: true,
     });
 
-    expect(hasText(component.root, '2/2')).toBe(true);
+    expect(hasText(component.root, '2 of 2')).toBe(true);
     expect(texts(component)).not.toContain(RECOVERY_LOADING_MESSAGE);
     expect(texts(component)).not.toContain(RECOVERY_UNVERIFIED_MESSAGE);
     expect(texts(component)).not.toContain(RECOVERY_STALE_MESSAGE);
@@ -1292,7 +1292,7 @@ describe('AnalyticsRecoverySection — authoritative Recovery state (#716)', () 
     });
 
     expect(texts(component)).toContain(RECOVERY_LOADING_MESSAGE);
-    expect(hasText(component.root, '2/2')).toBe(false);
+    expect(hasText(component.root, '2 of 2')).toBe(false);
     expect(hasText(component.root, 'Push Pull Legs')).toBe(false);
   });
 });
@@ -1450,7 +1450,7 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     expect(hasText(root, 'Not an all-time max or an estimated 1RM.')).toBe(false);
     expect(hasText(root, 'Per exercise, per week')).toBe(false);
     expect(hasText(root, 'Total work is per exercise')).toBe(false);
-    expect(hasText(root, 'Load 135 lb / 135 lb')).toBe(true);
+    expect(hasText(root, 'Load 135 lb vs baseline 135 lb')).toBe(true);
     expect(hasText(root, 'Total work')).toBe(true);
   });
 
@@ -1497,7 +1497,7 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     // Collapsed again, on the new block's own summary.
     expect(byLabel(root, 'Expand exercise details')).toBeDefined();
     expect(byLabel(root, 'Collapse exercise details')).toBeUndefined();
-    expect(hasText(root, '2/2')).toBe(true);
+    expect(hasText(root, '2 of 2')).toBe(true);
 
     expandDetails(root);
     expect(rowLabels(root).some(l => l.startsWith('Bench, At or above'))).toBe(true);
@@ -1983,7 +1983,9 @@ describe('AnalyticsRecoverySection — scannable hierarchy (#1209)', () => {
     expect(flattenStyleOf(bar.findAll(n => typeof n.type === 'string' && n.props.style && n.props.style.height === 10)[0]).height).toBe(10);
     const weekBars = root.findAll(n => typeof n.type === 'string' && n.props.style && n.props.style.height === 6 && n.props.style.flexDirection === 'row');
     expect(weekBars.length).toBeGreaterThan(0);
-    expect(root.findAll(n => n.props.name === 'trending-flat').length).toBeGreaterThan(0);
+    // #1264: Steady uses the Progressive Overload flat glyph, not trending-flat.
+    expect(root.findAll(n => n.props.name === 'trending-flat').length).toBe(0);
+    expect(findAllText(root)).toContain('↔');
     // The strip sits above the drill-down header.
     const order = root.findAll(n => typeof n.type === 'string' && (n.props.testID === 'recovery-band-strip' || n.props.accessibilityLabel === 'Expand exercise details'));
     expect(order[0].props.testID).toBe('recovery-band-strip');
@@ -2061,7 +2063,7 @@ describe('AnalyticsRecoverySection — per-week vs block state (#1193)', () => {
     expect(hasText(root, 'not a block total')).toBe(false);
     expect(hasText(root, 'frozen starting value')).toBe(false);
     // Each weighted row carries its own current / baseline Total work figures.
-    expect(hasText(root, 'Total work 2025 lb / 2025 lb')).toBe(true);
+    expect(hasText(root, 'Total work 2025 lb vs baseline 2025 lb')).toBe(true);
   });
 
   test('logged but uncomparable work in another week still counts as trained there', () => {
@@ -2424,7 +2426,7 @@ describe('AnalyticsRecoverySection — visual exercise details (#1219)', () => {
     expect(rows.map(r => r[1])).toEqual(['Rebuilding', 'At or above', 'Not trained yet', 'Added during recovery']);
     const bench = rows[0];
     expect(bench).toContain('Total work 66%');
-    expect(bench).toContain('Load 135 lb / 135 lb');
+    expect(bench).toContain('Load 135 lb vs baseline 135 lb');
     expect(bench.some(t => t.startsWith('Total work '))).toBe(true);
     // Rows stay short: only tokens, never sentences.
     for (const r of rows) for (const t of r) expect(t.length).toBeLessThanOrEqual(40);
@@ -2680,7 +2682,7 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
     }));
     for (const r of readings) {
       // Hero "1/2" = at-or-above of trained; summary says the same trained and roster.
-      expect(r.hero).toContain('1/2');
+      expect(r.hero).toContain('1 of 2');
       expect(r.tokens.slice(0, 2)).toEqual(['2', 'trained']);
       expect(r.label).toContain('Trained this week: 2 of 2 roster exercises');
       expect(r.label).not.toMatch(/of 3 roster/);
@@ -2705,7 +2707,7 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
       expect(count(label, "can't compare")).toBe(1);
       expect(count(label, 'added during recovery')).toBe(1);
       expect(label).toContain(`Trained this week: ${trained} of ${roster} roster exercises`);
-      expect(hostTextsIn(root.findAll(n => typeof n.type === 'string' && n.props.testID === 'recovery-hero')[0])).toContain(`1/${trained}`);
+      expect(hostTextsIn(root.findAll(n => typeof n.type === 'string' && n.props.testID === 'recovery-hero')[0])).toContain(`1 of ${trained}`);
     }
   });
 
@@ -3002,8 +3004,8 @@ describe('AnalyticsRecoverySection — routine order, Total work bar, band token
     expect(percentTextOf(root)).toBe('Total work 11%');
     expect(statusWords(root)).toEqual(['Early']);
     const spoken = hostRows(root)[0].props.accessibilityLabel;
-    expect(spoken).toContain('Total work 11% of baseline, 670 lb of 5850 lb');
-    expect(spoken).toContain('Load 103% of baseline, 335 lb of 325 lb');
+    expect(spoken).toContain('Total work 11% of baseline, 670 lb this week against 5850 lb pre-recovery baseline');
+    expect(spoken).toContain('Load 103% of baseline, 335 lb this week against 325 lb pre-recovery baseline');
     expect(spoken.indexOf('Total work')).toBeLessThan(spoken.indexOf('Load 103%'));
     expect(lastWeek().exercises[0].state).toBe(S.REBUILDING);
   });
@@ -3466,7 +3468,7 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
   test('the hero states its scope, names the routine once, and the label carries the full scope and name', () => {
     const root = mountOwner();
     const hero = hostById(root, 'recovery-hero')[0];
-    expect(hostTextsIn(hero)).toEqual(['Week 6', '0/7', 'at baseline', 'Summer 2026 Routine baseline']);
+    expect(hostTextsIn(hero)).toEqual(['Week 6', '0 of 7', 'at baseline', 'Summer 2026 Routine baseline']);
     expect(findAllText(root).filter(t => t.includes('Summer 2026 Routine'))).toEqual(['Summer 2026 Routine baseline']);
     expect(hero.props.accessibilityLabel).toBe(
       'Week 6: 0 of 7 exercises trained this week at or above Summer 2026 Routine baseline. The count covers only exercises trained this week.'

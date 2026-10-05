@@ -153,7 +153,7 @@ function _rowAccessibilityLabel(row, unit, weekNumber, elsewhere) {
     const ordered = bar ? [bar, ...row.metrics.filter(m => m !== bar)] : row.metrics;
     for (const m of ordered) {
       parts.push(
-        `${METRIC_LABELS[m.metric] || m.metric} ${m.percent}% of baseline, ${_formatMetricNumber(m.metric, m.current, unit)} of ${_formatMetricNumber(m.metric, m.baseline, unit)}`
+        `${METRIC_LABELS[m.metric] || m.metric} ${m.percent}% of baseline, ${_formatMetricNumber(m.metric, m.current, unit)} this week against ${_formatMetricNumber(m.metric, m.baseline, unit)} pre-recovery baseline`
       );
     }
   } else if (row.state === RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY) {
@@ -196,7 +196,7 @@ function _numbers(row, unit) {
   const metrics = row.metrics || [];
   const label = m => METRIC_LABELS[m.metric] || m.metric;
   if (row.state === RECOVERY_COMPARISON_STATES.BASELINE_MET || row.state === RECOVERY_COMPARISON_STATES.REBUILDING) {
-    return metrics.map(m => `${label(m)} ${_formatMetricNumber(m.metric, m.current, unit)} / ${_formatMetricNumber(m.metric, m.baseline, unit)}`);
+    return metrics.map(m => `${label(m)} ${_formatMetricNumber(m.metric, m.current, unit)} vs baseline ${_formatMetricNumber(m.metric, m.baseline, unit)}`);
   }
   if (row.state === RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY) {
     return metrics.map(m => `${label(m)} ${_formatMetricNumber(m.metric, m.current, unit)}`);
