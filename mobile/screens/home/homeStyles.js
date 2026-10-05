@@ -324,9 +324,9 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     backgroundColor: kua ? kua.surfaceCard : undefined,
     borderColor: kua ? kua.surfaceBorder : undefined,
   },
-  // Keeps the 44dp target; its slack overlaps the linked-week line below.
+  // 44dp target, text bottom-aligned: slack sits above the title, not below.
   recoveryHeaderLink: {
-    marginBottom: -10,
+    alignItems: 'flex-end', marginTop: -12,
   },
   recoveryLabel: {
     ...(kua ? { ...typography['headline-sm'], fontSize: 13, lineHeight: 17 } : { fontSize: 12, fontWeight: '700', letterSpacing: 0.5 }),
