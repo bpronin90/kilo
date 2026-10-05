@@ -416,6 +416,50 @@ describe('App shell back handler (Android)', () => {
     expect(getTabStyle(component, 'Log').display).toBe('none');
   });
 
+  test('back press returns to the previously visited non-Home tab, then unwinds to Home (#1267)', () => {
+    renderer.act(() => { capturedTabPress('Log'); });
+    renderer.act(() => { capturedTabPress('Weight'); });
+    renderer.act(() => { getLatestBackHandler()(); });
+    expect(getTabStyle(component, 'Log').display).not.toBe('none');
+    expect(getTabStyle(component, 'Weight').display).toBe('none');
+    renderer.act(() => { getLatestBackHandler()(); });
+    expect(getTabStyle(component, 'Home').display).not.toBe('none');
+    expect(getTabStyle(component, 'Log').display).toBe('none');
+  });
+
+  test('a long run of tab switches unwinds fully, one tab per back (#1267)', () => {
+    const run = [];
+    for (let i = 0; i < 12; i += 1) run.push('Log', 'Weight');
+    run.forEach((t) => { renderer.act(() => { capturedTabPress(t); }); });
+    // 24 transitions from Home; the last tab is Weight, so 24 backs end on Home.
+    for (let i = 0; i < 23; i += 1) renderer.act(() => { getLatestBackHandler()(); });
+    expect(getTabStyle(component, 'Home').display).toBe('none');
+    renderer.act(() => { getLatestBackHandler()(); });
+    expect(getTabStyle(component, 'Home').display).not.toBe('none');
+  });
+
+  test('back on Home after unwinding still shows the exit confirmation (#1267)', () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    renderer.act(() => { capturedTabPress('Log'); });
+    renderer.act(() => { capturedTabPress('Weight'); });
+    renderer.act(() => { getLatestBackHandler()(); });
+    renderer.act(() => { getLatestBackHandler()(); });
+    renderer.act(() => { getLatestBackHandler()(); });
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    alertSpy.mockRestore();
+  });
+
+  test('a tab-owned back consumer keeps first refusal over tab history (#1267)', () => {
+    renderer.act(() => { capturedTabPress('Log'); });
+    renderer.act(() => { capturedTabPress('More'); });
+    const guideLink = component.root.findByProps({ accessibilityLabel: 'App Guide' });
+    renderer.act(() => { guideLink.props.onPress(); });
+    renderer.act(() => { getLatestBackHandler()(); });
+    expect(getTabStyle(component, 'More').display).not.toBe('none');
+    renderer.act(() => { getLatestBackHandler()(); });
+    expect(getTabStyle(component, 'Log').display).not.toBe('none');
+  });
+
   test('back press from Home tab shows exit alert and consumes the event', () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     const handler = getLatestBackHandler();
@@ -532,6 +576,17 @@ describe('App shell web back affordance (#314)', () => {
     renderer.act(() => { back.props.onPress(); });
     expect(getTabStyle(component, 'Home').display).not.toBe('none');
     expect(getTabStyle(component, 'Weight').display).toBe('none');
+  });
+
+  test('web back returns to the previous non-Home tab with a matching label (#1267)', () => {
+    renderer.act(() => { capturedTabPress('Log'); });
+    renderer.act(() => { capturedTabPress('Weight'); });
+    expect(findByAccessibilityLabel(component.toJSON(), 'Back to Home')).toBeNull();
+    const back = component.root.findByProps({ accessibilityLabel: 'Back to Log' });
+    renderer.act(() => { back.props.onPress(); });
+    expect(getTabStyle(component, 'Log').display).not.toBe('none');
+    expect(getTabStyle(component, 'Weight').display).toBe('none');
+    expect(findByAccessibilityLabel(component.toJSON(), 'Back to Home')).not.toBeNull();
   });
 
   test('global "← Home" bar is hidden when a More sub-screen owns its own back (#355)', () => {
