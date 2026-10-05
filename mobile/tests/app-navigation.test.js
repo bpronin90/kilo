@@ -336,10 +336,11 @@ describe('Android Back handler ownership across tab switches (#527)', () => {
     let result;
     renderer.act(() => { result = handler(); });
 
-    // With no in-tab state on the now-active Weight tab, Back falls back to Home —
-    // the stale Log editor handler must not have intercepted it instead.
+    // With no in-tab state on the now-active Weight tab, Back falls back to the
+    // previous tab (#1267: Log) — the stale Log editor handler must not have
+    // intercepted it instead (Weight would still be showing).
     expect(result).toBe(true);
-    expect(getTabStyle(component, 'Home').display).not.toBe('none');
+    expect(getTabStyle(component, 'Log').display).not.toBe('none');
     expect(getTabStyle(component, 'Weight').display).toBe('none');
   });
 
