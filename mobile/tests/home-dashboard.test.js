@@ -566,6 +566,12 @@ describe('HomeRecoverySummary — latest linked week scope (#1193)', () => {
     expect(hasText(root, 'Values describe')).toBe(false);
   });
 
+  test('names the linked week by its note title when one exists (#1265)', () => {
+    const root = mount({ ...base, weekNoteTitle: 'Knee rehab 2' });
+    expect(hasText(root, 'Latest linked week: Knee rehab 2')).toBe(true);
+    expect(hasText(root, 'Week 4')).toBe(false);
+  });
+
   test('a stale summary calls it the last loaded week, not the latest', () => {
     const root = mount({ ...base, stale: true, message: 'stale' });
     expect(hasText(root, 'Last loaded linked week: Week 4')).toBe(true);

@@ -312,7 +312,7 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
     }
   };
 
-  const heroPrimaryActionLabel = isRecoveryBetweenWeeks ? 'Next week' : 'Log workout';
+  const heroPrimaryActionLabel = 'Log workout';
   const heroPrimaryActionHint = isRecoveryOpenWeek
     ? 'Opens the Log tab for the active Recovery week'
     : isRecoveryBetweenWeeks

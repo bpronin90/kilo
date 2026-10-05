@@ -66,9 +66,7 @@ export function HomeHeader({
     : dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Week —';
   const recoverySubline = isRecoveryOpenWeek
     ? `Week ${activeTrainingContext.recoveryWeekNumber ?? '—'}`
-    : isRecoveryBetweenWeeks
-      ? 'Between weeks'
-      : null;
+    : null;
 
   const mutedStroke = kua ? kua.onSurfaceVariant : colors.textMuted;
   const actionStroke = kua ? kua.primaryOnContainer : colors.textMuted;
@@ -141,10 +139,10 @@ export function HomeHeader({
             style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart]}
             hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
             accessibilityRole="button"
-            accessibilityLabel="Paused for recovery"
+            accessibilityLabel="Exercise Progress"
             accessibilityHint="Opens the Progressive Overload section of the Analytics tab"
           >
-            <Text style={[styles.classifSectionLabel, styles.sectionHeaderLabel]}>Paused for recovery</Text>
+            <Text style={[styles.classifSectionLabel, styles.sectionHeaderLabel]}>Exercise Progress</Text>
             <View style={styles.sectionHeaderChevron}>
               <Chevron color={mutedStroke} />
             </View>

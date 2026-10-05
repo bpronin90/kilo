@@ -324,6 +324,10 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     backgroundColor: kua ? kua.surfaceCard : undefined,
     borderColor: kua ? kua.surfaceBorder : undefined,
   },
+  // Keeps the 44dp target; its slack overlaps the linked-week line below.
+  recoveryHeaderLink: {
+    marginBottom: -10,
+  },
   recoveryLabel: {
     ...(kua ? { ...typography['headline-sm'], fontSize: 13, lineHeight: 17 } : { fontSize: 12, fontWeight: '700', letterSpacing: 0.5 }),
     color: kua ? kua.onSurface : colors.text,

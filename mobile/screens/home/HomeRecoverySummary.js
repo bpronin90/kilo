@@ -58,7 +58,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   if (!summary) return null;
   const {
     status, stale, message, active,
-    comparisonStatus, weekNumber, weekNoteStatus, big3 = [], counts,
+    comparisonStatus, weekNumber, weekNoteStatus, weekNoteTitle = null, big3 = [], counts,
   } = summary;
 
   // Verified, nothing is running, and the answer is CURRENT. This is the one
@@ -98,25 +98,27 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   // sentence — but only when a week exists. `Baseline captured. No week logged
   // yet.` has no week to name, and printing `Week null` or inventing `Week 1`
   // would both be false.
-  const weekLabel = weekNumber === null ? null : `${stale ? 'Last loaded linked week' : 'Latest linked week'}: Week ${weekNumber}`;
+  const weekName = weekNoteTitle || (weekNumber === null ? null : `Week ${weekNumber}`);
+  const weekLabel = weekNumber === null ? null : `${stale ? 'Last loaded linked week' : 'Latest linked week'}: ${weekName}`;
   // #1193: the values below describe this one week, never the whole block.
   const weekScope = weekNumber !== null && fallbackStatus === null
-    ? `Values describe ${stale ? 'the last loaded' : 'the latest'} linked week (Week ${weekNumber}) only, not the whole block.`
+    ? `Values describe ${stale ? 'the last loaded' : 'the latest'} linked week (${weekName}) only, not the whole block.`
     : null;
 
   // #1171: the user's Big 3 lead, each against its own baseline. #1242: the
   // count line is the shared roster summary, worded exactly as Analytics and
   // the Recovery detail word it. Nothing prints while a fallback owns the slot.
   const lifts = fallbackStatus === null ? big3 : [];
-  const remainingText = fallbackStatus === null ? formatRecoveryCountLine(counts) : null;
+  const countLine = fallbackStatus === null ? formatRecoveryCountLine(counts) : null;
+  const remainingText = countLine ? `All exercises ${countLine}` : null;
 
   // One announcement for the whole summary, assembled in reading order. The
   // visual hierarchy is a layout device; the spoken version has to carry the
   // same facts as complete sentences.
   const accessibleContent = [
-    weekNumber === null ? null : `Week ${weekNumber}`,
+    weekName,
     fallbackStatus,
-    lifts.length > 0 ? 'Your Big 3 lifts' : null,
+    lifts.length > 0 ? 'Big 3' : null,
     ...lifts.map(lift => {
       const value = liftValue(lift);
       return `${lift.label} ${value.endsWith('%') ? `${value} of baseline` : value.toLowerCase()}`;
@@ -142,13 +144,13 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
             <Pressable
               testID="home-recovery-link"
               onPress={() => onNavigate('Analytics', 'recovery')}
-              style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart]}
+              style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart, styles.recoveryHeaderLink]}
               hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
               accessibilityRole="button"
-              accessibilityLabel="Recovery"
+              accessibilityLabel="1K recovery"
               accessibilityHint="Opens the Recovery section of the Analytics tab"
             >
-              <Text style={[styles.recoveryLabel, styles.sectionHeaderLabel]}>Recovery</Text>
+              <Text style={[styles.recoveryLabel, styles.sectionHeaderLabel]}>1K recovery</Text>
               <View style={styles.sectionHeaderChevron}>
                 <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
               </View>
@@ -186,7 +188,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
               ) : null}
               {lifts.length > 0 ? (
                 <View testID="home-recovery-big3" style={styles.recoveryLiftList}>
-                  <Text style={styles.recoveryWeekLabel}>Your Big 3 lifts</Text>
+                  <Text style={styles.recoveryWeekLabel}>Big 3</Text>
                   {lifts.map(lift => {
                     const done = lift.state === RECOVERY_COMPARISON_STATES.BASELINE_MET;
                     // Only a real ratio fills the bar; unknowns stay an empty track.
@@ -215,9 +217,9 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
           <View
             accessible
             accessibilityRole={isLoadingStatus ? 'progressbar' : 'alert'}
-            accessibilityLabel={`Recovery. ${message}`}
+            accessibilityLabel={`1K recovery. ${message}`}
           >
-            <Text style={styles.recoveryLabel}>Recovery</Text>
+            <Text style={styles.recoveryLabel}>1K recovery</Text>
             <Text style={styles.recoveryStatusLine}>{message}</Text>
           </View>
         )}

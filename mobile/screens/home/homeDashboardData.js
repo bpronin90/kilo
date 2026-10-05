@@ -136,6 +136,7 @@ export function useHomeRecoverySummary(notes, workoutNote = null) {
       comparisonStatus: null,
       weekNumber: null,
       weekNoteStatus: null,
+      weekNoteTitle: null,
       big3: [],
       counts: null,
       includedInNormalAnalytics: false,
@@ -159,6 +160,7 @@ export function useHomeRecoverySummary(notes, workoutNote = null) {
       comparisonStatus: comparison.status,
       weekNumber: current ? current.week_number : null,
       weekNoteStatus: current ? current.status : null,
+      weekNoteTitle: current && typeof current.note_title === 'string' && current.note_title.trim() ? current.note_title.trim() : null,
       ...deriveHomeRecoveryBig3(current, selections),
       includedInNormalAnalytics: activeBlock.include_in_normal_analytics === true,
     };
