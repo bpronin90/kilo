@@ -5,7 +5,7 @@ import { SectionTitle } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
 import { useKuaTypography } from '../../theme/typography';
 import { formatDate } from '../../lib/format';
-import { formatBodyweightValue } from '../../lib/units';
+import { formatBodyweightValue, formatGoalWeightValue } from '../../lib/units';
 import { isGoalMet as computeIsGoalMet } from '../../lib/data/weightGoal';
 import { createStyles, createHistoryPanel } from './weightStyles';
 
@@ -81,7 +81,7 @@ export function GoalHistoryPanel({ sortedArchivedGoals, collapsed, setCollapsed,
               <View style={hp.rowMain}>
                 <View style={hp.rowCells}>
                   <View style={hp.col1}>
-                    <Text style={hp.value}>{formatBodyweightValue(g.target_weight, unit)} {unit}</Text>
+                    <Text style={hp.value}>{formatGoalWeightValue(g.target_weight, unit)} {unit}</Text>
                   </View>
                   <View style={hp.col2}>
                     <Text style={[hp.value, endWeightOutcomeStyle]}>

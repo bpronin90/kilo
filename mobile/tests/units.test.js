@@ -10,6 +10,7 @@ import {
   unitSystemFromUnit,
   displayWeight,
   formatBodyweightValue,
+  formatGoalWeightValue,
   formatLiftWeightValue,
   inputWeightToLb,
   displayChartSeries,
@@ -261,5 +262,15 @@ describe('unit preference store', () => {
     await flush();
     expect(getWeightUnit()).toBe('lb');
     unsubscribe();
+  });
+});
+
+describe('formatGoalWeightValue (#1266)', () => {
+  test('trims a trailing .0 only', () => {
+    expect(formatGoalWeightValue(175, 'lb')).toBe('175');
+    expect(formatGoalWeightValue(175.5, 'lb')).toBe('175.5');
+    expect(formatGoalWeightValue(220.462262, 'kg')).toBe('100');
+    expect(formatGoalWeightValue(185, 'kg')).toBe('83.9');
+    expect(formatGoalWeightValue(null, 'kg')).toBe('');
   });
 });

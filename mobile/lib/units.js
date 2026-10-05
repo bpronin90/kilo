@@ -41,6 +41,12 @@ export function formatBodyweightValue(lbValue, unit) {
   return unit === 'kg' ? lbToKg(lbValue).toFixed(1) : String(lbValue);
 }
 
+// Goal-field display value: bodyweight formatting without a meaningless
+// trailing .0 (80.0 → 80); non-integers keep their decimal (80.5).
+export function formatGoalWeightValue(lbValue, unit) {
+  return formatBodyweightValue(lbValue, unit).replace(/\.0$/, '');
+}
+
 // Lift-weight display value: raw in lb; kg rounded to one decimal with a
 // trailing .0 trimmed (225 → 102.1, 220.5 → 100), which reads naturally in
 // dense set rows.

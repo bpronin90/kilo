@@ -3,7 +3,7 @@ import { Pressable, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Card } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
-import { displayWeight, formatBodyweightValue } from '../../lib/units';
+import { displayWeight, formatGoalWeightValue } from '../../lib/units';
 import { createStyles } from './homeStyles';
 import { useKuaTypography } from '../../theme/typography';
 import { HomeRecoverySummary } from './HomeRecoverySummary';
@@ -56,7 +56,7 @@ export function HomeDashboard({
               <View style={styles.goalStatCol}>
                 <Text style={styles.goalStatLabel}>Target</Text>
                 <View style={styles.goalStatValueRow}>
-                  <Text style={styles.goalStatValueLarge}>{weightGoal?.target_weight != null ? formatBodyweightValue(weightGoal.target_weight, unit) : weightGoal?.target_weight}</Text>
+                  <Text style={styles.goalStatValueLarge}>{weightGoal?.target_weight != null ? formatGoalWeightValue(weightGoal.target_weight, unit) : weightGoal?.target_weight}</Text>
                   <Text style={styles.goalStatUnitLabel}>{unit}</Text>
                 </View>
               </View>
