@@ -8,7 +8,7 @@ import { useKuaTypography } from '../theme/typography';
 import { formatDate } from '../lib/format';
 import { localDateToday } from '../lib/WeightScreenHelpers';
 import { useWeightUnit } from '../lib/unitPreference';
-import { displayWeight, formatBodyweightValue } from '../lib/units';
+import { displayWeight, formatBodyweightValue, formatGoalWeightValue } from '../lib/units';
 
 // Web-safe goal target date input. The native @react-native-community/datetimepicker
 // has no usable rendering on web, so on web we render a real DOM <input type="date">
@@ -207,7 +207,7 @@ export function WeightGoalCard({
                 keyboardAppearance={colors.scheme}
                 value={goalStartWeight}
                 onChangeText={setGoalStartWeight}
-                placeholder={unit === 'kg' ? '90.0' : '200.0'}
+                placeholder={unit === 'kg' ? '90' : '200'}
                 placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
                 keyboardType="decimal-pad"
                 style={styles.numericInput}
@@ -219,7 +219,7 @@ export function WeightGoalCard({
             keyboardAppearance={colors.scheme}
             value={goalTargetWeight}
             onChangeText={setGoalTargetWeight}
-            placeholder={unit === 'kg' ? 'e.g. 80.0' : 'e.g. 175.0'}
+            placeholder={unit === 'kg' ? '80' : '175'}
             placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
             keyboardType="decimal-pad"
             style={styles.numericInput}
@@ -273,7 +273,7 @@ export function WeightGoalCard({
           <View style={styles.goalDisplayRow}>
             <View style={styles.goalDisplayItem}>
               <Text style={styles.goalDisplayLabel}>Target</Text>
-              <Text style={styles.goalDisplayValue}>{formatBodyweightValue(goal.target_weight, unit)} {unit}</Text>
+              <Text style={styles.goalDisplayValue}>{formatGoalWeightValue(goal.target_weight, unit)} {unit}</Text>
             </View>
             <View style={styles.goalDisplayItem}>
               <Text style={styles.goalDisplayLabel}>Target Date</Text>

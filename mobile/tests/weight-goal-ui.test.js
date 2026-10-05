@@ -492,6 +492,13 @@ describe('WeightScreen', () => {
       expect(hasTextSafe(component.root, 'Archive')).toBe(true);
     });
 
+    test('active goal target omits .0 for whole numbers and keeps real decimals (#1266)', () => {
+      const whole = setup({ target_weight: 175, target_date: '2099-01-01', start_weight: 190 }, []);
+      expect(hasTextSafe(whole.root, '175 lb')).toBe(true);
+      const frac = setup({ target_weight: 175.5, target_date: '2099-01-01', start_weight: 190 }, []);
+      expect(hasTextSafe(frac.root, '175.5 lb')).toBe(true);
+    });
+
     test('no goal shows the new-goal entry form (not met state)', () => {
       const component = setup(null, []);
       expect(hasTextSafe(component.root, 'Goal Met!')).toBe(false);
@@ -499,19 +506,20 @@ describe('WeightScreen', () => {
       // Form inputs present
       const root = component.root;
       const inputs = root.findAll(n => n.type === 'TextInput');
-      expect(inputs.some(i => i.props.placeholder === 'e.g. 175.0')).toBe(true);
+      expect(inputs.some(i => i.props.placeholder === '175')).toBe(true);
     });
 
-    test('no-goal Target field matches Weight field size and marks its placeholder as an example (#1249)', () => {
+    test('no-goal Target field matches Weight field size with a plain whole-number placeholder (#1249, #1266)', () => {
       const component = setup(null, []);
       const target = component.root
         .findAll(n => n.type === 'TextInput')
-        .find(i => i.props.placeholder === 'e.g. 175.0');
+        .find(i => i.props.placeholder === '175');
       const style = StyleSheet.flatten(target.props.style);
       expect(style.fontSize).toBe(17);
       expect(style.fontFamily).toBe('JetBrainsMono-SemiBold');
       expect(target.props.value || '').toBe('');
-      expect(/^e\.g\. /.test(target.props.placeholder)).toBe(true);
+      expect(target.props.placeholder).toBe('175');
+      expect(/e\.g\.|\.0$/.test(target.props.placeholder)).toBe(false);
     });
   });
 

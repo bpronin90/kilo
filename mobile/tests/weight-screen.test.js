@@ -907,7 +907,7 @@ describe('WeightScreen Goal Editor Live Preview', () => {
     const root = component.root;
 
     // The target weight input starts empty
-    const targetWeightInput = root.findByProps({ placeholder: 'e.g. 175.0' });
+    const targetWeightInput = root.findByProps({ placeholder: '175' });
     expect(targetWeightInput).toBeTruthy();
 
     render.act(() => {
