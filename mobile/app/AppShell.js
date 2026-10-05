@@ -38,6 +38,30 @@ import { buildExportPayload } from './export';
 // navigation — stays inside this hook and is returned to the view.
 export function useAppShell({ onDeviceDataWiped }) {
   const [activeTab, setActiveTab] = useState('Home');
+  // Shell tab history (#1267): tabs visited before the current one, newest last.
+  // Refs hold the synchronous truth so stable callbacks can read it; backTarget
+  // mirrors the top of the stack for the web back label.
+  const activeTabRef = useRef('Home');
+  const tabHistoryRef = useRef([]);
+  const [backTarget, setBackTarget] = useState('Home');
+  const goToTab = useCallback((tab, { record = true } = {}) => {
+    const current = activeTabRef.current;
+    if (tab === current) return;
+    let history = tabHistoryRef.current;
+    if (tab === 'Home') history = [];
+    else if (record) history = [...history, current].slice(-20);
+    tabHistoryRef.current = history;
+    activeTabRef.current = tab;
+    setBackTarget(history.length ? history[history.length - 1] : 'Home');
+    setActiveTab(tab);
+  }, []);
+  // Pops to the previous tab (Home when no history). Used by hardware and web back.
+  const goBackTab = useCallback(() => {
+    const history = tabHistoryRef.current;
+    const previous = history.length ? history[history.length - 1] : 'Home';
+    tabHistoryRef.current = history.slice(0, -1);
+    goToTab(previous, { record: false });
+  }, [goToTab]);
   // One (target, key) pair per destination that can receive a typed navigation
   // intent (#718). They are deliberately independent rather than one shared
   // `navTarget` object: every mounted screen is memoized (see the note above
@@ -185,9 +209,9 @@ export function useAppShell({ onDeviceDataWiped }) {
   // matching switch to its Account sub-view.
   React.useEffect(() => {
     if (auth.passwordRecovery || auth.recoveryError) {
-      setActiveTab('More');
+      goToTab('More');
     }
-  }, [auth.passwordRecovery, auth.recoveryError]);
+  }, [auth.passwordRecovery, auth.recoveryError, goToTab]);
 
   const [weightValue, setWeightValue] = useState('');
   const [weightNote, setWeightNote] = useState('');
@@ -260,8 +284,8 @@ export function useAppShell({ onDeviceDataWiped }) {
         return true;
       }
 
-      if (activeTab !== 'Home') {
-        setActiveTab('Home');
+      if (activeTabRef.current !== 'Home') {
+        goBackTab();
         return true;
       }
 
@@ -282,7 +306,7 @@ export function useAppShell({ onDeviceDataWiped }) {
     );
 
     return () => backHandler.remove();
-  }, [activeTab]);
+  }, [goBackTab]);
 
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
@@ -330,7 +354,7 @@ export function useAppShell({ onDeviceDataWiped }) {
     setMoreSubviewTarget(subviewTarget);
     if (subviewTarget) setMoreSubviewTargetKey((n) => n + 1);
 
-    setActiveTab(tab);
+    goToTab(tab);
     emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.TAB_VIEWED, { tab });
     if (tab === 'Analytics') {
       // The NORMALIZED section, not the raw request: an ignored/malformed
@@ -342,7 +366,7 @@ export function useAppShell({ onDeviceDataWiped }) {
         section: analyticsSectionVariant(sectionTarget ? sectionTarget.id : null),
       });
     }
-  }, []);
+  }, [goToTab]);
 
   // ── Shell-owned cloud sync summary (#737) ────────────────────────────────
   //
@@ -547,7 +571,7 @@ export function useAppShell({ onDeviceDataWiped }) {
   }, [weightHook.refresh, noteHook.refresh]);
 
   return {
-    activeTab, tabOwnsBack, tabBarHeight, setTabBarHeight, weightHook, noteHook, stableAuth,
+    activeTab, backTarget, goBackTab, tabOwnsBack, tabBarHeight, setTabBarHeight, weightHook, noteHook, stableAuth,
     auth, restTimer, cloudSync, isUpdatePending, registerBackConsumer, setTabOwnsBack,
     weightValue, setWeightValue, weightNote, setWeightNote, workoutNoteText,
     setWorkoutNoteText, workoutNoteTitle, setWorkoutNoteTitle, isWorkoutCollapsed,

@@ -138,7 +138,7 @@ function ShellView({ onDeviceDataWiped }) {
   const { bottom: bottomSafeAreaInset = 0, top: topSafeAreaInset = 0 } = useContext(SafeAreaInsetsContext) || {};
   const styles = useMemo(() => createStyles(colors, kua, topSafeAreaInset), [colors, kua, topSafeAreaInset]);
   const {
-    activeTab, tabOwnsBack, tabBarHeight, setTabBarHeight, weightHook, noteHook, stableAuth,
+    activeTab, backTarget, goBackTab, tabOwnsBack, tabBarHeight, setTabBarHeight, weightHook, noteHook, stableAuth,
     auth, restTimer, cloudSync, isUpdatePending, registerBackConsumer, setTabOwnsBack,
     weightValue, setWeightValue, weightNote, setWeightNote, workoutNoteText,
     setWorkoutNoteText, workoutNoteTitle, setWorkoutNoteTitle, isWorkoutCollapsed,
@@ -352,13 +352,13 @@ function ShellView({ onDeviceDataWiped }) {
           {showWebBack && (
             <View style={styles.webBackBar}>
               <Pressable
-                onPress={() => handleTabPress('Home')}
+                onPress={goBackTab}
                 style={styles.webBackButton}
                 hitSlop={8}
                 accessibilityRole="button"
-                accessibilityLabel="Back to Home"
+                accessibilityLabel={`Back to ${backTarget}`}
               >
-                <Text style={styles.webBackButtonText}>← Home</Text>
+                <Text style={styles.webBackButtonText}>← {backTarget}</Text>
               </Pressable>
             </View>
           )}
