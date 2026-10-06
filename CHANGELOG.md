@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.8.35 - 2026-10-06
+
+- Issue #1267: Back now returns to the previously visited tab instead of always jumping to Home, and the web back button names its destination.
+
+## 1.8.34 - 2026-10-06
+
+- Issue #1266: Weight goal fields now use plain whole-number placeholders and no longer show a trailing ".0" on whole-number targets.
+
+## 1.8.33 - 2026-10-06
+
+- Issue #1265: Home Recovery now uses the ordinary "Log workout" action, a compact "1K recovery" summary named after the linked Recovery note, "Big 3", and an "All exercises" roster label.
+
+## 1.8.32 - 2026-10-06
+
+- Issue #1264: Recovery analytics now reads "0 of 7 at baseline" without a duplicate progress bar, shows each exercise's current values against its pre-recovery baseline, and uses the Progressive Overload arrows for weekly change.
+
 ## 1.8.31 - 2026-10-04
 
 - Issue #1251: Timed cardio and warmup lines such as "Bike 5 min" no longer show their entries as pound-weighted sets in Log.
