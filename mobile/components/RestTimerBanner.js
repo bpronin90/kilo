@@ -4,6 +4,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useTheme } from '../theme/ThemeContext';
 import { GEOMETRY } from '../theme/spacing';
 import { MODAL_SUPPORTED_ORIENTATIONS } from './adaptiveLayout';
+import { TYPOGRAPHY } from '../theme/typography';
 
 function formatCountdown(ms) {
   const totalSec = Math.ceil(ms / 1000);
@@ -276,8 +277,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     borderColor: kua.primaryContainerBorder,
   },
   choiceText: {
-    fontSize: 13,
-    fontWeight: '700',
+    ...TYPOGRAPHY['label-md'],
     color: kua.primaryOnContainer,
   },
   // App-shell running / completion pill. `pillOuter` is a full-width flow item
@@ -318,24 +318,23 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   countdown: {
-    fontSize: 16,
-    fontWeight: '800',
+    ...TYPOGRAPHY['label-lg'],
     color: kua.onSurface,
     minWidth: 44,
     textAlign: 'center',
     fontVariant: ['tabular-nums'],
   },
   warning: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     color: kua.onSurfaceVariant,
   },
   doneText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua.success,
   },
   actionText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua.primary,
   },

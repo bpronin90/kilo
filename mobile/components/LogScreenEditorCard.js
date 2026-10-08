@@ -11,6 +11,8 @@ import { createStyles } from './log/logEditorStyles';
 import { useEditorCard } from './log/EditorControls';
 import { EditorDeloadNoteInput, EditorSaveActions } from './log/EditorHeader';
 import { RoutineAdoptionPrompt, computeSaveStatusLabel, SaveStatusRegion } from './log/EditorStatus';
+import { TYPOGRAPHY } from '../theme/typography';
+import { GEOMETRY } from '../theme/spacing';
 
 // #867: the gap between the editor tool row and the problem list that opens
 // under it. The list is an overlay, not an in-flow row (see `validationList`
@@ -46,15 +48,22 @@ function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
     },
     style: {
       backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
-      borderRadius: 16,
+      borderRadius: GEOMETRY['radius-2xl'],
       borderWidth: 1,
       borderStyle: 'solid',
       borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
       padding: 14,
-      fontSize: 16,
+      // Kinetic: mirror the native dateInputText (label-lg mono role). fontWeight is
+      // omitted on purpose: the family is a weight-specific face and a weight on
+      // top would synthesize bold on web.
+      fontSize: TYPOGRAPHY[kua ? 'label-lg' : 'body-lg'].fontSize,
+      ...(kua ? {
+        fontFamily: `${TYPOGRAPHY['label-lg'].fontFamily}, Courier New, Courier, monospace`,
+        letterSpacing: TYPOGRAPHY['label-lg'].letterSpacing,
+        fontVariantNumeric: 'tabular-nums',
+      } : { fontFamily: 'inherit' }),
       colorScheme: colors.scheme,
       color: kua ? kua.onSurface : colors.text,
-      fontFamily: 'inherit',
       width: '100%',
       boxSizing: 'border-box',
     },
@@ -285,7 +294,7 @@ export function LogScreenEditorCard({
                     <Text style={styles.inputLabel}>Session #</Text>
                     <TextInput
                       keyboardAppearance={colors.scheme}
-                      style={styles.input}
+                      style={[styles.input, styles.ordinalEditInput]}
                       value={deloadEditOrdinal}
                       onChangeText={v => setDeloadEditOrdinal(v.replace(/[^0-9]/g, ''))}
                       keyboardType="number-pad"

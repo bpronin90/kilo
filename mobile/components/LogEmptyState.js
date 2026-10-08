@@ -7,6 +7,8 @@ import {
   WORKOUT_SYNTAX_EXAMPLE_TEXT,
   WORKOUT_SYNTAX_ROW_EXPLANATIONS,
 } from './WorkoutSyntaxReference';
+import { TYPOGRAPHY } from '../theme/typography';
+import { GEOMETRY } from '../theme/spacing';
 
 // The empty state is the THIRD consumer of the shared syntax source (#748;
 // #745 finding F4). It used to hold its own shorter explanation list, which had
@@ -72,13 +74,13 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 12,
   },
   title: {
-    fontSize: 24,
+    fontSize: TYPOGRAPHY['headline-md'].fontSize,
     fontWeight: '800',
     color: kua ? kua.onSurface : colors.text,
     textAlign: 'center',
   },
   copy: {
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
     lineHeight: 22,
@@ -88,7 +90,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     width: '100%',
   },
   exampleLabel: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
@@ -101,18 +103,18 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   codeBlock: {
     backgroundColor: colors.backgroundSecondary,
-    borderRadius: 8,
+    borderRadius: GEOMETRY['radius-lg'],
     padding: 12,
     gap: 4,
   },
   codeLine: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontFamily: 'monospace',
     color: kua ? kua.onSurface : colors.text,
     lineHeight: 18,
   },
   helpText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 18,
   },
@@ -122,14 +124,14 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     alignItems: 'flex-start',
   },
   codeText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontFamily: 'monospace',
     color: kua ? kua.onSurface : colors.text,
     fontWeight: '600',
     minWidth: 80,
   },
   formatDesc: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 18,
     flex: 1,

@@ -17,6 +17,7 @@ import { createInputStyle } from './UI';
 import { GEOMETRY, SPACING } from '../theme/spacing';
 import { MODAL_SUPPORTED_ORIENTATIONS, dialogWidthStyle } from './adaptiveLayout';
 import { scrim } from '../theme/styleHelpers';
+import { TYPOGRAPHY } from '../theme/typography';
 
 const REASON_GROUPS = [
   {
@@ -416,12 +417,12 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     gap: 2,
   },
   title: {
-    fontSize: 17,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     fontWeight: '700',
     color: kua.onSurface,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '500',
     color: kua.onSurfaceVariant,
   },
@@ -429,7 +430,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     padding: 4,
   },
   closeBtnText: {
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     color: kua.onSurfaceVariant,
     fontWeight: '600',
   },
@@ -444,7 +445,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     borderColor: kua.error,
   },
   errorBannerText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: colors.textLight,
   },
@@ -469,7 +470,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     borderColor: kua.primaryContainerBorder,
   },
   tierBtnText: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua.onSurface,
   },
@@ -495,14 +496,14 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     marginTop: 2,
   },
   subGroupLabel: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '600',
     color: kua.onSurfaceVariant,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
   groupLabel: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: kua.onSurfaceVariant,
     textTransform: 'uppercase',
@@ -519,7 +520,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
   chipSub: {
     paddingHorizontal: 12,
     paddingVertical: 5,
-    borderRadius: 20,
+    borderRadius: GEOMETRY['radius-2xl'],
     backgroundColor: kua.background,
     borderWidth: 1,
     borderColor: kua.surfaceBorder,
@@ -527,14 +528,14 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   chipSubText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua.onSurfaceVariant,
     fontWeight: '500',
   },
   chip: {
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: GEOMETRY['radius-2xl'],
     backgroundColor: kua.background,
     borderWidth: 1,
     borderColor: kua.surfaceBorder,
@@ -546,7 +547,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     borderColor: kua.primary,
   },
   chipText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua.onSurfaceVariant,
     fontWeight: '500',
   },
@@ -570,7 +571,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     opacity: 0.5,
   },
   submitBtnText: {
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     fontWeight: '700',
     color: kua.onPrimary,
   },
