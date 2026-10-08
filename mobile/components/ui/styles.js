@@ -1,5 +1,6 @@
 import { useThemedStyles } from '../../theme/ThemeContext';
 import { TYPOGRAPHY } from '../../theme/typography';
+import { GEOMETRY } from '../../theme/spacing';
 
 export const SET_ROW_FONT_SIZE = TYPOGRAPHY['label-lg'].fontSize;
 
@@ -25,10 +26,10 @@ export const createInputStyle = (colors, kua = null) => ({
   backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
   borderWidth: 1,
   borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
-  borderRadius: 12,
+  borderRadius: GEOMETRY['radius-xl'],
   paddingHorizontal: 12,
   paddingVertical: 12,
-  fontSize: 15,
+  fontSize: TYPOGRAPHY['body-md'].fontSize,
   color: kua ? kua.onSurface : colors.text,
 });
 

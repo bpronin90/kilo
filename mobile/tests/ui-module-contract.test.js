@@ -94,7 +94,7 @@ describe('UI.js compatibility barrel: export-surface parity', () => {
       borderRadius: 12,
       paddingHorizontal: 12,
       paddingVertical: 12,
-      fontSize: 15,
+      fontSize: 14,
       color: LightColors.text,
     });
   });
