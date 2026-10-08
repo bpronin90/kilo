@@ -354,7 +354,7 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     color: kua ? kua.onSurface : colors.text,
   },
   recoveryLiftValue: {
-    ...(kua ? typography['body-sm'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize }),
+    ...(kua ? typography['label-md'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   recoveryLiftDone: {
