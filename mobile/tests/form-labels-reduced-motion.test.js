@@ -64,13 +64,40 @@ function mountProbe(useHook) {
 }
 
 describe('useReducedMotion', () => {
-  test('defaults to normal motion before the lookup resolves, then adopts the OS preference', async () => {
+  test('an unresolved lookup counts as reduced motion (animated: !reduce is false)', async () => {
+    lookup.mockImplementation(() => new Promise(() => {}));
+    const hook = loadHook();
+    const p = mountProbe(hook);
+    expect(p.seen[0]).toBe(true);
+    await flush();
+    expect(p.last()).toBe(true);
+    expect(!p.last()).toBe(false);
+  });
+
+  test('a pending lookup that resolves true stays reduced', async () => {
     lookup.mockResolvedValue(true);
     const hook = loadHook();
     const p = mountProbe(hook);
-    expect(p.seen[0]).toBe(false);
+    expect(p.seen[0]).toBe(true);
     await flush();
     expect(p.last()).toBe(true);
+  });
+
+  test('a pending lookup that resolves false switches to normal motion', async () => {
+    const hook = loadHook();
+    const p = mountProbe(hook);
+    expect(p.seen[0]).toBe(true);
+    await flush();
+    expect(p.last()).toBe(false);
+  });
+
+  test('a pending lookup that rejects switches to normal motion', async () => {
+    lookup.mockRejectedValue(new Error('unavailable'));
+    const hook = loadHook();
+    const p = mountProbe(hook);
+    expect(p.seen[0]).toBe(true);
+    await flush();
+    expect(p.last()).toBe(false);
   });
 
   test('a cached true value makes the very first render reduced motion', async () => {
@@ -149,6 +176,12 @@ describe('fade modals honor reduced motion', () => {
     const tree = mount();
     await flush();
     expect(tree.root.findByType(Modal).props.animationType).toBe('fade');
+  });
+
+  test('uses no animation on first render while the lookup is still pending', () => {
+    lookup.mockImplementation(() => new Promise(() => {}));
+    const tree = mount();
+    expect(tree.root.findByType(Modal).props.animationType).toBe('none');
   });
 
   test('uses no animation when reduced motion is on, and keeps the content visible', async () => {

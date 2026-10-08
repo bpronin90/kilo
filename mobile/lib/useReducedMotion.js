@@ -8,10 +8,12 @@ import { AccessibilityInfo } from 'react-native';
 //  - the cache is primed once at module load via isReduceMotionEnabled();
 //  - one module-level reduceMotionChanged subscription keeps it current and
 //    notifies mounted hooks;
-//  - a lookup or subscription that throws or rejects leaves the cache at
-//    `false` (normal motion) with no unhandled rejection;
+//  - until the first lookup resolves the value is unknown, and unknown means
+//    reduced (`true`): nothing animates on a guess;
+//  - a lookup that throws or rejects settles on `false` (normal motion) with no
+//    unhandled rejection; a subscription that throws never updates the cache;
 //  - hooks ignore notifications after unmount.
-let cached = false;
+let cached = true;
 const listeners = new Set();
 
 function publish(value) {
@@ -23,9 +25,10 @@ function publish(value) {
 try {
   Promise.resolve(AccessibilityInfo.isReduceMotionEnabled())
     .then(publish)
-    .catch(() => {});
+    .catch(() => publish(false));
 } catch {
-  // Lookup unavailable: stay on normal motion.
+  // Lookup unavailable: normal motion.
+  cached = false;
 }
 try {
   AccessibilityInfo.addEventListener('reduceMotionChanged', publish);
