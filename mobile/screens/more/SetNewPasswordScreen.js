@@ -3,6 +3,7 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScreenShell } from '../../components/ScreenShell';
 import { Button, SectionTitle, useInputStyle } from '../../components/UI';
 import { useTheme, useThemedStyles, useKuaStyle } from '../../theme/ThemeContext';
+import { TYPOGRAPHY } from '../../theme/typography';
 
 // Set-new-password surface (#497). AccountScreen renders this in place of its
 // normal Sign In / Signed In views whenever the shared `auth` instance
@@ -147,13 +148,13 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 12,
   },
   note: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.onSurface : colors.text,
     lineHeight: 22,
     marginBottom: 12,
   },
   status: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 16,
   },

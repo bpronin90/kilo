@@ -17,6 +17,7 @@ import {
   requestHealthDataDeletion,
 } from '../../storage/cloud/consent';
 import appConfig from '../../app.json';
+import { TYPOGRAPHY, useKuaTypography } from '../../theme/typography';
 
 // User-facing cloud bootstrap/sync recovery panel (Phase 4 / Task 12).
 //
@@ -25,6 +26,7 @@ import appConfig from '../../app.json';
 // admin/support controls here — only the signed-in user's own retry/export.
 export function CloudSyncRecovery({ user, onConsentDismiss }) {
   const styles = useThemedStyles(createStyles);
+  const typography = useKuaTypography();
   const { bootstrap, sync, runBootstrap, runSync, retryBootstrap, retrySync } =
     useSyncRecovery(user);
   const { exportCloud } = useCloudExport();
@@ -344,7 +346,7 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
       <View style={styles.summaryBlock}>
         <View style={styles.syncRow}>
           <Text style={styles.syncLabel}>Cloud status</Text>
-          <Text style={styles.syncValue} accessibilityLabel="Cloud sync summary">
+          <Text style={[styles.syncValue, typography['label-lg']]} accessibilityLabel="Cloud sync summary">
             {cloudStatusLabel()}
           </Text>
         </View>
@@ -355,7 +357,7 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
 
       <View style={styles.syncRow}>
         <Text style={styles.syncLabel}>Upload your local history</Text>
-        <Text style={styles.syncValue} accessibilityLabel={`Bootstrap status ${bootstrap.status}`}>
+        <Text style={[styles.syncValue, typography['label-lg']]} accessibilityLabel={`Bootstrap status ${bootstrap.status}`}>
           {phaseLabel(bootstrap, 'bootstrap')}
         </Text>
       </View>
@@ -405,7 +407,7 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
 
       <View style={styles.syncRow}>
         <Text style={styles.syncLabel}>Keep device and account in sync</Text>
-        <Text style={styles.syncValue} accessibilityLabel={`Sync status ${sync.status}`}>
+        <Text style={[styles.syncValue, typography['label-lg']]} accessibilityLabel={`Sync status ${sync.status}`}>
           {phaseLabel(sync, 'sync')}
         </Text>
       </View>
@@ -508,19 +510,19 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 8,
   },
   accountNote: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.onSurface : colors.text,
     lineHeight: 22,
     marginBottom: 12,
   },
   phaseDesc: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 18,
     marginTop: -2,
   },
   accountStatus: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 16,
   },
@@ -531,12 +533,11 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingVertical: 6,
   },
   syncLabel: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurface : colors.text,
   },
   syncValue: {
-    fontSize: 14,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     flexShrink: 1,
     textAlign: 'right',

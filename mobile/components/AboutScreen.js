@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
-import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
+import { Linking, StyleSheet, Text, View } from 'react-native';
 import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
 import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle, Button } from './UI';
 import { useThemedStyles } from '../theme/ThemeContext';
 import pkg from '../package.json';
+import { TYPOGRAPHY, useKuaTypography } from '../theme/typography';
+import { GEOMETRY } from '../theme/spacing';
 
 export function AboutScreen({ onBack }) {
   const styles = useThemedStyles(createStyles);
+  const typography = useKuaTypography();
   const { currentlyRunning, isUpdateAvailable, isUpdatePending, isChecking } = useUpdates();
   const [checkResult, setCheckResult] = useState(null);
   const [checking, setChecking] = useState(false);
@@ -50,10 +53,11 @@ export function AboutScreen({ onBack }) {
 
       <Card style={styles.aboutCard}>
         <Text style={styles.aboutLabel}>Created by</Text>
-        <Text style={styles.aboutValue}>Benjamin Pronin</Text>
+        <Text style={[styles.aboutValue, typography['headline-md']]}>Benjamin Pronin</Text>
 
         <Text style={styles.aboutLabel}>Version</Text>
-        <Text style={styles.aboutValue}>{`v${pkg.version}`}</Text>
+        {/* display exception per #1283 foundation: keeps pre-migration 24px, mono role family */}
+        <Text style={[styles.aboutValue, typography['metric-display-mobile'], { fontSize: 24 }]}>{`v${pkg.version}`}</Text>
 
         <Text style={styles.aboutFooter}>
           Copyright © Benjamin Pronin. All rights reserved.
@@ -70,15 +74,15 @@ export function AboutScreen({ onBack }) {
       <Card>
         <View style={styles.diagRow}>
           <Text style={styles.diagLabel}>Channel</Text>
-          <Text style={styles.diagValue}>{channel}</Text>
+          <Text style={[styles.diagValue, typography['label-md']]}>{channel}</Text>
         </View>
         <View style={styles.diagRow}>
           <Text style={styles.diagLabel}>Runtime</Text>
-          <Text style={styles.diagValue}>{runtimeVersion}</Text>
+          <Text style={[styles.diagValue, typography['label-md']]}>{runtimeVersion}</Text>
         </View>
         <View style={styles.diagRow}>
           <Text style={styles.diagLabel}>Bundle</Text>
-          <Text style={styles.diagValue}>{updateIdLabel}</Text>
+          <Text style={[styles.diagValue, typography['label-md']]}>{updateIdLabel}</Text>
         </View>
         {isUpdateAvailable && !isUpdatePending ? (
           <View style={[styles.diagRow, styles.diagAlert]}>
@@ -138,7 +142,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingVertical: 32,
   },
   aboutLabel: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
@@ -146,18 +150,16 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginBottom: 4,
   },
   aboutValue: {
-    fontSize: 24,
-    fontWeight: '800',
     color: kua ? kua.onSurface : colors.text,
   },
   aboutFooter: {
     marginTop: 32,
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
   },
   helpText: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     lineHeight: 22,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
@@ -168,27 +170,25 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingVertical: 4,
   },
   diagLabel: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   diagValue: {
-    fontSize: 13,
     color: kua ? kua.onSurface : colors.text,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     flexShrink: 1,
     textAlign: 'right',
   },
   diagAlert: {
     backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
-    borderRadius: 8,
+    borderRadius: GEOMETRY['radius-lg'],
     paddingHorizontal: 10,
     marginTop: 4,
   },
   diagAlertText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: kua ? kua.primaryOnContainer : colors.chipText,
   },
@@ -196,7 +196,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginTop: 12,
   },
   diagCheckResult: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
     marginTop: 8,
@@ -209,12 +209,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginTop: 16,
   },
   legalLink: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textDecorationLine: 'underline',
   },
   legalSep: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
 });

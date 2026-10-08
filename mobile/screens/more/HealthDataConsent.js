@@ -3,6 +3,8 @@ import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-nati
 import { Button, SectionTitle } from '../../components/UI';
 import { useThemedStyles } from '../../theme/ThemeContext';
 import { CONSENT_COPY, fetchActiveConsentRevision, grantConsent } from '../../storage/cloud/consent';
+import { TYPOGRAPHY } from '../../theme/typography';
+import { GEOMETRY } from '../../theme/spacing';
 
 // The dedicated Art. 9(2)(a) explicit-consent surface (issue #487).
 //
@@ -141,12 +143,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 12,
   },
   disclosure: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.onSurface : colors.text,
     lineHeight: 22,
   },
   link: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.primary : colors.accentText,
     textDecorationLine: 'underline',
   },
@@ -159,7 +161,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   checkbox: {
     width: 22,
     height: 22,
-    borderRadius: 4,
+    borderRadius: GEOMETRY['radius-sm'],
     borderWidth: 2,
     borderColor: kua ? kua.onSurfaceVariant : colors.textMuted,
     alignItems: 'center',
@@ -172,18 +174,18 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   checkmark: {
     color: kua ? kua.onPrimary : colors.onAccent,
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     lineHeight: 16,
   },
   affirmText: {
     flex: 1,
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.onSurface : colors.text,
     lineHeight: 22,
   },
   status: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 8,
   },

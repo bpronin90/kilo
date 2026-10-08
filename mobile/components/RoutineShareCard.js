@@ -5,6 +5,8 @@ import { useThemedStyles } from '../theme/ThemeContext';
 import { LightColors } from '../theme/colors';
 import { buildRoutineShareSummary, shareRoutineImage } from '../lib/interoperability/routineShare';
 import { MODAL_SUPPORTED_ORIENTATIONS } from './adaptiveLayout';
+import { TYPOGRAPHY } from '../theme/typography';
+import { GEOMETRY } from '../theme/spacing';
 
 // A timed hold declares seconds, not reps. Collapse an equal lo/hi to a single
 // value so `2x60s` reads "60s hold", not "60-60s hold".
@@ -123,23 +125,23 @@ export function RoutineShareModal({ title, rawText, onClose, shareImage = shareR
 // selected court or mode.
 export const createStyles = (colors, kua = null) => StyleSheet.create({
   overlay: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'center', padding: 16 },
-  dialog: { backgroundColor: kua ? kua.surfaceCard : colors.background, borderRadius: 24, padding: 18, gap: 16, maxHeight: '90%', width: '100%', maxWidth: 560, alignSelf: 'center' },
-  dialogTitle: { color: kua ? kua.onSurface : colors.text, fontSize: 22, fontWeight: '700' },
-  description: { color: kua ? kua.onSurfaceVariant : colors.textMuted, fontSize: 14 },
+  dialog: { backgroundColor: kua ? kua.surfaceCard : colors.background, borderRadius: GEOMETRY['radius-2xl'], padding: 18, gap: 16, maxHeight: '90%', width: '100%', maxWidth: 560, alignSelf: 'center' },
+  dialogTitle: { color: kua ? kua.onSurface : colors.text, fontSize: TYPOGRAPHY['headline-md'].fontSize, fontWeight: '700' },
+  description: { color: kua ? kua.onSurfaceVariant : colors.textMuted, fontSize: TYPOGRAPHY['body-md'].fontSize },
   option: { minHeight: 44, justifyContent: 'center' },
-  optionText: { color: kua ? kua.onSurface : colors.text, fontSize: 15 },
+  optionText: { color: kua ? kua.onSurface : colors.text, fontSize: TYPOGRAPHY['body-md'].fontSize },
   preview: { flexShrink: 1 },
   previewContent: { flexGrow: 1 },
   // Fixed export colors are intentional: the image is a portable document.
   card: { backgroundColor: LightColors.card, padding: 20, gap: 16, width: '100%' },
-  brand: { color: LightColors.textMuted, fontSize: 12, fontWeight: '700', letterSpacing: 1 },
-  title: { color: LightColors.text, fontSize: 26, fontWeight: '700', flexShrink: 1 },
+  brand: { color: LightColors.textMuted, fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '700', letterSpacing: 1 },
+  title: { color: LightColors.text, fontSize: TYPOGRAPHY['headline-lg'].fontSize, fontWeight: '700', flexShrink: 1 },
   section: { gap: 12 },
-  heading: { color: LightColors.accentText, fontSize: 17, fontWeight: '700', flexShrink: 1 },
+  heading: { color: LightColors.accentText, fontSize: TYPOGRAPHY['body-lg'].fontSize, fontWeight: '700', flexShrink: 1 },
   exercise: { gap: 4 },
-  name: { color: LightColors.text, fontSize: 16, fontWeight: '600', flexShrink: 1 },
-  detail: { color: LightColors.textMuted, fontSize: 14, flexShrink: 1 },
+  name: { color: LightColors.text, fontSize: TYPOGRAPHY['body-lg'].fontSize, fontWeight: '600', flexShrink: 1 },
+  detail: { color: LightColors.textMuted, fontSize: TYPOGRAPHY['body-md'].fontSize, flexShrink: 1 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   action: { flexGrow: 1, flexBasis: 120 },
-  error: { color: kua ? kua.errorText : colors.error, fontSize: 14 },
+  error: { color: kua ? kua.errorText : colors.error, fontSize: TYPOGRAPHY['body-md'].fontSize },
 });

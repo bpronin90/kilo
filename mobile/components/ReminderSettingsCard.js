@@ -23,6 +23,8 @@ import {
   applyWorkoutReminder,
   reconcileWorkoutReminder,
 } from '../lib/reminderScheduler';
+import { TYPOGRAPHY, useKuaTypography } from '../theme/typography';
+import { GEOMETRY } from '../theme/spacing';
 
 const WEEKDAY_NAMES = { 1: 'Sun', 2: 'Mon', 3: 'Tue', 4: 'Wed', 5: 'Thu', 6: 'Fri', 7: 'Sat' };
 
@@ -48,6 +50,7 @@ const WORKOUT_DAYS_REQUIRED_MESSAGE = 'Pick at least one workout day before enab
 // always-on subscriber already reconciled the same change.
 export function ReminderSettingsCard() {
   const styles = useThemedStyles(createStyles);
+  const typography = useKuaTypography();
   const { colors } = useTheme();
   const [weighIn, setWeighIn] = useState({ ...DEFAULT_WEIGH_IN_REMINDER });
   const [workout, setWorkout] = useState({ ...DEFAULT_WORKOUT_REMINDER, fallbackWeekdays: [] });
@@ -216,7 +219,7 @@ export function ReminderSettingsCard() {
               accessibilityRole="button"
               accessibilityLabel="Weigh-in reminder time"
             >
-              <Text style={styles.timeButtonText}>{formatReminderTime(weighIn.hour, weighIn.minute)}</Text>
+              <Text style={[styles.timeButtonText, typography['label-lg']]}>{formatReminderTime(weighIn.hour, weighIn.minute)}</Text>
             </Pressable>
             {showWeighInPicker && Platform.OS !== 'web' && (
               <DateTimePicker
@@ -278,7 +281,7 @@ export function ReminderSettingsCard() {
               accessibilityRole="button"
               accessibilityLabel="Workout nudge time"
             >
-              <Text style={styles.timeButtonText}>{formatReminderTime(workout.hour, workout.minute)}</Text>
+              <Text style={[styles.timeButtonText, typography['label-lg']]}>{formatReminderTime(workout.hour, workout.minute)}</Text>
             </Pressable>
             {showWorkoutPicker && Platform.OS !== 'web' && (
               <DateTimePicker
@@ -319,16 +322,16 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 2,
   },
   settingLabel: {
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
   settingHelp: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   errorText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.errorText : colors.error,
   },
   subRow: {
@@ -337,7 +340,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     alignItems: 'center',
   },
   subRowLabel: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -345,7 +348,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   timeButton: {
     backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     paddingVertical: 10,
@@ -354,8 +357,6 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     justifyContent: 'center',
   },
   timeButtonText: {
-    fontSize: 16,
-    fontWeight: '800',
     color: kua ? kua.onSurface : colors.text,
   },
   weekdayRow: {
@@ -380,7 +381,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   weekdayChip: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: GEOMETRY['radius-full'],
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
@@ -392,7 +393,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderColor: kua ? kua.primaryOnContainer : colors.chipText,
   },
   weekdayChipText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },

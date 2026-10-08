@@ -7,6 +7,8 @@ import { useTheme, useKuaStyle } from '../theme/ThemeContext';
 import { useWeightUnit } from '../lib/unitPreference';
 import { formatLiftWeightValue } from '../lib/units';
 import { WorkoutSyntaxReference } from './WorkoutSyntaxReference';
+import { TYPOGRAPHY } from '../theme/typography';
+import { GEOMETRY } from '../theme/spacing';
 
 // Help is a six-row inline accordion (#1019). Each topic row uses the same
 // list-row language as the More menu (title, muted one-line summary, trailing
@@ -222,7 +224,7 @@ export const createStyles = (colors, kua = null) =>
     list: { gap: 12 },
     topic: {
       backgroundColor: kua ? kua.surfaceCard : colors.card,
-      borderRadius: 24,
+      borderRadius: GEOMETRY['radius-2xl'],
       borderWidth: 1,
       borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
       overflow: 'hidden',
@@ -236,8 +238,8 @@ export const createStyles = (colors, kua = null) =>
       gap: 12,
     },
     rowCopy: { flex: 1, gap: 4 },
-    rowTitle: { fontSize: 17, fontWeight: '600', color: kua ? kua.onSurface : colors.text },
-    rowSummary: { fontSize: 13, color: kua ? kua.onSurfaceVariant : colors.textMuted },
+    rowTitle: { fontSize: TYPOGRAPHY['body-lg'].fontSize, fontWeight: '600', color: kua ? kua.onSurface : colors.text },
+    rowSummary: { fontSize: TYPOGRAPHY['body-sm'].fontSize, color: kua ? kua.onSurfaceVariant : colors.textMuted },
     body: {
       paddingHorizontal: 20,
       paddingBottom: 20,
@@ -245,7 +247,7 @@ export const createStyles = (colors, kua = null) =>
       gap: 12,
     },
     chunk: { gap: 4 },
-    chunkLabel: { fontSize: 14, fontWeight: '700', color: kua ? kua.onSurface : colors.text },
-    bodyText: { fontSize: 15, lineHeight: 22, color: kua ? kua.onSurfaceVariant : colors.textMuted },
+    chunkLabel: { fontSize: TYPOGRAPHY['body-md'].fontSize, fontWeight: '700', color: kua ? kua.onSurface : colors.text },
+    bodyText: { fontSize: TYPOGRAPHY['body-md'].fontSize, lineHeight: 22, color: kua ? kua.onSurfaceVariant : colors.textMuted },
     syntaxContainer: { marginVertical: 2 },
   });
