@@ -21,6 +21,7 @@ import {
 } from '../storage/entries/normalizationImportSnapshot';
 import { TYPOGRAPHY } from '../theme/typography';
 import { GEOMETRY } from '../theme/spacing';
+import { FieldLabel } from './FieldLabel';
 
 function titleFor(routine, index, notes) {
   const title = String(routine?.title || 'Untitled Routine');
@@ -163,6 +164,7 @@ function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile, canPic
       <Card>
         <Text style={styles.muted}>Paste the LLM’s complete reply{canPickFile ? ' or choose a text file' : ''}. Kilo checks that only exercise names changed before anything is written.</Text>
       </Card>
+      <FieldLabel>Normalized routines reply</FieldLabel>
       <TextInput
         style={[inputStyle, styles.replyInput]}
         multiline

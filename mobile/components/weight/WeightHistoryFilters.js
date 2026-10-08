@@ -7,6 +7,7 @@ import { useTheme } from '../../theme/ThemeContext';
 import { useKuaTypography, TYPOGRAPHY } from '../../theme/typography';
 import { formatDate } from '../../lib/format';
 import { createStyles } from './weightHistoryStyles';
+import { FieldLabel } from '../FieldLabel';
 
 // DOM (react-native-web) equivalent of a mono role: letterSpacing needs a px string.
 const domMonoRole = (role) => ({
@@ -29,12 +30,16 @@ function toYMD(date) {
   return `${y}-${m}-${d}`;
 }
 
-function WebDateTextInput({ value, onChange, placeholder }) {
+// Inline beside its chip, so drop the stacked-label bottom margin.
+const INLINE_LABEL = { marginBottom: 0 };
+
+function WebDateTextInput({ value, onChange, placeholder, label }) {
   const { colors, kuaPalette: kua } = useTheme();
   return React.createElement('input', {
     type: 'text',
     value: value || '',
     placeholder: placeholder || 'YYYY-MM-DD',
+    'aria-label': label,
     onChange: (e) => {
       const next = e?.target?.value;
       onChange(next || '');
@@ -112,18 +117,21 @@ export function WeightHistoryFilters({
           {Platform.OS === 'web' ? (
             <>
               <View style={styles.dateBoundary} testID="weight-history-from-boundary">
-                <WebDateTextInput value={fromDate} onChange={setFromDate} placeholder="From" />
+                <FieldLabel style={INLINE_LABEL}>From</FieldLabel>
+                <WebDateTextInput value={fromDate} onChange={setFromDate} placeholder="YYYY-MM-DD" label="From date" />
                 {fromDate ? <DateBoundaryClear label="From" onPress={() => setFromDate('')} /> : null}
               </View>
               <Text style={styles.dateRangeSep}>to</Text>
               <View style={styles.dateBoundary} testID="weight-history-to-boundary">
-                <WebDateTextInput value={toDate} onChange={setToDate} placeholder="To" />
+                <FieldLabel style={INLINE_LABEL}>To</FieldLabel>
+                <WebDateTextInput value={toDate} onChange={setToDate} placeholder="YYYY-MM-DD" label="To date" />
                 {toDate ? <DateBoundaryClear label="To" onPress={() => setToDate('')} /> : null}
               </View>
             </>
           ) : (
             <>
               <View style={styles.dateBoundary} testID="weight-history-from-boundary">
+                <FieldLabel style={INLINE_LABEL}>From</FieldLabel>
                 <Pressable
                   onPress={() => setShowFromPicker(true)}
                   style={styles.dateChip}
@@ -132,13 +140,14 @@ export function WeightHistoryFilters({
                   accessibilityLabel="From date"
                 >
                   <Text style={[styles.dateChipText, !fromDate && styles.dateChipPlaceholder]}>
-                    {fromDate ? formatDate(fromDate) : 'From'}
+                    {fromDate ? formatDate(fromDate) : 'Any date'}
                   </Text>
                 </Pressable>
                 {fromDate ? <DateBoundaryClear label="From" onPress={() => setFromDate('')} /> : null}
               </View>
               <Text style={styles.dateRangeSep}>to</Text>
               <View style={styles.dateBoundary} testID="weight-history-to-boundary">
+                <FieldLabel style={INLINE_LABEL}>To</FieldLabel>
                 <Pressable
                   onPress={() => setShowToPicker(true)}
                   style={styles.dateChip}
@@ -147,7 +156,7 @@ export function WeightHistoryFilters({
                   accessibilityLabel="To date"
                 >
                   <Text style={[styles.dateChipText, !toDate && styles.dateChipPlaceholder]}>
-                    {toDate ? formatDate(toDate) : 'To'}
+                    {toDate ? formatDate(toDate) : 'Any date'}
                   </Text>
                 </Pressable>
                 {toDate ? <DateBoundaryClear label="To" onPress={() => setToDate('')} /> : null}

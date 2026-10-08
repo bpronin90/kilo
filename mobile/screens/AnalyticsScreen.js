@@ -19,7 +19,7 @@ import {
   shapeEditCheckInData,
 } from './analytics/analyticsDerivations';
 import { useTheme } from '../theme/ThemeContext';
-
+import { useReducedMotion } from '../lib/useReducedMotion';
 import { lerpColor } from '../lib/AnalyticsScreenHelpers';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue, displayChartSeries, lbToKg } from '../lib/units';
@@ -49,6 +49,7 @@ const OVERVIEW_SECTION = 'overview';
 
 export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate }) {
   const { colors, kuaPalette: kua } = useTheme();
+  const reduceMotion = useReducedMotion();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const {
     notes,
@@ -170,7 +171,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   const isTrackedLoading = loadingTracked && Object.keys(trackedLifts).length === 0;
 
   function scrollToOffset(y) {
-    scrollRef.current?.scrollTo({ y, animated: true });
+    scrollRef.current?.scrollTo({ y, animated: !reduceMotion });
     hasScrolled.current = true;
   }
 

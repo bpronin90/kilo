@@ -23,6 +23,7 @@ import { loadPlateCalculatorProfile, savePlateCalculatorProfile } from '../stora
 import { MODAL_SUPPORTED_ORIENTATIONS } from './adaptiveLayout';
 import { TYPOGRAPHY } from '../theme/typography';
 import { GEOMETRY } from '../theme/spacing';
+import { useReducedMotion } from '../lib/useReducedMotion';
 
 // Lightweight sheet showing the per-side plate loading for a tapped weight,
 // against a persisted, editable lb/kg equipment profile (#577). Follows the
@@ -36,6 +37,7 @@ import { GEOMETRY } from '../theme/spacing';
 // authored-in-kg set doesn't round-trip through a canonical-lb conversion,
 // and is otherwise ignored.
 export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onClose }) {
+  const reduceMotion = useReducedMotion();
   const styles = useThemedStyles(createStyles);
   const [profile, setProfile] = useState(null);
   const [editing, setEditing] = useState(false);
@@ -144,7 +146,7 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
   };
 
   return (
-    <Modal visible={visible} transparent supportedOrientations={MODAL_SUPPORTED_ORIENTATIONS} animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent supportedOrientations={MODAL_SUPPORTED_ORIENTATIONS} animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={onClose}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       <KeyboardAvoidingView
         style={styles.overlay}

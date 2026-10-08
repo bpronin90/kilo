@@ -4,6 +4,7 @@ import { ScreenShell } from '../../components/ScreenShell';
 import { Button, SectionTitle, useInputStyle } from '../../components/UI';
 import { useTheme, useThemedStyles, useKuaStyle } from '../../theme/ThemeContext';
 import { TYPOGRAPHY } from '../../theme/typography';
+import { FieldLabel } from '../../components/FieldLabel';
 
 // Set-new-password surface (#497). AccountScreen renders this in place of its
 // normal Sign In / Signed In views whenever the shared `auth` instance
@@ -92,6 +93,7 @@ export function SetNewPasswordScreen({ auth, onDone, onBack }) {
         )}
         {hasSession ? (
           <>
+            <FieldLabel>New password</FieldLabel>
             <TextInput
               keyboardAppearance={colors.scheme}
               style={inputStyle}
@@ -102,6 +104,7 @@ export function SetNewPasswordScreen({ auth, onDone, onBack }) {
               onChangeText={setPassword}
               accessibilityLabel="New Password"
             />
+            <FieldLabel>Confirm new password</FieldLabel>
             <TextInput
               keyboardAppearance={colors.scheme}
               style={inputStyle}

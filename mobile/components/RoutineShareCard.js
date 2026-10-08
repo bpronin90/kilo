@@ -8,6 +8,7 @@ import { buildRoutineShareSummary, shareRoutineImage } from '../lib/interoperabi
 import { MODAL_SUPPORTED_ORIENTATIONS } from './adaptiveLayout';
 import { TYPOGRAPHY } from '../theme/typography';
 import { GEOMETRY } from '../theme/spacing';
+import { useReducedMotion } from '../lib/useReducedMotion';
 
 // A timed hold declares seconds, not reps. Collapse an equal lo/hi to a single
 // value so `2x60s` reads "60s hold", not "60-60s hold".
@@ -56,6 +57,7 @@ export const RoutineShareCard = React.forwardRef(function RoutineShareCard({ sum
 // Mount once per share attempt. The caller snapshots title/body on opening,
 // and unmounts on close, so numeric consent cannot carry to another share.
 export function RoutineShareModal({ title, rawText, onClose, shareImage = shareRoutineImage }) {
+  const reduceMotion = useReducedMotion();
   const styles = useThemedStyles(createStyles);
   const [includeNumbers, setIncludeNumbers] = useState(false);
   const [laidOut, setLaidOut] = useState(null);
@@ -82,7 +84,7 @@ export function RoutineShareModal({ title, rawText, onClose, shareImage = shareR
     }
   };
   return (
-    <Modal visible transparent supportedOrientations={MODAL_SUPPORTED_ORIENTATIONS} animationType="fade" onRequestClose={close}>
+    <Modal visible transparent supportedOrientations={MODAL_SUPPORTED_ORIENTATIONS} animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={close}>
       <View style={styles.overlay}>
         <View style={styles.dialog} accessibilityViewIsModal>
           <Text style={styles.dialogTitle} accessibilityRole="header">Share as Image</Text>

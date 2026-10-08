@@ -10,6 +10,7 @@ import { MODAL_SUPPORTED_ORIENTATIONS, dialogWidthStyle } from './adaptiveLayout
 import { withAlpha } from '../theme/styleHelpers';
 import { TYPOGRAPHY } from '../theme/typography';
 import { GEOMETRY } from '../theme/spacing';
+import { useReducedMotion } from '../lib/useReducedMotion';
 
 export function LogDeloadSection({
   deloadNote,
@@ -40,6 +41,7 @@ export function LogDeloadSection({
   deloadCollapsed = false,
   onToggleDeloadCollapsed,
 }) {
+  const reduceMotion = useReducedMotion();
   const { colors } = useTheme();
   const kua = useKuaStyle();
   const styles = useThemedStyles(createStyles);
@@ -317,7 +319,7 @@ export function LogDeloadSection({
         visible={showDeloadOrdinalPrompt}
         transparent
         supportedOrientations={MODAL_SUPPORTED_ORIENTATIONS}
-        animationType="fade"
+        animationType={reduceMotion ? 'none' : 'fade'}
         onRequestClose={() => setShowDeloadOrdinalPrompt(false)}
       >
         {/* The number pad opens on mount; avoid it and let the sheet scroll so

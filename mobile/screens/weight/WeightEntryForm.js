@@ -167,6 +167,7 @@ export function WeightEntryForm({
         placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
         keyboardType="decimal-pad"
         style={styles.numericInput}
+        accessibilityLabel={`Weight (${unit})`}
         includeFontPadding={false}
       />
       {!editingId && (
