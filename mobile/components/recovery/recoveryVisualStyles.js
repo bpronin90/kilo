@@ -13,11 +13,12 @@ export const createVisualStyles = (colors, kua = null) => {
   return StyleSheet.create({
     hero: { gap: 2 },
     // #1219: the hero matches the sibling Analytics hero (Weight Trends
-    // `weightValueLarge`: KUA metric-display-mobile 28/32 on-surface, legacy 36/800
+    // `weightValueLarge`: KUA metric-display 32/36 on-surface, legacy 36/800
     // accentText); week/label are 13sp supporting captions.
     heroWeek: { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600', color: inkMuted },
     heroNumber: kua
-      ? { ...TYPOGRAPHY['metric-display-mobile'], color: kua.onSurface }
+      // display exception per #1283 foundation
+      ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 32, lineHeight: 36, color: kua.onSurface }
       : { fontSize: TYPOGRAPHY['metric-display'].fontSize, fontWeight: '800', color: colors.accentText },
     heroLabel: { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600', color: inkMuted },
     heroEmpty: { fontSize: TYPOGRAPHY['headline-sm'].fontSize, fontWeight: '700', color: ink },

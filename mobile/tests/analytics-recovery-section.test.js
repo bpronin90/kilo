@@ -422,12 +422,12 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
     expect(sizeOf(routine).fontSize).toBeLessThan(sizeOf(title).fontSize);
   });
 
-  test('the top summary uses only sibling sizes: 18sp header, 28sp metric-display-mobile hero (Weight Trends KUA), 13sp captions', () => {
+  test('the top summary uses only sibling sizes: 18sp header, 32sp hero (Weight Trends KUA), 13sp captions', () => {
     const b = block({ reason: 'torn hamstring' });
     const root = setup({ blocks: [b], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
     const hero = sizeOf(hostText(root, '2 of 2')[0]);
-    // Same KUA hero as Weight Trends `weightValueLarge`: metric-display-mobile 28/32 (#1285 token migration).
-    expect(hero).toMatchObject({ fontSize: 28, lineHeight: 32 });
+    // Same KUA hero as Weight Trends `weightValueLarge`: metric-display-mobile role, 32/36 display exception (#1283).
+    expect(hero).toMatchObject({ fontSize: 32, lineHeight: 36, fontFamily: 'JetBrainsMono-Bold' });
     expect(sizeOf(hostText(root, 'Week 1')[0]).fontSize).toBe(13);
     expect(sizeOf(hostText(root, 'Push Pull Legs baseline')[0]).fontSize).toBe(13);
     expect(sizeOf(hostText(root, 'torn hamstring')[0]).fontSize).toBeGreaterThanOrEqual(13);

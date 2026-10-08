@@ -242,7 +242,8 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginBottom: 2,
   },
   weightValueLarge: {
-    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'] } : { fontSize: TYPOGRAPHY['metric-display'].fontSize, fontWeight: '800' }),
+    // display exception per #1283 foundation
+    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 32, lineHeight: 36 } : { fontSize: TYPOGRAPHY['metric-display'].fontSize, fontWeight: '800' }),
     color: kua ? kua.onSurface : colors.accentText,
   },
   weightUnit: {

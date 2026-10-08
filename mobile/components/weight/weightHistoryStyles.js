@@ -26,6 +26,7 @@ const jbmFont = (typo, role, fallback) => {
 // label text and semantic outcome colors (End Weight / Success-Missed). These
 // constants are duplicated (not imported) because both panels must stay inside
 // their Allowed Files.
+const HISTORY_VALUE_SIZE = 20; // display exception per #1283 foundation
 const HISTORY_COL1_FLEX = 1.35; // primary value, left aligned
 const HISTORY_COL2_FLEX = 1.25; // secondary value, center aligned
 const HISTORY_COL3_FLEX = 1.5; // date, right aligned
