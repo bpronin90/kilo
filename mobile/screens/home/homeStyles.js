@@ -212,7 +212,7 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     minWidth: 0,
   },
   heroWeightValue: {
-    ...(kua ? typography['metric-display-mobile'] : HeroMetric.hero),
+    ...(kua ? { ...typography['metric-display-mobile'], fontSize: 32, lineHeight: 36 } : HeroMetric.hero), // display exception per #1283 foundation
     color: kua ? kua.onSurface : colors.accentText,
     flexShrink: 1,
     minWidth: 0,
@@ -287,7 +287,7 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     borderRadius: GEOMETRY['radius-sm'],
   },
   classifCount: {
-    ...(kua ? typography['metric-display-mobile'] : { fontSize: TYPOGRAPHY['body-lg'].fontSize, fontWeight: '800' }),
+    ...(kua ? { ...typography['metric-display-mobile'], fontSize: 24, lineHeight: 28 } : { fontSize: TYPOGRAPHY['body-lg'].fontSize, fontWeight: '800' }), // display exception per #1283 foundation
     color: kua ? kua.onSurface : colors.text,
   },
   classifLabel: {
@@ -442,7 +442,7 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
   },
   // Same scale as the classification counts (#1112 owner feedback).
   goalStatValueLarge: {
-    ...(kua ? typography['metric-display-mobile'] : { fontSize: TYPOGRAPHY['headline-lg'].fontSize, fontWeight: '800' }),
+    ...(kua ? { ...typography['metric-display-mobile'], fontSize: 24, lineHeight: 28 } : { fontSize: TYPOGRAPHY['headline-lg'].fontSize, fontWeight: '800' }), // display exception per #1283 foundation
     color: kua ? kua.onSurface : colors.text,
   },
   goalStatUnitLabel: {
@@ -471,7 +471,7 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     marginBottom: 16,
   },
   oneKHeroValue: {
-    ...(kua ? typography['metric-display'] : HeroMetric.hero),
+    ...(kua ? { ...typography['metric-display'], fontSize: 48, lineHeight: 52 } : HeroMetric.hero), // display exception per #1283 foundation
     color: kua ? kua.onSurface : colors.text,
   },
   oneKHeroUnit: {
@@ -481,7 +481,7 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   oneKHeroPlaceholder: {
-    ...(kua ? typography['metric-display-mobile'] : HeroMetric.hero),
+    ...(kua ? { ...typography['metric-display-mobile'], fontSize: 32, lineHeight: 36 } : HeroMetric.hero), // display exception per #1283 foundation
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   oneKHeroCaption: {
@@ -519,7 +519,7 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   oneKGridValue: {
-    ...(kua ? typography['metric-display-mobile'] : { fontSize: TYPOGRAPHY['body-lg'].fontSize, fontWeight: '700' }),
+    ...(kua ? { ...typography['metric-display-mobile'], fontSize: 24, lineHeight: 28 } : { fontSize: TYPOGRAPHY['body-lg'].fontSize, fontWeight: '700' }), // display exception per #1283 foundation
     color: kua ? kua.onSurface : colors.text,
   },
   oneKGridLabel: {

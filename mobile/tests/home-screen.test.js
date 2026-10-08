@@ -860,8 +860,7 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     // visual demotion of the 1K total. #771 restores the pre-regression scale.
     // #1112: the 1K total is Home's flagship figure and is scaled past the
     // metric-display token (56px JBM Bold) per owner feedback; legacy stays at
-    // 48px. #1284: Kinetic now resolves to the metric-display token (36px). Any
-    // of these satisfies the "not visually demoted" guard. The untracked
+    // 48px. Either satisfies the "not visually demoted" guard. The untracked
     // placeholder is deliberately smaller, so this mounts a note that yields a
     // real total to exercise the flagship value itself.
     const NOTE_1K = { id: 'n1', title: 'A', raw_text: ORDINARY_TEXT, one_k_exercises: ONE_K, saved_at: '2026-06-01T12:00:00.000Z' };
@@ -871,7 +870,7 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
       local = render.create(<HomeScreen {...populatedProps(jest.fn())} workoutNote={NOTE_1K} notes={[NOTE_1K]} currentId="n1" />);
     });
     const card = local.root.findByProps({ testID: 'home-one-k-link' }).parent.parent;
-    const heroValueNodes = card.findAll(n => n.type === 'Text' && ([36, 48, 56].includes(flatStyle(n).fontSize)));
+    const heroValueNodes = card.findAll(n => n.type === 'Text' && (flatStyle(n).fontSize === 48 || flatStyle(n).fontSize === 56));
     expect(heroValueNodes.length).toBeGreaterThan(0);
     await render.act(async () => { local.unmount(); });
   });
