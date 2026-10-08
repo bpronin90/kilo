@@ -3,11 +3,20 @@ import { TYPOGRAPHY } from '../../theme/typography';
 
 export const SET_ROW_FONT_SIZE = TYPOGRAPHY['label-lg'].fontSize;
 
+// Display exception per #1283 foundation: these hero/stat sizes sit above the
+// type scale and keep their pre-migration size, but they carry the quantitative
+// (JetBrains Mono, metric-display) family, tracking and tabular figures. The
+// weight-specific family replaces the literal 900 so no synthetic bold is added.
+const HERO_MONO = (() => {
+  const { fontFamily, letterSpacing, fontVariant } = TYPOGRAPHY['metric-display'];
+  return { fontFamily, letterSpacing, fontVariant };
+})();
+
 export const HeroMetric = {
-  hero:          { fontSize: 48, fontWeight: '900', lineHeight: 52 },
-  statPrimary:   { fontSize: 32, fontWeight: '900' },
-  statSecondary: { fontSize: 24, fontWeight: '900' },
-  statTertiary:  { fontSize: 20, fontWeight: '900' },
+  hero:          { ...HERO_MONO, fontSize: 48, lineHeight: 52 },
+  statPrimary:   { ...HERO_MONO, fontSize: 32 },
+  statSecondary: { ...HERO_MONO, fontSize: 24 },
+  statTertiary:  { ...HERO_MONO, fontSize: 20 },
 };
 
 // Shared text-input skin. Two forms because both call shapes exist (#689):

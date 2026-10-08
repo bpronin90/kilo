@@ -56,7 +56,8 @@ export function AboutScreen({ onBack }) {
         <Text style={[styles.aboutValue, typography['headline-md']]}>Benjamin Pronin</Text>
 
         <Text style={styles.aboutLabel}>Version</Text>
-        <Text style={[styles.aboutValue, typography['metric-display-mobile']]}>{`v${pkg.version}`}</Text>
+        {/* display exception per #1283 foundation: keeps pre-migration 24px, mono role family */}
+        <Text style={[styles.aboutValue, typography['metric-display-mobile'], { fontSize: 24 }]}>{`v${pkg.version}`}</Text>
 
         <Text style={styles.aboutFooter}>
           Copyright © Benjamin Pronin. All rights reserved.
