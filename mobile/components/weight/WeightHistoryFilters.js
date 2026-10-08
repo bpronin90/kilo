@@ -7,6 +7,14 @@ import { useKuaTypography, TYPOGRAPHY } from '../../theme/typography';
 import { formatDate } from '../../lib/format';
 import { createStyles } from './weightHistoryStyles';
 
+// DOM (react-native-web) equivalent of a mono role: letterSpacing needs a px string.
+const domMonoRole = (role) => ({
+  fontFamily: TYPOGRAPHY[role].fontFamily,
+  fontSize: TYPOGRAPHY[role].fontSize,
+  letterSpacing: `${TYPOGRAPHY[role].letterSpacing}px`,
+  fontVariantNumeric: 'tabular-nums',
+});
+
 function parseLocalDate(dateStr) {
   if (!dateStr) return null;
   const [y, m, d] = dateStr.split('-').map(Number);
@@ -35,10 +43,8 @@ function WebDateTextInput({ value, onChange, placeholder }) {
       border: 'none',
       borderRadius: GEOMETRY['radius-lg'],
       padding: '4px 8px',
-      fontSize: TYPOGRAPHY['label-md'].fontSize,
-      fontWeight: '700',
+      ...(kua ? domMonoRole('label-md') : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontFamily: 'inherit', fontWeight: '700' }),
       color: kua ? kua.primaryOnContainer : colors.chipText,
-      fontFamily: 'inherit',
       cursor: 'text',
       outline: 'none',
       width: 90,

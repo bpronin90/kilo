@@ -11,6 +11,14 @@ import { localDateToday } from '../lib/WeightScreenHelpers';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue, formatGoalWeightValue } from '../lib/units';
 
+// DOM (react-native-web) equivalent of a mono role: letterSpacing needs a px string.
+const domMonoRole = (role) => ({
+  fontFamily: TYPOGRAPHY[role].fontFamily,
+  fontSize: TYPOGRAPHY[role].fontSize,
+  letterSpacing: `${TYPOGRAPHY[role].letterSpacing}px`,
+  fontVariantNumeric: 'tabular-nums',
+});
+
 // Web-safe goal target date input. The native @react-native-community/datetimepicker
 // has no usable rendering on web, so on web we render a real DOM <input type="date">
 // (react-native-web passes lowercase string element types through to the DOM),
@@ -35,10 +43,9 @@ function WebGoalDateInput({ value, onChangeDate, accessibilityLabel }) {
       borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
       padding: 14,
       minHeight: 48,
-      fontSize: TYPOGRAPHY['label-lg'].fontSize,
+      ...(kua ? domMonoRole('label-lg') : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontFamily: 'inherit' }),
       colorScheme: colors.scheme,
       color: kua ? kua.onSurface : colors.text,
-      fontFamily: 'inherit',
       width: '100%',
       boxSizing: 'border-box',
     },
