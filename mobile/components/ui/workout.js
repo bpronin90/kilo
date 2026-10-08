@@ -201,10 +201,6 @@ export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabl
 export function SetLine({ sets, selectable, mark }) {
   const styles = useThemedStyles(createStyles);
   const typography = useKuaTypography();
-  // Reps/mark were regular weight; JetBrains Mono ships no regular face, so they
-  // take the real Medium asset (label-md family) at the set-row size.
-  const medium = typography['label-md'];
-  const repsType = { ...typography['label-lg'], fontFamily: medium.fontFamily, fontWeight: medium.fontWeight };
   const [plateTarget, setPlateTarget] = useState(null);
   const unit = useWeightUnit();
   if (!sets || sets.length === 0) return null;
@@ -283,13 +279,13 @@ export function SetLine({ sets, selectable, mark }) {
           ) : (
             <Text selectable={selectable} style={[styles.setWeight, typography['label-lg']]}>BW</Text>
           )}
-          <Text selectable={selectable} style={[styles.setReps, repsType]}>{group.reps.join(', ')}</Text>
+          <Text selectable={selectable} style={[styles.setReps, typography['label-lg']]}>{group.reps.join(', ')}</Text>
         </View>
       ))}
       {mark ? (
         <Text
           selectable={selectable}
-          style={[styles.setMark, repsType]}
+          style={[styles.setMark, typography['label-lg']]}
           accessibilityLabel={`Marked: ${mark}`}
         >
           {`★ ${mark}`}

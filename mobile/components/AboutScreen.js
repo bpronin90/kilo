@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
+import { Linking, StyleSheet, Text, View } from 'react-native';
 import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
 import { ScreenShell } from './ScreenShell';
@@ -74,15 +74,15 @@ export function AboutScreen({ onBack }) {
       <Card>
         <View style={styles.diagRow}>
           <Text style={styles.diagLabel}>Channel</Text>
-          <Text style={styles.diagValue}>{channel}</Text>
+          <Text style={[styles.diagValue, typography['label-md']]}>{channel}</Text>
         </View>
         <View style={styles.diagRow}>
           <Text style={styles.diagLabel}>Runtime</Text>
-          <Text style={styles.diagValue}>{runtimeVersion}</Text>
+          <Text style={[styles.diagValue, typography['label-md']]}>{runtimeVersion}</Text>
         </View>
         <View style={styles.diagRow}>
           <Text style={styles.diagLabel}>Bundle</Text>
-          <Text style={styles.diagValue}>{updateIdLabel}</Text>
+          <Text style={[styles.diagValue, typography['label-md']]}>{updateIdLabel}</Text>
         </View>
         {isUpdateAvailable && !isUpdatePending ? (
           <View style={[styles.diagRow, styles.diagAlert]}>
@@ -177,9 +177,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     letterSpacing: 0.5,
   },
   diagValue: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurface : colors.text,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     flexShrink: 1,
     textAlign: 'right',
   },
