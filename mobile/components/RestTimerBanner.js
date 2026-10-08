@@ -319,8 +319,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   countdown: {
-    fontSize: TYPOGRAPHY['label-lg'].fontSize,
-    fontWeight: '800',
+    ...TYPOGRAPHY['label-lg'],
     color: kua.onSurface,
     minWidth: 44,
     textAlign: 'center',

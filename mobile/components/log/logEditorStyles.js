@@ -159,8 +159,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     lineHeight: 13,
   },
   validationBadgeCount: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '700' }),
   },
   // Height-limited, internally scrollable problem list (#863), expanded by
   // tapping the badge. Each row is one problem, in source order, labeled with
@@ -354,7 +353,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginBottom: 12,
   },
   dateInputText: {
-    fontSize: TYPOGRAPHY['label-lg'].fontSize,
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize }),
     color: kua ? kua.onSurface : colors.text,
   },
   // Compact secondary "Date · <value>" disclosure row (#764), replacing the

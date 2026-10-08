@@ -408,13 +408,11 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 6,
   },
   compactSetWeight: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
-    fontWeight: '600',
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   compactSetReps: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
-    fontWeight: '600',
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   compactSetMark: {

@@ -383,8 +383,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   rowValue: {
-    fontSize: TYPOGRAPHY['label-lg'].fontSize,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
   plateBlock: {
@@ -406,7 +405,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     lineHeight: 20,
   },
   remainder: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontStyle: 'italic',
     lineHeight: 19,
