@@ -47,7 +47,7 @@ All numeric metric indicators (`label-sm`, `label-md`) use uppercase tracking fo
 
 - Linguistic content (titles, names, body, commands) uses Space Grotesk roles; quantitative and temporal content (kilos, reps, RPE, timers, counts, dates in metric position) uses JetBrains Mono roles. Pick the family by what the text says, not by where it sits.
 - The scale above is complete: `headline-xl`, `headline-xl-mobile`, `headline-lg`, `headline-md`, `headline-sm`, `body-lg`, `body-md`, `body-sm` (Space Grotesk) and `metric-display` (36px), `metric-display-mobile`, `label-lg`, `label-md` (12px), `label-sm` (11px) (JetBrains Mono).
-- Do not add a token for an observed literal. During screen migration, map an off-scale `fontSize` to the nearest role in the same family (ties round down to the smaller role), e.g. ProfileScreen's 15px maps to `body-lg` (16px) or `body-md` (14px) by whether it is primary or secondary content. Record a justified exception in the PR only when no role fits (for example a glyph or icon-sized text).
+- Do not add a token for an observed literal. During screen migration, map an off-scale `fontSize` to the nearest role in the same family (ties round down to the smaller role), e.g. ProfileScreen's 15px is equidistant from 14 and 16, so it maps to `body-md` (14px). There is no content-hierarchy override. Record a justified exception in the PR only when no role fits (for example a glyph or icon-sized text).
 
 ### Font loading and fallback
 
