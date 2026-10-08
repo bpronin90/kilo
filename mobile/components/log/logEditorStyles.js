@@ -1,5 +1,7 @@
 import { Platform, StyleSheet } from 'react-native';
 import { withAlpha } from '../../theme/styleHelpers';
+import { TYPOGRAPHY } from '../../theme/typography';
+import { GEOMETRY } from '../../theme/spacing';
 
 // #886: the raw-text editor input's own vertical padding, shared with the
 // `input` style below so the source-jump measurement and the rendered box can
@@ -33,12 +35,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   input: {
     backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
-    borderRadius: 16,
+    borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: EDITOR_INPUT_BORDER_WIDTH,
     borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
     paddingHorizontal: EDITOR_INPUT_HORIZONTAL_PADDING,
     paddingVertical: EDITOR_INPUT_VERTICAL_PADDING,
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     color: kua ? kua.onSurface : colors.text,
   },
   titleInput: {
@@ -63,7 +65,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // half's height a clean multiple of its rows, so the ratio between them is
   // the row ratio and nothing else.
   sourceJumpMirrorText: {
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     includeFontPadding: false,
   },
   saveButton: {
@@ -79,7 +81,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginTop: 4,
   },
   importRoutineButtonText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.primary : colors.accentText,
   },
@@ -88,7 +90,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   seedBlock: {
     marginTop: 8,
     backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
-    borderRadius: 8,
+    borderRadius: GEOMETRY['radius-lg'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     padding: 10,
@@ -97,13 +99,13 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 2,
   },
   seedHint: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginBottom: 4,
   },
   seedLineText: {
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurface : colors.text,
   },
   // #867: the tool row + note pair, and the positioning context the problem
@@ -127,7 +129,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     justifyContent: 'center',
   },
   syntaxHelpButtonText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: kua ? kua.primary : colors.accentText,
   },
@@ -146,18 +148,18 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   validationBadgeCircle: {
     width: 18,
     height: 18,
-    borderRadius: 9,
+    borderRadius: GEOMETRY['radius-lg'],
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
   validationBadgeGlyph: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '800',
     lineHeight: 13,
   },
   validationBadgeCount: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
   },
   // Height-limited, internally scrollable problem list (#863), expanded by
@@ -177,7 +179,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     maxHeight: 220,
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     backgroundColor: kua ? kua.surfaceCard : colors.card,
   },
   validationListRow: {
@@ -191,7 +193,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   validationListRowText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     lineHeight: 18,
   },
   validationListRowTextError: {
@@ -211,7 +213,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   validationBarText: {
     flex: 1,
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     lineHeight: 18,
   },
   validationBarTextError: {
@@ -227,7 +229,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     justifyContent: 'center',
   },
   validationBarDismissText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
@@ -246,7 +248,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: kua ? withAlpha(kua.error, 0.14) : colors.errorSurface,
     borderWidth: 1,
     borderColor: kua ? kua.error : colors.error,
-    borderRadius: 24,
+    borderRadius: GEOMETRY['radius-2xl'],
     padding: 18,
     gap: 10,
   },
@@ -255,14 +257,14 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     alignItems: 'center',
   },
   dangerZoneHeadingText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '800',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
     color: kua ? kua.errorText : colors.error,
   },
   autosaveIndicator: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'right',
     marginTop: 8,
@@ -277,7 +279,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     justifyContent: 'center',
   },
   saveErrorText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     lineHeight: 18,
     fontWeight: '600',
     color: kua ? kua.errorText : colors.error,
@@ -289,24 +291,24 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   adoptionPrompt: {
     marginTop: 12,
     padding: 14,
-    borderRadius: 14,
+    borderRadius: GEOMETRY['radius-xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
     gap: 6,
   },
   adoptionTitle: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
   adoptionBody: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     lineHeight: 20,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   adoptionError: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     lineHeight: 18,
     fontWeight: '600',
     color: kua ? kua.errorText : colors.error,
@@ -338,7 +340,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   inputLabel: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginBottom: 6,
@@ -352,7 +354,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginBottom: 12,
   },
   dateInputText: {
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     color: kua ? kua.onSurface : colors.text,
   },
   // Compact secondary "Date · <value>" disclosure row (#764), replacing the
@@ -366,12 +368,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginBottom: 4,
   },
   dateDisclosureText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   dateDisclosureDoneText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: kua ? kua.primary : colors.accentText,
     marginBottom: 8,

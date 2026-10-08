@@ -7,6 +7,7 @@ import { normalizeExerciseKey } from '../lib/parser';
 import { useWeightUnit } from '../lib/unitPreference';
 import { formatLiftWeightValue } from '../lib/units';
 import { buildExerciseSourceAnchor } from '../lib/parser';
+import { TYPOGRAPHY } from '../theme/typography';
 
 // #881 (F10a §5): the recognizer window for the exercise-name double-tap
 // gesture that jumps to raw source. Deliberately separate from the note-body
@@ -392,7 +393,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 3,
   },
   compactExerciseName: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
@@ -407,24 +408,24 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 6,
   },
   compactSetWeight: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   compactSetReps: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   compactSetMark: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginLeft: 6,
   },
   emptyText: {
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     textAlign: 'center',
     marginTop: 40,
     marginBottom: 40,

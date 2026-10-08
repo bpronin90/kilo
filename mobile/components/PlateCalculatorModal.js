@@ -20,6 +20,8 @@ import {
 import { lbToKg } from '../lib/units';
 import { loadPlateCalculatorProfile, savePlateCalculatorProfile } from '../storage/entries';
 import { MODAL_SUPPORTED_ORIENTATIONS } from './adaptiveLayout';
+import { TYPOGRAPHY } from '../theme/typography';
+import { GEOMETRY } from '../theme/spacing';
 
 // Lightweight sheet showing the per-side plate loading for a tapped weight,
 // against a persisted, editable lb/kg equipment profile (#577). Follows the
@@ -300,7 +302,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   sheet: {
     backgroundColor: kua ? kua.surfaceCard : colors.card,
-    borderRadius: 20,
+    borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     maxWidth: 360,
@@ -323,7 +325,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   title: {
     flex: 1,
-    fontSize: 17,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
@@ -331,7 +333,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     padding: 4,
   },
   closeBtnText: {
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '600',
   },
@@ -344,7 +346,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   unitToggle: {
     paddingVertical: 6,
     paddingHorizontal: 14,
-    borderRadius: 8,
+    borderRadius: GEOMETRY['radius-lg'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
@@ -353,7 +355,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     borderColor: kua ? kua.primary : colors.accent,
   },
   unitToggleText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
@@ -376,12 +378,12 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     alignItems: 'center',
   },
   rowLabel: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   rowValue: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
@@ -392,19 +394,19 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     borderTopColor: kua ? kua.surfaceBorder : colors.divider,
   },
   plateBlockLabel: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   message: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 20,
   },
   remainder: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontStyle: 'italic',
     lineHeight: 19,
@@ -413,20 +415,20 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingTop: 6,
   },
   editLinkText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: kua ? kua.primary : colors.accent,
   },
   input: {
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
-    borderRadius: 8,
+    borderRadius: GEOMETRY['radius-lg'],
     paddingVertical: 4,
     paddingHorizontal: 10,
     minWidth: 64,
     textAlign: 'right',
     color: kua ? kua.onSurface : colors.text,
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
   },
   editActionsRow: {
     flexDirection: 'row',
@@ -437,7 +439,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   editActionBtn: {
     paddingVertical: 8,
     paddingHorizontal: 12,
-    borderRadius: 8,
+    borderRadius: GEOMETRY['radius-lg'],
     minHeight: 44,
     justifyContent: 'center',
   },
@@ -445,7 +447,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: kua ? kua.primary : colors.accent,
   },
   editActionText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },

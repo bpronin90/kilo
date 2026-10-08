@@ -11,6 +11,8 @@ import { createStyles } from './log/logEditorStyles';
 import { useEditorCard } from './log/EditorControls';
 import { EditorDeloadNoteInput, EditorSaveActions } from './log/EditorHeader';
 import { RoutineAdoptionPrompt, computeSaveStatusLabel, SaveStatusRegion } from './log/EditorStatus';
+import { TYPOGRAPHY } from '../theme/typography';
+import { GEOMETRY } from '../theme/spacing';
 
 // #867: the gap between the editor tool row and the problem list that opens
 // under it. The list is an overlay, not an in-flow row (see `validationList`
@@ -46,12 +48,12 @@ function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
     },
     style: {
       backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
-      borderRadius: 16,
+      borderRadius: GEOMETRY['radius-2xl'],
       borderWidth: 1,
       borderStyle: 'solid',
       borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
       padding: 14,
-      fontSize: 16,
+      fontSize: TYPOGRAPHY['body-lg'].fontSize,
       colorScheme: colors.scheme,
       color: kua ? kua.onSurface : colors.text,
       fontFamily: 'inherit',

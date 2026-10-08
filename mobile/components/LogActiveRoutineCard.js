@@ -43,6 +43,8 @@ import {
 import { RoutineShareModal } from './RoutineShareCard';
 import { MODAL_SUPPORTED_ORIENTATIONS } from './adaptiveLayout';
 import { ProgressionSuggestionCard, MutedProgressionRow } from './ProgressionSuggestionCard';
+import { TYPOGRAPHY } from '../theme/typography';
+import { GEOMETRY } from '../theme/spacing';
 
 export function LogActiveRoutineCard({
   workoutNoteTitle,
@@ -409,7 +411,7 @@ const createStyles = (kua, colors) => StyleSheet.create({
   },
   // #1010/#1109: status line below the content area.
   progressionApplyStatus: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.accentText,
   },
   // #1109: the primary routine card now uses the KUA activeCard border level —
@@ -444,13 +446,13 @@ const createStyles = (kua, colors) => StyleSheet.create({
   },
   // #1109: headline-md type and primary color per KUA surfaces.md.
   currentNoteTitle: {
-    fontSize: 22,
+    fontSize: TYPOGRAPHY['headline-md'].fontSize,
     fontWeight: '600',
     color: kua ? kua.primary : colors.accentText,
   },
   // #1109: body-sm, on-surface-variant per KUA surfaces.md.
   otherNoteSub: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
   },
@@ -461,13 +463,13 @@ const createStyles = (kua, colors) => StyleSheet.create({
     marginTop: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 8,
+    borderRadius: GEOMETRY['radius-lg'],
     backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
     borderWidth: kua ? 1 : 0,
     borderColor: kua ? kua.primaryContainerBorder : undefined,
   },
   recoveryBadgeText: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: kua ? '500' : '800',
     textTransform: 'uppercase',
     color: kua ? kua.primaryOnContainer : colors.chipText,
@@ -475,7 +477,7 @@ const createStyles = (kua, colors) => StyleSheet.create({
   inlineSwitchButton: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 8,
+    borderRadius: GEOMETRY['radius-lg'],
     backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
     borderWidth: 1,
     borderColor: kua ? kua.primaryContainerBorder : colors.cardBorder,
@@ -485,7 +487,7 @@ const createStyles = (kua, colors) => StyleSheet.create({
     flexShrink: 1,
   },
   inlineSwitchButtonText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: kua ? '500' : '700',
     color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },
@@ -540,8 +542,8 @@ const createStyles = (kua, colors) => StyleSheet.create({
   actionMenu: {
     paddingVertical: 8,
     paddingBottom: 24,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    borderTopLeftRadius: GEOMETRY['radius-2xl'],
+    borderTopRightRadius: GEOMETRY['radius-2xl'],
     backgroundColor: kua ? kua.surfaceCard : colors.card,
   },
   actionMenuItem: {
@@ -552,7 +554,7 @@ const createStyles = (kua, colors) => StyleSheet.create({
     borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   actionMenuItemText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurface : colors.chipAccentText,
   },
@@ -563,11 +565,11 @@ const createStyles = (kua, colors) => StyleSheet.create({
     flexShrink: 1,
   },
   skipWeekText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   skipWeekStatusText: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.accentText,
     marginBottom: 8,
     marginTop: -4,
