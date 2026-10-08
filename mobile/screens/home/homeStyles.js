@@ -359,7 +359,7 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
   },
   recoveryLiftDone: {
     color: kua ? kua.completion : colors.success,
-    fontWeight: '600',
+    ...(kua ? {} : { fontWeight: '600' }),
   },
   recoveryLiftTrack: {
     height: 6,
