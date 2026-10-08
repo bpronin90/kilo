@@ -43,6 +43,12 @@ License: SIL Open Font License 1.1. Permissive.
 
 All numeric metric indicators (`label-sm`, `label-md`) use uppercase tracking for rapid scan-readability. Use `tabular-nums` / `font-variant-numeric: tabular-nums` on all metric values to prevent layout shifting during live logging.
 
+### Usage and off-scale literals
+
+- Linguistic content (titles, names, body, commands) uses Space Grotesk roles; quantitative and temporal content (kilos, reps, RPE, timers, counts, dates in metric position) uses JetBrains Mono roles. Pick the family by what the text says, not by where it sits.
+- The scale above is complete: `headline-xl`, `headline-xl-mobile`, `headline-lg`, `headline-md`, `headline-sm`, `body-lg`, `body-md`, `body-sm` (Space Grotesk) and `metric-display` (36px), `metric-display-mobile`, `label-lg`, `label-md` (12px), `label-sm` (11px) (JetBrains Mono).
+- Do not add a token for an observed literal. During screen migration, map an off-scale `fontSize` to the nearest role in the same family (ties round down to the smaller role), e.g. ProfileScreen's 15px maps to `body-lg` (16px) or `body-md` (14px) by whether it is primary or secondary content. Record a justified exception in the PR only when no role fits (for example a glyph or icon-sized text).
+
 ### Font loading and fallback
 
 Fonts must be pre-bundled in the app distribution (Expo asset bundling). Do not load from Google Fonts or any CDN at runtime. Fallback stack: `Space Grotesk → system-ui → sans-serif`; `JetBrains Mono → Menlo → Courier New → monospace`.
@@ -81,7 +87,7 @@ Screen-edge gutters are `margin` (16px) on phone. Component internal padding fav
 | `radius-2xl` | 16px | Primary routine card, main surface cards |
 | `radius-full` | 50% | Avatar circles, status dots |
 
-Primary routine cards use `radius-2xl` (16px). Buttons and TRACK elements use `radius-sm` (4px). Completion/tracked states may use `radius-xl` (12px) pill shape. Arbitrary and decorative radii are not used — every value must map to a token.
+Cards and bounded surfaces (the shared `Card`, danger-zone containers, primary routine cards) use `radius-2xl` (16px); the earlier 24px card radius is retired and is not a token. Off-scale radius literals map to the nearest token (ties round down) rather than gaining new tokens. Primary routine cards use `radius-2xl` (16px). Buttons and TRACK elements use `radius-sm` (4px). Completion/tracked states may use `radius-xl` (12px) pill shape. Arbitrary and decorative radii are not used — every value must map to a token.
 
 ---
 
