@@ -3,6 +3,8 @@ import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native
 import { useKuaStyle, useTheme } from '../theme/ThemeContext';
 import { setWebAlertHandler } from '../lib/platformAlert';
 import { scrim } from '../theme/styleHelpers';
+import { TYPOGRAPHY } from '../theme/typography';
+import { GEOMETRY } from '../theme/spacing';
 
 // Renders the dialogs platformAlert.js's Alert.alert queues on web, since
 // react-native-web has no native Alert to back it (#721). Native
@@ -85,19 +87,19 @@ const createStyles = (colors, kua = null, mode = 'light') => StyleSheet.create({
     width: '100%',
     maxWidth: 360,
     backgroundColor: kua ? kua.surfaceCard : colors.card,
-    borderRadius: 16,
+    borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     padding: 20,
     gap: 8,
   },
   title: {
-    fontSize: 17,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
   message: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.onSurface : colors.text,
     lineHeight: 20,
   },
@@ -115,7 +117,7 @@ const createStyles = (colors, kua = null, mode = 'light') => StyleSheet.create({
     justifyContent: 'center',
   },
   buttonText: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.primary : colors.accentText,
   },

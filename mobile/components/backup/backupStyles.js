@@ -5,6 +5,8 @@
 
 import { StyleSheet } from 'react-native';
 import { withAlpha } from '../../theme/styleHelpers';
+import { TYPOGRAPHY } from '../../theme/typography';
+import { GEOMETRY } from '../../theme/spacing';
 
 // `kua` is the active KUA palette (theme.kuaPalette) or null; `typography` is
 // the result of useKuaTypography() — see SettingsScreen/WeightScreen for the
@@ -14,13 +16,13 @@ export const createStyles = (colors, kua = null, typography = {}) => StyleSheet.
   // (onSurfaceVariant) in place of the legacy SectionTitle, matching
   // SettingsScreen's KUA migration.
   sectionHeader: {
-    ...(typography['label-sm'] ?? { fontSize: 11, fontWeight: '700' }),
+    ...(typography['label-sm'] ?? { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     marginTop: 6,
   },
   statusText: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurface : colors.textLight,
     textAlign: 'center',
@@ -50,7 +52,7 @@ export const createStyles = (colors, kua = null, typography = {}) => StyleSheet.
     color: kua ? kua.errorText : undefined,
   },
   helpText: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     lineHeight: 22,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
@@ -63,7 +65,7 @@ export const createStyles = (colors, kua = null, typography = {}) => StyleSheet.
   // `dangerZoneWarnText` below for text placed on that tinted surface.
   warnText: {
     marginTop: 10,
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     lineHeight: 19,
     fontWeight: '600',
     color: kua ? kua.warning : (colors.cautionText ?? colors.error ?? colors.textMuted),
@@ -81,13 +83,13 @@ export const createStyles = (colors, kua = null, typography = {}) => StyleSheet.
   // the danger-zone action status use it instead of `warnText`/`helpText`.
   dangerZoneWarnText: {
     marginTop: 10,
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     lineHeight: 19,
     fontWeight: '600',
     color: kua ? kua.errorText : (colors.cautionText ?? colors.error ?? colors.textMuted),
   },
   dangerZoneStatusText: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     lineHeight: 22,
     color: kua ? kua.errorText : colors.textMuted,
   },
@@ -109,9 +111,9 @@ export const createStyles = (colors, kua = null, typography = {}) => StyleSheet.
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     backgroundColor: kua ? kua.surfaceCard : undefined,
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     padding: 12,
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurface : colors.text,
     fontFamily: 'monospace',
     minHeight: 100,
@@ -135,7 +137,7 @@ export const createStyles = (colors, kua = null, typography = {}) => StyleSheet.
     backgroundColor: kua ? withAlpha(kua.error, 0.14) : colors.errorSurface,
     borderWidth: 1,
     borderColor: kua ? kua.error : colors.error,
-    borderRadius: 24,
+    borderRadius: GEOMETRY['radius-2xl'],
     padding: 18,
     gap: 12,
   },
@@ -147,7 +149,7 @@ export const createStyles = (colors, kua = null, typography = {}) => StyleSheet.
   // The zone's own background/border stay `error`-derived (fill/border use is
   // correct there and must remain danger-coded across all six combos).
   dangerZoneHeadingText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '800',
     letterSpacing: 0.6,
     textTransform: 'uppercase',

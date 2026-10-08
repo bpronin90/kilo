@@ -18,6 +18,8 @@ import {
   loadNormalizationImportSnapshot,
   saveNormalizationImportSnapshot,
 } from '../storage/entries/normalizationImportSnapshot';
+import { TYPOGRAPHY } from '../theme/typography';
+import { GEOMETRY } from '../theme/spacing';
 
 function titleFor(routine, index, notes) {
   const title = String(routine?.title || 'Untitled Routine');
@@ -437,16 +439,16 @@ export function RoutinePromptToolsScreen({
 // they keep the legacy palette.
 const createStyles = (colors, kua = null) => StyleSheet.create({
   toolList: { gap: 12 },
-  toolCard: { backgroundColor: kua ? kua.surfaceCard : colors.card, borderColor: kua ? kua.surfaceBorder : colors.cardBorder, borderWidth: 1, borderRadius: 24, minHeight: 76, padding: 18, justifyContent: 'center' },
+  toolCard: { backgroundColor: kua ? kua.surfaceCard : colors.card, borderColor: kua ? kua.surfaceBorder : colors.cardBorder, borderWidth: 1, borderRadius: GEOMETRY['radius-2xl'], minHeight: 76, padding: 18, justifyContent: 'center' },
   toolCopy: { gap: 4 },
-  toolTitle: { color: kua ? kua.onSurface : colors.text, fontSize: 17, fontWeight: '600' },
-  muted: { color: kua ? kua.onSurfaceVariant : colors.textMuted, fontSize: 14, lineHeight: 20 },
+  toolTitle: { color: kua ? kua.onSurface : colors.text, fontSize: TYPOGRAPHY['body-lg'].fontSize, fontWeight: '600' },
+  muted: { color: kua ? kua.onSurfaceVariant : colors.textMuted, fontSize: TYPOGRAPHY['body-md'].fontSize, lineHeight: 20 },
   choiceList: { gap: 8 },
-  choice: { backgroundColor: kua ? kua.surfaceCard : colors.card, borderColor: kua ? kua.surfaceBorder : colors.cardBorder, borderWidth: 1, borderRadius: 16, minHeight: 48, justifyContent: 'center', paddingHorizontal: 16 },
-  choiceTitle: { color: kua ? kua.onSurface : colors.text, fontSize: 15, fontWeight: '600' },
-  prompt: { color: kua ? kua.onSurface : colors.text, fontSize: 14, lineHeight: 20 },
+  choice: { backgroundColor: kua ? kua.surfaceCard : colors.card, borderColor: kua ? kua.surfaceBorder : colors.cardBorder, borderWidth: 1, borderRadius: GEOMETRY['radius-2xl'], minHeight: 48, justifyContent: 'center', paddingHorizontal: 16 },
+  choiceTitle: { color: kua ? kua.onSurface : colors.text, fontSize: TYPOGRAPHY['body-md'].fontSize, fontWeight: '600' },
+  prompt: { color: kua ? kua.onSurface : colors.text, fontSize: TYPOGRAPHY['body-md'].fontSize, lineHeight: 20 },
   actions: { gap: 10 },
-  notice: { color: kua ? kua.onSurfaceVariant : colors.textMuted, fontSize: 14, lineHeight: 20 },
+  notice: { color: kua ? kua.onSurfaceVariant : colors.textMuted, fontSize: TYPOGRAPHY['body-md'].fontSize, lineHeight: 20 },
   replyInput: { minHeight: 140, textAlignVertical: 'top' },
-  error: { color: kua ? kua.errorText : colors.error, fontSize: 14, lineHeight: 20 },
+  error: { color: kua ? kua.errorText : colors.error, fontSize: TYPOGRAPHY['body-md'].fontSize, lineHeight: 20 },
 });

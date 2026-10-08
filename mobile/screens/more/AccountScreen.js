@@ -14,6 +14,7 @@ import { AccountLifecycle } from './AccountLifecycle';
 import { LegalLinks } from './LegalLinks';
 import { SetNewPasswordScreen } from './SetNewPasswordScreen';
 import { withAlpha } from '../../theme/styleHelpers';
+import { TYPOGRAPHY } from '../../theme/typography';
 
 // Minimal account surface to exercise sign in / sign out / session restore /
 // password reset against the auth/session hook. This is intentionally narrow:
@@ -447,19 +448,19 @@ const createStyles = (colors, kua = null, typography = {}) => StyleSheet.create(
   // KUA section headers replace SectionTitle in kua mode (#1114), matching
   // the label-sm/uppercase treatment already used by Settings and More.
   sectionHeader: {
-    ...(typography['label-sm'] ?? { fontSize: 11, fontWeight: '500' }),
+    ...(typography['label-sm'] ?? { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '500' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     marginTop: 6,
   },
   accountNote: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.onSurface : colors.text,
     lineHeight: 22,
     marginBottom: 12,
   },
   accountStatus: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 16,
   },
@@ -487,7 +488,7 @@ const createStyles = (colors, kua = null, typography = {}) => StyleSheet.create(
   // here since no typography token encodes case.
   actionButtonText: kua ? {
     color: kua.onPrimary,
-    ...(typography['label-md'] ?? { fontSize: 12, fontWeight: '600' }),
+    ...(typography['label-md'] ?? { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600' }),
     textTransform: 'uppercase',
   } : null,
   // Composed onto the shared `useInputStyle()` result at the TextInput call
@@ -502,7 +503,7 @@ const createStyles = (colors, kua = null, typography = {}) => StyleSheet.create(
     backgroundColor: kua.surfaceCard,
     borderColor: kua.surfaceBorder,
     color: kua.onSurface,
-    ...(typography['body-md'] ?? { fontSize: 14, lineHeight: 20 }),
+    ...(typography['body-md'] ?? { fontSize: TYPOGRAPHY['body-md'].fontSize, lineHeight: 20 }),
   } : null,
   // Focus state per the same contract: border becomes 2px `primary`, no glow
   // spread. Applied conditionally via local onFocus/onBlur state tracked in
@@ -519,7 +520,7 @@ const createStyles = (colors, kua = null, typography = {}) => StyleSheet.create(
     backgroundColor: kua ? withAlpha(kua.error, 0.12) : colors.errorSurface,
     borderWidth: 1,
     borderColor: kua ? kua.error : colors.error,
-    borderRadius: 24,
+    borderRadius: GEOMETRY['radius-2xl'],
     padding: 18,
     gap: 12,
   },
@@ -528,7 +529,7 @@ const createStyles = (colors, kua = null, typography = {}) => StyleSheet.create(
     alignItems: 'center',
   },
   dangerZoneHeadingText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '800',
     letterSpacing: 0.6,
     textTransform: 'uppercase',

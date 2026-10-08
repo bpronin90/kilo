@@ -7,12 +7,16 @@ import { Card, SectionTitle, Button, createInputStyle } from './UI';
 import { useTheme, useThemedStyles, useKuaStyle } from '../theme/ThemeContext';
 import { useUserProfile } from '../hooks/useEntries';
 import { setWeightUnitPreference } from '../lib/unitPreference';
+import { TYPOGRAPHY, useKuaTypography } from '../theme/typography';
+import { GEOMETRY } from '../theme/spacing';
 
 export function ProfileScreen({ onBack }) {
   const { colors } = useTheme();
   const kua = useKuaStyle();
   const styles = useThemedStyles(createStyles);
   const webDateInputStyle = useThemedStyles(createWebDateInputStyle);
+  const typography = useKuaTypography();
+  const { fontFamily: dateFont, fontSize: dateSize, fontWeight: dateWeight } = typography['label-lg'];
   const { profile, save, loading, clear: clearAll } = useUserProfile();
   const [localProfile, setLocalProfile] = useState(null);
   const [heightUnit, setHeightUnit] = useState('ft'); // 'ft' or 'cm'
@@ -165,7 +169,7 @@ export function ProfileScreen({ onBack }) {
       accessibilityLabel="Clear All"
     >
       <Text
-        style={{ color: kua ? kua.errorText : colors.error, fontSize: 13, fontWeight: '700', textTransform: 'uppercase' }}
+        style={{ color: kua ? kua.errorText : colors.error, fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '700', textTransform: 'uppercase' }}
         accessible={false}
       >
         Clear All
@@ -302,7 +306,7 @@ export function ProfileScreen({ onBack }) {
               accessibilityLabel="Clear date of birth"
             >
               <Text
-                style={{ color: kua ? kua.errorText : colors.error, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' }}
+                style={{ color: kua ? kua.errorText : colors.error, fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '700', textTransform: 'uppercase' }}
                 accessible={false}
               >
                 Clear
@@ -323,7 +327,7 @@ export function ProfileScreen({ onBack }) {
               if (!val || val > todayDobMax) return;
               updateField('date_of_birth', val);
             }}
-            style={webDateInputStyle}
+            style={{ ...webDateInputStyle, fontFamily: dateFont, fontSize: dateSize, fontWeight: dateWeight }}
           />
         ) : (
           <>
@@ -336,7 +340,7 @@ export function ProfileScreen({ onBack }) {
                 : 'Select date of birth'}
             >
               <Text
-                style={[styles.datePickerText, !localProfile?.date_of_birth && { color: kua ? kua.onSurfaceVariant : colors.textMuted }]}
+                style={[styles.datePickerText, typography['label-lg'], !localProfile?.date_of_birth && { color: kua ? kua.onSurfaceVariant : colors.textMuted }]}
                 accessible={false}
               >
                 {localProfile?.date_of_birth || 'Select Date'}
@@ -408,10 +412,8 @@ const createWebDateInputStyle = (colors, kua = null) => ({
   borderWidth: 1,
   borderStyle: 'solid',
   borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
-  borderRadius: 12,
+  borderRadius: GEOMETRY['radius-xl'],
   padding: 16,
-  fontSize: 16,
-  fontWeight: '700',
   // colorScheme stays on the resolved light/dark mode so the browser's own date
   // picker chrome matches appearance, independent of the selected court.
   colorScheme: colors.scheme,
@@ -427,7 +429,7 @@ const createWebDateInputStyle = (colors, kua = null) => ({
 // court's `surfaceCard`; the active/selected states use the court `primary`.
 export const createStyles = (colors, kua = null) => StyleSheet.create({
   inputLabel: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
@@ -435,7 +437,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginBottom: 8,
   },
   inputSublabel: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
@@ -462,7 +464,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     minHeight: 44,
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
@@ -472,7 +474,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderColor: kua ? kua.primary : colors.accent,
   },
   toggleButtonText: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
@@ -496,7 +498,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   unitPill: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: GEOMETRY['radius-lg'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
@@ -506,7 +508,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderColor: kua ? kua.primary : colors.accent,
   },
   unitTabText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
@@ -526,13 +528,11 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     padding: 16,
     alignItems: 'center',
   },
   datePickerText: {
-    fontSize: 16,
-    fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
   activityCard: {
@@ -540,7 +540,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     alignItems: 'center',
     backgroundColor: kua ? kua.surfaceCard : colors.card,
     padding: 16,
-    borderRadius: 16,
+    borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     gap: 12,
@@ -550,7 +550,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: kua ? kua.surfaceCard : colors.card,
   },
   activityLabel: {
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
     marginBottom: 2,
@@ -559,7 +559,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.primary : colors.accentText,
   },
   activityDesc: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 18,
   },
@@ -569,14 +569,14 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   checkCircle: {
     width: 24,
     height: 24,
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     backgroundColor: kua ? kua.primary : colors.accent,
     justifyContent: 'center',
     alignItems: 'center',
   },
   checkText: {
     color: kua ? kua.onPrimary : colors.onAccent,
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '800',
   },
 });

@@ -5,6 +5,8 @@ import { useKuaStyle, useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { TAB_BAR_VISUAL_GAP, TAB_BAR_HEIGHT_FALLBACK } from './TabBarLayout';
 import { Icon } from './Icon';
 import { centeredColumnInsets } from './adaptiveLayout';
+import { TYPOGRAPHY } from '../theme/typography';
+import { GEOMETRY } from '../theme/spacing';
 
 // The floating bottom navigation is always fully opaque (#1026). It previously
 // animated itself down to 25% opacity two seconds after mount and again after
@@ -100,7 +102,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     flexDirection: 'row',
     gap: 4,
     backgroundColor: kua ? kua.tabBarBg : colors.card,
-    borderRadius: 20,
+    borderRadius: GEOMETRY['radius-2xl'],
     padding: 4,
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
@@ -114,7 +116,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     flex: 1,
     minHeight: 46,
     paddingVertical: 5,
-    borderRadius: 16,
+    borderRadius: GEOMETRY['radius-2xl'],
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -122,7 +124,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: kua ? kua.selection : colors.chipBackground,
   },
   tabText: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '500',
     marginTop: 1,
   },

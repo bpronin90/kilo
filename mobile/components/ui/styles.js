@@ -1,6 +1,7 @@
 import { useThemedStyles } from '../../theme/ThemeContext';
+import { TYPOGRAPHY } from '../../theme/typography';
 
-export const SET_ROW_FONT_SIZE = 14;
+export const SET_ROW_FONT_SIZE = TYPOGRAPHY['label-lg'].fontSize;
 
 export const HeroMetric = {
   hero:          { fontSize: 48, fontWeight: '900', lineHeight: 52 },

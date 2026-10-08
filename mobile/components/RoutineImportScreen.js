@@ -32,6 +32,7 @@ import {
   loadWorkoutNoteCreationAttempt,
   clearWorkoutNoteCreationAttempt,
 } from '../storage/entries/workoutNoteCreationAttempts';
+import { TYPOGRAPHY } from '../theme/typography';
 
 // This screen's caller context in the durable creation-attempt store (#997).
 // Importing has exactly one create path, so one slot covers it, and the token
@@ -347,22 +348,22 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     textAlignVertical: 'top',
   },
   mutedText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 20,
   },
   metaText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 8,
   },
   successText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.success : colors.success,
     lineHeight: 20,
   },
   errorText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.errorText : colors.error,
     lineHeight: 20,
   },
@@ -381,7 +382,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginTop: 12,
   },
   footnote: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 18,
   },

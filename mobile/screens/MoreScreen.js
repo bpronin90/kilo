@@ -13,6 +13,8 @@ import { ProfileScreen } from '../components/ProfileScreen';
 import { RoutineImportScreen } from '../components/RoutineImportScreen';
 import { RoutinePromptToolsScreen } from '../components/RoutinePromptToolsScreen';
 import { AccountScreen } from './more/AccountScreen';
+import { TYPOGRAPHY } from '../theme/typography';
+import { GEOMETRY } from '../theme/spacing';
 
 export { AccountScreen } from './more/AccountScreen';
 export { AccountLifecycle } from './more/AccountLifecycle';
@@ -254,7 +256,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     alignItems: 'center',
     backgroundColor: kua ? kua.surfaceCard : colors.card,
     padding: 20,
-    borderRadius: 24,
+    borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
@@ -263,12 +265,12 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 4,
   },
   menuItemText: {
-    fontSize: 17,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurface : colors.text,
   },
   menuItemHelp: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
 });
