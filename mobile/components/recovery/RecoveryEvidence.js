@@ -137,7 +137,7 @@ export function BlockEvidence({
   const dateLabel = isActive ? 'Started' : 'Dates';
   const dateValue = isActive
     ? formatDate(block.started_at)
-    : `${formatDate(block.started_at)} – ${formatDate(block.completed_at)}`;
+    : `${formatDate(block.started_at)} to ${formatDate(block.completed_at)}`;
   const trainedElsewhere = useMemo(() => deriveTrainedElsewhere(weekResults, selectedWeek, stateStale), [weekResults, selectedWeek, stateStale]);
   const weekRows = selectedWeek ? [...(selectedWeek.exercises || []), ...(selectedWeek.added || [])] : [];
 
@@ -327,13 +327,13 @@ export function BlockEvidence({
           >
             {/* A completed range is two whole dates, so a narrow card wraps
                 BETWEEN them ("08-08-2026 –" / "09-20-2026"), never mid-date. */}
-            <Text style={[styles.contextValue, styles.contextDateText]}>{isActive ? dateValue : `${formatDate(block.started_at)} –`}</Text>
+            <Text style={[styles.contextValue, styles.contextDateText]}>{isActive ? dateValue : `${formatDate(block.started_at)} to`}</Text>
             {!isActive && <Text style={[styles.contextValue, styles.contextDateText]}>{formatDate(block.completed_at)}</Text>}
           </View>
         </View>
         <InfoNote shown={aboutShown} testID="recovery-about-note">
           <Text style={styles.nonMedicalText}>
-            Training numbers only. Not a medical judgment — only you end a Recovery block.
+            Training numbers only. Not a medical judgment. Only you end a Recovery block.
           </Text>
         </InfoNote>
         {showReasonRow && (reasonEditable ? (

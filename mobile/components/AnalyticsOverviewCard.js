@@ -56,7 +56,7 @@ function OverviewRow({ row, unit, onPress }) {
   // for the same reason: a frozen baseline count during active Recovery must
   // read as paused history, never as a fresh empty/loaded value.
   const caption = row.unavailable
-    ? 'Unavailable — could not load'
+    ? 'Unavailable: could not load'
     : row.paused
       ? (row.pausedCaption || 'Paused')
       : value == null
@@ -88,7 +88,7 @@ function OverviewRow({ row, unit, onPress }) {
       <View style={styles.rowValueStack}>
         <View style={styles.rowValueGroup}>
           {value == null ? (
-            <Text style={styles.rowValueEmpty}>—</Text>
+            <Text style={styles.rowValueEmpty}>N/A</Text>
           ) : (
             <Text style={row.paused ? styles.rowValuePaused : styles.rowValue}>
               {value}

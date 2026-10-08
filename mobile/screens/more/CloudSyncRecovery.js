@@ -89,13 +89,13 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
 
   const cloudStatusLabel = () => {
     if (sync.status === SYNC_STATUS.RUNNING) return 'Syncing with server';
-    if (sync.status === SYNC_STATUS.FAILED) return 'Sync failed — retry needed';
+    if (sync.status === SYNC_STATUS.FAILED) return 'Sync failed, retry needed';
     if (pendingIntent.hasPending) return 'Changes queued for cloud sync';
     if (sync.status === SYNC_STATUS.COMPLETE && pendingIntent.known) {
-      return 'Server acknowledged — up to date';
+      return 'Server acknowledged, up to date';
     }
     if (bootstrap.status === SYNC_STATUS.COMPLETE) {
-      return 'Recovery upload complete — sync still needs to run';
+      return 'Recovery upload complete, sync still needs to run';
     }
     return 'Saved on this device';
   };
@@ -114,7 +114,7 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
       setStatus(
         result?.ok
           ? `${kind === 'bootstrap' ? 'Local history uploaded' : 'Sync'} complete.`
-          : 'Could not complete — try again.'
+          : 'Could not complete. Try again.'
       );
     } finally {
       setBusy(false);
@@ -173,7 +173,7 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
     try {
       const result = await withdrawConsent();
       if (!result.ok) {
-        setStatus(result.error || 'Could not withdraw consent — Cloud Sync is unchanged.');
+        setStatus(result.error || 'Could not withdraw consent, Cloud Sync is unchanged.');
         return;
       }
       // consent_withdraw atomically blocks health access before returning. Move

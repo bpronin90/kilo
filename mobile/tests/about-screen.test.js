@@ -100,7 +100,7 @@ describe('AboutScreen OTA update flows', () => {
 
     expect(Updates.checkForUpdateAsync).toHaveBeenCalledTimes(1);
     expect(Updates.fetchUpdateAsync).toHaveBeenCalledTimes(1);
-    expect(hasText(tree, 'Update downloaded — restart to apply.')).toBe(true);
+    expect(hasText(tree, 'Update downloaded, restart to apply.')).toBe(true);
 
     // Lag-fallback: the hook's isUpdatePending is still false here, so the
     // panel must offer its own restart button — the user should never be
@@ -183,7 +183,7 @@ describe('AboutScreen OTA update flows', () => {
 
     // Duplicate pending alert row and restart button are suppressed; the
     // global app-shell banner is the only restart affordance now.
-    expect(hasText(tree, 'Update downloaded — restart to apply.')).toBe(false);
+    expect(hasText(tree, 'Update downloaded, restart to apply.')).toBe(false);
 
     const checkBtn = findButton(tree, 'Check for Update');
     const restartBtn = findButton(tree, 'Restart to Apply');

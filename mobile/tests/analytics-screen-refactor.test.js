@@ -275,12 +275,12 @@ describe('AnalyticsStates.describePoRowState (card #1051)', () => {
 
   test('first session, explicit activation → "New tracked span" caption', () => {
     expect(describePoRowState({ hasActivation: true, isFirstSpanSession: true, hasCapabilityData: true }))
-      .toBe('New tracked span — Est./Kilo/Best above stay historical');
+      .toBe('New tracked span: Est./Kilo/Best above stay historical');
   });
 
   test('not first session, no explicit activation → "Inherited tracking" caption', () => {
     expect(describePoRowState({ hasActivation: false, isFirstSpanSession: false, hasCapabilityData: true }))
-      .toBe('Inherited tracking — full history');
+      .toBe('Inherited tracking: full history');
   });
 
   test('fully classified row (explicit activation, not first session) → no caption', () => {

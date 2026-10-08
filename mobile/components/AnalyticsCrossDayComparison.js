@@ -41,10 +41,10 @@ export function CrossDayComparison({ daySignals, currentDay, otherDays }) {
             {i > 0 && <Text style={styles.crossDaySep}>·</Text>}
             <View style={styles.crossDayChip}>
               <Text style={[styles.crossDayChipLabel, day === currentDay && styles.crossDayChipLabelCurrent]}>
-                {day ? day.slice(0, 3).toUpperCase() : '—'}
+                {day ? day.slice(0, 3).toUpperCase() : 'N/A'}
               </Text>
               <Text style={styles.crossDayChipValue}>
-                {d?.latest_top_weight != null ? (d.is_bodyweight ? `${d.latest_top_weight}` : formatLiftWeightValue(d.latest_top_weight, unit)) : '—'}
+                {d?.latest_top_weight != null ? (d.is_bodyweight ? `${d.latest_top_weight}` : formatLiftWeightValue(d.latest_top_weight, unit)) : 'N/A'}
                 {d?.latest_top_weight != null && <Text style={styles.crossDayUnit}>{d.is_bodyweight ? 'reps' : unit}</Text>}
               </Text>
               {trendChar && <Text style={[styles.crossDayTrend, { color: trendColor }]}>{trendChar}</Text>}

@@ -17,7 +17,7 @@ export const RECOVERY_INCLUSION_LABEL = 'Include recovery notes in normal analyt
 // paragraph existed to answer: the notes are not taken out of Recovery, and
 // they stay editable either way.
 export const RECOVERY_INCLUSION_HELP =
-  "On: this block's linked recovery notes are included in normal analytics — classifications, overload signals, Kilo Max, 1K, and Home summaries. Off (the default) keeps them out. Either way the notes stay in Recovery Analytics and stay fully visible and editable.";
+  "On: this block's linked recovery notes are included in normal analytics (classifications, overload signals, Kilo Max, 1K, and Home summaries). Off (the default) keeps them out. Either way the notes stay in Recovery Analytics and stay fully visible and editable.";
 
 // Per-block inclusion control (#699 / #728). The switch reads and writes
 // `include_in_normal_analytics` on THIS block only, so two blocks with

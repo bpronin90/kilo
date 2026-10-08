@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useThemedStyles } from '../theme/ThemeContext';
 import {
   computePlateLoad,
@@ -162,7 +163,7 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
               accessibilityRole="button"
               accessibilityLabel="Close plate calculator"
             >
-              <Text style={styles.closeBtnText}>✕</Text>
+              <MaterialIcons name="close" size={20} style={styles.closeBtnText} accessible={false} />
             </Pressable>
           </View>
 
@@ -191,7 +192,7 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
 
               {load.valid && load.belowBar && (
                 <Text style={styles.message}>
-                  Below the {formatPlateWeight(load.barWeight)} {unit} bar — no plates needed.
+                  Below the {formatPlateWeight(load.barWeight)} {unit} bar, no plates needed.
                 </Text>
               )}
 
@@ -203,7 +204,7 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
                   </View>
 
                   {load.plates.length === 0 && load.remainder === 0 && (
-                    <Text style={styles.message}>Empty bar — no plates.</Text>
+                    <Text style={styles.message}>Empty bar, no plates.</Text>
                   )}
 
                   {load.plates.length > 0 && (

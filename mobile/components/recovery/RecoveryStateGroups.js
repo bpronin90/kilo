@@ -105,7 +105,7 @@ export function summarizeDetailRows(rows) {
 }
 
 function _formatMetricNumber(metricKey, value, unit) {
-  if (value === null || value === undefined) return '—';
+  if (value === null || value === undefined) return 'N/A';
   if (metricKey === 'top_load') return `${formatLiftWeightValue(value, unit)} ${unit}`;
   if (metricKey === 'volume') return `${Math.round(displayWeight(value, unit))} ${unit}`;
   if (metricKey === 'total_reps') return `${value} reps`;
@@ -132,10 +132,10 @@ function _absentNote(row, weekNumber, elsewhere) {
 // #1202: display-only explanation; state and counts stay exact-key.
 function _mismatchNote(row) {
   if (row.likely_logged_name) {
-    return `Logged as "${row.likely_logged_name}" this week — names differ, so no direct comparison was made.`;
+    return `Logged as "${row.likely_logged_name}" this week. Names differ, so no direct comparison was made.`;
   }
   if (row.likely_baseline_name) {
-    return `Baseline has "${row.likely_baseline_name}" — names differ, so no direct comparison was made.`;
+    return `Baseline has "${row.likely_baseline_name}". Names differ, so no direct comparison was made.`;
   }
   return null;
 }
@@ -280,14 +280,14 @@ export function WeekUnavailableNotice({ week }) {
   if (week.status === RECOVERY_WEEK_STATUS.NOTE_MISSING) {
     return (
       <Text style={styles.unavailablePanelText}>
-        {`Week ${week.week_number} — This week's note is no longer available.`}
+        {`Week ${week.week_number}: This week's note is no longer available.`}
       </Text>
     );
   }
   if (week.status === RECOVERY_WEEK_STATUS.NOTE_UNREADABLE) {
     return (
       <Text style={styles.unavailablePanelText}>
-        {`Week ${week.week_number} — This week's note couldn't be read.`}
+        {`Week ${week.week_number}: This week's note couldn't be read.`}
       </Text>
     );
   }

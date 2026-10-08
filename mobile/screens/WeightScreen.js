@@ -189,7 +189,7 @@ export function WeightScreen({
     if (!latest) return null;
     const hasCompletedWeight =
       latest.completed_weight !== null && latest.completed_weight !== undefined;
-    if (!hasCompletedWeight) return { label: '—', met: null };
+    if (!hasCompletedWeight) return { label: 'N/A', met: null };
     // Judge against the goal's own archived_at date, not "today" — an archived
     // goal's outcome must stay stable regardless of when it's later viewed.
     const archivedRef = latest.archived_at ? new Date(latest.archived_at) : new Date();

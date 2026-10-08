@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Keyboard, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Alert } from '../lib/platformAlert';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { ScreenShell } from './ScreenShell';
@@ -155,9 +156,9 @@ export function ProfileScreen({ onBack }) {
 
   const activityLevels = [
     { id: 'sedentary', label: 'Sedentary', desc: 'Little or no exercise, desk job' },
-    { id: 'lightly_active', label: 'Lightly active', desc: 'Light exercise 1–3 days/week' },
-    { id: 'moderately_active', label: 'Moderately active', desc: 'Moderate exercise 3–5 days/week' },
-    { id: 'very_active', label: 'Very active', desc: 'Hard exercise 6–7 days/week' },
+    { id: 'lightly_active', label: 'Lightly active', desc: 'Light exercise 1 to 3 days per week' },
+    { id: 'moderately_active', label: 'Moderately active', desc: 'Moderate exercise 3 to 5 days per week' },
+    { id: 'very_active', label: 'Very active', desc: 'Hard exercise 6 to 7 days per week' },
     { id: 'extra_active', label: 'Extra active', desc: 'Very hard exercise, physical job, or training twice/day' },
   ];
 
@@ -382,7 +383,7 @@ export function ProfileScreen({ onBack }) {
             </View>
             {localProfile?.activity_level === level.id && (
               <View style={styles.checkCircle}>
-                <Text style={styles.checkText} accessible={false}>✓</Text>
+                <MaterialIcons name="check" size={16} style={styles.checkText} accessible={false} />
               </View>
             )}
           </Pressable>

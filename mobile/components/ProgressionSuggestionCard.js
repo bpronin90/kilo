@@ -95,7 +95,7 @@ function _evidenceChips(evidence) {
   const chips = [];
   if (evidence.rep_range && evidence.rep_range.lo != null && evidence.rep_range.hi != null) {
     const sets = evidence.rep_range.sets != null ? `${evidence.rep_range.sets}×` : '';
-    chips.push(`Target ${sets}${evidence.rep_range.lo}–${evidence.rep_range.hi}`);
+    chips.push(`Target ${sets}${evidence.rep_range.lo} to ${evidence.rep_range.hi}`);
   }
   if (evidence.sessions_compared) {
     chips.push(`Compared ${evidence.sessions_compared} logged sessions`);
@@ -149,7 +149,7 @@ export function ProgressionSuggestionCard({
   const stop = (e) => { if (e && typeof e.stopPropagation === 'function') e.stopPropagation(); };
   const recommendation = _recommendationText(suggestion);
   const chips = _evidenceChips(suggestion.evidence);
-  const heuristicNote = 'Heuristic suggestion — a conditional prompt from what you logged, not a guaranteed prescription.';
+  const heuristicNote = 'Heuristic suggestion: a conditional prompt from what you logged, not a guaranteed prescription.';
 
   const a11ySummary = [
     `Progression suggestion for ${name}.`,

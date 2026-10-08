@@ -28,7 +28,7 @@ export function AboutScreen({ onBack }) {
         const fetchResult = await Updates.fetchUpdateAsync();
         if (fetchResult.isNew) {
           setDownloaded(true);
-          setCheckResult('Update downloaded — restart to apply.');
+          setCheckResult('Update downloaded, restart to apply.');
         } else {
           setCheckResult('Already up to date.');
         }
@@ -42,11 +42,11 @@ export function AboutScreen({ onBack }) {
     }
   };
 
-  const channel = currentlyRunning?.channel || '—';
+  const channel = currentlyRunning?.channel || 'N/A';
   const runtimeVersion = currentlyRunning?.runtimeVersion || pkg.version;
   const updateId = currentlyRunning?.updateId;
   const isEmbedded = currentlyRunning?.isEmbeddedLaunch !== false;
-  const updateIdLabel = isEmbedded ? 'embedded bundle' : (updateId ? updateId.slice(0, 8) + '…' : '—');
+  const updateIdLabel = isEmbedded ? 'embedded bundle' : (updateId ? updateId.slice(0, 8) + '…' : 'N/A');
 
   return (
     <ScreenShell title="About" subtitle="App information and attribution." onBack={onBack}>

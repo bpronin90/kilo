@@ -56,7 +56,7 @@ export function OwnershipPrompt({ type, canRestore, onUpload, onDownload, onStar
                   />
                   <Text style={styles.ownershipHint}>
                     This device is empty. Pull the data already in your
-                    account down onto it — nothing is uploaded.
+                    account down onto it. Nothing is uploaded.
                   </Text>
                 </>
               ) : null}

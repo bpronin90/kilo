@@ -245,7 +245,7 @@ function WeightHistoryListImpl({
                       {formatDelta(displayWeight(delta, unit))}
                     </Text>
                   ) : (
-                    <Text style={styles.rowDeltaEmpty}>—</Text>
+                    <Text style={styles.rowDeltaEmpty}>N/A</Text>
                   )}
                 </View>
                 <View style={s.col3}>
@@ -263,7 +263,7 @@ function WeightHistoryListImpl({
               accessibilityRole="button"
               accessibilityLabel="Delete weight entry"
             >
-              <Text style={styles.deleteAffordanceText} accessible={false}>✕</Text>
+              <MaterialIcons name="close" size={20} style={styles.deleteAffordanceText} accessible={false} />
             </Pressable>
           </View>
         );

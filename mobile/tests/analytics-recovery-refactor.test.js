@@ -262,7 +262,7 @@ describe('#1052 refactor — preserved states reach the screen', () => {
     // instead of a persistent line — hidden by default, revealed inline on tap.
     expect(hasText(root, 'Not a medical judgment')).toBe(false);
     act(() => { byLabel(root, 'About these numbers').props.onPress(); });
-    expect(hasText(root, 'Training numbers only. Not a medical judgment — only you end a Recovery block.')).toBe(true);
+    expect(hasText(root, 'Training numbers only. Not a medical judgment. Only you end a Recovery block.')).toBe(true);
     act(() => { byLabel(root, 'About these numbers').props.onPress(); });
     expect(hasText(root, 'Not a medical judgment')).toBe(false);
   });

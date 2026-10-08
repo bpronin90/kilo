@@ -920,7 +920,7 @@ describe('WeightScreen', () => {
         }];
         const component = setup(null, [], archived);
         expandGoalHistory(component.root);
-        const endNode = findByExactText(component.root, '—');
+        const endNode = findByExactText(component.root, 'N/A');
         expect(endNode).toBeTruthy();
         const color = getStyleProp(endNode, 'color');
         expect(color).toBe(KUA_PALETTES.hardCourt.light.onSurface);

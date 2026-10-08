@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Button, SectionTitle } from '../../components/UI';
 import { useThemedStyles } from '../../theme/ThemeContext';
 import { CONSENT_COPY, fetchActiveConsentRevision, grantConsent } from '../../storage/cloud/consent';
@@ -63,7 +64,7 @@ export function HealthDataConsent({ onGranted, onDecline, appVersion }) {
         setStatus(
           result.code === 'HEALTH_DATA_DELETION_PENDING'
             ? 'Your cloud health data is still being deleted. Try again once that finishes.'
-            : 'Cloud Sync was not enabled — your consent could not be recorded. Nothing was uploaded.',
+            : 'Cloud Sync was not enabled, your consent could not be recorded. Nothing was uploaded.',
         );
         return;
       }
@@ -103,7 +104,7 @@ export function HealthDataConsent({ onGranted, onDecline, appVersion }) {
         accessibilityLabel={CONSENT_COPY.affirmation}
       >
         <View style={[styles.checkbox, affirmed && styles.checkboxChecked]}>
-          {affirmed ? <Text style={styles.checkmark}>✓</Text> : null}
+          {affirmed ? <MaterialIcons name="check" size={16} style={styles.checkmark} accessible={false} /> : null}
         </View>
         <Text style={styles.affirmText}>{CONSENT_COPY.affirmation}</Text>
       </Pressable>

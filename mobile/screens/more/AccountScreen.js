@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { isAndroidRestoreCredentialsAvailable } from 'android-restore-credentials';
 import * as WebBrowser from 'expo-web-browser';
 import { CaptchaChallenge } from '../../components/CaptchaChallenge';
@@ -243,7 +244,8 @@ export function AccountScreen({ onBack, auth }) {
           />
           <View style={styles.dangerZone}>
             <View style={styles.dangerZoneHeading}>
-              <Text style={styles.dangerZoneHeadingText}>⚠ Danger Zone</Text>
+              <MaterialIcons name="warning" size={16} style={[styles.dangerZoneHeadingText, { fontSize: 16, marginRight: 6 }]} accessible={false} />
+              <Text style={styles.dangerZoneHeadingText}>Danger Zone</Text>
             </View>
             <AccountLifecycle auth={auth} />
           </View>
@@ -266,7 +268,7 @@ export function AccountScreen({ onBack, auth }) {
               // sends no email in the already-registered case, so the copy must
               // stay conditional rather than asserting delivery. The GitHub hint
               // covers the already-registered-via-GitHub case, same as before.
-              ? `If ${confirmationEmail} is new, we've sent a confirmation email to it — check your inbox and spam folder to finish creating your account. If you already signed up with GitHub, use Continue with GitHub instead.`
+              ? `If ${confirmationEmail} is new, we've sent a confirmation email to it. Check your inbox and spam folder to finish creating your account. If you already signed up with GitHub, use Continue with GitHub instead.`
               : `${confirmationEmail} is awaiting confirmation. Check your inbox and spam folder for the confirmation email, or resend it below.`}
           </Text>
           <CaptchaChallenge

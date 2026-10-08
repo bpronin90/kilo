@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { ScreenShell } from './ScreenShell';
 import { Button, Card, SectionTitle, useInputStyle } from './UI';
 import { useTheme, useThemedStyles, useKuaStyle } from '../theme/ThemeContext';
@@ -193,7 +194,7 @@ function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile, canPic
             {preview.mappings.map(m => {
               const checked = !offKeys.has(m.key);
               return <Pressable key={m.key} style={styles.choice} onPress={() => toggle(setOffKeys, m.key)} accessibilityRole="checkbox" accessibilityState={{ checked }} accessibilityLabel={`Rename ${m.oldName} to ${m.newName}`}>
-                <Text style={styles.choiceTitle}>{checked ? '✓ ' : ''}{m.oldName} → {m.newName}</Text>
+                <Text style={styles.choiceTitle}>{checked ? <><MaterialIcons name="check" size={16} accessible={false} />{' '}</> : null}{m.oldName} → {m.newName}</Text>
                 <Text style={styles.muted}>{m.noteCount} {m.noteCount === 1 ? 'routine' : 'routines'}</Text>
               </Pressable>;
             })}
@@ -206,7 +207,7 @@ function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile, canPic
               const checked = !offTargets.has(entry.id);
               const next = applySelectedChanges(entry, selectedKeys);
               return <Pressable key={entry.id} style={styles.choice} onPress={() => toggle(setOffTargets, entry.id)} accessibilityRole="checkbox" accessibilityState={{ checked }} accessibilityLabel={`Update Target routine ${entry.number}: ${entry.title}`}>
-                <Text style={styles.choiceTitle}>{checked ? '✓ ' : ''}Target routine {entry.number}: {entry.title}</Text>
+                <Text style={styles.choiceTitle}>{checked ? <><MaterialIcons name="check" size={16} accessible={false} />{' '}</> : null}Target routine {entry.number}: {entry.title}</Text>
                 <Text selectable style={styles.prompt} testID={`normalization-preview-${entry.number}`}>{entry.changes.length === 0 ? 'No proposed change. This routine is returned unchanged.' : (next ?? 'No selected changes.')}</Text>
               </Pressable>;
             })}
@@ -215,7 +216,7 @@ function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile, canPic
         {invalid.length || preview.unknown.length ? <>
           <SectionTitle>Not applied</SectionTitle>
           <Card>
-            {invalid.map(entry => <Text key={entry.id} style={styles.error}>Target routine {entry.number}: {entry.title} — {entry.problems.join(' ')}</Text>)}
+            {invalid.map(entry => <Text key={entry.id} style={styles.error}>Target routine {entry.number}: {entry.title}: {entry.problems.join(' ')}</Text>)}
             {preview.unknown.map(number => <Text key={`u${number}`} style={styles.error}>Target routine {number} was not in the prompt and was ignored.</Text>)}
           </Card>
         </> : null}
@@ -397,7 +398,7 @@ export function RoutinePromptToolsScreen({
                 {notes.map((note, index) => {
                   const selected = targetIds.includes(note.id);
                   return <Pressable key={note.id || `${index}`} onPress={() => { toggleTarget(note.id); setNotice(''); }} style={[styles.choice, selected && { borderColor: kua ? kua.primary : colors.accent }]} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} accessibilityLabel={`Normalize ${titleFor(note, index, notes)}`}>
-                    <Text style={styles.choiceTitle}>{selected ? '✓ ' : ''}{titleFor(note, index, notes)}</Text>
+                    <Text style={styles.choiceTitle}>{selected ? <><MaterialIcons name="check" size={16} accessible={false} />{' '}</> : null}{titleFor(note, index, notes)}</Text>
                   </Pressable>;
                 })}
               </View>

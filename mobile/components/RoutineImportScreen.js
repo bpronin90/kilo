@@ -47,7 +47,7 @@ const IMPORT_CREATE_ATTEMPT_KEY = 'import';
 // the same routine instead of saving a second copy of it. Editing the title or
 // the pasted text first is fine; it is still the same attempt.
 const IMPORT_FAILED_MESSAGE =
-  'Something went wrong while saving. The routine may already be on this device — '
+  'Something went wrong while saving. The routine may already be on this device, '
   + 'press Create new routine again to finish this import. Retrying will not '
   + 'create a duplicate.';
 
@@ -62,13 +62,13 @@ const IMPORT_FAILED_MESSAGE =
 // try again, or finish the unfinished import — which is still exactly what
 // Create does while its attempt is pending.
 const IMPORT_LEAVE_FAILED_MESSAGE =
-  'Could not release the unfinished import. Nothing changed — try again, or '
+  'Could not release the unfinished import. Nothing changed. Try again, or '
   + 'press Create new routine to finish it.';
 
 const IMPORT_UNFINISHED_MESSAGE =
   'An earlier import was saved on this device but did not finish syncing. '
   + 'Press Create new routine to finish it. To import something else instead, '
-  + 'leave it as it is — you will find it under Log › Routines.';
+  + 'leave it as it is. You will find it under Log › Routines.';
 
 export function RoutineImportScreen({ onBack, onCreateRoutine, onImportNormalization }) {
   const styles = useThemedStyles(createStyles);

@@ -441,7 +441,7 @@ export function useLogCurrentRoutineEditor({
   const handleSkipWeek = async () => {
     if (!currentId) return;
     if (saveCurrentInFlightRef.current) {
-      setSkipWeekStatus('Finishing the previous save — try again');
+      setSkipWeekStatus('Finishing the previous save. Try again.');
       return;
     }
     const newActiveText = applyWeekSkipToText(activeEditText, activeWeekParsed.sections);
@@ -467,7 +467,7 @@ export function useLogCurrentRoutineEditor({
       // actually persisted and 'try again' starts from the same state.
       setWorkoutNoteText(prevFullText);
       workoutNoteTextRef.current = prevFullText;
-      setSkipWeekStatus('Could not save skip — try again');
+      setSkipWeekStatus('Could not save skip. Try again.');
       return;
     }
     // 'Skip week' is the user declaring what happened. Explicit intent outranks

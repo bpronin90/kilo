@@ -18,6 +18,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useTheme } from '../theme/ThemeContext';
 import { createInputStyle } from './UI';
 import { GEOMETRY, SPACING } from '../theme/spacing';
@@ -112,7 +113,7 @@ export function RecoveryBlockWeekModal({
               accessibilityRole="button"
               accessibilityLabel="Close"
             >
-              <Text style={styles.closeBtnText}>✕</Text>
+              <MaterialIcons name="close" size={20} style={styles.closeBtnText} accessible={false} />
             </Pressable>
           </View>
 
