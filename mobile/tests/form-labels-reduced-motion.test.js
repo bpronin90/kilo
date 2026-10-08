@@ -1,10 +1,8 @@
 import React from 'react';
-import { AccessibilityInfo, Modal, Text, TextInput } from 'react-native';
+import { AccessibilityInfo, Modal, StyleSheet, Text, TextInput } from 'react-native';
 import renderer, { act } from 'react-test-renderer';
-import { ThemeProvider } from '../theme/ThemeContext';
-import { useReducedMotion } from '../lib/useReducedMotion';
-import { WorkoutSyntaxModal } from '../components/WorkoutSyntaxModal';
 import { WeightHistoryFilters } from '../components/weight/WeightHistoryFilters';
+import { ThemeProvider } from '../theme/ThemeContext';
 import { SetNewPasswordScreen } from '../screens/more/SetNewPasswordScreen';
 
 jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
@@ -21,13 +19,35 @@ function textsOf(root) {
 let listeners;
 let removeSpy;
 let lookup;
+let throwOnSubscribe;
+
+// The hook caches the OS preference at module load, so each scenario installs
+// its AccessibilityInfo mocks first and then loads a fresh copy of the module.
+// React and react-native stay shared with the renderer; everything else is fresh.
+function loadFresh(...paths) {
+  const sharedReact = require('react');
+  const sharedRN = require('react-native');
+  let mods;
+  jest.isolateModules(() => {
+    jest.doMock('react', () => sharedReact);
+    jest.doMock('react-native', () => sharedRN);
+    mods = paths.map((path) => require(path));
+  });
+  return mods;
+}
+
+function loadHook() {
+  return loadFresh('../lib/useReducedMotion')[0].useReducedMotion;
+}
 
 beforeEach(() => {
   listeners = [];
   removeSpy = jest.fn();
   lookup = jest.fn(() => Promise.resolve(false));
+  throwOnSubscribe = false;
   jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockImplementation(() => lookup());
   jest.spyOn(AccessibilityInfo, 'addEventListener').mockImplementation((name, cb) => {
+    if (throwOnSubscribe) throw new Error('boom');
     listeners.push({ name, cb });
     return { remove: removeSpy };
   });
@@ -35,36 +55,45 @@ beforeEach(() => {
 
 afterEach(() => jest.restoreAllMocks());
 
-function Probe({ onValue }) {
-  onValue(useReducedMotion());
-  return null;
-}
-
-function mountProbe() {
+function mountProbe(useHook) {
   const seen = [];
+  function Probe() { seen.push(useHook()); return null; }
   let tree;
-  act(() => { tree = renderer.create(<Probe onValue={(v) => seen.push(v)} />); });
+  act(() => { tree = renderer.create(<Probe />); });
   return { seen, tree, last: () => seen[seen.length - 1] };
 }
 
 describe('useReducedMotion', () => {
-  test('defaults to normal motion, then adopts the initial OS preference', async () => {
+  test('defaults to normal motion before the lookup resolves, then adopts the OS preference', async () => {
     lookup.mockResolvedValue(true);
-    const p = mountProbe();
+    const hook = loadHook();
+    const p = mountProbe(hook);
     expect(p.seen[0]).toBe(false);
     await flush();
     expect(p.last()).toBe(true);
   });
 
-  test('stays false when the OS preference is disabled', async () => {
-    const p = mountProbe();
+  test('a cached true value makes the very first render reduced motion', async () => {
+    lookup.mockResolvedValue(true);
+    const hook = loadHook();
     await flush();
+    const p = mountProbe(hook);
+    expect(p.seen[0]).toBe(true);
+  });
+
+  test('stays false when the OS preference is disabled', async () => {
+    const hook = loadHook();
+    await flush();
+    const p = mountProbe(hook);
+    expect(p.seen[0]).toBe(false);
     expect(p.last()).toBe(false);
   });
 
   test('follows live reduceMotionChanged updates in both directions', async () => {
-    const p = mountProbe();
+    const hook = loadHook();
     await flush();
+    const p = mountProbe(hook);
+    expect(listeners).toHaveLength(1);
     const sub = listeners.find((l) => l.name === 'reduceMotionChanged');
     act(() => sub.cb(true));
     expect(p.last()).toBe(true);
@@ -74,38 +103,43 @@ describe('useReducedMotion', () => {
 
   test('a rejected lookup falls back to normal motion without an unhandled rejection', async () => {
     lookup.mockRejectedValue(new Error('unavailable'));
-    const p = mountProbe();
+    const hook = loadHook();
     await flush();
+    const p = mountProbe(hook);
+    expect(p.seen[0]).toBe(false);
     expect(p.last()).toBe(false);
   });
 
-  test('a synchronously throwing lookup or listener also falls back safely', async () => {
+  test('a synchronously throwing lookup or subscription also falls back safely', async () => {
     lookup.mockImplementation(() => { throw new Error('boom'); });
-    AccessibilityInfo.addEventListener.mockImplementation(() => { throw new Error('boom'); });
-    const p = mountProbe();
+    throwOnSubscribe = true;
+    const hook = loadHook();
     await flush();
+    const p = mountProbe(hook);
     expect(p.last()).toBe(false);
     expect(() => act(() => p.tree.unmount())).not.toThrow();
   });
 
-  test('unmount removes the listener and ignores a late lookup result', async () => {
+  test('after unmount a later change or late lookup result no longer reaches the component', async () => {
     let resolve;
     lookup.mockImplementation(() => new Promise((r) => { resolve = r; }));
-    const p = mountProbe();
+    const hook = loadHook();
+    const p = mountProbe(hook);
     const count = p.seen.length;
     act(() => p.tree.unmount());
-    expect(removeSpy).toHaveBeenCalledTimes(1);
     await act(async () => { resolve(true); await Promise.resolve(); });
+    act(() => listeners[0].cb(false));
     expect(p.seen.length).toBe(count);
   });
 });
 
 describe('fade modals honor reduced motion', () => {
   function mount() {
+    const [theme, modal] = loadFresh('../theme/ThemeContext', '../components/WorkoutSyntaxModal');
     let tree;
     act(() => {
       tree = renderer.create(
-        <ThemeProvider><WorkoutSyntaxModal visible onClose={() => {}} /></ThemeProvider>
+        <theme.ThemeProvider><modal.WorkoutSyntaxModal visible onClose={() => {}} /></theme.ThemeProvider>
       );
     });
     return tree;
@@ -119,6 +153,9 @@ describe('fade modals honor reduced motion', () => {
 
   test('uses no animation when reduced motion is on, and keeps the content visible', async () => {
     lookup.mockResolvedValue(true);
+    const warm = loadFresh('../lib/useReducedMotion');
+    await flush();
+    expect(warm).toBeTruthy();
     const tree = mount();
     await flush();
     expect(tree.root.findByType(Modal).props.animationType).toBe('none');
@@ -163,6 +200,14 @@ describe('persistent visible field labels', () => {
     const populated = tree.root.findAllByType(TextInput);
     expect(populated[0].props.accessibilityLabel).toBe('New Password');
     expect(populated[1].props.accessibilityLabel).toBe('Confirm New Password');
+  });
+
+  test('field labels use the bold Space Grotesk face without a literal fontWeight', () => {
+    const tree = renderPassword();
+    const label = tree.root.findAllByType(Text).find((t) => [].concat(t.props.children).join('') === 'New password');
+    const style = StyleSheet.flatten(label.props.style);
+    expect(style.fontFamily).toBeTruthy();
+    expect(style.fontWeight).toBeUndefined();
   });
 
   test('set-new-password shows no field labels without a recovery session', () => {
