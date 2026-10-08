@@ -604,7 +604,7 @@ describe('CloudSyncRecovery: manual upload respects local-data ownership (#450)'
     });
     await flush();
     expect(tree.root.findByProps({ accessibilityLabel: 'Cloud sync summary' }).props.children)
-      .toBe('Server acknowledged, up to date');
+      .toBe('Server acknowledged. Up to date');
 
     await enqueueDirty(SYNC_TABLES.WEIGHT_ENTRIES, { id: 'queued-save' });
     await flush();
@@ -616,7 +616,7 @@ describe('CloudSyncRecovery: manual upload respects local-data ownership (#450)'
     });
     await flush();
     expect(tree.root.findByProps({ accessibilityLabel: 'Cloud sync summary' }).props.children)
-      .toBe('Sync failed, retry needed');
+      .toBe('Sync failed. Retry needed');
   });
 
   test('refreshes diff-tracked intent when the mounted panel becomes visible again', async () => {
@@ -628,7 +628,7 @@ describe('CloudSyncRecovery: manual upload respects local-data ownership (#450)'
     });
     await flush();
     expect(tree.root.findByProps({ accessibilityLabel: 'Cloud sync summary' }).props.children)
-      .toBe('Server acknowledged, up to date');
+      .toBe('Server acknowledged. Up to date');
 
     await saveWeightGoal({ target_weight: 170, start_weight: 180 });
     expect(await getDirtyRecords(SYNC_TABLES.WEIGHT_GOAL)).toEqual([]);

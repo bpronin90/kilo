@@ -28,7 +28,7 @@ export function AboutScreen({ onBack }) {
         const fetchResult = await Updates.fetchUpdateAsync();
         if (fetchResult.isNew) {
           setDownloaded(true);
-          setCheckResult('Update downloaded, restart to apply.');
+          setCheckResult('Update downloaded. Restart to apply.');
         } else {
           setCheckResult('Already up to date.');
         }

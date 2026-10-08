@@ -153,12 +153,12 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
         session_checkins: { ...prevCheckins, [checkInData.sessionIndex]: record },
       });
       if (result === false) {
-        setSaveError('Could not save, please try again.');
+        setSaveError('Could not save. Please try again.');
         return;
       }
       onClose();
     } catch (e) {
-      setSaveError('Could not save, please try again.');
+      setSaveError('Could not save. Please try again.');
     } finally {
       setIsSaving(false);
     }

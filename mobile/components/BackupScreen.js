@@ -306,7 +306,7 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
           message:
             found.reason === 'none-found'
               ? 'No Kilo backup found in that folder.'
-              : 'Import cancelled, no folder chosen.',
+              : 'Import cancelled. No folder chosen.',
         });
         return;
       }

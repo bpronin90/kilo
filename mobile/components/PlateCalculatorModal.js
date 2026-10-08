@@ -192,7 +192,7 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
 
               {load.valid && load.belowBar && (
                 <Text style={styles.message}>
-                  Below the {formatPlateWeight(load.barWeight)} {unit} bar, no plates needed.
+                  Below the {formatPlateWeight(load.barWeight)} {unit} bar. No plates needed.
                 </Text>
               )}
 
@@ -204,7 +204,7 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
                   </View>
 
                   {load.plates.length === 0 && load.remainder === 0 && (
-                    <Text style={styles.message}>Empty bar, no plates.</Text>
+                    <Text style={styles.message}>Empty bar. No plates.</Text>
                   )}
 
                   {load.plates.length > 0 && (

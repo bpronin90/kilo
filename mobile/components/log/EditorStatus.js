@@ -62,7 +62,7 @@ export function RoutineAdoptionPrompt({ prompt, error, busy, hasCurrentRoutine, 
           title="Not now"
           style={styles.adoptionSecondary}
           textStyle={styles.adoptionSecondaryText}
-          accessibilityLabel={`Not now, keep ${title} saved without making it current`}
+          accessibilityLabel={`Not now. Keep ${title} saved without making it current`}
         />
       </View>
     </View>

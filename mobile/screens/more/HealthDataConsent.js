@@ -64,7 +64,7 @@ export function HealthDataConsent({ onGranted, onDecline, appVersion }) {
         setStatus(
           result.code === 'HEALTH_DATA_DELETION_PENDING'
             ? 'Your cloud health data is still being deleted. Try again once that finishes.'
-            : 'Cloud Sync was not enabled, your consent could not be recorded. Nothing was uploaded.',
+            : 'Cloud Sync was not enabled. Your consent could not be recorded. Nothing was uploaded.',
         );
         return;
       }

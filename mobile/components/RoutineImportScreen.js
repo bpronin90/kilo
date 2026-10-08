@@ -47,8 +47,8 @@ const IMPORT_CREATE_ATTEMPT_KEY = 'import';
 // the same routine instead of saving a second copy of it. Editing the title or
 // the pasted text first is fine; it is still the same attempt.
 const IMPORT_FAILED_MESSAGE =
-  'Something went wrong while saving. The routine may already be on this device, '
-  + 'press Create new routine again to finish this import. Retrying will not '
+  'Something went wrong while saving. The routine may already be on this device. '
+  + 'Press Create new routine again to finish this import. Retrying will not '
   + 'create a duplicate.';
 
 // The unfinished attempt has to be VISIBLE, and ending it has to be the user's

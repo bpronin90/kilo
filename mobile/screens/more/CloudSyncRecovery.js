@@ -89,13 +89,13 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
 
   const cloudStatusLabel = () => {
     if (sync.status === SYNC_STATUS.RUNNING) return 'Syncing with server';
-    if (sync.status === SYNC_STATUS.FAILED) return 'Sync failed, retry needed';
+    if (sync.status === SYNC_STATUS.FAILED) return 'Sync failed. Retry needed';
     if (pendingIntent.hasPending) return 'Changes queued for cloud sync';
     if (sync.status === SYNC_STATUS.COMPLETE && pendingIntent.known) {
-      return 'Server acknowledged, up to date';
+      return 'Server acknowledged. Up to date';
     }
     if (bootstrap.status === SYNC_STATUS.COMPLETE) {
-      return 'Recovery upload complete, sync still needs to run';
+      return 'Recovery upload complete. Sync still needs to run';
     }
     return 'Saved on this device';
   };
