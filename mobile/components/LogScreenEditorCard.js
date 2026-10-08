@@ -287,7 +287,7 @@ export function LogScreenEditorCard({
                     <Text style={styles.inputLabel}>Session #</Text>
                     <TextInput
                       keyboardAppearance={colors.scheme}
-                      style={styles.input}
+                      style={[styles.input, styles.ordinalEditInput]}
                       value={deloadEditOrdinal}
                       onChangeText={v => setDeloadEditOrdinal(v.replace(/[^0-9]/g, ''))}
                       keyboardType="number-pad"

@@ -421,7 +421,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.primary : colors.accentText,
   },
   otherNoteSub: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
   },

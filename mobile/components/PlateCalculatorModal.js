@@ -211,7 +211,7 @@ export function PlateCalculatorModal({ visible, weightLb, authoredKg = null, onC
                       <Text style={styles.plateBlockLabel}>Per side</Text>
                       {load.plates.map(p => (
                         <View key={p.size} style={styles.row}>
-                          <Text style={styles.rowLabel}>{formatPlateWeight(p.size)} {unit}</Text>
+                          <Text style={styles.rowLabelMetric}>{formatPlateWeight(p.size)} {unit}</Text>
                           <Text style={styles.rowValue}>× {p.count}</Text>
                         </View>
                       ))}
@@ -382,6 +382,10 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
+  rowLabelMetric: {
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['body-md'].fontSize, fontWeight: '600' }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+  },
   rowValue: {
     ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
@@ -427,7 +431,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     minWidth: 64,
     textAlign: 'right',
     color: kua ? kua.onSurface : colors.text,
-    fontSize: TYPOGRAPHY['body-md'].fontSize,
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['body-md'].fontSize }),
   },
   editActionsRow: {
     flexDirection: 'row',

@@ -352,6 +352,9 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   dateInputWebWrap: {
     marginBottom: 12,
   },
+  ordinalEditInput: {
+    ...(kua ? TYPOGRAPHY['label-lg'] : {}),
+  },
   dateInputText: {
     ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize }),
     color: kua ? kua.onSurface : colors.text,

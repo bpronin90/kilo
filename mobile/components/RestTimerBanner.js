@@ -277,8 +277,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     borderColor: kua.primaryContainerBorder,
   },
   choiceText: {
-    fontSize: TYPOGRAPHY['body-sm'].fontSize,
-    fontWeight: '700',
+    ...TYPOGRAPHY['label-md'],
     color: kua.primaryOnContainer,
   },
   // App-shell running / completion pill. `pillOuter` is a full-width flow item
