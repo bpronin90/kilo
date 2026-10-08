@@ -41,6 +41,8 @@ import {
   ROUTINE_COPY_FAILURE_MESSAGE,
 } from '../lib/interoperability/routineShare';
 import { RoutineShareModal } from './RoutineShareCard';
+import { TYPOGRAPHY } from '../theme/typography';
+import { GEOMETRY } from '../theme/spacing';
 
 // A routine row's date has exactly one meaning: the day the routine was created
 // (#775). It used to read `updated_at`, which is the sync conflict cursor
@@ -366,12 +368,12 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 6,
     minHeight: 44,
     paddingHorizontal: 12,
-    borderRadius: 10,
+    borderRadius: GEOMETRY['radius-lg'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   newRoutineButtonText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.primary : colors.accentText,
   },
@@ -397,19 +399,19 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     minWidth: 96,
   },
   otherNoteTitle: {
-    fontSize: 17,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
   otherNoteSub: {
-    fontSize: 12,
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
   },
   inlineSwitchButton: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 8,
+    borderRadius: GEOMETRY['radius-lg'],
     backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
@@ -418,7 +420,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     flexShrink: 1,
   },
   inlineSwitchButtonText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },
@@ -454,7 +456,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   // disclosureToggleText, skipWeekText). Not an accent — it is a passing
   // acknowledgement, not a call to action.
   copyStatusText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 4,
   },

@@ -8,6 +8,8 @@ import { localDate, DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
 import { MODAL_SUPPORTED_ORIENTATIONS, dialogWidthStyle } from './adaptiveLayout';
 import { withAlpha } from '../theme/styleHelpers';
+import { TYPOGRAPHY } from '../theme/typography';
+import { GEOMETRY } from '../theme/spacing';
 
 export function LogDeloadSection({
   deloadNote,
@@ -379,7 +381,7 @@ export function LogDeloadSection({
 const createStyles = (colors, kua = null) => StyleSheet.create({
   errorText: {
     color: kua ? kua.errorText : colors.error,
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '600',
   },
   errorCard: {
@@ -409,22 +411,22 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     flex: 1,
   },
   otherNoteTitle: {
-    fontSize: 20,
+    fontSize: TYPOGRAPHY['headline-sm'].fontSize,
     fontWeight: '800',
     color: kua ? kua.onSurface : colors.text,
   },
   currentNoteTitle: {
-    fontSize: 24,
+    fontSize: TYPOGRAPHY['headline-md'].fontSize,
     fontWeight: '800',
     color: kua ? kua.primary : colors.accentText,
   },
   otherNoteSub: {
-    fontSize: 12,
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
   },
   editHint: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginBottom: 8,
   },
@@ -449,7 +451,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 16,
   },
   deloadEmptyText: {
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
   },
@@ -462,7 +464,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     overflow: 'hidden',
   },
   pastDeloadContent: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurface : colors.text,
     fontFamily: 'monospace',
     paddingHorizontal: 24,
@@ -500,31 +502,30 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   ordinalSheet: {
     ...dialogWidthStyle,
     backgroundColor: kua ? kua.surfaceCard : colors.card,
-    borderRadius: 20,
+    borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     padding: 24,
     gap: 12,
   },
   ordinalTitle: {
-    fontSize: 17,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
   ordinalSubtitle: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 18,
   },
   ordinalInput: {
     backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontSize: 20,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
     textAlign: 'center',
   },
@@ -536,26 +537,26 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   ordinalCancel: {
     flex: 1,
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     alignItems: 'center',
     backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   ordinalCancelText: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '600',
     color: kua ? kua.primaryOnContainer : colors.textMuted,
   },
   ordinalConfirm: {
     flex: 1,
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     alignItems: 'center',
     backgroundColor: kua ? kua.primary : colors.accent,
   },
   ordinalConfirmText: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onPrimary : colors.onAccent,
   },
