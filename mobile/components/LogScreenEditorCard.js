@@ -53,10 +53,17 @@ function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
       borderStyle: 'solid',
       borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
       padding: 14,
-      fontSize: TYPOGRAPHY['body-lg'].fontSize,
+      // Kinetic: mirror the native dateInputText (label-lg mono role). fontWeight is
+      // omitted on purpose: the family is a weight-specific face and a weight on
+      // top would synthesize bold on web.
+      fontSize: TYPOGRAPHY[kua ? 'label-lg' : 'body-lg'].fontSize,
+      ...(kua ? {
+        fontFamily: `${TYPOGRAPHY['label-lg'].fontFamily}, Courier New, Courier, monospace`,
+        letterSpacing: TYPOGRAPHY['label-lg'].letterSpacing,
+        fontVariantNumeric: 'tabular-nums',
+      } : { fontFamily: 'inherit' }),
       colorScheme: colors.scheme,
       color: kua ? kua.onSurface : colors.text,
-      fontFamily: 'inherit',
       width: '100%',
       boxSizing: 'border-box',
     },
