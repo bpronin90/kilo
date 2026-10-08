@@ -14,12 +14,6 @@ const monoBold = (typo) => {
   return { fontFamily, fontWeight };
 };
 
-const jbmFont = (typo, role, fallback) => {
-  if (!typo) return { fontFamily: fallback };
-  const { fontFamily, fontWeight } = typo[role];
-  return fontWeight !== undefined ? { fontFamily, fontWeight } : { fontFamily };
-};
-
 // ── Shared history-panel visual system (#411) ─────────────────────────────────
 // Goal History (GoalHistoryPanel.js) and Weight History (components/WeightHistoryList.js)
 // render as ONE uniform system. Every value below is kept numerically identical to
@@ -99,8 +93,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     paddingHorizontal: 14,
     paddingVertical: 14,
     minHeight: 48,
-    fontSize: TYPOGRAPHY['label-lg'].fontSize,
-    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
+    ...monoRole(typo, 'label-lg'),
     color: kua ? kua.onSurface : colors.text,
     justifyContent: 'center',
     textAlignVertical: 'center',
@@ -294,8 +287,7 @@ export const createHistoryPanel = (colors, kua = null, typo = null) => StyleShee
     alignItems: 'center',
   },
   value: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
-    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
+    ...monoRole(typo, 'label-md'),
     color: kua ? kua.onSurface : colors.text,
   },
   dateValue: {

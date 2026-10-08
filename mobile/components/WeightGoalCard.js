@@ -310,12 +310,6 @@ export function WeightGoalCard({
 // Full JetBrains Mono role (family, tracking, tabular-nums); weight is encoded in the family.
 const monoRole = (typo, role) => (typo || TYPOGRAPHY_FALLBACK)[role];
 
-const jbmFont = (typo, role, fallback) => {
-  if (!typo) return { fontFamily: fallback };
-  const { fontFamily, fontWeight } = typo[role];
-  return fontWeight !== undefined ? { fontFamily, fontWeight } : { fontFamily };
-};
-
 export const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
   inputLabel: {
     fontSize: TYPOGRAPHY['body-sm'].fontSize,
@@ -333,12 +327,11 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   // Matches the Weight entry panel's numeric field (17pt JetBrains Mono).
   numericInput: {
     ...createInputStyle(colors, kua),
-    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
+    ...monoRole(typo, 'label-lg'),
     borderRadius: GEOMETRY['radius-2xl'],
     paddingHorizontal: 14,
     paddingVertical: 14,
     minHeight: 48,
-    fontSize: TYPOGRAPHY['label-lg'].fontSize,
     justifyContent: 'center',
   },
   goalCard: {
@@ -449,13 +442,11 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     gap: 1,
   },
   goalDisplayValue: {
-    ...jbmFont(typo, 'metric-display', 'JetBrainsMono-Bold'),
-    fontSize: TYPOGRAPHY['label-lg'].fontSize,
+    ...monoRole(typo, 'label-lg'),
     color: kua ? kua.primary : colors.accentText,
   },
   goalDisplayDateValue: {
-    ...jbmFont(typo, 'metric-display', 'JetBrainsMono-Bold'),
-    fontSize: TYPOGRAPHY['label-lg'].fontSize,
+    ...monoRole(typo, 'label-lg'),
     color: kua ? kua.onSurface : colors.text,
   },
   goalDisplayLabel: {
@@ -471,8 +462,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     gap: 6,
   },
   goalProgressValue: {
-    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
-    fontSize: TYPOGRAPHY['label-sm'].fontSize,
+    ...monoRole(typo, 'label-sm'),
     color: kua ? kua.primary : colors.accentText,
   },
   goalProgressLabel: {
@@ -516,13 +506,11 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     letterSpacing: 0.5,
   },
   derivedValue: {
-    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
-    fontSize: TYPOGRAPHY['label-sm'].fontSize,
+    ...monoRole(typo, 'label-sm'),
     color: kua ? kua.onSurface : colors.text,
   },
   derivedValueNeutral: {
-    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
-    fontSize: TYPOGRAPHY['label-sm'].fontSize,
+    ...monoRole(typo, 'label-sm'),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     opacity: 0.5,
   },

@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
-import { useKuaTypography, TYPOGRAPHY } from '../theme/typography';
+import { useKuaTypography, TYPOGRAPHY, TYPOGRAPHY_FALLBACK } from '../theme/typography';
 import { WEIGHT_TONE, weightTrendTone } from '../lib/data/derivedAnalytics';
 
 // The col3 color is the shared goal-aware tone (#1242): pace anomalies keep
@@ -55,11 +55,8 @@ export function TrendSection({ title, col1, col2, col3, isLast, direction, paceL
   );
 }
 
-const jbmFont = (typo, role, fallback) => {
-  if (!typo) return { fontFamily: fallback };
-  const { fontFamily, fontWeight } = typo[role];
-  return fontWeight !== undefined ? { fontFamily, fontWeight } : { fontFamily };
-};
+// Full JetBrains Mono role (family, tracking, tabular-nums, size); weight is encoded in the family.
+const monoRole = (typo, role) => (typo || TYPOGRAPHY_FALLBACK)[role];
 
 const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
   trendSection: {
@@ -94,16 +91,14 @@ const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
     textAlign: 'right',
   },
   trendValue: {
-    ...jbmFont(typo, 'metric-display', 'JetBrainsMono-Bold'),
-    fontSize: TYPOGRAPHY['label-lg'].fontSize,
+    ...monoRole(typo, 'label-lg'),
     color: kua ? kua.onSurface : colors.text,
   },
   // Secondary caption under the pace value (e.g. "over 5 days"). Its own line so
   // the elapsed span stays readable in the narrow trend column instead of being
   // truncated off the end of the value string.
   trendCaption: {
-    ...jbmFont(typo, 'label-md', 'JetBrainsMono-Medium'),
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
+    ...monoRole(typo, 'label-md'),
     marginTop: 2,
   },
   trendLabel: {

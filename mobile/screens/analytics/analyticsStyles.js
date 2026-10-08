@@ -143,7 +143,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   signalValue: {
     ...(kua
       ? TYPOGRAPHY['label-lg']
-      : { fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }), fontWeight: '700', fontSize: TYPOGRAPHY['body-md'].fontSize }),
+      : { fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }), fontWeight: '700', fontSize: TYPOGRAPHY['label-lg'].fontSize }),
     color: kua ? kua.onSurface : colors.text,
   },
   unitSuffix: {

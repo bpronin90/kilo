@@ -670,7 +670,7 @@ describe('WeightScreen', () => {
         const valueNode = findByExactText(component.root, '175 lb');
         expect(valueNode).toBeTruthy();
         expect(getStyleProp(valueNode, 'fontSize')).toBe(12);
-        expect(getStyleProp(valueNode, 'fontFamily')).toBe('JetBrainsMono-SemiBold');
+        expect(getStyleProp(valueNode, 'fontFamily')).toBe('JetBrainsMono-Medium');
       });
 
       // #411 unifies the date typography with Weight History (15/600 muted) so
@@ -975,7 +975,7 @@ describe('WeightScreen', () => {
         });
         expect(weightNode).toBeTruthy();
         expect(getStyleProp(weightNode, 'fontSize')).toBe(12);
-        expect(getStyleProp(weightNode, 'fontFamily')).toBe('JetBrainsMono-SemiBold');
+        expect(getStyleProp(weightNode, 'fontFamily')).toBe('JetBrainsMono-Medium');
       });
 
       // #409: collapsed Weight History summary renders the latest weight in bold
@@ -1150,7 +1150,7 @@ describe('WeightScreen', () => {
       expect(getStyleProp(goalValue, 'fontSize')).toBe(getStyleProp(weightValue, 'fontSize'));
       expect(getStyleProp(goalValue, 'fontFamily')).toBe(getStyleProp(weightValue, 'fontFamily'));
       expect(getStyleProp(goalValue, 'fontSize')).toBe(12);
-      expect(getStyleProp(goalValue, 'fontFamily')).toBe('JetBrainsMono-SemiBold');
+      expect(getStyleProp(goalValue, 'fontFamily')).toBe('JetBrainsMono-Medium');
     });
 
     test('date cells share identical typography across both panels', () => {

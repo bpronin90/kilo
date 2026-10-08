@@ -84,10 +84,10 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurface : colors.text,
   },
   crossDayChipValue: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
-    fontWeight: '700',
+    ...(kua
+      ? TYPOGRAPHY['label-md']
+      : { fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }), fontWeight: '700', fontSize: TYPOGRAPHY['label-md'].fontSize }),
     color: kua ? kua.onSurface : colors.text,
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
   },
   crossDayUnit: {
     ...(kua ? TYPOGRAPHY['label-sm'] : { fontSize: TYPOGRAPHY['label-sm'].fontSize }),
