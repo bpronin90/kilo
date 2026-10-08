@@ -16,6 +16,7 @@ import { LegalLinks } from './LegalLinks';
 import { SetNewPasswordScreen } from './SetNewPasswordScreen';
 import { withAlpha } from '../../theme/styleHelpers';
 import { TYPOGRAPHY } from '../../theme/typography';
+import { FieldLabel } from '../../components/FieldLabel';
 
 // Minimal account surface to exercise sign in / sign out / session restore /
 // password reset against the auth/session hook. This is intentionally narrow:
@@ -314,6 +315,7 @@ export function AccountScreen({ onBack, auth }) {
             on another device. Signing in by itself does not change or erase your
             local data.
           </Text>
+          <FieldLabel>Email</FieldLabel>
           <TextInput
             keyboardAppearance={colors.scheme}
             style={[inputStyle, styles.kuaInput, kua && emailFocused ? styles.kuaInputFocused : null]}
@@ -327,6 +329,7 @@ export function AccountScreen({ onBack, auth }) {
             onBlur={() => setEmailFocused(false)}
             accessibilityLabel="Email"
           />
+          <FieldLabel>Password</FieldLabel>
           <TextInput
             keyboardAppearance={colors.scheme}
             style={[inputStyle, styles.kuaInput, kua && passwordFocused ? styles.kuaInputFocused : null]}

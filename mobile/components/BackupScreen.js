@@ -10,6 +10,7 @@ import { CloudSyncRecovery } from '../screens/more/CloudSyncRecovery';
 import { loadWorkoutNotes, loadWeightEntriesRaw } from '../storage/entries';
 import { exportWorkoutsCsv, exportWeightCsv } from '../lib/interoperability/kiloCsv';
 import { createStyles } from './backup/backupStyles';
+import { useReducedMotion } from '../lib/useReducedMotion';
 import { writeExportFile, writeCsvExportFile, readNewestBackupFile } from './backup/BackupActions';
 
 // The one section of Data & Backup a typed navigation intent can land on
@@ -19,6 +20,7 @@ const CLOUD_SYNC_ANCHOR = 'cloud-sync';
 
 export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, navAnchor = null, navAnchorKey = 0 }) {
   const { colors, kuaPalette: kua } = useTheme();
+  const reduceMotion = useReducedMotion();
   const typography = useKuaTypography();
   const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
   // Content-card treatment for the plain (non-tone) cards in KUA mode.
@@ -47,7 +49,7 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
 
   function scrollToCloudSync(y) {
     pendingAnchorRef.current = null;
-    scrollRef.current?.scrollTo({ y, animated: true });
+    scrollRef.current?.scrollTo({ y, animated: !reduceMotion });
     // Announced, never focused. The user may already be part-way through
     // something on this screen — a paste in the Import field, a screen-reader
     // cursor resting on a control — and moving accessibility focus would take
@@ -464,7 +466,7 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
           <View onLayout={handleCloudSyncLayout}>
             <CloudSyncRecovery
               user={auth.user}
-              onConsentDismiss={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+              onConsentDismiss={() => scrollRef.current?.scrollTo({ y: 0, animated: !reduceMotion })}
             />
           </View>
         </>

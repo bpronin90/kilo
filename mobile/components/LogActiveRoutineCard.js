@@ -45,6 +45,7 @@ import { MODAL_SUPPORTED_ORIENTATIONS } from './adaptiveLayout';
 import { ProgressionSuggestionCard, MutedProgressionRow } from './ProgressionSuggestionCard';
 import { TYPOGRAPHY } from '../theme/typography';
 import { GEOMETRY } from '../theme/spacing';
+import { useReducedMotion } from '../lib/useReducedMotion';
 
 export function LogActiveRoutineCard({
   workoutNoteTitle,
@@ -107,6 +108,7 @@ export function LogActiveRoutineCard({
   // card rendered.
   onApplyProgression,
 }) {
+  const reduceMotion = useReducedMotion();
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(kua, colors), [kua, colors]);
   const [imageShare, setImageShare] = useState(null);
@@ -199,7 +201,7 @@ export function LogActiveRoutineCard({
         visible={menuOpen}
         transparent
         supportedOrientations={MODAL_SUPPORTED_ORIENTATIONS}
-        animationType="fade"
+        animationType={reduceMotion ? 'none' : 'fade'}
         onRequestClose={() => setMenuOpen(false)}
       >
         <View style={styles.menuScrim}>

@@ -5,6 +5,7 @@ import { SectionTitle, SessionGauge } from '../../components/UI';
 import { AnalyticsFatigueCard } from '../../components/AnalyticsFatigueCard';
 import { AnalyticsStrengthSection, AnalyticsBig3MappingCard } from '../../components/AnalyticsStrengthSection';
 import { renderOverloadListContent } from './AnalyticsStates';
+import { FieldLabel } from '../../components/FieldLabel';
 
 // The baseline-training presentation for Analytics (#821, #871): the
 // Recovery-collapsible disclosure, Fatigue, the merged Strength/Progressive
@@ -195,6 +196,7 @@ export function AnalyticsProgression({
         {showTableChrome && (
         <>
         <View style={styles.searchContainer}>
+          <FieldLabel>Search exercises</FieldLabel>
           <TextInput
             testID="po-search"
             style={styles.searchInput}
@@ -203,6 +205,7 @@ export function AnalyticsProgression({
             value={searchQuery}
             onChangeText={setSearchQuery}
             clearButtonMode="while-editing"
+            accessibilityLabel="Search tracked exercises"
           />
         </View>
         <View style={styles.signalColumnHeader}>

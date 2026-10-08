@@ -28,6 +28,7 @@ import { MAX_RECOVERY_REASON_LENGTH } from '../lib/data/recoveryBlocks';
 import { GEOMETRY, SPACING } from '../theme/spacing';
 import { MODAL_SUPPORTED_ORIENTATIONS, dialogWidthStyle } from './adaptiveLayout';
 import { scrim } from '../theme/styleHelpers';
+import { FieldLabel } from './FieldLabel';
 
 export function RecoveryBlockStartModal({
   visible,
@@ -268,6 +269,8 @@ export function RecoveryBlockStartModal({
                     ))
                   )
                 ) : (
+                  <>
+                  <FieldLabel>Recovery Week 1 note title</FieldLabel>
                   <TextInput
                     style={styles.input}
                     placeholder="Recovery Week 1 note title"
@@ -276,6 +279,7 @@ export function RecoveryBlockStartModal({
                     onChangeText={setNewNoteTitle}
                     accessibilityLabel="Recovery Week 1 note title"
                   />
+                  </>
                 )}
               </>
             )}

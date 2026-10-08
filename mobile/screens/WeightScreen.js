@@ -22,6 +22,7 @@ import { useWeightGoalForm } from '../hooks/useWeightGoalForm';
 import { WeightEntryForm } from './weight/WeightEntryForm';
 import { GoalHistoryPanel } from './weight/GoalHistoryPanel';
 import { createStyles } from './weight/weightStyles';
+import { useReducedMotion } from '../lib/useReducedMotion';
 
 export function WeightScreen({
   weightValue,
@@ -36,6 +37,7 @@ export function WeightScreen({
   registerBackConsumer,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
+  const reduceMotion = useReducedMotion();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const { entries, remove, update, loading: entriesLoading, error: entriesError, refresh: refreshEntries } = useWeightEntries();
   const { goal, loading: goalLoading, error: goalError, refresh: refreshGoal, save: saveGoal, clear: clearGoal, archiveGoal } = useWeightGoal();
@@ -209,8 +211,8 @@ export function WeightScreen({
     setWeightValue(formatBodyweightValue(entry.weight_value, unit));
     setWeightNote(entry.note || '');
     setEditDate(entry.date);
-    scrollRef.current?.scrollTo({ x: 0, y: 0, animated: true });
-  }, [unit, setWeightValue, setWeightNote]);
+    scrollRef.current?.scrollTo({ x: 0, y: 0, animated: !reduceMotion });
+  }, [unit, reduceMotion, setWeightValue, setWeightNote]);
 
   const cancelEdit = useCallback(() => {
     setLocalError('');

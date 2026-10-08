@@ -219,6 +219,7 @@ export function WeightGoalCard({
                 placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
                 keyboardType="decimal-pad"
                 style={styles.numericInput}
+                accessibilityLabel={`Current weight (${unit})`}
               />
             </>
           )}
@@ -231,6 +232,7 @@ export function WeightGoalCard({
             placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
             keyboardType="decimal-pad"
             style={styles.numericInput}
+            accessibilityLabel={`Target (${unit})`}
           />
           <Text style={styles.inputLabel}>Target Date</Text>
           {Platform.OS === 'web' ? (

@@ -1,0 +1,208 @@
+import React from 'react';
+import { AccessibilityInfo, Modal, Text, TextInput } from 'react-native';
+import renderer, { act } from 'react-test-renderer';
+import { ThemeProvider } from '../theme/ThemeContext';
+import { useReducedMotion } from '../lib/useReducedMotion';
+import { WorkoutSyntaxModal } from '../components/WorkoutSyntaxModal';
+import { WeightHistoryFilters } from '../components/weight/WeightHistoryFilters';
+import { SetNewPasswordScreen } from '../screens/more/SetNewPasswordScreen';
+
+jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
+  __esModule: true,
+  default: jest.fn(() => 'light'),
+}));
+
+const flush = () => act(async () => { await Promise.resolve(); });
+
+function textsOf(root) {
+  return root.findAllByType(Text).map((t) => [].concat(t.props.children).join(''));
+}
+
+let listeners;
+let removeSpy;
+let lookup;
+
+beforeEach(() => {
+  listeners = [];
+  removeSpy = jest.fn();
+  lookup = jest.fn(() => Promise.resolve(false));
+  jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockImplementation(() => lookup());
+  jest.spyOn(AccessibilityInfo, 'addEventListener').mockImplementation((name, cb) => {
+    listeners.push({ name, cb });
+    return { remove: removeSpy };
+  });
+});
+
+afterEach(() => jest.restoreAllMocks());
+
+function Probe({ onValue }) {
+  onValue(useReducedMotion());
+  return null;
+}
+
+function mountProbe() {
+  const seen = [];
+  let tree;
+  act(() => { tree = renderer.create(<Probe onValue={(v) => seen.push(v)} />); });
+  return { seen, tree, last: () => seen[seen.length - 1] };
+}
+
+describe('useReducedMotion', () => {
+  test('defaults to normal motion, then adopts the initial OS preference', async () => {
+    lookup.mockResolvedValue(true);
+    const p = mountProbe();
+    expect(p.seen[0]).toBe(false);
+    await flush();
+    expect(p.last()).toBe(true);
+  });
+
+  test('stays false when the OS preference is disabled', async () => {
+    const p = mountProbe();
+    await flush();
+    expect(p.last()).toBe(false);
+  });
+
+  test('follows live reduceMotionChanged updates in both directions', async () => {
+    const p = mountProbe();
+    await flush();
+    const sub = listeners.find((l) => l.name === 'reduceMotionChanged');
+    act(() => sub.cb(true));
+    expect(p.last()).toBe(true);
+    act(() => sub.cb(false));
+    expect(p.last()).toBe(false);
+  });
+
+  test('a rejected lookup falls back to normal motion without an unhandled rejection', async () => {
+    lookup.mockRejectedValue(new Error('unavailable'));
+    const p = mountProbe();
+    await flush();
+    expect(p.last()).toBe(false);
+  });
+
+  test('a synchronously throwing lookup or listener also falls back safely', async () => {
+    lookup.mockImplementation(() => { throw new Error('boom'); });
+    AccessibilityInfo.addEventListener.mockImplementation(() => { throw new Error('boom'); });
+    const p = mountProbe();
+    await flush();
+    expect(p.last()).toBe(false);
+    expect(() => act(() => p.tree.unmount())).not.toThrow();
+  });
+
+  test('unmount removes the listener and ignores a late lookup result', async () => {
+    let resolve;
+    lookup.mockImplementation(() => new Promise((r) => { resolve = r; }));
+    const p = mountProbe();
+    const count = p.seen.length;
+    act(() => p.tree.unmount());
+    expect(removeSpy).toHaveBeenCalledTimes(1);
+    await act(async () => { resolve(true); await Promise.resolve(); });
+    expect(p.seen.length).toBe(count);
+  });
+});
+
+describe('fade modals honor reduced motion', () => {
+  function mount() {
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <ThemeProvider><WorkoutSyntaxModal visible onClose={() => {}} /></ThemeProvider>
+      );
+    });
+    return tree;
+  }
+
+  test('keeps the fade when reduced motion is off', async () => {
+    const tree = mount();
+    await flush();
+    expect(tree.root.findByType(Modal).props.animationType).toBe('fade');
+  });
+
+  test('uses no animation when reduced motion is on, and keeps the content visible', async () => {
+    lookup.mockResolvedValue(true);
+    const tree = mount();
+    await flush();
+    expect(tree.root.findByType(Modal).props.animationType).toBe('none');
+    expect(textsOf(tree.root)).toContain('Workout syntax help');
+  });
+
+  test('switching the preference while mounted updates the open modal', async () => {
+    const tree = mount();
+    await flush();
+    const sub = listeners.find((l) => l.name === 'reduceMotionChanged');
+    act(() => sub.cb(true));
+    expect(tree.root.findByType(Modal).props.animationType).toBe('none');
+    act(() => sub.cb(false));
+    expect(tree.root.findByType(Modal).props.animationType).toBe('fade');
+  });
+});
+
+describe('persistent visible field labels', () => {
+  function renderPassword(props = {}) {
+    const auth = {
+      passwordRecovery: true,
+      recoveryError: '',
+      updatePassword: jest.fn(),
+      ...props,
+    };
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <ThemeProvider><SetNewPasswordScreen auth={auth} onDone={() => {}} onBack={() => {}} /></ThemeProvider>
+      );
+    });
+    return tree;
+  }
+
+  test('set-new-password inputs keep visible labels when empty and populated', () => {
+    const tree = renderPassword();
+    expect(textsOf(tree.root)).toEqual(expect.arrayContaining(['New password', 'Confirm new password']));
+    const inputs = tree.root.findAllByType(TextInput);
+    act(() => inputs[0].props.onChangeText('hunter22hunter'));
+    act(() => inputs[1].props.onChangeText('hunter22hunter'));
+    expect(textsOf(tree.root)).toEqual(expect.arrayContaining(['New password', 'Confirm new password']));
+    const populated = tree.root.findAllByType(TextInput);
+    expect(populated[0].props.accessibilityLabel).toBe('New Password');
+    expect(populated[1].props.accessibilityLabel).toBe('Confirm New Password');
+  });
+
+  test('set-new-password shows no field labels without a recovery session', () => {
+    const tree = renderPassword({ passwordRecovery: false, recoveryError: 'expired' });
+    expect(tree.root.findAllByType(TextInput)).toHaveLength(0);
+    expect(textsOf(tree.root)).not.toContain('New password');
+  });
+
+  function renderFilters(props) {
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <ThemeProvider>
+          <WeightHistoryFilters
+            visible
+            fromDate=""
+            setFromDate={() => {}}
+            toDate=""
+            setToDate={() => {}}
+            showFromPicker={false}
+            setShowFromPicker={() => {}}
+            showToPicker={false}
+            setShowToPicker={() => {}}
+            {...props}
+          />
+        </ThemeProvider>
+      );
+    });
+    return tree;
+  }
+
+  test('date range filter keeps From and To labels whether empty or populated', async () => {
+    const emptyTree = renderFilters();
+    await flush();
+    const empty = textsOf(emptyTree.root);
+    expect(empty).toEqual(expect.arrayContaining(['From', 'To', 'Any date']));
+    const filledTree = renderFilters({ fromDate: '2026-01-02', toDate: '2026-02-03' });
+    await flush();
+    const filled = textsOf(filledTree.root);
+    expect(filled).toEqual(expect.arrayContaining(['From', 'To']));
+    expect(filled).not.toContain('Any date');
+  });
+});

@@ -6,6 +6,7 @@ import { WorkoutSyntaxReference } from './WorkoutSyntaxReference';
 import { MODAL_SUPPORTED_ORIENTATIONS } from './adaptiveLayout';
 import { TYPOGRAPHY } from '../theme/typography';
 import { GEOMETRY } from '../theme/spacing';
+import { useReducedMotion } from '../lib/useReducedMotion';
 
 // Editor-reachable workout syntax reference (#584, follow-up to #573).
 // Follows the PlateCalculatorModal overlay/sheet/close pattern: transparent
@@ -14,11 +15,12 @@ import { GEOMETRY } from '../theme/spacing';
 // same close handler (Android back). Opening/closing this overlay never
 // touches the underlying editor text, so unsaved edits are preserved.
 export function WorkoutSyntaxModal({ visible, onClose }) {
+  const reduceMotion = useReducedMotion();
   const styles = useThemedStyles(createStyles);
   if (!visible) return null;
 
   return (
-    <Modal visible={visible} transparent supportedOrientations={MODAL_SUPPORTED_ORIENTATIONS} animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent supportedOrientations={MODAL_SUPPORTED_ORIENTATIONS} animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={onClose}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       <View style={styles.overlay} pointerEvents="box-none">
         <View style={styles.sheet} onStartShouldSetResponder={() => true}>

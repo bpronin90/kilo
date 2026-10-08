@@ -19,6 +19,7 @@ import { WorkoutContentRenderer } from '../WorkoutContentRenderer';
 // layout space, same debounced-announcement behavior — rather than a
 // parallel implementation that could silently drift from it.
 import { SaveStatusRegion } from '../LogScreenEditorCard';
+import { FieldLabel } from '../FieldLabel';
 
 export function LogRecoveryEvidence({
   styles,
@@ -128,6 +129,7 @@ export function LogRecoveryEvidence({
     <View style={[styles.weekNoteContent, isCurrentWeek && styles.weekNoteContentCurrent]}>
       {isEditingThisNote ? (
         <View style={styles.inlineEditor}>
+          <FieldLabel>Note title</FieldLabel>
           <TextInput
             value={editingTitle}
             onChangeText={(next) => {
@@ -143,6 +145,7 @@ export function LogRecoveryEvidence({
             style={styles.inlineEditorTitleInput}
             accessibilityLabel="Recovery note title"
           />
+          <FieldLabel>Note text</FieldLabel>
           <TextInput
             ref={recoveryEditingTextInputRef}
             value={editingText}

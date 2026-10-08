@@ -18,6 +18,7 @@ import { GEOMETRY, SPACING } from '../theme/spacing';
 import { MODAL_SUPPORTED_ORIENTATIONS, dialogWidthStyle } from './adaptiveLayout';
 import { scrim } from '../theme/styleHelpers';
 import { TYPOGRAPHY } from '../theme/typography';
+import { FieldLabel } from './FieldLabel';
 
 const REASON_GROUPS = [
   {
@@ -346,6 +347,7 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
                   )}
                 </View>
               ))}
+              <FieldLabel>Additional notes (optional)</FieldLabel>
               <TextInput
                 style={styles.noteInput}
                 placeholder="Any other notes… (optional)"

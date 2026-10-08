@@ -5,6 +5,7 @@ import { setWebAlertHandler } from '../lib/platformAlert';
 import { scrim } from '../theme/styleHelpers';
 import { TYPOGRAPHY } from '../theme/typography';
 import { GEOMETRY } from '../theme/spacing';
+import { useReducedMotion } from '../lib/useReducedMotion';
 
 // Renders the dialogs platformAlert.js's Alert.alert queues on web, since
 // react-native-web has no native Alert to back it (#721). Native
@@ -16,6 +17,7 @@ import { GEOMETRY } from '../theme/spacing';
 // every call can reach through the shared module-level handler in
 // platformAlert.js.
 export function WebAlertHost() {
+  const reduceMotion = useReducedMotion();
   const [dialog, setDialog] = useState(null);
   // Built from the resolved court palette and mode: the dialog card resolves
   // through KUA, while its scrim is the KUA-spec neutral backdrop keyed on mode
@@ -43,7 +45,7 @@ export function WebAlertHost() {
   };
 
   return (
-    <Modal transparent visible animationType="fade" onRequestClose={() => dismiss(null)}>
+    <Modal transparent visible animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={() => dismiss(null)}>
       <View style={styles.overlay}>
         <View style={styles.card} onStartShouldSetResponder={() => true}>
           {dialog.title ? <Text style={styles.title}>{dialog.title}</Text> : null}
