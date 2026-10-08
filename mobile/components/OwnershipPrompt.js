@@ -4,12 +4,7 @@ import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useKuaStyle, useTheme } from '../theme/ThemeContext';
 import { Button } from './UI';
 import { DIALOG_MAX_WIDTH } from './adaptiveLayout';
-
-// KUA overlay scrim (components.md → Overlays and modals): a theme-neutral
-// backdrop, black at 0.5 opacity in light mode and 0.7 in dark, deliberately
-// not a palette token. Mirrors the scrim helper the recovery/check-in modals
-// use (and its theme-rendering.test.js hardcoded-color allowance).
-const scrim = (mode) => (mode === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)');
+import { scrim } from '../theme/styleHelpers';
 
 // First-sign-in local-history ownership decision, rendered over the whole shell
 // by App.js. The card scrolls inside the overlay and caps its width so every

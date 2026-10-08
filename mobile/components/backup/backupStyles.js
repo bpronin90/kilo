@@ -4,19 +4,7 @@
 // stays under the 600-line cap. Consumed via useThemedStyles(createStyles).
 
 import { StyleSheet } from 'react-native';
-
-// `kua.error` is a plain `#rrggbb` string, fixed across all six theme/mode
-// combinations (theme/colors.js) — this derives a tinted danger fill from it
-// so the Danger Zone reads as danger-coded by background, not border alone,
-// in every palette. Mirrors the withAlpha helper in LogRecoveryWeeks.js.
-function withAlpha(hex, alpha) {
-  const m = /^#([0-9a-f]{6})$/i.exec(hex || '');
-  if (!m) return hex;
-  const r = parseInt(m[1].slice(0, 2), 16);
-  const g = parseInt(m[1].slice(2, 4), 16);
-  const b = parseInt(m[1].slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
+import { withAlpha } from '../../theme/styleHelpers';
 
 // `kua` is the active KUA palette (theme.kuaPalette) or null; `typography` is
 // the result of useKuaTypography() — see SettingsScreen/WeightScreen for the

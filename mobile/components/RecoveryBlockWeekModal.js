@@ -21,6 +21,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { createInputStyle } from './UI';
 import { GEOMETRY, SPACING } from '../theme/spacing';
 import { MODAL_SUPPORTED_ORIENTATIONS, dialogWidthStyle } from './adaptiveLayout';
+import { scrim } from '../theme/styleHelpers';
 
 export function RecoveryBlockWeekModal({
   visible,
@@ -206,8 +207,6 @@ export function RecoveryBlockWeekModal({
     </Modal>
   );
 }
-
-const scrim = (mode) => mode === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)';
 
 const createStyles = (kua, mode, colors) => StyleSheet.create({
   overlay: {

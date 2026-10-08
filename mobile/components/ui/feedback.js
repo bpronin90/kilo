@@ -2,6 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useThemedStyles } from '../../theme/ThemeContext';
 import { SET_ROW_FONT_SIZE } from './styles';
+import { withAlpha } from '../../theme/styleHelpers';
 
 // A single unrecognized set-row line in the read view. Without a parser
 // `error` this preserves the prior bare-raw rendering (non-weight rows and
@@ -70,19 +71,6 @@ export function ErrorBanner({ message, onRetry }) {
       )}
     </View>
   );
-}
-
-// A tinted danger fill derived from the shared `error` red, so a danger banner
-// reads as danger-coded by background in every court/mode without an always-
-// light ink. Mirrors backupStyles.js's Danger Zone tint; `error` is a fixed
-// `#rrggbb` across all six palettes.
-function withAlpha(hex, alpha) {
-  const m = /^#([0-9a-f]{6})$/i.exec(hex || '');
-  if (!m) return hex;
-  const r = parseInt(m[1].slice(0, 2), 16);
-  const g = parseInt(m[1].slice(2, 4), 16);
-  const b = parseInt(m[1].slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
 }
 
 // Under the production KUA gate (#1139) the error/parse-failure feedback

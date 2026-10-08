@@ -46,7 +46,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     borderRadius: 24,
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
-    padding: 20,
+    padding: 18,
     marginTop: 12,
     gap: 12,
   },

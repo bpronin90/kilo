@@ -305,7 +305,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
   },
   heuristicBadgeText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.5,
     color: kua ? kua.primaryOnContainer : colors.chipText,

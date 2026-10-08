@@ -505,7 +505,7 @@ each screen shapes its bars to the tiers it is about to paint.
 
 | Element | Property | Value |
 |---|---|---|
-| Placeholder card | padding | `24` (Home) / `20` (Log, Weight) |
+| Placeholder card | padding | `18` (Home, Log, Weight — shared Card value, #1278) |
 | | borderRadius | `24` (matches `Card`) |
 | | gap | `12` |
 | Bar | backgroundColor | `colors.cardBorder` |
@@ -1505,7 +1505,7 @@ Four different sizes for the same role (metadata label above a value). The `10px
 | Screen | Card | Padding |
 |---|---|---|
 | Shared default | Card component | `18` |
-| Home | Weekly hero | `0` (custom) + `24` inner |
+| Home | Weekly hero | `18` (#1278) |
 | Home | Goal card | `24` |
 | Home | 1K card | `24` |
 | Analytics | Weight card | `20` |

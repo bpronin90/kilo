@@ -242,7 +242,7 @@ export const createStyles = (colors, kua = null) =>
       paddingHorizontal: 20,
       paddingBottom: 20,
       paddingTop: 4,
-      gap: 14,
+      gap: 12,
     },
     chunk: { gap: 4 },
     chunkLabel: { fontSize: 14, fontWeight: '700', color: kua ? kua.onSurface : colors.text },

@@ -28,6 +28,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { RECOVERY_INCLUSION_HELP } from './RecoveryInclusionToggle';
 import { GEOMETRY, SPACING } from '../theme/spacing';
 import { MODAL_SUPPORTED_ORIENTATIONS, dialogWidthStyle } from './adaptiveLayout';
+import { scrim } from '../theme/styleHelpers';
 
 export function RecoveryBlockEndModal({
   visible,
@@ -241,8 +242,6 @@ export function RecoveryBlockEndModal({
   );
 }
 
-const scrim = (mode) => mode === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)';
-
 const createStyles = (kua, mode, colors) => StyleSheet.create({
   overlay: {
     flex: 1,
@@ -356,10 +355,10 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     color: kua.primaryOnContainer,
   },
   optionCurrent: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
     textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
     color: kua.primaryOnContainer,
   },
   optionCopy: {

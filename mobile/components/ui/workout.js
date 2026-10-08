@@ -397,11 +397,11 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     marginTop: 4,
   },
   gaugeZoneLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 0.3,
+    letterSpacing: 0.5,
   },
   gaugeZoneLabelCenter: {
     textAlign: 'center',

@@ -9,6 +9,7 @@ import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { LogRecoveryEvidence } from './LogRecoveryEvidence';
+import { withAlpha } from '../../theme/styleHelpers';
 
 // A week whose `note_id` is null, or names a note that is not in the notebook,
 // has no readable content (#775). `Untitled Routine` is reserved for notes that
@@ -18,20 +19,6 @@ const RECOVERY_NOTE_UNAVAILABLE = 'Note unavailable';
 
 export function noteTitle(note) {
   return note?.title || 'Untitled Routine';
-}
-
-// `colors.accent`/`colors.success` are plain `#rrggbb` strings in both
-// palettes (theme/colors.js) — this derives the two alpha tints the design
-// calls for (accent-6%, success-12%) without introducing any new raw hex
-// (#843 constraint: "Use only palette role names and derived colors.accent at
-// 6% / colors.success at 12%").
-function withAlpha(hex, alpha) {
-  const m = /^#([0-9a-f]{6})$/i.exec(hex || '');
-  if (!m) return hex;
-  const r = parseInt(m[1].slice(0, 2), 16);
-  const g = parseInt(m[1].slice(2, 4), 16);
-  const b = parseInt(m[1].slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
 }
 
 export function LogRecoveryWeeks({

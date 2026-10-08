@@ -6,14 +6,12 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
   // Cloud sync notice.
   syncNoticeCard: {
     padding: 16,
-    marginTop: 12,
     gap: 8,
     backgroundColor: colors.chipBackground,
     borderColor: colors.cardBorder,
   },
   syncNoticeCardFailed: {
     padding: 16,
-    marginTop: 12,
     gap: 8,
     backgroundColor: colors.errorSurface,
     borderColor: kua ? kua.error : colors.error,
@@ -58,8 +56,8 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
   },
   // Static first-paint placeholder bars.
   skeletonCard: {
-    padding: 24,
-    marginTop: 12,
+    padding: 18,
+    marginBottom: 16,
     gap: 12,
     backgroundColor: kua ? kua.surfaceCard : undefined,
     borderColor: kua ? kua.surfaceBorder : undefined,
@@ -87,9 +85,8 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
   },
   // The hero is Home's one "active" card.
   weeklyHero: {
-    padding: 20,
+    padding: 18,
     gap: 0,
-    marginTop: 12,
     backgroundColor: kua ? kua.surfaceCard : undefined,
     borderColor: kua ? kua.primary : undefined,
     borderWidth: kua ? 2 : undefined,
@@ -432,7 +429,7 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     alignItems: 'center',
   },
   goalStatLabel: {
-    ...(kua ? { fontFamily: typography['body-sm'].fontFamily, fontSize: 12 } : { fontSize: 11, fontWeight: '600' }),
+    ...(kua ? { fontFamily: typography['body-sm'].fontFamily, fontSize: 12 } : { fontSize: 11, fontWeight: '700' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -525,9 +522,10 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     color: kua ? kua.onSurface : colors.text,
   },
   oneKGridLabel: {
-    ...(kua ? { fontFamily: typography['body-sm'].fontFamily, fontSize: 12 } : { fontSize: 11, fontWeight: '600' }),
+    ...(kua ? { fontFamily: typography['body-sm'].fontFamily, fontSize: 12 } : { fontSize: 11, fontWeight: '700' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   placeholderText: {
     fontSize: 48,
@@ -541,8 +539,7 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     fontStyle: 'italic',
   },
   welcomeCard: {
-    padding: 24,
-    marginTop: 12,
+    padding: 18,
     backgroundColor: kua ? kua.surfaceCard : undefined,
     borderColor: kua ? kua.surfaceBorder : undefined,
   },
