@@ -201,7 +201,7 @@ export function RecoveryBlockEndModal({
                   {storedInclusion && <Text style={styles.optionCurrent}>Your current setting</Text>}
                 </View>
                 <Text style={styles.optionCopy}>
-                  This block's linked recovery notes are included in normal analytics:
+                  This block's linked recovery notes are included in normal analytics (
                   classifications, overload signals, Kilo Max, 1K, and Home summaries).
                 </Text>
               </View>

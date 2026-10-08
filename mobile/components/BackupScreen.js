@@ -370,7 +370,7 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
         </Text>
         <Button title="Export Local Backup" onPress={handleExport} disabled={busy} style={styles.actionButton} />
         <Text style={styles.helpText}>
-          Export your data as CSV to use it in other tools. This is not a backup, it loses recovery,
+          Export your data as CSV to use it in other tools. This is not a backup. It loses recovery,
           deload/fatigue, and deleted-record history, and most dates.
         </Text>
         <Button

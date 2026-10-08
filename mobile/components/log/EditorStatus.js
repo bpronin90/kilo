@@ -53,7 +53,7 @@ export function RoutineAdoptionPrompt({ prompt, error, busy, hasCurrentRoutine, 
           style={styles.adoptionPrimary}
           accessibilityLabel={
             error
-              ? `Try again, use ${title} as your current routine`
+              ? `Try again. Use ${title} as your current routine`
               : `Use ${title} as your current routine`
           }
         />

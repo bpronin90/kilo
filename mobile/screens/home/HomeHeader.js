@@ -74,8 +74,8 @@ export function HomeHeader({
   const newlyTrackedCount = dashboardData.weeklySummary.newlyTrackedCount;
   const captionText = newlyTrackedCount > 0
     ? (newlyTrackedCount === 1
-        ? '1 exercise in its first tracked session, log another to see a trend'
-        : `${newlyTrackedCount} exercises in their first tracked session, log another to see a trend`)
+        ? '1 exercise in its first tracked session. Log another to see a trend'
+        : `${newlyTrackedCount} exercises in their first tracked session. Log another to see a trend`)
     : dashboardData.weeklySummary.hasInheritedTracking
       ? 'Includes exercises tracked before this update, using full history'
       : null;

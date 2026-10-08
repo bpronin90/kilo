@@ -173,7 +173,7 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
     try {
       const result = await withdrawConsent();
       if (!result.ok) {
-        setStatus(result.error || 'Could not withdraw consent, Cloud Sync is unchanged.');
+        setStatus(result.error || 'Could not withdraw consent. Cloud Sync is unchanged.');
         return;
       }
       // consent_withdraw atomically blocks health access before returning. Move

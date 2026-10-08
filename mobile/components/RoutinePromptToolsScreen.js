@@ -216,7 +216,7 @@ function NormalizationImport({ snapshot, loadNotes, applyBatch, pickFile, canPic
         {invalid.length || preview.unknown.length ? <>
           <SectionTitle>Not applied</SectionTitle>
           <Card>
-            {invalid.map(entry => <Text key={entry.id} style={styles.error}>Target routine {entry.number}: {entry.title}: {entry.problems.join(' ')}</Text>)}
+            {invalid.map(entry => <Text key={entry.id} style={styles.error}>Target routine {entry.number}: {entry.title}. {entry.problems.join(' ')}</Text>)}
             {preview.unknown.map(number => <Text key={`u${number}`} style={styles.error}>Target routine {number} was not in the prompt and was ignored.</Text>)}
           </Card>
         </> : null}
