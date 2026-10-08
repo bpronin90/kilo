@@ -22,6 +22,7 @@ export const SPACING = Object.freeze({
 // Geometry (border radius)
 // ---------------------------------------------------------------------------
 
+// Cards and bounded surfaces use radius-2xl (16); there is no 24px radius token.
 // radius-full uses '50%' as specified in foundation.md. React Native 0.81+
 // accepts percentage strings for borderRadius on views where width equals height.
 export const GEOMETRY = Object.freeze({
