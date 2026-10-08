@@ -147,6 +147,43 @@ describe('useReducedMotion', () => {
     expect(() => act(() => p.tree.unmount())).not.toThrow();
   });
 
+  test('the native listener is ref-counted across consumers and re-subscribes on remount', async () => {
+    const hook = loadHook();
+    await flush();
+    const adds = () => listeners.filter((l) => l.name === 'reduceMotionChanged').length;
+    expect(adds()).toBe(0);
+    const a = mountProbe(hook);
+    const b = mountProbe(hook);
+    expect(adds()).toBe(1);
+    act(() => a.tree.unmount());
+    expect(removeSpy).not.toHaveBeenCalled();
+    act(() => b.tree.unmount());
+    expect(removeSpy).toHaveBeenCalledTimes(1);
+    const c = mountProbe(hook);
+    expect(adds()).toBe(2);
+    expect(removeSpy).toHaveBeenCalledTimes(1);
+    act(() => c.tree.unmount());
+    expect(removeSpy).toHaveBeenCalledTimes(2);
+  });
+
+  test('the cached value survives the last unmount for a later consumer', async () => {
+    lookup.mockResolvedValue(true);
+    const hook = loadHook();
+    await flush();
+    const a = mountProbe(hook);
+    act(() => a.tree.unmount());
+    const b = mountProbe(hook);
+    expect(b.seen[0]).toBe(true);
+  });
+
+  test('a throwing remove is swallowed', async () => {
+    const hook = loadHook();
+    await flush();
+    removeSpy.mockImplementation(() => { throw new Error('boom'); });
+    const a = mountProbe(hook);
+    expect(() => act(() => a.tree.unmount())).not.toThrow();
+  });
+
   test('after unmount a later change or late lookup result no longer reaches the component', async () => {
     let resolve;
     lookup.mockImplementation(() => new Promise((r) => { resolve = r; }));
