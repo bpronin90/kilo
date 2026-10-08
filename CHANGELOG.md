@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.8.41 - 2026-10-08
+
+- Issue #1286: Cards, panels, dialogs, and buttons across More, Settings, Profile, Backup, and shared UI now use the design-system corner radii and type sizes.
+
+## 1.8.40 - 2026-10-08
+
+- Issue #1285: Weight, Analytics, and recovery screens now use the shared corner-radius and text-size scale, so some labels and corners shift by a point or two.
+
+## 1.8.39 - 2026-10-08
+
+- Issue #1284: Home and Log corner radii and text sizes now follow the shared design-system scale, with a few off-scale sizes snapping to the nearest standard size.
+
+## 1.8.38 - 2026-10-08
+
+- Issue #1282: Fields that relied on placeholder text (sign in, new password, recovery and check-in notes, weight history date range, exercise search, routine import) now keep a visible label, and dialogs and scroll jumps skip their animation when Reduce Motion is on.
+
+## 1.8.37 - 2026-10-08
+
+- Issue #1281: Checkmarks, warning markers, close buttons, and checkbox indicators now use proper icons, and dash punctuation in app text is replaced with plain wording.
+
+## 1.8.36 - 2026-10-08
+
+- Issue #1278: Tightened spacing, card padding, and small-label sizing so Home, Log, Weight, Analytics, and Help follow one consistent layout rhythm.
+
 ## 1.8.35 - 2026-10-06
 
 - Issue #1267: Back now returns to the previously visited tab instead of always jumping to Home, and the web back button names its destination.
