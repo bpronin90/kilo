@@ -89,7 +89,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   statusDot: {
     width: 26,
     height: 26,
-    borderRadius: GEOMETRY['radius-xl'],
+    borderRadius: GEOMETRY['radius-full'],
     alignItems: 'center',
     justifyContent: 'center',
   },

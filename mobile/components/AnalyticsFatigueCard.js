@@ -249,7 +249,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   fatigueDot: {
     width: 8,
     height: 8,
-    borderRadius: GEOMETRY['radius-sm'],
+    borderRadius: GEOMETRY['radius-full'],
   },
   fatigueDot_rough: {
     backgroundColor: kua ? kua.error : colors.error,
