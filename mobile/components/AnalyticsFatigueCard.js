@@ -220,7 +220,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     letterSpacing: 0.5,
   },
   fatigueDetails: {
-    gap: 20,
+    gap: 16,
     marginTop: 16,
     paddingTop: 16,
     borderTopWidth: 1,

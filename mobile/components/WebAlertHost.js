@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useKuaStyle, useTheme } from '../theme/ThemeContext';
 import { setWebAlertHandler } from '../lib/platformAlert';
+import { scrim } from '../theme/styleHelpers';
 
 // Renders the dialogs platformAlert.js's Alert.alert queues on web, since
 // react-native-web has no native Alert to back it (#721). Native
@@ -71,10 +72,6 @@ export function WebAlertHost() {
     </Modal>
   );
 }
-
-// KUA overlay scrim (components.md → Overlays and modals): theme-neutral, black
-// at 0.5 opacity in light mode and 0.7 in dark, deliberately not a palette token.
-const scrim = (mode) => (mode === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)');
 
 const createStyles = (colors, kua = null, mode = 'light') => StyleSheet.create({
   overlay: {

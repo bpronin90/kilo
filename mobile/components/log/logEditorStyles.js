@@ -1,4 +1,5 @@
 import { Platform, StyleSheet } from 'react-native';
+import { withAlpha } from '../../theme/styleHelpers';
 
 // #886: the raw-text editor input's own vertical padding, shared with the
 // `input` style below so the source-jump measurement and the rendered box can
@@ -17,18 +18,6 @@ export const EDITOR_INPUT_TEXT_INSET = (EDITOR_INPUT_HORIZONTAL_PADDING + EDITOR
 // Mirrors the surrounding Card's own `gap`, so pulling those two controls into
 // their own positioning context changes no spacing.
 export const EDITOR_STACK_GAP = 10;
-
-// Fade a KUA hex token to a low-opacity fill for the danger-zone surface, so
-// the error tint reads on any court canvas. Mirrors the helper in
-// backup/backupStyles.js and LogRecoveryWeeks.js. Only used on the KUA path.
-function withAlpha(hex, alpha) {
-  const h = hex.replace('#', '');
-  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
-  const r = parseInt(full.slice(0, 2), 16);
-  const g = parseInt(full.slice(2, 4), 16);
-  const b = parseInt(full.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
 
 // When `kua` is supplied (production KUA gate) the editor's surfaces, ink,
 // inputs, and validation/danger states resolve through the selected court
@@ -258,7 +247,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderWidth: 1,
     borderColor: kua ? kua.error : colors.error,
     borderRadius: 24,
-    padding: 16,
+    padding: 18,
     gap: 10,
   },
   dangerZoneHeading: {

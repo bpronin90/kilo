@@ -13,21 +13,7 @@ import { KILO_AUTH_REDIRECT } from '../../hooks/useAuthSession';
 import { AccountLifecycle } from './AccountLifecycle';
 import { LegalLinks } from './LegalLinks';
 import { SetNewPasswordScreen } from './SetNewPasswordScreen';
-
-// KUA has no tinted error-surface role (unlike the legacy palette's
-// `errorSurface`) — only a solid `error` fill and an `errorText` ink. Derive
-// a low-alpha red-family tint from `error` for the Danger Zone container so
-// it keeps reading as danger-coded on its own background rather than falling
-// back to a neutral surface (#1114 review). Same technique and 12% figure as
-// LogRecoveryWeeks.js's `withAlpha(colors.success, 0.12)`.
-function withAlpha(hex, alpha) {
-  const m = /^#([0-9a-f]{6})$/i.exec(hex || '');
-  if (!m) return hex;
-  const r = parseInt(m[1].slice(0, 2), 16);
-  const g = parseInt(m[1].slice(2, 4), 16);
-  const b = parseInt(m[1].slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
+import { withAlpha } from '../../theme/styleHelpers';
 
 // Minimal account surface to exercise sign in / sign out / session restore /
 // password reset against the auth/session hook. This is intentionally narrow:

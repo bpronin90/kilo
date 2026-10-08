@@ -25,6 +25,7 @@ import { createInputStyle } from './UI';
 import { MAX_RECOVERY_REASON_LENGTH } from '../lib/data/recoveryBlocks';
 import { GEOMETRY, SPACING } from '../theme/spacing';
 import { MODAL_SUPPORTED_ORIENTATIONS, dialogWidthStyle } from './adaptiveLayout';
+import { scrim } from '../theme/styleHelpers';
 
 export function RecoveryBlockStartModal({
   visible,
@@ -323,8 +324,6 @@ export function RecoveryBlockStartModal({
     </Modal>
   );
 }
-
-const scrim = (mode) => mode === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)';
 
 const createStyles = (kua, mode, colors) => StyleSheet.create({
   overlay: {

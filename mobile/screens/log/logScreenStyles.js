@@ -74,8 +74,8 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
-    padding: 20,
-    marginBottom: 12,
+    padding: 18,
+    marginBottom: 16,
     gap: 12,
   },
   skeletonBar: {

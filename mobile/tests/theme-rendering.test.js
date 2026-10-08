@@ -1068,23 +1068,10 @@ describe('no production surface can hold a stale palette', () => {
     // Sanctioned exceptions:
     // - The two brand-orange wordmark accents (HomeScreen) and the dev-only
     //   ThemePreviewControl use the Kilo brand color that has no palette token.
-    // - The four `scrim()` helper lines are the KUA-spec overlay backdrop values
-    //   (rgba(0,0,0,0.5) light / rgba(0,0,0,0.7) dark per components.md). They
-    //   cannot be routed through the KUA palette without modifying colors.js, and
-    //   each appears only inside its own component's createStyles factory rather
-    //   than as a top-level constant, which keeps the values co-located with the
-    //   overlay they style.
+    // - The KUA-spec overlay scrim lives once in theme/styleHelpers.js (outside
+    //   this scan), so no component carries its own copy.
     expect(leaks).toEqual([
-      // The shell's ownership prompt (#1139, extracted from App.js in #1126)
-      // and web alert host use the same KUA-spec neutral scrim as the modals
-      // below — black at 0.5/0.7 opacity, which is not a palette token.
-      "components/OwnershipPrompt.js:12 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
-      "components/RecoveryBlockEndModal.js:244 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
-      "components/RecoveryBlockStartModal.js:327 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
-      "components/RecoveryBlockWeekModal.js:210 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
-      "components/SessionCheckInModal.js:375 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       "components/ThemePreviewControl.js:70 '#FF5C00'",
-      "components/WebAlertHost.js:77 rgba(0,0,0,0.7) rgba(0,0,0,0.5)",
       'screens/HomeScreen.js:44 "#FF5C00"',
       'screens/HomeScreen.js:48 "#FF5C00"',
     ]);
@@ -3376,5 +3363,53 @@ describe('Recovery band marks: court x mode tokens (#1219)', () => {
       const perCourt = Object.values(KUA_PALETTES).map((court) => court[mode][token].toLowerCase());
       expect({ token, distinct: new Set(perCourt).size }).toEqual({ token, distinct: 3 });
     }
+  });
+});
+
+// #1278: shared derived-color helpers and the audited conformance values.
+describe('style conformance (#1278)', () => {
+  const { scrim, withAlpha: sharedWithAlpha } = require('../theme/styleHelpers');
+  const { LightColors } = require('../theme/colors');
+  const fs = require('fs');
+  const path = require('path');
+  const root = path.join(__dirname, '..');
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? walk(path.join(dir, e.name)) : /\.js$/.test(e.name) ? [path.join(dir, e.name)] : []);
+  const files = [...walk(path.join(root, 'components')), ...walk(path.join(root, 'screens'))];
+
+  test('scrim keeps the KUA light/dark backdrop values', () => {
+    expect(scrim('light')).toBe('rgba(0,0,0,0.5)');
+    expect(scrim('dark')).toBe('rgba(0,0,0,0.7)');
+  });
+
+  test('withAlpha expands #rgb/#rrggbb and passes anything else through', () => {
+    expect(sharedWithAlpha('#ff0000', 0.12)).toBe('rgba(255,0,0,0.12)');
+    expect(sharedWithAlpha('#f00', 0.14)).toBe('rgba(255,0,0,0.14)');
+    expect(sharedWithAlpha('red', 0.5)).toBe('red');
+    expect(sharedWithAlpha(undefined, 0.5)).toBeUndefined();
+  });
+
+  test('audited cards use the 18px card padding with no stacked top margin', () => {
+    const home = require('../screens/home/homeStyles').createStyles(LightColors);
+    const log = require('../screens/log/logScreenStyles').createStyles(LightColors);
+    const weight = require('../screens/weight/weightStyles').createStyles(LightColors);
+    const editor = require('../components/log/logEditorStyles').createStyles(LightColors);
+    for (const s of [home.weeklyHero, home.welcomeCard, home.skeletonCard, log.skeletonCard, weight.skeletonCard, editor.dangerZone]) {
+      expect(s.padding).toBe(18);
+    }
+    for (const s of [home.weeklyHero, home.welcomeCard, home.syncNoticeCard, home.syncNoticeCardFailed, home.skeletonCard]) {
+      expect(s.marginTop).toBeUndefined();
+    }
+  });
+
+  test('no production text renders below 11px outside chart axes', () => {
+    const offenders = [];
+    for (const f of files) {
+      if (/LineChart|AnalyticsWeightTrendsCard/.test(f)) continue;
+      fs.readFileSync(f, 'utf8').split('\n').forEach((line, i) => {
+        if (/fontSize:\s*(?:[0-9]|10)\b/.test(line)) offenders.push(`${path.relative(root, f)}:${i + 1}`);
+      });
+    }
+    expect(offenders).toEqual([]);
   });
 });

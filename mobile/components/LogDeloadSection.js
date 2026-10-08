@@ -7,6 +7,7 @@ import { useTheme, useThemedStyles, useKuaStyle } from '../theme/ThemeContext';
 import { localDate, DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
 import { MODAL_SUPPORTED_ORIENTATIONS, dialogWidthStyle } from './adaptiveLayout';
+import { withAlpha } from '../theme/styleHelpers';
 
 export function LogDeloadSection({
   deloadNote,
@@ -369,18 +370,6 @@ export function LogDeloadSection({
       </Modal>
     </>
   );
-}
-
-// Fade a KUA hex token to a low-opacity fill for the error card surface, so
-// the tint reads on any court canvas. Mirrors backup/backupStyles.js. Only used
-// on the KUA path.
-function withAlpha(hex, alpha) {
-  const h = hex.replace('#', '');
-  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
-  const r = parseInt(full.slice(0, 2), 16);
-  const g = parseInt(full.slice(2, 4), 16);
-  const b = parseInt(full.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 // Under the production KUA gate (`kua` supplied) the deload cards, ordinal

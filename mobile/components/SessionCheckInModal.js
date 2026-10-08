@@ -16,6 +16,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { createInputStyle } from './UI';
 import { GEOMETRY, SPACING } from '../theme/spacing';
 import { MODAL_SUPPORTED_ORIENTATIONS, dialogWidthStyle } from './adaptiveLayout';
+import { scrim } from '../theme/styleHelpers';
 
 const REASON_GROUPS = [
   {
@@ -371,8 +372,6 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
     </Modal>
   );
 }
-
-const scrim = (mode) => mode === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)';
 
 const createStyles = (kua, mode, colors) => StyleSheet.create({
   overlay: {

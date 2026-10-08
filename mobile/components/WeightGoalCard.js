@@ -468,7 +468,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   },
   goalProgressValue: {
     ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
-    fontSize: 10,
+    fontSize: 11,
     color: kua ? kua.primary : colors.accentText,
   },
   goalProgressLabel: {
@@ -513,12 +513,12 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   },
   derivedValue: {
     ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
-    fontSize: 10,
+    fontSize: 11,
     color: kua ? kua.onSurface : colors.text,
   },
   derivedValueNeutral: {
     ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
-    fontSize: 10,
+    fontSize: 11,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     opacity: 0.5,
   },
