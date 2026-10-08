@@ -381,7 +381,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   weekdayChip: {
     width: 36,
     height: 36,
-    borderRadius: GEOMETRY['radius-2xl'],
+    borderRadius: GEOMETRY['radius-full'],
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,

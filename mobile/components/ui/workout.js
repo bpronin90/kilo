@@ -392,7 +392,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     top: 0,
     width: 16,
     height: 16,
-    borderRadius: GEOMETRY['radius-lg'],
+    borderRadius: GEOMETRY['radius-full'],
     backgroundColor: colors.card,
     borderWidth: 3,
     transform: [{ translateX: -8 }],

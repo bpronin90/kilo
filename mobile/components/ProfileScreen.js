@@ -260,7 +260,7 @@ export function ProfileScreen({ onBack }) {
             <View style={{ flex: 1, gap: 4 }}>
               <TextInput
                 keyboardAppearance={colors.scheme}
-                style={styles.profileInput}
+                style={[styles.profileInput, typography['label-lg']]}
                 placeholder="ft"
                 keyboardType="numeric"
                 value={feet ? String(feet) : ''}
@@ -271,7 +271,7 @@ export function ProfileScreen({ onBack }) {
             <View style={{ flex: 1, gap: 4 }}>
               <TextInput
                 keyboardAppearance={colors.scheme}
-                style={styles.profileInput}
+                style={[styles.profileInput, typography['label-lg']]}
                 placeholder="in"
                 keyboardType="numeric"
                 value={inches ? String(inches) : ''}
@@ -284,7 +284,7 @@ export function ProfileScreen({ onBack }) {
           <View style={{ gap: 4 }}>
             <TextInput
               keyboardAppearance={colors.scheme}
-              style={styles.profileInput}
+              style={[styles.profileInput, typography['label-lg']]}
               placeholder="cm"
               keyboardType="numeric"
               value={heightCm ? String(heightCm) : ''}
@@ -569,7 +569,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   checkCircle: {
     width: 24,
     height: 24,
-    borderRadius: GEOMETRY['radius-xl'],
+    borderRadius: GEOMETRY['radius-full'],
     backgroundColor: kua ? kua.primary : colors.accent,
     justifyContent: 'center',
     alignItems: 'center',

@@ -82,9 +82,8 @@ describe('UI.js compatibility barrel: export-surface parity', () => {
     expect(Object.keys(UI.HeroMetric).sort()).toEqual(
       ['hero', 'statPrimary', 'statSecondary', 'statTertiary'].sort()
     );
-    expect(UI.HeroMetric.hero).toMatchObject({ fontFamily: 'JetBrainsMono-Bold', fontSize: 48, lineHeight: 52 });
-    expect(UI.HeroMetric.hero.fontWeight).toBeUndefined();
-    expect(UI.HeroMetric.statTertiary).toMatchObject({ fontFamily: 'JetBrainsMono-Bold', fontSize: 20 });
+    expect(UI.HeroMetric.hero).toEqual({ fontSize: 48, fontWeight: '900', lineHeight: 52 });
+    expect(UI.HeroMetric.statTertiary).toEqual({ fontSize: 20, fontWeight: '900' });
   });
 
   test('createInputStyle builds the identical shared text-input skin from a palette', () => {
