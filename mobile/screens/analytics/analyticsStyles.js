@@ -147,7 +147,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurface : colors.text,
   },
   unitSuffix: {
-    fontSize: TYPOGRAPHY['label-sm'].fontSize,
+    ...(kua ? TYPOGRAPHY['label-sm'] : { fontSize: TYPOGRAPHY['label-sm'].fontSize }),
     opacity: 0.4,
     marginLeft: 2,
   },

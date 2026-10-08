@@ -246,8 +246,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurface : colors.accentText,
   },
   weightUnit: {
-    fontSize: TYPOGRAPHY['body-lg'].fontSize,
-    fontWeight: '600',
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.text,
     marginLeft: 4,
   },
@@ -273,8 +272,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: colors.cautionSurface,
   },
   paceText: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
-    fontWeight: '800',
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '800' }),
     color: colors.textLight,
   },
   // Notable badge ink: the on-surface pair for `cautionSurface`, so the label
@@ -305,8 +303,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 2,
   },
   weightStatValue: {
-    fontSize: TYPOGRAPHY['headline-sm'].fontSize,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
   weightStatLabel: {

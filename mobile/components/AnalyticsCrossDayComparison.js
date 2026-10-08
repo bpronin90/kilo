@@ -90,11 +90,10 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
   },
   crossDayUnit: {
-    fontSize: TYPOGRAPHY['label-sm'].fontSize,
+    ...(kua ? TYPOGRAPHY['label-sm'] : { fontSize: TYPOGRAPHY['label-sm'].fontSize }),
     opacity: 0.5,
   },
   crossDayTrend: {
-    fontSize: TYPOGRAPHY['label-sm'].fontSize,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-sm'] : { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '700' }),
   },
 });

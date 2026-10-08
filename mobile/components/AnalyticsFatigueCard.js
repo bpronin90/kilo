@@ -234,8 +234,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   fatigueInsightValue: {
-    fontSize: TYPOGRAPHY['headline-sm'].fontSize,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
   fatigueSection: {
@@ -270,8 +269,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     letterSpacing: 1,
   },
   fatigueSectionCount: {
-    fontSize: TYPOGRAPHY['body-sm'].fontSize,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
   fatigueEntryList: {
@@ -300,8 +298,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginRight: 10,
   },
   fatigueDate: {
-    fontSize: TYPOGRAPHY['label-sm'].fontSize,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-sm'] : { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -312,9 +309,8 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurface : colors.text,
   },
   fatigueMeta: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '500' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    fontWeight: '500',
   },
   fatigueChipRow: {
     flexDirection: 'row',

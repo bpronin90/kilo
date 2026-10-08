@@ -1,11 +1,19 @@
 import { GEOMETRY } from '../../theme/spacing';
-import { TYPOGRAPHY } from '../../theme/typography';
+import { TYPOGRAPHY, TYPOGRAPHY_FALLBACK } from '../../theme/typography';
 import { StyleSheet } from 'react-native';
 
 // Returns fontFamily (and fontWeight when needed) for a JBM typography role.
 // When typo is provided, it is either TYPOGRAPHY (fonts loaded; weight is encoded
 // in the family name, no fontWeight needed) or TYPOGRAPHY_FALLBACK (fonts not yet
 // loaded; fontWeight is restored so visual hierarchy is preserved on system fonts).
+// Full JetBrains Mono role (family, tracking, tabular-nums); weight is encoded in the family.
+const monoRole = (typo, role) => (typo || TYPOGRAPHY_FALLBACK)[role];
+// Real bold JetBrains Mono asset for emphasis (no synthetic weight on a SemiBold family).
+const monoBold = (typo) => {
+  const { fontFamily, fontWeight } = monoRole(typo, 'metric-display');
+  return { fontFamily, fontWeight };
+};
+
 const jbmFont = (typo, role, fallback) => {
   if (!typo) return { fontFamily: fallback };
   const { fontFamily, fontWeight } = typo[role];
@@ -27,17 +35,8 @@ const HISTORY_COL3_FLEX = 1.5; // date, right aligned
 const HISTORY_CONTROL_WIDTH = 56; // trailing control cell (chevron / filter / delete)
 const HISTORY_ROW_PAD_V = 12;
 const HISTORY_ROW_PAD_H = 16;
-const HISTORY_VALUE_SIZE = TYPOGRAPHY['headline-sm'].fontSize;
-const HISTORY_VALUE_WEIGHT = '700';
-const HISTORY_DATE_SIZE = TYPOGRAPHY['body-md'].fontSize;
-const HISTORY_DATE_WEIGHT = '600';
 const HISTORY_LABEL_SIZE = TYPOGRAPHY['label-sm'].fontSize;
 const HISTORY_LABEL_WEIGHT = '700';
-const HISTORY_SUMMARY_SIZE = TYPOGRAPHY['body-md'].fontSize;
-const HISTORY_SUMMARY_WEIGHT = '600';
-const HISTORY_SUMMARY_EMPHASIS_WEIGHT = '900';
-const HISTORY_SUMMARY_COUNT_SIZE = TYPOGRAPHY['label-md'].fontSize;
-const HISTORY_SUMMARY_COUNT_WEIGHT = '600';
 
 // Base styles for WeightScreen itself: the entry-form Card, first-paint
 // skeleton, trends card, and the archived-goal-panel semantic colors used by
@@ -86,7 +85,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     paddingHorizontal: 14,
     paddingVertical: 14,
     minHeight: 48,
-    fontSize: TYPOGRAPHY['body-lg'].fontSize,
+    ...monoRole(typo, 'label-lg'),
     color: kua ? kua.onSurface : colors.text,
     justifyContent: 'center',
     textAlignVertical: 'center',
@@ -99,7 +98,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     paddingHorizontal: 14,
     paddingVertical: 14,
     minHeight: 48,
-    fontSize: TYPOGRAPHY['body-lg'].fontSize,
+    fontSize: TYPOGRAPHY['label-lg'].fontSize,
     ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
     color: kua ? kua.onSurface : colors.text,
     justifyContent: 'center',
@@ -142,7 +141,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     alignItems: 'center',
   },
   pickerText: {
-    fontSize: TYPOGRAPHY['body-lg'].fontSize,
+    ...monoRole(typo, 'label-lg'),
     color: kua ? kua.onSurface : colors.text,
   },
   trendsCardMerged: {
@@ -294,24 +293,22 @@ export const createHistoryPanel = (colors, kua = null, typo = null) => StyleShee
     alignItems: 'center',
   },
   value: {
-    fontSize: TYPOGRAPHY['body-sm'].fontSize,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
     color: kua ? kua.onSurface : colors.text,
   },
   dateValue: {
-    fontSize: HISTORY_DATE_SIZE,
-    fontWeight: HISTORY_DATE_WEIGHT,
+    ...monoRole(typo, 'label-lg'),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'right',
   },
   summaryText: {
     flex: 1,
-    fontSize: HISTORY_SUMMARY_SIZE,
-    fontWeight: HISTORY_SUMMARY_WEIGHT,
+    ...monoRole(typo, 'label-lg'),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   summaryEmphasis: {
-    fontWeight: HISTORY_SUMMARY_EMPHASIS_WEIGHT,
+    ...monoBold(typo),
     color: kua ? kua.onSurface : colors.text,
   },
   summaryStack: {
@@ -321,13 +318,11 @@ export const createHistoryPanel = (colors, kua = null, typo = null) => StyleShee
     gap: 2,
   },
   summaryCount: {
-    fontSize: HISTORY_SUMMARY_COUNT_SIZE,
-    fontWeight: HISTORY_SUMMARY_COUNT_WEIGHT,
+    ...monoRole(typo, 'label-md'),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   summaryLatest: {
-    fontSize: HISTORY_SUMMARY_SIZE,
-    fontWeight: HISTORY_SUMMARY_WEIGHT,
+    ...monoRole(typo, 'label-lg'),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   columnLabelCenter: {

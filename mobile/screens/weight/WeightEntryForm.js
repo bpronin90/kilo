@@ -31,7 +31,7 @@ function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
       borderStyle: 'solid',
       borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
       padding: 14,
-      fontSize: TYPOGRAPHY['body-lg'].fontSize,
+      fontSize: TYPOGRAPHY['label-lg'].fontSize,
       colorScheme: colors.scheme,
       color: kua ? kua.onSurface : colors.text,
       fontFamily: 'inherit',

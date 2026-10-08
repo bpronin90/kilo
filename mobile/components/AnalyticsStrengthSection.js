@@ -294,8 +294,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // run rather than a Yoga box, so marginLeft is not guaranteed to render
   // (#763 review; matches Home's oneKHeroUnit).
   oneKUnit: {
-    fontSize: TYPOGRAPHY['body-lg'].fontSize,
-    fontWeight: '600',
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   oneKProgressBarContainer: {
@@ -345,8 +344,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderStyle: 'dashed',
   },
   oneKItemValue: {
-    fontSize: TYPOGRAPHY['headline-sm'].fontSize,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '700' }),
     color: kua ? kua.primary : colors.text,
   },
   oneKItemLabel: {
@@ -428,8 +426,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     justifyContent: 'flex-end',
   },
   slotValue: {
-    fontSize: TYPOGRAPHY['body-md'].fontSize,
-    fontWeight: '600',
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurface : colors.text,
     textAlign: 'right',
   },

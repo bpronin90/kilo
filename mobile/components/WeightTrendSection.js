@@ -95,7 +95,7 @@ const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
   },
   trendValue: {
     ...jbmFont(typo, 'metric-display', 'JetBrainsMono-Bold'),
-    fontSize: TYPOGRAPHY['body-lg'].fontSize,
+    fontSize: TYPOGRAPHY['label-lg'].fontSize,
     color: kua ? kua.onSurface : colors.text,
   },
   // Secondary caption under the pace value (e.g. "over 5 days"). Its own line so

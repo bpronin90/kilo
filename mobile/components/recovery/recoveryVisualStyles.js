@@ -36,7 +36,7 @@ export const createVisualStyles = (colors, kua = null) => {
     legendText: { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600', color: ink },
     changeRow: { flexDirection: 'row', columnGap: 12, alignItems: 'center' },
     changeCell: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-    changeCount: { fontSize: TYPOGRAPHY['body-md'].fontSize, fontWeight: '800', color: ink },
+    changeCount: { ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize }), color: ink },
     changeLabel: { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600', color: inkMuted },
     weeksStrip: { gap: 10 },
     weekRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -97,9 +97,9 @@ export const createVisualStyles = (colors, kua = null) => {
     // line when it cannot sit beside the 96dp track, and `maxWidth: '100%'` lets a
     // very long label wrap inside the card rather than overflow it. The number is
     // never truncated (no numberOfLines).
-    exPercent: { flexShrink: 0, minWidth: 124, maxWidth: '100%', textAlign: 'right', fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '800', color: ink },
+    exPercent: { flexShrink: 0, minWidth: 124, maxWidth: '100%', textAlign: 'right', ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }), color: ink },
     exNumbers: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 2 },
-    exNumberText: { fontSize: TYPOGRAPHY['body-sm'].fontSize, color: inkMuted },
+    exNumberText: { ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }), color: inkMuted },
     // Collapsed/expanded evidence line (#1219): text only. The trained count
     // carries the ink; the not-graded counts take the shared neutral so the line
     // has one quiet hierarchy.
@@ -111,8 +111,8 @@ export const createVisualStyles = (colors, kua = null) => {
     // wider than the card ITSELF may shrink (maxWidth 100% bounds it) so its label
     // wraps as a last resort instead of overflowing.
     rosterStat: { flexDirection: 'row', alignItems: 'baseline', gap: 4, flexShrink: 1, maxWidth: '100%' },
-    rosterNum: { flexShrink: 0, fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '800', color: ink },
-    rosterNumQuiet: { flexShrink: 0, fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '700', color: inkMuted },
+    rosterNum: { flexShrink: 0, ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }), color: ink },
+    rosterNumQuiet: { flexShrink: 0, ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }), color: inkMuted },
     rosterLabel: { flexShrink: 1, fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600', color: inkMuted },
     exNote: { fontSize: TYPOGRAPHY['body-sm'].fontSize, color: inkMuted },
     weekNoteText: { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600', color: inkMuted },

@@ -232,31 +232,26 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 5,
   },
   rowValue: {
-    fontSize: TYPOGRAPHY['body-lg'].fontSize,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
   rowValueEmpty: {
-    fontSize: TYPOGRAPHY['body-lg'].fontSize,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Same weight/size as a normal value, muted like the empty tone (#871): a
   // paused baseline count is a real, true number — not absent — but must not
   // read with the same visual weight as a value that is live right now.
   rowValuePaused: {
-    fontSize: TYPOGRAPHY['body-lg'].fontSize,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   rowValueUnit: {
-    fontSize: TYPOGRAPHY['body-sm'].fontSize,
-    fontWeight: '600',
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   rowValueSuffix: {
-    fontSize: TYPOGRAPHY['body-sm'].fontSize,
-    fontWeight: '600',
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Matches the chevron's footprint (16 icon width; the group's own `gap: 5`
@@ -273,8 +268,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 4,
   },
   rowDelta: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '700' }),
   },
   rowDeltaUp: {
     color: kua ? kua.completion : colors.success,

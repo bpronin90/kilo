@@ -2509,7 +2509,8 @@ describe('AnalyticsRecoverySection — visual exercise details (#1219)', () => {
     const sizes = rosterNode(root)
       .findAll(n => typeof n.type === 'string' && n.type === 'Text')
       .map(n => StyleSheet.flatten(n.props.style).fontSize);
-    expect(new Set(sizes)).toEqual(new Set([13]));
+    // Counts are quantitative (label-md 12); their word labels stay body-sm 13.
+    expect(new Set(sizes)).toEqual(new Set([12, 13]));
     const rowSize = StyleSheet.flatten(hostRows(root)[0].findAll(n => n.type === 'Text')[1].props.style).fontSize;
     expect(rowSize).toBe(13);
     expect(hasText(root, 'Trained this week')).toBe(false);

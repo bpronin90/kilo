@@ -313,8 +313,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     flex: 1,
   },
   historySummaryCount: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
-    fontWeight: '600',
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   historySummaryLatest: {
@@ -346,7 +345,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurface : colors.text,
   },
   historyDates: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   historyInclusionWrapper: {
