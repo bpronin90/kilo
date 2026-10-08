@@ -3,6 +3,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useThemedStyles } from '../../theme/ThemeContext';
 import { SET_ROW_FONT_SIZE } from './styles';
 import { withAlpha } from '../../theme/styleHelpers';
+import { TYPOGRAPHY } from '../../theme/typography';
+import { GEOMETRY } from '../../theme/spacing';
 
 // A single unrecognized set-row line in the read view. Without a parser
 // `error` this preserves the prior bare-raw rendering (non-weight rows and
@@ -81,7 +83,7 @@ export function ErrorBanner({ message, onRetry }) {
 const createStyles = (colors, kua = null) => StyleSheet.create({
   errorBanner: {
     backgroundColor: kua ? withAlpha(kua.error, 0.14) : colors.errorSurface,
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     borderWidth: 1,
     borderColor: kua ? kua.error : colors.error,
     padding: 14,
@@ -91,7 +93,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   errorBannerText: {
     flex: 1,
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '600',
     color: kua ? kua.errorText : colors.error,
   },
@@ -102,7 +104,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   errorBannerRetry: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: GEOMETRY['radius-lg'],
     backgroundColor: kua ? 'transparent' : colors.cardErrorBg,
     borderWidth: kua ? 1 : 0,
     borderColor: kua ? kua.error : 'transparent',
@@ -112,7 +114,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     justifyContent: 'center',
   },
   errorBannerRetryText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.errorText : colors.textLight,
   },
@@ -149,12 +151,12 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   unparsedHint: {
-    fontSize: SET_ROW_FONT_SIZE - 1,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     paddingLeft: 18,
   },
   noteParseError: {
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     borderWidth: 1,
     borderColor: kua ? kua.error : colors.error,
     backgroundColor: kua ? kua.surfaceCard : colors.panelBackground,
@@ -163,7 +165,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     marginTop: 8,
   },
   noteParseErrorText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '600',
     color: kua ? kua.errorText : colors.error,
   },

@@ -2,6 +2,7 @@ import React, { useEffect, useId, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { getCaptchaConfig } from '../lib/captchaConfig';
 import { useThemedStyles } from '../theme/ThemeContext';
+import { TYPOGRAPHY } from '../theme/typography';
 
 let scriptPromise;
 
@@ -86,5 +87,5 @@ export function CaptchaChallenge({ onToken, onExpired, onError, resetKey = 0 }) 
 // tests) it keeps the legacy palette.
 export const createStyles = (colors, kua = null) => StyleSheet.create({
   container: { minHeight: 70, width: '100%' },
-  error: { color: kua ? kua.errorText : colors.error, fontSize: 14 },
+  error: { color: kua ? kua.errorText : colors.error, fontSize: TYPOGRAPHY['body-md'].fontSize },
 });

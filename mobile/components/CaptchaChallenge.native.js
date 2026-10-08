@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { getCaptchaConfig } from '../lib/captchaConfig';
 import { useThemedStyles } from '../theme/ThemeContext';
+import { TYPOGRAPHY } from '../theme/typography';
 
 function challengeHtml(siteKey) {
   // The site key is public configuration, but still validate/encode it before
@@ -79,5 +80,5 @@ export function CaptchaChallenge({ onToken, onExpired, onError, resetKey = 0 }) 
 export const createStyles = (colors, kua = null) => StyleSheet.create({
   container: { height: 90, width: '100%' },
   webview: { backgroundColor: 'transparent' },
-  error: { color: kua ? kua.errorText : colors.error, fontSize: 14 },
+  error: { color: kua ? kua.errorText : colors.error, fontSize: TYPOGRAPHY['body-md'].fontSize },
 });

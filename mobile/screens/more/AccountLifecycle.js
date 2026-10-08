@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Alert } from '../../lib/platformAlert';
 import { Button } from '../../components/UI';
 import { useThemedStyles } from '../../theme/ThemeContext';
+import { TYPOGRAPHY } from '../../theme/typography';
 
 // Account deletion panel (Phase 5 / Task 13; server export moved to Data &
 // Backup's Cloud section, issue #822 — Account is identity-only).
@@ -121,12 +122,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 12,
   },
   accountNote: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.onSurface : colors.text,
     lineHeight: 22,
   },
   accountStatus: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 16,
   },

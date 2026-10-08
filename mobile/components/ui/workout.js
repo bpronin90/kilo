@@ -17,10 +17,11 @@ export function WorkoutKuaProvider({ kua, children }) {
   );
 }
 import { Card } from './containers';
-import { SET_ROW_FONT_SIZE } from './styles';
 import { PlateCalculatorModal } from '../PlateCalculatorModal';
 import { useWeightUnit } from '../../lib/unitPreference';
 import { formatLiftWeightValue } from '../../lib/units';
+import { TYPOGRAPHY, useKuaTypography } from '../../theme/typography';
+import { GEOMETRY } from '../../theme/spacing';
 
 export function getSessionTone(count) {
   if (count >= 10) return 'error';
@@ -59,6 +60,7 @@ function sessionGaugeToneColor(tone, colors) {
 export function SessionGauge({ count, total, showDeload = true, paused = false }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
+  const typography = useKuaTypography();
   const tone = getSessionTone(count);
   const toneColor = sessionGaugeToneColor(tone, colors);
   const caption = getSessionZoneCaption(count);
@@ -71,13 +73,13 @@ export function SessionGauge({ count, total, showDeload = true, paused = false }
         {(showDeload || paused) && (
           <View style={styles.sessionGaugeStat}>
             <Text style={styles.sessionGaugeLabel}>{paused ? 'Since last deload' : 'Since deload'}</Text>
-            <Text style={[styles.sessionGaugeCount, paused ? null : { color: toneColor }]}>{count}</Text>
+            <Text style={[styles.sessionGaugeCount, typography['metric-display-mobile'], paused ? null : { color: toneColor }]}>{count}</Text>
           </View>
         )}
         {total != null && (
           <View style={[styles.sessionGaugeStat, styles.sessionGaugeStatRight]}>
             <Text style={styles.sessionGaugeLabel}>{paused ? 'Sessions logged' : 'Total'}</Text>
-            <Text style={styles.sessionGaugeCount}>{total}</Text>
+            <Text style={[styles.sessionGaugeCount, typography['metric-display-mobile']]}>{total}</Text>
           </View>
         )}
       </View>
@@ -115,11 +117,12 @@ export function SessionGauge({ count, total, showDeload = true, paused = false }
 
 export function StatCard({ label, value, tone = 'default' }) {
   const styles = useThemedStyles(createStyles);
+  const typography = useKuaTypography();
   const isDarkTone = ['accent', 'success', 'error', 'warn'].includes(tone);
   return (
     <Card tone={tone} style={styles.statCard}>
       <Text style={[styles.statLabel, isDarkTone ? styles.textLight : null]}>{label}</Text>
-      <Text style={[styles.statValue, isDarkTone ? styles.textLight : null]}>{value}</Text>
+      <Text style={[styles.statValue, typography['metric-display-mobile'], isDarkTone ? styles.textLight : null]}>{value}</Text>
     </Card>
   );
 }
@@ -197,6 +200,7 @@ export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabl
 
 export function SetLine({ sets, selectable, mark }) {
   const styles = useThemedStyles(createStyles);
+  const typography = useKuaTypography();
   const [plateTarget, setPlateTarget] = useState(null);
   const unit = useWeightUnit();
   if (!sets || sets.length === 0) return null;
@@ -266,22 +270,22 @@ export function SetLine({ sets, selectable, mark }) {
                   "this is tappable" cue — plain color/weight alone read as
                   inert text (review finding), and the underline degrades
                   fine as a border in every theme without relying on color. */}
-              <Text selectable={selectable} style={[styles.setWeight, styles.setWeightTappable]}>
+              <Text selectable={selectable} style={[styles.setWeight, typography['label-lg'], styles.setWeightTappable]}>
                 {group.convertedFromKg
                   ? `${formatLiftWeightValue(group.weight, unit)} ${unit} (${group.kgValue}kg)`
                   : `${formatLiftWeightValue(group.weight, unit)} ${unit}`}
               </Text>
             </Pressable>
           ) : (
-            <Text selectable={selectable} style={styles.setWeight}>BW</Text>
+            <Text selectable={selectable} style={[styles.setWeight, typography['label-lg']]}>BW</Text>
           )}
-          <Text selectable={selectable} style={styles.setReps}>{group.reps.join(', ')}</Text>
+          <Text selectable={selectable} style={[styles.setReps, typography['label-lg']]}>{group.reps.join(', ')}</Text>
         </View>
       ))}
       {mark ? (
         <Text
           selectable={selectable}
-          style={styles.setMark}
+          style={[styles.setMark, typography['label-lg']]}
           accessibilityLabel={`Marked: ${mark}`}
         >
           {`★ ${mark}`}
@@ -328,7 +332,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: kua ? kua.surfaceCard : colors.panelBackground,
   },
   sessionGaugePanelTitle: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '800',
     color: colors.textMuted,
     textTransform: 'uppercase',
@@ -345,15 +349,13 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     marginLeft: 'auto',
   },
   sessionGaugeLabel: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '700',
     color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
   sessionGaugeCount: {
-    fontSize: 28,
-    fontWeight: '900',
     color: colors.text,
   },
   sessionGaugeCountRow: {},
@@ -367,26 +369,26 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     flexDirection: 'row',
     width: '100%',
     height: 10,
-    borderRadius: 5,
+    borderRadius: GEOMETRY['radius-sm'],
     overflow: 'hidden',
   },
   gaugeSeg: {
     height: '100%',
   },
   gaugeSegLeft: {
-    borderTopLeftRadius: 5,
-    borderBottomLeftRadius: 5,
+    borderTopLeftRadius: GEOMETRY['radius-sm'],
+    borderBottomLeftRadius: GEOMETRY['radius-sm'],
   },
   gaugeSegRight: {
-    borderTopRightRadius: 5,
-    borderBottomRightRadius: 5,
+    borderTopRightRadius: GEOMETRY['radius-sm'],
+    borderBottomRightRadius: GEOMETRY['radius-sm'],
   },
   gaugeMarker: {
     position: 'absolute',
     top: 0,
     width: 16,
     height: 16,
-    borderRadius: 8,
+    borderRadius: GEOMETRY['radius-full'],
     backgroundColor: colors.card,
     borderWidth: 3,
     transform: [{ translateX: -8 }],
@@ -397,7 +399,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     marginTop: 4,
   },
   gaugeZoneLabel: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '700',
     color: colors.textMuted,
     textTransform: 'uppercase',
@@ -410,25 +412,23 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     textAlign: 'right',
   },
   sessionGaugeCaption: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     marginTop: 2,
   },
   statLabel: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: colors.textMuted,
   },
   statValue: {
-    fontSize: 28,
-    fontWeight: '800',
     color: colors.text,
   },
   textLight: {
     color: colors.textLight,
   },
   workoutHeading: {
-    fontSize: 22,
+    fontSize: TYPOGRAPHY['headline-md'].fontSize,
     fontWeight: '800',
     color: kua ? kua.onSurface : colors.text,
     marginTop: 24,
@@ -443,7 +443,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     marginBottom: 12,
   },
   workoutSubheading: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.primary : colors.accentText,
     textTransform: 'uppercase',
@@ -466,7 +466,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     marginBottom: 2,
   },
   exerciseName: {
-    fontSize: 17,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
     flex: 1,
@@ -474,7 +474,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   trackToggle: {
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 8,
+    borderRadius: GEOMETRY['radius-lg'],
     borderWidth: 1,
     borderColor: kua ? kua.primaryContainerBorder : colors.cardBorder,
     backgroundColor: kua ? kua.primaryContainer : 'transparent',
@@ -488,7 +488,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     borderColor: kua ? kua.primaryContainerBorder : colors.cardBorder,
   },
   trackToggleText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.primaryOnContainer : colors.textMuted,
   },
@@ -513,8 +513,6 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 8,
   },
   setWeight: {
-    fontSize: SET_ROW_FONT_SIZE,
-    fontWeight: '600',
     color: colors.textMuted,
   },
   // #577: visible tappable cue for the plate-calculator affordance.
@@ -524,18 +522,14 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     borderStyle: 'dashed',
   },
   setReps: {
-    fontSize: SET_ROW_FONT_SIZE,
-    fontWeight: '400',
     color: colors.text,
   },
   setMark: {
-    fontSize: SET_ROW_FONT_SIZE,
-    fontWeight: '400',
     color: colors.textMuted,
     marginLeft: 6,
   },
   annotationNote: {
-    fontSize: SET_ROW_FONT_SIZE - 1,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontStyle: 'italic',
     color: colors.textMuted,
     paddingLeft: 0,

@@ -1,6 +1,8 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useThemedStyles } from '../../theme/ThemeContext';
+import { TYPOGRAPHY } from '../../theme/typography';
+import { GEOMETRY } from '../../theme/spacing';
 
 export function Card({ children, style, tone = 'default', onPress }) {
   const styles = useThemedStyles(createStyles);
@@ -53,7 +55,7 @@ export function ArtisanalPanel({ children, style }) {
 const createStyles = (colors, kua = null) => StyleSheet.create({
   card: {
     backgroundColor: kua ? kua.surfaceCard : colors.card,
-    borderRadius: 24,
+    borderRadius: GEOMETRY['radius-2xl'],
     padding: 18,
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
@@ -61,7 +63,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   artisanalPanel: {
     backgroundColor: kua ? kua.surfaceCard : colors.panelBackground,
-    borderRadius: 24,
+    borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.divider,
     shadowColor: kua ? kua.onSurface : colors.text,
@@ -92,7 +94,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     borderColor: colors.cardCautionBg,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: TYPOGRAPHY['headline-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
     marginTop: 6,

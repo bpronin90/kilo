@@ -6,6 +6,7 @@ import { Button } from './UI';
 import { TabBarLayoutContext, TabBarScrollContext, TAB_BAR_VISUAL_GAP, useWebUserScrollIntent } from './TabBarLayout';
 import { centeredColumnInsets } from './adaptiveLayout';
 import pkg from '../package.json';
+import { TYPOGRAPHY } from '../theme/typography';
 
 export const ScrollContext = createContext({ onScroll: () => {} });
 
@@ -142,7 +143,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   backButtonText: {
     color: kua ? kua.onSurface : colors.text,
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
   },
   scroll: {
     flex: 1,
@@ -179,16 +180,16 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     minWidth: 0,
   },
   title: {
-    fontSize: 34,
+    fontSize: TYPOGRAPHY['headline-xl-mobile'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
   version: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   subtitle: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     lineHeight: 22,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },

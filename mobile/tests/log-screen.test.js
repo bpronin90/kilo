@@ -4193,7 +4193,7 @@ describe('LogPreviousRoutines: quiet note-card containment (#847)', () => {
     const root = render_();
     // Two separate rounded, bordered surfaces, one per routine — not a single
     // enclosing panel wrapping a flat divided list.
-    const cards = root.findAll(n => typeof n.type === 'string' && n.props && n.props.style && flat(n).borderRadius === 24 && flat(n).overflow === 'hidden');
+    const cards = root.findAll(n => typeof n.type === 'string' && n.props && n.props.style && flat(n).borderRadius === 16 && flat(n).overflow === 'hidden');
     expect(cards.length).toBe(2);
     for (const card of cards) {
       const style = flat(card);

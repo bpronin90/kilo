@@ -1,7 +1,14 @@
 import { useThemedStyles } from '../../theme/ThemeContext';
+import { TYPOGRAPHY } from '../../theme/typography';
+import { GEOMETRY } from '../../theme/spacing';
 
-export const SET_ROW_FONT_SIZE = 14;
+export const SET_ROW_FONT_SIZE = TYPOGRAPHY['label-lg'].fontSize;
 
+// Display exception per #1283 foundation: legacy (non-KUA) hero/stat sizes sit
+// above the type scale and keep their pre-migration values. Every KUA consumer
+// (homeStyles, AnalyticsStrengthSection) already branches to the fallback-aware
+// metric-display roles via useKuaTypography(), so these only render in legacy
+// mode, where the system-font 900 weight is the intended look.
 export const HeroMetric = {
   hero:          { fontSize: 48, fontWeight: '900', lineHeight: 52 },
   statPrimary:   { fontSize: 32, fontWeight: '900' },
@@ -19,10 +26,10 @@ export const createInputStyle = (colors, kua = null) => ({
   backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
   borderWidth: 1,
   borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
-  borderRadius: 12,
+  borderRadius: GEOMETRY['radius-xl'],
   paddingHorizontal: 12,
   paddingVertical: 12,
-  fontSize: 15,
+  fontSize: TYPOGRAPHY['body-md'].fontSize,
   color: kua ? kua.onSurface : colors.text,
 });
 

@@ -94,7 +94,7 @@ describe('UI.js compatibility barrel: export-surface parity', () => {
       borderRadius: 12,
       paddingHorizontal: 12,
       paddingVertical: 12,
-      fontSize: 15,
+      fontSize: 14,
       color: LightColors.text,
     });
   });
@@ -139,7 +139,7 @@ describe('UI.js compatibility barrel: rendered structure parity', () => {
     const panel = component.root.findByType(View);
     expect(flatten(panel.props.style)).toMatchObject({
       backgroundColor: LightColors.panelBackground,
-      borderRadius: 24,
+      borderRadius: 16,
       overflow: 'hidden',
     });
     expect(component.root.findByType(Text).props.children).toBe('inner');
@@ -153,7 +153,7 @@ describe('UI.js compatibility barrel: rendered structure parity', () => {
     const view = component.root.findByType(View);
     expect(flatten(view.props.style)).toMatchObject({
       backgroundColor: LightColors.chipBackground,
-      borderRadius: 999,
+      borderRadius: 16,
     });
     expect(component.root.findByType(Text).props.children).toBe('New PR');
   });

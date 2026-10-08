@@ -5,6 +5,8 @@ import { useTheme } from '../theme/ThemeContext';
 import { useKuaTypography } from '../theme/typography';
 import { KUA_PALETTES } from '../theme/colors';
 import { setThemeSelection } from '../lib/themePreference';
+import { TYPOGRAPHY } from '../theme/typography';
+import { GEOMETRY } from '../theme/spacing';
 
 // paletteKey mirrors ThemeContext's private themeKey() mapping, duplicated here
 // (three entries) rather than exported, so this stays a display-only read of
@@ -66,7 +68,7 @@ const createStyles = (kua = null, colors = {}, typography = {}) => StyleSheet.cr
     marginBottom: 20,
   },
   label: {
-    ...(typography['body-lg'] ?? { fontSize: 16 }),
+    ...(typography['body-lg'] ?? { fontSize: TYPOGRAPHY['body-lg'].fontSize }),
     color: kua ? kua.onSurface : colors.text,
     marginBottom: 10,
   },
@@ -82,7 +84,7 @@ const createStyles = (kua = null, colors = {}, typography = {}) => StyleSheet.cr
     minWidth: 44,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: GEOMETRY['radius-lg'],
     borderWidth: 1,
     gap: 12,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
@@ -95,11 +97,11 @@ const createStyles = (kua = null, colors = {}, typography = {}) => StyleSheet.cr
   swatch: {
     width: 20,
     height: 20,
-    borderRadius: 10,
+    borderRadius: GEOMETRY['radius-full'],
   },
   optionText: {
     flex: 1,
-    ...(typography['label-sm'] ?? { fontSize: 11 }),
+    ...(typography['label-sm'] ?? { fontSize: TYPOGRAPHY['label-sm'].fontSize }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Selected: inherits label-sm metrics but upgrades to label-lg family/weight
