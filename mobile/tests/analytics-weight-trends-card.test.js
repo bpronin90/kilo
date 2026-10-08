@@ -141,7 +141,7 @@ describe('AnalyticsWeightTrendsCard — selected date state', () => {
     expect(hasText(root, '184.2 lb')).toBe(true);
   });
 
-  test('selecting a point only in rolling30 (not in rolling7) shows — for 7-day avg', () => {
+  test('selecting a point only in rolling30 (not in rolling7) shows N/A for 7-day avg', () => {
     const component = setup();
     const root = component.root;
 
@@ -151,8 +151,8 @@ describe('AnalyticsWeightTrendsCard — selected date state', () => {
     });
 
     expect(hasText(root, 'Selected · 05/19')).toBe(true);
-    // 7-day avg shows em-dash since 05/19 is not in rolling7
-    expect(findAllText(root).some(s => s === '—')).toBe(true);
+    // 7-day avg shows N/A since 05/19 is not in rolling7
+    expect(findAllText(root).some(s => s === 'N/A')).toBe(true);
     // 30-day avg shows the matching value
     expect(hasText(root, '182.0 lb')).toBe(true);
   });

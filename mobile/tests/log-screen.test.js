@@ -5063,7 +5063,7 @@ describe('Skip week / Undo skip: integration (#502)', () => {
 
     await render.act(async () => { await getLatest().hook.handleSkipWeek(); });
     expect(update).toHaveBeenCalledTimes(1);
-    expect(getLatest().hook.skipWeekStatus).toBe('Finishing the previous save — try again');
+    expect(getLatest().hook.skipWeekStatus).toBe('Finishing the previous save. Try again.');
 
     await render.act(async () => {
       releaseFirstSave();
@@ -5118,7 +5118,7 @@ describe('Skip week / Undo skip: integration (#502)', () => {
     await render.act(async () => { await getLatest().hook.handleSkipWeek(); });
 
     expect(onCheckInPrompt).not.toHaveBeenCalled();
-    expect(getLatest().hook.skipWeekStatus).toBe('Could not save skip — try again');
+    expect(getLatest().hook.skipWeekStatus).toBe('Could not save skip. Try again.');
   });
 
   test('Undo skip never triggers the fatigue-reason prompt, even on a successful save', async () => {
@@ -5178,7 +5178,7 @@ describe('Skip week / Undo skip: integration (#502)', () => {
     });
 
     await render.act(async () => { await getLatest().hook.handleSkipWeek(); });
-    expect(getLatest().hook.skipWeekStatus).toBe('Could not save skip — try again');
+    expect(getLatest().hook.skipWeekStatus).toBe('Could not save skip. Try again.');
 
     // Next successful skip still persists count 1, not 2: the failed write
     // never committed to the counter.
@@ -5451,7 +5451,7 @@ describe('Undo skip: fatigue-reason check-in cleanup', () => {
     // Exactly one write was attempted (the atomic one) and it failed; there
     // is no separate cleanup write that could have half-applied.
     expect(update).toHaveBeenCalledTimes(1);
-    expect(getLatest().hook.skipWeekStatus).toBe('Could not remove skip — try again');
+    expect(getLatest().hook.skipWeekStatus).toBe('Could not remove skip. Try again.');
 
     // A retry once persistence recovers still carries the full atomic patch.
     update.mockImplementation(async (_id, patch) => ({
@@ -6104,7 +6104,7 @@ describe('LogScreenEditorCard quiet on-demand problem list (#863)', () => {
     const component = renderEditor({ activeEditText: text });
     const root = component.root;
     render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
-    render.act(() => { findListRowByPrefix(root, 'Bench —').props.onPress(); });
+    render.act(() => { findListRowByPrefix(root, 'Bench:').props.onPress(); });
     let noteInput = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === text);
     const firstSelection = noteInput.props.selection;
     render.act(() => {
@@ -6114,7 +6114,7 @@ describe('LogScreenEditorCard quiet on-demand problem list (#863)', () => {
     expect(noteInput.props.selection).toBeUndefined();
 
     render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
-    render.act(() => { findListRowByPrefix(root, 'Squat —').props.onPress(); });
+    render.act(() => { findListRowByPrefix(root, 'Squat:').props.onPress(); });
     noteInput = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === text);
     expect(noteInput.props.selection).toEqual({ start: text.indexOf('225 5-8'), end: text.length });
     expect(noteInput.props.selection).not.toEqual(firstSelection);
@@ -6127,7 +6127,7 @@ describe('LogScreenEditorCard quiet on-demand problem list (#863)', () => {
     const labels = rowLabels(component.root);
     expect(labels.length).toBeGreaterThan(0);
     labels.forEach(label => expect(label).not.toMatch(/\bLine \d/));
-    expect(labels[0]).toMatch(/^Bench —/);
+    expect(labels[0]).toMatch(/^Bench:/);
   });
 
   test('session alignment: only exercises with a missing position appear, one row per position', () => {
@@ -6146,8 +6146,8 @@ describe('LogScreenEditorCard quiet on-demand problem list (#863)', () => {
     render.act(() => { findByTestID(component.root, 'editor-validation-badge').props.onPress(); });
     const labels = rowLabels(component.root);
     expect(labels).toEqual([
-      'Monday · Deadlift — session 2 has no entry',
-      'Monday · Deadlift — session 3 has no entry',
+      'Monday · Deadlift: session 2 has no entry',
+      'Monday · Deadlift: session 3 has no entry',
     ]);
   });
 
@@ -6168,7 +6168,7 @@ describe('LogScreenEditorCard quiet on-demand problem list (#863)', () => {
 
     const bar = findByTestID(root, 'editor-validation-bar');
     expect(bar).toBeTruthy();
-    expect(bar.findAllByType('Text')[0].props.children).toMatch(/^Bench —/);
+    expect(bar.findAllByType('Text')[0].props.children).toMatch(/^Bench:/);
   });
 
   test('a missing-session caret releases before later badge toggles (#865)', () => {
@@ -6206,7 +6206,7 @@ describe('LogScreenEditorCard quiet on-demand problem list (#863)', () => {
       expect(noteInput.props.selection).toBeUndefined();
 
       const bar = findByTestID(root, 'editor-validation-bar');
-      expect(bar.findAllByType('Text')[0].props.children).toBe('Monday · Deadlift — session 2 has no entry');
+      expect(bar.findAllByType('Text')[0].props.children).toBe('Monday · Deadlift: session 2 has no entry');
     } finally {
       jest.useRealTimers();
     }
@@ -6242,7 +6242,7 @@ describe('LogScreenEditorCard quiet on-demand problem list (#863)', () => {
       const component = renderEditor({ activeEditText: original });
       const root = component.root;
       render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
-      const benchRow = findListRowByPrefix(root, 'Bench —');
+      const benchRow = findListRowByPrefix(root, 'Bench:');
       render.act(() => { benchRow.props.onPress(); });
       const barBefore = findByTestID(root, 'editor-validation-bar').findAllByType('Text')[0].props.children;
 
@@ -6255,7 +6255,7 @@ describe('LogScreenEditorCard quiet on-demand problem list (#863)', () => {
       // The other, unfixed problem (Squat) is still reachable in the list.
       render.act(() => { findByTestID(root, 'editor-validation-badge').props.onPress(); });
       const labels = rowLabels(root);
-      expect(labels.some(l => l.startsWith('Squat —'))).toBe(true);
+      expect(labels.some(l => l.startsWith('Squat:'))).toBe(true);
     } finally {
       jest.useRealTimers();
     }
@@ -6559,7 +6559,7 @@ describe('LogScreenEditorCard quiet on-demand problem list (#863)', () => {
         const component = renderEditor({ activeEditText: text });
         const root = component.root;
         toggleList(root);
-        render.act(() => { findListRowByPrefix(root, 'Bench —').props.onPress(); });
+        render.act(() => { findListRowByPrefix(root, 'Bench:').props.onPress(); });
         expect(nativeCalls).toHaveLength(2);
 
         // iOS applies a JS-driven range without emitting onSelectionChange, so
@@ -6582,7 +6582,7 @@ describe('LogScreenEditorCard quiet on-demand problem list (#863)', () => {
       const component = renderEditor({ activeEditText: text });
       const root = component.root;
       toggleList(root);
-      render.act(() => { findListRowByPrefix(root, 'Bench —').props.onPress(); });
+      render.act(() => { findListRowByPrefix(root, 'Bench:').props.onPress(); });
 
       render.act(() => {
         findNoteInput(root, text).props.onSelectionChange({ nativeEvent: { selection: { start: 0, end: 0 } } });
@@ -6597,9 +6597,9 @@ describe('LogScreenEditorCard quiet on-demand problem list (#863)', () => {
       const component = renderEditor({ activeEditText: text });
       const root = component.root;
       toggleList(root);
-      render.act(() => { findListRowByPrefix(root, 'Bench —').props.onPress(); });
+      render.act(() => { findListRowByPrefix(root, 'Bench:').props.onPress(); });
       toggleList(root);
-      render.act(() => { findListRowByPrefix(root, 'Squat —').props.onPress(); });
+      render.act(() => { findListRowByPrefix(root, 'Squat:').props.onPress(); });
 
       const benchStart = 'Monday\n-Bench\n'.length;
       expect(nativeCalls).toEqual([
@@ -6647,7 +6647,7 @@ describe('LogScreenEditorCard quiet on-demand problem list (#863)', () => {
         const root = component.root;
         layOutToolRow(root, 44);
         toggleList(root);
-        render.act(() => { findListRowByPrefix(root, 'Squat —').props.onPress(); });
+        render.act(() => { findListRowByPrefix(root, 'Squat:').props.onPress(); });
         render.act(() => { jest.runAllTimers(); });
 
         // Stands in for the user scrolling away and tapping elsewhere in the
@@ -6791,7 +6791,7 @@ describe('#616: WorkoutContentRenderer surfaces parser errors', () => {
     return [{ heading: null, sections }];
   }
 
-  test('an unparsed row shows a ⚠ glyph, the parser message, and a recovery a11y label naming the raw line', () => {
+  test('an unparsed row shows a warning icon, the parser message, and a recovery a11y label naming the raw line', () => {
     const dayGroups = dayGroupsFor('-Bench\n- 100 x');
     let component;
     render.act(() => {
@@ -6799,7 +6799,7 @@ describe('#616: WorkoutContentRenderer surfaces parser errors', () => {
     });
     const root = component.root;
     // Non-color-only: a warning glyph accompanies the row.
-    const glyphNodes = root.findAll(n => n.type === 'Text' && n.props.children === '⚠');
+    const glyphNodes = root.findAll(n => n.props?.name === 'warning' && typeof n.type !== 'string');
     expect(glyphNodes.length).toBeGreaterThan(0);
     // The actionable parser message is rendered.
     const hintNode = root.find(
@@ -6836,7 +6836,7 @@ describe('#616: WorkoutContentRenderer surfaces parser errors', () => {
     );
     expect(banner).toBeTruthy();
     const bannerText = root.find(
-      n => n.type === 'Text' && typeof n.props.children === 'string' && n.props.children.includes('too large to parse')
+      n => n.type === 'Text' && [].concat(n.props.children).some(c => typeof c === 'string' && c.includes('too large to parse'))
     );
     expect(bannerText).toBeTruthy();
     expect(bannerText.props.style.color).toBe(LightColors.error);
@@ -6852,14 +6852,14 @@ describe('#616: WorkoutContentRenderer surfaces parser errors', () => {
       component = render.create(<WorkoutContentRenderer dayGroups={dayGroups} />);
     });
     const root = component.root;
-    const glyphNodes = root.findAll(n => n.type === 'Text' && n.props.children === '⚠');
-    expect(glyphNodes.length).toBe(1);
+    const glyphNodes = root.findAll(n => n.props?.name === 'warning' && typeof n.type !== 'string');
+    expect(glyphNodes.length).toBeGreaterThan(0);
     // The raw non-weight line is still rendered.
     expect(root.find(n => n.type === 'Text' && n.props.children === '5 min easy')).toBeTruthy();
   });
 
   // #854/G1-p: a bare integer with no governing header declaration renders
-  // visibly with no ⚠ and no message — recognized but not structured data.
+  // visibly with no warning icon and no message — recognized but not structured data.
   test('a bare integer with no declaration renders with no error glyph', () => {
     const dayGroups = dayGroupsFor('-Bench\n225 5\n140');
     let component;
@@ -6867,7 +6867,7 @@ describe('#616: WorkoutContentRenderer surfaces parser errors', () => {
       component = render.create(<WorkoutContentRenderer dayGroups={dayGroups} />);
     });
     const root = component.root;
-    const glyphNodes = root.findAll(n => n.type === 'Text' && n.props.children === '⚠');
+    const glyphNodes = root.findAll(n => n.props?.name === 'warning' && typeof n.type !== 'string');
     expect(glyphNodes.length).toBe(0);
     expect(root.find(n => n.type === 'Text' && n.props.children === '140')).toBeTruthy();
   });
@@ -6962,7 +6962,7 @@ describe('#616: oversize note reaches the read-view failure affordance through t
     );
     expect(banner).toBeTruthy();
     const bannerText = root.find(
-      n => n.type === 'Text' && typeof n.props.children === 'string' && n.props.children.includes('too large to parse')
+      n => n.type === 'Text' && [].concat(n.props.children).some(c => typeof c === 'string' && c.includes('too large to parse'))
     );
     expect(bannerText).toBeTruthy();
 
@@ -9090,7 +9090,7 @@ describe('RecoveryBlockEndModal', () => {
 
     const first = new Date(weeks[0].saved_at).toLocaleDateString();
     const last = new Date(weeks[1].saved_at).toLocaleDateString();
-    expect(allText().some(t => t.includes(`Push Day · 2 weeks · ${first}–${last}`))).toBe(true);
+    expect(allText().some(t => t.includes(`Push Day · 2 weeks · ${first} to ${last}`))).toBe(true);
 
     const off = root.findAll(n => n.props && n.props.accessibilityLabel === 'Keep them out of normal analytics')[0];
     const on = root.findAll(n => n.props && n.props.accessibilityLabel === 'Count them with everything else')[0];
@@ -14073,7 +14073,7 @@ describe('LogScreen — progression-suggestion Apply-to-note wiring (#1010)', ()
     });
     expect(onApplyProgression).toHaveBeenCalledTimes(1);
     expect(onApplyProgression.mock.calls[0][0]).toBe(record);
-    expect(statusOf(component.root)).toBe('Applied — the suggested target was added to your note.');
+    expect(statusOf(component.root)).toBe('Applied. The suggested target was added to your note.');
     render.act(() => component.unmount());
   });
 
@@ -14200,7 +14200,7 @@ describe('LogScreen — progression-suggestion Apply-to-note wiring (#1010)', ()
       'Wait for the current save to finish, then try Apply again. Nothing was added.'
     );
     await render.act(async () => { resolveFirst({ applied: true }); });
-    expect(statusOf(component.root)).toBe('Applied — the suggested target was added to your note.');
+    expect(statusOf(component.root)).toBe('Applied. The suggested target was added to your note.');
     render.act(() => component.unmount());
   });
 
@@ -14264,7 +14264,7 @@ describe('LogScreen — progression-suggestion Apply-to-note wiring (#1010)', ()
       expect(updateSpy.mock.calls[0][1].raw_text).toContain('140 8,8,8');
 
       const status = component.root.findAll((n) => n.props.testID === 'log-progression-apply-status');
-      expect(status[0].props.children).toBe('Applied — the suggested target was added to your note.');
+      expect(status[0].props.children).toBe('Applied. The suggested target was added to your note.');
       render.act(() => component.unmount());
     });
   });

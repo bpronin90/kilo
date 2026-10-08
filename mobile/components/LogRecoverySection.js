@@ -273,7 +273,7 @@ export function LogRecoverySection({
   const handleCompleteWeek = () => {
     Alert.alert(
       `Complete Week ${currentWeek.week_number}?`,
-      `This marks Week ${currentWeek.week_number} complete and keeps its note as it is. It does not create or submit a note for the next week — you'll choose or create that note when you add it.`,
+      `This marks Week ${currentWeek.week_number} complete and keeps its note as it is. It does not create or submit a note for the next week. You'll choose or create that note when you add it.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {

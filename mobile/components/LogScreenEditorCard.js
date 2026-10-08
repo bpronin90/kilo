@@ -1,5 +1,6 @@
 import React from 'react';
 import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card, Button } from './UI';
 import { useTheme, useThemedStyles, useKuaStyle } from '../theme/ThemeContext';
@@ -260,11 +261,11 @@ export function LogScreenEditorCard({
                   style={styles.dateDisclosureRow}
                   onPress={editingDeloadHasLinkedRecord ? () => setDateFieldOpen(o => !o) : undefined}
                   accessibilityRole="button"
-                  accessibilityLabel={`Date, ${deloadEditDate ? formatDate(deloadEditDate) : '—'}${editingDeloadHasLinkedRecord ? '' : '. Unavailable for this record'}`}
+                  accessibilityLabel={`Date, ${deloadEditDate ? formatDate(deloadEditDate) : 'N/A'}${editingDeloadHasLinkedRecord ? '' : '. Unavailable for this record'}`}
                   accessibilityState={{ disabled: !editingDeloadHasLinkedRecord, expanded: dateFieldOpen }}
                 >
                   <Text style={styles.dateDisclosureText}>
-                    {`Date · ${deloadEditDate ? formatDate(deloadEditDate) : '—'}`}
+                    {`Date · ${deloadEditDate ? formatDate(deloadEditDate) : 'N/A'}`}
                   </Text>
                 </Pressable>
                 {editingDeloadHasLinkedRecord && dateFieldOpen && (
@@ -288,7 +289,7 @@ export function LogScreenEditorCard({
                         accessibilityLabel="Deload date"
                         accessibilityRole="button"
                       >
-                        <Text style={styles.dateInputText}>{deloadEditDate || '—'}</Text>
+                        <Text style={styles.dateInputText}>{deloadEditDate || 'N/A'}</Text>
                       </Pressable>
                     )}
                     <Text style={styles.inputLabel}>Session #</Text>
@@ -499,7 +500,7 @@ export function LogScreenEditorCard({
                   accessibilityRole="button"
                   accessibilityLabel="Dismiss problem message"
                 >
-                  <Text style={styles.validationBarDismissText}>✕</Text>
+                  <MaterialIcons name="close" size={20} style={styles.validationBarDismissText} accessible={false} />
                 </Pressable>
               </View>
             ) : null}
@@ -557,7 +558,8 @@ export function LogScreenEditorCard({
           )}
           <View style={styles.dangerZone}>
             <View style={styles.dangerZoneHeading}>
-              <Text style={styles.dangerZoneHeadingText}>⚠ Danger Zone</Text>
+              <MaterialIcons name="warning" size={16} style={[styles.dangerZoneHeadingText, { fontSize: 16, marginRight: 6 }]} accessible={false} />
+              <Text style={styles.dangerZoneHeadingText}>Danger Zone</Text>
             </View>
             <Button
               onPress={handleRevertEdit}

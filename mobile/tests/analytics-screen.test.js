@@ -605,7 +605,7 @@ describe('AnalyticsScreen overview block (#821)', () => {
       hookOverrides: { error: new Error('boom'), refresh: jest.fn() },
     });
     const root = component.root;
-    expect(hasText(root, 'Unavailable — could not load')).toBe(true);
+    expect(hasText(root, 'Unavailable: could not load')).toBe(true);
     // And never the "you have nothing logged" copy for the same row.
     expect(hasText(root, 'Map your three lifts and log one full cycle')).toBe(false);
   });
@@ -926,7 +926,7 @@ describe('AnalyticsScreen non-weighted exercise cards — minimal layout', () =>
     const root = component.root;
 
     expect(hasText(root, 'Pull-up')).toBe(true);
-    expect(findAllText(root).some(s => s === '—')).toBe(true);
+    expect(findAllText(root).some(s => s === 'N/A')).toBe(true);
   });
 });
 

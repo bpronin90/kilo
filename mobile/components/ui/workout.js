@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
 
 // KUA presentation opt-in gate. Defaults to null (legacy path) so every
@@ -186,7 +187,7 @@ export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabl
               isTracked ? styles.trackToggleTextActive : null,
               disabledTrack ? styles.trackToggleTextDisabled : null
             ]}>
-              {kua ? (isTracked ? '✓ Tracked' : 'Track') : (isTracked ? 'Tracked' : 'Track')}
+              {kua && isTracked ? (<><MaterialIcons name="check" size={14} accessible={false} /> Tracked</>) : (isTracked ? 'Tracked' : 'Track')}
             </Text>
           </TrackContainer>
         )}

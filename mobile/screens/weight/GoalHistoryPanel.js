@@ -85,12 +85,12 @@ export function GoalHistoryPanel({ sortedArchivedGoals, collapsed, setCollapsed,
                   </View>
                   <View style={hp.col2}>
                     <Text style={[hp.value, endWeightOutcomeStyle]}>
-                      {hasCompletedWeight ? `${formatBodyweightValue(g.completed_weight, unit)} ${unit}` : '—'}
+                      {hasCompletedWeight ? `${formatBodyweightValue(g.completed_weight, unit)} ${unit}` : 'N/A'}
                     </Text>
                   </View>
                   <View style={hp.col3}>
                     <Text style={hp.dateValue}>
-                      {g.target_date ? formatDate(g.target_date) : '—'}
+                      {g.target_date ? formatDate(g.target_date) : 'N/A'}
                     </Text>
                   </View>
                 </View>

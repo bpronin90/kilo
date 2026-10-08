@@ -47,16 +47,10 @@ function findBackdrop(root) {
   return findPressables(root)[0];
 }
 
-// The X close button: Pressable whose great-grandchild has props.children === '✕'.
-// Pressable renders View → View → [Text("✕"), …] so the content is 3 levels deep.
-// In TestInstance trees, .type is a component reference (not a string), so match by props.children only.
+// The X close button: the Pressable whose subtree holds the MaterialIcons "close" glyph.
 function findCloseButton(root) {
   return findPressables(root).find(node =>
-    (node.children || []).some(c1 =>
-      (c1.children || []).some(c2 =>
-        (c2.children || []).some(c3 => c3?.props?.children === '✕')
-      )
-    )
+    node.findAll(n => n.props?.name === 'close', { deep: true }).length > 0
   );
 }
 
@@ -300,7 +294,7 @@ describe('SessionCheckInModal — title selection and copy', () => {
       detectors: ['volume_drop'],
       flagged: [{ name: 'Squat', normName: 'squat', reasons: ['volume_drop'] }],
     });
-    expect(titleOf(instance)).toBe('Lighter than usual — Squat');
+    expect(titleOf(instance)).toBe('Lighter than usual: Squat');
   });
 
   it('skipped alone states the observation without naming a cause', async () => {
@@ -325,7 +319,7 @@ describe('SessionCheckInModal — title selection and copy', () => {
       ],
     });
     const title = titleOf(instance);
-    expect(title).toBe('Lighter than usual — Bench');
+    expect(title).toBe('Lighter than usual: Bench');
     // Selection, not composition: the old ' · ' join is gone.
     expect(title).not.toContain(' · ');
   });
@@ -342,7 +336,7 @@ describe('SessionCheckInModal — title selection and copy', () => {
       ],
     });
     const title = titleOf(instance);
-    expect(title).toBe('Lighter than usual — Romanian Deadlift, Bulgarian Split Squat +2');
+    expect(title).toBe('Lighter than usual: Romanian Deadlift, Bulgarian Split Squat +2');
     expect(title.length).toBeLessThanOrEqual(64);
   });
 
@@ -370,7 +364,7 @@ describe('SessionCheckInModal — title selection and copy', () => {
   it('the invitation is a separate node from the observation, so they announce as two utterances', async () => {
     const instance = await renderWith(baseCheckInData);
     const texts = allText(instance.root);
-    expect(texts[0]).toBe('Lighter than usual — Squat');
+    expect(texts[0]).toBe('Lighter than usual: Squat');
     expect(texts[1]).toBe('Want to note why?');
   });
 

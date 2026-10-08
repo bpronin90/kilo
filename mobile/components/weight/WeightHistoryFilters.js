@@ -1,6 +1,7 @@
 import { GEOMETRY } from '../../theme/spacing';
 import React, { useMemo } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme } from '../../theme/ThemeContext';
 import { useKuaTypography, TYPOGRAPHY } from '../../theme/typography';
@@ -64,7 +65,7 @@ function DateBoundaryClear({ label, onPress }) {
       accessibilityRole="button"
       accessibilityLabel={`Clear ${label} date`}
     >
-      <Text style={styles.dateBoundaryClearText}>✕</Text>
+      <MaterialIcons name="close" size={20} style={styles.dateBoundaryClearText} accessible={false} />
     </Pressable>
   );
 }
@@ -114,7 +115,7 @@ export function WeightHistoryFilters({
                 <WebDateTextInput value={fromDate} onChange={setFromDate} placeholder="From" />
                 {fromDate ? <DateBoundaryClear label="From" onPress={() => setFromDate('')} /> : null}
               </View>
-              <Text style={styles.dateRangeSep}>—</Text>
+              <Text style={styles.dateRangeSep}>to</Text>
               <View style={styles.dateBoundary} testID="weight-history-to-boundary">
                 <WebDateTextInput value={toDate} onChange={setToDate} placeholder="To" />
                 {toDate ? <DateBoundaryClear label="To" onPress={() => setToDate('')} /> : null}
@@ -136,7 +137,7 @@ export function WeightHistoryFilters({
                 </Pressable>
                 {fromDate ? <DateBoundaryClear label="From" onPress={() => setFromDate('')} /> : null}
               </View>
-              <Text style={styles.dateRangeSep}>—</Text>
+              <Text style={styles.dateRangeSep}>to</Text>
               <View style={styles.dateBoundary} testID="weight-history-to-boundary">
                 <Pressable
                   onPress={() => setShowToPicker(true)}

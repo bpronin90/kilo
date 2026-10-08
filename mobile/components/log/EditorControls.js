@@ -169,7 +169,7 @@ export function useEditorCard({
       line: p.line ?? Infinity,
       severity: p.severity,
       exerciseName: p.exerciseName,
-      label: p.exerciseName ? `${p.exerciseName} — ${p.message}` : p.message,
+      label: p.exerciseName ? `${p.exerciseName}: ${p.message}` : p.message,
     }))
   ), [validationParsed]);
 
@@ -196,7 +196,7 @@ export function useEditorCard({
           exerciseName: exercise.name,
           entryCount: exercise.entryCount,
           position,
-          label: `${exercise.sectionLabel} · ${exercise.name} — session ${position} has no entry`,
+          label: `${exercise.sectionLabel} · ${exercise.name}: session ${position} has no entry`,
         });
       }
     }

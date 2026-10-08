@@ -500,7 +500,7 @@ export function buildLogRecovery(deps) {
     const baselineTitle = newestCompletedRecoveryBlock.baseline_note_title || 'Untitled Routine';
     Alert.alert(
       'Reopen this recovery block?',
-      `This reactivates ${baselineTitle} as your active recovery block. Every week's status stays exactly as it is — you can add a new week or undo the latest week's completion once it's reopened. You can only reopen your most recently completed block, and only while no other block is active.`,
+      `This reactivates ${baselineTitle} as your active recovery block. Every week's status stays exactly as it is. You can add a new week or undo the latest week's completion once it's reopened. You can only reopen your most recently completed block, and only while no other block is active.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {

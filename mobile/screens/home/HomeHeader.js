@@ -63,9 +63,9 @@ export function HomeHeader({
   // keeps a "Recovery" header with the week/state on the line below.
   const headerLabel = isRecovery
     ? 'Recovery'
-    : dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Week —';
+    : dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Week N/A';
   const recoverySubline = isRecoveryOpenWeek
-    ? `Week ${activeTrainingContext.recoveryWeekNumber ?? '—'}`
+    ? `Week ${activeTrainingContext.recoveryWeekNumber ?? 'N/A'}`
     : null;
 
   const mutedStroke = kua ? kua.onSurfaceVariant : colors.textMuted;
@@ -74,8 +74,8 @@ export function HomeHeader({
   const newlyTrackedCount = dashboardData.weeklySummary.newlyTrackedCount;
   const captionText = newlyTrackedCount > 0
     ? (newlyTrackedCount === 1
-        ? '1 exercise in its first tracked session — log another to see a trend'
-        : `${newlyTrackedCount} exercises in their first tracked session — log another to see a trend`)
+        ? '1 exercise in its first tracked session. Log another to see a trend'
+        : `${newlyTrackedCount} exercises in their first tracked session. Log another to see a trend`)
     : dashboardData.weeklySummary.hasInheritedTracking
       ? 'Includes exercises tracked before this update, using full history'
       : null;

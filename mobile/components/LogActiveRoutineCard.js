@@ -127,7 +127,7 @@ export function LogActiveRoutineCard({
     try {
       const result = await onApplyProgression(record);
       if (result && result.applied === true) {
-        message = 'Applied — the suggested target was added to your note.';
+        message = 'Applied. The suggested target was added to your note.';
       } else if (result && result.reason === 'save-in-flight') {
         message = 'Wait for the current save to finish, then try Apply again. Nothing was added.';
       } else if (result && result.reason === 'save-failed') {

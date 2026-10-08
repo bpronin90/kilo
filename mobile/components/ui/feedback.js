@@ -1,5 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useThemedStyles } from '../../theme/ThemeContext';
 import { SET_ROW_FONT_SIZE } from './styles';
 import { withAlpha } from '../../theme/styleHelpers';
@@ -30,7 +31,7 @@ export function UnparsedRow({ raw, error, muted, selectable }) {
       accessibilityLabel={`Unrecognized set row: ${raw}. ${error}`}
     >
       <View style={styles.unparsedRawLine}>
-        <Text style={muted ? styles.unparsedGlyphMuted : styles.unparsedGlyph}>⚠</Text>
+        <MaterialIcons name="warning" style={muted ? styles.unparsedGlyphMuted : styles.unparsedGlyph} accessible={false} />
         <Text selectable={selectable} style={rawStyle}>{raw}</Text>
       </View>
       <Text selectable={selectable} style={styles.unparsedHint}>{error}</Text>
@@ -51,7 +52,9 @@ export function NoteParseError({ message }) {
       accessible={true}
       accessibilityLabel={`Note could not be parsed. ${text}`}
     >
-      <Text style={styles.noteParseErrorText}>{`⚠ ${text}`}</Text>
+      <Text style={styles.noteParseErrorText}>
+        <MaterialIcons name="warning" size={16} accessible={false} />{` ${text}`}
+      </Text>
     </View>
   );
 }

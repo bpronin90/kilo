@@ -14,9 +14,9 @@ import {
 // rule in the app: `Use as current`, the S1 card, and `Set as current routine`
 // all route through the two branches of handleSwitchCurrent.
 const ADOPT_FAILED_MESSAGE =
-  'Could not make this your current routine. It is still saved — try again.';
+  'Could not make this your current routine. It is still saved. Try again.';
 const FLUSH_FAILED_MESSAGE =
-  'Could not save your latest edits, so nothing was switched. Your text is still here — try again.';
+  'Could not save your latest edits, so nothing was switched. Your text is still here. Try again.';
 
 export function createOtherAdoptionHandlers(ctx) {
   const {

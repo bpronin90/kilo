@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Platform, Share, Text, TextInput, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Alert } from '../lib/platformAlert';
 import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle, Button } from './UI';
@@ -206,7 +207,7 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
     // require an acknowledgement before the data can leave the device.
     Alert.alert(
       'Export is unencrypted',
-      'Your backup is plain, unencrypted text. Anyone you share or save it with — clipboard, notes, messengers — can read all of your weight and workout data. Only share it somewhere you trust.',
+      'Your backup is plain, unencrypted text. Anyone you share or save it with (clipboard, notes, messengers) can read all of your weight and workout data. Only share it somewhere you trust.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Export anyway', style: 'destructive', onPress: shareExport },
@@ -257,7 +258,7 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
     if (busy) return;
     Alert.alert(
       'CSV is not a backup',
-      'CSV export is for moving your data into other tools — it drops recovery history, deload/fatigue data, tracked-lift activation state, and deleted-record history, and most sessions have no recoverable calendar date. Use Export Local Backup to preserve everything. This file is also unencrypted and processed entirely on this device.',
+      'CSV export is for moving your data into other tools. It drops recovery history, deload/fatigue data, tracked-lift activation state, and deleted-record history, and most sessions have no recoverable calendar date. Use Export Local Backup to preserve everything. This file is also unencrypted and processed entirely on this device.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Export anyway', style: 'destructive', onPress: () => shareCsvExport(kind) },
@@ -276,7 +277,7 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
       try {
         payload = JSON.parse(importText.trim());
       } catch {
-        setStatus({ ok: false, message: 'Invalid JSON — check your backup text.' });
+        setStatus({ ok: false, message: 'Invalid JSON. Check your backup text.' });
         return;
       }
       const result = await onImport(payload);
@@ -305,7 +306,7 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
           message:
             found.reason === 'none-found'
               ? 'No Kilo backup found in that folder.'
-              : 'Import cancelled — no folder chosen.',
+              : 'Import cancelled. No folder chosen.',
         });
         return;
       }
@@ -343,7 +344,7 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
     <ScreenShell
       ref={scrollRef}
       title="Data & Backup"
-      subtitle="Export or restore your training data — on this device or in the cloud."
+      subtitle="Export or restore your training data, on this device or in the cloud."
       onBack={onBack}
       style={kua ? { backgroundColor: kua.background } : undefined}
     >
@@ -369,7 +370,7 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
         </Text>
         <Button title="Export Local Backup" onPress={handleExport} disabled={busy} style={styles.actionButton} />
         <Text style={styles.helpText}>
-          Export your data as CSV to use it in other tools. This is not a backup — it loses recovery,
+          Export your data as CSV to use it in other tools. This is not a backup. It loses recovery,
           deload/fatigue, and deleted-record history, and most dates.
         </Text>
         <Button
@@ -439,7 +440,7 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
           <Card style={cardStyle}>
             <Text style={styles.helpText}>
               Export Account Data fetches what the server currently holds for
-              your account — not what is on this device. It may differ from
+              your account, not what is on this device. It may differ from
               your local data if you have not recently synced.
             </Text>
             <Button
@@ -471,7 +472,8 @@ export function BackupScreen({ onBack, onExport, onImport, auth, onGoToAccount, 
 
       <View style={styles.dangerZone}>
         <View style={styles.dangerZoneHeading}>
-          <Text style={styles.dangerZoneHeadingText}>⚠ Danger Zone</Text>
+          <MaterialIcons name="warning" size={16} style={[styles.dangerZoneHeadingText, { fontSize: 16, marginRight: 6 }]} accessible={false} />
+          <Text style={styles.dangerZoneHeadingText}>Danger Zone</Text>
         </View>
         {auth?.deviceWipeRequired ? (
           <Text

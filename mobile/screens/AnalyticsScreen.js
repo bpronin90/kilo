@@ -265,14 +265,14 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   const rolling30 = useMemo(() => displayChartSeries(rollingSeries30 || [], unit), [rollingSeries30, unit]);
   const weightSummary = useMemo(() => {
     if (weightEntries.length === 0) {
-      return { latestWeightValue: '—', showUnit: false, weightCount: '0', avg7: '—', avg30: '—', paceFlag: null, paceLevel: null, paceElapsedDays: null };
+      return { latestWeightValue: 'N/A', showUnit: false, weightCount: '0', avg7: 'N/A', avg30: 'N/A', paceFlag: null, paceLevel: null, paceElapsedDays: null };
     }
     return {
-      latestWeightValue: weightTrends.currentWeight !== null ? formatBodyweightValue(weightTrends.currentWeight, unit) : '—',
+      latestWeightValue: weightTrends.currentWeight !== null ? formatBodyweightValue(weightTrends.currentWeight, unit) : 'N/A',
       showUnit: weightTrends.currentWeight !== null,
       weightCount: String(weightEntries.length),
-      avg7:  weightTrends.avg7  !== null ? `${displayWeight(weightTrends.avg7, unit).toFixed(1)} ${unit}`  : '—',
-      avg30: weightTrends.avg30 !== null ? `${displayWeight(weightTrends.avg30, unit).toFixed(1)} ${unit}` : '—',
+      avg7:  weightTrends.avg7  !== null ? `${displayWeight(weightTrends.avg7, unit).toFixed(1)} ${unit}`  : 'N/A',
+      avg30: weightTrends.avg30 !== null ? `${displayWeight(weightTrends.avg30, unit).toFixed(1)} ${unit}` : 'N/A',
       paceFlag: weightTrends.paceFlag,
       paceLevel: weightPaceLevel,
       paceElapsedDays: weightPaceInfo ? weightPaceInfo.elapsedDays : null,

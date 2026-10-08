@@ -369,7 +369,7 @@ describe('AnalyticsRecoverySection — unavailable and error states', () => {
     const component = setup({ blocks: [b], weeks: [w], notes: [] });
     const root = component.root;
 
-    expect(hasText(root, "Week 1 — This week's note is no longer available.")).toBe(true);
+    expect(hasText(root, "Week 1: This week's note is no longer available.")).toBe(true);
   });
 
   test('a parser-rejected note surfaces the rejection, not zero work, using the R3a-worded notice', () => {
@@ -379,7 +379,7 @@ describe('AnalyticsRecoverySection — unavailable and error states', () => {
     const component = setup({ blocks: [b], weeks: [w], notes: [n] });
     const root = component.root;
 
-    expect(hasText(root, "Week 1 — This week's note couldn't be read.")).toBe(true);
+    expect(hasText(root, "Week 1: This week's note couldn't be read.")).toBe(true);
     // Never silently presented as a clean, empty week.
     expect(hasText(root, 'No exercise evidence for this week.')).toBe(false);
   });
@@ -515,7 +515,7 @@ describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b
     expect(hasText(root, 'weeks logged')).toBe(false);
   });
 
-  test('the card\'s last line is provenance only: "{start} – {end}" for a completed block', () => {
+  test('the card\'s last line is provenance only: "{start} to {end}" for a completed block', () => {
     const b = block({
       started_at: '2026-04-01T00:00:00Z',
       completed_at: '2026-04-29T00:00:00Z',
@@ -523,7 +523,7 @@ describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b
     const component = setup({ blocks: [b], weeks: [], notes: [] });
     const root = component.root;
 
-    expect(hasText(root, '04-01-2026 –')).toBe(true);
+    expect(hasText(root, '04-01-2026 to')).toBe(true);
     expect(hasText(root, '04-29-2026')).toBe(true);
   });
 
@@ -568,7 +568,7 @@ describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b
     // Defaults to the latest week (2), whose note is missing — no hero
     // renders, but the live-region wrapper still does, around the notice.
     expect(liveRegions(root).length).toBe(1);
-    expect(hasText(root, "Week 2 — This week's note is no longer available.")).toBe(true);
+    expect(hasText(root, "Week 2: This week's note is no longer available.")).toBe(true);
 
     act(() => { byLabel(root, 'Week 1').props.onPress(); });
 
@@ -871,11 +871,11 @@ describe('AnalyticsRecoverySection — likely name mismatch explanation (#1202)'
     expect(hasText(root, 'Baseline has “Pull-up”')).toBe(true);
     expect(hasText(root, 'names differ')).toBe(false);
     const labels = rowLabels(root);
-    expect(labels.find(l => l.startsWith('Pull-up, Not trained yet'))).toContain('Logged as "Pull-up (wide)" this week — names differ, so no direct comparison was made.');
-    expect(labels.find(l => l.startsWith('Pull-up (wide), Added during recovery'))).toContain('Baseline has "Pull-up" — names differ, so no direct comparison was made.');
-    expect(labels.find(l => l.startsWith('Pull-up, Not trained yet'))).toContain('names differ');
-    expect(labels.find(l => l.startsWith('Pull-up (wide), Added during recovery'))).toContain('names differ');
-    expect(labels.find(l => l.startsWith('Foam Roll'))).not.toContain('names differ');
+    expect(labels.find(l => l.startsWith('Pull-up, Not trained yet'))).toContain('Logged as "Pull-up (wide)" this week. Names differ, so no direct comparison was made.');
+    expect(labels.find(l => l.startsWith('Pull-up (wide), Added during recovery'))).toContain('Baseline has "Pull-up". Names differ, so no direct comparison was made.');
+    expect(labels.find(l => l.startsWith('Pull-up, Not trained yet'))).toContain('Names differ');
+    expect(labels.find(l => l.startsWith('Pull-up (wide), Added during recovery'))).toContain('Names differ');
+    expect(labels.find(l => l.startsWith('Foam Roll'))).not.toContain('Names differ');
   });
 });
 
@@ -1528,7 +1528,7 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
       notes: [],
     }).root;
 
-    expect(hasText(root, "Week 1 — This week's note is no longer available.")).toBe(true);
+    expect(hasText(root, "Week 1: This week's note is no longer available.")).toBe(true);
     expect(byLabel(root, 'Expand exercise details')).toBeUndefined();
   });
 });
@@ -2565,7 +2565,7 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
   };
   const hostById = (root, id) => root.findAll(n => typeof n.type === 'string' && n.props.testID === id);
   const segsOf = (node) => node.findAll(n => typeof n.type === 'string' && /^recovery-segment-/.test(n.props.testID || ''));
-  const NOTE = 'Training numbers only. Not a medical judgment — only you end a Recovery block.';
+  const NOTE = 'Training numbers only. Not a medical judgment. Only you end a Recovery block.';
   const saveReason = async () => ({ ok: true });
 
   test('collapsed and expanded render the SAME text-led count line; expanding does not change it', () => {
@@ -2839,7 +2839,7 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
       expect(StyleSheet.flatten(title.props.style)).toMatchObject({ flexShrink: 1 });
       // The completed range is a plain, untruncated value (wraps instead).
       const date = hostById(root, 'recovery-context-date')[0]
-        .findAll(n => typeof n.type === 'string' && n.props.accessibilityLabel === 'Dates 05-01-2026 – 06-01-2026')[0];
+        .findAll(n => typeof n.type === 'string' && n.props.accessibilityLabel === 'Dates 05-01-2026 to 06-01-2026')[0];
       expect(date).toBeDefined();
       expect(date.findAll(n => n.type === 'Text' && n.props.numberOfLines !== undefined)).toHaveLength(0);
       expect(StyleSheet.flatten(date.props.style).flexWrap).toBe('wrap');
@@ -3537,7 +3537,7 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
     expect(note.props.accessibilityLiveRegion).toBe('polite');
     act(() => { byLabel(root, 'About these numbers').props.onPress(); });
     expect(hasText(root, 'Not a medical judgment')).toBe(true);
-    expect(findAllText(hostById(root, 'recovery-about-note')[0])).toEqual(['Training numbers only. Not a medical judgment — only you end a Recovery block.']);
+    expect(findAllText(hostById(root, 'recovery-about-note')[0])).toEqual(['Training numbers only. Not a medical judgment. Only you end a Recovery block.']);
   });
 
   // One announcement per context row: the visible label is hidden from assistive
@@ -3545,7 +3545,7 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
   // never spoken twice.
   test.each([
     ['Started', () => mountOwner(), 'Started 08-08-2026'],
-    ['Dates', () => mountOwner({ completed_at: '2026-09-20T12:00:00Z' }), 'Dates 08-08-2026 – 09-20-2026'],
+    ['Dates', () => mountOwner({ completed_at: '2026-09-20T12:00:00Z' }), 'Dates 08-08-2026 to 09-20-2026'],
     ['Baseline', () => {
       let c;
       act(() => { c = render.create(<AnalyticsRecoverySection blocks={[block({ baseline_note_title: 'Summer 2026 Routine' })]} weeks={[]} notes={[]} />); });
@@ -3581,7 +3581,7 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
   test('completed block: "Dates" row with the range, Reason row, and the Reopen control stay above the context block', () => {
     const root = mountOwner({ completed_at: '2026-09-20T12:00:00Z' }, { onSaveReason: async () => ({ ok: true }) });
     const ctx = hostById(root, 'recovery-footer-row')[0];
-    expect(findAllText(ctx)).toEqual(['Dates', '08-08-2026 –', '09-20-2026', 'Reason', 'Back injury']);
+    expect(findAllText(ctx)).toEqual(['Dates', '08-08-2026 to', '09-20-2026', 'Reason', 'Back injury']);
   });
 });
 

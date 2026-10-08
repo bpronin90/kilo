@@ -51,7 +51,7 @@ export function HelpScreen({ onBack }) {
       content: (
         <Body styles={styles}>
           <Chunk styles={styles} label="Writing a routine">
-            Write a workout as plain text — Kilo parses headings, exercises, sets, reps, and weight
+            Write a workout as plain text. Kilo parses headings, exercises, sets, reps, and weight
             as you type.
           </Chunk>
           <View style={styles.syntaxContainer}>

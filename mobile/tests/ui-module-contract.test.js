@@ -279,7 +279,7 @@ describe('UI.js compatibility barrel: rendered structure parity', () => {
     const container = errored.root.findByType(View);
     expect(container.props.accessibilityLabel).toBe('Unrecognized set row: odd line. Could not parse weight');
     const errorTexts = errored.root.findAllByType(Text).map((t) => t.props.children);
-    expect(errorTexts).toContain('⚠');
+    expect(errored.root.findAll((n) => n.props?.name === 'warning').length).toBeGreaterThan(0);
     expect(errorTexts).toContain('Could not parse weight');
   });
 
@@ -290,7 +290,8 @@ describe('UI.js compatibility barrel: rendered structure parity', () => {
     });
     const view = component.root.findByType(View);
     expect(view.props.accessibilityLabel).toBe('Note could not be parsed. Note too long');
-    expect(component.root.findByType(Text).props.children).toBe('⚠ Note too long');
+    expect(component.root.findAll((n) => n.props?.name === 'warning').length).toBeGreaterThan(0);
+    expect(component.root.findByType(Text).props.children).toContain(' Note too long');
   });
 
   test('AnnotationNote renders nothing without text and labels its note when present', () => {
@@ -376,7 +377,7 @@ describe('UI.js compatibility barrel: KUA gate opt-in (#1139)', () => {
 });
 
 describe('WorkoutKuaProvider: KUA opt-in gate', () => {
-  test('ExerciseBlock without a WorkoutKuaProvider renders "Tracked" (legacy text, no ✓)', () => {
+  test('ExerciseBlock without a WorkoutKuaProvider renders "Tracked" (legacy text, no check icon)', () => {
     let component;
     renderer.act(() => {
       component = renderer.create(
@@ -387,7 +388,7 @@ describe('WorkoutKuaProvider: KUA opt-in gate', () => {
     });
     const texts = component.root.findAllByType(Text).map((t) => t.props.children);
     expect(texts).toContain('Tracked');
-    expect(texts).not.toContain('✓ Tracked');
+    expect(component.root.findAll((n) => n.props?.name === 'check').length).toBe(0);
   });
 
   test('ExerciseBlock inside WorkoutKuaProvider renders "✓ Tracked" when tracked', () => {
@@ -402,7 +403,7 @@ describe('WorkoutKuaProvider: KUA opt-in gate', () => {
       );
     });
     const texts = component.root.findAllByType(Text).map((t) => t.props.children);
-    expect(texts).toContain('✓ Tracked');
+    expect(component.root.findAll((n) => n.props?.name === 'check').length).toBeGreaterThan(0);
     expect(texts).not.toContain('Tracked');
   });
 
@@ -419,7 +420,7 @@ describe('WorkoutKuaProvider: KUA opt-in gate', () => {
     });
     const texts = component.root.findAllByType(Text).map((t) => t.props.children);
     expect(texts).toContain('Track');
-    expect(texts).not.toContain('✓ Tracked');
+    expect(component.root.findAll((n) => n.props?.name === 'check').length).toBe(0);
   });
 
   test('WorkoutKuaProvider with kua=null preserves legacy path (no ✓ Tracked)', () => {
@@ -435,6 +436,6 @@ describe('WorkoutKuaProvider: KUA opt-in gate', () => {
     });
     const texts = component.root.findAllByType(Text).map((t) => t.props.children);
     expect(texts).toContain('Tracked');
-    expect(texts).not.toContain('✓ Tracked');
+    expect(component.root.findAll((n) => n.props?.name === 'check').length).toBe(0);
   });
 });

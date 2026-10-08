@@ -79,7 +79,7 @@ export function HomeDashboard({
                     {gi.required_weekly_pace !== null ? (
                       `${gi.required_weekly_pace > 0 ? '+' : ''}${displayWeight(gi.required_weekly_pace, unit).toFixed(1)}`
                     ) : (
-                      '—'
+                      'N/A'
                     )}
                   </Text>
                   <Text style={[styles.goalStatUnitLabel, { color: paceColor }]}>{unit}/wk</Text>
@@ -115,7 +115,7 @@ export function HomeDashboard({
           // Untracked total: a muted em-dash at hero scale plus a plain-language
           // next step, not a lerp-tinted lone glyph that read as a stray mark.
           <>
-            <Text style={styles.oneKHeroPlaceholder}>—</Text>
+            <Text style={styles.oneKHeroPlaceholder}>N/A</Text>
             <Text style={styles.oneKHeroCaption}>Track lifts to see your 1K total</Text>
           </>
         )}
@@ -129,15 +129,15 @@ export function HomeDashboard({
         </View>
         <View style={styles.oneKGrid}>
           <View style={styles.oneKGridItem}>
-            <Text style={styles.oneKGridValue}>{dashboardData.oneK?.squat != null ? displayWeight(dashboardData.oneK.squat, unit).toFixed(0) : '—'}</Text>
+            <Text style={styles.oneKGridValue}>{dashboardData.oneK?.squat != null ? displayWeight(dashboardData.oneK.squat, unit).toFixed(0) : 'N/A'}</Text>
             <Text style={styles.oneKGridLabel}>Squats</Text>
           </View>
           <View style={[styles.oneKGridItem, styles.oneKGridItemBorder]}>
-            <Text style={styles.oneKGridValue}>{dashboardData.oneK?.bench != null ? displayWeight(dashboardData.oneK.bench, unit).toFixed(0) : '—'}</Text>
+            <Text style={styles.oneKGridValue}>{dashboardData.oneK?.bench != null ? displayWeight(dashboardData.oneK.bench, unit).toFixed(0) : 'N/A'}</Text>
             <Text style={styles.oneKGridLabel}>Bench</Text>
           </View>
           <View style={styles.oneKGridItem}>
-            <Text style={styles.oneKGridValue}>{dashboardData.oneK?.deadlift != null ? displayWeight(dashboardData.oneK.deadlift, unit).toFixed(0) : '—'}</Text>
+            <Text style={styles.oneKGridValue}>{dashboardData.oneK?.deadlift != null ? displayWeight(dashboardData.oneK.deadlift, unit).toFixed(0) : 'N/A'}</Text>
             <Text style={styles.oneKGridLabel}>Deadlifts</Text>
           </View>
         </View>

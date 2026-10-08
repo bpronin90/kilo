@@ -21,6 +21,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useTheme } from '../theme/ThemeContext';
 import { createInputStyle } from './UI';
 import { MAX_RECOVERY_REASON_LENGTH } from '../lib/data/recoveryBlocks';
@@ -172,7 +173,7 @@ export function RecoveryBlockStartModal({
               accessibilityRole="button"
               accessibilityLabel="Close"
             >
-              <Text style={styles.closeBtnText}>✕</Text>
+              <MaterialIcons name="close" size={20} style={styles.closeBtnText} accessible={false} />
             </Pressable>
           </View>
 

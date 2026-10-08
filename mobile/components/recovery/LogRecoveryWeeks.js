@@ -217,7 +217,7 @@ export function LogRecoveryWeeks({
               </Text>
             </Pressable>
             <Text style={styles.actionCaption}>
-              Keeps Week {currentWeek.week_number}'s note as it is — you'll choose or create next
+              Keeps Week {currentWeek.week_number}'s note as it is. You'll choose or create next
               week's note separately.
             </Text>
           </>

@@ -26,7 +26,7 @@ export function ThemePreviewControl() {
 
   return (
     <View testID="theme-preview-control">
-      <Text style={styles.devLabel}>DEV — Theme Preview</Text>
+      <Text style={styles.devLabel}>DEV: Theme Preview</Text>
       <Text style={styles.sectionLabel}>Court</Text>
       <View style={styles.row}>
         {THEME_OPTIONS.map(({ value, label }) => (

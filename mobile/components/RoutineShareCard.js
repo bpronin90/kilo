@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Button } from './UI';
 import { useThemedStyles } from '../theme/ThemeContext';
 import { LightColors } from '../theme/colors';
@@ -94,7 +95,9 @@ export function RoutineShareModal({ title, rawText, onClose, shareImage = shareR
             onPress={() => { setLaidOut(null); setIncludeNumbers(value => !value); }}
             style={styles.option}
           >
-            <Text style={styles.optionText}>{includeNumbers ? '☑' : '☐'} Include weights and reps for this share</Text>
+            <Text style={styles.optionText}>
+              <MaterialIcons name={includeNumbers ? 'check-box' : 'check-box-outline-blank'} size={20} accessible={false} /> Include weights and reps for this share
+            </Text>
           </Pressable>
           <ScrollView style={styles.preview} contentContainerStyle={styles.previewContent}>
             <RoutineShareCard

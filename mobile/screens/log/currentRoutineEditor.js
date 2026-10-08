@@ -301,7 +301,7 @@ export async function performUnskipRemoval(ctx, newActiveText, nextUniversalSkip
     currentNoteRef,
   } = ctx;
   if (saveInFlightRef.current) {
-    setSkipWeekStatus('Finishing the previous save — try again');
+    setSkipWeekStatus('Finishing the previous save. Try again.');
     return;
   }
   // The session being removed is the note's current deepest session column (the
@@ -344,7 +344,7 @@ export async function performUnskipRemoval(ctx, newActiveText, nextUniversalSkip
     // path would desync the counter from the stored text.
     setWorkoutNoteText(prevFullText);
     workoutNoteTextRef.current = prevFullText;
-    setSkipWeekStatus('Could not remove skip — try again');
+    setSkipWeekStatus('Could not remove skip. Try again.');
     return;
   }
   // Removing a skip is not new logged work, so it does not run fatigue check-in
@@ -365,7 +365,7 @@ export async function handleUnskipWeek(ctx) {
   } = ctx;
   if (!currentId) return;
   if (saveInFlightRef.current) {
-    setSkipWeekStatus('Finishing the previous save — try again');
+    setSkipWeekStatus('Finishing the previous save. Try again.');
     return;
   }
   const newActiveText = removeWeekSkipFromText(activeEditText, activeWeekParsed.sections);

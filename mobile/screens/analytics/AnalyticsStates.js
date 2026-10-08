@@ -23,10 +23,10 @@ export function describePoRowState({ hasActivation, isFirstSpanSession, hasCapab
   if (!hasCapabilityData) return null;
   if (isFirstSpanSession) {
     return hasActivation
-      ? 'New tracked span — Est./Kilo/Best above stay historical'
+      ? 'New tracked span: Est./Kilo/Best above stay historical'
       : 'First session';
   }
-  if (!hasActivation) return 'Inherited tracking — full history';
+  if (!hasActivation) return 'Inherited tracking: full history';
   return null;
 }
 
@@ -69,7 +69,7 @@ function renderExerciseRow(sig, { analytics, trackedLiftActivations, unit, style
           <View style={styles.metricCol}>
             <Text style={styles.signalValue}>
               {nw.exercise_class === 'reps_only'
-                ? (nw.avg_reps ?? '—')
+                ? (nw.avg_reps ?? 'N/A')
                 : formatDuration(nw.avg_hold)}
             </Text>
             <Text style={styles.nwMetricLabel}>AVG</Text>
@@ -77,7 +77,7 @@ function renderExerciseRow(sig, { analytics, trackedLiftActivations, unit, style
           <View style={styles.metricCol}>
             <Text style={styles.signalValue}>
               {nw.exercise_class === 'reps_only'
-                ? (nw.best_set_reps ?? '—')
+                ? (nw.best_set_reps ?? 'N/A')
                 : formatDuration(nw.best_hold)}
             </Text>
             <Text style={styles.nwMetricLabel}>BEST</Text>
@@ -91,19 +91,19 @@ function renderExerciseRow(sig, { analytics, trackedLiftActivations, unit, style
         <View style={styles.signalMetricsGrid}>
           <View style={styles.metricCol}>
             <Text style={styles.signalValue}>
-              {rowPr ? formatLiftWeightValue(Math.round(rowPr), unit) : '—'}
+              {rowPr ? formatLiftWeightValue(Math.round(rowPr), unit) : 'N/A'}
               {rowPr ? <Text style={styles.unitSuffix}>{unit}</Text> : null}
             </Text>
           </View>
           <View style={styles.metricCol}>
             <Text style={styles.signalValue}>
-              {sig.kilo_max != null ? formatLiftWeightValue(sig.kilo_max, unit) : '—'}
+              {sig.kilo_max != null ? formatLiftWeightValue(sig.kilo_max, unit) : 'N/A'}
               {sig.kilo_max != null ? <Text style={styles.unitSuffix}>{unit}</Text> : null}
             </Text>
           </View>
           <View style={styles.metricCol}>
             <Text style={styles.signalValue}>
-              {rowTopWeight ? (rowIsBodyweight ? rowTopWeight : formatLiftWeightValue(rowTopWeight, unit)) : '—'}
+              {rowTopWeight ? (rowIsBodyweight ? rowTopWeight : formatLiftWeightValue(rowTopWeight, unit)) : 'N/A'}
               {rowTopWeight ? <Text style={styles.unitSuffix}>{rowIsBodyweight ? 'reps' : unit}</Text> : null}
             </Text>
           </View>
@@ -192,7 +192,7 @@ export function renderOverloadListContent({
   return (
     <View key="empty-tracked" style={styles.emptyTracked}>
       <Text style={styles.emptyText}>
-        Tap Track on any exercise in your note to track it here. Logging alone doesn't track it — Track / Tracked is the only control that does.
+        Tap Track on any exercise in your note to track it here. Logging alone doesn't track it. Track / Tracked is the only control that does.
       </Text>
       <Pressable
         testID="analytics-empty-log-link"

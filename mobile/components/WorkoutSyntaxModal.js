@@ -1,5 +1,6 @@
 import React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useThemedStyles } from '../theme/ThemeContext';
 import { WorkoutSyntaxReference } from './WorkoutSyntaxReference';
 import { MODAL_SUPPORTED_ORIENTATIONS } from './adaptiveLayout';
@@ -30,7 +31,7 @@ export function WorkoutSyntaxModal({ visible, onClose }) {
               accessibilityRole="button"
               accessibilityLabel="Close workout syntax help"
             >
-              <Text style={styles.closeBtnText}>✕</Text>
+              <MaterialIcons name="close" size={20} style={styles.closeBtnText} accessible={false} />
             </Pressable>
           </View>
 

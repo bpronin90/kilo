@@ -82,7 +82,7 @@ export function AnalyticsRecoverySection({
     const baselineTitle = block.baseline_note_title || 'Untitled Routine';
     Alert.alert(
       'Reopen this recovery block?',
-      `This reactivates ${baselineTitle} as your active recovery block. Every week's status stays exactly as it is — you can add a new week or undo the latest week's completion once it's reopened. You can only reopen your most recently completed block, and only while no other block is active.`,
+      `This reactivates ${baselineTitle} as your active recovery block. Every week's status stays exactly as it is. You can add a new week or undo the latest week's completion once it's reopened. You can only reopen your most recently completed block, and only while no other block is active.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -293,7 +293,7 @@ export function AnalyticsRecoverySection({
                 >
                   <Text style={styles.historyBaselineTitle}>{block.baseline_note_title || 'Untitled Routine'}</Text>
                   <Text style={styles.historyDates}>
-                    {formatDate(block.started_at)} – {formatDate(block.completed_at)}
+                    {formatDate(block.started_at)} to {formatDate(block.completed_at)}
                   </Text>
                   {/* What a completed block was FOR is usually the fastest way
                       to recognize it in a list of past recoveries (#872) —

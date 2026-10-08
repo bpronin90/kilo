@@ -85,7 +85,7 @@ export function RecoveryBlockEndModal({
   const firstDate = firstDateVal ? new Date(firstDateVal).toLocaleDateString() : null;
   const lastDate = lastDateVal ? new Date(lastDateVal).toLocaleDateString() : null;
   const dateRangeText = firstDate
-    ? (lastDate && lastDate !== firstDate ? `${firstDate}–${lastDate}` : firstDate)
+    ? (lastDate && lastDate !== firstDate ? `${firstDate} to ${lastDate}` : firstDate)
     : null;
 
   const handleConfirm = async () => {
@@ -131,7 +131,7 @@ export function RecoveryBlockEndModal({
               accessibilityRole="button"
               accessibilityLabel="Close"
             >
-              <Text style={styles.closeBtnText}>✕</Text>
+              <MaterialIcons name="close" size={20} style={styles.closeBtnText} accessible={false} />
             </Pressable>
           </View>
 
@@ -140,7 +140,7 @@ export function RecoveryBlockEndModal({
               {`${baselineTitle} · ${weekCount} ${weekCount === 1 ? 'week' : 'weeks'}${dateRangeText ? ` · ${dateRangeText}` : ''}`}
             </Text>
             <Text style={styles.assurance}>
-              The baseline routine and every week's note are untouched — this only changes how
+              The baseline routine and every week's note are untouched. This only changes how
               these weeks count in analytics.
             </Text>
 
@@ -176,8 +176,8 @@ export function RecoveryBlockEndModal({
                   {!storedInclusion && <Text style={styles.optionCurrent}>Your current setting</Text>}
                 </View>
                 <Text style={styles.optionCopy}>
-                  Off (the default) keeps them out of normal analytics — classifications, overload
-                  signals, Kilo Max, 1K, and Home summaries.
+                  Off (the default) keeps them out of normal analytics (classifications, overload
+                  signals, Kilo Max, 1K, and Home summaries).
                 </Text>
               </View>
             </Pressable>
@@ -201,8 +201,8 @@ export function RecoveryBlockEndModal({
                   {storedInclusion && <Text style={styles.optionCurrent}>Your current setting</Text>}
                 </View>
                 <Text style={styles.optionCopy}>
-                  This block's linked recovery notes are included in normal analytics —
-                  classifications, overload signals, Kilo Max, 1K, and Home summaries.
+                  This block's linked recovery notes are included in normal analytics (
+                  classifications, overload signals, Kilo Max, 1K, and Home summaries).
                 </Text>
               </View>
             </Pressable>

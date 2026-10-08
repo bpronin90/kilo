@@ -116,7 +116,7 @@ export function AnalyticsStrengthSection({
                     // say "pounds," announcing a kg figure as pounds.
                     accessibilityLabel={item.value ? `Show plate loading for ${item.label} at ${item.value.toFixed(0)} ${unit === 'kg' ? 'kilograms' : 'pounds'}` : undefined}
                   >
-                    <Text style={styles.oneKItemValue}>{item.value?.toFixed(0) || '—'}</Text>
+                    <Text style={styles.oneKItemValue}>{item.value?.toFixed(0) || 'N/A'}</Text>
                     <Text style={styles.oneKItemLabel}>{item.label}</Text>
                   </Pressable>
                 ))}

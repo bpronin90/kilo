@@ -330,7 +330,7 @@ describe('post-save adoption prompt (#745 Part 4 §A1)', () => {
     const labels = root.findAll(n => n.props && n.props.accessibilityRole === 'button' && n.props.accessibilityLabel)
       .map(n => n.props.accessibilityLabel);
     expect(labels).toContain('Use Push Day as your current routine');
-    expect(labels).toContain('Not now — keep Push Day saved without making it current');
+    expect(labels).toContain('Not now. Keep Push Day saved without making it current');
     const primary = findPressableByText(root, 'Use as current');
     const flat = [].concat(primary.props.style).filter(Boolean);
     expect(flat.some(s => s && s.minHeight === 44)).toBe(true);

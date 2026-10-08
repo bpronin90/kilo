@@ -178,6 +178,18 @@ describe('WeightScreen edit and delete correction flows', () => {
   // Pressable, so expansion always runs first rather than as a fallback —
   // otherwise a summary-text match would resolve to the collapse toggle
   // instead of the intended row.
+  const findPressableByIcon = (root, name) => {
+    expandHistoryIfCollapsed(root);
+    for (const match of root.findAll(n => n.props?.name === name)) {
+      let node = match.parent;
+      while (node) {
+        if (node.props && typeof node.props.onPress === 'function') return node;
+        node = node.parent;
+      }
+    }
+    return undefined;
+  };
+
   const findPressableByText = (root, text) => {
     expandHistoryIfCollapsed(root);
     const matches = root.findAll(n => {
@@ -626,7 +638,7 @@ describe('WeightScreen edit and delete correction flows', () => {
 
     expect(hasText(root, '185 lb')).toBe(true);
 
-    const deleteBtn = findPressableByText(root, '✕');
+    const deleteBtn = findPressableByIcon(root, 'close');
     render.act(() => {
       deleteBtn.props.onPress();
     });
@@ -688,7 +700,7 @@ describe('WeightScreen edit and delete correction flows', () => {
     });
     const root = component.root;
 
-    const deleteBtn = findPressableByText(root, '✕');
+    const deleteBtn = findPressableByIcon(root, 'close');
     render.act(() => {
       deleteBtn.props.onPress();
     });

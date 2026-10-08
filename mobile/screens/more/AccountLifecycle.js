@@ -86,7 +86,7 @@ export function AccountLifecycle({ auth }) {
       ) : (
         <>
           <Button
-            title="Confirm Delete Account — Keep Device Data"
+            title="Confirm Delete Account and Keep Device Data"
             tone="danger"
             loadingTitle="Working…"
             disabled={busy}

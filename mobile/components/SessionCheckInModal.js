@@ -80,7 +80,7 @@ function deriveTitle(detectors, flagged) {
 
   if (fired.includes('volume_drop')) {
     const names = nameList(byReason['volume_drop']);
-    return names ? `Lighter than usual — ${names}` : 'Lighter than usual';
+    return names ? `Lighter than usual: ${names}` : 'Lighter than usual';
   }
 
   if (fired.includes('skipped')) {
@@ -153,12 +153,12 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
         session_checkins: { ...prevCheckins, [checkInData.sessionIndex]: record },
       });
       if (result === false) {
-        setSaveError('Could not save — please try again.');
+        setSaveError('Could not save. Please try again.');
         return;
       }
       onClose();
     } catch (e) {
-      setSaveError('Could not save — please try again.');
+      setSaveError('Could not save. Please try again.');
     } finally {
       setIsSaving(false);
     }
@@ -217,7 +217,7 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
               accessibilityLabel="Close"
               accessibilityState={{ disabled: isSaving }}
             >
-              <Text style={styles.closeBtnText} accessible={false} importantForAccessibility="no">✕</Text>
+              <MaterialIcons name="close" size={20} style={styles.closeBtnText} accessible={false} importantForAccessibility="no" />
             </Pressable>
           </View>
 

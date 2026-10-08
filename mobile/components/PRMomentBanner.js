@@ -1,5 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useTheme } from '../theme/ThemeContext';
 import { formatLiftWeightValue } from '../lib/units';
 import { useWeightUnit } from '../lib/unitPreference';
@@ -24,7 +25,7 @@ export function PRMomentBanner({ moment, onDismiss, style }) {
   return (
     <View style={[styles.banner, style]} accessibilityRole="summary">
       <Text style={styles.text}>
-        New PR{weightLabel ? ` — ${weightLabel}` : ''}
+        New PR{weightLabel ? `: ${weightLabel}` : ''}
       </Text>
       <Pressable
         onPress={onDismiss}
@@ -33,7 +34,7 @@ export function PRMomentBanner({ moment, onDismiss, style }) {
         accessibilityRole="button"
         accessibilityLabel="Dismiss PR celebration"
       >
-        <Text style={styles.dismissText}>✕</Text>
+        <MaterialIcons name="close" size={20} style={styles.dismissText} accessible={false} />
       </Pressable>
     </View>
   );
