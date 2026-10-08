@@ -1,3 +1,4 @@
+import { GEOMETRY } from '../../theme/spacing';
 import { StyleSheet } from 'react-native';
 import { TYPOGRAPHY } from '../../theme/typography';
 
@@ -14,37 +15,38 @@ export const createVisualStyles = (colors, kua = null) => {
     // #1219: the hero matches the sibling Analytics hero (Weight Trends
     // `weightValueLarge`: KUA metric-display 32/36 on-surface, legacy 36/800
     // accentText); week/label are 13sp supporting captions.
-    heroWeek: { fontSize: 13, fontWeight: '600', color: inkMuted },
+    heroWeek: { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600', color: inkMuted },
     heroNumber: kua
+      // display exception per #1283 foundation
       ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 32, lineHeight: 36, color: kua.onSurface }
-      : { fontSize: 36, fontWeight: '800', color: colors.accentText },
-    heroLabel: { fontSize: 13, fontWeight: '600', color: inkMuted },
-    heroEmpty: { fontSize: 18, fontWeight: '700', color: ink },
+      : { fontSize: TYPOGRAPHY['metric-display'].fontSize, fontWeight: '800', color: colors.accentText },
+    heroLabel: { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600', color: inkMuted },
+    heroEmpty: { fontSize: TYPOGRAPHY['headline-sm'].fontSize, fontWeight: '700', color: ink },
     barBlock: { gap: 8 },
     segmentBar: {
       flexDirection: 'row',
       height: 10,
-      borderRadius: 5,
+      borderRadius: GEOMETRY['radius-sm'],
       overflow: 'hidden',
       backgroundColor: track,
       gap: 2,
     },
     legend: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 6 },
     legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    legendDot: { width: 10, height: 10, borderRadius: 5 },
-    legendText: { fontSize: 13, fontWeight: '600', color: ink },
+    legendDot: { width: 10, height: 10, borderRadius: GEOMETRY['radius-full'] },
+    legendText: { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600', color: ink },
     changeRow: { flexDirection: 'row', columnGap: 12, alignItems: 'center' },
     changeCell: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-    changeCount: { fontSize: 15, fontWeight: '800', color: ink },
-    changeLabel: { fontSize: 12, fontWeight: '600', color: inkMuted },
+    changeCount: { ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize }), color: ink },
+    changeLabel: { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600', color: inkMuted },
     weeksStrip: { gap: 10 },
     weekRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    weekRowLabel: { width: 64, fontSize: 12, fontWeight: '600', color: inkMuted },
+    weekRowLabel: { width: 64, fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600', color: inkMuted },
     weekBar: {
       flex: 1,
       flexDirection: 'row',
       height: 6,
-      borderRadius: 3,
+      borderRadius: GEOMETRY['radius-xs'],
       overflow: 'hidden',
       backgroundColor: track,
       gap: 1,
@@ -53,7 +55,7 @@ export const createVisualStyles = (colors, kua = null) => {
     weekGapBar: {
       flex: 1,
       height: 6,
-      borderRadius: 3,
+      borderRadius: GEOMETRY['radius-xs'],
       borderWidth: 1,
       borderStyle: 'dashed',
       borderColor: border,
@@ -71,10 +73,10 @@ export const createVisualStyles = (colors, kua = null) => {
     // status word cannot share a line, so the status drops under the name
     // (dot + word stay together) instead of clipping or crowding the name.
     exHeader: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, rowGap: 2 },
-    exName: { flexGrow: 1, flexShrink: 1, fontSize: 15, fontWeight: '700', color: ink },
+    exName: { flexGrow: 1, flexShrink: 1, fontSize: TYPOGRAPHY['body-md'].fontSize, fontWeight: '700', color: ink },
     exStatus: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
-    exStatusDot: { width: 8, height: 8, borderRadius: 4 },
-    exStatusText: { fontSize: 13, fontWeight: '600', color: inkMuted },
+    exStatusDot: { width: 8, height: 8, borderRadius: GEOMETRY['radius-full'] },
+    exStatusText: { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600', color: inkMuted },
     // The bar line WRAPS (#1219): at large text or a narrow card the measure label
     // ("Total work 1133%") drops under the bar instead of overflowing or being
     // clipped; the track keeps a sane minimum (96) and grows to fill the line.
@@ -85,20 +87,20 @@ export const createVisualStyles = (colors, kua = null) => {
       flexBasis: 96,
       minWidth: 96,
       height: 6,
-      borderRadius: 3,
+      borderRadius: GEOMETRY['radius-xs'],
       overflow: 'hidden',
       backgroundColor: track,
     },
-    exBarFill: { height: '100%', borderRadius: 3 },
+    exBarFill: { height: '100%', borderRadius: GEOMETRY['radius-xs'] },
     // Names its measure ("Total work 133%"). A shared minimum width keeps every
     // row's bar the same length at ordinary scales (so bars compare at a
     // glance); it grows with the text at large font scales, wraps onto its own
     // line when it cannot sit beside the 96dp track, and `maxWidth: '100%'` lets a
     // very long label wrap inside the card rather than overflow it. The number is
     // never truncated (no numberOfLines).
-    exPercent: { flexShrink: 0, minWidth: 124, maxWidth: '100%', textAlign: 'right', fontSize: 13, fontWeight: '800', color: ink },
+    exPercent: { flexShrink: 0, minWidth: 124, maxWidth: '100%', textAlign: 'right', ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }), color: ink },
     exNumbers: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 2 },
-    exNumberText: { fontSize: 13, color: inkMuted },
+    exNumberText: { ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }), color: inkMuted },
     // Collapsed/expanded evidence line (#1219): text only. The trained count
     // carries the ink; the not-graded counts take the shared neutral so the line
     // has one quiet hierarchy.
@@ -110,10 +112,10 @@ export const createVisualStyles = (colors, kua = null) => {
     // wider than the card ITSELF may shrink (maxWidth 100% bounds it) so its label
     // wraps as a last resort instead of overflowing.
     rosterStat: { flexDirection: 'row', alignItems: 'baseline', gap: 4, flexShrink: 1, maxWidth: '100%' },
-    rosterNum: { flexShrink: 0, fontSize: 13, fontWeight: '800', color: ink },
-    rosterNumQuiet: { flexShrink: 0, fontSize: 13, fontWeight: '700', color: inkMuted },
-    rosterLabel: { flexShrink: 1, fontSize: 13, fontWeight: '600', color: inkMuted },
-    exNote: { fontSize: 13, color: inkMuted },
-    weekNoteText: { fontSize: 12, fontWeight: '600', color: inkMuted },
+    rosterNum: { flexShrink: 0, ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }), color: ink },
+    rosterNumQuiet: { flexShrink: 0, ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }), color: inkMuted },
+    rosterLabel: { flexShrink: 1, fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600', color: inkMuted },
+    exNote: { fontSize: TYPOGRAPHY['body-sm'].fontSize, color: inkMuted },
+    weekNoteText: { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600', color: inkMuted },
   });
 };

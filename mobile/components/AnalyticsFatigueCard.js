@@ -1,3 +1,5 @@
+import { GEOMETRY } from '../theme/spacing';
+import { TYPOGRAPHY } from '../theme/typography';
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -179,14 +181,14 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: kua ? kua.surfaceCard : colors.panelBackground,
   },
   fatiguePanelLabel: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '800',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   fatigueEmpty: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
     paddingVertical: 8,
@@ -206,14 +208,14 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     backgroundColor: colors.cautionSurface,
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
   // Reads on the tinted `cautionSurface`, so it takes the paired on-surface
   // ink rather than the direct caution color (#689).
   fatigueAlertText: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '800',
     color: colors.cautionSurfaceText,
     textTransform: 'uppercase',
@@ -227,13 +229,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderTopColor: kua ? kua.surfaceBorder : colors.divider,
   },
   fatigueInsightLabel: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '500',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   fatigueInsightValue: {
-    fontSize: 18,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
   fatigueSection: {
@@ -248,7 +249,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   fatigueDot: {
     width: 8,
     height: 8,
-    borderRadius: 4,
+    borderRadius: GEOMETRY['radius-full'],
   },
   fatigueDot_rough: {
     backgroundColor: kua ? kua.error : colors.error,
@@ -261,15 +262,14 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   fatigueSectionLabel: {
     flex: 1,
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '800',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   fatigueSectionCount: {
-    fontSize: 13,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
   fatigueEntryList: {
@@ -279,7 +279,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
-    borderRadius: 10,
+    borderRadius: GEOMETRY['radius-lg'],
     overflow: 'hidden',
   },
   fatigueEntryAccent: {
@@ -298,21 +298,19 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginRight: 10,
   },
   fatigueDate: {
-    fontSize: 11,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-sm'] : { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   fatigueReasons: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurface : colors.text,
   },
   fatigueMeta: {
-    fontSize: 12,
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '500' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    fontWeight: '500',
   },
   fatigueChipRow: {
     flexDirection: 'row',
@@ -325,7 +323,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   fatigueChip: {
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
-    borderRadius: 14,
+    borderRadius: GEOMETRY['radius-xl'],
     paddingHorizontal: 10,
     paddingVertical: 5,
     minHeight: 44,
@@ -334,7 +332,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     justifyContent: 'center',
   },
   fatigueChipText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },

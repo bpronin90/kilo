@@ -11,6 +11,7 @@
 // — ordered strictly before `completeBlock`, but not transactionally coupled
 // to it, so a failed inclusion write never runs completion.
 
+import { TYPOGRAPHY } from '../theme/typography';
 import React, { useEffect, useState } from 'react';
 import {
   AccessibilityInfo,
@@ -269,7 +270,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
   },
   title: {
     flex: 1,
-    fontSize: 17,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     fontWeight: '700',
     color: kua.onSurface,
   },
@@ -277,7 +278,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     padding: 4,
   },
   closeBtnText: {
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     color: kua.onSurfaceVariant,
     fontWeight: '600',
   },
@@ -291,11 +292,11 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     gap: 10,
   },
   summary: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua.onSurfaceVariant,
   },
   assurance: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     lineHeight: 17,
     color: kua.onSurfaceVariant,
   },
@@ -308,12 +309,12 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     borderColor: kua.error,
   },
   errorBannerText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: colors.textLight,
   },
   kicker: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '800',
     color: kua.onSurfaceVariant,
     textTransform: 'uppercase',
@@ -346,7 +347,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     gap: 8,
   },
   optionTitle: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua.onSurface,
   },
@@ -355,19 +356,19 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     color: kua.primaryOnContainer,
   },
   optionCurrent: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     color: kua.primaryOnContainer,
   },
   optionCopy: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     lineHeight: 17,
     color: kua.onSurfaceVariant,
   },
   footnote: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     lineHeight: 17,
     color: kua.onSurfaceVariant,
     marginTop: 2,
@@ -391,7 +392,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     borderColor: kua.surfaceBorder,
   },
   footerBtnSecondaryText: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua.onSurfaceVariant,
   },
@@ -402,7 +403,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     opacity: 0.5,
   },
   footerBtnPrimaryText: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua.onPrimary,
   },

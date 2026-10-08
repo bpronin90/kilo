@@ -1,3 +1,4 @@
+import { TYPOGRAPHY } from '../theme/typography';
 import React, { useMemo } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -11,12 +12,12 @@ import { formatLiftWeightValue } from '../lib/units';
 export function formatOverload(trend, colors, kua = null) {
   switch (trend) {
     case 'up':   return <MaterialIcons name="arrow-upward"    size={16} color={kua ? kua.completion : colors.success} />;
-    case 'flat': return <Text style={{ color: kua ? kua.warning : colors.caution, fontSize: 14 }}>↔</Text>;
-    case 'dash': return <Text style={{ color: kua ? kua.warning : colors.caution, fontSize: 18, fontWeight: '900', lineHeight: 22 }}>—</Text>;
+    case 'flat': return <Text style={{ color: kua ? kua.warning : colors.caution, fontSize: TYPOGRAPHY['body-md'].fontSize }}>↔</Text>;
+    case 'dash': return <Text style={{ color: kua ? kua.warning : colors.caution, fontSize: TYPOGRAPHY['headline-sm'].fontSize, fontWeight: '900', lineHeight: 22 }}>—</Text>;
     case 'down': return <MaterialIcons name="arrow-downward"  size={16} color={kua ? kua.error : colors.error}   />;
     case 'baseline':
     case 'first_session': return <MaterialIcons name="fiber-manual-record" size={8} color={kua ? kua.onSurfaceVariant : colors.textMuted} style={{ opacity: 0.4 }} />;
-    default:     return <Text style={{ color: kua ? kua.onSurfaceVariant : colors.textMuted, fontSize: 14 }}>—</Text>;
+    default:     return <Text style={{ color: kua ? kua.onSurfaceVariant : colors.textMuted, fontSize: TYPOGRAPHY['body-md'].fontSize }}>—</Text>;
   }
 }
 
@@ -64,7 +65,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 4,
   },
   crossDaySep: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginHorizontal: 2,
   },
@@ -74,7 +75,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 3,
   },
   crossDayChipLabel: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '800',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     letterSpacing: 0.5,
@@ -83,17 +84,16 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurface : colors.text,
   },
   crossDayChipValue: {
-    fontSize: 12,
-    fontWeight: '700',
+    ...(kua
+      ? TYPOGRAPHY['label-md']
+      : { fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }), fontWeight: '700', fontSize: TYPOGRAPHY['label-md'].fontSize }),
     color: kua ? kua.onSurface : colors.text,
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
   },
   crossDayUnit: {
-    fontSize: 11,
+    ...(kua ? TYPOGRAPHY['label-sm'] : { fontSize: TYPOGRAPHY['label-sm'].fontSize }),
     opacity: 0.5,
   },
   crossDayTrend: {
-    fontSize: 11,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-sm'] : { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '700' }),
   },
 });

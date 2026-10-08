@@ -1,3 +1,4 @@
+import { GEOMETRY } from '../theme/spacing';
 import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel } from './UI';
@@ -278,13 +279,14 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: kua ? kua.surfaceCard : colors.panelBackground,
   },
   oneKLabel: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '800',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   oneKValue: {
+    // display exception per #1283 foundation
     ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 36, lineHeight: 40 } : { ...HeroMetric.hero }),
     color: kua ? undefined : colors.text,
   },
@@ -293,22 +295,21 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // run rather than a Yoga box, so marginLeft is not guaranteed to render
   // (#763 review; matches Home's oneKHeroUnit).
   oneKUnit: {
-    fontSize: 16,
-    fontWeight: '600',
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   oneKProgressBarContainer: {
     width: '100%',
     height: 8,
     backgroundColor: kua ? kua.surfaceBorder : colors.divider,
-    borderRadius: 4,
+    borderRadius: GEOMETRY['radius-sm'],
     marginVertical: 12,
     overflow: 'hidden',
   },
   oneKProgressBar: {
     height: '100%',
     backgroundColor: kua ? kua.primary : colors.accent,
-    borderRadius: 4,
+    borderRadius: GEOMETRY['radius-sm'],
   },
   oneKBreakdown: {
     flexDirection: 'row',
@@ -321,7 +322,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginTop: 16,
   },
   oneKChartLabel: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '800',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
@@ -344,12 +345,11 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderStyle: 'dashed',
   },
   oneKItemValue: {
-    fontSize: 18,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '700' }),
     color: kua ? kua.primary : colors.text,
   },
   oneKItemLabel: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
@@ -366,7 +366,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 8,
   },
   oneKInfoText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 19,
     textAlign: 'left',
@@ -379,7 +379,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     padding: 20,
   },
   infoText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
     lineHeight: 20,
@@ -395,7 +395,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     minHeight: 44,
   },
   slotCardTitle: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
@@ -414,7 +414,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     minHeight: 44,
   },
   slotLabel: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     width: 72,
@@ -427,14 +427,13 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     justifyContent: 'flex-end',
   },
   slotValue: {
-    fontSize: 14,
-    fontWeight: '600',
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurface : colors.text,
     textAlign: 'right',
   },
   slotPicker: {
     backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
-    borderRadius: 10,
+    borderRadius: GEOMETRY['radius-lg'],
     marginBottom: 4,
     overflow: 'hidden',
   },
@@ -450,7 +449,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
   },
   slotOptionText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.onSurface : colors.text,
   },
   slotOptionTextSelected: {
@@ -458,7 +457,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },
   slotEmpty: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontStyle: 'italic',
     paddingVertical: 8,

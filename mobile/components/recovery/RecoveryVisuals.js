@@ -1,3 +1,4 @@
+import { TYPOGRAPHY } from '../../theme/typography';
 import React, { useMemo } from 'react';
 import { Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -305,7 +306,7 @@ export function RecoveryChangeVisual({ movement }) {
         <View key={c.label} style={styles.changeCell}>
           {c.icon
             ? <MaterialIcons name={c.icon} size={16} color={c.color} accessible={false} />
-            : <Text style={{ color: c.color, fontSize: 14 }} accessible={false}>{c.glyph}</Text>}
+            : <Text style={{ color: c.color, fontSize: TYPOGRAPHY['body-md'].fontSize }} accessible={false}>{c.glyph}</Text>}
           <Text style={styles.changeCount}>{c.count}</Text>
           <Text style={styles.changeLabel}>{c.label}</Text>
         </View>

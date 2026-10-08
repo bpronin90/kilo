@@ -1,10 +1,19 @@
+import { GEOMETRY } from '../../theme/spacing';
 import React, { useMemo } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme } from '../../theme/ThemeContext';
-import { useKuaTypography } from '../../theme/typography';
+import { useKuaTypography, TYPOGRAPHY } from '../../theme/typography';
 import { formatDate } from '../../lib/format';
 import { createStyles } from './weightHistoryStyles';
+
+// DOM (react-native-web) equivalent of a mono role: letterSpacing needs a px string.
+const domMonoRole = (role) => ({
+  fontFamily: TYPOGRAPHY[role].fontFamily,
+  fontSize: TYPOGRAPHY[role].fontSize,
+  letterSpacing: `${TYPOGRAPHY[role].letterSpacing}px`,
+  fontVariantNumeric: 'tabular-nums',
+});
 
 function parseLocalDate(dateStr) {
   if (!dateStr) return null;
@@ -32,12 +41,10 @@ function WebDateTextInput({ value, onChange, placeholder }) {
     style: {
       backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
       border: 'none',
-      borderRadius: 8,
+      borderRadius: GEOMETRY['radius-lg'],
       padding: '4px 8px',
-      fontSize: 12,
-      fontWeight: '700',
+      ...(kua ? domMonoRole('label-md') : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontFamily: 'inherit', fontWeight: '700' }),
       color: kua ? kua.primaryOnContainer : colors.chipText,
-      fontFamily: 'inherit',
       cursor: 'text',
       outline: 'none',
       width: 90,

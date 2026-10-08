@@ -3,6 +3,8 @@
 // approved #843/#918/#921 redesign, unchanged. The card, week-table, and
 // action-zone visuals are the owner-authorized Log-tab style-lock exception
 // scoped to this surface; see LogRecoverySection.js for the full rationale.
+import { GEOMETRY } from '../../theme/spacing';
+import { TYPOGRAPHY } from '../../theme/typography';
 import { StyleSheet } from 'react-native';
 import { createInputStyle } from '../UI';
 
@@ -35,33 +37,33 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 6,
   },
   stateKicker: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   headline: {
-    fontSize: 24,
+    fontSize: TYPOGRAPHY['headline-md'].fontSize,
     fontWeight: '800',
     color: kua ? kua.onSurface : colors.text,
   },
   baselineCaption: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     lineHeight: 19,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   errorBanner: {
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: GEOMETRY['radius-lg'],
     backgroundColor: colors.cardErrorBg,
     borderWidth: 1,
     borderColor: colors.cardErrorBg,
     marginTop: 4,
   },
   errorBannerText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: colors.textLight,
   },
@@ -87,19 +89,19 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   statusDot: {
     width: 26,
     height: 26,
-    borderRadius: 13,
+    borderRadius: GEOMETRY['radius-full'],
     alignItems: 'center',
     justifyContent: 'center',
   },
   weekLabel: {
     width: 56,
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   weekNoteTitle: {
     flex: 1,
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
@@ -115,7 +117,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // 14px-radius surface distinct from the week row it belongs to.
   noteSurface: {
     backgroundColor: kua ? kua.surfaceCard : colors.card,
-    borderRadius: 14,
+    borderRadius: GEOMETRY['radius-xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     padding: 14,
@@ -129,7 +131,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   noteSurfaceKicker: {
     flex: 1,
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
@@ -145,23 +147,23 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   inlineEditorTitleInput: {
     backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
   inlineEditorTextInput: {
     backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.onSurface : colors.text,
     minHeight: 160,
     textAlignVertical: 'top',
@@ -175,7 +177,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   inlineSwitchButton: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 8,
+    borderRadius: GEOMETRY['radius-lg'],
     backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
     borderWidth: 1,
     borderColor: kua ? kua.primaryContainerBorder : colors.cardBorder,
@@ -187,7 +189,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     opacity: 0.45,
   },
   inlineSwitchButtonText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },
@@ -203,13 +205,13 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     minWidth: 44,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 10,
+    borderRadius: GEOMETRY['radius-lg'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     justifyContent: 'center',
   },
   editNoteButtonText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.primary : colors.accentText,
   },
@@ -229,7 +231,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   abSegment: {
     flexDirection: 'row',
     minHeight: 32,
-    borderRadius: 8,
+    borderRadius: GEOMETRY['radius-lg'],
     borderWidth: 1,
     borderColor: kua ? kua.primaryContainerBorder : colors.cardBorder,
     backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
@@ -244,7 +246,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: kua ? kua.primary : colors.accent,
   },
   abSegmentText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },
@@ -262,7 +264,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // for accent surfaces in `docs/design-system-map.md`.
   primaryButton: {
     height: 48,
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     backgroundColor: kua ? kua.primary : colors.accent,
     borderWidth: 1,
     borderColor: kua ? kua.primary : colors.accent,
@@ -273,12 +275,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     opacity: 0.5,
   },
   primaryButtonText: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onPrimary : colors.onAccent,
   },
   actionCaption: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     lineHeight: 17,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
@@ -291,7 +293,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingVertical: 6,
   },
   undoButtonText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
@@ -309,7 +311,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingVertical: 12,
   },
   manageTriggerText: {
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     fontWeight: '800',
     color: kua ? kua.onSurface : colors.text,
   },
@@ -347,28 +349,28 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 2,
   },
   manageRowTitle: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
   manageRowTitleError: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.errorText : colors.error,
   },
   manageRowSubtitle: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     lineHeight: 16,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   manageRowInlineError: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     lineHeight: 16,
     fontWeight: '600',
     color: kua ? kua.errorText : colors.error,
   },
   manageRowState: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
@@ -393,12 +395,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingHorizontal: 12,
   },
   reasonEditorCancelText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   reasonEditorSaveText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.primary : colors.accentText,
   },
@@ -415,7 +417,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   pendingBanner: {
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: GEOMETRY['radius-lg'],
     backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
@@ -423,7 +425,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginTop: 4,
   },
   pendingBannerText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurface : colors.text,
   },
@@ -431,13 +433,13 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     alignSelf: 'flex-start',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 10,
+    borderRadius: GEOMETRY['radius-lg'],
     backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
     borderWidth: 1,
     borderColor: kua ? kua.primaryContainerBorder : colors.cardBorder,
   },
   pendingRetryText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },

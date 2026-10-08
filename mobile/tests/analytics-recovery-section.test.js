@@ -426,9 +426,8 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
     const b = block({ reason: 'torn hamstring' });
     const root = setup({ blocks: [b], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
     const hero = sizeOf(hostText(root, '2 of 2')[0]);
-    // Same KUA hero as Weight Trends `weightValueLarge`: metric-display 32/36.
-    expect(hero).toMatchObject({ fontSize: 32, lineHeight: 36 });
-    expect(hero.fontSize).not.toBe(28);
+    // Same KUA hero as Weight Trends `weightValueLarge`: metric-display-mobile role, 32/36 display exception (#1283).
+    expect(hero).toMatchObject({ fontSize: 32, lineHeight: 36, fontFamily: 'JetBrainsMono-Bold' });
     expect(sizeOf(hostText(root, 'Week 1')[0]).fontSize).toBe(13);
     expect(sizeOf(hostText(root, 'Push Pull Legs baseline')[0]).fontSize).toBe(13);
     expect(sizeOf(hostText(root, 'torn hamstring')[0]).fontSize).toBeGreaterThanOrEqual(13);
@@ -2510,7 +2509,8 @@ describe('AnalyticsRecoverySection — visual exercise details (#1219)', () => {
     const sizes = rosterNode(root)
       .findAll(n => typeof n.type === 'string' && n.type === 'Text')
       .map(n => StyleSheet.flatten(n.props.style).fontSize);
-    expect(new Set(sizes)).toEqual(new Set([13]));
+    // Counts are quantitative (label-md 12); their word labels stay body-sm 13.
+    expect(new Set(sizes)).toEqual(new Set([12, 13]));
     const rowSize = StyleSheet.flatten(hostRows(root)[0].findAll(n => n.type === 'Text')[1].props.style).fontSize;
     expect(rowSize).toBe(13);
     expect(hasText(root, 'Trained this week')).toBe(false);

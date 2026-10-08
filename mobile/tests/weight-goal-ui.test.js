@@ -515,7 +515,7 @@ describe('WeightScreen', () => {
         .findAll(n => n.type === 'TextInput')
         .find(i => i.props.placeholder === '175');
       const style = StyleSheet.flatten(target.props.style);
-      expect(style.fontSize).toBe(17);
+      expect(style.fontSize).toBe(14);
       expect(style.fontFamily).toBe('JetBrainsMono-SemiBold');
       expect(target.props.value || '').toBe('');
       expect(target.props.placeholder).toBe('175');
@@ -669,19 +669,19 @@ describe('WeightScreen', () => {
         expandGoalHistory(component.root);
         const valueNode = findByExactText(component.root, '175 lb');
         expect(valueNode).toBeTruthy();
-        expect(getStyleProp(valueNode, 'fontSize')).toBe(13);
-        expect(getStyleProp(valueNode, 'fontFamily')).toBe('JetBrainsMono-SemiBold');
+        expect(getStyleProp(valueNode, 'fontSize')).toBe(12);
+        expect(getStyleProp(valueNode, 'fontFamily')).toBe('JetBrainsMono-Medium');
       });
 
       // #411 unifies the date typography with Weight History (15/600 muted) so
       // dates read as one system and no longer compete with the 20px values.
-      test('date cells use the shared date typography 15/600 (#411)', () => {
+      test('date cells use the shared date typography 14/600 (#411, #1285)', () => {
         const component = setup(null, [], archivedFixture);
         expandGoalHistory(component.root);
         const dateNode = findByExactText(component.root, '09-01-2026');
         expect(dateNode).toBeTruthy();
-        expect(getStyleProp(dateNode, 'fontSize')).toBe(15);
-        expect(getStyleProp(dateNode, 'fontWeight')).toBe('600');
+        expect(getStyleProp(dateNode, 'fontSize')).toBe(14);
+        expect(getStyleProp(dateNode, 'fontFamily')).toBe('JetBrainsMono-SemiBold');
       });
 
       // #410: the collapsed Goal History summary is count-first and surfaces the
@@ -693,7 +693,7 @@ describe('WeightScreen', () => {
         const root = component.root;
         const outcomeNode = findByExactText(root, 'Missed');
         expect(outcomeNode).toBeTruthy();
-        expect(getStyleProp(outcomeNode, 'fontWeight')).toBe('900');
+        expect(getStyleProp(outcomeNode, 'fontFamily')).toBe('JetBrainsMono-Bold');
         // The surrounding summary line is larger than the prior 13px.
         const summary = root.findAllByType('Text').find(t => {
           const c = t.props.children;
@@ -782,7 +782,7 @@ describe('WeightScreen', () => {
         expect(hasTextSafe(root, 'Latest:')).toBe(true);
         const successNode = findByExactText(root, 'Success');
         expect(successNode).toBeTruthy();
-        expect(getStyleProp(successNode, 'fontWeight')).toBe('900');
+        expect(getStyleProp(successNode, 'fontFamily')).toBe('JetBrainsMono-Bold');
         expect(getStyleProp(successNode, 'color')).toBe(LightColors.success);
       });
 
@@ -974,8 +974,8 @@ describe('WeightScreen', () => {
           return text === '190 lb';
         });
         expect(weightNode).toBeTruthy();
-        expect(getStyleProp(weightNode, 'fontSize')).toBe(13);
-        expect(getStyleProp(weightNode, 'fontFamily')).toBe('JetBrainsMono-SemiBold');
+        expect(getStyleProp(weightNode, 'fontSize')).toBe(12);
+        expect(getStyleProp(weightNode, 'fontFamily')).toBe('JetBrainsMono-Medium');
       });
 
       // #409: collapsed Weight History summary renders the latest weight in bold
@@ -991,7 +991,7 @@ describe('WeightScreen', () => {
           return text === '190 lb';
         });
         expect(weightNode).toBeTruthy();
-        expect(getStyleProp(weightNode, 'fontWeight')).toBe('900');
+        expect(getStyleProp(weightNode, 'fontFamily')).toBe('JetBrainsMono-Bold');
 
         const summary = root.findAllByType('Text').find(t => {
           const c = t.props.children;
@@ -1149,8 +1149,8 @@ describe('WeightScreen', () => {
       expect(weightValue).toBeTruthy();
       expect(getStyleProp(goalValue, 'fontSize')).toBe(getStyleProp(weightValue, 'fontSize'));
       expect(getStyleProp(goalValue, 'fontFamily')).toBe(getStyleProp(weightValue, 'fontFamily'));
-      expect(getStyleProp(goalValue, 'fontSize')).toBe(13);
-      expect(getStyleProp(goalValue, 'fontFamily')).toBe('JetBrainsMono-SemiBold');
+      expect(getStyleProp(goalValue, 'fontSize')).toBe(12);
+      expect(getStyleProp(goalValue, 'fontFamily')).toBe('JetBrainsMono-Medium');
     });
 
     test('date cells share identical typography across both panels', () => {

@@ -17,6 +17,8 @@
 // line and never rewrites an existing one. A muted, dismissed, or passively
 // rendered card leaves `raw_text` byte-identical because it never calls this.
 
+import { GEOMETRY } from '../theme/spacing';
+import { TYPOGRAPHY } from '../theme/typography';
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card } from './UI';
@@ -294,24 +296,24 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   exerciseName: {
     flex: 1,
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     fontWeight: '800',
     color: kua ? kua.onSurface : colors.text,
   },
   heuristicBadge: {
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 8,
+    borderRadius: GEOMETRY['radius-lg'],
     backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
   },
   heuristicBadgeText: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '800',
     letterSpacing: 0.5,
     color: kua ? kua.primaryOnContainer : colors.chipText,
   },
   heuristicNote: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontStyle: 'italic',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 17,
@@ -324,23 +326,23 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   chip: {
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 8,
+    borderRadius: GEOMETRY['radius-lg'],
     backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   chipText: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   explanation: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurface : colors.text,
     lineHeight: 19,
   },
   recommendation: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
     lineHeight: 19,
@@ -357,7 +359,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     flexShrink: 1,
   },
   actionButtonText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -375,7 +377,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   mutedText: {
     flex: 1,
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
 });

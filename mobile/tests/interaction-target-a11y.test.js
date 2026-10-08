@@ -530,7 +530,7 @@ describe('Recovery expanded-note controls', () => {
     expect(style.minHeight).toBe(MIN_TARGET);
     // The outlined treatment the control has carried since #843 is unchanged.
     expect(style.borderWidth).toBe(1);
-    expect(style.borderRadius).toBe(10);
+    expect(style.borderRadius).toBe(8);
   });
 
   test('the A/B segment presses through a real 44dp box around its 32dp visual', async () => {

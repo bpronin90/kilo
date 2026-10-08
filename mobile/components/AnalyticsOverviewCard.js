@@ -11,6 +11,7 @@
 // scroll offset 0; putting this block at the top is what finally makes offset 0
 // mean "an overview" rather than "whatever section happens to be first".
 
+import { TYPOGRAPHY } from '../theme/typography';
 import React, { useMemo } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -183,14 +184,14 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingBottom: 10,
   },
   headerLabel: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '800',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   headerAsOf: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     flexShrink: 1,
   },
@@ -215,7 +216,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 10,
   },
   rowLabel: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurface : colors.text,
     flex: 1,
@@ -231,31 +232,26 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 5,
   },
   rowValue: {
-    fontSize: 17,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
   rowValueEmpty: {
-    fontSize: 17,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Same weight/size as a normal value, muted like the empty tone (#871): a
   // paused baseline count is a real, true number — not absent — but must not
   // read with the same visual weight as a value that is live right now.
   rowValuePaused: {
-    fontSize: 17,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   rowValueUnit: {
-    fontSize: 13,
-    fontWeight: '600',
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   rowValueSuffix: {
-    fontSize: 13,
-    fontWeight: '600',
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Matches the chevron's footprint (16 icon width; the group's own `gap: 5`
@@ -272,8 +268,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 4,
   },
   rowDelta: {
-    fontSize: 12,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '700' }),
   },
   rowDeltaUp: {
     color: kua ? kua.completion : colors.success,
@@ -282,7 +277,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.error : colors.error,
   },
   rowCaption: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'right',
   },
@@ -292,7 +287,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   // with the same visual weight they carry on the Recovery section itself,
   // not as a subordinate footnote like the plain-weight `rowCaption`.
   rowInfoCaption: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'right',

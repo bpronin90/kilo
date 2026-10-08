@@ -1,14 +1,23 @@
+import { GEOMETRY } from '../theme/spacing';
 import React, { useMemo } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Alert } from '../lib/platformAlert';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card, Button, createInputStyle } from './UI';
 import { useTheme } from '../theme/ThemeContext';
-import { useKuaTypography } from '../theme/typography';
+import { useKuaTypography, TYPOGRAPHY, TYPOGRAPHY_FALLBACK } from '../theme/typography';
 import { formatDate } from '../lib/format';
 import { localDateToday } from '../lib/WeightScreenHelpers';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue, formatGoalWeightValue } from '../lib/units';
+
+// DOM (react-native-web) equivalent of a mono role: letterSpacing needs a px string.
+const domMonoRole = (role) => ({
+  fontFamily: TYPOGRAPHY[role].fontFamily,
+  fontSize: TYPOGRAPHY[role].fontSize,
+  letterSpacing: `${TYPOGRAPHY[role].letterSpacing}px`,
+  fontVariantNumeric: 'tabular-nums',
+});
 
 // Web-safe goal target date input. The native @react-native-community/datetimepicker
 // has no usable rendering on web, so on web we render a real DOM <input type="date">
@@ -28,16 +37,15 @@ function WebGoalDateInput({ value, onChangeDate, accessibilityLabel }) {
     },
     style: {
       backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
-      borderRadius: 16,
+      borderRadius: GEOMETRY['radius-2xl'],
       borderWidth: 1,
       borderStyle: 'solid',
       borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
       padding: 14,
       minHeight: 48,
-      fontSize: 17,
+      ...(kua ? domMonoRole('label-lg') : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontFamily: 'inherit' }),
       colorScheme: colors.scheme,
       color: kua ? kua.onSurface : colors.text,
-      fontFamily: 'inherit',
       width: '100%',
       boxSizing: 'border-box',
     },
@@ -306,21 +314,18 @@ export function WeightGoalCard({
   );
 }
 
-const jbmFont = (typo, role, fallback) => {
-  if (!typo) return { fontFamily: fallback };
-  const { fontFamily, fontWeight } = typo[role];
-  return fontWeight !== undefined ? { fontFamily, fontWeight } : { fontFamily };
-};
+// Full JetBrains Mono role (family, tracking, tabular-nums); weight is encoded in the family.
+const monoRole = (typo, role) => (typo || TYPOGRAPHY_FALLBACK)[role];
 
 export const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
   inputLabel: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   input: {
     ...createInputStyle(colors, kua),
-    borderRadius: 16,
+    borderRadius: GEOMETRY['radius-2xl'],
     paddingHorizontal: 14,
     paddingVertical: 14,
     minHeight: 48,
@@ -329,12 +334,11 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   // Matches the Weight entry panel's numeric field (17pt JetBrains Mono).
   numericInput: {
     ...createInputStyle(colors, kua),
-    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
-    borderRadius: 16,
+    ...monoRole(typo, 'label-lg'),
+    borderRadius: GEOMETRY['radius-2xl'],
     paddingHorizontal: 14,
     paddingVertical: 14,
     minHeight: 48,
-    fontSize: 17,
     justifyContent: 'center',
   },
   goalCard: {
@@ -372,7 +376,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     gap: 4,
   },
   goalMetBadge: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.success : colors.success,
     letterSpacing: 0.3,
@@ -391,7 +395,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
     paddingHorizontal: 8,
     paddingVertical: 6,
-    borderRadius: 10,
+    borderRadius: GEOMETRY['radius-lg'],
     minHeight: 44,
     minWidth: 44,
     justifyContent: 'center',
@@ -405,7 +409,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     alignItems: 'center',
   },
   goalActionChipText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.primaryOnContainer : colors.chipText,
   },
@@ -413,13 +417,13 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     color: kua ? kua.primaryOnContainer : colors.error,
   },
   goalActionText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     padding: 4,
   },
   pickerText: {
-    fontSize: 17,
+    ...monoRole(typo, 'label-lg'),
     color: kua ? kua.onSurface : colors.text,
   },
   pickerTextPlaceholder: {
@@ -429,7 +433,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   },
   goalErrorText: {
     color: kua ? kua.error : colors.error,
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
   },
   goalDisplay: {
@@ -445,17 +449,15 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     gap: 1,
   },
   goalDisplayValue: {
-    ...jbmFont(typo, 'metric-display', 'JetBrainsMono-Bold'),
-    fontSize: 18,
+    ...monoRole(typo, 'label-lg'),
     color: kua ? kua.primary : colors.accentText,
   },
   goalDisplayDateValue: {
-    ...jbmFont(typo, 'metric-display', 'JetBrainsMono-Bold'),
-    fontSize: 18,
+    ...monoRole(typo, 'label-lg'),
     color: kua ? kua.onSurface : colors.text,
   },
   goalDisplayLabel: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -467,24 +469,23 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     gap: 6,
   },
   goalProgressValue: {
-    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
-    fontSize: 11,
+    ...monoRole(typo, 'label-sm'),
     color: kua ? kua.primary : colors.accentText,
   },
   goalProgressLabel: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   goalEndedText: {
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     color: kua ? kua.errorText : colors.error,
     fontWeight: '600',
   },
   goalAheadText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.warning : colors.cautionText,
     textTransform: 'uppercase',
@@ -505,32 +506,30 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     alignItems: 'center',
   },
   derivedLabel: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   derivedValue: {
-    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
-    fontSize: 11,
+    ...monoRole(typo, 'label-sm'),
     color: kua ? kua.onSurface : colors.text,
   },
   derivedValueNeutral: {
-    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
-    fontSize: 11,
+    ...monoRole(typo, 'label-sm'),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     opacity: 0.5,
   },
   goalInfoText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '500',
     textAlign: 'center',
     marginTop: 2,
   },
   goalWarningText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.errorText : colors.error,
     opacity: 0.9,
     fontWeight: '600',

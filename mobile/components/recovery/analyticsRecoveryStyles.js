@@ -1,3 +1,5 @@
+import { GEOMETRY } from '../../theme/spacing';
+import { TYPOGRAPHY } from '../../theme/typography';
 import { StyleSheet } from 'react-native';
 import { createInputStyle } from '../UI';
 
@@ -10,14 +12,14 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   stateBanner: {
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: GEOMETRY['radius-lg'],
     backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     gap: 8,
   },
   stateBannerText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurface : colors.text,
   },
@@ -25,7 +27,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     alignSelf: 'flex-start',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 10,
+    borderRadius: GEOMETRY['radius-lg'],
     backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
@@ -33,14 +35,14 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // Always on `stateRetryButton`'s `chipBackground` fill, so it takes the
   // chip's accent ink (#923).
   stateRetryText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },
   // Bottom-of-card context (#872/#1219): the reason is quiet context for the
   // comparison above it. minHeight makes the whole row a real >=44dp target.
   reasonCaption: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     lineHeight: 18,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
@@ -62,7 +64,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     ...createInputStyle(colors, kua),
   },
   reasonErrorText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.error : colors.error,
   },
   reasonEditorActions: {
@@ -76,18 +78,18 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingHorizontal: 12,
   },
   reasonEditorCancelText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   reasonEditorSaveText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.primary : colors.accentText,
   },
   // Revealed under the date row it belongs to (the info button sits beside it).
   nonMedicalText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontStyle: 'italic',
     paddingBottom: 8,
@@ -110,7 +112,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     alignSelf: 'flex-start',
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     minHeight: 44,
@@ -120,12 +122,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     opacity: 0.5,
   },
   reopenButtonText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   reopenErrorText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.error : colors.error,
   },
   backToActive: {
@@ -135,12 +137,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     minHeight: 44,
   },
   backToActiveText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.primary : colors.accentText,
   },
   unavailablePanelText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Wraps whichever of {summary, unavailable notice, no-evidence text} the
@@ -156,7 +158,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // bucket row below it — a fact of equal standing, never a subordinate
   // footnote (acceptance criterion 1/12).
   summaryLine: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   // Week picker (#1219): rows never wrap on their own — RecoveryWeekPicker sizes
@@ -169,7 +171,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 4,
   },
   chipRowLabel: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
@@ -178,7 +180,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 14,
+    borderRadius: GEOMETRY['radius-xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
@@ -188,7 +190,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderColor: kua ? kua.primary : colors.accent,
   },
   chipText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
@@ -211,7 +213,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     flex: 1,
   },
   detailsHeaderTitle: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
@@ -229,7 +231,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     columnGap: 8,
   },
   contextLabel: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     // Labels share one column start so the values line up.
@@ -237,7 +239,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     flexShrink: 0,
   },
   contextValue: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     lineHeight: 18,
     color: kua ? kua.onSurface : colors.text,
   },
@@ -289,7 +291,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 16,
   },
   historyPanel: {
-    borderRadius: 24,
+    borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     overflow: 'hidden',
@@ -311,12 +313,11 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     flex: 1,
   },
   historySummaryCount: {
-    fontSize: 12,
-    fontWeight: '600',
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   historySummaryLatest: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
   },
@@ -339,12 +340,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
   },
   historyBaselineTitle: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '800',
     color: kua ? kua.onSurface : colors.text,
   },
   historyDates: {
-    fontSize: 12,
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   historyInclusionWrapper: {
@@ -364,16 +365,16 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     justifyContent: 'space-between',
   },
   weekIndexWeekLabel: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
   weekIndexNoteTitle: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurface : colors.text,
   },
   weekIndexStateText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   weekIndexMuted: {

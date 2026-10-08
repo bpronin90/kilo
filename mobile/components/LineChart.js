@@ -1,3 +1,4 @@
+import { TYPOGRAPHY } from '../theme/typography';
 import React, { useMemo, useState } from 'react';
 import { StyleSheet, View, Text, Pressable, PixelRatio } from 'react-native';
 import Svg, { Polyline, Circle, Rect, G, Line } from 'react-native-svg';
@@ -388,26 +389,24 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     flexShrink: 1,
   },
   latestLabel: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
   },
   latestValue: {
-    fontSize: 24,
-    fontWeight: '800',
+    ...(kua ? TYPOGRAPHY['metric-display-mobile'] : { fontSize: TYPOGRAPHY['metric-display-mobile'].fontSize, fontWeight: '800' }),
     color: kua ? kua.onSurface : colors.text,
   },
   unit: {
-    fontSize: 14,
-    fontWeight: '600',
+    ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginLeft: 2,
   },
   // Low-emphasis by design: it tells the user the chart is operable without
   // competing with the value it sits beside.
   selectHint: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
@@ -415,7 +414,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   noData: {
     textAlign: 'center',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     marginTop: 20,
   },
   plotRow: {
@@ -432,21 +431,18 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     justifyContent: 'space-between',
   },
   scaleLabel: {
-    fontSize: 10,
-    fontWeight: '600',
+    ...(kua ? TYPOGRAPHY['label-sm'] : { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'right',
   },
   dateLabel: {
-    fontSize: 11,
-    fontWeight: '600',
+    ...(kua ? TYPOGRAPHY['label-sm'] : { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
     marginTop: 4,
   },
   selectionLabel: {
-    fontSize: 12,
-    fontWeight: '600',
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
     marginTop: 4,

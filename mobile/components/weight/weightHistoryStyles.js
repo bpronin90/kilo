@@ -1,9 +1,13 @@
+import { GEOMETRY } from '../../theme/spacing';
+import { TYPOGRAPHY, TYPOGRAPHY_FALLBACK } from '../../theme/typography';
 import { StyleSheet } from 'react-native';
 
-const jbmFont = (typo, role, fallback) => {
-  if (!typo) return { fontFamily: fallback };
-  const { fontFamily, fontWeight } = typo[role];
-  return fontWeight !== undefined ? { fontFamily, fontWeight } : { fontFamily };
+// Full JetBrains Mono role (family, tracking, tabular-nums); weight is encoded in the family.
+const monoRole = (typo, role) => (typo || TYPOGRAPHY_FALLBACK)[role];
+// Real bold JetBrains Mono asset for emphasis (no synthetic weight on a SemiBold family).
+const monoBold = (typo) => {
+  const { fontFamily, fontWeight } = monoRole(typo, 'metric-display');
+  return { fontFamily, fontWeight };
 };
 
 // ── Shared history-panel visual system (#411) ─────────────────────────────────
@@ -16,28 +20,20 @@ const jbmFont = (typo, role, fallback) => {
 // label text and semantic outcome colors (End Weight / Success-Missed). These
 // constants are duplicated (not imported) because both panels must stay inside
 // their Allowed Files.
+const HISTORY_VALUE_SIZE = 20; // display exception per #1283 foundation
 const HISTORY_COL1_FLEX = 1.35; // primary value, left aligned
 const HISTORY_COL2_FLEX = 1.25; // secondary value, center aligned
 const HISTORY_COL3_FLEX = 1.5; // date, right aligned
 const HISTORY_CONTROL_WIDTH = 56; // trailing control cell (chevron / filter / delete)
 const HISTORY_ROW_PAD_V = 12;
 const HISTORY_ROW_PAD_H = 16;
-const HISTORY_VALUE_SIZE = 20;
-const HISTORY_VALUE_WEIGHT = '700';
-const HISTORY_DATE_SIZE = 15;
-const HISTORY_DATE_WEIGHT = '600';
-const HISTORY_LABEL_SIZE = 11;
+const HISTORY_LABEL_SIZE = TYPOGRAPHY['label-sm'].fontSize;
 const HISTORY_LABEL_WEIGHT = '700';
-const HISTORY_SUMMARY_SIZE = 15;
-const HISTORY_SUMMARY_WEIGHT = '600';
-const HISTORY_SUMMARY_EMPHASIS_WEIGHT = '900';
-const HISTORY_SUMMARY_COUNT_SIZE = 12;
-const HISTORY_SUMMARY_COUNT_WEIGHT = '600';
 
 export const createHistoryPanel = (colors, kua = null, typo = null) => StyleSheet.create({
   card: {
     backgroundColor: kua ? kua.surfaceCard : colors.card,
-    borderRadius: 24,
+    borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     overflow: 'hidden',
@@ -119,24 +115,21 @@ export const createHistoryPanel = (colors, kua = null, typo = null) => StyleShee
     alignItems: 'center',
   },
   value: {
-    fontSize: 13,
-    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
+    ...monoRole(typo, 'label-md'),
     color: kua ? kua.onSurface : colors.text,
   },
   dateValue: {
-    fontSize: HISTORY_DATE_SIZE,
-    fontWeight: HISTORY_DATE_WEIGHT,
+    ...monoRole(typo, 'label-lg'),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'right',
   },
   summaryText: {
     flex: 1,
-    fontSize: HISTORY_SUMMARY_SIZE,
-    fontWeight: HISTORY_SUMMARY_WEIGHT,
+    ...monoRole(typo, 'label-lg'),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   summaryEmphasis: {
-    fontWeight: HISTORY_SUMMARY_EMPHASIS_WEIGHT,
+    ...monoBold(typo),
     color: kua ? kua.onSurface : colors.text,
   },
   summaryStack: {
@@ -146,13 +139,11 @@ export const createHistoryPanel = (colors, kua = null, typo = null) => StyleShee
     gap: 2,
   },
   summaryCount: {
-    fontSize: HISTORY_SUMMARY_COUNT_SIZE,
-    fontWeight: HISTORY_SUMMARY_COUNT_WEIGHT,
+    ...monoRole(typo, 'label-md'),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   summaryLatest: {
-    fontSize: HISTORY_SUMMARY_SIZE,
-    fontWeight: HISTORY_SUMMARY_WEIGHT,
+    ...monoRole(typo, 'label-lg'),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   columnLabelCenter: {
@@ -207,21 +198,19 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   dateChip: {
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 10,
+    borderRadius: GEOMETRY['radius-lg'],
     backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
   },
   dateChipText: {
-    fontSize: 12,
-    fontWeight: '700',
+    ...monoRole(typo, 'label-md'),
     color: kua ? kua.primaryOnContainer : colors.chipText,
   },
   dateChipPlaceholder: {
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    fontWeight: '600',
+    ...(kua ? {} : { fontWeight: '600' }),
   },
   dateRangeSep: {
-    fontSize: 12,
-    fontWeight: '700',
+    ...monoRole(typo, 'label-md'),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   dateBoundaryClearBtn: {
@@ -229,23 +218,21 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     minWidth: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 14,
+    borderRadius: GEOMETRY['radius-xl'],
     backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
   },
   dateBoundaryClearText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '700',
   },
   rowDelta: {
-    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
-    fontSize: 12,
+    ...monoRole(typo, 'label-md'),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
   },
   rowDeltaEmpty: {
-    ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
-    fontSize: 12,
+    ...monoRole(typo, 'label-md'),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     opacity: 0.4,
     textAlign: 'center',
@@ -258,15 +245,16 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   },
   deltaOutlier: {
     color: colors.error,
-    fontWeight: '900',
+    // Kinetic uses the real bold face; the literal weight would synthesize on the Medium role.
+    ...(kua ? monoBold(typo) : { fontWeight: '900' }),
   },
   rowNote: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
   },
   deleteAffordanceText: {
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     opacity: 0.5,
   },
@@ -274,7 +262,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     textAlign: 'center',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     paddingVertical: 32,
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '400',
   },
   loadMoreRow: {
@@ -291,7 +279,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   // The press swaps the row to `primaryContainer`, so the label takes the chip's
   // accent ink (#923) — `primaryOnContainer` reads correctly on that fill.
   loadMoreText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },
