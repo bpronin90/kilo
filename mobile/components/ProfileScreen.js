@@ -521,7 +521,6 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   profileInput: {
     ...createInputStyle(colors, kua),
-    fontWeight: '700',
     textAlign: 'center',
   },
   datePickerButton: {
