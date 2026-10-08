@@ -58,7 +58,7 @@ the changelog and archived roadmaps.
 ## 4. When panels/cards are allowed, and how dense
 
 - Use `Card` (`mobile/components/UI.js`) for a bounded, self-contained block:
-  adopted target radius `radius-2xl` (16) (the shared `Card` still renders 24 until migration issue #1286 lands), padding 18, 1px `cardBorder`, `gap: 10` between children.
+  radius `radius-2xl` (16), padding 18, 1px `cardBorder`, `gap: 10` between children.
 - Use a card when the content is a discrete unit (an input form, a goal summary,
   a single analytics metric group). Do **not** nest cards inside cards; a card
   inside a card reads as visual noise and breaks the padding rhythm.
@@ -343,7 +343,7 @@ contained in #710, removed in #711).
   confirmation.
 - **Group irreversible actions in a Danger Zone container**, not loose among
   routine controls: `backgroundColor: colors.errorSurface`, `borderWidth: 1`,
-  `borderColor: colors.error`, `borderRadius: 16` (`radius-2xl`, adopted target; existing screens still use 24 until migration issue #1286 lands), `padding: 18`, `gap: 12`,
+  `borderColor: colors.error`, `borderRadius: 16` (`radius-2xl`), `padding: 18`, `gap: 12`,
   with a small heading (`fontSize: 12`, `fontWeight: '800'`,
   `letterSpacing: 0.6`, uppercase, `colors.error`, "⚠ Danger Zone"). This is a
   local `View` style per screen, not a shared `UI.js` primitive — only the
