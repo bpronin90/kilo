@@ -1,3 +1,5 @@
+import { GEOMETRY } from '../../theme/spacing';
+import { TYPOGRAPHY } from '../../theme/typography';
 import { StyleSheet } from 'react-native';
 
 // Returns fontFamily (and fontWeight when needed) for a JBM typography role.
@@ -25,16 +27,16 @@ const HISTORY_COL3_FLEX = 1.5; // date, right aligned
 const HISTORY_CONTROL_WIDTH = 56; // trailing control cell (chevron / filter / delete)
 const HISTORY_ROW_PAD_V = 12;
 const HISTORY_ROW_PAD_H = 16;
-const HISTORY_VALUE_SIZE = 20;
+const HISTORY_VALUE_SIZE = TYPOGRAPHY['headline-sm'].fontSize;
 const HISTORY_VALUE_WEIGHT = '700';
-const HISTORY_DATE_SIZE = 15;
+const HISTORY_DATE_SIZE = TYPOGRAPHY['body-md'].fontSize;
 const HISTORY_DATE_WEIGHT = '600';
-const HISTORY_LABEL_SIZE = 11;
+const HISTORY_LABEL_SIZE = TYPOGRAPHY['label-sm'].fontSize;
 const HISTORY_LABEL_WEIGHT = '700';
-const HISTORY_SUMMARY_SIZE = 15;
+const HISTORY_SUMMARY_SIZE = TYPOGRAPHY['body-md'].fontSize;
 const HISTORY_SUMMARY_WEIGHT = '600';
 const HISTORY_SUMMARY_EMPHASIS_WEIGHT = '900';
-const HISTORY_SUMMARY_COUNT_SIZE = 12;
+const HISTORY_SUMMARY_COUNT_SIZE = TYPOGRAPHY['label-md'].fontSize;
 const HISTORY_SUMMARY_COUNT_WEIGHT = '600';
 
 // Base styles for WeightScreen itself: the entry-form Card, first-paint
@@ -43,7 +45,7 @@ const HISTORY_SUMMARY_COUNT_WEIGHT = '600';
 export const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
   skeletonCard: {
     backgroundColor: kua ? kua.surfaceCard : colors.card,
-    borderRadius: 24,
+    borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     padding: 18,
@@ -52,7 +54,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   },
   skeletonBar: {
     backgroundColor: kua ? kua.surfaceBorder : colors.cardBorder,
-    borderRadius: 6,
+    borderRadius: GEOMETRY['radius-md'],
     opacity: 0.6,
     height: 12,
   },
@@ -67,37 +69,37 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   },
   errorText: {
     color: kua ? kua.error : colors.error,
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '600',
     marginBottom: 8,
   },
   inputLabel: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   input: {
     backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
-    borderRadius: 16,
+    borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
     paddingHorizontal: 14,
     paddingVertical: 14,
     minHeight: 48,
-    fontSize: 17,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     color: kua ? kua.onSurface : colors.text,
     justifyContent: 'center',
     textAlignVertical: 'center',
   },
   numericInput: {
     backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
-    borderRadius: 16,
+    borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
     paddingHorizontal: 14,
     paddingVertical: 14,
     minHeight: 48,
-    fontSize: 17,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
     color: kua ? kua.onSurface : colors.text,
     justifyContent: 'center',
@@ -119,13 +121,13 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     marginBottom: 4,
   },
   editingTitle: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.primary : colors.accentText,
     textTransform: 'uppercase',
   },
   cancelText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     padding: 4,
@@ -140,7 +142,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     alignItems: 'center',
   },
   pickerText: {
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     color: kua ? kua.onSurface : colors.text,
   },
   trendsCardMerged: {
@@ -158,7 +160,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     marginTop: 4,
   },
   fullTrendsLinkText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
@@ -176,7 +178,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   },
   errorBanner: {
     backgroundColor: kua ? kua.surfaceCard : colors.errorSurface,
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     borderWidth: 1,
     borderColor: kua ? kua.error : colors.error,
     padding: 14,
@@ -186,14 +188,14 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   },
   errorBannerText: {
     flex: 1,
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '600',
     color: kua ? kua.error : colors.error,
   },
   errorBannerRetry: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: GEOMETRY['radius-lg'],
     backgroundColor: kua ? kua.error : colors.cardErrorBg,
     minWidth: 44,
     minHeight: 44,
@@ -201,7 +203,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     justifyContent: 'center',
   },
   errorBannerRetryText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: colors.textLight,
   },
@@ -210,7 +212,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
 export const createHistoryPanel = (colors, kua = null, typo = null) => StyleSheet.create({
   card: {
     backgroundColor: kua ? kua.surfaceCard : colors.card,
-    borderRadius: 24,
+    borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     overflow: 'hidden',
@@ -292,7 +294,7 @@ export const createHistoryPanel = (colors, kua = null, typo = null) => StyleShee
     alignItems: 'center',
   },
   value: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
     color: kua ? kua.onSurface : colors.text,
   },

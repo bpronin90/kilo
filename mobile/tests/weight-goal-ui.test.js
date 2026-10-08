@@ -515,7 +515,7 @@ describe('WeightScreen', () => {
         .findAll(n => n.type === 'TextInput')
         .find(i => i.props.placeholder === '175');
       const style = StyleSheet.flatten(target.props.style);
-      expect(style.fontSize).toBe(17);
+      expect(style.fontSize).toBe(16);
       expect(style.fontFamily).toBe('JetBrainsMono-SemiBold');
       expect(target.props.value || '').toBe('');
       expect(target.props.placeholder).toBe('175');
@@ -675,12 +675,12 @@ describe('WeightScreen', () => {
 
       // #411 unifies the date typography with Weight History (15/600 muted) so
       // dates read as one system and no longer compete with the 20px values.
-      test('date cells use the shared date typography 15/600 (#411)', () => {
+      test('date cells use the shared date typography 14/600 (#411, #1285)', () => {
         const component = setup(null, [], archivedFixture);
         expandGoalHistory(component.root);
         const dateNode = findByExactText(component.root, '09-01-2026');
         expect(dateNode).toBeTruthy();
-        expect(getStyleProp(dateNode, 'fontSize')).toBe(15);
+        expect(getStyleProp(dateNode, 'fontSize')).toBe(14);
         expect(getStyleProp(dateNode, 'fontWeight')).toBe('600');
       });
 

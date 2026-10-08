@@ -1,9 +1,10 @@
+import { GEOMETRY } from '../../theme/spacing';
 import React, { useMemo, useState } from 'react';
 import { Platform, Pressable, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card, Button } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
-import { useKuaTypography } from '../../theme/typography';
+import { useKuaTypography, TYPOGRAPHY } from '../../theme/typography';
 import { localDateToday } from '../../lib/WeightScreenHelpers';
 import { createStyles } from './weightStyles';
 
@@ -25,12 +26,12 @@ function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
     },
     style: {
       backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
-      borderRadius: 16,
+      borderRadius: GEOMETRY['radius-2xl'],
       borderWidth: 1,
       borderStyle: 'solid',
       borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
       padding: 14,
-      fontSize: 16,
+      fontSize: TYPOGRAPHY['body-lg'].fontSize,
       colorScheme: colors.scheme,
       color: kua ? kua.onSurface : colors.text,
       fontFamily: 'inherit',
@@ -204,7 +205,7 @@ export function WeightEntryForm({
         onPress={handleSubmit}
         title={editingId ? "Update entry" : "Save weigh-in"}
         disabled={saving}
-        textStyle={{ fontSize: 17 }}
+        textStyle={{ fontSize: TYPOGRAPHY['body-lg'].fontSize }}
       />
     </Card>
   );

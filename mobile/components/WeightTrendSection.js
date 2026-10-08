@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
-import { useKuaTypography } from '../theme/typography';
+import { useKuaTypography, TYPOGRAPHY } from '../theme/typography';
 import { WEIGHT_TONE, weightTrendTone } from '../lib/data/derivedAnalytics';
 
 // The col3 color is the shared goal-aware tone (#1242): pace anomalies keep
@@ -71,7 +71,7 @@ const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
     borderBottomColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   trendSectionTitle: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
@@ -95,7 +95,7 @@ const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
   },
   trendValue: {
     ...jbmFont(typo, 'metric-display', 'JetBrainsMono-Bold'),
-    fontSize: 17,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     color: kua ? kua.onSurface : colors.text,
   },
   // Secondary caption under the pace value (e.g. "over 5 days"). Its own line so
@@ -103,11 +103,11 @@ const createStyles = (colors, kua = null, typo = null) => StyleSheet.create({
   // truncated off the end of the value string.
   trendCaption: {
     ...jbmFont(typo, 'label-md', 'JetBrainsMono-Medium'),
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     marginTop: 2,
   },
   trendLabel: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '700',
     textTransform: 'uppercase',

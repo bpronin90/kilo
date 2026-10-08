@@ -1,3 +1,5 @@
+import { GEOMETRY } from '../../theme/spacing';
+import { TYPOGRAPHY } from '../../theme/typography';
 import { StyleSheet } from 'react-native';
 
 const jbmFont = (typo, role, fallback) => {
@@ -22,22 +24,22 @@ const HISTORY_COL3_FLEX = 1.5; // date, right aligned
 const HISTORY_CONTROL_WIDTH = 56; // trailing control cell (chevron / filter / delete)
 const HISTORY_ROW_PAD_V = 12;
 const HISTORY_ROW_PAD_H = 16;
-const HISTORY_VALUE_SIZE = 20;
+const HISTORY_VALUE_SIZE = TYPOGRAPHY['headline-sm'].fontSize;
 const HISTORY_VALUE_WEIGHT = '700';
-const HISTORY_DATE_SIZE = 15;
+const HISTORY_DATE_SIZE = TYPOGRAPHY['body-md'].fontSize;
 const HISTORY_DATE_WEIGHT = '600';
-const HISTORY_LABEL_SIZE = 11;
+const HISTORY_LABEL_SIZE = TYPOGRAPHY['label-sm'].fontSize;
 const HISTORY_LABEL_WEIGHT = '700';
-const HISTORY_SUMMARY_SIZE = 15;
+const HISTORY_SUMMARY_SIZE = TYPOGRAPHY['body-md'].fontSize;
 const HISTORY_SUMMARY_WEIGHT = '600';
 const HISTORY_SUMMARY_EMPHASIS_WEIGHT = '900';
-const HISTORY_SUMMARY_COUNT_SIZE = 12;
+const HISTORY_SUMMARY_COUNT_SIZE = TYPOGRAPHY['label-md'].fontSize;
 const HISTORY_SUMMARY_COUNT_WEIGHT = '600';
 
 export const createHistoryPanel = (colors, kua = null, typo = null) => StyleSheet.create({
   card: {
     backgroundColor: kua ? kua.surfaceCard : colors.card,
-    borderRadius: 24,
+    borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     overflow: 'hidden',
@@ -119,7 +121,7 @@ export const createHistoryPanel = (colors, kua = null, typo = null) => StyleShee
     alignItems: 'center',
   },
   value: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
     color: kua ? kua.onSurface : colors.text,
   },
@@ -207,11 +209,11 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   dateChip: {
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 10,
+    borderRadius: GEOMETRY['radius-lg'],
     backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
   },
   dateChipText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.primaryOnContainer : colors.chipText,
   },
@@ -220,7 +222,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     fontWeight: '600',
   },
   dateRangeSep: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
@@ -229,23 +231,23 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     minWidth: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 14,
+    borderRadius: GEOMETRY['radius-xl'],
     backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
   },
   dateBoundaryClearText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '700',
   },
   rowDelta: {
     ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
   },
   rowDeltaEmpty: {
     ...jbmFont(typo, 'label-lg', 'JetBrainsMono-SemiBold'),
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     opacity: 0.4,
     textAlign: 'center',
@@ -261,12 +263,12 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     fontWeight: '900',
   },
   rowNote: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
   },
   deleteAffordanceText: {
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     opacity: 0.5,
   },
@@ -274,7 +276,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
     textAlign: 'center',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     paddingVertical: 32,
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '400',
   },
   loadMoreRow: {
@@ -291,7 +293,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   // The press swaps the row to `primaryContainer`, so the label takes the chip's
   // accent ink (#923) — `primaryOnContainer` reads correctly on that fill.
   loadMoreText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },

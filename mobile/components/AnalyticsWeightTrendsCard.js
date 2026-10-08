@@ -1,3 +1,4 @@
+import { GEOMETRY } from '../theme/spacing';
 import React, { useState, useMemo } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card, SectionTitle, LineChart } from './UI';
@@ -190,7 +191,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 4,
   },
   chartLabel: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '800',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
@@ -207,12 +208,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     minHeight: 100,
     paddingVertical: 12,
     backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
-    borderRadius: 8,
+    borderRadius: GEOMETRY['radius-lg'],
     justifyContent: 'center',
     alignItems: 'center',
   },
   chartEmpty: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textAlign: 'center',
     paddingHorizontal: 16,
@@ -224,7 +225,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingHorizontal: 12,
   },
   chartEmptyActionText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: kua ? kua.primary : colors.accentText,
   },
@@ -234,18 +235,18 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     alignItems: 'flex-start',
   },
   weightLabel: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     marginBottom: 2,
   },
   weightValueLarge: {
-    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 32, lineHeight: 36 } : { fontSize: 36, fontWeight: '800' }),
+    ...(kua ? { ...TYPOGRAPHY['metric-display-mobile'] } : { fontSize: TYPOGRAPHY['metric-display'].fontSize, fontWeight: '800' }),
     color: kua ? kua.onSurface : colors.accentText,
   },
   weightUnit: {
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.text,
     marginLeft: 4,
@@ -253,7 +254,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   paceBadge: {
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
   },
   // Pace badges. The spike badge stays a loud saturated fill (KUA `error` in all
   // six palettes, `cardErrorBg` legacy) with light text. The notable badge is a
@@ -272,7 +273,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: colors.cautionSurface,
   },
   paceText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '800',
     color: colors.textLight,
   },
@@ -285,7 +286,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   // States the elapsed span in words so the badge does not lean on color alone.
   pacePeriodText: {
-    fontSize: 10,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '700',
     color: colors.textLight,
     textAlign: 'right',
@@ -304,12 +305,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 2,
   },
   weightStatValue: {
-    fontSize: 18,
+    fontSize: TYPOGRAPHY['headline-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
   weightStatLabel: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '600',
     textTransform: 'uppercase',

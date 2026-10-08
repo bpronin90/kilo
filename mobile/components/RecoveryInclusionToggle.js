@@ -1,3 +1,4 @@
+import { TYPOGRAPHY } from '../theme/typography';
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -127,7 +128,7 @@ const createStyles = (kua, _mode, colors) => StyleSheet.create({
     rowGap: 2,
   },
   inclusionLabel: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua.onSurface,
     flexShrink: 1,
@@ -143,7 +144,7 @@ const createStyles = (kua, _mode, colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   inclusionHelp: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua.onSurfaceVariant,
   },
   errorBanner: {
@@ -155,7 +156,7 @@ const createStyles = (kua, _mode, colors) => StyleSheet.create({
     borderColor: kua.error,
   },
   errorBannerText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: colors.textLight,
   },

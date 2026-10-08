@@ -1,3 +1,4 @@
+import { GEOMETRY } from '../../theme/spacing';
 import { Platform, StyleSheet } from 'react-native';
 import { TYPOGRAPHY } from '../../theme/typography';
 
@@ -17,7 +18,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   baselineDisclosureLabel: {
     flex: 1,
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
@@ -33,7 +34,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 12,
   },
   signalSubTitle: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
     flexShrink: 1,
@@ -46,7 +47,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingHorizontal: 4,
   },
   collapseAllText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
@@ -58,12 +59,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   searchInput: {
     backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
-    borderRadius: 16,
+    borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
     paddingHorizontal: 14,
     paddingVertical: 14,
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     color: kua ? kua.onSurface : colors.text,
   },
   signalColumnHeader: {
@@ -73,7 +74,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   signalColumnLabel: {
     flex: 1,
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '800',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
@@ -104,7 +105,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: kua ? (kua.surfaceSection ?? kua.surfaceCard) : colors.subtleBg,
   },
   groupName: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '800',
     color: kua ? kua.onSurface : colors.text,
     textTransform: 'uppercase',
@@ -127,7 +128,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginBottom: 8,
   },
   signalName: {
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
     flex: 1,
@@ -142,29 +143,29 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   signalValue: {
     ...(kua
       ? TYPOGRAPHY['label-lg']
-      : { fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }), fontWeight: '700', fontSize: 14 }),
+      : { fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }), fontWeight: '700', fontSize: TYPOGRAPHY['body-md'].fontSize }),
     color: kua ? kua.onSurface : colors.text,
   },
   unitSuffix: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     opacity: 0.4,
     marginLeft: 2,
   },
   nwMetricLabel: {
     ...(kua
       ? TYPOGRAPHY['label-sm']
-      : { fontWeight: '800', fontSize: 11, letterSpacing: 0.5 }),
+      : { fontWeight: '800', fontSize: TYPOGRAPHY['label-sm'].fontSize, letterSpacing: 0.5 }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
   },
   multiDaySummary: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 6,
     fontStyle: 'italic',
   },
   trackingCaption: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginBottom: 8,
     fontStyle: 'italic',
@@ -177,7 +178,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     textAlign: 'center',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 20,
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
   },
   emptyTracked: {
     alignItems: 'center',
@@ -189,7 +190,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     paddingHorizontal: 12,
   },
   emptyTrackedLinkText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '600',
     color: kua ? kua.primary : colors.accentText,
   },

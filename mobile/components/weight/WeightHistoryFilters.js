@@ -1,8 +1,9 @@
+import { GEOMETRY } from '../../theme/spacing';
 import React, { useMemo } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme } from '../../theme/ThemeContext';
-import { useKuaTypography } from '../../theme/typography';
+import { useKuaTypography, TYPOGRAPHY } from '../../theme/typography';
 import { formatDate } from '../../lib/format';
 import { createStyles } from './weightHistoryStyles';
 
@@ -32,9 +33,9 @@ function WebDateTextInput({ value, onChange, placeholder }) {
     style: {
       backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
       border: 'none',
-      borderRadius: 8,
+      borderRadius: GEOMETRY['radius-lg'],
       padding: '4px 8px',
-      fontSize: 12,
+      fontSize: TYPOGRAPHY['label-md'].fontSize,
       fontWeight: '700',
       color: kua ? kua.primaryOnContainer : colors.chipText,
       fontFamily: 'inherit',

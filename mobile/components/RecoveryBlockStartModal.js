@@ -7,6 +7,7 @@
 // recoveryBlockHooks.js) upstream in LogScreen. This component never inspects
 // note titles/dates/content to decide eligibility itself.
 
+import { TYPOGRAPHY } from '../theme/typography';
 import React, { useEffect, useState } from 'react';
 import {
   AccessibilityInfo,
@@ -352,7 +353,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
   },
   title: {
     flex: 1,
-    fontSize: 17,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     fontWeight: '700',
     color: kua.onSurface,
   },
@@ -360,7 +361,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     padding: 4,
   },
   closeBtnText: {
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     color: kua.onSurfaceVariant,
     fontWeight: '600',
   },
@@ -374,7 +375,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     gap: 10,
   },
   explainer: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua.onSurfaceVariant,
     marginBottom: 4,
   },
@@ -387,12 +388,12 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     borderColor: kua.error,
   },
   errorBannerText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: colors.textLight,
   },
   sectionLabel: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: kua.onSurfaceVariant,
     textTransform: 'uppercase',
@@ -400,11 +401,11 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     marginTop: 6,
   },
   emptyText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua.onSurfaceVariant,
   },
   hintText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua.onSurfaceVariant,
   },
   optionRow: {
@@ -420,7 +421,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     backgroundColor: kua.primaryContainer,
   },
   optionText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '600',
     color: kua.onSurface,
   },
@@ -446,7 +447,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     borderColor: kua.primary,
   },
   toggleBtnText: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '700',
     color: kua.onSurfaceVariant,
   },
@@ -475,7 +476,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     borderColor: kua.surfaceBorder,
   },
   footerBtnSecondaryText: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua.onSurfaceVariant,
   },
@@ -486,7 +487,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     opacity: 0.5,
   },
   footerBtnPrimaryText: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua.onPrimary,
   },
