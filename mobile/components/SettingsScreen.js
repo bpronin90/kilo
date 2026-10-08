@@ -15,6 +15,8 @@ import { ReminderSettingsCard } from './ReminderSettingsCard';
 import { ThemeSelectionControl } from './ThemeSelectionControl';
 import { useWeightUnit, setWeightUnitPreference } from '../lib/unitPreference';
 import { unitFromUnitSystem, unitSystemFromUnit } from '../lib/units';
+import { TYPOGRAPHY } from '../theme/typography';
+import { GEOMETRY } from '../theme/spacing';
 
 // Appearance choices, in the order the segmented control renders them (#689).
 const APPEARANCE_OPTIONS = [
@@ -283,7 +285,7 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
               <Text style={styles.stepperText} accessible={false}>−</Text>
             </Pressable>
             <View style={styles.stepperValueContainer}>
-              <Text style={styles.stepperValue}>{multiplier.toFixed(2)}</Text>
+              <Text style={[styles.stepperValue, typography['label-lg']]}>{multiplier.toFixed(2)}</Text>
             </View>
             <Pressable style={styles.stepperButton} onPress={handleIncrement} accessibilityRole="button" accessibilityLabel="Increase fatigue multiplier">
               <Text style={styles.stepperText} accessible={false}>+</Text>
@@ -303,7 +305,7 @@ export function SettingsScreen({ onBack, multiplier, onUpdate }) {
 
 const createStyles = (colors, kua = null, typography = {}) => StyleSheet.create({
   sectionHeader: {
-    ...(typography['label-sm'] ?? { fontSize: 11, fontWeight: '500' }),
+    ...(typography['label-sm'] ?? { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '500' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
     marginTop: 6,
@@ -324,19 +326,19 @@ const createStyles = (colors, kua = null, typography = {}) => StyleSheet.create(
     gap: 10,
   },
   settingLabel: {
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
   settingHelp: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   stepper: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     overflow: 'hidden',
@@ -361,8 +363,6 @@ const createStyles = (colors, kua = null, typography = {}) => StyleSheet.create(
     alignItems: 'center',
   },
   stepperValue: {
-    fontSize: 16,
-    fontWeight: '800',
     color: kua ? kua.onSurface : colors.text,
   },
   // Compact segmented control — the Appearance and Weight unit selectors here
@@ -396,7 +396,7 @@ const createStyles = (colors, kua = null, typography = {}) => StyleSheet.create(
   unitPill: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: GEOMETRY['radius-lg'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     backgroundColor: kua ? kua.surfaceCard : colors.inputBackground,
@@ -409,7 +409,7 @@ const createStyles = (colors, kua = null, typography = {}) => StyleSheet.create(
     opacity: 0.5,
   },
   unitTabText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
@@ -427,7 +427,7 @@ const createStyles = (colors, kua = null, typography = {}) => StyleSheet.create(
   },
   resetButtonText: {
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,

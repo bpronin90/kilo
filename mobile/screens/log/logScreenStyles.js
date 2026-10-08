@@ -64,6 +64,8 @@
 // No other styling exception is authorized.
 
 import { StyleSheet } from 'react-native';
+import { TYPOGRAPHY } from '../../theme/typography';
+import { GEOMETRY } from '../../theme/spacing';
 
 // When `kua` is provided (KUA-mode callers), segmented control and chip styles
 // use KUA palette tokens. When null (legacy callers such as LogScreenStates),
@@ -71,7 +73,7 @@ import { StyleSheet } from 'react-native';
 export const createStyles = (colors, kua = null) => StyleSheet.create({
   skeletonCard: {
     backgroundColor: kua ? kua.surfaceCard : colors.card,
-    borderRadius: 24,
+    borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     padding: 18,
@@ -80,7 +82,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   skeletonBar: {
     backgroundColor: kua ? kua.surfaceBorder : colors.cardBorder,
-    borderRadius: 6,
+    borderRadius: GEOMETRY['radius-md'],
     opacity: 0.6,
     height: 12,
   },
@@ -104,7 +106,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   modeToggle: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
     minHeight: 44,
     justifyContent: 'center',
@@ -138,7 +140,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     rowGap: 8,
   },
   modeToggleText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.primaryOnContainer : colors.chipAccentText,
   },
@@ -154,7 +156,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // instead of the legacy card-bg / shadow emphasis.
   tabToggle: {
     flexDirection: 'row',
-    borderRadius: 12,
+    borderRadius: GEOMETRY['radius-xl'],
     backgroundColor: kua ? (kua.surfaceLow ?? kua.surfaceSeg ?? kua.surfaceSection) : colors.subtleBg,
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
@@ -163,7 +165,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   tabToggleItem: {
     flex: 1,
     paddingVertical: 9,
-    borderRadius: 9,
+    borderRadius: GEOMETRY['radius-lg'],
     alignItems: 'center',
   },
   tabToggleItemActive: kua ? {
@@ -177,14 +179,14 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     elevation: 1,
   },
   tabToggleText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '500',
     textTransform: 'uppercase',
     letterSpacing: 0.48,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   tabToggleTextActive: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.48,
@@ -199,13 +201,13 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 14,
     paddingVertical: 12,
-    borderRadius: 14,
+    borderRadius: GEOMETRY['radius-xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     minHeight: 44,
   },
   recoveryStartRowText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua ? kua.primary : colors.accentText,
   },
@@ -218,7 +220,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 14,
     paddingVertical: 12,
-    borderRadius: 14,
+    borderRadius: GEOMETRY['radius-xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     minHeight: 44,
@@ -227,7 +229,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   recoveryReopenRowText: {
     flex: 1,
     marginRight: 8,
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
@@ -239,17 +241,17 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 8,
   },
   firstUseTitle: {
-    fontSize: 17,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
   firstUseBody: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     lineHeight: 20,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   firstUseError: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     lineHeight: 18,
     fontWeight: '600',
     color: kua ? kua.errorText : colors.error,

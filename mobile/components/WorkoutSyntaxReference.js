@@ -1,6 +1,8 @@
 import React from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { useThemedStyles } from '../theme/ThemeContext';
+import { TYPOGRAPHY } from '../theme/typography';
+import { GEOMETRY } from '../theme/spacing';
 
 // Single source of truth for the workout log text syntax taught in the App
 // Guide (HelpScreen) and the editor-reachable WorkoutSyntaxModal (#584,
@@ -80,7 +82,7 @@ export function WorkoutSyntaxReference() {
 // (`kua` null — isolated syntax-reference tests) they keep the legacy palette.
 const createStyles = (colors, kua = null) => StyleSheet.create({
   helpText: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     lineHeight: 22,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
@@ -93,7 +95,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   codeBlock: {
     backgroundColor: kua ? kua.surfaceSection : colors.inputBackground,
-    borderRadius: 8,
+    borderRadius: GEOMETRY['radius-lg'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     padding: 10,
@@ -102,7 +104,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   codeText: {
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurface : colors.text,
   },
   rowList: {
@@ -116,7 +118,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   formatDesc: {
     flex: 1,
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 18,
   },

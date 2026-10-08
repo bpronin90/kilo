@@ -1,6 +1,8 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useThemedStyles } from '../../theme/ThemeContext';
+import { TYPOGRAPHY } from '../../theme/typography';
+import { GEOMETRY } from '../../theme/spacing';
 
 export function Button({ onPress, title, loadingTitle, loading, style, textStyle, disabled = false, accessibilityLabel, tone = 'default' }) {
   const styles = useThemedStyles(createStyles);
@@ -57,7 +59,7 @@ export function Chip({ children }) {
 const createStyles = (colors, kua = null) => StyleSheet.create({
   button: {
     backgroundColor: kua ? kua.primary : colors.text,
-    borderRadius: 18,
+    borderRadius: GEOMETRY['radius-2xl'],
     paddingVertical: 16,
     paddingHorizontal: 24,
     alignItems: 'center',
@@ -86,7 +88,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   // every court/mode combination (theme-rendering.test.js).
   buttonText: {
     color: kua ? kua.onPrimary : colors.buttonLabel,
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     fontWeight: '700',
   },
   // Badge-only light label for filled trend tones; paired with the legacy
@@ -105,7 +107,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   badge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 8,
+    borderRadius: GEOMETRY['radius-lg'],
     backgroundColor: colors.chipBackground,
   },
   badge_improved: {
@@ -121,7 +123,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: colors.chipBackground,
   },
   badgeText: {
-    fontSize: 11,
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
     fontWeight: '800',
     color: colors.chipText,
     textTransform: 'uppercase',
@@ -131,10 +133,10 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     backgroundColor: kua ? kua.primaryContainer : colors.chipBackground,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 999,
+    borderRadius: GEOMETRY['radius-2xl'],
   },
   chipText: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '600',
     color: kua ? kua.primaryOnContainer : colors.chipText,
   },

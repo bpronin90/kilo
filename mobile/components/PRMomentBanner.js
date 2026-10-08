@@ -4,6 +4,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { formatLiftWeightValue } from '../lib/units';
 import { useWeightUnit } from '../lib/unitPreference';
 import { GEOMETRY } from '../theme/spacing';
+import { TYPOGRAPHY } from '../theme/typography';
 
 // Non-modal PR-moment celebration (#577 Contract 3). Mounted at LogScreen's
 // top level, outside the editor card branch, so Done switching read/edit
@@ -51,7 +52,7 @@ const createStyles = (kua, _mode) => StyleSheet.create({
   },
   text: {
     flex: 1,
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '800',
     color: kua.success,
   },
@@ -62,7 +63,7 @@ const createStyles = (kua, _mode) => StyleSheet.create({
     justifyContent: 'center',
   },
   dismissText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     fontWeight: '700',
     color: kua.onSurfaceVariant,
   },

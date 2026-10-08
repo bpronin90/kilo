@@ -5,6 +5,8 @@ import { useKuaStyle, useTheme } from '../theme/ThemeContext';
 import { Button } from './UI';
 import { DIALOG_MAX_WIDTH } from './adaptiveLayout';
 import { scrim } from '../theme/styleHelpers';
+import { TYPOGRAPHY } from '../theme/typography';
+import { GEOMETRY } from '../theme/spacing';
 
 // First-sign-in local-history ownership decision, rendered over the whole shell
 // by App.js. The card scrolls inside the overlay and caps its width so every
@@ -116,24 +118,24 @@ const createStyles = (colors, kua = null, mode = 'light') => StyleSheet.create({
     width: '100%',
     maxWidth: DIALOG_MAX_WIDTH,
     backgroundColor: kua ? kua.surfaceCard : colors.background,
-    borderRadius: 16,
+    borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     padding: 20,
     gap: 12,
   },
   ownershipTitle: {
-    fontSize: 17,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
   ownershipBody: {
-    fontSize: 15,
+    fontSize: TYPOGRAPHY['body-md'].fontSize,
     color: kua ? kua.onSurface : colors.text,
     lineHeight: 22,
   },
   ownershipHint: {
-    fontSize: 13,
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     lineHeight: 18,
     marginTop: -6,

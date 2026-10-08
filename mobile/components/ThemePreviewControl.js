@@ -3,12 +3,12 @@
 //
 // This component is intentionally development-only and must not be promoted to
 // a production-facing picker. Phase 5 will introduce the real Settings UX.
-
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { setThemeSelection } from '../lib/themePreference';
-
+import { TYPOGRAPHY } from '../theme/typography';
+import { GEOMETRY } from '../theme/spacing';
 const THEME_OPTIONS = [
   { value: 'hard-court', label: 'Hard' },
   { value: 'clay-court', label: 'Clay' },
@@ -70,18 +70,18 @@ export function ThemePreviewControl() {
 const DEV_ORANGE = '#FF5C00';
 
 const styles = {
-  devLabel: { fontSize: 11, fontWeight: '700', color: DEV_ORANGE, marginBottom: 8, letterSpacing: 0.5 },
-  sectionLabel: { fontSize: 11, fontWeight: '600', color: 'gray', marginBottom: 4, marginTop: 8 },
+  devLabel: { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '700', color: DEV_ORANGE, marginBottom: 8, letterSpacing: 0.5 },
+  sectionLabel: { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '600', color: 'gray', marginBottom: 4, marginTop: 8 },
   row: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   chip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 6,
+    borderRadius: GEOMETRY['radius-md'],
     borderWidth: 1,
     borderColor: 'lightgray',
     backgroundColor: 'transparent',
   },
   chipActive: { borderColor: 'royalblue', backgroundColor: 'aliceblue' },
-  chipText: { fontSize: 13, color: 'dimgray' },
+  chipText: { fontSize: TYPOGRAPHY['body-sm'].fontSize, color: 'dimgray' },
   chipTextActive: { color: 'navy', fontWeight: '600' },
 };

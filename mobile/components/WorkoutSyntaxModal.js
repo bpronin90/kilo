@@ -3,6 +3,8 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useThemedStyles } from '../theme/ThemeContext';
 import { WorkoutSyntaxReference } from './WorkoutSyntaxReference';
 import { MODAL_SUPPORTED_ORIENTATIONS } from './adaptiveLayout';
+import { TYPOGRAPHY } from '../theme/typography';
+import { GEOMETRY } from '../theme/spacing';
 
 // Editor-reachable workout syntax reference (#584, follow-up to #573).
 // Follows the PlateCalculatorModal overlay/sheet/close pattern: transparent
@@ -55,7 +57,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   sheet: {
     backgroundColor: kua ? kua.surfaceCard : colors.card,
-    borderRadius: 20,
+    borderRadius: GEOMETRY['radius-2xl'],
     borderWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     maxWidth: 420,
@@ -75,7 +77,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   title: {
     flex: 1,
-    fontSize: 17,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
@@ -83,7 +85,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     padding: 4,
   },
   closeBtnText: {
-    fontSize: 16,
+    fontSize: TYPOGRAPHY['body-lg'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontWeight: '600',
   },
