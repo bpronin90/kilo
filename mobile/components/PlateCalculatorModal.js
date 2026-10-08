@@ -383,7 +383,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   rowValue: {
-    fontSize: TYPOGRAPHY['body-md'].fontSize,
+    fontSize: TYPOGRAPHY['label-lg'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
   },
@@ -406,7 +406,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     lineHeight: 20,
   },
   remainder: {
-    fontSize: TYPOGRAPHY['body-sm'].fontSize,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     fontStyle: 'italic',
     lineHeight: 19,

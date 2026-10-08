@@ -525,7 +525,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     borderColor: kua ? kua.surfaceBorder : colors.inputBorder,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontSize: TYPOGRAPHY['headline-sm'].fontSize,
+    fontSize: TYPOGRAPHY['label-lg'].fontSize,
     fontWeight: '700',
     color: kua ? kua.onSurface : colors.text,
     textAlign: 'center',

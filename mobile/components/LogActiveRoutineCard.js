@@ -452,7 +452,7 @@ const createStyles = (kua, colors) => StyleSheet.create({
   },
   // #1109: body-sm, on-surface-variant per KUA surfaces.md.
   otherNoteSub: {
-    fontSize: TYPOGRAPHY['body-sm'].fontSize,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
   },

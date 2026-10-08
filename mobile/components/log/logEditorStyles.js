@@ -159,7 +159,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     lineHeight: 13,
   },
   validationBadgeCount: {
-    fontSize: TYPOGRAPHY['body-sm'].fontSize,
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
     fontWeight: '700',
   },
   // Height-limited, internally scrollable problem list (#863), expanded by
@@ -354,7 +354,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     marginBottom: 12,
   },
   dateInputText: {
-    fontSize: TYPOGRAPHY['body-lg'].fontSize,
+    fontSize: TYPOGRAPHY['label-lg'].fontSize,
     color: kua ? kua.onSurface : colors.text,
   },
   // Compact secondary "Date · <value>" disclosure row (#764), replacing the
