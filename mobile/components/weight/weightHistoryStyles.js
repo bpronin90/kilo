@@ -207,7 +207,7 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   },
   dateChipPlaceholder: {
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    fontWeight: '600',
+    ...(kua ? {} : { fontWeight: '600' }),
   },
   dateRangeSep: {
     ...monoRole(typo, 'label-md'),
@@ -245,7 +245,8 @@ export const createStyles = (colors, kua = null, typo = null) => StyleSheet.crea
   },
   deltaOutlier: {
     color: colors.error,
-    fontWeight: '900',
+    // Kinetic uses the real bold face; the literal weight would synthesize on the Medium role.
+    ...(kua ? monoBold(typo) : { fontWeight: '900' }),
   },
   rowNote: {
     fontSize: TYPOGRAPHY['label-md'].fontSize,

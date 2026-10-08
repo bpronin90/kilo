@@ -2,10 +2,6 @@ import { GEOMETRY } from '../../theme/spacing';
 import { TYPOGRAPHY, TYPOGRAPHY_FALLBACK } from '../../theme/typography';
 import { StyleSheet } from 'react-native';
 
-// Returns fontFamily (and fontWeight when needed) for a JBM typography role.
-// When typo is provided, it is either TYPOGRAPHY (fonts loaded; weight is encoded
-// in the family name, no fontWeight needed) or TYPOGRAPHY_FALLBACK (fonts not yet
-// loaded; fontWeight is restored so visual hierarchy is preserved on system fonts).
 // Full JetBrains Mono role (family, tracking, tabular-nums); weight is encoded in the family.
 const monoRole = (typo, role) => (typo || TYPOGRAPHY_FALLBACK)[role];
 // Real bold JetBrains Mono asset for emphasis (no synthetic weight on a SemiBold family).
