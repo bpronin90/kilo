@@ -201,7 +201,7 @@ Source: `mobile/components/UI.js`
 | Property | Value | Line |
 |---|---|---|
 | backgroundColor | `colors.card` | `158` |
-| borderRadius | `24` | `159` |
+| borderRadius | `16` (`GEOMETRY['radius-2xl']`) | `159` |
 | padding | `18` | `160` |
 | borderWidth | `1` | `161` |
 | borderColor | `colors.cardBorder` | `162` |
@@ -355,7 +355,7 @@ all rows end with a 20px muted `MaterialIcons` `chevron-right` disclosure.
 | Element | Property | Value |
 |---|---|---|
 | Menu list | gap | `12` |
-| Menu row | background / border / radius | `colors.card` / 1px `colors.cardBorder` / `24` |
+| Menu row | background / border / radius | `colors.card` / 1px `colors.cardBorder` / `16` (`GEOMETRY['radius-2xl']`) |
 | Menu row | padding / minimum height | `20` / `44` |
 | Main label | fontSize / fontWeight / color | `17` / `600` / `colors.text` |
 | Help line | fontSize / color | `13` / `colors.textMuted` |
@@ -377,7 +377,7 @@ the shared `unitTab` segmented convention: inline 44dp targets with 12px
 horizontal and 6px vertical padding, 12px/700 labels, muted inactive ink, and
 the active accent treatment. Settings' fatigue multiplier is a 44dp stepper
 (`borderRadius: 12`) with decrement/value/increment controls. Irreversible
-Account and Backup actions stay in the error-tinted, bordered 24px-radius
+Account and Backup actions stay in the error-tinted, bordered 16px-radius
 **Danger Zone** containers owned by those screens, as required by
 `docs/ui-design-rules.md` §14.
 
@@ -430,7 +430,7 @@ numerically identical by hand.
 
 | Element | Property | Value |
 |---|---|---|
-| Panel card | bg / radius / border | `colors.card` / `24` / 1px `cardBorder`, `overflow: hidden` |
+| Panel card | bg / radius / border | `colors.card` / `16` / 1px `cardBorder`, `overflow: hidden` |
 | Header row | bg | `colors.subtleBg`, `paddingVertical: 10`, left pad 16 / right pad 0 |
 | Header row (expanded) | border | 1px `cardBorder` bottom (`headerRowBordered`) |
 | Column label | fontSize / weight | `11` / `700`, uppercase, `letterSpacing: 0.5`, `textMuted` |
@@ -506,7 +506,7 @@ each screen shapes its bars to the tiers it is about to paint.
 | Element | Property | Value |
 |---|---|---|
 | Placeholder card | padding | `18` (Home, Log, Weight — shared Card value, #1278) |
-| | borderRadius | `24` (matches `Card`) |
+| | borderRadius | `16` (matches `Card`) |
 | | gap | `12` |
 | Bar | backgroundColor | `colors.cardBorder` |
 | | borderRadius / opacity | `6` / `0.6` |
@@ -631,7 +631,7 @@ already use and that is owned by `App.js`.
 
 | Element | Property | Value | Line |
 |---|---|---|---|
-| Card wrapper | borderRadius | `24` | `857` |
+| Card wrapper | borderRadius | `16` | `857` |
 | | padding | `0` (custom, overrides Card default) | `855` |
 | | marginTop | `12` | `861` |
 | Floating badge | fontSize | `10` | `876` |
@@ -678,7 +678,7 @@ already use and that is owned by `App.js`.
 | Element | Property | Value | Line |
 |---|---|---|---|
 | Card padding | `24` | | `972` |
-| Card borderRadius | `24` | | `973` |
+| Card borderRadius | `16` | | `973` |
 | Direction text ("Cutting"/"Bulking") | fontSize | `18` | `983` |
 | | fontWeight | `700` | `984` |
 | | color | dynamic: `colors.success` (gain), `colors.accentText` (loss), `colors.textMuted` (maintain) | `159-163` |
@@ -721,7 +721,7 @@ got the identical treatment for the same reason.
 | Element | Property | Value | Line |
 |---|---|---|---|
 | Card padding / paddingTop / gap | `24` / `14` / `6` | | `1289` |
-| Card borderRadius | `24` | | `1289` |
+| Card borderRadius | `16` | | `1289` |
 | Header (`home-one-k-link`) | minHeight | `44` (no fixed `height`) | |
 | | label fontSize / fontWeight | `12` / `800`, uppercase | |
 | | color | `colors.textMuted` | |
@@ -1089,7 +1089,7 @@ target plus the parent role/name **and** `accessible === false` on the label.
 
 Both now use the **Shared History-Panel System** (see that section above) —
 `WeightHistoryList.js` for Weight History, `hp` StyleSheet in `WeightScreen.js`
-for Goal History. Values (radius 24, `subtleBg` header, 3-column grid, value 20,
+for Goal History. Values (radius 16, `subtleBg` header, 3-column grid, value 20,
 date 15, collapse chevron, summary count/latest) are documented there. The old
 stacked row layout (weight 17 / date 12 / stacked note) was replaced during
 #411/#412.
@@ -1152,7 +1152,7 @@ Consequences to preserve:
 
 - **More Routines has no enclosing panel (#847, superseding #843's
   card-equivalent panel with a flat, divided row list).** Each non-current
-  routine renders as its own quiet, individually rounded `Card` (`radius 24`,
+  routine renders as its own quiet, individually rounded `Card` (`radius 16`,
   1px `cardBorder`, standard card background), separated from its siblings by
   ordinary shell spacing (`LogPreviousRoutines.js` `cardList`, `gap: 12`) —
   not a shared outer surface, a flat divided list, or a tinted collection bar.
@@ -1294,7 +1294,7 @@ Consequences to preserve:
   quoted title and the "note itself is kept" clause. `Untitled Routine` is
   reserved for notes that exist.
 - **The active Recovery card is one grouped, three-zone card (#789, restyled
-  #843).** `padding: 0`, clipped at the existing 24px radius/border, holding a
+  #843).** `padding: 0`, clipped at the existing 16px radius/border, holding a
   state zone, a week table, and an action zone, followed by a SIBLING `Manage
   block` card (see below) — the disclosure that used to live inside the
   active card moved out. The state zone (`colors.subtleBg`) leads with a
