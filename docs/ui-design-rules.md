@@ -415,3 +415,27 @@ contained in #710, removed in #711).
   `mobile/tests/interaction-target-a11y.test.js`: the flattened
   `minHeight`/`minWidth`/`hitSlop` plus the role/name/state props, so a later
   style edit that drops the minimum fails a test rather than shipping.
+
+## 16. Token migration checklist
+
+Implementers and reviewers apply these five checks on every typography,
+radius, or copy sweep.
+
+1. **Numeric and time values take the full mono `TYPOGRAPHY` role.** Use
+   `label-lg`, `label-md`, `label-sm`, `metric-display`, or
+   `metric-display-mobile`, never a `fontSize`-only swap. The role carries the
+   font family, line height, letter spacing, and tabular-number variant, so
+   consume the resolved typography tokens rather than copying one property.
+2. **Never add `fontWeight` to a weight-specific font face.** It synthesizes
+   extra weight (faked bold). The theme's system-font fallback weights are
+   intentional and stay. The prohibition covers bundled weight-specific faces
+   only, and the numeric size and weight descriptions elsewhere in this
+   document do not override a token face.
+3. **Circular elements use `GEOMETRY['radius-full']`, not a numeric radius.**
+   Keep width and height equal so the shape stays a circle.
+4. **Copy rewrites must not create comma splices.** When removing a dash,
+   break the sentence, use a colon, or join the clauses with a conjunction.
+5. **Reviewers list every instance of a violation in one verdict,** with
+   file and line evidence, instead of surfacing occurrences over successive
+   rounds. This covers the reviewed head only: each later head still receives
+   its own verdict.
