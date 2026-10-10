@@ -404,7 +404,7 @@ export function captureRecoveryBaselineFromText(rawText) {
 // for a tombstone and a missing/deleted/other-id, oversized, unparseable or empty
 // routine. `editedAfterStart` is true only when BOTH timestamps parse and the note
 // is newer.
-export function planBaselineRebuild(block, note) {
+export function planBaselineRebuild(block, note, { weeks = null, notes = null } = {}) {
   const no = (message) => ({ eligible: false, message });
   if (!block || !isLiveRecord(block) || !baselineLacksStrengthData(block.baseline)) {
     return no('This block’s baseline cannot be rebuilt.');
@@ -417,7 +417,7 @@ export function planBaselineRebuild(block, note) {
   const captured = captureRecoveryBaseline(parsed.sections || []);
   if (captured.exercises.length === 0) return no('The baseline routine has no exercises to rebuild from.');
   if (baselineLacksStrengthData(captured)) return no('The baseline routine has no lifts with load and reps to score.');
-  const kept = preserveNameMatches(block.baseline, captured);
+  const kept = preserveNameMatches(block.baseline, captured, { loggedKeys: _loggedKeys(block, weeks, notes) });
   if (!kept.ok) return no(kept.message);
   const noteTime = Date.parse(note.updated_at);
   const startTime = Date.parse(block.started_at);
@@ -425,8 +425,28 @@ export function planBaselineRebuild(block, note) {
     eligible: true,
     baseline: _deepFreeze(kept.baseline),
     previous: block.baseline.exercises || [],
+    renamed: kept.renamed || [],
     editedAfterStart: Number.isFinite(noteTime) && Number.isFinite(startTime) && noteTime > startTime,
   };
+}
+
+// Every exercise identity logged (outside warmups) in the block's live linked
+// weeks, or null when any of those weeks cannot be read (unknown is never "not
+// logged") or the weeks were not supplied.
+function _loggedKeys(block, weeks, notes) {
+  if (!Array.isArray(weeks) || !Array.isArray(notes)) return null;
+  const keys = new Set();
+  for (const w of orderedLiveWeeks(weeks, block.id)) {
+    const n = notes.find(x => x && x.id === w.note_id);
+    if (!n || n.deleted_at || typeof n.raw_text !== 'string') return null;
+    const parsed = parseWorkoutNote(n.raw_text);
+    if (parsed.ok === false) return null;
+    for (const section of parsed.sections || []) {
+      if (section.kind === 'warmup') continue;
+      for (const ex of section.exercises || []) keys.add(normalizeExerciseKey(ex.name));
+    }
+  }
+  return keys;
 }
 
 // Recursively freeze the snapshot. The frozen baseline is authoritative after

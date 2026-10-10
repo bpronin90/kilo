@@ -76,7 +76,9 @@ export function RecoveryStrengthLadder({ strength, scaleMax, unit = 'lb' }) {
               <Text style={styles.rowName}>{l.name}</Text>
               <Text style={styles.rowValue}>{`${pct}%`}</Text>
             </View>
-            <StrengthBar percent={l.percent} scaleMax={scaleMax} testID={`recovery-strength-lift-${l.key}-bar`} />
+            <View style={styles.barLine}>
+              <StrengthBar percent={l.percent} scaleMax={scaleMax} testID={`recovery-strength-lift-${l.key}-bar`} />
+            </View>
             <Text style={styles.detail}>{sets}</Text>
             {cohort ? <Text style={styles.detail}>{cohort}</Text> : null}
             {pace ? <Text testID={`recovery-strength-pace-${l.key}`} style={styles.detail}>{pace}</Text> : null}

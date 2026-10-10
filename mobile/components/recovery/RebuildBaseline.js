@@ -31,11 +31,11 @@ function _metrics(row, unit) {
   return `${_n(row.best_hold_seconds)}s best, ${_n(row.total_seconds)}s total`;
 }
 
-export function RebuildBaselineAction({ block, notes, unit = 'lb', locked = false, onRebuild }) {
+export function RebuildBaselineAction({ block, weeks = null, notes, unit = 'lb', locked = false, onRebuild }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const note = useMemo(() => (notes || []).find(n => n.id === block.baseline_note_id), [notes, block.baseline_note_id]);
-  const plan = useMemo(() => planBaselineRebuild(block, note), [block, note]);
+  const plan = useMemo(() => planBaselineRebuild(block, note, { weeks, notes }), [block, note, weeks, notes]);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -44,10 +44,16 @@ export function RebuildBaselineAction({ block, notes, unit = 'lb', locked = fals
   const rows = useMemo(() => {
     if (!plan.eligible) return [];
     const old = new Map(plan.previous.map(r => [r.key, r]));
-    const next = plan.baseline.exercises.map(r => ({
-      key: r.key, text: `${r.routine_order + 1}. ${r.name}: ${_metrics(old.get(r.key), unit)} → ${_metrics(r, unit)} (${BASIS_LABELS[r.basis] || r.basis})`,
-    }));
-    const kept = new Set(plan.baseline.exercises.map(r => r.key));
+    // #1305: a frozen name never logged in any recovery week takes the routine's
+    // current (clean) name; the preview names both.
+    const renamedTo = new Map((plan.renamed || []).map(x => [x.to_key, x]));
+    const next = plan.baseline.exercises.map(r => {
+      const rn = renamedTo.get(r.key);
+      const name = rn ? `${rn.from_name} → ${r.name}` : r.name;
+      const prev = rn ? old.get(rn.from_key) : old.get(r.key);
+      return { key: r.key, text: `${r.routine_order + 1}. ${name}: ${_metrics(prev, unit)} → ${_metrics(r, unit)} (${BASIS_LABELS[r.basis] || r.basis})` };
+    });
+    const kept = new Set([...plan.baseline.exercises.map(r => r.key), ...(plan.renamed || []).map(x => x.from_key)]);
     const dropped = plan.previous.filter(r => !kept.has(r.key))
       .map(r => ({ key: `old-${r.key}`, text: `${r.name}: ${_metrics(r, unit)} → removed (not in the routine)` }));
     return [...next, ...dropped];

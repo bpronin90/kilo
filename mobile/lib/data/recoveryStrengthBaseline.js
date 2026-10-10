@@ -102,7 +102,12 @@ export function baselineLacksStrengthData(baseline) {
 //   - left 0, new 0: nothing changed in the group;
 //   - left 0, new >= 1: an addition; ambiguous only if an old row of the group
 //     still stands (a matched identity could silently move), so refuse then;
-//   - left 1, new 1, same class: carry the old key/name onto the new row;
+//   - left 1, new 1, same class: carry the old key/name onto the new row —
+//     unless `loggedKeys` (every identity logged in the block's linked weeks)
+//     proves the old name was never logged: a #1298 match always uses a logged
+//     name, so such a row is an original routine name, and the routine's current
+//     (clean) name is taken instead (owner decision, PR #1308). `loggedKeys` null
+//     means unknown (a week unreadable): carry, never guess;
 //   - left >= 1, new 0: the source lift is gone from the routine. A #1298 match
 //     always leaves its source name in the routine, so these rows cannot be a
 //     surviving match: they are dropped and the preview shows them as removed;
@@ -110,8 +115,9 @@ export function baselineLacksStrengthData(baseline) {
 // Neither a position nor equal numbers is proof. A match is never silently
 // undone and another lift's best set is never frozen under a matched name. v1
 // snapshots cannot carry matches (rename is v2-only), so they pass through.
-export function preserveNameMatches(previous, next) {
-  if (!previous || previous.version !== 2) return { ok: true, baseline: next };
+export function preserveNameMatches(previous, next, { loggedKeys = null } = {}) {
+  if (!previous || previous.version !== 2) return { ok: true, baseline: next, renamed: [] };
+  const renamed = [];
   const prevKeys = new Set(previous.exercises.map(r => r.key));
   const exercises = next.exercises.map(r => ({ ...r }));
   const nextKeys = new Set(exercises.map(r => r.key));
@@ -138,11 +144,15 @@ export function preserveNameMatches(previous, next) {
     if (!canon || left.length !== 1 || added.length !== 1 || left[0].exercise_class !== added[0].exercise_class) {
       return refuse(left[0]);
     }
+    if (loggedKeys && !loggedKeys.has(left[0].key)) {
+      renamed.push({ from_key: left[0].key, from_name: left[0].name || left[0].key, to_key: added[0].key, to_name: added[0].name });
+      continue;
+    }
     added[0].key = left[0].key;
     added[0].name = left[0].name;
   }
   if (new Set(exercises.map(r => r.key)).size !== exercises.length) {
     return { ok: false, message: 'Matched exercise names would collide in the rebuilt baseline. The baseline was not rebuilt.' };
   }
-  return { ok: true, baseline: { ...next, exercises } };
+  return { ok: true, baseline: { ...next, exercises }, renamed };
 }

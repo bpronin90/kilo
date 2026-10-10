@@ -59,6 +59,9 @@ export const createStrengthStyles = (colors, kua = null) => {
       borderStyle: 'dashed',
       borderColor: border,
     },
+    // The shared track grows along a ROW; a column parent would turn its
+    // flexBasis into height (PR #1308 review), so ladder bars sit in this line.
+    barLine: { flexDirection: 'row', alignItems: 'center' },
     detail: caption,
     list: { gap: 4 },
   });

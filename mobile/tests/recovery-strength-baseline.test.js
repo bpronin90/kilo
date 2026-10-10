@@ -186,6 +186,34 @@ describe('legacy rebuild (#1305)', () => {
     expect(row(plan.baseline, 'dead bugs')).toMatchObject({ name: 'Dead bugs', total_reps: 24 });
   });
 
+  describe('clean names: a frozen name never logged in a recovery week takes the routine\'s current name (owner decision)', () => {
+    const messy = '-DB Bench Press — 3×6-8, start at 70 lbs\n- 100 8\n-Squat\n- 225 5';
+    const clean = '-DB Bench Press 3x6-8\n- 100 8\n-Squat\n- 225 5';
+    const frozen = legacyV2(captureRecoveryBaselineFromText(messy));
+    const wk = (note_id) => [{ id: 'w1', block_id: 'rb1', note_id, week_number: 1, deleted_at: null }];
+
+    test('never logged -> the routine\'s clean name, reported as a rename', () => {
+      const weekNote = { id: 'wn1', raw_text: '-DB Bench Press\n- 80 8' };
+      const plan = planBaselineRebuild(block(frozen), note({ raw_text: clean }), { weeks: wk('wn1'), notes: [weekNote] });
+      expect(plan.eligible).toBe(true);
+      expect(plan.baseline.exercises.map(r => r.key)).toEqual(['db bench press', 'squat']);
+      expect(plan.renamed).toEqual([{ from_key: 'db bench press — 3×6-8, start at 70 lbs', from_name: 'DB Bench Press — 3×6-8, start at 70 lbs', to_key: 'db bench press', to_name: 'DB Bench Press' }]);
+    });
+
+    test('a logged (possibly matched) name is kept', () => {
+      const weekNote = { id: 'wn1', raw_text: '-DB Bench Press — 3×6-8, start at 70 lbs\n- 80 8' };
+      const plan = planBaselineRebuild(block(frozen), note({ raw_text: clean }), { weeks: wk('wn1'), notes: [weekNote] });
+      expect(plan.baseline.exercises[0].key).toBe('db bench press — 3×6-8, start at 70 lbs');
+      expect(plan.renamed).toEqual([]);
+    });
+
+    test('an unreadable or missing week means unknown: the frozen name is kept', () => {
+      const plan = planBaselineRebuild(block(frozen), note({ raw_text: clean }), { weeks: wk('gone'), notes: [] });
+      expect(plan.baseline.exercises[0].key).toBe('db bench press — 3×6-8, start at 70 lbs');
+      expect(planBaselineRebuild(block(frozen), note({ raw_text: clean })).baseline.exercises[0].key).toBe('db bench press — 3×6-8, start at 70 lbs');
+    });
+  });
+
   test('two leftovers against one new row in a group is ambiguous and refuses', () => {
     const frozen = legacyV2(captureRecoveryBaselineFromText('-Row, heavy\n- 100 5\n-Row, light\n- 60 10'));
     const plan = planBaselineRebuild(block(frozen), note({ raw_text: '-Row\n- 90 5' }));

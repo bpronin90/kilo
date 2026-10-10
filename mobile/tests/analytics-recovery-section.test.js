@@ -1955,6 +1955,16 @@ describe('AnalyticsRecoverySection — strength trend by recovery week (#1305)',
     expect(hostTextsIn(refused)[0]).toMatch(/Row, heavy.*can’t be carried over safely.*not rebuilt/);
   });
 
+  test('ladder bars sit in a row line so the shared track grows horizontally, never in height (PR #1308 review)', () => {
+    const { StyleSheet } = require('react-native');
+    const root = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', '-Bench\n- 100 5')] }).root;
+    const bar = hostById(root, 'recovery-strength-lift-bench-bar')[0];
+    let host = bar.parent;
+    while (host && !(typeof host.type === 'string' && host.props.style)) host = host.parent;
+    expect(StyleSheet.flatten(host.props.style)).toMatchObject({ flexDirection: 'row' });
+    expect(StyleSheet.flatten(bar.props.style)).toMatchObject({ height: 8 });
+  });
+
   test('values above 100% stay factual on one labelled common scale', () => {
     const root = setup({
       blocks: [block()],

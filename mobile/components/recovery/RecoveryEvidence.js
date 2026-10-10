@@ -413,7 +413,7 @@ export function BlockEvidence({
         </View>
       ) : null}
       {onRebuildBaseline ? (
-        <RebuildBaselineAction block={block} notes={notes} unit={unit} locked={reasonLocked} onRebuild={onRebuildBaseline} />
+        <RebuildBaselineAction block={block} weeks={weeks} notes={notes} unit={unit} locked={reasonLocked} onRebuild={onRebuildBaseline} />
       ) : null}
       {onMatchNames ? (
         <MatchExerciseNamesAction block={block} weeks={weeks} notes={notes} locked={reasonLocked || stateStale} onMatch={onMatchNames} />
