@@ -173,30 +173,41 @@ export function aggregateRecoveryWeekWork(rawSections, options) {
 }
 
 // The completed non-warmup sets behind `aggregateRecoveryWeekWork`, per
-// normalized identity: Map key -> { name, completed, exercise_class, timed_header }.
-// Shared with the strength score (#1305) so both read exactly the same sets and
-// identities; `timed_header` marks a duration-declared exercise, whose loaded
-// set counts are seconds, not reps.
+// normalized identity: Map key -> { name, completed, exercise_class,
+// strength_sets, timed_sets }. Shared with the strength score (#1305) so both
+// read exactly the same sets and identities. A duration-declared OCCURRENCE's
+// loaded counts are seconds, so its completed sets go to `timed_sets` and never
+// to `strength_sets`; other occurrences of the same lift still count.
+// `deriveWorkoutAnalytics` builds exactly one occurrence per section exercise in
+// section order, so the i-th occurrence of a key is its i-th header.
 export function collectRecoveryWeekSets(rawSections, { declarationAware = false } = {}) {
   const out = new Map();
   if (!Array.isArray(rawSections) || rawSections.length === 0) return out;
-  const timed = new Set();
+  const headers = new Map();
   for (const section of rawSections) {
-    if (section.kind === 'warmup') continue;
     for (const ex of section.exercises || []) {
-      if (parseHeaderDeclaration(ex.raw_header)?.type === 'duration') timed.add(normalizeExerciseKey(ex.name));
+      const k = normalizeExerciseKey(ex.name);
+      if (!headers.has(k)) headers.set(k, []);
+      headers.get(k).push(parseHeaderDeclaration(ex.raw_header)?.type === 'duration');
     }
   }
   const { exercises } = deriveWorkoutAnalytics(declarationAware ? normalizeTimedSections(rawSections) : rawSections);
   for (const ex of exercises) {
-    const completed = (ex.occurrences || []).filter(occ => occ.kind !== 'warmup')
-      .flatMap(occ => _occurrenceEntries(occ))
-      .filter(entry => entry && !entry.skipped && !entry.unparsed)
-      .flatMap(entry => _completedSets(entry.sets));
+    const key = normalizeExerciseKey(ex.name);
+    const timedAt = headers.get(key) || [];
+    const strength_sets = [];
+    const timed_sets = [];
+    (ex.occurrences || []).forEach((occ, i) => {
+      if (occ.kind === 'warmup') return;
+      const sets = _occurrenceEntries(occ)
+        .filter(entry => entry && !entry.skipped && !entry.unparsed)
+        .flatMap(entry => _completedSets(entry.sets));
+      (timedAt[i] ? timed_sets : strength_sets).push(...sets);
+    });
+    const completed = [...strength_sets, ...timed_sets];
     const exercise_class = _detectExerciseClass(completed);
     if (!exercise_class) continue;
-    const key = normalizeExerciseKey(ex.name);
-    out.set(key, { name: ex.name, completed, exercise_class, timed_header: timed.has(key) });
+    out.set(key, { name: ex.name, completed, exercise_class, strength_sets, timed_sets });
   }
   return out;
 }

@@ -43,26 +43,29 @@ export function RecoveryStrengthSummary({ strength, weekLabel, routineTitle }) {
     notes.push(`Left the average this week (not scored every week): ${strength.cohort_dropped.join(', ')}.`);
   }
 
+  const cohortLine = cohortSize > 0 ? `In the average: ${strength.cohort.map(c => c.name).join(', ')}` : null;
   if (strength.headline == null) {
     const message = STRENGTH_EMPTY_COPY[strength.empty_reason] || STRENGTH_EMPTY_COPY.no_common_lifts;
+    // Earlier weeks may still plot an average (selected week unreadable): their
+    // population stays disclosed even with no number for this week.
+    const lines = [message, ...(cohortLine ? [coverage, cohortLine] : []), ...notes];
     return (
-      <View testID="recovery-strength-summary" style={styles.summary} accessible accessibilityLabel={`${weekLabel}: ${message} ${notes.join(' ')}`.trim()}>
+      <View testID="recovery-strength-summary" style={styles.summary} accessible accessibilityLabel={`${weekLabel}: ${lines.join(' ')}`}>
         <Text style={styles.week}>{weekLabel}</Text>
-        <Text style={styles.caption}>{message}</Text>
-        {notes.map(n => <Text key={n} style={styles.caption}>{n}</Text>)}
+        {lines.map(n => <Text key={n} testID={n === cohortLine ? 'recovery-strength-cohort' : undefined} style={styles.caption}>{n}</Text>)}
       </View>
     );
   }
 
   const pct = displayPercent(strength.headline);
-  const label = `${weekLabel}: ${pct}% of ${full} baseline strength. ${coverage}: ${strength.cohort.map(c => c.name).join(', ')}. ${notes.join(' ')}`.trim();
+  const label = `${weekLabel}: ${pct}% of ${full} baseline strength. ${coverage}. ${cohortLine}. ${notes.join(' ')}`.trim();
   return (
     <View testID="recovery-strength-summary" style={styles.summary} accessible accessibilityLabel={label}>
       <Text style={styles.week}>{weekLabel}</Text>
       <Text style={styles.number}>{`${pct}%`}</Text>
       <Text style={styles.numberLabel} numberOfLines={1} ellipsizeMode="tail">{`of ${visible} baseline strength`}</Text>
       <Text style={styles.caption}>{coverage}</Text>
-      <Text testID="recovery-strength-cohort" style={styles.caption}>{`In the average: ${strength.cohort.map(c => c.name).join(', ')}`}</Text>
+      <Text testID="recovery-strength-cohort" style={styles.caption}>{cohortLine}</Text>
       {notes.map(n => <Text key={n} style={styles.caption}>{n}</Text>)}
     </View>
   );

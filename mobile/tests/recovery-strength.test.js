@@ -90,6 +90,19 @@ describe('loaded-duration work (PR #1308 review)', () => {
   });
 });
 
+describe('timed occurrences are excluded per occurrence (PR #1308 review)', () => {
+  test('a skipped timed occurrence does not hide valid strength sets of the same lift', () => {
+    const r = derive(['-Bench: 1x30s\n- -\n-Bench: 1x5\n- 80 5']);
+    expect(lift(r, 'bench')).toMatchObject({ state: LIFT_STATE.SCORED, best: { weight: 80, reps: 5 } });
+    expect(lift(r, 'bench').percent).toBeCloseTo(80, 9);
+  });
+
+  test('a completed timed occurrence beside a reps occurrence: only the timed sets are excluded', () => {
+    const r = derive(['-Bench: 1x30s\n- 150 30\n-Bench\n- 80 5']);
+    expect(lift(r, 'bench').best).toEqual({ weight: 80, reps: 5 });
+  });
+});
+
 describe('baseline states', () => {
   test('a v1 snapshot or a pair-less v2 says best-set data is unavailable, never scores against the source routine', () => {
     expect(derive(['-Bench\n- 100 5'], { baseline: { version: 1, exercises: [{ key: 'bench', name: 'Bench', exercise_class: 'weighted', top_weight: 100, volume: 500, sets_completed: 1 }] } }).status)

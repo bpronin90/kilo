@@ -1908,6 +1908,19 @@ describe('AnalyticsRecoverySection — strength trend by recovery week (#1305)',
     expect(hasText(root, 'Week 2 couldn’t be read and is left out of the comparison.')).toBe(true);
   });
 
+  test('an unreadable selected week keeps the plotted average\'s coverage and cohort names visible (PR #1308 review)', () => {
+    const root = setup({
+      blocks: [block()], weeks: [week(1, 'note-w1'), week(2, 'ghost')], notes: [note('note-w1', '-Bench\n- 100 5')],
+    }).root;
+    const summary = hostById(root, 'recovery-strength-summary')[0];
+    expect(hostTextsIn(summary)).toEqual([
+      'Week 2', 'This week’s note can’t be read, so it has no score.',
+      'Average of 1 lift scored every week · 1 of 2 baseline lifts', 'In the average: Bench',
+      'Week 2 couldn’t be read and is left out of the comparison.',
+    ]);
+    expect(summary.props.accessibilityLabel).toContain('In the average: Bench');
+  });
+
   test('with no common lift, week rows still render: readable weeks say No average, a missing week is a gap', () => {
     const root = setup({
       blocks: [block()], weeks: [week(1, 'note-w1'), week(2, 'ghost'), week(3, 'note-w3')],
@@ -2144,7 +2157,7 @@ describe('AnalyticsRecoverySection — routine-anchored summary label (#1219, #1
   test('the summary label names the routine and the bottom line no longer repeats it', () => {
     const root = oneWeek('Push Pull Legs');
     expect(hasText(root, 'of Push Pull Legs baseline strength')).toBe(true);
-    expect(heroNode(root).props.accessibilityLabel).toBe('Week 1: 100% of Push Pull Legs baseline strength. Average of 1 lift scored every week · 1 of 2 baseline lifts: Bench.');
+    expect(heroNode(root).props.accessibilityLabel).toBe('Week 1: 100% of Push Pull Legs baseline strength. Average of 1 lift scored every week · 1 of 2 baseline lifts. In the average: Bench.');
     expect(findAllText(root).some(t => t.startsWith('Baseline:'))).toBe(false);
     expect(hasText(root, '05-01-2026')).toBe(true);
   });

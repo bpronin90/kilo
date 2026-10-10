@@ -80,10 +80,14 @@ function _weekSets(week, notesById, declarationAware) {
 function _scoreLiftWeek(pair, entry) {
   if (!entry) return { state: LIFT_STATE.NOT_LOGGED };
   if (entry.exercise_class !== 'weighted') return { state: LIFT_STATE.UNSCOREABLE, reason: 'class_changed' };
-  if (entry.timed_header) return { state: LIFT_STATE.UNSCOREABLE, reason: 'loaded_duration' };
-  const best = bestEpleySet(entry.completed);
+  // Only sets from non-timed occurrences can carry reps (#1305 review); a week
+  // whose only work was timed is loaded-duration, not a zero.
+  const sets = entry.strength_sets || [];
+  const best = bestEpleySet(sets);
   if (!best) {
-    const assisted = entry.completed.some(s => s.assistance_value != null && s.assistance_value !== 0);
+    if (sets.length === 0 && (entry.timed_sets || []).length > 0) return { state: LIFT_STATE.UNSCOREABLE, reason: 'loaded_duration' };
+    if (!sets.some(s => s.weight_value > 0)) return { state: LIFT_STATE.UNSCOREABLE, reason: 'class_changed' };
+    const assisted = sets.some(s => s.assistance_value != null && s.assistance_value !== 0);
     return { state: LIFT_STATE.UNSCOREABLE, reason: assisted ? 'assisted' : 'no_scoreable_set' };
   }
   const percent = (100 * best.e1rm) / pair.e1rm;
