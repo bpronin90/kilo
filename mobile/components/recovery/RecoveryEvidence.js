@@ -19,6 +19,7 @@ import {
 import { summarizeDetailRows, WeekEvidence, WeekUnavailableNotice } from './RecoveryStateGroups';
 import { WeekPicker } from './RecoveryWeekPicker';
 import { RebuildBaselineAction } from './RebuildBaseline';
+import { MatchExerciseNamesAction } from './MatchExerciseNames';
 import { deriveTrainedElsewhere } from './RecoveryWeekIndex';
 import { createStyles } from './analyticsRecoveryStyles';
 import { RecoveryBandBar, RecoveryChangeVisual, RecoveryHero, RecoveryRosterSummary, RecoveryWeeksStrip } from './RecoveryVisuals';
@@ -58,6 +59,8 @@ export function BlockEvidence({
   onSaveReason,
   // v1 baseline rebuild (#1227): offered only when the block + routine qualify.
   onRebuildBaseline,
+  // Name match (#1298): link renamed exercises to frozen v2 baseline rows.
+  onMatchNames,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
@@ -427,6 +430,9 @@ export function BlockEvidence({
       ) : null}
       {onRebuildBaseline ? (
         <RebuildBaselineAction block={block} notes={notes} unit={unit} locked={reasonLocked} onRebuild={onRebuildBaseline} />
+      ) : null}
+      {onMatchNames ? (
+        <MatchExerciseNamesAction block={block} weeks={weeks} notes={notes} locked={reasonLocked || stateStale} onMatch={onMatchNames} />
       ) : null}
     </Card>
   );

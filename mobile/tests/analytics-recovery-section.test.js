@@ -3672,3 +3672,114 @@ describe('AnalyticsRecoverySection — rebuild a v1 baseline (#1227)', () => {
     expect(byLabel(root, 'Rebuild baseline').props.disabled).toBe(true);
   });
 });
+
+// ── Match exercise names (#1298) ──────────────────────────────────────────────
+
+describe('Match exercise names', () => {
+  const frozen = (names) => {
+    const snap = captureRecoveryBaselineFromText(names.map((_n, i) => `-zz${i}\n- 8,8,8`).join('\n'));
+    return { ...snap, exercises: snap.exercises.map((r, i) => ({ ...r, key: names[i].toLowerCase(), name: names[i] })) };
+  };
+  const PLANK = 'Plank 3x45 sec';
+  const wk = week(1, 'n1');
+  const notesFor = [note('n1', '-Plank\n- 8,8,8\n-Curl\n- 8,8,8')];
+  let mockMatch;
+
+  const mount = ({ blk = block({ baseline: frozen([PLANK]) }), ...props } = {}) => {
+    let component;
+    act(() => {
+      component = render.create(
+        <AnalyticsRecoverySection blocks={[blk]} weeks={[wk]} notes={notesFor} {...props} />
+      );
+    });
+    return component;
+  };
+  const press = (root, label) => act(() => { byLabel(root, label).props.onPress(); });
+  const MATCH = `Match ${PLANK} to Plank`;
+
+  beforeEach(() => {
+    mockMatch = jest.fn().mockResolvedValue({ ok: true });
+    jest.spyOn(require('../hooks/entries/recoveryBlockHooks'), 'useRecoveryBaselineNames')
+      .mockReturnValue({ matchBaselineName: mockMatch });
+  });
+  afterEach(() => { jest.restoreAllMocks(); });
+
+  test('one compact control; opening and cancelling never write', () => {
+    const { root } = mount();
+    expect(byLabel(root, 'Match exercise names')).toBeDefined();
+    expect(byLabel(root, MATCH)).toBeUndefined();
+    press(root, 'Match exercise names');
+    expect(hasText(root, `${PLANK} → Plank`)).toBe(true);
+    press(root, `Cancel matching ${PLANK}`);
+    expect(byLabel(root, 'Match exercise names')).toBeUndefined();
+    expect(mockMatch).not.toHaveBeenCalled();
+  });
+
+  test('duplicate canonical rows show a short pick list; one pick sends exactly that pair', async () => {
+    const { root } = mount({ blk: block({ baseline: frozen(['Core: plank', PLANK]) }) });
+    expect(hasText(root, 'Match exercise names (1)')).toBe(true);
+    press(root, 'Match exercise names');
+    expect(hasText(root, 'Pick one:')).toBe(true);
+    await act(async () => { await byLabel(root, 'Match Core: plank to Plank').props.onPress(); });
+    expect(mockMatch).toHaveBeenCalledTimes(1);
+    expect(mockMatch).toHaveBeenCalledWith({ blockId: 'rb1', fromKey: 'core: plank', toKey: 'plank', toName: 'Plank', evidence: expect.any(String) });
+    press(root, 'Cancel matching plank');
+    expect(byLabel(root, 'Match exercise names')).toBeUndefined();
+  });
+
+  test('absent when nothing qualifies (exact names, unrelated names, v1)', () => {
+    expect(byLabel(mount({ blk: block() }).root, 'Match exercise names')).toBeUndefined();
+    expect(byLabel(mount({ blk: block({ baseline: frozen(['Row 3x8']) }) }).root, 'Match exercise names')).toBeUndefined();
+    const v1 = { version: 1, exercises: [{ key: 'x', name: PLANK, exercise_class: 'reps_only' }] };
+    expect(byLabel(mount({ blk: block({ baseline: v1 }) }).root, 'Match exercise names')).toBeUndefined();
+  });
+
+  test('confirm sends block id and keys once, with duplicate-submit protection and busy feedback', async () => {
+    let release;
+    mockMatch.mockImplementation(() => new Promise(r => { release = r; }));
+    const { root } = mount();
+    press(root, 'Match exercise names');
+    let first;
+    act(() => { first = byLabel(root, MATCH).props.onPress(); });
+    act(() => { byLabel(root, MATCH).props.onPress(); });
+    expect(mockMatch).toHaveBeenCalledTimes(1);
+    expect(mockMatch).toHaveBeenCalledWith({ blockId: 'rb1', fromKey: 'plank 3x45 sec', toKey: 'plank', toName: 'Plank', evidence: expect.any(String) });
+    expect(byLabel(root, MATCH).props.accessibilityState).toMatchObject({ busy: true, disabled: true });
+    expect(hasText(root, 'Matching…')).toBe(true);
+    await act(async () => { release({ ok: true }); await first; });
+    expect(byLabel(root, MATCH).props.accessibilityState).toMatchObject({ busy: false });
+  });
+
+  test('a failed match shows the error and keeps the pair for retry', async () => {
+    mockMatch.mockResolvedValue({ ok: false, error: 'disk full' });
+    const { root } = mount();
+    press(root, 'Match exercise names');
+    await act(async () => { await byLabel(root, MATCH).props.onPress(); });
+    expect(hasText(root, 'disk full')).toBe(true);
+    expect(byLabel(root, MATCH)).toBeDefined();
+  });
+
+  test('disabled while Recovery state is pending or stale', () => {
+    const pending = mount({ pendingRecovery: [{ id: 'op' }] }).root;
+    press(pending, 'Match exercise names');
+    expect(byLabel(pending, MATCH).props.disabled).toBe(true);
+    const stale = mount({ stateStale: true }).root;
+    press(stale, 'Match exercise names');
+    expect(byLabel(stale, MATCH).props.disabled).toBe(true);
+  });
+
+  test('switching blocks resets the open review', () => {
+    const other = block({ id: 'rb0', baseline_note_title: 'Older', completed_at: '2026-06-01T00:00:00Z', baseline: frozen(['Curl']) });
+    const active = block({ baseline: frozen([PLANK]) });
+    const { root } = mount({ blk: active, blocks: [active, other] });
+    press(root, 'Match exercise names');
+    expect(byLabel(root, MATCH)).toBeDefined();
+    press(root, 'Expand recovery history');
+    const view = root.findAll(i => typeof i.props.accessibilityLabel === 'string' && i.props.accessibilityLabel.startsWith('View recovery evidence for Older'))[0];
+    act(() => { view.props.onPress(); });
+    expect(byLabel(root, MATCH)).toBeUndefined();
+    press(root, 'View active recovery block');
+    expect(byLabel(root, MATCH)).toBeUndefined();
+    expect(byLabel(root, 'Match exercise names')).toBeDefined();
+  });
+});

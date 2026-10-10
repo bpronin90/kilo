@@ -22,6 +22,7 @@ import {
   RECOVERY_STALE_MESSAGE,
   RECOVERY_UNVERIFIED_MESSAGE,
   useRecoveryBlockLifecycle,
+  useRecoveryBaselineNames,
 } from '../hooks/entries/recoveryBlockHooks';
 import { RecoveryInclusionToggle } from './RecoveryInclusionToggle';
 import { BlockEvidence } from './recovery/RecoveryEvidence';
@@ -62,6 +63,7 @@ export function AnalyticsRecoverySection({
   const [historyCollapsed, setHistoryCollapsed] = useState(true);
   const [focusedBlockId, setFocusedBlockId] = useState(null);
   const { setIncludeInNormalAnalytics, reopenBlock, setBlockReason, rebuildBaseline } = useRecoveryBlockLifecycle();
+  const { matchBaselineName } = useRecoveryBaselineNames();
   const [inclusionBusyBlockId, setInclusionBusyBlockId] = useState(null);
   const [inclusionError, setInclusionError] = useState(null);
   const [reopenBusy, setReopenBusy] = useState(false);
@@ -244,6 +246,7 @@ export function AnalyticsRecoverySection({
         reasonLocked={!mutationsAllowed || hasPendingRecovery}
         onSaveReason={setBlockReason}
         onRebuildBaseline={rebuildBaseline}
+        onMatchNames={matchBaselineName}
       />
 
       {completedBlocks.length > 0 && (

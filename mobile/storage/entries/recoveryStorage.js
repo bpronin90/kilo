@@ -21,6 +21,7 @@
 
 import { RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEEKS_KEY } from './keys';
 import { readList, writeList } from './jsonStorage';
+import { renameBaselineRow } from '../../lib/data/recoveryBaselineNames';
 import {
   RECOVERY_BASELINE_VERSION,
   RECOVERY_ERROR_CODES,
@@ -209,6 +210,20 @@ export async function replaceRecoveryBlockBaseline(id, baseline) {
   list[idx] = updated;
   await writeList(RECOVERY_BLOCKS_KEY, list);
   return updated;
+}
+
+// Name-only correction of one frozen v2 baseline row (#1298): only that row's
+// key/name and `updated_at` change. Throws if the block is missing or the rename
+// is rejected (the mutation core treats an already-applied rename as a no-op).
+export async function renameRecoveryBlockBaselineRow(id, change) {
+  const list = await readList(RECOVERY_BLOCKS_KEY);
+  const idx = list.findIndex(b => b.id === id);
+  if (idx < 0 || !isLiveRecord(list[idx])) throw new RecoveryBlockError(RECOVERY_ERROR_CODES.BLOCK_NOT_FOUND, `No live recovery block with id ${id}.`);
+  const baseline = renameBaselineRow(list[idx].baseline, change);
+  if (!baseline) throw new RecoveryBlockError(RECOVERY_ERROR_CODES.BASELINE_NOT_REBUILDABLE, 'This baseline row cannot be renamed.');
+  list[idx] = { ...list[idx], baseline, updated_at: new Date().toISOString() };
+  await writeList(RECOVERY_BLOCKS_KEY, list);
+  return list[idx];
 }
 
 // Explicitly complete a block. Nothing else in the domain sets `completed_at`:
