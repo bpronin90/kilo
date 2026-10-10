@@ -157,10 +157,21 @@ function byLabel(root, label) {
 }
 
 // Details are collapsed by default (#758); every row-level assertion opens them.
-function expandDetails(root) {
+function expandDetails(root, { rows = true } = {}) {
   const toggle = byLabel(root, 'Expand exercise details');
   expect(toggle).toBeDefined();
   act(() => { toggle.props.onPress(); });
+  // #1300: rows default to one summary line; secondary evidence sits behind a
+  // per-row tap. Row-evidence assertions open every row (`rows: false` keeps
+  // the default collapsed view for the summary tests).
+  if (rows) expandRows(root);
+}
+function hostById(root, id) {
+  return root.findAll(n => typeof n.type === 'string' && n.props.testID === id);
+}
+function expandRows(root) {
+  const pressables = root.findAll(n => typeof n.type !== 'string' && n.props.testID === 'recovery-exercise-row' && n.props.onPress);
+  act(() => { pressables.forEach(n => n.props.onPress()); });
 }
 
 // Accessible labels of the collapsed exercise rows — scoped so a state-group
@@ -168,12 +179,7 @@ function expandDetails(root) {
 // row-level assertion.
 function rowLabels(root) {
   return root
-    .findAll(inst =>
-      typeof inst.props.accessibilityLabel === 'string'
-      && inst.props.accessible === true
-      // Chips are pressable and role-tagged; an exercise row is neither.
-      && !inst.props.accessibilityRole
-      && !inst.props.onPress)
+    .findAll(inst => typeof inst.type === 'string' && inst.props.testID === 'recovery-exercise-row')
     .map(inst => inst.props.accessibilityLabel);
 }
 
@@ -357,7 +363,10 @@ describe('AnalyticsRecoverySection — active block evidence', () => {
       week1Chip.props.onPress();
     });
 
+    // The switch remounts the list collapsed (#1300): expansion cannot leak.
     expect(hasText(root, '148%')).toBe(false);
+    expect(hostRows(root).every(r => hostById(r, 'recovery-exercise-detail').length === 0)).toBe(true);
+    expandRows(root);
     expect(hasText(root, '100%')).toBe(true);
   });
 });
@@ -2448,7 +2457,35 @@ describe('AnalyticsRecoverySection — visual exercise details (#1219)', () => {
     expect(bench.some(t => t.startsWith('Total work '))).toBe(true);
     // Rows stay short: only tokens, never sentences.
     for (const r of rows) for (const t of r) expect(t.length).toBeLessThanOrEqual(40);
-    expect(rows.every(r => r.length <= 5)).toBe(true);
+    expect(rows.every(r => r.length <= 6)).toBe(true);
+  });
+
+  test('#1300: default rows are one scannable line (name, status, this-week / baseline); detail and toggle state sit behind a tap', () => {
+    const root = setup(props()).root;
+    expandDetails(root, { rows: false });
+    const rows = rowTexts(root);
+    expect(rows[0]).toEqual(['Bench', 'Rebuilding', 'Total work 1350 lb / 2025 lb']);
+    expect(rows[1]).toEqual(['Pull-up', 'At or above', 'Reps 24 reps / 24 reps']);
+    // Not-trained and added rows show only their one baseline / current value.
+    expect(rows[2]).toEqual(['Curl', 'Not trained yet', 'Baseline Total work 400 lb']);
+    expect(rows[3]).toEqual(['Foam Roll', 'Added during recovery', 'Reps 20 reps']);
+    expect(hostById(root, 'recovery-exercise-bar')).toHaveLength(0);
+    // The baseline reference is explained once, not per row.
+    expect(findAllText(root).filter(t => t.includes('pre-recovery baseline'))).toHaveLength(1);
+    expect(hasText(root, 'vs baseline')).toBe(false);
+
+    const bench = hostRows(root)[0];
+    expect(bench.props.accessibilityRole).toBe('button');
+    expect(bench.props.accessibilityState).toEqual({ expanded: false });
+    const press = () => act(() => {
+      root.findAll(n => typeof n.type !== 'string' && n.props.testID === 'recovery-exercise-row' && n.props.onPress)[0].props.onPress();
+    });
+    press();
+    expect(hostRows(root)[0].props.accessibilityState).toEqual({ expanded: true });
+    expect(hasText(root, 'Load 135 lb vs baseline 135 lb')).toBe(true);
+    expect(hostById(root, 'recovery-exercise-bar')).toHaveLength(1);
+    press();
+    expect(hasText(root, 'Load 135 lb vs baseline 135 lb')).toBe(false);
   });
 
   test('one bar per compared row, filled to its Total work measure; absent and added rows get no bar', () => {

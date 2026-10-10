@@ -1,5 +1,6 @@
-import React, { useMemo } from 'react';
-import { Text, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Pressable, Text, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useTheme } from '../../theme/ThemeContext';
 import { displayWeight, formatLiftWeightValue } from '../../lib/units';
 import { formatDuration } from '../../lib/format';
@@ -207,7 +208,27 @@ function _numbers(row, unit) {
   return [];
 }
 
-function ExerciseRow({ row, unit, weekNumber, elsewhere }) {
+// Default one-line value (#1300): the bar's primary measure, "this week / frozen
+// baseline" (`1500 / 2025 lb`). Only rows with real frozen values produce one;
+// an unsupported row never gets a progress-looking number.
+function _summaryValue(row, unit) {
+  const primary = _barMetric(row) || (row.metrics || [])[0];
+  if (!primary) return null;
+  const label = METRIC_LABELS[primary.metric] || primary.metric;
+  const state = row.state;
+  if (state === RECOVERY_COMPARISON_STATES.BASELINE_MET || state === RECOVERY_COMPARISON_STATES.REBUILDING) {
+    return `${label} ${_formatMetricNumber(primary.metric, primary.current, unit)} / ${_formatMetricNumber(primary.metric, primary.baseline, unit)}`;
+  }
+  if (state === RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY) {
+    return `${label} ${_formatMetricNumber(primary.metric, primary.current, unit)}`;
+  }
+  if (state === RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED) {
+    return `Baseline ${label} ${_formatMetricNumber(primary.metric, primary.baseline, unit)}`;
+  }
+  return null;
+}
+
+function ExerciseRow({ row, unit, weekNumber, elsewhere, expanded, onToggle }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createVisualStyles(colors, kua), [colors, kua]);
   const bandId = rowBandId(row);
@@ -220,52 +241,68 @@ function ExerciseRow({ row, unit, weekNumber, elsewhere }) {
     row.state === RECOVERY_COMPARISON_STATES.REBUILDING;
   const barMetric = compared ? _barMetric(row) : null;
   // Fill is capped at 100% so a lifter who came back stronger doesn't overflow
-  // the bar; the percent text is never capped (#698). The text names the same
-  // measure the bar shows ("Total work 11%").
+  // the bar; the percent text is never capped (#698).
   const fillPct = barMetric ? Math.max(0, Math.min(barMetric.percent ?? 0, 100)) : 0;
   const numbers = _numbers(row, unit);
   const note = row.state === RECOVERY_COMPARISON_STATES.NOT_COMPARABLE
     ? (UNAVAILABLE_REASON_SHORT[row.unavailable_reason] || 'Could not be compared')
     : null;
-  // Names only, never the full "— names differ, so no direct comparison was
-  // made" sentence (it stays in the accessible label).
+  // Names only, never the full "— names differ" sentence (kept in the a11y label).
   const nameNote = row.likely_logged_name
-    ? `Logged as “${row.likely_logged_name}”`
-    : row.likely_baseline_name ? `Baseline has “${row.likely_baseline_name}”` : null;
+    ? `Logged as \u201c${row.likely_logged_name}\u201d`
+    : row.likely_baseline_name ? `Baseline has \u201c${row.likely_baseline_name}\u201d` : null;
+  const summary = _summaryValue(row, unit);
+  // Reachable evidence behind the tap: every metric line, the bar, the mismatch
+  // note. Nothing to reveal -> a plain, non-interactive row.
+  const hasMore = numbers.length > 0 || !!nameNote || !!barMetric;
+  const label = _rowAccessibilityLabel(row, unit, weekNumber, elsewhere);
 
-  return (
-    <View
-      testID="recovery-exercise-row"
-      style={styles.exRow}
-      accessible
-      accessibilityLabel={_rowAccessibilityLabel(row, unit, weekNumber, elsewhere)}
-    >
+  const body = (
+    <>
       <View style={styles.exHeader}>
         <Text style={styles.exName}>{row.name}</Text>
         <View style={styles.exStatus}>
           <View testID="recovery-exercise-mark" style={[styles.exStatusDot, { backgroundColor: markColor }]} />
           <Text style={styles.exStatusText}>{status}</Text>
+          {hasMore && (
+            <MaterialIcons name={expanded ? 'expand-less' : 'expand-more'} size={16} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
+          )}
         </View>
       </View>
-
-      {barMetric && (
-        <View style={styles.exBarRow}>
-          <View testID="recovery-exercise-bar" style={styles.exBarTrack}>
-            <View style={[styles.exBarFill, { width: `${fillPct}%`, backgroundColor: markColor }]} />
-          </View>
-          <Text style={styles.exPercent}>{`${METRIC_LABELS[barMetric.metric]} ${barMetric.percent}%`}</Text>
-        </View>
-      )}
-
-      {numbers.length > 0 && (
-        <View style={styles.exNumbers}>
+      {(!!summary || !!note) && <Text style={styles.exSummary}>{summary || note}</Text>}
+      {hasMore && expanded && (
+        <View testID="recovery-exercise-detail" style={styles.exDetail}>
+          {barMetric && (
+            <View style={styles.exBarRow}>
+              <View testID="recovery-exercise-bar" style={styles.exBarTrack}>
+                <View style={[styles.exBarFill, { width: `${fillPct}%`, backgroundColor: markColor }]} />
+              </View>
+              <Text style={styles.exPercent}>{`${METRIC_LABELS[barMetric.metric]} ${barMetric.percent}%`}</Text>
+            </View>
+          )}
           {numbers.map(n => <Text key={n} style={styles.exNumberText}>{n}</Text>)}
+          {!!note && !!summary && <Text style={styles.exNote}>{note}</Text>}
+          {!!nameNote && <Text style={styles.exNote}>{nameNote}</Text>}
         </View>
       )}
+    </>
+  );
 
-      {!!note && <Text style={styles.exNote}>{note}</Text>}
-      {!!nameNote && <Text style={styles.exNote}>{nameNote}</Text>}
-    </View>
+  if (!hasMore) {
+    return <View testID="recovery-exercise-row" style={styles.exRow} accessible accessibilityLabel={label}>{body}</View>;
+  }
+  return (
+    <Pressable
+      testID="recovery-exercise-row"
+      style={styles.exRow}
+      onPress={onToggle}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={expanded ? 'Hides details' : 'Shows details'}
+      accessibilityState={{ expanded }}
+    >
+      {body}
+    </Pressable>
   );
 }
 
@@ -294,12 +331,34 @@ export function WeekUnavailableNotice({ week }) {
   return null;
 }
 
+// Local view state only (#1300): the parent keys this component by block + week
+// so a switch remounts it; a renamed row gets a new key, so its old entry is
+// simply never matched again.
 export function WeekEvidence({ rows, unit, weekNumber, elsewhere }) {
+  const { colors, kuaPalette: kua } = useTheme();
+  const styles = useMemo(() => createVisualStyles(colors, kua), [colors, kua]);
+  const [open, setOpen] = useState(() => new Set());
+  const toggle = key => setOpen(prev => {
+    const next = new Set(prev);
+    if (!next.delete(key)) next.add(key);
+    return next;
+  });
   const ordered = orderDetailRows(rows);
   return (
     <View testID="recovery-exercise-list">
+      <Text testID="recovery-exercise-legend" style={styles.exLegend}>
+        Values read this week / pre-recovery baseline. Tap an exercise for more.
+      </Text>
       {ordered.map(row => (
-        <ExerciseRow key={row.key} row={row} unit={unit} weekNumber={weekNumber} elsewhere={elsewhere} />
+        <ExerciseRow
+          key={row.key}
+          row={row}
+          unit={unit}
+          weekNumber={weekNumber}
+          elsewhere={elsewhere}
+          expanded={open.has(row.key)}
+          onToggle={() => toggle(row.key)}
+        />
       ))}
     </View>
   );
