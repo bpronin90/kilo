@@ -14,7 +14,6 @@ import {
 } from '../../storage/entries/recoveryOperationJournal';
 import { findActiveBlock } from '../../lib/data/recoveryBlocks';
 import { safeNotify } from './shared';
-import { reloadWorkoutNotes } from './workoutNoteHooks';
 import { markStartupPhase } from '../../storage/entries/startupTiming';
 import { SYNC_PHASE, SYNC_STATUS, subscribeSyncState } from '../../storage/syncRecovery';
 // Imported for its module-load side effect as well as nothing else: it
@@ -143,10 +142,10 @@ function runAuthoritativeRecoveryRead() {
         corruptError.corrupt = true;
         throw corruptError;
       }
-      // `pending` locks conflicting actions; `cancelled` (already retired) does not.
+      // `pending` locks conflicting actions; `cancelled` does not. A terminal
+      // cancellation has already retired its record, so it must unlock
+      // everything while still explaining itself once.
       pending = reconciliation.pending || [];
-      // A Tidy names replay (Retry/restart) changed note texts: refresh note consumers (#1309).
-      if ((reconciliation.results || []).some(r => r.ok && r.type === 'tidy_recovery_names')) reloadWorkoutNotes();
       pendingError = reconciliation.error || null;
       return Promise.all([Storage.loadRecoveryBlocks(), Storage.loadRecoveryBlockWeeks()]);
     })

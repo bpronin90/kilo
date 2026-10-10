@@ -2,18 +2,15 @@
 // linked week exercise headers and its frozen baseline's display names together.
 // Opening and cancelling the review write nothing; only the single Confirm calls
 // `onTidy`, which re-reads authoritative data under the recovery lock and rejects
-// a stale review with zero writes. Undo and the explicit conflict resolution live
-// here too. The parent mounts this keyed by block id, so draft/error state is
+// a stale review with zero writes. The parent mounts this keyed by block id, so draft/error state is
 // scoped to one block; #1307 moves the action into Manage block with its gates.
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { AccessibilityInfo, Pressable, Text, View } from 'react-native';
 import { useTheme } from '../../theme/ThemeContext';
 import { planTidyNames } from '../../lib/data/recoveryTidyNames';
 import { createStyles } from './analyticsRecoveryStyles';
 import { createTidyStyles } from './recoveryTidyStyles';
-
-const TIDY_TYPE = 'tidy_recovery_names';
 
 function announce(message) {
   try { AccessibilityInfo.announceForAccessibility(message); } catch (_e) { /* best-effort */ }
@@ -54,13 +51,13 @@ function Preview({ plan, styles, tidy }) {
       {plan.warmups.map((w, i) => (
         <Text key={`${w.weekNumber}:${i}`} style={tidy.meta} testID="recovery-tidy-warmup">{`Week ${w.weekNumber}: ${w.name}`}</Text>
       ))}
-      <Text style={tidy.noteText}>Numbers never change. You can undo this afterwards.</Text>
+      <Text style={tidy.noteText}>Numbers never change.</Text>
     </View>
   );
 }
 
 export function TidyRecoveryNamesAction({
-  block, weeks, notes, locked = false, pending = [], onTidy, onUndo, onLoadUndo, onResolve,
+  block, weeks, notes, locked = false, onTidy,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
@@ -74,24 +71,6 @@ export function TidyRecoveryNamesAction({
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
-  const [undo, setUndo] = useState({ available: false });
-  const undoShown = useRef(false);
-  const stuck = pending.find(p => p.type === TIDY_TYPE && p.block_id === block.id) || null;
-
-  useEffect(() => {
-    if (!onLoadUndo) return undefined;
-    let live = true;
-    // Only a change in availability re-renders; the common "still none" reload is silent.
-    const settle = (r) => {
-      const available = !!(r && r.available);
-      if (!live || available === undoShown.current) return;
-      undoShown.current = available;
-      setUndo(available ? r : { available: false });
-    };
-    Promise.resolve(onLoadUndo({ blockId: block.id, block, notes })).then(settle, () => settle(null));
-    return () => { live = false; };
-  }, [onLoadUndo, block, notes]);
-
   if (!block || !block.baseline || block.baseline.version !== 2) return null;
 
   const run = async (kind, action, success) => {
@@ -133,30 +112,14 @@ export function TidyRecoveryNamesAction({
 
   return (
     <View testID="recovery-tidy-names" style={styles.reasonEditor}>
-      {stuck ? (
-        <View style={styles.reasonEditor} testID="recovery-tidy-pending">
-          <Text style={tidy.sectionLabel}>{stuck.conflict ? 'Tidy names needs your decision' : 'Tidy names is still finishing'}</Text>
-          <Text style={tidy.noteText}>
-            {stuck.conflict
-              ? 'A note or name changed while tidying was being applied, so it stopped without overwriting anything.'
-              : 'Your names are being updated together. Tap Retry recovery to finish.'}
-          </Text>
-          {stuck.conflict ? (
-            <View style={styles.reasonEditorActions}>
-              {button('Keep current names', () => run('keep', () => onResolve({ operationId: stuck.operationId, choice: 'keep' }), 'Kept the current names.'), { off: busy !== null, kindName: 'keep', busyLabel: 'Keeping…', cancel: true })}
-              {button('Restore previous names', () => run('restore', () => onResolve({ operationId: stuck.operationId, choice: 'restore' }), 'Restored the previous names.'), { off: busy !== null, kindName: 'restore', busyLabel: 'Restoring…' })}
-            </View>
-          ) : null}
-        </View>
-      ) : null}
       <Pressable
         onPress={() => { setSnapshot(open ? null : livePlan); setOpen(o => !o); setError(null); setNotice(null); }}
-        disabled={busy !== null || !!stuck}
+        disabled={busy !== null}
         style={styles.reasonPressable}
         accessibilityRole="button"
         accessibilityLabel="Tidy names"
         accessibilityHint="Review a cleanup of exercise names in your baseline and weeks"
-        accessibilityState={{ expanded: open, disabled: busy !== null || !!stuck }}
+        accessibilityState={{ expanded: open, disabled: busy !== null }}
       >
         <Text style={styles.reasonEditorSaveText}>Tidy names</Text>
       </Pressable>
@@ -166,12 +129,11 @@ export function TidyRecoveryNamesAction({
           <View style={styles.reasonEditorActions}>
             {button(plan.ok && plan.empty ? 'Close' : 'Cancel', () => { setOpen(false); setError(null); }, { off: busy !== null, kindName: 'cancel', cancel: true })}
             {plan.ok && !plan.empty
-              ? button('Confirm tidy names', () => run('tidy', () => onTidy({ blockId: block.id, evidence: plan.evidence, signature: plan.signature }), 'Names tidied. You can undo this.'), { kindName: 'tidy', busyLabel: 'Tidying…' })
+              ? button('Confirm tidy names', () => run('tidy', () => onTidy({ blockId: block.id, evidence: plan.evidence, signature: plan.signature }), 'Names tidied.'), { kindName: 'tidy', busyLabel: 'Tidying…' })
               : null}
           </View>
         </View>
       ) : null}
-      {undo.available && !stuck ? button('Undo tidy names', () => run('undo', () => onUndo({ blockId: block.id }), 'Tidy names undone.'), { kindName: 'undo', busyLabel: 'Undoing…' }) : null}
       {error || notice ? (
         <View accessibilityLiveRegion="polite">
           {error ? <Text style={styles.reasonErrorText}>{error}</Text> : null}

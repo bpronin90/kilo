@@ -27,9 +27,6 @@ const hasText = (root, s) => texts(root).some(t => t.includes(s));
 function mount(props = {}, colors = LightColors) {
   const handlers = {
     onTidy: jest.fn().mockResolvedValue({ ok: true }),
-    onUndo: jest.fn().mockResolvedValue({ ok: true }),
-    onLoadUndo: jest.fn().mockResolvedValue({ available: false }),
-    onResolve: jest.fn().mockResolvedValue({ ok: true }),
   };
   let c;
   act(() => {
@@ -64,6 +61,7 @@ describe('Tidy names action', () => {
     expect(hasText(root, 'Moves to a note: step up')).toBe(true);
     expect(hasText(root, 'Week headers (1)')).toBe(true);
     expect(hasText(root, 'Numbers never change')).toBe(true);
+    expect(byLabel(root, 'Undo tidy names')).toBeUndefined();
   });
 
   test('one Confirm sends the reviewed evidence and signature; double tap sends once', async () => {
@@ -142,21 +140,11 @@ describe('Tidy names action', () => {
   });
 });
 
-describe('Undo tidy names', () => {
-  test('appears only when a payload is available, and sends the block id once', async () => {
-    const { root, handlers } = mount({ onLoadUndo: jest.fn().mockResolvedValue({ available: true, noteCount: 1, nameCount: 0 }) });
-    await flush();
-    expect(byLabel(root, 'Undo tidy names')).toBeDefined();
-    await act(async () => { await byLabel(root, 'Undo tidy names').props.onPress(); });
-    expect(handlers.onUndo).toHaveBeenCalledWith({ blockId: 'rb1' });
-  });
-});
-
 describe('block scoping', () => {
   test('switching blocks (parent re-keys by block id) resets the open review and any error', async () => {
     const el = (id) => (
       <ThemeContext.Provider value={{ colors: LightColors, mode: 'light', preference: 'light', setPreference: () => {} }}>
-        <TidyRecoveryNamesAction key={id} block={block({ id })} weeks={weeks} notes={notes} onTidy={jest.fn()} onLoadUndo={jest.fn().mockResolvedValue({ available: false })} />
+        <TidyRecoveryNamesAction key={id} block={block({ id })} weeks={weeks} notes={notes} onTidy={jest.fn()} />
       </ThemeContext.Provider>
     );
     let c;
@@ -172,7 +160,7 @@ describe('review snapshot and inventory', () => {
   test('Confirm submits the plan captured when the review opened, even after evidence changes', async () => {
     const el = (ns) => (
       <ThemeContext.Provider value={{ colors: LightColors, mode: 'light', preference: 'light', setPreference: () => {} }}>
-        <TidyRecoveryNamesAction block={block()} weeks={weeks} notes={ns} onTidy={onTidy} onLoadUndo={jest.fn().mockResolvedValue({ available: false })} />
+        <TidyRecoveryNamesAction block={block()} weeks={weeks} notes={ns} onTidy={onTidy} />
       </ThemeContext.Provider>
     );
     const onTidy = jest.fn().mockResolvedValue({ ok: false, error: 'stale' });
@@ -200,48 +188,3 @@ describe('review snapshot and inventory', () => {
   });
 });
 
-describe('comparison isolation while a tidy is pending', () => {
-  test('BlockEvidence withholds comparison and keeps the tidy controls', () => {
-    const { BlockEvidence } = require('../components/recovery/RecoveryEvidence');
-    let c;
-    act(() => {
-      c = render.create(
-        <ThemeContext.Provider value={{ colors: LightColors, mode: 'light', preference: 'light', setPreference: () => {} }}>
-          <BlockEvidence
-            block={block()} weeks={weeks} notes={notes} unit="lb"
-            pendingRecovery={[{ type: 'tidy_recovery_names', block_id: 'rb1', operationId: 'op', conflict: true }]}
-            tidyNames={{ tidyNames: jest.fn(), undoTidyNames: jest.fn(), loadUndo: jest.fn().mockResolvedValue({ available: false }), resolveConflict: jest.fn() }}
-          />
-        </ThemeContext.Provider>
-      );
-    });
-    expect(hasText(c.root, 'comparison is paused')).toBe(true);
-    expect(byLabel(c.root, 'Keep current names')).toBeDefined();
-    expect(c.root.findAll(n => n.props.testID === 'recovery-strength-summary')).toHaveLength(0);
-  });
-});
-
-describe('pending and conflict', () => {
-  const stuck = (extra) => ({ type: 'tidy_recovery_names', block_id: 'rb1', operationId: 'op1', ...extra });
-
-  test('a pending tidy disables the action and tells the lifter to retry', async () => {
-    const { root } = mount({ pending: [stuck({})] });
-    expect(hasText(root, 'Tidy names is still finishing')).toBe(true);
-    expect(byLabel(root, 'Tidy names').props.disabled).toBe(true);
-    expect(byLabel(root, 'Keep current names')).toBeUndefined();
-  });
-
-  test('a conflict offers explicit Keep / Restore and calls the resolver with the operation id', async () => {
-    const { root, handlers } = mount({ pending: [stuck({ conflict: true })] });
-    expect(hasText(root, 'needs your decision')).toBe(true);
-    await act(async () => { await byLabel(root, 'Restore previous names').props.onPress(); });
-    expect(handlers.onResolve).toHaveBeenCalledWith({ operationId: 'op1', choice: 'restore' });
-    await act(async () => { await byLabel(root, 'Keep current names').props.onPress(); });
-    expect(handlers.onResolve).toHaveBeenLastCalledWith({ operationId: 'op1', choice: 'keep' });
-  });
-
-  test('another block’s pending operation does not show here', async () => {
-    const { root } = mount({ pending: [stuck({ block_id: 'other', conflict: true })] });
-    expect(byLabel(root, 'Keep current names')).toBeUndefined();
-  });
-});

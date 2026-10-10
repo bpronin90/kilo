@@ -11,7 +11,6 @@ import {
   RECOVERY_JOURNAL_VERSION,
   RECOVERY_OPERATION_CODES,
   RECOVERY_OPERATION_STAGES,
-  RECOVERY_OPERATION_TYPES,
   isRecoveryJournalCorruptError,
 } from './recoveryJournalSchema';
 import {
@@ -20,10 +19,7 @@ import {
   readRecoveryJournal,
   writeRecoveryJournal,
   nextOperationId,
-  clearRecord,
-  updateRecordFields,
 } from './recoveryJournalStore';
-import { deleteTidyPayload } from './recoveryTidyPayload';
 import { replayRecord, resetRecoveryNoteOperations } from './recoveryJournalOperations';
 
 let inFlightReconcile = null;
@@ -126,8 +122,6 @@ function conflictsWith(record, { blockId, weekId, noteId }) {
   if (blockId && record.block_id === blockId) return true;
   if (weekId && record.week_id === weekId) return true;
   if (noteId && record.note_id === noteId) return true;
-  // Tidy names (#1309) rewrites many notes; a pending one blocks edits to any.
-  if (noteId && Array.isArray(record.note_ids) && record.note_ids.includes(noteId)) return true;
   return false;
 }
 
@@ -236,46 +230,5 @@ export function startRecoveryOperation({ scope, validate }) {
     }
 
     return beginAndReplay(validation.intent);
-  });
-}
-
-// Explicit resolution of a Tidy names conflict (#1309): the roll-forward found a
-// note edited/deleted (or the baseline/payload changed) since it began, so it
-// stopped without writing. The user chooses; nothing is cleared silently.
-//   keep     abandon the operation and keep the names exactly as they now are
-//            (a mixed state is the user's explicit choice; Tidy names can be run
-//            again and plans only what is still untidy);
-//   restore  journal the opposite direction as a lenient roll-forward: every
-//            note still holding the operation's text is compare-and-set back,
-//            notes edited since are left alone, and the whole result is verified.
-export function resolveTidyConflict({ operationId, choice } = {}) {
-  return withRecoveryOperationLock(async () => {
-    const refuse = (error, code = RECOVERY_OPERATION_CODES.VALIDATION_FAILED) => ({ ok: false, code, error });
-    let journal;
-    try {
-      journal = await readRecoveryJournal();
-    } catch (e) {
-      return refuse(e.message, RECOVERY_OPERATION_CODES.JOURNAL_CORRUPT);
-    }
-    const record = journal.find(r => r.operation_id === operationId && r.type === RECOVERY_OPERATION_TYPES.TIDY_RECOVERY_NAMES);
-    if (!record || !record.conflict) return refuse('This operation has no conflict to resolve. Retry recovery instead.');
-    try {
-      if (choice === 'keep') {
-        await clearRecord(record);
-        await deleteTidyPayload(record.payload_id).catch(() => {}); // orphans are swept on the next start
-        return { ok: true, code: RECOVERY_OPERATION_CODES.VERIFIED, resolution: 'keep', block_id: record.block_id };
-      }
-      if (choice === 'restore') {
-        const flipped = await updateRecordFields(record, {
-          direction: record.direction === 'apply' ? 'undo' : 'apply',
-          restore: true,
-          conflict: null,
-        });
-        return { ...(await replayRecord(flipped)), resolution: 'restore' };
-      }
-    } catch (e) {
-      return refuse(e?.message || 'Could not resolve this operation.', RECOVERY_OPERATION_CODES.OPERATION_FAILED);
-    }
-    return refuse('Unknown resolution.');
   });
 }

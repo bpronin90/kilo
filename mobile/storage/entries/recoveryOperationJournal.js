@@ -43,10 +43,8 @@
 //                                    validation;
 //   * recoveryJournalStore.js      — the exclusive lock, journal read/write,
 //                                    operation-id minting, durable record edits;
-//   * recoveryJournalOperations.js — the concrete roll-forward operations and
-//                                    the mode-aware note-deletion registry
-//                                    (Tidy names, #1309, lives in
-//                                    recoveryTidyOperation.js);
+//   * recoveryJournalOperations.js — the three concrete roll-forward operations
+//                                    and the mode-aware note-deletion registry;
 //   * recoveryJournalReplay.js     — reconciliation, action gating, and the
 //                                    entry points that start a journaled
 //                                    operation.
@@ -82,5 +80,4 @@ export const withExclusiveRecoveryAccess = replay.withExclusiveRecoveryAccess;
 export const reconcileRecoveryOperations = replay.reconcileRecoveryOperations;
 export const runGuardedRecoveryAction = replay.runGuardedRecoveryAction;
 export const startRecoveryOperation = replay.startRecoveryOperation;
-export const resolveTidyConflict = replay.resolveTidyConflict;
 export const __resetRecoveryOperationJournal = replay.__resetRecoveryOperationJournal;

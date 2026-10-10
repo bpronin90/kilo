@@ -6,7 +6,6 @@ import { deriveRecoveryStrength, LIFT_STATE } from '../lib/data/recoveryStrength
 import { normalizeExerciseKey, parseWorkoutNote } from '../lib/parser';
 import { planTidyNames } from '../lib/data/recoveryTidyNames';
 import { applyTidyEdits, buildOccurrenceEdit, firstValidRowLine, verifyTidyEdits } from '../lib/data/recoveryTidyText';
-import { baselineShapeFingerprint } from '../lib/data/recoveryTidyNames';
 import { planBaselineNameMatches } from '../lib/data/recoveryBaselineNames';
 import { preserveNameMatches } from '../lib/data/recoveryStrengthBaseline';
 import { canonicalDisplayName, canonicalMatchKey } from '../lib/data/recoveryStrengthBaseline';
@@ -334,10 +333,10 @@ describe('regressions with Match names and the baseline rebuild', () => {
   });
 });
 
-describe('review inventory, byte fidelity and baseline evidence (PR #1310 review)', () => {
+describe('review inventory, byte fidelity and preview inventory', () => {
   test('lists already-clean occurrences of a changing lift (W5/W6) and every warmup occurrence', () => {
     const plan = planTidyNames(squatFixture());
-    expect(plan.clean.map(c => c.weekNumber)).toEqual([5, 6]);
+    expect(plan.clean.filter(c => c.name === 'Squat').map(c => c.weekNumber)).toEqual([5, 6]);
     const fx = fixture({
       baselineText: '-Squat\n- 225 5',
       weekTexts: ['+WARMUP\n-Squat\n- 45 8\n+LIFT\n-Squat 3x6-8, step up\n- 135 8\n'],
@@ -353,12 +352,19 @@ describe('review inventory, byte fidelity and baseline evidence (PR #1310 review
     expect(verifyTidyEdits(text, applyTidyEdits(text, [built.edit]), [built.edit])).toBeNull();
   });
 
-  test('the baseline shape ignores names but not frozen numbers, version or order', () => {
-    const b = captureRecoveryBaselineFromText('-Squat\n- 225 5\n-Bench\n- 185 5');
-    const renamed = { ...b, exercises: b.exercises.map(r => ({ ...r, key: `${r.key}x`, name: `${r.name}x` })) };
-    expect(baselineShapeFingerprint(renamed)).toBe(baselineShapeFingerprint(b));
-    const pair = { ...b, exercises: b.exercises.map((r, i) => (i ? r : { ...r, best_e1rm_weight: 999 })) };
-    expect(baselineShapeFingerprint(pair)).not.toBe(baselineShapeFingerprint(b));
-    expect(baselineShapeFingerprint({ ...b, exercises: [...b.exercises].reverse() })).not.toBe(baselineShapeFingerprint(b));
+  test('an invalid frozen baseline (incomplete best-set pair) refuses the whole action', () => {
+    const fx = squatFixture();
+    const bad = { ...fx.block, baseline: { ...fx.block.baseline, exercises: fx.block.baseline.exercises.map((r, i) => (i ? r : { ...r, best_e1rm_reps: undefined })) } };
+    const plan = planTidyNames({ ...fx, block: bad });
+    expect(plan.ok).toBe(false);
+    expect(planTidyNames(squatFixture()).ok).toBe(true);
+  });
+
+  test('wholly-unchanged lifts list their per-week occurrences, and warmups are listed whatever their name', () => {
+    const fx = fixture({ baselineText: '-Bench\n- 185 5', weekTexts: ['+WARMUP\n-Jumping jacks\n- 10\n+LIFT\n-Bench\n- 185 5\n', '-Bench\n- 185 5\n'] });
+    const plan = planTidyNames(fx);
+    expect(plan.empty).toBe(true);
+    expect(plan.clean).toEqual([{ weekNumber: 1, name: 'Bench' }, { weekNumber: 2, name: 'Bench' }]);
+    expect(plan.warmups).toEqual([{ weekNumber: 1, name: 'Jumping jacks' }]);
   });
 });

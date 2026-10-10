@@ -63,7 +63,6 @@ export function BlockEvidence({
   onMatchNames,
   // Tidy names (#1309): clean week headers and baseline names together.
   tidyNames = null,
-  pendingRecovery = [],
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
@@ -165,10 +164,6 @@ export function BlockEvidence({
   // only then does the bottom line stop repeating it.
   const heroNamesRoutine = showStrength && strengthOk && strength.headline != null;
   const showInfo = comparison.status === RECOVERY_COMPARISON_STATUS.OK || comparison.status === RECOVERY_COMPARISON_STATUS.BASELINE_EMPTY;
-  // While a Tidy names operation for this block is unresolved, notes and baseline
-  // may disagree, so no comparison or strength is shown from them (#1309). Only the
-  // explanation and the operation's own controls are.
-  const tidyHold = pendingRecovery.some(p => p && p.type === 'tidy_recovery_names' && p.block_id === block.id);
   const showReasonRow = !editingReason && (reasonEditable || !!block.reason);
   const reasonValue = block.reason || 'Add a reason';
   const tidyNode = tidyNames ? (
@@ -178,23 +173,9 @@ export function BlockEvidence({
           weeks={weeks}
           notes={notes}
           locked={reasonLocked || stateStale}
-          pending={pendingRecovery}
           onTidy={tidyNames.tidyNames}
-          onUndo={tidyNames.undoTidyNames}
-          onLoadUndo={tidyNames.loadUndo}
-          onResolve={tidyNames.resolveConflict}
         />
       ) : null;
-  if (tidyHold) {
-    return (
-      <Card>
-        <Text style={styles.reasonCaption} accessibilityRole="alert">
-          Tidy names is still finishing, so this block’s comparison is paused until your notes and baseline agree.
-        </Text>
-        {tidyNode}
-      </Card>
-    );
-  }
   return (
     <Card>
       {/* The section's only Recovery header is the outer SectionTitle (#1217);

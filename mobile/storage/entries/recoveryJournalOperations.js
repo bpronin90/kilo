@@ -22,7 +22,6 @@ import {
   deleteWorkoutNoteItem as localDeleteWorkoutNoteItem,
   saveWorkoutNoteItem as localSaveWorkoutNoteItem,
 } from './workoutNotes';
-import { replayTidyRecord, setTidyNoteOperations, resetTidyNoteOperations } from './recoveryTidyOperation';
 
 // ── note-deletion operations registry ────────────────────────────────────────
 //
@@ -46,7 +45,6 @@ let noteOperations = DEFAULT_NOTE_OPERATIONS;
 
 export function setRecoveryNoteOperations(ops) {
   noteOperations = { ...DEFAULT_NOTE_OPERATIONS, ...(ops || {}) };
-  setTidyNoteOperations(ops);
 }
 
 // Run the registered (mode-aware) note deletion directly. Used only for the
@@ -58,7 +56,6 @@ export function deleteWorkoutNoteViaRecoveryOperations(noteId) {
 
 export function resetRecoveryNoteOperations() {
   noteOperations = DEFAULT_NOTE_OPERATIONS;
-  resetTidyNoteOperations();
 }
 
 // ── result helpers ───────────────────────────────────────────────────────────
@@ -554,9 +551,6 @@ export function replayRecord(record) {
   }
   if (record.type === RECOVERY_OPERATION_TYPES.ADD_WEEK_WITH_NEW_NOTE) {
     return replayAddWeekWithNewNote(record);
-  }
-  if (record.type === RECOVERY_OPERATION_TYPES.TIDY_RECOVERY_NAMES) {
-    return replayTidyRecord(record, { pendingResult, verifiedResult, finishVerified });
   }
   return replayDeleteLinkedNote(record);
 }

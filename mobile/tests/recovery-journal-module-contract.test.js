@@ -233,7 +233,6 @@ describe('module surface contract', () => {
     'reconcileRecoveryOperations',
     'runGuardedRecoveryAction',
     'startRecoveryOperation',
-    'resolveTidyConflict',
   ];
 
   test('re-exports every documented public member', () => {
@@ -276,7 +275,6 @@ describe('module surface contract', () => {
       COMPLETE_BLOCK_WITH_WEEK: 'complete_block_with_week',
       DELETE_LINKED_NOTE: 'delete_linked_note',
       ADD_WEEK_WITH_NEW_NOTE: 'add_week_with_new_note',
-      TIDY_RECOVERY_NAMES: 'tidy_recovery_names',
     });
     expect(barrelR.RECOVERY_OPERATION_CODES).toEqual({
       VALIDATION_FAILED: 'VALIDATION_FAILED',

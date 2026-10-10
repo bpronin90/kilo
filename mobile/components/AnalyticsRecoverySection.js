@@ -250,7 +250,6 @@ export function AnalyticsRecoverySection({
         onRebuildBaseline={rebuildBaseline}
         onMatchNames={matchBaselineName}
         tidyNames={tidyNames}
-        pendingRecovery={pendingRecovery}
       />
 
       {completedBlocks.length > 0 && (

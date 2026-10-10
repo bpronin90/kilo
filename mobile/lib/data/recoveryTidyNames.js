@@ -13,7 +13,7 @@
 import { parseWorkoutNote, normalizeExerciseKey } from '../parser.js';
 import { orderedLiveWeeks, isLiveRecord } from './recoveryBlocks.js';
 import { baselineNamesEvidence, fingerprintText } from './recoveryBaselineNames.js';
-import { canonicalDisplayName, canonicalMatchKey } from './recoveryStrengthBaseline.js';
+import { canonicalDisplayName, canonicalMatchKey, strengthPairError } from './recoveryStrengthBaseline.js';
 import { applyTidyEdits, buildOccurrenceEdit, verifyTidyEdits } from './recoveryTidyText.js';
 
 const fail = (error) => ({ ok: false, error });
@@ -60,7 +60,7 @@ export function planTidyNames({ block, weeks = [], notes = [] } = {}) {
   const baseline = block && block.baseline;
   if (!block || !isLiveRecord(block)) return fail('This recovery block is no longer available.');
   if (!baseline || baseline.version !== 2 || !Array.isArray(baseline.exercises)
-    || baseline.exercises.some(r => !r || typeof r.key !== 'string' || !r.key)) {
+    || baseline.exercises.some(r => !r || typeof r.key !== 'string' || !r.key || strengthPairError(r))) {
     return fail('This block’s baseline can’t be tidied. Nothing was changed.');
   }
   const read = readWeeks(block, weeks, notes);
@@ -127,8 +127,8 @@ export function planTidyNames({ block, weeks = [], notes = [] } = {}) {
 
     const rowKeyChange = row.key !== targetKey;
     const rowNameChange = (row.name || row.key) !== targetName;
-    if (planned.length === 0 && !rowKeyChange && !rowNameChange) { unchanged.push({ name: targetName }); continue; }
     for (const o of occs.filter(x => x.key === targetKey)) clean.push({ weekNumber: o.weekNumber, name: o.name });
+    if (planned.length === 0 && !rowKeyChange && !rowNameChange) { unchanged.push({ name: targetName }); continue; }
     for (const { o, edit } of planned) {
       occurrences.push({
         weekNumber: o.weekNumber, noteId: o.noteId, group: canon, from: edit.oldContent, to: edit.newContent,
@@ -155,7 +155,7 @@ export function planTidyNames({ block, weeks = [], notes = [] } = {}) {
   occurrences.sort((a, b) => a.weekNumber - b.weekNumber || a.headerLine - b.headerLine);
 
   clean.sort((a, b) => a.weekNumber - b.weekNumber);
-  const warmups = warmupOccs.filter(o => o.canon && rowsByCanon.has(o.canon)).map(o => ({ weekNumber: o.weekNumber, name: o.name }));
+  const warmups = warmupOccs.map(o => ({ weekNumber: o.weekNumber, name: o.name }));
   const evidence = baselineNamesEvidence({ block, weeks, notes });
   const signature = fingerprintText(JSON.stringify([
     block.id, block.completed_at || null, block.deleted_at || null,
@@ -168,29 +168,3 @@ export function planTidyNames({ block, weeks = [], notes = [] } = {}) {
   };
 }
 
-// True while a stored Undo payload still describes the persisted state: every
-// tidied note is live and holds exactly its tidied text, and every renamed
-// baseline row still reads as its tidied name. Anything else (an edit, a delete,
-// a later rename) means Undo would overwrite someone's work, so it is withheld.
-export function tidyUndoStillValid(payload, { block, notes = [] } = {}) {
-  if (!payload || !block || !block.baseline || !Array.isArray(block.baseline.exercises)) return false;
-  const byId = new Map((notes || []).map(n => [n && n.id, n]));
-  const notesOk = payload.notes.every((n) => {
-    const note = byId.get(n.id);
-    return !!note && !note.deleted_at && note.raw_text === n.after;
-  });
-  const rows = block.baseline.exercises;
-  const namesOk = payload.baseline.every(c => rows.filter(r => r.key === c.to_key && r.name === c.to_name).length === 1);
-  return notesOk && namesOk;
-}
-
-// Name-neutral fingerprint of a frozen baseline: version, every non-row field and
-// every row field EXCEPT key/name, in row order. It is identical before and after
-// a tidy or its Undo, but differs for any competing snapshot (other metrics,
-// best-set pair, basis, order or version), so replay can tell the reviewed
-// baseline from a replacement.
-export function baselineShapeFingerprint(baseline) {
-  if (!baseline || !Array.isArray(baseline.exercises)) return '';
-  const { exercises, ...rest } = baseline;
-  return fingerprintText(JSON.stringify([rest, exercises.map(({ key: _k, name: _n, ...r }) => r)]));
-}

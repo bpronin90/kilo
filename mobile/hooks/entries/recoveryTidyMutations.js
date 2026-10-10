@@ -1,146 +1,79 @@
-// Guarded Tidy names mutation, Undo and conflict resolution (#1309).
+// Guarded Tidy names action (#1309): two independent, idempotent steps.
 //
-// The core runs through `startRecoveryOperation`, i.e. under the shared recovery
-// lock after reconciliation. Inside that lock it re-reads the authoritative
-// block, weeks and notes, re-plans, and requires the EXACT plan and evidence the
-// user reviewed; any difference (text, timestamps, membership, baseline,
-// lifecycle, deletion) rejects with zero domain writes. Only then does it persist
-// the payload and the journal intent, and let the journal replay apply, verify
-// and publish one logical result. No network is touched at any point.
+//   1. baseline: rows whose frozen name carries a descriptor get their clean
+//      display name (key/name only; every number, the pair, order, basis and
+//      version stay as frozen);
+//   2. weeks: each linked header becomes the baseline row's clean name, its own
+//      descriptor moves to one `-- ` note, and every note is saved through the
+//      ordinary workout-note compare-and-set path (the same mode-aware save/sync
+//      path as any edit).
+//
+// There is deliberately no cross-store transaction. A partial failure leaves some
+// lifts visibly unmatched and re-running the action finishes them: both steps
+// skip what is already done. Before anything is written the action re-reads the
+// authoritative block, weeks and notes under the recovery guard and requires the
+// exact plan and evidence captured when the review opened (zero writes if stale).
 
 import { useCallback } from 'react';
 import * as Storage from '../../storage/entries';
-import {
-  RECOVERY_OPERATION_TYPES,
-  readRecoveryJournal,
-  resolveTidyConflict,
-  startRecoveryOperation,
-} from '../../storage/entries/recoveryOperationJournal';
-import {
-  buildTidyPayload,
-  loadTidyUndoPayload,
-  saveTidyPayload,
-  sweepTidyPayloads,
-} from '../../storage/entries/recoveryTidyPayload';
+import { runGuardedRecoveryAction } from '../../storage/entries/recoveryOperationJournal';
+import { compareAndSetWorkoutNoteText } from '../../storage/entries/workoutNotes';
+import { writeRecoveryBlockBaselineNames } from '../../storage/entries/recoveryBaselineNameStorage';
 import { isLiveRecord } from '../../lib/data/recoveryBlocks';
-import { baselineShapeFingerprint, planTidyNames, tidyUndoStillValid } from '../../lib/data/recoveryTidyNames';
+import { planTidyNames } from '../../lib/data/recoveryTidyNames';
 import { ensureVerifiedRecoveryState, notifyRecoveryBlocks } from './recoveryReadState';
 import { notifyWorkoutNotes } from './workoutNoteHooks';
+import { writeVia } from './storageMode';
 
-const TidyStorage = { ...Storage, loadTidyUndoPayload, saveTidyPayload, sweepTidyPayloads, readRecoveryJournal };
 const STALE = 'These names changed since you opened the review. Review them again.';
 
-const mintPayloadId = () => `tidy_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-
-async function readAuthoritative(storage, blockId) {
-  const block = (await storage.loadRecoveryBlocks()).find(b => b.id === blockId);
-  if (!block || !isLiveRecord(block)) return { ok: false, error: 'This recovery block is no longer available.' };
-  return { ok: true, block, weeks: await storage.loadRecoveryBlockWeeks(), notes: await storage.loadWorkoutNotes() };
-}
-
-// Drop expired Undo payloads and pending payloads no journal record names. Run
-// under the lock, so a payload being started right now is never swept.
-async function sweep(storage) {
-  try {
-    const journal = await storage.readRecoveryJournal();
-    await storage.sweepTidyPayloads(journal.filter(r => r.payload_id).map(r => r.payload_id));
-  } catch { /* housekeeping only; a failure never blocks the operation */ }
-}
+const TidyStorage = {
+  ...Storage,
+  writeBaselineNames: writeRecoveryBlockBaselineNames,
+  saveNoteText: (id, expected, next) => writeVia('compareAndSetWorkoutNoteText', compareAndSetWorkoutNoteText, id, expected, next),
+};
 
 export function tidyNamesCore(storage, { blockId, evidence, signature } = {}) {
-  return startRecoveryOperation({
-    scope: { blockId },
-    validate: async () => {
-      const read = await readAuthoritative(storage, blockId);
-      if (!read.ok) return read;
-      await sweep(storage);
-      const plan = planTidyNames(read);
+  return runGuardedRecoveryAction({ blockId }, async () => {
+    try {
+      const block = (await storage.loadRecoveryBlocks()).find(b => b.id === blockId);
+      if (!block || !isLiveRecord(block)) return { ok: false, error: 'This recovery block is no longer available.' };
+      const weeks = await storage.loadRecoveryBlockWeeks();
+      const notes = await storage.loadWorkoutNotes();
+      const plan = planTidyNames({ block, weeks, notes });
       if (!plan.ok) return { ok: false, error: plan.error };
       if (!evidence || !signature || plan.evidence !== evidence || plan.signature !== signature) return { ok: false, error: STALE };
       if (plan.empty) return { ok: false, error: 'Names are already tidy. Nothing to change.' };
-      const requestedAt = new Date().toISOString();
-      const payload = buildTidyPayload({ id: mintPayloadId(), blockId, requestedAt, plan, baselineShape: baselineShapeFingerprint(read.block.baseline) });
-      // Replay evidence is durable BEFORE the journal intent and any domain write.
-      await storage.saveTidyPayload(payload);
-      return {
-        ok: true,
-        intent: {
-          type: RECOVERY_OPERATION_TYPES.TIDY_RECOVERY_NAMES,
-          block_id: blockId,
-          payload_id: payload.id,
-          direction: 'apply',
-          requested_at: requestedAt,
-          note_ids: payload.notes.map(n => n.id),
-          plan_signature: plan.signature,
-        },
-      };
-    },
-  });
-}
-
-export function undoTidyNamesCore(storage, { blockId } = {}) {
-  return startRecoveryOperation({
-    scope: { blockId },
-    validate: async () => {
-      const read = await readAuthoritative(storage, blockId);
-      if (!read.ok) return read;
-      await sweep(storage);
-      const payload = await storage.loadTidyUndoPayload(blockId);
-      if (!payload) return { ok: false, error: 'There is nothing to undo for this block.' };
-      if (!tidyUndoStillValid(payload, read)) {
-        return { ok: false, error: 'Names or notes changed since they were tidied, so undo is no longer available.' };
+      if (plan.baseline.length) await storage.writeBaselineNames(blockId, plan.baseline);
+      const failed = [];
+      for (const w of plan.noteWrites) {
+        // eslint-disable-next-line no-await-in-loop
+        const status = await storage.saveNoteText(w.note_id, w.expected_raw_text, w.next_raw_text);
+        if (status !== 'saved') failed.push(w.week_number);
       }
-      return {
-        ok: true,
-        intent: {
-          type: RECOVERY_OPERATION_TYPES.TIDY_RECOVERY_NAMES,
-          block_id: blockId,
-          payload_id: payload.id,
-          direction: 'undo',
-          requested_at: new Date().toISOString(),
-          note_ids: payload.notes.map(n => n.id),
-        },
-      };
-    },
+      if (failed.length) {
+        return {
+          ok: false,
+          partial: true,
+          error: `Week ${failed.join(', ')} could not be tidied because the note changed or is unavailable. Run Tidy names again to finish.`,
+        };
+      }
+      return { ok: true, noteCount: plan.noteWrites.length, nameCount: plan.baseline.length };
+    } catch (e) {
+      return { ok: false, partial: true, error: `${e?.message || 'Tidy names did not finish.'} Run Tidy names again to finish.` };
+    }
   });
-}
-
-// Summary the card needs to offer Undo (never the stored texts).
-export async function loadTidyUndoSummary(storage, { blockId, block, notes } = {}) {
-  const payload = await storage.loadTidyUndoPayload(blockId);
-  if (!payload || !tidyUndoStillValid(payload, { block, notes })) return { available: false };
-  return { available: true, noteCount: payload.notes.length, nameCount: payload.baseline.length };
-}
-
-function publish(result) {
-  if (result && result.ok) {
-    notifyRecoveryBlocks();
-    notifyWorkoutNotes();
-  } else if (result && result.tidy) {
-    notifyRecoveryBlocks(); // surface the durable pending/conflict state
-  }
-  return result;
 }
 
 export function useRecoveryTidyNames() {
   const tidyNames = useCallback(async (params) => {
     const gate = await ensureVerifiedRecoveryState();
     if (!gate.ok) return gate;
-    return publish(await tidyNamesCore(TidyStorage, params));
-  }, []);
-  const undoTidyNames = useCallback(async (params) => {
-    const gate = await ensureVerifiedRecoveryState();
-    if (!gate.ok) return gate;
-    return publish(await undoTidyNamesCore(TidyStorage, params));
-  }, []);
-  const loadUndo = useCallback((params) => loadTidyUndoSummary(TidyStorage, params), []);
-  // Resolution takes the recovery lock itself and deliberately skips the verified
-  // gate: a pending conflict is what makes that gate fail.
-  const resolveConflict = useCallback(async (params) => {
-    const result = await resolveTidyConflict(params);
+    const result = await tidyNamesCore(TidyStorage, params);
+    // A partial run still changed something; publish so what did land is shown.
     notifyRecoveryBlocks();
-    if (result.ok) notifyWorkoutNotes();
+    notifyWorkoutNotes();
     return result;
   }, []);
-  return { tidyNames, undoTidyNames, loadUndo, resolveConflict };
+  return { tidyNames };
 }
