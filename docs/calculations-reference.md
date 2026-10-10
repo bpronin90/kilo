@@ -248,7 +248,7 @@ This answers "how strong am I compared to before?", separately from Baseline met
 
 #### Tidy names
 
-> Where you see it: the `Tidy names` action on the Analytics Recovery card, and `Undo tidy names` afterwards
+> Where you see it: the `Tidy names` action on the Analytics Recovery card
 
 Comparison is by exact normalized exercise name, so a week header such as `Squat 3x6-8, step up` never matches a frozen `squat` row. `Tidy names` is the one local, deterministic cleanup: it uses the frozen baseline's name as the authority and rewrites **every** linked, non-warmup occurrence of that lift to the baseline's clean name, and the baseline row's own display name and key follow in the same operation. No fuzzy matching, no network, and no invented aliases.
 
