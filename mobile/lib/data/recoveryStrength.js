@@ -158,9 +158,9 @@ export function deriveRecoveryStrength({ block, weeks = [], notes = [], selected
   const declarationAware = baseline.version >= 2;
   const perWeek = through.map(w => {
     const sets = _weekSets(w, notesById, declarationAware);
-    if (!sets) return { week: w, readable: false, results: null };
+    if (!sets) return { week: w, readable: false, results: null, sets: null };
     const results = new Map(scoreable.map(({ row, pair }) => [row.key, _scoreLiftWeek(pair, sets.get(row.key) || null)]));
-    return { week: w, readable: true, results };
+    return { week: w, readable: true, results, sets };
   });
   const readable = perWeek.filter(p => p.readable);
 
@@ -201,13 +201,16 @@ export function deriveRecoveryStrength({ block, weeks = [], notes = [], selected
     };
   });
 
-  // Not retested: scoreable lifts with no completed entry in the selected week.
+  // Not retested: EVERY baseline exercise (scoreable or not) with no completed
+  // entry in the selected week, told apart by whether an earlier readable week
+  // logged it. An unreadable week in range blocks a confident "never".
+  const sel = perWeek[perWeek.length - 1];
   const unreadableSeen = perWeek.some(p => !p.readable);
-  const not_retested = lifts.filter(l => l.state === LIFT_STATE.NOT_LOGGED || l.state === LIFT_STATE.UNKNOWN).map(l => {
-    const loggedBefore = readable.some(p => p.results.get(l.key).state !== LIFT_STATE.NOT_LOGGED);
+  const not_retested = roster.filter(row => !(sel.readable && sel.sets.has(row.key))).map(row => {
+    const loggedBefore = readable.some(p => p.sets.has(row.key));
     const kind = loggedBefore ? NOT_RETESTED.ABSENT_THIS_WEEK
       : unreadableSeen ? NOT_RETESTED.UNKNOWN : NOT_RETESTED.NEVER_LOGGED;
-    return { key: l.key, name: l.name, kind };
+    return { key: row.key, name: row.name || row.key, kind };
   });
 
   return {

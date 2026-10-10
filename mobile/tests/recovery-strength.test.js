@@ -166,8 +166,19 @@ describe('consistent cohort and coverage', () => {
   test('not retested: absent this week vs never logged; logged-but-unscoreable is not "never"', () => {
     const r = derive([lifts([['Bench', 60], ['Squat', 60]]) + '\n-Row\n- 10,10', lifts([['Bench', 70]]) + '\n-Row\n- 10,10']);
     const kinds = Object.fromEntries(r.not_retested.map(n => [n.key, n.kind]));
-    expect(kinds).toEqual({ squat: NOT_RETESTED.ABSENT_THIS_WEEK });
+    expect(kinds).toEqual({
+      squat: NOT_RETESTED.ABSENT_THIS_WEEK, 'pull-up': NOT_RETESTED.NEVER_LOGGED, plank: NOT_RETESTED.NEVER_LOGGED,
+    });
     expect(lift(r, 'row')).toMatchObject({ state: LIFT_STATE.UNSCOREABLE, reason: 'class_changed' });
+  });
+});
+
+describe('not retested covers the whole roster (PR #1308 review)', () => {
+  test('a never-logged timed or reps-only baseline exercise is listed; a logged one is not', () => {
+    const r = derive([lifts([['Bench', 100], ['Squat', 100], ['Row', 100]]) + '\n-Pull-up\n- 8,8']);
+    expect(r.not_retested).toEqual([{ key: 'plank', name: 'Plank', kind: NOT_RETESTED.NEVER_LOGGED }]);
+    const later = derive([lifts([['Bench', 100]]) + '\n-Plank: 2x45s\n- 45,45', lifts([['Bench', 100]])]);
+    expect(later.not_retested.find(n => n.key === 'plank').kind).toBe(NOT_RETESTED.ABSENT_THIS_WEEK);
   });
 });
 
