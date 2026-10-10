@@ -2,64 +2,15 @@ import { GEOMETRY } from '../../theme/spacing';
 import { StyleSheet } from 'react-native';
 import { TYPOGRAPHY } from '../../theme/typography';
 
-// Styles for the Recovery card's visual summaries (#1209/#1215): hero, thin
-// segmented band bar, Improved/Steady/Fell back row, and thin per-week bars. Kept in
-// their own module so analyticsRecoveryStyles.js stays under the line cap.
+// Styles for the Recovery card's exercise-detail rows and roster summary
+// (#1209/#1219). The strength view's styles live in recoveryStrengthStyles.js
+// (#1305). Kept in their own module so analyticsRecoveryStyles.js stays under the cap.
 export const createVisualStyles = (colors, kua = null) => {
   const ink = kua ? kua.onSurface : colors.text;
   const inkMuted = kua ? kua.onSurfaceVariant : colors.textMuted;
   const track = kua ? kua.surfaceSection : colors.subtleBg;
   const border = kua ? kua.surfaceBorder : colors.cardBorder;
   return StyleSheet.create({
-    hero: { gap: 2 },
-    // #1219: the hero matches the sibling Analytics hero (Weight Trends
-    // `weightValueLarge`: KUA metric-display 32/36 on-surface, legacy 36/800
-    // accentText); week/label are 13sp supporting captions.
-    heroWeek: { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600', color: inkMuted },
-    heroNumber: kua
-      // display exception per #1283 foundation
-      ? { ...TYPOGRAPHY['metric-display-mobile'], fontSize: 32, lineHeight: 36, color: kua.onSurface }
-      : { fontSize: TYPOGRAPHY['metric-display'].fontSize, fontWeight: '800', color: colors.accentText },
-    heroLabel: { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600', color: inkMuted },
-    heroEmpty: { fontSize: TYPOGRAPHY['headline-sm'].fontSize, fontWeight: '700', color: ink },
-    barBlock: { gap: 8 },
-    segmentBar: {
-      flexDirection: 'row',
-      height: 10,
-      borderRadius: GEOMETRY['radius-sm'],
-      overflow: 'hidden',
-      backgroundColor: track,
-      gap: 2,
-    },
-    legend: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 6 },
-    legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    legendDot: { width: 10, height: 10, borderRadius: GEOMETRY['radius-full'] },
-    legendText: { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600', color: ink },
-    changeRow: { flexDirection: 'row', columnGap: 12, alignItems: 'center' },
-    changeCell: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-    changeCount: { ...(kua ? TYPOGRAPHY['label-lg'] : { fontSize: TYPOGRAPHY['label-lg'].fontSize }), color: ink },
-    changeLabel: { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600', color: inkMuted },
-    weeksStrip: { gap: 10 },
-    weekRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    weekRowLabel: { width: 64, fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600', color: inkMuted },
-    weekBar: {
-      flex: 1,
-      flexDirection: 'row',
-      height: 6,
-      borderRadius: GEOMETRY['radius-xs'],
-      overflow: 'hidden',
-      backgroundColor: track,
-      gap: 1,
-    },
-    weekGap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
-    weekGapBar: {
-      flex: 1,
-      height: 6,
-      borderRadius: GEOMETRY['radius-xs'],
-      borderWidth: 1,
-      borderStyle: 'dashed',
-      borderColor: border,
-    },
     // Exercise-details rows (#1219): name + status mark/word, one thin
     // current-vs-baseline bar with its percent, and one numbers line. Same thin
     // bar, band colors and calm weights as the card's summary above.
@@ -122,6 +73,5 @@ export const createVisualStyles = (colors, kua = null) => {
     exDetail: { gap: 6, paddingTop: 4 },
     exLegend: { fontSize: TYPOGRAPHY['body-sm'].fontSize, color: inkMuted, paddingBottom: 8 },
     exNote: { fontSize: TYPOGRAPHY['body-sm'].fontSize, color: inkMuted },
-    weekNoteText: { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600', color: inkMuted },
   });
 };

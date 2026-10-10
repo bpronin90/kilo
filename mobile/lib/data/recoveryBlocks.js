@@ -15,6 +15,7 @@ import {
   parseHeaderDeclaration, parseExerciseHeader,
 } from '../parser.js';
 import { _occurrenceEntries } from './workoutAnalytics.js';
+import { bestEpleySet, baselineLacksStrengthData, preserveNameMatches } from './recoveryStrengthBaseline.js';
 
 // Version stamped onto every frozen baseline snapshot. Bump only when the
 // per-exercise metric shape below changes in a way that makes an old snapshot
@@ -135,8 +136,11 @@ function _baselineMetrics(sets) {
       s => s.weight_value != null && s.weight_value > 0 && s.rep_count != null && s.rep_count > 0
     );
     if (working.length === 0) return null;
+    // #1305: the best Epley set of this same session, frozen as a pair.
+    const best = bestEpleySet(working);
     return {
       exercise_class,
+      ...(best ? { best_e1rm_weight: best.weight, best_e1rm_reps: best.reps } : {}),
       top_weight: Math.max(...working.map(s => s.weight_value)),
       // Completed volume, the standard tonnage definition used elsewhere in the
       // app: sum(weight x reps) over completed working sets only.
@@ -342,10 +346,13 @@ export function captureRecoveryBaseline(rawSections) {
       const key = normalizeExerciseKey(ex.name);
       if (!groups.has(key)) groups.set(key, { order: groups.size, units: [] });
       const spec = declaredPrescription(ex.raw_header);
+      // Any duration header (even a range with no set count, `30-45s`) means the
+      // logged counts are seconds: never a best-set reps pair (#1305).
+      const timed = parseHeaderDeclaration(ex.raw_header)?.type === 'duration';
       const entries = _occurrenceEntries({ rows: ex.rows, sets: ex.sets || [], session_entries: ex.session_entries, kind: section.kind });
       for (const entry of entries) {
         if (!entry || entry.skipped || entry.unparsed) continue;
-        groups.get(key).units.push({ sets: entry.sets, spec });
+        groups.get(key).units.push({ sets: entry.sets, spec, timed });
       }
     }
   }
@@ -356,19 +363,22 @@ export function captureRecoveryBaseline(rawSections) {
     for (let i = units.length - 1; i >= 0 && !picked; i--) {
       const metrics = _baselineMetrics(units[i].sets);
       if (metrics && units[i].spec && _sessionIsComplete(units[i].sets, units[i].spec, metrics)) {
-        picked = { metrics, spec: units[i].spec, complete: true };
+        picked = { metrics, spec: units[i].spec, timed: units[i].timed, complete: true };
       }
     }
     for (let i = units.length - 1; i >= 0 && !picked; i--) {
       const metrics = _baselineMetrics(units[i].sets);
-      if (metrics) picked = { metrics, spec: units[i].spec, complete: false };
+      if (metrics) picked = { metrics, spec: units[i].spec, timed: units[i].timed, complete: false };
     }
     if (!picked) continue;
     const BASIS = RECOVERY_BASELINE_BASIS;
     const basis = picked.spec?.kind === 'amrap' ? BASIS.AMRAP
       : picked.complete ? BASIS.COMPLETE
         : picked.spec ? BASIS.NEVER_COMPLETE : BASIS.NO_DECLARATION;
-    rows.push({ key, name: names.get(key) ?? key, ...picked.metrics, routine_order: order, basis });
+    const metrics = { ...picked.metrics };
+    // #1305: a duration-declared session's loaded counts are seconds, not reps.
+    if (picked.timed || picked.spec?.kind === 'duration') { delete metrics.best_e1rm_weight; delete metrics.best_e1rm_reps; }
+    rows.push({ key, name: names.get(key) ?? key, ...metrics, routine_order: order, basis });
   }
 
   rows.sort((a, b) => a.routine_order - b.routine_order);
@@ -386,16 +396,20 @@ export function captureRecoveryBaselineFromText(rawText) {
   return captureRecoveryBaseline(parsed.sections || []);
 }
 
-// ── on-demand v1 -> v2 baseline rebuild (#1227) ───────────────────────────────
+// ── on-demand baseline rebuild (#1227, #1305) ─────────────────────────────────
 //
-// Pure plan for rebuilding a live v1 block's frozen baseline from its baseline
+// Pure plan for rebuilding a live block's frozen baseline from its baseline
 // routine. It reuses `captureRecoveryBaseline` (the exact v2 capture path, never a
-// second derivation). `eligible` is false for a tombstoned or already-v2 block,
-// and for a missing/deleted/other-id, oversized, unparseable or empty routine.
-// `editedAfterStart` is true only when BOTH timestamps parse and the note is newer.
-export function planBaselineRebuild(block, note) {
+// second derivation). Eligible only while the snapshot lacks strength data (any
+// v1, or a v2 whose weighted rows miss the best-set pair), so an upgraded
+// snapshot is never rewritten. A v2 snapshot's confirmed name matches are carried
+// over or the plan is refused (`preserveNameMatches`). `eligible` is also false
+// for a tombstone and a missing/deleted/other-id, oversized, unparseable or empty
+// routine. `editedAfterStart` is true only when BOTH timestamps parse and the note
+// is newer.
+export function planBaselineRebuild(block, note, { weeks = null, notes = null } = {}) {
   const no = (message) => ({ eligible: false, message });
-  if (!block || !isLiveRecord(block) || block.baseline?.version !== 1) {
+  if (!block || !isLiveRecord(block) || !baselineLacksStrengthData(block.baseline)) {
     return no('This block’s baseline cannot be rebuilt.');
   }
   if (!note || note.deleted_at || note.id !== block.baseline_note_id || typeof note.raw_text !== 'string') {
@@ -403,16 +417,39 @@ export function planBaselineRebuild(block, note) {
   }
   const parsed = parseWorkoutNote(note.raw_text);
   if (parsed.ok === false) return no('The baseline routine could not be read.');
-  const baseline = captureRecoveryBaseline(parsed.sections || []);
-  if (baseline.exercises.length === 0) return no('The baseline routine has no exercises to rebuild from.');
+  const captured = captureRecoveryBaseline(parsed.sections || []);
+  if (captured.exercises.length === 0) return no('The baseline routine has no exercises to rebuild from.');
+  if (baselineLacksStrengthData(captured)) return no('The baseline routine has no lifts with load and reps to score.');
+  const kept = preserveNameMatches(block.baseline, captured, { loggedKeys: _loggedKeys(block, weeks, notes) });
+  if (!kept.ok) return no(kept.message);
   const noteTime = Date.parse(note.updated_at);
   const startTime = Date.parse(block.started_at);
   return {
     eligible: true,
-    baseline,
+    baseline: _deepFreeze(kept.baseline),
     previous: block.baseline.exercises || [],
+    renamed: kept.renamed || [],
     editedAfterStart: Number.isFinite(noteTime) && Number.isFinite(startTime) && noteTime > startTime,
   };
+}
+
+// Every exercise identity logged (outside warmups) in the block's live linked
+// weeks, or null when any of those weeks cannot be read (unknown is never "not
+// logged") or the weeks were not supplied.
+function _loggedKeys(block, weeks, notes) {
+  if (!Array.isArray(weeks) || !Array.isArray(notes)) return null;
+  const keys = new Set();
+  for (const w of orderedLiveWeeks(weeks, block.id)) {
+    const n = notes.find(x => x && x.id === w.note_id);
+    if (!n || n.deleted_at || typeof n.raw_text !== 'string') return null;
+    const parsed = parseWorkoutNote(n.raw_text);
+    if (parsed.ok === false) return null;
+    for (const section of parsed.sections || []) {
+      if (section.kind === 'warmup') continue;
+      for (const ex of section.exercises || []) keys.add(normalizeExerciseKey(ex.name));
+    }
+  }
+  return keys;
 }
 
 // Recursively freeze the snapshot. The frozen baseline is authoritative after

@@ -677,6 +677,8 @@ describe('recovery data in the backup format', () => {
     await Storage.replaceRecoveryBlocksRaw([]);
     expect((await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL })).ok).toBe(true);
     expect((await Storage.loadRecoveryBlocksRaw())[0].baseline).toEqual(v2);
+    // #1305: the frozen best-set pair survives export -> restore unchanged.
+    expect((await Storage.loadRecoveryBlocksRaw())[0].baseline.exercises[0]).toMatchObject({ best_e1rm_weight: 225, best_e1rm_reps: 5 });
   });
 
   // The mirror image of the invariant rejections below: the uniqueness rules are

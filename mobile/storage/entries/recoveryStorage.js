@@ -22,6 +22,7 @@
 import { RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEEKS_KEY } from './keys';
 import { readList, writeList } from './jsonStorage';
 import { renameBaselineRow } from '../../lib/data/recoveryBaselineNames';
+import { baselineLacksStrengthData } from '../../lib/data/recoveryStrengthBaseline';
 import {
   RECOVERY_BASELINE_VERSION,
   RECOVERY_ERROR_CODES,
@@ -190,17 +191,17 @@ export async function updateRecoveryBlock(id, patch) {
   return updated;
 }
 
-// Replace a live v1 block's frozen baseline with a v2 snapshot (#1227). The ONE
-// sanctioned baseline write: the generic patch path still drops `baseline`. Only
-// `baseline` and `updated_at` change, so an already-v2 block (repeat confirm) or a
-// tombstone is rejected rather than rewritten.
+// Replace a live block's baseline that lacks strength data (v1, or v2 without
+// best-set pairs) with a complete v2 snapshot (#1227, #1305). The ONE sanctioned
+// baseline write (the generic patch drops `baseline`); only `baseline`/`updated_at`
+// change, so a repeat confirm on an upgraded block or a tombstone is rejected.
 export async function replaceRecoveryBlockBaseline(id, baseline) {
   const list = await readList(RECOVERY_BLOCKS_KEY);
   const idx = list.findIndex(b => b.id === id);
   if (idx < 0 || !isLiveRecord(list[idx])) {
     throw new RecoveryBlockError(RECOVERY_ERROR_CODES.BLOCK_NOT_FOUND, `No live recovery block with id ${id}.`);
   }
-  if (list[idx].baseline?.version !== 1 || baseline?.version !== RECOVERY_BASELINE_VERSION || !Array.isArray(baseline.exercises)) {
+  if (!baselineLacksStrengthData(list[idx].baseline) || baseline?.version !== RECOVERY_BASELINE_VERSION || !Array.isArray(baseline.exercises) || baselineLacksStrengthData(baseline)) {
     throw new RecoveryBlockError(
       RECOVERY_ERROR_CODES.BASELINE_NOT_REBUILDABLE,
       'This block’s baseline cannot be rebuilt.'

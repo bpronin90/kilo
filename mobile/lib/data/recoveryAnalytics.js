@@ -13,7 +13,7 @@
 // Comparison is by exact normalized exercise identity only. A different lift is
 // a different lift: no substitution mapping, no "close enough" equivalence.
 
-import { parseWorkoutNote, deriveWorkoutAnalytics, normalizeExerciseKey } from '../parser.js';
+import { parseWorkoutNote, deriveWorkoutAnalytics, normalizeExerciseKey, parseHeaderDeclaration } from '../parser.js';
 import { _occurrenceEntries } from './workoutAnalytics.js';
 import { RECOVERY_BASELINE_SUPPORTED_VERSIONS, normalizeTimedSections, orderedLiveWeeks } from './recoveryBlocks.js';
 
@@ -164,34 +164,52 @@ function _completedSets(sets) {
 // as seconds (see normalizeTimedSections), so the week must classify the same
 // way. A v1 snapshot was frozen with those rows as reps and is compared AS STORED,
 // so its weeks keep the historical parse and metric family exactly.
-export function aggregateRecoveryWeekWork(rawSections, { declarationAware = false } = {}) {
+export function aggregateRecoveryWeekWork(rawSections, options) {
   const work = new Map();
-  if (!Array.isArray(rawSections) || rawSections.length === 0) return work;
+  for (const [key, { name, completed, exercise_class }] of collectRecoveryWeekSets(rawSections, options)) {
+    work.set(key, { key, name, exercise_class, ..._classMetrics(exercise_class, completed) });
+  }
+  return work;
+}
 
+// The completed non-warmup sets behind `aggregateRecoveryWeekWork`, per
+// normalized identity: Map key -> { name, completed, exercise_class,
+// strength_sets, timed_sets }. Shared with the strength score (#1305) so both
+// read exactly the same sets and identities. A duration-declared OCCURRENCE's
+// loaded counts are seconds, so its completed sets go to `timed_sets` and never
+// to `strength_sets`; other occurrences of the same lift still count.
+// `deriveWorkoutAnalytics` builds exactly one occurrence per section exercise in
+// section order, so the i-th occurrence of a key is its i-th header.
+export function collectRecoveryWeekSets(rawSections, { declarationAware = false } = {}) {
+  const out = new Map();
+  if (!Array.isArray(rawSections) || rawSections.length === 0) return out;
+  const headers = new Map();
+  for (const section of rawSections) {
+    for (const ex of section.exercises || []) {
+      const k = normalizeExerciseKey(ex.name);
+      if (!headers.has(k)) headers.set(k, []);
+      headers.get(k).push(parseHeaderDeclaration(ex.raw_header)?.type === 'duration');
+    }
+  }
   const { exercises } = deriveWorkoutAnalytics(declarationAware ? normalizeTimedSections(rawSections) : rawSections);
-
   for (const ex of exercises) {
-    const occurrences = (ex.occurrences || []).filter(occ => occ.kind !== 'warmup');
-    if (occurrences.length === 0) continue;
-
-    const completed = occurrences
-      .flatMap(occ => _occurrenceEntries(occ))
-      .filter(entry => entry && !entry.skipped && !entry.unparsed)
-      .flatMap(entry => _completedSets(entry.sets));
-    if (completed.length === 0) continue;
-
+    const key = normalizeExerciseKey(ex.name);
+    const timedAt = headers.get(key) || [];
+    const strength_sets = [];
+    const timed_sets = [];
+    (ex.occurrences || []).forEach((occ, i) => {
+      if (occ.kind === 'warmup') return;
+      const sets = _occurrenceEntries(occ)
+        .filter(entry => entry && !entry.skipped && !entry.unparsed)
+        .flatMap(entry => _completedSets(entry.sets));
+      (timedAt[i] ? timed_sets : strength_sets).push(...sets);
+    });
+    const completed = [...strength_sets, ...timed_sets];
     const exercise_class = _detectExerciseClass(completed);
     if (!exercise_class) continue;
-
-    work.set(normalizeExerciseKey(ex.name), {
-      key: normalizeExerciseKey(ex.name),
-      name: ex.name,
-      exercise_class,
-      ..._classMetrics(exercise_class, completed),
-    });
+    out.set(key, { name: ex.name, completed, exercise_class, strength_sets, timed_sets });
   }
-
-  return work;
+  return out;
 }
 
 const NO_METRICS = Object.freeze({ values: {}, sets_completed: 0 });

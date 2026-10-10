@@ -160,9 +160,11 @@ Each exercise is frozen as one of three families, decided by what you logged:
 
 | Family | Decided when | Frozen values |
 |--------|--------------|---------------|
-| Weighted | any set carries added or assisting load | top working weight, completed volume |
+| Weighted | any set carries added or assisting load | top working weight, completed volume, and the best set (#1305) |
 | Timed | no load, but a held duration | best hold, total duration |
 | Reps-only | no load and no duration, just counted reps | best set, total reps |
+
+The **best set** of a weighted exercise is the one completed working set in that same frozen session with the highest estimated one-rep max (Epley: weight × (1 + reps ÷ 30)), stored as its weight and reps. It is kept as a pair because top weight and total reps cannot say which reps went with which load. Blocks frozen before #1305 do not have it; their strength view says "Baseline best-set data unavailable" until you confirm a rebuild from the baseline routine as it is now (the preview shows old and new values; a matched exercise name is kept when exactly one routine row shares its name; a lift no longer in the routine is shown as removed; any ambiguous pairing refuses the rebuild with the exercise named).
 
 #### What each week counts
 
@@ -211,7 +213,7 @@ Whole-block error states are reported the same explicit way: no snapshot on the 
 
 #### Return bands and weekly movement (#1029)
 
-> Where you see it: Home's Recovery card, the first screenful of the Analytics Recovery section, and the Analytics Overview `Recovery` row
+> Where you see it: Home's Recovery card, the Analytics Overview `Recovery` row, and the Analytics Recovery `Exercise details` summary
 
 The per-exercise states above are re-grouped, on read, into a "return band" per exercise and a week-over-week movement count. Neither changes the #697 contract above: `deriveRecoveryComparison`'s per-exercise output, the frozen baseline, and every state name are untouched, and no new field is stored.
 
@@ -230,7 +232,19 @@ The six bands always sum to the roster size. `Not trained yet` is never shown as
 
 **Movement.** Movement compares the most recent live week against the most recent EARLIER week that both (a) completed without error and (b) had at least one exercise comparable to a prior week — a week with no readable note is skipped as an anchor, never treated as zero. For each exercise comparable in both weeks, movement is Pareto on exact ratios (never floored percents): improved (every dimension ≥, at least one >), fell back (every dimension ≤, at least one <), or steady (neither). Movement is only ever printed when at least two qualifying weeks exist, at least three exercises (or the whole roster, if it has fewer than three) are matched, and the snapshot is verified and not stale — otherwise no counts and no arrow are shown, only the reason. When printed, the anchor week's number and the matched population size are always named alongside it.
 
-No surface computes or displays a single composite percentage for a week or a block — that stays out of scope (see Out of scope below).
+Home and Overview show no composite percentage. The Analytics Recovery section's average is the separate strength score below; it never feeds a band, a Baseline met state, or block completion.
+
+#### Strength relative to baseline (#1305)
+
+> Where you see it: the first screenful of the Analytics Recovery section
+
+This answers "how strong am I compared to before?", separately from Baseline met (which also requires your old total work).
+
+- **Per lift.** `100 × (best Epley set this week) ÷ (frozen best-set Epley)`. The week's best set is taken across every session in the week's note — never summed. Warmups, skipped sets, unparsed rows and sets without both load and reps are ignored. Timed work (including loaded work under a timed header, such as `-Farmer Carry: 2x30s`), bodyweight reps and assisted sets have no trustworthy load-and-reps basis, so they are listed as not scored with that reason. A substitute or added lift has no baseline percentage. Values above 100% are shown as they are.
+- **Average.** The unweighted mean over the lifts that have a score in **every** readable week from the start of the block through the selected week, so the line does not jump as lifts come and go. The number of those lifts and "of N baseline lifts" are always shown beside it. When a newly added week drops a lift from that set, every plotted week is recomputed with the new set and the dropped lifts are named. A week whose note is missing or unreadable is a visible gap and is left out of the comparison, never counted as zero. If no lift is scored every week there is no average, only the reason.
+- **Weeks, not dates.** The trend and pace count recovery week numbers. Selecting an earlier week shows only evidence up to that week.
+- **Best-case pace.** Per lift, from its most recent (up to four) scored weeks, needing at least three: the average of the per-week changes between consecutive points (regressions included), in percentage points per recovery week. Weeks to 90% and 100% = `ceil(remaining ÷ rate)`. Fewer than three points shows "Not enough weeks yet"; a flat or falling rate shows no forecast; a reached target says reached. Pace is hidden while Recovery data is stale or unverified. It is the fastest plausible case if your recent rate continues — not a prediction, a date, or a medical readiness signal.
+- **Not retested yet.** Baseline lifts with no completed entry in the selected week say whether they were logged in an earlier week or not in any week yet; when some week could not be read, Kilo says "not in any readable week" instead of claiming never.
 
 #### Limitations
 

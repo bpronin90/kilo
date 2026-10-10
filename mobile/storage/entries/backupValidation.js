@@ -6,6 +6,7 @@
 // pipeline in backupRestore.js; backupExport.js reuses BACKUP_VERSION and
 // validateFatigueMultiplier. Strictness, error strings and allowlists preserved.
 import { MAX_RECOVERY_REASON_LENGTH, RECOVERY_BASELINE_BASIS_VALUES, RECOVERY_BASELINE_VERSION } from '../../lib/data/recoveryBlocks';
+import { strengthPairError } from '../../lib/data/recoveryStrengthBaseline';
 
 // v4 adds the two recovery collections (#694). Everything a v3 file carries is
 // unchanged, so a v4 file is a strict superset and a v3 importer would simply
@@ -56,10 +57,8 @@ const RECOVERY_WEEK_TIMESTAMP_FIELDS = [
 // per-row validation loop below expensive.
 const MAX_IMPORT_BASELINE_EXERCISES = 1000;
 
-// Everything a baseline exercise row carries beyond these three is a numeric
-// metric (top_weight, volume, sets_completed, best_set_reps, total_reps,
-// best_hold_seconds, total_seconds, v2 routine_order == its row index — recoveryBlocks)
-// except v2's own `basis` provenance string, checked against its closed enum (#1225).
+// Beyond these three a baseline row carries numeric metrics only (incl. v2 routine_order == row
+// index, and the #1305 best-set pair checked as a pair) except v2's `basis` enum string (#1225).
 const BASELINE_EXERCISE_STRING_FIELDS = ['key', 'name', 'exercise_class'];
 
 // Untrusted-input bounds for imported backups. importBackup() receives arbitrary
@@ -296,6 +295,7 @@ function validateRecoveryBaseline(baseline) {
       if (typeof value !== 'number' || !Number.isFinite(value))
         return { ok: false, error: `Invalid backup: recovery baseline metric ${field} must be a finite number` };
     }
+    if (strengthPairError(exercise)) return { ok: false, error: strengthPairError(exercise) };
   }
   return { ok: true };
 }

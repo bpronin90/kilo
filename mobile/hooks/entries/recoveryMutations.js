@@ -478,7 +478,7 @@ export function rebuildRecoveryBaselineCore(storage, { blockId, expectedBaseline
     try {
       const block = (await storage.loadRecoveryBlocks()).find(b => b.id === blockId);
       const notes = await storage.loadWorkoutNotes();
-      const plan = planBaselineRebuild(block, notes.find(n => n.id === block?.baseline_note_id));
+      const plan = planBaselineRebuild(block, notes.find(n => n.id === block?.baseline_note_id), { weeks: await storage.loadRecoveryBlockWeeks(), notes });
       if (!plan.eligible) return { ok: false, error: plan.message };
       if (JSON.stringify(plan.baseline) !== JSON.stringify(expectedBaseline)) {
         return { ok: false, error: 'The routine changed since this preview. Review the updated values and try again.' };
