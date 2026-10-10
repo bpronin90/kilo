@@ -445,22 +445,28 @@ export function deriveOverviewRows({
     // words Home prints — so the two never disagree. Movement, when its
     // evidence bar is met, rides in the caption instead of replacing it.
     // Plain wording: "back" counts exercises at/above their pre-recovery
-    // band out of the whole roster (not-comparable never counts as back).
-    const movementCaption = recoveryMovement
-      ? ` · ${recoveryMovement.improved} improved since Week ${recoveryMovement.anchor_week_number}`
-      : '';
+    // band out of the whole roster (not-comparable never counts as back); the
+    // roster includes exercises not trained yet, so that is named.
+    const { atOrAbove, rosterSize, notYet } = recoverySummary;
+    const improved = recoveryMovement
+      ? `${recoveryMovement.improved} improved since Week ${recoveryMovement.anchor_week_number}`
+      : null;
     recoveryRow = {
       key: 'recovery',
       label: 'Recovery',
       section: 'recovery',
       unavailable: false,
-      value: `${recoverySummary.atOrAbove}/${recoverySummary.rosterSize}`,
+      value: `${atOrAbove}/${rosterSize}`,
       showUnit: false,
-      valueSuffix: 'back to pre-recovery level',
-      infoCaption: `Week ${weekNumber}${movementCaption}`,
-      // Full sentence for screen readers only: names the denominator (the
-      // pre-recovery roster) so the visible line can stay short.
-      accessibilityText: `${recoverySummary.atOrAbove} of ${recoverySummary.rosterSize} pre-recovery exercises back to pre-recovery level, Week ${weekNumber}${recoveryMovement ? `, ${recoveryMovement.improved} improved since Week ${recoveryMovement.anchor_week_number}` : ''}`,
+      valueSuffix: `pre-recovery ${rosterSize === 1 ? 'exercise' : 'exercises'} back`,
+      infoCaption: [`Week ${weekNumber}`, notYet > 0 ? `${notYet} not trained yet` : null, improved].filter(Boolean).join(' · '),
+      // Full sentence for screen readers only (the card prefixes the label).
+      accessibilityText: [
+        `${atOrAbove} of ${rosterSize} pre-recovery ${rosterSize === 1 ? 'exercise' : 'exercises'} back to pre-recovery level`,
+        notYet > 0 ? `including ${notYet} not trained yet` : null,
+        `Week ${weekNumber}`,
+        improved,
+      ].filter(Boolean).join(', '),
       emptyCaption: null,
     };
   } else {

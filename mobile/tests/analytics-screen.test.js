@@ -548,13 +548,30 @@ describe('deriveOverviewRows (#821)', () => {
     // #1242: the value stays the shared roster count Home prints.
     // Value is exercises back at/above pre-recovery performance out of the roster.
     expect(recovery.value).toBe('3/5');
-    expect(recovery.valueSuffix).toBe('back to pre-recovery level');
+    expect(recovery.valueSuffix).toBe('pre-recovery exercises back');
     expect(recovery.infoCaption).toBe('Week 3 · 2 improved since Week 1');
     expect(recovery.accessibilityText).toBe('3 of 5 pre-recovery exercises back to pre-recovery level, Week 3, 2 improved since Week 1');
     expect(recovery.valueSuffix).not.toMatch(/Week 3/);
     expect(recovery.valueSuffix).not.toMatch(/since Week/);
     expect(recovery.infoCaption).not.toMatch(/matched|trained/);
     expect(recovery.delta).toBeUndefined();
+  });
+
+  test('not-trained-yet count appears in caption and a11y text only when above zero; singular roster', () => {
+    const open = { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 3 };
+    const bands = { roster_size: 5, trained: 4, buckets: { at_or_above: 3, close: 1, rebuilding: 0, early: 0, cannot_compare: 0, not_trained_yet: 1 } };
+    const r = rowFor(deriveOverviewRows({
+      activeTraining: open, recoveryBands: bands,
+      recoveryMovement: { improved: 2, steady: 1, fell_back: 0, matched_size: 3, anchor_week_number: 1 },
+    }), 'recovery');
+    expect(r.infoCaption).toBe('Week 3 · 1 not trained yet · 2 improved since Week 1');
+    expect(r.accessibilityText).toBe('3 of 5 pre-recovery exercises back to pre-recovery level, including 1 not trained yet, Week 3, 2 improved since Week 1');
+    const one = rowFor(deriveOverviewRows({
+      activeTraining: open,
+      recoveryBands: { roster_size: 1, trained: 1, buckets: { at_or_above: 1, close: 0, rebuilding: 0, early: 0, cannot_compare: 0, not_trained_yet: 0 } },
+    }), 'recovery');
+    expect(one.valueSuffix).toBe('pre-recovery exercise back');
+    expect(one.infoCaption).toBe('Week 3');
   });
 
   test('active Recovery with movement unavailable: infoCaption still carries week identity — absent from valueSuffix, no fabricated delta', () => {
@@ -564,7 +581,7 @@ describe('deriveOverviewRows (#821)', () => {
       recoveryMovement: null,
     });
     const recovery = rowFor(rows, 'recovery');
-    expect(recovery.infoCaption).toBe('Week 1');
+    expect(recovery.infoCaption).toBe('Week 1 · 3 not trained yet');
     expect(recovery.valueSuffix).not.toMatch(/Week 1/);
     expect(recovery.delta).toBeUndefined();
   });
@@ -584,7 +601,7 @@ describe('deriveOverviewRows (#821)', () => {
       recoveryBands: { roster_size: 2, trained: 1, buckets: { at_or_above: 1, close: 0, rebuilding: 0, early: 0, cannot_compare: 0, not_trained_yet: 1 } },
     });
     expect(rowFor(rows, 'weight').infoCaption).toBeUndefined();
-    expect(rowFor(rows, 'recovery').infoCaption).toBe('Week 1');
+    expect(rowFor(rows, 'recovery').infoCaption).toBe('Week 1 · 1 not trained yet');
   });
 });
 
@@ -2758,7 +2775,7 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
       expect(joined).toContain('since Week 1');
       expect(joined).not.toContain('matched');
       // Never folded into valueSuffix, which stays the compact count.
-      expect(texts).toContain('back to pre-recovery level');
+      expect(texts).toContain('pre-recovery exercises back');
       expect(texts.some(t => t.startsWith('of ') && /Week|improved/.test(t))).toBe(false);
 
       const infoCaptionNode = textNodesOf(row).find(t => {
