@@ -458,6 +458,7 @@ export function deriveOverviewRows({
       unavailable: false,
       value: `${atOrAbove}/${rosterSize}`,
       showUnit: false,
+      stackDetail: true,
       valueSuffix: `pre-recovery ${rosterSize === 1 ? 'exercise' : 'exercises'} back`,
       infoCaption: [`Week ${weekNumber}`, notYet > 0 ? `${notYet} not trained yet` : null, improved].filter(Boolean).join(' · '),
       // Full sentence for screen readers only (the card prefixes the label).

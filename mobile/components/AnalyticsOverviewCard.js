@@ -91,7 +91,12 @@ function OverviewRow({ row, unit, onPress }) {
   ].filter(Boolean).join(', ');
   const label = row.accessibilityText ? `${row.label}, ${row.accessibilityText}` : accessibilityLabel;
 
+  // Rows with `stackDetail` (Recovery) keep the right-hand value compact and
+  // put the long suffix + caption on full-width wrapping lines under the label,
+  // so nothing nonwrapping can outgrow the row at 320dp or large text.
+  const stacked = !!row.stackDetail;
   const body = (
+    <View>
     <View style={styles.rowTop}>
       <Text style={styles.rowLabel} numberOfLines={1}>{row.label}</Text>
       <View style={styles.rowValueStack}>
@@ -104,13 +109,13 @@ function OverviewRow({ row, unit, onPress }) {
               {row.showUnit && <Text style={styles.rowValueUnit}> {unit}</Text>}
             </Text>
           )}
-          {!!row.valueSuffix && <Text style={styles.rowValueSuffix}>{row.valueSuffix}</Text>}
+          {!stacked && !!row.valueSuffix && <Text style={styles.rowValueSuffix}>{row.valueSuffix}</Text>}
           {interactive
             ? <MaterialIcons name="chevron-right" size={16} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
             : <View style={styles.rowValueSpacer} accessible={false} />
           }
         </View>
-        {(delta || caption || row.infoCaption) && (
+        {(delta || caption || (!stacked && row.infoCaption)) && (
           <View style={styles.rowSub}>
             {!!delta && (
               <Text style={[styles.rowDelta, deltaStyleFor(row, delta, styles)]}>
@@ -118,10 +123,17 @@ function OverviewRow({ row, unit, onPress }) {
               </Text>
             )}
             {!!caption && <Text style={styles.rowCaption}>{caption}</Text>}
-            {!!row.infoCaption && <Text style={styles.rowInfoCaption}>{row.infoCaption}</Text>}
+            {!stacked && !!row.infoCaption && <Text style={styles.rowInfoCaption}>{row.infoCaption}</Text>}
           </View>
         )}
       </View>
+    </View>
+    {stacked && (
+      <View style={styles.rowDetail} testID={`overview-detail-${row.key}`}>
+        {!!row.valueSuffix && <Text style={styles.rowDetailText}>{row.valueSuffix}</Text>}
+        {!!row.infoCaption && <Text style={styles.rowDetailText}>{row.infoCaption}</Text>}
+      </View>
+    )}
     </View>
   );
 
@@ -229,6 +241,16 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     fontWeight: '600',
     color: kua ? kua.onSurface : colors.text,
     flex: 1,
+  },
+  rowDetail: {
+    marginTop: 2,
+    gap: 2,
+  },
+  rowDetailText: {
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
+    fontWeight: '700',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    flexShrink: 1,
   },
   rowValueStack: {
     alignItems: 'flex-end',

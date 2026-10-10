@@ -2774,6 +2774,15 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
       expect(joined).toContain('Week 2');
       expect(joined).toContain('since Week 1');
       expect(joined).not.toContain('matched');
+      // Suffix and caption live in a full-width wrapping detail block, not in
+      // the nonshrinking right-hand value group (320dp / large-text safety).
+      const detail = row.findAllByProps({ testID: 'overview-detail-recovery' })[0];
+      const detailTexts = detail.findAllByType('Text');
+      expect(detailTexts.map(t => [].concat(t.props.children).join(''))).toEqual(
+        expect.arrayContaining(['pre-recovery exercises back']));
+      detailTexts.forEach(t => expect(t.props.numberOfLines).toBeUndefined());
+      const valueGroupTexts = textNodesOf(row).filter(t => !detailTexts.includes(t)).map(t => [].concat(t.props.children).join(''));
+      expect(valueGroupTexts.join(' ')).not.toContain('pre-recovery');
       // Never folded into valueSuffix, which stays the compact count.
       expect(texts).toContain('pre-recovery exercises back');
       expect(texts.some(t => t.startsWith('of ') && /Week|improved/.test(t))).toBe(false);
