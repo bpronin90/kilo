@@ -24,6 +24,7 @@ import {
   useRecoveryBlockLifecycle,
   useRecoveryBaselineNames,
 } from '../hooks/entries/recoveryBlockHooks';
+import { useRecoveryTidyNames } from '../hooks/entries/recoveryTidyMutations';
 import { RecoveryInclusionToggle } from './RecoveryInclusionToggle';
 import { BlockEvidence } from './recovery/RecoveryEvidence';
 import { WeekIndexRow } from './recovery/RecoveryWeekIndex';
@@ -64,6 +65,7 @@ export function AnalyticsRecoverySection({
   const [focusedBlockId, setFocusedBlockId] = useState(null);
   const { setIncludeInNormalAnalytics, reopenBlock, setBlockReason, rebuildBaseline } = useRecoveryBlockLifecycle();
   const { matchBaselineName } = useRecoveryBaselineNames();
+  const tidyNames = useRecoveryTidyNames();
   const [inclusionBusyBlockId, setInclusionBusyBlockId] = useState(null);
   const [inclusionError, setInclusionError] = useState(null);
   const [reopenBusy, setReopenBusy] = useState(false);
@@ -247,6 +249,7 @@ export function AnalyticsRecoverySection({
         onSaveReason={setBlockReason}
         onRebuildBaseline={rebuildBaseline}
         onMatchNames={matchBaselineName}
+        tidyNames={tidyNames}
       />
 
       {completedBlocks.length > 0 && (
