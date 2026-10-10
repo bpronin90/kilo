@@ -214,16 +214,15 @@ function _numbers(row, unit) {
 function _summaryValue(row, unit) {
   const primary = _barMetric(row) || (row.metrics || [])[0];
   if (!primary) return null;
-  const label = METRIC_LABELS[primary.metric] || primary.metric;
   const state = row.state;
   if (state === RECOVERY_COMPARISON_STATES.BASELINE_MET || state === RECOVERY_COMPARISON_STATES.REBUILDING) {
-    return `${label} ${_formatMetricNumber(primary.metric, primary.current, unit)} / ${_formatMetricNumber(primary.metric, primary.baseline, unit)}`;
+    return `${_formatMetricNumber(primary.metric, primary.current, unit)} / ${_formatMetricNumber(primary.metric, primary.baseline, unit)}`;
   }
   if (state === RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY) {
-    return `${label} ${_formatMetricNumber(primary.metric, primary.current, unit)}`;
+    return _formatMetricNumber(primary.metric, primary.current, unit);
   }
   if (state === RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED) {
-    return `Baseline ${label} ${_formatMetricNumber(primary.metric, primary.baseline, unit)}`;
+    return `Baseline ${_formatMetricNumber(primary.metric, primary.baseline, unit)}`;
   }
   return null;
 }
@@ -254,22 +253,23 @@ function ExerciseRow({ row, unit, weekNumber, elsewhere, expanded, onToggle }) {
   const summary = _summaryValue(row, unit);
   // Reachable evidence behind the tap: every metric line, the bar, the mismatch
   // note. Nothing to reveal -> a plain, non-interactive row.
-  const hasMore = numbers.length > 0 || !!nameNote || !!barMetric;
+  // A lone metric already shown in the summary would only repeat it.
+  const hasMore = numbers.length > 1 || !!nameNote || !!barMetric || (!!note && !!summary);
   const label = _rowAccessibilityLabel(row, unit, weekNumber, elsewhere);
 
   const body = (
     <>
       <View style={styles.exHeader}>
         <Text style={styles.exName}>{row.name}</Text>
+        {(!!summary || !!note) && <Text testID="recovery-exercise-value" style={styles.exSummary}>{summary || note}</Text>}
         <View style={styles.exStatus}>
           <View testID="recovery-exercise-mark" style={[styles.exStatusDot, { backgroundColor: markColor }]} />
-          <Text style={styles.exStatusText}>{status}</Text>
+          <Text testID="recovery-exercise-status" style={styles.exStatusText}>{status}</Text>
           {hasMore && (
             <MaterialIcons name={expanded ? 'expand-less' : 'expand-more'} size={16} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
           )}
         </View>
       </View>
-      {(!!summary || !!note) && <Text style={styles.exSummary}>{summary || note}</Text>}
       {hasMore && expanded && (
         <View testID="recovery-exercise-detail" style={styles.exDetail}>
           {barMetric && (

@@ -194,8 +194,12 @@ function hostTextsIn(inst) {
 }
 // The plain-word status each exercise row shows beside its band mark (#1219),
 // in on-screen order. Row text order is: name, status, [percent], [numbers…].
+function statusWordOf(r) {
+  const n = r.findAll(x => typeof x.type === 'string' && x.props.testID === 'recovery-exercise-status')[0];
+  return [].concat(n.props.children).join('');
+}
 function statusWords(root) {
-  return hostRows(root).map(r => hostTextsIn(r)[1]);
+  return hostRows(root).map(statusWordOf);
 }
 // The roster summary at the head of the details (#1219): a thin bar plus a
 // compact stat row; its full sentence is the accessible label only.
@@ -327,7 +331,7 @@ describe('AnalyticsRecoverySection — active block evidence', () => {
     // Concise baseline numbers only: no percent, no bar (missing is not zero),
     // and none of the old "Not in Week N · trained in …" prose on screen.
     expect(statusWords(root)).toContain('Not trained yet');
-    expect(hasText(root, 'Baseline Reps 24 reps')).toBe(true);
+    expect(hasText(root, 'Baseline 24 reps')).toBe(true);
     expect(hasText(root, 'Not in Week')).toBe(false);
     expect(hasText(root, 'Not trained in any')).toBe(false);
     expect(root.findAll(i => typeof i.type === 'string' && i.props.testID === 'recovery-exercise-bar')).toHaveLength(1);
@@ -703,7 +707,7 @@ describe('AnalyticsRecoverySection — every exercise class/state (mocked compar
     deriveRecoveryComparison.mockReturnValueOnce(mockComparison({ weeks: [mockWeek({ exercises, added })] }));
     const root = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
     expandDetails(root);
-    const shown = Object.fromEntries(hostRows(root).map(r => [hostTextsIn(r)[0], hostTextsIn(r)[1]]));
+    const shown = Object.fromEntries(hostRows(root).map(r => [hostTextsIn(r)[0], statusWordOf(r)]));
     const labels = rowLabels(root);
     for (const [key, , , word] of cases) {
       expect(shown[`Lift ${key}`]).toBe(word);
@@ -778,7 +782,7 @@ describe('AnalyticsRecoverySection — every exercise class/state (mocked compar
     expandDetails(root);
     expect(hasText(root, 'Week 1 · 1 added during recovery')).toBe(false);
     expect(statusWords(root)).toEqual(['Added during recovery']);
-    expect(hasText(root, 'Reps 20 reps')).toBe(true);
+    expect(hasText(root, '20 reps')).toBe(true);
     expect(rowLabels(root).some(l => l.startsWith('Foam Roll, Added during recovery'))).toBe(true);
   });
 });
@@ -2065,7 +2069,7 @@ describe('AnalyticsRecoverySection — per-week vs block state (#1193)', () => {
     // word and the baseline number.
     expect(hasText(root, 'Not in Week 2')).toBe(false);
     expect(hasText(root, 'trained in Week 1')).toBe(false);
-    expect(hasText(root, 'Baseline Reps 24 reps')).toBe(true);
+    expect(hasText(root, 'Baseline 24 reps')).toBe(true);
     // Added-during-recovery work stays its own row.
     expect(rowLabels(root).some(l => l.startsWith('Curl, Added during recovery'))).toBe(true);
 
@@ -2450,7 +2454,7 @@ describe('AnalyticsRecoverySection — visual exercise details (#1219)', () => {
   test('each row is name + status word, and compared rows add one thin bar with its percent and concise numbers', () => {
     const rows = rowTexts(mount());
     expect(rows.map(r => r[0])).toEqual(['Bench', 'Pull-up', 'Curl', 'Foam Roll']);
-    expect(rows.map(r => r[1])).toEqual(['Rebuilding', 'At or above', 'Not trained yet', 'Added during recovery']);
+    expect(rows.map(r => r[2])).toEqual(['Rebuilding', 'At or above', 'Not trained yet', 'Added during recovery']);
     const bench = rows[0];
     expect(bench).toContain('Total work 66%');
     expect(bench).toContain('Load 135 lb vs baseline 135 lb');
@@ -2464,12 +2468,26 @@ describe('AnalyticsRecoverySection — visual exercise details (#1219)', () => {
     const root = setup(props()).root;
     expandDetails(root, { rows: false });
     const rows = rowTexts(root);
-    expect(rows[0]).toEqual(['Bench', 'Rebuilding', 'Total work 1350 lb / 2025 lb']);
-    expect(rows[1]).toEqual(['Pull-up', 'At or above', 'Reps 24 reps / 24 reps']);
+    expect(rows[0]).toEqual(['Bench', '1350 lb / 2025 lb', 'Rebuilding']);
+    expect(rows[1]).toEqual(['Pull-up', '24 reps / 24 reps', 'At or above']);
     // Not-trained and added rows show only their one baseline / current value.
-    expect(rows[2]).toEqual(['Curl', 'Not trained yet', 'Baseline Total work 400 lb']);
-    expect(rows[3]).toEqual(['Foam Roll', 'Added during recovery', 'Reps 20 reps']);
+    expect(rows[2]).toEqual(['Curl', 'Baseline 400 lb', 'Not trained yet']);
+    expect(rows[3]).toEqual(['Foam Roll', '20 reps', 'Added during recovery']);
     expect(hostById(root, 'recovery-exercise-bar')).toHaveLength(0);
+    // One line: name, value and status share the header view (no second row).
+    for (const r of hostRows(root)) {
+      const value = hostById(r, 'recovery-exercise-value')[0];
+      const status = hostById(r, 'recovery-exercise-status')[0];
+      // Name, value and status are siblings in ONE wrapping header view.
+      const headers = r.findAll(x => typeof x.type === 'string' && StyleSheet.flatten(x.props.style)?.flexWrap === 'wrap'
+        && x.findAll(y => y === value).length > 0 && x.findAll(y => y === status).length > 0);
+      expect(headers.length).toBeGreaterThan(0);
+      // The name is in that same header: the summary adds no second line.
+      expect(headers[headers.length - 1].findAll(y => typeof y.type === 'string' && [].concat(y.props.children).join('') === hostTextsIn(r)[0]).length).toBe(1);
+    }
+    // Single-metric added / not-reintroduced rows have no toggle to repeat it.
+    expect(hostRows(root)[2].props.accessibilityRole).toBe('button'); // Curl has load + work: a genuine second metric
+    expect(hostRows(root)[3].props.accessibilityRole).toBeUndefined();
     // The baseline reference is explained once, not per row.
     expect(findAllText(root).filter(t => t.includes('pre-recovery baseline'))).toHaveLength(1);
     expect(hasText(root, 'vs baseline')).toBe(false);
@@ -2548,7 +2566,7 @@ describe('AnalyticsRecoverySection — visual exercise details (#1219)', () => {
       .map(n => StyleSheet.flatten(n.props.style).fontSize);
     // Counts are quantitative (label-md 12); their word labels stay body-sm 13.
     expect(new Set(sizes)).toEqual(new Set([12, 13]));
-    const rowSize = StyleSheet.flatten(hostRows(root)[0].findAll(n => n.type === 'Text')[1].props.style).fontSize;
+    const rowSize = StyleSheet.flatten(hostRows(root)[0].findAll(n => typeof n.type === 'string' && n.props.testID === 'recovery-exercise-status')[0].props.style).fontSize;
     expect(rowSize).toBe(13);
     expect(hasText(root, 'Trained this week')).toBe(false);
     expect(hasText(root, 'Most common gap')).toBe(false);

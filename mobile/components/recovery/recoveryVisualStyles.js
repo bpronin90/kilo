@@ -115,7 +115,7 @@ export const createVisualStyles = (colors, kua = null) => {
     rosterNum: { flexShrink: 0, ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }), color: ink },
     rosterNumQuiet: { flexShrink: 0, ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }), color: inkMuted },
     rosterLabel: { flexShrink: 1, fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600', color: inkMuted },
-    exSummary: { ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }), color: inkMuted },
+    exSummary: { flexShrink: 1, maxWidth: '100%', ...TYPOGRAPHY['label-md'], color: inkMuted },
     exDetail: { gap: 6, paddingTop: 4 },
     exLegend: { fontSize: TYPOGRAPHY['body-sm'].fontSize, color: inkMuted, paddingBottom: 8 },
     exNote: { fontSize: TYPOGRAPHY['body-sm'].fontSize, color: inkMuted },
