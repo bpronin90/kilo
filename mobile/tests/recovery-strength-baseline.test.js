@@ -133,13 +133,28 @@ describe('legacy rebuild (#1305)', () => {
     expect(planBaselineRebuild(block(legacyV2(CAPTURED)), note({ updated_at: '2026-06-01T00:00:00Z' })).editedAfterStart).toBe(true);
   });
 
-  test('a confirmed name match is carried onto the rebuilt row, keeping its new pair', () => {
-    const matched = legacyV2(CAPTURED);
-    matched.exercises = matched.exercises.map(r => (r.key === 'bench' ? { ...r, key: 'db bench', name: 'DB Bench' } : r));
-    const plan = planBaselineRebuild(block(matched), note());
+  test('a confirmed name match (same canonical name, #1298) is carried onto the rebuilt row, keeping its new pair', () => {
+    // The routine writes "Bench Press — heavy"; the lifter matched it to the
+    // logged "Bench Press". Both reduce to the canonical "bench press".
+    const routine = ROUTINE.replace('-Bench 3x5', '-Bench Press — heavy 3x5');
+    const captured = captureRecoveryBaselineFromText(routine);
+    const matched = legacyV2(captured);
+    const from = matched.exercises[2].key;
+    matched.exercises = matched.exercises.map(r => (r.key === from ? { ...r, key: 'bench press', name: 'Bench Press' } : r));
+    const plan = planBaselineRebuild(block(matched), note({ raw_text: routine }));
     expect(plan.eligible).toBe(true);
-    expect(plan.baseline.exercises.map(r => r.key)).toEqual(['squat', 'plank', 'db bench']);
-    expect(row(plan.baseline, 'db bench')).toMatchObject({ name: 'DB Bench', best_e1rm_weight: 135, best_e1rm_reps: 5 });
+    expect(plan.baseline.exercises.map(r => r.key)).toEqual(['squat', 'plank', 'bench press']);
+    expect(row(plan.baseline, 'bench press')).toMatchObject({ name: 'Bench Press', best_e1rm_weight: 135, best_e1rm_reps: 5 });
+  });
+
+  test('equal aggregate numbers are not a match: Bench 100x5,5 edited into Incline Bench 100x8,2 refuses (PR #1308 review)', () => {
+    const before = captureRecoveryBaselineFromText('-Bench\n- 100 5,5');
+    const after = '-Incline Bench\n- 100 8,2';
+    const nextRow = captureRecoveryBaselineFromText(after).exercises[0];
+    expect([nextRow.top_weight, nextRow.volume, nextRow.sets_completed]).toEqual([100, 1000, 2]);
+    const plan = planBaselineRebuild(block(legacyV2(before)), note({ raw_text: after }));
+    expect(plan.eligible).toBe(false);
+    expect(plan.message).toMatch(/Bench.*no longer lines up.*not rebuilt/);
   });
 
   test('a match that no longer lines up with the routine blocks the rebuild with a reason', () => {

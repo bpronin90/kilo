@@ -8,20 +8,13 @@
 // sets x reps / duration scheme, comma/dash descriptor) and only mutually unique
 // canonical-name groups become candidates.
 
-import { normalizeExerciseKey } from '../parser.js';
 import { orderedLiveWeeks } from './recoveryBlocks.js';
 import { RECOVERY_COMPARISON_STATES, RECOVERY_WEEK_STATUS, deriveRecoveryComparison } from './recoveryAnalytics.js';
+import { canonicalMatchKey } from './recoveryStrengthBaseline.js';
 
-const PREFIX_RE = /^[A-Za-z][A-Za-z ]{0,23}:\s*/;
-const SCHEME_RE = /\s+\d+\s*[x×]\s*\d+(?:\s*-\s*\d+)?(?:\s*(?:seconds?|secs?|sec|s|minutes?|mins?|min|reps?))?(?:\s+each\s+(?:leg|side|arm|hand))?\s*$/i;
-const DESCRIPTOR_RE = /\s*(?:,|—|–|\s-\s).*$/;
-
-// Canonical comparison key for a display name; '' when nothing meaningful remains.
-export function canonicalMatchKey(name) {
-  let s = String(name || '').trim().replace(/\s+/g, ' ');
-  s = s.replace(PREFIX_RE, '').replace(DESCRIPTOR_RE, '').replace(SCHEME_RE, '').trim();
-  return normalizeExerciseKey(s);
-}
+// The canonical key lives in the dependency-free leaf so the baseline rebuild
+// (#1305) can require the same identity proof a match was made with.
+export { canonicalMatchKey };
 
 function _group(items, keyOf) {
   const map = new Map();

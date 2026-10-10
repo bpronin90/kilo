@@ -8,8 +8,24 @@
 // aggregates: `top_weight` + `total_reps` cannot say which reps went with which
 // load. Unscoreable rows (timed, reps-only, assisted-only) carry no pair.
 //
-// Pure, no imports: recoveryBlocks.js (capture), recoveryStrength.js (scores),
-// recoveryStorage.js (rebuild gate) and backup validation all read this module.
+// Pure leaf (imports only the parser): recoveryBlocks.js (capture),
+// recoveryStrength.js (scores), recoveryStorage.js (rebuild gate), backup
+// validation and recoveryBaselineNames.js all read this module.
+
+import { normalizeExerciseKey } from '../parser.js';
+
+const PREFIX_RE = /^[A-Za-z][A-Za-z ]{0,23}:\s*/;
+const SCHEME_RE = /\s+\d+\s*[x×]\s*\d+(?:\s*-\s*\d+)?(?:\s*(?:seconds?|secs?|sec|s|minutes?|mins?|min|reps?))?(?:\s+each\s+(?:leg|side|arm|hand))?\s*$/i;
+const DESCRIPTOR_RE = /\s*(?:,|—|–|\s-\s).*$/;
+
+// Canonical comparison key for a display name (#1298); '' when nothing
+// meaningful remains. A name is reduced by three conservative strips (section
+// prefix, trailing sets x reps / duration scheme, comma/dash descriptor).
+export function canonicalMatchKey(name) {
+  let s = String(name || '').trim().replace(/\s+/g, ' ');
+  s = s.replace(PREFIX_RE, '').replace(DESCRIPTOR_RE, '').replace(SCHEME_RE, '').trim();
+  return normalizeExerciseKey(s);
+}
 
 export const BEST_E1RM_WEIGHT = 'best_e1rm_weight';
 export const BEST_E1RM_REPS = 'best_e1rm_reps';
@@ -77,17 +93,13 @@ export function baselineLacksStrengthData(baseline) {
 // Carry confirmed name matches (#1298) from an existing v2 snapshot onto a
 // freshly captured one. A matched row's key/name no longer appears in the
 // source routine, so it is detected as an old key absent from the new capture.
-// A missing key alone is not proof of a match (the routine may have been edited
-// in place: Bench -> Incline Bench), so the old key/name is carried only onto
-// the new row at the same routine position whose frozen values are IDENTICAL —
-// the same source session under a renamed identity. Anything else blocks the
-// rebuild with a reason: a match is never silently undone and another lift's
-// numbers are never frozen under a matched name. v1 snapshots cannot carry
-// matches (rename is v2-only), so they pass through unchanged.
-const FROZEN_FIELDS = ['exercise_class', 'basis', 'top_weight', 'volume', 'sets_completed',
-  'best_set_reps', 'total_reps', 'best_hold_seconds', 'total_seconds'];
-const _sameFrozen = (a, b) => FROZEN_FIELDS.every(f => a[f] === b[f]);
-
+// Neither a missing key nor equal numbers prove a match (an in-place edit,
+// Bench -> Incline Bench, can share both), so the old identity is carried only
+// with the SAME proof a #1298 match requires: the new row at the same routine
+// position, of the same class, whose name reduces to the same canonical key.
+// Anything else blocks the rebuild with a reason: a match is never silently
+// undone and another lift's best set is never frozen under a matched name. v1
+// snapshots cannot carry matches (rename is v2-only), so they pass through.
 export function preserveNameMatches(previous, next) {
   if (!previous || previous.version !== 2) return { ok: true, baseline: next };
   const nextKeys = new Set(next.exercises.map(r => r.key));
@@ -96,7 +108,9 @@ export function preserveNameMatches(previous, next) {
   for (const old of previous.exercises) {
     if (nextKeys.has(old.key)) continue;
     const target = exercises[old.routine_order];
-    if (!target || prevKeys.has(target.key) || !_sameFrozen(old, target)) {
+    const canon = canonicalMatchKey(old.name || old.key);
+    if (!target || prevKeys.has(target.key) || target.exercise_class !== old.exercise_class
+      || !canon || canon !== canonicalMatchKey(target.name || target.key)) {
       return {
         ok: false,
         message: `“${old.name || old.key}” no longer lines up with the routine, so a matched name on it can’t be carried over safely. The baseline was not rebuilt.`,
