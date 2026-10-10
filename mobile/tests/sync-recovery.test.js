@@ -50,7 +50,7 @@ import {
   saveWeightGoal,
   replaceArchivedWeightGoalsRaw,
 } from '../storage/entries/weightGoal';
-import { replaceRecoveryBlockBaseline } from '../storage/entries/recoveryStorage';
+import { replaceRecoveryBlockBaseline, renameRecoveryBlockBaselineRow } from '../storage/entries/recoveryStorage';
 import { captureRecoveryBaselineFromText } from '../lib/data/recoveryBlocks';
 import { makeWorkoutNoteItem } from '../lib/data/exerciseCatalog';
 import {
@@ -2137,5 +2137,31 @@ describe('rebuilt v2 baseline crosses the sync boundary as an ordinary edit (#12
     signInAsSameOwner();
     await sync();
     expect(cloud.remoteRow(SYNC_TABLES.RECOVERY_BLOCKS, 'rb-rebuild').baseline).toEqual(V2);
+  });
+});
+
+describe('a baseline name match crosses the sync boundary as an ordinary edit (#1298)', () => {
+  const base = captureRecoveryBaselineFromText('-Squat 3x5\n- 225 5,5,5\n-zz\n- 8,8,8');
+  const V2 = { ...base, exercises: base.exercises.map(r => (r.key === 'zz' ? { ...r, key: 'plank 3x45 sec', name: 'Plank 3x45 sec' } : r)) };
+  const change = { fromKey: 'plank 3x45 sec', toKey: 'plank', toName: 'Plank' };
+  async function seed() {
+    await Storage.replaceRecoveryBlocksRaw([{
+      id: 'rb-names', baseline_note_id: 'wn-n', baseline_note_title: 'N', baseline: V2,
+      include_in_normal_analytics: false, started_at: '2026-08-01T09:00:00.000Z', completed_at: null,
+      saved_at: '2026-08-01T09:00:00.000Z', updated_at: '2026-08-01T09:00:00.000Z', deleted_at: null,
+    }]);
+  }
+
+  it('uploads a name match made while signed out and keeps it after a further sync', async () => {
+    await seed();
+    await sync();
+    signOut();
+    await renameRecoveryBlockBaselineRow('rb-names', change);
+    signInAsSameOwner();
+    await sync();
+    const remote = cloud.remoteRow(SYNC_TABLES.RECOVERY_BLOCKS, 'rb-names').baseline.exercises;
+    expect(remote.map(r => [r.key, r.name])).toEqual([['squat', 'Squat'], ['plank', 'Plank']]);
+    await sync();
+    expect((await Storage.loadRecoveryBlocksRaw())[0].baseline.exercises.map(r => r.key)).toEqual(['squat', 'plank']);
   });
 });
