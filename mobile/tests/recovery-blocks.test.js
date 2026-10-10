@@ -139,6 +139,8 @@ describe('captureRecoveryBaseline — weighted metrics', () => {
       key: 'bench',
       name: 'Bench',
       exercise_class: 'weighted',
+      best_e1rm_weight: 185,
+      best_e1rm_reps: 3,
       top_weight: 185,
       volume: 185 * 3 + 185 * 3,
       sets_completed: 2,
@@ -166,7 +168,7 @@ describe('captureRecoveryBaseline — weighted metrics', () => {
   test('weighted rows retain only weighted metrics', () => {
     const row = baselineFor(captureRecoveryBaselineFromText('-Bench\n- 135 5'), 'bench');
     expect(Object.keys(row).sort()).toEqual(
-      ['basis', 'exercise_class', 'key', 'name', 'routine_order', 'sets_completed', 'top_weight', 'volume']
+      ['basis', 'best_e1rm_reps', 'best_e1rm_weight', 'exercise_class', 'key', 'name', 'routine_order', 'sets_completed', 'top_weight', 'volume']
     );
     expect(row.best_set_reps).toBeUndefined();
     expect(row.best_hold_seconds).toBeUndefined();
@@ -2539,6 +2541,7 @@ describe('captureRecoveryBaseline (v2) — latest complete session', () => {
     expect(snap.version).toBe(2);
     expect(baselineFor(snap, 'deadlift')).toEqual({
       key: 'deadlift', name: 'Deadlift', exercise_class: 'weighted',
+      best_e1rm_weight: 325, best_e1rm_reps: 6,
       top_weight: 325, volume: 325 * 18, sets_completed: 3, routine_order: 0, basis: BASIS.COMPLETE,
     });
     expect(baselineFor(snap, 'deadlift').volume).toBe(5850);
@@ -2664,7 +2667,7 @@ describe('captureRecoveryBaseline (v2) — latest complete session', () => {
   test('a row never carries an invented target, minimum, or free-form provenance', () => {
     const snap = captureRecoveryBaselineFromText('-Deadlift: 3x6\n- 325 6,6,6');
     expect(Object.keys(baselineFor(snap, 'deadlift')).sort()).toEqual(
-      ['basis', 'exercise_class', 'key', 'name', 'routine_order', 'sets_completed', 'top_weight', 'volume']
+      ['basis', 'best_e1rm_reps', 'best_e1rm_weight', 'exercise_class', 'key', 'name', 'routine_order', 'sets_completed', 'top_weight', 'volume']
     );
   });
 });

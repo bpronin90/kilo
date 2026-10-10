@@ -11,18 +11,18 @@ import {
   RECOVERY_COMPARISON_STATUS,
   RECOVERY_WEEK_STATUS,
 } from '../../lib/data/recoveryAnalytics';
-import {
-  deriveRecoveryBandSeries,
-  deriveRecoveryMovement,
-  deriveRecoveryWeekBands,
-} from '../../lib/data/recoveryReturnBands';
+import { deriveRecoveryWeekBands } from '../../lib/data/recoveryReturnBands';
+import { deriveRecoveryStrength, STRENGTH_STATUS } from '../../lib/data/recoveryStrength';
 import { summarizeDetailRows, WeekEvidence, WeekUnavailableNotice } from './RecoveryStateGroups';
 import { WeekPicker } from './RecoveryWeekPicker';
 import { RebuildBaselineAction } from './RebuildBaseline';
 import { MatchExerciseNamesAction } from './MatchExerciseNames';
 import { deriveTrainedElsewhere } from './RecoveryWeekIndex';
 import { createStyles } from './analyticsRecoveryStyles';
-import { RecoveryBandBar, RecoveryChangeVisual, RecoveryHero, RecoveryRosterSummary, RecoveryWeeksStrip } from './RecoveryVisuals';
+import { RecoveryRosterSummary } from './RecoveryVisuals';
+import { RecoveryStrengthSummary } from './RecoveryStrengthSummary';
+import { RecoveryStrengthLadder } from './RecoveryStrengthLadder';
+import { RecoveryStrengthWeeks, StrengthScaleNote, strengthScaleMax } from './RecoveryStrengthWeeks';
 
 // A context row is announced ONCE: its visible label ("Started", "Dates",
 // "Baseline") is hidden from assistive tech because the adjacent value's own
@@ -36,8 +36,7 @@ const LABEL_HIDDEN = { accessibilityElementsHidden: true, importantForAccessibil
 // selected week onto a block that never had them.
 export function BlockEvidence({
   block, weeks, notes, unit,
-  // Movement is never derived off an unverified/stale snapshot (#1023 v2 §4
-  // requirement 4) — mirrors the same gate Home and the Overview row apply.
+  // Stale/unverified state suppresses pace and trend-change conclusions (#1305).
   stateStale = false,
   // Reopen (#839): the secondary, non-destructive action offered ONLY on the
   // newest completed block's own card, and only while no block is active —
@@ -134,9 +133,8 @@ export function BlockEvidence({
   const addedCount = selectedWeek ? (selectedWeek.added || []).length : 0;
   const totalRows = totalBaselineExercises + addedCount;
   const weekLabel = selectedWeek ? `Week ${selectedWeek.week_number}` : null;
-  // Bottom context line (#1219): dates (and the routine only when the hero does
-  // not already name it). The hero names the selected week, so the bands above
-  // are never ambiguous about which week they describe.
+  // Bottom context line (#1219): dates (and the routine only when the summary
+  // does not already name it). The summary names the selected week.
   const dateLabel = isActive ? 'Started' : 'Dates';
   const dateValue = isActive
     ? formatDate(block.started_at)
@@ -144,43 +142,30 @@ export function BlockEvidence({
   const trainedElsewhere = useMemo(() => deriveTrainedElsewhere(weekResults, selectedWeek, stateStale), [weekResults, selectedWeek, stateStale]);
   const weekRows = selectedWeek ? [...(selectedWeek.exercises || []), ...(selectedWeek.added || [])] : [];
 
-  // #1029: the six-bucket derivation, one proportional row per TRAINED
-  // performance bucket — never the met-count headline, never sized against
-  // the roster. `Not trained yet` moves out of the bucket list into a
-  // same-tier denominator caption.
+  // Six-bucket bands now feed only the Exercise details summary (#1305): the
+  // strength view below is the primary explanation.
   const bands = useMemo(() => deriveRecoveryWeekBands(selectedWeek), [selectedWeek]);
-  const hasBands = !!bands.buckets;
-  const trained = bands.trained;
-  const rosterSize = bands.roster_size;
-  const notTrainedCount = hasBands ? (bands.buckets.not_trained_yet || 0) : 0;
 
-  // Movement since the most recent qualifying earlier week. Never derived off
-  // an unverified/stale snapshot (#1023 v2 §4); stale shows nothing rather than
-  // blaming insufficient evidence (#1029) — the stale banner carries the cause.
-  const movement = useMemo(() => (
-    (!stateStale && selectedWeek)
-      ? deriveRecoveryMovement(weekResults, { currentWeekId: selectedWeek.week_id })
-      : null
-  ), [stateStale, selectedWeek, weekResults]);
-  const movementUnavailable = !movement && !stateStale && hasBands && !!weekLabel && (selectedWeek?.week_number || 0) > 1;
-
-  // Band strip (#1023 v2 §3/§10c) — one small stacked mini-bar per live week,
-  // Analytics-only, separate from the current-week bucket rows above.
-  const bandSeries = useMemo(() => deriveRecoveryBandSeries(comparison), [comparison]);
-
-  // Even a baseline-empty week still has something to say if it carries
-  // recovery-only work: the merged clause line names it, with no hero above it.
-  const showBandsRegion = selectedWeek && (totalBaselineExercises > 0 || addedCount > 0);
-  // The hero names the anchor routine (#1219) on every path that renders it (including zero trained);
+  // #1305: strength relative to the frozen best set, as of the selected week.
+  const strength = useMemo(() => deriveRecoveryStrength({
+    block, weeks, notes, selectedWeekId: selectedWeek ? selectedWeek.week_id : null, stale: stateStale,
+  }), [block, weeks, notes, selectedWeek, stateStale]);
+  const scaleMax = strengthScaleMax(strength);
+  const strengthOk = strength.status === STRENGTH_STATUS.OK;
+  // An unreadable selected week keeps its own notice below; a baseline-empty
+  // block has nothing to score.
+  const showStrength = comparison.status === RECOVERY_COMPARISON_STATUS.OK && selectedWeek?.status === RECOVERY_WEEK_STATUS.OK
+    && !!weekLabel && (strengthOk || strength.status === STRENGTH_STATUS.PAIR_UNAVAILABLE);
+  // The summary names the anchor routine (#1219) whenever it shows a headline;
   // only then does the bottom line stop repeating it.
-  const heroNamesRoutine = !!showBandsRegion && hasBands && !!weekLabel;
+  const heroNamesRoutine = showStrength && strengthOk && strength.headline != null;
   const showInfo = comparison.status === RECOVERY_COMPARISON_STATUS.OK || comparison.status === RECOVERY_COMPARISON_STATUS.BASELINE_EMPTY;
   const showReasonRow = !editingReason && (reasonEditable || !!block.reason);
   const reasonValue = block.reason || 'Add a reason';
   return (
     <Card>
       {/* The section's only Recovery header is the outer SectionTitle (#1217);
-          the card opens with the hero, and the routine + reason are quiet
+          the card opens with the strength summary, and the routine + reason are quiet
           context at the bottom (#1219). */}
       {comparison.status === RECOVERY_COMPARISON_STATUS.BASELINE_UNAVAILABLE && (
         <Text style={styles.unavailablePanelText}>
@@ -205,24 +190,15 @@ export function BlockEvidence({
           )}
 
           {/* A single, never-unmounted live region (#794 review): selecting a
-              week can land on a hero, a missing/unreadable-note notice, or a
+              week can land on a summary, a missing/unreadable-note notice, or a
               zero-evidence notice — mutually exclusive outcomes of the same
               selectedWeek switch. Gating the live region on any one of them
-              (e.g. the hero alone) drops the announcement entirely whenever
+              (e.g. the summary alone) drops the announcement entirely whenever
               the newly selected week resolves to a different branch. */}
           <View style={styles.weekStatusRegion} accessibilityLiveRegion="polite">
-            {showBandsRegion && (
+            {showStrength && (
               <View style={styles.summaryBlock}>
-                {hasBands && !!weekLabel && (
-                  <RecoveryHero weekLabel={weekLabel} atOrAbove={bands.buckets.at_or_above || 0} trained={trained} routineTitle={routineTitle} />
-                )}
-                {movementUnavailable && (
-                  <Text testID="recovery-movement" style={styles.summaryLine}>Not enough matched lifts to compare weeks yet.</Text>
-                )}
-                {hasBands && trained > 0 && (
-                  <RecoveryBandBar buckets={bands.buckets} trained={trained} weekLabel={weekLabel} added={addedCount} />
-                )}
-                {!!movement && <RecoveryChangeVisual movement={movement} />}
+                <RecoveryStrengthSummary strength={strength} weekLabel={weekLabel} routineTitle={routineTitle} />
               </View>
             )}
 
@@ -241,7 +217,13 @@ export function BlockEvidence({
             />
           )}
 
-          {bandSeries.length > 1 && <RecoveryWeeksStrip series={bandSeries} />}
+          {showStrength && strengthOk && (
+            <>
+              <RecoveryStrengthWeeks strength={strength} scaleMax={scaleMax} />
+              <RecoveryStrengthLadder strength={strength} scaleMax={scaleMax} unit={unit} />
+              <StrengthScaleNote scaleMax={scaleMax} />
+            </>
+          )}
 
           {selectedWeek?.status === RECOVERY_WEEK_STATUS.OK && totalRows > 0 && (
             <View style={styles.detailsPanel}>

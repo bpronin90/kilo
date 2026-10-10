@@ -164,34 +164,31 @@ function _completedSets(sets) {
 // as seconds (see normalizeTimedSections), so the week must classify the same
 // way. A v1 snapshot was frozen with those rows as reps and is compared AS STORED,
 // so its weeks keep the historical parse and metric family exactly.
-export function aggregateRecoveryWeekWork(rawSections, { declarationAware = false } = {}) {
+export function aggregateRecoveryWeekWork(rawSections, options) {
   const work = new Map();
-  if (!Array.isArray(rawSections) || rawSections.length === 0) return work;
+  for (const [key, { name, completed, exercise_class }] of collectRecoveryWeekSets(rawSections, options)) {
+    work.set(key, { key, name, exercise_class, ..._classMetrics(exercise_class, completed) });
+  }
+  return work;
+}
 
+// The completed non-warmup sets behind `aggregateRecoveryWeekWork`, per
+// normalized identity: Map key -> { name, completed, exercise_class }. Shared with
+// the strength score (#1305) so both read exactly the same sets and identities.
+export function collectRecoveryWeekSets(rawSections, { declarationAware = false } = {}) {
+  const out = new Map();
+  if (!Array.isArray(rawSections) || rawSections.length === 0) return out;
   const { exercises } = deriveWorkoutAnalytics(declarationAware ? normalizeTimedSections(rawSections) : rawSections);
-
   for (const ex of exercises) {
-    const occurrences = (ex.occurrences || []).filter(occ => occ.kind !== 'warmup');
-    if (occurrences.length === 0) continue;
-
-    const completed = occurrences
+    const completed = (ex.occurrences || []).filter(occ => occ.kind !== 'warmup')
       .flatMap(occ => _occurrenceEntries(occ))
       .filter(entry => entry && !entry.skipped && !entry.unparsed)
       .flatMap(entry => _completedSets(entry.sets));
-    if (completed.length === 0) continue;
-
     const exercise_class = _detectExerciseClass(completed);
     if (!exercise_class) continue;
-
-    work.set(normalizeExerciseKey(ex.name), {
-      key: normalizeExerciseKey(ex.name),
-      name: ex.name,
-      exercise_class,
-      ..._classMetrics(exercise_class, completed),
-    });
+    out.set(normalizeExerciseKey(ex.name), { name: ex.name, completed, exercise_class });
   }
-
-  return work;
+  return out;
 }
 
 const NO_METRICS = Object.freeze({ values: {}, sets_completed: 0 });

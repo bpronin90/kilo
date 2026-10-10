@@ -854,23 +854,22 @@ Progressive disclosure (#758, R5b): the section answers "how close am I to my
 normal training?" before it shows any evidence. Reading order inside the block
 card is **hero/summary → week selector → details disclosure → block
 context (`Started {date}` with its info button, then the labelled `Reason`)**, and
-both disclosures start collapsed. The hero label states its scope and names the
-anchor routine (`trained this week at or above {routine} baseline`, #1219),
-so the routine appears once, in the hero; the bottom line repeats it only when no
-hero is shown (e.g. no week logged yet).
+both disclosures start collapsed. The strength summary names the anchor routine
+(`of {routine} baseline strength`, #1219/#1305), so the routine appears once, in
+the summary; the bottom line repeats it only when the summary shows no average
+(no week logged, no lift scored every week, legacy baseline, unreadable week).
 
 | Element | Property | Value |
 |---|---|---|
-| Hero count | style | Same as Weight Trends `weightValueLarge` (#1219): KUA `metric-display-mobile` `32`/`36` `onSurface`; legacy `36`/`800` `accentText` — `X of Y`, never a composite score; the first in-card content, no title-like caption above it |
-| Hero caption | fontSize / weight | `13` / `600`, `textMuted` — two lines: `trained this week at or above` (the hero's SCOPE: the denominator counts only exercises trained in the selected week, never the whole routine) then `{routine} baseline`, the routine cut at 24 characters with `…` and ellipsized to one line (full name, or `Untitled Routine`, plus `The count covers only exercises trained this week.` in the accessible label); a zero-trained week reads `Nothing trained yet` / `against {routine} baseline` |
-| Hero/summary group | accessibility | `accessible` + `accessibilityLabel` + `accessibilityLiveRegion="polite"` so a week change is announced without scrolling |
-| Summary line | fontSize | `13`, `textMuted` — the single `Not enough matched lifts to compare weeks yet.` movement line only (the roster counts live in the details summary) |
+| Strength headline | style | Same as Weight Trends `weightValueLarge` (#1219): KUA `metric-display-mobile` `32`/`36` `onSurface`; legacy `36`/`800` `accentText` — the average % of baseline strength (#1305), floored so a below-100 value never reads 100; the first in-card content, no title-like caption above it |
+| Strength caption | fontSize / weight | `13` / `600`, `textMuted` — `of {routine} baseline strength`, the routine cut at 24 characters with `…` and ellipsized to one line (full name, or `Untitled Routine`, in the accessible label); then `13` coverage `Average of N lifts scored every week · N of R baseline lifts` (R = full roster, never trained-this-week) and any excluded-week / dropped-lift disclosure; with no honest average, the plain reason instead of a number |
+| Summary group | accessibility | `accessible` + `accessibilityLabel` inside the card's `accessibilityLiveRegion="polite"` region so a week change is announced without scrolling |
 | Week picker | `RecoveryWeekPicker.js` | `Week` caption above chips; chips sized from the measured width (`minWidth`/`minHeight` `44`, `4` gap, cap `72`), radius `14`, 1px `cardBorder`, `subtleBg`; selected = `accent` fill / `onAccent` text; shown only for more than one week. layout is decided in this order: (1) forced horizontal scroll strip for 13+ weeks, `fontScale >= 1.3`, or a width under three 44dp chips; (2) ONE row whenever all chips fit at the 44dp minimum, for any count up to 12; (3) 1-6 weeks that do not fit one row use the scroll strip (never a wrapped grid); (4) 7-12 weeks that do not fit one row use balanced multi-row (row sizes differ by at most one, never a lone orphan chip). The selected chip is kept in view in strip mode |
 | Details header | title | `13` / `700` `text`, `minHeight 44`, `accessibilityState.expanded`; no count sentence |
-| Details summary | `RecoveryRosterSummary` | ONE TEXT-LED element rendered under the header identically collapsed and expanded, derived from ALL rows the expanded list renders (`summarizeDetailRows`, counted through the same `rowBandId`/status mapping as each row's status word; never null when rows exist). **No bar**: the hero above already draws the week's graded bar, and a second solid stripe read as separate section progress while adding nothing, so the line carries only how the exercise ROWS divide. Short tokens, `13`: `7 trained · 20 not yet · 5 added` (number `800` ink for `trained`, `700` `onSurfaceVariant` for the quiet counts; label `600`; zero tokens omitted). `N trained` and `M not yet` (roster minus trained) come from the SAME `deriveRecoveryWeekBands` values as the hero, so hero and summary cannot disagree and unusable-baseline rows stay out of the roster denominator; `J can't compare` and `K added` are additive tokens counted from all rows that never feed trained / not yet. **Intrinsic whole-token layout**: each count is its own unsplittable token view (its count `flexShrink: 0`; the token itself `maxWidth: '100%'`), laid out in ONE plain `flexWrap: 'wrap'` row with consistent column (`14`) and row (`2`) gaps. Whole tokens wrap to the next line BEFORE any shrink applies, so a token that fits is never split or shrunk; only a token wider than the card by itself (for example `20 can't compare` at a large font on a ~250dp card) shrinks to the card width and wraps ITS OWN label as a last resort (never truncated, no `numberOfLines`), so nothing overflows the card on any device or font scale; the owner's 390dp data stays on one row when it fits and flows whole-token onto further lines at narrow widths or large text. There are no glyph separators (a separator could start or end a wrapped row and React Native gives no per-row information), so gaps divide the tokens. The earlier "never an orphaned last count" goal is deliberately relaxed: an orphan cannot be ruled out intrinsically, and the old width-estimate balancer (which could not guarantee whole tokens either) is removed. If no token applies, a `T exercises` total is shown. The visible Gap stat was removed; the accessible label carries the full wording: the trained-of-roster sentence, `By status:` (all six states, zeros included, Close folded into Rebuilding, same words as the hero label, ending `Added during recovery K`), and the most common gap |
+| Details summary | `RecoveryRosterSummary` | ONE TEXT-LED element rendered under the header identically collapsed and expanded, derived from ALL rows the expanded list renders (`summarizeDetailRows`, counted through the same `rowBandId`/status mapping as each row's status word; never null when rows exist). **No bar**: a solid stripe here read as separate section progress, so the line carries only how the exercise ROWS divide. Short tokens, `13`: `7 trained · 20 not yet · 5 added` (number `800` ink for `trained`, `700` `onSurfaceVariant` for the quiet counts; label `600`; zero tokens omitted). `N trained` and `M not yet` (roster minus trained) come from `deriveRecoveryWeekBands`, so unusable-baseline rows stay out of the roster denominator; `J can't compare` and `K added` are additive tokens counted from all rows that never feed trained / not yet. **Intrinsic whole-token layout**: each count is its own unsplittable token view (its count `flexShrink: 0`; the token itself `maxWidth: '100%'`), laid out in ONE plain `flexWrap: 'wrap'` row with consistent column (`14`) and row (`2`) gaps. Whole tokens wrap to the next line BEFORE any shrink applies, so a token that fits is never split or shrunk; only a token wider than the card by itself (for example `20 can't compare` at a large font on a ~250dp card) shrinks to the card width and wraps ITS OWN label as a last resort (never truncated, no `numberOfLines`), so nothing overflows the card on any device or font scale; the owner's 390dp data stays on one row when it fits and flows whole-token onto further lines at narrow widths or large text. There are no glyph separators (a separator could start or end a wrapped row and React Native gives no per-row information), so gaps divide the tokens. The earlier "never an orphaned last count" goal is deliberately relaxed: an orphan cannot be ruled out intrinsically, and the old width-estimate balancer (which could not guarantee whole tokens either) is removed. If no token applies, a `T exercises` total is shown. The visible Gap stat was removed; the accessible label carries the full wording: the trained-of-roster sentence, `By status:` (all six states, zeros included, Close folded into Rebuilding, ending `Added during recovery K`), and the most common gap |
 | Details collapse | icon | `MaterialIcons` `expand-more`/`expand-less`, `18`, `textMuted` (app-wide convention) |
 | **Exercise row** | `recoveryVisualStyles.js` `ex*` | name `15` / `700` `text`; `8` dot (graded token, or the shared neutral for not-graded rows) + plain status word `13` / `600` `textMuted`; one thin `6` bar (band token on `surfaceSection` track, fill capped at 100%) with the measure-named uncapped percent `13` / `800` (`Total work 11%`, `Reps 66%`, `Time 45%`); numbers `13` `textMuted` (`Load 135 lb / 135 lb`); full sentences only in `accessibilityLabel` |
-| Block context | `contextBlock` / `contextRow` | ONE quiet labelled list under a single divider (`13`; label `600` `onSurfaceVariant` on a shared `68` minimum-width column so values align at ordinary widths, relaxed to each label's own width when the window is under `300` wide or `fontScale >= 1.6` so a date is never squeezed; value `onSurface`; every row `minHeight 44`, no dead gap): **`Started {date}`** (active) or **`Dates {start} – {end}`** (completed; a narrow card wraps between the two whole dates) with the shared `InfoButton` (#1245; `About these numbers`, real `44x44`, glyph `18`) directly AFTER the `Started`/`Dates` label, before the date, by an ordinary `8` row gap — beside the label it explains, never margin-pushed to the card edge, with NO negative margins (its whole 44x44 box is reserved, so it cannot overlap the date or start outside the row); when label + date + button cannot share a line the whole button wraps to the next line, left-aligned at the row edge — and the non-medical note (`Training numbers only. Not a medical judgment — only you end a Recovery block.`) revealed right under it in the same always-mounted polite live region; then **`Reason {value} ✎`**, one tappable row (the whole row is the `>=44dp` target, pencil glyph `16` as the visible edit affordance, `add` glyph and muted `Add a reason` when empty, up to two ellipsized lines with the full text on the label, disabled at `0.5` opacity when locked/busy, replaced by the unchanged inline editor while editing, a plain labelled row with no control when read-only); a `Baseline {routine}` row leads only when no hero names the routine. Each row is announced ONCE: the visible label (`Started`/`Dates`/`Baseline`) is hidden from assistive tech (`accessibilityElementsHidden`, `importantForAccessibility="no"`) and the adjacent value's accessible label carries both (`Started 08-08-2026`, `Baseline: {routine}`); a read-only Reason row is one grouped element (`Reason: {value}`). Dates are never ellipsized or squeezed mid-number: the date row wraps (the info button wraps whole to the next line if label + date + button cannot share a line) and each date stays whole. Shared `Card` chrome, no local gap |
+| Block context | `contextBlock` / `contextRow` | ONE quiet labelled list under a single divider (`13`; label `600` `onSurfaceVariant` on a shared `68` minimum-width column so values align at ordinary widths, relaxed to each label's own width when the window is under `300` wide or `fontScale >= 1.6` so a date is never squeezed; value `onSurface`; every row `minHeight 44`, no dead gap): **`Started {date}`** (active) or **`Dates {start} – {end}`** (completed; a narrow card wraps between the two whole dates) with the shared `InfoButton` (#1245; `About these numbers`, real `44x44`, glyph `18`) directly AFTER the `Started`/`Dates` label, before the date, by an ordinary `8` row gap — beside the label it explains, never margin-pushed to the card edge, with NO negative margins (its whole 44x44 box is reserved, so it cannot overlap the date or start outside the row); when label + date + button cannot share a line the whole button wraps to the next line, left-aligned at the row edge — and the non-medical note (`Training numbers only. Not a medical judgment — only you end a Recovery block.`) revealed right under it in the same always-mounted polite live region; then **`Reason {value} ✎`**, one tappable row (the whole row is the `>=44dp` target, pencil glyph `16` as the visible edit affordance, `add` glyph and muted `Add a reason` when empty, up to two ellipsized lines with the full text on the label, disabled at `0.5` opacity when locked/busy, replaced by the unchanged inline editor while editing, a plain labelled row with no control when read-only); a `Baseline {routine}` row leads only when the strength summary does not name the routine. Each row is announced ONCE: the visible label (`Started`/`Dates`/`Baseline`) is hidden from assistive tech (`accessibilityElementsHidden`, `importantForAccessibility="no"`) and the adjacent value's accessible label carries both (`Started 08-08-2026`, `Baseline: {routine}`); a read-only Reason row is one grouped element (`Reason: {value}`). Dates are never ellipsized or squeezed mid-number: the date row wraps (the info button wraps whole to the next line if label + date + button cannot share a line) and each date stays whole. Shared `Card` chrome, no local gap |
 | Completed-block history | default | collapsed, summary header states the count and the latest block |
 
 **Exercise row** (#1219) replaced the counted state-group headers and the metric
@@ -892,25 +891,30 @@ limiting measure reads `Rebuilding`, `Close` is never named or colored, and two
 adjacent counts are never shown. `Not trained yet`, `Can't compare` and `Added
 during recovery` are not judgments: they keep their words, share ONE quiet
 neutral mark/count (the existing `onSurfaceVariant`; no new token), and never
-enter a colored hero/summary/strip segment. Only Analytics Recovery shows these
-names and colors, on four surfaces that share the same names, merged counts,
-tokens and quiet wording: the hero `RecoveryBandBar` (segments + legend, where
-`Can't compare` is a neutral-dot legend item, never a segment), the
-`RecoveryRosterSummary` text tokens (collapsed and expanded, no bar),
-`RecoveryWeeksStrip` (segments + one shared legend; a week with only a
-not-graded status shows neutral text, no segment), and the exercise rows. A
-segmented track is drawn ONLY when at least one graded state exists: with only
-`Can't compare`, `Not trained yet` or added rows the hero bar and strip row
-hide the track and keep the quiet legend item / tokens / text.
-Accessible labels name every state count, zeros included: the current-week hero
-bar and the roster summary share one sentence, `At or above 1, Rebuilding 2,
-Early 0, Not trained yet 0, Can't compare 0, Added during recovery 0`, where
-`Added during recovery` is the selected week's existing added count (passed from
-`RecoveryEvidence`) and `Can't compare`/`Added` in the summary count all visible
-rows; the weeks-strip per-week labels name the graded, `Not trained yet` and
-`Can't compare` counts only (the band series carries no added count). No label
-announces a separate Close count. Home renders none of this (see Recovery Status
+enter a colored segment. Only Analytics Recovery shows these names and colors,
+on two surfaces that share the same names, merged counts, tokens and quiet
+wording: the `RecoveryRosterSummary` text tokens (collapsed and expanded, no bar)
+and the exercise rows. Its accessible label names every state count, zeros
+included (`At or above 1, Rebuilding 2, Early 0, Not trained yet 0, Can't
+compare 0, Added during recovery 0`), and never announces a separate Close count.
+Home renders none of this (see Recovery Status
 Card).
+
+**Strength view** (#1305): the Analytics Recovery card leads with strength
+relative to the frozen best set instead of the band hero, band bar, movement row
+and band strip (all removed from Analytics; Home/Overview are unchanged).
+`RecoveryStrengthSummary` is the one primary selected-week summary: the KUA
+metric hero tier (32/36) average %, `of <routine> baseline strength`, and a
+13sp coverage caption (`Average of N lifts scored every week · N of R baseline
+lifts`, R = full roster), or the plain reason when there is no honest average.
+`RecoveryStrengthWeeks` (one row per recovery week through the selection) and
+`RecoveryStrengthLadder` (one row per scored lift, its best set vs the baseline
+set, and best-case pace text) share ONE percent scale (`strengthScaleMax`: 100,
+or the next 10 above the largest value) with an on-surface ink 100% reference
+mark and the court primary fill on the section track; a `StrengthScaleNote`
+states the scale. No warning/amber ink. An unreadable week is a dashed `No
+data` gap. Not-retested and never-scoreable lifts are plain 13sp text lists.
+Styles: `recoveryStrengthStyles.js`.
 
 **Detail order** (#1219): rows follow the routine, not a state ranking. Baseline
 exercises the week logged come first, then baseline exercises not yet trained
@@ -979,8 +983,9 @@ graded value with another court in the same mode.
 
 Wording is part of the contract, not decoration:
 
-- The hero is the count of baseline exercises met. No composite recovery score
-  exists on this surface.
+- The headline is strength relative to the frozen best set (#1305), an
+  average over one stated, consistent set of lifts. It is separate from the
+  per-exercise `Baseline met` criterion and never completes a block.
 - `Total work` replaces `Volume` (load × reps across completed working sets) and
   `Load` is the heaviest completed working set that week. The visible rows no
   longer print definition sentences; they use only these short labels.

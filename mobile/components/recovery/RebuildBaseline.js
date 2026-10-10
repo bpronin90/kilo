@@ -1,5 +1,6 @@
-// On-demand v1 -> v2 baseline rebuild (#1227): the `Rebuild baseline` action on an
-// Analytics Recovery evidence card, its read-only preview, and the explicit confirm.
+// On-demand baseline rebuild (#1227, #1305): the `Rebuild baseline` action on an
+// Analytics Recovery evidence card for a snapshot without strength data (v1, or v2
+// without best-set pairs), its read-only preview, and the explicit confirm.
 // The preview comes from `planBaselineRebuild` (the exact v2 capture); nothing is
 // written until Confirm, and the write re-validates authoritatively in the hook.
 
@@ -21,7 +22,10 @@ const WARNING = 'This routine was edited after Recovery began, so the rebuilt va
 const _n = (v) => Number(v).toLocaleString();
 function _metrics(row, unit) {
   if (!row) return 'not in the old baseline';
-  if (row.exercise_class === 'weighted') return `${formatLiftWeightValue(row.top_weight, unit)} ${unit} top, ${_n(Math.round(displayWeight(row.volume, unit)))} ${unit} volume`;
+  if (row.exercise_class === 'weighted') {
+    const best = row.best_e1rm_weight > 0 ? `, best set ${formatLiftWeightValue(row.best_e1rm_weight, unit)} × ${row.best_e1rm_reps}` : '';
+    return `${formatLiftWeightValue(row.top_weight, unit)} ${unit} top, ${_n(Math.round(displayWeight(row.volume, unit)))} ${unit} volume${best}`;
+  }
   if (row.exercise_class === 'reps_only') return `${_n(row.best_set_reps)} best, ${_n(row.total_reps)} reps`;
   return `${_n(row.best_hold_seconds)}s best, ${_n(row.total_seconds)}s total`;
 }
@@ -94,7 +98,7 @@ export function RebuildBaselineAction({ block, notes, unit = 'lb', locked = fals
       {plan.eligible && open && (
         <View testID="recovery-rebuild-preview" style={styles.reasonEditor}>
           <Text style={styles.reasonCaption}>
-            Rebuild this baseline from your routine using the current rules (latest complete session, routine order). Old → new:
+            This replaces the frozen baseline with values read from your routine as it is now (latest complete session, routine order), adding the best set strength scores use. Matched exercise names are kept. Old → new:
           </Text>
           {rows.map(r => <Text key={r.key} style={styles.reasonCaption}>{r.text}</Text>)}
           {plan.editedAfterStart ? (

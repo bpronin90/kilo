@@ -15,6 +15,7 @@ import {
   parseHeaderDeclaration, parseExerciseHeader,
 } from '../parser.js';
 import { _occurrenceEntries } from './workoutAnalytics.js';
+import { bestEpleySet, baselineLacksStrengthData, preserveNameMatches } from './recoveryStrengthBaseline.js';
 
 // Version stamped onto every frozen baseline snapshot. Bump only when the
 // per-exercise metric shape below changes in a way that makes an old snapshot
@@ -135,8 +136,11 @@ function _baselineMetrics(sets) {
       s => s.weight_value != null && s.weight_value > 0 && s.rep_count != null && s.rep_count > 0
     );
     if (working.length === 0) return null;
+    // #1305: the best Epley set of this same session, frozen as a pair.
+    const best = bestEpleySet(working);
     return {
       exercise_class,
+      ...(best ? { best_e1rm_weight: best.weight, best_e1rm_reps: best.reps } : {}),
       top_weight: Math.max(...working.map(s => s.weight_value)),
       // Completed volume, the standard tonnage definition used elsewhere in the
       // app: sum(weight x reps) over completed working sets only.
@@ -386,16 +390,20 @@ export function captureRecoveryBaselineFromText(rawText) {
   return captureRecoveryBaseline(parsed.sections || []);
 }
 
-// ── on-demand v1 -> v2 baseline rebuild (#1227) ───────────────────────────────
+// ── on-demand baseline rebuild (#1227, #1305) ─────────────────────────────────
 //
-// Pure plan for rebuilding a live v1 block's frozen baseline from its baseline
+// Pure plan for rebuilding a live block's frozen baseline from its baseline
 // routine. It reuses `captureRecoveryBaseline` (the exact v2 capture path, never a
-// second derivation). `eligible` is false for a tombstoned or already-v2 block,
-// and for a missing/deleted/other-id, oversized, unparseable or empty routine.
-// `editedAfterStart` is true only when BOTH timestamps parse and the note is newer.
+// second derivation). Eligible only while the snapshot lacks strength data (any
+// v1, or a v2 whose weighted rows miss the best-set pair), so an upgraded
+// snapshot is never rewritten. A v2 snapshot's confirmed name matches are carried
+// over or the plan is refused (`preserveNameMatches`). `eligible` is also false
+// for a tombstone and a missing/deleted/other-id, oversized, unparseable or empty
+// routine. `editedAfterStart` is true only when BOTH timestamps parse and the note
+// is newer.
 export function planBaselineRebuild(block, note) {
   const no = (message) => ({ eligible: false, message });
-  if (!block || !isLiveRecord(block) || block.baseline?.version !== 1) {
+  if (!block || !isLiveRecord(block) || !baselineLacksStrengthData(block.baseline)) {
     return no('This block’s baseline cannot be rebuilt.');
   }
   if (!note || note.deleted_at || note.id !== block.baseline_note_id || typeof note.raw_text !== 'string') {
@@ -403,13 +411,15 @@ export function planBaselineRebuild(block, note) {
   }
   const parsed = parseWorkoutNote(note.raw_text);
   if (parsed.ok === false) return no('The baseline routine could not be read.');
-  const baseline = captureRecoveryBaseline(parsed.sections || []);
-  if (baseline.exercises.length === 0) return no('The baseline routine has no exercises to rebuild from.');
+  const captured = captureRecoveryBaseline(parsed.sections || []);
+  if (captured.exercises.length === 0) return no('The baseline routine has no exercises to rebuild from.');
+  const kept = preserveNameMatches(block.baseline, captured);
+  if (!kept.ok) return no(kept.message);
   const noteTime = Date.parse(note.updated_at);
   const startTime = Date.parse(block.started_at);
   return {
     eligible: true,
-    baseline,
+    baseline: _deepFreeze(kept.baseline),
     previous: block.baseline.exercises || [],
     editedAfterStart: Number.isFinite(noteTime) && Number.isFinite(startTime) && noteTime > startTime,
   };
