@@ -23,6 +23,7 @@ import * as ReadState from './recoveryReadState';
 import * as AnalyticsHooks from './recoveryAnalyticsHooks';
 import * as Eligibility from './recoveryEligibility';
 import * as Mutations from './recoveryMutations';
+import * as BaselineNames from './recoveryBaselineMutations';
 
 // ── read lifecycle + shared store ─────────────────────────────────────────────
 export const RECOVERY_STATUS = ReadState.RECOVERY_STATUS;
@@ -59,3 +60,5 @@ export const setRecoveryNormalAnalyticsInclusionCore = Mutations.setRecoveryNorm
 export const setRecoveryBlockReasonCore = Mutations.setRecoveryBlockReasonCore;
 export const rebuildRecoveryBaselineCore = Mutations.rebuildRecoveryBaselineCore;
 export const useRecoveryBlockLifecycle = Mutations.useRecoveryBlockLifecycle;
+export const matchBaselineNameCore = BaselineNames.matchBaselineNameCore;
+export const useRecoveryBaselineNames = BaselineNames.useRecoveryBaselineNames;
