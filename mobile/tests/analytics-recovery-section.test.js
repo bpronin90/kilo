@@ -1937,22 +1937,22 @@ describe('AnalyticsRecoverySection — strength trend by recovery week (#1305)',
   });
 
   test('a legacy baseline whose rebuild is refused shows the reason (PR #1308 review)', () => {
-    const snap = captureRecoveryBaselineFromText('-Bench Press — heavy\n- 135 5');
-    const matched = { ...snap, exercises: snap.exercises.map(({ best_e1rm_weight, best_e1rm_reps, ...r }) => ({ ...r, key: 'bench press', name: 'Bench Press' })) };
+    // Two frozen "Row" variants against one "Row" in the routine: ambiguous.
+    const snap = captureRecoveryBaselineFromText('-Row, heavy\n- 100 5\n-Row, light\n- 60 10');
+    const legacy = { ...snap, exercises: snap.exercises.map(({ best_e1rm_weight, best_e1rm_reps, ...r }) => r) };
     let c;
     act(() => {
       c = render.create(
         <AnalyticsRecoverySection
-          blocks={[block({ baseline: matched })]}
+          blocks={[block({ baseline: legacy })]}
           weeks={[week(1, 'note-w1')]}
-          notes={[note('note-baseline', '-Incline Bench\n- 115 5'), note('note-w1', '-Bench Press\n- 135 5')]}
-          onRebuildBaseline={jest.fn()}
+          notes={[note('note-baseline', '-Row\n- 90 5'), note('note-w1', '-Row\n- 90 5')]}
         />
       );
     });
     const refused = hostById(c.root, 'recovery-rebuild-refused')[0];
     expect(refused).toBeDefined();
-    expect(hostTextsIn(refused)[0]).toMatch(/Bench Press.*can’t be carried over safely.*not rebuilt/);
+    expect(hostTextsIn(refused)[0]).toMatch(/Row, heavy.*can’t be carried over safely.*not rebuilt/);
   });
 
   test('values above 100% stay factual on one labelled common scale', () => {

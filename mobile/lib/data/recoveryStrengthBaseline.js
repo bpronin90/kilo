@@ -96,41 +96,50 @@ export function baselineLacksStrengthData(baseline) {
 // Carry confirmed name matches (#1298) from an existing v2 snapshot onto a
 // freshly captured one, using #1298's OWN proof rule (owner decision, PR #1308):
 // a match only ever links names that reduce to the same canonical key, and only
-// when that canonical group is one-to-one. So, per old row:
-//   - key still captured: kept, unless a NEW row (a key the old snapshot did not
-//     have) now shares its canonical name — then which row is "that lift" is
-//     ambiguous (a matched identity could silently move), so refuse;
-//   - key gone (a matched or removed row): carried only onto the ONE new-capture
-//     row sharing its canonical name, when that row is itself new, of the same
-//     class, and not already claimed; otherwise refuse.
-// Neither a missing key, a position, nor equal numbers is proof. A refusal names
-// the row: a match is never silently undone and another lift's best set is never
-// frozen under a matched name. v1 snapshots cannot carry matches (rename is
-// v2-only), so they pass through unchanged.
+// across the LEFTOVER rows of a canonical group that are one-to-one. Per group:
+//   left = old rows whose key the new capture no longer has (matched or removed)
+//   new  = new-capture rows whose key the old snapshot did not have
+//   - left 0, new 0: nothing changed in the group;
+//   - left 0, new >= 1: an addition; ambiguous only if an old row of the group
+//     still stands (a matched identity could silently move), so refuse then;
+//   - left 1, new 1, same class: carry the old key/name onto the new row;
+//   - left >= 1, new 0: the source lift is gone from the routine. A #1298 match
+//     always leaves its source name in the routine, so these rows cannot be a
+//     surviving match: they are dropped and the preview shows them as removed;
+//   - anything else: ambiguous, refuse with the row named.
+// Neither a position nor equal numbers is proof. A match is never silently
+// undone and another lift's best set is never frozen under a matched name. v1
+// snapshots cannot carry matches (rename is v2-only), so they pass through.
 export function preserveNameMatches(previous, next) {
   if (!previous || previous.version !== 2) return { ok: true, baseline: next };
   const prevKeys = new Set(previous.exercises.map(r => r.key));
   const exercises = next.exercises.map(r => ({ ...r }));
   const nextKeys = new Set(exercises.map(r => r.key));
   const canonOf = (r) => canonicalMatchKey(r.name || r.key);
-  const claimed = new Set();
-  const refuse = (old) => ({
+  const refuse = (row) => ({
     ok: false,
-    message: `“${old.name || old.key}” no longer lines up with the routine, so a matched name on it can’t be carried over safely. The baseline was not rebuilt.`,
+    message: `“${row.name || row.key}” no longer lines up with the routine, so a matched name on it can’t be carried over safely. The baseline was not rebuilt.`,
   });
-  for (const old of previous.exercises) {
-    const canon = canonOf(old);
-    const group = canon ? exercises.filter(r => canonOf(r) === canon) : [];
-    const fresh = group.filter(r => !prevKeys.has(r.key));
-    if (nextKeys.has(old.key)) {
-      if (fresh.length > 0) return refuse(old);
+  const groups = new Map();
+  const group = (c) => {
+    if (!groups.has(c)) groups.set(c, { old: [], next: [] });
+    return groups.get(c);
+  };
+  for (const r of previous.exercises) group(canonOf(r)).old.push(r);
+  for (const r of exercises) group(canonOf(r)).next.push(r);
+  for (const [canon, { old, next: rows }] of groups) {
+    const left = old.filter(r => !nextKeys.has(r.key));
+    const added = rows.filter(r => !prevKeys.has(r.key));
+    if (left.length === 0) {
+      if (added.length > 0 && old.length > 0) return refuse(old[0]);
       continue;
     }
-    const target = group.length === 1 && fresh.length === 1 ? fresh[0] : null;
-    if (!target || claimed.has(target) || target.exercise_class !== old.exercise_class) return refuse(old);
-    claimed.add(target);
-    target.key = old.key;
-    target.name = old.name;
+    if (added.length === 0) continue; // source gone: dropped, shown as removed
+    if (!canon || left.length !== 1 || added.length !== 1 || left[0].exercise_class !== added[0].exercise_class) {
+      return refuse(left[0]);
+    }
+    added[0].key = left[0].key;
+    added[0].name = left[0].name;
   }
   if (new Set(exercises.map(r => r.key)).size !== exercises.length) {
     return { ok: false, message: 'Matched exercise names would collide in the rebuilt baseline. The baseline was not rebuilt.' };

@@ -157,34 +157,41 @@ describe('legacy rebuild (#1305)', () => {
     expect(row(plan.baseline, 'bench press')).toMatchObject({ name: 'Bench Press', best_e1rm_weight: 135, best_e1rm_reps: 5 });
   });
 
-  test('equal aggregate numbers are not a match: Bench 100x5,5 edited into Incline Bench 100x8,2 refuses (PR #1308 review)', () => {
+  test('an in-place edit is never a match: Bench 100x5,5 -> Incline Bench 100x8,2 drops Bench and adds Incline under its own name (PR #1308 review)', () => {
     const before = captureRecoveryBaselineFromText('-Bench\n- 100 5,5');
-    const after = '-Incline Bench\n- 100 8,2';
-    const nextRow = captureRecoveryBaselineFromText(after).exercises[0];
-    expect([nextRow.top_weight, nextRow.volume, nextRow.sets_completed]).toEqual([100, 1000, 2]);
-    const plan = planBaselineRebuild(block(legacyV2(before)), note({ raw_text: after }));
-    expect(plan.eligible).toBe(false);
-    expect(plan.message).toMatch(/Bench.*no longer lines up.*not rebuilt/);
+    const plan = planBaselineRebuild(block(legacyV2(before)), note({ raw_text: '-Incline Bench\n- 100 8,2' }));
+    expect(plan.eligible).toBe(true);
+    // One row, under the incline lift's own identity; its best set is never
+    // frozen under the Bench identity.
+    expect(plan.baseline.exercises).toHaveLength(1);
+    expect(plan.baseline.exercises[0].key).not.toBe('bench');
+    expect(plan.baseline.exercises[0]).toMatchObject({ best_e1rm_weight: 100, best_e1rm_reps: 8 });
+    expect(row(plan.baseline, 'bench')).toBeUndefined();
   });
 
-  test('a match that no longer lines up with the routine blocks the rebuild with a reason', () => {
-    const matched = legacyV2(CAPTURED);
-    matched.exercises = matched.exercises.map(r => (r.key === 'bench' ? { ...r, key: 'db bench', name: 'DB Bench' } : r));
-    const edited = note({ raw_text: '-Squat 3x5\n- 225 5,5,5\n-Bench 3x5\n- 135 5,5,5' });
-    const plan = planBaselineRebuild(block(matched), edited);
-    expect(plan.eligible).toBe(false);
-    // Plank left the routine: a removed row and a renamed one look the same, so
-    // the rebuild refuses rather than risk dropping a match.
-    expect(plan.message).toMatch(/Plank.*no longer lines up.*not rebuilt/);
-    expect(preserveNameMatches(matched, captureRecoveryBaselineFromText(edited.raw_text)).ok).toBe(false);
+  test('a lift removed from the routine is dropped (no canonical counterpart can be a surviving match)', () => {
+    const plan = planBaselineRebuild(block(legacyV2(CAPTURED)), note({ raw_text: '-Squat 3x5\n- 225 5,5,5\n-Bench 3x5\n- 135 5,5,5' }));
+    expect(plan.eligible).toBe(true);
+    expect(plan.baseline.exercises.map(r => r.key)).toEqual(['squat', 'bench']);
+    expect(plan.previous.map(r => r.key)).toContain('plank');
   });
 
-  test('an in-place routine edit is not a match: a replaced lift with other numbers at the same position refuses the rebuild (PR #1308 review)', () => {
-    // Bench (never matched) was replaced in the routine by Incline Bench at 115.
-    const edited = note({ raw_text: ROUTINE.replace('-Bench 3x5\n- 135 5,5,5', '-Incline Bench 3x5\n- 115 5,5,5') });
-    const plan = planBaselineRebuild(block(legacyV2(CAPTURED)), edited);
+  test('leftover rows pair one-to-one inside a canonical group that keeps another row (owner data shape)', () => {
+    // Frozen: "Dead bugs" and "Dead bugs 3x10 each side"; the routine renamed the
+    // first to "Core: Dead bugs 3x8 each side" and kept the second.
+    const frozen = legacyV2(captureRecoveryBaselineFromText('-Squat\n- 225 5\n-Dead bugs\n- 10,10\n-Dead bugs 3x10 each side\n- 10,10,10'));
+    const plan = planBaselineRebuild(block(frozen), note({ raw_text: '-Squat\n- 225 5\n-Core: Dead bugs 3x8 each side\n- 8,8,8\n-Dead bugs 3x10 each side\n- 10,10,10' }));
+    expect(plan.eligible).toBe(true);
+    expect(plan.baseline.exercises.map(r => r.key)).toEqual(['squat', 'dead bugs', 'dead bugs 3x10 each side']);
+    expect(row(plan.baseline, 'dead bugs')).toMatchObject({ name: 'Dead bugs', total_reps: 24 });
+  });
+
+  test('two leftovers against one new row in a group is ambiguous and refuses', () => {
+    const frozen = legacyV2(captureRecoveryBaselineFromText('-Row, heavy\n- 100 5\n-Row, light\n- 60 10'));
+    const plan = planBaselineRebuild(block(frozen), note({ raw_text: '-Row\n- 90 5' }));
+    expect(baselineLacksStrengthData(frozen)).toBe(true);
     expect(plan.eligible).toBe(false);
-    expect(plan.message).toMatch(/Bench.*no longer lines up.*not rebuilt/);
+    expect(plan.message).toMatch(/Row, heavy.*can’t be carried over safely/);
   });
 
   test('a new same-canonical row makes a confirmed match ambiguous, so the rebuild refuses (PR #1308 review)', () => {

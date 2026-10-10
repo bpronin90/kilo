@@ -164,7 +164,7 @@ Each exercise is frozen as one of three families, decided by what you logged:
 | Timed | no load, but a held duration | best hold, total duration |
 | Reps-only | no load and no duration, just counted reps | best set, total reps |
 
-The **best set** of a weighted exercise is the one completed working set in that same frozen session with the highest estimated one-rep max (Epley: weight × (1 + reps ÷ 30)), stored as its weight and reps. It is kept as a pair because top weight and total reps cannot say which reps went with which load. Blocks frozen before #1305 do not have it; their strength view says "Baseline best-set data unavailable" until you confirm a rebuild from the baseline routine as it is now (the preview shows old and new values, keeps matched exercise names, and is refused if a matched name can no longer be lined up).
+The **best set** of a weighted exercise is the one completed working set in that same frozen session with the highest estimated one-rep max (Epley: weight × (1 + reps ÷ 30)), stored as its weight and reps. It is kept as a pair because top weight and total reps cannot say which reps went with which load. Blocks frozen before #1305 do not have it; their strength view says "Baseline best-set data unavailable" until you confirm a rebuild from the baseline routine as it is now (the preview shows old and new values; a matched exercise name is kept when exactly one routine row shares its name; a lift no longer in the routine is shown as removed; any ambiguous pairing refuses the rebuild with the exercise named).
 
 #### What each week counts
 
