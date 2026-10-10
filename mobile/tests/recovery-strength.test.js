@@ -83,6 +83,17 @@ describe('loaded-duration work (PR #1308 review)', () => {
     expect(r.not_scored).toEqual([{ key: 'farmer carry', name: 'Farmer Carry', reason: 'no_baseline_set' }]);
   });
 
+  test('a duration RANGE header with no set count freezes no pair either (PR #1308 review)', () => {
+    const baseline = captureRecoveryBaselineFromText('-Farmer Carry: 30-45s\n- 100 30,30');
+    expect(baseline.exercises[0].best_e1rm_weight).toBeUndefined();
+    const { planBaselineRebuild } = require('../lib/data/recoveryBlocks');
+    const legacy = { version: 1, exercises: [{ key: 'farmer carry', name: 'Farmer Carry', exercise_class: 'weighted', top_weight: 100, volume: 6000, sets_completed: 2 }] };
+    const blk = { id: 'b', baseline_note_id: 'n', baseline: legacy, started_at: '2026-05-01T00:00:00Z', deleted_at: null };
+    const plan = planBaselineRebuild(blk, { id: 'n', raw_text: '-Farmer Carry: 30-45s\n- 100 30,30', deleted_at: null });
+    expect(plan.eligible).toBe(false);
+    expect(plan.message).toMatch(/no lifts with load and reps/);
+  });
+
   test('a week that logs a scored lift under a timed header is unscoreable, not a strength gain', () => {
     const baseline = captureRecoveryBaselineFromText('-Carry\n- 50 5');
     const r = derive(['-Carry: 2x30s\n- 50 30,30'], { baseline });

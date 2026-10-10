@@ -346,10 +346,13 @@ export function captureRecoveryBaseline(rawSections) {
       const key = normalizeExerciseKey(ex.name);
       if (!groups.has(key)) groups.set(key, { order: groups.size, units: [] });
       const spec = declaredPrescription(ex.raw_header);
+      // Any duration header (even a range with no set count, `30-45s`) means the
+      // logged counts are seconds: never a best-set reps pair (#1305).
+      const timed = parseHeaderDeclaration(ex.raw_header)?.type === 'duration';
       const entries = _occurrenceEntries({ rows: ex.rows, sets: ex.sets || [], session_entries: ex.session_entries, kind: section.kind });
       for (const entry of entries) {
         if (!entry || entry.skipped || entry.unparsed) continue;
-        groups.get(key).units.push({ sets: entry.sets, spec });
+        groups.get(key).units.push({ sets: entry.sets, spec, timed });
       }
     }
   }
@@ -360,12 +363,12 @@ export function captureRecoveryBaseline(rawSections) {
     for (let i = units.length - 1; i >= 0 && !picked; i--) {
       const metrics = _baselineMetrics(units[i].sets);
       if (metrics && units[i].spec && _sessionIsComplete(units[i].sets, units[i].spec, metrics)) {
-        picked = { metrics, spec: units[i].spec, complete: true };
+        picked = { metrics, spec: units[i].spec, timed: units[i].timed, complete: true };
       }
     }
     for (let i = units.length - 1; i >= 0 && !picked; i--) {
       const metrics = _baselineMetrics(units[i].sets);
-      if (metrics) picked = { metrics, spec: units[i].spec, complete: false };
+      if (metrics) picked = { metrics, spec: units[i].spec, timed: units[i].timed, complete: false };
     }
     if (!picked) continue;
     const BASIS = RECOVERY_BASELINE_BASIS;
@@ -374,7 +377,7 @@ export function captureRecoveryBaseline(rawSections) {
         : picked.spec ? BASIS.NEVER_COMPLETE : BASIS.NO_DECLARATION;
     const metrics = { ...picked.metrics };
     // #1305: a duration-declared session's loaded counts are seconds, not reps.
-    if (picked.spec?.kind === 'duration') { delete metrics.best_e1rm_weight; delete metrics.best_e1rm_reps; }
+    if (picked.timed || picked.spec?.kind === 'duration') { delete metrics.best_e1rm_weight; delete metrics.best_e1rm_reps; }
     rows.push({ key, name: names.get(key) ?? key, ...metrics, routine_order: order, basis });
   }
 
