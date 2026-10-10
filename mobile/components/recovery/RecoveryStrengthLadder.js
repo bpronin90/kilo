@@ -24,15 +24,18 @@ const _weeks = (n) => `${n} ${n === 1 ? 'week' : 'weeks'}`;
 const _set = (s, unit) => `${formatLiftWeightValue(s.weight, unit)} × ${s.reps}`;
 
 // Pace copy. Every estimate says it is best-case and names its window and rate.
+// A reached target is always named, even when no forecast is possible.
 export function paceText(pace) {
+  const reached = (pace.targets || []).filter(t => t.reached).map(t => `${t.target}% reached`);
+  const lead = reached.length > 0 ? `${reached.join(' · ')}. ` : '';
   switch (pace.status) {
     case PACE_STATUS.ESTIMATE: {
       const parts = pace.targets.map(t => (t.reached ? `${t.target}% reached` : `${t.target}% in ${_weeks(t.weeks)}`));
       const rate = `${pace.gain >= 0 ? '+' : ''}${pace.gain.toFixed(1)} pts/week over Weeks ${pace.from_week}–${pace.to_week}`;
       return `Best case, if your recent rate continues: ${parts.join(' · ')} (${rate})`;
     }
-    case PACE_STATUS.INSUFFICIENT: return 'Not enough weeks yet: log a third scored recovery week';
-    case PACE_STATUS.NO_GAIN: return `No forecast: no gain over Weeks ${pace.from_week}–${pace.to_week}`;
+    case PACE_STATUS.INSUFFICIENT: return `${lead}Not enough weeks yet: log a third scored recovery week`;
+    case PACE_STATUS.NO_GAIN: return `${lead}No forecast: no gain over Weeks ${pace.from_week}–${pace.to_week}`;
     case PACE_STATUS.REACHED: return 'Baseline reached';
     case PACE_STATUS.SUPPRESSED: return 'Pace is hidden until Recovery data is current';
     default: return null;

@@ -6,6 +6,7 @@ import {
   LIFT_STATE, NOT_RETESTED, PACE_STATUS, STRENGTH_STATUS, deriveLiftPace, deriveRecoveryStrength, displayPercent,
 } from '../lib/data/recoveryStrength';
 import { MAX_RAW_TEXT_LENGTH } from '../lib/parser/workoutNote';
+import { paceText } from '../components/recovery/RecoveryStrengthLadder';
 
 // Bench/Squat/Row frozen at 100x5 (so a same-reps week reads as a plain weight
 // ratio), plus an untimed reps-only Pull-up and a timed Plank.
@@ -218,6 +219,14 @@ describe('best-case pace', () => {
     expect(part.targets[0]).toEqual({ target: 90, reached: true, weeks: null });
     expect(part.targets[1].weeks).toBe(1); // ceil(5 / 7.5)
     expect(deriveLiftPace(pts([[1, 90], [2, 100], [3, 104]]), 3).status).toBe(PACE_STATUS.REACHED);
+  });
+
+  test('a reached target is named even when there is no forecast or too few weeks (PR #1308 review)', () => {
+    expect(paceText(deriveLiftPace(pts([[1, 95], [2, 95], [3, 95]]), 3))).toBe('90% reached. No forecast: no gain over Weeks 1–3');
+    expect(paceText(deriveLiftPace(pts([[1, 99], [2, 96], [3, 93]]), 3))).toMatch(/^90% reached\. No forecast/);
+    expect(paceText(deriveLiftPace(pts([[1, 91], [2, 95]]), 2))).toBe('90% reached. Not enough weeks yet: log a third scored recovery week');
+    expect(paceText(deriveLiftPace(pts([[1, 40], [2, 45]]), 2))).toBe('Not enough weeks yet: log a third scored recovery week');
+    expect(paceText(deriveLiftPace(pts([[1, 70], [2, 75], [3, 80]]), 3))).toMatch(/^Best case, if your recent rate continues: 90% in 2 weeks · 100% in 4 weeks/);
   });
 
   test('no forecast past a selected week with no current score', () => {
