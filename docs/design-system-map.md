@@ -916,6 +916,21 @@ states the scale. No warning/amber ink. An unreadable week is a dashed `No
 data` gap. Not-retested and never-scoreable lifts are plain 13sp text lists.
 Styles: `recoveryStrengthStyles.js`.
 
+**Movement groups** (#1306): `RecoveryMovementGroups`
+(`components/recovery/RecoveryMovementGroups.js`, styles
+`recoveryMovementGroupStyles.js`) is one collapsed-by-default header under the
+strength ladder, not a second hero. Expanded, each group is a flat row
+(name, `N of M lifts in the average scored · B lifts in the baseline`, and the
+mean % or `No score`, never 0%) that discloses its exercises; no nested cards.
+The read-only numbers are separate from the controls: the per-exercise editor
+(`MovementGroupEditor.js`, glue in `RecoveryMovementGroupsPanel.js`) is injected
+through one `renderControl` slot so Manage block (#1307) can re-home it. Its
+`Change group` button, eight single-choice radio options (selected = radio glyph
+plus bold text) and `Reset to automatic` are all >=44dp with role/name/state;
+a failed save keeps the choice as an unsaved draft with `Not saved: <reason>`.
+Notices (failed read, missing routine, unreadable map, paused) use 13sp caption
+ink. Court tokens only.
+
 **Tidy names** (#1309): `TidyRecoveryNamesAction` (`components/recovery/TidyRecoveryNames.js`,
 styles `recoveryTidyStyles.js`) is the single name-cleanup action on the Analytics
 Recovery evidence card, placed after `Rebuild baseline` and `Match exercise names`

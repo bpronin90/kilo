@@ -62,6 +62,9 @@ export const SINGLETON_SYNC_ID = 'self';
 
 // Canonical workout-note derived fields. These are a recomputable cache of
 // `raw_text`; a difference in only these fields is never a user-facing conflict.
+// `exercise_movement_groups` (#1306) is deliberately NOT listed: it is the
+// user's authored per-exercise group choice and cannot be recomputed, so an
+// override-only edit is a real edit that wins or loses by ordinary row LWW.
 export const DERIVED_NOTE_FIELDS = Object.freeze([
   'tracked_exercises',
   'one_k_exercises',

@@ -280,6 +280,9 @@ function buildWorkoutNoteRows(snapshot, userId) {
       exercise_classifications: n.exercise_classifications ?? null,
       session_checkins: n.session_checkins ?? null,
       is_current: currentId != null && n.id === currentId,
+      // Authored overrides (#1306) ride along only when the note has them, so a
+      // legacy note's row is byte-identical to before.
+      ...(n.exercise_movement_groups != null ? { exercise_movement_groups: n.exercise_movement_groups } : {}),
       // Carry each notebook entry's own provenance and tombstone state through
       // the upload instead of forcing them to a clean live row (issue #501).
       // The ownership-confirmation "Upload It Into My Account" path re-uploads

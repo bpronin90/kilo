@@ -42,6 +42,8 @@ const UPSERT_COLUMNS = Object.freeze({
     'skip_markers',
     'attendance_flags',
     'exercise_classifications',
+    // Authored content (#1306), not a derived cache: always uploaded when set.
+    'exercise_movement_groups',
     'session_checkins',
     'is_current',
     'source_snapshot',

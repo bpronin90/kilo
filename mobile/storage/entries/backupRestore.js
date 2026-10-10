@@ -19,6 +19,7 @@ import {
 import { writeList } from './jsonStorage';
 import { resetPhase, SYNC_PHASE } from '../syncRecovery';
 import { stripDerivedSectionsFromList } from './derivedCache';
+import { movementGroupsNoteError } from './movementGroupValidation';
 import { loadWorkoutNotesRaw, replaceWorkoutNotesRaw, withWorkoutNotebookLock } from './workoutNotes';
 import { loadWeightEntriesRaw, replaceWeightEntriesRaw } from './weightEntries';
 import {
@@ -145,6 +146,7 @@ function validateBackup(payload) {
         return { ok: false, error: 'Invalid backup: workout note missing raw_text' };
       if (n.raw_text.length > MAX_IMPORT_RAW_TEXT_LENGTH)
         return { ok: false, error: `Invalid backup: workout note raw_text too large (${n.raw_text.length}; limit ${MAX_IMPORT_RAW_TEXT_LENGTH})` };
+      const groupsError = movementGroupsNoteError(n); if (groupsError) return { ok: false, error: groupsError };
       // A tombstoned note is not a link target: readers filter it out, so a
       // membership pointing at one is dangling the moment it is restored.
       if (n.deleted_at == null && n.id.length > 0) liveWorkoutNoteIds.add(n.id);

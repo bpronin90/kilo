@@ -246,6 +246,16 @@ This answers "how strong am I compared to before?", separately from Baseline met
 - **Best-case pace.** Per lift, from its most recent (up to four) scored weeks, needing at least three: the average of the per-week changes between consecutive points (regressions included), in percentage points per recovery week. Weeks to 90% and 100% = `ceil(remaining ÷ rate)`. Fewer than three points shows "Not enough weeks yet"; a flat or falling rate shows no forecast; a reached target says reached. Pace is hidden while Recovery data is stale or unverified. It is the fastest plausible case if your recent rate continues — not a prediction, a date, or a medical readiness signal.
 - **Not retested yet.** Baseline lifts with no completed entry in the selected week say whether they were logged in an earlier week or not in any week yet; when some week could not be read, Kilo says "not in any readable week" instead of claiming never.
 
+#### Movement groups (#1306)
+
+> Where you see it: `Movement groups` under the Analytics Recovery strength view
+
+Every exercise belongs to **exactly one** group: Push, Pull, Shoulders, Arms, Legs (quad-dominant), Hinge / posterior chain, Core, or Other. Compound lifts are not split across groups.
+
+- **Automatic rule.** The exercise name is reduced with the app's normal exercise-name rules, then checked against an ordered phrase list on whole-word boundaries (plural forms match). The first matching rule wins, so specific phrases come first: hinge patterns (deadlift, RDL, good morning, hip thrust, glute bridge, leg/hamstring curl) before any leg phrase, `leg curl` before `curl`, `tricep`/`bicep` before `leg extension` and `dip`, shoulder phrases that contain a broader word (`upright row`, `push press`, `rear delt fly`) before push/pull. A name with no explicit match is Other; Kilo never infers anatomy or guesses from a similar name.
+- **Your choice wins.** You can pick one group for an exercise or reset it to automatic. The choice is stored once, on the block's baseline routine note, and applies to that exact exercise name in every week and every block that uses that routine. A renamed exercise falls back to the automatic rule until you choose again. If that routine is gone, its saved choices cannot be read, or the stored choices are invalid, groups use the automatic rule only and editing is unavailable (never shown as "no choices").
+- **Group score.** For each group, the unweighted mean of the selected week's lift scores (see Strength relative to baseline) over **that group's lifts that are in the same every-week average**. The counts (`scored of in the average · baseline`) are always shown. A group with no scored lift shows no percent. Added and unscoreable exercises stay grouped but are never averaged. Moving a lift to another group moves it once and never changes the overall average or pace.
+
 #### Tidy names
 
 > Where you see it: the `Tidy names` action on the Analytics Recovery card
