@@ -17,19 +17,24 @@ import { SYNC_TABLES, stampWrite, isTombstone, getClientId, enqueueDirty, getDir
 import { withWorkoutNotebookLock } from '../entries/workoutNotes';
 import { classifyTidyItems } from '../entries/workoutNoteRecoveryBatch';
 
-const queuedIds = async () => new Set(
-  (await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES)).filter(r => r && !isTombstone(r)).map(r => r.id)
+// The queue is keyed by id, so an id alone proves nothing: an older snapshot of
+// the same note would pass and later upload the OLD text. Upload intent counts
+// only when the queued record carries the current row's exact text and stamp.
+const queuedRecords = async () => new Map(
+  (await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES)).filter(r => r && !isTombstone(r)).map(r => [r.id, r])
 );
+const isFresh = (queued, note) => !!queued && !!note
+  && queued.raw_text === note.raw_text && queued.updated_at === note.updated_at;
 
 export async function loadTidyTextStates(ids) {
   const list = await Storage.loadWorkoutNotesRaw();
-  const queued = await queuedIds();
+  const queued = await queuedRecords();
   const byId = new Map(list.map(n => [n && n.id, n]));
   return ids.map((id) => {
     const note = byId.get(id);
     return {
       id, exists: !!note, deleted: !note || isTombstone(note), raw_text: note ? note.raw_text : null,
-      requiresQueue: true, queued: queued.has(id),
+      requiresQueue: true, queued: isFresh(queued.get(id), note),
     };
   });
 }
@@ -57,12 +62,13 @@ export function applyTidyNoteTexts({ items, requestedAt }) {
       }
     }
     // Enqueue the rows just written, plus any target already at its destination
-    // whose upload intent is missing (the enqueue-failed replay).
-    const queued = await queuedIds();
+    // whose upload intent is missing or STALE (the enqueue-failed replay): the
+    // enqueue overwrites the id's entry, so exactly one current snapshot remains.
+    const queued = await queuedRecords();
     const byId = new Map(next.map(n => [n && n.id, n]));
     const failed = [];
     for (const item of items) {
-      const row = rows.get(item.id) || (byId.get(item.id)?.raw_text === item.target && !queued.has(item.id) ? byId.get(item.id) : null);
+      const row = rows.get(item.id) || (byId.get(item.id)?.raw_text === item.target && !isFresh(queued.get(item.id), byId.get(item.id)) ? byId.get(item.id) : null);
       if (!row) continue;
       try {
         await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, row);

@@ -489,6 +489,40 @@ describe('cloud mode', () => {
     expect((await noteTexts())[1].match(/^-- /gm)).toHaveLength(1);
   });
 
+  test('a stale prior queue entry is never upload intent: enqueue failure then retry leaves the target snapshot, once', async () => {
+    const before = (await read(WORKOUT_NOTES_KEY))[1];
+    await syncQueue.enqueueDirty(syncQueue.SYNC_TABLES.WORKOUT_NOTES, { ...before, client_id: 'c' });
+    const real = syncQueue.enqueueDirty;
+    let fail = true;
+    jest.spyOn(syncQueue, 'enqueueDirty').mockImplementation(async (...a) => {
+      if (fail && a[1].id === 'n2') throw new Error('enqueue failed');
+      return real(...a);
+    });
+    expect(await tidy()).toMatchObject({ ok: false, tidy: true });
+    const { loadTidyTextStates } = require('../storage/cloud/recoveryTidyNoteWrites');
+    const [state] = await loadTidyTextStates(['n2']);
+    expect(state.raw_text).toContain('-- step up from empty bar'); // committed locally
+    expect(state.queued).toBe(false); // the stale id-only entry is rejected
+    expect((await dirtyNotes()).find(r => r.id === 'n2').raw_text).toBe(before.raw_text);
+    fail = false;
+    expect((await journal.reconcileRecoveryOperations()).ok).toBe(true);
+    const dirty = await dirtyNotes();
+    const n2 = (await read(WORKOUT_NOTES_KEY))[1];
+    expect(dirty.filter(r => r.id === 'n2')).toHaveLength(1);
+    expect(dirty.find(r => r.id === 'n2')).toMatchObject({ raw_text: n2.raw_text, updated_at: n2.updated_at });
+    expect(dirty.map(r => r.id).sort()).toEqual(['n1', 'n2', 'n3', 'n4']);
+  });
+
+  test('Undo replaces a stale queue entry the same way', async () => {
+    expect((await tidy()).ok).toBe(true);
+    const tidied = (await read(WORKOUT_NOTES_KEY))[1];
+    await syncQueue.enqueueDirty(syncQueue.SYNC_TABLES.WORKOUT_NOTES, { ...tidied, raw_text: 'stale', client_id: 'c' });
+    expect((await undoTidyNamesCore(storage(), { blockId: 'rb1' })).ok).toBe(true);
+    const n2 = (await read(WORKOUT_NOTES_KEY))[1];
+    expect(n2.raw_text).toBe(original[1]);
+    expect((await dirtyNotes()).find(r => r.id === 'n2')).toMatchObject({ raw_text: original[1], updated_at: n2.updated_at });
+  });
+
   test('a stale or deleted note rejects the whole batch with no stamp and no queue entry', async () => {
     const notes = await read(WORKOUT_NOTES_KEY);
     notes[3].deleted_at = STAMP;
