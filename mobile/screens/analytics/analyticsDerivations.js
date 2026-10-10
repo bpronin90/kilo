@@ -456,8 +456,11 @@ export function deriveOverviewRows({
       unavailable: false,
       value: `${recoverySummary.atOrAbove}/${recoverySummary.rosterSize}`,
       showUnit: false,
-      valueSuffix: 'exercises back',
+      valueSuffix: 'back to pre-recovery level',
       infoCaption: `Week ${weekNumber}${movementCaption}`,
+      // Full sentence for screen readers only: names the denominator (the
+      // pre-recovery roster) so the visible line can stay short.
+      accessibilityText: `${recoverySummary.atOrAbove} of ${recoverySummary.rosterSize} pre-recovery exercises back to pre-recovery level, Week ${weekNumber}${recoveryMovement ? `, ${recoveryMovement.improved} improved since Week ${recoveryMovement.anchor_week_number}` : ''}`,
       emptyCaption: null,
     };
   } else {

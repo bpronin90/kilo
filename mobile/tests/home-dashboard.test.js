@@ -616,7 +616,7 @@ describe('shared derived analytics (#1242)', () => {
 
     expect(homeLine).toBe('4 of 7 trained · 3 not yet');
     // #1243: Analytics prints the same numbers as a compact fraction.
-    expect(analyticsLine).toBe(`${counts.atOrAbove}/${counts.rosterSize} exercises back`);
+    expect(analyticsLine).toBe(`${counts.atOrAbove}/${counts.rosterSize} back to pre-recovery level`);
 
     // Movement history only adds a caption; the count stays the shared one.
     const withMovement = deriveOverviewRows({

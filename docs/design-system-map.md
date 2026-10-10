@@ -766,7 +766,7 @@ scrolled past to reach anything else.
 The tab's first block and the destination for the `overview` navigation id.
 Reads only display-space series the other sections already plot
 (`oneKChartData`, `rolling7`); `deriveOverviewRows` performs no conversion.
-During active Recovery (#1299) it shows Recovery (`N/M exercises back`, plus
+During active Recovery (#1299) it shows Recovery (`N/M back to pre-recovery level`, plus
 `Week W · K improved since Week A`), Body Weight, and one noninteractive line
 replacing the paused 1K Total and Exercise Progress rows.
 

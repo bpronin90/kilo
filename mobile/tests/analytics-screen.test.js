@@ -548,8 +548,9 @@ describe('deriveOverviewRows (#821)', () => {
     // #1242: the value stays the shared roster count Home prints.
     // Value is exercises back at/above pre-recovery performance out of the roster.
     expect(recovery.value).toBe('3/5');
-    expect(recovery.valueSuffix).toBe('exercises back');
+    expect(recovery.valueSuffix).toBe('back to pre-recovery level');
     expect(recovery.infoCaption).toBe('Week 3 · 2 improved since Week 1');
+    expect(recovery.accessibilityText).toBe('3 of 5 pre-recovery exercises back to pre-recovery level, Week 3, 2 improved since Week 1');
     expect(recovery.valueSuffix).not.toMatch(/Week 3/);
     expect(recovery.valueSuffix).not.toMatch(/since Week/);
     expect(recovery.infoCaption).not.toMatch(/matched|trained/);
@@ -2757,7 +2758,7 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
       expect(joined).toContain('since Week 1');
       expect(joined).not.toContain('matched');
       // Never folded into valueSuffix, which stays the compact count.
-      expect(texts).toContain('exercises back');
+      expect(texts).toContain('back to pre-recovery level');
       expect(texts.some(t => t.startsWith('of ') && /Week|improved/.test(t))).toBe(false);
 
       const infoCaptionNode = textNodesOf(row).find(t => {
@@ -2771,6 +2772,7 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
       expect(row.props.accessibilityLabel).toContain('Week 2');
       expect(row.props.accessibilityLabel).toContain('since Week 1');
       expect(row.props.accessibilityLabel).not.toContain('matched');
+      expect(row.props.accessibilityLabel).toMatch(/^Recovery, 2 of 2 pre-recovery exercises back to pre-recovery level, Week 2, \d+ improved since Week 1$/);
     });
 
     test('movement unavailable: infoCaption still shows week identity, absent from valueSuffix, no fabricated delta, present in accessible label', () => {

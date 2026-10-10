@@ -89,6 +89,7 @@ function OverviewRow({ row, unit, onPress }) {
     // Recovery, so every other row's accessible label is unchanged.
     row.infoCaption || null,
   ].filter(Boolean).join(', ');
+  const label = row.accessibilityText ? `${row.label}, ${row.accessibilityText}` : accessibilityLabel;
 
   const body = (
     <View style={styles.rowTop}>
@@ -126,7 +127,7 @@ function OverviewRow({ row, unit, onPress }) {
 
   if (!interactive) {
     return (
-      <View style={styles.row} accessible accessibilityLabel={accessibilityLabel}>
+      <View style={styles.row} accessible accessibilityLabel={label}>
         {body}
       </View>
     );
@@ -138,7 +139,7 @@ function OverviewRow({ row, unit, onPress }) {
       style={styles.row}
       onPress={() => onPress(row.section)}
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
+      accessibilityLabel={label}
       accessibilityHint="Opens this section of the Analytics tab"
     >
       {body}
