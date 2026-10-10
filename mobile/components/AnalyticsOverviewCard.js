@@ -45,6 +45,14 @@ function OverviewRow({ row, unit, onPress }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
 
+  if (row.note) {
+    return (
+      <View style={styles.row} accessible accessibilityLabel={row.note}>
+        <Text style={[styles.rowCaption, { textAlign: 'left' }]}>{row.note}</Text>
+      </View>
+    );
+  }
+
   const value = formatValue(row);
   const delta = formatDelta(row);
   const interactive = !!row.section && !!onPress && !row.unavailable;

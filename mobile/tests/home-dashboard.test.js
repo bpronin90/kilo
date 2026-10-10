@@ -603,7 +603,7 @@ describe('shared derived analytics (#1242)', () => {
   };
   const SELECTIONS = { squat: 'Squat', bench: 'DB Bench Press', deadlift: 'Deadlift' };
 
-  test('Home and Analytics print identical Recovery counts and words from one week', () => {
+  test('Home and Analytics print the same roster from one week', () => {
     const { counts } = deriveHomeRecoveryBig3(WEEK, SELECTIONS);
     const homeLine = formatRecoveryCountLine(counts);
 
@@ -616,7 +616,7 @@ describe('shared derived analytics (#1242)', () => {
 
     expect(homeLine).toBe('4 of 7 trained · 3 not yet');
     // #1243: Analytics prints the same numbers as a compact fraction.
-    expect(analyticsLine).toBe(`${counts.trained}/${counts.rosterSize} trained`);
+    expect(analyticsLine).toBe(`${counts.atOrAbove}/${counts.rosterSize} exercises back`);
 
     // Movement history only adds a caption; the count stays the shared one.
     const withMovement = deriveOverviewRows({
