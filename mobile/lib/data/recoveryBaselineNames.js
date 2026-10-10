@@ -9,6 +9,7 @@
 // canonical-name groups become candidates.
 
 import { normalizeExerciseKey } from '../parser.js';
+import { orderedLiveWeeks } from './recoveryBlocks.js';
 import { RECOVERY_COMPARISON_STATES, RECOVERY_WEEK_STATUS, deriveRecoveryComparison } from './recoveryAnalytics.js';
 
 const PREFIX_RE = /^[A-Za-z][A-Za-z ]{0,23}:\s*/;
@@ -76,6 +77,26 @@ export function planBaselineNameMatches({ block, weeks = [], notes = [] } = {}) 
     }
   }
   return out;
+}
+
+// Deterministic fingerprint of exactly the evidence a review is built from: the
+// block's frozen baseline, its live linked weeks, and those weeks' note identity
+// and text. The UI submits it with a pair; the mutation recomputes it from
+// authoritative reads and rejects on any difference (stale review).
+export function baselineNamesEvidence({ block, weeks = [], notes = [] } = {}) {
+  const byId = new Map((notes || []).map(n => [n.id, n]));
+  const live = orderedLiveWeeks(weeks, block && block.id).map(w => {
+    const n = byId.get(w.note_id);
+    return [w.id, w.note_id, w.week_number, n ? [n.updated_at ?? null, n.deleted_at ?? null, n.raw_text ?? null] : null];
+  });
+  const text = JSON.stringify([block ? block.id : null, block ? block.baseline : null, live]);
+  let h1 = 5381; let h2 = 52711;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    h1 = (Math.imul(h1, 33) ^ c) | 0;
+    h2 = (Math.imul(h2, 31) + c) | 0;
+  }
+  return `${text.length}:${(h1 >>> 0).toString(36)}:${(h2 >>> 0).toString(36)}`;
 }
 
 // Pure v2 row rename. Returns the new baseline, or null if it is not a supported

@@ -7,13 +7,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AccessibilityInfo, Pressable, Text, View } from 'react-native';
 import { useTheme } from '../../theme/ThemeContext';
-import { planBaselineNameMatches } from '../../lib/data/recoveryBaselineNames';
+import { baselineNamesEvidence, planBaselineNameMatches } from '../../lib/data/recoveryBaselineNames';
 import { createStyles } from './analyticsRecoveryStyles';
 
 export function MatchExerciseNamesAction({ block, weeks, notes, locked = false, onMatch }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const candidates = useMemo(() => planBaselineNameMatches({ block, weeks, notes }), [block, weeks, notes]);
+  const evidence = useMemo(() => baselineNamesEvidence({ block, weeks, notes }), [block, weeks, notes]);
   const signature = candidates.map(c => `${c.from_key}>${c.to_key}`).join('|');
   const [open, setOpen] = useState(false);
   const [busyKey, setBusyKey] = useState(null);
@@ -31,7 +32,7 @@ export function MatchExerciseNamesAction({ block, weeks, notes, locked = false, 
     setError(null);
     setBusyKey(`${c.from_key}>${c.to_key}`);
     try {
-      const result = await onMatch({ blockId: block.id, fromKey: c.from_key, toKey: c.to_key, toName: c.to_name });
+      const result = await onMatch({ blockId: block.id, fromKey: c.from_key, toKey: c.to_key, toName: c.to_name, evidence });
       if (!result || result.ok === false) {
         const message = (result && result.error) || 'Could not match these names.';
         setError(message);

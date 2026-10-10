@@ -7,14 +7,14 @@ import { useCallback } from 'react';
 import * as Storage from '../../storage/entries';
 import { runGuardedRecoveryAction } from '../../storage/entries/recoveryOperationJournal';
 import { renameRecoveryBlockBaselineRow } from '../../storage/entries/recoveryStorage';
-import { planBaselineNameMatches } from '../../lib/data/recoveryBaselineNames';
+import { baselineNamesEvidence, planBaselineNameMatches } from '../../lib/data/recoveryBaselineNames';
 import { isLiveRecord } from '../../lib/data/recoveryBlocks';
 import { ensureVerifiedRecoveryState, notifyRecoveryBlocks } from './recoveryReadState';
 
 const NameStorage = { ...Storage, renameRecoveryBlockBaselineRow };
-const STALE = 'These names changed since you opened the review. Reopen it and try again.';
+const STALE = 'These names changed since you opened the review. Review them again.';
 
-export function matchBaselineNameCore(storage, { blockId, fromKey, toKey, toName } = {}) {
+export function matchBaselineNameCore(storage, { blockId, fromKey, toKey, toName, evidence } = {}) {
   return runGuardedRecoveryAction({ blockId }, async () => {
     try {
       const block = (await storage.loadRecoveryBlocks()).find(b => b.id === blockId);
@@ -26,6 +26,7 @@ export function matchBaselineNameCore(storage, { blockId, fromKey, toKey, toName
       }
       const weeks = await storage.loadRecoveryBlockWeeks();
       const notes = await storage.loadWorkoutNotes();
+      if (!evidence || baselineNamesEvidence({ block, weeks, notes }) !== evidence) return { ok: false, error: STALE };
       const hit = planBaselineNameMatches({ block, weeks, notes })
         .find(c => c.from_key === fromKey && c.to_key === toKey && c.to_name === toName);
       if (!hit) return { ok: false, error: STALE };

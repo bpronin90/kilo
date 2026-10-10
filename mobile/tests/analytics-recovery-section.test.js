@@ -3722,7 +3722,7 @@ describe('Match exercise names', () => {
     expect(hasText(root, 'Pick one:')).toBe(true);
     await act(async () => { await byLabel(root, 'Match Core: plank to Plank').props.onPress(); });
     expect(mockMatch).toHaveBeenCalledTimes(1);
-    expect(mockMatch).toHaveBeenCalledWith({ blockId: 'rb1', fromKey: 'core: plank', toKey: 'plank', toName: 'Plank' });
+    expect(mockMatch).toHaveBeenCalledWith({ blockId: 'rb1', fromKey: 'core: plank', toKey: 'plank', toName: 'Plank', evidence: expect.any(String) });
     press(root, 'Cancel matching plank');
     expect(byLabel(root, 'Match exercise names')).toBeUndefined();
   });
@@ -3743,7 +3743,7 @@ describe('Match exercise names', () => {
     act(() => { first = byLabel(root, MATCH).props.onPress(); });
     act(() => { byLabel(root, MATCH).props.onPress(); });
     expect(mockMatch).toHaveBeenCalledTimes(1);
-    expect(mockMatch).toHaveBeenCalledWith({ blockId: 'rb1', fromKey: 'plank 3x45 sec', toKey: 'plank', toName: 'Plank' });
+    expect(mockMatch).toHaveBeenCalledWith({ blockId: 'rb1', fromKey: 'plank 3x45 sec', toKey: 'plank', toName: 'Plank', evidence: expect.any(String) });
     expect(byLabel(root, MATCH).props.accessibilityState).toMatchObject({ busy: true, disabled: true });
     expect(hasText(root, 'Matching…')).toBe(true);
     await act(async () => { release({ ok: true }); await first; });
