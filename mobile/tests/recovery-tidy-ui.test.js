@@ -140,6 +140,22 @@ describe('Tidy names action', () => {
   });
 });
 
+describe('no-change review', () => {
+  test('says nothing to change and still shows the per-week inventory and warmups', async () => {
+    const clean = [
+      { id: 'n1', raw_text: '+WARMUP\n-Jumping jacks\n- 10\n+LIFT\n-Squat\n- 135 8\n', updated_at: STAMP },
+      { id: 'n2', raw_text: '-Squat\n- 135 8\n', updated_at: STAMP },
+    ];
+    const { root } = mount({ notes: clean });
+    press(root, 'Tidy names');
+    expect(hasText(root, 'Names are already tidy. Nothing to change.')).toBe(true);
+    expect(hasText(root, 'Week 1: Squat (no change)')).toBe(true);
+    expect(hasText(root, 'Week 2: Squat (no change)')).toBe(true);
+    expect(hasText(root, 'Week 1: Jumping jacks')).toBe(true);
+    expect(byLabel(root, 'Confirm tidy names')).toBeUndefined();
+  });
+});
+
 describe('block scoping', () => {
   test('switching blocks (parent re-keys by block id) resets the open review and any error', async () => {
     const el = (id) => (

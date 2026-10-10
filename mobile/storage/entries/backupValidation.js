@@ -259,7 +259,7 @@ function validateTimestamps(record, fields, label) {
 // The frozen pre-recovery snapshot. Its whole contract is that it is captured
 // once and never recomputed, so the importer cannot repair a malformed one by
 // re-deriving it — an unreadable snapshot can only be rejected.
-function validateRecoveryBaseline(baseline) {
+export function validateRecoveryBaseline(baseline) {
   if (baseline == null) return { ok: true };
   if (typeof baseline !== 'object' || Array.isArray(baseline))
     return { ok: false, error: 'Invalid backup: recovery block baseline must be an object' };

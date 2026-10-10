@@ -367,4 +367,26 @@ describe('review inventory, byte fidelity and preview inventory', () => {
     expect(plan.clean).toEqual([{ weekNumber: 1, name: 'Bench' }, { weekNumber: 2, name: 'Bench' }]);
     expect(plan.warmups).toEqual([{ weekNumber: 1, name: 'Jumping jacks' }]);
   });
+
+  test('a removed section prefix joins the single moved note and is previewed', () => {
+    const withDesc = fixture({ baselineText: '-Squat\n- 225 5', weekTexts: ['-Core: Squat 3x8, step up\n- 135 8\n'] });
+    const plan = planTidyNames(withDesc);
+    expect(plan.noteWrites[0].next_raw_text).toBe('-Squat 3x8\n- 135 8\n-- Core: step up\n');
+    expect(plan.occurrences[0]).toMatchObject({ to: 'Squat 3x8', comment: 'Core: step up' });
+    const bare = fixture({ baselineText: '-Squat\n- 225 5', weekTexts: ['-Core: Squat\n- 135 8\n'] });
+    expect(planTidyNames(bare).noteWrites[0].next_raw_text).toBe('-Squat\n- 135 8\n-- Core:\n');
+  });
+
+  test.each([
+    ['routine_order 99', r => ({ ...r, routine_order: 99 })],
+    ['unknown basis', r => ({ ...r, basis: 'invalid' })],
+    ['string metric', r => ({ ...r, volume: '3375' })],
+    ['null name', r => ({ ...r, name: null })],
+  ])('an invalid frozen baseline (%s) refuses the whole action', (_n, mutate) => {
+    const fx = squatFixture();
+    const bad = { ...fx.block, baseline: { ...fx.block.baseline, exercises: fx.block.baseline.exercises.map((r, i) => (i ? r : mutate(r))) } };
+    const plan = planTidyNames({ ...fx, block: bad });
+    expect(plan.ok).toBe(false);
+    expect(plan.noteWrites).toBeUndefined();
+  });
 });

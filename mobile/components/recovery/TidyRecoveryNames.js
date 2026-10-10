@@ -18,12 +18,13 @@ function announce(message) {
 
 function Preview({ plan, styles, tidy }) {
   if (!plan.ok) return <Text style={styles.reasonErrorText}>{plan.error}</Text>;
-  if (plan.empty && plan.skipped.length === 0) {
-    return <Text style={tidy.noteText}>Names are already tidy. Nothing to change.</Text>;
-  }
   return (
     <View style={tidy.preview} testID="recovery-tidy-preview">
-      {plan.empty ? <Text style={tidy.noteText}>Nothing can be tidied safely.</Text> : null}
+      {plan.empty ? (
+        <Text style={tidy.noteText}>
+          {plan.skipped.length === 0 ? 'Names are already tidy. Nothing to change.' : 'Nothing can be tidied safely.'}
+        </Text>
+      ) : null}
       {plan.occurrences.length ? <Text style={tidy.sectionLabel}>{`Week headers (${plan.occurrences.length})`}</Text> : null}
       {plan.occurrences.map((o) => (
         <View key={`${o.noteId}:${o.headerLine}`} testID="recovery-tidy-occurrence">

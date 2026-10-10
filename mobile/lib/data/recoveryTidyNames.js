@@ -13,7 +13,8 @@
 import { parseWorkoutNote, normalizeExerciseKey } from '../parser.js';
 import { orderedLiveWeeks, isLiveRecord } from './recoveryBlocks.js';
 import { baselineNamesEvidence, fingerprintText } from './recoveryBaselineNames.js';
-import { canonicalDisplayName, canonicalMatchKey, strengthPairError } from './recoveryStrengthBaseline.js';
+import { canonicalDisplayName, canonicalMatchKey } from './recoveryStrengthBaseline.js';
+import { validateRecoveryBaseline } from '../../storage/entries/backupValidation.js';
 import { applyTidyEdits, buildOccurrenceEdit, verifyTidyEdits } from './recoveryTidyText.js';
 
 const fail = (error) => ({ ok: false, error });
@@ -60,7 +61,8 @@ export function planTidyNames({ block, weeks = [], notes = [] } = {}) {
   const baseline = block && block.baseline;
   if (!block || !isLiveRecord(block)) return fail('This recovery block is no longer available.');
   if (!baseline || baseline.version !== 2 || !Array.isArray(baseline.exercises)
-    || baseline.exercises.some(r => !r || typeof r.key !== 'string' || !r.key || strengthPairError(r))) {
+    || !validateRecoveryBaseline(baseline).ok
+    || baseline.exercises.some(r => !r || typeof r.key !== 'string' || !r.key)) {
     return fail('This block’s baseline can’t be tidied. Nothing was changed.');
   }
   const read = readWeeks(block, weeks, notes);

@@ -78,8 +78,10 @@ export function buildOccurrenceEdit(lines, ex, targetName) {
   }
   const scheme = schemeBytes.trim();
   const newContent = scheme ? `${targetName}${schemeBytes}` : targetName;
-  const afterLine = descriptor ? firstValidRowLine(lines, headerLine) : null;
-  if (descriptor && afterLine == null) return { ok: false, reason: 'no set row to attach the moved comment to' };
+  // Everything the strips remove (a section prefix and the descriptor) becomes the one note.
+  const comment = [parts.prefix.trim(), descriptor].filter(Boolean).join(' ');
+  const afterLine = comment ? firstValidRowLine(lines, headerLine) : null;
+  if (comment && afterLine == null) return { ok: false, reason: 'no set row to attach the moved comment to' };
   return {
     ok: true,
     edit: {
@@ -88,7 +90,7 @@ export function buildOccurrenceEdit(lines, ex, targetName) {
       newContent,
       newHeader: `${lead}${marker}${newContent}${trail}`,
       scheme: scheme || null,
-      comment: descriptor || null,
+      comment: comment || null,
       afterLine,
       targetName,
     },
