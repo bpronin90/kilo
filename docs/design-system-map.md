@@ -916,6 +916,21 @@ states the scale. No warning/amber ink. An unreadable week is a dashed `No
 data` gap. Not-retested and never-scoreable lifts are plain 13sp text lists.
 Styles: `recoveryStrengthStyles.js`.
 
+**Tidy names** (#1309): `TidyRecoveryNamesAction` (`components/recovery/TidyRecoveryNames.js`,
+styles `recoveryTidyStyles.js`) is the single name-cleanup action on the Analytics
+Recovery evidence card, placed after `Rebuild baseline` and `Match exercise names`
+(the same reason-editor button/caption tokens; every control is a >=44dp button
+whose accessible name is its visible label). The preview (`recovery-tidy-preview`)
+lists every occurrence as `Week N: old → new`, the scheme it keeps and the note
+the descriptor moves to, each baseline `old → new`, already-clean names, skipped
+lifts with reasons, and an explicit no-change line; one Confirm applies the whole
+plan, and Cancel/Close write nothing. `Undo tidy names` appears only while the
+stored Undo is still valid, and a stopped operation shows `Keep current names` /
+`Restore previous names`. The card mounts keyed by block id, so draft and error
+state never cross blocks; it is locked by the same verified-state/pending gates as
+the other Recovery writes. #1307 moves this action into Manage block with those
+gates and the Undo and conflict controls intact.
+
 **Detail order** (#1219): rows follow the routine, not a state ranking. Baseline
 exercises the week logged come first, then baseline exercises not yet trained
 this week, each group in the baseline's own row order, then added-during-recovery

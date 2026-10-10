@@ -18,13 +18,35 @@ const PREFIX_RE = /^[A-Za-z][A-Za-z ]{0,23}:\s*/;
 const SCHEME_RE = /\s+\d+\s*[x×]\s*\d+(?:\s*-\s*\d+)?(?:\s*(?:seconds?|secs?|sec|s|minutes?|mins?|min|reps?))?(?:\s+each\s+(?:leg|side|arm|hand))?\s*$/i;
 const DESCRIPTOR_RE = /\s*(?:,|—|–|\s-\s).*$/;
 
+// The three conservative strips behind a canonical identity (#1298), reported as
+// pieces so the Tidy names text splice (#1309) cuts a header at exactly the same
+// boundaries the comparison key does. `collapse` folds whitespace first (the
+// identity path); the splice passes false to keep a header's original spacing.
+export function splitNameParts(raw, { collapse = true } = {}) {
+  let s = String(raw || '').trim();
+  if (collapse) s = s.replace(/\s+/g, ' ');
+  const prefix = (PREFIX_RE.exec(s) || [''])[0];
+  s = s.slice(prefix.length);
+  const d = DESCRIPTOR_RE.exec(s);
+  const descriptor = d ? d[0] : '';
+  if (d) s = s.slice(0, d.index);
+  const m = SCHEME_RE.exec(s);
+  const scheme = m ? m[0] : '';
+  if (m) s = s.slice(0, m.index);
+  return { prefix, name: s.trim(), scheme, descriptor };
+}
+
+// Original-cased clean display name: prefix, descriptor and trailing scheme
+// stripped, whitespace collapsed, before alias/lowercase normalization.
+export function canonicalDisplayName(name) {
+  return splitNameParts(name).name;
+}
+
 // Canonical comparison key for a display name (#1298); '' when nothing
 // meaningful remains. A name is reduced by three conservative strips (section
 // prefix, trailing sets x reps / duration scheme, comma/dash descriptor).
 export function canonicalMatchKey(name) {
-  let s = String(name || '').trim().replace(/\s+/g, ' ');
-  s = s.replace(PREFIX_RE, '').replace(DESCRIPTOR_RE, '').replace(SCHEME_RE, '').trim();
-  return normalizeExerciseKey(s);
+  return normalizeExerciseKey(canonicalDisplayName(name));
 }
 
 export const BEST_E1RM_WEIGHT = 'best_e1rm_weight';

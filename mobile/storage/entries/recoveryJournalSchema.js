@@ -13,6 +13,10 @@ export const RECOVERY_OPERATION_TYPES = Object.freeze({
   COMPLETE_BLOCK_WITH_WEEK: 'complete_block_with_week',
   DELETE_LINKED_NOTE: 'delete_linked_note',
   ADD_WEEK_WITH_NEW_NOTE: 'add_week_with_new_note',
+  // Tidy names (#1309) and its Undo: note headers and baseline names change as one
+  // logical result. The record names ids only; the texts live in the dedicated
+  // device-local payload (recoveryTidyPayload.js), never in the journal.
+  TIDY_RECOVERY_NAMES: 'tidy_recovery_names',
 });
 
 // Machine-readable outcomes. Every public entry point in this module returns one
@@ -100,6 +104,15 @@ export function isValidRecord(record) {
       !!record.note_seed && record.note_seed.id === record.note_id &&
       !!record.week_seed && record.week_seed.id === record.week_id &&
       Number.isInteger(record.week_seed.week_number) && record.week_seed.week_number > 0
+    );
+  }
+  if (record.type === RECOVERY_OPERATION_TYPES.TIDY_RECOVERY_NAMES) {
+    return (
+      isNonEmptyString(record.block_id) &&
+      isNonEmptyString(record.payload_id) &&
+      isNonEmptyString(record.requested_at) &&
+      (record.direction === 'apply' || record.direction === 'undo') &&
+      Array.isArray(record.note_ids) && record.note_ids.every(isNonEmptyString)
     );
   }
   return false;

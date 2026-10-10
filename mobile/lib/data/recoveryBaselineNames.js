@@ -82,7 +82,12 @@ export function baselineNamesEvidence({ block, weeks = [], notes = [] } = {}) {
     const n = byId.get(w.note_id);
     return [w.id, w.note_id, w.week_number, n ? [n.updated_at ?? null, n.deleted_at ?? null, n.raw_text ?? null] : null];
   });
-  const text = JSON.stringify([block ? block.id : null, block ? block.baseline : null, live]);
+  return fingerprintText(JSON.stringify([block ? block.id : null, block ? block.baseline : null, live]));
+}
+
+// Non-cryptographic deterministic digest shared by the review evidence and the
+// Tidy names plan signature (#1309).
+export function fingerprintText(text) {
   let h1 = 5381; let h2 = 52711;
   for (let i = 0; i < text.length; i++) {
     const c = text.charCodeAt(i);

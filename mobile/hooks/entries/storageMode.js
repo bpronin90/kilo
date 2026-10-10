@@ -11,6 +11,14 @@ import {
   loadWorkoutNotePresenceState as cloudLoadWorkoutNotePresenceState,
   ensureWorkoutNoteLive as cloudEnsureWorkoutNoteLive,
 } from '../../storage/cloud/cloudDomainMethods';
+import {
+  applyTidyNoteTexts as cloudApplyTidyNoteTexts,
+  loadTidyTextStates as cloudLoadTidyTextStates,
+} from '../../storage/cloud/recoveryTidyNoteWrites';
+import {
+  applyTidyNoteTexts as localApplyTidyNoteTexts,
+  loadTidyTextStates as localLoadTidyTextStates,
+} from '../../storage/entries/workoutNoteRecoveryBatch';
 import { beginPhaseRun, markComplete, markFailed, SYNC_PHASE } from '../../storage/syncRecovery';
 
 // ── recovery journal ↔ storage mode wiring (#696) ────────────────────────────
@@ -70,6 +78,10 @@ export function registerRecoveryNoteOperations() {
     ensureNoteLive: (noteSeed) => (isCloudMode()
       ? cloudEnsureWorkoutNoteLive(noteSeed)
       : Storage.saveWorkoutNoteItem({ ...noteSeed, deleted_at: null })),
+    // Tidy names (#1309): all-or-nothing validated note text writes and the
+    // verification read, selected by mode at call time like the rest.
+    applyTidyTexts: (request) => (isCloudMode() ? cloudApplyTidyNoteTexts(request) : localApplyTidyNoteTexts(request)),
+    loadTidyTextStates: (ids) => (isCloudMode() ? cloudLoadTidyTextStates(ids) : localLoadTidyTextStates(ids)),
     });
 }
 

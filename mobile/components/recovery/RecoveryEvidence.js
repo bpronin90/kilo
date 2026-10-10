@@ -17,6 +17,7 @@ import { summarizeDetailRows, WeekEvidence, WeekUnavailableNotice } from './Reco
 import { WeekPicker } from './RecoveryWeekPicker';
 import { RebuildBaselineAction } from './RebuildBaseline';
 import { MatchExerciseNamesAction } from './MatchExerciseNames';
+import { TidyRecoveryNamesAction } from './TidyRecoveryNames';
 import { deriveTrainedElsewhere } from './RecoveryWeekIndex';
 import { createStyles } from './analyticsRecoveryStyles';
 import { RecoveryRosterSummary } from './RecoveryVisuals';
@@ -60,6 +61,9 @@ export function BlockEvidence({
   onRebuildBaseline,
   // Name match (#1298): link renamed exercises to frozen v2 baseline rows.
   onMatchNames,
+  // Tidy names (#1309): clean week headers and baseline names together.
+  tidyNames = null,
+  pendingRecovery = [],
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
@@ -417,6 +421,20 @@ export function BlockEvidence({
       ) : null}
       {onMatchNames ? (
         <MatchExerciseNamesAction block={block} weeks={weeks} notes={notes} locked={reasonLocked || stateStale} onMatch={onMatchNames} />
+      ) : null}
+      {tidyNames ? (
+        <TidyRecoveryNamesAction
+          key={block.id}
+          block={block}
+          weeks={weeks}
+          notes={notes}
+          locked={reasonLocked || stateStale}
+          pending={pendingRecovery}
+          onTidy={tidyNames.tidyNames}
+          onUndo={tidyNames.undoTidyNames}
+          onLoadUndo={tidyNames.loadUndo}
+          onResolve={tidyNames.resolveConflict}
+        />
       ) : null}
     </Card>
   );
