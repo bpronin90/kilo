@@ -372,7 +372,10 @@ export function captureRecoveryBaseline(rawSections) {
     const basis = picked.spec?.kind === 'amrap' ? BASIS.AMRAP
       : picked.complete ? BASIS.COMPLETE
         : picked.spec ? BASIS.NEVER_COMPLETE : BASIS.NO_DECLARATION;
-    rows.push({ key, name: names.get(key) ?? key, ...picked.metrics, routine_order: order, basis });
+    const metrics = { ...picked.metrics };
+    // #1305: a duration-declared session's loaded counts are seconds, not reps.
+    if (picked.spec?.kind === 'duration') { delete metrics.best_e1rm_weight; delete metrics.best_e1rm_reps; }
+    rows.push({ key, name: names.get(key) ?? key, ...metrics, routine_order: order, basis });
   }
 
   rows.sort((a, b) => a.routine_order - b.routine_order);
@@ -413,6 +416,7 @@ export function planBaselineRebuild(block, note) {
   if (parsed.ok === false) return no('The baseline routine could not be read.');
   const captured = captureRecoveryBaseline(parsed.sections || []);
   if (captured.exercises.length === 0) return no('The baseline routine has no exercises to rebuild from.');
+  if (baselineLacksStrengthData(captured)) return no('The baseline routine has no lifts with load and reps to score.');
   const kept = preserveNameMatches(block.baseline, captured);
   if (!kept.ok) return no(kept.message);
   const noteTime = Date.parse(note.updated_at);

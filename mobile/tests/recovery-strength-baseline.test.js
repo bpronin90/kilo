@@ -122,6 +122,16 @@ describe('legacy rebuild (#1305)', () => {
     expect(baselineLacksStrengthData(CAPTURED)).toBe(false);
     expect(baselineLacksStrengthData(captureRecoveryBaselineFromText('-Plank 3x45s\n- 45,45,45'))).toBe(false);
     expect(baselineLacksStrengthData({ version: 3, exercises: [] })).toBe(false);
+    // A #1305 capture whose only pair-less weighted row is loaded-duration is upgraded.
+    expect(baselineLacksStrengthData(captureRecoveryBaselineFromText('-Bench\n- 100 5\n-Carry: 2x30s\n- 50 30,30'))).toBe(false);
+  });
+
+  test('a rebuild that would still have no scoreable lift is not offered (no rebuild loop)', () => {
+    const onlyCarry = '-Carry: 2x30s\n- 50 30,30';
+    const legacy = { version: 1, exercises: [{ key: 'carry', name: 'Carry', exercise_class: 'weighted', top_weight: 50, volume: 3000, sets_completed: 2 }] };
+    const plan = planBaselineRebuild(block(legacy), note({ raw_text: onlyCarry }));
+    expect(plan.eligible).toBe(false);
+    expect(plan.message).toMatch(/no lifts with load and reps/);
   });
 
   test('a pair-less v2 block plans the exact capture, carrying old values for the preview', () => {

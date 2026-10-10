@@ -13,7 +13,7 @@
 // Comparison is by exact normalized exercise identity only. A different lift is
 // a different lift: no substitution mapping, no "close enough" equivalence.
 
-import { parseWorkoutNote, deriveWorkoutAnalytics, normalizeExerciseKey } from '../parser.js';
+import { parseWorkoutNote, deriveWorkoutAnalytics, normalizeExerciseKey, parseHeaderDeclaration } from '../parser.js';
 import { _occurrenceEntries } from './workoutAnalytics.js';
 import { RECOVERY_BASELINE_SUPPORTED_VERSIONS, normalizeTimedSections, orderedLiveWeeks } from './recoveryBlocks.js';
 
@@ -173,11 +173,20 @@ export function aggregateRecoveryWeekWork(rawSections, options) {
 }
 
 // The completed non-warmup sets behind `aggregateRecoveryWeekWork`, per
-// normalized identity: Map key -> { name, completed, exercise_class }. Shared with
-// the strength score (#1305) so both read exactly the same sets and identities.
+// normalized identity: Map key -> { name, completed, exercise_class, timed_header }.
+// Shared with the strength score (#1305) so both read exactly the same sets and
+// identities; `timed_header` marks a duration-declared exercise, whose loaded
+// set counts are seconds, not reps.
 export function collectRecoveryWeekSets(rawSections, { declarationAware = false } = {}) {
   const out = new Map();
   if (!Array.isArray(rawSections) || rawSections.length === 0) return out;
+  const timed = new Set();
+  for (const section of rawSections) {
+    if (section.kind === 'warmup') continue;
+    for (const ex of section.exercises || []) {
+      if (parseHeaderDeclaration(ex.raw_header)?.type === 'duration') timed.add(normalizeExerciseKey(ex.name));
+    }
+  }
   const { exercises } = deriveWorkoutAnalytics(declarationAware ? normalizeTimedSections(rawSections) : rawSections);
   for (const ex of exercises) {
     const completed = (ex.occurrences || []).filter(occ => occ.kind !== 'warmup')
@@ -186,7 +195,8 @@ export function collectRecoveryWeekSets(rawSections, { declarationAware = false 
       .flatMap(entry => _completedSets(entry.sets));
     const exercise_class = _detectExerciseClass(completed);
     if (!exercise_class) continue;
-    out.set(normalizeExerciseKey(ex.name), { name: ex.name, completed, exercise_class });
+    const key = normalizeExerciseKey(ex.name);
+    out.set(key, { name: ex.name, completed, exercise_class, timed_header: timed.has(key) });
   }
   return out;
 }

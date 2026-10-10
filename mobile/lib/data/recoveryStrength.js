@@ -37,6 +37,8 @@ export const UNSCOREABLE_REASON = Object.freeze({
   time_based: 'Timed work has no load and reps to score',
   reps_only: 'Bodyweight reps have no load to score',
   pair_missing: 'Baseline best-set data unavailable',
+  no_baseline_set: 'Baseline has no set with load and reps to score',
+  loaded_duration: 'Loaded timed work has no reps to score',
   class_changed: 'Logged without load this week',
   assisted: 'Assisted sets are not scored as load',
   no_scoreable_set: 'No completed set with load and reps',
@@ -78,6 +80,7 @@ function _weekSets(week, notesById, declarationAware) {
 function _scoreLiftWeek(pair, entry) {
   if (!entry) return { state: LIFT_STATE.NOT_LOGGED };
   if (entry.exercise_class !== 'weighted') return { state: LIFT_STATE.UNSCOREABLE, reason: 'class_changed' };
+  if (entry.timed_header) return { state: LIFT_STATE.UNSCOREABLE, reason: 'loaded_duration' };
   const best = bestEpleySet(entry.completed);
   if (!best) {
     const assisted = entry.completed.some(s => s.assistance_value != null && s.assistance_value !== 0);
@@ -128,13 +131,17 @@ export function deriveRecoveryStrength({ block, weeks = [], notes = [], selected
   if (!Array.isArray(baseline.exercises)) return head(STRENGTH_STATUS.BASELINE_UNAVAILABLE);
 
   const roster = baseline.exercises;
+  const upgraded = !baselineLacksStrengthData(baseline);
   // Baseline rows that can never be scored, with their reason (shown once).
   const not_scored = [];
   const scoreable = [];
   for (const row of roster) {
     const pair = baselineStrengthPair(row);
     if (pair) scoreable.push({ row, pair });
-    else not_scored.push({ key: row.key, name: row.name || row.key, reason: row.exercise_class === 'weighted' ? 'pair_missing' : row.exercise_class });
+    else {
+      const reason = row.exercise_class !== 'weighted' ? row.exercise_class : upgraded ? 'no_baseline_set' : 'pair_missing';
+      not_scored.push({ key: row.key, name: row.name || row.key, reason });
+    }
   }
   if (scoreable.length === 0 && baselineLacksStrengthData(baseline)) {
     return { ...head(STRENGTH_STATUS.PAIR_UNAVAILABLE), roster_size: roster.length };

@@ -80,14 +80,17 @@ export function strengthPairError(row) {
 }
 
 // True when a baseline has no usable strength data to score against: any v1
-// snapshot, or a v2 snapshot with a weighted row missing its pair. Such a
-// snapshot (and only such a snapshot) may be rebuilt on explicit confirmation;
-// an upgraded snapshot is never rewritten again.
+// snapshot, or a v2 snapshot with weighted rows but no pair on any of them (a
+// pre-#1305 capture). A #1305 capture may legitimately omit the pair on a
+// loaded-duration row, so ONE pair anywhere marks it upgraded. Only a lacking
+// snapshot may be rebuilt on explicit confirmation, and only into one that is
+// not lacking; an upgraded snapshot is never rewritten again.
 export function baselineLacksStrengthData(baseline) {
   if (!baseline || !Array.isArray(baseline.exercises)) return false;
   if (baseline.version === 1) return true;
   if (baseline.version !== 2) return false;
-  return baseline.exercises.some(r => r && r.exercise_class === 'weighted' && !baselineStrengthPair(r));
+  const weighted = baseline.exercises.filter(r => r && r.exercise_class === 'weighted');
+  return weighted.length > 0 && !weighted.some(r => baselineStrengthPair(r));
 }
 
 // Carry confirmed name matches (#1298) from an existing v2 snapshot onto a

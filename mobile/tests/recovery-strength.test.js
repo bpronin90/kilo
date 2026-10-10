@@ -70,6 +70,25 @@ describe('per-lift score', () => {
   });
 });
 
+describe('loaded-duration work (PR #1308 review)', () => {
+  test('a duration-declared loaded carry is never frozen as reps nor scored, and says why', () => {
+    const baseline = captureRecoveryBaselineFromText('-Bench\n- 100 5\n-Farmer Carry: 2x30s\n- 50 30,30');
+    const carry = baseline.exercises.find(r => r.key === 'farmer carry');
+    expect(carry.exercise_class).toBe('weighted');
+    expect(carry.best_e1rm_weight).toBeUndefined();
+    const r = derive(['-Bench\n- 100 5\n-Farmer Carry: 2x30s\n- 50 30,30'], { baseline });
+    expect(r.cohort.map(c => c.key)).toEqual(['bench']);
+    expect(r.lifts.some(l => l.key === 'farmer carry')).toBe(false);
+    expect(r.not_scored).toEqual([{ key: 'farmer carry', name: 'Farmer Carry', reason: 'no_baseline_set' }]);
+  });
+
+  test('a week that logs a scored lift under a timed header is unscoreable, not a strength gain', () => {
+    const baseline = captureRecoveryBaselineFromText('-Carry\n- 50 5');
+    const r = derive(['-Carry: 2x30s\n- 50 30,30'], { baseline });
+    expect(lift(r, 'carry')).toMatchObject({ state: LIFT_STATE.UNSCOREABLE, reason: 'loaded_duration', percent: null });
+  });
+});
+
 describe('baseline states', () => {
   test('a v1 snapshot or a pair-less v2 says best-set data is unavailable, never scores against the source routine', () => {
     expect(derive(['-Bench\n- 100 5'], { baseline: { version: 1, exercises: [{ key: 'bench', name: 'Bench', exercise_class: 'weighted', top_weight: 100, volume: 500, sets_completed: 1 }] } }).status)
