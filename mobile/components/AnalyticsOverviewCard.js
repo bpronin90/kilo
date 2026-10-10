@@ -45,6 +45,14 @@ function OverviewRow({ row, unit, onPress }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
 
+  if (row.note) {
+    return (
+      <View style={styles.row} accessible accessibilityLabel={row.note}>
+        <Text style={[styles.rowCaption, { textAlign: 'left' }]}>{row.note}</Text>
+      </View>
+    );
+  }
+
   const value = formatValue(row);
   const delta = formatDelta(row);
   const interactive = !!row.section && !!onPress && !row.unavailable;
@@ -81,8 +89,14 @@ function OverviewRow({ row, unit, onPress }) {
     // Recovery, so every other row's accessible label is unchanged.
     row.infoCaption || null,
   ].filter(Boolean).join(', ');
+  const label = row.accessibilityText ? `${row.label}, ${row.accessibilityText}` : accessibilityLabel;
 
+  // Rows with `stackDetail` (Recovery) keep the right-hand value compact and
+  // put the long suffix + caption on full-width wrapping lines under the label,
+  // so nothing nonwrapping can outgrow the row at 320dp or large text.
+  const stacked = !!row.stackDetail;
   const body = (
+    <View>
     <View style={styles.rowTop}>
       <Text style={styles.rowLabel} numberOfLines={1}>{row.label}</Text>
       <View style={styles.rowValueStack}>
@@ -95,13 +109,13 @@ function OverviewRow({ row, unit, onPress }) {
               {row.showUnit && <Text style={styles.rowValueUnit}> {unit}</Text>}
             </Text>
           )}
-          {!!row.valueSuffix && <Text style={styles.rowValueSuffix}>{row.valueSuffix}</Text>}
+          {!stacked && !!row.valueSuffix && <Text style={styles.rowValueSuffix}>{row.valueSuffix}</Text>}
           {interactive
             ? <MaterialIcons name="chevron-right" size={16} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
             : <View style={styles.rowValueSpacer} accessible={false} />
           }
         </View>
-        {(delta || caption || row.infoCaption) && (
+        {(delta || caption || (!stacked && row.infoCaption)) && (
           <View style={styles.rowSub}>
             {!!delta && (
               <Text style={[styles.rowDelta, deltaStyleFor(row, delta, styles)]}>
@@ -109,16 +123,23 @@ function OverviewRow({ row, unit, onPress }) {
               </Text>
             )}
             {!!caption && <Text style={styles.rowCaption}>{caption}</Text>}
-            {!!row.infoCaption && <Text style={styles.rowInfoCaption}>{row.infoCaption}</Text>}
+            {!stacked && !!row.infoCaption && <Text style={styles.rowInfoCaption}>{row.infoCaption}</Text>}
           </View>
         )}
       </View>
+    </View>
+    {stacked && (
+      <View style={styles.rowDetail} testID={`overview-detail-${row.key}`}>
+        {!!row.valueSuffix && <Text style={styles.rowDetailText}>{row.valueSuffix}</Text>}
+        {!!row.infoCaption && <Text style={styles.rowDetailText}>{row.infoCaption}</Text>}
+      </View>
+    )}
     </View>
   );
 
   if (!interactive) {
     return (
-      <View style={styles.row} accessible accessibilityLabel={accessibilityLabel}>
+      <View style={styles.row} accessible accessibilityLabel={label}>
         {body}
       </View>
     );
@@ -130,7 +151,7 @@ function OverviewRow({ row, unit, onPress }) {
       style={styles.row}
       onPress={() => onPress(row.section)}
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
+      accessibilityLabel={label}
       accessibilityHint="Opens this section of the Analytics tab"
     >
       {body}
@@ -220,6 +241,15 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     fontWeight: '600',
     color: kua ? kua.onSurface : colors.text,
     flex: 1,
+  },
+  rowDetail: {
+    marginTop: 2,
+    gap: 2,
+  },
+  rowDetailText: {
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    flexShrink: 1,
   },
   rowValueStack: {
     alignItems: 'flex-end',

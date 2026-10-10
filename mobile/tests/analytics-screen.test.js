@@ -512,17 +512,17 @@ describe('deriveOverviewRows (#821)', () => {
   // Exercise Progress/Routine which already get `paused` metadata. The value
   // itself must stay the true latest total — only the delta/caption are
   // suppressed and the row is marked paused, same shape as the other two.
-  test('the 1K row is marked paused and suppresses its delta during active Recovery, but keeps its true value', () => {
+  test('active Recovery replaces the paused 1K and Exercise Progress rows with one compact history note', () => {
     const rows = deriveOverviewRows({
       oneKPoints: [{ value: 940 }, { value: 975 }, { value: 1000 }],
+      signals: [{ overload_trend: 'up' }],
       activeTraining: { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 1 },
     });
-    const oneK = rowFor(rows, 'oneK');
-    expect(oneK.value).toBe(1000);
-    expect(oneK.paused).toBe(true);
-    expect(oneK.pausedCaption).toBe('Paused');
-    expect(oneK.delta).toBeNull();
-    expect(oneK.deltaCaption).toBeNull();
+    expect(rows.map(r => r.key)).toEqual(['recovery', 'weight', 'history']);
+    expect(rowFor(rows, 'oneK')).toBeUndefined();
+    expect(rowFor(rows, 'progress')).toBeUndefined();
+    expect(rowFor(rows, 'history').note).toBe('1K Total and Exercise Progress resume after recovery');
+    expect(rowFor(rows, 'history').section).toBeUndefined();
   });
 
   test('outside active Recovery the 1K row is not paused and its delta still reports', () => {
@@ -546,13 +546,32 @@ describe('deriveOverviewRows (#821)', () => {
     });
     const recovery = rowFor(rows, 'recovery');
     // #1242: the value stays the shared roster count Home prints.
-    expect(recovery.value).toBe('5/5');
-    expect(recovery.valueSuffix).toBe('trained');
-    expect(recovery.infoCaption).toBe('Week 3 · 2 improved since Week 1 · 3 lifts matched');
+    // Value is exercises back at/above pre-recovery performance out of the roster.
+    expect(recovery.value).toBe('3/5');
+    expect(recovery.valueSuffix).toBe('pre-recovery exercises back');
+    expect(recovery.infoCaption).toBe('Week 3 · 2 improved since Week 1');
+    expect(recovery.accessibilityText).toBe('3 of 5 pre-recovery exercises back to pre-recovery level, Week 3, 2 improved since Week 1');
     expect(recovery.valueSuffix).not.toMatch(/Week 3/);
     expect(recovery.valueSuffix).not.toMatch(/since Week/);
-    expect(recovery.valueSuffix).not.toMatch(/3 lifts matched/);
+    expect(recovery.infoCaption).not.toMatch(/matched|trained/);
     expect(recovery.delta).toBeUndefined();
+  });
+
+  test('not-trained-yet count appears in caption and a11y text only when above zero; singular roster', () => {
+    const open = { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 3 };
+    const bands = { roster_size: 5, trained: 4, buckets: { at_or_above: 3, close: 1, rebuilding: 0, early: 0, cannot_compare: 0, not_trained_yet: 1 } };
+    const r = rowFor(deriveOverviewRows({
+      activeTraining: open, recoveryBands: bands,
+      recoveryMovement: { improved: 2, steady: 1, fell_back: 0, matched_size: 3, anchor_week_number: 1 },
+    }), 'recovery');
+    expect(r.infoCaption).toBe('Week 3 · 1 not trained yet · 2 improved since Week 1');
+    expect(r.accessibilityText).toBe('3 of 5 pre-recovery exercises back to pre-recovery level, including 1 not trained yet, Week 3, 2 improved since Week 1');
+    const one = rowFor(deriveOverviewRows({
+      activeTraining: open,
+      recoveryBands: { roster_size: 1, trained: 1, buckets: { at_or_above: 1, close: 0, rebuilding: 0, early: 0, cannot_compare: 0, not_trained_yet: 0 } },
+    }), 'recovery');
+    expect(one.valueSuffix).toBe('pre-recovery exercise back');
+    expect(one.infoCaption).toBe('Week 3');
   });
 
   test('active Recovery with movement unavailable: infoCaption still carries week identity — absent from valueSuffix, no fabricated delta', () => {
@@ -562,7 +581,7 @@ describe('deriveOverviewRows (#821)', () => {
       recoveryMovement: null,
     });
     const recovery = rowFor(rows, 'recovery');
-    expect(recovery.infoCaption).toBe('Week 1');
+    expect(recovery.infoCaption).toBe('Week 1 · 3 not trained yet');
     expect(recovery.valueSuffix).not.toMatch(/Week 1/);
     expect(recovery.delta).toBeUndefined();
   });
@@ -581,10 +600,8 @@ describe('deriveOverviewRows (#821)', () => {
       activeTraining: { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 1 },
       recoveryBands: { roster_size: 2, trained: 1, buckets: { at_or_above: 1, close: 0, rebuilding: 0, early: 0, cannot_compare: 0, not_trained_yet: 1 } },
     });
-    for (const key of ['weight', 'oneK', 'progress']) {
-      expect(rowFor(rows, key).infoCaption).toBeUndefined();
-    }
-    expect(rowFor(rows, 'recovery').infoCaption).toBe('Week 1');
+    expect(rowFor(rows, 'weight').infoCaption).toBeUndefined();
+    expect(rowFor(rows, 'recovery').infoCaption).toBe('Week 1 · 1 not trained yet');
   });
 });
 
@@ -2675,27 +2692,13 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
     expect(weightTexts.toLowerCase()).not.toContain('paused');
   });
 
-  test('Exercise Progress row is captioned as paused baseline history during active Recovery', () => {
+  test('active Recovery shows one compact history line and no paused rows', () => {
     mockActiveTraining();
-    const component = renderScreen();
-    const root = component.root;
-    expect(hasText(root, 'Paused')).toBe(true);
-  });
-
-  // Review finding on PR #876: the 1K row rendered its frozen value and
-  // "since your last session" delta as if fresh during active Recovery,
-  // unlike Exercise Progress/Routine which already get the paused treatment.
-  test('1K row is captioned as paused baseline history and does not show a fresh delta during active Recovery', () => {
-    mockActiveTraining();
-    const component = renderScreen();
-    const root = component.root;
-    const oneKRow = root.findAllByProps({ testID: 'overview-row-oneK' }).find(n => typeof n.props.onPress === 'function');
-    const oneKTexts = oneKRow.findAllByType('Text').map(t => {
-      const c = t.props.children;
-      return Array.isArray(c) ? c.join('') : String(c ?? '');
-    }).join(' ');
-    expect(oneKTexts).toContain('Paused');
-    expect(oneKTexts.toLowerCase()).not.toContain('since your last session');
+    const root = renderScreen().root;
+    expect(hasText(root, '1K Total and Exercise Progress resume after recovery')).toBe(true);
+    expect(hasText(root, 'Paused')).toBe(false);
+    expect(root.findAllByProps({ testID: 'overview-row-oneK' }).length).toBe(0);
+    expect(root.findAllByProps({ testID: 'overview-row-progress' }).length).toBe(0);
   });
 
   // #1029 amendment (required test 21) — full-render coverage through the real
@@ -2770,9 +2773,24 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
 
       expect(joined).toContain('Week 2');
       expect(joined).toContain('since Week 1');
-      expect(joined).toContain('2 lifts matched');
-      // Never folded into valueSuffix, which stays the compact roster count (#1243).
-      expect(texts).toContain('trained');
+      expect(joined).not.toContain('matched');
+      // Suffix and caption live in a full-width wrapping detail block, not in
+      // the nonshrinking right-hand value group (320dp / large-text safety).
+      const detail = row.findAllByProps({ testID: 'overview-detail-recovery' })[0];
+      const detailTexts = detail.findAllByType('Text');
+      expect(detailTexts.map(t => [].concat(t.props.children).join(''))).toEqual(
+        expect.arrayContaining(['pre-recovery exercises back']));
+      detailTexts.forEach(t => expect(t.props.numberOfLines).toBeUndefined());
+      // Full type role, no fontWeight override on the bundled faces (§16.1/16.2).
+      detailTexts.forEach(t => {
+        const st = flattenStyle(t);
+        expect(st.fontWeight).toBeUndefined();
+        expect(st.fontSize).toBeDefined();
+      });
+      const valueGroupTexts = textNodesOf(row).filter(t => !detailTexts.includes(t)).map(t => [].concat(t.props.children).join(''));
+      expect(valueGroupTexts.join(' ')).not.toContain('pre-recovery');
+      // Never folded into valueSuffix, which stays the compact count.
+      expect(texts).toContain('pre-recovery exercises back');
       expect(texts.some(t => t.startsWith('of ') && /Week|improved/.test(t))).toBe(false);
 
       const infoCaptionNode = textNodesOf(row).find(t => {
@@ -2781,11 +2799,12 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
         return s.includes('since Week 1');
       });
       expect(infoCaptionNode).toBeDefined();
-      expect(flattenStyle(infoCaptionNode).fontWeight).toBe('700');
+      expect(flattenStyle(infoCaptionNode).fontSize).toBeDefined();
 
       expect(row.props.accessibilityLabel).toContain('Week 2');
       expect(row.props.accessibilityLabel).toContain('since Week 1');
-      expect(row.props.accessibilityLabel).toContain('2 lifts matched');
+      expect(row.props.accessibilityLabel).not.toContain('matched');
+      expect(row.props.accessibilityLabel).toMatch(/^Recovery, 2 of 2 pre-recovery exercises back to pre-recovery level, Week 2, \d+ improved since Week 1$/);
     });
 
     test('movement unavailable: infoCaption still shows week identity, absent from valueSuffix, no fabricated delta, present in accessible label', () => {
@@ -2813,7 +2832,7 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
         return s === 'Week 1';
       });
       expect(infoCaptionNode).toBeDefined();
-      expect(flattenStyle(infoCaptionNode).fontWeight).toBe('700');
+      expect(flattenStyle(infoCaptionNode).fontSize).toBeDefined();
 
       expect(row.props.accessibilityLabel).toContain('Week 1');
     });
@@ -2896,47 +2915,6 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
   // offset scrolled to the wrong place. Both rows must instead route through
   // the same expand-then-layout flow external section navigation already
   // uses.
-  test('tapping Overview\'s 1K row during active Recovery auto-expands the collapsed baseline disclosure (fresh mount, no prior offset)', () => {
-    mockActiveTraining();
-    const component = renderScreen();
-    const root = component.root;
-
-    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBe(0);
-
-    const oneKRow = root.findAllByProps({ testID: 'overview-row-oneK' }).find(n => typeof n.props.onPress === 'function');
-    render.act(() => { oneKRow.props.onPress(); });
-
-    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
-  });
-
-  test('tapping Overview\'s Exercise Progress row during active Recovery auto-expands the collapsed baseline disclosure', () => {
-    mockActiveTraining();
-    const component = renderScreen();
-    const root = component.root;
-
-    const progressRow = root.findAllByProps({ testID: 'overview-row-progress' }).find(n => typeof n.props.onPress === 'function');
-    render.act(() => { progressRow.props.onPress(); });
-
-    expect(root.findAllByProps({ testID: 'overload-list-anchor' }).length).toBeGreaterThan(0);
-  });
-
-  test('tapping Overview\'s 1K row still scrolls correctly once the disclosure is already expanded (offset exists)', () => {
-    mockActiveTraining();
-    const component = renderScreen();
-    const root = component.root;
-
-    const toggle = root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).find(n => typeof n.props.onPress === 'function');
-    render.act(() => { toggle.props.onPress(); });
-    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
-
-    const oneKRow = root.findAllByProps({ testID: 'overview-row-oneK' }).find(n => typeof n.props.onPress === 'function');
-    render.act(() => { oneKRow.props.onPress(); });
-
-    // Disclosure stays expanded (it was already open) and the row's own tap
-    // does not collapse it back.
-    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
-  });
-
   // Review finding on PR #876: `baselineCollapsed` persists across tab
   // changes (AnalyticsScreen stays mounted). Without resetting on a NEW
   // active-Recovery period, a block the user previously expanded — then
