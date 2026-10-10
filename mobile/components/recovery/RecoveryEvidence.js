@@ -269,7 +269,7 @@ export function BlockEvidence({
 
               {detailsExpanded && (
                 <View style={styles.detailsBody}>
-                  <WeekEvidence rows={weekRows} unit={unit} weekNumber={selectedWeek.week_number} elsewhere={trainedElsewhere} />
+                  <WeekEvidence key={`${block.id}:${selectedWeek.week_id}`} rows={weekRows} unit={unit} weekNumber={selectedWeek.week_number} elsewhere={trainedElsewhere} />
                 </View>
               )}
             </View>

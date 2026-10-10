@@ -64,7 +64,10 @@ export const createVisualStyles = (colors, kua = null) => {
     // current-vs-baseline bar with its percent, and one numbers line. Same thin
     // bar, band colors and calm weights as the card's summary above.
     exRow: {
-      gap: 6,
+      gap: 4,
+      // 44dp floor (ui-design-rules: disclosure rows); text scale still grows it.
+      minHeight: 44,
+      justifyContent: 'center',
       paddingVertical: 10,
       borderTopWidth: 1,
       borderTopColor: border,
@@ -115,6 +118,9 @@ export const createVisualStyles = (colors, kua = null) => {
     rosterNum: { flexShrink: 0, ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }), color: ink },
     rosterNumQuiet: { flexShrink: 0, ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }), color: inkMuted },
     rosterLabel: { flexShrink: 1, fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600', color: inkMuted },
+    exSummary: { flexShrink: 1, maxWidth: '100%', ...TYPOGRAPHY['label-md'], color: inkMuted },
+    exDetail: { gap: 6, paddingTop: 4 },
+    exLegend: { fontSize: TYPOGRAPHY['body-sm'].fontSize, color: inkMuted, paddingBottom: 8 },
     exNote: { fontSize: TYPOGRAPHY['body-sm'].fontSize, color: inkMuted },
     weekNoteText: { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600', color: inkMuted },
   });
