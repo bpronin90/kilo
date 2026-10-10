@@ -94,31 +94,41 @@ export function baselineLacksStrengthData(baseline) {
 }
 
 // Carry confirmed name matches (#1298) from an existing v2 snapshot onto a
-// freshly captured one. A matched row's key/name no longer appears in the
-// source routine, so it is detected as an old key absent from the new capture.
-// Neither a missing key nor equal numbers prove a match (an in-place edit,
-// Bench -> Incline Bench, can share both), so the old identity is carried only
-// with the SAME proof a #1298 match requires: the new row at the same routine
-// position, of the same class, whose name reduces to the same canonical key.
-// Anything else blocks the rebuild with a reason: a match is never silently
-// undone and another lift's best set is never frozen under a matched name. v1
-// snapshots cannot carry matches (rename is v2-only), so they pass through.
+// freshly captured one, using #1298's OWN proof rule (owner decision, PR #1308):
+// a match only ever links names that reduce to the same canonical key, and only
+// when that canonical group is one-to-one. So, per old row:
+//   - key still captured: kept, unless a NEW row (a key the old snapshot did not
+//     have) now shares its canonical name — then which row is "that lift" is
+//     ambiguous (a matched identity could silently move), so refuse;
+//   - key gone (a matched or removed row): carried only onto the ONE new-capture
+//     row sharing its canonical name, when that row is itself new, of the same
+//     class, and not already claimed; otherwise refuse.
+// Neither a missing key, a position, nor equal numbers is proof. A refusal names
+// the row: a match is never silently undone and another lift's best set is never
+// frozen under a matched name. v1 snapshots cannot carry matches (rename is
+// v2-only), so they pass through unchanged.
 export function preserveNameMatches(previous, next) {
   if (!previous || previous.version !== 2) return { ok: true, baseline: next };
-  const nextKeys = new Set(next.exercises.map(r => r.key));
   const prevKeys = new Set(previous.exercises.map(r => r.key));
   const exercises = next.exercises.map(r => ({ ...r }));
+  const nextKeys = new Set(exercises.map(r => r.key));
+  const canonOf = (r) => canonicalMatchKey(r.name || r.key);
+  const claimed = new Set();
+  const refuse = (old) => ({
+    ok: false,
+    message: `“${old.name || old.key}” no longer lines up with the routine, so a matched name on it can’t be carried over safely. The baseline was not rebuilt.`,
+  });
   for (const old of previous.exercises) {
-    if (nextKeys.has(old.key)) continue;
-    const target = exercises[old.routine_order];
-    const canon = canonicalMatchKey(old.name || old.key);
-    if (!target || prevKeys.has(target.key) || target.exercise_class !== old.exercise_class
-      || !canon || canon !== canonicalMatchKey(target.name || target.key)) {
-      return {
-        ok: false,
-        message: `“${old.name || old.key}” no longer lines up with the routine, so a matched name on it can’t be carried over safely. The baseline was not rebuilt.`,
-      };
+    const canon = canonOf(old);
+    const group = canon ? exercises.filter(r => canonOf(r) === canon) : [];
+    const fresh = group.filter(r => !prevKeys.has(r.key));
+    if (nextKeys.has(old.key)) {
+      if (fresh.length > 0) return refuse(old);
+      continue;
     }
+    const target = group.length === 1 && fresh.length === 1 ? fresh[0] : null;
+    if (!target || claimed.has(target) || target.exercise_class !== old.exercise_class) return refuse(old);
+    claimed.add(target);
     target.key = old.key;
     target.name = old.name;
   }

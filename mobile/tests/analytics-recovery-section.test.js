@@ -1898,6 +1898,50 @@ describe('AnalyticsRecoverySection — strength trend by recovery week (#1305)',
     expect(hostById(root, 'recovery-strength-scale')).toHaveLength(0);
   });
 
+  test('a missing selected week keeps the earlier history, shows its own gap, and withholds only its average (PR #1308 review)', () => {
+    const root = setup({
+      blocks: [block()], weeks: [week(1, 'note-w1'), week(2, 'ghost')], notes: [note('note-w1', '-Bench\n- 100 5')],
+    }).root;
+    const rows = root.findAll(n => typeof n.type === 'string' && /^recovery-strength-week-\d+$/.test(n.props.testID || ''));
+    expect(rows.map(r => r.props.accessibilityLabel)).toEqual(['Week 1: 74% of baseline strength', 'Week 2: no readable evidence']);
+    expect(hasText(root, 'This week’s note can’t be read, so it has no score.')).toBe(true);
+    expect(hasText(root, 'Week 2 couldn’t be read and is left out of the comparison.')).toBe(true);
+  });
+
+  test('with no common lift, week rows still render: readable weeks say No average, a missing week is a gap', () => {
+    const root = setup({
+      blocks: [block()], weeks: [week(1, 'note-w1'), week(2, 'ghost'), week(3, 'note-w3')],
+      notes: [note('note-w1', '-Bench\n- 100 5'), note('note-w3', '-Pull-up\n- 8,8')],
+    }).root;
+    const rows = root.findAll(n => typeof n.type === 'string' && /^recovery-strength-week-\d+$/.test(n.props.testID || ''));
+    expect(rows.map(r => r.props.accessibilityLabel)).toEqual(['Week 1: no average', 'Week 2: no readable evidence', 'Week 3: no average']);
+    expect(rows.map(r => hostTextsIn(r).pop())).toEqual(['No average', 'No data', 'No average']);
+  });
+
+  test('cohort names are visible, not only spoken (PR #1308 review)', () => {
+    const root = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
+    expect(hostTextsIn(hostById(root, 'recovery-strength-cohort')[0])).toEqual(['In the average: Bench']);
+  });
+
+  test('a legacy baseline whose rebuild is refused shows the reason (PR #1308 review)', () => {
+    const snap = captureRecoveryBaselineFromText('-Bench Press — heavy\n- 135 5');
+    const matched = { ...snap, exercises: snap.exercises.map(({ best_e1rm_weight, best_e1rm_reps, ...r }) => ({ ...r, key: 'bench press', name: 'Bench Press' })) };
+    let c;
+    act(() => {
+      c = render.create(
+        <AnalyticsRecoverySection
+          blocks={[block({ baseline: matched })]}
+          weeks={[week(1, 'note-w1')]}
+          notes={[note('note-baseline', '-Incline Bench\n- 115 5'), note('note-w1', '-Bench Press\n- 135 5')]}
+          onRebuildBaseline={jest.fn()}
+        />
+      );
+    });
+    const refused = hostById(c.root, 'recovery-rebuild-refused')[0];
+    expect(refused).toBeDefined();
+    expect(hostTextsIn(refused)[0]).toMatch(/Bench Press.*can’t be carried over safely.*not rebuilt/);
+  });
+
   test('values above 100% stay factual on one labelled common scale', () => {
     const root = setup({
       blocks: [block()],
@@ -3381,7 +3425,7 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
       weeks: [week(1, 'note-w1')], notes: [note('note-w1', weekText)],
     }).root;
     const summary = hostById(root, 'recovery-strength-summary')[0];
-    expect(hostTextsIn(summary)).toEqual(['Week 1', '100%', 'of Summer 2026 Routine baseline strength', 'Average of 3 lifts scored every week · 3 of 27 baseline lifts']);
+    expect(hostTextsIn(summary)).toEqual(['Week 1', '100%', 'of Summer 2026 Routine baseline strength', 'Average of 3 lifts scored every week · 3 of 27 baseline lifts', 'In the average: L0, L1, L2']);
     expect(findAllText(root).some(t => t.includes('3 of 3'))).toBe(false);
     expect(findAllText(root).filter(t => t.includes('Summer 2026 Routine'))).toEqual(['of Summer 2026 Routine baseline strength']);
     expandDetails(root, { rows: false });

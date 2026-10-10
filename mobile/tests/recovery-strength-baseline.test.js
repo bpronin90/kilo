@@ -187,6 +187,24 @@ describe('legacy rebuild (#1305)', () => {
     expect(plan.message).toMatch(/Bench.*no longer lines up.*not rebuilt/);
   });
 
+  test('a new same-canonical row makes a confirmed match ambiguous, so the rebuild refuses (PR #1308 review)', () => {
+    // Captured "Bench Press — heavy" (100x5) then Squat; matched to "Bench Press".
+    const original = '-Bench Press — heavy\n- 100 5\n-Squat\n- 225 5';
+    const matched = legacyV2(captureRecoveryBaselineFromText(original));
+    matched.exercises = matched.exercises.map((r, i) => (i === 0 ? { ...r, key: 'bench press', name: 'Bench Press' } : r));
+    // The source now also has a NEW "Bench Press" row at 200x5.
+    const grown = `${original}\n-Bench Press\n- 200 5`;
+    const plan = planBaselineRebuild(block(matched), note({ raw_text: grown }));
+    expect(plan.eligible).toBe(false);
+    expect(plan.message).toMatch(/Bench Press.*can’t be carried over safely.*not rebuilt/);
+  });
+
+  test('an unmatched row stays put when an unrelated exercise is added', () => {
+    const plan = planBaselineRebuild(block(legacyV2(CAPTURED)), note({ raw_text: `${ROUTINE}\n-Row 3x5\n- 95 5,5,5` }));
+    expect(plan.eligible).toBe(true);
+    expect(plan.baseline.exercises.map(r => r.key)).toEqual(['squat', 'plank', 'bench', 'row']);
+  });
+
   test('confirm upgrades once; a repeat confirm and a stale preview write nothing', async () => {
     await replaceRecoveryBlocksRaw([block(legacyV2(CAPTURED))]);
     const ok = await rebuildRecoveryBaselineCore(storage([note()]), { blockId: 'rb1', expectedBaseline: CAPTURED });

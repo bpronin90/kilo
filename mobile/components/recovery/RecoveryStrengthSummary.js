@@ -62,6 +62,7 @@ export function RecoveryStrengthSummary({ strength, weekLabel, routineTitle }) {
       <Text style={styles.number}>{`${pct}%`}</Text>
       <Text style={styles.numberLabel} numberOfLines={1} ellipsizeMode="tail">{`of ${visible} baseline strength`}</Text>
       <Text style={styles.caption}>{coverage}</Text>
+      <Text testID="recovery-strength-cohort" style={styles.caption}>{`In the average: ${strength.cohort.map(c => c.name).join(', ')}`}</Text>
       {notes.map(n => <Text key={n} style={styles.caption}>{n}</Text>)}
     </View>
   );

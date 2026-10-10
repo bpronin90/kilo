@@ -46,18 +46,21 @@ export function StrengthScaleNote({ scaleMax }) {
 export function RecoveryStrengthWeeks({ strength, scaleMax }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStrengthStyles(colors, kua), [colors, kua]);
-  if (!strength.weeks || strength.weeks.length < 2 || strength.cohort.length === 0) return null;
+  // Rows stay even with no average (empty cohort): unreadable weeks remain
+  // visible gaps and readable ones say there is no average, never a zero.
+  if (!strength.weeks || strength.weeks.length < 2) return null;
   return (
     <View testID="recovery-strength-weeks" style={styles.section}>
       <Text style={styles.sectionTitle}>Week by week</Text>
       {strength.weeks.map(w => {
-        const label = w.readable
+        const scored = w.readable && w.mean != null;
+        const label = scored
           ? `Week ${w.week_number}: ${displayPercent(w.mean)}% of baseline strength`
-          : `Week ${w.week_number}: no readable evidence`;
+          : w.readable ? `Week ${w.week_number}: no average` : `Week ${w.week_number}: no readable evidence`;
         return (
           <View key={w.week_id} testID={`recovery-strength-week-${w.week_number}`} style={styles.weekRow} accessible accessibilityLabel={label}>
             <Text style={styles.weekLabel}>{`Week ${w.week_number}`}</Text>
-            {w.readable ? (
+            {scored ? (
               <>
                 <StrengthBar percent={w.mean} scaleMax={scaleMax} testID={`recovery-strength-week-${w.week_number}-bar`} />
                 <Text style={styles.weekValue}>{`${displayPercent(w.mean)}%`}</Text>
@@ -65,7 +68,7 @@ export function RecoveryStrengthWeeks({ strength, scaleMax }) {
             ) : (
               <>
                 <View style={styles.gapTrack} />
-                <Text style={styles.weekValue}>No data</Text>
+                <Text style={styles.weekValue}>{w.readable ? 'No average' : 'No data'}</Text>
               </>
             )}
           </View>

@@ -7,7 +7,8 @@
 import React, { useMemo, useState } from 'react';
 import { AccessibilityInfo, Pressable, Text, View } from 'react-native';
 import { useTheme } from '../../theme/ThemeContext';
-import { RECOVERY_BASELINE_BASIS, planBaselineRebuild } from '../../lib/data/recoveryBlocks';
+import { RECOVERY_BASELINE_BASIS, isLiveRecord, planBaselineRebuild } from '../../lib/data/recoveryBlocks';
+import { baselineLacksStrengthData } from '../../lib/data/recoveryStrengthBaseline';
 import { displayWeight, formatLiftWeightValue } from '../../lib/units';
 import { createStyles } from './analyticsRecoveryStyles';
 
@@ -75,7 +76,16 @@ export function RebuildBaselineAction({ block, notes, unit = 'lb', locked = fals
     }
   };
 
-  if (!plan.eligible && !doneMessage) return null;
+  // A baseline that still lacks strength data but cannot be rebuilt says why
+  // (#1305), so "Rebuild the baseline below" never points at nothing.
+  if (!plan.eligible && !doneMessage) {
+    if (!baselineLacksStrengthData(block.baseline) || !isLiveRecord(block)) return null;
+    return (
+      <View testID="recovery-rebuild-refused" style={styles.reasonEditor} accessible accessibilityLabel={`Baseline can’t be rebuilt: ${plan.message}`}>
+        <Text style={styles.reasonCaption}>{plan.message}</Text>
+      </View>
+    );
+  }
   const disabled = locked || busy;
   return (
     <View testID="recovery-rebuild-baseline" style={styles.reasonEditor}>

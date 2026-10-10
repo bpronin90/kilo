@@ -152,9 +152,10 @@ export function BlockEvidence({
   }), [block, weeks, notes, selectedWeek, stateStale]);
   const scaleMax = strengthScaleMax(strength);
   const strengthOk = strength.status === STRENGTH_STATUS.OK;
-  // An unreadable selected week keeps its own notice below; a baseline-empty
-  // block has nothing to score.
-  const showStrength = comparison.status === RECOVERY_COMPARISON_STATUS.OK && selectedWeek?.status === RECOVERY_WEEK_STATUS.OK
+  // A baseline-empty block has nothing to score.
+  // An unreadable/missing selected week keeps its earlier history and its own
+  // gap row; only its aggregate is withheld (#1305).
+  const showStrength = comparison.status === RECOVERY_COMPARISON_STATUS.OK
     && !!weekLabel && (strengthOk || strength.status === STRENGTH_STATUS.PAIR_UNAVAILABLE);
   // The summary names the anchor routine (#1219) whenever it shows a headline;
   // only then does the bottom line stop repeating it.
