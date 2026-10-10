@@ -76,11 +76,18 @@ export function baselineLacksStrengthData(baseline) {
 
 // Carry confirmed name matches (#1298) from an existing v2 snapshot onto a
 // freshly captured one. A matched row's key/name no longer appears in the
-// source routine, so it is detected as an old key absent from the new capture
-// and re-applied to the new row at the same routine position when that row is
-// itself new and of the same class. Anything that cannot be lined up blocks the
-// rebuild with a reason: a match is never silently undone. v1 snapshots cannot
-// carry matches (rename is v2-only), so they pass through unchanged.
+// source routine, so it is detected as an old key absent from the new capture.
+// A missing key alone is not proof of a match (the routine may have been edited
+// in place: Bench -> Incline Bench), so the old key/name is carried only onto
+// the new row at the same routine position whose frozen values are IDENTICAL —
+// the same source session under a renamed identity. Anything else blocks the
+// rebuild with a reason: a match is never silently undone and another lift's
+// numbers are never frozen under a matched name. v1 snapshots cannot carry
+// matches (rename is v2-only), so they pass through unchanged.
+const FROZEN_FIELDS = ['exercise_class', 'basis', 'top_weight', 'volume', 'sets_completed',
+  'best_set_reps', 'total_reps', 'best_hold_seconds', 'total_seconds'];
+const _sameFrozen = (a, b) => FROZEN_FIELDS.every(f => a[f] === b[f]);
+
 export function preserveNameMatches(previous, next) {
   if (!previous || previous.version !== 2) return { ok: true, baseline: next };
   const nextKeys = new Set(next.exercises.map(r => r.key));
@@ -89,7 +96,7 @@ export function preserveNameMatches(previous, next) {
   for (const old of previous.exercises) {
     if (nextKeys.has(old.key)) continue;
     const target = exercises[old.routine_order];
-    if (!target || prevKeys.has(target.key) || target.exercise_class !== old.exercise_class) {
+    if (!target || prevKeys.has(target.key) || !_sameFrozen(old, target)) {
       return {
         ok: false,
         message: `“${old.name || old.key}” no longer lines up with the routine, so a matched name on it can’t be carried over safely. The baseline was not rebuilt.`,

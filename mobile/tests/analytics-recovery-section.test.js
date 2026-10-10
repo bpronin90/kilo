@@ -3503,7 +3503,7 @@ describe('AnalyticsRecoverySection — rebuild a v1 baseline (#1227)', () => {
     const { root } = mount();
     press(root, 'Rebuild baseline');
     expect(hasText(root, '1. Squat: not in the old baseline → 225 lb top, 3,375 lb volume')).toBe(true);
-    expect(hasText(root, '2. Bench: 100 lb top, 300 lb volume → 135 lb top, 1,890 lb volume (latest session (target never completed))')).toBe(true);
+    expect(hasText(root, '2. Bench: 100 lb top, 300 lb volume → 135 lb top, 1,890 lb volume, best set 135 × 5 (latest session (target never completed))')).toBe(true);
     expect(hasText(root, 'edited after Recovery began')).toBe(false);
     press(root, 'Cancel rebuilding the baseline');
     expect(mockRebuild).not.toHaveBeenCalled();

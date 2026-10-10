@@ -154,6 +154,14 @@ describe('legacy rebuild (#1305)', () => {
     expect(preserveNameMatches(matched, captureRecoveryBaselineFromText(edited.raw_text)).ok).toBe(false);
   });
 
+  test('an in-place routine edit is not a match: a replaced lift with other numbers at the same position refuses the rebuild (PR #1308 review)', () => {
+    // Bench (never matched) was replaced in the routine by Incline Bench at 115.
+    const edited = note({ raw_text: ROUTINE.replace('-Bench 3x5\n- 135 5,5,5', '-Incline Bench 3x5\n- 115 5,5,5') });
+    const plan = planBaselineRebuild(block(legacyV2(CAPTURED)), edited);
+    expect(plan.eligible).toBe(false);
+    expect(plan.message).toMatch(/Bench.*no longer lines up.*not rebuilt/);
+  });
+
   test('confirm upgrades once; a repeat confirm and a stale preview write nothing', async () => {
     await replaceRecoveryBlocksRaw([block(legacyV2(CAPTURED))]);
     const ok = await rebuildRecoveryBaselineCore(storage([note()]), { blockId: 'rb1', expectedBaseline: CAPTURED });
