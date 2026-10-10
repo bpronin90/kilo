@@ -444,20 +444,30 @@ export function deriveOverviewRows({
     // #1242: the value is always the shared roster summary — the same count and
     // words Home prints — so the two never disagree. Movement, when its
     // evidence bar is met, rides in the caption instead of replacing it.
-    const movementCaption = recoveryMovement
-      ? ` · ${recoveryMovement.improved} improved since Week ${recoveryMovement.anchor_week_number}`
-        + ` · ${recoveryMovement.matched_size} lifts matched`
-      : '';
+    // Plain wording: "back" counts exercises at/above their pre-recovery
+    // band out of the whole roster (not-comparable never counts as back); the
+    // roster includes exercises not trained yet, so that is named.
+    const { atOrAbove, rosterSize, notYet } = recoverySummary;
+    const improved = recoveryMovement
+      ? `${recoveryMovement.improved} improved since Week ${recoveryMovement.anchor_week_number}`
+      : null;
     recoveryRow = {
       key: 'recovery',
       label: 'Recovery',
       section: 'recovery',
       unavailable: false,
-      // #1243: a short fraction that never truncates beside the label.
-      value: `${recoverySummary.trained}/${recoverySummary.rosterSize}`,
+      value: `${atOrAbove}/${rosterSize}`,
       showUnit: false,
-      valueSuffix: 'trained',
-      infoCaption: `Week ${weekNumber}${movementCaption}`,
+      stackDetail: true,
+      valueSuffix: `pre-recovery ${rosterSize === 1 ? 'exercise' : 'exercises'} back`,
+      infoCaption: [`Week ${weekNumber}`, notYet > 0 ? `${notYet} not trained yet` : null, improved].filter(Boolean).join(' · '),
+      // Full sentence for screen readers only (the card prefixes the label).
+      accessibilityText: [
+        `${atOrAbove} of ${rosterSize} pre-recovery ${rosterSize === 1 ? 'exercise' : 'exercises'} back to pre-recovery level`,
+        notYet > 0 ? `including ${notYet} not trained yet` : null,
+        `Week ${weekNumber}`,
+        improved,
+      ].filter(Boolean).join(', '),
       emptyCaption: null,
     };
   } else {
@@ -473,7 +483,13 @@ export function deriveOverviewRows({
     };
   }
 
-  return [recoveryRow, weightRow, oneKRow, progressRow].filter(Boolean);
+  // The two frozen rows collapse to one compact, noninteractive line; the
+  // frozen sections keep their own access paths (#1299).
+  const historyNote = {
+    key: 'history',
+    note: '1K Total and Exercise Progress resume after recovery',
+  };
+  return [recoveryRow, weightRow, historyNote];
 }
 
 export function shapeEditCheckInData(editPendingCheckIn) {
