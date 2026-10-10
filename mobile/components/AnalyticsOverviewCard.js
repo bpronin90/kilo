@@ -247,8 +247,7 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     gap: 2,
   },
   rowDetailText: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
-    fontWeight: '700',
+    ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     flexShrink: 1,
   },

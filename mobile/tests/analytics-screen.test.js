@@ -2781,6 +2781,12 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
       expect(detailTexts.map(t => [].concat(t.props.children).join(''))).toEqual(
         expect.arrayContaining(['pre-recovery exercises back']));
       detailTexts.forEach(t => expect(t.props.numberOfLines).toBeUndefined());
+      // Full type role, no fontWeight override on the bundled faces (§16.1/16.2).
+      detailTexts.forEach(t => {
+        const st = flattenStyle(t);
+        expect(st.fontWeight).toBeUndefined();
+        expect(st.fontSize).toBeDefined();
+      });
       const valueGroupTexts = textNodesOf(row).filter(t => !detailTexts.includes(t)).map(t => [].concat(t.props.children).join(''));
       expect(valueGroupTexts.join(' ')).not.toContain('pre-recovery');
       // Never folded into valueSuffix, which stays the compact count.
@@ -2793,7 +2799,7 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
         return s.includes('since Week 1');
       });
       expect(infoCaptionNode).toBeDefined();
-      expect(flattenStyle(infoCaptionNode).fontWeight).toBe('700');
+      expect(flattenStyle(infoCaptionNode).fontSize).toBeDefined();
 
       expect(row.props.accessibilityLabel).toContain('Week 2');
       expect(row.props.accessibilityLabel).toContain('since Week 1');
@@ -2826,7 +2832,7 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
         return s === 'Week 1';
       });
       expect(infoCaptionNode).toBeDefined();
-      expect(flattenStyle(infoCaptionNode).fontWeight).toBe('700');
+      expect(flattenStyle(infoCaptionNode).fontSize).toBeDefined();
 
       expect(row.props.accessibilityLabel).toContain('Week 1');
     });
