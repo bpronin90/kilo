@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.9.2 - 2026-10-10
+
+- Issue #1300: Recovery exercise rows are now one scannable line (name, status, this week / baseline value); secondary metrics, the bar and name-mismatch notes open with a tap on the row, and the baseline reference is explained once above the list.
+
+## 1.9.1 - 2026-10-10
+
+- Issue #1299: Simplified the Analytics Overview during Recovery: it now shows how many exercises are back to pre-recovery performance, plain progress wording, and one line in place of the two paused rows.
+
+## 1.9.0 - 2026-10-10
+
+- Issue #1298: Added a "Match exercise names" review to Recovery evidence so renamed exercises (for example "Plank 3x45 sec" logged as "Plank") can be linked to the frozen baseline with a per-pair confirmation.
+
 ## 1.8.41 - 2026-10-08
 
 - Issue #1286: Cards, panels, dialogs, and buttons across More, Settings, Profile, Backup, and shared UI now use the design-system corner radii and type sizes.
