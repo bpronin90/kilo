@@ -65,6 +65,9 @@ export const createVisualStyles = (colors, kua = null) => {
     // bar, band colors and calm weights as the card's summary above.
     exRow: {
       gap: 4,
+      // 44dp floor (ui-design-rules: disclosure rows); text scale still grows it.
+      minHeight: 44,
+      justifyContent: 'center',
       paddingVertical: 10,
       borderTopWidth: 1,
       borderTopColor: border,

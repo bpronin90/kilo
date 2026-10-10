@@ -3838,3 +3838,13 @@ describe('Match exercise names', () => {
     expect(byLabel(root, 'Match exercise names')).toBeDefined();
   });
 });
+
+describe('exercise disclosure row target (#1300 review)', () => {
+  it('gives every exercise row a 44dp minimum height', () => {
+    const { createVisualStyles } = require('../components/recovery/recoveryVisualStyles');
+    const anyColor = new Proxy({}, { get: () => '#000000' });
+    const flat = (s) => (Array.isArray(s) ? Object.assign({}, ...s) : s);
+    expect(flat(createVisualStyles(anyColor).exRow).minHeight).toBeGreaterThanOrEqual(44);
+    expect(flat(createVisualStyles(anyColor, anyColor).exRow).minHeight).toBeGreaterThanOrEqual(44);
+  });
+});
