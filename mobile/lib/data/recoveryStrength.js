@@ -143,13 +143,15 @@ export function deriveRecoveryStrength({ block, weeks = [], notes = [], selected
       not_scored.push({ key: row.key, name: row.name || row.key, reason });
     }
   }
-  if (scoreable.length === 0 && baselineLacksStrengthData(baseline)) {
-    return { ...head(STRENGTH_STATUS.PAIR_UNAVAILABLE), roster_size: roster.length };
-  }
+  // A legacy snapshot has no strength denominator, but its retesting history
+  // (logged presence) is still known, so weeks are read before returning.
+  const pairUnavailable = scoreable.length === 0 && baselineLacksStrengthData(baseline);
 
   const notesById = new Map((notes || []).filter(n => n && n.id).map(n => [n.id, n]));
   const live = orderedLiveWeeks(weeks, block.id);
-  if (live.length === 0) return { ...head(STRENGTH_STATUS.NO_WEEKS), roster_size: roster.length, not_scored };
+  if (live.length === 0) {
+    return { ...head(pairUnavailable ? STRENGTH_STATUS.PAIR_UNAVAILABLE : STRENGTH_STATUS.NO_WEEKS), roster_size: roster.length, not_scored: pairUnavailable ? [] : not_scored };
+  }
   const found = selectedWeekId ? live.findIndex(w => w.id === selectedWeekId) : -1;
   const through = live.slice(0, (found < 0 ? live.length - 1 : found) + 1);
   const selected = through[through.length - 1];
@@ -163,6 +165,20 @@ export function deriveRecoveryStrength({ block, weeks = [], notes = [], selected
     return { week: w, readable: true, results, sets };
   });
   const readable = perWeek.filter(p => p.readable);
+
+  // Not retested: EVERY baseline exercise (scoreable or not) with no completed
+  // entry in the selected week, told apart by whether an earlier readable week
+  // logged it. An unreadable week in range blocks a confident "never".
+  const sel = perWeek[perWeek.length - 1];
+  const unreadableSeen = perWeek.some(p => !p.readable);
+  const not_retested = roster.filter(row => !(sel.readable && sel.sets.has(row.key))).map(row => {
+    const loggedBefore = readable.some(p => p.sets.has(row.key));
+    const kind = loggedBefore ? NOT_RETESTED.ABSENT_THIS_WEEK
+      : unreadableSeen ? NOT_RETESTED.UNKNOWN : NOT_RETESTED.NEVER_LOGGED;
+    return { key: row.key, name: row.name || row.key, kind };
+  });
+
+  if (pairUnavailable) return { ...head(STRENGTH_STATUS.PAIR_UNAVAILABLE), roster_size: roster.length, not_retested };
 
   // The ONE cohort: lifts scored in every readable week through the selection.
   const inEvery = (upto) => scoreable.filter(({ row }) => upto.length > 0
@@ -199,18 +215,6 @@ export function deriveRecoveryStrength({ block, weeks = [], notes = [], selected
       in_cohort: cohortKeys.has(row.key),
       pace: stale ? { status: PACE_STATUS.SUPPRESSED } : deriveLiftPace(points, selected.week_number),
     };
-  });
-
-  // Not retested: EVERY baseline exercise (scoreable or not) with no completed
-  // entry in the selected week, told apart by whether an earlier readable week
-  // logged it. An unreadable week in range blocks a confident "never".
-  const sel = perWeek[perWeek.length - 1];
-  const unreadableSeen = perWeek.some(p => !p.readable);
-  const not_retested = roster.filter(row => !(sel.readable && sel.sets.has(row.key))).map(row => {
-    const loggedBefore = readable.some(p => p.sets.has(row.key));
-    const kind = loggedBefore ? NOT_RETESTED.ABSENT_THIS_WEEK
-      : unreadableSeen ? NOT_RETESTED.UNKNOWN : NOT_RETESTED.NEVER_LOGGED;
-    return { key: row.key, name: row.name || row.key, kind };
   });
 
   return {

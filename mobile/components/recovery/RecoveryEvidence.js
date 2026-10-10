@@ -217,11 +217,12 @@ export function BlockEvidence({
             />
           )}
 
-          {showStrength && strengthOk && (
+          {showStrength && (
             <>
-              <RecoveryStrengthWeeks strength={strength} scaleMax={scaleMax} />
+              {strengthOk && <RecoveryStrengthWeeks strength={strength} scaleMax={scaleMax} />}
+              {/* A legacy baseline still lists what was not retested (#1305). */}
               <RecoveryStrengthLadder strength={strength} scaleMax={scaleMax} unit={unit} />
-              <StrengthScaleNote scaleMax={scaleMax} />
+              {strengthOk && <StrengthScaleNote scaleMax={scaleMax} />}
             </>
           )}
 

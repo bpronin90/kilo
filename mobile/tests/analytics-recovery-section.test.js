@@ -1888,6 +1888,16 @@ describe('AnalyticsRecoverySection — strength trend by recovery week (#1305)',
     expect(hasText(root, '88%')).toBe(false);
   });
 
+  test('a legacy baseline says best-set data is unavailable and still lists what was not retested', () => {
+    const snap = captureRecoveryBaselineFromText(BASELINE_TEXT);
+    const legacy = { ...snap, exercises: snap.exercises.map(({ best_e1rm_weight, best_e1rm_reps, ...r }) => r) };
+    const root = setup({ blocks: [block({ baseline: legacy })], weeks: [week(1, 'note-w1')], notes: [note('note-w1', '-Bench\n- 135 5')] }).root;
+    expect(hasText(root, 'Baseline best-set data unavailable. Rebuild the baseline below to score strength.')).toBe(true);
+    expect(hasText(root, 'Pull-up: not logged in any week yet')).toBe(true);
+    expect(hostById(root, 'recovery-strength-weeks')).toHaveLength(0);
+    expect(hostById(root, 'recovery-strength-scale')).toHaveLength(0);
+  });
+
   test('values above 100% stay factual on one labelled common scale', () => {
     const root = setup({
       blocks: [block()],

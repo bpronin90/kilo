@@ -183,6 +183,18 @@ describe('not retested covers the whole roster (PR #1308 review)', () => {
   });
 });
 
+describe('legacy baseline retesting history (PR #1308 review)', () => {
+  test('a pair-less snapshot still lists never-logged baseline exercises; v1 too', () => {
+    const snap = captureRecoveryBaselineFromText('-Bench\n- 100 5\n-Plank: 2x45s\n- 45,45');
+    const legacy = { ...snap, exercises: snap.exercises.map(({ best_e1rm_weight, best_e1rm_reps, ...r }) => r) };
+    const r = derive(['-Bench\n- 100 5'], { baseline: legacy });
+    expect(r.status).toBe(STRENGTH_STATUS.PAIR_UNAVAILABLE);
+    expect(r.not_retested).toEqual([{ key: 'plank', name: 'Plank', kind: NOT_RETESTED.NEVER_LOGGED }]);
+    const v1 = { version: 1, exercises: [{ key: 'bench', name: 'Bench', exercise_class: 'weighted', top_weight: 100, volume: 500, sets_completed: 1 }, { key: 'row', name: 'Row', exercise_class: 'weighted', top_weight: 100, volume: 500, sets_completed: 1 }] };
+    expect(derive(['-Bench\n- 100 5'], { baseline: v1 }).not_retested.map(n => n.key)).toEqual(['row']);
+  });
+});
+
 describe('best-case pace', () => {
   const pts = (pairs) => pairs.map(([week_number, percent]) => ({ week_number, percent }));
 
