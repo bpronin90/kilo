@@ -33,7 +33,7 @@ function _group(items, keyOf) {
   return map;
 }
 
-// Candidates for one block: [{ from_key, from_name, to_key, to_name }]. Pure and
+// Candidates for one block: [{ group, from_key, from_name, to_key, to_name }]. Pure and
 // read-only; derived from the same comparison the evidence card renders, so a
 // baseline row is "unmatched" only if no live week matched it, and a logged
 // identity is "unmatched" when it is not a baseline key (sightings across weeks
@@ -56,19 +56,24 @@ export function planBaselineNameMatches({ block, weeks = [], notes = [] } = {}) 
 
   const allRows = baseline.exercises;
   const baselineKeys = new Set(allRows.map(r => r.key));
-  const canonAll = _group(allRows, r => canonicalMatchKey(r.name || r.key));
-  const unmatched = allRows.filter(r => !matched.has(r.key));
+  const matchedCanon = new Set(allRows.filter(r => matched.has(r.key)).map(r => canonicalMatchKey(r.name || r.key)));
+  const unmatchedByCanon = _group(allRows.filter(r => !matched.has(r.key)), r => canonicalMatchKey(r.name || r.key));
   const loggedRows = [...logged].filter(([k]) => !baselineKeys.has(k)).map(([key, name]) => ({ key, name }));
   const loggedByCanon = _group(loggedRows, r => canonicalMatchKey(r.name));
 
   const out = [];
-  for (const row of unmatched) {
-    const canon = canonicalMatchKey(row.name || row.key);
-    // Any other baseline row (matched or not) sharing the canonical name makes it ambiguous.
-    if (!canon || (canonAll.get(canon) || []).length !== 1) continue;
+  for (const [canon, rows] of unmatchedByCanon) {
     const targets = loggedByCanon.get(canon) || [];
-    if (targets.length !== 1 || targets[0].key === row.key) continue;
-    out.push({ from_key: row.key, from_name: row.name || row.key, to_key: targets[0].key, to_name: targets[0].name });
+    // One-to-one is a plain pair; one-to-many / many-to-one is a CHOICE group where the
+    // user picks exactly one pair (rows are never merged). Many-to-many stays excluded,
+    // as does a group whose canonical name an exact-matched baseline row already holds.
+    if (targets.length === 0 || (rows.length > 1 && targets.length > 1) || matchedCanon.has(canon)) continue;
+    for (const row of rows) {
+      for (const t of targets) {
+        if (t.key === row.key) continue;
+        out.push({ group: canon, from_key: row.key, from_name: row.name || row.key, to_key: t.key, to_name: t.name });
+      }
+    }
   }
   return out;
 }

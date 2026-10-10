@@ -117,7 +117,6 @@ describe('matchBaselineNameCore', () => {
 
   test.each([
     ['evidence changed (logged name no longer present)', async () => { notes = [mkNote('n1', ['Curl', 'Squat'])]; }],
-    ['ambiguity introduced (second logged target)', async () => { notes = [mkNote('n1', ['Plank', 'Plank, side', 'Squat'])]; }],
     ['wrong target name', async () => { PARAMS_OVERRIDE.toName = 'Plank!'; }],
     ['no linked weeks', async () => { await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, '[]'); }],
   ])('stale: %s writes nothing', async (_n, mutate) => {
@@ -128,6 +127,18 @@ describe('matchBaselineNameCore', () => {
     const result = await matchBaselineNameCore(storage(), { ...PARAMS, ...PARAMS_OVERRIDE });
     expect(result.ok).toBe(false);
     expect(JSON.stringify(await loadRecoveryBlocksRaw())).toBe(before);
+  });
+
+  test('choice group: only the picked row is renamed, the other row stays; unpicked or stale pair rejects', async () => {
+    await seed(mkBlock(['Core: plank', 'Plank 3x45 sec', 'Squat']));
+    const pick = { blockId: 'rb1', fromKey: 'core: plank', toKey: 'plank', toName: 'Plank' };
+    expect((await matchBaselineNameCore(storage(), { ...pick, fromKey: 'squat' })).ok).toBe(false);
+    expect((await matchBaselineNameCore(storage(), pick)).ok).toBe(true);
+    const [b] = await loadRecoveryBlocks();
+    expect(b.baseline.exercises.map(r => r.key)).toEqual(['plank', 'plank 3x45 sec', 'squat']);
+    expect(b.baseline.exercises[1].name).toBe('Plank 3x45 sec');
+    // Group resolved: the other row is no longer offered.
+    expect((await matchBaselineNameCore(storage(), PARAMS)).ok).toBe(false);
   });
 
   test('target-key collision, deleted block, unknown block, and v1 fail safely', async () => {

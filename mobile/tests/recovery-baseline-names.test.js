@@ -67,16 +67,27 @@ describe('planBaselineNameMatches', () => {
     expect(c[0]).toMatchObject({ from_key: normalizeExerciseKey(from), to_key: normalizeExerciseKey(to) });
   });
 
-  test('the combined owner roster with duplicate canonical Plank / Dead bugs rows is excluded, never merged', () => {
+  test('the combined owner roster yields simple pairs plus choice groups for plank and dead bugs, never merged', () => {
     const roster = [
       'Plank 3x45 sec', 'Single-Leg RDL 2x8 each leg', 'Core: Dead bugs 3x8 each side',
       'Core: plank', 'Core: Pallof Press 2x10 each side', 'Dead bugs 3x10 each side',
     ];
     const c = plan(roster, [['Plank', 'Single-Leg RDL', 'Dead bugs', 'Pallof Press']]);
     expect(pairs(c).sort()).toEqual([
+      ['Core: Dead bugs 3x8 each side', 'Dead bugs'],
       ['Core: Pallof Press 2x10 each side', 'Pallof Press'],
+      ['Core: plank', 'Plank'],
+      ['Dead bugs 3x10 each side', 'Dead bugs'],
+      ['Plank 3x45 sec', 'Plank'],
       ['Single-Leg RDL 2x8 each leg', 'Single-Leg RDL'],
     ]);
+    const sizes = Object.fromEntries([...new Set(c.map(x => x.group))].map(g => [g, c.filter(x => x.group === g).length]));
+    expect(sizes).toEqual({ plank: 2, 'dead bugs': 2, 'single-leg rdl': 1, 'pallof press': 1 });
+  });
+
+  test('"Core: Ab wheel or dead bugs" does not canonicalize to dead bugs', () => {
+    expect(canonicalMatchKey('Core: Ab wheel or dead bugs')).toBe('ab wheel or dead bugs');
+    expect(plan(['Core: Ab wheel or dead bugs'], [['Dead bugs']])).toEqual([]);
   });
 
   test('repeated sightings across weeks collapse to one candidate', () => {
@@ -84,17 +95,24 @@ describe('planBaselineNameMatches', () => {
     expect(c).toHaveLength(1);
   });
 
-  test('one baseline row with two logged targets (one-to-many) is excluded', () => {
-    expect(plan(['Plank 3x45 sec'], [['Plank, side']])).toHaveLength(1);
-    expect(plan(['Plank 3x45 sec'], [['Plank', 'Plank, side']])).toEqual([]);
+  test('one baseline row with two logged targets is a choice of logged name', () => {
+    const c = plan(['Plank 3x45 sec'], [['Plank', 'Plank, side']]);
+    expect(pairs(c)).toEqual([['Plank 3x45 sec', 'Plank'], ['Plank 3x45 sec', 'Plank, side']]);
+    expect(new Set(c.map(x => x.group)).size).toBe(1);
   });
 
-  test('many baseline rows to one logged name (many-to-one) is excluded', () => {
-    expect(plan(['Plank 3x45 sec', 'Plank 2x30 sec'], [['Plank']])).toEqual([]);
+  test('several baseline rows to one logged name is a choice of baseline row', () => {
+    const c = plan(['Plank 3x45 sec', 'Plank 2x30 sec'], [['Plank']]);
+    expect(pairs(c)).toEqual([['Plank 3x45 sec', 'Plank'], ['Plank 2x30 sec', 'Plank']]);
+  });
+
+  test('many-to-many stays excluded', () => {
+    expect(plan(['Plank 3x45 sec', 'Plank 2x30 sec'], [['Plank', 'Plank, side']])).toEqual([]);
   });
 
   test('an already exact-matched row blocks a second row from the same canonical name', () => {
     expect(plan(['Plank', 'Plank 3x45 sec'], [['Plank']])).toEqual([]);
+    expect(plan(['Plank', 'Plank 3x45 sec'], [['Plank', 'Plank, side']])).toEqual([]);
   });
 
   test('a row matched in some week is not unmatched', () => {

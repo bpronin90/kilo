@@ -24,7 +24,8 @@ export function MatchExerciseNamesAction({ block, weeks, notes, locked = false, 
   useEffect(() => { setError(null); }, [signature]);
 
   const announce = (m) => { try { AccessibilityInfo.announceForAccessibility(m); } catch (_e) { /* best-effort */ } };
-  const visible = candidates.filter(c => !dismissed.has(`${c.from_key}>${c.to_key}`));
+  const visible = candidates.filter(c => !dismissed.has(c.group));
+  const groups = [...visible.reduce((m, c) => m.set(c.group, [...(m.get(c.group) || []), c]), new Map()).values()];
   const confirm = async (c) => {
     if (busyKey || locked) return;
     setError(null);
@@ -55,35 +56,44 @@ export function MatchExerciseNamesAction({ block, weeks, notes, locked = false, 
         accessibilityHint="Review renames that link your baseline to the names you log"
         accessibilityState={{ expanded: open, disabled: busyKey !== null }}
       >
-        <Text style={styles.reasonEditorSaveText}>{`Match exercise names (${visible.length})`}</Text>
+        <Text style={styles.reasonEditorSaveText}>{`Match exercise names (${groups.length})`}</Text>
       </Pressable>
-      {open && visible.map(c => {
-        const key = `${c.from_key}>${c.to_key}`;
-        const busy = busyKey === key;
+      {open && groups.map(opts => {
+        const first = opts[0];
+        const choice = opts.length > 1;
         const disabled = locked || busyKey !== null;
         return (
-          <View key={key} testID="recovery-match-pair" style={styles.reasonEditor}>
-            <Text style={styles.reasonCaption}>{`${c.from_name} → ${c.to_name}`}</Text>
+          <View key={first.group} testID="recovery-match-pair" style={styles.reasonEditor}>
+            {choice ? <Text style={styles.reasonCaption}>Pick one:</Text> : null}
+            {opts.map(c => {
+              const key = `${c.from_key}>${c.to_key}`;
+              const busy = busyKey === key;
+              return (
+                <View key={key} style={styles.reasonEditorActions}>
+                  <Text style={[styles.reasonCaption, { flex: 1 }]}>{`${c.from_name} → ${c.to_name}`}</Text>
+                  <Pressable
+                    onPress={() => confirm(c)}
+                    disabled={disabled}
+                    style={styles.reasonEditorButton}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Match ${c.from_name} to ${c.to_name}`}
+                    accessibilityState={{ disabled, busy }}
+                  >
+                    <Text style={styles.reasonEditorSaveText}>{busy ? 'Matching…' : 'Match'}</Text>
+                  </Pressable>
+                </View>
+              );
+            })}
             <View style={styles.reasonEditorActions}>
               <Pressable
-                onPress={() => setDismissed(d => new Set(d).add(key))}
+                onPress={() => setDismissed(d => new Set(d).add(first.group))}
                 disabled={busyKey !== null}
                 style={styles.reasonEditorButton}
                 accessibilityRole="button"
-                accessibilityLabel={`Cancel matching ${c.from_name}`}
+                accessibilityLabel={choice ? `Cancel matching ${first.group}` : `Cancel matching ${first.from_name}`}
                 accessibilityState={{ disabled: busyKey !== null }}
               >
                 <Text style={styles.reasonEditorCancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => confirm(c)}
-                disabled={disabled}
-                style={styles.reasonEditorButton}
-                accessibilityRole="button"
-                accessibilityLabel={`Match ${c.from_name} to ${c.to_name}`}
-                accessibilityState={{ disabled, busy }}
-              >
-                <Text style={styles.reasonEditorSaveText}>{busy ? 'Matching…' : 'Match'}</Text>
               </Pressable>
             </View>
           </View>

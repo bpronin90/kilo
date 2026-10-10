@@ -3715,6 +3715,18 @@ describe('Match exercise names', () => {
     expect(mockMatch).not.toHaveBeenCalled();
   });
 
+  test('duplicate canonical rows show a short pick list; one pick sends exactly that pair', async () => {
+    const { root } = mount({ blk: block({ baseline: frozen(['Core: plank', PLANK]) }) });
+    expect(hasText(root, 'Match exercise names (1)')).toBe(true);
+    press(root, 'Match exercise names');
+    expect(hasText(root, 'Pick one:')).toBe(true);
+    await act(async () => { await byLabel(root, 'Match Core: plank to Plank').props.onPress(); });
+    expect(mockMatch).toHaveBeenCalledTimes(1);
+    expect(mockMatch).toHaveBeenCalledWith({ blockId: 'rb1', fromKey: 'core: plank', toKey: 'plank', toName: 'Plank' });
+    press(root, 'Cancel matching plank');
+    expect(byLabel(root, 'Match exercise names')).toBeUndefined();
+  });
+
   test('absent when nothing qualifies (exact names, unrelated names, v1)', () => {
     expect(byLabel(mount({ blk: block() }).root, 'Match exercise names')).toBeUndefined();
     expect(byLabel(mount({ blk: block({ baseline: frozen(['Row 3x8']) }) }).root, 'Match exercise names')).toBeUndefined();
