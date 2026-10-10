@@ -69,12 +69,15 @@ export function buildOccurrenceEdit(lines, ex, targetName) {
   }
   const parts = splitNameParts(content, { collapse: false });
   const descriptor = parts.descriptor.replace(SEPARATOR_RE, '').trim();
-  let scheme = parts.scheme.trim();
-  if (!scheme && descriptor) {
+  // The header's own scheme keeps its original separator bytes exactly; only a
+  // scheme promoted out of a descriptor gets a fresh single space.
+  let schemeBytes = parts.scheme;
+  if (!schemeBytes.trim() && descriptor) {
     const promo = PROMOTABLE_RE.exec(descriptor);
-    if (promo && (descriptor.match(ANY_SCHEME_RE) || []).length === 1) scheme = promo[1];
+    if (promo && (descriptor.match(ANY_SCHEME_RE) || []).length === 1) schemeBytes = ` ${promo[1]}`;
   }
-  const newContent = scheme ? `${targetName} ${scheme}` : targetName;
+  const scheme = schemeBytes.trim();
+  const newContent = scheme ? `${targetName}${schemeBytes}` : targetName;
   const afterLine = descriptor ? firstValidRowLine(lines, headerLine) : null;
   if (descriptor && afterLine == null) return { ok: false, reason: 'no set row to attach the moved comment to' };
   return {

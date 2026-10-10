@@ -79,6 +79,7 @@ export function planTidyNames({ block, weeks = [], notes = [] } = {}) {
   const occurrences = [];
   const baselineChanges = [];
   const unchanged = [];
+  const clean = []; // already-clean occurrences of lifts that change elsewhere
   const skipped = [];
   const edits = new Map(); // noteId -> { weekRead, edits: [] }
   const skip = (name, reason) => skipped.push({ name, reason });
@@ -127,6 +128,7 @@ export function planTidyNames({ block, weeks = [], notes = [] } = {}) {
     const rowKeyChange = row.key !== targetKey;
     const rowNameChange = (row.name || row.key) !== targetName;
     if (planned.length === 0 && !rowKeyChange && !rowNameChange) { unchanged.push({ name: targetName }); continue; }
+    for (const o of occs.filter(x => x.key === targetKey)) clean.push({ weekNumber: o.weekNumber, name: o.name });
     for (const { o, edit } of planned) {
       occurrences.push({
         weekNumber: o.weekNumber, noteId: o.noteId, group: canon, from: edit.oldContent, to: edit.newContent,
@@ -152,6 +154,7 @@ export function planTidyNames({ block, weeks = [], notes = [] } = {}) {
   noteWrites.sort((a, b) => a.week_number - b.week_number);
   occurrences.sort((a, b) => a.weekNumber - b.weekNumber || a.headerLine - b.headerLine);
 
+  clean.sort((a, b) => a.weekNumber - b.weekNumber);
   const warmups = warmupOccs.filter(o => o.canon && rowsByCanon.has(o.canon)).map(o => ({ weekNumber: o.weekNumber, name: o.name }));
   const evidence = baselineNamesEvidence({ block, weeks, notes });
   const signature = fingerprintText(JSON.stringify([
@@ -161,7 +164,7 @@ export function planTidyNames({ block, weeks = [], notes = [] } = {}) {
   return {
     ok: true,
     empty: noteWrites.length === 0 && baselineChanges.length === 0,
-    occurrences, baseline: baselineChanges, unchanged, skipped, warmups, noteWrites, evidence, signature,
+    occurrences, baseline: baselineChanges, unchanged, clean, skipped, warmups, noteWrites, evidence, signature,
   };
 }
 
@@ -179,4 +182,15 @@ export function tidyUndoStillValid(payload, { block, notes = [] } = {}) {
   const rows = block.baseline.exercises;
   const namesOk = payload.baseline.every(c => rows.filter(r => r.key === c.to_key && r.name === c.to_name).length === 1);
   return notesOk && namesOk;
+}
+
+// Name-neutral fingerprint of a frozen baseline: version, every non-row field and
+// every row field EXCEPT key/name, in row order. It is identical before and after
+// a tidy or its Undo, but differs for any competing snapshot (other metrics,
+// best-set pair, basis, order or version), so replay can tell the reviewed
+// baseline from a replacement.
+export function baselineShapeFingerprint(baseline) {
+  if (!baseline || !Array.isArray(baseline.exercises)) return '';
+  const { exercises, ...rest } = baseline;
+  return fingerprintText(JSON.stringify([rest, exercises.map(({ key: _k, name: _n, ...r }) => r)]));
 }

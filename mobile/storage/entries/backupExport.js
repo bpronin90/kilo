@@ -43,6 +43,7 @@ import {
   loadRecoveryBlocksRaw,
   loadRecoveryBlockWeeksRaw,
 } from './recoveryStorage';
+import { readRecoveryJournal, RECOVERY_OPERATION_TYPES } from './recoveryOperationJournal';
 import { BACKUP_VERSION, validateFatigueMultiplier } from './backupValidation';
 
 const CLOUD_EXPORT_FORMAT = 'cloud-1';
@@ -96,7 +97,19 @@ export function projectFields(record, fields) {
   return out;
 }
 
+// A pending Tidy names operation (#1309) means notes and the frozen baseline may
+// disagree, and the journal that could reconcile them is never exported. A
+// backup taken now would be permanently mixed, so it waits for the operation.
+async function assertNoPendingTidy() {
+  let journal = [];
+  try { journal = await readRecoveryJournal(); } catch { return; } // an unreadable journal never blocks a backup
+  if (journal.some(r => r.type === RECOVERY_OPERATION_TYPES.TIDY_RECOVERY_NAMES)) {
+    throw new Error('Tidy names is still finishing. Finish or resolve it in Recovery, then export again.');
+  }
+}
+
 export async function exportBackup() {
+  await assertNoPendingTidy();
   const weight_entries = await readList(WEIGHT_KEY);
   // The RAW notebook (tombstones included), minus the device-local parser cache
   // an older build may still be carrying (issue #813): it is recomputable from

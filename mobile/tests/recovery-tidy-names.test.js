@@ -6,6 +6,7 @@ import { deriveRecoveryStrength, LIFT_STATE } from '../lib/data/recoveryStrength
 import { normalizeExerciseKey, parseWorkoutNote } from '../lib/parser';
 import { planTidyNames } from '../lib/data/recoveryTidyNames';
 import { applyTidyEdits, buildOccurrenceEdit, firstValidRowLine, verifyTidyEdits } from '../lib/data/recoveryTidyText';
+import { baselineShapeFingerprint } from '../lib/data/recoveryTidyNames';
 import { planBaselineNameMatches } from '../lib/data/recoveryBaselineNames';
 import { preserveNameMatches } from '../lib/data/recoveryStrengthBaseline';
 import { canonicalDisplayName, canonicalMatchKey } from '../lib/data/recoveryStrengthBaseline';
@@ -330,5 +331,34 @@ describe('regressions with Match names and the baseline rebuild', () => {
     });
     const plan = planTidyNames(fx);
     expect(plan.noteWrites[0].next_raw_text).toBe('-Squat 3x6-8\n- 100kg 5\n-- step up\n- 225 5 *PR\n');
+  });
+});
+
+describe('review inventory, byte fidelity and baseline evidence (PR #1310 review)', () => {
+  test('lists already-clean occurrences of a changing lift (W5/W6) and every warmup occurrence', () => {
+    const plan = planTidyNames(squatFixture());
+    expect(plan.clean.map(c => c.weekNumber)).toEqual([5, 6]);
+    const fx = fixture({
+      baselineText: '-Squat\n- 225 5',
+      weekTexts: ['+WARMUP\n-Squat\n- 45 8\n+LIFT\n-Squat 3x6-8, step up\n- 135 8\n'],
+    });
+    expect(planTidyNames(fx).warmups).toEqual([{ weekNumber: 1, name: 'Squat' }]);
+  });
+
+  test('keeps the original spacing before the scheme byte for byte', () => {
+    const text = '-Squat  3x6-8, step up\n- 135 8\n';
+    const ex = parseWorkoutNote(text).sections[0].exercises[0];
+    const built = buildOccurrenceEdit(text.split('\n'), ex, 'Squat');
+    expect(applyTidyEdits(text, [built.edit])).toBe('-Squat  3x6-8\n- 135 8\n-- step up\n');
+    expect(verifyTidyEdits(text, applyTidyEdits(text, [built.edit]), [built.edit])).toBeNull();
+  });
+
+  test('the baseline shape ignores names but not frozen numbers, version or order', () => {
+    const b = captureRecoveryBaselineFromText('-Squat\n- 225 5\n-Bench\n- 185 5');
+    const renamed = { ...b, exercises: b.exercises.map(r => ({ ...r, key: `${r.key}x`, name: `${r.name}x` })) };
+    expect(baselineShapeFingerprint(renamed)).toBe(baselineShapeFingerprint(b));
+    const pair = { ...b, exercises: b.exercises.map((r, i) => (i ? r : { ...r, best_e1rm_weight: 999 })) };
+    expect(baselineShapeFingerprint(pair)).not.toBe(baselineShapeFingerprint(b));
+    expect(baselineShapeFingerprint({ ...b, exercises: [...b.exercises].reverse() })).not.toBe(baselineShapeFingerprint(b));
   });
 });

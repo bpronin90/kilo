@@ -52,7 +52,7 @@ export async function replayTidyRecord(record, kit) {
   const lenient = record.restore === true; // explicit restore: edited notes are left alone
   const hold = async (code, stage, error, message, extra) => {
     await updateRecordStage(record, { stage, error });
-    return { ...pendingResult(record, { code, stage, error, message }), tidy: true, ...extra };
+    return { ...pendingResult(record, { code, stage, error, message }), tidy: true, note_ids: record.note_ids, ...extra };
   };
   const conflictOut = async (conflicts, message) => {
     try {
@@ -60,7 +60,7 @@ export async function replayTidyRecord(record, kit) {
     } catch { /* the pending result below still blocks; the flag is advisory */ }
     return {
       ...pendingResult(record, { code: CODES.RECONCILIATION_PENDING, stage: STAGES.VERIFY_READ, error: null, message }),
-      tidy: true, conflict: true, conflicts,
+      tidy: true, note_ids: record.note_ids, conflict: true, conflicts,
     };
   };
 
@@ -83,7 +83,10 @@ export async function replayTidyRecord(record, kit) {
 
   const read = async () => ({
     notes: await ops.loadTidyTextStates(items.map(i => i.id)),
-    names: changes.length ? await readBaselineNameState(record.block_id, changes, direction) : { state: NAME_STATE.DONE },
+    // Always read the block: the reviewed frozen baseline (its shape, not just the
+    // renamed rows) and its existence are part of the outcome even when no name
+    // changes, so a competing snapshot or a removed block is a conflict.
+    names: await readBaselineNameState(record.block_id, changes, direction),
   });
   let before;
   try {
@@ -100,7 +103,8 @@ export async function replayTidyRecord(record, kit) {
     if (state === 'conflict') conflicts.push({ id: item.id, reason: byId.get(item.id)?.exists && !byId.get(item.id).deleted ? 'edited' : 'missing' });
     else work.push(item);
   }
-  const namesConflict = before.names.state === NAME_STATE.CONFLICT;
+  const shapeChanged = !before.names.missing && before.names.shape !== payload.baseline_shape;
+  const namesConflict = before.names.state === NAME_STATE.CONFLICT || shapeChanged;
   if (namesConflict) conflicts.push({ id: null, reason: before.names.missing ? 'block_missing' : 'baseline_changed' });
   if (conflicts.length && !lenient) {
     return conflictOut(conflicts, 'Names changed while this was being applied, so it cannot be finished safely. Choose how to resolve it.');
@@ -153,12 +157,21 @@ export async function replayTidyRecord(record, kit) {
   // Verified. An applied tidy becomes its block's single bounded Undo payload;
   // an Undo (or an explicit restore) consumes it. A cleanup-only failure is
   // reported separately and retried: the record stays, replay is idempotent.
-  try {
-    if (forward && !lenient) await markTidyPayloadApplied(payload.id);
-    else await deleteTidyPayload(payload.id);
-  } catch (e) {
-    await updateRecordStage(record, { stage: STAGES.CLEANUP, error: e });
-    return verifiedResult(record, CODES.VERIFIED_CLEANUP_PENDING);
+  if (forward && !lenient) {
+    try {
+      await markTidyPayloadApplied(payload.id);
+    } catch (e) {
+      await updateRecordStage(record, { stage: STAGES.CLEANUP, error: e });
+      return verifiedResult(record, CODES.VERIFIED_CLEANUP_PENDING);
+    }
+    return finishVerified(record);
   }
-  return finishVerified(record);
+  // Undo / restore: the payload is the only replay evidence, so it outlives the
+  // journal record. Retire the intent first; only once that is durable is the
+  // payload dropped (a crash in between leaves an inert, swept payload).
+  const retired = await finishVerified(record);
+  if (retired.code === CODES.VERIFIED) {
+    try { await deleteTidyPayload(payload.id); } catch { /* swept on the next start */ }
+  }
+  return retired;
 }

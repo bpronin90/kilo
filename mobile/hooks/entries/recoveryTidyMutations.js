@@ -23,7 +23,7 @@ import {
   sweepTidyPayloads,
 } from '../../storage/entries/recoveryTidyPayload';
 import { isLiveRecord } from '../../lib/data/recoveryBlocks';
-import { planTidyNames, tidyUndoStillValid } from '../../lib/data/recoveryTidyNames';
+import { baselineShapeFingerprint, planTidyNames, tidyUndoStillValid } from '../../lib/data/recoveryTidyNames';
 import { ensureVerifiedRecoveryState, notifyRecoveryBlocks } from './recoveryReadState';
 import { notifyWorkoutNotes } from './workoutNoteHooks';
 
@@ -59,7 +59,7 @@ export function tidyNamesCore(storage, { blockId, evidence, signature } = {}) {
       if (!evidence || !signature || plan.evidence !== evidence || plan.signature !== signature) return { ok: false, error: STALE };
       if (plan.empty) return { ok: false, error: 'Names are already tidy. Nothing to change.' };
       const requestedAt = new Date().toISOString();
-      const payload = buildTidyPayload({ id: mintPayloadId(), blockId, requestedAt, plan });
+      const payload = buildTidyPayload({ id: mintPayloadId(), blockId, requestedAt, plan, baselineShape: baselineShapeFingerprint(read.block.baseline) });
       // Replay evidence is durable BEFORE the journal intent and any domain write.
       await storage.saveTidyPayload(payload);
       return {

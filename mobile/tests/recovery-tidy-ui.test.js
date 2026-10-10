@@ -168,6 +168,59 @@ describe('block scoping', () => {
   });
 });
 
+describe('review snapshot and inventory', () => {
+  test('Confirm submits the plan captured when the review opened, even after evidence changes', async () => {
+    const el = (ns) => (
+      <ThemeContext.Provider value={{ colors: LightColors, mode: 'light', preference: 'light', setPreference: () => {} }}>
+        <TidyRecoveryNamesAction block={block()} weeks={weeks} notes={ns} onTidy={onTidy} onLoadUndo={jest.fn().mockResolvedValue({ available: false })} />
+      </ThemeContext.Provider>
+    );
+    const onTidy = jest.fn().mockResolvedValue({ ok: false, error: 'stale' });
+    let c;
+    act(() => { c = render.create(el(notes)); });
+    press(c.root, 'Tidy names');
+    await act(async () => { await byLabel(c.root, 'Confirm tidy names').props.onPress(); });
+    const first = onTidy.mock.calls[0][0];
+    act(() => { c.update(el([{ ...notes[0], raw_text: '-Squat 3x6-8, step up\n- 145 8\n', updated_at: 'later' }, notes[1]])); });
+    await act(async () => { await byLabel(c.root, 'Confirm tidy names').props.onPress(); });
+    expect(onTidy.mock.calls[1][0]).toEqual(first);
+    press(c.root, 'Cancel');
+    press(c.root, 'Tidy names');
+    await act(async () => { await byLabel(c.root, 'Confirm tidy names').props.onPress(); });
+    expect(onTidy.mock.calls[2][0].evidence).not.toBe(first.evidence);
+  });
+
+  test('lists already-clean occurrences and warmups', async () => {
+    const ns = [notes[0], { id: 'n2', raw_text: '+WARMUP\n-Squat\n- 45 8\n+LIFT\n-Squat 3x8\n- 135 8\n', updated_at: STAMP }];
+    const { root } = mount({ notes: ns });
+    press(root, 'Tidy names');
+    expect(hasText(root, 'Week 2: Squat (no change)')).toBe(true);
+    expect(hasText(root, 'Warmups, never changed (1)')).toBe(true);
+    expect(hasText(root, 'Week 2: Squat')).toBe(true);
+  });
+});
+
+describe('comparison isolation while a tidy is pending', () => {
+  test('BlockEvidence withholds comparison and keeps the tidy controls', () => {
+    const { BlockEvidence } = require('../components/recovery/RecoveryEvidence');
+    let c;
+    act(() => {
+      c = render.create(
+        <ThemeContext.Provider value={{ colors: LightColors, mode: 'light', preference: 'light', setPreference: () => {} }}>
+          <BlockEvidence
+            block={block()} weeks={weeks} notes={notes} unit="lb"
+            pendingRecovery={[{ type: 'tidy_recovery_names', block_id: 'rb1', operationId: 'op', conflict: true }]}
+            tidyNames={{ tidyNames: jest.fn(), undoTidyNames: jest.fn(), loadUndo: jest.fn().mockResolvedValue({ available: false }), resolveConflict: jest.fn() }}
+          />
+        </ThemeContext.Provider>
+      );
+    });
+    expect(hasText(c.root, 'comparison is paused')).toBe(true);
+    expect(byLabel(c.root, 'Keep current names')).toBeDefined();
+    expect(c.root.findAll(n => n.props.testID === 'recovery-strength-summary')).toHaveLength(0);
+  });
+});
+
 describe('pending and conflict', () => {
   const stuck = (extra) => ({ type: 'tidy_recovery_names', block_id: 'rb1', operationId: 'op1', ...extra });
 

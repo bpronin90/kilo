@@ -17,6 +17,8 @@ import { exportBackup } from '../storage/entries/backupExport';
 import * as syncQueue from '../storage/syncQueue';
 import { setStorageMode } from '../storage/entries/storageMode';
 import { registerRecoveryNoteOperations } from '../hooks/entries/storageMode';
+import * as recoveryReadState from '../hooks/entries/recoveryReadState';
+import * as noteHooks from '../hooks/entries/workoutNoteHooks';
 import { tidyNamesCore, undoTidyNamesCore, loadTidyUndoSummary } from '../hooks/entries/recoveryTidyMutations';
 
 jest.mock('../lib/supabaseClient', () => ({ getSupabaseClient: jest.fn() }));
@@ -427,9 +429,9 @@ describe('Undo', () => {
 });
 
 describe('device-local only', () => {
-  test('journal records and payload text stay out of the backup export', async () => {
-    journal.setRecoveryNoteOperations({ applyTidyTexts: async () => ({ status: 'failed', error: new Error('x'), written: [] }), loadTidyTextStates: batch.loadTidyTextStates });
-    await tidy();
+  test('the undo payload and journal vocabulary stay out of the backup export', async () => {
+    expect((await tidy()).ok).toBe(true);
+    expect((await read(TIDY_PAYLOAD_KEY)).length).toBe(1);
     const exported = JSON.stringify(await exportBackup());
     expect(exported).not.toContain('tidy_');
     expect(exported).not.toContain('payload_id');
@@ -533,5 +535,85 @@ describe('cloud mode', () => {
     expect(result).toMatchObject({ status: 'conflict', written: [] });
     expect(await dirtyNotes()).toEqual([]);
     expect((await read(WORKOUT_NOTES_KEY)).every(n => n.updated_at === STAMP)).toBe(true);
+  });
+});
+
+describe('PR #1310 review regressions', () => {
+  const failingApply = () => {
+    let fail = true;
+    journal.setRecoveryNoteOperations({
+      applyTidyTexts: async (req) => (fail ? { status: 'failed', error: new Error('x'), written: [] } : batch.applyTidyNoteTexts(req)),
+      loadTidyTextStates: batch.loadTidyTextStates,
+    });
+    return () => { fail = false; };
+  };
+
+  test('1: a journal-clear failure after Undo is cleanup-only; retry never reports payload_missing', async () => {
+    expect((await tidy()).ok).toBe(true);
+    const store = require('../storage/entries/recoveryJournalStore');
+    const clear = jest.spyOn(store, 'clearRecord').mockRejectedValueOnce(new Error('clear failed'));
+    const undone = await undoTidyNamesCore(storage(), { blockId: 'rb1' });
+    expect(undone).toMatchObject({ ok: true, code: 'VERIFIED_CLEANUP_PENDING' });
+    expect((await read(TIDY_PAYLOAD_KEY)).length).toBe(1); // evidence outlives the intent
+    clear.mockRestore();
+    const rec = await journal.reconcileRecoveryOperations();
+    expect(rec.ok).toBe(true);
+    expect(rec.results.every(r => !r.conflict)).toBe(true);
+    expect(await read(RECOVERY_OPERATION_JOURNAL_KEY)).toEqual([]);
+    expect(await read(TIDY_PAYLOAD_KEY)).toEqual([]);
+    expect(await noteTexts()).toEqual(original);
+  });
+
+  test('2: a pending tidy blocks note-scoped actions on its target notes only', async () => {
+    failingApply();
+    await tidy();
+    const action = jest.fn().mockResolvedValue({ ok: true });
+    const blocked = await journal.runGuardedRecoveryAction({ noteId: 'n1' }, action);
+    expect(blocked.ok).toBe(false);
+    expect(action).not.toHaveBeenCalled();
+    expect((await journal.runGuardedRecoveryAction({ noteId: 'n6' }, action)).ok).toBe(true);
+    expect(action).toHaveBeenCalledTimes(1);
+  });
+
+  test('3: export waits while a tidy is pending, then succeeds once it is verified', async () => {
+    const done = failingApply();
+    await tidy();
+    await expect(exportBackup()).rejects.toThrow(/Tidy names is still finishing/);
+    done();
+    expect((await journal.reconcileRecoveryOperations()).ok).toBe(true);
+    await expect(exportBackup()).resolves.toBeDefined();
+  });
+
+  test('4: a competing frozen baseline with the same names is a conflict, even with no name changes', async () => {
+    failingApply();
+    await tidy(); // the Squat fixture needs no baseline rename
+    const [b] = await read(RECOVERY_BLOCKS_KEY);
+    b.baseline.exercises[0].best_e1rm_weight = 999;
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify([b]));
+    journal.setRecoveryNoteOperations({ applyTidyTexts: batch.applyTidyNoteTexts, loadTidyTextStates: batch.loadTidyTextStates });
+    const rec = await journal.reconcileRecoveryOperations();
+    expect(rec.pending[0]).toMatchObject({ conflict: true });
+    expect(rec.pending[0].conflicts[0].reason).toBe('baseline_changed');
+    expect(await noteTexts()).toEqual(original);
+  });
+
+  test('4b: a removed block is a conflict, not silent success', async () => {
+    failingApply();
+    await tidy();
+    const [b] = await read(RECOVERY_BLOCKS_KEY);
+    b.deleted_at = STAMP;
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify([b]));
+    const rec = await journal.reconcileRecoveryOperations();
+    expect(rec.pending[0].conflicts[0].reason).toBe('block_missing');
+  });
+
+  test('5: a replay completed by an authoritative read refreshes mounted note consumers', async () => {
+    const done = failingApply();
+    await tidy();
+    done();
+    const reload = jest.spyOn(noteHooks, 'reloadWorkoutNotes');
+    await recoveryReadState.refreshRecoveryState();
+    expect(reload).toHaveBeenCalled();
+    expect((await noteTexts())[2]).toContain('-- step up');
   });
 });

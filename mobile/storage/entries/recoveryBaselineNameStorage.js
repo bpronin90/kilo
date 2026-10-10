@@ -17,6 +17,7 @@
 import { RECOVERY_BLOCKS_KEY } from './keys';
 import { readList, writeList } from './jsonStorage';
 import { isLiveRecord } from '../../lib/data/recoveryBlocks';
+import { baselineShapeFingerprint } from '../../lib/data/recoveryTidyNames';
 
 export const NAME_STATE = Object.freeze({ DONE: 'done', TODO: 'todo', CONFLICT: 'conflict' });
 
@@ -66,7 +67,7 @@ export function applyBaselineNameChanges(baseline, changes, direction) {
 export async function readBaselineNameState(blockId, changes, direction) {
   const block = (await readList(RECOVERY_BLOCKS_KEY)).find(b => b.id === blockId);
   if (!block || !isLiveRecord(block)) return { state: NAME_STATE.CONFLICT, missing: true };
-  return classifyBaselineNames(block.baseline, changes, direction);
+  return { ...classifyBaselineNames(block.baseline, changes, direction), shape: baselineShapeFingerprint(block.baseline) };
 }
 
 // One write. Idempotent: a baseline already at the destination is left alone.

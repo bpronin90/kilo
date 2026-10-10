@@ -35,6 +35,10 @@ function Preview({ plan, styles, tidy }) {
           {o.comment ? <Text style={tidy.meta}>{`Moves to a note: ${o.comment}`}</Text> : null}
         </View>
       ))}
+      {plan.clean.length ? <Text style={tidy.sectionLabel}>{`Already clean (${plan.clean.length})`}</Text> : null}
+      {plan.clean.map((c, i) => (
+        <Text key={`${c.weekNumber}:${i}`} style={tidy.row} testID="recovery-tidy-clean">{`Week ${c.weekNumber}: ${c.name} (no change)`}</Text>
+      ))}
       {plan.baseline.length ? <Text style={tidy.sectionLabel}>{`Baseline names (${plan.baseline.length})`}</Text> : null}
       {plan.baseline.map((c) => (
         <Text key={c.from_key} style={tidy.row} testID="recovery-tidy-baseline">{`${c.from_name} → ${c.to_name}`}</Text>
@@ -46,9 +50,10 @@ function Preview({ plan, styles, tidy }) {
       {plan.skipped.map((s) => (
         <Text key={s.name} style={tidy.meta} testID="recovery-tidy-skipped">{`${s.name}: ${s.reason}`}</Text>
       ))}
-      {plan.warmups.length ? (
-        <Text style={tidy.noteText}>Warmup entries are never changed.</Text>
-      ) : null}
+      {plan.warmups.length ? <Text style={tidy.sectionLabel}>{`Warmups, never changed (${plan.warmups.length})`}</Text> : null}
+      {plan.warmups.map((w, i) => (
+        <Text key={`${w.weekNumber}:${i}`} style={tidy.meta} testID="recovery-tidy-warmup">{`Week ${w.weekNumber}: ${w.name}`}</Text>
+      ))}
       <Text style={tidy.noteText}>Numbers never change. You can undo this afterwards.</Text>
     </View>
   );
@@ -60,8 +65,12 @@ export function TidyRecoveryNamesAction({
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const tidy = useMemo(() => createTidyStyles(colors, kua), [colors, kua]);
-  const plan = useMemo(() => planTidyNames({ block, weeks, notes }), [block, weeks, notes]);
   const [open, setOpen] = useState(false);
+  const livePlan = useMemo(() => planTidyNames({ block, weeks, notes }), [block, weeks, notes]);
+  // The review confirms the plan captured when it was opened, never a later one:
+  // changed evidence then fails the stale check and needs a fresh review.
+  const [snapshot, setSnapshot] = useState(null);
+  const plan = open && snapshot ? snapshot : livePlan;
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
@@ -141,7 +150,7 @@ export function TidyRecoveryNamesAction({
         </View>
       ) : null}
       <Pressable
-        onPress={() => { setOpen(o => !o); setError(null); setNotice(null); }}
+        onPress={() => { setSnapshot(open ? null : livePlan); setOpen(o => !o); setError(null); setNotice(null); }}
         disabled={busy !== null || !!stuck}
         style={styles.reasonPressable}
         accessibilityRole="button"

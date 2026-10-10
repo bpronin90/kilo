@@ -26,7 +26,7 @@ const str = (v) => typeof v === 'string' && v.length > 0;
 // treated as missing, never partially trusted.
 export function isValidTidyPayload(p) {
   if (!p || typeof p !== 'object' || p.version !== TIDY_PAYLOAD_VERSION) return false;
-  if (!str(p.id) || !str(p.block_id) || !str(p.requested_at)) return false;
+  if (!str(p.id) || !str(p.block_id) || !str(p.requested_at) || !str(p.baseline_shape)) return false;
   if (p.status !== 'pending' && p.status !== 'applied') return false;
   if (!Array.isArray(p.notes) || !Array.isArray(p.baseline)) return false;
   if (p.notes.length === 0 && p.baseline.length === 0) return false;
@@ -39,7 +39,7 @@ export function isValidTidyPayload(p) {
   return p.baseline.every(c => c && str(c.from_key) && str(c.to_key) && str(c.from_name) && str(c.to_name));
 }
 
-export function buildTidyPayload({ id, blockId, requestedAt, plan }) {
+export function buildTidyPayload({ id, blockId, requestedAt, plan, baselineShape }) {
   return {
     version: TIDY_PAYLOAD_VERSION,
     id,
@@ -47,6 +47,7 @@ export function buildTidyPayload({ id, blockId, requestedAt, plan }) {
     status: 'pending',
     requested_at: requestedAt,
     expires_at: null,
+    baseline_shape: baselineShape,
     notes: plan.noteWrites.map(w => ({ id: w.note_id, before: w.expected_raw_text, after: w.next_raw_text })),
     baseline: plan.baseline.map(c => ({ ...c })),
   };
