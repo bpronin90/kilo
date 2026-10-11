@@ -9,7 +9,7 @@
 // live in the sibling Manage block panel (#1307), never in the evidence card;
 // the strength week rows are the sole week selector.
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Alert } from '../lib/platformAlert';
@@ -72,6 +72,7 @@ export function AnalyticsRecoverySection({
   // Selected week, scoped to ONE block (#1307): a selection made on another block
   // is ignored, so switching blocks always starts at the latest week.
   const [weekSelection, setWeekSelection] = useState({ blockId: null, weekId: null });
+  const lastFocusedRef = useRef(null);
   const { setIncludeInNormalAnalytics, reopenBlock, setBlockReason, rebuildBaseline } = useRecoveryBlockLifecycle();
   const { matchBaselineName } = useRecoveryBaselineNames();
   const tidyNames = useRecoveryTidyNames();
@@ -226,6 +227,16 @@ export function AnalyticsRecoverySection({
     (focusedBlockId && [activeBlock, ...completedBlocks].find(b => b && b.id === focusedBlockId)) ||
     activeBlock ||
     completedBlocks[0];
+
+  // The EFFECTIVE focused block can change through data (the requested block
+  // disappears and focus falls back), not only through taps. Clear a selection
+  // that belongs to another block so it can never resurrect later (#1307).
+  if (lastFocusedRef.current !== focusedBlock.id) {
+    lastFocusedRef.current = focusedBlock.id;
+    if (weekSelection.blockId && weekSelection.blockId !== focusedBlock.id) {
+      setWeekSelection({ blockId: null, weekId: null });
+    }
+  }
 
   const notesById = new Map(notes.map(n => [n.id, n]));
 

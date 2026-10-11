@@ -390,6 +390,32 @@ describe('History focus selection', () => {
 });
 
 describe('Robustness and single-week selector', () => {
+  test('a parser-unreadable week is selectable with its unavailable presentation', () => {
+    const { MAX_RAW_TEXT_LENGTH } = require('../lib/parser/workoutNote');
+    const notes = [...NOTES, note('huge', 'x'.repeat(MAX_RAW_TEXT_LENGTH + 1))];
+    const c = mount({ weeks: [week(1, 'w1'), week(2, 'huge'), week(3, 'w3')], notes });
+    expect(byLabel(c.root, 'Week 2: no readable evidence')).toBeDefined();
+    pickWeek(c.root, 2);
+    expect(c.root.findAll(isRow).map(r => r.props.accessibilityState.selected)).toEqual([false, true, false]);
+    expect(texts(comp(c.root, 'recovery-strength-week-2'))).toContain('No data');
+  });
+
+  test('a selection never resurrects after focus falls back through a data update', () => {
+    const A = block();
+    const B = block({ id: 'rb-b', completed_at: '2026-06-01T00:00:00Z', baseline_note_title: 'Old' });
+    const bWeeks = [week(1, 'w1', { block_id: 'rb-b' }), week(2, 'w2', { block_id: 'rb-b' })];
+    const el = (blocks) => <AnalyticsRecoverySection blocks={blocks} weeks={[...WEEKS, ...bWeeks]} notes={NOTES} />;
+    let c;
+    act(() => { c = render.create(el([A, B])); });
+    pickWeek(c.root, 1);
+    expect(summary(c.root)).toMatch(/^Week 1: /);
+    act(() => { c.update(el([B])); }); // A disappears: B is focused
+    expect(summary(c.root)).toMatch(/^Week 2: /);
+    act(() => { c.update(el([A, B])); }); // A returns
+    expect(summary(c.root)).toMatch(/^Week 3: /);
+    expect(c.root.findAll(isRow).map(r => r.props.accessibilityState.selected)).toEqual([false, false, true]);
+  });
+
   test('a single live week renders one selected, pressable row', () => {
     const c = mount({ weeks: [WEEKS[0]] });
     const rows = c.root.findAll(isRow);

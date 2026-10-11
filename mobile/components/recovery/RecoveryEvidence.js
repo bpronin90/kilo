@@ -213,8 +213,9 @@ export function BlockEvidence({
       {/* Block context (#1219): a quiet two-row "label  value" list under one
           divider. Row 1 is the start date with the info button directly after
           it (the control sits beside the text it explains, not at the card
-          edge) and the disclosure opens right under it; row 2 is the labelled,
-          editable Reason. Every row is a real >=44dp target; nothing floats. */}
+          edge) and the disclosure opens right under it; row 2 is a quiet read-only
+          Reason (editing lives in Manage block, #1307). The info button is a real
+          >=44dp target; the other rows are text, not targets; nothing floats. */}
       <View testID="recovery-footer-row" style={styles.contextBlock}>
         {!heroNamesRoutine && (
           <View testID="recovery-context-routine" style={styles.contextRow}>
