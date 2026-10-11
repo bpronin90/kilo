@@ -14,9 +14,10 @@ import { splitNameParts } from './recoveryStrengthBaseline.js';
 const DASH_HEADER_RE = /^(\s*)-(?=[^-\s])(.*?)(\s*)$/;
 const NUMBERED_HEADER_RE = /^(\s*)(\d+[a-z]?\.\s+)(.*?)(\s*)$/i;
 // The only promotable scheme (#1314): the descriptor's FIRST token, written
-// compactly (`3x8`, `3×6-8`), followed by `,` `;` ` (` or the end. Anything else
-// (mid-text, spaced, longer tokens, loads, durations) is never guessed.
-const LEADING_SCHEME_RE = /^([1-9][xX×]\d+(?:[-–]\d+)?)(?:\s*[,;]\s*|\s+(?=\()|\s*$)/;
+// compactly (`3x8`, `3×6-8`; 1-9 sets, 1-2 digit reps), IMMEDIATELY followed by
+// `,` `;` a single space before `(`, or whitespace to the end. Anything else
+// (mid-text, spaced, longer tokens like `3x8-1000`, loads, durations) is never guessed.
+const LEADING_SCHEME_RE = /^([1-9][xX×][1-9]\d?(?:[-–][1-9]\d?)?)(?:[,;]\s*| (?=\()|\s*$)/;
 const SEPARATOR_RE = /^\s*(?:,|—|–|-)\s*/;
 
 // The leading scheme of a descriptor and the descriptor without it and its

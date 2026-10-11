@@ -205,6 +205,10 @@ describe('text contract', () => {
     'try with 10x10 today',
     '3x6-8 or 3x8, step up',
     'light (try 3x8 maybe)',
+    '3x8-1000, easy',
+    '3x8 , easy',
+    '3x8\t(rpe)',
+    '3x100, easy',
   ])('"%s" is not promoted and stays byte-for-byte in the note', (d) => {
     const text = `-Squat — ${d}\n- 45 8\n`;
     const { built, out } = edit(text);
