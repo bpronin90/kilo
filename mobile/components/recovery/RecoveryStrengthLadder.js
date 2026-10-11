@@ -1,9 +1,10 @@
-// Selected-week per-lift ladder (#1305, compacted #1315): each scored baseline
-// lift shows name, %, bar, ONE compact best-set / baseline-set line and a compact
-// pace. Everything else (full best-case pace qualification, rate and window,
-// "not in the average") lives in the row accessibility label and the "About
-// these numbers" explainer. Lifts without a score this week or ever are listed
-// in the not-scored disclosure, never as a zero.
+// Strength half of the consolidated per-lift row (#1305, compacted and merged with
+// the raw evidence rows #1315): a scored baseline lift shows %, bar, ONE compact
+// best-set / baseline-set line and a compact pace. Everything else (full
+// best-case pace qualification, rate and window, "not in the average") lives in
+// the row's accessibility label and the "About these numbers" explainer. Lifts
+// without a score this week or ever are listed in the not-scored disclosure,
+// never as a zero.
 
 import React, { useMemo } from 'react';
 import { Text, View } from 'react-native';
@@ -54,34 +55,37 @@ export function scoredLifts(strength) {
   return (strength.lifts || []).filter(l => l.state === LIFT_STATE.SCORED);
 }
 
-export function RecoveryStrengthLadder({ strength, scaleMax, unit = 'lb' }) {
+// The spoken strength part of a consolidated lift row: % of baseline strength,
+// best set vs baseline set (unit explicit), whether it is outside the average,
+// and the FULL best-case pace wording.
+export function strengthRowLabel(l, unit = 'lb') {
+  const cohort = l.in_cohort ? null : 'Not in the average: not scored every week';
+  return [
+    `${displayPercent(l.percent)}% of baseline strength`,
+    `Best set ${_set(l.best, unit)} ${unit} vs baseline ${_set(l.baseline, unit)} ${unit}`,
+    cohort,
+    paceText(l.pace),
+  ].filter(Boolean).join('. ');
+}
+
+// The strength half of ONE per-lift row (#1315): %, bar, one best/baseline line
+// and a compact pace. The raw load/work evidence is the same row's on-demand
+// expansion, so a lift appears once. Not an accessible node itself: the row's
+// single label carries strength and raw evidence together.
+export function StrengthLiftSummary({ lift: l, scaleMax, unit = 'lb' }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStrengthStyles(colors, kua), [colors, kua]);
-  const shown = scoredLifts(strength);
-  if (shown.length === 0) return null;
+  const pace = paceCompact(l.pace);
   return (
-    <View testID="recovery-strength-ladder" style={styles.list}>
-      {shown.map((l, i) => {
-        const pct = displayPercent(l.percent);
-        const sets = `${_set(l.best, unit)} / ${_set(l.baseline, unit)} ${unit}`;
-        const fullSets = `Best set ${_set(l.best, unit)} ${unit} vs baseline ${_set(l.baseline, unit)} ${unit}`;
-        const pace = paceCompact(l.pace);
-        const cohort = l.in_cohort ? null : 'Not in the average: not scored every week';
-        const label = [`${l.name}: ${pct}% of baseline strength`, fullSets, cohort, paceText(l.pace)].filter(Boolean).join('. ');
-        return (
-          <View key={l.key} testID={`recovery-strength-lift-${l.key}`} style={[styles.row, i > 0 && styles.rowBordered]} accessible accessibilityLabel={label}>
-            <View style={styles.rowHeader}>
-              <Text style={styles.rowName}>{l.name}</Text>
-              <Text style={styles.rowValue}>{`${pct}%`}</Text>
-            </View>
-            <View style={styles.barLine}>
-              <StrengthBar percent={l.percent} scaleMax={scaleMax} testID={`recovery-strength-lift-${l.key}-bar`} />
-            </View>
-            <Text testID={`recovery-strength-sets-${l.key}`} style={styles.detail}>{sets}</Text>
-            {pace ? <Text testID={`recovery-strength-pace-${l.key}`} style={styles.detail}>{pace}</Text> : null}
-          </View>
-        );
-      })}
+    <View testID={`recovery-strength-lift-${l.key}`} style={styles.liftSummary}>
+      <View style={styles.rowHeader}>
+        <Text testID={`recovery-strength-pct-${l.key}`} style={styles.rowValue}>{`${displayPercent(l.percent)}%`}</Text>
+      </View>
+      <View style={styles.barLine}>
+        <StrengthBar percent={l.percent} scaleMax={scaleMax} testID={`recovery-strength-lift-${l.key}-bar`} />
+      </View>
+      <Text testID={`recovery-strength-sets-${l.key}`} style={styles.detail}>{`${_set(l.best, unit)} / ${_set(l.baseline, unit)} ${unit}`}</Text>
+      {pace ? <Text testID={`recovery-strength-pace-${l.key}`} style={styles.detail}>{pace}</Text> : null}
     </View>
   );
 }

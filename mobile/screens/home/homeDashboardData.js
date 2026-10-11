@@ -14,7 +14,6 @@ import {
   RECOVERY_WEEK_STATUS,
 } from '../../lib/data/recoveryAnalytics';
 import { LIFT_STATE, displayPercent } from '../../lib/data/recoveryStrength';
-import { summarizeRecoveryBands } from '../../lib/data/derivedAnalytics';
 import { formatDate } from '../../lib/format';
 
 // Re-exported so HomeScreen's active-branch copy can switch on the same
@@ -204,7 +203,7 @@ export const HOME_BIG3_NOT_SCORED = 'not_scored';
 // `not_in_baseline` (#1192).
 export function deriveHomeRecoveryBig3(snapshot, selections) {
   const week = snapshot && snapshot.selectedWeek;
-  const counts = snapshot ? summarizeRecoveryBands(snapshot.bands) : null;
+  const counts = snapshot ? snapshot.counts : null;
   if (!week || week.status !== RECOVERY_WEEK_STATUS.OK) return { big3: [], counts };
   const { strength } = snapshot;
   const lifts = new Map((strength.lifts || []).map(l => [l.key, l]));

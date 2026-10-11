@@ -10,7 +10,11 @@
 // messages, full accessibility text, the "About these numbers" lines) is built
 // here too, so two surfaces can never word the same fact differently.
 
-import { deriveRecoveryComparison, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './recoveryAnalytics.js';
+import {
+  deriveRecoveryComparison, RECOVERY_COMPARISON_STATES, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS,
+} from './recoveryAnalytics.js';
+import { summarizeRecoveryBands } from './derivedAnalytics.js';
+import { movementGroupLabel } from './movementGroups.js';
 import { deriveRecoveryStrength, displayPercent, STRENGTH_STATUS } from './recoveryStrength.js';
 import { deriveRecoveryWeekBands } from './recoveryReturnBands.js';
 import { deriveMovementGroupBreakdown, resolveMovementGroupSource } from './recoveryMovementGroups.js';
@@ -43,6 +47,45 @@ export function strengthScaleMax(strength) {
 }
 
 const _sentence = (l) => (/[.!?]$/.test(l) ? l : `${l}.`);
+
+// #1193: which weeks (other than the selected one) actually trained each
+// baseline exercise, so "Not reintroduced" can say whether the exercise is
+// absent from the whole block or only from the week being viewed. Only compared
+// rows count, plus not-comparable rows that still carry logged work
+// (`week_name`) — that work exists, it just cannot be scored.
+export function deriveTrainedElsewhere(weekResults, selectedWeek, stale = false) {
+  const map = new Map();
+  // An unreadable/missing week's work is unknown, so "never trained" cannot be
+  // claimed while one exists.
+  let unreadable = false;
+  for (const w of weekResults) {
+    if (!selectedWeek || w.week_id === selectedWeek.week_id) continue;
+    if (w.status !== RECOVERY_WEEK_STATUS.OK) { unreadable = true; continue; }
+    for (const row of w.exercises || []) {
+      const logged = row.state === RECOVERY_COMPARISON_STATES.BASELINE_MET
+        || row.state === RECOVERY_COMPARISON_STATES.REBUILDING
+        || (row.state === RECOVERY_COMPARISON_STATES.NOT_COMPARABLE && !!row.week_name);
+      if (!logged) continue;
+      const list = map.get(row.key) || [];
+      list.push(w.week_number);
+      map.set(row.key, list);
+    }
+  }
+  return { weeks: map, unreadable, stale };
+}
+
+// Every status kind a detail row can carry: the visible band ids plus `added`
+// (rows with no band). The folded `close` bucket is Rebuilding at presentation.
+export const ROW_STATUS_KINDS = Object.freeze(['at_or_above', 'rebuilding', 'early', 'cannot_compare', 'not_trained_yet', 'added']);
+export const foldBandId = (bandId) => (bandId === 'close' ? 'rebuilding' : bandId);
+
+// The band of ONE detail row, from the existing return-band derivation run on that
+// row (never a second threshold implementation). Added work has no band.
+function _rowBandId(row) {
+  if (row.state === RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY) return null;
+  const { buckets } = deriveRecoveryWeekBands({ status: RECOVERY_WEEK_STATUS.OK, exercises: [row] });
+  return foldBandId(Object.keys(buckets).find(id => buckets[id] > 0) || 'cannot_compare');
+}
 
 function _routineName(block) {
   return ((block && block.baseline_note_title) || '').trim() || 'Untitled Routine';
@@ -107,6 +150,18 @@ function _build(block, weeks, notes, comparison, selectedWeek, { stale }) {
   });
   const strengthOk = strength.status === STRENGTH_STATUS.OK;
   const display = _display(block, comparison, selectedWeek, strength);
+  // Per-row bands and the summary counts, derived here once so no row or summary
+  // component derives anything while rendering (or re-renders).
+  const detailRows = selectedWeek && selectedWeek.status === RECOVERY_WEEK_STATUS.OK
+    ? [...(selectedWeek.exercises || []), ...(selectedWeek.added || [])] : EMPTY;
+  const bandById = {};
+  const kindCounts = Object.fromEntries(ROW_STATUS_KINDS.map(k => [k, 0]));
+  for (const row of detailRows) {
+    const id = _rowBandId(row);
+    bandById[row.key] = id;
+    kindCounts[id || 'added'] += 1;
+  }
+  const bands = deriveRecoveryWeekBands(selectedWeek);
   return {
     blockId: block.id,
     weekId: selectedWeek ? selectedWeek.week_id : null,
@@ -116,7 +171,12 @@ function _build(block, weeks, notes, comparison, selectedWeek, { stale }) {
     selectedWeek,
     strength,
     scaleMax: strengthOk ? strengthScaleMax(strength) : 100,
-    bands: deriveRecoveryWeekBands(selectedWeek),
+    bands,
+    counts: summarizeRecoveryBands(bands),
+    detailRows,
+    bandById: Object.freeze(bandById),
+    detailSummary: Object.freeze({ counts: Object.freeze(kindCounts), total: detailRows.length }),
+    trainedElsewhere: deriveTrainedElsewhere(comparison.weeks || EMPTY, selectedWeek, stale),
     display,
     // Status flags the surfaces branch on without re-reading the strength model.
     legacy: strength.status === STRENGTH_STATUS.PAIR_UNAVAILABLE,
@@ -128,20 +188,36 @@ function _build(block, weeks, notes, comparison, selectedWeek, { stale }) {
 // are layered on the cached core so a differing `notesError` never re-derives
 // the comparison or strength.
 function _withGroups(core, block, notes, selectedWeek, notesError) {
-  let movementGroups = null;
-  if (core.strength.status === STRENGTH_STATUS.OK) {
-    const source = resolveMovementGroupSource({ block, notes, notesError });
-    movementGroups = {
-      source,
-      breakdown: deriveMovementGroupBreakdown({
-        strength: core.strength,
-        baselineRows: (block.baseline && block.baseline.exercises) || [],
-        addedRows: (selectedWeek && selectedWeek.added) || [],
-        overrides: source.overrides,
-      }),
-    };
+  const baselineRows = block.baseline && Array.isArray(block.baseline.exercises) ? block.baseline.exercises : [];
+  const source = resolveMovementGroupSource({ block, notes, notesError });
+  // Numeric breakdown (needs a strength model) for the read-only Analytics panel.
+  const movementGroups = core.strength.status === STRENGTH_STATUS.OK ? {
+    source,
+    breakdown: deriveMovementGroupBreakdown({
+      strength: core.strength,
+      baselineRows: (block.baseline && block.baseline.exercises) || [],
+      addedRows: (selectedWeek && selectedWeek.added) || [],
+      overrides: source.overrides,
+    }),
+  } : null;
+  // Log's group editor: every baseline lift plus any added in ANY week, in
+  // routine order, with its group and source; independent of the strength model.
+  const addedRows = [];
+  const seen = new Set(baselineRows.map(r => r && r.key));
+  for (const w of core.weekResults) {
+    for (const row of w.added || []) {
+      if (row && row.key && !seen.has(row.key)) { seen.add(row.key); addedRows.push(row); }
+    }
   }
-  return Object.freeze({ ...core, movementGroups });
+  const order = new Map([...baselineRows, ...addedRows].map((r, i) => [r && r.key, i]));
+  const editorBreakdown = deriveMovementGroupBreakdown({ baselineRows, addedRows, overrides: source.overrides });
+  const groupEditor = {
+    source,
+    exercises: editorBreakdown.groups.flatMap(g => g.exercises)
+      .sort((a, b) => order.get(a.key) - order.get(b.key))
+      .map(ex => ({ ...ex, groupLabel: movementGroupLabel(ex.group) })),
+  };
+  return Object.freeze({ ...core, movementGroups, groupEditor });
 }
 
 // Content-keyed shared store. The key is a fingerprint of exactly the records the

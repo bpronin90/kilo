@@ -127,7 +127,7 @@ describe('Week rows are the sole selector', () => {
       if (!host(c.root, 'movement-group-row-push').length) press(c.root, 'recovery-movement-groups-header');
       return {
       summary: summary(c.root),
-      ladder: JSON.stringify(texts(c.root.findAll(n => n.props.testID === 'recovery-strength-ladder')[0])),
+      ladder: JSON.stringify(texts(c.root.findAll(n => n.props.testID === 'recovery-exercise-list')[0])),
       groups: ['push', 'legs'].map(id => (host(c.root, `movement-group-value-${id}`)[0] || { props: {} }).props.children),
       };
     };

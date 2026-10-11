@@ -227,6 +227,12 @@ function rowLabels(root) {
 function hostRows(root) {
   return root.findAll(inst => typeof inst.type === 'string' && inst.props.testID === 'recovery-exercise-row');
 }
+// The raw-evidence part of a row: texts outside the strength half (#1315).
+function rawTextsIn(inst) {
+  const inStrength = (n) => { for (let p = n.parent; p; p = p.parent) { if (typeof p.type === 'string' && /^recovery-strength-lift-/.test(p.props.testID || '')) return true; } return false; };
+  return inst.findAll(n => typeof n.type === 'string' && n.type === 'Text' && !inStrength(n))
+    .map(n => [].concat(n.props.children).join(''));
+}
 function hostTextsIn(inst) {
   return inst.findAll(n => typeof n.type === 'string' && n.type === 'Text')
     .map(n => [].concat(n.props.children).join(''));
@@ -1732,9 +1738,9 @@ describe('AnalyticsRecoverySection — scannable hierarchy (#1209)', () => {
     expandDetails(root, { rows: false });
     expect(hostById(root, 'recovery-strength-summary')[0].props.accessibilityLabel).toMatch(/^Week 2: 100% of Push Pull Legs baseline strength\./);
     const order = root.findAll(n => typeof n.type === 'string'
-      && ['recovery-strength-summary', 'recovery-strength-weeks', 'recovery-strength-ladder'].includes(n.props.testID))
+      && ['recovery-strength-summary', 'recovery-strength-weeks', 'recovery-exercise-list'].includes(n.props.testID))
       .map(n => n.props.testID);
-    expect(order).toEqual(['recovery-strength-summary', 'recovery-strength-weeks', 'recovery-strength-ladder']);
+    expect(order).toEqual(['recovery-strength-summary', 'recovery-strength-weeks', 'recovery-exercise-list']);
   });
 
   test('#1305: the band bar, movement row and band strip are gone from Analytics, so no warning-amber Steady remains', () => {
@@ -2016,7 +2022,7 @@ describe('AnalyticsRecoverySection — visual exercise details (#1219)', () => {
     expandDetails(root);
     return root;
   };
-  const rowTexts = (root) => hostRows(root).map(r => hostTextsIn(r));
+  const rowTexts = (root) => hostRows(root).map(r => rawTextsIn(r));
   const hostById = (root, id) => root.findAll(n => typeof n.type === 'string' && n.props.testID === id);
 
   test('each row is name + status word, and compared rows add one thin bar with its percent and concise numbers', () => {
@@ -2585,7 +2591,7 @@ describe('AnalyticsRecoverySection — routine order, Total work bar, band token
   // --- F: bar measure ------------------------------------------------------
   const barOf = (root, i = 0) => hostById(root, 'recovery-exercise-bar')[i];
   const fillOf = (bar) => flat(bar.children[0]).width;
-  const percentTextOf = (root, i = 0) => hostTextsIn(hostRows(root)[i]).find(t => /\d+%$/.test(t));
+  const percentTextOf = (root, i = 0) => rawTextsIn(hostRows(root)[i]).find(t => /\d+%$/.test(t));
   const lastWeek = () => deriveRecoveryComparison.mock.results[deriveRecoveryComparison.mock.results.length - 1].value.weeks[0];
 
   // [label, exercise_class, metrics, expected measure label, expected percent, expected fill]

@@ -8,12 +8,11 @@ import { formatDate } from '../../lib/format';
 import { RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from '../../lib/data/recoveryAnalytics';
 import { STRENGTH_STATUS } from '../../lib/data/recoveryStrength';
 import { useRecoveryStrengthSnapshot } from '../../hooks/entries/useRecoveryStrengthSnapshot';
-import { summarizeDetailRows, WeekEvidence, WeekUnavailableNotice } from './RecoveryStateGroups';
-import { deriveTrainedElsewhere } from './RecoveryWeekIndex';
+import { WeekEvidence, WeekUnavailableNotice } from './RecoveryStateGroups';
 import { createStyles } from './analyticsRecoveryStyles';
 import { RecoveryRosterSummary } from './RecoveryVisuals';
 import { RecoveryStrengthSummary } from './RecoveryStrengthSummary';
-import { RecoveryStrengthLadder, scoredLifts } from './RecoveryStrengthLadder';
+import { scoredLifts } from './RecoveryStrengthLadder';
 import { RecoveryMovementGroupsPanel } from './RecoveryMovementGroupsPanel';
 import { RecoveryStrengthWeeks } from './RecoveryStrengthWeeks';
 import { NotRetestedDisclosure, NotScoredDisclosure, RecoveryDisclosure, notScoredEntries } from './RecoveryStrengthDisclosures';
@@ -78,8 +77,9 @@ export function BlockEvidence({
   const dateValue = isActive
     ? formatDate(block.started_at)
     : `${formatDate(block.started_at)} to ${formatDate(block.completed_at)}`;
-  const trainedElsewhere = useMemo(() => deriveTrainedElsewhere(weekResults, selectedWeek, stateStale), [weekResults, selectedWeek, stateStale]);
-  const weekRows = selectedWeek ? [...(selectedWeek.exercises || []), ...(selectedWeek.added || [])] : [];
+  // Everything below is READ from the snapshot; this component derives nothing.
+  const { detailRows: weekRows, bandById, detailSummary, trainedElsewhere } = snapshot;
+  const strengthByKey = useMemo(() => new Map(scoredLifts(strength).map(l => [l.key, l])), [strength]);
 
   const strengthOk = strength.status === STRENGTH_STATUS.OK;
   // A baseline-empty block has nothing to score. An unreadable/missing selected
@@ -96,7 +96,8 @@ export function BlockEvidence({
     scored > 0 ? `${scored} scored` : null,
     showDetails ? `${totalRows} in details` : null,
   ].filter(Boolean).join(' · ');
-  const hasLifts = (showStrength && scored > 0) || showDetails;
+  // One per-lift list: strength % and the raw evidence on demand live in the same row.
+  const hasLifts = showDetails;
   const hasNotRetested = showStrength && (strength.not_retested || []).length > 0;
   const hasNotScored = showStrength && notScoredEntries(strength).length > 0;
   // A null group panel (no groups) must not consume the first-row border token.
@@ -238,13 +239,14 @@ export function BlockEvidence({
               name="lifts"
               first={first()}
             >
-              {scored > 0 ? <RecoveryStrengthLadder strength={strength} scaleMax={scaleMax} unit={unit} /> : null}
-              {showDetails ? (
-                <View testID="recovery-exercise-details" style={styles.detailsBody}>
-                  <RecoveryRosterSummary summary={summarizeDetailRows(weekRows)} bands={bands} gap={bands.most_common_gap} />
-                  <WeekEvidence key={`${block.id}:${selectedWeek.week_id}`} rows={weekRows} unit={unit} weekNumber={selectedWeek.week_number} elsewhere={trainedElsewhere} />
-                </View>
-              ) : null}
+              <View testID="recovery-exercise-details" style={styles.detailsBody}>
+                <RecoveryRosterSummary summary={detailSummary} bands={bands} gap={bands.most_common_gap} />
+                <WeekEvidence
+                  key={`${block.id}:${selectedWeek.week_id}`}
+                  rows={weekRows} unit={unit} weekNumber={selectedWeek.week_number} elsewhere={trainedElsewhere}
+                  bandById={bandById} strengthByKey={strengthByKey} scaleMax={scaleMax}
+                />
+              </View>
             </RecoveryDisclosure>
           ) : null}
           {hasGroups ? (

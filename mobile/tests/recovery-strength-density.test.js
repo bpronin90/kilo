@@ -98,12 +98,23 @@ describe('one consistent disclosure rule', () => {
     expect(byLabel(root, 'Expand 2 not retested lifts').props.accessibilityState).toEqual({ expanded: false });
   });
 
-  test('the strength ladder and Exercise details are one Lifts disclosure, not two parallel lists', () => {
+  test('one per-lift list: each lift appears once, with its strength % and raw evidence on demand', () => {
     const root = mount();
     expect(byLabel(root, 'Expand exercise details')).toBeUndefined();
     tap(root, 'Expand lifts');
-    expect(host(root, 'recovery-strength-ladder')).toHaveLength(1);
-    expect(host(root, 'recovery-exercise-details')).toHaveLength(1);
+    expect(host(root, 'recovery-strength-ladder')).toHaveLength(0);
+    const rows = host(root, 'recovery-exercise-row');
+    const names = rows.map(r => texts(r)[0]);
+    expect(names.filter(n => n === 'Bench')).toHaveLength(1);
+    expect(new Set(names).size).toBe(names.length);
+    const bench = rows.find(r => texts(r)[0] === 'Bench');
+    // Strength half is on the row; the raw load/work evidence is behind its tap.
+    expect(host(bench, 'recovery-strength-lift-bench')).toHaveLength(1);
+    expect(host(bench, 'recovery-exercise-detail')).toHaveLength(0);
+    act(() => { root.findAll(n => typeof n.type !== 'string' && n.props.testID === 'recovery-exercise-row' && n.props.onPress && texts(n)[0] === 'Bench')[0].props.onPress(); });
+    const opened = host(root, 'recovery-exercise-row').find(r => texts(r)[0] === 'Bench');
+    expect(host(opened, 'recovery-exercise-detail')).toHaveLength(1);
+    expect(opened.props.accessibilityLabel).toMatch(/Load .* of baseline.*\. \d+% of baseline strength\. Best set/);
   });
 });
 
@@ -111,7 +122,7 @@ describe('compact per-lift rows', () => {
   test('name, %, bar, one best/baseline line and a compact pace; full pace in the label', () => {
     const root = mount();
     tap(root, 'Expand lifts');
-    const row = host(root, 'recovery-strength-lift-squat')[0];
+    const row = host(root, 'recovery-exercise-row').find(r => texts(r)[0] === 'Squat');
     expect(row.props.accessibilityLabel).toContain('Best set 90×5 lb vs baseline 100×5 lb');
     expect(row.props.accessibilityLabel).toContain('Best case, if your recent rate continues');
     const sets = host(root, 'recovery-strength-sets-squat')[0];
@@ -119,7 +130,7 @@ describe('compact per-lift rows', () => {
     const pace = host(root, 'recovery-strength-pace-squat')[0];
     expect([].concat(pace.props.children).join('')).toMatch(/^90% reached · 100% ~\d+ wk$|^90% ~\d+ wk · 100% ~\d+ wk$/);
     // No verbose reason or cohort paragraph in the row.
-    expect(texts(row).join(' ')).not.toMatch(/Best case|Not in the average|Best set/);
+    expect(texts(host(row, 'recovery-strength-lift-squat')[0]).join(' ')).not.toMatch(/Best case|Not in the average|Best set/);
   });
 
   test('every pace status has a compact form and a full explanation', () => {

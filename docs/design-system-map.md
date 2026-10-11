@@ -871,8 +871,9 @@ list: collapsed by default, a `>=44dp` header with a counted title/caption and a
 `MaterialIcons` chevron (`RecoveryDisclosure`), reset to collapsed when the block
 or week changes. The strength ladder and the older Exercise details overlapped
 (both are per-lift evidence for the same baseline lifts), so they are ONE `Lifts`
-disclosure: the strength rows, then the raw Load/Total-work rows
-(`WeekEvidence`) in the same body, instead of two parallel lists.
+disclosure with ONE list: each lift's row shows its strength % and expands to its
+raw Load/Total-work evidence (`WeekEvidence` rows decorated by the snapshot's
+strength lifts), instead of two parallel lists.
 **Recovery numbers come from one snapshot; surfaces never re-derive** (see
 `lib/data/recoverySnapshot.js`): Home's Recovery panel, the Overview `Recovery`
 row and this section read the same frozen object. **Maintenance lives only in
@@ -887,7 +888,7 @@ label, the `About these numbers` explainer or a named disclosure.
 | Strength caption | fontSize / weight | `13` / `600`, `textMuted` — ONE caption, `{N} lifts · Week {n}` (N = the headline cohort). Nothing else is printed beside the number: the routine name, coverage (`Average of N lifts scored every week · N of R baseline lifts`, R = full roster), cohort names, excluded weeks and dropped lifts are in the summary's accessibility label and the `About these numbers` explainer. No honest average: one short reason line (never a 0%) |
 | Summary group | accessibility | `accessible` + `accessibilityLabel` inside the card's `accessibilityLiveRegion="polite"` region so a week change is announced without scrolling |
 | Week rows (sole selector, #1307) | `RecoveryStrengthWeeks.js` | `Week by week` caption above one **pressable row per live week** (stable `week_id`, one row per live week including a single week; the retired `RecoveryWeekPicker` chips are gone, so there is no second selector). Row: `Week N`, the as-of bar + `N%`, or an explicit `No average` / `No data` (missing or unreadable week, still selectable so its notice shows) / `Select to view` (a week later than the selection) / `Not scored` (legacy baseline); `minHeight 44`, `accessibilityRole="button"`, `accessibilityState.selected`, full label (`Week N: 74% of baseline strength`). Selected = `surfaceSection` fill AND bold label (never colour alone). Default is the latest week; the selection persists across evidence updates while the id exists, falls back to the latest when it is removed, and resets when the focused block changes. Selecting re-derives the headline, ladder, group scores and as-of pace together |
-| Lifts disclosure header | title | `Lifts` + `N lifts`, `minHeight 44`, `accessibilityState.expanded`, collapsed by default; body = scored per-lift rows (`recovery-strength-ladder`), then the roster summary and raw evidence rows |
+| Lifts disclosure header | title | `Lifts` + `{N} scored · {M} in details`, `minHeight 44`, `accessibilityState.expanded`, collapsed by default; body = the roster summary and ONE per-lift list: each exercise row (`recovery-exercise-row`) carries, for a scored lift, its strength half (%, bar, `best / baseline unit`, compact pace) and its raw Load/Total-work evidence on demand behind the row's tap — a lift is listed once, never in a second list. Row statuses, band marks, the roster summary and trained-elsewhere notes are READ from the Recovery snapshot (`bandById`, `detailSummary`, `trainedElsewhere`); no row or summary derives anything |
 | Roster summary | `RecoveryRosterSummary` | Inside the Lifts disclosure body (no longer under a separate header): the text-led `7 trained · 20 not yet · 5 added` tokens (unchanged derivation, whole-token wrapping layout, accessible label with every state count) |
 | Disclosure chevron | icon | `MaterialIcons` `expand-more`/`expand-less`, `18`, `textMuted` (app-wide convention), every disclosure |
 | **Exercise row** | `recoveryVisualStyles.js` `ex*` | name `15` / `700` `text`; `8` dot (graded token, or the shared neutral for not-graded rows) + plain status word `13` / `600` `textMuted`; one thin `6` bar (band token on `surfaceSection` track, fill capped at 100%) with the measure-named uncapped percent `13` / `800` (`Total work 11%`, `Reps 66%`, `Time 45%`); numbers `13` `textMuted` (`Load 135 lb / 135 lb`); full sentences only in `accessibilityLabel` |
@@ -926,7 +927,7 @@ Card).
 with strength relative to the frozen best set. `RecoveryStrengthSummary` is the
 one primary selected-week summary: the KUA metric hero tier (32/36) average % and
 one `{N} lifts · Week n` caption. `RecoveryStrengthWeeks` (label + bar/gap +
-value per week, no caption) and `RecoveryStrengthLadder` share ONE percent scale
+value per week, no caption) and `StrengthLiftSummary` (the strength half of each per-lift row) share ONE percent scale
 (`strengthScaleMax`: 100, or the next 10 above the largest value) with an
 on-surface ink 100% reference mark and the court primary fill on the section
 track; the `Bars run 0-N%` legend is in the explainer. Each scored lift row is

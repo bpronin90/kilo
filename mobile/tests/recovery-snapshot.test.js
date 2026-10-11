@@ -30,6 +30,11 @@ jest.mock('../hooks/entries/recoveryBlockHooks', () => ({
   useRecoveryBlockState: () => mockStoreState,
 }));
 
+jest.mock('../lib/data/recoveryReturnBands', () => {
+  const actual = jest.requireActual('../lib/data/recoveryReturnBands');
+  return { ...actual, deriveRecoveryWeekBands: jest.fn(actual.deriveRecoveryWeekBands) };
+});
+const { deriveRecoveryWeekBands } = require('../lib/data/recoveryReturnBands');
 const { deriveRecoveryStrength } = require('../lib/data/recoveryStrength');
 const { deriveRecoveryComparison } = require('../lib/data/recoveryAnalytics');
 const { AnalyticsRecoverySection } = require('../components/AnalyticsRecoverySection');
@@ -68,6 +73,7 @@ beforeEach(() => {
   _resetRecoverySnapshotStore();
   deriveRecoveryStrength.mockClear();
   deriveRecoveryComparison.mockClear();
+  deriveRecoveryWeekBands.mockClear();
 });
 
 // Mounts Home + Overview + Analytics together, each fed its own copy of the data.
@@ -196,10 +202,10 @@ describe('identical values on every surface', () => {
   test('Home Big 3 values equal the Analytics ladder values for the same block and week (#1315)', () => {
     const root = mount({ fixture: SCORED, stale: false }).root;
     act(() => { root.findAll(n => n.props && n.props.accessibilityLabel === 'Expand lifts')[0].props.onPress(); });
-    const ladder = byId(root, 'recovery-strength-lift-squat')[0].props.accessibilityLabel;
+    const ladder = byId(root, 'recovery-exercise-row').map(n => n.props.accessibilityLabel).find(l => /^Squat, /.test(l));
     const homeValue = byId(root, 'home-recovery-lift-squat')[0]
       .findAll(n => n.type === 'Text').map(n => [].concat(n.props.children).join(''));
-    expect(ladder).toMatch(/^Squat: 80% of baseline strength/);
+    expect(ladder).toMatch(/80% of baseline strength/);
     expect(homeValue).toContain('80%');
     // The band-model words are gone from Home.
     expect(homeValue.join(' ')).not.toMatch(/Recovered|In progress|Not started/);
@@ -237,5 +243,50 @@ describe('identical values on every surface', () => {
     expect(row.value).toBeNull();
     expect(row.emptyCaption).toBe(snap.display.message);
     expect(analyticsSummary(root).props.accessibilityLabel).toContain(snap.display.message);
+  });
+});
+
+describe('display components never derive (#1315 review)', () => {
+  test('expanding Lifts, opening every row, collapsing and reopening derives no bands, strength or comparison', () => {
+    const root = mount({ fixture: SCORED, stale: false }).root;
+    const bands = deriveRecoveryWeekBands.mock.calls.length;
+    const strength = deriveRecoveryStrength.mock.calls.length;
+    const comparison = deriveRecoveryComparison.mock.calls.length;
+    const press = (pred) => act(() => { root.findAll(pred)[0].props.onPress(); });
+    press(n => n.props && n.props.accessibilityLabel === 'Expand lifts');
+    root.findAll(n => typeof n.type !== 'string' && n.props.testID === 'recovery-exercise-row' && n.props.onPress)
+      .forEach(n => act(() => { n.props.onPress(); }));
+    press(n => n.props && n.props.accessibilityLabel === 'Collapse lifts');
+    press(n => n.props && n.props.accessibilityLabel === 'Expand lifts');
+    expect(deriveRecoveryWeekBands.mock.calls.length).toBe(bands);
+    expect(deriveRecoveryStrength.mock.calls.length).toBe(strength);
+    expect(deriveRecoveryComparison.mock.calls.length).toBe(comparison);
+    // The whole mounted tree (Home + Overview + Analytics) derived bands only
+    // inside the snapshot's one build (selected week + one per detail row).
+    expect(bands).toBeLessThanOrEqual(1 + 2);
+  });
+
+  test('no production component, screen or hook imports a Recovery derive/summarize function', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const root = path.join(__dirname, '..');
+    const FORBIDDEN = /\b(deriveRecoveryComparison|deriveRecoveryStrength|deriveRecoveryWeekBands|deriveRecoveryMovement|deriveRecoveryTrainedRows|deriveRecoveryBandSeries|deriveMovementGroupBreakdown|summarizeRecoveryBands)\b/;
+    const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => (
+      e.isDirectory() ? walk(path.join(dir, e.name)) : /\.js$/.test(e.name) ? [path.join(dir, e.name)] : []));
+    const offenders = [];
+    for (const dir of ['components', 'screens', 'hooks']) {
+      for (const file of walk(path.join(root, dir))) {
+        const src = fs.readFileSync(file, 'utf8');
+        // Only real import/require statements count; prose comments may name them.
+        const imports = src.match(/import[^;]*?from\s+['"][^'"]+['"];|require\([^)]*\)/g) || [];
+        if (imports.some(i => FORBIDDEN.test(i))) offenders.push(path.relative(root, file));
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  test('the row status words cover exactly the snapshot\'s status kinds', () => {
+    const { ROW_STATUS_KINDS } = require('../lib/data/recoverySnapshot');
+    expect([...ROW_STATUS_KINDS]).toEqual(['at_or_above', 'rebuilding', 'early', 'cannot_compare', 'not_trained_yet', 'added']);
   });
 });

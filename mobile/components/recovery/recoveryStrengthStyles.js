@@ -68,6 +68,7 @@ export const createStrengthStyles = (colors, kua = null) => {
     // flexBasis into height (PR #1308 review), so ladder bars sit in this line.
     barLine: { flexDirection: 'row', alignItems: 'center' },
     detail: caption,
+    liftSummary: { gap: 4, paddingTop: 2 },
     list: { gap: 4 },
     // One disclosure pattern for every per-exercise list (#1315): a >=44dp
     // header row (title + counted caption + chevron), collapsed by default.

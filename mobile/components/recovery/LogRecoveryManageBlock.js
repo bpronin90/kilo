@@ -9,9 +9,7 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useTheme } from '../../theme/ThemeContext';
-import { deriveRecoveryComparison } from '../../lib/data/recoveryAnalytics';
-import { deriveMovementGroupBreakdown, resolveMovementGroupSource } from '../../lib/data/recoveryMovementGroups';
-import { movementGroupLabel } from '../../lib/data/movementGroups';
+import { getRecoverySnapshot } from '../../lib/data/recoverySnapshot';
 import { RebuildBaselineAction } from './RebuildBaseline';
 import { MatchExerciseNamesAction } from './MatchExerciseNames';
 import { TidyRecoveryNamesAction } from './TidyRecoveryNames';
@@ -31,23 +29,12 @@ export function MovementGroupsManage({ block, weeks, notes, routineTitle, groupE
   const mg = useMemo(() => createMovementGroupStyles(colors, kua), [colors, kua]);
   const [open, setOpen] = useState(false);
   const [everOpened, setEverOpened] = useState(false);
-  const source = useMemo(
-    () => resolveMovementGroupSource({ block, notes, notesError: groupEditing.notesError }),
-    [block, notes, groupEditing.notesError]
+  // The editor's rows (and the group source) come from the Recovery snapshot;
+  // nothing is derived here.
+  const { source, exercises } = useMemo(
+    () => getRecoverySnapshot({ block, weeks, notes, notesError: groupEditing.notesError }).groupEditor,
+    [block, weeks, notes, groupEditing.notesError]
   );
-  const exercises = useMemo(() => {
-    const baselineRows = block.baseline && Array.isArray(block.baseline.exercises) ? block.baseline.exercises : [];
-    const addedRows = [];
-    const seen = new Set(baselineRows.map(r => r && r.key));
-    for (const w of deriveRecoveryComparison({ block, weeks, notes }).weeks || []) {
-      for (const row of w.added || []) {
-        if (row && row.key && !seen.has(row.key)) { seen.add(row.key); addedRows.push(row); }
-      }
-    }
-    const order = new Map([...baselineRows, ...addedRows].map((r, i) => [r && r.key, i]));
-    const breakdown = deriveMovementGroupBreakdown({ baselineRows, addedRows, overrides: source.overrides });
-    return breakdown.groups.flatMap(g => g.exercises).sort((a, b) => order.get(a.key) - order.get(b.key));
-  }, [block, weeks, notes, source]);
   if (exercises.length === 0) return null;
   const editing = { available: source.available, locked: groupEditing.locked === true, noteId: source.noteId, onSet: groupEditing.onSet };
   const notice = !source.available ? GROUP_EDIT_UNAVAILABLE[source.reason]
@@ -83,7 +70,7 @@ export function MovementGroupsManage({ block, weeks, notes, routineTitle, groupE
                 <MovementGroupEditorControl exercise={ex} editing={editing} routineTitle={routineTitle} />
               </View>
               <Text style={mg.exerciseMeta}>
-                {`${movementGroupLabel(ex.group)} · ${ex.source === 'override' ? 'Your choice' : 'Automatic'}${ex.origin === 'added' ? ' · added during recovery' : ''}`}
+                {`${ex.groupLabel} · ${ex.source === 'override' ? 'Your choice' : 'Automatic'}${ex.origin === 'added' ? ' · added during recovery' : ''}`}
               </Text>
             </View>
           ))}

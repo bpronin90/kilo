@@ -61,28 +61,4 @@ export function WeekIndexRow({ block, week, notesById, selected = false, onFocus
   );
 }
 
-// #1193: which weeks (other than the selected one) actually trained each
-// baseline exercise, so "Not reintroduced" can say whether the exercise is
-// absent from the whole block or only from the week being viewed. Only compared
-// rows count, plus not-comparable rows that still carry logged work
-// (`week_name`) — that work exists, it just cannot be scored.
-export function deriveTrainedElsewhere(weekResults, selectedWeek, stale = false) {
-  const map = new Map();
-  // An unreadable/missing week's work is unknown, so "never trained" cannot be
-  // claimed while one exists.
-  let unreadable = false;
-  for (const w of weekResults) {
-    if (!selectedWeek || w.week_id === selectedWeek.week_id) continue;
-    if (w.status !== RECOVERY_WEEK_STATUS.OK) { unreadable = true; continue; }
-    for (const row of w.exercises || []) {
-      const logged = row.state === RECOVERY_COMPARISON_STATES.BASELINE_MET
-        || row.state === RECOVERY_COMPARISON_STATES.REBUILDING
-        || (row.state === RECOVERY_COMPARISON_STATES.NOT_COMPARABLE && !!row.week_name);
-      if (!logged) continue;
-      const list = map.get(row.key) || [];
-      list.push(w.week_number);
-      map.set(row.key, list);
-    }
-  }
-  return { weeks: map, unreadable, stale };
-}
+export { deriveTrainedElsewhere } from '../../lib/data/recoverySnapshot';
