@@ -75,13 +75,13 @@ describe('owner Squat fixture', () => {
     expect(row(fx.block).best_e1rm_reps).toBe(frozen.r);
   });
 
-  test('W1 promotes its single embedded scheme to the header and keeps it out of the note', () => {
+  test('W1 does not promote its mid-text scheme: the whole descriptor stays in the note', () => {
     const plan = planTidyNames(squatFixture());
     const w1 = plan.noteWrites[0].next_raw_text;
     expect(w1.split('\n').slice(0, 3)).toEqual([
-      '-Squat 3x8',
+      '-Squat',
       '- 135 8,8,8',
-      '-- empty bar or very light (movement/pain test, not a working set)',
+      '-- empty bar or very light, 3x8 (movement/pain test, not a working set)',
     ]);
     const w2 = plan.noteWrites[1].next_raw_text.split('\n');
     expect(w2.slice(0, 3)).toEqual(['-Squat 3x6-8', '- 135 8,8,8', '-- step up from empty bar 135-155']);
@@ -184,34 +184,46 @@ describe('text contract', () => {
     expect(verifyTidyEdits(text, out, [built.edit])).not.toBeNull();
   });
 
-  test('a promoted scheme keeps the same set interpretation and passes the reparse proof', () => {
-    const text = '-Squat — warm, 3x8 (rpe)\n8\n8\n';
-    const ex = parseWorkoutNote(text).sections[0].exercises[0];
-    const built = buildOccurrenceEdit(text.split('\n'), ex, 'Squat');
-    expect(built.edit).toMatchObject({ scheme: '3x8', comment: 'warm (rpe)' });
-    const out = applyTidyEdits(text, [built.edit]);
-    expect(out).toBe('-Squat 3x8\n8\n-- warm (rpe)\n8\n');
-    expect(verifyTidyEdits(text, out, [built.edit])).toBeNull();
-  });
-
-  test('a single embedded scheme is promoted and removed from the note; ambiguous prose is not guessed', () => {
-    expect(edit('-Squat — empty bar, 3x8 (test)\n- 45 8\n').out).toBe('-Squat 3x8\n- 45 8\n-- empty bar (test)\n');
-    expect(edit('-Squat — 3x6-8 or 3x8, step up\n- 45 8\n').out).toBe('-Squat\n- 45 8\n-- 3x6-8 or 3x8, step up\n');
-    for (const d of ['start at 70x8, build up', 'step @ 135x5 today', 'try with 10x10 today', 'warm 3x8 lbs', 'build to 10x10 today']) {
-      expect(edit(`-Squat — ${d}\n- 45 8\n`).out).toBe(`-Squat\n- 45 8\n-- ${d}\n`);
-    }
-    expect(edit('-Squat — light (try 3x8 maybe)\n- 45 8\n').out).toBe('-Squat\n- 45 8\n-- light (try 3x8 maybe)\n');
-    expect(edit('-Squat — step up from 135x5 or so\n- 45 8\n').out).toBe('-Squat\n- 45 8\n-- step up from 135x5 or so\n');
-  });
-
-  test('scheme spelling is kept; mid-descriptor removal tidies separators', () => {
-    expect(edit('-Squat — light, 3 x 6 - 8, then heavy\n- 45 8\n').out).toBe('-Squat 3 x 6 - 8\n- 45 8\n-- light, then heavy\n');
-    expect(edit('-Squat — light 3×8 more\n- 45 8\n').out).toBe('-Squat 3×8\n- 45 8\n-- light more\n');
-    expect(edit('-Squat — 3x8 (x)\r\n- 45 8').out).toBe('-Squat 3x8\r\n- 45 8\r\n-- (x)');
-  });
-
-  test('an existing header scheme is not repeated or re-promoted', () => {
+  test('only a compact leading scheme is promoted and cut from the note with its separator', () => {
+    expect(edit('-Squat — 3x6-8, start light\n- 45 8\n').out).toBe('-Squat 3x6-8\n- 45 8\n-- start light\n');
+    expect(edit('-Squat — 3×8; easy\n- 45 8\n').out).toBe('-Squat 3×8\n- 45 8\n-- easy\n');
+    expect(edit('-Squat — 3X6–8 (rpe)\r\n- 45 8').out).toBe('-Squat 3X6–8\r\n- 45 8\r\n-- (rpe)');
     expect(edit('-Squat 3x6-8, step 3x8 more\n- 45 8\n').out).toBe('-Squat 3x6-8\n- 45 8\n-- step 3x8 more\n');
+  });
+
+  test.each([
+    'do not do 3x8 today',
+    '3x8 seconds, easy',
+    'light, 3x8-1000, then heavy',
+    'light, 3 x 6 - 8, then heavy',
+    '3 x 6 - 8, then heavy',
+    '3x6-8-10, easy',
+    '3x8seconds, easy',
+    '10x10, easy',
+    'start at 70x8, build up',
+    'step @ 135x5 today',
+    'try with 10x10 today',
+    '3x6-8 or 3x8, step up',
+    'light (try 3x8 maybe)',
+  ])('"%s" is not promoted and stays byte-for-byte in the note', (d) => {
+    const text = `-Squat — ${d}\n- 45 8\n`;
+    const { built, out } = edit(text);
+    expect(built.ok).toBe(true);
+    expect(built.edit.scheme).toBeNull();
+    expect(out).toBe(`-Squat\n- 45 8\n-- ${d}\n`);
+    expect(verifyTidyEdits(text, out, [built.edit])).toBeNull();
+    const plan = planTidyNames(fixture({ baselineText: '-Squat\n- 45 8', weekTexts: [text] }));
+    expect(plan.ok).toBe(true);
+    expect(plan.noteWrites[0].next_raw_text).toBe(out);
+    expect(plan.occurrences[0]).toMatchObject({ scheme: null, comment: d });
+  });
+
+  test('scheme-only and parser-folded trailing-scheme headers are skipped with a reason', () => {
+    for (const h of ['Squat — 3x8', 'Squat — light, 3x8']) {
+      const plan = planTidyNames(fixture({ baselineText: '-Squat\n- 45 8', weekTexts: [`-${h}\n- 45 8\n`] }));
+      expect(plan.noteWrites).toEqual([]);
+      expect(plan.skipped.map(x => x.name)).toContain('Squat');
+    }
   });
 });
 

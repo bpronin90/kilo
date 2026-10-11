@@ -13,34 +13,17 @@ import { splitNameParts } from './recoveryStrengthBaseline.js';
 
 const DASH_HEADER_RE = /^(\s*)-(?=[^-\s])(.*?)(\s*)$/;
 const NUMBERED_HEADER_RE = /^(\s*)(\d+[a-z]?\.\s+)(.*?)(\s*)$/i;
-// A sets x reps (optional range) scheme standing on its own inside a descriptor.
-// Bounded so loads like `135x5` or words like `2x3x4` are never read as one.
-const SCHEME_SPAN_RE = /(?<![\w.])[1-9]\s*[xX×]\s*\d{1,3}(?:\s*[-–]\s*\d{1,3})?(?![\w.]|\s*[xX×]\s*\d)/g;
-const ANY_SCHEME_RE = /\d+\s*[xX×]\s*\d+/g;
-// Load wording before a span (`at 70x8`, `@ 135x5`, `with 10x10`) or a weight unit
-// after it marks load x reps, not a set scheme.
-const LOAD_BEFORE_RE = /(?:^|[\s(])(?:at|@|with|w\/|using|from|to)\s*$|@\s*$/i;
-const UNIT_AFTER_RE = /^\s*(?:lbs?|kgs?|pounds?|kilos?)\b/i;
-const TRAIL_SEP_RE = /[\s,;–—-]+$/;
-const LEAD_SEP_RE = /^[\s,;–—-]+/;
+// The only promotable scheme (#1314): the descriptor's FIRST token, written
+// compactly (`3x8`, `3×6-8`), followed by `,` `;` ` (` or the end. Anything else
+// (mid-text, spaced, longer tokens, loads, durations) is never guessed.
+const LEADING_SCHEME_RE = /^([1-9][xX×]\d+(?:[-–]\d+)?)(?:\s*[,;]\s*|\s+(?=\()|\s*$)/;
 const SEPARATOR_RE = /^\s*(?:,|—|–|-)\s*/;
 
-// The one unambiguous scheme in a descriptor and the descriptor with exactly
-// that span removed (orphan separators tidied, words and parentheses kept), or
-// null when there is not exactly one scheme or it sits inside parentheses.
+// The leading scheme of a descriptor and the descriptor without it and its
+// trailing separator, or null when the first token is not a compact scheme.
 function promoteScheme(descriptor) {
-  if ((descriptor.match(ANY_SCHEME_RE) || []).length !== 1) return null;
-  const hits = [...descriptor.matchAll(SCHEME_SPAN_RE)];
-  if (hits.length !== 1) return null;
-  const at = hits[0].index;
-  const before = descriptor.slice(0, at);
-  const after = descriptor.slice(at + hits[0][0].length);
-  if (LOAD_BEFORE_RE.test(before) || UNIT_AFTER_RE.test(after)) return null;
-  if ((before.match(/\(/g) || []).length > (before.match(/\)/g) || []).length) return null;
-  const head = before.replace(TRAIL_SEP_RE, '');
-  const tail = head ? after.trimStart() : after.replace(LEAD_SEP_RE, '');
-  const glue = !head || !tail || /^[,;]/.test(tail) ? '' : ' ';
-  return { scheme: hits[0][0], rest: `${head}${glue}${tail}`.trim() };
+  const m = LEADING_SCHEME_RE.exec(descriptor);
+  return m ? { scheme: m[1], rest: descriptor.slice(m[0].length).trim() } : null;
 }
 
 function crOf(line) {
