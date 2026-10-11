@@ -32,9 +32,10 @@ export function setMovementGroupCore(storage, { noteId, key, group = null } = {}
       if (!note) return { ok: false, error: MissingNote };
       const next = nextMovementGroupMap(note.exercise_movement_groups, key, group);
       if (!next.ok) return { ok: false, error: next.error };
-      if (JSON.stringify(note.exercise_movement_groups ?? null) === JSON.stringify(next.map)) {
-        return { ok: true, unchanged: true, map: next.map };
-      }
+      // No equality short-circuit: in cloud mode the local write lands before the
+      // upload is enqueued, so a failed first attempt can leave the map already
+      // stored with no upload intent. Re-running the same write re-stamps and
+      // re-enqueues the note (idempotent by id), repairing that before success.
       const updated = await storage.updateNote(noteId, { exercise_movement_groups: next.map });
       if (!updated) return { ok: false, error: MissingNote };
       if (JSON.stringify(updated.exercise_movement_groups ?? null) !== JSON.stringify(next.map)) {
@@ -57,7 +58,7 @@ const LiveStorage = {
 export function useMovementGroupEditor() {
   const setMovementGroup = useCallback(async (params) => {
     const result = await setMovementGroupCore(LiveStorage, params);
-    if (result.ok && !result.unchanged) {
+    if (result.ok) {
       notifyWorkoutNotes();
       // A plain storage read for every mounted notes instance, so the groups
       // reflect the persisted write immediately rather than after a sync pass.

@@ -1,3 +1,4 @@
+import { groupRowsByKeyShape } from './keyShapeBatches';
 const SCHEMA = 'kilo';
 const PULL_PAGE_SIZE = 1000;
 const PULL_META_FIELD = '__kilo_pull_meta';
@@ -374,18 +375,10 @@ export function createSupabaseTransport(getClient = getConfiguredSupabaseClient)
       if (!client) throw new Error('Cloud sync requires a configured Supabase client.');
       const userId = await resolveUserId(client);
       const rows = records.map((rec) => buildUpsertRow(table, rec, userId));
-      // PostgREST sends the UNION of columns in a bulk upsert, so a row that
-      // omits an optional column (workout_notes.exercise_movement_groups, #1306)
-      // would be written as NULL if batched with one that names it. Batch by key
-      // shape so an omitting row never travels in a request naming the column.
-      const shapes = new Map();
-      for (const row of rows) {
-        const shape = JSON.stringify(Object.keys(row).sort());
-        if (shapes.has(shape)) shapes.get(shape).push(row);
-        else shapes.set(shape, [row]);
-      }
+      // Batch by key shape so a row omitting an optional column (#1306) is never
+      // sent in a request naming it; see keyShapeBatches.js.
       const out = [];
-      for (const batch of shapes.values()) {
+      for (const batch of groupRowsByKeyShape(rows)) {
         const upserted = client
           .schema(SCHEMA)
           .from(table)

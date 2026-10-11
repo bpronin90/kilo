@@ -53,11 +53,12 @@ describe('local write path', () => {
     expect((await stored()).exercise_movement_groups).toEqual({ version: 1, overrides: {} });
   });
 
-  test('an unchanged choice does not write again', async () => {
+  test('re-choosing the stored map still performs the write (repairs a half-committed save)', async () => {
     await Storage.saveWorkoutNoteItem(note({ exercise_movement_groups: MAP }));
-    const before = (await stored()).updated_at;
-    expect(await setMovementGroupCore(storage, { noteId: 'wn-1', key: 'deadlift', group: 'legs' })).toMatchObject({ ok: true, unchanged: true });
-    expect((await stored()).updated_at).toBe(before);
+    const calls = [];
+    const spy = { ...storage, updateNote: (id, patch) => { calls.push(patch); return storage.updateNote(id, patch); } };
+    expect(await setMovementGroupCore(spy, { noteId: 'wn-1', key: 'deadlift', group: 'legs' })).toMatchObject({ ok: true, map: MAP });
+    expect(calls).toEqual([{ exercise_movement_groups: MAP }]);
   });
 
   test('missing or deleted baseline note: reported, nothing written', async () => {
@@ -238,6 +239,35 @@ describe('cloud sync', () => {
     const rows = plan.workout_notes || plan[SYNC_TABLES.WORKOUT_NOTES];
     expect(rows.find(r => r.id === 'wn-1').exercise_movement_groups).toEqual(MAP);
     expect(Object.prototype.hasOwnProperty.call(rows.find(r => r.id === 'wn-legacy'), 'exercise_movement_groups')).toBe(false);
+  });
+});
+
+describe('cloud retry after a partially committed save', () => {
+  test('enqueue fails after the local write; retrying the same choice queues the note', async () => {
+    const cloud = makeFakeCloud();
+    setCloudTransport(cloud.transport);
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    try {
+      const adapter = Storage.getStorageAdapter();
+      await adapter.saveWorkoutNoteItem(note());
+      await sync();
+      // The local row is committed, then the enqueue throws.
+      const failing = async (id, patch) => { await storage.updateNote(id, patch); throw new Error('enqueue failed'); };
+      const first = await setMovementGroupCore({ loadNotes: () => adapter.loadWorkoutNotes(), updateNote: failing }, { noteId: 'wn-1', key: 'deadlift', group: 'legs' });
+      expect(first).toMatchObject({ ok: false });
+      expect((await adapter.loadWorkoutNotes()).find(n => n.id === 'wn-1').exercise_movement_groups).toEqual(MAP);
+      expect((await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES)).find(r => r.id === 'wn-1')?.exercise_movement_groups).toBeUndefined();
+
+      const retry = await setMovementGroupCore({ loadNotes: () => adapter.loadWorkoutNotes(), updateNote: (id, p) => adapter.updateWorkoutNoteItem(id, p) }, { noteId: 'wn-1', key: 'deadlift', group: 'legs' });
+      expect(retry).toMatchObject({ ok: true, map: MAP });
+      expect((await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES)).find(r => r.id === 'wn-1').exercise_movement_groups).toEqual(MAP);
+      await sync();
+      expect(cloud.remote(SYNC_TABLES.WORKOUT_NOTES, 'wn-1').exercise_movement_groups).toEqual(MAP);
+    } finally {
+      setCloudTransport(null);
+      Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
+      __resetSyncQueue();
+    }
   });
 });
 

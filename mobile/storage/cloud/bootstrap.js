@@ -1,4 +1,5 @@
 import * as Storage from '../entries';
+import { groupRowsByKeyShape } from './keyShapeBatches';
 import { getSupabaseClient } from '../../lib/supabaseClient';
 import { BootstrapError } from './errors';
 import { buildBootstrapPlan } from './bootstrapPlan';
@@ -61,16 +62,7 @@ const DEFERRABLE_TABLES = new Set(['recovery_blocks', 'recovery_block_weeks']);
 //
 // Builders that emit a fixed key set produce exactly one group, so this is a
 // no-op for every table but recovery blocks.
-export function groupRowsByKeyShape(rows) {
-  const groups = new Map();
-  for (const row of rows) {
-    const shape = JSON.stringify(Object.keys(row).sort());
-    const existing = groups.get(shape);
-    if (existing) existing.push(row);
-    else groups.set(shape, [row]);
-  }
-  return [...groups.values()];
-}
+export { groupRowsByKeyShape };
 
 const CONFLICT_TARGETS = {
   user_profile: 'user_id',
