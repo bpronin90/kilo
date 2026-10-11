@@ -197,6 +197,9 @@ describe('text contract', () => {
   test('a single embedded scheme is promoted and removed from the note; ambiguous prose is not guessed', () => {
     expect(edit('-Squat — empty bar, 3x8 (test)\n- 45 8\n').out).toBe('-Squat 3x8\n- 45 8\n-- empty bar (test)\n');
     expect(edit('-Squat — 3x6-8 or 3x8, step up\n- 45 8\n').out).toBe('-Squat\n- 45 8\n-- 3x6-8 or 3x8, step up\n');
+    for (const d of ['start at 70x8, build up', 'step @ 135x5 today', 'try with 10x10 today', 'warm 3x8 lbs', 'build to 10x10 today']) {
+      expect(edit(`-Squat — ${d}\n- 45 8\n`).out).toBe(`-Squat\n- 45 8\n-- ${d}\n`);
+    }
     expect(edit('-Squat — light (try 3x8 maybe)\n- 45 8\n').out).toBe('-Squat\n- 45 8\n-- light (try 3x8 maybe)\n');
     expect(edit('-Squat — step up from 135x5 or so\n- 45 8\n').out).toBe('-Squat\n- 45 8\n-- step up from 135x5 or so\n');
   });
