@@ -155,10 +155,12 @@ export function RecoveryManageBlock({
       setReasonBusy(false);
     }
   };
+  // Mounted on first open and kept mounted while collapsed (hidden, not removed),
+  // so a write that is still in flight keeps its busy flag, draft and error:
+  // collapsing never discards a draft or hides a failure from the next open.
+  const [everOpened, setEverOpened] = useState(false);
   const toggle = () => {
-    // Collapsing would unmount an open editor with no Save or Cancel to reach, so
-    // closing it is part of the same gesture: the discard is explicit.
-    if (expanded) closeReasonEditor();
+    setEverOpened(true);
     setExpanded(e => !e);
   };
   const reasonDisabled = locked || reasonBusy;
@@ -178,8 +180,13 @@ export function RecoveryManageBlock({
         <Text style={manage.triggerText}>Manage block</Text>
         <MaterialIcons name={expanded ? 'expand-less' : 'expand-more'} size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
       </Pressable>
-      {expanded ? (
-        <View testID="recovery-manage-block" style={manage.list}>
+      {everOpened ? (
+        <View
+          testID="recovery-manage-block"
+          style={expanded ? manage.list : [manage.list, { display: 'none' }]}
+          accessibilityElementsHidden={!expanded}
+          importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
+        >
           {locked || stale ? (
             <Text testID="recovery-manage-locked" style={manage.lockedNote} accessibilityLiveRegion="polite">{locked ? LOCKED_NOTE : STALE_NOTE}</Text>
           ) : null}

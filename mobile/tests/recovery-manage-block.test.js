@@ -120,15 +120,36 @@ describe('Manage block ownership', () => {
     for (const fn of Object.values(mockLifecycle)) expect(fn).not.toHaveBeenCalled();
   });
 
-  test('collapsing discards an open reason draft explicitly', () => {
+  test('collapsing keeps the panel mounted but hidden from layout and assistive tech, draft intact', () => {
     const c = mount({ blocks: [block({ reason: 'sprain' })] });
     openManage(c.root);
     act(() => { byLabel(c.root, 'Edit reason for this recovery block: sprain').props.onPress(); });
     act(() => { byLabel(c.root, 'Reason for this recovery block').props.onChangeText('typed'); });
-    openManage(c.root);
+    openManage(c.root); // collapse
+    const body = host(c.root, 'recovery-manage-block')[0];
+    expect(StyleSheet.flatten(body.props.style).display).toBe('none');
+    expect(body.props.accessibilityElementsHidden).toBe(true);
+    expect(body.props.importantForAccessibility).toBe('no-hide-descendants');
+    openManage(c.root); // reopen
+    expect(StyleSheet.flatten(host(c.root, 'recovery-manage-block')[0].props.style).display).toBeUndefined();
+    expect(host(c.root, 'recovery-manage-block')[0].props.accessibilityElementsHidden).toBe(false);
+    expect(byLabel(c.root, 'Reason for this recovery block').props.value).toBe('typed');
+  });
+
+  test('a write started, collapsed and then failed still shows its error and draft on reopen', async () => {
+    let fail;
+    mockLifecycle.setBlockReason.mockImplementation(() => new Promise(r => { fail = r; }));
+    const c = mount({ blocks: [block({ reason: 'sprain' })] });
     openManage(c.root);
     act(() => { byLabel(c.root, 'Edit reason for this recovery block: sprain').props.onPress(); });
-    expect(byLabel(c.root, 'Reason for this recovery block').props.value).toBe('sprain');
+    act(() => { byLabel(c.root, 'Reason for this recovery block').props.onChangeText('typed'); });
+    let saving;
+    act(() => { saving = byLabel(c.root, 'Save the reason').props.onPress(); });
+    openManage(c.root); // collapse mid-write
+    await act(async () => { fail({ ok: false, error: 'offline' }); await saving; });
+    openManage(c.root);
+    expect(texts(c.root)).toContain('offline');
+    expect(byLabel(c.root, 'Reason for this recovery block').props.value).toBe('typed');
   });
 });
 

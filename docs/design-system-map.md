@@ -947,8 +947,10 @@ owns its own row and divider, so an ineligible action leaves no empty row. Flat 
 order: Reason (row + inline editor), Rebuild baseline, Match exercise names, Tidy
 names, Movement groups editor, Reopen (newest completed block only, no active
 block), `Include recovery notes in normal analytics`. The panel is keyed by block
-id, so drafts and errors never cross blocks; collapsing discards an open reason
-draft. Opening or closing it writes nothing. History week rows stay focus targets
+id, so drafts and errors never cross blocks. The body mounts on first open and
+then stays mounted while collapsed (`display: none`, `accessibilityElementsHidden`,
+`importantForAccessibility="no-hide-descendants"`), so an in-flight write keeps its
+busy state, draft and error and collapsing never discards them. Opening or closing it writes nothing. History week rows stay focus targets
 (`Show evidence for {routine}, Recovery Week N, {state}`) with a separate
 `View note in Log` link (>=44dp, only for a readable note, never nested).
 
