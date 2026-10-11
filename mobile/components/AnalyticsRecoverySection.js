@@ -1,18 +1,16 @@
 // Analytics Recovery section (#698): renders the #697 return-to-baseline
 // comparison contract for the active recovery block and, on request, any
-// completed block from history. The comparison itself is read-only — nothing
-// here recomputes, gates, or claims medical recovery. The hero is the average %
-// of baseline strength (#1305), never a completion gate. The controls that DO
-// write (inclusion toggle #728, Reopen #839, optional reason #872, baseline
-// rebuild/name matching/tidy #1227/#1298/#1309, movement-group overrides #1306)
-// each change one presentation, lifecycle or baseline-name field. All of them
-// live in the sibling Manage block panel (#1307), never in the evidence card;
-// the strength week rows are the sole week selector.
+// completed block from history. It is READ-ONLY (#1315): nothing here writes,
+// recomputes, gates, or claims medical recovery. The hero is the average % of
+// baseline strength (#1305), never a completion gate. Every maintenance control
+// (reason, inclusion, reopen, baseline rebuild/name matching/tidy, movement-group
+// overrides) lives in Log's Manage block; this section offers at most one quiet
+// `Manage in Log` link for the focused block. The strength week rows are the sole
+// week selector, and the numbers come from the single Recovery snapshot.
 
 import React, { useMemo, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { Alert } from '../lib/platformAlert';
 import { SectionTitle } from './UI';
 import { useTheme } from '../theme/ThemeContext';
 import { useWeightUnit } from '../lib/unitPreference';
@@ -23,13 +21,8 @@ import {
   RECOVERY_LOADING_MESSAGE,
   RECOVERY_STALE_MESSAGE,
   RECOVERY_UNVERIFIED_MESSAGE,
-  useRecoveryBlockLifecycle,
-  useRecoveryBaselineNames,
 } from '../hooks/entries/recoveryBlockHooks';
-import { useRecoveryTidyNames } from '../hooks/entries/recoveryTidyMutations';
-import { useMovementGroupEditor } from '../hooks/entries/movementGroupHooks';
 import { BlockEvidence } from './recovery/RecoveryEvidence';
-import { RecoveryManageBlock } from './recovery/RecoveryManageBlock';
 import { WeekIndexRow } from './recovery/RecoveryWeekIndex';
 import { createStyles } from './recovery/analyticsRecoveryStyles';
 
@@ -50,11 +43,6 @@ export function AnalyticsRecoverySection({
   stateRefreshing = false,
   stateStale = false,
   stateError = null,
-  // Writes are open only when the shared state has verified eligibility. False
-  // covers terminal-repair-error, journal-corrupt, and every other gate the
-  // authoritative hook enforces (#728).
-  mutationsAllowed = true,
-  pendingRecovery = [],
   // A failed notes read (#1306): the saved movement-group choices are then
   // unavailable, which is not the same as there being none.
   notesError = null,
@@ -73,16 +61,6 @@ export function AnalyticsRecoverySection({
   // is ignored, so switching blocks always starts at the latest week.
   const [weekSelection, setWeekSelection] = useState({ blockId: null, weekId: null });
   const lastFocusedRef = useRef(null);
-  const { setIncludeInNormalAnalytics, reopenBlock, setBlockReason, rebuildBaseline } = useRecoveryBlockLifecycle();
-  const { matchBaselineName } = useRecoveryBaselineNames();
-  const tidyNames = useRecoveryTidyNames();
-  const { setMovementGroup } = useMovementGroupEditor();
-  const [inclusionBusyBlockId, setInclusionBusyBlockId] = useState(null);
-  const [inclusionError, setInclusionError] = useState(null);
-  // Like inclusion: busy is a block id and the error carries its block id, so a
-  // failed reopen can never show in another block's Manage panel (#1307).
-  const [reopenBusyBlockId, setReopenBusyBlockId] = useState(null);
-  const [reopenError, setReopenError] = useState(null);
 
   const activeBlock = findActiveBlock(blocks);
   // Same comparator storage's own uncompleteRecoveryBlock enforces — newest
@@ -93,7 +71,6 @@ export function AnalyticsRecoverySection({
   const completedBlocks = blocks
     .filter(b => isLiveRecord(b) && b.completed_at)
     .sort(compareRecoveryBlocksNewestCompletedFirst);
-  const newestCompletedBlock = completedBlocks[0] || null;
 
   // Changing which block is in focus always resets the week selection (#1307).
   const focusBlock = (blockId) => {
@@ -102,55 +79,6 @@ export function AnalyticsRecoverySection({
     setFocusedBlockId(blockId);
     setWeekSelection({ blockId: null, weekId: null });
   };
-
-  const handleReopen = (block) => {
-    const baselineTitle = block.baseline_note_title || 'Untitled Routine';
-    Alert.alert(
-      'Reopen this recovery block?',
-      `This reactivates ${baselineTitle} as your active recovery block. Every week's status stays exactly as it is. You can add a new week or undo the latest week's completion once it's reopened. You can only reopen your most recently completed block, and only while no other block is active.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reopen block',
-          onPress: async () => {
-            setReopenError(null);
-            setReopenBusyBlockId(block.id);
-            try {
-              const result = await reopenBlock({ blockId: block.id });
-              if (!result || result.ok === false) {
-                setReopenError({
-                  blockId: block.id,
-                  message: (result && result.error) || 'Could not reopen this recovery block.',
-                });
-              }
-            } finally {
-              setReopenBusyBlockId(null);
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const handleToggleInclusion = async (block, include) => {
-    if (inclusionBusyBlockId) return;
-    setInclusionError(null);
-    setInclusionBusyBlockId(block.id);
-    try {
-      const result = await setIncludeInNormalAnalytics({ blockId: block.id, include });
-      if (!result || result.ok === false) {
-        setInclusionError({
-          blockId: block.id,
-          message: (result && result.error) || 'That setting could not be saved.',
-        });
-      }
-    } finally {
-      setInclusionBusyBlockId(null);
-    }
-  };
-
-  const inclusionErrorFor = (blockId) =>
-    (inclusionError && inclusionError.blockId === blockId) ? inclusionError.message : null;
 
   const focusedBlock =
     (focusedBlockId && [activeBlock, ...completedBlocks].find(b => b && b.id === focusedBlockId)) ||
@@ -169,15 +97,6 @@ export function AnalyticsRecoverySection({
       setWeekSelection({ blockId: null, weekId: null });
     }
   }
-
-  const hasPendingRecovery = (pendingRecovery?.length || 0) > 0;
-  // EVERY inclusion switch is disabled while ANY write is in flight (#728),
-  // not just the one being written — presenting an enabled switch that would
-  // silently discard the interaction is worse than disabling all of them.
-  // Also disabled while reconciliation is pending: the hook rejects those
-  // writes via ensureVerifiedRecoveryState anyway, so the UI must not
-  // advertise an action that can only fail.
-  const inclusionLocked = !mutationsAllowed || hasPendingRecovery || !!inclusionBusyBlockId;
 
   // Unverified state is not "this user has never recovered" (#716). Rendering
   // nothing here would silently retract an entire evidence surface on a failed
@@ -278,39 +197,7 @@ export function AnalyticsRecoverySection({
         selectedWeekId={weekSelection.blockId === focusedBlock.id ? weekSelection.weekId : null}
         onSelectWeek={(weekId) => setWeekSelection({ blockId: focusedBlock.id, weekId })}
         notesError={notesError}
-      />
-
-      {/* Sibling card, not part of the evidence card (#1307). Keyed by block so
-          drafts and errors never cross blocks. */}
-      <RecoveryManageBlock
-        key={`manage:${focusedBlock.id}`}
-        block={focusedBlock}
-        weeks={weeks}
-        notes={notes}
-        unit={unit}
-        // Gated exactly like the inclusion switch (#872): a write that
-        // `ensureVerifiedRecoveryState` would reject anyway must not be
-        // advertised as available.
-        locked={!mutationsAllowed || hasPendingRecovery}
-        stale={stateStale}
-        onSaveReason={setBlockReason}
-        onRebuildBaseline={rebuildBaseline}
-        onMatchNames={matchBaselineName}
-        tidyNames={tidyNames}
-        groupEditing={{ notesError, locked: !mutationsAllowed || hasPendingRecovery || stateStale, onSet: setMovementGroup }}
-        reopen={{
-          show: !activeBlock && !!newestCompletedBlock && focusedBlock.id === newestCompletedBlock.id,
-          disabled: !mutationsAllowed || hasPendingRecovery || !!reopenBusyBlockId,
-          busy: reopenBusyBlockId === focusedBlock.id,
-          error: reopenError && reopenError.blockId === focusedBlock.id ? reopenError.message : null,
-          onReopen: handleReopen,
-        }}
-        inclusion={{
-          disabled: inclusionLocked,
-          busy: inclusionBusyBlockId === focusedBlock.id,
-          error: inclusionErrorFor(focusedBlock.id),
-          onToggle: handleToggleInclusion,
-        }}
+        onManageInLog={onNavigate ? () => onNavigate('Log', { kind: 'recovery-manage', blockId: focusedBlock.id }) : null}
       />
 
       {completedBlocks.length > 0 && (

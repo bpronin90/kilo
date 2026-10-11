@@ -24,9 +24,8 @@ export const QUIET_STATUS_LABELS = Object.freeze({
 });
 
 // Map any derived band id (six buckets) to its visible id: close -> rebuilding.
-export function displayBandId(bandId) {
-  return bandId === 'close' ? 'rebuilding' : bandId;
-}
+import { foldBandId } from '../../lib/data/recoverySnapshot';
+export const displayBandId = foldBandId;
 
 // The three graded counts from the six derived buckets; Rebuilding = close +
 // rebuilding.

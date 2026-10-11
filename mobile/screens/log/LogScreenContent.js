@@ -22,7 +22,7 @@ import { compareRecoveryBlocksNewestCompletedFirst } from '../../storage/entries
 // handed in as `activeRoutineCard`.
 export function LogScreenContent(props) {
   const {
-    readScrollRef, currentEditor, otherEditor, deloadEditor, isEditing,
+    readScrollRef, recoveryManage, currentEditor, otherEditor, deloadEditor, isEditing,
     isEmpty, notesError, refreshNotes, isNotesFirstLoad, notes, handleCreateRoutineEntry,
     deloadTabEnabled, recoveryTabVisible, handleTabViewChange, effectiveTabView, recoveryInlineEditActive, deloadNote,
     deloadLoading, completeDeload, clearDeloadNote, workoutNoteText, activeSaveError, deloadNotes,
@@ -220,6 +220,7 @@ export function LogScreenContent(props) {
                 stateStale={recoveryStale}
                 stateError={recoveryStateError}
                 mutationsAllowed={recoveryMutationsAllowed}
+                manage={recoveryManage}
               />
             )}
 

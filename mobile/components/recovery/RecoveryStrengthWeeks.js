@@ -11,16 +11,7 @@ import { RECOVERY_WEEK_STATUS } from '../../lib/data/recoveryAnalytics';
 import { STRENGTH_STATUS, displayPercent } from '../../lib/data/recoveryStrength';
 import { createStrengthStyles } from './recoveryStrengthStyles';
 
-// One scale for trend and ladder: at least 100%, extended to the next 10 above
-// the largest value so a >100% lift stays fully visible and factual.
-export function strengthScaleMax(strength) {
-  const values = [
-    ...(strength.weeks || []).map(w => w.mean),
-    ...(strength.lifts || []).map(l => l.percent),
-  ].filter(v => typeof v === 'number' && Number.isFinite(v));
-  const top = Math.max(100, ...values);
-  return top <= 100 ? 100 : Math.ceil(top / 10) * 10;
-}
+export { strengthScaleMax } from '../../lib/data/recoverySnapshot';
 
 export function StrengthBar({ percent, scaleMax, testID }) {
   const { colors, kuaPalette: kua } = useTheme();
@@ -35,15 +26,8 @@ export function StrengthBar({ percent, scaleMax, testID }) {
   );
 }
 
-export function StrengthScaleNote({ scaleMax }) {
-  const { colors, kuaPalette: kua } = useTheme();
-  const styles = useMemo(() => createStrengthStyles(colors, kua), [colors, kua]);
-  return (
-    <Text testID="recovery-strength-scale" style={styles.scaleNote}>
-      {`Bars run 0–${scaleMax}%. The dark mark is your baseline (100%).`}
-    </Text>
-  );
-}
+// The 0-scale legend is no longer printed (#1315); it lives in the explainer.
+export const strengthScaleNote = (scaleMax) => `Bars run 0–${scaleMax}%. The dark mark is your baseline (100%).`;
 
 // The SOLE Analytics week selector (#1307). Membership is every live week of the
 // block (comparison results, by stable week_id), so any week stays selectable:

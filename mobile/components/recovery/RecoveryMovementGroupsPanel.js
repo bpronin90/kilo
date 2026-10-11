@@ -1,24 +1,15 @@
-// Glue for the read-only movement-group breakdown (#1306): derives the groups
-// from the strength rows and the baseline note's overrides. The group EDITOR lives
-// in Manage block (#1307); this panel carries numbers only.
+// Glue for the read-only movement-group breakdown (#1306): renders the groups the
+// single Recovery snapshot already derived (#1315). The group EDITOR lives in
+// Log's Manage block; this panel carries numbers only.
 
-import React, { useMemo } from 'react';
-import { deriveMovementGroupBreakdown, resolveMovementGroupSource } from '../../lib/data/recoveryMovementGroups';
+import React from 'react';
 import { RecoveryMovementGroups } from './RecoveryMovementGroups';
 import { GROUP_EDIT_UNAVAILABLE } from './MovementGroupEditor';
 
-export function RecoveryMovementGroupsPanel({ block, notes, strength, selectedWeek, notesError = null }) {
-  const source = useMemo(
-    () => resolveMovementGroupSource({ block, notes, notesError }),
-    [block, notes, notesError]
-  );
-  const breakdown = useMemo(() => deriveMovementGroupBreakdown({
-    strength,
-    baselineRows: (block.baseline && block.baseline.exercises) || [],
-    addedRows: (selectedWeek && selectedWeek.added) || [],
-    overrides: source.overrides,
-  }), [strength, block, selectedWeek, source]);
+export function RecoveryMovementGroupsPanel({ snapshot, first = false }) {
+  const mg = snapshot.movementGroups;
+  if (!mg) return null;
   // Unavailable saved choices change what the numbers mean, so that stays here.
-  const notice = !source.available ? GROUP_EDIT_UNAVAILABLE[source.reason] : null;
-  return <RecoveryMovementGroups breakdown={breakdown} notice={notice} />;
+  const notice = !mg.source.available ? GROUP_EDIT_UNAVAILABLE[mg.source.reason] : null;
+  return <RecoveryMovementGroups breakdown={mg.breakdown} notice={notice} first={first} />;
 }

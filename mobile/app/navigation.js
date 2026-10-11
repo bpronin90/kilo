@@ -69,6 +69,7 @@ export const CLOUD_SYNC_NAV_TARGET = { kind: 'subview', view: 'backup', anchor: 
 //   { kind: 'section', id: <ANALYTICS_SECTION_IDS> } → Analytics
 //   { kind: 'note',    noteId: string }              → Log
 //   { kind: 'recovery-note', noteId?: string }       → Log, Recovery view
+//   { kind: 'recovery-manage', blockId: string }     → Log, Recovery view, that block's Manage card
 //   { kind: 'subview', view: string, anchor?: string } → More
 //
 // This normalizer is the single place that decides whether a request is a
@@ -109,6 +110,12 @@ export function normalizeNavTarget(tab, targetInput) {
       kind: 'recovery-note',
       noteId: typeof target.noteId === 'string' && target.noteId ? target.noteId : null,
     };
+  }
+  // Manage intent (#1315): lands Log on Recovery with the block of this exact
+  // persisted id focused and its Manage card revealed. Identity is the block id,
+  // never inferred from a note title or the latest week.
+  if (target.kind === 'recovery-manage' && tab === 'Log' && typeof target.blockId === 'string' && target.blockId) {
+    return { kind: 'recovery-manage', noteId: null, blockId: target.blockId };
   }
   if (target.kind === 'subview' && tab === 'More' && typeof target.view === 'string' && target.view) {
     return {

@@ -613,6 +613,14 @@ describe('normalizeNavTarget: the typed navigation-intent contract (#718)', () =
   // #869/#874: a dedicated intent so Home's Recovery handoff lands Log on its
   // Recovery view, distinct from the plain `note` kind which always forces
   // Routine/Deload and opens the wrong viewer for a recovery-linked note.
+  test('recovery-manage targets carry an exact block id, only on Log (#1315)', () => {
+    expect(normalizeNavTarget('Log', { kind: 'recovery-manage', blockId: 'rb1' }))
+      .toEqual({ kind: 'recovery-manage', noteId: null, blockId: 'rb1' });
+    expect(normalizeNavTarget('Log', { kind: 'recovery-manage' })).toBe(null);
+    expect(normalizeNavTarget('Log', { kind: 'recovery-manage', blockId: 7 })).toBe(null);
+    expect(normalizeNavTarget('Analytics', { kind: 'recovery-manage', blockId: 'rb1' })).toBe(null);
+  });
+
   test('recovery-note targets are accepted only on Log, and the noteId is optional', () => {
     expect(normalizeNavTarget('Log', { kind: 'recovery-note', noteId: 'n1' }))
       .toEqual({ kind: 'recovery-note', noteId: 'n1' });

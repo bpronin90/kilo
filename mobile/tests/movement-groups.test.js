@@ -12,6 +12,7 @@ import { deriveRecoveryStrength } from '../lib/data/recoveryStrength';
 import { captureRecoveryBaselineFromText } from '../lib/data/recoveryBlocks';
 import { movementGroupsNoteError } from '../storage/entries/movementGroupValidation';
 import { AnalyticsRecoverySection } from '../components/AnalyticsRecoverySection';
+import { LogRecoverySection } from '../components/LogRecoverySection';
 
 const mockSetMovementGroup = jest.fn();
 jest.mock('../hooks/entries/movementGroupHooks', () => ({
@@ -255,6 +256,21 @@ function mount(props = {}) {
   act(() => { c = render.create(<AnalyticsRecoverySection blocks={[uiBlock()]} weeks={[uiWeek]} notes={uiNotes()} {...props} />); });
   return c.root;
 }
+// The group EDITOR lives in Log's Manage block (#1315): the same block, mounted
+// through Log's Recovery section with the block focused.
+function mountLog(props = {}) {
+  let c;
+  act(() => {
+    c = render.create(
+      <LogRecoverySection
+        blocks={[uiBlock()]} weeks={[uiWeek]} notes={uiNotes()}
+        manage={{ focusedBlockId: 'rb1', completedBlocks: [], onSelectBlock: () => {}, newestCompletedId: null, notesError: props.notesError || null }}
+        {...props}
+      />
+    );
+  });
+  return c.root;
+}
 const host = (root, id) => root.findAll(n => typeof n.type === 'string' && n.props.testID === id);
 const texts = (root) => root.findAllByType('Text').map(t => [].concat(t.props.children).join(''));
 const comp = (root, id) => root.findAll(n => typeof n.type !== 'string' && n.props.testID === id && n.props.onPress)[0];
@@ -264,7 +280,7 @@ const flush = () => act(async () => { await Promise.resolve(); });
 beforeEach(() => { mockSetMovementGroup.mockReset(); });
 
 describe('Recovery movement-group UI', () => {
-  test('collapsed by default: one compact header, no group rows; expands to flat collapsible rows', () => {
+  test('collapsed by default: one counted header, no group rows; expands to compact collapsible rows (#1315)', () => {
     const root = mount();
     expect(host(root, 'recovery-movement-groups')).toHaveLength(1);
     expect(host(root, 'movement-group-row-push')).toHaveLength(0);
@@ -275,26 +291,55 @@ describe('Recovery movement-group UI', () => {
     expect(host(root, 'movement-group-value-hinge')[0].props.children).toBe('100%');
     // An added lift is grouped but unscored: Arms shows no percent.
     expect(host(root, 'movement-group-value-arms')[0].props.children).toBe('No score');
-    expect(texts(root).some(t => t.includes('1 of 1 lift in the average scored · 1 lift in the baseline'))).toBe(true);
+    // Compact visible counts; the full wording stays in the row's label.
+    expect(texts(root)).toContain('1/1 scored · 1 baseline');
+    const row = host(root, 'movement-group-row-push')[0];
+    expect(row.props.accessibilityLabel).toContain('1 of 1 lift in the average scored · 1 lift in the baseline');
   });
 
-  // The editor lives in Manage block (#1307); the breakdown above stays numeric.
-  const openEditor = (root) => {
-    press(root, 'recovery-manage-block-trigger');
-    press(root, 'recovery-manage-groups-header');
-  };
-
-  test('the breakdown is read-only: no editor control anywhere in the evidence card', () => {
+  test('the breakdown is read-only: no editor control and no Manage block anywhere in Analytics', () => {
     const root = mount();
     press(root, 'recovery-movement-groups-header');
     press(root, 'movement-group-row-hinge');
     expect(host(root, 'movement-group-exercise-deadlift')).toHaveLength(1);
     expect(host(root, 'movement-group-edit-deadlift')).toHaveLength(0);
+    expect(host(root, 'recovery-manage-groups')).toHaveLength(0);
   });
 
-  test('Manage block lists every lift once with its group and source, collapsed until asked', () => {
-    const root = mount();
-    press(root, 'recovery-manage-block-trigger');
+  test('a persisted override (from the baseline note) moves the lift immediately; the overall number is unchanged', () => {
+    const root = mount({ notes: uiNotes({ exercise_movement_groups: { version: 1, overrides: { deadlift: 'legs' } } }) });
+    press(root, 'recovery-movement-groups-header');
+    expect(host(root, 'movement-group-row-hinge')).toHaveLength(0);
+    expect(host(root, 'movement-group-value-legs')[0].props.children).toBe('80%');
+    expect(host(root, 'recovery-strength-summary')[0].props.accessibilityLabel).toMatch(/^Week 1: 80% /);
+  });
+
+  test.each([
+    ['failed notes read', { notesError: new Error('x') }, 'Saved group choices couldn’t be read'],
+    ['missing baseline note', { notes: uiNotes().slice(1) }, 'baseline routine is gone'],
+    ['invalid stored map', { notes: uiNotes({ exercise_movement_groups: { version: 4, overrides: {} } }) }, 'Saved group choices are unreadable'],
+  ])('%s: rules-only grouping with a concise status and the full notice on demand', (_l, props, copy) => {
+    const root = mount(props);
+    // Concise visible status while collapsed; the full explanation is on demand.
+    expect(texts(root).some(t => t.includes('saved choices unavailable'))).toBe(true);
+    expect(texts(root).some(t => t.includes(copy))).toBe(false);
+    press(root, 'recovery-movement-groups-header');
+    expect(texts(root).some(t => t.includes(copy))).toBe(true);
+    press(root, 'movement-group-row-hinge');
+    expect(host(root, 'movement-group-exercise-deadlift')).toHaveLength(1);
+    expect(host(root, 'movement-group-edit-deadlift')).toHaveLength(0);
+  });
+});
+
+describe('Log Manage block movement-group editor (#1306, moved to Log by #1315)', () => {
+  const openEditor = (root) => {
+    press(root, 'recovery-manage-trigger-rb1');
+    press(root, 'recovery-manage-groups-header');
+  };
+
+  test('lists every lift once with its group and source, collapsed until asked', () => {
+    const root = mountLog();
+    press(root, 'recovery-manage-trigger-rb1');
     expect(host(root, 'manage-group-exercise-deadlift')).toHaveLength(0);
     press(root, 'recovery-manage-groups-header');
     for (const key of ['bench', 'squat', 'deadlift', 'curl']) expect(host(root, `manage-group-exercise-${key}`)).toHaveLength(1);
@@ -303,7 +348,7 @@ describe('Recovery movement-group UI', () => {
   });
 
   test('the editor offers every group plus reset, each >= 44dp with selected state', () => {
-    const root = mount();
+    const root = mountLog();
     openEditor(root);
     press(root, 'movement-group-edit-deadlift');
     const { StyleSheet } = require('react-native');
@@ -323,7 +368,7 @@ describe('Recovery movement-group UI', () => {
   test('choosing a group writes once with the baseline note id; duplicate taps are disabled while saving', async () => {
     let finish;
     mockSetMovementGroup.mockReturnValue(new Promise(r => { finish = r; }));
-    const root = mount();
+    const root = mountLog();
     openEditor(root);
     press(root, 'movement-group-edit-deadlift');
     press(root, 'movement-group-option-deadlift-legs');
@@ -334,58 +379,46 @@ describe('Recovery movement-group UI', () => {
     await act(async () => { finish({ ok: true }); });
   });
 
-  test('a failed save keeps the chosen group as an unsaved draft with the error and never claims it persisted', async () => {
+  test('a failed save keeps the chosen group as an unsaved draft with the error, also through a Manage collapse', async () => {
     mockSetMovementGroup.mockResolvedValue({ ok: false, error: 'disk full' });
-    const root = mount();
+    const root = mountLog();
     openEditor(root);
     press(root, 'movement-group-edit-deadlift');
     press(root, 'movement-group-option-deadlift-legs');
     await flush();
     expect(host(root, 'movement-group-error-deadlift')[0].props.children).toBe('Not saved: disk full');
-    // Draft stays selected, but the persisted group (and the numbers) did not move.
     expect(host(root, 'movement-group-option-deadlift-legs')[0].props.accessibilityState.selected).toBe(true);
-    press(root, 'recovery-movement-groups-header');
-    expect(host(root, 'movement-group-value-hinge')[0].props.children).toBe('100%');
-    expect(host(root, 'movement-group-option-deadlift-legs')[0].props.accessibilityState.disabled).toBe(false);
-  });
-
-  test('a persisted override (from the baseline note) moves the lift immediately; the overall number is unchanged', () => {
-    const root = mount({ notes: uiNotes({ exercise_movement_groups: { version: 1, overrides: { deadlift: 'legs' } } }) });
-    press(root, 'recovery-movement-groups-header');
-    expect(host(root, 'movement-group-row-hinge')).toHaveLength(0);
-    expect(host(root, 'movement-group-value-legs')[0].props.children).toBe('80%');
-    expect(host(root, 'recovery-strength-summary')[0].props.accessibilityLabel).toMatch(/^Week 1: 80% /);
+    // Collapsing Manage block keeps the draft and error mounted (hidden), never discarded.
+    press(root, 'recovery-manage-trigger-rb1');
+    expect(host(root, 'recovery-manage-body-rb1')[0].props.accessibilityElementsHidden).toBe(true);
+    press(root, 'recovery-manage-trigger-rb1');
+    expect(host(root, 'movement-group-error-deadlift')[0].props.children).toBe('Not saved: disk full');
+    expect(host(root, 'movement-group-option-deadlift-legs')[0].props.accessibilityState.selected).toBe(true);
   });
 
   test.each([
     ['failed notes read', { notesError: new Error('x') }, 'Saved group choices couldn’t be read'],
     ['missing baseline note', { notes: uiNotes().slice(1) }, 'baseline routine is gone'],
     ['invalid stored map', { notes: uiNotes({ exercise_movement_groups: { version: 4, overrides: {} } }) }, 'Saved group choices are unreadable'],
-  ])('%s: rules-only grouping with a visible notice and no editor', (_l, props, copy) => {
-    const root = mount(props);
-    press(root, 'recovery-movement-groups-header');
-    expect(texts(root).some(t => t.includes(copy))).toBe(true);
-    press(root, 'movement-group-row-hinge');
-    expect(host(root, 'movement-group-exercise-deadlift')).toHaveLength(1);
+  ])('%s: a visible notice and no editor', (_l, props, copy) => {
+    const root = mountLog(props);
     openEditor(root);
     expect(host(root, 'movement-group-edit-deadlift')).toHaveLength(0);
     expect(host(root, 'manage-group-exercise-deadlift')).toHaveLength(1);
-    expect(texts(root).filter(t => t.includes(copy))).toHaveLength(2);
+    expect(texts(root).filter(t => t.includes(copy))).toHaveLength(1);
   });
 
   test('writes are locked (not hidden) while Recovery data is stale or a write is pending', () => {
-    const root = mount({ stateStale: true });
-    openEditor(root);
-    expect(host(root, 'recovery-manage-locked')).toHaveLength(1);
-    expect(texts(root).some(t => t.includes('paused until Recovery data is current'))).toBe(true);
-    press(root, 'movement-group-edit-deadlift');
-    expect(host(root, 'movement-group-option-deadlift-legs')[0].props.accessibilityState.disabled).toBe(true);
-  });
+    const stale = mountLog({ stateStale: true });
+    openEditor(stale);
+    expect(host(stale, 'recovery-manage-locked')).toHaveLength(1);
+    expect(texts(stale).some(t => t.includes('paused until Recovery data is current'))).toBe(true);
+    press(stale, 'movement-group-edit-deadlift');
+    expect(host(stale, 'movement-group-option-deadlift-legs')[0].props.accessibilityState.disabled).toBe(true);
 
-  test('a pending Recovery write also locks the editor', () => {
-    const root = mount({ pendingRecovery: [{ operation_id: 1, block_id: 'rb1', error: null }] });
-    openEditor(root);
-    press(root, 'movement-group-edit-deadlift');
-    expect(host(root, 'movement-group-option-deadlift-legs')[0].props.accessibilityState.disabled).toBe(true);
+    const pending = mountLog({ pendingRecovery: [{ operation_id: 1, block_id: 'rb1', error: null }] });
+    openEditor(pending);
+    press(pending, 'movement-group-edit-deadlift');
+    expect(host(pending, 'movement-group-option-deadlift-legs')[0].props.accessibilityState.disabled).toBe(true);
   });
 });

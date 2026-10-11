@@ -3,7 +3,6 @@
 // here and never recompute them locally, so one fixture always produces the
 // same counts, words, direction, and tone on every surface.
 
-import { deriveRecoveryWeekBands } from './recoveryReturnBands';
 
 // ── Recovery ────────────────────────────────────────────────────────────────
 
@@ -11,15 +10,9 @@ import { deriveRecoveryWeekBands } from './recoveryReturnBands';
 // baseline roster — the same words the Recovery detail already uses.
 export const RECOVERY_COUNT_WORDS = Object.freeze({ trained: 'trained', notYet: 'not yet' });
 
-// Roster counts for one compared week, from `deriveRecoveryWeekBands` (the
-// roster already excludes unusable-baseline rows). Null when the week has no
-// roster evidence (note missing/unreadable) — a gap, never a zero.
-export function deriveRecoverySummary(week) {
-  const bands = deriveRecoveryWeekBands(week);
-  return summarizeRecoveryBands(bands);
-}
-
-// Same shape from an already-derived bands result, for callers that hold one.
+// Roster counts from an already-derived bands result (the Recovery snapshot's
+// `bands`; the roster already excludes unusable-baseline rows). Null when the
+// week has no roster evidence — a gap, never a zero.
 export function summarizeRecoveryBands(bands) {
   if (!bands || !bands.buckets || !(bands.roster_size > 0)) return null;
   const rosterSize = bands.roster_size;

@@ -20,7 +20,6 @@ import {
   WeekUnavailableNotice,
 } from '../components/recovery/RecoveryStateGroups';
 import { RecoveryStrengthWeeks } from '../components/recovery/RecoveryStrengthWeeks';
-import { RecoveryManageBlock } from '../components/recovery/RecoveryManageBlock';
 import { createStyles } from '../components/recovery/analyticsRecoveryStyles';
 import { RecoveryInclusionToggle } from '../components/RecoveryInclusionToggle';
 import { captureRecoveryBaselineFromText } from '../lib/data/recoveryBlocks';
@@ -113,6 +112,7 @@ const hasText = (root, needle) => allText(root).some(s => s.includes(needle));
 const byLabel = (root, label) => root.findAll(i => i.props.accessibilityLabel === label)[0];
 
 beforeEach(() => {
+  require('../lib/data/recoverySnapshot')._resetRecoverySnapshotStore();
   deriveRecoveryComparison.mockClear();
 });
 
@@ -137,7 +137,6 @@ describe('#1052 refactor — export and boundary parity', () => {
     expect(typeof WeekIndexRow).toBe('function');
     expect(typeof WeekEvidence).toBe('function');
     expect(typeof RecoveryStrengthWeeks).toBe('function');
-    expect(typeof RecoveryManageBlock).toBe('function');
     expect(typeof WeekUnavailableNotice).toBe('function');
     expect(typeof createStyles).toBe('function');
   });
@@ -163,10 +162,11 @@ describe('#1052 refactor — the boundary renders the extracted components', () 
     expect(evidence[0].props.block.id).toBe('rb1');
   });
 
-  test('expanding details mounts the extracted WeekEvidence (the metric legend is gone, #1219)', () => {
+  test('expanding the Lifts disclosure mounts the extracted WeekEvidence (#1315)', () => {
     const component = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] });
     const root = component.root;
-    act(() => { byLabel(root, 'Expand exercise details').props.onPress(); });
+    expect(root.findAllByType(WeekEvidence)).toHaveLength(0);
+    act(() => { byLabel(root, 'Expand lifts').props.onPress(); });
     expect(root.findAllByType(WeekEvidence)).toHaveLength(1);
   });
 
@@ -260,7 +260,7 @@ describe('#1052 refactor — preserved states reach the screen', () => {
   test('complete/active: an active block shows the routine-anchored hero label and the non-medical line', () => {
     const component = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] });
     const root = component.root;
-    expect(hasText(root, 'Push Pull Legs baseline')).toBe(true);
+    expect(root.findAll(n => n.props && n.props.accessibilityLabel && /of Push Pull Legs baseline strength/.test(n.props.accessibilityLabel)).length).toBeGreaterThan(0);
     // #1219 (owner-directed): the non-medical note sits behind an info button
     // instead of a persistent line — hidden by default, revealed inline on tap.
     expect(hasText(root, 'Not a medical judgment')).toBe(false);
@@ -270,12 +270,11 @@ describe('#1052 refactor — preserved states reach the screen', () => {
     expect(hasText(root, 'Not a medical judgment')).toBe(false);
   });
 
-  test('included/excluded: the focused block exposes its inclusion toggle in Manage block only', () => {
+  test('Analytics Recovery is read-only: no inclusion toggle, no Manage block (Log owns them, #1315)', () => {
     const component = setup({ blocks: [completedBlock()], weeks: [], notes: [] });
     const root = component.root;
     act(() => { byLabel(root, 'Expand recovery history').props.onPress(); });
     expect(root.findAllByType(RecoveryInclusionToggle)).toHaveLength(0);
-    act(() => { byLabel(root, 'Manage recovery block: Push Pull Legs').props.onPress(); });
-    expect(root.findAllByType(RecoveryInclusionToggle)).toHaveLength(1);
+    expect(root.findAll(n => /^Manage recovery block/.test((n.props && n.props.accessibilityLabel) || ''))).toHaveLength(0);
   });
 });

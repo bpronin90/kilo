@@ -45,7 +45,7 @@ export function useLogScreenController(params) {
   const {
     navNoteKey, navNoteId, navRecoveryKey, navRecoveryNoteId, notesLoading,
     notesError, notes, currentId, currentNote, isActive, registerBackConsumer,
-    workoutNoteText, workoutNoteTitle, setWorkoutNoteTitle, recoveryWeekNumberByNoteId, recoveryBlocks, recoveryWeeks, recoveryReady, recoveryTabVisible,
+    workoutNoteText, workoutNoteTitle, setWorkoutNoteTitle, recoveryWeekNumberByNoteId, recoveryBlocks, recoveryWeeks, recoveryReady, recoveryTabVisible, recoveryDefaultEligible,
     activeTrainingContext, deloadModeEnabled, baselinePaused, trackedLifts, trackedLiftActivations, toggleTrackedLift,
     deloadHistory, progressionRecoveryFilter, progressionSettings, dismissedProgressionIds, setDismissedProgressionIds, importRoutineOpen,
     setImportRoutineOpen, tabView, setTabView, currentEditor, otherEditor, deloadEditor,
@@ -55,7 +55,7 @@ export function useLogScreenController(params) {
   useEffect(() => {
     if (recoveryDefaultAppliedRef.current || !recoveryReady) return;
     recoveryDefaultAppliedRef.current = true;
-    if (!recoveryTabVisible) return;
+    if (!(recoveryDefaultEligible ?? recoveryTabVisible)) return;
     setTabView('recovery');
     if (navRecoveryKey === 0 && activeTrainingContext.status === 'recovery_open_week' && activeTrainingContext.activeNoteId) {
       otherEditor.setRecoveryViewingNoteId(activeTrainingContext.activeNoteId);

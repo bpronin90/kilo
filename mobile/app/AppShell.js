@@ -334,7 +334,7 @@ export function useAppShell({ onDeviceDataWiped }) {
     const target = normalizeNavTarget(tab, targetInput);
     const sectionTarget = target?.kind === 'section' ? target : null;
     const noteTarget = target?.kind === 'note' ? target : null;
-    const recoveryTarget = target?.kind === 'recovery-note' ? target : null;
+    const recoveryTarget = target?.kind === 'recovery-note' || target?.kind === 'recovery-manage' ? target : null;
     const subviewTarget = target?.kind === 'subview' ? target : null;
 
     // The target itself is cleared unconditionally so a plain tab press to any

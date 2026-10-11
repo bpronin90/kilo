@@ -5,10 +5,11 @@ import { useTheme } from '../../theme/ThemeContext';
 import { displayWeight, formatLiftWeightValue } from '../../lib/units';
 import { formatDuration } from '../../lib/format';
 import { RECOVERY_COMPARISON_STATES, RECOVERY_WEEK_STATUS } from '../../lib/data/recoveryAnalytics';
-import { deriveRecoveryWeekBands } from '../../lib/data/recoveryReturnBands';
+import { ROW_STATUS_KINDS as SNAPSHOT_ROW_KINDS } from '../../lib/data/recoverySnapshot';
 import { createStyles } from './analyticsRecoveryStyles';
 import { createVisualStyles } from './recoveryVisualStyles';
-import { QUIET_STATUS_LABELS, bandColor, displayBandId } from './RecoveryVisuals';
+import { QUIET_STATUS_LABELS, bandColor } from './RecoveryVisuals';
+import { StrengthLiftSummary, strengthRowLabel } from './RecoveryStrengthLadder';
 
 // "Total work" replaces the unexplained "Volume" (#758): the number is a sum of
 // load × reps, and the label now says so rather than borrowing a training term
@@ -76,34 +77,23 @@ const BAND_STATUS_WORD = Object.freeze({
   not_trained_yet: QUIET_STATUS_LABELS.not_trained_yet,
 });
 
-// The row's band comes from the existing return-band derivation run on this one
-// row (never a second threshold implementation); the derived `close` bucket is
-// folded into Rebuilding at presentation (`displayBandId`). Added work has no
-// band and takes the neutral mark.
-export function rowBandId(row) {
-  if (row.state === RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY) return null;
-  const { buckets } = deriveRecoveryWeekBands({ status: RECOVERY_WEEK_STATUS.OK, exercises: [row] });
-  return displayBandId(Object.keys(buckets).find(id => buckets[id] > 0) || 'cannot_compare');
+// The row's band is READ from the Recovery snapshot (`bandById`, derived once
+// from the existing return-band derivation); a row never derives anything while
+// rendering (#1315). Added work has no band and takes the neutral mark.
+export function rowBandId(row, bandById) {
+  return (bandById && bandById[row.key]) || null;
 }
 
 // ONE mapping feeds both the visible status word and the spoken label, so a
 // screen reader hears exactly the status a sighted user sees (#1219).
-export function rowStatusWord(row) {
-  const bandId = rowBandId(row);
+export function rowStatusWord(row, bandById) {
+  const bandId = rowBandId(row, bandById);
   return bandId ? BAND_STATUS_WORD[bandId] : QUIET_STATUS_LABELS.added;
 }
 
-// Every status kind a visible row can carry: the shared band ids plus
-// "added" (rows with no band). The details summary counts rows through this
-// SAME mapping (`rowBandId`) the row status word uses, so a new kind cannot be
-// shown in the list yet missed by the summary (#1219, structural fix).
-export const ROW_STATUS_KINDS = Object.freeze([...Object.keys(BAND_STATUS_WORD), 'added']);
-
-export function summarizeDetailRows(rows) {
-  const counts = Object.fromEntries(ROW_STATUS_KINDS.map(kind => [kind, 0]));
-  for (const row of rows) counts[rowBandId(row) || 'added'] += 1;
-  return { counts, total: rows.length };
-}
+// Every status kind a visible row can carry. The snapshot owns the list; this
+// module's word table must cover exactly it (asserted in tests).
+export const ROW_STATUS_KINDS = SNAPSHOT_ROW_KINDS;
 
 function _formatMetricNumber(metricKey, value, unit) {
   if (value === null || value === undefined) return 'N/A';
@@ -141,8 +131,8 @@ function _mismatchNote(row) {
   return null;
 }
 
-function _rowAccessibilityLabel(row, unit, weekNumber, elsewhere) {
-  const parts = [`${row.name}, ${rowStatusWord(row)}`];
+function _rowAccessibilityLabel(row, unit, weekNumber, elsewhere, bandById, strengthLabel) {
+  const parts = [`${row.name}, ${rowStatusWord(row, bandById)}`];
 
   if (
     row.state === RECOVERY_COMPARISON_STATES.BASELINE_MET ||
@@ -172,6 +162,9 @@ function _rowAccessibilityLabel(row, unit, weekNumber, elsewhere) {
 
   const mismatch = _mismatchNote(row);
   if (mismatch) parts.push(mismatch);
+  // The strength half of a consolidated lift row is spoken last, after the raw
+  // load/work evidence it sits beside.
+  if (strengthLabel) parts.push(strengthLabel);
 
   return parts.join('. ');
 }
@@ -227,14 +220,14 @@ function _summaryValue(row, unit) {
   return null;
 }
 
-function ExerciseRow({ row, unit, weekNumber, elsewhere, expanded, onToggle }) {
+function ExerciseRow({ row, unit, weekNumber, elsewhere, expanded, onToggle, bandById, lift = null, scaleMax = 100 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createVisualStyles(colors, kua), [colors, kua]);
-  const bandId = rowBandId(row);
+  const bandId = rowBandId(row, bandById);
   // Graded rows take their band token; not-trained, can't-compare and added rows
   // share the one neutral mark (`bandColor` returns it for any non-graded id).
   const markColor = bandColor(bandId || 'added', colors, kua);
-  const status = rowStatusWord(row);
+  const status = rowStatusWord(row, bandById);
   const compared =
     row.state === RECOVERY_COMPARISON_STATES.BASELINE_MET ||
     row.state === RECOVERY_COMPARISON_STATES.REBUILDING;
@@ -254,8 +247,8 @@ function ExerciseRow({ row, unit, weekNumber, elsewhere, expanded, onToggle }) {
   // Reachable evidence behind the tap: every metric line, the bar, the mismatch
   // note. Nothing to reveal -> a plain, non-interactive row.
   // A lone metric already shown in the summary would only repeat it.
-  const hasMore = numbers.length > 1 || !!nameNote || !!barMetric || (!!note && !!summary);
-  const label = _rowAccessibilityLabel(row, unit, weekNumber, elsewhere);
+  const hasMore = numbers.length > 1 || !!nameNote || !!barMetric || (!!note && !!summary) || (!!lift && numbers.length > 0);
+  const label = _rowAccessibilityLabel(row, unit, weekNumber, elsewhere, bandById, lift ? strengthRowLabel(lift, unit) : null);
 
   const body = (
     <>
@@ -270,6 +263,7 @@ function ExerciseRow({ row, unit, weekNumber, elsewhere, expanded, onToggle }) {
           )}
         </View>
       </View>
+      {lift ? <StrengthLiftSummary lift={lift} scaleMax={scaleMax} unit={unit} /> : null}
       {hasMore && expanded && (
         <View testID="recovery-exercise-detail" style={styles.exDetail}>
           {barMetric && (
@@ -334,7 +328,7 @@ export function WeekUnavailableNotice({ week }) {
 // Local view state only (#1300): the parent keys this component by block + week
 // so a switch remounts it; a renamed row gets a new key, so its old entry is
 // simply never matched again.
-export function WeekEvidence({ rows, unit, weekNumber, elsewhere }) {
+export function WeekEvidence({ rows, unit, weekNumber, elsewhere, bandById, strengthByKey = null, scaleMax = 100 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createVisualStyles(colors, kua), [colors, kua]);
   const [open, setOpen] = useState(() => new Set());
@@ -356,6 +350,9 @@ export function WeekEvidence({ rows, unit, weekNumber, elsewhere }) {
           unit={unit}
           weekNumber={weekNumber}
           elsewhere={elsewhere}
+          bandById={bandById}
+          lift={strengthByKey ? strengthByKey.get(row.key) || null : null}
+          scaleMax={scaleMax}
           expanded={open.has(row.key)}
           onToggle={() => toggle(row.key)}
         />

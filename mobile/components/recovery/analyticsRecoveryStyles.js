@@ -247,6 +247,16 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  manageLinkRow: {
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: kua ? kua.surfaceBorder : colors.divider,
+  },
+  manageLinkText: {
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
+    fontWeight: '700',
+    color: kua ? kua.primary : colors.accentText,
+  },
   detailsBody: {
     gap: 12,
     paddingTop: 12,

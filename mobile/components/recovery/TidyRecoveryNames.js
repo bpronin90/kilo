@@ -17,7 +17,7 @@ function announce(message) {
 }
 
 function Preview({ plan, styles, tidy }) {
-  if (!plan.ok) return <Text style={styles.reasonErrorText}>{plan.error}</Text>;
+  if (!plan.ok) return <Text style={styles.reasonErrorText} accessibilityRole="alert">{plan.error}</Text>;
   return (
     <View style={tidy.preview} testID="recovery-tidy-preview">
       {plan.empty ? (
@@ -137,7 +137,7 @@ export function TidyRecoveryNamesAction({
       ) : null}
       {error || notice ? (
         <View accessibilityLiveRegion="polite">
-          {error ? <Text style={styles.reasonErrorText}>{error}</Text> : null}
+          {error ? <Text style={styles.reasonErrorText} accessibilityRole="alert" accessibilityLiveRegion="assertive">{error}</Text> : null}
           {notice ? <Text style={tidy.noteText}>{notice}</Text> : null}
         </View>
       ) : null}

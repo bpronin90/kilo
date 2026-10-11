@@ -262,6 +262,7 @@ function ShellView({ onDeviceDataWiped }) {
             navNoteKey={logNoteTargetKey}
             navRecoveryNoteId={logRecoveryTarget ? logRecoveryTarget.noteId : null}
             navRecoveryKey={logRecoveryTargetKey}
+            navManageBlockId={logRecoveryTarget ? logRecoveryTarget.blockId ?? null : null}
             restTimerIsRunning={restTimer.isRunning}
             restTimerRemainingMs={restTimer.remainingMs}
             restTimerJustElapsed={restTimer.justElapsed}

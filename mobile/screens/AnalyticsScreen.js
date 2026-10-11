@@ -5,9 +5,8 @@ import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { deriveWeightGoalAnalytics, DEFAULT_1K_EXERCISES, deriveCheckInHistory, deriveRoutineStatus } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries, useWeightGoal, useDeloadHistory, useFeatureToggles, useRecoveryBlockState, useActiveTrainingContext } from '../hooks/useEntries';
 import { useRecoveryAnalyticsFilter } from '../hooks/entries/recoveryBlockHooks';
-import { findActiveBlock, isLiveRecord } from '../lib/data/recoveryBlocks';
-import { deriveRecoveryComparison } from '../lib/data/recoveryAnalytics';
-import { deriveRecoveryMovement, deriveRecoveryWeekBands } from '../lib/data/recoveryReturnBands';
+import { isLiveRecord } from '../lib/data/recoveryBlocks';
+import { useRecoverySnapshotFromState } from '../hooks/entries/useRecoveryStrengthSnapshot';
 import {
   deriveParsedSections,
   deriveNoteExerciseNames,
@@ -98,8 +97,6 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     refreshing: recoveryRefreshing = false,
     stale: recoveryStale = false,
     error: recoveryStateError = null,
-    mutationsAllowed: recoveryMutationsAllowed = true,
-    pendingRecovery: recoveryPendingRecovery = [],
     retryRecovery: retryRecoveryState,
   } = useRecoveryBlockState() || {};
   // Product-wide "what am I training now?" context (#868), shared with Home and
@@ -457,26 +454,12 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     };
   }, [analytics.oneK, unit]);
 
-  // #1029: current live week's return bands and (once its evidence bar is met)
-  // movement, for the Overview `Recovery` row — reuses the same
-  // `deriveRecoveryComparison` read AnalyticsRecoverySection renders from,
-  // restricted to the active block since the row only describes right now.
-  const activeRecoveryBlockForOverview = isActiveRecovery ? findActiveBlock(recoveryBlocks) : null;
-  const recoveryOverviewInfo = useMemo(() => {
-    if (!activeRecoveryBlockForOverview) return { bands: null, movement: null };
-    const comparison = deriveRecoveryComparison({
-      block: activeRecoveryBlockForOverview, weeks: recoveryWeeks, notes,
-    });
-    const weeks = comparison.weeks || [];
-    const current = weeks.length > 0 ? weeks[weeks.length - 1] : null;
-    const bands = deriveRecoveryWeekBands(current);
-    // Never off an unverified/stale snapshot (#1023 v2 §4 req. 4) —
-    // `recoveryStale` mirrors Home's own `isStale` gate.
-    const movement = (!recoveryStale && current)
-      ? deriveRecoveryMovement(weeks, { currentWeekId: current.week_id })
-      : null;
-    return { bands: bands.buckets ? bands : null, movement };
-  }, [activeRecoveryBlockForOverview, recoveryWeeks, notes, recoveryStale]);
+  // #1315: the Overview `Recovery` row reads the SAME single Recovery snapshot
+  // as the Recovery section and Home (active block, latest week); nothing here
+  // derives Recovery numbers.
+  const { snapshot: recoveryOverviewSnapshot } = useRecoverySnapshotFromState(
+    { blocks: recoveryBlocks, weeks: recoveryWeeks, ready: recoveryReady, stale: recoveryStale }, notes, { notesError }
+  );
 
   // Overview rows (#821). Fed the same display-space arrays the charts below
   // are given, so a value here is literally the value its own section plots.
@@ -493,14 +476,13 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       notesUnavailable: !!notesError,
       weightUnavailable: !!weightError,
       activeTraining: { status: activeTrainingContext.status, recoveryWeekNumber: activeTrainingContext.recoveryWeekNumber },
-      recoveryBands: recoveryOverviewInfo.bands,
-      recoveryMovement: recoveryOverviewInfo.movement,
+      recoverySnapshot: isActiveRecovery ? recoveryOverviewSnapshot : null,
       weightGoalDirection: weightGoalInfo?.direction ?? null,
     }),
     [
       oneKChartData, analytics.signals, sinceDeload, deloadModeEnabled, weightTrends, unit, rolling7,
       notesError, weightError, activeTrainingContext.status, activeTrainingContext.recoveryWeekNumber,
-      recoveryOverviewInfo, weightGoalInfo,
+      recoveryOverviewSnapshot, isActiveRecovery, weightGoalInfo,
     ]
   );
   const overviewLoading = isNotesLoading || isWeightLoading;
@@ -530,8 +512,6 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       stateRefreshing={recoveryRefreshing}
       stateStale={recoveryStale}
       stateError={recoveryStateError}
-      mutationsAllowed={recoveryMutationsAllowed}
-      pendingRecovery={recoveryPendingRecovery}
       onRetry={retryRecoveryState}
       onNavigate={onNavigate}
     />

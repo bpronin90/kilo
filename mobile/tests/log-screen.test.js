@@ -8422,10 +8422,10 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     expect(findPressableByText(root, 'Undo completion')).toBeNull();
   });
 
-  test('Log renders no Recovery section when only completed blocks exist — one block', () => {
-    // Completed history lives in Analytics (#729). With no active block, no
-    // pending operations, and no stale snapshot, the Recovery section must not
-    // render at all regardless of how many completed blocks are in storage.
+  test('completed-only verified state: the Recovery tab is reachable but is not the default view (#1315)', () => {
+    // Recovery History (#1315) makes completed blocks reachable in Log. With no
+    // active block the Routine tab stays the default; the Recovery tab opens the
+    // History selector and the focused block's single Manage card.
     const completedBlock = {
       id: 'rb0', baseline_note_id: 'oldBaseline', baseline_note_title: 'Old Baseline Routine',
       started_at: '2025-11-01T00:00:00.000Z', completed_at: '2025-12-01T00:00:00.000Z', deleted_at: null,
@@ -8439,9 +8439,12 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Recovery').length).toBe(0);
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Recovery History').length).toBe(0);
-    expect(findPressableByText(root, '1 completed block')).toBeNull();
+    const tab = findPressableByText(root, 'Recovery');
+    expect(tab).toBeTruthy();
+    render.act(() => { tab.props.onPress(); });
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Recovery History').length).toBe(1);
+    expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Manage recovery block: Old Baseline Routine').length).toBeGreaterThan(0);
   });
 
   test('Log renders no Recovery section when only completed blocks exist — multiple blocks', () => {
@@ -8459,8 +8462,8 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
+    // Not the default view (#1315): the History selector sits behind the Recovery tab.
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Recovery History').length).toBe(0);
-    expect(findPressableByText(root, '2 completed blocks')).toBeNull();
   });
 
   test('Log shows every live week as its own labeled entry, distinguishing completed from in-progress (#836)', () => {
@@ -12115,7 +12118,10 @@ describe('LogRecoverySection: calm active Recovery hierarchy (#789)', () => {
     // And it collapses again.
     render.act(() => { trigger(root).props.onPress(); });
     expect(trigger(root).props.accessibilityState).toEqual({ expanded: false });
-    expect(byLabel(root, 'End recovery block')).toBeUndefined();
+    // Collapsed content stays mounted but hidden from assistive tech (#1315).
+    const body = root.findAll(n => typeof n.type === 'string' && /^recovery-manage-body-/.test(n.props.testID || ''))[0];
+    expect(body.props.accessibilityElementsHidden).toBe(true);
+    expect(body.props.importantForAccessibility).toBe('no-hide-descendants');
   });
 
   // #843 review: `Counting in normal analytics` IS the Log-surface

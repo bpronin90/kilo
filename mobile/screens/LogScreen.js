@@ -65,6 +65,7 @@ import { useLogDeloadEditor } from './log/useLogDeloadEditor';
 import { createStyles } from './log/logScreenStyles';
 import { LogScreenContent, buildLogRecovery, EditorHeaderActions } from './log/LogScreenContent';
 import { useLogScreenController } from './log/LogScreenStates';
+import { useLogRecoveryManage } from './log/useLogRecoveryManage';
 
 export function LogScreen({
   workoutNoteText,
@@ -81,6 +82,7 @@ export function LogScreen({
   navNoteKey = 0,
   navRecoveryNoteId = null,
   navRecoveryKey = 0,
+  navManageBlockId = null,
   restTimerIsRunning = false,
   restTimerRemainingMs = 0,
   restTimerJustElapsed = false,
@@ -281,11 +283,14 @@ export function LogScreen({
   // alone, is what keeps those banners from becoming unreachable once
   // Recovery is a separate tab instead of an always-mounted section of the
   // Routine tab.
-  const recoveryTabVisible = !!activeRecoveryBlock
+  // #1315: a verified completed-only history also earns the tab (Recovery History).
+  const recoveryDefaultEligible = !!activeRecoveryBlock
     || (pendingRecovery?.length || 0) > 0
     || !!recoveryPendingError
     || recoveryStale
     || (!recoveryReady && !!recoveryStateError);
+  const recoveryHistory = useLogRecoveryManage({ blocks: recoveryBlocks, ready: recoveryReady, readError: recoveryStateError, navManageBlockId, navKey: navRecoveryKey, onShow: () => setTabView('recovery') });
+  const recoveryTabVisible = recoveryDefaultEligible || (recoveryReady && (recoveryHistory.hasCompleted || recoveryHistory.manage.unavailable));
 
   const editorScrollRef = useRef(null);
   const readScrollRef = useRef(null);
@@ -406,7 +411,7 @@ export function LogScreen({
     navNoteKey, navNoteId, navRecoveryKey, navRecoveryNoteId, notesLoading, notesError,
     notes, currentId, currentNote, isActive, registerBackConsumer, workoutNoteText,
     workoutNoteTitle, setWorkoutNoteTitle,
-    recoveryWeekNumberByNoteId, recoveryBlocks, recoveryWeeks, recoveryReady, recoveryTabVisible, activeTrainingContext,
+    recoveryWeekNumberByNoteId, recoveryBlocks, recoveryWeeks, recoveryReady, recoveryTabVisible, recoveryDefaultEligible, activeTrainingContext,
     deloadModeEnabled, baselinePaused, trackedLifts, trackedLiftActivations, toggleTrackedLift, deloadHistory,
     progressionRecoveryFilter, progressionSettings, dismissedProgressionIds, setDismissedProgressionIds, importRoutineOpen, setImportRoutineOpen,
     tabView, setTabView, currentEditor, otherEditor, deloadEditor, activeRecoveryBlock,
@@ -427,6 +432,7 @@ export function LogScreen({
     handleSetRecoveryInclusionFromEndModal, openEndBlockModal, closeEndBlockModal, handleReopenRecoveryBlock, openReopenRecoveryBlockConfirm, handleUnlinkRecoveryWeek,
     handleRetryRecovery, handleUndoCompleteWeek,
   } = buildLogRecovery({ ...screen, eligibleBaselineNotes, eligibleWeekNotes });
+  const recoveryManage = { ...recoveryHistory.manage, completedBlocks: recoveryHistory.completedBlocks, notesError, scrollRef: readScrollRef, onReopenBlock: openReopenRecoveryBlockConfirm };
 
   // #1021: the New Routine editor's secondary Import routine action opens
   // this in place of the ordinary read/editor pair below. `add` is the same
@@ -466,7 +472,7 @@ export function LogScreen({
   return (
     <>
       <LogScreenContent
-        readScrollRef={readScrollRef} currentEditor={currentEditor} otherEditor={otherEditor}
+        readScrollRef={readScrollRef} recoveryManage={recoveryManage} currentEditor={currentEditor} otherEditor={otherEditor}
         deloadEditor={deloadEditor} isEditing={isEditing} isEmpty={isEmpty}
         notesError={notesError} refreshNotes={refreshNotes} isNotesFirstLoad={isNotesFirstLoad}
         notes={notes} handleCreateRoutineEntry={handleCreateRoutineEntry} deloadTabEnabled={deloadTabEnabled}

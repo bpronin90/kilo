@@ -38,7 +38,8 @@ import {
 } from '../hooks/entries/recoveryBlockHooks';
 import { createStyles } from './recovery/logRecoveryStyles';
 import { LogRecoveryWeeks, noteTitle } from './recovery/LogRecoveryWeeks';
-import { LogRecoveryLifecycle } from './recovery/LogRecoveryLifecycle';
+import { LogRecoveryHistory, LogRecoveryManageStack } from './recovery/LogRecoveryHistory';
+import { MANAGE_TARGET_UNAVAILABLE } from '../screens/log/useLogRecoveryManage';
 import { recoveryWeekStatusText } from '../lib/data/derivedAnalytics';
 export { RECOVERY_INCLUSION_LABEL } from './RecoveryInclusionToggle';
 
@@ -153,6 +154,10 @@ export function LogRecoverySection({
   stateStale = false,
   stateError = null,
   mutationsAllowed = true,
+  // Focus + Manage wiring (#1315), assembled by LogScreen: the completed blocks
+  // behind Recovery History, the focused block id, the navigation reveal, the
+  // notes read error, the Reopen confirm and the scroll ref.
+  manage = null,
 }) {
   const { colors } = useTheme();
   const kua = useKuaStyle();
@@ -235,7 +240,10 @@ export function LogRecoverySection({
   // A pending recovery operation must stay visible even without an active block
   // — otherwise the retry affordance would disappear with the records it is
   // trying to repair. The same is true of a stale snapshot.
-  if (!activeBlock && !showRecoveryNotice && !stateStale) return null;
+  // Without LogScreen's focus wiring (direct renders) the active block is the one focus.
+  const m = manage || { focusedBlockId: activeBlock ? activeBlock.id : null, completedBlocks: [], onSelectBlock: () => {} };
+  const completedBlocks = m.completedBlocks || [];
+  if (!activeBlock && !showRecoveryNotice && !stateStale && completedBlocks.length === 0 && !m.unavailable) return null;
 
   const notesById = new Map(notes.map(n => [n.id, n]));
   const activeWeeks = activeBlock ? orderedLiveWeeks(weeks, activeBlock.id) : [];
@@ -371,22 +379,48 @@ export function LogRecoverySection({
     </View>
   );
 
+  // One visible Manage card (the focused block's), plus the History selector and
+  // the truthful unavailable state for a navigation target that no longer exists.
+  const manageSurface = (m.focusedBlockId || m.unavailable) ? (
+    <>
+      {m.unavailable ? (
+        <View testID="recovery-manage-unavailable" style={styles.pendingBanner} accessible accessibilityRole="alert" accessibilityLabel={MANAGE_TARGET_UNAVAILABLE}>
+          <Text style={styles.pendingBannerText}>{MANAGE_TARGET_UNAVAILABLE}</Text>
+        </View>
+      ) : null}
+      <>
+          <LogRecoveryManageStack
+            styles={styles} colors={colors} kua={kua}
+            activeBlock={activeBlock} completedBlocks={completedBlocks} weeks={weeks} notes={notes}
+            currentWeek={currentWeek} busy={busy} actionsLocked={actionsLocked} stale={stateStale}
+            onUnlinkWeek={handleUnlinkWeek} onOpenEndBlockModal={onOpenEndBlockModal} manage={m}
+          />
+          <LogRecoveryHistory
+            activeBlock={activeBlock} completedBlocks={completedBlocks}
+            focusedBlockId={m.focusedBlockId} onSelect={m.onSelectBlock}
+            alwaysShow={!!m.unavailable}
+          />
+      </>
+    </>
+  ) : null;
+
   return (
     <View style={styles.container}>
-      {!activeBlock && (showRecoveryNotice || stateStale) && (
+      {/* ONE group for both shapes (active / no active): the Manage surface keeps a
+          fixed slot, so completing the active block never remounts it and a
+          same-block draft, in-flight write or error survives (#1315). */}
+      {(activeBlock || showRecoveryNotice || stateStale || completedBlocks.length > 0 || m.unavailable) && (
         <View style={styles.activeGroup}>
           <SectionTitle>Recovery</SectionTitle>
-          <Card style={styles.card}>
-            <View style={styles.stateZone}>
-              {stateStale ? staleBanner : null}
-              {showRecoveryNotice ? pendingBanner : null}
-            </View>
-          </Card>
-        </View>
-      )}
-      {activeBlock && (
-        <View style={styles.activeGroup}>
-          <SectionTitle>Recovery</SectionTitle>
+          {!activeBlock && (stateStale || showRecoveryNotice) ? (
+            <Card style={styles.card}>
+              <View style={styles.stateZone}>
+                {stateStale ? staleBanner : null}
+                {showRecoveryNotice ? pendingBanner : null}
+              </View>
+            </Card>
+          ) : null}
+          {activeBlock ? (
           <Card style={styles.card}>
             {/* Zone 1 — state: a kicker, the headline fact, and the
                 de-emphasized baseline caption (#843). */}
@@ -418,7 +452,7 @@ export function LogRecoverySection({
 
               {actionError ? (
                 <View style={styles.errorBanner}>
-                  <Text style={styles.errorBannerText}>{actionError}</Text>
+                  <Text style={styles.errorBannerText} accessibilityRole="alert" accessibilityLiveRegion="assertive">{actionError}</Text>
                 </View>
               ) : null}
             </View>
@@ -469,18 +503,9 @@ export function LogRecoverySection({
               onSourceJumpApplied={onSourceJumpApplied}
             />
           </Card>
+          ) : null}
 
-          <LogRecoveryLifecycle
-            styles={styles}
-            colors={colors}
-            kua={kua}
-            activeBlock={activeBlock}
-            currentWeek={currentWeek}
-            busy={busy}
-            actionsLocked={actionsLocked}
-            onUnlinkWeek={handleUnlinkWeek}
-            onOpenEndBlockModal={onOpenEndBlockModal}
-          />
+          {manageSurface}
         </View>
       )}
 
