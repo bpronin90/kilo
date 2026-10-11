@@ -71,11 +71,11 @@ beforeEach(() => {
 });
 
 // Mounts Home + Overview + Analytics together, each fed its own copy of the data.
-function Surfaces({ fixture, stale, fresh }) {
+function Surfaces({ fixture, stale, fresh, notesError = null }) {
   const own = fresh ? { block: clone(fixture.block), weeks: clone(fixture.weeks), notes: clone(fixture.notes) } : fixture;
   mockStoreState = { blocks: [own.block], weeks: own.weeks, ready: true, loading: false, stale, activeBlock: own.block, retryRecovery: null };
   const home = useHomeRecoverySummary(own.notes);
-  const overview = useRecoverySnapshotFromState(mockStoreState, own.notes);
+  const overview = useRecoverySnapshotFromState(mockStoreState, own.notes, { notesError });
   const row = deriveOverviewRows({
     activeTraining: { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 2 },
     recoverySnapshot: overview.snapshot,
@@ -86,7 +86,7 @@ function Surfaces({ fixture, stale, fresh }) {
     <>
       <HomeRecoverySummary summary={home} onNavigate={() => {}} />
       <Probe row={row} />
-      <AnalyticsRecoverySection blocks={[analytics.block]} weeks={analytics.weeks} notes={analytics.notes} stateStale={stale} />
+      <AnalyticsRecoverySection blocks={[analytics.block]} weeks={analytics.weeks} notes={analytics.notes} stateStale={stale} notesError={notesError} />
     </>
   );
 }
@@ -131,6 +131,16 @@ describe('single derivation', () => {
     act(() => { c.update(<Surfaces fixture={SCORED} stale={false} fresh />); });
     expect(deriveRecoveryStrength).toHaveBeenCalledTimes(1);
     expect(deriveRecoveryComparison).toHaveBeenCalledTimes(1);
+  });
+
+  test('a notes-read error (carried by Overview/Analytics, not Home) never re-derives strength or the comparison', () => {
+    const root = mount({ fixture: SCORED, stale: false, notesError: new Error('x') }).root;
+    expect(deriveRecoveryStrength).toHaveBeenCalledTimes(1);
+    expect(deriveRecoveryComparison).toHaveBeenCalledTimes(1);
+    expect(_snapshotDerivationCount()).toBe(1);
+    expect(homeHeadline(root)).toBe('80% | 2 lifts · Week 2');
+    expect(analyticsHeadline(root)).toBe('80% | 2 lifts · Week 2');
+    expect(overviewRow(root).value).toBe('80%');
   });
 
   test('a real input change derives again, once', () => {

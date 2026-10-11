@@ -243,7 +243,7 @@ export function LogRecoverySection({
   // Without LogScreen's focus wiring (direct renders) the active block is the one focus.
   const m = manage || { focusedBlockId: activeBlock ? activeBlock.id : null, completedBlocks: [], onSelectBlock: () => {} };
   const completedBlocks = m.completedBlocks || [];
-  if (!activeBlock && !showRecoveryNotice && !stateStale && completedBlocks.length === 0) return null;
+  if (!activeBlock && !showRecoveryNotice && !stateStale && completedBlocks.length === 0 && !m.unavailable) return null;
 
   const notesById = new Map(notes.map(n => [n.id, n]));
   const activeWeeks = activeBlock ? orderedLiveWeeks(weeks, activeBlock.id) : [];
@@ -381,29 +381,33 @@ export function LogRecoverySection({
 
   // One visible Manage card (the focused block's), plus the History selector and
   // the truthful unavailable state for a navigation target that no longer exists.
-  const manageSurface = m.focusedBlockId ? (
+  const manageSurface = (m.focusedBlockId || m.unavailable) ? (
     <>
       {m.unavailable ? (
         <View testID="recovery-manage-unavailable" style={styles.pendingBanner} accessible accessibilityRole="alert" accessibilityLabel={MANAGE_TARGET_UNAVAILABLE}>
           <Text style={styles.pendingBannerText}>{MANAGE_TARGET_UNAVAILABLE}</Text>
         </View>
       ) : null}
-      <LogRecoveryManageStack
-        styles={styles} colors={colors} kua={kua}
-        activeBlock={activeBlock} completedBlocks={completedBlocks} weeks={weeks} notes={notes}
-        currentWeek={currentWeek} busy={busy} actionsLocked={actionsLocked} stale={stateStale}
-        onUnlinkWeek={handleUnlinkWeek} onOpenEndBlockModal={onOpenEndBlockModal} manage={m}
-      />
-      <LogRecoveryHistory
-        activeBlock={activeBlock} completedBlocks={completedBlocks}
-        focusedBlockId={m.focusedBlockId} onSelect={m.onSelectBlock}
-      />
+      {m.focusedBlockId ? (
+        <>
+          <LogRecoveryManageStack
+            styles={styles} colors={colors} kua={kua}
+            activeBlock={activeBlock} completedBlocks={completedBlocks} weeks={weeks} notes={notes}
+            currentWeek={currentWeek} busy={busy} actionsLocked={actionsLocked} stale={stateStale}
+            onUnlinkWeek={handleUnlinkWeek} onOpenEndBlockModal={onOpenEndBlockModal} manage={m}
+          />
+          <LogRecoveryHistory
+            activeBlock={activeBlock} completedBlocks={completedBlocks}
+            focusedBlockId={m.focusedBlockId} onSelect={m.onSelectBlock}
+          />
+        </>
+      ) : null}
     </>
   ) : null;
 
   return (
     <View style={styles.container}>
-      {!activeBlock && (showRecoveryNotice || stateStale || completedBlocks.length > 0) && (
+      {!activeBlock && (showRecoveryNotice || stateStale || completedBlocks.length > 0 || m.unavailable) && (
         <View style={styles.activeGroup}>
           <SectionTitle>Recovery</SectionTitle>
           {stateStale || showRecoveryNotice ? (

@@ -14,7 +14,7 @@ import {
   RECOVERY_WEEK_STATUS,
 } from '../../lib/data/recoveryAnalytics';
 import { deriveRecoveryTrainedRows } from '../../lib/data/recoveryReturnBands';
-import { deriveRecoverySummary } from '../../lib/data/derivedAnalytics';
+import { summarizeRecoveryBands } from '../../lib/data/derivedAnalytics';
 import { formatDate } from '../../lib/format';
 
 // Re-exported so HomeScreen's active-branch copy can switch on the same
@@ -151,8 +151,8 @@ export function useHomeRecoverySummary(notes, workoutNote = null) {
     // display is the same headline Analytics and the Overview row print.
     const snapshot = getRecoverySnapshot({ block: activeBlock, weeks, notes, stale: isStale });
     const comparison = snapshot.comparison;
-    const comparisonWeeks = comparison.weeks || [];
-    const current = comparisonWeeks.length > 0 ? comparisonWeeks[comparisonWeeks.length - 1] : null;
+    // The snapshot's selected week (the latest week by default) and its bands.
+    const current = snapshot.selectedWeek;
     // #1192: the Big 3 use the same effective 1K selection as Home's normal
     // 1K total — the current routine's picks over the slot defaults — so the
     // card names the lifts the user already recognizes. The frozen baseline
@@ -167,7 +167,7 @@ export function useHomeRecoverySummary(notes, workoutNote = null) {
       weekNumber: current ? current.week_number : null,
       weekNoteStatus: current ? current.status : null,
       weekNoteTitle: current && typeof current.note_title === 'string' && current.note_title.trim() ? current.note_title.trim() : null,
-      ...deriveHomeRecoveryBig3(current, selections),
+      ...deriveHomeRecoveryBig3(current, selections, summarizeRecoveryBands(snapshot.bands)),
       includedInNormalAnalytics: activeBlock.include_in_normal_analytics === true,
     };
   }, [activeBlock, weeks, notes, workoutNote, ready, loading, stale, retryRecovery]);
@@ -207,7 +207,7 @@ function _rowPercent(row) {
 // the baseline rows not reintroduced yet. A Big 3 lift outside that roster is
 // shown as `not_in_baseline` (#1192) — it was never in the baseline, so there
 // is no distance to report, but the slot still reads as the user's Big 3.
-export function deriveHomeRecoveryBig3(week, selections) {
+export function deriveHomeRecoveryBig3(week, selections, counts = null) {
   if (!week || week.status !== RECOVERY_WEEK_STATUS.OK) return { big3: [], counts: null };
   const roster = [
     ...deriveRecoveryTrainedRows(week),
@@ -235,8 +235,9 @@ export function deriveHomeRecoveryBig3(week, selections) {
     big3.push({ slot, label: row.name || label, state: row.state, percent: _rowPercent(row) });
   }
   // #1242: the count line is the shared roster summary — the same counts and
-  // words Analytics and the Recovery detail print — not a Home-local tally.
-  return { big3, counts: deriveRecoverySummary(week) };
+  // words Analytics and the Recovery detail print — not a Home-local tally. The
+  // caller passes the counts summarised from the snapshot's bands (#1315).
+  return { big3, counts };
 }
 
 // #894: mirrors deriveOverloadCounts' own per-appearance iteration

@@ -15,7 +15,7 @@ import { deriveRecoveryWeekBands } from '../lib/data/recoveryReturnBands';
 import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
 import { buildTrendSections } from '../lib/WeightScreenHelpers';
 import {
-  deriveRecoverySummary, formatRecoveryCountLine, recoveryWeekStatusText, WEIGHT_DIRECTION, weightTrendTone,
+  summarizeRecoveryBands, formatRecoveryCountLine, recoveryWeekStatusText, WEIGHT_DIRECTION, weightTrendTone,
 } from '../lib/data/derivedAnalytics';
 
 // Historical note: all three Big-3 lifts logged in one session.
@@ -524,7 +524,8 @@ describe('Home Recovery Big 3 selection (#1192)', () => {
   test('two slots mapped to the same baseline exercise both report it', () => {
     const row = { key: 'squat', name: 'Squat', state: 'baseline_met', metrics: [] };
     const week = { status: 'ok', exercises: [row] };
-    const { big3, counts } = deriveHomeRecoveryBig3(week, { squat: 'Squat', bench: 'Squat', deadlift: 'Deadlift' });
+    const counts = summarizeRecoveryBands(deriveRecoveryWeekBands(week));
+    const { big3 } = deriveHomeRecoveryBig3(week, { squat: 'Squat', bench: 'Squat', deadlift: 'Deadlift' }, counts);
     expect(big3.map(l => [l.slot, l.state])).toEqual([
       ['squat', 'baseline_met'], ['bench', 'baseline_met'], ['deadlift', HOME_BIG3_NOT_IN_BASELINE],
     ]);
@@ -604,9 +605,9 @@ describe('shared derived analytics (#1242)', () => {
   const SELECTIONS = { squat: 'Squat', bench: 'DB Bench Press', deadlift: 'Deadlift' };
 
   test('Home prints the shared roster count line, and the Overview row prints the snapshot headline (#1315)', () => {
-    const { counts } = deriveHomeRecoveryBig3(WEEK, SELECTIONS);
+    const counts = summarizeRecoveryBands(deriveRecoveryWeekBands(WEEK));
+    expect(deriveHomeRecoveryBig3(WEEK, SELECTIONS, counts).counts).toBe(counts);
     expect(formatRecoveryCountLine(counts)).toBe('4 of 7 trained · 3 not yet');
-    expect(deriveRecoverySummary(WEEK)).toEqual(counts);
 
     const display = { state: 'score', percent: 80, caption: '2 lifts · Week 1', message: null, a11y: 'Week 1: 80% of X baseline strength.' };
     const row = deriveOverviewRows({

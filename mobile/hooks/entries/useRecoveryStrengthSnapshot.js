@@ -23,8 +23,11 @@ export function useRecoveryStrengthSnapshot({ block, weeks, notes, selectedWeekI
 export function useRecoverySnapshotFromState(state, notes, { notesError = null } = {}) {
   const { blocks, weeks, ready, stale, activeBlock } = state || {};
   const block = useMemo(() => activeBlock || findActiveBlock(blocks || []), [activeBlock, blocks]);
-  const snapshot = useRecoveryStrengthSnapshot({ block, weeks, notes, stale: !!stale, notesError });
-  return { snapshot: ready ? snapshot : null, block: ready ? block : null, ready: !!ready, stale: !!stale };
+  // Never derive off a placeholder snapshot: with the read unverified the block
+  // handed to the store is null.
+  const verifiedBlock = ready ? block : null;
+  const snapshot = useRecoveryStrengthSnapshot({ block: verifiedBlock, weeks, notes, stale: !!stale, notesError });
+  return { snapshot, block: verifiedBlock, ready: !!ready, stale: !!stale };
 }
 
 // Same, reading the authoritative shared store directly.

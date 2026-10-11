@@ -87,15 +87,16 @@ export function LogRecoveryManageStack({
   // One inclusion write at a time across blocks (the hook serializes the write;
   // this keeps every other switch from advertising an action that would be dropped).
   const [inclusionBusyId, setInclusionBusyId] = useState(null);
-  const [inclusionError, setInclusionError] = useState(null);
+  // Errors are kept per block, so toggling another block never clears this one's.
+  const [inclusionErrors, setInclusionErrors] = useState({});
   const toggleInclusion = async (block, include) => {
     if (inclusionBusyId || !lifecycle.setIncludeInNormalAnalytics) return;
-    setInclusionError(null);
+    setInclusionErrors(prev => ({ ...prev, [block.id]: null }));
     setInclusionBusyId(block.id);
     try {
       const result = await lifecycle.setIncludeInNormalAnalytics({ blockId: block.id, include });
       if (!result || result.ok === false) {
-        setInclusionError({ blockId: block.id, message: (result && result.error) || 'That setting could not be saved.' });
+        setInclusionErrors(prev => ({ ...prev, [block.id]: (result && result.error) || 'That setting could not be saved.' }));
       }
     } finally {
       setInclusionBusyId(null);
@@ -119,12 +120,13 @@ export function LogRecoveryManageStack({
             hidden={block.id !== focusedId}
             revealKey={block.id === manage.revealBlockId ? manage.revealKey : 0}
             scrollRef={manage.scrollRef}
+            onRevealConsumed={manage.onRevealConsumed}
             onUnlinkWeek={onUnlinkWeek} onOpenEndBlockModal={onOpenEndBlockModal}
             onSaveReason={lifecycle.setBlockReason}
             inclusion={{
               busy: inclusionBusyId === block.id,
               locked: !!inclusionBusyId,
-              error: inclusionError && inclusionError.blockId === block.id ? inclusionError.message : null,
+              error: inclusionErrors[block.id] || null,
               onToggle: toggleInclusion,
             }}
             writes={writes}

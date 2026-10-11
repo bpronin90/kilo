@@ -43,8 +43,12 @@ const press = (root, id) => act(() => { root.findAll(n => typeof n.type !== 'str
 const tap = (root, label) => act(() => { byLabel(root, label).props.onPress(); });
 
 // Mirrors LogScreen: the focus hook feeds the section's `manage` prop.
-function Harness({ blocks, onReopen = () => {}, nav = {}, ...rest }) {
-  const hist = useLogRecoveryManage({ blocks, ready: rest.stateReady !== false, navManageBlockId: nav.id || null, navKey: nav.key || 0 });
+function Harness({ blocks, onReopen = () => {}, nav = {}, hide = false, onShow, ...rest }) {
+  const hist = useLogRecoveryManage({
+    blocks, ready: rest.stateReady !== false, readError: rest.stateError || null,
+    navManageBlockId: nav.id || null, navKey: nav.key || 0, onShow,
+  });
+  if (hide) return null;
   return (
     <LogRecoverySection
       blocks={blocks} weeks={[]} notes={NOTES} {...rest}
@@ -185,6 +189,54 @@ describe('Recovery History selector', () => {
   });
 });
 
+describe('regression coverage restored from the Analytics Manage block', () => {
+  test('ineligible Rebuild/Match leave no empty padded row; groups and inclusion rows remain', () => {
+    const c = mount({ blocks: [block()] });
+    press(c.root, 'recovery-manage-trigger-rb1');
+    expect(host(c.root, 'recovery-rebuild-baseline')).toHaveLength(0);
+    expect(host(c.root, 'recovery-match-names')).toHaveLength(0);
+    const body = host(c.root, 'recovery-manage-body-rb1')[0];
+    const empty = body.children.filter(k => typeof k !== 'string' && k.children.length === 0);
+    expect(empty).toHaveLength(0);
+  });
+
+  test('an unreadable baseline does not crash the Manage card; Reason and inclusion stay usable', () => {
+    const bad = block({ baseline: { version: 2, exercises: {} } });
+    const c = mount({ blocks: [bad] });
+    expect(() => press(c.root, 'recovery-manage-trigger-rb1')).not.toThrow();
+    expect(byLabel(c.root, 'Add a reason for this recovery block')).toBeDefined();
+    expect(byLabel(c.root, 'Counting in normal analytics: Off')).toBeDefined();
+    expect(host(c.root, 'recovery-manage-groups')).toHaveLength(0);
+  });
+
+  test('lock and stale notes say only what is true', () => {
+    const locked = mount({ blocks: [block()], mutationsAllowed: false });
+    press(locked.root, 'recovery-manage-trigger-rb1');
+    expect(texts(host(locked.root, 'recovery-manage-locked')[0])[0]).toMatch(/^Changes are paused while a Recovery change is pending/);
+    const stale = mount({ blocks: [block()], stateStale: true });
+    press(stale.root, 'recovery-manage-trigger-rb1');
+    expect(texts(host(stale.root, 'recovery-manage-locked')[0])[0]).not.toMatch(/^Changes are paused while/);
+    const open = mount({ blocks: [block()] });
+    press(open.root, 'recovery-manage-trigger-rb1');
+    expect(host(open.root, 'recovery-manage-locked')).toHaveLength(0);
+  });
+
+  test('inclusion errors are kept per block: toggling another block never clears the first one', async () => {
+    const a = done('rb-new', '2026-06-01T00:00:00Z');
+    const b = done('rb-old', '2026-05-01T00:00:00Z');
+    mockLifecycle.setIncludeInNormalAnalytics.mockResolvedValueOnce({ ok: false, error: 'A failed' });
+    const c = mount({ blocks: [a, b] });
+    press(c.root, 'recovery-manage-trigger-rb-new');
+    await act(async () => { await byLabel(c.root, 'Counting in normal analytics: Off').props.onPress(); });
+    press(c.root, 'recovery-history-header');
+    press(c.root, 'recovery-history-row-rb-old');
+    press(c.root, 'recovery-manage-trigger-rb-old');
+    await act(async () => { await host(c.root, 'recovery-manage-card-rb-old')[0].findAll(n => n.props.accessibilityLabel === 'Counting in normal analytics: Off')[0].props.onPress(); });
+    press(c.root, 'recovery-history-row-rb-new');
+    expect(texts(host(c.root, 'recovery-manage-card-rb-new')[0])).toContain('A failed');
+  });
+});
+
 describe('same-block collapse during a delayed write', () => {
   test('a reason save that fails after collapse keeps its error and draft on reopen', async () => {
     let fail;
@@ -249,6 +301,36 @@ describe('typed navigation intent', () => {
     press(c.root, 'recovery-history-header');
     press(c.root, 'recovery-history-row-rb-old');
     expect(texts(c.root)).not.toContain(MANAGE_TARGET_UNAVAILABLE);
+  });
+
+  test('a deleted target with NO blocks left shows the explicit unavailable notice, never a silent Routine landing', () => {
+    const onShow = jest.fn();
+    const c = mount({ blocks: [], nav: { id: 'gone', key: 1 }, onShow });
+    expect(texts(c.root)).toContain(MANAGE_TARGET_UNAVAILABLE);
+    expect(onShow).toHaveBeenCalledTimes(1);
+  });
+
+  test('a failed read surfaces the Recovery view (with its retry) and applies the target after a verified retry', () => {
+    const onShow = jest.fn();
+    let c;
+    act(() => { c = render.create(<Harness blocks={[]} stateReady={false} stateError={new Error('x')} nav={{ id: 'rb-old', key: 1 }} onShow={onShow} />); });
+    expect(onShow).toHaveBeenCalledTimes(1);
+    expect(texts(c.root)).not.toContain(MANAGE_TARGET_UNAVAILABLE);
+    act(() => { c.update(<Harness blocks={[block(), newest, older]} nav={{ id: 'rb-old', key: 1 }} onShow={onShow} />); });
+    expect(shown(c.root)).toEqual(['recovery-manage-card-rb-old']);
+    expect(onShow).toHaveBeenCalledTimes(1);
+  });
+
+  test('a consumed reveal is one-shot: remounting the section (tab switch) neither re-expands nor re-scrolls', () => {
+    let c;
+    const tree = (hide) => <Harness blocks={[block(), newest, older]} nav={{ id: 'rb-old', key: 1 }} hide={hide} />;
+    act(() => { c = render.create(tree(false)); });
+    expect(host(c.root, 'recovery-manage-trigger-rb-old')[0].props.accessibilityState).toEqual({ expanded: true });
+    act(() => { c.update(tree(true)); });
+    act(() => { c.update(tree(false)); });
+    // Focus is kept, but the card comes back collapsed.
+    expect(shown(c.root)).toEqual(['recovery-manage-card-rb-old']);
+    expect(host(c.root, 'recovery-manage-trigger-rb-old')[0].props.accessibilityState).toEqual({ expanded: false });
   });
 
   test('a target waits for the verified read: not resolved against placeholder data, then applied', () => {

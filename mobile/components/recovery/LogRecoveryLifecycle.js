@@ -37,6 +37,7 @@ export function LogRecoveryLifecycle({
   revealKey = 0,
   // The Log read ScrollView ref, so a navigation reveal can bring the card into view.
   scrollRef = null,
+  onRevealConsumed,
   onUnlinkWeek,
   onOpenEndBlockModal,
   onSaveReason,
@@ -61,6 +62,7 @@ export function LogRecoveryLifecycle({
     if (!revealKey) return;
     setEverOpened(true);
     setManageExpanded(true);
+    if (onRevealConsumed) onRevealConsumed(revealKey);
     const node = rootRef.current;
     const sc = scrollRef && scrollRef.current;
     const inner = sc && ((sc.getInnerViewRef && sc.getInnerViewRef()) || (sc.getInnerViewNode && sc.getInnerViewNode()));
@@ -235,9 +237,10 @@ export function LogRecoveryLifecycle({
           <View style={[styles.manageRow, styles.manageRowDivider]}>
             {/* The row IS the Log-surface inclusion control (#843
                 review) — tapping it writes `include_in_normal_analytics`
-                directly. There is no nested `RecoveryInclusionToggle`
-                Switch here; that component, unchanged, still hosts the
-                Switch presentation on Analytics/Home.
+                directly. There is no nested Switch: since #1315 no Analytics or
+                Home surface hosts a separate inclusion control either, so
+                this row is the only one (`RecoveryInclusionToggle` now only
+                supplies the shared copy constants).
                 The outer View is plain (non-accessible, non-Pressable)
                 so the switch Pressable and the help Pressable below are
                 TRUE siblings, not nested inside one another — VoiceOver
@@ -282,8 +285,8 @@ export function LogRecoveryLifecycle({
                 </Text>
               </Pressable>
               {/* On-demand help (#757's pattern, reproduced here rather
-                  than shared — `RecoveryInclusionToggle` keeps its own
-                  separate copy for Analytics/Home). A true sibling of
+                  than shared; the help text itself is the shared
+                  `RECOVERY_INCLUSION_HELP`). A true sibling of
                   the switch Pressable above, not nested inside it. */}
               <Pressable
                 onPress={() => setInclusionHelpShown(v => !v)}

@@ -100,27 +100,14 @@ function _display(block, comparison, selectedWeek, strength) {
   };
 }
 
-function _build(block, weeks, notes, comparison, selectedWeek, { stale, notesError }) {
+function _build(block, weeks, notes, comparison, selectedWeek, { stale }) {
   const weekResults = comparison.weeks || EMPTY;
   const strength = deriveRecoveryStrength({
     block, weeks, notes, selectedWeekId: selectedWeek ? selectedWeek.week_id : null, stale,
   });
   const strengthOk = strength.status === STRENGTH_STATUS.OK;
-  let movementGroups = null;
-  if (strengthOk) {
-    const source = resolveMovementGroupSource({ block, notes, notesError });
-    movementGroups = {
-      source,
-      breakdown: deriveMovementGroupBreakdown({
-        strength,
-        baselineRows: (block.baseline && block.baseline.exercises) || [],
-        addedRows: (selectedWeek && selectedWeek.added) || [],
-        overrides: source.overrides,
-      }),
-    };
-  }
   const display = _display(block, comparison, selectedWeek, strength);
-  return Object.freeze({
+  return {
     blockId: block.id,
     weekId: selectedWeek ? selectedWeek.week_id : null,
     stale: !!stale,
@@ -130,12 +117,31 @@ function _build(block, weeks, notes, comparison, selectedWeek, { stale, notesErr
     strength,
     scaleMax: strengthOk ? strengthScaleMax(strength) : 100,
     bands: deriveRecoveryWeekBands(selectedWeek),
-    movementGroups,
     display,
     // Status flags the surfaces branch on without re-reading the strength model.
     legacy: strength.status === STRENGTH_STATUS.PAIR_UNAVAILABLE,
     emptyCohort: strengthOk && strength.headline == null && strength.empty_reason === 'no_common_lifts',
-  });
+  };
+}
+
+// Movement groups depend on the notes-read error, which Home does not carry. They
+// are layered on the cached core so a differing `notesError` never re-derives
+// the comparison or strength.
+function _withGroups(core, block, notes, selectedWeek, notesError) {
+  let movementGroups = null;
+  if (core.strength.status === STRENGTH_STATUS.OK) {
+    const source = resolveMovementGroupSource({ block, notes, notesError });
+    movementGroups = {
+      source,
+      breakdown: deriveMovementGroupBreakdown({
+        strength: core.strength,
+        baselineRows: (block.baseline && block.baseline.exercises) || [],
+        addedRows: (selectedWeek && selectedWeek.added) || [],
+        overrides: source.overrides,
+      }),
+    };
+  }
+  return Object.freeze({ ...core, movementGroups });
 }
 
 // Content-keyed shared store. The key is a fingerprint of exactly the records the
@@ -182,12 +188,19 @@ export function getRecoverySnapshot({ block, weeks = EMPTY, notes = EMPTY, selec
   const results = comparison.weeks || EMPTY;
   const latest = results.length > 0 ? results[results.length - 1] : null;
   const selected = (selectedWeekId && results.find(w => w.week_id === selectedWeekId)) || latest;
-  const key = `s|${selected ? selected.week_id : ''}|${stale ? 1 : 0}|${notesError ? 1 : 0}|${base}`;
-  let snapshot = _store.get(key);
-  if (snapshot) { _store.delete(key); _store.set(key, snapshot); return snapshot; }
-  _derivations += 1;
-  snapshot = _build(block, weeks, notes, comparison, selected, { stale, notesError });
-  _store.set(key, snapshot);
+  const key = `s|${selected ? selected.week_id : ''}|${stale ? 1 : 0}|${base}`;
+  let core = _store.get(key);
+  if (core) { _store.delete(key); _store.set(key, core); } else {
+    _derivations += 1;
+    core = _build(block, weeks, notes, comparison, selected, { stale });
+    _store.set(key, core);
+  }
+  const gKey = `g|${notesError ? 1 : 0}|${key}`;
+  let snapshot = _store.get(gKey);
+  if (!snapshot) {
+    snapshot = _withGroups(core, block, notes, selected, notesError);
+    _store.set(gKey, snapshot);
+  }
   while (_store.size > MAX_ENTRIES) _store.delete(_store.keys().next().value);
   return snapshot;
 }

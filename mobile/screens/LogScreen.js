@@ -289,8 +289,8 @@ export function LogScreen({
     || !!recoveryPendingError
     || recoveryStale
     || (!recoveryReady && !!recoveryStateError);
-  const recoveryHistory = useLogRecoveryManage({ blocks: recoveryBlocks, ready: recoveryReady, navManageBlockId, navKey: navRecoveryKey });
-  const recoveryTabVisible = recoveryDefaultEligible || (recoveryReady && recoveryHistory.hasCompleted);
+  const recoveryHistory = useLogRecoveryManage({ blocks: recoveryBlocks, ready: recoveryReady, readError: recoveryStateError, navManageBlockId, navKey: navRecoveryKey, onShow: () => setTabView('recovery') });
+  const recoveryTabVisible = recoveryDefaultEligible || (recoveryReady && (recoveryHistory.hasCompleted || recoveryHistory.manage.unavailable));
 
   const editorScrollRef = useRef(null);
   const readScrollRef = useRef(null);

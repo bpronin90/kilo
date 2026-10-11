@@ -90,11 +90,19 @@ export function BlockEvidence({
   const showInfo = comparison.status === RECOVERY_COMPARISON_STATUS.OK || comparison.status === RECOVERY_COMPARISON_STATUS.BASELINE_EMPTY;
   const showDetails = selectedWeek?.status === RECOVERY_WEEK_STATUS.OK && totalRows > 0;
   const scored = scoredLifts(strength).length;
-  const liftsCount = scored > 0 ? scored : totalRows;
+  // The counted header names exactly what the body lists: the scored strength
+  // rows and, when the week is readable, every raw evidence row.
+  const liftsCaption = [
+    scored > 0 ? `${scored} scored` : null,
+    showDetails ? `${totalRows} in details` : null,
+  ].filter(Boolean).join(' · ');
   const hasLifts = (showStrength && scored > 0) || showDetails;
   const hasNotRetested = showStrength && (strength.not_retested || []).length > 0;
   const hasNotScored = showStrength && notScoredEntries(strength).length > 0;
-  const hasDisclosures = hasLifts || (showStrength && strengthOk) || hasNotRetested || hasNotScored;
+  // A null group panel (no groups) must not consume the first-row border token.
+  const hasGroups = showStrength && strengthOk && !!snapshot.movementGroups
+    && snapshot.movementGroups.breakdown.groups.length > 0;
+  const hasDisclosures = hasLifts || hasGroups || hasNotRetested || hasNotScored;
   const infoLines = useMemo(() => numbersInfoLines({ snapshot, routineTitle }), [snapshot, routineTitle]);
   // The first disclosure has no top rule (the card edge is its boundary).
   let firstDisc = true;
@@ -226,7 +234,7 @@ export function BlockEvidence({
             <RecoveryDisclosure
               testID="recovery-strength-lifts"
               title="Lifts"
-              caption={`${liftsCount} ${liftsCount === 1 ? 'lift' : 'lifts'}`}
+              caption={liftsCaption}
               name="lifts"
               first={first()}
             >
@@ -239,7 +247,7 @@ export function BlockEvidence({
               ) : null}
             </RecoveryDisclosure>
           ) : null}
-          {showStrength && strengthOk ? (
+          {hasGroups ? (
             <RecoveryMovementGroupsPanel snapshot={snapshot} first={first()} />
           ) : null}
           {hasNotRetested ? <NotRetestedDisclosure strength={strength} first={first()} /> : null}
