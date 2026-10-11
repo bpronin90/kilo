@@ -161,42 +161,6 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     fontSize: TYPOGRAPHY['body-sm'].fontSize,
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
-  // Week picker (#1219): rows never wrap on their own — RecoveryWeekPicker sizes
-  // each chip from the measured width and decides the row split.
-  chipBlock: {
-    gap: 6,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-  chipRowLabel: {
-    fontSize: TYPOGRAPHY['body-sm'].fontSize,
-    fontWeight: '700',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  chip: {
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: GEOMETRY['radius-xl'],
-    borderWidth: 1,
-    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
-    backgroundColor: kua ? kua.surfaceSection : colors.subtleBg,
-  },
-  chipSelected: {
-    backgroundColor: kua ? kua.primary : colors.accent,
-    borderColor: kua ? kua.primary : colors.accent,
-  },
-  chipText: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
-    fontWeight: '700',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  chipTextSelected: {
-    color: kua ? kua.onPrimary : colors.onAccent,
-  },
   detailsPanel: {
     borderTopWidth: 1,
     borderTopColor: kua ? kua.surfaceBorder : colors.divider,
@@ -348,10 +312,6 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
-  historyInclusionWrapper: {
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-  },
   weekIndexRow: {
     paddingHorizontal: 16,
     paddingVertical: 10,
@@ -359,10 +319,21 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     borderTopColor: kua ? kua.surfaceBorder : colors.divider,
     gap: 2,
   },
-  weekIndexRowHeader: {
+  weekIndexFocus: {
+    minHeight: 44,
+    justifyContent: 'center',
+    gap: 2,
+  },
+  weekIndexLogLink: {
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    minHeight: 44,
+  },
+  weekIndexLogLinkText: {
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
+    fontWeight: '700',
+    color: kua ? kua.primary : colors.accentText,
   },
   weekIndexWeekLabel: {
     fontSize: TYPOGRAPHY['body-sm'].fontSize,
@@ -375,9 +346,6 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   },
   weekIndexStateText: {
     fontSize: TYPOGRAPHY['label-md'].fontSize,
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  weekIndexMuted: {
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
 });

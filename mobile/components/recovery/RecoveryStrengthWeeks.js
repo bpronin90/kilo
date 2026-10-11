@@ -1,12 +1,14 @@
 // Weekly strength trend (#1305): one bar per recovery week through the selected
 // week, each the SAME cohort's average % of baseline, on the common percent
 // scale shared with the ladder. Weeks are ordinals, never dates. An unreadable
-// week is a dashed "No data" gap, never a zero.
+// week is a dashed "No data" gap, never a zero. The rows are also the week
+// selector (#1307).
 
 import React, { useMemo } from 'react';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { useTheme } from '../../theme/ThemeContext';
-import { displayPercent } from '../../lib/data/recoveryStrength';
+import { RECOVERY_WEEK_STATUS } from '../../lib/data/recoveryAnalytics';
+import { STRENGTH_STATUS, displayPercent } from '../../lib/data/recoveryStrength';
 import { createStrengthStyles } from './recoveryStrengthStyles';
 
 // One scale for trend and ladder: at least 100%, extended to the next 10 above
@@ -43,35 +45,48 @@ export function StrengthScaleNote({ scaleMax }) {
   );
 }
 
-export function RecoveryStrengthWeeks({ strength, scaleMax }) {
+// The SOLE Analytics week selector (#1307). Membership is every live week of the
+// block (comparison results, by stable week_id), so any week stays selectable:
+// an unreadable or missing one reveals its explicit notice rather than being a
+// silent no-op. The score comes from the as-of trend when it has the week; a week
+// later than the selection (or a baseline with no strength data) says so.
+export function RecoveryStrengthWeeks({ weekResults, strength, scaleMax, selectedWeekId, onSelect }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStrengthStyles(colors, kua), [colors, kua]);
-  // Rows stay even with no average (empty cohort): unreadable weeks remain
-  // visible gaps and readable ones say there is no average, never a zero.
-  if (!strength.weeks || strength.weeks.length < 2) return null;
+  if (!weekResults || weekResults.length < 2) return null;
+  const trend = new Map((strength.weeks || []).map(w => [w.week_id, w]));
   return (
     <View testID="recovery-strength-weeks" style={styles.section}>
       <Text style={styles.sectionTitle}>Week by week</Text>
-      {strength.weeks.map(w => {
-        const scored = w.readable && w.mean != null;
-        const label = scored
-          ? `Week ${w.week_number}: ${displayPercent(w.mean)}% of baseline strength`
-          : w.readable ? `Week ${w.week_number}: no average` : `Week ${w.week_number}: no readable evidence`;
+      {weekResults.map(w => {
+        const t = trend.get(w.week_id);
+        const unreadable = w.status !== RECOVERY_WEEK_STATUS.OK || (t && !t.readable);
+        const scored = !unreadable && t && t.mean != null;
+        const valueText = scored ? `${displayPercent(t.mean)}%`
+          : unreadable ? 'No data'
+          : t ? 'No average'
+          : strength.status === STRENGTH_STATUS.OK ? 'Select to view' : 'Not scored';
+        const selected = w.week_id === selectedWeekId;
+        const label = `Week ${w.week_number}: ${scored ? `${valueText} of baseline strength` : unreadable ? 'no readable evidence' : valueText.toLowerCase()}`;
         return (
-          <View key={w.week_id} testID={`recovery-strength-week-${w.week_number}`} style={styles.weekRow} accessible accessibilityLabel={label}>
-            <Text style={styles.weekLabel}>{`Week ${w.week_number}`}</Text>
+          <Pressable
+            key={w.week_id}
+            testID={`recovery-strength-week-${w.week_number}`}
+            onPress={() => onSelect && onSelect(w.week_id)}
+            style={[styles.weekRow, styles.weekRowPress, selected && styles.weekRowSelected]}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
+            accessibilityLabel={label}
+            accessibilityHint="Shows this week's evidence"
+          >
+            <Text style={[styles.weekLabel, selected && styles.weekLabelSelected]}>{`Week ${w.week_number}`}</Text>
             {scored ? (
-              <>
-                <StrengthBar percent={w.mean} scaleMax={scaleMax} testID={`recovery-strength-week-${w.week_number}-bar`} />
-                <Text style={styles.weekValue}>{`${displayPercent(w.mean)}%`}</Text>
-              </>
+              <StrengthBar percent={t.mean} scaleMax={scaleMax} testID={`recovery-strength-week-${w.week_number}-bar`} />
             ) : (
-              <>
-                <View style={styles.gapTrack} />
-                <Text style={styles.weekValue}>{w.readable ? 'No average' : 'No data'}</Text>
-              </>
+              <View style={styles.gapTrack} />
             )}
-          </View>
+            <Text style={styles.weekValue}>{valueText}</Text>
+          </Pressable>
         );
       })}
     </View>

@@ -169,6 +169,22 @@ function expandDetails(root, { rows = true } = {}) {
 function hostById(root, id) {
   return root.findAll(n => typeof n.type === 'string' && n.props.testID === id);
 }
+// The strength week rows are the sole week selector (#1307).
+function weekRow(root, n) {
+  return root.findAll(x => x.props && x.props.testID === `recovery-strength-week-${n}` && typeof x.props.onPress === 'function')[0];
+}
+function pickWeek(root, n) {
+  const row = weekRow(root, n);
+  expect(row).toBeDefined();
+  act(() => { row.props.onPress(); });
+}
+// Maintenance controls live in the Manage block panel (#1307), collapsed by default.
+function openManage(root) {
+  const trigger = root.findAll(n => n.props && n.props.testID === 'recovery-manage-block-trigger' && n.props.onPress)[0];
+  expect(trigger).toBeDefined();
+  if (!trigger.props.accessibilityState.expanded) act(() => { trigger.props.onPress(); });
+  return root;
+}
 function expandRows(root) {
   const pressables = root.findAll(n => typeof n.type !== 'string' && n.props.testID === 'recovery-exercise-row' && n.props.onPress);
   act(() => { pressables.forEach(n => n.props.onPress()); });
@@ -362,10 +378,7 @@ describe('AnalyticsRecoverySection — active block evidence', () => {
     // Defaults to the latest (current) week, which is the >100% week.
     expect(hasText(root, '148%')).toBe(true);
 
-    const week1Chip = byLabel(root, 'Week 1');
-    act(() => {
-      week1Chip.props.onPress();
-    });
+    pickWeek(root, 1);
 
     // The switch remounts the list collapsed (#1300): expansion cannot leak.
     expect(hasText(root, '148%')).toBe(false);
@@ -472,6 +485,9 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
       );
     });
     const root = component.root;
+    // Read-only context in the evidence card; the editor lives in Manage block.
+    expect(byLabel(root, 'Edit reason for this recovery block: torn hamstring')).toBeUndefined();
+    openManage(root);
     const open = byLabel(root, 'Edit reason for this recovery block: torn hamstring');
     expect(open).toBeDefined();
     expect(sizeOf(open).minHeight).toBeGreaterThanOrEqual(44);
@@ -482,7 +498,7 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
   });
 
   test('the reason affordance is at least 13sp and keeps its accessible label', () => {
-    const root = setup({ blocks: [block()], weeks: [], notes: [] }).root;
+    const root = openManage(setup({ blocks: [block()], weeks: [], notes: [] }).root);
     expect(sizeOf(hostText(root, 'Add a reason')[0]).fontSize).toBeGreaterThanOrEqual(13);
     expect(byLabel(root, 'Add a reason for this recovery block')).toBeDefined();
   });
@@ -583,7 +599,7 @@ describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b
     expect(liveRegions(root).length).toBe(1);
     expect(hasText(root, "Week 2: This week's note is no longer available.")).toBe(true);
 
-    act(() => { byLabel(root, 'Week 1').props.onPress(); });
+    pickWeek(root, 1);
 
     // Week 1 has a strength summary. Still exactly one live-region wrapper —
     // it was never unmounted and remounted across the branch switch.
@@ -903,9 +919,9 @@ describe('AnalyticsRecoverySection — persisted week identity survives gaps', (
     const component = setup({ blocks: [b], weeks: [w1, w3], notes: [n1, n3] });
     const root = component.root;
 
-    expect(root.findAll(inst => inst.props.accessibilityLabel === 'Week 1').length).toBeGreaterThan(0);
-    expect(root.findAll(inst => inst.props.accessibilityLabel === 'Week 3').length).toBeGreaterThan(0);
-    expect(root.findAll(inst => inst.props.accessibilityLabel === 'Week 2').length).toBe(0);
+    expect(weekRow(root, 1)).toBeDefined();
+    expect(weekRow(root, 3)).toBeDefined();
+    expect(weekRow(root, 2)).toBeUndefined();
     // Defaults to the latest live week, which is persisted week_number 3 — not
     // "week 2 of 2" from array position.
     expect(hasText(root, 'Push Pull Legs baseline')).toBe(true);
@@ -947,8 +963,9 @@ describe('AnalyticsRecoverySection — completed-block evidence uses that block\
 
     // The completed block's own weeks (1 and 3) render; the active block's
     // week (also numbered 1, on a different note) is not pulled in.
-    expect(root.findAll(inst => inst.props.accessibilityLabel === 'Week 1').length).toBeGreaterThan(0);
-    expect(root.findAll(inst => inst.props.accessibilityLabel === 'Week 3').length).toBeGreaterThan(0);
+    expect(weekRow(root, 1)).toBeDefined();
+    expect(weekRow(root, 3)).toBeDefined();
+    expect(weekRow(root, 2)).toBeUndefined();
     expect(hasText(root, 'Old Routine')).toBe(true);
     expect(hasText(root, 'Week 3 · Old Routine')).toBe(false);
   });
@@ -994,10 +1011,18 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     const root = component.root;
 
     const row = root.findAll(
-      inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 1, Week One Note'
+      inst => inst.props.accessibilityLabel === 'View note in Log: Push Pull Legs, Recovery Week 1, Week One Note'
     )[0];
     expect(row).toBeDefined();
     expect(typeof row.props.onPress).toBe('function');
+
+    // Focusing the week is a SEPARATE target from the Log link: it never navigates
+    // and the link is not nested inside it.
+    const focus = root.findAll(n => n.props.testID === 'recovery-history-week-rb-c-1' && typeof n.props.onPress === 'function')[0];
+    expect(focus.props.accessibilityLabel).toMatch(/^Show evidence for Push Pull Legs, Recovery Week 1, /);
+    expect(focus.findAll(n => n === row)).toHaveLength(0);
+    act(() => { focus.props.onPress(); });
+    expect(onNavigate).not.toHaveBeenCalled();
 
     act(() => { row.props.onPress(); });
     expect(onNavigate).toHaveBeenCalledWith('Log', { kind: 'note', noteId: 'note-w1' });
@@ -1016,7 +1041,7 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     const root = component.root;
 
     expect(hasText(root, 'In progress')).toBe(true);
-    const row = root.findAll(inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 2, Week Two Note')[0];
+    const row = root.findAll(inst => inst.props.accessibilityLabel === 'View note in Log: Push Pull Legs, Recovery Week 2, Week Two Note')[0];
     expect(typeof row.props.onPress).toBe('function');
     act(() => { row.props.onPress(); });
     expect(onNavigate).toHaveBeenCalledWith('Log', { kind: 'note', noteId: 'note-w2' });
@@ -1029,9 +1054,12 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     const component = setupWithNavigate({ blocks: [b], weeks: [w], notes: [] }, onNavigate);
     const root = component.root;
 
-    const row = root.findAll(inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 1, Unavailable')[0];
+    const row = root.findAll(inst => inst.props.accessibilityLabel === 'Show evidence for Push Pull Legs, Recovery Week 1, Note unavailable')[0];
     expect(row).toBeDefined();
-    expect(row.props.onPress).toBeUndefined();
+    // The week can still be focused, but there is no Log navigation for it.
+    expect(typeof row.props.onPress).toBe('function');
+    expect(hostById(root, 'recovery-history-week-log-rb-c-1')).toHaveLength(0);
+    act(() => { row.props.onPress(); });
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
@@ -1044,11 +1072,11 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     const root = component.root;
 
     // Title is known and must appear; accessible identity uses the note title, not "Unavailable".
-    const row = root.findAll(inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 1, Huge Note')[0];
+    const row = root.findAll(inst => inst.props.accessibilityLabel === 'Show evidence for Push Pull Legs, Recovery Week 1, Note unavailable')[0];
     expect(row).toBeDefined();
-    expect(row.props.onPress).toBeUndefined();
+    expect(hostById(root, 'recovery-history-week-log-rb-c-1')).toHaveLength(0);
     expect(hasText(root, 'Huge Note')).toBe(true);
-    expect(hasText(root, 'Unavailable')).toBe(true);
+    expect(hasText(root, 'Note unavailable')).toBe(true);
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
@@ -1063,11 +1091,11 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     const root = component.root;
 
     // The note's title is still known and must appear in the row and accessible identity.
-    const row = root.findAll(inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 1, Orphan Sets')[0];
+    const row = root.findAll(inst => inst.props.accessibilityLabel === 'Show evidence for Push Pull Legs, Recovery Week 1, Note unavailable')[0];
     expect(row).toBeDefined();
-    expect(row.props.onPress).toBeUndefined();
+    expect(hostById(root, 'recovery-history-week-log-rb-c-1')).toHaveLength(0);
     expect(hasText(root, 'Orphan Sets')).toBe(true);
-    expect(hasText(root, 'Unavailable')).toBe(true);
+    expect(hasText(root, 'Note unavailable')).toBe(true);
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
@@ -1077,7 +1105,7 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     const component = setupWithNavigate({ blocks: [b], weeks: [w], notes: [] }, jest.fn());
     const root = component.root;
 
-    expect(hasText(root, 'Unavailable')).toBe(true);
+    expect(hasText(root, 'Note unavailable')).toBe(true);
     // The completion date must not appear as the state text when the note is unavailable.
     expect(hasText(root, 'Mar 15, 2026')).toBe(false);
   });
@@ -1091,9 +1119,9 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     const component = setupWithNavigate({ blocks: [b], weeks: [w5, w1], notes: [n1, n5] }, jest.fn());
     const root = component.root;
 
-    expect(root.findAll(inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 1, Note One').length).toBeGreaterThan(0);
-    expect(root.findAll(inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 5, Note Five').length).toBeGreaterThan(0);
-    expect(root.findAll(inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 2, Note One').length).toBe(0);
+    expect(root.findAll(inst => inst.props.accessibilityLabel === 'View note in Log: Push Pull Legs, Recovery Week 1, Note One').length).toBeGreaterThan(0);
+    expect(root.findAll(inst => inst.props.accessibilityLabel === 'View note in Log: Push Pull Legs, Recovery Week 5, Note Five').length).toBeGreaterThan(0);
+    expect(root.findAll(inst => inst.props.accessibilityLabel === 'View note in Log: Push Pull Legs, Recovery Week 2, Note One').length).toBe(0);
   });
 
   test('accessible identity includes block title, persisted week ordinal, and note title', () => {
@@ -1103,7 +1131,7 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     const component = setupWithNavigate({ blocks: [b], weeks: [w], notes: [n] }, jest.fn());
     const root = component.root;
 
-    const row = root.findAll(inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 7, Seventh Session')[0];
+    const row = root.findAll(inst => inst.props.accessibilityLabel === 'View note in Log: Push Pull Legs, Recovery Week 7, Seventh Session')[0];
     expect(row).toBeDefined();
   });
 
@@ -1127,11 +1155,11 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     const root = component.root;
 
     // Each block's week appears with its own block title in the label.
-    expect(root.findAll(inst => inst.props.accessibilityLabel === 'Block One, Recovery Week 1, Block One Note').length).toBeGreaterThan(0);
-    expect(root.findAll(inst => inst.props.accessibilityLabel === 'Block Two, Recovery Week 1, Block Two Note').length).toBeGreaterThan(0);
+    expect(root.findAll(inst => inst.props.accessibilityLabel === 'View note in Log: Block One, Recovery Week 1, Block One Note').length).toBeGreaterThan(0);
+    expect(root.findAll(inst => inst.props.accessibilityLabel === 'View note in Log: Block Two, Recovery Week 1, Block Two Note').length).toBeGreaterThan(0);
     // Block One's note title must not appear under Block Two's label, and vice versa.
-    expect(root.findAll(inst => inst.props.accessibilityLabel === 'Block One, Recovery Week 1, Block Two Note').length).toBe(0);
-    expect(root.findAll(inst => inst.props.accessibilityLabel === 'Block Two, Recovery Week 1, Block One Note').length).toBe(0);
+    expect(root.findAll(inst => inst.props.accessibilityLabel === 'View note in Log: Block One, Recovery Week 1, Block Two Note').length).toBe(0);
+    expect(root.findAll(inst => inst.props.accessibilityLabel === 'View note in Log: Block Two, Recovery Week 1, Block One Note').length).toBe(0);
   });
 });
 
@@ -1424,7 +1452,7 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     expandDetails(root, { rows: false });
     expect(rosterLabel(root)).toContain('Rebuilding 1');
 
-    act(() => { byLabel(root, 'Week 1').props.onPress(); });
+    pickWeek(root, 1);
 
     expect(summaryLabel()).toMatch(/^Week 1: /);
     expect(rosterLabel(root)).toContain('Rebuilding 0');
@@ -1547,16 +1575,17 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
   });
 });
 
-describe('AnalyticsRecoverySection — inclusion preference (#728)', () => {
+describe('AnalyticsRecoverySection — inclusion preference (#728, #1307)', () => {
   const { RECOVERY_INCLUSION_LABEL } = require('../components/RecoveryInclusionToggle');
+  const { formatDate } = require('../lib/format');
   let mockSetInclude;
 
-  function completedBlock(id, include = false) {
-    return block({ id, completed_at: '2026-06-01T00:00:00Z', include_in_normal_analytics: include });
+  function completedBlock(id, include = false, completedAt = '2026-06-01T00:00:00Z') {
+    return block({ id, completed_at: completedAt, include_in_normal_analytics: include });
   }
 
-  // The inclusion switches live on the completed-block rows inside the history
-  // panel, which is collapsed by default since #758.
+  // The one inclusion switch belongs to the FOCUSED block and lives in the
+  // Manage block panel (#1307); history rows only focus a block.
   function setupInclusion(props = {}) {
     let component;
     act(() => {
@@ -1564,9 +1593,17 @@ describe('AnalyticsRecoverySection — inclusion preference (#728)', () => {
         <AnalyticsRecoverySection blocks={[]} weeks={[]} notes={[]} {...props} />
       );
     });
-    const toggle = byLabel(component.root, 'Expand recovery history');
-    if (toggle) act(() => { toggle.props.onPress(); });
+    openManage(component.root);
     return component;
+  }
+
+  function focusBlock(root, b) {
+    const toggle = byLabel(root, 'Expand recovery history');
+    if (toggle) act(() => { toggle.props.onPress(); });
+    act(() => {
+      byLabel(root, `View recovery evidence for ${b.baseline_note_title}, completed ${formatDate(b.completed_at)}`).props.onPress();
+    });
+    openManage(root);
   }
 
   function switchesFor(root) {
@@ -1587,38 +1624,39 @@ describe('AnalyticsRecoverySection — inclusion preference (#728)', () => {
     jest.restoreAllMocks();
   });
 
-  test('completed blocks each expose an inclusion switch reflecting their stored preference', () => {
-    const b1 = completedBlock('rb-a', false);
-    const b2 = completedBlock('rb-b', true);
+  test('exactly one switch exists for the focused block and reflects its stored preference', () => {
+    const b1 = { ...completedBlock('rb-a', false, '2026-06-01T00:00:00Z'), baseline_note_title: 'Push Pull Legs' };
+    const b2 = { ...completedBlock('rb-b', true, '2026-05-01T00:00:00Z'), baseline_note_title: 'Upper Lower' };
     const component = setupInclusion({ blocks: [b1, b2] });
-    const controls = switchesFor(component.root);
+    let controls = switchesFor(component.root);
+    expect(controls).toHaveLength(1);
+    expect(controls[0].props.testID).toBe('recovery-inclusion-switch-rb-a');
+    expect(controls[0].props.value).toBe(false);
+    expect(controls[0].props.accessibilityLabel).toContain('Push Pull Legs');
 
-    expect(controls.length).toBe(2);
-    const byId = Object.fromEntries(
-      controls.map(c => [c.props.testID.replace('recovery-inclusion-switch-', ''), c])
-    );
-    expect(byId['rb-a'].props.value).toBe(false);
-    expect(byId['rb-b'].props.value).toBe(true);
+    focusBlock(component.root, b2);
+    controls = switchesFor(component.root);
+    expect(controls).toHaveLength(1);
+    expect(controls[0].props.testID).toBe('recovery-inclusion-switch-rb-b');
+    expect(controls[0].props.value).toBe(true);
+    expect(controls[0].props.accessibilityLabel).toContain('Upper Lower');
   });
 
-  test('each inclusion switch carries its own block identity in the spoken label', () => {
-    const b1 = { ...completedBlock('rb-a'), baseline_note_title: 'Push Pull Legs' };
-    const b2 = { ...completedBlock('rb-b'), baseline_note_title: 'Upper Lower' };
-    const component = setupInclusion({ blocks: [b1, b2] });
-    const controls = switchesFor(component.root);
-    const byId = Object.fromEntries(
-      controls.map(c => [c.props.testID.replace('recovery-inclusion-switch-', ''), c])
-    );
-
-    expect(byId['rb-a'].props.accessibilityLabel).toContain('Push Pull Legs');
-    expect(byId['rb-b'].props.accessibilityLabel).toContain('Upper Lower');
-    expect(byId['rb-a'].props.accessibilityLabel).not.toBe(byId['rb-b'].props.accessibilityLabel);
+  test('history rows no longer carry an inclusion switch', () => {
+    const b1 = completedBlock('rb-a');
+    const b2 = completedBlock('rb-b', false, '2026-05-01T00:00:00Z');
+    let component;
+    act(() => { component = render.create(<AnalyticsRecoverySection blocks={[b1, b2]} weeks={[]} notes={[]} />); });
+    act(() => { byLabel(component.root, 'Expand recovery history').props.onPress(); });
+    expect(switchesFor(component.root)).toHaveLength(0);
   });
 
-  test('the active block has no inclusion switch in Analytics', () => {
+  test('the active block has an inclusion switch in its Manage block, default off', () => {
     const active = block({ id: 'rbActive', completed_at: null });
     const component = setupInclusion({ blocks: [active] });
-    expect(switchesFor(component.root).length).toBe(0);
+    const controls = switchesFor(component.root);
+    expect(controls).toHaveLength(1);
+    expect(controls[0].props.value).toBe(false);
   });
 
   test('a successful write calls setIncludeInNormalAnalytics with the correct args', async () => {
@@ -1638,43 +1676,54 @@ describe('AnalyticsRecoverySection — inclusion preference (#728)', () => {
 
     await act(async () => { await control.props.onValueChange(true); });
 
-    const allTexts = component.root.findAllByType('Text').map(t => {
-      const c = t.props.children;
-      return Array.isArray(c) ? c.join('') : String(c ?? '');
-    });
-    expect(allTexts).toContain('Network error.');
+    expect(findAllText(component.root)).toContain('Network error.');
     expect(switchesFor(component.root)[0].props.value).toBe(false);
   });
 
-  test('an in-flight write disables ALL completed-block switches, not just the one being written', async () => {
-    const b1 = completedBlock('rb-a', false);
-    const b2 = completedBlock('rb-b', true);
+  test('an error stays with the block that failed and does not appear on another block', async () => {
+    const b1 = { ...completedBlock('rb-a', false, '2026-06-01T00:00:00Z'), baseline_note_title: 'Push Pull Legs' };
+    const b2 = { ...completedBlock('rb-b', false, '2026-05-01T00:00:00Z'), baseline_note_title: 'Upper Lower' };
+    mockSetInclude.mockResolvedValue({ ok: false, error: 'Network error.' });
+    const component = setupInclusion({ blocks: [b1, b2] });
+    await act(async () => { await switchesFor(component.root)[0].props.onValueChange(true); });
+    expect(findAllText(component.root)).toContain('Network error.');
+    focusBlock(component.root, b2);
+    expect(findAllText(component.root)).not.toContain('Network error.');
+  });
+
+  test('an in-flight write disables the switch, including another block\'s after a focus change', async () => {
+    const b1 = { ...completedBlock('rb-a', false, '2026-06-01T00:00:00Z'), baseline_note_title: 'Push Pull Legs' };
+    const b2 = { ...completedBlock('rb-b', true, '2026-05-01T00:00:00Z'), baseline_note_title: 'Upper Lower' };
     let resolveWrite;
     mockSetInclude.mockImplementation(() => new Promise(resolve => { resolveWrite = resolve; }));
     const component = setupInclusion({ blocks: [b1, b2] });
+    expect(switchesFor(component.root)[0].props.disabled).toBeFalsy();
 
-    const byId = () => Object.fromEntries(
-      switchesFor(component.root).map(c => [c.props.testID.replace('recovery-inclusion-switch-', ''), c])
-    );
-    expect(Object.values(byId()).every(c => !c.props.disabled)).toBe(true);
+    await act(async () => { switchesFor(component.root)[0].props.onValueChange(true); });
+    expect(switchesFor(component.root)[0].props.disabled).toBe(true);
+    // A second tap while busy never starts another write.
+    await act(async () => { switchesFor(component.root)[0].props.onValueChange(false); });
+    expect(mockSetInclude).toHaveBeenCalledTimes(1);
 
-    await act(async () => { byId()['rb-a'].props.onValueChange(true); });
-    expect(Object.values(byId()).every(c => c.props.disabled)).toBe(true);
+    focusBlock(component.root, b2);
+    expect(switchesFor(component.root)[0].props.testID).toBe('recovery-inclusion-switch-rb-b');
+    expect(switchesFor(component.root)[0].props.disabled).toBe(true);
 
     await act(async () => { resolveWrite({ ok: true }); });
-    expect(Object.values(byId()).every(c => !c.props.disabled)).toBe(true);
+    expect(switchesFor(component.root)[0].props.disabled).toBeFalsy();
   });
 
-  test('mutationsAllowed=false disables every inclusion switch before any write', () => {
+  test('mutationsAllowed=false disables the switch before any write, and the panel still opens', () => {
     const b = completedBlock('rb1', false);
     const component = setupInclusion({ blocks: [b], mutationsAllowed: false });
     const [control] = switchesFor(component.root);
 
     expect(control.props.disabled).toBe(true);
     expect(control.props.accessibilityState.disabled).toBe(true);
+    expect(hostById(component.root, 'recovery-manage-locked')).toHaveLength(1);
   });
 
-  test('a pending recovery operation disables inclusion switches rather than letting them race', () => {
+  test('a pending recovery operation disables the switch rather than letting it race', () => {
     const b = completedBlock('rb1', false);
     const component = setupInclusion({
       blocks: [b],
@@ -1702,6 +1751,7 @@ describe('AnalyticsRecoverySection — reopen the newest completed block (#839)'
         <AnalyticsRecoverySection blocks={[]} weeks={[]} notes={[]} {...props} />
       );
     });
+    openManage(component.root);
     return component;
   }
 
@@ -1881,9 +1931,11 @@ describe('AnalyticsRecoverySection — strength trend by recovery week (#1305)',
 
   test('selecting an earlier week excludes later evidence from the trend and headline', () => {
     const root = setupTrend();
-    act(() => { byLabel(root, 'Week 1').props.onPress(); });
-    // One week through the selection: no trend rows, headline from Week 1 only.
-    expect(hostById(root, 'recovery-strength-weeks')).toHaveLength(0);
+    pickWeek(root, 1);
+    // Headline from Week 1 only; later weeks stay selectable but show no score.
+    expect(hostById(root, 'recovery-strength-weeks')).toHaveLength(1);
+    expect(hostTextsIn(weekRow(root, 3))).toContain('Select to view');
+    expect(hostById(root, 'recovery-strength-week-3-bar')).toHaveLength(0);
     expect(hostById(root, 'recovery-strength-summary')[0].props.accessibilityLabel).toMatch(/^Week 1: 74% /);
     expect(hasText(root, '88%')).toBe(false);
   });
@@ -1892,7 +1944,7 @@ describe('AnalyticsRecoverySection — strength trend by recovery week (#1305)',
     const snap = captureRecoveryBaselineFromText(BASELINE_TEXT);
     const legacy = { ...snap, exercises: snap.exercises.map(({ best_e1rm_weight, best_e1rm_reps, ...r }) => r) };
     const root = setup({ blocks: [block({ baseline: legacy })], weeks: [week(1, 'note-w1')], notes: [note('note-w1', '-Bench\n- 135 5')] }).root;
-    expect(hasText(root, 'Baseline best-set data unavailable. Rebuild the baseline below to score strength.')).toBe(true);
+    expect(hasText(root, 'Baseline best-set data unavailable. Rebuild the baseline in Manage block to score strength.')).toBe(true);
     expect(hasText(root, 'Pull-up: not logged in any week yet')).toBe(true);
     expect(hostById(root, 'recovery-strength-weeks')).toHaveLength(0);
     expect(hostById(root, 'recovery-strength-scale')).toHaveLength(0);
@@ -1950,6 +2002,7 @@ describe('AnalyticsRecoverySection — strength trend by recovery week (#1305)',
         />
       );
     });
+    openManage(c.root);
     const refused = hostById(c.root, 'recovery-rebuild-refused')[0];
     expect(refused).toBeDefined();
     expect(hostTextsIn(refused)[0]).toMatch(/Row, heavy.*can’t be carried over safely.*not rebuilt/);
@@ -2011,12 +2064,14 @@ describe('AnalyticsRecoverySection — scannable hierarchy (#1209)', () => {
     expect(order[0].props.testID).toBe('recovery-strength-weeks');
   });
 
-  test('week picker is one compact labelled row with numeric chips and full accessible names', () => {
+  test('the week rows are the only week selector: pressable rows with role, selected state and a full name', () => {
     const root = twoWeeks();
-    const chip = byLabel(root, 'Week 1');
-    expect(chip.props.accessibilityRole).toBe('button');
-    expect(hasText(root, 'Week')).toBe(true);
-    expect(hasText(root, '1')).toBe(true);
+    const row = weekRow(root, 1);
+    expect(row.props.accessibilityRole).toBe('button');
+    expect(row.props.accessibilityLabel).toMatch(/^Week 1: /);
+    expect(require('react-native').StyleSheet.flatten(row.props.style).minHeight).toBeGreaterThanOrEqual(44);
+    // No second selector: no WeekPicker chips or caption.
+    expect(root.findAll(n => /^recovery-week-(chip|picker)/.test(n.props.testID || ''))).toHaveLength(0);
   });
 });
 
@@ -2036,10 +2091,10 @@ describe('AnalyticsRecoverySection — per-week vs block state (#1193)', () => {
     const root = setupTwoWeeks();
     expect(hasText(root, 'linked weeks')).toBe(false);
     expect(hasText(root, 'pick a week')).toBe(false);
-    expect(byLabel(root, 'Week 2').props.accessibilityState.selected).toBe(true);
-    expect(byLabel(root, 'Week 1').props.accessibilityState.selected).toBe(false);
-    act(() => { byLabel(root, 'Week 1').props.onPress(); });
-    expect(byLabel(root, 'Week 1').props.accessibilityState.selected).toBe(true);
+    expect(weekRow(root, 2).props.accessibilityState.selected).toBe(true);
+    expect(weekRow(root, 1).props.accessibilityState.selected).toBe(false);
+    pickWeek(root, 1);
+    expect(weekRow(root, 1).props.accessibilityState.selected).toBe(true);
     expect(hostById(root, 'recovery-strength-summary')[0].props.accessibilityLabel).toMatch(/^Week 1:/);
     expect(hasText(root, 'linked weeks')).toBe(false);
   });
@@ -2062,7 +2117,7 @@ describe('AnalyticsRecoverySection — per-week vs block state (#1193)', () => {
     // Added-during-recovery work stays its own row.
     expect(rowLabels(root).some(l => l.startsWith('Curl, Added during recovery'))).toBe(true);
 
-    act(() => { byLabel(root, 'Week 1').props.onPress(); });
+    pickWeek(root, 1);
     expect(hasText(root, 'Not trained in any linked week')).toBe(false);
   });
 
@@ -2265,144 +2320,6 @@ describe('AnalyticsRecoverySection — routine-anchored summary label (#1219, #1
   test('with no hero (no week logged) the routine is still named once, in the bottom line', () => {
     const root = setup({ blocks: [block()], weeks: [], notes: [] }).root;
     expect(findAllText(root).filter(t => t.includes('Push Pull Legs'))).toEqual(['Push Pull Legs']);
-  });
-});
-
-describe('AnalyticsRecoverySection — phone-safe week picker (#1219)', () => {
-  const { StyleSheet } = require('react-native');
-  const {
-    computeWeekPickerLayout, WEEK_CHIP_MIN,
-  } = require('../components/recovery/RecoveryWeekPicker');
-
-  const weekSet = (n) => Array.from({ length: n }, (_, i) => week(i + 1, `note-w${i + 1}`, i === 0 ? { completed_at: '2026-05-09T00:00:00Z' } : {}));
-  const notesFor = (n) => Array.from({ length: n }, (_, i) => note(`note-w${i + 1}`, BASELINE_TEXT));
-  const mountWeeks = (n) => setup({ blocks: [block()], weeks: weekSet(n), notes: notesFor(n) }).root;
-  const host = (root, id) => root.findAll(n => typeof n.type === 'string' && n.props.testID === id);
-  const chips = (root) => root.findAll(n => typeof n.type === 'string' && /^recovery-week-chip-\d+$/.test(n.props.testID || ''));
-  const styleOf = (c) => StyleSheet.flatten(c.props.style);
-
-  beforeEach(() => { mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 }; });
-
-  describe('layout decision (weeks x width x font scale)', () => {
-    // Expected mode per contract: forced scroll first (13+ weeks, fontScale >=
-    // 1.3, width too narrow for 3 chips), then 1-6 weeks single-row when 44dp
-    // chips fit else the strip, then 7-12 balanced rows. Width 252 is a
-    // compact phone card, 322/390 are ordinary, 640 is a wide layout.
-    const MODE = (count, width, fs) => {
-      if (count > 12 || fs >= 1.3) return 'scroll';
-      const perRowMax = Math.floor((width + 4) / 48);
-      if (perRowMax < 3) return 'scroll';
-      if (count <= perRowMax) return 'single';
-      return count <= 6 ? 'scroll' : 'grid';
-    };
-    const cases = [];
-    for (const count of [1, 2, 6, 7, 9, 12, 13]) {
-      for (const width of [252, 322, 390, 640]) {
-        for (const fs of [1, 1.5, 2]) cases.push([count, width, fs, MODE(count, width, fs)]);
-      }
-    }
-    test.each(cases)('%i weeks @ %idp, %sx font -> %s, never a wrapped orphan', (count, width, fs, mode) => {
-      const l = computeWeekPickerLayout({ count, width, fontScale: fs });
-      expect(l.mode).toBe(mode);
-      expect(l.chipWidth).toBeGreaterThanOrEqual(WEEK_CHIP_MIN);
-      expect(l.rowSizes.reduce((n, x) => n + x, 0)).toBe(count);
-      if (mode === 'single' || mode === 'scroll') expect(l.rows).toBe(1);
-      if (mode === 'grid') {
-        // Balanced: sizes differ by at most one and no row is a lone chip.
-        expect(Math.max(...l.rowSizes) - Math.min(...l.rowSizes)).toBeLessThanOrEqual(1);
-        expect(Math.min(...l.rowSizes)).toBeGreaterThanOrEqual(2);
-        expect(l.rowSizes[0] * l.chipWidth + (l.rowSizes[0] - 1) * 4).toBeLessThanOrEqual(width);
-      }
-      if (mode === 'single') expect(l.chipWidth * count + (count - 1) * 4).toBeLessThanOrEqual(width);
-      // Ordinary 1-6 week sets never become a wrapped grid.
-      if (count <= 6) expect(l.mode).not.toBe('grid');
-    });
-
-    test('the spec examples: 6 @ 322 / 1.5x scrolls, 13 on a wide layout scrolls, 6 @ 252 scrolls', () => {
-      expect(computeWeekPickerLayout({ count: 6, width: 322, fontScale: 1.5 }).mode).toBe('scroll');
-      expect(computeWeekPickerLayout({ count: 13, width: 640 }).mode).toBe('scroll');
-      expect(computeWeekPickerLayout({ count: 6, width: 252 }).mode).toBe('scroll');
-      expect(computeWeekPickerLayout({ count: 6, width: 322 }).mode).toBe('single');
-      expect(computeWeekPickerLayout({ count: 6, width: 292 }).mode).toBe('single');
-    });
-  });
-
-  describe('rendered picker', () => {
-    test('one week has no picker (nothing to choose)', () => {
-      expect(host(mountWeeks(1), 'recovery-week-picker')).toHaveLength(0);
-    });
-
-    test('six weeks render on a single row with >= 44dp chips, labels, selection and completed state', () => {
-      const root = mountWeeks(6);
-      expect(host(root, 'recovery-week-picker-row-0')).toHaveLength(1);
-      expect(host(root, 'recovery-week-picker-row-1')).toHaveLength(0);
-      expect(chips(root)).toHaveLength(6);
-      chips(root).forEach(c => {
-        expect(styleOf(c).width).toBeGreaterThanOrEqual(44);
-        expect(styleOf(c).minHeight).toBeGreaterThanOrEqual(44);
-      });
-      expect(byLabel(root, 'Week 1, completed')).toBeDefined();
-      expect(byLabel(root, 'Week 2')).toBeDefined();
-      expect(byLabel(root, 'Week 6').props.accessibilityState).toEqual({ selected: true });
-      expect(byLabel(root, 'Week 5').props.accessibilityState).toEqual({ selected: false });
-      act(() => { byLabel(root, 'Week 2').props.onPress(); });
-      expect(byLabel(root, 'Week 2').props.accessibilityState).toEqual({ selected: true });
-      expect(byLabel(root, 'Week 6').props.accessibilityState).toEqual({ selected: false });
-      // The week change is announced through the existing live region.
-      expect(root.findAll(n => n.props.accessibilityLiveRegion === 'polite' && n.props.testID !== 'recovery-about-note' && typeof n.type === 'string').length).toBe(1);
-      expect(host(root, 'recovery-strength-summary')[0].props.accessibilityLabel).toMatch(/^Week 2:/);
-    });
-
-    test.each([7, 12])('%i weeks render as two balanced rows with every chip present', (count) => {
-      const root = mountWeeks(count);
-      const r0 = host(root, 'recovery-week-picker-row-0')[0];
-      const r1 = host(root, 'recovery-week-picker-row-1')[0];
-      expect(host(root, 'recovery-week-picker-row-2')).toHaveLength(0);
-      const inRow = (r) => r.findAll(n => typeof n.type === 'string' && /^recovery-week-chip-/.test(n.props.testID || '')).length;
-      expect(inRow(r0) + inRow(r1)).toBe(count);
-      expect(inRow(r1)).toBeGreaterThanOrEqual(inRow(r0) - 1);
-      for (let i = 1; i <= count; i++) expect(byLabel(root, i === 1 ? 'Week 1, completed' : `Week ${i}`)).toBeDefined();
-    });
-
-    test('13 weeks use a horizontally scrollable strip rather than compressed chips', () => {
-      const root = mountWeeks(13);
-      expect(host(root, 'recovery-week-picker-scroll').length).toBeGreaterThan(0);
-      expect(host(root, 'recovery-week-picker-row-0')).toHaveLength(0);
-      expect(chips(root)).toHaveLength(13);
-      chips(root).forEach(c => expect(styleOf(c).width).toBeGreaterThanOrEqual(44));
-    });
-
-    test('in strip mode the selected chip is scrolled into view', () => {
-      const { ScrollView } = require('react-native');
-      const root = mountWeeks(13);
-      const calls = () => root.findByType(ScrollView).instance.scrollTo.mock.calls;
-      expect(host(root, 'recovery-week-picker-scroll').length).toBeGreaterThan(0);
-      // Newest week (13) is selected by default, far from the origin.
-      expect(calls().length).toBeGreaterThan(0);
-      expect(calls()[calls().length - 1][0].x).toBeGreaterThan(300);
-      act(() => { byLabel(root, 'Week 1, completed').props.onPress(); });
-      expect(calls()[calls().length - 1][0].x).toBe(0);
-    });
-
-    test('a large font scale degrades a multi-row set to the scrollable strip', () => {
-      mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1.6 };
-      const root = mountWeeks(8);
-      expect(host(root, 'recovery-week-picker-scroll').length).toBeGreaterThan(0);
-      expect(chips(root)).toHaveLength(8);
-    });
-
-    test('a constrained measured width degrades to the strip and keeps the selected week', () => {
-      const root = mountWeeks(8);
-      expect(host(root, 'recovery-week-picker-row-1')).toHaveLength(1);
-      act(() => { byLabel(root, 'Week 3').props.onPress(); });
-      expect(byLabel(root, 'Week 3').props.accessibilityState).toEqual({ selected: true });
-      act(() => { host(root, 'recovery-week-picker')[0].props.onLayout({ nativeEvent: { layout: { width: 100 } } }); });
-      expect(host(root, 'recovery-week-picker-scroll').length).toBeGreaterThan(0);
-      expect(byLabel(root, 'Week 3').props.accessibilityState).toEqual({ selected: true });
-      act(() => { host(root, 'recovery-week-picker')[0].props.onLayout({ nativeEvent: { layout: { width: 322 } } }); });
-      expect(host(root, 'recovery-week-picker-row-0')).toHaveLength(1);
-      expect(byLabel(root, 'Week 3').props.accessibilityState).toEqual({ selected: true });
-    });
   });
 });
 
@@ -2784,7 +2701,12 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
     expect(order.indexOf('INFO')).toBe(order.indexOf('Started') + 1);
     expect(StyleSheet.flatten(info.props.style).marginLeft).not.toBe('auto');
     expect(StyleSheet.flatten(info.props.style)).toMatchObject({ minHeight: 44, minWidth: 44 });
-    // Reason row: labelled, one tappable >=44dp row with a visible edit glyph.
+    // Evidence keeps the reason as quiet read-only context (#1307) ...
+    const context = hostById(root, 'recovery-reason-context')[0];
+    expect(context.props.accessibilityRole).toBeUndefined();
+    expect(hostById(root, 'recovery-reason-row')).toHaveLength(0);
+    // ... and the editable row lives in Manage block: labelled, one tappable >=44dp row.
+    openManage(root);
     const reasonRow = hostById(root, 'recovery-reason-row')[0];
     expect(reasonRow.props.accessibilityRole).toBe('button');
     expect(StyleSheet.flatten(reasonRow.props.style).minHeight).toBeGreaterThanOrEqual(44);
@@ -2792,7 +2714,7 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
   });
 
   test('no reason: the Reason row invites "Add a reason" with an add glyph; a read-only block shows the reason without a control', () => {
-    const empty = mountWith({ reason: null }, { onSaveReason: saveReason });
+    const empty = openManage(mountWith({ reason: null }, { onSaveReason: saveReason }));
     const row = hostById(empty, 'recovery-reason-row')[0];
     expect(findAllText(row)).toEqual(['Reason', 'Add a reason']);
     expect(row.props.accessibilityLabel).toBe('Add a reason for this recovery block');
@@ -2805,21 +2727,21 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
       act(() => { c = render.create(<BlockEvidence block={block({ reason })} weeks={[]} notes={[]} unit="lb" />); });
       return c.root;
     };
-    expect(hostById(evidence(null), 'recovery-reason-row')).toHaveLength(0);
-    const readOnly = hostById(evidence('torn hamstring'), 'recovery-reason-row')[0];
+    expect(hostById(evidence(null), 'recovery-reason-context')).toHaveLength(0);
+    const readOnly = hostById(evidence('torn hamstring'), 'recovery-reason-context')[0];
     expect(readOnly.props.accessibilityRole).toBeUndefined();
     expect(findAllText(readOnly)).toEqual(['Reason', 'torn hamstring']);
   });
 
   test('locked or busy reason keeps the row visible but disabled', () => {
-    const root = mountWith({ reason: 'torn hamstring' }, { onSaveReason: saveReason });
+    const root = openManage(mountWith({ reason: 'torn hamstring' }, { onSaveReason: saveReason }));
     // (mutations are allowed in this harness; the disabled path is covered in recovery-reason.test.js)
     expect(hostById(root, 'recovery-reason-row')[0].props.accessibilityState).toEqual({ disabled: false });
   });
 
   test('a long reason gets two ellipsized lines with the full text on its label', () => {
     const long = 'x'.repeat(200);
-    const root = mountWith({ reason: long }, { onSaveReason: saveReason });
+    const root = openManage(mountWith({ reason: long }, { onSaveReason: saveReason }));
     const t = root.findAll(n => n.type === 'Text' && [].concat(n.props.children).join('') === long)[0];
     expect(t.props.numberOfLines).toBe(2);
     expect(byLabel(root, `Edit reason for this recovery block: ${long}`)).toBeDefined();
@@ -2868,6 +2790,7 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
       expect(date).toBeDefined();
       expect(date.findAll(n => n.type === 'Text' && n.props.numberOfLines !== undefined)).toHaveLength(0);
       expect(StyleSheet.flatten(date.props.style).flexWrap).toBe('wrap');
+      openManage(root);
       const reason = byLabel(root, `Edit reason for this recovery block: ${longReason}`);
       expect(reason).toBeDefined();
       expect(StyleSheet.flatten(reason.props.style).minHeight).toBeGreaterThanOrEqual(44);
@@ -3480,7 +3403,7 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
   });
 
   test('opening the editor swaps the Reason row for the editor, Cancel restores it, and the disclosure stays a polite live region', () => {
-    const root = mountOwner({}, { onSaveReason: async () => ({ ok: true }) });
+    const root = openManage(mountOwner({}, { onSaveReason: async () => ({ ok: true }) }));
     act(() => { byLabel(root, 'Edit reason for this recovery block: Back injury').props.onPress(); });
     expect(hostById(root, 'recovery-reason-row')).toHaveLength(0);
     expect(byLabel(root, 'Reason for this recovery block')).toBeDefined();
@@ -3527,7 +3450,7 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
     const { BlockEvidence } = require('../components/recovery/RecoveryEvidence');
     let c;
     act(() => { c = render.create(<BlockEvidence block={block({ reason: 'torn hamstring' })} weeks={[]} notes={[]} unit="lb" />); });
-    const row = hostById(c.root, 'recovery-reason-row')[0];
+    const row = hostById(c.root, 'recovery-reason-context')[0];
     expect(row.props.accessible).toBe(true);
     expect(row.props.accessibilityLabel).toBe('Reason: torn hamstring');
   });
@@ -3551,6 +3474,7 @@ describe('AnalyticsRecoverySection — rebuild a v1 baseline (#1227)', () => {
         <AnalyticsRecoverySection blocks={[blk]} weeks={[]} notes={notes} {...props} />
       );
     });
+    openManage(component.root);
     return component;
   };
   const press = (root, label) => act(() => { byLabel(root, label).props.onPress(); });
@@ -3646,6 +3570,7 @@ describe('Match exercise names', () => {
         <AnalyticsRecoverySection blocks={[blk]} weeks={[wk]} notes={notesFor} {...props} />
       );
     });
+    openManage(component.root);
     return component;
   };
   const press = (root, label) => act(() => { byLabel(root, label).props.onPress(); });
@@ -3733,6 +3658,9 @@ describe('Match exercise names', () => {
     act(() => { view.props.onPress(); });
     expect(byLabel(root, MATCH)).toBeUndefined();
     press(root, 'View active recovery block');
+    // Back on the active block the panel is a fresh, collapsed instance.
+    expect(byLabel(root, 'Match exercise names')).toBeUndefined();
+    openManage(root);
     expect(byLabel(root, MATCH)).toBeUndefined();
     expect(byLabel(root, 'Match exercise names')).toBeDefined();
   });

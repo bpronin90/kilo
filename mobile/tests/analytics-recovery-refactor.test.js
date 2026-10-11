@@ -19,7 +19,8 @@ import {
   WeekEvidence,
   WeekUnavailableNotice,
 } from '../components/recovery/RecoveryStateGroups';
-import { WeekPicker } from '../components/recovery/RecoveryWeekPicker';
+import { RecoveryStrengthWeeks } from '../components/recovery/RecoveryStrengthWeeks';
+import { RecoveryManageBlock } from '../components/recovery/RecoveryManageBlock';
 import { createStyles } from '../components/recovery/analyticsRecoveryStyles';
 import { RecoveryInclusionToggle } from '../components/RecoveryInclusionToggle';
 import { captureRecoveryBaselineFromText } from '../lib/data/recoveryBlocks';
@@ -135,7 +136,8 @@ describe('#1052 refactor — export and boundary parity', () => {
     expect(typeof BlockEvidence).toBe('function');
     expect(typeof WeekIndexRow).toBe('function');
     expect(typeof WeekEvidence).toBe('function');
-    expect(typeof WeekPicker).toBe('function');
+    expect(typeof RecoveryStrengthWeeks).toBe('function');
+    expect(typeof RecoveryManageBlock).toBe('function');
     expect(typeof WeekUnavailableNotice).toBe('function');
     expect(typeof createStyles).toBe('function');
   });
@@ -144,7 +146,7 @@ describe('#1052 refactor — export and boundary parity', () => {
     const styles = createStyles(LightColors);
     for (const key of [
       'container', 'stateBanner', 'summaryLine',
-      'chip', 'chipRow', 'chipBlock', 'detailsPanel',
+      'detailsPanel',
       'historyPanel', 'weekIndexRow', 'nonMedicalText', 'contextBlock', 'contextRow',
     ]) {
       expect(styles).toHaveProperty(key);
@@ -200,6 +202,7 @@ describe('#1052 refactor — note navigation identity', () => {
     act(() => { byLabel(root, 'Expand recovery history').props.onPress(); });
     const pressable = root.findAll(
       i => typeof i.props.accessibilityLabel === 'string'
+        && i.props.accessibilityLabel.startsWith('View note in Log:')
         && i.props.accessibilityLabel.includes('Recovery Week 1')
         && typeof i.props.onPress === 'function'
     )[0];
@@ -267,10 +270,12 @@ describe('#1052 refactor — preserved states reach the screen', () => {
     expect(hasText(root, 'Not a medical judgment')).toBe(false);
   });
 
-  test('included/excluded: a completed block exposes its inclusion toggle in history', () => {
+  test('included/excluded: the focused block exposes its inclusion toggle in Manage block only', () => {
     const component = setup({ blocks: [completedBlock()], weeks: [], notes: [] });
     const root = component.root;
     act(() => { byLabel(root, 'Expand recovery history').props.onPress(); });
-    expect(root.findAllByType(RecoveryInclusionToggle).length).toBeGreaterThan(0);
+    expect(root.findAllByType(RecoveryInclusionToggle)).toHaveLength(0);
+    act(() => { byLabel(root, 'Manage recovery block: Push Pull Legs').props.onPress(); });
+    expect(root.findAllByType(RecoveryInclusionToggle)).toHaveLength(1);
   });
 });

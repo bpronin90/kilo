@@ -810,3 +810,23 @@ describe('Weight goal editor actions', () => {
     expectLabelSilenced(cancel, 'Cancel');
   });
 });
+
+// #1307: Analytics Manage block trigger, week-selector rows and history week
+// actions keep a 44dp own box (styles, not hit slop).
+describe('Recovery Manage block and week selector targets (#1307)', () => {
+  const { createManageBlockStyles } = require('../components/recovery/recoveryManageBlockStyles');
+  const { createStrengthStyles } = require('../components/recovery/recoveryStrengthStyles');
+  const { createStyles } = require('../components/recovery/analyticsRecoveryStyles');
+  const { createMovementGroupStyles } = require('../components/recovery/recoveryMovementGroupStyles');
+  const { LightColors } = require('../theme/colors');
+  test.each([null, 'kua'])('own-box floors (%s palette)', (mode) => {
+    const kua = mode ? require('../theme/colors').KUA_PALETTES.hardCourt.light : null;
+    expect(createManageBlockStyles(LightColors, kua).trigger.minHeight).toBeGreaterThanOrEqual(44);
+    expect(createManageBlockStyles(LightColors, kua).groupsTrigger.minHeight).toBeGreaterThanOrEqual(44);
+    expect(createStrengthStyles(LightColors, kua).weekRowPress.minHeight).toBeGreaterThanOrEqual(44);
+    const analytics = createStyles(LightColors, kua);
+    expect(analytics.weekIndexFocus.minHeight).toBeGreaterThanOrEqual(44);
+    expect(analytics.weekIndexLogLink.minHeight).toBeGreaterThanOrEqual(44);
+    expect(createMovementGroupStyles(LightColors, kua).changeButton.minHeight).toBeGreaterThanOrEqual(44);
+  });
+});

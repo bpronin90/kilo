@@ -11,7 +11,7 @@ import { routineLabel } from './RecoveryVisuals';
 import { createStrengthStyles } from './recoveryStrengthStyles';
 
 export const STRENGTH_EMPTY_COPY = Object.freeze({
-  pair_unavailable: 'Baseline best-set data unavailable. Rebuild the baseline below to score strength.',
+  pair_unavailable: 'Baseline best-set data unavailable. Rebuild the baseline in Manage block to score strength.',
   no_readable_weeks: 'No readable week to score yet.',
   no_common_lifts: 'No lift has a strength score in every readable week yet, so there is no average.',
   selected_unreadable: 'This week’s note can’t be read, so it has no score.',

@@ -703,6 +703,14 @@ describe('AnalyticsRecoverySection: completed history carries the reason', () =>
     return component;
   }
 
+  // Editing lives in the Manage block panel (#1307), collapsed by default.
+  function openManage(component) {
+    renderer.act(() => {
+      byLabel(component.root, 'Manage recovery block: Push Pull Legs').props.onPress();
+    });
+    return component;
+  }
+
   test('the evidence card names the reason for a completed block', () => {
     const root = renderSection([completed({ reason: 'torn hamstring' })]).root;
     // #1219: a labelled Reason row ("Reason" + value), no longer one "Reason: …" string.
@@ -745,6 +753,9 @@ describe('AnalyticsRecoverySection: completed history carries the reason', () =>
   // it the only place the edit can live.
   test('a completed block offers the editor, naming what is currently stored', () => {
     const component = renderSection([completed({ reason: 'torn hamstring' })]);
+    // Evidence is read-only; the editor is behind Manage block only.
+    expect(byLabel(component.root, 'Edit reason for this recovery block: torn hamstring')).toBeNull();
+    openManage(component);
     expect(byLabel(
       component.root,
       'Edit reason for this recovery block: torn hamstring'
@@ -752,7 +763,7 @@ describe('AnalyticsRecoverySection: completed history carries the reason', () =>
   });
 
   test('a completed block with no reason still invites adding one', () => {
-    const component = renderSection([completed()]);
+    const component = openManage(renderSection([completed()]));
     expect(byLabel(component.root, 'Add a reason for this recovery block')).not.toBeNull();
     expect(hasText(component.root, 'Add a reason')).toBe(true);
     // Still no fabricated "Reason: —" claiming a value the block never had.
@@ -760,7 +771,7 @@ describe('AnalyticsRecoverySection: completed history carries the reason', () =>
   });
 
   test('the completed-block editor seeds from the record, and Cancel discards', () => {
-    const component = renderSection([completed({ reason: 'torn hamstring' })]);
+    const component = openManage(renderSection([completed({ reason: 'torn hamstring' })]));
     renderer.act(() => {
       byLabel(component.root, 'Edit reason for this recovery block: torn hamstring').props.onPress();
     });
