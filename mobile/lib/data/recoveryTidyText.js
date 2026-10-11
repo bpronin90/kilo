@@ -13,10 +13,19 @@ import { splitNameParts } from './recoveryStrengthBaseline.js';
 
 const DASH_HEADER_RE = /^(\s*)-(?=[^-\s])(.*?)(\s*)$/;
 const NUMBERED_HEADER_RE = /^(\s*)(\d+[a-z]?\.\s+)(.*?)(\s*)$/i;
-// A header scheme the parser strips from the name: sets x reps, optional range.
-const PROMOTABLE_RE = /^(\d+\s*[xX×]\s*\d+(?:\s*[-–]\s*\d+)?)\s*(?:,|$)/;
-const ANY_SCHEME_RE = /\d+\s*[xX×]\s*\d+/g;
+// The only promotable scheme (#1314): the descriptor's FIRST token, written
+// compactly (`3x8`, `3×6-8`; 1-9 sets, 1-2 digit reps), IMMEDIATELY followed by
+// `,` `;` a single space before `(`, or whitespace to the end. Anything else
+// (mid-text, spaced, longer tokens like `3x8-1000`, loads, durations) is never guessed.
+const LEADING_SCHEME_RE = /^([1-9][xX×][1-9]\d?(?:[-–][1-9]\d?)?)(?:[,;]\s*| (?=\()|\s*$)/;
 const SEPARATOR_RE = /^\s*(?:,|—|–|-)\s*/;
+
+// The leading scheme of a descriptor and the descriptor without it and its
+// trailing separator, or null when the first token is not a compact scheme.
+function promoteScheme(descriptor) {
+  const m = LEADING_SCHEME_RE.exec(descriptor);
+  return m ? { scheme: m[1], rest: descriptor.slice(m[0].length).trim() } : null;
+}
 
 function crOf(line) {
   return line.endsWith('\r') ? '\r' : '';
@@ -68,13 +77,14 @@ export function buildOccurrenceEdit(lines, ex, targetName) {
     return { ok: false, reason: 'header carries notation tidy cannot preserve' };
   }
   const parts = splitNameParts(content, { collapse: false });
-  const descriptor = parts.descriptor.replace(SEPARATOR_RE, '').trim();
+  let descriptor = parts.descriptor.replace(SEPARATOR_RE, '').trim();
   // The header's own scheme keeps its original separator bytes exactly; only a
-  // scheme promoted out of a descriptor gets a fresh single space.
+  // scheme promoted out of a descriptor gets a fresh single space. A promoted
+  // scheme lives in the header alone: its span is cut out of the moved note.
   let schemeBytes = parts.scheme;
   if (!schemeBytes.trim() && descriptor) {
-    const promo = PROMOTABLE_RE.exec(descriptor);
-    if (promo && (descriptor.match(ANY_SCHEME_RE) || []).length === 1) schemeBytes = ` ${promo[1]}`;
+    const promo = promoteScheme(descriptor);
+    if (promo) { schemeBytes = ` ${promo.scheme}`; descriptor = promo.rest; }
   }
   const scheme = schemeBytes.trim();
   const newContent = scheme ? `${targetName}${schemeBytes}` : targetName;

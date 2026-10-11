@@ -959,7 +959,10 @@ styles `recoveryTidyStyles.js`) is the single name-cleanup action in the Analyti
 (the same reason-editor button/caption tokens; every control is a >=44dp button
 whose accessible name is its visible label). The preview (`recovery-tidy-preview`)
 is the plan captured when it opened and lists every week header as `Week N: old →
-new` with the scheme it keeps and the note the descriptor moves to, each baseline
+new` with the scheme it keeps and the note the descriptor moves to (only a compact
+leading scheme such as `3x6-8` is promoted to the header and cut out of the moved
+note, never repeated in it; any other scheme-like text stays in the note
+untouched, #1314), each baseline
 `old → new`, every already-clean occurrence, warmups (never changed), skipped
 lifts with reasons, and an explicit no-change line; one Confirm applies the whole
 plan, and Cancel/Close write nothing. A partial failure shows its error in the
