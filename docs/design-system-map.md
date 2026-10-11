@@ -572,11 +572,14 @@ region (`home-recovery-analytics`, a single `accessible` node), in this order:
   were captured for this block.`
 - **Big 3 list** (`home-recovery-big3`, #1171) — an `Your Big 3 lifts` eyebrow,
   then one row per lift (`home-recovery-lift-{slot}`): the lift name left, its
-  value right in plain words only (`Recovered`, `Not started`, `Can't compare`,
-  `Not in baseline`, `In progress`, or a real per-lift percentage), and a thin
-  `6` track beneath filled only from a real ratio (met = 100% in the completion
-  color; rebuilding = its percent, capped at 100%, in the primary color; every
-  unknown is an empty track).
+  value right as that lift's strength % of its baseline best set for the
+  selected week (floored, read from the Recovery snapshot's per-lift rows — the
+  same numbers the Analytics ladder prints, #1315), or a compact status when it has
+  no score (`Not retested`, `Not scored`, `Not in baseline`); a thin `6` track
+  beneath is filled from a real score only (capped at 100%, completion color at
+  100%+; every unscored lift is an empty track). The band-model words `Recovered`,
+  `In progress`, `Not started` and `Can't compare` and the per-row min-ratio value
+  were removed because they contradicted the strength headline.
 - **Remaining line** (`home-recovery-remaining`) — `Remaining N: X recovered ·
   Y in progress · Z not started` (zero parts dropped; `N exercises: …` when the
   user has no Big 3).

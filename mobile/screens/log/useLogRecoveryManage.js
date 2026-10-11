@@ -29,6 +29,18 @@ export function useLogRecoveryManage({
   // remount (tab switch) must not repeat it.
   const [consumedKey, setConsumedKey] = useState(0);
 
+  // A newly active block (a started or reopened one) takes focus over a completed
+  // block the user had selected earlier; otherwise Manage would stay on a stale
+  // history selection while the new block's controls are one tap away.
+  const activeId = activeBlock ? activeBlock.id : null;
+  const lastActiveRef = useRef(activeId);
+  useEffect(() => {
+    if (lastActiveRef.current !== activeId) {
+      lastActiveRef.current = activeId;
+      if (activeId) setSelectedId(null);
+    }
+  }, [activeId]);
+
   useEffect(() => {
     if (!navManageBlockId || navKey === appliedRef.current) return;
     // Never resolve a target against placeholder arrays: wait for the verified

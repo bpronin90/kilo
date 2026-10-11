@@ -511,33 +511,63 @@ describe('Home Recovery Big 3 selection (#1192)', () => {
       .toEqual({ ...DEFAULT_1K_EXERCISES, squat: 'Press' });
   });
 
-  test('a mapped lift missing from the baseline stays a Big 3 slot without a number', () => {
-    const week = { status: 'ok', exercises: [] };
-    const { big3 } = deriveHomeRecoveryBig3(week, { squat: 'Press', bench: 'Bench', deadlift: 'Deadlift' });
-    expect(big3.map(l => [l.slot, l.label, l.state, l.percent])).toEqual([
-      ['squat', 'Press', HOME_BIG3_NOT_IN_BASELINE, null],
-      ['bench', 'Bench', HOME_BIG3_NOT_IN_BASELINE, null],
-      ['deadlift', 'Deadlift', HOME_BIG3_NOT_IN_BASELINE, null],
+  // Strength model (#1315): the Big 3 read the snapshot's per-lift rows.
+  const { captureRecoveryBaselineFromText } = require('../lib/data/recoveryBlocks');
+  const { getRecoverySnapshot, _resetRecoverySnapshotStore } = require('../lib/data/recoverySnapshot');
+  const BASE = '-Squat\n- 100 5\n-Bench\n- 100 5\n-Deadlift\n- 100 5\n-Plank: 2x45s\n- 45,45';
+  const snap = (weekText, { baseText = BASE } = {}) => {
+    _resetRecoverySnapshotStore();
+    const block = {
+      id: 'rb1', baseline_note_id: 'nb', baseline_note_title: 'R', baseline: captureRecoveryBaselineFromText(baseText),
+      started_at: '2026-05-01T00:00:00Z', completed_at: null, deleted_at: null,
+    };
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: 'w1', week_number: 1, completed_at: null, deleted_at: null }];
+    return getRecoverySnapshot({ block, weeks, notes: [{ id: 'nb', raw_text: baseText }, { id: 'w1', title: 'W1', raw_text: weekText }] });
+  };
+  const SEL = { squat: 'Squat', bench: 'Bench', deadlift: 'Deadlift' };
+
+  test('scored lifts show their floored strength %, the same values as the Analytics ladder', () => {
+    const s = snap('-Squat\n- 65 5\n-Bench\n- 90 5\n-Deadlift\n- 44 5');
+    const { big3 } = deriveHomeRecoveryBig3(s, SEL);
+    expect(big3.map(l => [l.slot, l.state, l.percent])).toEqual([
+      ['squat', 'scored', 65], ['bench', 'scored', 90], ['deadlift', 'scored', 44],
     ]);
+    // Same numbers as the Analytics ladder rows (snapshot lifts, floored).
+    const { displayPercent } = require('../lib/data/recoveryStrength');
+    for (const l of big3) {
+      expect(l.percent).toBe(displayPercent(s.strength.lifts.find(x => x.key === l.slot).percent));
+    }
   });
 
-  test('two slots mapped to the same baseline exercise both report it', () => {
-    const row = { key: 'squat', name: 'Squat', state: 'baseline_met', metrics: [] };
-    const week = { status: 'ok', exercises: [row] };
-    const counts = summarizeRecoveryBands(deriveRecoveryWeekBands(week));
-    const { big3 } = deriveHomeRecoveryBig3(week, { squat: 'Squat', bench: 'Squat', deadlift: 'Deadlift' }, counts);
-    expect(big3.map(l => [l.slot, l.state])).toEqual([
-      ['squat', 'baseline_met'], ['bench', 'baseline_met'], ['deadlift', HOME_BIG3_NOT_IN_BASELINE],
+  test('a lift with no score shows a status, not a number', () => {
+    const s = snap('-Squat\n- 65 5\n-Bench\n- 90 5');
+    const { big3 } = deriveHomeRecoveryBig3(s, SEL);
+    expect(big3.map(l => [l.slot, l.state, l.percent])).toEqual([
+      ['squat', 'scored', 65], ['bench', 'scored', 90], ['deadlift', 'not_retested', null],
     ]);
-    // #1242: the count line is the whole roster, so the exercise counts once.
+    const timed = deriveHomeRecoveryBig3(s, { ...SEL, deadlift: 'Plank' }).big3[2];
+    expect(timed).toMatchObject({ state: 'not_scored', percent: null });
+  });
+
+  test('a mapped lift missing from the baseline stays a Big 3 slot without a number', () => {
+    const { big3 } = deriveHomeRecoveryBig3(snap('-Squat\n- 65 5'), { squat: 'Press', bench: 'Bench', deadlift: 'Deadlift' });
+    expect(big3.map(l => [l.slot, l.label, l.state, l.percent])[0]).toEqual(['squat', 'Press', HOME_BIG3_NOT_IN_BASELINE, null]);
+  });
+
+  test('two slots mapped to the same baseline exercise both report it; the count line counts it once', () => {
+    const s = snap('-Squat\n- 65 5', { baseText: '-Squat\n- 100 5' });
+    const { big3, counts } = deriveHomeRecoveryBig3(s, { squat: 'Squat', bench: 'Squat', deadlift: 'Deadlift' });
+    expect(big3.map(l => [l.slot, l.state, l.percent])).toEqual([
+      ['squat', 'scored', 65], ['bench', 'scored', 65], ['deadlift', HOME_BIG3_NOT_IN_BASELINE, null],
+    ]);
     expect(counts).toMatchObject({ rosterSize: 1, trained: 1, notYet: 0 });
   });
 
-  test('a mapped lift with an unusable baseline value is not comparable, not absent', () => {
-    const row = { key: 'squat', name: 'Squat', state: 'not_comparable', unavailable_reason: 'baseline_value_unusable', metrics: [] };
-    const { big3 } = deriveHomeRecoveryBig3({ status: 'ok', exercises: [row] }, { squat: 'Squat', bench: 'Bench', deadlift: 'Deadlift' });
-    expect(big3[0]).toMatchObject({ slot: 'squat', state: 'not_comparable', percent: null });
-    expect(big3[1].state).toBe(HOME_BIG3_NOT_IN_BASELINE);
+  test('an unreadable selected week yields no Big 3 rows (the fallback line owns the slot)', () => {
+    _resetRecoverySnapshotStore();
+    const block = { id: 'rb1', baseline_note_id: 'nb', baseline_note_title: 'R', baseline: captureRecoveryBaselineFromText(BASE), started_at: '2026-05-01T00:00:00Z', completed_at: null, deleted_at: null };
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: 'ghost', week_number: 1, completed_at: null, deleted_at: null }];
+    expect(deriveHomeRecoveryBig3(getRecoverySnapshot({ block, weeks, notes: [] }), SEL).big3).toEqual([]);
   });
 });
 
@@ -606,7 +636,6 @@ describe('shared derived analytics (#1242)', () => {
 
   test('Home prints the shared roster count line, and the Overview row prints the snapshot headline (#1315)', () => {
     const counts = summarizeRecoveryBands(deriveRecoveryWeekBands(WEEK));
-    expect(deriveHomeRecoveryBig3(WEEK, SELECTIONS, counts).counts).toBe(counts);
     expect(formatRecoveryCountLine(counts)).toBe('4 of 7 trained · 3 not yet');
 
     const display = { state: 'score', percent: 80, caption: '2 lifts · Week 1', message: null, a11y: 'Week 1: 80% of X baseline strength.' };

@@ -4,7 +4,7 @@ import Svg, { Path } from 'react-native-svg';
 import { Card } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
 import { InfoButton, InfoNote, useInfoExplainer } from '../../components/InfoExplainer';
-import { HOME_BIG3_NOT_IN_BASELINE, HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATES, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './homeDashboardData';
+import { HOME_BIG3_NOT_IN_BASELINE, HOME_BIG3_NOT_RETESTED, HOME_BIG3_NOT_SCORED, HOME_BIG3_SCORED, HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './homeDashboardData';
 import { createStyles } from './homeStyles';
 import { formatRecoveryCountLine } from '../../lib/data/derivedAnalytics';
 import { useKuaTypography } from '../../theme/typography';
@@ -38,10 +38,9 @@ import { useKuaTypography } from '../../theme/typography';
 // names — and a percentage only where #697 produced a real per-lift ratio.
 function liftValue(lift) {
   if (lift.state === HOME_BIG3_NOT_IN_BASELINE) return 'Not in baseline';
-  if (lift.state === RECOVERY_COMPARISON_STATES.BASELINE_MET) return 'Recovered';
-  if (lift.state === RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED) return 'Not started';
-  if (lift.state === RECOVERY_COMPARISON_STATES.NOT_COMPARABLE) return "Can't compare";
-  return lift.percent === null ? 'In progress' : `${lift.percent}%`;
+  if (lift.state === HOME_BIG3_NOT_RETESTED) return 'Not retested';
+  if (lift.state === HOME_BIG3_NOT_SCORED) return 'Not scored';
+  return `${lift.percent}%`;
 }
 
 // Label and its info icon on one line, adjacent by gap (never edge-floated).
@@ -112,6 +111,9 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   const countLine = fallbackStatus === null ? formatRecoveryCountLine(counts) : null;
   // #1315: the shared snapshot headline (same % and caption as Analytics).
   const headlineScored = !!headline && headline.state === 'score' && fallbackStatus === null;
+  // No honest average (empty cohort, legacy baseline): say why, in the snapshot's
+  // own words, instead of leaving the headline slot silent.
+  const headlineReason = !!headline && headline.state !== 'score' && fallbackStatus === null ? headline.message : null;
   const remainingText = countLine ? `All exercises ${countLine}` : null;
 
   // One announcement for the whole summary, assembled in reading order. The
@@ -121,6 +123,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
     weekName,
     fallbackStatus,
     headlineScored ? headline.a11y : null,
+    headlineReason,
     lifts.length > 0 ? 'Big 3' : null,
     ...lifts.map(lift => {
       const value = liftValue(lift);
@@ -195,14 +198,17 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
                   <Text testID="home-recovery-headline-caption" style={styles.recoveryWeekLabel}>{headline.caption}</Text>
                 </View>
               ) : null}
+              {headlineReason ? (
+                <Text testID="home-recovery-headline-reason" style={styles.recoveryFallbackLine}>{headlineReason}</Text>
+              ) : null}
               {lifts.length > 0 ? (
                 <View testID="home-recovery-big3" style={styles.recoveryLiftList}>
                   <Text style={styles.recoveryWeekLabel}>Big 3</Text>
                   {lifts.map(lift => {
-                    const done = lift.state === RECOVERY_COMPARISON_STATES.BASELINE_MET;
-                    // Only a real ratio fills the bar; unknowns stay an empty track.
-                    const fill = done ? 100 : lift.state === RECOVERY_COMPARISON_STATES.REBUILDING && lift.percent !== null
-                      ? Math.max(0, Math.min(lift.percent, 100)) : 0;
+                    const scored = lift.state === HOME_BIG3_SCORED;
+                    const done = scored && lift.percent >= 100;
+                    // Only a real score fills the bar; unscored lifts stay an empty track.
+                    const fill = scored ? Math.max(0, Math.min(lift.percent, 100)) : 0;
                     return (
                       <View key={lift.slot} testID={`home-recovery-lift-${lift.slot}`}>
                         <View style={styles.recoveryLiftHead}>

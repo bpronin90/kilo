@@ -161,6 +161,18 @@ describe('single derivation', () => {
 });
 
 describe('identical values on every surface', () => {
+  test('Home Big 3 values equal the Analytics ladder values for the same block and week (#1315)', () => {
+    const root = mount({ fixture: SCORED, stale: false }).root;
+    act(() => { root.findAll(n => n.props && n.props.accessibilityLabel === 'Expand lifts')[0].props.onPress(); });
+    const ladder = byId(root, 'recovery-strength-lift-squat')[0].props.accessibilityLabel;
+    const homeValue = byId(root, 'home-recovery-lift-squat')[0]
+      .findAll(n => n.type === 'Text').map(n => [].concat(n.props.children).join(''));
+    expect(ladder).toMatch(/^Squat: 80% of baseline strength/);
+    expect(homeValue).toContain('80%');
+    // The band-model words are gone from Home.
+    expect(homeValue.join(' ')).not.toMatch(/Recovered|In progress|Not started/);
+  });
+
   test('scored: the same % and caption on Home, the Overview row and the Analytics section', () => {
     const root = mount({ fixture: SCORED, stale: false }).root;
     expect(analyticsHeadline(root)).toBe('80% | 2 lifts · Week 2');
@@ -186,6 +198,8 @@ describe('identical values on every surface', () => {
     expect(snap.display.state).toBe(state);
     const root = mount({ fixture, stale: false }).root;
     expect(homeHeadline(root)).toBeNull();
+    // Home states the snapshot's own reason instead of staying silent.
+    expect(byId(root, 'home-recovery-headline-reason')[0].props.children).toBe(snap.display.message);
     expect(analyticsHeadline(root)).toBeNull();
     const row = overviewRow(root);
     expect(row.value).toBeNull();

@@ -259,6 +259,20 @@ describe('same-block collapse during a delayed write', () => {
   });
 });
 
+describe('focus follows a newly active block', () => {
+  test('starting (or reopening) a block moves Manage focus off a previously selected completed block', () => {
+    const newest = done('rb-new', '2026-06-01T00:00:00Z');
+    const older = done('rb-old', '2026-05-01T00:00:00Z');
+    let c;
+    act(() => { c = render.create(<Harness blocks={[newest, older]} />); });
+    press(c.root, 'recovery-history-header');
+    press(c.root, 'recovery-history-row-rb-old');
+    expect(shown(c.root)).toEqual(['recovery-manage-card-rb-old']);
+    act(() => { c.update(<Harness blocks={[block(), newest, older]} />); });
+    expect(shown(c.root)).toEqual(['recovery-manage-card-rb1']);
+  });
+});
+
 describe('typed navigation intent', () => {
   test('normalizeNavTarget accepts an exact block id for Log only', () => {
     expect(normalizeNavTarget('Log', { kind: 'recovery-manage', blockId: 'rb1' })).toEqual({ kind: 'recovery-manage', noteId: null, blockId: 'rb1' });

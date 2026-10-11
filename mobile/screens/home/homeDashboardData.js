@@ -13,7 +13,7 @@ import {
   RECOVERY_COMPARISON_STATUS,
   RECOVERY_WEEK_STATUS,
 } from '../../lib/data/recoveryAnalytics';
-import { deriveRecoveryTrainedRows } from '../../lib/data/recoveryReturnBands';
+import { LIFT_STATE, displayPercent } from '../../lib/data/recoveryStrength';
 import { summarizeRecoveryBands } from '../../lib/data/derivedAnalytics';
 import { formatDate } from '../../lib/format';
 
@@ -167,7 +167,7 @@ export function useHomeRecoverySummary(notes, workoutNote = null) {
       weekNumber: current ? current.week_number : null,
       weekNoteStatus: current ? current.status : null,
       weekNoteTitle: current && typeof current.note_title === 'string' && current.note_title.trim() ? current.note_title.trim() : null,
-      ...deriveHomeRecoveryBig3(current, selections, summarizeRecoveryBands(snapshot.bands)),
+      ...deriveHomeRecoveryBig3(snapshot, selections),
       includedInNormalAnalytics: activeBlock.include_in_normal_analytics === true,
     };
   }, [activeBlock, weeks, notes, workoutNote, ready, loading, stale, retryRecovery]);
@@ -191,52 +191,44 @@ const BIG3_SLOTS = Object.freeze([
   { slot: 'deadlift', label: 'Deadlift' },
 ]);
 
-// A lift's distance from baseline is its weakest applicable dimension — the
-// same per-exercise `min(ratio)` selection the return bands use (#1029), never
-// a mean and never across exercises. `percent` is #697's own floored value.
-function _rowPercent(row) {
-  const percents = (row.metrics || [])
-    .map(m => m.percent)
-    .filter(p => typeof p === 'number' && Number.isFinite(p));
-  return percents.length > 0 ? Math.min(...percents) : null;
-}
+export const HOME_BIG3_SCORED = 'scored';
+export const HOME_BIG3_NOT_RETESTED = 'not_retested';
+export const HOME_BIG3_NOT_SCORED = 'not_scored';
 
-// #1171: the Big 3 rows and the one-line roster count, from ONE
-// week's comparison. The roster is `deriveRecoveryTrainedRows` (the single
-// source of truth that already excludes `baseline_value_unusable` rows) plus
-// the baseline rows not reintroduced yet. A Big 3 lift outside that roster is
-// shown as `not_in_baseline` (#1192) — it was never in the baseline, so there
-// is no distance to report, but the slot still reads as the user's Big 3.
-export function deriveHomeRecoveryBig3(week, selections, counts = null) {
-  if (!week || week.status !== RECOVERY_WEEK_STATUS.OK) return { big3: [], counts: null };
-  const roster = [
-    ...deriveRecoveryTrainedRows(week),
-    ...(week.exercises || []).filter(row => row.state === RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED),
-  ];
+// #1171, strength model (#1315): the Big 3 rows read the Recovery snapshot's
+// per-lift strength rows — the very rows the Analytics ladder prints — so a lift's
+// number here is its floored % of baseline best set for the selected week. A lift
+// with no score shows a compact status instead of a number. Nothing is derived
+// here: the snapshot's `strength`, `bands` and selected week are the only inputs.
+// The Big 3 use the effective 1K selection (#1192); a lift outside the baseline is
+// `not_in_baseline` (#1192).
+export function deriveHomeRecoveryBig3(snapshot, selections) {
+  const week = snapshot && snapshot.selectedWeek;
+  const counts = snapshot ? summarizeRecoveryBands(snapshot.bands) : null;
+  if (!week || week.status !== RECOVERY_WEEK_STATUS.OK) return { big3: [], counts };
+  const { strength } = snapshot;
+  const lifts = new Map((strength.lifts || []).map(l => [l.key, l]));
+  const notScored = new Map((strength.not_scored || []).map(n => [n.key, n]));
+  const notRetested = new Map((strength.not_retested || []).map(n => [n.key, n]));
   const big3 = [];
   for (const { slot, label } of BIG3_SLOTS) {
     const key = typeof selections?.[slot] === 'string' ? normalizeExerciseKey(selections[slot]) : null;
-    const row = key ? roster.find(r => r.key === key) : null;
-    if (!row) {
-      // Captured in the baseline but excluded from the roster (unusable
-      // baseline value): present, just not comparable — not absent.
-      const captured = key ? (week.exercises || []).find(r => r.key === key) : null;
-      if (captured) {
-        big3.push({ slot, label: captured.name || label, state: RECOVERY_COMPARISON_STATES.NOT_COMPARABLE, percent: null });
-        continue;
-      }
+    const lift = key ? lifts.get(key) : null;
+    const baselineOnly = key ? (notScored.get(key) || notRetested.get(key)) : null;
+    if (lift && lift.state === LIFT_STATE.SCORED && Number.isFinite(lift.percent)) {
+      big3.push({ slot, label: lift.name || label, state: HOME_BIG3_SCORED, percent: displayPercent(lift.percent) });
+    } else if (lift) {
+      // Scoreable in the baseline but no score this week: unscoreable work is
+      // "not scored", an absent or unreadable lift is "not retested".
+      big3.push({ slot, label: lift.name || label, state: lift.state === LIFT_STATE.UNSCOREABLE ? HOME_BIG3_NOT_SCORED : HOME_BIG3_NOT_RETESTED, percent: null });
+    } else if (key && notScored.has(key)) {
+      big3.push({ slot, label: notScored.get(key).name || label, state: HOME_BIG3_NOT_SCORED, percent: null });
+    } else if (baselineOnly) {
+      big3.push({ slot, label: baselineOnly.name || label, state: HOME_BIG3_NOT_RETESTED, percent: null });
+    } else {
       big3.push({ slot, label: selections?.[slot] || label, state: HOME_BIG3_NOT_IN_BASELINE, percent: null });
-      continue;
     }
-    // Two slots may map to one exercise (the normal 1K total counts it for
-    // both); each still reports it.
-    // Named by the mapped exercise itself: a slot can point at any routine
-    // exercise, and its numbers must never read as the slot's namesake.
-    big3.push({ slot, label: row.name || label, state: row.state, percent: _rowPercent(row) });
   }
-  // #1242: the count line is the shared roster summary — the same counts and
-  // words Analytics and the Recovery detail print — not a Home-local tally. The
-  // caller passes the counts summarised from the snapshot's bands (#1315).
   return { big3, counts };
 }
 
