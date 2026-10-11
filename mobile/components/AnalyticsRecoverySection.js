@@ -1,13 +1,15 @@
 // Analytics Recovery section (#698): renders the #697 return-to-baseline
 // comparison contract for the active recovery block and, on request, any
 // completed block from history. The comparison itself is read-only — nothing
-// here recomputes, gates, or claims medical recovery, and the hero is a factual
-// exercise count ("X of Y baseline exercises met"), never a composite percentage
-// or a completion gate. The few controls that DO write (the inclusion toggle
-// #728, Reopen #839, and the optional reason #872) each change one presentation
-// or lifecycle field and none of them feed the comparison above.
+// here recomputes, gates, or claims medical recovery. The hero is the average %
+// of baseline strength (#1305), never a completion gate. The controls that DO
+// write (inclusion toggle #728, Reopen #839, optional reason #872, baseline
+// rebuild/name matching/tidy #1227/#1298/#1309, movement-group overrides #1306)
+// each change one presentation, lifecycle or baseline-name field. All of them
+// live in the sibling Manage block panel (#1307), never in the evidence card;
+// the strength week rows are the sole week selector.
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Alert } from '../lib/platformAlert';
@@ -26,8 +28,8 @@ import {
 } from '../hooks/entries/recoveryBlockHooks';
 import { useRecoveryTidyNames } from '../hooks/entries/recoveryTidyMutations';
 import { useMovementGroupEditor } from '../hooks/entries/movementGroupHooks';
-import { RecoveryInclusionToggle } from './RecoveryInclusionToggle';
 import { BlockEvidence } from './recovery/RecoveryEvidence';
+import { RecoveryManageBlock } from './recovery/RecoveryManageBlock';
 import { WeekIndexRow } from './recovery/RecoveryWeekIndex';
 import { createStyles } from './recovery/analyticsRecoveryStyles';
 
@@ -67,13 +69,19 @@ export function AnalyticsRecoverySection({
   // names the latest, which is the whole answer for most visits.
   const [historyCollapsed, setHistoryCollapsed] = useState(true);
   const [focusedBlockId, setFocusedBlockId] = useState(null);
+  // Selected week, scoped to ONE block (#1307): a selection made on another block
+  // is ignored, so switching blocks always starts at the latest week.
+  const [weekSelection, setWeekSelection] = useState({ blockId: null, weekId: null });
+  const lastFocusedRef = useRef(null);
   const { setIncludeInNormalAnalytics, reopenBlock, setBlockReason, rebuildBaseline } = useRecoveryBlockLifecycle();
   const { matchBaselineName } = useRecoveryBaselineNames();
   const tidyNames = useRecoveryTidyNames();
   const { setMovementGroup } = useMovementGroupEditor();
   const [inclusionBusyBlockId, setInclusionBusyBlockId] = useState(null);
   const [inclusionError, setInclusionError] = useState(null);
-  const [reopenBusy, setReopenBusy] = useState(false);
+  // Like inclusion: busy is a block id and the error carries its block id, so a
+  // failed reopen can never show in another block's Manage panel (#1307).
+  const [reopenBusyBlockId, setReopenBusyBlockId] = useState(null);
   const [reopenError, setReopenError] = useState(null);
 
   const activeBlock = findActiveBlock(blocks);
@@ -87,6 +95,14 @@ export function AnalyticsRecoverySection({
     .sort(compareRecoveryBlocksNewestCompletedFirst);
   const newestCompletedBlock = completedBlocks[0] || null;
 
+  // Changing which block is in focus always resets the week selection (#1307).
+  const focusBlock = (blockId) => {
+    // Re-tapping the block already in focus keeps its selected week.
+    if (focusedBlock && blockId === focusedBlock.id) return;
+    setFocusedBlockId(blockId);
+    setWeekSelection({ blockId: null, weekId: null });
+  };
+
   const handleReopen = (block) => {
     const baselineTitle = block.baseline_note_title || 'Untitled Routine';
     Alert.alert(
@@ -98,14 +114,17 @@ export function AnalyticsRecoverySection({
           text: 'Reopen block',
           onPress: async () => {
             setReopenError(null);
-            setReopenBusy(true);
+            setReopenBusyBlockId(block.id);
             try {
               const result = await reopenBlock({ blockId: block.id });
               if (!result || result.ok === false) {
-                setReopenError((result && result.error) || 'Could not reopen this recovery block.');
+                setReopenError({
+                  blockId: block.id,
+                  message: (result && result.error) || 'Could not reopen this recovery block.',
+                });
               }
             } finally {
-              setReopenBusy(false);
+              setReopenBusyBlockId(null);
             }
           },
         },
@@ -132,6 +151,24 @@ export function AnalyticsRecoverySection({
 
   const inclusionErrorFor = (blockId) =>
     (inclusionError && inclusionError.blockId === blockId) ? inclusionError.message : null;
+
+  const focusedBlock =
+    (focusedBlockId && [activeBlock, ...completedBlocks].find(b => b && b.id === focusedBlockId)) ||
+    activeBlock ||
+    completedBlocks[0] || null;
+
+  // The EFFECTIVE focused block id (null when nothing is shown: unverified state
+  // or no blocks). It can change through data, not only taps, and it is resolved
+  // before every early return so a transition to or from "nothing shown" also
+  // clears a selection that belongs to another block (#1307). Hooks above stay
+  // unconditional.
+  const effectiveFocusId = stateReady && focusedBlock ? focusedBlock.id : null;
+  if (lastFocusedRef.current !== effectiveFocusId) {
+    lastFocusedRef.current = effectiveFocusId;
+    if (weekSelection.blockId && weekSelection.blockId !== effectiveFocusId) {
+      setWeekSelection({ blockId: null, weekId: null });
+    }
+  }
 
   const hasPendingRecovery = (pendingRecovery?.length || 0) > 0;
   // EVERY inclusion switch is disabled while ANY write is in flight (#728),
@@ -209,10 +246,6 @@ export function AnalyticsRecoverySection({
     );
   }
 
-  const focusedBlock =
-    (focusedBlockId && [activeBlock, ...completedBlocks].find(b => b && b.id === focusedBlockId)) ||
-    activeBlock ||
-    completedBlocks[0];
 
   const notesById = new Map(notes.map(n => [n.id, n]));
 
@@ -224,7 +257,7 @@ export function AnalyticsRecoverySection({
 
       {activeBlock && focusedBlock.id !== activeBlock.id && (
         <Pressable
-          onPress={() => setFocusedBlockId(activeBlock.id)}
+          onPress={() => focusBlock(activeBlock.id)}
           style={styles.backToActive}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           accessibilityRole="button"
@@ -242,20 +275,42 @@ export function AnalyticsRecoverySection({
         notes={notes}
         unit={unit}
         stateStale={stateStale}
-        showReopen={!activeBlock && !!newestCompletedBlock && focusedBlock.id === newestCompletedBlock.id}
-        reopenDisabled={!mutationsAllowed || hasPendingRecovery || reopenBusy}
-        reopenBusy={reopenBusy}
-        reopenError={reopenError}
-        onReopen={handleReopen}
+        selectedWeekId={weekSelection.blockId === focusedBlock.id ? weekSelection.weekId : null}
+        onSelectWeek={(weekId) => setWeekSelection({ blockId: focusedBlock.id, weekId })}
+        notesError={notesError}
+      />
+
+      {/* Sibling card, not part of the evidence card (#1307). Keyed by block so
+          drafts and errors never cross blocks. */}
+      <RecoveryManageBlock
+        key={`manage:${focusedBlock.id}`}
+        block={focusedBlock}
+        weeks={weeks}
+        notes={notes}
+        unit={unit}
         // Gated exactly like the inclusion switch (#872): a write that
         // `ensureVerifiedRecoveryState` would reject anyway must not be
         // advertised as available.
-        reasonLocked={!mutationsAllowed || hasPendingRecovery}
+        locked={!mutationsAllowed || hasPendingRecovery}
+        stale={stateStale}
         onSaveReason={setBlockReason}
         onRebuildBaseline={rebuildBaseline}
         onMatchNames={matchBaselineName}
         tidyNames={tidyNames}
         groupEditing={{ notesError, locked: !mutationsAllowed || hasPendingRecovery || stateStale, onSet: setMovementGroup }}
+        reopen={{
+          show: !activeBlock && !!newestCompletedBlock && focusedBlock.id === newestCompletedBlock.id,
+          disabled: !mutationsAllowed || hasPendingRecovery || !!reopenBusyBlockId,
+          busy: reopenBusyBlockId === focusedBlock.id,
+          error: reopenError && reopenError.blockId === focusedBlock.id ? reopenError.message : null,
+          onReopen: handleReopen,
+        }}
+        inclusion={{
+          disabled: inclusionLocked,
+          busy: inclusionBusyBlockId === focusedBlock.id,
+          error: inclusionErrorFor(focusedBlock.id),
+          onToggle: handleToggleInclusion,
+        }}
       />
 
       {completedBlocks.length > 0 && (
@@ -294,10 +349,15 @@ export function AnalyticsRecoverySection({
             const blockWeeks = weeks
               .filter(w => isLiveRecord(w) && w.block_id === block.id)
               .sort((a, b) => a.week_number - b.week_number);
+            // Mirrors the evidence: the stored selection while its week exists, else
+            // the latest week (the default).
+            const picked = weekSelection.blockId === block.id && blockWeeks.some(w => w.id === weekSelection.weekId)
+              ? weekSelection.weekId : null;
+            const effectiveWeekId = picked || (blockWeeks.length ? blockWeeks[blockWeeks.length - 1].id : null);
             return (
               <View key={block.id} style={[styles.historyBlockGroup, !isLast && styles.historyBlockGroupBorder]}>
                 <Pressable
-                  onPress={() => setFocusedBlockId(block.id)}
+                  onPress={() => focusBlock(block.id)}
                   style={[styles.historyRow, selected && styles.historyRowSelected]}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
@@ -324,18 +384,11 @@ export function AnalyticsRecoverySection({
                     block={block}
                     week={w}
                     notesById={notesById}
+                    selected={selected && w.id === effectiveWeekId}
+                    onFocusWeek={(blockId, weekId) => { setFocusedBlockId(blockId); setWeekSelection({ blockId, weekId }); }}
                     onNavigate={onNavigate}
                   />
                 ))}
-                <View style={styles.historyInclusionWrapper}>
-                  <RecoveryInclusionToggle
-                    block={block}
-                    disabled={inclusionLocked}
-                    busy={inclusionBusyBlockId === block.id}
-                    error={inclusionErrorFor(block.id)}
-                    onToggle={handleToggleInclusion}
-                  />
-                </View>
               </View>
             );
           })}

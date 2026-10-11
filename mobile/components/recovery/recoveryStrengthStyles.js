@@ -34,6 +34,11 @@ export const createStrengthStyles = (colors, kua = null) => {
     rowName: { flexGrow: 1, flexShrink: 1, fontSize: TYPOGRAPHY['body-md'].fontSize, fontWeight: '700', color: ink },
     rowValue: { flexShrink: 0, ...label },
     weekRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 10, rowGap: 4, minHeight: 28 },
+    // Selector row (#1307): a >=44dp press target; selection is a surface fill AND
+    // bold label, never color alone.
+    weekRowPress: { minHeight: 44, paddingHorizontal: 8, borderRadius: GEOMETRY['radius-lg'] },
+    weekRowSelected: { backgroundColor: track },
+    weekLabelSelected: { fontWeight: '800', color: ink },
     weekLabel: { width: 64, ...label, color: inkMuted },
     weekValue: { flexShrink: 0, minWidth: 48, textAlign: 'right', ...label },
     track: {

@@ -136,8 +136,16 @@ the changelog and archived roadmaps.
   movement groups, #1306) is a collapsed flat list under that card's content,
   never a second hero or a repeated band chart. It states how many items fed
   each figure, shows no percent (not 0%) when none did, and keeps its editing
-  controls in a separate, relocatable component with >=44dp selected-state
-  targets that preserve an unsaved choice and its error on failure.
+  controls out of the evidence: they live in the block's one Manage block card
+  (#1307), with >=44dp selected-state targets that preserve an unsaved choice and
+  its error on failure.
+- Control ownership on Analytics Recovery (#1307): the evidence card shows
+  numbers and quiet read-only context; every write (reason, rebuild, name
+  matching/tidy, group overrides, reopen, inclusion) lives in ONE collapsed
+  sibling Manage block card whose trigger stays openable when writes are locked.
+  The strength week rows are the only week selector (pressable, >=44dp, role
+  `button`, `selected` state); history rows focus a block/week, and "View note in
+  Log" is a separate sibling link, never nested in them.
 - An analytics tab leads with an **overview block**: one row per permanent
   signal, each stating its current value, what changed and over what window, and
   linking to the section that itemises it. Rows are full-width, not a column

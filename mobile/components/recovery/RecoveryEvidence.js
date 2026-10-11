@@ -1,11 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Card } from '../UI';
 import { InfoButton, InfoNote, useInfoExplainer } from '../InfoExplainer';
 import { useTheme } from '../../theme/ThemeContext';
 import { formatDate } from '../../lib/format';
-import { MAX_RECOVERY_REASON_LENGTH } from '../../lib/data/recoveryBlocks';
 import {
   deriveRecoveryComparison,
   RECOVERY_COMPARISON_STATUS,
@@ -14,10 +13,6 @@ import {
 import { deriveRecoveryWeekBands } from '../../lib/data/recoveryReturnBands';
 import { deriveRecoveryStrength, STRENGTH_STATUS } from '../../lib/data/recoveryStrength';
 import { summarizeDetailRows, WeekEvidence, WeekUnavailableNotice } from './RecoveryStateGroups';
-import { WeekPicker } from './RecoveryWeekPicker';
-import { RebuildBaselineAction } from './RebuildBaseline';
-import { MatchExerciseNamesAction } from './MatchExerciseNames';
-import { TidyRecoveryNamesAction } from './TidyRecoveryNames';
 import { deriveTrainedElsewhere } from './RecoveryWeekIndex';
 import { createStyles } from './analyticsRecoveryStyles';
 import { RecoveryRosterSummary } from './RecoveryVisuals';
@@ -40,32 +35,13 @@ export function BlockEvidence({
   block, weeks, notes, unit,
   // Stale/unverified state suppresses pace and trend-change conclusions (#1305).
   stateStale = false,
-  // Reopen (#839): the secondary, non-destructive action offered ONLY on the
-  // newest completed block's own card, and only while no block is active —
-  // the parent computes both conditions and hands down a single `showReopen`
-  // rather than this component re-deriving "newest" from a `blocks` array it
-  // does not otherwise receive.
-  showReopen = false,
-  reopenDisabled = false,
-  reopenBusy = false,
-  reopenError = null,
-  onReopen,
-  // The optional reason (#872). Editing lives HERE, not only on Log's `Manage
-  // block`, because this card is the one surface that presents a COMPLETED
-  // block — and naming a past injury correctly is exactly what a lifter does
-  // while reviewing a finished recovery. `setRecoveryBlockReasonCore` has
-  // always accepted completed blocks; before this the domain simply had no UI
-  // that reached them (Codex review, PR #877).
-  reasonLocked = false,
-  onSaveReason,
-  // v1 baseline rebuild (#1227): offered only when the block + routine qualify.
-  onRebuildBaseline,
-  // Name match (#1298): link renamed exercises to frozen v2 baseline rows.
-  onMatchNames,
-  // Tidy names (#1309): clean week headers and baseline names together.
-  tidyNames = null,
-  // Movement groups (#1306): { notesError, locked, onSet }; null hides the panel.
-  groupEditing = null,
+  // Selected week (#1307): controlled by the section so history rows can focus a
+  // week; uncontrolled (own state) when no `onSelectWeek` is given. The strength
+  // week rows are the only selector.
+  selectedWeekId: controlledWeekId = null,
+  onSelectWeek = null,
+  // Failed notes read (#1306): saved group choices are then unavailable.
+  notesError = null,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
@@ -76,14 +52,9 @@ export function BlockEvidence({
   const labelStyle = (windowWidth < 300 || fontScale >= 1.6)
     ? [styles.contextLabel, { minWidth: 0 }]
     : styles.contextLabel;
-  const [selectedWeekId, setSelectedWeekId] = useState(null);
-  // Editor state is local to this component, and the parent renders it with
-  // `key={focusedBlock.id}` — so switching which block is in focus remounts and
-  // resets the draft rather than carrying one block's unsaved text onto another.
-  const [editingReason, setEditingReason] = useState(false);
-  const [reasonDraft, setReasonDraft] = useState('');
-  const [reasonBusy, setReasonBusy] = useState(false);
-  const [reasonError, setReasonError] = useState(null);
+  const [localWeekId, setLocalWeekId] = useState(null);
+  const selectedWeekId = onSelectWeek ? controlledWeekId : localWeekId;
+  const setSelectedWeekId = onSelectWeek || setLocalWeekId;
   // Details start collapsed (#758). The question this surface answers — how
   // close am I to my normal training — is answered by the summary above; the
   // per-exercise diagnostic panel is the follow-up, not the opening statement.
@@ -91,38 +62,6 @@ export function BlockEvidence({
   // The non-medical note sits behind an info button in the footer row (#1219,
   // owner-directed change of the earlier "one persistent line", #1023 v2 §8).
   const [aboutShown, toggleAbout] = useInfoExplainer();
-
-  // Seeded from the STORED value, so Cancel is a true discard — the record is
-  // the only source of what the field currently says.
-  const openReasonEditor = () => {
-    setReasonError(null);
-    setReasonDraft(block.reason || '');
-    setEditingReason(true);
-  };
-  const closeReasonEditor = () => {
-    setEditingReason(false);
-    setReasonDraft('');
-    setReasonError(null);
-  };
-  const handleSaveReason = async () => {
-    if (reasonBusy || !onSaveReason) return;
-    setReasonError(null);
-    setReasonBusy(true);
-    try {
-      // The raw draft goes to the domain, which owns normalization — clearing
-      // the field is an ordinary save of empty text, not a separate action.
-      const result = await onSaveReason({ blockId: block.id, reason: reasonDraft });
-      if (!result || result.ok === false) {
-        setReasonError((result && result.error) || 'That reason could not be saved.');
-        return;
-      }
-      closeReasonEditor();
-    } finally {
-      setReasonBusy(false);
-    }
-  };
-  const reasonEditable = !!onSaveReason;
-  const reasonDisabled = reasonLocked || reasonBusy;
 
   const comparison = useMemo(
     () => deriveRecoveryComparison({ block, weeks, notes }),
@@ -167,18 +106,6 @@ export function BlockEvidence({
   // only then does the bottom line stop repeating it.
   const heroNamesRoutine = showStrength && strengthOk && strength.headline != null;
   const showInfo = comparison.status === RECOVERY_COMPARISON_STATUS.OK || comparison.status === RECOVERY_COMPARISON_STATUS.BASELINE_EMPTY;
-  const showReasonRow = !editingReason && (reasonEditable || !!block.reason);
-  const reasonValue = block.reason || 'Add a reason';
-  const tidyNode = tidyNames ? (
-        <TidyRecoveryNamesAction
-          key={block.id}
-          block={block}
-          weeks={weeks}
-          notes={notes}
-          locked={reasonLocked || stateStale}
-          onTidy={tidyNames.tidyNames}
-        />
-      ) : null;
   return (
     <Card>
       {/* The section's only Recovery header is the outer SectionTitle (#1217);
@@ -226,9 +153,11 @@ export function BlockEvidence({
             )}
           </View>
 
-          {weekResults.length > 1 && (
-            <WeekPicker
-              weeks={weekResults}
+          {weekResults.length > 0 && (
+            <RecoveryStrengthWeeks
+              weekResults={weekResults}
+              strength={strength}
+              scaleMax={scaleMax}
               selectedWeekId={selectedWeek ? selectedWeek.week_id : null}
               onSelect={setSelectedWeekId}
             />
@@ -236,14 +165,12 @@ export function BlockEvidence({
 
           {showStrength && (
             <>
-              {strengthOk && <RecoveryStrengthWeeks strength={strength} scaleMax={scaleMax} />}
               {/* A legacy baseline still lists what was not retested (#1305). */}
               <RecoveryStrengthLadder strength={strength} scaleMax={scaleMax} unit={unit} />
               {strengthOk && <StrengthScaleNote scaleMax={scaleMax} />}
-              {strengthOk && groupEditing && (
+              {strengthOk && (
                 <RecoveryMovementGroupsPanel
-                  block={block} notes={notes} strength={strength} selectedWeek={selectedWeek}
-                  routineTitle={routineTitle} groupEditing={groupEditing}
+                  block={block} notes={notes} strength={strength} selectedWeek={selectedWeek} notesError={notesError}
                 />
               )}
             </>
@@ -283,31 +210,12 @@ export function BlockEvidence({
         </>
       )}
 
-      {showReopen && (
-        <View style={styles.reopenWrapper}>
-          <Pressable
-            onPress={() => onReopen?.(block)}
-            disabled={reopenDisabled}
-            style={[styles.reopenButton, reopenDisabled && styles.reopenButtonDisabled]}
-            accessibilityRole="button"
-            accessibilityLabel={`Reopen recovery block: ${routineTitle}`}
-            accessibilityState={{ disabled: reopenDisabled, busy: reopenBusy }}
-          >
-            <Text style={styles.reopenButtonText}>
-              {reopenBusy ? 'Reopening…' : 'Reopen recovery block'}
-            </Text>
-          </Pressable>
-          {!!reopenError && (
-            <Text style={styles.reopenErrorText} accessibilityRole="alert">{reopenError}</Text>
-          )}
-        </View>
-      )}
-
       {/* Block context (#1219): a quiet two-row "label  value" list under one
           divider. Row 1 is the start date with the info button directly after
           it (the control sits beside the text it explains, not at the card
-          edge) and the disclosure opens right under it; row 2 is the labelled,
-          editable Reason. Every row is a real >=44dp target; nothing floats. */}
+          edge) and the disclosure opens right under it; row 2 is a quiet read-only
+          Reason (editing lives in Manage block, #1307). The info button is a real
+          >=44dp target; the other rows are text, not targets; nothing floats. */}
       <View testID="recovery-footer-row" style={styles.contextBlock}>
         {!heroNamesRoutine && (
           <View testID="recovery-context-routine" style={styles.contextRow}>
@@ -345,40 +253,10 @@ export function BlockEvidence({
             Training numbers only. Not a medical judgment. Only you end a Recovery block.
           </Text>
         </InfoNote>
-        {showReasonRow && (reasonEditable ? (
-          <Pressable
-            testID="recovery-reason-row"
-            onPress={openReasonEditor}
-            disabled={reasonDisabled}
-            style={[styles.contextRow, styles.reasonRow]}
-            accessibilityRole="button"
-            accessibilityLabel={block.reason
-              ? `Edit reason for this recovery block: ${block.reason}`
-              : 'Add a reason for this recovery block'}
-            accessibilityState={{ disabled: reasonDisabled }}
-          >
-            <Text style={labelStyle}>Reason</Text>
-            <Text
-              style={[
-                styles.contextValue, styles.contextValueShrink,
-                !block.reason && styles.contextPlaceholder,
-                reasonDisabled && styles.reasonCaptionDisabled,
-              ]}
-              numberOfLines={2}
-            >
-              {reasonValue}
-            </Text>
-            <MaterialIcons
-              name={block.reason ? 'edit' : 'add'}
-              size={16}
-              color={kua ? kua.onSurfaceVariant : colors.textMuted}
-              style={[styles.reasonEditIcon, reasonDisabled && styles.reasonCaptionDisabled]}
-              accessible={false}
-            />
-          </Pressable>
-        ) : (
+        {/* Quiet read-only context (#1307): editing lives in Manage block only. */}
+        {block.reason ? (
           <View
-            testID="recovery-reason-row"
+            testID="recovery-reason-context"
             style={[styles.contextRow, styles.reasonRow]}
             accessible
             accessibilityLabel={`Reason: ${block.reason}`}
@@ -388,59 +266,8 @@ export function BlockEvidence({
               {block.reason}
             </Text>
           </View>
-        ))}
+        ) : null}
       </View>
-      {/* The optional reason (#872) is context only — no metric or week status
-          reads it. The footer row shows/edits it; the editor opens here. */}
-      {editingReason ? (
-        <View style={styles.reasonEditor}>
-          <TextInput
-            style={styles.reasonInput}
-            value={reasonDraft}
-            onChangeText={setReasonDraft}
-            placeholder="e.g. torn hamstring, 8 weeks off"
-            placeholderTextColor={kua ? kua.onSurfaceVariant : colors.textMuted}
-            maxLength={MAX_RECOVERY_REASON_LENGTH}
-            editable={!reasonDisabled}
-            accessibilityLabel="Reason for this recovery block"
-          />
-          <Text style={styles.reasonCaption}>
-            Only for your own records. Leave it empty to remove it.
-          </Text>
-          {reasonError ? <Text style={styles.reasonErrorText}>{reasonError}</Text> : null}
-          <View style={styles.reasonEditorActions}>
-            <Pressable
-              onPress={closeReasonEditor}
-              disabled={reasonBusy}
-              style={styles.reasonEditorButton}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel editing the reason"
-              accessibilityState={{ disabled: reasonBusy }}
-            >
-              <Text style={styles.reasonEditorCancelText}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              onPress={handleSaveReason}
-              disabled={reasonDisabled}
-              style={styles.reasonEditorButton}
-              accessibilityRole="button"
-              accessibilityLabel="Save the reason"
-              accessibilityState={{ disabled: reasonDisabled, busy: reasonBusy }}
-            >
-              <Text style={styles.reasonEditorSaveText}>
-                {reasonBusy ? 'Saving…' : 'Save'}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      ) : null}
-      {onRebuildBaseline ? (
-        <RebuildBaselineAction block={block} weeks={weeks} notes={notes} unit={unit} locked={reasonLocked} onRebuild={onRebuildBaseline} />
-      ) : null}
-      {onMatchNames ? (
-        <MatchExerciseNamesAction block={block} weeks={weeks} notes={notes} locked={reasonLocked || stateStale} onMatch={onMatchNames} />
-      ) : null}
-      {tidyNode}
     </Card>
   );
 }

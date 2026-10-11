@@ -1,18 +1,16 @@
-// Glue for the movement-group breakdown (#1306): derives the groups from the
-// strength rows and the baseline note's overrides, then renders the read-only
-// breakdown with the editor control slotted in. Kept out of RecoveryEvidence so
-// that file stays small and C (#1307) can re-home the controls by changing only
-// the `renderControl` line here.
+// Glue for the read-only movement-group breakdown (#1306): derives the groups
+// from the strength rows and the baseline note's overrides. The group EDITOR lives
+// in Manage block (#1307); this panel carries numbers only.
 
 import React, { useMemo } from 'react';
 import { deriveMovementGroupBreakdown, resolveMovementGroupSource } from '../../lib/data/recoveryMovementGroups';
 import { RecoveryMovementGroups } from './RecoveryMovementGroups';
-import { GROUP_EDIT_UNAVAILABLE, MovementGroupEditorControl } from './MovementGroupEditor';
+import { GROUP_EDIT_UNAVAILABLE } from './MovementGroupEditor';
 
-export function RecoveryMovementGroupsPanel({ block, notes, strength, selectedWeek, routineTitle, groupEditing }) {
+export function RecoveryMovementGroupsPanel({ block, notes, strength, selectedWeek, notesError = null }) {
   const source = useMemo(
-    () => resolveMovementGroupSource({ block, notes, notesError: groupEditing.notesError }),
-    [block, notes, groupEditing.notesError]
+    () => resolveMovementGroupSource({ block, notes, notesError }),
+    [block, notes, notesError]
   );
   const breakdown = useMemo(() => deriveMovementGroupBreakdown({
     strength,
@@ -20,21 +18,7 @@ export function RecoveryMovementGroupsPanel({ block, notes, strength, selectedWe
     addedRows: (selectedWeek && selectedWeek.added) || [],
     overrides: source.overrides,
   }), [strength, block, selectedWeek, source]);
-  const editing = {
-    available: source.available,
-    locked: groupEditing.locked === true,
-    noteId: source.noteId,
-    onSet: groupEditing.onSet,
-  };
-  const notice = !source.available ? GROUP_EDIT_UNAVAILABLE[source.reason]
-    : editing.locked ? GROUP_EDIT_UNAVAILABLE.locked : null;
-  return (
-    <RecoveryMovementGroups
-      breakdown={breakdown}
-      notice={notice}
-      renderControl={(exercise) => (
-        <MovementGroupEditorControl exercise={exercise} editing={editing} routineTitle={routineTitle} />
-      )}
-    />
-  );
+  // Unavailable saved choices change what the numbers mean, so that stays here.
+  const notice = !source.available ? GROUP_EDIT_UNAVAILABLE[source.reason] : null;
+  return <RecoveryMovementGroups breakdown={breakdown} notice={notice} />;
 }

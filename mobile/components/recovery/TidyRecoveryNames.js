@@ -58,7 +58,7 @@ function Preview({ plan, styles, tidy }) {
 }
 
 export function TidyRecoveryNamesAction({
-  block, weeks, notes, locked = false, onTidy,
+  block, weeks, notes, locked = false, rowStyle = null, onTidy,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
@@ -112,7 +112,7 @@ export function TidyRecoveryNamesAction({
   );
 
   return (
-    <View testID="recovery-tidy-names" style={styles.reasonEditor}>
+    <View testID="recovery-tidy-names" style={[styles.reasonEditor, rowStyle]}>
       <Pressable
         onPress={() => { setSnapshot(open ? null : livePlan); setOpen(o => !o); setError(null); setNotice(null); }}
         disabled={busy !== null}
