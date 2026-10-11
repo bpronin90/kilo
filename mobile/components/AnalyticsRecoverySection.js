@@ -1,12 +1,13 @@
 // Analytics Recovery section (#698): renders the #697 return-to-baseline
 // comparison contract for the active recovery block and, on request, any
 // completed block from history. The comparison itself is read-only — nothing
-// here recomputes, gates, or claims medical recovery, and the hero is a factual
-// exercise count ("X of Y baseline exercises met"), never a composite percentage
-// or a completion gate. The few controls that DO write (the inclusion toggle
-// #728, Reopen #839, and the optional reason #872) each change one presentation
-// or lifecycle field and none of them feed the comparison above. All of them
-// live in the sibling Manage block panel (#1307), never in the evidence card.
+// here recomputes, gates, or claims medical recovery. The hero is the average %
+// of baseline strength (#1305), never a completion gate. The controls that DO
+// write (inclusion toggle #728, Reopen #839, optional reason #872, baseline
+// rebuild/name matching/tidy #1227/#1298/#1309, movement-group overrides #1306)
+// each change one presentation, lifecycle or baseline-name field. All of them
+// live in the sibling Manage block panel (#1307), never in the evidence card;
+// the strength week rows are the sole week selector.
 
 import React, { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';

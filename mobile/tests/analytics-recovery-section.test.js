@@ -515,7 +515,8 @@ describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b
     expect(hasText(root, 'Push Pull Legs baseline')).toBe(true);
     // The week is named once, by the hero — not repeated in the caption.
     expect(hasText(root, 'Week 1 · Push Pull Legs')).toBe(false);
-    expect(findAllText(root).filter(t => t === 'Week 1').length).toBe(1);
+    // Once in the hero summary and once as the (single) selectable week row.
+    expect(findAllText(root).filter(t => t === 'Week 1').length).toBe(2);
     // The old two-line "Baseline routine" label + title pair is gone.
     expect(hasText(root, 'Baseline routine')).toBe(false);
   });
@@ -1946,7 +1947,8 @@ describe('AnalyticsRecoverySection — strength trend by recovery week (#1305)',
     const root = setup({ blocks: [block({ baseline: legacy })], weeks: [week(1, 'note-w1')], notes: [note('note-w1', '-Bench\n- 135 5')] }).root;
     expect(hasText(root, 'Baseline best-set data unavailable. Rebuild the baseline in Manage block to score strength.')).toBe(true);
     expect(hasText(root, 'Pull-up: not logged in any week yet')).toBe(true);
-    expect(hostById(root, 'recovery-strength-weeks')).toHaveLength(0);
+    // The single live week still gets its row, with an explicit unscored state.
+    expect(hostTextsIn(weekRow(root, 1))).toContain('Not scored');
     expect(hostById(root, 'recovery-strength-scale')).toHaveLength(0);
   });
 

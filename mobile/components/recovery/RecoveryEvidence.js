@@ -153,7 +153,7 @@ export function BlockEvidence({
             )}
           </View>
 
-          {weekResults.length > 1 && (
+          {weekResults.length > 0 && (
             <RecoveryStrengthWeeks
               weekResults={weekResults}
               strength={strength}

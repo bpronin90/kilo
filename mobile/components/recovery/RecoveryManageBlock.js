@@ -39,12 +39,16 @@ function MovementGroupsManage({ block, weeks, notes, routineTitle, groupEditing 
   const manage = useMemo(() => createManageBlockStyles(colors, kua), [colors, kua]);
   const mg = useMemo(() => createMovementGroupStyles(colors, kua), [colors, kua]);
   const [open, setOpen] = useState(false);
+  // Mounted on first open and kept mounted while collapsed so a pending or failed
+  // group write keeps its draft and error.
+  const [everOpened, setEverOpened] = useState(false);
   const source = useMemo(
     () => resolveMovementGroupSource({ block, notes, notesError: groupEditing.notesError }),
     [block, notes, groupEditing.notesError]
   );
   const exercises = useMemo(() => {
-    const baselineRows = (block.baseline && block.baseline.exercises) || [];
+    // An unreadable baseline (non-array exercises) contributes no rows.
+    const baselineRows = block.baseline && Array.isArray(block.baseline.exercises) ? block.baseline.exercises : [];
     const addedRows = [];
     const seen = new Set(baselineRows.map(r => r && r.key));
     for (const w of deriveRecoveryComparison({ block, weeks, notes }).weeks || []) {
@@ -64,7 +68,7 @@ function MovementGroupsManage({ block, weeks, notes, routineTitle, groupEditing 
     <View testID="recovery-manage-groups" style={[manage.row, manage.rowDivider]}>
       <Pressable
         testID="recovery-manage-groups-header"
-        onPress={() => setOpen(o => !o)}
+        onPress={() => { setEverOpened(true); setOpen(o => !o); }}
         style={manage.groupsTrigger}
         accessibilityRole="button"
         accessibilityLabel={open ? 'Collapse movement groups editor' : 'Expand movement groups editor'}
@@ -76,8 +80,13 @@ function MovementGroupsManage({ block, weeks, notes, routineTitle, groupEditing 
         </View>
         <MaterialIcons name={open ? 'expand-less' : 'expand-more'} size={18} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
       </Pressable>
-      {open ? (
-        <>
+      {everOpened ? (
+        <View
+          testID="recovery-manage-groups-body"
+          style={open ? undefined : { display: 'none' }}
+          accessibilityElementsHidden={!open}
+          importantForAccessibility={open ? 'auto' : 'no-hide-descendants'}
+        >
           {notice ? <Text testID="movement-groups-notice" style={mg.notice}>{notice}</Text> : null}
           {exercises.map(ex => (
             <View key={ex.key} testID={`manage-group-exercise-${ex.key}`} style={mg.exercise}>
@@ -90,7 +99,7 @@ function MovementGroupsManage({ block, weeks, notes, routineTitle, groupEditing 
               </Text>
             </View>
           ))}
-        </>
+        </View>
       ) : null}
     </View>
   );

@@ -53,7 +53,7 @@ export function StrengthScaleNote({ scaleMax }) {
 export function RecoveryStrengthWeeks({ weekResults, strength, scaleMax, selectedWeekId, onSelect }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStrengthStyles(colors, kua), [colors, kua]);
-  if (!weekResults || weekResults.length < 2) return null;
+  if (!weekResults || weekResults.length < 1) return null;
   const trend = new Map((strength.weeks || []).map(w => [w.week_id, w]));
   return (
     <View testID="recovery-strength-weeks" style={styles.section}>

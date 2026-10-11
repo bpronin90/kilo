@@ -388,3 +388,44 @@ describe('History focus selection', () => {
     expect([histSel(c, 1), histSel(c, 2)]).toEqual([true, false]);
   });
 });
+
+describe('Robustness and single-week selector', () => {
+  test('a single live week renders one selected, pressable row', () => {
+    const c = mount({ weeks: [WEEKS[0]] });
+    const rows = c.root.findAll(isRow);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].props.accessibilityRole).toBe('button');
+    expect(rows[0].props.accessibilityState.selected).toBe(true);
+    expect(rows[0].props.accessibilityLabel).toMatch(/^Week 1: /);
+  });
+
+  test('an unreadable baseline does not crash Manage block; Reason and Inclusion stay usable', () => {
+    const bad = block({ baseline: { version: 2, exercises: {} } });
+    const c = mount({ blocks: [bad], weeks: [] });
+    expect(() => openManage(c.root)).not.toThrow();
+    expect(byLabel(c.root, 'Add a reason for this recovery block')).toBeDefined();
+    expect(host(c.root, 'recovery-inclusion-switch-rb1')).toHaveLength(1);
+    expect(host(c.root, 'recovery-manage-groups')).toHaveLength(0);
+  });
+
+  test('collapsing Movement groups mid-write keeps the failure and draft for the next open', async () => {
+    const setGroup = jest.fn();
+    jest.spyOn(require('../hooks/entries/movementGroupHooks'), 'useMovementGroupEditor')
+      .mockReturnValue({ setMovementGroup: setGroup });
+    let fail;
+    setGroup.mockImplementation(() => new Promise(r => { fail = r; }));
+    const c = mount();
+    openManage(c.root);
+    press(c.root, 'recovery-manage-groups-header');
+    press(c.root, 'movement-group-edit-squat');
+    press(c.root, 'movement-group-option-squat-hinge');
+    press(c.root, 'recovery-manage-groups-header'); // collapse mid-write
+    const body = host(c.root, 'recovery-manage-groups-body')[0];
+    expect(body.props.accessibilityElementsHidden).toBe(true);
+    expect(body.props.importantForAccessibility).toBe('no-hide-descendants');
+    await act(async () => { fail({ ok: false, error: 'disk full' }); });
+    press(c.root, 'recovery-manage-groups-header');
+    expect(host(c.root, 'movement-group-error-squat')[0].props.children).toBe('Not saved: disk full');
+    expect(host(c.root, 'movement-group-option-squat-hinge')[0].props.accessibilityState.selected).toBe(true);
+  });
+});
