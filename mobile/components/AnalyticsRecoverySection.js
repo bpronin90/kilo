@@ -25,6 +25,7 @@ import {
   useRecoveryBaselineNames,
 } from '../hooks/entries/recoveryBlockHooks';
 import { useRecoveryTidyNames } from '../hooks/entries/recoveryTidyMutations';
+import { useMovementGroupEditor } from '../hooks/entries/movementGroupHooks';
 import { RecoveryInclusionToggle } from './RecoveryInclusionToggle';
 import { BlockEvidence } from './recovery/RecoveryEvidence';
 import { WeekIndexRow } from './recovery/RecoveryWeekIndex';
@@ -52,6 +53,9 @@ export function AnalyticsRecoverySection({
   // authoritative hook enforces (#728).
   mutationsAllowed = true,
   pendingRecovery = [],
+  // A failed notes read (#1306): the saved movement-group choices are then
+  // unavailable, which is not the same as there being none.
+  notesError = null,
   onRetry,
   onNavigate,
 }) {
@@ -66,6 +70,7 @@ export function AnalyticsRecoverySection({
   const { setIncludeInNormalAnalytics, reopenBlock, setBlockReason, rebuildBaseline } = useRecoveryBlockLifecycle();
   const { matchBaselineName } = useRecoveryBaselineNames();
   const tidyNames = useRecoveryTidyNames();
+  const { setMovementGroup } = useMovementGroupEditor();
   const [inclusionBusyBlockId, setInclusionBusyBlockId] = useState(null);
   const [inclusionError, setInclusionError] = useState(null);
   const [reopenBusy, setReopenBusy] = useState(false);
@@ -250,6 +255,7 @@ export function AnalyticsRecoverySection({
         onRebuildBaseline={rebuildBaseline}
         onMatchNames={matchBaselineName}
         tidyNames={tidyNames}
+        groupEditing={{ notesError, locked: !mutationsAllowed || hasPendingRecovery || stateStale, onSet: setMovementGroup }}
       />
 
       {completedBlocks.length > 0 && (

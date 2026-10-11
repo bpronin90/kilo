@@ -1,4 +1,5 @@
 import * as Storage from '../entries';
+import { groupRowsByKeyShape } from './keyShapeBatches';
 import { getSupabaseClient } from '../../lib/supabaseClient';
 import { BootstrapError } from './errors';
 import { buildBootstrapPlan } from './bootstrapPlan';
@@ -61,16 +62,7 @@ const DEFERRABLE_TABLES = new Set(['recovery_blocks', 'recovery_block_weeks']);
 //
 // Builders that emit a fixed key set produce exactly one group, so this is a
 // no-op for every table but recovery blocks.
-export function groupRowsByKeyShape(rows) {
-  const groups = new Map();
-  for (const row of rows) {
-    const shape = JSON.stringify(Object.keys(row).sort());
-    const existing = groups.get(shape);
-    if (existing) existing.push(row);
-    else groups.set(shape, [row]);
-  }
-  return [...groups.values()];
-}
+export { groupRowsByKeyShape };
 
 const CONFLICT_TARGETS = {
   user_profile: 'user_id',
@@ -346,8 +338,9 @@ export async function bootstrapFromLocal(userId, client = getSupabaseClient()) {
     // omits a column leaves the server's existing value for it untouched rather
     // than overwriting it with null.
     //
-    // A no-op for every other table: those builders emit a fixed key set, so
-    // they group into exactly one batch.
+    // Workout notes group the same way (#1306: `exercise_movement_groups` is
+    // sent only for notes that have it). Other tables emit a fixed key set, so
+    // they form exactly one batch.
     let error = null;
     for (const batch of groupRowsByKeyShape(rows)) {
       ({ error } = await db

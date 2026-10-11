@@ -1,3 +1,4 @@
+import { groupRowsByKeyShape } from './keyShapeBatches';
 const SCHEMA = 'kilo';
 const PULL_PAGE_SIZE = 1000;
 const PULL_META_FIELD = '__kilo_pull_meta';
@@ -42,6 +43,8 @@ const UPSERT_COLUMNS = Object.freeze({
     'skip_markers',
     'attendance_flags',
     'exercise_classifications',
+    // Authored content (#1306), not a derived cache: always uploaded when set.
+    'exercise_movement_groups',
     'session_checkins',
     'is_current',
     'source_snapshot',
@@ -372,14 +375,20 @@ export function createSupabaseTransport(getClient = getConfiguredSupabaseClient)
       if (!client) throw new Error('Cloud sync requires a configured Supabase client.');
       const userId = await resolveUserId(client);
       const rows = records.map((rec) => buildUpsertRow(table, rec, userId));
-      const upserted = client
-        .schema(SCHEMA)
-        .from(table)
-        .upsert(rows, { onConflict: conflictTargetFor(table) });
-      const { data, error } =
-        typeof upserted.select === 'function' ? await upserted.select('*') : await upserted;
-      if (error) throw error;
-      return (data || []).map(stripSyncXid);
+      // Batch by key shape so a row omitting an optional column (#1306) is never
+      // sent in a request naming it; see keyShapeBatches.js.
+      const out = [];
+      for (const batch of groupRowsByKeyShape(rows)) {
+        const upserted = client
+          .schema(SCHEMA)
+          .from(table)
+          .upsert(batch, { onConflict: conflictTargetFor(table) });
+        const { data, error } =
+          typeof upserted.select === 'function' ? await upserted.select('*') : await upserted;
+        if (error) throw error;
+        out.push(...(data || []));
+      }
+      return out.map(stripSyncXid);
     },
   };
 }

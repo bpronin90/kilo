@@ -524,7 +524,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       key="recovery-section"
       blocks={recoveryBlocks}
       weeks={recoveryWeeks}
-      notes={notes}
+      notes={notes} notesError={notesError}
       stateReady={recoveryReady}
       stateLoading={recoveryStateLoading}
       stateRefreshing={recoveryRefreshing}

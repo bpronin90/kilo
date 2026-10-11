@@ -23,6 +23,7 @@ import { createStyles } from './analyticsRecoveryStyles';
 import { RecoveryRosterSummary } from './RecoveryVisuals';
 import { RecoveryStrengthSummary } from './RecoveryStrengthSummary';
 import { RecoveryStrengthLadder } from './RecoveryStrengthLadder';
+import { RecoveryMovementGroupsPanel } from './RecoveryMovementGroupsPanel';
 import { RecoveryStrengthWeeks, StrengthScaleNote, strengthScaleMax } from './RecoveryStrengthWeeks';
 
 // A context row is announced ONCE: its visible label ("Started", "Dates",
@@ -63,6 +64,8 @@ export function BlockEvidence({
   onMatchNames,
   // Tidy names (#1309): clean week headers and baseline names together.
   tidyNames = null,
+  // Movement groups (#1306): { notesError, locked, onSet }; null hides the panel.
+  groupEditing = null,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
@@ -237,6 +240,12 @@ export function BlockEvidence({
               {/* A legacy baseline still lists what was not retested (#1305). */}
               <RecoveryStrengthLadder strength={strength} scaleMax={scaleMax} unit={unit} />
               {strengthOk && <StrengthScaleNote scaleMax={scaleMax} />}
+              {strengthOk && groupEditing && (
+                <RecoveryMovementGroupsPanel
+                  block={block} notes={notes} strength={strength} selectedWeek={selectedWeek}
+                  routineTitle={routineTitle} groupEditing={groupEditing}
+                />
+              )}
             </>
           )}
 

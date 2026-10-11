@@ -132,6 +132,12 @@ the changelog and archived roadmaps.
   **One `SectionTitle` per section.** Progressive Overload is a heading *inside*
   Strength (15/700, not `SectionTitle`), because the 1K total and the per-lift
   table are one subject; two section titles were splitting it in half.
+- A secondary breakdown that reuses a card's hero numbers (Recovery's
+  movement groups, #1306) is a collapsed flat list under that card's content,
+  never a second hero or a repeated band chart. It states how many items fed
+  each figure, shows no percent (not 0%) when none did, and keeps its editing
+  controls in a separate, relocatable component with >=44dp selected-state
+  targets that preserve an unsaved choice and its error on failure.
 - An analytics tab leads with an **overview block**: one row per permanent
   signal, each stating its current value, what changed and over what window, and
   linking to the section that itemises it. Rows are full-width, not a column

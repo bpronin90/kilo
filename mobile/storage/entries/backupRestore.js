@@ -19,6 +19,7 @@ import {
 import { writeList } from './jsonStorage';
 import { resetPhase, SYNC_PHASE } from '../syncRecovery';
 import { stripDerivedSectionsFromList } from './derivedCache';
+import { movementGroupsNoteError, withExplicitMovementGroups } from './movementGroupValidation';
 import { loadWorkoutNotesRaw, replaceWorkoutNotesRaw, withWorkoutNotebookLock } from './workoutNotes';
 import { loadWeightEntriesRaw, replaceWeightEntriesRaw } from './weightEntries';
 import {
@@ -145,6 +146,7 @@ function validateBackup(payload) {
         return { ok: false, error: 'Invalid backup: workout note missing raw_text' };
       if (n.raw_text.length > MAX_IMPORT_RAW_TEXT_LENGTH)
         return { ok: false, error: `Invalid backup: workout note raw_text too large (${n.raw_text.length}; limit ${MAX_IMPORT_RAW_TEXT_LENGTH})` };
+      const groupsError = movementGroupsNoteError(n); if (groupsError) return { ok: false, error: groupsError };
       // A tombstoned note is not a link target: readers filter it out, so a
       // membership pointing at one is dangling the moment it is restored.
       if (n.deleted_at == null && n.id.length > 0) liveWorkoutNoteIds.add(n.id);
@@ -306,7 +308,7 @@ async function replaceCollectionForCloud({ table, readRaw, writeRaw, imported, c
     // verbatim with no prior-row merge, and cannot widen `record_json`/`goal_json`
     // (#475): those columns live only on deload_history/weight_goal, and the push
     // whitelist for weight_entries/workout_notes never serializes them regardless.
-    const next = { ...content };
+    const next = table === SYNC_TABLES.WORKOUT_NOTES ? withExplicitMovementGroups(content) : { ...content };
     const stamped = isTombstone(row)
       ? stampTombstone(next, clientId)
       : stampWrite(next, clientId);
