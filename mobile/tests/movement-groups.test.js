@@ -30,7 +30,7 @@ const TABLE = [
   ['Lying Hamstring Curl', 'hinge'], ['Single Leg RDL', 'hinge'],
   // legs
   ['Squat', 'legs'], ['Back Squat', 'legs'], ['Front squats', 'legs'], ['Bulgarian Split Squat', 'legs'],
-  ['Leg Press', 'legs'], ['Walking Lunges', 'legs'], ['Reverse Lunge', 'legs'], ['Leg Extension', 'legs'],
+  ['Leg Press', 'legs'], ['Leg Presses', 'legs'], ['Shoulder Presses', 'shoulders'], ['Bench Presses', 'push'], ['Press', 'other'], ['Walking Lunges', 'legs'], ['Reverse Lunge', 'legs'], ['Leg Extension', 'legs'],
   ['Leg Extensions', 'legs'], ['Step-Up', 'legs'],
   // push
   ['Bench Press', 'push'], ['DB Bench Press', 'push'], ['Incline DB Press', 'push'], ['Chest Press', 'push'],

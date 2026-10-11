@@ -62,7 +62,7 @@ const RULES = Object.freeze([
 ]);
 
 function _stem(word) {
-  if (/(ch|sh|x)es$/.test(word)) return word.slice(0, -2);
+  if (/(ch|sh|x|ss)es$/.test(word)) return word.slice(0, -2);
   if (word.length > 2 && word.endsWith('s') && !word.endsWith('ss') && !word.endsWith('us')) return word.slice(0, -1);
   return word;
 }
