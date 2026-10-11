@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.12.0 - 2026-10-11
+
+- Issue #1309: Recovery now has Tidy names: a reviewed cleanup that rewrites messy exercise names in your recovery weeks (for example "Squat 3x6-8, step up") to your baseline's clean name, moves the removed description to a note under the first set, and tidies the baseline name too, without changing any of your numbers.
+
+## 1.11.1 - 2026-10-11
+
+- Issue #1307: Analytics Recovery now keeps every block maintenance control (reason, rebuild, name matching and tidying, movement-group choices, reopen, and the normal-analytics inclusion switch) in one Manage block card under the evidence, and the week rows in the strength view are the only way to pick a week.
+
+## 1.11.0 - 2026-10-11
+
+- Issue #1306: Analytics Recovery now has a collapsible Movement groups breakdown: every exercise sits in exactly one of Push, Pull, Shoulders, Arms, Legs, Hinge, Core or Other, each group shows its average % of baseline strength over the same lifts as the headline, and you can change an exercise's group or reset it to automatic (saved on the block's baseline routine and synced).
+
+## 1.10.0 - 2026-10-11
+
+- Issue #1305: Analytics Recovery now leads with how strong you are compared to before the injury: an average % of baseline strength over the lifts you've scored every week, a week-by-week trend, each lift's best set against its baseline best set, a best-case pace to 90% and 100% in recovery weeks, and the lifts not retested yet. New recovery blocks freeze the best set needed for this; older blocks can add it with a previewed, confirmed baseline rebuild that keeps matched exercise names.
+
 ## 1.9.2 - 2026-10-10
 
 - Issue #1300: Recovery exercise rows are now one scannable line (name, status, this week / baseline value); secondary metrics, the bar and name-mismatch notes open with a tap on the row, and the baseline reference is explained once above the list.
