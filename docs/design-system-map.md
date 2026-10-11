@@ -560,7 +560,7 @@ region (`home-recovery-analytics`, a single `accessible` node), in this order:
   card. A footer-link split was tried and reverted: it broke the shared
   header-is-the-handoff pattern for one card without applying it to the
   others.
-- **Headline** (#1315) — the snapshot's `{pct}%` and `{N} lifts · Week n`, the identical values Analytics and the Overview row print; absent when the snapshot has no average (legacy baseline, empty cohort) so Home never invents one.
+- **Headline** (#1315, #1318) — the snapshot's `{pct}% total recovery` and `{N} of {M} lifts back · avg {avg}% · Week n`, the identical values Analytics (number plus `total recovery` label) and the Overview row (`Total recovery`) print; absent when the snapshot has no total (legacy baseline, no readable week) so Home never invents one. Analytics week rows show the total per week; the strict consistent-cohort average is secondary detail in *About these numbers*.
 - **Week label** — `Latest linked week: Week N` (`Last loaded linked week:
   Week N` when the snapshot is stale), the micro-label treatment. Omitted when
   no week exists: there is nothing to name, and `Week 1` would be invented.
@@ -573,8 +573,9 @@ region (`home-recovery-analytics`, a single `accessible` node), in this order:
 - **Big 3 list** (`home-recovery-big3`, #1171) — an `Your Big 3 lifts` eyebrow,
   then one row per lift (`home-recovery-lift-{slot}`): the lift name left, its
   value right as that lift's strength % of its baseline best set for the
-  selected week (floored, read from the Recovery snapshot's per-lift rows — the
-  same numbers the Analytics ladder prints, #1315), or a compact status when it has
+  latest readable score through the selected week (floored, factual and uncapped,
+  read from the Recovery snapshot's `total.perLiftLatest`, #1315, #1318), with a
+  `last tested Week k` age line when that score is from an earlier week, or a compact status when it has
   no score (`Not retested`, `Not scored`, `Not in baseline`); a thin `6` track
   beneath is filled from a real score only (capped at 100%, completion color at
   100%+; every unscored lift is an empty track). The band-model words `Recovered`,
@@ -585,8 +586,9 @@ region (`home-recovery-analytics`, a single `accessible` node), in this order:
   user has no Big 3).
 - **Week scope line** (`home-recovery-week-scope`, #1245) — behind the shared
   `InfoButton` (`About this week's values`) beside the week label; hidden until
-  tapped, then `Values describe the latest linked week (Week N) only, not the
-  whole block.` in an `InfoNote`. The label shrinks/wraps beside the icon.
+  tapped, then `Total recovery and each Big 3 percent use the latest score through
+  Week N (older scores show the week last tested). The counts below describe
+  Week N only.` in an `InfoNote`. The label shrinks/wraps beside the icon.
 - **Stale message** — the existing `RECOVERY_STALE_MESSAGE`, only when stale.
 
 The three-state band vocabulary and the `recoveryBand*` tokens are Analytics-only

@@ -588,13 +588,13 @@ describe('HomeRecoverySummary — latest linked week scope (#1193)', () => {
     const root = mount(base);
     expect(hasText(root, 'Latest linked week: Week 4')).toBe(true);
     // #1245: the scope line sits behind the shared info icon beside the week label.
-    expect(hasText(root, 'Values describe')).toBe(false);
+    expect(hasText(root, 'Total recovery and each Big 3')).toBe(false);
     const info = root.findAll(n => n.props.testID === 'home-recovery-week-scope-info' && n.props.accessibilityRole === 'button')[0];
     expect(info.props.accessibilityLabel).toBe("About this week's values");
     render.act(() => { info.props.onPress(); });
-    expect(hasText(root, 'Values describe the latest linked week (Week 4) only, not the whole block.')).toBe(true);
+    expect(hasText(root, 'Total recovery and each Big 3 percent use the latest score through Week 4 (older scores show the week last tested). The counts below describe Week 4 only.')).toBe(true);
     render.act(() => { info.props.onPress(); });
-    expect(hasText(root, 'Values describe')).toBe(false);
+    expect(hasText(root, 'Total recovery and each Big 3')).toBe(false);
   });
 
   test('names the linked week by its note title when one exists (#1265)', () => {
@@ -610,8 +610,8 @@ describe('HomeRecoverySummary — latest linked week scope (#1193)', () => {
   });
 
   test('prints no scope line when there is no week or the baseline is unavailable', () => {
-    expect(hasText(mount({ ...base, weekNumber: null }), 'Values describe')).toBe(false);
-    expect(hasText(mount({ ...base, comparisonStatus: 'baseline_unavailable' }), 'Values describe')).toBe(false);
+    expect(hasText(mount({ ...base, weekNumber: null }), 'Total recovery and each Big 3')).toBe(false);
+    expect(hasText(mount({ ...base, comparisonStatus: 'baseline_unavailable' }), 'Total recovery and each Big 3')).toBe(false);
     expect(mount({ ...base, weekNumber: null }).findAllByProps({ testID: 'home-recovery-week-scope-info' })).toHaveLength(0);
     expect(mount({ ...base, comparisonStatus: 'baseline_unavailable' }).findAllByProps({ testID: 'home-recovery-week-scope-info' })).toHaveLength(0);
   });

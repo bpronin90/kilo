@@ -237,5 +237,19 @@ export function deriveRecoveryStrength({ block, weeks = [], notes = [], selected
     lifts,
     not_retested,
     not_scored,
+    // Raw per-week, per-lift #1305 scores (SCORED states only) for the total
+    // recovery derivation (#1318); that module never re-scores a lift.
+    evidence: {
+      lifts: scoreable.map(({ row }) => ({ key: row.key, name: row.name || row.key })),
+      weeks: perWeek.map(p => ({
+        week_id: p.week.id,
+        week_number: p.week.week_number,
+        readable: p.readable,
+        scores: new Map(p.readable ? scoreable.flatMap(({ row }) => {
+          const r = p.results.get(row.key);
+          return r.state === LIFT_STATE.SCORED ? [[row.key, r.percent]] : [];
+        }) : []),
+      })),
+    },
   };
 }

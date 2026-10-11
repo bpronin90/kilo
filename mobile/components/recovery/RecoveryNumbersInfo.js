@@ -18,16 +18,20 @@ export function numbersInfoLines({ snapshot, routineTitle }) {
   const { display, strength, scaleMax } = snapshot;
   lines.push(`Baseline routine: ${routineTitle}.`);
   if (display.state === SNAPSHOT_STATE.SCORE) {
-    lines.push(`${display.weekLabel}: ${display.percent}% is the average of each lift’s best set as a share of its baseline best set.`);
+    lines.push(`${display.weekLabel}: ${display.headline}, from each lift’s best set as a share of its baseline best set.`);
   }
+  // Total recovery wording first, then the secondary consistent-cohort detail.
   lines.push(...display.detail.map(l => (/[.!?]$/.test(l) ? l : `${l}.`)));
   if (strength.status === 'ok') {
     const outside = (strength.lifts || []).filter(l => l.state === LIFT_STATE.SCORED && !l.in_cohort).map(l => l.name);
     if (outside.length > 0) lines.push(`Not in the average (not scored every week): ${outside.join(', ')}.`);
     lines.push(strengthScaleNote(scaleMax));
     const paced = (strength.lifts || []).filter(l => l.state === LIFT_STATE.SCORED && paceText(l.pace));
-    if (paced.length > 0) {
+    // #1318: pace is also stated for the total recovery trend (same #1305 rules).
+    const totalPace = snapshot.total && snapshot.total.pace ? paceText(snapshot.total.pace) : null;
+    if (paced.length > 0 || totalPace) {
       lines.push(PACE_EXPLAINER);
+      if (totalPace) lines.push(`Total recovery: ${totalPace}.`);
       for (const l of paced) lines.push(`${l.name}: ${paceText(l.pace)}.`);
     }
   }

@@ -196,7 +196,7 @@ export const HOME_BIG3_NOT_SCORED = 'not_scored';
 
 // #1171, strength model (#1315): the Big 3 rows read the Recovery snapshot's
 // per-lift strength rows — the very rows the Analytics ladder prints — so a lift's
-// number here is its floored % of baseline best set for the selected week. A lift
+// number here is its floored latest % of baseline best set through the selected week (#1318). A lift
 // with no score shows a compact status instead of a number. Nothing is derived
 // here: the snapshot's `strength`, `bands` and selected week are the only inputs.
 // The Big 3 use the effective 1K selection (#1192); a lift outside the baseline is
@@ -205,7 +205,10 @@ export function deriveHomeRecoveryBig3(snapshot, selections) {
   const week = snapshot && snapshot.selectedWeek;
   const counts = snapshot ? snapshot.counts : null;
   if (!week || week.status !== RECOVERY_WEEK_STATUS.OK) return { big3: [], counts };
-  const { strength } = snapshot;
+  const { strength, total } = snapshot;
+  // #1318: a lift's percent is its LATEST readable strength score through the
+  // selected week (the snapshot total's evidence), with the week it came from.
+  const latest = new Map((total.perLiftLatest || []).map(l => [l.key, l]));
   const lifts = new Map((strength.lifts || []).map(l => [l.key, l]));
   const notScored = new Map((strength.not_scored || []).map(n => [n.key, n]));
   const notRetested = new Map((strength.not_retested || []).map(n => [n.key, n]));
@@ -213,19 +216,21 @@ export function deriveHomeRecoveryBig3(snapshot, selections) {
   for (const { slot, label } of BIG3_SLOTS) {
     const key = typeof selections?.[slot] === 'string' ? normalizeExerciseKey(selections[slot]) : null;
     const lift = key ? lifts.get(key) : null;
+    const ev = key ? latest.get(key) : null;
     const baselineOnly = key ? (notScored.get(key) || notRetested.get(key)) : null;
-    if (lift && lift.state === LIFT_STATE.SCORED && Number.isFinite(lift.percent)) {
-      big3.push({ slot, label: lift.name || label, state: HOME_BIG3_SCORED, percent: displayPercent(lift.percent) });
+    if (ev && ev.week != null && Number.isFinite(ev.percent)) {
+      big3.push({
+        slot, label: ev.name || label, state: HOME_BIG3_SCORED, percent: displayPercent(ev.percent),
+        lastTestedWeek: ev.week !== week.week_number ? ev.week : null,
+      });
     } else if (lift) {
-      // Scoreable in the baseline but no score this week: unscoreable work is
-      // "not scored", an absent or unreadable lift is "not retested".
-      big3.push({ slot, label: lift.name || label, state: lift.state === LIFT_STATE.UNSCOREABLE ? HOME_BIG3_NOT_SCORED : HOME_BIG3_NOT_RETESTED, percent: null });
+      big3.push({ slot, label: lift.name || label, state: lift.state === LIFT_STATE.UNSCOREABLE ? HOME_BIG3_NOT_SCORED : HOME_BIG3_NOT_RETESTED, percent: null, lastTestedWeek: null });
     } else if (key && notScored.has(key)) {
-      big3.push({ slot, label: notScored.get(key).name || label, state: HOME_BIG3_NOT_SCORED, percent: null });
+      big3.push({ slot, label: notScored.get(key).name || label, state: HOME_BIG3_NOT_SCORED, percent: null, lastTestedWeek: null });
     } else if (baselineOnly) {
-      big3.push({ slot, label: baselineOnly.name || label, state: HOME_BIG3_NOT_RETESTED, percent: null });
+      big3.push({ slot, label: baselineOnly.name || label, state: HOME_BIG3_NOT_RETESTED, percent: null, lastTestedWeek: null });
     } else {
-      big3.push({ slot, label: selections?.[slot] || label, state: HOME_BIG3_NOT_IN_BASELINE, percent: null });
+      big3.push({ slot, label: selections?.[slot] || label, state: HOME_BIG3_NOT_IN_BASELINE, percent: null, lastTestedWeek: null });
     }
   }
   return { big3, counts };

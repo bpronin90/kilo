@@ -101,7 +101,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   const weekLabel = weekNumber === null ? null : `${stale ? 'Last loaded linked week' : 'Latest linked week'}: ${weekName}`;
   // #1193: the values below describe this one week, never the whole block.
   const weekScope = weekNumber !== null && fallbackStatus === null
-    ? `Values describe ${stale ? 'the last loaded' : 'the latest'} linked week (${weekName}) only, not the whole block.`
+    ? `Total recovery and each Big 3 percent use the latest score through ${weekName} (older scores show the week last tested). The counts below describe ${weekName} only.`
     : null;
 
   // #1171: the user's Big 3 lead, each against its own baseline. #1242: the
@@ -110,7 +110,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   const lifts = fallbackStatus === null ? big3 : [];
   const countLine = fallbackStatus === null ? formatRecoveryCountLine(counts) : null;
   // #1315: the shared snapshot headline (same % and caption as Analytics).
-  const headlineScored = !!headline && headline.state === 'score' && fallbackStatus === null;
+  const headlineScored = !!headline && headline.state === 'score';
   // No honest average (empty cohort, legacy baseline): say why, in the snapshot's
   // own words, instead of leaving the headline slot silent.
   const headlineReason = !!headline && headline.state !== 'score' && fallbackStatus === null ? headline.message : null;
@@ -127,7 +127,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
     lifts.length > 0 ? 'Big 3' : null,
     ...lifts.map(lift => {
       const value = liftValue(lift);
-      return `${lift.label} ${value.endsWith('%') ? `${value} of baseline` : value.toLowerCase()}`;
+      return `${lift.label} ${value.endsWith('%') ? `${value} of baseline${lift.lastTestedWeek ? `, last tested Week ${lift.lastTestedWeek}` : ''}` : value.toLowerCase()}`;
     }),
     remainingText ? remainingText.replace(/ · /g, ', ') : null,
   ].filter(Boolean)
@@ -194,7 +194,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
               ) : null}
               {headlineScored ? (
                 <View testID="home-recovery-headline">
-                  <Text testID="home-recovery-headline-value" style={styles.recoveryLiftName}>{`${headline.percent}%`}</Text>
+                  <Text testID="home-recovery-headline-value" style={styles.recoveryLiftName}>{headline.headline}</Text>
                   <Text testID="home-recovery-headline-caption" style={styles.recoveryWeekLabel}>{headline.caption}</Text>
                 </View>
               ) : null}
@@ -215,6 +215,9 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
                           <Text style={styles.recoveryLiftName}>{lift.label}</Text>
                           <Text style={[styles.recoveryLiftValue, done && styles.recoveryLiftDone]}>{liftValue(lift)}</Text>
                         </View>
+                        {lift.lastTestedWeek ? (
+                          <Text testID={`home-recovery-lift-${lift.slot}-age`} style={styles.recoveryWeekLabel}>{`last tested Week ${lift.lastTestedWeek}`}</Text>
+                        ) : null}
                         <View style={styles.recoveryLiftTrack}>
                           {fill > 0 ? <View style={[styles.recoveryLiftFill, done && styles.recoveryLiftFillDone, { width: `${fill}%` }]} /> : null}
                         </View>

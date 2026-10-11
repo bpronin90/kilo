@@ -1,6 +1,6 @@
-// Weekly strength trend (#1305): one bar per recovery week through the selected
-// week, each the SAME cohort's average % of baseline, on the common percent
-// scale shared with the ladder. Weeks are ordinals, never dates. An unreadable
+// Weekly total-recovery trend (#1318): one bar per recovery week through the
+// selected week, each the snapshot's as-of TOTAL recovery for that week (capped
+// at 100, so bars use a fixed 0-100 scale). Weeks are ordinals, never dates. An unreadable
 // week is a dashed "No data" gap, never a zero. The rows are also the week
 // selector (#1307).
 
@@ -34,24 +34,24 @@ export const strengthScaleNote = (scaleMax) => `Bars run 0–${scaleMax}%. The d
 // an unreadable or missing one reveals its explicit notice rather than being a
 // silent no-op. The score comes from the as-of trend when it has the week; a week
 // later than the selection (or a baseline with no strength data) says so.
-export function RecoveryStrengthWeeks({ weekResults, strength, scaleMax, selectedWeekId, onSelect }) {
+export function RecoveryStrengthWeeks({ weekResults, strength, total, selectedWeekId, onSelect }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStrengthStyles(colors, kua), [colors, kua]);
   if (!weekResults || weekResults.length < 1) return null;
-  const trend = new Map((strength.weeks || []).map(w => [w.week_id, w]));
+  const trend = new Map((total.trend || []).map(w => [w.week_id, w]));
   return (
     <View testID="recovery-strength-weeks" style={styles.section}>
       <Text style={styles.sectionTitle}>Week by week</Text>
       {weekResults.map(w => {
         const t = trend.get(w.week_id);
         const unreadable = w.status !== RECOVERY_WEEK_STATUS.OK || (t && !t.readable);
-        const scored = !unreadable && t && t.mean != null;
-        const valueText = scored ? `${displayPercent(t.mean)}%`
+        const scored = !unreadable && t && t.percent != null;
+        const valueText = scored ? `${displayPercent(t.percent)}%`
           : unreadable ? 'No data'
-          : t ? 'No average'
+          : t ? 'No total'
           : strength.status === STRENGTH_STATUS.OK ? 'Select to view' : 'Not scored';
         const selected = w.week_id === selectedWeekId;
-        const label = `Week ${w.week_number}: ${scored ? `${valueText} of baseline strength` : unreadable ? 'no readable evidence' : valueText.toLowerCase()}`;
+        const label = `Week ${w.week_number}: ${scored ? `${valueText} total recovery` : unreadable ? 'no readable evidence' : valueText.toLowerCase()}`;
         return (
           <Pressable
             key={w.week_id}
@@ -65,7 +65,7 @@ export function RecoveryStrengthWeeks({ weekResults, strength, scaleMax, selecte
           >
             <Text style={[styles.weekLabel, selected && styles.weekLabelSelected]}>{`Week ${w.week_number}`}</Text>
             {scored ? (
-              <StrengthBar percent={t.mean} scaleMax={scaleMax} testID={`recovery-strength-week-${w.week_number}-bar`} />
+              <StrengthBar percent={t.percent} scaleMax={100} testID={`recovery-strength-week-${w.week_number}-bar`} />
             ) : (
               <View style={styles.gapTrack} />
             )}

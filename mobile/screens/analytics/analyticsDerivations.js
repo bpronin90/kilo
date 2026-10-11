@@ -421,7 +421,7 @@ export function deriveOverviewRows({
   // strength) with its compact caption, both read from the single snapshot. When
   // the snapshot has no honest number the row says why, in the snapshot's words.
   const display = recoverySnapshot ? recoverySnapshot.display : null;
-  const base = { key: 'recovery', label: 'Recovery', section: 'recovery', unavailable: false, showUnit: false };
+  const base = { key: 'recovery', label: 'Total recovery', section: 'recovery', unavailable: false, showUnit: false };
   let recoveryRow;
   if (display && display.state === 'score') {
     recoveryRow = {

@@ -16,6 +16,7 @@ import {
 import { summarizeRecoveryBands } from './derivedAnalytics.js';
 import { movementGroupLabel } from './movementGroups.js';
 import { deriveRecoveryStrength, displayPercent, STRENGTH_STATUS } from './recoveryStrength.js';
+import { deriveRecoveryTotal, totalCaption, totalExplainerLines, TOTAL_REASON, TOTAL_EMPTY_COPY } from './recoveryTotal.js';
 import { deriveRecoveryWeekBands } from './recoveryReturnBands.js';
 import { deriveMovementGroupBreakdown, resolveMovementGroupSource } from './recoveryMovementGroups.js';
 
@@ -91,14 +92,22 @@ function _routineName(block) {
   return ((block && block.baseline_note_title) || '').trim() || 'Untitled Routine';
 }
 
-// The sentences the summary no longer prints. They live in the accessibility
-// label and the "About these numbers" explainer.
+// The secondary detail the summary does not print: the strict consistent-cohort
+// average (#1305, now secondary to the total, #1318) with its numeric percent or
+// truthful unavailable reason, plus coverage, exclusions and drops. They live in
+// the accessibility label and the "About these numbers" explainer.
 function _detailLines(strength) {
   const cohortSize = strength.cohort.length;
   const lines = [];
+  const coverage = `${_lifts(cohortSize)} scored every week · ${cohortSize} of ${strength.roster_size} baseline lifts`;
+  if (strength.headline != null && cohortSize > 0) {
+    lines.push(`Consistent-cohort average (secondary): ${displayPercent(strength.headline)}% across ${coverage}`);
+  } else if (strength.status === STRENGTH_STATUS.OK) {
+    lines.push(`Consistent-cohort average (secondary): ${STRENGTH_EMPTY_COPY[strength.empty_reason] || STRENGTH_EMPTY_COPY.no_common_lifts}`);
+    if (cohortSize > 0) lines.push(coverage);
+  }
   if (cohortSize > 0) {
-    lines.push(`Average of ${_lifts(cohortSize)} scored every week · ${cohortSize} of ${strength.roster_size} baseline lifts`);
-    lines.push(`In the average: ${strength.cohort.map(c => c.name).join(', ')}`);
+    lines.push(`In the consistent cohort: ${strength.cohort.map(c => c.name).join(', ')}`);
   }
   if (strength.excluded_weeks.length > 0) {
     lines.push(`Week ${strength.excluded_weeks.join(', ')} couldn’t be read and is left out of the comparison.`);
@@ -109,7 +118,7 @@ function _detailLines(strength) {
   return lines;
 }
 
-function _message(comparison, selectedWeek, strength) {
+function _message(comparison, selectedWeek, strength, total) {
   if (comparison.status === RECOVERY_COMPARISON_STATUS.BASELINE_UNAVAILABLE
     || comparison.status === RECOVERY_COMPARISON_STATUS.BASELINE_UNSUPPORTED) {
     return 'Baseline data for this block isn’t available.';
@@ -118,27 +127,34 @@ function _message(comparison, selectedWeek, strength) {
   if (!selectedWeek) return 'Baseline captured. No week logged yet.';
   if (strength.status === STRENGTH_STATUS.PAIR_UNAVAILABLE) return STRENGTH_EMPTY_COPY.pair_unavailable;
   if (selectedWeek.status === RECOVERY_WEEK_STATUS.NOTE_MISSING) return 'This week’s note is no longer available.';
-  if (strength.status === STRENGTH_STATUS.OK) return STRENGTH_EMPTY_COPY[strength.empty_reason] || STRENGTH_EMPTY_COPY.no_common_lifts;
+  if (strength.status === STRENGTH_STATUS.OK) {
+    return total.reason === TOTAL_REASON.NO_SCOREABLE ? TOTAL_EMPTY_COPY.no_scoreable_lifts : STRENGTH_EMPTY_COPY.no_readable_weeks;
+  }
   return 'No strength score for this week.';
 }
 
-function _display(block, comparison, selectedWeek, strength) {
+function _display(block, comparison, selectedWeek, strength, total) {
   const weekLabel = selectedWeek ? `Week ${selectedWeek.week_number}` : null;
   const routine = _routineName(block);
-  if (strength.status === STRENGTH_STATUS.OK && strength.headline != null && weekLabel) {
-    const percent = displayPercent(strength.headline);
-    const detail = _detailLines(strength);
-    const caption = `${_lifts(strength.cohort.length)} · ${weekLabel}`;
+  if (total.percent != null && weekLabel) {
+    const percent = displayPercent(total.percent);
+    const detail = [...totalExplainerLines(total, selectedWeek.week_number), ..._detailLines(strength)];
+    const caption = totalCaption(total);
+    const headline = `${percent}% total recovery`;
+    const gap = total.selectedReadable ? [] : ['This week’s note can’t be read, so this total adds no score for it.'];
     return {
-      state: SNAPSHOT_STATE.SCORE, weekLabel, routine, percent, caption, message: null, detail,
-      a11y: [`${weekLabel}: ${percent}% of ${routine} baseline strength.`, ...detail.map(_sentence)].join(' '),
+      state: SNAPSHOT_STATE.SCORE, weekLabel, routine, percent, headline, caption, message: null, detail,
+      a11y: [
+        `${weekLabel}: ${headline} of ${routine} baseline strength. ${caption.replace(/ · /g, ', ')}.`,
+        ...gap, ...detail.map(_sentence),
+      ].join(' '),
     };
   }
-  const message = _message(comparison, selectedWeek, strength);
+  const message = _message(comparison, selectedWeek, strength, total);
   const detail = strength.status === STRENGTH_STATUS.OK ? _detailLines(strength) : [];
   return {
     state: strength.status === STRENGTH_STATUS.OK ? SNAPSHOT_STATE.EMPTY : SNAPSHOT_STATE.UNAVAILABLE,
-    weekLabel, routine, percent: null, caption: null, message, detail,
+    weekLabel, routine, percent: null, headline: null, caption: null, message, detail,
     a11y: `${weekLabel ? `${weekLabel}: ` : ''}${[message, ...detail.map(_sentence)].join(' ')}`.trim(),
   };
 }
@@ -149,7 +165,10 @@ function _build(block, weeks, notes, comparison, selectedWeek, { stale }) {
     block, weeks, notes, selectedWeekId: selectedWeek ? selectedWeek.week_id : null, stale,
   });
   const strengthOk = strength.status === STRENGTH_STATUS.OK;
-  const display = _display(block, comparison, selectedWeek, strength);
+  // #1318: total recovery is derived HERE, once per distinct input, and read by
+  // every surface (never re-derived).
+  const total = deriveRecoveryTotal(strength, { stale });
+  const display = _display(block, comparison, selectedWeek, strength, total);
   // Per-row bands and the summary counts, derived here once so no row or summary
   // component derives anything while rendering (or re-renders).
   const detailRows = selectedWeek && selectedWeek.status === RECOVERY_WEEK_STATUS.OK
@@ -170,6 +189,7 @@ function _build(block, weeks, notes, comparison, selectedWeek, { stale }) {
     weekResults,
     selectedWeek,
     strength,
+    total,
     scaleMax: strengthOk ? strengthScaleMax(strength) : 100,
     bands,
     counts: summarizeRecoveryBands(bands),
