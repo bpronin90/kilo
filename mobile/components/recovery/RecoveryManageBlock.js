@@ -28,7 +28,8 @@ import { createStyles } from './analyticsRecoveryStyles';
 import { createManageBlockStyles } from './recoveryManageBlockStyles';
 import { createMovementGroupStyles } from './recoveryMovementGroupStyles';
 
-const LOCKED_NOTE = 'Changes are paused until Recovery data is current or a pending change finishes. Controls below come back automatically.';
+const LOCKED_NOTE = 'Changes are paused while a Recovery change is pending or Recovery data is unverified. Controls come back automatically.';
+const STALE_NOTE = 'Some changes (matching or tidying names, and movement groups) are paused until Recovery data is current.';
 
 // Per-exercise group editor, relocated from the evidence breakdown (#1306). Lists
 // every baseline lift plus any added during recovery; the numeric breakdown stays
@@ -162,7 +163,7 @@ export function RecoveryManageBlock({
   };
   const reasonDisabled = locked || reasonBusy;
   const nameLocked = locked || stale;
-  const pausedWrites = locked || stale;
+  const actionRow = [manage.row, manage.rowDivider];
 
   return (
     <Card style={manage.card}>
@@ -179,8 +180,8 @@ export function RecoveryManageBlock({
       </Pressable>
       {expanded ? (
         <View testID="recovery-manage-block" style={manage.list}>
-          {pausedWrites ? (
-            <Text testID="recovery-manage-locked" style={manage.lockedNote} accessibilityLiveRegion="polite">{LOCKED_NOTE}</Text>
+          {locked || stale ? (
+            <Text testID="recovery-manage-locked" style={manage.lockedNote} accessibilityLiveRegion="polite">{locked ? LOCKED_NOTE : STALE_NOTE}</Text>
           ) : null}
           {onSaveReason ? (
             <View style={manage.row}>
@@ -255,18 +256,16 @@ export function RecoveryManageBlock({
               )}
             </View>
           ) : null}
-          {onRebuildBaseline || onMatchNames || tidyNames ? (
-            <View style={[manage.row, manage.rowDivider]}>
-              {onRebuildBaseline ? (
-                <RebuildBaselineAction block={block} weeks={weeks} notes={notes} unit={unit} locked={locked} onRebuild={onRebuildBaseline} />
-              ) : null}
-              {onMatchNames ? (
-                <MatchExerciseNamesAction block={block} weeks={weeks} notes={notes} locked={nameLocked} onMatch={onMatchNames} />
-              ) : null}
-              {tidyNames ? (
-                <TidyRecoveryNamesAction block={block} weeks={weeks} notes={notes} locked={nameLocked} onTidy={tidyNames.tidyNames} />
-              ) : null}
-            </View>
+          {/* Each action owns its row and divider, so an ineligible (null) action
+              leaves no empty padded row behind. */}
+          {onRebuildBaseline ? (
+            <RebuildBaselineAction block={block} weeks={weeks} notes={notes} unit={unit} locked={locked} rowStyle={actionRow} onRebuild={onRebuildBaseline} />
+          ) : null}
+          {onMatchNames ? (
+            <MatchExerciseNamesAction block={block} weeks={weeks} notes={notes} locked={nameLocked} rowStyle={actionRow} onMatch={onMatchNames} />
+          ) : null}
+          {tidyNames ? (
+            <TidyRecoveryNamesAction block={block} weeks={weeks} notes={notes} locked={nameLocked} rowStyle={actionRow} onTidy={tidyNames.tidyNames} />
           ) : null}
           {groupEditing ? (
             <MovementGroupsManage block={block} weeks={weeks} notes={notes} routineTitle={routineTitle} groupEditing={groupEditing} />

@@ -2,9 +2,8 @@
 // collapsible list of flat rows. Each group shows the mean % of baseline
 // strength over that group's part of the SAME comparable cohort as the headline
 // (no percent, not 0%, when none of its lifts are scored), the scored/cohort and
-// baseline counts, and its exercises. The numbers are read-only; the optional
-// `renderControl(exercise)` slot is the only place a control appears, so the
-// editor (MovementGroupEditor) can move elsewhere without touching this file.
+// baseline counts, and its exercises. The numbers are read-only; the group editor
+// (MovementGroupEditor) lives in Manage block (#1307).
 
 import React, { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
@@ -22,7 +21,7 @@ export function groupCountsText(g) {
   return `${cohort} · ${_lifts(g.baseline_count)} in the baseline`;
 }
 
-function GroupRow({ group, renderControl, styles, kua, colors }) {
+function GroupRow({ group, styles, kua, colors }) {
   const [open, setOpen] = useState(false);
   const pct = group.percent == null ? null : displayPercent(group.percent);
   const counts = groupCountsText(group);
@@ -50,7 +49,6 @@ function GroupRow({ group, renderControl, styles, kua, colors }) {
             <View key={ex.key} testID={`movement-group-exercise-${ex.key}`} style={styles.exercise}>
               <View style={styles.exerciseHead}>
                 <Text style={styles.exerciseName}>{ex.name}</Text>
-                {renderControl ? renderControl(ex) : null}
               </View>
               <Text style={styles.exerciseMeta}>
                 {[
@@ -66,7 +64,7 @@ function GroupRow({ group, renderControl, styles, kua, colors }) {
   );
 }
 
-export function RecoveryMovementGroups({ breakdown, notice = null, renderControl = null }) {
+export function RecoveryMovementGroups({ breakdown, notice = null }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createMovementGroupStyles(colors, kua), [colors, kua]);
   const [expanded, setExpanded] = useState(false);
@@ -91,7 +89,7 @@ export function RecoveryMovementGroups({ breakdown, notice = null, renderControl
         <>
           {notice ? <Text testID="movement-groups-notice" style={styles.notice}>{notice}</Text> : null}
           {breakdown.groups.map(g => (
-            <GroupRow key={g.id} group={g} renderControl={renderControl} styles={styles} kua={kua} colors={colors} />
+            <GroupRow key={g.id} group={g} styles={styles} kua={kua} colors={colors} />
           ))}
         </>
       ) : null}

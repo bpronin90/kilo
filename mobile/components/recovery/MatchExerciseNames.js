@@ -10,7 +10,7 @@ import { useTheme } from '../../theme/ThemeContext';
 import { baselineNamesEvidence, planBaselineNameMatches } from '../../lib/data/recoveryBaselineNames';
 import { createStyles } from './analyticsRecoveryStyles';
 
-export function MatchExerciseNamesAction({ block, weeks, notes, locked = false, onMatch }) {
+export function MatchExerciseNamesAction({ block, weeks, notes, locked = false, rowStyle = null, onMatch }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const candidates = useMemo(() => planBaselineNameMatches({ block, weeks, notes }), [block, weeks, notes]);
@@ -47,7 +47,7 @@ export function MatchExerciseNamesAction({ block, weeks, notes, locked = false, 
 
   if (visible.length === 0) return null;
   return (
-    <View testID="recovery-match-names" style={styles.reasonEditor}>
+    <View testID="recovery-match-names" style={[styles.reasonEditor, rowStyle]}>
       <Pressable
         onPress={() => { setOpen(o => !o); setError(null); }}
         disabled={busyKey !== null}

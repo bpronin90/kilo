@@ -145,10 +145,20 @@ describe('Manage block gates', () => {
     expect(host(c.root, 'recovery-inclusion-switch-rb1')[0].props.disabled).toBe(true);
   });
 
-  test('a stale read pauses names and groups and shows the locked note', () => {
+  test('a stale read pauses names and groups, and the note says only that', () => {
     const c = mount({ stateStale: true });
     openManage(c.root);
-    expect(host(c.root, 'recovery-manage-locked')).toHaveLength(1);
+    const note = host(c.root, 'recovery-manage-locked');
+    expect(note).toHaveLength(1);
+    expect(texts(note[0])[0]).toMatch(/^Some changes \(matching or tidying names, and movement groups\) are paused/);
+    // Reason stays editable under a stale-only read (existing gating).
+    expect(byLabel(c.root, 'Add a reason for this recovery block').props.accessibilityState.disabled).toBe(false);
+  });
+
+  test('a lock note does not claim names-only pausing', () => {
+    const c = mount({ mutationsAllowed: false });
+    openManage(c.root);
+    expect(texts(host(c.root, 'recovery-manage-locked')[0])[0]).toMatch(/^Changes are paused while a Recovery change is pending/);
   });
 
   test('unlocked panel shows no locked note', () => {
@@ -310,5 +320,50 @@ describe('History focus and Log navigation', () => {
     expect(comp(c.root, 'recovery-history-week-rb-done-1').props.accessibilityState).toEqual({ selected: true });
     press(c.root, 'recovery-history-week-log-rb-done-2');
     expect(onNavigate).toHaveBeenCalledWith('Log', { kind: 'note', noteId: 'w2' });
+  });
+});
+
+describe('Manage block rows', () => {
+  test('ineligible Rebuild/Match leave no empty padded row or stray divider', () => {
+    const c = mount();
+    openManage(c.root);
+    expect(host(c.root, 'recovery-rebuild-baseline')).toHaveLength(0);
+    expect(host(c.root, 'recovery-match-names')).toHaveLength(0);
+    const list = host(c.root, 'recovery-manage-block')[0];
+    // Reason, Tidy names, Movement groups, inclusion: every child has content.
+    // Ineligible actions render nothing (no wrapper row): the rendered rows are
+    // exactly Reason, Tidy names, Movement groups and inclusion.
+    const rendered = list.children.filter(k => typeof k !== 'string' && k.children.length > 0);
+    expect(rendered).toHaveLength(4);
+    expect(host(c.root, 'recovery-tidy-names')).toHaveLength(1);
+  });
+});
+
+describe('History focus selection', () => {
+  const done = block({ id: 'rb-done', completed_at: '2026-06-01T00:00:00Z', baseline_note_title: 'Old' });
+  const oldWeeks = [week(1, 'w1', { block_id: 'rb-done' }), week(2, 'w2', { block_id: 'rb-done' })];
+  const open = () => {
+    const c = mount({ blocks: [block(), done], weeks: [...WEEKS, ...oldWeeks] });
+    act(() => { byLabel(c.root, 'Expand recovery history').props.onPress(); });
+    return c;
+  };
+  const histSel = (c, n) => comp(c.root, `recovery-history-week-rb-done-${n}`).props.accessibilityState.selected;
+  const focusOld = (c) => act(() => { byLabel(c.root, `View recovery evidence for Old, completed ${formatDate(done.completed_at)}`).props.onPress(); });
+
+  test('with no explicit selection the latest week row is highlighted, matching the evidence', () => {
+    const c = open();
+    focusOld(c);
+    expect(c.root.findAll(isRow).map(r => r.props.accessibilityState.selected)).toEqual([false, true]);
+    expect([histSel(c, 1), histSel(c, 2)]).toEqual([false, true]);
+    press(c.root, 'recovery-history-week-rb-done-1');
+    expect([histSel(c, 1), histSel(c, 2)]).toEqual([true, false]);
+  });
+
+  test('re-tapping the already-focused block keeps its selected week', () => {
+    const c = open();
+    press(c.root, 'recovery-history-week-rb-done-1');
+    focusOld(c);
+    expect(summary(c.root)).toMatch(/^Week 1: /);
+    expect([histSel(c, 1), histSel(c, 2)]).toEqual([true, false]);
   });
 });

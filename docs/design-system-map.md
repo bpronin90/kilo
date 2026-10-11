@@ -939,9 +939,11 @@ ink. Court tokens only.
 active or completed block, a sibling `Card` under the evidence card (never nested
 in it), collapsed by default, with a >=48dp trigger (`Manage block`, chevron,
 `accessibilityLabel` `Manage recovery block: {routine}`, `expanded` state). The
-trigger is never disabled: when writes are locked (no verified state, pending
-write, or stale read) the opened panel shows a `Changes are paused...` note and
-each control keeps its own existing gate. Flat rows divided by hairlines, in this
+trigger is never disabled. With writes locked (no verified state or a pending
+write) the opened panel says changes are paused; with only a stale read it says
+that matching or tidying names and movement groups are paused until Recovery data
+is current (Reason, Reopen and inclusion keep their existing gates). Each action
+owns its own row and divider, so an ineligible action leaves no empty row. Flat rows divided by hairlines, in this
 order: Reason (row + inline editor), Rebuild baseline, Match exercise names, Tidy
 names, Movement groups editor, Reopen (newest completed block only, no active
 block), `Include recovery notes in normal analytics`. The panel is keyed by block

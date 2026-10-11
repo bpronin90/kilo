@@ -31,7 +31,7 @@ function _metrics(row, unit) {
   return `${_n(row.best_hold_seconds)}s best, ${_n(row.total_seconds)}s total`;
 }
 
-export function RebuildBaselineAction({ block, weeks = null, notes, unit = 'lb', locked = false, onRebuild }) {
+export function RebuildBaselineAction({ block, weeks = null, notes, unit = 'lb', locked = false, rowStyle = null, onRebuild }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
   const note = useMemo(() => (notes || []).find(n => n.id === block.baseline_note_id), [notes, block.baseline_note_id]);
@@ -87,14 +87,14 @@ export function RebuildBaselineAction({ block, weeks = null, notes, unit = 'lb',
   if (!plan.eligible && !doneMessage) {
     if (!baselineLacksStrengthData(block.baseline) || !isLiveRecord(block)) return null;
     return (
-      <View testID="recovery-rebuild-refused" style={styles.reasonEditor} accessible accessibilityLabel={`Baseline can’t be rebuilt: ${plan.message}`}>
+      <View testID="recovery-rebuild-refused" style={[styles.reasonEditor, rowStyle]} accessible accessibilityLabel={`Baseline can’t be rebuilt: ${plan.message}`}>
         <Text style={styles.reasonCaption}>{plan.message}</Text>
       </View>
     );
   }
   const disabled = locked || busy;
   return (
-    <View testID="recovery-rebuild-baseline" style={styles.reasonEditor}>
+    <View testID="recovery-rebuild-baseline" style={[styles.reasonEditor, rowStyle]}>
       <View accessibilityLiveRegion="polite">
         {doneMessage ? <Text style={styles.reasonCaption}>{doneMessage}</Text> : null}
       </View>

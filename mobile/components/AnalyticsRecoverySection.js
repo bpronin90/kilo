@@ -93,6 +93,8 @@ export function AnalyticsRecoverySection({
 
   // Changing which block is in focus always resets the week selection (#1307).
   const focusBlock = (blockId) => {
+    // Re-tapping the block already in focus keeps its selected week.
+    if (focusedBlock && blockId === focusedBlock.id) return;
     setFocusedBlockId(blockId);
     setWeekSelection({ blockId: null, weekId: null });
   };
@@ -326,6 +328,11 @@ export function AnalyticsRecoverySection({
             const blockWeeks = weeks
               .filter(w => isLiveRecord(w) && w.block_id === block.id)
               .sort((a, b) => a.week_number - b.week_number);
+            // Mirrors the evidence: the stored selection while its week exists, else
+            // the latest week (the default).
+            const picked = weekSelection.blockId === block.id && blockWeeks.some(w => w.id === weekSelection.weekId)
+              ? weekSelection.weekId : null;
+            const effectiveWeekId = picked || (blockWeeks.length ? blockWeeks[blockWeeks.length - 1].id : null);
             return (
               <View key={block.id} style={[styles.historyBlockGroup, !isLast && styles.historyBlockGroupBorder]}>
                 <Pressable
@@ -356,7 +363,7 @@ export function AnalyticsRecoverySection({
                     block={block}
                     week={w}
                     notesById={notesById}
-                    selected={selected && weekSelection.blockId === block.id && weekSelection.weekId === w.id}
+                    selected={selected && w.id === effectiveWeekId}
                     onFocusWeek={(blockId, weekId) => { setFocusedBlockId(blockId); setWeekSelection({ blockId, weekId }); }}
                     onNavigate={onNavigate}
                   />
