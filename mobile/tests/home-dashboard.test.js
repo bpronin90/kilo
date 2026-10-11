@@ -603,29 +603,18 @@ describe('shared derived analytics (#1242)', () => {
   };
   const SELECTIONS = { squat: 'Squat', bench: 'DB Bench Press', deadlift: 'Deadlift' };
 
-  test('Home and Analytics print the same roster from one week', () => {
+  test('Home prints the shared roster count line, and the Overview row prints the snapshot headline (#1315)', () => {
     const { counts } = deriveHomeRecoveryBig3(WEEK, SELECTIONS);
-    const homeLine = formatRecoveryCountLine(counts);
-
-    const rows = deriveOverviewRows({
-      activeTraining: { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 1 },
-      recoveryBands: deriveRecoveryWeekBands(WEEK),
-    });
-    const recoveryRow = rows.find(r => r.key === 'recovery');
-    const analyticsLine = `${recoveryRow.value} ${recoveryRow.valueSuffix}`;
-
-    expect(homeLine).toBe('4 of 7 trained · 3 not yet');
-    // #1243: Analytics prints the same numbers as a compact fraction.
-    expect(analyticsLine).toBe(`${counts.atOrAbove}/${counts.rosterSize} pre-recovery exercises back`);
-
-    // Movement history only adds a caption; the count stays the shared one.
-    const withMovement = deriveOverviewRows({
-      activeTraining: { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 3 },
-      recoveryBands: deriveRecoveryWeekBands(WEEK),
-      recoveryMovement: { improved: 2, steady: 1, fell_back: 0, matched_size: 3, anchor_week_number: 1 },
-    }).find(r => r.key === 'recovery');
-    expect(`${withMovement.value} ${withMovement.valueSuffix}`).toBe(analyticsLine);
+    expect(formatRecoveryCountLine(counts)).toBe('4 of 7 trained · 3 not yet');
     expect(deriveRecoverySummary(WEEK)).toEqual(counts);
+
+    const display = { state: 'score', percent: 80, caption: '2 lifts · Week 1', message: null, a11y: 'Week 1: 80% of X baseline strength.' };
+    const row = deriveOverviewRows({
+      activeTraining: { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 1 },
+      recoverySnapshot: { stale: false, display },
+    }).find(r => r.key === 'recovery');
+    expect(row.value).toBe('80%');
+    expect(row.infoCaption).toBe('2 lifts · Week 1');
   });
 
   test('Log and Analytics share the between-weeks wording', () => {

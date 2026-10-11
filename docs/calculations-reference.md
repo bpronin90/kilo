@@ -146,7 +146,7 @@ Shapes workout data for the Home assessment panel. It mostly reads persisted wor
 
 ### Return-to-Baseline Comparison
 
-> Where you see it: the Recovery section on the Analytics tab (#698), for the active recovery block or any completed block selected from its history
+> Where you see it: the Recovery section on the Analytics tab (#698), for the active recovery block or any completed block selected from its history (read-only; every change is made in the Log tab's Manage block)
 
 A recovery block groups the weekly notes you log while coming back from an injury or layoff, and freezes a snapshot of what you were doing before the layoff. The return-to-baseline comparison answers one question for each exercise in each recovery week: **how does the work you actually completed this week compare to that frozen baseline?**
 
@@ -213,7 +213,7 @@ Whole-block error states are reported the same explicit way: no snapshot on the 
 
 #### Return bands and weekly movement (#1029)
 
-> Where you see it: Home's Recovery card, the Analytics Overview `Recovery` row, and the Analytics Recovery `Exercise details` summary
+> Where you see it: Home's Recovery card, the Analytics Overview `Recovery` row, and the Analytics Recovery `Lifts` disclosure summary
 
 The per-exercise states above are re-grouped, on read, into a "return band" per exercise and a week-over-week movement count. Neither changes the #697 contract above: `deriveRecoveryComparison`'s per-exercise output, the frozen baseline, and every state name are untouched, and no new field is stored.
 
@@ -232,7 +232,7 @@ The six bands always sum to the roster size. `Not trained yet` is never shown as
 
 **Movement.** Movement compares the most recent live week against the most recent EARLIER week that both (a) completed without error and (b) had at least one exercise comparable to a prior week — a week with no readable note is skipped as an anchor, never treated as zero. For each exercise comparable in both weeks, movement is Pareto on exact ratios (never floored percents): improved (every dimension ≥, at least one >), fell back (every dimension ≤, at least one <), or steady (neither). Movement is only ever printed when at least two qualifying weeks exist, at least three exercises (or the whole roster, if it has fewer than three) are matched, and the snapshot is verified and not stale — otherwise no counts and no arrow are shown, only the reason. When printed, the anchor week's number and the matched population size are always named alongside it.
 
-Home and Overview show no composite percentage. The Analytics Recovery section's average is the separate strength score below; it never feeds a band, a Baseline met state, or block completion.
+Return bands themselves carry no composite percentage. The average % of baseline strength below (shown in the Analytics Recovery section, and as the same headline on Home and the Overview row, #1315) is the separate strength score; it never feeds a band, a Baseline met state, or block completion.
 
 #### Strength relative to baseline (#1305)
 
@@ -258,7 +258,7 @@ Every exercise belongs to **exactly one** group: Push, Pull, Shoulders, Arms, Le
 
 #### Tidy names
 
-> Where you see it: the `Tidy names` action on the Analytics Recovery card
+> Where you see it: the `Tidy names` action in the Log tab's Recovery Manage block
 
 Comparison is by exact normalized exercise name, so a week header such as `Squat 3x6-8, step up` never matches a frozen `squat` row. `Tidy names` is the one local, deterministic cleanup: it uses the frozen baseline's name as the authority and rewrites **every** linked, non-warmup occurrence of that lift to the baseline's clean name, and the baseline row's own display name and key follow in the same operation. No fuzzy matching, no network, and no invented aliases.
 
@@ -275,6 +275,12 @@ Comparison is by exact normalized exercise name, so a week header such as `Squat
 - **No medical meaning.** These are training numbers. Reaching Baseline met on every exercise does not mean an injury has healed, and nothing here should be read as clearance to train.
 - **Weeks follow membership order.** Results are ordered by the week number you assigned when linking the note, never by note date or title.
 - **Display units do not matter.** Comparisons run on canonical stored values, so switching between lb and kg cannot change a state or a percentage.
+
+#### One Recovery snapshot feeds every surface
+
+> Where you see it: Home's Recovery card, the Analytics Overview `Recovery` row, and the Analytics Recovery section (#1315)
+
+The return comparison, the strength model (headline, trend, per-lift rows, pace, not-retested and not-scored lists) and the movement-group breakdown are derived **once** per distinct input into one immutable snapshot (`getRecoverySnapshot`, `mobile/lib/data/recoverySnapshot.js`). The snapshot is keyed by the content of exactly the records the derivations read (the block, its weeks, the notes those weeks and the baseline point at) plus the selected week and the stale and notes-read flags, so surfaces that hold different-but-equal copies of the data resolve to the same object. Home, the Overview row and the Analytics section read it and never re-derive, so the same block and week always print the same headline (`87%` and `4 lifts · Week 3`), including when Recovery data is stale (pace is withheld, the numbers are unchanged), when the baseline is a legacy one without best sets, and when no lift is scored in every week (no number and the snapshot's own short reason, never 0%). Nothing here changes any calculation described above.
 
 #### Whether recovery weeks count toward your normal analytics
 

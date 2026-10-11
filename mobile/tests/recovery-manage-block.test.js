@@ -1,18 +1,15 @@
-// Analytics Recovery "Manage block" + week selection (#1307).
+// Analytics Recovery week selection and the read-only contract (#1307, #1315).
 //
-// One sibling Manage block panel hosts every maintenance control for the focused
-// block (reason, rebuild, match names, tidy names, group editor, reopen, inclusion)
-// and the evidence card hosts none; the strength week rows are the sole week
-// selector. Deep behavior of each control stays pinned in its own suite
-// (analytics-recovery-section, recovery-reason, movement-groups); this file pins
-// ownership, gating, per-block isolation and selection.
+// Analytics holds NO maintenance control: Manage block lives in Log (see
+// log-recovery-manage.test.js). This file pins the strength week rows as the sole
+// week selector, history focus, per-block selection scoping, and that the only
+// path to maintenance is one quiet `Manage in Log` link carrying the exact block id.
 
 import React from 'react';
 import render, { act } from 'react-test-renderer';
 import { StyleSheet } from 'react-native';
 import { AnalyticsRecoverySection } from '../components/AnalyticsRecoverySection';
 import { BlockEvidence } from '../components/recovery/RecoveryEvidence';
-import { RecoveryManageBlock } from '../components/recovery/RecoveryManageBlock';
 import { captureRecoveryBaselineFromText } from '../lib/data/recoveryBlocks';
 import * as hooks from '../hooks/entries/recoveryBlockHooks';
 import { formatDate } from '../lib/format';
@@ -66,187 +63,34 @@ const host = (root, id) => root.findAll(n => typeof n.type === 'string' && n.pro
 const byLabel = (root, l) => root.findAll(n => n.props && n.props.accessibilityLabel === l)[0];
 const texts = (root) => root.findAllByType('Text').map(t => [].concat(t.props.children).join(''));
 const summary = (root) => host(root, 'recovery-strength-summary')[0].props.accessibilityLabel;
-const openManage = (root) => press(root, 'recovery-manage-block-trigger');
 const pickWeek = (root, n) => press(root, `recovery-strength-week-${n}`);
 const isRow = (n) => typeof n.type !== 'string' && /^recovery-strength-week-\d+$/.test(n.props.testID || '') && n.props.onPress;
 
-describe('Manage block ownership', () => {
-  test('is a sibling of the evidence card, collapsed by default, and openable', () => {
-    const c = mount();
-    const evidence = c.root.findAllByType(BlockEvidence)[0];
-    expect(c.root.findAllByType(RecoveryManageBlock)).toHaveLength(1);
-    expect(evidence.findAllByType(RecoveryManageBlock)).toHaveLength(0);
-    expect(host(c.root, 'recovery-manage-block')).toHaveLength(0);
-    const trigger = comp(c.root, 'recovery-manage-block-trigger');
-    expect(trigger.props.accessibilityRole).toBe('button');
-    expect(trigger.props.accessibilityState).toEqual({ expanded: false });
-    expect(StyleSheet.flatten(trigger.props.style).minHeight).toBeGreaterThanOrEqual(44);
-    expect(texts(c.root)).toContain('Manage block');
-    openManage(c.root);
-    expect(comp(c.root, 'recovery-manage-block-trigger').props.accessibilityState).toEqual({ expanded: true });
-    expect(host(c.root, 'recovery-manage-block')).toHaveLength(1);
-  });
-
-  test('every maintenance control is inside Manage block and none inside the evidence card', () => {
-    const v1 = { version: 1, exercises: [{ key: 'bench', name: 'Bench', exercise_class: 'weighted', top_weight: 100, volume: 300, sets_completed: 3 }] };
-    const c = mount({
-      blocks: [block({ baseline: v1, completed_at: '2026-06-01T00:00:00Z', reason: 'sprain' })],
-    });
-    openManage(c.root);
-    const evidence = c.root.findAllByType(BlockEvidence)[0];
-    const manage = c.root.findAllByType(RecoveryManageBlock)[0];
-    const labels = [
-      'Edit reason for this recovery block: sprain',
-      'Rebuild baseline',
-      'Reopen recovery block: Push Pull Legs',
-    ];
-    for (const l of labels) {
-      expect(manage.findAll(n => n.props.accessibilityLabel === l).length).toBeGreaterThan(0);
-      expect(evidence.findAll(n => n.props.accessibilityLabel === l)).toHaveLength(0);
-    }
-    expect(manage.findAll(n => n.props.testID === 'recovery-inclusion-switch-rb1').length).toBeGreaterThan(0);
-    expect(manage.findAll(n => n.props.testID === 'recovery-manage-groups-header').length).toBeGreaterThan(0);
-    expect(evidence.findAll(n => /^recovery-inclusion-switch/.test(n.props.testID || ''))).toHaveLength(0);
-    expect(evidence.findAll(n => n.props.testID === 'recovery-manage-groups-header')).toHaveLength(0);
-    // The evidence keeps a quiet read-only reason, with no edit affordance.
-    expect(host(evidence, 'recovery-reason-context')).toHaveLength(1);
-    expect(evidence.findAll(n => n.props.testID === 'recovery-reason-row')).toHaveLength(0);
-  });
-
-  test('opening and closing the panel writes nothing', () => {
-    const c = mount({ blocks: [block({ completed_at: '2026-06-01T00:00:00Z' })] });
-    openManage(c.root);
-    openManage(c.root);
+describe('Analytics Recovery is read-only (#1315)', () => {
+  test('no maintenance control renders and no write hook is invoked', () => {
+    const c = mount({ blocks: [block({ completed_at: '2026-06-01T00:00:00Z', reason: 'sprain' })] });
+    const labels = c.root.findAll(n => typeof n.props.accessibilityLabel === 'string').map(n => n.props.accessibilityLabel);
+    expect(labels.some(l => /^Manage recovery block|Reopen recovery block|Edit reason|Add a reason|Rebuild baseline|Tidy|Match/.test(l))).toBe(false);
+    expect(host(c.root, 'recovery-inclusion-switch-rb1')).toHaveLength(0);
+    expect(host(c.root, 'recovery-manage-groups')).toHaveLength(0);
     for (const fn of Object.values(mockLifecycle)) expect(fn).not.toHaveBeenCalled();
   });
 
-  test('collapsing keeps the panel mounted but hidden from layout and assistive tech, draft intact', () => {
-    const c = mount({ blocks: [block({ reason: 'sprain' })] });
-    openManage(c.root);
-    act(() => { byLabel(c.root, 'Edit reason for this recovery block: sprain').props.onPress(); });
-    act(() => { byLabel(c.root, 'Reason for this recovery block').props.onChangeText('typed'); });
-    openManage(c.root); // collapse
-    const body = host(c.root, 'recovery-manage-block')[0];
-    expect(StyleSheet.flatten(body.props.style).display).toBe('none');
-    expect(body.props.accessibilityElementsHidden).toBe(true);
-    expect(body.props.importantForAccessibility).toBe('no-hide-descendants');
-    openManage(c.root); // reopen
-    expect(StyleSheet.flatten(host(c.root, 'recovery-manage-block')[0].props.style).display).toBeUndefined();
-    expect(host(c.root, 'recovery-manage-block')[0].props.accessibilityElementsHidden).toBe(false);
-    expect(byLabel(c.root, 'Reason for this recovery block').props.value).toBe('typed');
-  });
-
-  test('a write started, collapsed and then failed still shows its error and draft on reopen', async () => {
-    let fail;
-    mockLifecycle.setBlockReason.mockImplementation(() => new Promise(r => { fail = r; }));
-    const c = mount({ blocks: [block({ reason: 'sprain' })] });
-    openManage(c.root);
-    act(() => { byLabel(c.root, 'Edit reason for this recovery block: sprain').props.onPress(); });
-    act(() => { byLabel(c.root, 'Reason for this recovery block').props.onChangeText('typed'); });
-    let saving;
-    act(() => { saving = byLabel(c.root, 'Save the reason').props.onPress(); });
-    openManage(c.root); // collapse mid-write
-    await act(async () => { fail({ ok: false, error: 'offline' }); await saving; });
-    openManage(c.root);
-    expect(texts(c.root)).toContain('offline');
-    expect(byLabel(c.root, 'Reason for this recovery block').props.value).toBe('typed');
-  });
-});
-
-describe('Manage block gates', () => {
-  test.each([
-    ['mutations not allowed', { mutationsAllowed: false }],
-    ['pending recovery write', { pendingRecovery: [{ operation_id: 1, block_id: 'rb1', error: null }] }],
-  ])('%s: panel still opens, explains why, and disables every write', (_l, props) => {
-    const c = mount({ blocks: [block({ completed_at: '2026-06-01T00:00:00Z', reason: 'sprain' })], ...props });
-    openManage(c.root);
-    expect(host(c.root, 'recovery-manage-locked')).toHaveLength(1);
-    expect(byLabel(c.root, 'Edit reason for this recovery block: sprain').props.accessibilityState.disabled).toBe(true);
-    expect(byLabel(c.root, 'Reopen recovery block: Push Pull Legs').props.accessibilityState.disabled).toBe(true);
-    expect(host(c.root, 'recovery-inclusion-switch-rb1')[0].props.disabled).toBe(true);
-  });
-
-  test('a stale read pauses names and groups, and the note says only that', () => {
-    const c = mount({ stateStale: true });
-    openManage(c.root);
-    const note = host(c.root, 'recovery-manage-locked');
-    expect(note).toHaveLength(1);
-    expect(texts(note[0])[0]).toMatch(/^Some changes \(matching or tidying names, and movement groups\) are paused/);
-    // Reason stays editable under a stale-only read (existing gating).
-    expect(byLabel(c.root, 'Add a reason for this recovery block').props.accessibilityState.disabled).toBe(false);
-  });
-
-  test('a lock note does not claim names-only pausing', () => {
-    const c = mount({ mutationsAllowed: false });
-    openManage(c.root);
-    expect(texts(host(c.root, 'recovery-manage-locked')[0])[0]).toMatch(/^Changes are paused while a Recovery change is pending/);
-  });
-
-  test('unlocked panel shows no locked note', () => {
-    const c = mount();
-    openManage(c.root);
-    expect(host(c.root, 'recovery-manage-locked')).toHaveLength(0);
-  });
-});
-
-describe('Reopen eligibility', () => {
-  const done = (id, at) => block({ id, completed_at: at });
-  test('only the newest completed block, and only with no active block', async () => {
-    const newest = done('rb-new', '2026-06-01T00:00:00Z');
-    const older = done('rb-old', '2026-05-01T00:00:00Z');
-    const c = mount({ blocks: [newest, older], weeks: [] });
-    openManage(c.root);
-    expect(byLabel(c.root, 'Reopen recovery block: Push Pull Legs')).toBeDefined();
-    // Focus the older block: no Reopen on it.
+  test('one quiet Manage in Log link carries the exact focused block id and writes nothing', () => {
+    const onNavigate = jest.fn();
+    const done = block({ id: 'rb-done', completed_at: '2026-06-01T00:00:00Z', baseline_note_title: 'Old' });
+    const c = mount({ blocks: [block(), done], weeks: WEEKS, onNavigate });
+    const links = host(c.root, 'recovery-manage-in-log');
+    expect(links).toHaveLength(1);
+    expect(StyleSheet.flatten(links[0].props.style).minHeight).toBeGreaterThanOrEqual(44);
+    press(c.root, 'recovery-manage-in-log');
+    expect(onNavigate).toHaveBeenLastCalledWith('Log', { kind: 'recovery-manage', blockId: 'rb1' });
+    // Focus the completed block: the link follows the focused block, by id.
     act(() => { byLabel(c.root, 'Expand recovery history').props.onPress(); });
-    act(() => { byLabel(c.root, `View recovery evidence for Push Pull Legs, completed ${formatDate(older.completed_at)}`).props.onPress(); });
-    openManage(c.root);
-    expect(byLabel(c.root, 'Reopen recovery block: Push Pull Legs')).toBeUndefined();
-    // With an active block no completed block offers it.
-    const withActive = mount({ blocks: [block(), newest], weeks: [] });
-    act(() => { byLabel(withActive.root, 'Expand recovery history').props.onPress(); });
-    act(() => { byLabel(withActive.root, `View recovery evidence for Push Pull Legs, completed ${formatDate(newest.completed_at)}`).props.onPress(); });
-    openManage(withActive.root);
-    expect(byLabel(withActive.root, 'Reopen recovery block: Push Pull Legs')).toBeUndefined();
-  });
-});
-
-describe('Reason editing', () => {
-  test('saving empty clears via the raw draft; Cancel discards; a failed save keeps the editor with the error', async () => {
-    const c = mount({ blocks: [block({ reason: 'sprain' })] });
-    openManage(c.root);
-    act(() => { byLabel(c.root, 'Edit reason for this recovery block: sprain').props.onPress(); });
-    act(() => { byLabel(c.root, 'Reason for this recovery block').props.onChangeText('x'); });
-    act(() => { byLabel(c.root, 'Cancel editing the reason').props.onPress(); });
-    expect(mockLifecycle.setBlockReason).not.toHaveBeenCalled();
-
-    act(() => { byLabel(c.root, 'Edit reason for this recovery block: sprain').props.onPress(); });
-    act(() => { byLabel(c.root, 'Reason for this recovery block').props.onChangeText(''); });
-    mockLifecycle.setBlockReason.mockResolvedValueOnce({ ok: false, error: 'offline' });
-    await act(async () => { await byLabel(c.root, 'Save the reason').props.onPress(); });
-    expect(mockLifecycle.setBlockReason).toHaveBeenCalledWith({ blockId: 'rb1', reason: '' });
-    expect(texts(c.root)).toContain('offline');
-    expect(byLabel(c.root, 'Reason for this recovery block')).toBeDefined();
-    await act(async () => { await byLabel(c.root, 'Save the reason').props.onPress(); });
-    expect(byLabel(c.root, 'Reason for this recovery block')).toBeUndefined();
-  });
-
-  test('a draft never follows focus onto another block', () => {
-    const active = block({ reason: 'active reason' });
-    const done = block({ id: 'rb-done', completed_at: '2026-06-01T00:00:00Z', baseline_note_title: 'Old', reason: 'old reason' });
-    const c = mount({ blocks: [active, done], weeks: [] });
-    openManage(c.root);
-    act(() => { byLabel(c.root, 'Edit reason for this recovery block: active reason').props.onPress(); });
-    act(() => { byLabel(c.root, 'Reason for this recovery block').props.onChangeText('half-typed'); });
-    act(() => { byLabel(c.root, 'Expand recovery history').props.onPress(); });
-    act(() => { byLabel(c.root, `View recovery evidence for Old, completed ${formatDate(done.completed_at)}. Reason: old reason`).props.onPress(); });
-    expect(byLabel(c.root, 'Reason for this recovery block')).toBeUndefined();
-    openManage(c.root);
-    expect(byLabel(c.root, 'Edit reason for this recovery block: old reason')).toBeDefined();
-    act(() => { byLabel(c.root, 'View active recovery block').props.onPress(); });
-    openManage(c.root);
-    expect(byLabel(c.root, 'Reason for this recovery block')).toBeUndefined();
-    expect(byLabel(c.root, 'Edit reason for this recovery block: active reason')).toBeDefined();
+    act(() => { byLabel(c.root, `View recovery evidence for Old, completed ${formatDate(done.completed_at)}`).props.onPress(); });
+    press(c.root, 'recovery-manage-in-log');
+    expect(onNavigate).toHaveBeenLastCalledWith('Log', { kind: 'recovery-manage', blockId: 'rb-done' });
+    for (const fn of Object.values(mockLifecycle)) expect(fn).not.toHaveBeenCalled();
   });
 });
 
@@ -276,12 +120,17 @@ describe('Week rows are the sole selector', () => {
 
   test('first/latest selection re-derives headline, ladder and group scores together', () => {
     const c = mount();
-    press(c.root, 'recovery-movement-groups-header');
-    const snap = () => ({
+    const snap = () => {
+      // Disclosures reset to collapsed on a week change (#1315): open lifts + groups.
+      const lifts = byLabel(c.root, 'Expand lifts');
+      if (lifts) act(() => { lifts.props.onPress(); });
+      if (!host(c.root, 'movement-group-row-push').length) press(c.root, 'recovery-movement-groups-header');
+      return {
       summary: summary(c.root),
       ladder: JSON.stringify(texts(c.root.findAll(n => n.props.testID === 'recovery-strength-ladder')[0])),
       groups: ['push', 'legs'].map(id => (host(c.root, `movement-group-value-${id}`)[0] || { props: {} }).props.children),
-    });
+      };
+    };
     const latest = snap();
     pickWeek(c.root, 1);
     const first = snap();
@@ -341,22 +190,6 @@ describe('History focus and Log navigation', () => {
     expect(comp(c.root, 'recovery-history-week-rb-done-1').props.accessibilityState).toEqual({ selected: true });
     press(c.root, 'recovery-history-week-log-rb-done-2');
     expect(onNavigate).toHaveBeenCalledWith('Log', { kind: 'note', noteId: 'w2' });
-  });
-});
-
-describe('Manage block rows', () => {
-  test('ineligible Rebuild/Match leave no empty padded row or stray divider', () => {
-    const c = mount();
-    openManage(c.root);
-    expect(host(c.root, 'recovery-rebuild-baseline')).toHaveLength(0);
-    expect(host(c.root, 'recovery-match-names')).toHaveLength(0);
-    const list = host(c.root, 'recovery-manage-block')[0];
-    // Reason, Tidy names, Movement groups, inclusion: every child has content.
-    // Ineligible actions render nothing (no wrapper row): the rendered rows are
-    // exactly Reason, Tidy names, Movement groups and inclusion.
-    const rendered = list.children.filter(k => typeof k !== 'string' && k.children.length > 0);
-    expect(rendered).toHaveLength(4);
-    expect(host(c.root, 'recovery-tidy-names')).toHaveLength(1);
   });
 });
 
@@ -425,35 +258,6 @@ describe('Robustness and single-week selector', () => {
     expect(rows[0].props.accessibilityLabel).toMatch(/^Week 1: /);
   });
 
-  test('an unreadable baseline does not crash Manage block; Reason and Inclusion stay usable', () => {
-    const bad = block({ baseline: { version: 2, exercises: {} } });
-    const c = mount({ blocks: [bad], weeks: [] });
-    expect(() => openManage(c.root)).not.toThrow();
-    expect(byLabel(c.root, 'Add a reason for this recovery block')).toBeDefined();
-    expect(host(c.root, 'recovery-inclusion-switch-rb1')).toHaveLength(1);
-    expect(host(c.root, 'recovery-manage-groups')).toHaveLength(0);
-  });
-
-  test('collapsing Movement groups mid-write keeps the failure and draft for the next open', async () => {
-    const setGroup = jest.fn();
-    jest.spyOn(require('../hooks/entries/movementGroupHooks'), 'useMovementGroupEditor')
-      .mockReturnValue({ setMovementGroup: setGroup });
-    let fail;
-    setGroup.mockImplementation(() => new Promise(r => { fail = r; }));
-    const c = mount();
-    openManage(c.root);
-    press(c.root, 'recovery-manage-groups-header');
-    press(c.root, 'movement-group-edit-squat');
-    press(c.root, 'movement-group-option-squat-hinge');
-    press(c.root, 'recovery-manage-groups-header'); // collapse mid-write
-    const body = host(c.root, 'recovery-manage-groups-body')[0];
-    expect(body.props.accessibilityElementsHidden).toBe(true);
-    expect(body.props.importantForAccessibility).toBe('no-hide-descendants');
-    await act(async () => { fail({ ok: false, error: 'disk full' }); });
-    press(c.root, 'recovery-manage-groups-header');
-    expect(host(c.root, 'movement-group-error-squat')[0].props.children).toBe('Not saved: disk full');
-    expect(host(c.root, 'movement-group-option-squat-hinge')[0].props.accessibilityState.selected).toBe(true);
-  });
 });
 
 describe('Selection invalidation across every focus transition', () => {
@@ -504,36 +308,5 @@ describe('Selection invalidation across every focus transition', () => {
     act(() => { byLabel(c.root, 'Expand recovery history').props.onPress(); });
     act(() => { byLabel(c.root, `View recovery evidence for Old, completed ${formatDate(B.completed_at)}`).props.onPress(); });
     expect(summary(c.root)).toMatch(/^Week 1: /);
-  });
-});
-
-describe('Per-block scoping of lifted action state', () => {
-  const newest = block({ id: 'rb-new', completed_at: '2026-06-01T00:00:00Z', baseline_note_title: 'New' });
-  const older = block({ id: 'rb-old', completed_at: '2026-05-01T00:00:00Z', baseline_note_title: 'Old' });
-  const focus = (c, b) => {
-    const t = byLabel(c.root, 'Expand recovery history');
-    if (t) act(() => { t.props.onPress(); });
-    act(() => { byLabel(c.root, `View recovery evidence for ${b.baseline_note_title}, completed ${formatDate(b.completed_at)}`).props.onPress(); });
-  };
-
-  test('a failed reopen on block A never shows on block B, and returns with A', async () => {
-    mockLifecycle.reopenBlock.mockResolvedValue({ ok: false, error: 'Only the newest block can be reopened.' });
-    const alertSpy = jest.spyOn(require('../lib/platformAlert').Alert, 'alert').mockImplementation(() => {});
-    const el = (blocks) => <AnalyticsRecoverySection blocks={blocks} weeks={[]} notes={NOTES} />;
-    let c;
-    act(() => { c = render.create(el([newest, older])); });
-    openManage(c.root);
-    act(() => { byLabel(c.root, 'Reopen recovery block: New').props.onPress(); });
-    await act(async () => { await alertSpy.mock.calls[0][2].find(b => b.text === 'Reopen block').onPress(); });
-    expect(texts(c.root)).toContain('Only the newest block can be reopened.');
-    // A (newest) disappears: B becomes the newest completed block and offers Reopen.
-    act(() => { c.update(el([older])); });
-    openManage(c.root);
-    expect(byLabel(c.root, 'Reopen recovery block: Old')).toBeDefined();
-    expect(texts(c.root)).not.toContain('Only the newest block can be reopened.');
-    // A returns and keeps its own error.
-    act(() => { c.update(el([newest, older])); });
-    openManage(c.root);
-    expect(texts(c.root)).toContain('Only the newest block can be reopened.');
   });
 });

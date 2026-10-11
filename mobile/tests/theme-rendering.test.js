@@ -3414,9 +3414,9 @@ describe('style conformance (#1278)', () => {
   });
 });
 
-// #1307: Analytics Manage block panel + week-selector rows resolve court tokens.
-describe('Recovery Manage block and week selector tokens (#1307)', () => {
-  const { createManageBlockStyles } = require('../components/recovery/recoveryManageBlockStyles');
+// #1307/#1315: Log Manage extras + Analytics week-selector rows resolve court tokens.
+describe('Recovery Manage block and week selector tokens (#1307, #1315)', () => {
+  const { createLogManageStyles: createManageBlockStyles } = require('../components/recovery/logRecoveryManageStyles');
   const { createStrengthStyles } = require('../components/recovery/recoveryStrengthStyles');
   const KUA_LIST = [
     ['hardCourt/light', HardCourtLightColors], ['hardCourt/dark', HardCourtDarkColors],
@@ -3425,15 +3425,15 @@ describe('Recovery Manage block and week selector tokens (#1307)', () => {
   ];
   test.each(KUA_LIST)('%s: panel chrome and selected week row use court tokens', (_n, kua) => {
     const manage = createManageBlockStyles(LightColors, kua);
-    expect(manage.triggerText.color).toBe(kua.onSurface);
-    expect(manage.list.borderTopColor).toBe(kua.surfaceBorder);
+    expect(manage.groupsTitle.color).toBe(kua.onSurface);
+    expect(manage.rowDivider.borderBottomColor).toBe(kua.surfaceBorder);
     expect(manage.lockedNote.color).toBe(kua.onSurfaceVariant);
     const strength = createStrengthStyles(LightColors, kua);
     expect(strength.weekRowSelected.backgroundColor).toBe(kua.surfaceSection);
     expect(strength.weekLabelSelected.color).toBe(kua.onSurface);
   });
   test('legacy palette fallback when kua is null', () => {
-    expect(createManageBlockStyles(LightColors, null).triggerText.color).toBe(LightColors.text);
+    expect(createManageBlockStyles(LightColors, null).groupsTitle.color).toBe(LightColors.text);
     expect(createStrengthStyles(LightColors, null).weekRowSelected.backgroundColor).toBe(LightColors.subtleBg);
   });
 });

@@ -543,9 +543,12 @@ describe the same condition differently, and `Retry recovery` is the exact
 control name that copy tells the user to tap (ui-design-rules §12).
 
 **Active-block content (#779/#782, #1171, #1193; band wording corrected #1219).**
-The active branch derives the latest live week through the same
-`deriveRecoveryComparison` engine Analytics uses (`AnalyticsRecoverySection`) —
-no second calculation, no invented percentage or pace. Home renders a separate
+The active branch reads the ONE Recovery snapshot (`getRecoverySnapshot`, the same
+frozen object Analytics' section and Overview row read — **Recovery numbers come
+from one snapshot; surfaces never re-derive**), whose `comparison` feeds the
+lines below — no second calculation, no invented percentage or pace. The shared
+headline (`{pct}%` plus the `{N} lifts · Week n` caption, only when the snapshot
+has an honest average) sits above the Big 3 (`home-recovery-headline`). Home renders a separate
 Big 3 summary (`screens/home/HomeRecoverySummary.js`); it does NOT render return
 bands, band names or band colors, a movement row, a result figure, or category
 columns — the earlier #1029/#803/#820 documentation of those is gone because the
@@ -557,6 +560,7 @@ region (`home-recovery-analytics`, a single `accessible` node), in this order:
   card. A footer-link split was tried and reverted: it broke the shared
   header-is-the-handoff pattern for one card without applying it to the
   others.
+- **Headline** (#1315) — the snapshot's `{pct}%` and `{N} lifts · Week n`, the identical values Analytics and the Overview row print; absent when the snapshot has no average (legacy baseline, empty cohort) so Home never invents one.
 - **Week label** — `Latest linked week: Week N` (`Last loaded linked week:
   Week N` when the snapshot is stale), the micro-label treatment. Omitted when
   no week exists: there is nothing to name, and `Week 1` would be invented.
@@ -766,8 +770,10 @@ scrolled past to reach anything else.
 The tab's first block and the destination for the `overview` navigation id.
 Reads only display-space series the other sections already plot
 (`oneKChartData`, `rolling7`); `deriveOverviewRows` performs no conversion.
-During active Recovery (#1299) it shows Recovery (`N/M pre-recovery exercises back`, plus
-`Week W · K not trained yet · M improved since Week A`), Body Weight, and one noninteractive line
+During active Recovery (#1299, #1315) it shows Recovery (the same headline as the
+Recovery section, read from the one Recovery snapshot: `87%` plus the compact
+`{N} lifts · Week n` caption; the snapshot's short reason when there is no honest
+number), Body Weight, and one noninteractive line
 replacing the paused 1K Total and Exercise Progress rows.
 
 | Element | Property | Value |
@@ -850,27 +856,39 @@ sections — but stay visually distinct: separate `SectionTitle`s, no shared
 measure, no cross-reference. Recovery keeps `HeroMetric` + per-exercise
 meters; Fatigue keeps `SessionGauge` + its check-in card.
 
-Progressive disclosure (#758, R5b): the section answers "how close am I to my
-normal training?" before it shows any evidence. Reading order inside the block
-card is **hero/summary → week rows (the sole week selector, #1307) → details
-disclosure → block context (`Started {date}` with its info button, then a quiet
-read-only `Reason`)**, and both disclosures start collapsed. All maintenance
-controls live in the sibling Manage block card below it (#1307). The strength summary names the anchor routine
-(`of {routine} baseline strength`, #1219/#1305), so the routine appears once, in
-the summary; the bottom line repeats it only when the summary shows no average
-(no week logged, no lift scored every week, legacy baseline, unreadable week).
+Progressive disclosure (#758, R5b, restructured #1315): the section answers "how
+close am I to my normal training?" before it shows any evidence, and it is
+**read-only**. Under the one `Recovery` `SectionTitle` it is two sibling cards
+(never nested): **card 1** = headline `%` + ONE caption → week rows (the sole week
+selector, #1307) → quiet block context (`Baseline`, `Started {date}` with its info
+button, read-only `Reason`, and at most one `Manage in Log` link); **card 2** =
+the per-exercise disclosures (`Lifts`, `Movement groups`, `N not retested`,
+`N not scored for strength`). **ONE disclosure rule** for every per-exercise
+list: collapsed by default, a `>=44dp` header with a counted title/caption and a
+`MaterialIcons` chevron (`RecoveryDisclosure`), reset to collapsed when the block
+or week changes. The strength ladder and the older Exercise details overlapped
+(both are per-lift evidence for the same baseline lifts), so they are ONE `Lifts`
+disclosure: the strength rows, then the raw Load/Total-work rows
+(`WeekEvidence`) in the same body, instead of two parallel lists.
+**Recovery numbers come from one snapshot; surfaces never re-derive** (see
+`lib/data/recoverySnapshot.js`): Home's Recovery panel, the Overview `Recovery`
+row and this section read the same frozen object. **Maintenance lives only in
+Log** (reason, inclusion, reopen, rebuild baseline, match/tidy names,
+movement-group overrides — Log's Manage block, below); Analytics renders no write
+control. Every sentence the compact view no longer prints is in an accessibility
+label, the `About these numbers` explainer or a named disclosure.
 
 | Element | Property | Value |
 |---|---|---|
 | Strength headline | style | Same as Weight Trends `weightValueLarge` (#1219): KUA `metric-display-mobile` `32`/`36` `onSurface`; legacy `36`/`800` `accentText` — the average % of baseline strength (#1305), floored so a below-100 value never reads 100; the first in-card content, no title-like caption above it |
-| Strength caption | fontSize / weight | `13` / `600`, `textMuted` — `of {routine} baseline strength`, the routine cut at 24 characters with `…` and ellipsized to one line (full name, or `Untitled Routine`, in the accessible label); then `13` coverage `Average of N lifts scored every week · N of R baseline lifts` (R = full roster, never trained-this-week) and any excluded-week / dropped-lift disclosure; with no honest average, the plain reason instead of a number |
+| Strength caption | fontSize / weight | `13` / `600`, `textMuted` — ONE caption, `{N} lifts · Week {n}` (N = the headline cohort). Nothing else is printed beside the number: the routine name, coverage (`Average of N lifts scored every week · N of R baseline lifts`, R = full roster), cohort names, excluded weeks and dropped lifts are in the summary's accessibility label and the `About these numbers` explainer. No honest average: one short reason line (never a 0%) |
 | Summary group | accessibility | `accessible` + `accessibilityLabel` inside the card's `accessibilityLiveRegion="polite"` region so a week change is announced without scrolling |
 | Week rows (sole selector, #1307) | `RecoveryStrengthWeeks.js` | `Week by week` caption above one **pressable row per live week** (stable `week_id`, one row per live week including a single week; the retired `RecoveryWeekPicker` chips are gone, so there is no second selector). Row: `Week N`, the as-of bar + `N%`, or an explicit `No average` / `No data` (missing or unreadable week, still selectable so its notice shows) / `Select to view` (a week later than the selection) / `Not scored` (legacy baseline); `minHeight 44`, `accessibilityRole="button"`, `accessibilityState.selected`, full label (`Week N: 74% of baseline strength`). Selected = `surfaceSection` fill AND bold label (never colour alone). Default is the latest week; the selection persists across evidence updates while the id exists, falls back to the latest when it is removed, and resets when the focused block changes. Selecting re-derives the headline, ladder, group scores and as-of pace together |
-| Details header | title | `13` / `700` `text`, `minHeight 44`, `accessibilityState.expanded`; no count sentence |
-| Details summary | `RecoveryRosterSummary` | ONE TEXT-LED element rendered under the header identically collapsed and expanded, derived from ALL rows the expanded list renders (`summarizeDetailRows`, counted through the same `rowBandId`/status mapping as each row's status word; never null when rows exist). **No bar**: a solid stripe here read as separate section progress, so the line carries only how the exercise ROWS divide. Short tokens, `13`: `7 trained · 20 not yet · 5 added` (number `800` ink for `trained`, `700` `onSurfaceVariant` for the quiet counts; label `600`; zero tokens omitted). `N trained` and `M not yet` (roster minus trained) come from `deriveRecoveryWeekBands`, so unusable-baseline rows stay out of the roster denominator; `J can't compare` and `K added` are additive tokens counted from all rows that never feed trained / not yet. **Intrinsic whole-token layout**: each count is its own unsplittable token view (its count `flexShrink: 0`; the token itself `maxWidth: '100%'`), laid out in ONE plain `flexWrap: 'wrap'` row with consistent column (`14`) and row (`2`) gaps. Whole tokens wrap to the next line BEFORE any shrink applies, so a token that fits is never split or shrunk; only a token wider than the card by itself (for example `20 can't compare` at a large font on a ~250dp card) shrinks to the card width and wraps ITS OWN label as a last resort (never truncated, no `numberOfLines`), so nothing overflows the card on any device or font scale; the owner's 390dp data stays on one row when it fits and flows whole-token onto further lines at narrow widths or large text. There are no glyph separators (a separator could start or end a wrapped row and React Native gives no per-row information), so gaps divide the tokens. The earlier "never an orphaned last count" goal is deliberately relaxed: an orphan cannot be ruled out intrinsically, and the old width-estimate balancer (which could not guarantee whole tokens either) is removed. If no token applies, a `T exercises` total is shown. The visible Gap stat was removed; the accessible label carries the full wording: the trained-of-roster sentence, `By status:` (all six states, zeros included, Close folded into Rebuilding, ending `Added during recovery K`), and the most common gap |
-| Details collapse | icon | `MaterialIcons` `expand-more`/`expand-less`, `18`, `textMuted` (app-wide convention) |
+| Lifts disclosure header | title | `Lifts` + `N lifts`, `minHeight 44`, `accessibilityState.expanded`, collapsed by default; body = scored per-lift rows (`recovery-strength-ladder`), then the roster summary and raw evidence rows |
+| Roster summary | `RecoveryRosterSummary` | Inside the Lifts disclosure body (no longer under a separate header): the text-led `7 trained · 20 not yet · 5 added` tokens (unchanged derivation, whole-token wrapping layout, accessible label with every state count) |
+| Disclosure chevron | icon | `MaterialIcons` `expand-more`/`expand-less`, `18`, `textMuted` (app-wide convention), every disclosure |
 | **Exercise row** | `recoveryVisualStyles.js` `ex*` | name `15` / `700` `text`; `8` dot (graded token, or the shared neutral for not-graded rows) + plain status word `13` / `600` `textMuted`; one thin `6` bar (band token on `surfaceSection` track, fill capped at 100%) with the measure-named uncapped percent `13` / `800` (`Total work 11%`, `Reps 66%`, `Time 45%`); numbers `13` `textMuted` (`Load 135 lb / 135 lb`); full sentences only in `accessibilityLabel` |
-| Block context | `contextBlock` / `contextRow` | ONE quiet labelled list under a single divider (`13`; label `600` `onSurfaceVariant` on a shared `68` minimum-width column so values align at ordinary widths, relaxed to each label's own width when the window is under `300` wide or `fontScale >= 1.6` so a date is never squeezed; value `onSurface`; every row `minHeight 44`, no dead gap): **`Started {date}`** (active) or **`Dates {start} – {end}`** (completed; a narrow card wraps between the two whole dates) with the shared `InfoButton` (#1245; `About these numbers`, real `44x44`, glyph `18`) directly AFTER the `Started`/`Dates` label, before the date, by an ordinary `8` row gap — beside the label it explains, never margin-pushed to the card edge, with NO negative margins (its whole 44x44 box is reserved, so it cannot overlap the date or start outside the row); when label + date + button cannot share a line the whole button wraps to the next line, left-aligned at the row edge — and the non-medical note (`Training numbers only. Not a medical judgment — only you end a Recovery block.`) revealed right under it in the same always-mounted polite live region; then, when a reason exists, a quiet read-only **`Reason {value}`** row (up to two ellipsized lines, no control; editing lives only in Manage block, #1307; the same row there keeps the pencil/add glyph, `>=44dp` target and `0.5` opacity when locked/busy); a `Baseline {routine}` row leads only when the strength summary does not name the routine. Each row is announced ONCE: the visible label (`Started`/`Dates`/`Baseline`) is hidden from assistive tech (`accessibilityElementsHidden`, `importantForAccessibility="no"`) and the adjacent value's accessible label carries both (`Started 08-08-2026`, `Baseline: {routine}`); a read-only Reason row is one grouped element (`Reason: {value}`). Dates are never ellipsized or squeezed mid-number: the date row wraps (the info button wraps whole to the next line if label + date + button cannot share a line) and each date stays whole. Shared `Card` chrome, no local gap |
+| Block context | `contextBlock` / `contextRow` | ONE quiet labelled list under a single divider (`13`; label `600` `onSurfaceVariant` on a shared `68` minimum-width column so values align at ordinary widths, relaxed to each label's own width when the window is under `300` wide or `fontScale >= 1.6` so a date is never squeezed; value `onSurface`; every row `minHeight 44`, no dead gap): **`Started {date}`** (active) or **`Dates {start} – {end}`** (completed; a narrow card wraps between the two whole dates) with the shared `InfoButton` (#1245; `About these numbers`, real `44x44`, glyph `18`) directly AFTER the `Started`/`Dates` label, before the date, by an ordinary `8` row gap — beside the label it explains, never margin-pushed to the card edge, with NO negative margins (its whole 44x44 box is reserved, so it cannot overlap the date or start outside the row); when label + date + button cannot share a line the whole button wraps to the next line, left-aligned at the row edge — and the non-medical note (`Training numbers only. Not a medical judgment — only you end a Recovery block.`) revealed right under it in the same always-mounted polite live region; then, when a reason exists, a quiet read-only **`Reason {value}`** row (up to two ellipsized lines, no control; editing lives only in Log's Manage block, #1307/#1315); a `Baseline {routine}` row always leads the block (one line, ellipsized; the summary no longer names the routine) and the only link is a quiet `Manage in Log` row (`>=44dp`, `onNavigate('Log', { kind: 'recovery-manage', blockId })`). Each row is announced ONCE: the visible label (`Started`/`Dates`/`Baseline`) is hidden from assistive tech (`accessibilityElementsHidden`, `importantForAccessibility="no"`) and the adjacent value's accessible label carries both (`Started 08-08-2026`, `Baseline: {routine}`); a read-only Reason row is one grouped element (`Reason: {value}`). Dates are never ellipsized or squeezed mid-number: the date row wraps (the info button wraps whole to the next line if label + date + button cannot share a line) and each date stays whole. Shared `Card` chrome, no local gap |
 | Completed-block history | default | collapsed, summary header states the count and the latest block |
 
 **Exercise row** (#1219) replaced the counted state-group headers and the metric
@@ -901,30 +919,34 @@ compare 0, Added during recovery 0`), and never announces a separate Close count
 Home renders none of this (see Recovery Status
 Card).
 
-**Strength view** (#1305): the Analytics Recovery card leads with strength
-relative to the frozen best set instead of the band hero, band bar, movement row
-and band strip (all removed from Analytics; Home/Overview are unchanged).
-`RecoveryStrengthSummary` is the one primary selected-week summary: the KUA
-metric hero tier (32/36) average %, `of <routine> baseline strength`, and a
-13sp coverage caption (`Average of N lifts scored every week · N of R baseline
-lifts`, R = full roster), or the plain reason when there is no honest average.
-`RecoveryStrengthWeeks` (one row per recovery week through the selection) and
-`RecoveryStrengthLadder` (one row per scored lift, its best set vs the baseline
-set, and best-case pace text) share ONE percent scale (`strengthScaleMax`: 100,
-or the next 10 above the largest value) with an on-surface ink 100% reference
-mark and the court primary fill on the section track; a `StrengthScaleNote`
-states the scale. No warning/amber ink. An unreadable week is a dashed `No
-data` gap. Not-retested and never-scoreable lifts are plain 13sp text lists.
-Styles: `recoveryStrengthStyles.js`.
+**Strength view** (#1305, compacted #1315): the Analytics Recovery card leads
+with strength relative to the frozen best set. `RecoveryStrengthSummary` is the
+one primary selected-week summary: the KUA metric hero tier (32/36) average % and
+one `{N} lifts · Week n` caption. `RecoveryStrengthWeeks` (label + bar/gap +
+value per week, no caption) and `RecoveryStrengthLadder` share ONE percent scale
+(`strengthScaleMax`: 100, or the next 10 above the largest value) with an
+on-surface ink 100% reference mark and the court primary fill on the section
+track; the `Bars run 0-N%` legend is in the explainer. Each scored lift row is
+name, %, bar, ONE `best / baseline unit` line (`155×8 / 250×6 lb`) and a compact
+pace (`90% ~2 wk · 100% ~4 wk`, `need 3 wks`, `no gain`, `reached`, `pace
+hidden`); the full best-case pace text (rate, week window, insufficient / no-gain
+/ suppressed) is in the row label and the explainer. Lifts with no score this
+week or ever live in the `N not scored for strength` disclosure (identities
+de-duplicated), lifts with no entry this week in `N not retested`. An unreadable
+week is a dashed `No data` gap. No warning/amber ink. Styles:
+`recoveryStrengthStyles.js` (`disc*` for the shared disclosure).
 
 **Movement groups** (#1306): `RecoveryMovementGroups`
 (`components/recovery/RecoveryMovementGroups.js`, styles
 `recoveryMovementGroupStyles.js`) is one collapsed-by-default header under the
-strength ladder, not a second hero. Expanded, each group is a flat row
-(name, `N of M lifts in the average scored · B lifts in the baseline`, and the
+strength ladder, not a second hero (the shared `RecoveryDisclosure`; an unavailable
+saved-choice read adds a concise `saved choices unavailable` to its caption, with
+the full notice on demand). Expanded, each group is a flat row (name, compact
+`{scored}/{cohort} scored · {baseline} baseline` — the full `N of M lifts in the
+average scored · B lifts in the baseline` wording is its label — and the
 mean % or `No score`, never 0%) that discloses its exercises; no nested cards.
 The read-only numbers are separate from the controls: the per-exercise editor
-(`MovementGroupEditor.js`) lives only in Manage block (#1307), under a collapsed
+(`MovementGroupEditor.js`) lives only in Log's Manage block (#1307, #1315), under a collapsed
 `Movement groups` header (`Choose which group each lift counts in.`) listing
 every baseline lift plus lifts added during recovery as `{group} · Automatic|Your
 choice`. Its `Change group` button, eight single-choice radio options (selected = radio glyph
@@ -933,29 +955,42 @@ a failed save keeps the choice as an unsaved draft with `Not saved: <reason>`.
 Notices (failed read, missing routine, unreadable map, paused) use 13sp caption
 ink. Court tokens only.
 
-**Manage block** (#1307): `RecoveryManageBlock`
-(`components/recovery/RecoveryManageBlock.js`, styles
-`recoveryManageBlockStyles.js`) is the ONE maintenance surface for the focused
-active or completed block, a sibling `Card` under the evidence card (never nested
-in it), collapsed by default, with a >=48dp trigger (`Manage block`, chevron,
-`accessibilityLabel` `Manage recovery block: {routine}`, `expanded` state). The
-trigger is never disabled. With writes locked (no verified state or a pending
-write) the opened panel says changes are paused; with only a stale read it says
-that matching or tidying names and movement groups are paused until Recovery data
-is current (Reason, Reopen and inclusion keep their existing gates). Each action
-owns its own row and divider, so an ineligible action leaves no empty row. Flat rows divided by hairlines, in this
-order: Reason (row + inline editor), Rebuild baseline, Match exercise names, Tidy
-names, Movement groups editor, Reopen (newest completed block only, no active
-block), `Include recovery notes in normal analytics`. The panel is keyed by block
-id, so drafts and errors never cross blocks. The body mounts on first open and
-then stays mounted while collapsed (`display: none`, `accessibilityElementsHidden`,
-`importantForAccessibility="no-hide-descendants"`), so an in-flight write keeps its
-busy state, draft and error and collapsing never discards them. Opening or closing it writes nothing. History week rows stay focus targets
+**Manage block** (#1307, moved to Log by #1315): `LogRecoveryLifecycle`
+(`components/recovery/LogRecoveryLifecycle.js`, rows in `LogRecoveryManageBlock.js`,
+chrome `logRecoveryStyles.js` / `logRecoveryManageStyles.js`) is the ONE
+maintenance surface for a block, active or completed, in the Log tab's Recovery
+view: a sibling `Card` (never nested), collapsed by default, with a >=48dp
+trigger (`Manage block`, chevron, `accessibilityLabel` `Manage recovery block:
+{routine}`, `expanded` state) that is never disabled. With writes locked (no
+verified state, a pending write or an inline note edit) the opened card says
+changes are paused; with only a stale read it says that matching or tidying names
+and movement groups are paused until Recovery data is current. Flat rows divided
+by hairlines, in this order: Reason (row + inline editor), `Counting in normal
+analytics` (the row is the switch, with its help sibling), Rebuild baseline,
+Match exercise names, Tidy names, Movement groups editor, Reopen (newest
+completed block only, no active block; the existing confirm and domain recheck),
+then — active block only — `Unlink Week {N}'s note` and `End recovery block`.
+Each action owns its own row, so an ineligible action leaves no empty row. A card
+exists per focused block and stays mounted while another block is focused (the
+unfocused card is `display: none`, `accessibilityElementsHidden`,
+`importantForAccessibility="no-hide-descendants"`); within a card the body mounts
+on first open and stays mounted while collapsed, so an in-flight write keeps its
+busy state, draft and error across collapse AND block switching, and nothing
+reaches another block. Opening, closing or switching writes nothing.
+**Recovery History** (`LogRecoveryHistory.js`): a collapsed `>=48dp` header
+(`Recovery History`, `N completed blocks`) lists the active block (when present)
+and every live completed block, newest completed first, as `>=48dp` rows with
+`selected` state; choosing one focuses its single Manage card. The Recovery tab is
+reachable in a completed-only verified state (not the default view). A
+`recovery-manage` navigation intent from Analytics selects and expands that exact
+block id (repeats work via the shell nonce, scrolls the card into view) and shows
+an explicit unavailable notice for an unknown or deleted id; it waits for the
+verified read. Analytics history week rows stay focus targets
 (`Show evidence for {routine}, Recovery Week N, {state}`) with a separate
 `View note in Log` link (>=44dp, only for a readable note, never nested).
 
 **Tidy names** (#1309): `TidyRecoveryNamesAction` (`components/recovery/TidyRecoveryNames.js`,
-styles `recoveryTidyStyles.js`) is the single name-cleanup action in the Analytics Manage block, placed after `Rebuild baseline` and `Match exercise names`
+styles `recoveryTidyStyles.js`) is the single name-cleanup action in Log's Manage block, placed after `Rebuild baseline` and `Match exercise names`
 (the same reason-editor button/caption tokens; every control is a >=44dp button
 whose accessible name is its visible label). The preview (`recovery-tidy-preview`)
 is the plan captured when it opened and lists every week header as `Week N: old →
@@ -968,8 +1003,8 @@ lifts with reasons, and an explicit no-change line; one Confirm applies the whol
 plan, and Cancel/Close write nothing. A partial failure shows its error in the
 card and the action is simply run again. The card mounts keyed by block id, so
 draft and error state never cross blocks; it is locked by the same
-verified-state/pending gates as the other Recovery writes (and is hosted in
-Manage block since #1307).
+verified-state/pending gates as the other Recovery writes (hosted in Analytics'
+Manage block from #1307 and in Log's Manage block since #1315).
 
 **Detail order** (#1219): rows follow the routine, not a state ranking. Baseline
 exercises the week logged come first, then baseline exercises not yet trained
@@ -1411,9 +1446,8 @@ Consequences to preserve:
   rather than opening a modal, seeded from the stored value so `Cancel` is a
   true discard, and saving empty text clears the field. Collapsing `Manage
   block` closes the editor with it — and note that this is not the only place
-  the field is editable: the Analytics evidence card carries the same inline
-  editor on its reason caption, which is the ONLY way to reach a block once it
-  is completed, since `Manage block` exists only for the active one),
+  the field is editable; since #1315 the same card also serves a completed
+  block selected in Recovery History),
   `Counting in normal analytics` (the row itself IS the
   Log-surface inclusion control now, `accessibilityRole="switch"` — tapping
   it writes `include_in_normal_analytics` directly, live `On`/`Off` stated
@@ -1443,8 +1477,9 @@ Consequences to preserve:
   non-adopter never sees a Recovery card flash; a terminal first-read failure
   still shows the unknown state with `Retry recovery`.
 - `RecoveryInclusionToggle` (#843: no longer hosted on Log — see the
-  `Manage block` bullet above — now hosted only by the Analytics Manage block
-  for the focused active or completed block, #1307) states `Include recovery notes in normal analytics` and
+  `Manage block` bullet above — no longer hosted by Analytics since #1315; Log's
+  inclusion row owns the control for the focused active or completed block, and the
+  component's copy constants stay shared) states `Include recovery notes in normal analytics` and
   nothing else by default. The explanation moved behind an
   `info-outline` info button beside the label (#757): a 16dp glyph centered in
   a real `44 x 44` Pressable box — **not** a `hitSlop`, which React Native

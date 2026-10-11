@@ -11,7 +11,7 @@ import { normalizeExerciseKey } from '../../lib/parser';
 import { filterNotesForNormalAnalytics } from '../../lib/data/recoveryAnalyticsFilter';
 import { ACTIVE_TRAINING_STATUS } from '../../lib/data/activeTrainingContext';
 import {
-  recoveryWeekStatusText, summarizeRecoveryBands, weightDirection, weightTrendTone,
+  recoveryWeekStatusText, weightDirection, weightTrendTone,
 } from '../../lib/data/derivedAnalytics';
 
 // `excludedNoteIds` (#699) is the set of recovery-linked note ids whose block
@@ -299,12 +299,10 @@ export function deriveOverviewRows({
   // "live right now" vs "frozen baseline history" and leads with the former
   // during an active block.
   activeTraining = null,
-  // #1029: the current live week's `deriveRecoveryWeekBands` result and
-  // (when the evidence bar is met) `deriveRecoveryMovement` result. Neither is
-  // recomputed here — both are handed in already derived, exactly like every
-  // other row above reads an already-derived value.
-  recoveryBands = null,
-  recoveryMovement = null,
+  // #1315: the single Recovery snapshot's `display` for the active block's
+  // latest week (the same object the Recovery section and Home read). Nothing is
+  // recomputed here; the row prints exactly the section's headline and caption.
+  recoverySnapshot = null,
   // #1242: the active weight goal's direction ('gain' | 'loss' | 'maintain' |
   // null) so the weight delta takes the shared goal-aware tone.
   weightGoalDirection = null,
@@ -419,67 +417,27 @@ export function deriveOverviewRows({
   const isOpenWeek = activeTraining.status === ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK;
   const weekNumber = activeTraining.recoveryWeekNumber ?? null;
 
-  // #1029 amendment / #1242: one shape — the shared roster count — with
-  // movement added to the caption when its evidence bar is met. It never
-  // prints a composite percentage and never fabricates a numeric `delta`. `AnalyticsOverviewCard` now (amendment to
-  // this issue's Allowed Files) carries a purely additive `infoCaption` field
-  // that renders independently of `delta`, at the bucket-row font-weight
-  // tier — so week identity, anchor week, and matched population are real
-  // caption text via `infoCaption`, never folded into `valueSuffix`.
-  const recoverySummary = summarizeRecoveryBands(recoveryBands);
+  // #1315: one shape — the Recovery section's headline (average % of baseline
+  // strength) with its compact caption, both read from the single snapshot. When
+  // the snapshot has no honest number the row says why, in the snapshot's words.
+  const display = recoverySnapshot ? recoverySnapshot.display : null;
+  const base = { key: 'recovery', label: 'Recovery', section: 'recovery', unavailable: false, showUnit: false };
   let recoveryRow;
-  if (!isOpenWeek) {
+  if (display && display.state === 'score') {
     recoveryRow = {
-      key: 'recovery',
-      label: 'Recovery',
-      section: 'recovery',
-      unavailable: false,
-      value: null,
-      showUnit: false,
-      valueSuffix: null,
-      infoCaption: null,
-      emptyCaption: recoveryWeekStatusText({ weekNumber, open: false }),
-    };
-  } else if (recoverySummary) {
-    // #1242: the value is always the shared roster summary — the same count and
-    // words Home prints — so the two never disagree. Movement, when its
-    // evidence bar is met, rides in the caption instead of replacing it.
-    // Plain wording: "back" counts exercises at/above their pre-recovery
-    // band out of the whole roster (not-comparable never counts as back); the
-    // roster includes exercises not trained yet, so that is named.
-    const { atOrAbove, rosterSize, notYet } = recoverySummary;
-    const improved = recoveryMovement
-      ? `${recoveryMovement.improved} improved since Week ${recoveryMovement.anchor_week_number}`
-      : null;
-    recoveryRow = {
-      key: 'recovery',
-      label: 'Recovery',
-      section: 'recovery',
-      unavailable: false,
-      value: `${atOrAbove}/${rosterSize}`,
-      showUnit: false,
-      stackDetail: true,
-      valueSuffix: `pre-recovery ${rosterSize === 1 ? 'exercise' : 'exercises'} back`,
-      infoCaption: [`Week ${weekNumber}`, notYet > 0 ? `${notYet} not trained yet` : null, improved].filter(Boolean).join(' · '),
-      // Full sentence for screen readers only (the card prefixes the label).
-      accessibilityText: [
-        `${atOrAbove} of ${rosterSize} pre-recovery ${rosterSize === 1 ? 'exercise' : 'exercises'} back to pre-recovery level`,
-        notYet > 0 ? `including ${notYet} not trained yet` : null,
-        `Week ${weekNumber}`,
-        improved,
-      ].filter(Boolean).join(', '),
+      ...base,
+      value: `${display.percent}%`,
+      infoCaption: display.caption,
+      accessibilityText: `${display.a11y}${recoverySnapshot.stale ? ' Recovery data may be out of date.' : ''}`,
       emptyCaption: null,
     };
+  } else if (display) {
+    recoveryRow = { ...base, value: null, emptyCaption: display.message };
   } else {
     recoveryRow = {
-      key: 'recovery',
-      label: 'Recovery',
-      section: 'recovery',
-      unavailable: false,
-      value: weekNumber,
-      showUnit: false,
-      valueSuffix: weekNumber != null ? 'week' : null,
-      emptyCaption: null,
+      ...base,
+      value: null,
+      emptyCaption: recoveryWeekStatusText({ weekNumber, open: isOpenWeek }),
     };
   }
 

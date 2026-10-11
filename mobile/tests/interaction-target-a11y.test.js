@@ -811,18 +811,23 @@ describe('Weight goal editor actions', () => {
   });
 });
 
-// #1307: Analytics Manage block trigger, week-selector rows and history week
-// actions keep a 44dp own box (styles, not hit slop).
-describe('Recovery Manage block and week selector targets (#1307)', () => {
-  const { createManageBlockStyles } = require('../components/recovery/recoveryManageBlockStyles');
+// #1307/#1315: Log's Manage block trigger and history rows, the Analytics
+// week-selector rows, disclosure headers and history week actions keep a 44dp
+// own box (styles, not hit slop).
+describe('Recovery Manage block and week selector targets (#1307, #1315)', () => {
+  const { createLogManageStyles } = require('../components/recovery/logRecoveryManageStyles');
+  const { createStyles: createLogStyles } = require('../components/recovery/logRecoveryStyles');
   const { createStrengthStyles } = require('../components/recovery/recoveryStrengthStyles');
   const { createStyles } = require('../components/recovery/analyticsRecoveryStyles');
   const { createMovementGroupStyles } = require('../components/recovery/recoveryMovementGroupStyles');
   const { LightColors } = require('../theme/colors');
   test.each([null, 'kua'])('own-box floors (%s palette)', (mode) => {
     const kua = mode ? require('../theme/colors').KUA_PALETTES.hardCourt.light : null;
-    expect(createManageBlockStyles(LightColors, kua).trigger.minHeight).toBeGreaterThanOrEqual(44);
-    expect(createManageBlockStyles(LightColors, kua).groupsTrigger.minHeight).toBeGreaterThanOrEqual(44);
+    expect(createLogStyles(LightColors, kua).manageTrigger.minHeight).toBeGreaterThanOrEqual(44);
+    expect(createLogManageStyles(LightColors, kua).groupsTrigger.minHeight).toBeGreaterThanOrEqual(44);
+    expect(createLogManageStyles(LightColors, kua).historyHeader.minHeight).toBeGreaterThanOrEqual(44);
+    expect(createLogManageStyles(LightColors, kua).historyRow.minHeight).toBeGreaterThanOrEqual(44);
+    expect(createStrengthStyles(LightColors, kua).discHeader.minHeight).toBeGreaterThanOrEqual(44);
     expect(createStrengthStyles(LightColors, kua).weekRowPress.minHeight).toBeGreaterThanOrEqual(44);
     const analytics = createStyles(LightColors, kua);
     expect(analytics.weekIndexFocus.minHeight).toBeGreaterThanOrEqual(44);

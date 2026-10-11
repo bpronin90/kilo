@@ -7,8 +7,8 @@ import {
   useRecoveryAnalyticsFilter,
   useRecoveryBlockState,
 } from '../../hooks/entries/recoveryBlockHooks';
+import { getRecoverySnapshot } from '../../lib/data/recoverySnapshot';
 import {
-  deriveRecoveryComparison,
   RECOVERY_COMPARISON_STATES,
   RECOVERY_COMPARISON_STATUS,
   RECOVERY_WEEK_STATUS,
@@ -134,6 +134,7 @@ export function useHomeRecoverySummary(notes, workoutNote = null) {
       retry: retryRecovery || null,
       active: false,
       comparisonStatus: null,
+      headline: null,
       weekNumber: null,
       weekNoteStatus: null,
       weekNoteTitle: null,
@@ -145,7 +146,11 @@ export function useHomeRecoverySummary(notes, workoutNote = null) {
     // is unresolved the arrays are placeholders, not evidence of either answer.
     if (!ready || !activeBlock) return base;
 
-    const comparison = deriveRecoveryComparison({ block: activeBlock, weeks, notes });
+    // #1315: the one shared Recovery snapshot (content-keyed), never a Home-local
+    // derivation. Its comparison feeds the Big 3 / count lines unchanged; its
+    // display is the same headline Analytics and the Overview row print.
+    const snapshot = getRecoverySnapshot({ block: activeBlock, weeks, notes, stale: isStale });
+    const comparison = snapshot.comparison;
     const comparisonWeeks = comparison.weeks || [];
     const current = comparisonWeeks.length > 0 ? comparisonWeeks[comparisonWeeks.length - 1] : null;
     // #1192: the Big 3 use the same effective 1K selection as Home's normal
@@ -158,6 +163,7 @@ export function useHomeRecoverySummary(notes, workoutNote = null) {
       ...base,
       active: true,
       comparisonStatus: comparison.status,
+      headline: snapshot.display,
       weekNumber: current ? current.week_number : null,
       weekNoteStatus: current ? current.status : null,
       weekNoteTitle: current && typeof current.note_title === 'string' && current.note_title.trim() ? current.note_title.trim() : null,

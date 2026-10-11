@@ -535,61 +535,51 @@ describe('deriveOverviewRows (#821)', () => {
     expect(oneK.deltaCaption).toBe('since your last session');
   });
 
-  // #1029 amendment (required test 21): the Recovery row's week identity,
-  // anchor week, and matched population arrive as `infoCaption`, never folded
-  // into `valueSuffix`, and no numeric `delta` is fabricated for either shape.
-  test('active Recovery with movement available: infoCaption carries week identity, anchor week, and matched population — absent from valueSuffix, no fabricated delta', () => {
-    const rows = deriveOverviewRows({
-      activeTraining: { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 3 },
-      recoveryBands: { roster_size: 5, trained: 5, buckets: { at_or_above: 3, close: 1, rebuilding: 1, early: 0, cannot_compare: 0, not_trained_yet: 0 } },
-      recoveryMovement: { improved: 2, steady: 1, fell_back: 0, matched_size: 3, anchor_week_number: 1 },
-    });
-    const recovery = rowFor(rows, 'recovery');
-    // #1242: the value stays the shared roster count Home prints.
-    // Value is exercises back at/above pre-recovery performance out of the roster.
-    expect(recovery.value).toBe('3/5');
-    expect(recovery.valueSuffix).toBe('pre-recovery exercises back');
-    expect(recovery.infoCaption).toBe('Week 3 · 2 improved since Week 1');
-    expect(recovery.accessibilityText).toBe('3 of 5 pre-recovery exercises back to pre-recovery level, Week 3, 2 improved since Week 1');
-    expect(recovery.valueSuffix).not.toMatch(/Week 3/);
-    expect(recovery.valueSuffix).not.toMatch(/since Week/);
-    expect(recovery.infoCaption).not.toMatch(/matched|trained/);
+  // #1315: the Recovery row reads the single Recovery snapshot's display (the same
+  // headline the Recovery section and Home print): the % as its value, the compact
+  // caption as `infoCaption`, the full sentence for assistive tech.
+  const SNAP = (over = {}) => ({
+    stale: false,
+    display: {
+      state: 'score', percent: 87, caption: '4 lifts · Week 3', message: null,
+      a11y: 'Week 3: 87% of Push Pull Legs baseline strength. Average of 4 lifts scored every week · 4 of 6 baseline lifts. In the average: A, B, C, D.',
+      ...over,
+    },
+  });
+  const OPEN = { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 3 };
+
+  test('active Recovery shows the snapshot headline: % value and the compact caption, no band/movement remnants', () => {
+    const recovery = rowFor(deriveOverviewRows({ activeTraining: OPEN, recoverySnapshot: SNAP() }), 'recovery');
+    expect(recovery.value).toBe('87%');
+    expect(recovery.infoCaption).toBe('4 lifts · Week 3');
+    expect(recovery.valueSuffix).toBeUndefined();
+    expect(recovery.accessibilityText).toContain('87% of Push Pull Legs baseline strength');
+    expect(recovery.accessibilityText).toContain('In the average: A, B, C, D.');
     expect(recovery.delta).toBeUndefined();
+    expect(JSON.stringify(recovery)).not.toMatch(/pre-recovery|improved|not trained yet/);
   });
 
-  test('not-trained-yet count appears in caption and a11y text only when above zero; singular roster', () => {
-    const open = { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 3 };
-    const bands = { roster_size: 5, trained: 4, buckets: { at_or_above: 3, close: 1, rebuilding: 0, early: 0, cannot_compare: 0, not_trained_yet: 1 } };
-    const r = rowFor(deriveOverviewRows({
-      activeTraining: open, recoveryBands: bands,
-      recoveryMovement: { improved: 2, steady: 1, fell_back: 0, matched_size: 3, anchor_week_number: 1 },
-    }), 'recovery');
-    expect(r.infoCaption).toBe('Week 3 · 1 not trained yet · 2 improved since Week 1');
-    expect(r.accessibilityText).toBe('3 of 5 pre-recovery exercises back to pre-recovery level, including 1 not trained yet, Week 3, 2 improved since Week 1');
-    const one = rowFor(deriveOverviewRows({
-      activeTraining: open,
-      recoveryBands: { roster_size: 1, trained: 1, buckets: { at_or_above: 1, close: 0, rebuilding: 0, early: 0, cannot_compare: 0, not_trained_yet: 0 } },
-    }), 'recovery');
-    expect(one.valueSuffix).toBe('pre-recovery exercise back');
-    expect(one.infoCaption).toBe('Week 3');
+  test('a stale snapshot keeps the headline and says so for assistive tech', () => {
+    const recovery = rowFor(deriveOverviewRows({ activeTraining: OPEN, recoverySnapshot: { ...SNAP(), stale: true } }), 'recovery');
+    expect(recovery.value).toBe('87%');
+    expect(recovery.accessibilityText).toMatch(/may be out of date\.$/);
   });
 
-  test('active Recovery with movement unavailable: infoCaption still carries week identity — absent from valueSuffix, no fabricated delta', () => {
-    const rows = deriveOverviewRows({
-      activeTraining: { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 1 },
-      recoveryBands: { roster_size: 5, trained: 2, buckets: { at_or_above: 1, close: 0, rebuilding: 1, early: 0, cannot_compare: 0, not_trained_yet: 3 } },
-      recoveryMovement: null,
-    });
-    const recovery = rowFor(rows, 'recovery');
-    expect(recovery.infoCaption).toBe('Week 1 · 3 not trained yet');
-    expect(recovery.valueSuffix).not.toMatch(/Week 1/);
-    expect(recovery.delta).toBeUndefined();
+  test.each([
+    ['empty cohort', { state: 'empty', percent: null, caption: null, message: 'No lift has a strength score in every readable week yet, so there is no average.' }],
+    ['legacy baseline', { state: 'unavailable', percent: null, caption: null, message: 'Baseline best-set data unavailable. Rebuild the baseline in Manage block (Log tab) to score strength.' }],
+  ])('%s: no number, the snapshot message is the caption (never a fabricated 0%)', (_l, display) => {
+    const recovery = rowFor(deriveOverviewRows({ activeTraining: OPEN, recoverySnapshot: SNAP(display) }), 'recovery');
+    expect(recovery.value).toBeNull();
+    expect(recovery.emptyCaption).toBe(display.message);
   });
 
-  // Every other row — the four #737/#871 no-number conditions included —
-  // never supplies `infoCaption`. This is the additive-capability half of the
-  // production-caller matrix: only the Recovery row during active Recovery
-  // carries the field.
+  test('without a snapshot the row falls back to the shared week-status wording', () => {
+    const recovery = rowFor(deriveOverviewRows({ activeTraining: OPEN }), 'recovery');
+    expect(recovery.value).toBeNull();
+    expect(typeof recovery.emptyCaption).toBe('string');
+  });
+
   test('only the active-Recovery row carries infoCaption; every other row is untouched', () => {
     const rows = deriveOverviewRows({
       oneKPoints: [{ value: 940 }, { value: 975 }, { value: 1000 }],
@@ -597,11 +587,11 @@ describe('deriveOverviewRows (#821)', () => {
       sessionsSinceDeload: 3,
       currentWeight: 180,
       weightPoints: [{ value: 181 }, { value: 180 }],
-      activeTraining: { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 1 },
-      recoveryBands: { roster_size: 2, trained: 1, buckets: { at_or_above: 1, close: 0, rebuilding: 0, early: 0, cannot_compare: 0, not_trained_yet: 1 } },
+      activeTraining: OPEN,
+      recoverySnapshot: SNAP(),
     });
     expect(rowFor(rows, 'weight').infoCaption).toBeUndefined();
-    expect(rowFor(rows, 'recovery').infoCaption).toBe('Week 1 · 1 not trained yet');
+    expect(rowFor(rows, 'recovery').infoCaption).toBe('4 lifts · Week 3');
   });
 });
 
@@ -2751,10 +2741,7 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
       return [].concat(node.props.style ?? []).reduce((acc, s) => Object.assign(acc, s || {}), {});
     }
 
-    test('movement available: infoCaption shows week identity, anchor week, matched population, at the bucket-row weight tier, absent from valueSuffix, no fabricated delta, and present in the accessible label', () => {
-      // Both baseline lifts trained both weeks, so movement's matched size
-      // equals the roster (2) — the evidence bar #1029's contract requires
-      // when the roster itself is below 3.
+    test('the Overview Recovery row prints the SAME headline as the Recovery section (one snapshot)', () => {
       mockActiveTraining({ recoveryWeekNumber: 2, activeBlock: { id: 'rb-open' } });
       const component = renderScreen({
         recoveryBlocks: [recoveryBlock()],
@@ -2764,77 +2751,15 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
       const root = component.root;
       const row = recoveryOverviewRow(root);
       expect(row).toBeDefined();
-
-      const texts = textNodesOf(row).map(t => {
-        const c = t.props.children;
-        return Array.isArray(c) ? c.join('') : String(c ?? '');
-      });
-      const joined = texts.join(' | ');
-
-      expect(joined).toContain('Week 2');
-      expect(joined).toContain('since Week 1');
-      expect(joined).not.toContain('matched');
-      // Suffix and caption live in a full-width wrapping detail block, not in
-      // the nonshrinking right-hand value group (320dp / large-text safety).
-      const detail = row.findAllByProps({ testID: 'overview-detail-recovery' })[0];
-      const detailTexts = detail.findAllByType('Text');
-      expect(detailTexts.map(t => [].concat(t.props.children).join(''))).toEqual(
-        expect.arrayContaining(['pre-recovery exercises back']));
-      detailTexts.forEach(t => expect(t.props.numberOfLines).toBeUndefined());
-      // Full type role, no fontWeight override on the bundled faces (§16.1/16.2).
-      detailTexts.forEach(t => {
-        const st = flattenStyle(t);
-        expect(st.fontWeight).toBeUndefined();
-        expect(st.fontSize).toBeDefined();
-      });
-      const valueGroupTexts = textNodesOf(row).filter(t => !detailTexts.includes(t)).map(t => [].concat(t.props.children).join(''));
-      expect(valueGroupTexts.join(' ')).not.toContain('pre-recovery');
-      // Never folded into valueSuffix, which stays the compact count.
-      expect(texts).toContain('pre-recovery exercises back');
-      expect(texts.some(t => t.startsWith('of ') && /Week|improved/.test(t))).toBe(false);
-
-      const infoCaptionNode = textNodesOf(row).find(t => {
-        const c = t.props.children;
-        const s = Array.isArray(c) ? c.join('') : String(c ?? '');
-        return s.includes('since Week 1');
-      });
-      expect(infoCaptionNode).toBeDefined();
-      expect(flattenStyle(infoCaptionNode).fontSize).toBeDefined();
-
-      expect(row.props.accessibilityLabel).toContain('Week 2');
-      expect(row.props.accessibilityLabel).toContain('since Week 1');
-      expect(row.props.accessibilityLabel).not.toContain('matched');
-      expect(row.props.accessibilityLabel).toMatch(/^Recovery, 2 of 2 pre-recovery exercises back to pre-recovery level, Week 2, \d+ improved since Week 1$/);
-    });
-
-    test('movement unavailable: infoCaption still shows week identity, absent from valueSuffix, no fabricated delta, present in accessible label', () => {
-      mockActiveTraining({ recoveryWeekNumber: 1, activeBlock: { id: 'rb-open' } });
-      const component = renderScreen({
-        recoveryBlocks: [recoveryBlock()],
-        recoveryWeeks: [recoveryWeek(1, 'note-w1', { completed_at: null })],
-        notes: [recoveryNote('note-w1', RECOVERY_BASELINE_TEXT)],
-      });
-      const root = component.root;
-      const row = recoveryOverviewRow(root);
-      expect(row).toBeDefined();
-
-      const texts = textNodesOf(row).map(t => {
-        const c = t.props.children;
-        return Array.isArray(c) ? c.join('') : String(c ?? '');
-      });
-      const joined = texts.join(' | ');
-      expect(joined).toContain('Week 1');
-      expect(texts.some(t => /Week 1/.test(t) && /trained/i.test(t))).toBe(false);
-
-      const infoCaptionNode = textNodesOf(row).find(t => {
-        const c = t.props.children;
-        const s = Array.isArray(c) ? c.join('') : String(c ?? '');
-        return s === 'Week 1';
-      });
-      expect(infoCaptionNode).toBeDefined();
-      expect(flattenStyle(infoCaptionNode).fontSize).toBeDefined();
-
-      expect(row.props.accessibilityLabel).toContain('Week 1');
+      const texts = textNodesOf(row).map(t => [].concat(t.props.children).join(''));
+      expect(texts.some(t => t.startsWith('100%'))).toBe(true);
+      expect(texts).toContain('1 lift · Week 2');
+      expect(row.props.accessibilityLabel).toMatch(/^Recovery, Week 2: 100% of Push Pull Legs baseline strength\./);
+      // The section's own summary says the same thing.
+      const summary = root.findAll(n => typeof n.type === 'string' && n.props.testID === 'recovery-strength-summary')[0];
+      expect(summary.props.accessibilityLabel).toMatch(/^Week 2: 100% of Push Pull Legs baseline strength\./);
+      const caption = root.findAll(n => typeof n.type === 'string' && n.props.testID === 'recovery-strength-caption')[0];
+      expect([].concat(caption.props.children).join('')).toBe('1 lift · Week 2');
     });
   });
 

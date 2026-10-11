@@ -139,13 +139,32 @@ the changelog and archived roadmaps.
   controls out of the evidence: they live in the block's one Manage block card
   (#1307), with >=44dp selected-state targets that preserve an unsaved choice and
   its error on failure.
-- Control ownership on Analytics Recovery (#1307): the evidence card shows
-  numbers and quiet read-only context; every write (reason, rebuild, name
-  matching/tidy, group overrides, reopen, inclusion) lives in ONE collapsed
-  sibling Manage block card whose trigger stays openable when writes are locked.
-  The strength week rows are the only week selector (pressable, >=44dp, role
-  `button`, `selected` state); history rows focus a block/week, and "View note in
-  Log" is a separate sibling link, never nested in them.
+- Recovery maintenance is Log-only (#1315, superseding #1307's Analytics Manage
+  block): every write (reason, inclusion, reopen, rebuild baseline, name
+  matching/tidy, movement-group overrides) lives in ONE Manage block card in Log
+  for the focused block, active or completed. Analytics Recovery is read-only
+  evidence and offers at most one quiet `Manage in Log` link (`>=44dp`) that
+  carries the exact block id. Log's collapsed `Recovery History` selector lists
+  every live completed block (newest completed first) and only changes focus;
+  exactly one Manage card is visible, but each visited block's card stays
+  mounted (hidden from sight and assistive tech) so drafts, in-flight writes and
+  rejected-write errors survive collapse and switching and never reach another
+  block. Collapsing never discards a draft; only Cancel does. The trigger stays
+  openable when writes are locked. Unlink/End are active-block only; Reopen is the
+  newest completed block's only while no block is active.
+- Compact default evidence, full context on demand (#1315): the Recovery summary
+  is the number plus ONE short caption; coverage, cohort, exclusions, scale and
+  per-lift qualifications live in an accessibility label, the `About these
+  numbers` explainer or a named disclosure — a removed sentence is never simply
+  deleted. ONE disclosure rule for every per-exercise list (lifts, movement
+  groups, not retested, not scored): collapsed by default, a counted `>=44dp`
+  header with a chevron, reset on a block or week change. A new list uses the
+  rule, not a variant. The strength week rows are the only week selector
+  (pressable, >=44dp, role `button`, `selected` state); history rows focus a
+  block/week, and "View note in Log" is a separate sibling link, never nested.
+- Recovery numbers come from one snapshot (`lib/data/recoverySnapshot.js`); Home,
+  the Analytics Overview `Recovery` row and the Analytics Recovery section read
+  it and never re-derive, so the same block and week print identical values.
 - An analytics tab leads with an **overview block**: one row per permanent
   signal, each stating its current value, what changed and over what window, and
   linking to the section that itemises it. Rows are full-width, not a column

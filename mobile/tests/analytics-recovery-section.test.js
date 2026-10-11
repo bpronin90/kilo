@@ -65,6 +65,21 @@ jest.mock('../lib/data/recoveryAnalytics', () => {
   return { ...actual, deriveRecoveryComparison: jest.fn(actual.deriveRecoveryComparison) };
 });
 
+// The snapshot derives the comparison once per input (#1315), so a queued
+// `mockReturnValueOnce` must never leak into the next test.
+beforeEach(() => {
+  deriveRecoveryComparison.mockReset();
+  deriveRecoveryComparison.mockImplementation(jest.requireActual('../lib/data/recoveryAnalytics').deriveRecoveryComparison);
+  // A newly queued mocked comparison must not be shadowed by a cached derivation
+  // of the same fixture, so queuing one also empties the content-keyed store.
+  const queue = deriveRecoveryComparison.mockReturnValueOnce.bind(deriveRecoveryComparison);
+  deriveRecoveryComparison.mockReturnValueOnce = (value) => {
+    require('../lib/data/recoverySnapshot')._resetRecoverySnapshotStore();
+    return queue(value);
+  };
+  require('../lib/data/recoverySnapshot')._resetRecoverySnapshotStore();
+});
+
 // Baseline: Bench (weighted) top load 135 / volume 2025, Pull-up (reps-only)
 // total reps 24.
 const BASELINE_TEXT = '-Bench\n- 135 5,5,5\n-Pull-up\n- 8,8,8';
@@ -132,6 +147,9 @@ function mockComparison({ status = RECOVERY_COMPARISON_STATUS.OK, weeks = [] } =
 }
 
 function setup({ blocks = [], weeks = [], notes = [] }) {
+  // The shared Recovery snapshot store is content-keyed; mocked derivations must
+  // not be shadowed by an earlier test's identical fixture.
+  require('../lib/data/recoverySnapshot')._resetRecoverySnapshotStore();
   let component;
   act(() => {
     component = render.create(
@@ -148,6 +166,10 @@ function findAllText(root) {
   });
 }
 
+function summaryLabel(root) {
+  const n = root.findAll(x => typeof x.type === 'string' && x.props.testID === 'recovery-strength-summary')[0];
+  return n ? n.props.accessibilityLabel : null;
+}
 function hasText(root, needle) {
   return findAllText(root).some(s => s.includes(needle));
 }
@@ -158,9 +180,10 @@ function byLabel(root, label) {
 
 // Details are collapsed by default (#758); every row-level assertion opens them.
 function expandDetails(root, { rows = true } = {}) {
-  const toggle = byLabel(root, 'Expand exercise details');
-  expect(toggle).toBeDefined();
-  act(() => { toggle.props.onPress(); });
+  // #1315: the Lifts disclosure holds the strength rows and the raw evidence.
+  const toggle = byLabel(root, 'Expand lifts');
+  if (toggle) act(() => { toggle.props.onPress(); });
+  else expect(byLabel(root, 'Collapse lifts')).toBeDefined();
   // #1300: rows default to one summary line; secondary evidence sits behind a
   // per-row tap. Row-evidence assertions open every row (`rows: false` keeps
   // the default collapsed view for the summary tests).
@@ -438,9 +461,8 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
     // #1219/#1305: the strength summary is the first in-card content; the
     // routine is quiet 13sp context, never a title-like caption above it.
     const texts = findAllText(root);
-    expect(texts.indexOf('Recovery')).toBeLessThan(texts.indexOf('Week 1'));
-    expect(texts.indexOf('Week 1')).toBeLessThan(texts.indexOf('100%'));
-    // The summary names the routine, so the bottom line is dates only.
+    expect(texts.indexOf('Recovery')).toBeLessThan(texts.indexOf('100%'));
+    expect(texts.indexOf('100%')).toBeLessThan(texts.indexOf('1 lift · Week 1'));
     const ctxText = texts.find(t => t === '05-01-2026');
     expect(texts.indexOf('100%')).toBeLessThan(texts.indexOf(ctxText));
     const routine = hostText(root, ctxText)[0];
@@ -454,8 +476,8 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
     const hero = sizeOf(hostText(root, '100%')[0]);
     // Same KUA hero as Weight Trends `weightValueLarge`: metric-display-mobile role, 32/36 display exception (#1283).
     expect(hero).toMatchObject({ fontSize: 32, lineHeight: 36, fontFamily: 'JetBrainsMono-Bold' });
-    expect(sizeOf(hostText(root, 'Week 1')[0]).fontSize).toBe(13);
-    expect(sizeOf(hostText(root, 'of Push Pull Legs baseline strength')[0]).fontSize).toBe(13);
+    // One short caption (#1315), no routine or coverage prose beside the number.
+    expect(sizeOf(hostText(root, '1 lift · Week 1')[0]).fontSize).toBe(13);
     expect(sizeOf(hostText(root, 'torn hamstring')[0]).fontSize).toBeGreaterThanOrEqual(13);
   });
 
@@ -469,39 +491,12 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
     expect(hero).toBeGreaterThan(-1);
     expect(ctx).toBeGreaterThan(hero);
     expect(reason).toBeGreaterThan(ctx);
-    // The routine is named once, by the summary (#1219/#1305) — never again in
-    // the bottom provenance line.
-    expect(texts.filter(t => t.includes('Push Pull Legs'))).toEqual(['of Push Pull Legs baseline strength']);
-    expect(texts.includes('Baseline')).toBe(false);
+    // The routine is named once visibly, in the quiet Baseline context row (#1315);
+    // the summary's full wording is its accessibility label.
+    expect(texts.filter(t => t.includes('Push Pull Legs'))).toEqual(['Push Pull Legs']);
+    expect(texts.includes('Baseline')).toBe(true);
   });
 
-  test('the bottom reason keeps its edit behavior and a >=44dp target', () => {
-    const onSaveReason = jest.fn(async () => ({ ok: true }));
-    const b = block({ reason: 'torn hamstring' });
-    let component;
-    act(() => {
-      component = render.create(
-        <AnalyticsRecoverySection blocks={[b]} weeks={[]} notes={[]} onSaveReason={onSaveReason} />
-      );
-    });
-    const root = component.root;
-    // Read-only context in the evidence card; the editor lives in Manage block.
-    expect(byLabel(root, 'Edit reason for this recovery block: torn hamstring')).toBeUndefined();
-    openManage(root);
-    const open = byLabel(root, 'Edit reason for this recovery block: torn hamstring');
-    expect(open).toBeDefined();
-    expect(sizeOf(open).minHeight).toBeGreaterThanOrEqual(44);
-    act(() => { open.props.onPress(); });
-    expect(byLabel(root, 'Reason for this recovery block')).toBeDefined();
-    expect(byLabel(root, 'Cancel editing the reason')).toBeDefined();
-    expect(byLabel(root, 'Save the reason')).toBeDefined();
-  });
-
-  test('the reason affordance is at least 13sp and keeps its accessible label', () => {
-    const root = openManage(setup({ blocks: [block()], weeks: [], notes: [] }).root);
-    expect(sizeOf(hostText(root, 'Add a reason')[0]).fontSize).toBeGreaterThanOrEqual(13);
-    expect(byLabel(root, 'Add a reason for this recovery block')).toBeDefined();
-  });
 });
 
 describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b)', () => {
@@ -512,11 +507,11 @@ describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b
     const component = setup({ blocks: [b], weeks: [w], notes: [n] });
     const root = component.root;
 
-    expect(hasText(root, 'Push Pull Legs baseline')).toBe(true);
-    // The week is named once, by the hero — not repeated in the caption.
+    expect(summaryLabel(root)).toContain('of Push Pull Legs baseline strength');
     expect(hasText(root, 'Week 1 · Push Pull Legs')).toBe(false);
-    // Once in the hero summary and once as the (single) selectable week row.
-    expect(findAllText(root).filter(t => t === 'Week 1').length).toBe(2);
+    // The caption carries the week; the selectable week row is the only bare "Week 1".
+    expect(hasText(root, '1 lift · Week 1')).toBe(true);
+    expect(findAllText(root).filter(t => t === 'Week 1').length).toBe(1);
     // The old two-line "Baseline routine" label + title pair is gone.
     expect(hasText(root, 'Baseline routine')).toBe(false);
   });
@@ -530,7 +525,7 @@ describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b
     expect(findAllText(root)).toContain('Baseline');
     expect(hasText(root, 'Baseline captured. No week logged yet.')).toBe(true);
     expect(hasText(root, 'baseline exercises met')).toBe(false);
-    expect(byLabel(root, 'Expand exercise details')).toBeUndefined();
+    expect(byLabel(root, 'Expand lifts')).toBeUndefined();
   });
 
   test('the card\'s last line is provenance only: "Started {date}" for an active block', () => {
@@ -925,7 +920,8 @@ describe('AnalyticsRecoverySection — persisted week identity survives gaps', (
     expect(weekRow(root, 2)).toBeUndefined();
     // Defaults to the latest live week, which is persisted week_number 3 — not
     // "week 2 of 2" from array position.
-    expect(hasText(root, 'Push Pull Legs baseline')).toBe(true);
+    expect(summaryLabel(root)).toContain('Week 3: ');
+    expect(summaryLabel(root)).toContain('of Push Pull Legs baseline strength');
     expect(hasText(root, 'Week 3 · Push Pull Legs')).toBe(false);
   });
 });
@@ -1192,11 +1188,13 @@ describe('AnalyticsRecoverySection — light/dark appearance', () => {
       .map(inst => StyleSheet.flatten(inst.props.style).backgroundColor);
 
     const lightComponent = setupWithColors(LightColors, { blocks: [b], weeks: [w], notes: [n] });
+    expandDetails(lightComponent.root, { rows: false });
     expect(lightComponent.root.findAllByProps({ testID: 'recovery-bands-rows' })).toHaveLength(0);
     expect(styleOf(lightComponent, 'recovery-strength-lift-a-bar-fill')).toEqual([LightColors.accent]);
     expect(styleOf(lightComponent, 'recovery-strength-lift-a-bar-reference')).toEqual([LightColors.text]);
 
     const darkComponent = setupWithColors(DarkColors, { blocks: [b], weeks: [w], notes: [n] });
+    expandDetails(darkComponent.root, { rows: false });
     expect(styleOf(darkComponent, 'recovery-strength-lift-a-bar-fill')).toEqual([DarkColors.accent]);
     expect(styleOf(darkComponent, 'recovery-strength-lift-a-bar-reference')).toEqual([DarkColors.text]);
     expect(hasText(darkComponent.root, 'Trained this week')).toBe(false);
@@ -1285,7 +1283,7 @@ describe('AnalyticsRecoverySection — authoritative Recovery state (#716)', () 
     const rendered = texts(component);
     expect(rendered).toContain(RECOVERY_STALE_MESSAGE);
     // The block's own evidence is still rendered, not replaced by the notice.
-    expect(rendered.some(t => t.includes('Push Pull Legs baseline'))).toBe(true);
+    expect(summaryLabel(component.root)).toContain('of Push Pull Legs baseline strength');
     expect(retryButton(component)).toBeTruthy();
   });
 
@@ -1377,13 +1375,14 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
 
     expect(hasText(root, 'roster exercises trained.')).toBe(false);
     expect(hasText(root, 'baseline exercises met')).toBe(false);
-    expect(hasText(root, 'Exercise details')).toBe(true);
-    // The header no longer restates the summary's status.
-    expect(findAllText(root).filter(t => t === 'of Push Pull Legs baseline strength').length).toBe(1);
+    expect(hasText(root, 'Lifts')).toBe(true);
+    // The summary is the % and one caption; the routine wording is its label only.
+    expect(summaryLabel(root)).toContain('of Push Pull Legs baseline strength');
+    expect(hasText(root, 'of Push Pull Legs baseline strength')).toBe(false);
     expect(hasText(root, 'of 2 at or above baseline')).toBe(false);
-    // #1219: collapsed shows the one shared bar + "N trained" stat, not a count sentence.
+    // #1315: the roster stat row lives inside the collapsed Lifts disclosure.
     expect(hasText(root, '3 exercises')).toBe(false);
-    expect(hasText(root, 'trained')).toBe(true);
+    expect(hasText(root, 'trained')).toBe(false);
 
     // The diagnostic panel this issue is about is not on screen yet — no
     // per-row Load metric cell (the "Most common gap: Total work" summary
@@ -1392,7 +1391,7 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     expect(rowLabels(root).some(l => l.startsWith('Bench,'))).toBe(false);
     expect(hasText(root, 'Load')).toBe(false);
     expect(hasText(root, 'Most common gap')).toBe(false);
-    expect(byLabel(root, 'Expand exercise details')).toBeDefined();
+    expect(byLabel(root, 'Expand lifts')).toBeDefined();
     // The roster/gap facts live in the drill-down now (#1209).
     expandDetails(root);
     // #1219: a compact stat row (visible) with the full sentence spoken only.
@@ -1410,12 +1409,12 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     expandDetails(root);
     expect(rowLabels(root).some(l => l.startsWith('Bench, Rebuilding'))).toBe(true);
 
-    const collapse = byLabel(root, 'Collapse exercise details');
+    const collapse = byLabel(root, 'Collapse lifts');
     expect(collapse.props.accessibilityState).toEqual({ expanded: true });
     act(() => { collapse.props.onPress(); });
 
     expect(rowLabels(root).some(l => l.startsWith('Bench,'))).toBe(false);
-    expect(byLabel(root, 'Expand exercise details').props.accessibilityState).toEqual({ expanded: false });
+    expect(byLabel(root, 'Expand lifts').props.accessibilityState).toEqual({ expanded: false });
   });
 
   test('the summary is week-aware, names only the states that occurred, and never invents a score', () => {
@@ -1456,6 +1455,9 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     pickWeek(root, 1);
 
     expect(summaryLabel()).toMatch(/^Week 1: /);
+    // Lifts reset to collapsed for the newly selected week (#1315).
+    expect(rosterNode(root)).toBeUndefined();
+    expandDetails(root, { rows: false });
     expect(rosterLabel(root)).toContain('Rebuilding 0');
     expect(hasText(root, 'At or above')).toBe(true);
     expect(hasText(root, 'Week 1')).toBe(true);
@@ -1556,9 +1558,9 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     act(() => { historyRow.props.onPress(); });
 
     // Collapsed again, on the new block's own summary.
-    expect(byLabel(root, 'Expand exercise details')).toBeDefined();
-    expect(byLabel(root, 'Collapse exercise details')).toBeUndefined();
-    expect(hasText(root, 'of Old Routine baseline strength')).toBe(true);
+    expect(byLabel(root, 'Expand lifts')).toBeDefined();
+    expect(byLabel(root, 'Collapse lifts')).toBeUndefined();
+    expect(summaryLabel(root)).toContain('of Old Routine baseline strength');
 
     expandDetails(root);
     expect(rowLabels(root).some(l => l.startsWith('Bench, At or above'))).toBe(true);
@@ -1573,316 +1575,6 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
 
     expect(hasText(root, "Week 1: This week's note is no longer available.")).toBe(true);
     expect(byLabel(root, 'Expand exercise details')).toBeUndefined();
-  });
-});
-
-describe('AnalyticsRecoverySection — inclusion preference (#728, #1307)', () => {
-  const { RECOVERY_INCLUSION_LABEL } = require('../components/RecoveryInclusionToggle');
-  const { formatDate } = require('../lib/format');
-  let mockSetInclude;
-
-  function completedBlock(id, include = false, completedAt = '2026-06-01T00:00:00Z') {
-    return block({ id, completed_at: completedAt, include_in_normal_analytics: include });
-  }
-
-  // The one inclusion switch belongs to the FOCUSED block and lives in the
-  // Manage block panel (#1307); history rows only focus a block.
-  function setupInclusion(props = {}) {
-    let component;
-    act(() => {
-      component = render.create(
-        <AnalyticsRecoverySection blocks={[]} weeks={[]} notes={[]} {...props} />
-      );
-    });
-    openManage(component.root);
-    return component;
-  }
-
-  function focusBlock(root, b) {
-    const toggle = byLabel(root, 'Expand recovery history');
-    if (toggle) act(() => { toggle.props.onPress(); });
-    act(() => {
-      byLabel(root, `View recovery evidence for ${b.baseline_note_title}, completed ${formatDate(b.completed_at)}`).props.onPress();
-    });
-    openManage(root);
-  }
-
-  function switchesFor(root) {
-    return root.findAll(
-      n => n.props && typeof n.props.accessibilityLabel === 'string'
-        && n.props.accessibilityLabel.startsWith(RECOVERY_INCLUSION_LABEL)
-        && n.props.onValueChange
-    );
-  }
-
-  beforeEach(() => {
-    mockSetInclude = jest.fn().mockResolvedValue({ ok: true });
-    jest.spyOn(require('../hooks/entries/recoveryBlockHooks'), 'useRecoveryBlockLifecycle')
-      .mockReturnValue({ setIncludeInNormalAnalytics: mockSetInclude });
-  });
-
-  afterEach(() => {
-    jest.restoreAllMocks();
-  });
-
-  test('exactly one switch exists for the focused block and reflects its stored preference', () => {
-    const b1 = { ...completedBlock('rb-a', false, '2026-06-01T00:00:00Z'), baseline_note_title: 'Push Pull Legs' };
-    const b2 = { ...completedBlock('rb-b', true, '2026-05-01T00:00:00Z'), baseline_note_title: 'Upper Lower' };
-    const component = setupInclusion({ blocks: [b1, b2] });
-    let controls = switchesFor(component.root);
-    expect(controls).toHaveLength(1);
-    expect(controls[0].props.testID).toBe('recovery-inclusion-switch-rb-a');
-    expect(controls[0].props.value).toBe(false);
-    expect(controls[0].props.accessibilityLabel).toContain('Push Pull Legs');
-
-    focusBlock(component.root, b2);
-    controls = switchesFor(component.root);
-    expect(controls).toHaveLength(1);
-    expect(controls[0].props.testID).toBe('recovery-inclusion-switch-rb-b');
-    expect(controls[0].props.value).toBe(true);
-    expect(controls[0].props.accessibilityLabel).toContain('Upper Lower');
-  });
-
-  test('history rows no longer carry an inclusion switch', () => {
-    const b1 = completedBlock('rb-a');
-    const b2 = completedBlock('rb-b', false, '2026-05-01T00:00:00Z');
-    let component;
-    act(() => { component = render.create(<AnalyticsRecoverySection blocks={[b1, b2]} weeks={[]} notes={[]} />); });
-    act(() => { byLabel(component.root, 'Expand recovery history').props.onPress(); });
-    expect(switchesFor(component.root)).toHaveLength(0);
-  });
-
-  test('the active block has an inclusion switch in its Manage block, default off', () => {
-    const active = block({ id: 'rbActive', completed_at: null });
-    const component = setupInclusion({ blocks: [active] });
-    const controls = switchesFor(component.root);
-    expect(controls).toHaveLength(1);
-    expect(controls[0].props.value).toBe(false);
-  });
-
-  test('a successful write calls setIncludeInNormalAnalytics with the correct args', async () => {
-    const b = completedBlock('rb1', false);
-    const component = setupInclusion({ blocks: [b] });
-    const [control] = switchesFor(component.root);
-
-    await act(async () => { await control.props.onValueChange(true); });
-    expect(mockSetInclude).toHaveBeenCalledWith({ blockId: 'rb1', include: true });
-  });
-
-  test('a rejected write surfaces an error banner and leaves the switch at the stored value', async () => {
-    const b = completedBlock('rb1', false);
-    mockSetInclude.mockResolvedValue({ ok: false, error: 'Network error.' });
-    const component = setupInclusion({ blocks: [b] });
-    const [control] = switchesFor(component.root);
-
-    await act(async () => { await control.props.onValueChange(true); });
-
-    expect(findAllText(component.root)).toContain('Network error.');
-    expect(switchesFor(component.root)[0].props.value).toBe(false);
-  });
-
-  test('an error stays with the block that failed and does not appear on another block', async () => {
-    const b1 = { ...completedBlock('rb-a', false, '2026-06-01T00:00:00Z'), baseline_note_title: 'Push Pull Legs' };
-    const b2 = { ...completedBlock('rb-b', false, '2026-05-01T00:00:00Z'), baseline_note_title: 'Upper Lower' };
-    mockSetInclude.mockResolvedValue({ ok: false, error: 'Network error.' });
-    const component = setupInclusion({ blocks: [b1, b2] });
-    await act(async () => { await switchesFor(component.root)[0].props.onValueChange(true); });
-    expect(findAllText(component.root)).toContain('Network error.');
-    focusBlock(component.root, b2);
-    expect(findAllText(component.root)).not.toContain('Network error.');
-  });
-
-  test('an in-flight write disables the switch, including another block\'s after a focus change', async () => {
-    const b1 = { ...completedBlock('rb-a', false, '2026-06-01T00:00:00Z'), baseline_note_title: 'Push Pull Legs' };
-    const b2 = { ...completedBlock('rb-b', true, '2026-05-01T00:00:00Z'), baseline_note_title: 'Upper Lower' };
-    let resolveWrite;
-    mockSetInclude.mockImplementation(() => new Promise(resolve => { resolveWrite = resolve; }));
-    const component = setupInclusion({ blocks: [b1, b2] });
-    expect(switchesFor(component.root)[0].props.disabled).toBeFalsy();
-
-    await act(async () => { switchesFor(component.root)[0].props.onValueChange(true); });
-    expect(switchesFor(component.root)[0].props.disabled).toBe(true);
-    // A second tap while busy never starts another write.
-    await act(async () => { switchesFor(component.root)[0].props.onValueChange(false); });
-    expect(mockSetInclude).toHaveBeenCalledTimes(1);
-
-    focusBlock(component.root, b2);
-    expect(switchesFor(component.root)[0].props.testID).toBe('recovery-inclusion-switch-rb-b');
-    expect(switchesFor(component.root)[0].props.disabled).toBe(true);
-
-    await act(async () => { resolveWrite({ ok: true }); });
-    expect(switchesFor(component.root)[0].props.disabled).toBeFalsy();
-  });
-
-  test('mutationsAllowed=false disables the switch before any write, and the panel still opens', () => {
-    const b = completedBlock('rb1', false);
-    const component = setupInclusion({ blocks: [b], mutationsAllowed: false });
-    const [control] = switchesFor(component.root);
-
-    expect(control.props.disabled).toBe(true);
-    expect(control.props.accessibilityState.disabled).toBe(true);
-    expect(hostById(component.root, 'recovery-manage-locked')).toHaveLength(1);
-  });
-
-  test('a pending recovery operation disables the switch rather than letting it race', () => {
-    const b = completedBlock('rb1', false);
-    const component = setupInclusion({
-      blocks: [b],
-      pendingRecovery: [{ operation_id: 1, block_id: 'rb1', error: null }],
-    });
-    const [control] = switchesFor(component.root);
-
-    expect(control.props.disabled).toBe(true);
-    expect(control.props.accessibilityState.disabled).toBe(true);
-  });
-});
-
-describe('AnalyticsRecoverySection — reopen the newest completed block (#839)', () => {
-  let mockReopen;
-  let alertSpy;
-
-  function completedBlock(id, completedAt, title = 'Push Pull Legs') {
-    return block({ id, completed_at: completedAt, baseline_note_title: title });
-  }
-
-  function setupReopen(props = {}) {
-    let component;
-    act(() => {
-      component = render.create(
-        <AnalyticsRecoverySection blocks={[]} weeks={[]} notes={[]} {...props} />
-      );
-    });
-    openManage(component.root);
-    return component;
-  }
-
-  function reopenButton(root) {
-    return root.findAll(
-      n => n.props && n.props.accessibilityLabel && n.props.accessibilityLabel.startsWith('Reopen recovery block:')
-        && typeof n.props.onPress === 'function'
-    )[0];
-  }
-
-  beforeEach(() => {
-    mockReopen = jest.fn().mockResolvedValue({ ok: true });
-    jest.spyOn(require('../hooks/entries/recoveryBlockHooks'), 'useRecoveryBlockLifecycle')
-      .mockReturnValue({ setIncludeInNormalAnalytics: jest.fn(), reopenBlock: mockReopen });
-    alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    jest.restoreAllMocks();
-  });
-
-  test('Reopen appears on the newest completed block\'s own evidence card', () => {
-    const newest = completedBlock('rb-newest', '2026-06-01T00:00:00.000Z');
-    const older = completedBlock('rb-older', '2026-05-01T00:00:00.000Z');
-    const component = setupReopen({ blocks: [newest, older] });
-
-    expect(reopenButton(component.root)).toBeTruthy();
-  });
-
-  test('Reopen does not appear on an older completed block, even when focused', () => {
-    const newest = completedBlock('rb-newest', '2026-06-01T00:00:00.000Z');
-    const older = completedBlock('rb-older', '2026-05-01T00:00:00.000Z');
-    const component = setupReopen({ blocks: [newest, older] });
-
-    const toggle = byLabel(component.root, 'Expand recovery history');
-    act(() => { toggle.props.onPress(); });
-    const olderRow = byLabel(
-      component.root,
-      `View recovery evidence for ${older.baseline_note_title}, completed ${require('../lib/format').formatDate(older.completed_at)}`
-    );
-    act(() => { olderRow.props.onPress(); });
-
-    expect(reopenButton(component.root)).toBeUndefined();
-  });
-
-  test('Reopen is absent while a block is active, even though a completed block exists', () => {
-    const active = block({ id: 'rb-active', completed_at: null });
-    const completed = completedBlock('rb-newest', '2026-06-01T00:00:00.000Z');
-    const component = setupReopen({ blocks: [active, completed] });
-
-    expect(reopenButton(component.root)).toBeUndefined();
-  });
-
-  test('tapping Reopen shows the #839 confirmation copy naming the baseline', () => {
-    const newest = completedBlock('rb-newest', '2026-06-01T00:00:00.000Z', 'Push Pull Legs');
-    const component = setupReopen({ blocks: [newest] });
-
-    act(() => { reopenButton(component.root).props.onPress(); });
-
-    expect(alertSpy).toHaveBeenCalledWith(
-      'Reopen this recovery block?',
-      expect.stringContaining('Push Pull Legs'),
-      expect.arrayContaining([
-        expect.objectContaining({ text: 'Cancel' }),
-        expect.objectContaining({ text: 'Reopen block' }),
-      ])
-    );
-  });
-
-  test('confirming calls reopenBlock with the block id', async () => {
-    const newest = completedBlock('rb-newest', '2026-06-01T00:00:00.000Z');
-    const component = setupReopen({ blocks: [newest] });
-
-    act(() => { reopenButton(component.root).props.onPress(); });
-    const buttons = alertSpy.mock.calls[0][2];
-    await act(async () => { await buttons.find(b => b.text === 'Reopen block').onPress(); });
-
-    expect(mockReopen).toHaveBeenCalledWith({ blockId: 'rb-newest' });
-  });
-
-  test('a rejected reopen surfaces an error under the button and leaves the block completed', async () => {
-    mockReopen.mockResolvedValue({ ok: false, error: 'Only the most recently completed recovery block can be reopened.' });
-    const newest = completedBlock('rb-newest', '2026-06-01T00:00:00.000Z');
-    const component = setupReopen({ blocks: [newest] });
-
-    act(() => { reopenButton(component.root).props.onPress(); });
-    const buttons = alertSpy.mock.calls[0][2];
-    await act(async () => { await buttons.find(b => b.text === 'Reopen block').onPress(); });
-
-    expect(hasText(component.root, 'Only the most recently completed recovery block can be reopened.')).toBe(true);
-    expect(reopenButton(component.root)).toBeTruthy();
-  });
-
-  test('an in-flight reopen disables the button and shows busy copy', async () => {
-    let releaseReopen;
-    mockReopen.mockImplementation(() => new Promise(resolve => { releaseReopen = resolve; }));
-    const newest = completedBlock('rb-newest', '2026-06-01T00:00:00.000Z');
-    const component = setupReopen({ blocks: [newest] });
-
-    act(() => { reopenButton(component.root).props.onPress(); });
-    const buttons = alertSpy.mock.calls[0][2];
-    let confirmPromise;
-    act(() => { confirmPromise = buttons.find(b => b.text === 'Reopen block').onPress(); });
-
-    const busyBtn = reopenButton(component.root);
-    expect(busyBtn.props.disabled).toBe(true);
-    expect(hasText(component.root, 'Reopening…')).toBe(true);
-
-    await act(async () => {
-      releaseReopen({ ok: true });
-      await confirmPromise;
-    });
-  });
-
-  test('after a successful reopen, the block presents as active rather than completed history', () => {
-    // Presentational component: the parent screen re-reads shared Recovery
-    // state after `reopenBlock` resolves and passes updated props down — this
-    // simulates that update directly, since AnalyticsRecoverySection itself
-    // holds no block-lifecycle state of its own. `completed_at: null` is
-    // exactly what a successful reopen persists.
-    const reopened = block({ id: 'rb-newest', completed_at: null, baseline_note_title: 'Push Pull Legs' });
-    const component = setupReopen({ blocks: [reopened] });
-
-    // No completed-block history panel — the block is active, not history.
-    expect(byLabel(component.root, 'Expand recovery history')).toBeUndefined();
-    // Reopen never offers itself on an already-active block.
-    expect(reopenButton(component.root)).toBeUndefined();
-    // Provenance reads as an open-ended active block ("Started …"), not a
-    // completed date range.
-    expect(hasText(component.root, 'Started')).toBe(true);
   });
 });
 
@@ -1921,7 +1613,7 @@ describe('AnalyticsRecoverySection — strength trend by recovery week (#1305)',
     expect(hostTextsIn(rows[1])).toContain('No data');
     expect(hostById(root, 'recovery-strength-week-2-bar')).toHaveLength(0);
     // The excluded week is disclosed beside the headline, not averaged as zero.
-    expect(hasText(root, 'Week 2 couldn’t be read and is left out of the comparison.')).toBe(true);
+    expect(summaryLabel(root)).toContain('Week 2 couldn’t be read and is left out of the comparison.');
     expect(hasText(root, '88%')).toBe(true);
   });
 
@@ -1945,7 +1637,11 @@ describe('AnalyticsRecoverySection — strength trend by recovery week (#1305)',
     const snap = captureRecoveryBaselineFromText(BASELINE_TEXT);
     const legacy = { ...snap, exercises: snap.exercises.map(({ best_e1rm_weight, best_e1rm_reps, ...r }) => r) };
     const root = setup({ blocks: [block({ baseline: legacy })], weeks: [week(1, 'note-w1')], notes: [note('note-w1', '-Bench\n- 135 5')] }).root;
-    expect(hasText(root, 'Baseline best-set data unavailable. Rebuild the baseline in Manage block to score strength.')).toBe(true);
+    expect(hasText(root, 'Baseline best-set data unavailable. Rebuild the baseline in Manage block (Log tab) to score strength.')).toBe(true);
+    // Not retested is a counted, collapsed disclosure (#1315).
+    expect(hasText(root, 'Pull-up: not logged in any week yet')).toBe(false);
+    expect(hasText(root, '1 not retested')).toBe(true);
+    act(() => { byLabel(root, 'Expand 1 not retested lifts').props.onPress(); });
     expect(hasText(root, 'Pull-up: not logged in any week yet')).toBe(true);
     // The single live week still gets its row, with an explicit unscored state.
     expect(hostTextsIn(weekRow(root, 1))).toContain('Not scored');
@@ -1958,8 +1654,10 @@ describe('AnalyticsRecoverySection — strength trend by recovery week (#1305)',
     }).root;
     const rows = root.findAll(n => typeof n.type === 'string' && /^recovery-strength-week-\d+$/.test(n.props.testID || ''));
     expect(rows.map(r => r.props.accessibilityLabel)).toEqual(['Week 1: 74% of baseline strength', 'Week 2: no readable evidence']);
-    expect(hasText(root, 'This week’s note can’t be read, so it has no score.')).toBe(true);
-    expect(hasText(root, 'Week 2 couldn’t be read and is left out of the comparison.')).toBe(true);
+    expect(hasText(root, 'This week’s note is no longer available.')).toBe(true);
+    // The exclusion sentence moved to the summary label and the explainer (#1315).
+    expect(summaryLabel(root)).toContain('Week 2 couldn’t be read and is left out of the comparison.');
+    expect(hasText(root, 'Week 2 couldn’t be read')).toBe(false);
   });
 
   test('an unreadable selected week keeps the plotted average\'s coverage and cohort names visible (PR #1308 review)', () => {
@@ -1967,11 +1665,8 @@ describe('AnalyticsRecoverySection — strength trend by recovery week (#1305)',
       blocks: [block()], weeks: [week(1, 'note-w1'), week(2, 'ghost')], notes: [note('note-w1', '-Bench\n- 100 5')],
     }).root;
     const summary = hostById(root, 'recovery-strength-summary')[0];
-    expect(hostTextsIn(summary)).toEqual([
-      'Week 2', 'This week’s note can’t be read, so it has no score.',
-      'Average of 1 lift scored every week · 1 of 2 baseline lifts', 'In the average: Bench',
-      'Week 2 couldn’t be read and is left out of the comparison.',
-    ]);
+    expect(hostTextsIn(summary)).toEqual(['Week 2', 'This week’s note is no longer available.']);
+    expect(summary.props.accessibilityLabel).toContain('Average of 1 lift scored every week · 1 of 2 baseline lifts');
     expect(summary.props.accessibilityLabel).toContain('In the average: Bench');
   });
 
@@ -1985,34 +1680,18 @@ describe('AnalyticsRecoverySection — strength trend by recovery week (#1305)',
     expect(rows.map(r => hostTextsIn(r).pop())).toEqual(['No average', 'No data', 'No average']);
   });
 
-  test('cohort names are visible, not only spoken (PR #1308 review)', () => {
+  test('cohort names are on demand: spoken in the summary label and shown in About these numbers (#1315)', () => {
     const root = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
-    expect(hostTextsIn(hostById(root, 'recovery-strength-cohort')[0])).toEqual(['In the average: Bench']);
-  });
-
-  test('a legacy baseline whose rebuild is refused shows the reason (PR #1308 review)', () => {
-    // Two frozen "Row" variants against one "Row" in the routine: ambiguous.
-    const snap = captureRecoveryBaselineFromText('-Row, heavy\n- 100 5\n-Row, light\n- 60 10');
-    const legacy = { ...snap, exercises: snap.exercises.map(({ best_e1rm_weight, best_e1rm_reps, ...r }) => r) };
-    let c;
-    act(() => {
-      c = render.create(
-        <AnalyticsRecoverySection
-          blocks={[block({ baseline: legacy })]}
-          weeks={[week(1, 'note-w1')]}
-          notes={[note('note-baseline', '-Row\n- 90 5'), note('note-w1', '-Row\n- 90 5')]}
-        />
-      );
-    });
-    openManage(c.root);
-    const refused = hostById(c.root, 'recovery-rebuild-refused')[0];
-    expect(refused).toBeDefined();
-    expect(hostTextsIn(refused)[0]).toMatch(/Row, heavy.*can’t be carried over safely.*not rebuilt/);
+    expect(hasText(root, 'In the average: Bench')).toBe(false);
+    expect(summaryLabel(root)).toContain('In the average: Bench');
+    act(() => { byLabel(root, 'About these numbers').props.onPress(); });
+    expect(hasText(root, 'In the average: Bench.')).toBe(true);
   });
 
   test('ladder bars sit in a row line so the shared track grows horizontally, never in height (PR #1308 review)', () => {
     const { StyleSheet } = require('react-native');
     const root = setup({ blocks: [block()], weeks: [week(1, 'note-w1')], notes: [note('note-w1', '-Bench\n- 100 5')] }).root;
+    expandDetails(root, { rows: false });
     const bar = hostById(root, 'recovery-strength-lift-bench-bar')[0];
     let host = bar.parent;
     while (host && !(typeof host.type === 'string' && host.props.style)) host = host.parent;
@@ -2027,7 +1706,10 @@ describe('AnalyticsRecoverySection — strength trend by recovery week (#1305)',
       notes: [note('note-w1', '-Bench\n- 135 5'), note('note-w2', '-Bench\n- 160 5')],
     }).root;
     expect(hasText(root, '118%')).toBe(true);
-    expect(hostTextsIn(hostById(root, 'recovery-strength-scale')[0])).toEqual(['Bars run 0–120%. The dark mark is your baseline (100%).']);
+    // The scale legend is no longer printed; it is in About these numbers (#1315).
+    expect(hostById(root, 'recovery-strength-scale')).toHaveLength(0);
+    act(() => { byLabel(root, 'About these numbers').props.onPress(); });
+    expect(hasText(root, 'Bars run 0–120%. The dark mark is your baseline (100%).')).toBe(true);
   });
 });
 
@@ -2047,6 +1729,7 @@ describe('AnalyticsRecoverySection — scannable hierarchy (#1209)', () => {
 
   test('the strength summary states the selected week first, above the trend and the ladder', () => {
     const root = twoWeeks();
+    expandDetails(root, { rows: false });
     expect(hostById(root, 'recovery-strength-summary')[0].props.accessibilityLabel).toMatch(/^Week 2: 100% of Push Pull Legs baseline strength\./);
     const order = root.findAll(n => typeof n.type === 'string'
       && ['recovery-strength-summary', 'recovery-strength-weeks', 'recovery-strength-ladder'].includes(n.props.testID))
@@ -2062,7 +1745,7 @@ describe('AnalyticsRecoverySection — scannable hierarchy (#1209)', () => {
     expect(hasText(root, 'Steady')).toBe(false);
     expect(findAllText(root)).not.toContain('↔');
     // The trend sits above the drill-down header.
-    const order = root.findAll(n => typeof n.type === 'string' && (n.props.testID === 'recovery-strength-weeks' || n.props.accessibilityLabel === 'Expand exercise details'));
+    const order = root.findAll(n => typeof n.type === 'string' && (n.props.testID === 'recovery-strength-weeks' || n.props.accessibilityLabel === 'Expand lifts'));
     expect(order[0].props.testID).toBe('recovery-strength-weeks');
   });
 
@@ -2223,22 +1906,21 @@ describe('AnalyticsRecoverySection — routine-anchored summary label (#1219, #1
 
   test('the summary label names the routine and the bottom line no longer repeats it', () => {
     const root = oneWeek('Push Pull Legs');
-    expect(hasText(root, 'of Push Pull Legs baseline strength')).toBe(true);
+    expect(hasText(root, 'of Push Pull Legs baseline strength')).toBe(false);
     expect(heroNode(root).props.accessibilityLabel).toBe('Week 1: 100% of Push Pull Legs baseline strength. Average of 1 lift scored every week · 1 of 2 baseline lifts. In the average: Bench.');
     expect(findAllText(root).some(t => t.startsWith('Baseline:'))).toBe(false);
     expect(hasText(root, '05-01-2026')).toBe(true);
   });
 
-  test('a long routine name ellipsizes on screen while the accessible label keeps the whole name', () => {
+  test('a long routine name is one ellipsized Baseline line on screen while the labels keep the whole name', () => {
     const full = 'Upper Lower Push Pull Legs Hypertrophy Block';
     const root = oneWeek(full);
-    const visible = findAllText(root).find(t => t.endsWith(' baseline strength') && t.includes('…'));
-    expect(visible).toContain('…');
-    expect(visible).not.toContain(full);
-    expect(visible.length).toBeLessThanOrEqual('of  baseline strength'.length + 24);
+    const line = hostById(root, 'recovery-context-routine')[0];
+    const value = line.findAll(n => typeof n.type === 'string' && n.type === 'Text' && n.props.numberOfLines === 1)[0];
+    expect(value.props.accessibilityLabel).toBe(`Baseline: ${full}`);
     expect(heroNode(root).props.accessibilityLabel).toContain(`of ${full} baseline strength`);
-    // The full name appears nowhere visible.
-    expect(findAllText(root).some(t => t.includes(full))).toBe(false);
+    // No summary prose repeats the name (#1315).
+    expect(findAllText(root).filter(t => t.includes(full))).toEqual([full]);
   });
 
   describe('routine label truncation by code point', () => {
@@ -2278,20 +1960,11 @@ describe('AnalyticsRecoverySection — routine-anchored summary label (#1219, #1
       }
     });
 
-    test('the rendered summary shows the safely cut name and the accessible label the full emoji title', () => {
-      const title = `${ascii(22)}💪 Hypertrophy Block`;
-      const root = setup({ blocks: [block({ baseline_note_title: title })], weeks: [week(1, 'note-w1')], notes: [note('note-w1', BASELINE_TEXT)] }).root;
-      const visible = findAllText(root).find(t => t.endsWith(' baseline strength') && t.includes('…'));
-      expect(hasLoneSurrogate(visible)).toBe(false);
-      expect(visible).toContain('…');
-      expect(heroNode(root).props.accessibilityLabel).toContain(`of ${title} baseline strength`);
-    });
   });
 
   test('an untitled routine falls back to "Untitled Routine" visibly and accessibly', () => {
     for (const title of ['', '   ', null]) {
       const root = oneWeek(title);
-      expect(hasText(root, 'of Untitled Routine baseline strength')).toBe(true);
       expect(heroNode(root).props.accessibilityLabel).toContain('Untitled Routine baseline strength');
     }
   });
@@ -2306,6 +1979,8 @@ describe('AnalyticsRecoverySection — routine-anchored summary label (#1219, #1
       expect(hasText(root, 'No lift has a strength score in every readable week yet, so there is no average.')).toBe(true);
       expect(findAllText(root).some(t => /^\d+%$/.test(t))).toBe(false);
       expect(findAllText(root).filter(t => t.includes(title))).toEqual([title]);
+      expect(hasText(root, '2 not retested')).toBe(true);
+      act(() => { byLabel(root, 'Expand 2 not retested lifts').props.onPress(); });
       expect(hasText(root, 'Bench: not logged in any week yet')).toBe(true);
     }
   });
@@ -2509,6 +2184,9 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
         />
       );
     });
+    // #1315: the per-exercise summary and rows live in the (collapsed-by-default) Lifts disclosure.
+    const toggle = byLabel(component.root, 'Expand lifts');
+    if (toggle) act(() => { toggle.props.onPress(); });
     return component.root;
   };
   const hostById = (root, id) => root.findAll(n => typeof n.type === 'string' && n.props.testID === id);
@@ -2681,9 +2359,12 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
   });
 
   test('the header keeps its >=44dp target and accessibilityState.expanded', () => {
-    const header = byLabel(mountWith(), 'Expand exercise details');
+    const root = mountWith();
+    const header = byLabel(root, 'Collapse lifts');
     expect(StyleSheet.flatten(header.props.style).minHeight).toBeGreaterThanOrEqual(44);
-    expect(header.props.accessibilityState).toEqual({ expanded: false });
+    expect(header.props.accessibilityState).toEqual({ expanded: true });
+    act(() => { header.props.onPress(); });
+    expect(byLabel(root, 'Expand lifts').props.accessibilityState).toEqual({ expanded: false });
   });
 
   test('the context block is a labelled list (Started / Reason) with the info button beside the date and the note hidden by default', () => {
@@ -2692,7 +2373,7 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
     const block = hostById(root, 'recovery-footer-row')[0];
     expect(StyleSheet.flatten(block.props.style)).toMatchObject({ borderTopWidth: 1 });
     // Row order: date (with info), then the note slot, then the reason row.
-    expect(findAllText(block)).toEqual(['Started', '05-01-2026', 'Reason', 'torn hamstring']);
+    expect(findAllText(block)).toEqual(['Baseline', 'Push Pull Legs', 'Started', '05-01-2026', 'Reason', 'torn hamstring']);
     const dateRow = hostById(root, 'recovery-context-date')[0];
     // The info control is INSIDE the date row, right after its text — not margin-pushed to the edge.
     expect(dateRow.findAll(m => m.props.accessibilityLabel === 'About these numbers').length).toBeGreaterThan(0);
@@ -2707,46 +2388,16 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
     const context = hostById(root, 'recovery-reason-context')[0];
     expect(context.props.accessibilityRole).toBeUndefined();
     expect(hostById(root, 'recovery-reason-row')).toHaveLength(0);
-    // ... and the editable row lives in Manage block: labelled, one tappable >=44dp row.
-    openManage(root);
-    const reasonRow = hostById(root, 'recovery-reason-row')[0];
-    expect(reasonRow.props.accessibilityRole).toBe('button');
-    expect(StyleSheet.flatten(reasonRow.props.style).minHeight).toBeGreaterThanOrEqual(44);
-    expect(reasonRow.props.accessibilityLabel).toBe('Edit reason for this recovery block: torn hamstring');
-  });
-
-  test('no reason: the Reason row invites "Add a reason" with an add glyph; a read-only block shows the reason without a control', () => {
-    const empty = openManage(mountWith({ reason: null }, { onSaveReason: saveReason }));
-    const row = hostById(empty, 'recovery-reason-row')[0];
-    expect(findAllText(row)).toEqual(['Reason', 'Add a reason']);
-    expect(row.props.accessibilityLabel).toBe('Add a reason for this recovery block');
-    expect(StyleSheet.flatten(row.props.style).minHeight).toBeGreaterThanOrEqual(44);
-    // BlockEvidence without an `onSaveReason` (read-only): no reason and nothing to
-    // edit means no Reason row; a reason shows as a plain labelled row, not a button.
-    const { BlockEvidence } = require('../components/recovery/RecoveryEvidence');
-    const evidence = (reason) => {
-      let c;
-      act(() => { c = render.create(<BlockEvidence block={block({ reason })} weeks={[]} notes={[]} unit="lb" />); });
-      return c.root;
-    };
-    expect(hostById(evidence(null), 'recovery-reason-context')).toHaveLength(0);
-    const readOnly = hostById(evidence('torn hamstring'), 'recovery-reason-context')[0];
-    expect(readOnly.props.accessibilityRole).toBeUndefined();
-    expect(findAllText(readOnly)).toEqual(['Reason', 'torn hamstring']);
-  });
-
-  test('locked or busy reason keeps the row visible but disabled', () => {
-    const root = openManage(mountWith({ reason: 'torn hamstring' }, { onSaveReason: saveReason }));
-    // (mutations are allowed in this harness; the disabled path is covered in recovery-reason.test.js)
-    expect(hostById(root, 'recovery-reason-row')[0].props.accessibilityState).toEqual({ disabled: false });
+    // ... and there is no editable reason row in Analytics (Log owns it, #1315).
+    expect(byLabel(root, 'Edit reason for this recovery block: torn hamstring')).toBeUndefined();
   });
 
   test('a long reason gets two ellipsized lines with the full text on its label', () => {
     const long = 'x'.repeat(200);
-    const root = openManage(mountWith({ reason: long }, { onSaveReason: saveReason }));
+    const root = mountWith({ reason: long });
     const t = root.findAll(n => n.type === 'Text' && [].concat(n.props.children).join('') === long)[0];
     expect(t.props.numberOfLines).toBe(2);
-    expect(byLabel(root, `Edit reason for this recovery block: ${long}`)).toBeDefined();
+    expect(hostById(root, 'recovery-reason-context')[0].props.accessibilityLabel).toBe(`Reason: ${long}`);
   });
 
   test('the info button reveals the exact note inline in a live region and toggles it closed', () => {
@@ -2792,10 +2443,8 @@ describe('AnalyticsRecoverySection — collapsed details summary and footer (#12
       expect(date).toBeDefined();
       expect(date.findAll(n => n.type === 'Text' && n.props.numberOfLines !== undefined)).toHaveLength(0);
       expect(StyleSheet.flatten(date.props.style).flexWrap).toBe('wrap');
-      openManage(root);
-      const reason = byLabel(root, `Edit reason for this recovery block: ${longReason}`);
-      expect(reason).toBeDefined();
-      expect(StyleSheet.flatten(reason.props.style).minHeight).toBeGreaterThanOrEqual(44);
+      const reason = hostById(root, 'recovery-reason-context')[0];
+      expect(reason.props.accessibilityLabel).toBe(`Reason: ${longReason}`);
       const info = byLabel(root, 'About these numbers');
       expect(StyleSheet.flatten(info.props.style)).toMatchObject({ minWidth: 44, minHeight: 44, flexShrink: 0 });
     }
@@ -2952,7 +2601,7 @@ describe('AnalyticsRecoverySection — routine order, Total work bar, band token
   test.each(BAR_TABLE)('bar measure — %s', (_l, cls, metrics, label, percent, fill) => {
     const state = metrics.every(m => m.met) ? S.BASELINE_MET : S.REBUILDING;
     const root = mocked([mockRow({ key: 'x', name: 'X', state, exercise_class: cls, metrics, unmet: metrics.filter(m => !m.met).map(m => m.metric) })]);
-    expect(hostById(root, 'recovery-exercise-bar')).toHaveLength(1);
+        expect(hostById(root, 'recovery-exercise-bar')).toHaveLength(1);
     expect(fillOf(barOf(root))).toBe(fill);
     // The visible percent names the same measure the bar shows ...
     expect(percentTextOf(root)).toBe(`${label} ${percent}%`);
@@ -3261,6 +2910,9 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
         />
       );
     });
+    // The roster summary sits in the collapsed-by-default Lifts disclosure (#1315).
+    const toggle = byLabel(c.root, 'Expand lifts');
+    if (toggle) act(() => { toggle.props.onPress(); });
     return c.root;
   };
   const tokensOf = (root) => hostById(root, 'recovery-count-tokens')[0];
@@ -3341,6 +2993,8 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
     const root = (() => {
       let c;
       act(() => { c = render.create(<AnalyticsRecoverySection blocks={[block()]} weeks={[week(6, 'note-w6')]} notes={[note('note-w6', BASELINE_TEXT)]} />); });
+      const toggle = byLabel(c.root, 'Expand lifts');
+      if (toggle) act(() => { toggle.props.onPress(); });
       return c.root;
     })();
     mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
@@ -3373,9 +3027,10 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
       weeks: [week(1, 'note-w1')], notes: [note('note-w1', weekText)],
     }).root;
     const summary = hostById(root, 'recovery-strength-summary')[0];
-    expect(hostTextsIn(summary)).toEqual(['Week 1', '100%', 'of Summer 2026 Routine baseline strength', 'Average of 3 lifts scored every week · 3 of 27 baseline lifts', 'In the average: L0, L1, L2']);
+    expect(hostTextsIn(summary)).toEqual(['100%', '3 lifts · Week 1']);
+    expect(summary.props.accessibilityLabel).toContain('Average of 3 lifts scored every week · 3 of 27 baseline lifts');
     expect(findAllText(root).some(t => t.includes('3 of 3'))).toBe(false);
-    expect(findAllText(root).filter(t => t.includes('Summer 2026 Routine'))).toEqual(['of Summer 2026 Routine baseline strength']);
+    expect(findAllText(root).filter(t => t.includes('Summer 2026 Routine'))).toEqual(['Summer 2026 Routine']);
     expandDetails(root, { rows: false });
     expect(rosterLabel(root)).toContain('Trained this week: 3 of 27 roster exercises');
   });
@@ -3384,7 +3039,7 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
   test('owner context: Started + date + info on one row, Reason + value + edit glyph on the next, no far-edge floating control', () => {
     const root = mountOwner({}, { onSaveReason: async () => ({ ok: true }) });
     const ctx = hostById(root, 'recovery-footer-row')[0];
-    expect(findAllText(ctx)).toEqual(['Started', '08-08-2026', 'Reason', 'Back injury']);
+    expect(findAllText(ctx)).toEqual(['Baseline', 'Summer 2026 Routine', 'Started', '08-08-2026', 'Reason', 'Back injury']);
     const dateRow = hostById(root, 'recovery-context-date')[0];
     expect(flat(dateRow)).toMatchObject({ flexDirection: 'row', flexWrap: 'wrap', minHeight: 44 });
     const info = byLabel(root, 'About these numbers');
@@ -3402,21 +3057,6 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
     // No row in the block uses space-between / auto margins to float a control away from its text.
     const floaters = ctx.findAll(n => typeof n.type === 'string' && (flat(n).justifyContent === 'space-between' || flat(n).marginLeft === 'auto'));
     expect(floaters).toHaveLength(0);
-  });
-
-  test('opening the editor swaps the Reason row for the editor, Cancel restores it, and the disclosure stays a polite live region', () => {
-    const root = openManage(mountOwner({}, { onSaveReason: async () => ({ ok: true }) }));
-    act(() => { byLabel(root, 'Edit reason for this recovery block: Back injury').props.onPress(); });
-    expect(hostById(root, 'recovery-reason-row')).toHaveLength(0);
-    expect(byLabel(root, 'Reason for this recovery block')).toBeDefined();
-    act(() => { byLabel(root, 'Cancel editing the reason').props.onPress(); });
-    expect(hostById(root, 'recovery-reason-row')).toHaveLength(1);
-    // The note appears directly under the date row, inside the same polite live region.
-    const note = hostById(root, 'recovery-about-note')[0];
-    expect(note.props.accessibilityLiveRegion).toBe('polite');
-    act(() => { byLabel(root, 'About these numbers').props.onPress(); });
-    expect(hasText(root, 'Not a medical judgment')).toBe(true);
-    expect(findAllText(hostById(root, 'recovery-about-note')[0])).toEqual(['Training numbers only. Not a medical judgment. Only you end a Recovery block.']);
   });
 
   // One announcement per context row: the visible label is hidden from assistive
@@ -3457,216 +3097,14 @@ describe('AnalyticsRecoverySection — owner phone review: counts, hero scope, c
     expect(row.props.accessibilityLabel).toBe('Reason: torn hamstring');
   });
 
-  test('completed block: "Dates" row with the range, Reason row, and the Reopen control stay above the context block', () => {
+  test('completed block: "Dates" row with the range, Reason row, and and no Reopen control (Log owns it)', () => {
     const root = mountOwner({ completed_at: '2026-09-20T12:00:00Z' }, { onSaveReason: async () => ({ ok: true }) });
     const ctx = hostById(root, 'recovery-footer-row')[0];
-    expect(findAllText(ctx)).toEqual(['Dates', '08-08-2026 to', '09-20-2026', 'Reason', 'Back injury']);
-  });
-});
-
-describe('AnalyticsRecoverySection — rebuild a v1 baseline (#1227)', () => {
-  const ROUTINE = '-Squat 3x5\n- 225 5,5,5\n-Bench 3x5\n- 135 5,5,4';
-  const V1 = { version: 1, exercises: [{ key: 'bench', name: 'Bench', exercise_class: 'weighted', top_weight: 100, volume: 300, sets_completed: 3 }] };
-  let mockRebuild;
-
-  const mount = ({ blk = block({ baseline: V1 }), notes = [{ ...note('note-baseline', ROUTINE), updated_at: '2026-04-01T00:00:00Z' }], ...props } = {}) => {
-    let component;
-    act(() => {
-      component = render.create(
-        <AnalyticsRecoverySection blocks={[blk]} weeks={[]} notes={notes} {...props} />
-      );
-    });
-    openManage(component.root);
-    return component;
-  };
-  const press = (root, label) => act(() => { byLabel(root, label).props.onPress(); });
-
-  beforeEach(() => {
-    mockRebuild = jest.fn().mockResolvedValue({ ok: true });
-    jest.spyOn(require('../hooks/entries/recoveryBlockHooks'), 'useRecoveryBlockLifecycle')
-      .mockReturnValue({ rebuildBaseline: mockRebuild });
-  });
-  afterEach(() => { jest.restoreAllMocks(); });
-
-  test('offers the action for an eligible v1 block, active or completed', () => {
-    expect(byLabel(mount().root, 'Rebuild baseline')).toBeDefined();
-    expect(byLabel(mount({ blk: block({ baseline: V1, completed_at: '2026-06-01T00:00:00Z' }) }).root, 'Rebuild baseline')).toBeDefined();
-  });
-
-  test.each([
-    ['v2 block', { blk: block() }],
-    ['missing note', { notes: [] }],
-    ['oversized note', { notes: [note('note-baseline', 'x'.repeat(MAX_RAW_TEXT_LENGTH + 1))] }],
-    ['deleted note', { notes: [{ ...note('note-baseline', ROUTINE), deleted_at: '2026-06-01T00:00:00Z' }] }],
-  ])('no action for %s', (_n, props) => {
-    expect(byLabel(mount(props).root, 'Rebuild baseline')).toBeUndefined();
-  });
-
-  test('preview shows old → new per exercise with order, makes no write, and cancel closes it', () => {
-    const { root } = mount();
-    press(root, 'Rebuild baseline');
-    expect(hasText(root, '1. Squat: not in the old baseline → 225 lb top, 3,375 lb volume')).toBe(true);
-    expect(hasText(root, '2. Bench: 100 lb top, 300 lb volume → 135 lb top, 1,890 lb volume, best set 135 × 5 (latest session (target never completed))')).toBe(true);
-    expect(hasText(root, 'edited after Recovery began')).toBe(false);
-    press(root, 'Cancel rebuilding the baseline');
-    expect(mockRebuild).not.toHaveBeenCalled();
-    expect(byLabel(root, 'Rebuild baseline')).toBeDefined();
-  });
-
-  test('preview weights follow the selected display unit', () => {
-    jest.spyOn(require('../lib/unitPreference'), 'useWeightUnit').mockReturnValue('kg');
-    const { root } = mount();
-    press(root, 'Rebuild baseline');
-    expect(hasText(root, '1. Squat: not in the old baseline → 102.1 kg top, 1,531 kg volume')).toBe(true);
-  });
-
-  test('warns when the routine was edited after Recovery began; confirm stays explicit', () => {
-    const { root } = mount({ notes: [{ ...note('note-baseline', ROUTINE), updated_at: '2026-06-01T00:00:00Z' }] });
-    press(root, 'Rebuild baseline');
-    expect(hasText(root, 'edited after Recovery began')).toBe(true);
-    expect(mockRebuild).not.toHaveBeenCalled();
-  });
-
-  test('confirm calls the rebuild once and announces success; no second action offered', async () => {
-    const { root } = mount();
-    press(root, 'Rebuild baseline');
-    await act(async () => { await byLabel(root, 'Confirm rebuilding the baseline').props.onPress(); });
-    expect(mockRebuild).toHaveBeenCalledTimes(1);
-    expect(mockRebuild).toHaveBeenCalledWith({ blockId: 'rb1', expectedBaseline: captureRecoveryBaselineFromText(ROUTINE) });
-    expect(hasText(root, 'Baseline rebuilt from the routine.')).toBe(true);
-    expect(byLabel(root, 'Confirm rebuilding the baseline')).toBeUndefined();
-  });
-
-  test('a failed write shows the error and keeps the preview open', async () => {
-    mockRebuild.mockResolvedValue({ ok: false, error: 'disk full' });
-    const { root } = mount();
-    press(root, 'Rebuild baseline');
-    await act(async () => { await byLabel(root, 'Confirm rebuilding the baseline').props.onPress(); });
-    expect(hasText(root, 'disk full')).toBe(true);
-    expect(hasText(root, 'Baseline rebuilt')).toBe(false);
-    expect(byLabel(root, 'Confirm rebuilding the baseline')).toBeDefined();
-  });
-
-  test('the action is disabled while Recovery state is pending', () => {
-    const { root } = mount({ pendingRecovery: [{ id: 'op' }] });
-    expect(byLabel(root, 'Rebuild baseline').props.disabled).toBe(true);
+    expect(findAllText(ctx)).toEqual(['Baseline', 'Summer 2026 Routine', 'Dates', '08-08-2026 to', '09-20-2026', 'Reason', 'Back injury']);
   });
 });
 
 // ── Match exercise names (#1298) ──────────────────────────────────────────────
-
-describe('Match exercise names', () => {
-  const frozen = (names) => {
-    const snap = captureRecoveryBaselineFromText(names.map((_n, i) => `-zz${i}\n- 8,8,8`).join('\n'));
-    return { ...snap, exercises: snap.exercises.map((r, i) => ({ ...r, key: names[i].toLowerCase(), name: names[i] })) };
-  };
-  const PLANK = 'Plank 3x45 sec';
-  const wk = week(1, 'n1');
-  const notesFor = [note('n1', '-Plank\n- 8,8,8\n-Curl\n- 8,8,8')];
-  let mockMatch;
-
-  const mount = ({ blk = block({ baseline: frozen([PLANK]) }), ...props } = {}) => {
-    let component;
-    act(() => {
-      component = render.create(
-        <AnalyticsRecoverySection blocks={[blk]} weeks={[wk]} notes={notesFor} {...props} />
-      );
-    });
-    openManage(component.root);
-    return component;
-  };
-  const press = (root, label) => act(() => { byLabel(root, label).props.onPress(); });
-  const MATCH = `Match ${PLANK} to Plank`;
-
-  beforeEach(() => {
-    mockMatch = jest.fn().mockResolvedValue({ ok: true });
-    jest.spyOn(require('../hooks/entries/recoveryBlockHooks'), 'useRecoveryBaselineNames')
-      .mockReturnValue({ matchBaselineName: mockMatch });
-  });
-  afterEach(() => { jest.restoreAllMocks(); });
-
-  test('one compact control; opening and cancelling never write', () => {
-    const { root } = mount();
-    expect(byLabel(root, 'Match exercise names')).toBeDefined();
-    expect(byLabel(root, MATCH)).toBeUndefined();
-    press(root, 'Match exercise names');
-    expect(hasText(root, `${PLANK} → Plank`)).toBe(true);
-    press(root, `Cancel matching ${PLANK}`);
-    expect(byLabel(root, 'Match exercise names')).toBeUndefined();
-    expect(mockMatch).not.toHaveBeenCalled();
-  });
-
-  test('duplicate canonical rows show a short pick list; one pick sends exactly that pair', async () => {
-    const { root } = mount({ blk: block({ baseline: frozen(['Core: plank', PLANK]) }) });
-    expect(hasText(root, 'Match exercise names (1)')).toBe(true);
-    press(root, 'Match exercise names');
-    expect(hasText(root, 'Pick one:')).toBe(true);
-    await act(async () => { await byLabel(root, 'Match Core: plank to Plank').props.onPress(); });
-    expect(mockMatch).toHaveBeenCalledTimes(1);
-    expect(mockMatch).toHaveBeenCalledWith({ blockId: 'rb1', fromKey: 'core: plank', toKey: 'plank', toName: 'Plank', evidence: expect.any(String) });
-    press(root, 'Cancel matching plank');
-    expect(byLabel(root, 'Match exercise names')).toBeUndefined();
-  });
-
-  test('absent when nothing qualifies (exact names, unrelated names, v1)', () => {
-    expect(byLabel(mount({ blk: block() }).root, 'Match exercise names')).toBeUndefined();
-    expect(byLabel(mount({ blk: block({ baseline: frozen(['Row 3x8']) }) }).root, 'Match exercise names')).toBeUndefined();
-    const v1 = { version: 1, exercises: [{ key: 'x', name: PLANK, exercise_class: 'reps_only' }] };
-    expect(byLabel(mount({ blk: block({ baseline: v1 }) }).root, 'Match exercise names')).toBeUndefined();
-  });
-
-  test('confirm sends block id and keys once, with duplicate-submit protection and busy feedback', async () => {
-    let release;
-    mockMatch.mockImplementation(() => new Promise(r => { release = r; }));
-    const { root } = mount();
-    press(root, 'Match exercise names');
-    let first;
-    act(() => { first = byLabel(root, MATCH).props.onPress(); });
-    act(() => { byLabel(root, MATCH).props.onPress(); });
-    expect(mockMatch).toHaveBeenCalledTimes(1);
-    expect(mockMatch).toHaveBeenCalledWith({ blockId: 'rb1', fromKey: 'plank 3x45 sec', toKey: 'plank', toName: 'Plank', evidence: expect.any(String) });
-    expect(byLabel(root, MATCH).props.accessibilityState).toMatchObject({ busy: true, disabled: true });
-    expect(hasText(root, 'Matching…')).toBe(true);
-    await act(async () => { release({ ok: true }); await first; });
-    expect(byLabel(root, MATCH).props.accessibilityState).toMatchObject({ busy: false });
-  });
-
-  test('a failed match shows the error and keeps the pair for retry', async () => {
-    mockMatch.mockResolvedValue({ ok: false, error: 'disk full' });
-    const { root } = mount();
-    press(root, 'Match exercise names');
-    await act(async () => { await byLabel(root, MATCH).props.onPress(); });
-    expect(hasText(root, 'disk full')).toBe(true);
-    expect(byLabel(root, MATCH)).toBeDefined();
-  });
-
-  test('disabled while Recovery state is pending or stale', () => {
-    const pending = mount({ pendingRecovery: [{ id: 'op' }] }).root;
-    press(pending, 'Match exercise names');
-    expect(byLabel(pending, MATCH).props.disabled).toBe(true);
-    const stale = mount({ stateStale: true }).root;
-    press(stale, 'Match exercise names');
-    expect(byLabel(stale, MATCH).props.disabled).toBe(true);
-  });
-
-  test('switching blocks resets the open review', () => {
-    const other = block({ id: 'rb0', baseline_note_title: 'Older', completed_at: '2026-06-01T00:00:00Z', baseline: frozen(['Curl']) });
-    const active = block({ baseline: frozen([PLANK]) });
-    const { root } = mount({ blk: active, blocks: [active, other] });
-    press(root, 'Match exercise names');
-    expect(byLabel(root, MATCH)).toBeDefined();
-    press(root, 'Expand recovery history');
-    const view = root.findAll(i => typeof i.props.accessibilityLabel === 'string' && i.props.accessibilityLabel.startsWith('View recovery evidence for Older'))[0];
-    act(() => { view.props.onPress(); });
-    expect(byLabel(root, MATCH)).toBeUndefined();
-    press(root, 'View active recovery block');
-    // Back on the active block the panel is a fresh, collapsed instance.
-    expect(byLabel(root, 'Match exercise names')).toBeUndefined();
-    openManage(root);
-    expect(byLabel(root, MATCH)).toBeUndefined();
-    expect(byLabel(root, 'Match exercise names')).toBeDefined();
-  });
-});
 
 describe('exercise disclosure row target (#1300 review)', () => {
   it('gives every exercise row a 44dp minimum height', () => {

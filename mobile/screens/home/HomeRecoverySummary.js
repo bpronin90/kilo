@@ -58,7 +58,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   if (!summary) return null;
   const {
     status, stale, message, active,
-    comparisonStatus, weekNumber, weekNoteStatus, weekNoteTitle = null, big3 = [], counts,
+    comparisonStatus, headline = null, weekNumber, weekNoteStatus, weekNoteTitle = null, big3 = [], counts,
   } = summary;
 
   // Verified, nothing is running, and the answer is CURRENT. This is the one
@@ -110,6 +110,8 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   // the Recovery detail word it. Nothing prints while a fallback owns the slot.
   const lifts = fallbackStatus === null ? big3 : [];
   const countLine = fallbackStatus === null ? formatRecoveryCountLine(counts) : null;
+  // #1315: the shared snapshot headline (same % and caption as Analytics).
+  const headlineScored = !!headline && headline.state === 'score' && fallbackStatus === null;
   const remainingText = countLine ? `All exercises ${countLine}` : null;
 
   // One announcement for the whole summary, assembled in reading order. The
@@ -118,6 +120,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   const accessibleContent = [
     weekName,
     fallbackStatus,
+    headlineScored ? headline.a11y : null,
     lifts.length > 0 ? 'Big 3' : null,
     ...lifts.map(lift => {
       const value = liftValue(lift);
@@ -185,6 +188,12 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
             >
               {fallbackStatus ? (
                 <Text style={styles.recoveryFallbackLine}>{fallbackStatus}</Text>
+              ) : null}
+              {headlineScored ? (
+                <View testID="home-recovery-headline">
+                  <Text testID="home-recovery-headline-value" style={styles.recoveryLiftName}>{`${headline.percent}%`}</Text>
+                  <Text testID="home-recovery-headline-caption" style={styles.recoveryWeekLabel}>{headline.caption}</Text>
+                </View>
               ) : null}
               {lifts.length > 0 ? (
                 <View testID="home-recovery-big3" style={styles.recoveryLiftList}>

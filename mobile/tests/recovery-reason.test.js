@@ -660,18 +660,22 @@ describe('LogRecoverySection: the active block states its reason and offers the 
       .toBe('torn hamstring');
   });
 
-  test('collapsing Manage block closes an open editor rather than stranding it', () => {
+  test('collapsing Manage block keeps an open editor and its draft mounted (hidden); only Cancel discards (#1315)', () => {
     const component = renderSection(activeBlock({ reason: 'torn hamstring' }));
     const manage = () => byLabel(component.root, 'Manage recovery block: Legs Day');
     renderer.act(() => { manage().props.onPress(); });
     renderer.act(() => {
       byLabel(component.root, 'Edit reason for this recovery block: torn hamstring').props.onPress();
     });
+    renderer.act(() => { byLabel(component.root, 'Reason for this recovery block').props.onChangeText('a draft'); });
     renderer.act(() => { manage().props.onPress(); });
+    const body = component.root.findAll(n => typeof n.type === 'string' && n.props.testID === 'recovery-manage-body-rb-active')[0];
+    expect(body.props.accessibilityElementsHidden).toBe(true);
     renderer.act(() => { manage().props.onPress(); });
+    expect(byLabel(component.root, 'Reason for this recovery block').props.value).toBe('a draft');
+    renderer.act(() => { byLabel(component.root, 'Cancel editing the reason').props.onPress(); });
     expect(byLabel(component.root, 'Reason for this recovery block')).toBeNull();
-    expect(byLabel(component.root, 'Edit reason for this recovery block: torn hamstring'))
-      .not.toBeNull();
+    expect(byLabel(component.root, 'Edit reason for this recovery block: torn hamstring')).not.toBeNull();
   });
 });
 
@@ -746,52 +750,72 @@ describe('AnalyticsRecoverySection: completed history carries the reason', () =>
     )).not.toBeNull();
   });
 
-  // Codex review, PR #877. `setRecoveryBlockReasonCore` has always accepted a
-  // completed block; before this the domain had no UI that reached one, so the
-  // documented capability was unreachable the moment a block was completed.
-  // This card is the only surface that presents a completed block, which makes
-  // it the only place the edit can live.
+});
+
+// The editor for a COMPLETED block lives in Log's Manage block (#877, #1315).
+describe('LogRecoverySection: completed-block reason editor', () => {
+  const { LogRecoverySection } = require('../components/LogRecoverySection');
+  const { captureRecoveryBaselineFromText } = require('../lib/data/recoveryBlocks');
+  const completed = (overrides = {}) => ({
+    id: 'rb-done',
+    baseline_note_id: 'note-baseline',
+    baseline_note_title: 'Push Pull Legs',
+    baseline: captureRecoveryBaselineFromText('-Bench\n- 135 5,5,5'),
+    started_at: '2026-05-01T00:00:00Z',
+    completed_at: '2026-06-01T00:00:00Z',
+    saved_at: '2026-05-01T00:00:00Z',
+    updated_at: '2026-05-01T00:00:00Z',
+    deleted_at: null,
+    ...overrides,
+  });
+  function renderCompleted(block) {
+    let component;
+    renderer.act(() => {
+      component = renderer.create(React.createElement(LogRecoverySection, {
+        blocks: [block], weeks: [], notes: [],
+        manage: { focusedBlockId: block.id, completedBlocks: [block], onSelectBlock: () => {}, newestCompletedId: block.id },
+      }));
+    });
+    return component;
+  }
+  function openManage(component) {
+    renderer.act(() => {
+      byLabel(component.root, 'Manage recovery block: Push Pull Legs').props.onPress();
+    });
+    return component;
+  }
+
   test('a completed block offers the editor, naming what is currently stored', () => {
-    const component = renderSection([completed({ reason: 'torn hamstring' })]);
-    // Evidence is read-only; the editor is behind Manage block only.
-    expect(byLabel(component.root, 'Edit reason for this recovery block: torn hamstring')).toBeNull();
+    const component = renderCompleted(completed({ reason: 'torn hamstring' }));
     openManage(component);
-    expect(byLabel(
-      component.root,
-      'Edit reason for this recovery block: torn hamstring'
-    )).not.toBeNull();
+    expect(byLabel(component.root, 'Edit reason for this recovery block: torn hamstring')).not.toBeNull();
   });
 
   test('a completed block with no reason still invites adding one', () => {
-    const component = openManage(renderSection([completed()]));
+    const component = openManage(renderCompleted(completed()));
     expect(byLabel(component.root, 'Add a reason for this recovery block')).not.toBeNull();
-    expect(hasText(component.root, 'Add a reason')).toBe(true);
-    // Still no fabricated "Reason: —" claiming a value the block never had.
-    expect(hasText(component.root, 'Reason:')).toBe(false);
+    expect(hasText(component.root, 'Not set. Add why this recovery started.')).toBe(true);
   });
 
   test('the completed-block editor seeds from the record, and Cancel discards', () => {
-    const component = openManage(renderSection([completed({ reason: 'torn hamstring' })]));
+    const component = openManage(renderCompleted(completed({ reason: 'torn hamstring' })));
     renderer.act(() => {
       byLabel(component.root, 'Edit reason for this recovery block: torn hamstring').props.onPress();
     });
-
     const input = byLabel(component.root, 'Reason for this recovery block');
     expect(input.props.value).toBe('torn hamstring');
     expect(input.props.maxLength).toBe(MAX_RECOVERY_REASON_LENGTH);
-
     renderer.act(() => { input.props.onChangeText('rewritten'); });
-    renderer.act(() => {
-      byLabel(component.root, 'Cancel editing the reason').props.onPress();
-    });
-
-    // Reopening reads the record again rather than re-offering the abandoned
-    // draft — the same discard contract Log's editor holds.
+    renderer.act(() => { byLabel(component.root, 'Cancel editing the reason').props.onPress(); });
     renderer.act(() => {
       byLabel(component.root, 'Edit reason for this recovery block: torn hamstring').props.onPress();
     });
-    expect(byLabel(component.root, 'Reason for this recovery block').props.value)
-      .toBe('torn hamstring');
+    expect(byLabel(component.root, 'Reason for this recovery block').props.value).toBe('torn hamstring');
+  });
+
+  test('active-only controls (Unlink, End) are never offered on a completed block', () => {
+    const component = openManage(renderCompleted(completed()));
+    expect(byLabel(component.root, 'End recovery block')).toBeNull();
   });
 });
 

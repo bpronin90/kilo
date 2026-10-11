@@ -1552,8 +1552,13 @@ describe('Home recovery summary (#757, #779, #782)', () => {
   const has = (component, testID) => component.root.findAllByProps({ testID }).length > 0;
   // The analytics region announces itself as one composed sentence: separate
   // value/label nodes would otherwise read as unrelated fragments.
-  const spoken = (component) => component.root
+  // The announcement leads with the shared snapshot headline (#1315); the Big 3 /
+  // roster assertions below pin the rest, and `spokenHeadline` pins the headline.
+  const spokenFull = (component) => component.root
     .findByProps({ testID: 'home-recovery-analytics' }).props.accessibilityLabel;
+  const HEADLINE_RE = /Week \d+: \d+% of .*? baseline strength\. Average of .*? baseline lifts\. In the average: .*?\. /;
+  const spoken = (component) => spokenFull(component).replace(HEADLINE_RE, '');
+  const spokenHeadline = (component) => (spokenFull(component).match(HEADLINE_RE) || [''])[0].trim();
 
   let mounted;
   const mount = async (over) => {
@@ -1611,6 +1616,11 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     // it at all, in either direction.
     expect(hasText(component, 'Not counted in your normal analytics.')).toBe(false);
     expect(spoken(component)).toBe('Recovery nr1. Big 3. Squat 72% of baseline. Bench recovered. Deadlift not in baseline. All exercises 2 of 2 trained.');
+    // #1315: Home prints the SAME headline and caption as the Analytics section
+    // (one shared Recovery snapshot).
+    expect(spokenHeadline(component)).toMatch(/^Week 1: 86% of Routine A baseline strength\./);
+    expect(component.root.findByProps({ testID: 'home-recovery-headline-value' }).props.children).toBe('86%');
+    expect(component.root.findByProps({ testID: 'home-recovery-headline-caption' }).props.children).toBe('2 lifts · Week 1');
   });
 
   test('a fully recovered week marks every Big 3 lift recovered', async () => {
@@ -1702,7 +1712,9 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     const component = await mount({ notes: [NOTE, weekNote('nr1', CLASS_CHANGED_TEXT)] });
 
     expect(spoken(component)).toBe("Recovery nr1. Big 3. Squat can't compare. Bench recovered. Deadlift not in baseline. All exercises 2 of 2 trained.");
-    expect(hasText(component, '%')).toBe(false);
+    // No per-lift number is invented; the only % on screen is the shared headline.
+    const percents = component.root.findAll(n => n.type === 'Text' && String(n.props.children).includes('%'));
+    expect(percents.map(n => n.props.testID)).toEqual(['home-recovery-headline-value']);
   });
 
   test('a missing current-week note keeps the week identity, and never renders 0 of 0', async () => {
