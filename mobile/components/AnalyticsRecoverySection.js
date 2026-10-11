@@ -147,6 +147,24 @@ export function AnalyticsRecoverySection({
   const inclusionErrorFor = (blockId) =>
     (inclusionError && inclusionError.blockId === blockId) ? inclusionError.message : null;
 
+  const focusedBlock =
+    (focusedBlockId && [activeBlock, ...completedBlocks].find(b => b && b.id === focusedBlockId)) ||
+    activeBlock ||
+    completedBlocks[0] || null;
+
+  // The EFFECTIVE focused block id (null when nothing is shown: unverified state
+  // or no blocks). It can change through data, not only taps, and it is resolved
+  // before every early return so a transition to or from "nothing shown" also
+  // clears a selection that belongs to another block (#1307). Hooks above stay
+  // unconditional.
+  const effectiveFocusId = stateReady && focusedBlock ? focusedBlock.id : null;
+  if (lastFocusedRef.current !== effectiveFocusId) {
+    lastFocusedRef.current = effectiveFocusId;
+    if (weekSelection.blockId && weekSelection.blockId !== effectiveFocusId) {
+      setWeekSelection({ blockId: null, weekId: null });
+    }
+  }
+
   const hasPendingRecovery = (pendingRecovery?.length || 0) > 0;
   // EVERY inclusion switch is disabled while ANY write is in flight (#728),
   // not just the one being written — presenting an enabled switch that would
@@ -223,20 +241,6 @@ export function AnalyticsRecoverySection({
     );
   }
 
-  const focusedBlock =
-    (focusedBlockId && [activeBlock, ...completedBlocks].find(b => b && b.id === focusedBlockId)) ||
-    activeBlock ||
-    completedBlocks[0];
-
-  // The EFFECTIVE focused block can change through data (the requested block
-  // disappears and focus falls back), not only through taps. Clear a selection
-  // that belongs to another block so it can never resurrect later (#1307).
-  if (lastFocusedRef.current !== focusedBlock.id) {
-    lastFocusedRef.current = focusedBlock.id;
-    if (weekSelection.blockId && weekSelection.blockId !== focusedBlock.id) {
-      setWeekSelection({ blockId: null, weekId: null });
-    }
-  }
 
   const notesById = new Map(notes.map(n => [n.id, n]));
 

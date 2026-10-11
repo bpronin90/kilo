@@ -455,3 +455,54 @@ describe('Robustness and single-week selector', () => {
     expect(host(c.root, 'movement-group-option-squat-hinge')[0].props.accessibilityState.selected).toBe(true);
   });
 });
+
+describe('Selection invalidation across every focus transition', () => {
+  const A = block();
+  const el = (props) => <AnalyticsRecoverySection blocks={[A]} weeks={WEEKS} notes={NOTES} {...props} />;
+  const start = () => {
+    let c;
+    act(() => { c = render.create(el({})); });
+    pickWeek(c.root, 1);
+    expect(summary(c.root)).toMatch(/^Week 1: /);
+    return c;
+  };
+  const latestAgain = (c) => {
+    expect(summary(c.root)).toMatch(/^Week 3: /);
+    expect(c.root.findAll(isRow).map(r => r.props.accessibilityState.selected)).toEqual([false, false, true]);
+  };
+
+  test('A -> no blocks (section hidden) -> A resets to the latest week', () => {
+    const c = start();
+    act(() => { c.update(el({ blocks: [] })); });
+    expect(c.toJSON()).toBeNull();
+    act(() => { c.update(el({})); });
+    latestAgain(c);
+  });
+
+  test('A -> not-ready banner -> A resets to the latest week', () => {
+    const c = start();
+    act(() => { c.update(el({ stateReady: false, stateError: new Error('x') })); });
+    expect(c.root.findAll(isRow)).toHaveLength(0);
+    act(() => { c.update(el({})); });
+    latestAgain(c);
+  });
+
+  test('A -> stale banner with no blocks -> A resets to the latest week', () => {
+    const c = start();
+    act(() => { c.update(el({ blocks: [], stateStale: true })); });
+    expect(c.root.findAll(isRow)).toHaveLength(0);
+    act(() => { c.update(el({})); });
+    latestAgain(c);
+  });
+
+  test('re-tapping the already-focused block keeps its week', () => {
+    const B = block({ id: 'rb-b', completed_at: '2026-06-01T00:00:00Z', baseline_note_title: 'Old' });
+    const bWeeks = [week(1, 'w1', { block_id: 'rb-b' }), week(2, 'w2', { block_id: 'rb-b' })];
+    let c;
+    act(() => { c = render.create(<AnalyticsRecoverySection blocks={[B]} weeks={bWeeks} notes={NOTES} />); });
+    pickWeek(c.root, 1);
+    act(() => { byLabel(c.root, 'Expand recovery history').props.onPress(); });
+    act(() => { byLabel(c.root, `View recovery evidence for Old, completed ${formatDate(B.completed_at)}`).props.onPress(); });
+    expect(summary(c.root)).toMatch(/^Week 1: /);
+  });
+});
