@@ -506,3 +506,34 @@ describe('Selection invalidation across every focus transition', () => {
     expect(summary(c.root)).toMatch(/^Week 1: /);
   });
 });
+
+describe('Per-block scoping of lifted action state', () => {
+  const newest = block({ id: 'rb-new', completed_at: '2026-06-01T00:00:00Z', baseline_note_title: 'New' });
+  const older = block({ id: 'rb-old', completed_at: '2026-05-01T00:00:00Z', baseline_note_title: 'Old' });
+  const focus = (c, b) => {
+    const t = byLabel(c.root, 'Expand recovery history');
+    if (t) act(() => { t.props.onPress(); });
+    act(() => { byLabel(c.root, `View recovery evidence for ${b.baseline_note_title}, completed ${formatDate(b.completed_at)}`).props.onPress(); });
+  };
+
+  test('a failed reopen on block A never shows on block B, and returns with A', async () => {
+    mockLifecycle.reopenBlock.mockResolvedValue({ ok: false, error: 'Only the newest block can be reopened.' });
+    const alertSpy = jest.spyOn(require('../lib/platformAlert').Alert, 'alert').mockImplementation(() => {});
+    const el = (blocks) => <AnalyticsRecoverySection blocks={blocks} weeks={[]} notes={NOTES} />;
+    let c;
+    act(() => { c = render.create(el([newest, older])); });
+    openManage(c.root);
+    act(() => { byLabel(c.root, 'Reopen recovery block: New').props.onPress(); });
+    await act(async () => { await alertSpy.mock.calls[0][2].find(b => b.text === 'Reopen block').onPress(); });
+    expect(texts(c.root)).toContain('Only the newest block can be reopened.');
+    // A (newest) disappears: B becomes the newest completed block and offers Reopen.
+    act(() => { c.update(el([older])); });
+    openManage(c.root);
+    expect(byLabel(c.root, 'Reopen recovery block: Old')).toBeDefined();
+    expect(texts(c.root)).not.toContain('Only the newest block can be reopened.');
+    // A returns and keeps its own error.
+    act(() => { c.update(el([newest, older])); });
+    openManage(c.root);
+    expect(texts(c.root)).toContain('Only the newest block can be reopened.');
+  });
+});

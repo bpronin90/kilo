@@ -79,7 +79,9 @@ export function AnalyticsRecoverySection({
   const { setMovementGroup } = useMovementGroupEditor();
   const [inclusionBusyBlockId, setInclusionBusyBlockId] = useState(null);
   const [inclusionError, setInclusionError] = useState(null);
-  const [reopenBusy, setReopenBusy] = useState(false);
+  // Like inclusion: busy is a block id and the error carries its block id, so a
+  // failed reopen can never show in another block's Manage panel (#1307).
+  const [reopenBusyBlockId, setReopenBusyBlockId] = useState(null);
   const [reopenError, setReopenError] = useState(null);
 
   const activeBlock = findActiveBlock(blocks);
@@ -112,14 +114,17 @@ export function AnalyticsRecoverySection({
           text: 'Reopen block',
           onPress: async () => {
             setReopenError(null);
-            setReopenBusy(true);
+            setReopenBusyBlockId(block.id);
             try {
               const result = await reopenBlock({ blockId: block.id });
               if (!result || result.ok === false) {
-                setReopenError((result && result.error) || 'Could not reopen this recovery block.');
+                setReopenError({
+                  blockId: block.id,
+                  message: (result && result.error) || 'Could not reopen this recovery block.',
+                });
               }
             } finally {
-              setReopenBusy(false);
+              setReopenBusyBlockId(null);
             }
           },
         },
@@ -295,9 +300,9 @@ export function AnalyticsRecoverySection({
         groupEditing={{ notesError, locked: !mutationsAllowed || hasPendingRecovery || stateStale, onSet: setMovementGroup }}
         reopen={{
           show: !activeBlock && !!newestCompletedBlock && focusedBlock.id === newestCompletedBlock.id,
-          disabled: !mutationsAllowed || hasPendingRecovery || reopenBusy,
-          busy: reopenBusy,
-          error: reopenError,
+          disabled: !mutationsAllowed || hasPendingRecovery || !!reopenBusyBlockId,
+          busy: reopenBusyBlockId === focusedBlock.id,
+          error: reopenError && reopenError.blockId === focusedBlock.id ? reopenError.message : null,
           onReopen: handleReopen,
         }}
         inclusion={{
