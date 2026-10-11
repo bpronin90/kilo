@@ -273,6 +273,82 @@ describe('focus follows a newly active block', () => {
   });
 });
 
+describe('review regressions (#1315, Codex @ d582a66c)', () => {
+  const find = (root, pred) => root.findAll(pred);
+  const withText = (root, t) => find(root, n => n.type === 'Text' && [].concat(n.props.children).join('') === t);
+
+  test('completing the active block keeps its Manage card, draft, expansion and a late rejection', async () => {
+    let fail;
+    mockLifecycle.setBlockReason.mockImplementation(() => new Promise(r => { fail = r; }));
+    let c;
+    act(() => { c = render.create(<Harness blocks={[block({ reason: 'sprain' })]} />); });
+    press(c.root, 'recovery-manage-trigger-rb1');
+    tap(c.root, 'Edit reason for this recovery block: sprain');
+    act(() => { byLabel(c.root, 'Reason for this recovery block').props.onChangeText('keep me'); });
+    let saving;
+    act(() => { saving = byLabel(c.root, 'Save the reason').props.onPress(); });
+    // The SAME block (same id) is completed while the save is in flight.
+    act(() => { c.update(<Harness blocks={[block({ reason: 'sprain', completed_at: '2026-06-01T00:00:00Z' })]} />); });
+    expect(host(c.root, 'recovery-manage-trigger-rb1')[0].props.accessibilityState).toEqual({ expanded: true });
+    expect(byLabel(c.root, 'Reason for this recovery block').props.value).toBe('keep me');
+    await act(async () => { fail({ ok: false, error: 'offline' }); await saving; });
+    expect(texts(c.root)).toContain('offline');
+    expect(byLabel(c.root, 'Reason for this recovery block').props.value).toBe('keep me');
+    // Active-only controls follow the new state; completed-only ones appear.
+    expect(byLabel(c.root, 'End recovery block')).toBeUndefined();
+  });
+
+  test('a resolved target that is later deleted is reported, never replaced by another block\'s card', () => {
+    const newest = done('rb-new', '2026-06-01T00:00:00Z');
+    const old = done('rb-old', '2026-05-01T00:00:00Z');
+    let c;
+    act(() => { c = render.create(<Harness blocks={[block(), newest, old]} nav={{ id: 'rb-old', key: 1 }} />); });
+    press(c.root, 'recovery-manage-trigger-rb1' );
+    expect(shown(c.root)).toEqual(['recovery-manage-card-rb-old']);
+    // Same nonce, the target disappears from the authoritative blocks.
+    act(() => { c.update(<Harness blocks={[block(), newest]} nav={{ id: 'rb-old', key: 1 }} />); });
+    expect(texts(c.root)).toContain(MANAGE_TARGET_UNAVAILABLE);
+    expect(shown(c.root)).toEqual([]);
+    // The selector stays reachable, and picking a block clears the notice.
+    press(c.root, 'recovery-history-header');
+    press(c.root, 'recovery-history-row-rb1');
+    expect(texts(c.root)).not.toContain(MANAGE_TARGET_UNAVAILABLE);
+    expect(shown(c.root)).toEqual(['recovery-manage-card-rb1']);
+  });
+
+  test('a deleted history selection is reported too, even when only the active block remains', () => {
+    const old = done('rb-old', '2026-05-01T00:00:00Z');
+    let c;
+    act(() => { c = render.create(<Harness blocks={[block(), old]} />); });
+    press(c.root, 'recovery-history-header');
+    press(c.root, 'recovery-history-row-rb-old');
+    act(() => { c.update(<Harness blocks={[block()]} />); });
+    expect(texts(c.root)).toContain(MANAGE_TARGET_UNAVAILABLE);
+    expect(shown(c.root)).toEqual([]);
+    expect(host(c.root, 'recovery-history-header')).toHaveLength(1);
+  });
+
+  test('write failures are announced: reason (editor and row), inclusion (sibling alert and switch label)', async () => {
+    mockLifecycle.setBlockReason.mockResolvedValue({ ok: false, error: 'offline' });
+    mockLifecycle.setIncludeInNormalAnalytics.mockResolvedValue({ ok: false, error: 'no network' });
+    const c = mount({ blocks: [done('rb-new', '2026-06-01T00:00:00Z', { reason: 'sprain' })] });
+    press(c.root, 'recovery-manage-trigger-rb-new');
+    tap(c.root, 'Edit reason for this recovery block: sprain');
+    await act(async () => { await byLabel(c.root, 'Save the reason').props.onPress(); });
+    const editorErr = withText(c.root, 'offline')[0];
+    expect(editorErr.props.accessibilityRole).toBe('alert');
+    expect(editorErr.props.accessibilityLiveRegion).toBe('assertive');
+    tap(c.root, 'Cancel editing the reason');
+    await act(async () => { await byLabel(c.root, 'Counting in normal analytics: Off').props.onPress(); });
+    const incErr = host(c.root, 'recovery-inclusion-error-rb-new')[0];
+    expect(incErr.props.accessibilityRole).toBe('alert');
+    expect(incErr.props.accessibilityLiveRegion).toBe('assertive');
+    // The accessible switch itself reports the failure, not only On/Off.
+    expect(byLabel(c.root, 'Counting in normal analytics: Off. Not saved: no network')).toBeDefined();
+  });
+
+});
+
 describe('typed navigation intent', () => {
   test('normalizeNavTarget accepts an exact block id for Log only', () => {
     expect(normalizeNavTarget('Log', { kind: 'recovery-manage', blockId: 'rb1' })).toEqual({ kind: 'recovery-manage', noteId: null, blockId: 'rb1' });

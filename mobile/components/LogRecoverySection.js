@@ -388,8 +388,7 @@ export function LogRecoverySection({
           <Text style={styles.pendingBannerText}>{MANAGE_TARGET_UNAVAILABLE}</Text>
         </View>
       ) : null}
-      {m.focusedBlockId ? (
-        <>
+      <>
           <LogRecoveryManageStack
             styles={styles} colors={colors} kua={kua}
             activeBlock={activeBlock} completedBlocks={completedBlocks} weeks={weeks} notes={notes}
@@ -399,18 +398,21 @@ export function LogRecoverySection({
           <LogRecoveryHistory
             activeBlock={activeBlock} completedBlocks={completedBlocks}
             focusedBlockId={m.focusedBlockId} onSelect={m.onSelectBlock}
+            alwaysShow={!!m.unavailable}
           />
-        </>
-      ) : null}
+      </>
     </>
   ) : null;
 
   return (
     <View style={styles.container}>
-      {!activeBlock && (showRecoveryNotice || stateStale || completedBlocks.length > 0 || m.unavailable) && (
+      {/* ONE group for both shapes (active / no active): the Manage surface keeps a
+          fixed slot, so completing the active block never remounts it and a
+          same-block draft, in-flight write or error survives (#1315). */}
+      {(activeBlock || showRecoveryNotice || stateStale || completedBlocks.length > 0 || m.unavailable) && (
         <View style={styles.activeGroup}>
           <SectionTitle>Recovery</SectionTitle>
-          {stateStale || showRecoveryNotice ? (
+          {!activeBlock && (stateStale || showRecoveryNotice) ? (
             <Card style={styles.card}>
               <View style={styles.stateZone}>
                 {stateStale ? staleBanner : null}
@@ -418,12 +420,7 @@ export function LogRecoverySection({
               </View>
             </Card>
           ) : null}
-          {manageSurface}
-        </View>
-      )}
-      {activeBlock && (
-        <View style={styles.activeGroup}>
-          <SectionTitle>Recovery</SectionTitle>
+          {activeBlock ? (
           <Card style={styles.card}>
             {/* Zone 1 — state: a kicker, the headline fact, and the
                 de-emphasized baseline caption (#843). */}
@@ -455,7 +452,7 @@ export function LogRecoverySection({
 
               {actionError ? (
                 <View style={styles.errorBanner}>
-                  <Text style={styles.errorBannerText}>{actionError}</Text>
+                  <Text style={styles.errorBannerText} accessibilityRole="alert" accessibilityLiveRegion="assertive">{actionError}</Text>
                 </View>
               ) : null}
             </View>
@@ -506,6 +503,7 @@ export function LogRecoverySection({
               onSourceJumpApplied={onSourceJumpApplied}
             />
           </Card>
+          ) : null}
 
           {manageSurface}
         </View>

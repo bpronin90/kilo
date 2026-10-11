@@ -179,7 +179,7 @@ export function LogRecoveryLifecycle({
                   Only for your own records. Leave it empty to remove it.
                 </Text>
                 {reasonErrorFor() ? (
-                  <Text style={styles.manageRowInlineError}>{reasonErrorFor()}</Text>
+                  <Text style={styles.manageRowInlineError} accessibilityRole="alert" accessibilityLiveRegion="assertive">{reasonErrorFor()}</Text>
                 ) : null}
                 <View style={styles.reasonEditorActions}>
                   <Pressable
@@ -215,9 +215,9 @@ export function LogRecoveryLifecycle({
                 disabled={reasonLocked}
                 style={[styles.manageRowMain, reasonLocked && styles.manageRowDisabled]}
                 accessibilityRole="button"
-                accessibilityLabel={activeBlock.reason
+                accessibilityLabel={`${activeBlock.reason
                   ? `Edit reason for this recovery block: ${activeBlock.reason}`
-                  : 'Add a reason for this recovery block'}
+                  : 'Add a reason for this recovery block'}${reasonError ? `. Not saved: ${reasonError}` : ''}`}
                 accessibilityState={{ disabled: reasonLocked }}
               >
                 <View style={styles.manageRowInfo}>
@@ -226,7 +226,7 @@ export function LogRecoveryLifecycle({
                     {activeBlock.reason || 'Not set. Add why this recovery started.'}
                   </Text>
                   {reasonErrorFor() ? (
-                    <Text style={styles.manageRowInlineError}>{reasonErrorFor()}</Text>
+                    <Text style={styles.manageRowInlineError} accessibilityRole="alert" accessibilityLiveRegion="assertive">{reasonErrorFor()}</Text>
                   ) : null}
                 </View>
                 <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
@@ -255,7 +255,7 @@ export function LogRecoveryLifecycle({
                 disabled={inclusionLocked}
                 style={[styles.inclusionSwitchArea, inclusionLocked && styles.manageRowDisabled]}
                 accessibilityRole="switch"
-                accessibilityLabel={`Counting in normal analytics: ${activeBlock.include_in_normal_analytics === true ? 'On' : 'Off'}`}
+                accessibilityLabel={`Counting in normal analytics: ${activeBlock.include_in_normal_analytics === true ? 'On' : 'Off'}${inclusionError ? `. Not saved: ${inclusionError}` : ''}`}
                 accessibilityState={{
                   checked: activeBlock.include_in_normal_analytics === true,
                   disabled: inclusionLocked,
@@ -274,9 +274,6 @@ export function LogRecoveryLifecycle({
                       1K, and Home summaries.
                     </Text>
                   )}
-                  {inclusionError ? (
-                    <Text style={styles.manageRowInlineError}>{inclusionError}</Text>
-                  ) : null}
                 </View>
                 <Text style={styles.manageRowState}>
                   {inclusionBusy
@@ -299,6 +296,11 @@ export function LogRecoveryLifecycle({
               </Pressable>
               <MaterialIcons name="chevron-right" size={20} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
             </View>
+            {inclusionError ? (
+              // A sibling of the switch (whose label also carries the failure), so the
+              // result is announced on its own and stays visible until the next try.
+              <Text testID={`recovery-inclusion-error-${block.id}`} style={[styles.manageRowInlineError, { paddingHorizontal: 18, paddingBottom: 8 }]} accessibilityRole="alert" accessibilityLiveRegion="assertive">{inclusionError}</Text>
+            ) : null}
           </View>
 
           <LogRecoveryMaintenance

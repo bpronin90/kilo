@@ -69,7 +69,11 @@ export function useLogRecoveryManage({
   }, [navManageBlockId, navKey, ready, readError, blocks]);
 
   const live = [activeBlock, ...completedBlocks].filter(Boolean);
-  const focused = live.find(b => b.id === selectedId) || activeBlock || completedBlocks[0] || null;
+  // A selection (history pick or navigation target) whose block disappeared is
+  // reported, never replaced by another block's card: nothing is focused until the
+  // user picks again.
+  const selectedGone = !!selectedId && !live.some(b => b.id === selectedId);
+  const focused = selectedGone ? null : (live.find(b => b.id === selectedId) || activeBlock || completedBlocks[0] || null);
   return {
     completedBlocks,
     hasCompleted: completedBlocks.length > 0,
@@ -78,7 +82,7 @@ export function useLogRecoveryManage({
       revealBlockId: reveal.blockId,
       revealKey: reveal.key === consumedKey ? 0 : reveal.key,
       onRevealConsumed: setConsumedKey,
-      unavailable,
+      unavailable: unavailable || selectedGone,
       newestCompletedId: completedBlocks[0] ? completedBlocks[0].id : null,
       onSelectBlock: (id) => { setUnavailable(false); setSelectedId(id); },
     },

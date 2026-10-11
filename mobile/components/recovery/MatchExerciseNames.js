@@ -102,7 +102,7 @@ export function MatchExerciseNamesAction({ block, weeks, notes, locked = false, 
       })}
       {open ? (
         <View accessibilityLiveRegion="polite">
-          {error ? <Text style={styles.reasonErrorText}>{error}</Text> : null}
+          {error ? <Text style={styles.reasonErrorText} accessibilityRole="alert" accessibilityLiveRegion="assertive">{error}</Text> : null}
         </View>
       ) : null}
     </View>

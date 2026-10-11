@@ -121,7 +121,7 @@ export function RebuildBaselineAction({ block, weeks = null, notes, unit = 'lb',
             <Text testID="recovery-rebuild-warning" accessibilityRole="alert" style={styles.reasonErrorText}>{WARNING}</Text>
           ) : null}
           <View accessibilityLiveRegion="polite">
-            {error ? <Text style={styles.reasonErrorText}>{error}</Text> : null}
+            {error ? <Text style={styles.reasonErrorText} accessibilityRole="alert" accessibilityLiveRegion="assertive">{error}</Text> : null}
           </View>
           <View style={styles.reasonEditorActions}>
             <Pressable

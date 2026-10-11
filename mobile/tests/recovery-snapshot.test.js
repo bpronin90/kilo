@@ -160,6 +160,38 @@ describe('single derivation', () => {
   });
 });
 
+describe('cache key is collision-proof (#1315 review)', () => {
+  // Two distinct valid workout texts whose 32-bit djb2 digest and length collide.
+  const A = '-Bench\n- 405 12\n-Squat\n- 929 18';
+  const B = '-Bench\n- 509 28\n-Squat\n- 807 20';
+  test('replacing a week note with distinct same-length text returns that text\'s numbers', () => {
+    expect(A).not.toBe(B);
+    expect(A.length).toBe(B.length);
+    const base = '-Bench\n- 100 5\n-Squat\n- 100 5';
+    const block = mkBlock(captureRecoveryBaselineFromText(base));
+    const weeks = [mkWeek(1, 'w1')];
+    const at = (text) => getRecoverySnapshot({ block, weeks, notes: [note('nb', base), note('w1', text)] });
+    const first = at(A);
+    const second = at(B);
+    expect(second).not.toBe(first);
+    expect(second.display.percent).not.toBe(first.display.percent);
+    // And the first is still served for its own text.
+    expect(at(A)).toBe(first);
+  });
+
+  test('every note field the derivation reads is part of the key (title, deletion, groups)', () => {
+    const base = '-Bench\n- 100 5';
+    const block = mkBlock(captureRecoveryBaselineFromText(base));
+    const weeks = [mkWeek(1, 'w1')];
+    const snap = (extra) => getRecoverySnapshot({ block, weeks, notes: [note('nb', base), { ...note('w1', '-Bench\n- 60 5'), ...extra }] });
+    const plain = snap({});
+    expect(snap({ title: 'Renamed' })).not.toBe(plain);
+    expect(snap({ deleted_at: '2026-06-01T00:00:00Z' })).not.toBe(plain);
+    const bn = { ...note('nb', base), exercise_movement_groups: { version: 1, overrides: { bench: 'legs' } } };
+    expect(getRecoverySnapshot({ block, weeks, notes: [bn, note('w1', '-Bench\n- 60 5')] })).not.toBe(plain);
+  });
+});
+
 describe('identical values on every surface', () => {
   test('Home Big 3 values equal the Analytics ladder values for the same block and week (#1315)', () => {
     const root = mount({ fixture: SCORED, stale: false }).root;

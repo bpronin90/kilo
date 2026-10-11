@@ -19,11 +19,13 @@ import { createLogManageStyles } from './logRecoveryManageStyles';
 const optionalHook = (hook) => (typeof hook === 'function' ? hook() : null);
 const _title = (b) => b.baseline_note_title || 'Untitled Routine';
 
-export function LogRecoveryHistory({ activeBlock, completedBlocks, focusedBlockId, onSelect }) {
+export function LogRecoveryHistory({ activeBlock, completedBlocks, focusedBlockId, onSelect, alwaysShow = false }) {
   const { colors, kuaPalette: kua } = useTheme();
   const st = useMemo(() => createLogManageStyles(colors, kua), [colors, kua]);
   const [open, setOpen] = useState(false);
-  if (completedBlocks.length === 0) return null;
+  // With a vanished selection the selector must stay reachable, even if only the
+  // active block remains to be picked.
+  if (completedBlocks.length === 0 && !(alwaysShow && activeBlock)) return null;
   const rows = [...(activeBlock ? [{ block: activeBlock, active: true }] : []), ...completedBlocks.map(block => ({ block, active: false }))];
   const n = completedBlocks.length;
   return (

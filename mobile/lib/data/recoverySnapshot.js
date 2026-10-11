@@ -151,18 +151,14 @@ function _withGroups(core, block, notes, selectedWeek, notesError) {
 const _store = new Map();
 const MAX_ENTRIES = 64;
 
-function _hash(str) {
-  let h = 5381;
-  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
-  return `${str.length}:${h}`;
-}
-
 export function recoveryInputFingerprint(block, weeks, notes) {
   const liveWeeks = (weeks || []).filter(w => w && w.block_id === block.id);
   const ids = new Set([block.baseline_note_id, ...liveWeeks.map(w => w.note_id)]);
   const noteParts = (notes || []).filter(n => n && ids.has(n.id)).map(n => [
+    // Exactly the note fields the derivations read, with the FULL workout text:
+    // a lossy digest could alias two distinct texts and return stale numbers.
     n.id, n.title, n.deleted_at || '', n.updated_at || '',
-    typeof n.raw_text === 'string' ? _hash(n.raw_text) : '',
+    typeof n.raw_text === 'string' ? n.raw_text : null,
     n.exercise_movement_groups ? JSON.stringify(n.exercise_movement_groups) : '',
   ]);
   return JSON.stringify([block, liveWeeks, noteParts]);
