@@ -208,7 +208,7 @@ describe('text contract', () => {
   });
 
   test('an existing header scheme is not repeated or re-promoted', () => {
-    expect(edit('-Squat 3x6-8, 3x8\n- 45 8\n').out).toBe('-Squat 3x6-8\n- 45 8\n-- 3x8\n');
+    expect(edit('-Squat 3x6-8, step 3x8 more\n- 45 8\n').out).toBe('-Squat 3x6-8\n- 45 8\n-- step 3x8 more\n');
   });
 });
 
