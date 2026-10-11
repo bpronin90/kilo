@@ -13,10 +13,30 @@ import { splitNameParts } from './recoveryStrengthBaseline.js';
 
 const DASH_HEADER_RE = /^(\s*)-(?=[^-\s])(.*?)(\s*)$/;
 const NUMBERED_HEADER_RE = /^(\s*)(\d+[a-z]?\.\s+)(.*?)(\s*)$/i;
-// A header scheme the parser strips from the name: sets x reps, optional range.
-const PROMOTABLE_RE = /^(\d+\s*[xX×]\s*\d+(?:\s*[-–]\s*\d+)?)\s*(?:,|$)/;
+// A sets x reps (optional range) scheme standing on its own inside a descriptor.
+// Bounded so loads like `135x5` or words like `2x3x4` are never read as one.
+const SCHEME_SPAN_RE = /(?<![\w.])\d{1,2}\s*[xX×]\s*\d{1,3}(?:\s*[-–]\s*\d{1,3})?(?![\w.]|\s*[xX×]\s*\d)/g;
 const ANY_SCHEME_RE = /\d+\s*[xX×]\s*\d+/g;
+const TRAIL_SEP_RE = /[\s,;–—-]+$/;
+const LEAD_SEP_RE = /^[\s,;–—-]+/;
 const SEPARATOR_RE = /^\s*(?:,|—|–|-)\s*/;
+
+// The one unambiguous scheme in a descriptor and the descriptor with exactly
+// that span removed (orphan separators tidied, words and parentheses kept), or
+// null when there is not exactly one scheme or it sits inside parentheses.
+function promoteScheme(descriptor) {
+  if ((descriptor.match(ANY_SCHEME_RE) || []).length !== 1) return null;
+  const hits = [...descriptor.matchAll(SCHEME_SPAN_RE)];
+  if (hits.length !== 1) return null;
+  const at = hits[0].index;
+  const before = descriptor.slice(0, at);
+  const after = descriptor.slice(at + hits[0][0].length);
+  if ((before.match(/\(/g) || []).length > (before.match(/\)/g) || []).length) return null;
+  const head = before.replace(TRAIL_SEP_RE, '');
+  const tail = head ? after.trimStart() : after.replace(LEAD_SEP_RE, '');
+  const glue = !head || !tail || /^[,;]/.test(tail) ? '' : ' ';
+  return { scheme: hits[0][0], rest: `${head}${glue}${tail}`.trim() };
+}
 
 function crOf(line) {
   return line.endsWith('\r') ? '\r' : '';
@@ -68,13 +88,14 @@ export function buildOccurrenceEdit(lines, ex, targetName) {
     return { ok: false, reason: 'header carries notation tidy cannot preserve' };
   }
   const parts = splitNameParts(content, { collapse: false });
-  const descriptor = parts.descriptor.replace(SEPARATOR_RE, '').trim();
+  let descriptor = parts.descriptor.replace(SEPARATOR_RE, '').trim();
   // The header's own scheme keeps its original separator bytes exactly; only a
-  // scheme promoted out of a descriptor gets a fresh single space.
+  // scheme promoted out of a descriptor gets a fresh single space. A promoted
+  // scheme lives in the header alone: its span is cut out of the moved note.
   let schemeBytes = parts.scheme;
   if (!schemeBytes.trim() && descriptor) {
-    const promo = PROMOTABLE_RE.exec(descriptor);
-    if (promo && (descriptor.match(ANY_SCHEME_RE) || []).length === 1) schemeBytes = ` ${promo[1]}`;
+    const promo = promoteScheme(descriptor);
+    if (promo) { schemeBytes = ` ${promo.scheme}`; descriptor = promo.rest; }
   }
   const scheme = schemeBytes.trim();
   const newContent = scheme ? `${targetName}${schemeBytes}` : targetName;
