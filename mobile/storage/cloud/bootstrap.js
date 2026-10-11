@@ -346,8 +346,9 @@ export async function bootstrapFromLocal(userId, client = getSupabaseClient()) {
     // omits a column leaves the server's existing value for it untouched rather
     // than overwriting it with null.
     //
-    // A no-op for every other table: those builders emit a fixed key set, so
-    // they group into exactly one batch.
+    // Workout notes group the same way (#1306: `exercise_movement_groups` is
+    // sent only for notes that have it). Other tables emit a fixed key set, so
+    // they form exactly one batch.
     let error = null;
     for (const batch of groupRowsByKeyShape(rows)) {
       ({ error } = await db

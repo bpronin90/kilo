@@ -19,7 +19,7 @@ import {
 import { writeList } from './jsonStorage';
 import { resetPhase, SYNC_PHASE } from '../syncRecovery';
 import { stripDerivedSectionsFromList } from './derivedCache';
-import { movementGroupsNoteError } from './movementGroupValidation';
+import { movementGroupsNoteError, withExplicitMovementGroups } from './movementGroupValidation';
 import { loadWorkoutNotesRaw, replaceWorkoutNotesRaw, withWorkoutNotebookLock } from './workoutNotes';
 import { loadWeightEntriesRaw, replaceWeightEntriesRaw } from './weightEntries';
 import {
@@ -308,7 +308,7 @@ async function replaceCollectionForCloud({ table, readRaw, writeRaw, imported, c
     // verbatim with no prior-row merge, and cannot widen `record_json`/`goal_json`
     // (#475): those columns live only on deload_history/weight_goal, and the push
     // whitelist for weight_entries/workout_notes never serializes them regardless.
-    const next = { ...content };
+    const next = table === SYNC_TABLES.WORKOUT_NOTES ? withExplicitMovementGroups(content) : { ...content };
     const stamped = isTombstone(row)
       ? stampTombstone(next, clientId)
       : stampWrite(next, clientId);

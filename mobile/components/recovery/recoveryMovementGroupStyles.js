@@ -1,6 +1,5 @@
 import { StyleSheet } from 'react-native';
 import { TYPOGRAPHY } from '../../theme/typography';
-import { GEOMETRY } from '../../theme/spacing';
 
 // Movement-group breakdown + per-exercise group editor (#1306). Flat rows on the
 // card surface, divided by hairlines; no nested cards, no second hero. Every
@@ -41,6 +40,5 @@ export const createMovementGroupStyles = (colors, kua = null) => {
     optionTextSelected: { fontWeight: '700' },
     resetText: { fontSize: TYPOGRAPHY['body-md'].fontSize, fontWeight: '700', color: accent, flexShrink: 1 },
     errorText: { fontSize: TYPOGRAPHY['label-md'].fontSize, color: kua ? kua.error : colors.error },
-    radius: { borderRadius: GEOMETRY['radius-xs'] },
   });
 };

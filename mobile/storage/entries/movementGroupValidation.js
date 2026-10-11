@@ -6,6 +6,11 @@
 
 import { movementGroupMapError } from '../../lib/data/movementGroups';
 
+// Replace-mode cloud restore (#1306): the backup is authoritative, so a restored
+// note with no movement-group field must upload an explicit null (rules only);
+// omitting the column would leave the account's old override in place.
+export const withExplicitMovementGroups = (row) => ({ ...row, exercise_movement_groups: row.exercise_movement_groups ?? null });
+
 export function movementGroupsNoteError(note) {
   const error = movementGroupMapError(note && note.exercise_movement_groups);
   return error ? `Invalid backup: workout note exercise_movement_groups ${error}` : null;

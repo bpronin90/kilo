@@ -374,14 +374,28 @@ export function createSupabaseTransport(getClient = getConfiguredSupabaseClient)
       if (!client) throw new Error('Cloud sync requires a configured Supabase client.');
       const userId = await resolveUserId(client);
       const rows = records.map((rec) => buildUpsertRow(table, rec, userId));
-      const upserted = client
-        .schema(SCHEMA)
-        .from(table)
-        .upsert(rows, { onConflict: conflictTargetFor(table) });
-      const { data, error } =
-        typeof upserted.select === 'function' ? await upserted.select('*') : await upserted;
-      if (error) throw error;
-      return (data || []).map(stripSyncXid);
+      // PostgREST sends the UNION of columns in a bulk upsert, so a row that
+      // omits an optional column (workout_notes.exercise_movement_groups, #1306)
+      // would be written as NULL if batched with one that names it. Batch by key
+      // shape so an omitting row never travels in a request naming the column.
+      const shapes = new Map();
+      for (const row of rows) {
+        const shape = JSON.stringify(Object.keys(row).sort());
+        if (shapes.has(shape)) shapes.get(shape).push(row);
+        else shapes.set(shape, [row]);
+      }
+      const out = [];
+      for (const batch of shapes.values()) {
+        const upserted = client
+          .schema(SCHEMA)
+          .from(table)
+          .upsert(batch, { onConflict: conflictTargetFor(table) });
+        const { data, error } =
+          typeof upserted.select === 'function' ? await upserted.select('*') : await upserted;
+        if (error) throw error;
+        out.push(...(data || []));
+      }
+      return out.map(stripSyncXid);
     },
   };
 }

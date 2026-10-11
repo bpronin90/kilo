@@ -241,6 +241,59 @@ describe('cloud sync', () => {
   });
 });
 
+describe('mixed-shape upserts and replace restore', () => {
+  beforeEach(() => resetValidatedUserCacheForTests());
+
+  test('a note omitting the column is never sent in a request that names it', async () => {
+    const calls = [];
+    const client = {
+      auth: { async getUser() { return { data: { user: { id: 'u1' } }, error: null }; } },
+      schema() {
+        return { from(table) { return { upsert(rows) { calls.push({ table, rows }); return { async select() { return { data: rows, error: null }; } }; } }; } };
+      },
+    };
+    const transport = createSupabaseTransport(() => client);
+    const out = await transport.push(SYNC_TABLES.WORKOUT_NOTES, [
+      { id: 'a', raw_text: 'x', exercise_movement_groups: MAP },
+      { id: 'b', raw_text: 'y' },
+      { id: 'c', raw_text: 'z', exercise_movement_groups: null },
+    ]);
+    expect(calls).toHaveLength(2);
+    const withKey = calls.filter(c => 'exercise_movement_groups' in c.rows[0]);
+    expect(withKey.flatMap(c => c.rows.map(r => r.id)).sort()).toEqual(['a', 'c']);
+    for (const c of calls) {
+      expect(new Set(c.rows.map(r => 'exercise_movement_groups' in r)).size).toBe(1);
+    }
+    expect(calls.find(c => c.rows[0].id === 'b').rows).toEqual([{ user_id: 'u1', id: 'b', raw_text: 'y' }]);
+    expect(out.map(r => r.id).sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  test('cloud replace restore from a legacy backup uploads an explicit null and clears the old override', async () => {
+    const cloud = makeFakeCloud();
+    setCloudTransport(cloud.transport);
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    try {
+      const adapter = Storage.getStorageAdapter();
+      await adapter.saveWorkoutNoteItem(note({ exercise_movement_groups: MAP }));
+      await sync();
+      expect(cloud.remote(SYNC_TABLES.WORKOUT_NOTES, 'wn-1').exercise_movement_groups).toEqual(MAP);
+
+      const legacy = { version: '3', exported_at: '2026-07-10T00:00:00.000Z', weight_entries: [], workout_notes: [note({ raw_text: 'Deadlift 110x5' })], current_workout_id: 'wn-1', weight_goal: null, deload_history: [] };
+      expect((await importBackup(legacy, 'replace', { mode: IMPORT_MODES.CLOUD })).ok).toBe(true);
+      const dirty = (await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES)).find(r => r.id === 'wn-1');
+      expect(dirty.exercise_movement_groups).toBeNull();
+      await sync();
+      expect(cloud.remote(SYNC_TABLES.WORKOUT_NOTES, 'wn-1').exercise_movement_groups).toBeNull();
+      const local = (await adapter.loadWorkoutNotes()).find(n => n.id === 'wn-1');
+      expect(local.exercise_movement_groups ?? null).toBeNull();
+    } finally {
+      setCloudTransport(null);
+      Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
+      __resetSyncQueue();
+    }
+  });
+});
+
 describe('upload whitelist', () => {
   beforeEach(() => resetValidatedUserCacheForTests());
 
@@ -257,7 +310,7 @@ describe('upload whitelist', () => {
       { id: 'a', raw_text: 'x', exercise_movement_groups: MAP, bogus: 1 },
       { id: 'b', raw_text: 'y' },
     ]);
-    expect(calls[0].rows[0]).toEqual({ user_id: 'u1', id: 'a', raw_text: 'x', exercise_movement_groups: MAP });
-    expect('exercise_movement_groups' in calls[0].rows[1]).toBe(false);
+    expect(calls[0].rows).toEqual([{ user_id: 'u1', id: 'a', raw_text: 'x', exercise_movement_groups: MAP }]);
+    expect(calls[1].rows).toEqual([{ user_id: 'u1', id: 'b', raw_text: 'y' }]);
   });
 });
