@@ -229,3 +229,10 @@ describe('snapshot.total from real notes', () => {
     expect(snap({ weeks, notes, stale: true }).total.pace.status).toBe(PACE_STATUS.SUPPRESSED);
   });
 });
+
+describe('caption plural and week rows without a denominator (PR #1319 review)', () => {
+  test('caption pluralises on the denominator', () => {
+    expect(totalCaption(total(1, [{ n: 1, scores: { l0: 100 } }]))).toBe('1 of 1 lift back · avg 100% · Week 1');
+    expect(totalCaption(total(4, [{ n: 1, scores: { l0: 100, l1: 50 } }]))).toBe('2 of 4 lifts back · avg 75% · Week 1');
+  });
+});

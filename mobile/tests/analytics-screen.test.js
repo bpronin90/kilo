@@ -2753,13 +2753,13 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
       expect(row).toBeDefined();
       const texts = textNodesOf(row).map(t => [].concat(t.props.children).join(''));
       expect(texts.some(t => t.startsWith('100%'))).toBe(true);
-      expect(texts).toContain('1 of 1 lifts back · avg 100% · Week 2');
+      expect(texts).toContain('1 of 1 lift back · avg 100% · Week 2');
       expect(row.props.accessibilityLabel).toMatch(/^Total recovery, Week 2: 100% total recovery of Push Pull Legs baseline strength\./);
       // The section's own summary says the same thing.
       const summary = root.findAll(n => typeof n.type === 'string' && n.props.testID === 'recovery-strength-summary')[0];
       expect(summary.props.accessibilityLabel).toMatch(/^Week 2: 100% total recovery of Push Pull Legs baseline strength\./);
       const caption = root.findAll(n => typeof n.type === 'string' && n.props.testID === 'recovery-strength-caption')[0];
-      expect([].concat(caption.props.children).join('')).toBe('1 of 1 lifts back · avg 100% · Week 2');
+      expect([].concat(caption.props.children).join('')).toBe('1 of 1 lift back · avg 100% · Week 2');
     });
   });
 

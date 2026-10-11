@@ -468,7 +468,7 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
     // routine is quiet 13sp context, never a title-like caption above it.
     const texts = findAllText(root);
     expect(texts.indexOf('Recovery')).toBeLessThan(texts.indexOf('100%'));
-    expect(texts.indexOf('100%')).toBeLessThan(texts.indexOf('1 of 1 lifts back · avg 100% · Week 1'));
+    expect(texts.indexOf('100%')).toBeLessThan(texts.indexOf('1 of 1 lift back · avg 100% · Week 1'));
     const ctxText = texts.find(t => t === '05-01-2026');
     expect(texts.indexOf('100%')).toBeLessThan(texts.indexOf(ctxText));
     const routine = hostText(root, ctxText)[0];
@@ -483,7 +483,7 @@ describe('AnalyticsRecoverySection — card header and type hierarchy (#1217)', 
     // Same KUA hero as Weight Trends `weightValueLarge`: metric-display-mobile role, 32/36 display exception (#1283).
     expect(hero).toMatchObject({ fontSize: 32, lineHeight: 36, fontFamily: 'JetBrainsMono-Bold' });
     // One short caption (#1315), no routine or coverage prose beside the number.
-    expect(sizeOf(hostText(root, '1 of 1 lifts back · avg 100% · Week 1')[0]).fontSize).toBe(13);
+    expect(sizeOf(hostText(root, '1 of 1 lift back · avg 100% · Week 1')[0]).fontSize).toBe(13);
     expect(sizeOf(hostText(root, 'torn hamstring')[0]).fontSize).toBeGreaterThanOrEqual(13);
   });
 
@@ -516,7 +516,7 @@ describe('AnalyticsRecoverySection — identity caption and provenance (#793/R5b
     expect(summaryLabel(root)).toContain('of Push Pull Legs baseline strength');
     expect(hasText(root, 'Week 1 · Push Pull Legs')).toBe(false);
     // The caption carries the week; the selectable week row is the only bare "Week 1".
-    expect(hasText(root, '1 of 1 lifts back · avg 100% · Week 1')).toBe(true);
+    expect(hasText(root, '1 of 1 lift back · avg 100% · Week 1')).toBe(true);
     expect(findAllText(root).filter(t => t === 'Week 1').length).toBe(1);
     // The old two-line "Baseline routine" label + title pair is gone.
     expect(hasText(root, 'Baseline routine')).toBe(false);
@@ -1673,7 +1673,7 @@ describe('AnalyticsRecoverySection — strength trend by recovery week (#1305)',
     }).root;
     const summary = hostById(root, 'recovery-strength-summary')[0];
     // #1318: the total carries the earlier readable score; the gap is stated, not scored.
-    expect(hostTextsIn(summary)).toEqual(['74%', 'total recovery', '1 of 1 lifts back · avg 74% · Week 2']);
+    expect(hostTextsIn(summary)).toEqual(['74%', 'total recovery', '1 of 1 lift back · avg 74% · Week 2']);
     expect(summary.props.accessibilityLabel).toContain('This week’s note can’t be read, so this total adds no score for it.');
     expect(summary.props.accessibilityLabel).toContain('1 lift scored every week · 1 of 2 baseline lifts');
     expect(summary.props.accessibilityLabel).toContain('In the consistent cohort: Bench');
@@ -1721,7 +1721,7 @@ describe('AnalyticsRecoverySection — strength trend by recovery week (#1305)',
     // The scale legend is no longer printed; it is in About these numbers (#1315).
     expect(hostById(root, 'recovery-strength-scale')).toHaveLength(0);
     act(() => { byLabel(root, 'About these numbers').props.onPress(); });
-    expect(hasText(root, 'Bars run 0–120%. The dark mark is your baseline (100%).')).toBe(true);
+    expect(hasText(root, 'Week bars run 0–100% (total recovery is capped at 100%). Lift bars run 0–120%. The dark mark is your baseline (100%).')).toBe(true);
   });
 });
 
@@ -1919,7 +1919,7 @@ describe('AnalyticsRecoverySection — routine-anchored summary label (#1219, #1
   test('the summary label names the routine and the bottom line no longer repeats it', () => {
     const root = oneWeek('Push Pull Legs');
     expect(hasText(root, 'of Push Pull Legs baseline strength')).toBe(false);
-    expect(heroNode(root).props.accessibilityLabel).toMatch(/^Week 1: 100% total recovery of Push Pull Legs baseline strength\. 1 of 1 lifts back, avg 100%, Week 1\..*Consistent-cohort average \(secondary\): 100% across 1 lift scored every week · 1 of 2 baseline lifts\. In the consistent cohort: Bench\.$/);
+    expect(heroNode(root).props.accessibilityLabel).toMatch(/^Week 1: 100% total recovery of Push Pull Legs baseline strength\. 1 of 1 lift back, avg 100%, Week 1\..*Consistent-cohort average \(secondary\): 100% across 1 lift scored every week · 1 of 2 baseline lifts\. In the consistent cohort: Bench\.$/);
     expect(findAllText(root).some(t => t.startsWith('Baseline:'))).toBe(false);
     expect(hasText(root, '05-01-2026')).toBe(true);
   });
@@ -1991,7 +1991,7 @@ describe('AnalyticsRecoverySection — routine-anchored summary label (#1219, #1
       // #1318: nothing back is a real 0% total; the cohort reason moved to the explainer.
       // The headline and the single week row both read 0%.
       expect(findAllText(root).filter(t => /^\d+%$/.test(t))).toEqual(['0%', '0%']);
-      expect(findAllText(root).some(t => /^0 of \d+ lifts back · avg 0% · Week 1$/.test(t))).toBe(true);
+      expect(findAllText(root).some(t => /^0 of \d+ lifts? back · avg 0% · Week 1$/.test(t))).toBe(true);
       expect(findAllText(root).filter(t => t.includes(title))).toEqual([title]);
       expect(hasText(root, '2 not retested')).toBe(true);
       act(() => { byLabel(root, 'Expand 2 not retested lifts').props.onPress(); });
@@ -3127,5 +3127,28 @@ describe('exercise disclosure row target (#1300 review)', () => {
     const flat = (s) => (Array.isArray(s) ? Object.assign({}, ...s) : s);
     expect(flat(createVisualStyles(anyColor).exRow).minHeight).toBeGreaterThanOrEqual(44);
     expect(flat(createVisualStyles(anyColor, anyColor).exRow).minHeight).toBeGreaterThanOrEqual(44);
+  });
+});
+
+describe('AnalyticsRecoverySection — week rows without a scoreable denominator (PR #1319 review)', () => {
+  test('a baseline with no scoreable lift says "No total" on readable rows, never "Select to view", and is not a 0%', () => {
+    const only = '-Plank: 2x45s\n- 45,45';
+    const root = setup({
+      blocks: [block({ baseline: captureRecoveryBaselineFromText(only) })],
+      weeks: [week(1, 'note-w1'), week(2, 'note-w2')],
+      notes: [note('note-w1', only), note('note-w2', only)],
+    }).root;
+    const rows = root.findAll(n => typeof n.type === 'string' && /^recovery-strength-week-\d+$/.test(n.props.testID || ''));
+    expect(rows.map(r => r.props.accessibilityLabel)).toEqual([
+      'Week 1: no total, no baseline lift can be scored', 'Week 2: no total, no baseline lift can be scored',
+    ]);
+    expect(rows.map(r => hostTextsIn(r).pop())).toEqual(['No total', 'No total']);
+    expect(hasText(root, 'Select to view')).toBe(false);
+  });
+
+  test('the explainer names the two bar scales', () => {
+    const root = setup({ blocks: [block()], weeks: [week(1, 'note-w1'), week(2, 'note-w2')], notes: [note('note-w1', '-Bench\n- 135 5'), note('note-w2', '-Bench\n- 160 5')] }).root;
+    act(() => { byLabel(root, 'About these numbers').props.onPress(); });
+    expect(hasText(root, 'Week bars run 0–100% (total recovery is capped at 100%). Lift bars run 0–120%. The dark mark is your baseline (100%).')).toBe(true);
   });
 });

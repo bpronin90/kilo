@@ -183,7 +183,7 @@ describe('movement groups and the explainer', () => {
       'Baseline routine: Push Pull Legs.',
       'Consistent-cohort average (secondary): 85% across 2 lifts scored every week · 2 of 5 baseline lifts.',
       'In the consistent cohort: Bench, Squat.',
-      'Bars run 0–100%. The dark mark is your baseline (100%).',
+      'Week bars run 0–100% (total recovery is capped at 100%). Lift bars run 0–100%. The dark mark is your baseline (100%).',
       'Training numbers only. Not a medical judgment. Only you end a Recovery block.',
     ]) expect(all).toContain(line);
     expect(all.some(t => t.startsWith('Pace is a best-case estimate'))).toBe(true);

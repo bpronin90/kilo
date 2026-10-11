@@ -27,7 +27,8 @@ export function StrengthBar({ percent, scaleMax, testID }) {
 }
 
 // The 0-scale legend is no longer printed (#1315); it lives in the explainer.
-export const strengthScaleNote = (scaleMax) => `Bars run 0–${scaleMax}%. The dark mark is your baseline (100%).`;
+// Two scales: week rows plot the capped total (always 0-100); lift bars share the ladder scale.
+export const strengthScaleNote = (scaleMax) => `Week bars run 0–100% (total recovery is capped at 100%). Lift bars run 0–${scaleMax}%. The dark mark is your baseline (100%).`;
 
 // The SOLE Analytics week selector (#1307). Membership is every live week of the
 // block (comparison results, by stable week_id), so any week stays selectable:
@@ -49,9 +50,9 @@ export function RecoveryStrengthWeeks({ weekResults, strength, total, selectedWe
         const valueText = scored ? `${displayPercent(t.percent)}%`
           : unreadable ? 'No data'
           : t ? 'No total'
-          : strength.status === STRENGTH_STATUS.OK ? 'Select to view' : 'Not scored';
+          : strength.status === STRENGTH_STATUS.OK ? (total.reason ? 'No total' : 'Select to view') : 'Not scored';
         const selected = w.week_id === selectedWeekId;
-        const label = `Week ${w.week_number}: ${scored ? `${valueText} total recovery` : unreadable ? 'no readable evidence' : valueText.toLowerCase()}`;
+        const label = `Week ${w.week_number}: ${scored ? `${valueText} total recovery` : unreadable ? 'no readable evidence' : valueText === 'No total' ? `no total${total.reason === 'no_scoreable_lifts' ? ', no baseline lift can be scored' : ''}` : valueText.toLowerCase()}`;
         return (
           <Pressable
             key={w.week_id}

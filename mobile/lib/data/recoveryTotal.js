@@ -96,7 +96,7 @@ const _sentence = (l) => (/[.!?]$/.test(l) ? l : `${l}.`);
 
 // ONE compact caption: `{N} of {M} lifts back · avg {avg}% · Week {n}`.
 export function totalCaption(total) {
-  return `${total.back} of ${total.scoreable} lifts back · avg ${displayPercent(total.avgOfBack)}% · Week ${total.week}`;
+  return `${total.back} of ${total.scoreable} ${total.scoreable === 1 ? 'lift' : 'lifts'} back · avg ${displayPercent(total.avgOfBack)}% · Week ${total.week}`;
 }
 
 // The explainer sentences for the total (the secondary cohort lines are the
