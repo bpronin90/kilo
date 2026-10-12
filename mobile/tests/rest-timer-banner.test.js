@@ -216,7 +216,10 @@ describe('RestTimerBanner compact editor control (#1006)', () => {
     const run = renderBanner({ ...idle, showStart: true, isRunning: true, remainingMs: 5000, onStart, onCancel });
     const openRun = () => act(() => { run.root.findAll(n => n.props?.accessibilityLabel === 'Rest timer, 0:05 remaining')[0].props.onPress(); });
     openRun();
-    expect(JSON.stringify(run.toJSON())).toContain('Resting · 0:05 left');
+    const runJson = JSON.stringify(run.toJSON());
+    expect(runJson).toContain('Resting · tap a time to restart');
+    // Presets read in the countdown's m:ss format, all four in one row.
+    for (const t of ['1:00', '1:30', '2:00', '3:00']) expect(runJson).toContain(`"${t}"`);
     act(() => { run.root.findAll(n => n.props?.accessibilityLabel === 'Restart 90 second rest timer')[0].props.onPress(); });
     expect(onStart).toHaveBeenCalledWith(90);
     openRun();

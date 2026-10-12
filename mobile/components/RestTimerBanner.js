@@ -108,9 +108,9 @@ export function RestTimerBanner({
     const toggleLabel = phase === 'running'
       ? `Rest timer, ${countdown} remaining${alertMissing ? ', background alert unavailable' : ''}`
       : phase === 'done' ? 'Rest timer, rest over' : 'Rest timer';
-    const panelTitle = phase === 'running'
-      ? `Resting · ${countdown} left`
-      : phase === 'done' ? 'Rest over' : 'Start rest';
+    const panelCaption = phase === 'running'
+      ? 'Resting · tap a time to restart'
+      : phase === 'done' ? 'Start another rest' : 'Choose a rest length';
 
     return (
       <View style={[styles.compactWrap, style]}>
@@ -153,10 +153,24 @@ export function RestTimerBanner({
               importantForAccessibility="no"
             />
             <View style={[styles.compactChooser, anchor]} accessibilityRole="menu">
-              <Text style={styles.panelTitle} accessibilityLiveRegion="polite">{panelTitle}</Text>
-              {phase === 'running' && !backgroundAlertAvailable && (
-                <Text style={styles.warning}>Background alert unavailable</Text>
+              {/* Header: the state itself, large — the countdown while running. */}
+              <View style={styles.panelHeader}>
+                {phase === 'running' ? (
+                  <Text style={styles.panelCountdown} accessibilityLiveRegion="polite">{countdown}</Text>
+                ) : (
+                  <Text style={[styles.panelTitle, phase === 'done' && styles.panelTitleDone]} accessibilityLiveRegion="polite">
+                    {phase === 'done' ? 'Rest over' : 'Rest timer'}
+                  </Text>
+                )}
+                <Text style={styles.panelCaption}>{panelCaption}</Text>
+              </View>
+              {alertMissing && (
+                <View style={styles.panelWarning}>
+                  <MaterialIcons name="notifications-off" size={14} color={kua.onSurfaceVariant} accessible={false} />
+                  <Text style={styles.warning}>Background alert unavailable</Text>
+                </View>
               )}
+              {/* Four equal presets in one row, in the countdown's m:ss format. */}
               <View style={styles.presetRow}>
                 {DURATION_PRESETS_SEC.map((sec) => (
                   <Pressable
@@ -169,7 +183,7 @@ export function RestTimerBanner({
                     accessibilityRole="menuitem"
                     accessibilityLabel={`${phase === 'idle' ? 'Start' : 'Restart'} ${sec} second rest timer`}
                   >
-                    <Text style={styles.choiceText}>{sec}s</Text>
+                    <Text style={styles.choiceText}>{formatCountdown(sec * 1000)}</Text>
                   </Pressable>
                 ))}
               </View>
@@ -183,7 +197,7 @@ export function RestTimerBanner({
                   accessibilityRole="menuitem"
                   accessibilityLabel={phase === 'running' ? 'Cancel rest timer' : 'Dismiss rest timer done banner'}
                 >
-                  <Text style={styles.actionText}>{phase === 'running' ? 'Cancel timer' : 'Dismiss'}</Text>
+                  <Text style={styles.panelActionText}>{phase === 'running' ? 'Cancel timer' : 'Dismiss'}</Text>
                 </Pressable>
               )}
             </View>
@@ -277,24 +291,47 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     ...TYPOGRAPHY['label-md'],
     color: kua.success,
   },
+  panelHeader: {
+    gap: 2,
+  },
   panelTitle: {
-    ...TYPOGRAPHY['label-md'],
+    ...TYPOGRAPHY['headline-sm'],
+    color: kua.onSurface,
+  },
+  panelTitleDone: {
+    color: kua.success,
+  },
+  panelCountdown: {
+    ...TYPOGRAPHY['metric-display-mobile'],
+    color: kua.onSurface,
+  },
+  panelCaption: {
+    ...TYPOGRAPHY['body-sm'],
     color: kua.onSurfaceVariant,
-    fontVariant: ['tabular-nums'],
+  },
+  panelWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   presetRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end',
     gap: 8,
   },
+  // Full-width outlined secondary button, not a loose text link.
   panelAction: {
     minHeight: 44,
-    alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: kua.surfaceBorder,
+    borderRadius: GEOMETRY['radius-xl'],
+    borderWidth: 1,
+    borderColor: kua.surfaceBorder,
+  },
+  // Semibold face, no extra fontWeight (typography.js: never pair the two).
+  panelActionText: {
+    ...TYPOGRAPHY['body-md'],
+    fontFamily: TYPOGRAPHY['headline-sm'].fontFamily,
+    color: kua.primary,
   },
   // Full-screen host inside the Modal: a scrim and the anchored menu as
   // siblings.
@@ -309,10 +346,10 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     position: 'absolute',
     top: 96,
     right: 16,
-    alignItems: 'flex-end',
-    rowGap: 8,
-    maxWidth: 240,
-    padding: 8,
+    width: 280,
+    maxWidth: '92%',
+    gap: 14,
+    padding: 16,
     borderRadius: GEOMETRY['radius-xl'],
     backgroundColor: kua.surfaceCard,
     borderWidth: 1,
@@ -320,22 +357,21 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     elevation: 8,
     shadowColor: colors.shadowColor,
     shadowOpacity: 0.18,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
   },
   compactChoiceBtn: {
+    flex: 1,
     minHeight: 44,
-    minWidth: 44,
-    paddingHorizontal: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: GEOMETRY['radius-xl'],
+    borderRadius: GEOMETRY['radius-lg'],
     backgroundColor: kua.primaryContainer,
     borderWidth: 1,
     borderColor: kua.primaryContainerBorder,
   },
   choiceText: {
-    ...TYPOGRAPHY['label-md'],
+    ...TYPOGRAPHY['label-lg'],
     color: kua.primaryOnContainer,
   },
   // App-shell running / completion pill. `pillOuter` is a full-width flow item
