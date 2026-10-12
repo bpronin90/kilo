@@ -1354,7 +1354,8 @@ Consequences to preserve:
   sheet is gone (iOS: the Modal's `onDismiss`, with a 700ms fallback), so its
   alert, share sheet or image preview never opens behind the dismissing sheet. The
   sheet's bottom padding is `24 +` the bottom safe-area inset (#1331), so its
-  last item clears the home indicator.
+  last item clears the home indicator; the current-routine card's Routine
+  actions sheet uses the same padding.
 - **More Routines opens on its three newest routines (#1329).** A
   `Show all {N} routines` / `Show fewer` text control (44dp, accent ink) appears
   below the list only when more exist. The viewed routine always renders, so a

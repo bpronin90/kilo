@@ -29,9 +29,10 @@
 // and chips use primaryContainer/primaryOnContainer; action menu uses
 // surfaceCard bg / surfaceBorder dividers; skip and status lines use
 // on-surface-variant. No behavioral, data, or navigation change.
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { AccessibilityInfo, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { Card } from './UI';
 import { useTheme } from '../theme/ThemeContext';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
@@ -113,6 +114,8 @@ export function LogActiveRoutineCard({
   const reduceMotion = useReducedMotion();
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(kua, colors), [kua, colors]);
+  // #1331: the menu sheet's last item clears the home indicator.
+  const { bottom: bottomInset = 0 } = useContext(SafeAreaInsetsContext) || {};
   const [imageShare, setImageShare] = useState(null);
   // #1021: the consolidated three-dot menu's open state. Closes itself after
   // any item is chosen, and on header collapse (the menu has nothing to
@@ -215,7 +218,7 @@ export function LogActiveRoutineCard({
             accessible={false}
             importantForAccessibility="no"
           />
-          <View style={styles.actionMenu} accessibilityRole="menu" testID="log-current-routine-menu">
+          <View style={[styles.actionMenu, { paddingBottom: 24 + bottomInset }]} accessibilityRole="menu" testID="log-current-routine-menu">
             {[
               { label: 'Edit', a11y: 'Edit routine', run: enterCurrentEditor },
               // Workout actions first — Edit, then both skip actions together: Skip week always (skips
@@ -534,8 +537,7 @@ const createStyles = (kua, colors) => StyleSheet.create({
   },
   // #1244: compact bottom sheet — one 44dp row per action.
   actionMenu: {
-    paddingVertical: 8,
-    paddingBottom: 24,
+    paddingTop: 8,
     borderTopLeftRadius: GEOMETRY['radius-2xl'],
     borderTopRightRadius: GEOMETRY['radius-2xl'],
     backgroundColor: kua ? kua.surfaceCard : colors.card,
