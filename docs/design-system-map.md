@@ -472,6 +472,16 @@ while collapsed expands the panel and opens the filter row.
 
 Source: `mobile/screens/HomeScreen.js`
 
+**Hierarchy (#1339).** Strength first, weight as support. Normal training:
+hero (current training / Exercise Progress) → `1K Progress` → body weight.
+Active Recovery: hero (`Recovery` + next action) → Recovery card (week tag and
+Big 3) → body weight; 1K stays hidden while baseline is paused. Home has no
+generic Analytics footer — each section header deep-links to its own Analytics
+section. The `ScreenShell` subtitle follows state: `Recovery block in
+progress.` in Recovery, `Current routine progress.` only for a current routine
+with content, otherwise (loading, no routine, empty routine, weight-only, first
+use) `Training and body weight at a glance.`
+
 ### Cloud Sync Notice (#737)
 
 Rendered above every other tier, only when the shell-published summary carries a
@@ -521,8 +531,9 @@ rather than reading a stack of empty containers.
 ### Recovery Status Card (#757)
 
 Sits directly under the Weekly Summary hero, inside the populated-dashboard
-branch only — it explains what that hero's week label and classification counts
-currently mean, so it belongs to them rather than to a topic of its own.
+branch only — it explains what Home's classification counts and 1K currently
+mean. In Recovery it is the single owner of the week identity and the Big 3
+(#1339): the hero no longer repeats the week or note title.
 
 Rendering is decided by the AUTHORITATIVE recovery state
 (`useRecoveryBlockState`, via `useHomeRecoverySummary`), not by the
@@ -610,13 +621,16 @@ already use and that is owned by `App.js`.
 
 ### Weekly Summary Hero Card
 
-**Current structure (#1112, #1333).** The hero answers three questions only:
+**Current structure (#1112, #1333, #1339).** The hero answers three questions only:
 what is being trained (`home-hero-label`: `Week N`, `Recovery`, `Current
 routine`, or `No current routine`, plus the routine title `home-routine-title`),
 how it is going (the `Exercise Progress` handoff `home-exercise-progress-link`
 → `Analytics › progressive-overload`, then the Progressing/Steady/Regressing
-trio), and what to do next (the `Log workout` / `Log weight` strip, then the
-quiet `Full history and insights` footer). Body weight moved to the weight card
+trio), and what to do next (the `Log workout` / `Log weight` strip). #1339
+removed the `Full history and insights` footer (sections deep-link instead) and,
+in Recovery, the hero's week subline, active-note title and the bare paused
+`Exercise Progress` handoff: a Recovery hero is `Recovery` plus the action strip,
+and the Recovery card below owns the rest. Body weight moved to the weight card
 below. With no current routine there is no week and no trio: one line (`Pick a
 saved routine or write a new one in Log.`, or `Write a routine in Log to track
 your weeks.` with no saved routines) and the primary action reads `Choose
@@ -671,15 +685,19 @@ progress.` The table below is the pre-#1112 layout, kept for history.
 
 ### Weight Goal Card
 
-**Current structure (#1333).** `screens/home/HomeWeightCard.js` (`home-weight-card`)
-holds body weight and the goal together. Its `Body weight` header
-(`home-weight-link`) is the Weight-tab handoff; then the latest weigh-in (or `No
-weigh-in yet`), the 7-day rolling-average sparkline, the legacy-only `See
-weight trends` link, and, with a goal, a divided goal section (mode, weeks
-left / `Goal ended`, Target, Pace — Pace hidden when there is none). An ended
-goal or an unrealistic/aggressive pace adds `home-goal-attention`: the Weight
-goal card's own sentence in `warning`/`cautionText` and a ≥44dp `Review goal`
-action (`onNavigate('Weight')`). The table below is the pre-#1112 layout.
+**Current structure (#1333, compact #1339).** `screens/home/HomeWeightCard.js`
+(`home-weight-card`) is supporting context, the last card on Home, not a mini
+Weight tab. Its `Body weight` header (`home-weight-link`) is the Weight-tab
+handoff; then one wrapping row: the latest weigh-in (or `No weigh-in yet`) at
+`24`/`28` metric-display-mobile, and, with a goal, `home-goal` right-aligned —
+the mode (`Cutting`/`Bulking`/`Maintaining`, primary) `· {target} {unit}` and
+weeks left / `Goal ended`. The 7-day sparkline and the Target/Pace stat grid
+live on Weight only. The legacy-only `See weight trends` link is unchanged. An
+ended goal or an unrealistic/aggressive pace adds `home-goal-attention`: the
+Weight goal card's own sentence in `warning`/`cautionText` and a ≥44dp `Review
+goal` action (`onNavigate('Weight')`). Card padding is `20` horizontal, `4` top
+(the 44dp header supplies the rest), `16` bottom. The table below is the
+pre-#1112 layout.
 
 
 | Element | Property | Value | Line |
@@ -705,10 +723,13 @@ action (`onNavigate('Weight')`). The table below is the pre-#1112 layout.
 
 ### 1K Club Card (Home)
 
-**No total yet (#1333).** Without a complete Big 3 cycle the card is the
-`1K Progress` header handoff plus one line (`home-one-k-setup`: `Log a session
-of each Big 3 lift to see your 1K total.`); the lift grid shows only lifts that
-already have a value, and no `N/A` hero or empty progress bar renders.
+**No total yet (#1333, compact #1339).** Without a complete Big 3 cycle the
+card is a compact, left-aligned setup row (`oneKSetupCard`: padding `20`
+horizontal, `4` top, `14` bottom): the start-aligned `1K Progress` header
+handoff, one `body-sm` line (`home-one-k-setup`: `Log a session of each Big 3
+lift to see your 1K total.`) and, when some lifts are already logged, one quiet
+line (`home-one-k-logged`, e.g. `Squats 315 · Bench 225`). No metric grid,
+`N/A` hero or empty progress bar renders. With a total the card is unchanged.
 
 
 Home is the **compact-summary** treatment (#763): the breakdown is plain data
