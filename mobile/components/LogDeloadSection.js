@@ -145,7 +145,6 @@ export function LogDeloadSection({
               {!deloadCollapsed && (
                 <View style={styles.currentNoteContent}>
                   <Pressable onPress={handleDeloadBodyPress}>
-                    <Text style={styles.editHint}>Double-tap to edit</Text>
                     <WorkoutContentRenderer
                       dayGroups={deloadDayGroups}
                       isDeload={true}
@@ -153,26 +152,22 @@ export function LogDeloadSection({
                       emptyText="Deload note is empty."
                     />
                   </Pressable>
+                  {/* Primary → secondary → destructive, matching the routine
+                      cards: finish the deload first, delete it last. The
+                      double-tap gesture still edits; its hint is retired (#711). */}
                   <View style={styles.inlineActions}>
+                    {deloadMode === 'read' && (
+                      <Button
+                        onPress={handleCompleteDeload}
+                        title="Deload complete"
+                      />
+                    )}
                     <Button
                       onPress={enterDeloadEditor}
                       title="Edit"
                       style={styles.switchButton}
                       textStyle={styles.switchButtonText}
                     />
-                    {deloadMode === 'read' && (
-                      <>
-                        <Button
-                          onPress={handleCompleteDeload}
-                          title="Deload complete"
-                        />
-                        <Button
-                          onPress={handleDeleteActiveDeload}
-                          title="Delete active deload"
-                          tone="danger"
-                        />
-                      </>
-                    )}
                     <Button
                       onPress={handleGenerateDeload}
                       title={isGenerating ? 'Generating…' : 'Regenerate deload'}
@@ -180,6 +175,13 @@ export function LogDeloadSection({
                       style={styles.generateButton}
                       textStyle={styles.generateButtonText}
                     />
+                    {deloadMode === 'read' && (
+                      <Button
+                        onPress={handleDeleteActiveDeload}
+                        title="Delete active deload"
+                        tone="danger"
+                      />
+                    )}
                   </View>
                 </View>
               )}
@@ -225,7 +227,6 @@ export function LogDeloadSection({
                   {isViewed && viewingNote && (
                     <>
                       <Pressable onPress={() => handleViewedNoteBodyPress(note)} style={styles.currentNoteContent}>
-                        <Text style={styles.editHint}>Double-tap to edit</Text>
                         <WorkoutContentRenderer
                           dayGroups={viewingNoteDayGroups}
                           isDeload={true}
@@ -426,11 +427,6 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     ...(kua ? TYPOGRAPHY['label-md'] : { fontSize: TYPOGRAPHY['label-md'].fontSize }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 2,
-  },
-  editHint: {
-    fontSize: TYPOGRAPHY['label-sm'].fontSize,
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    marginBottom: 8,
   },
   currentNoteContent: {
     paddingHorizontal: 24,

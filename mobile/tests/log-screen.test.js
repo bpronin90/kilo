@@ -4275,13 +4275,14 @@ describe('Log action hierarchy (#711)', () => {
       expect(props.handleUnskipWeek).not.toHaveBeenCalled();
     });
 
-    test('with a trailing skip present, only "Remove skip" is offered, inside the Routine actions menu', () => {
+    test('with a trailing skip present, Skip week stays in the strip and "Remove skip" is in the Routine actions menu', () => {
       const { root, props } = renderActiveCard({ canUnskipWeek: true });
-      // #1244: no standalone row — Remove skip is a menu item.
+      // #1244: no standalone row — Remove skip is a menu item. Skip week
+      // itself never disappears after a skip (skips stack by design).
       expect(textNodes(root, 'Remove skip').length).toBe(0);
+      expect(textNodes(root, 'Skip week').length).toBe(1);
       openCurrentRoutineMenu(root);
       expect(textNodes(root, 'Remove skip').length).toBe(1);
-      expect(textNodes(root, 'Skip week').length).toBe(0);
 
       const unskipBtn = pressableAround(root, t => t === 'Remove skip');
       // No opacity-only disabled state left to carry: the control is either
@@ -4948,13 +4949,16 @@ describe('handleSkipWeek: fatigue prompt gated on successful save', () => {
     expect(src).toMatch(/if\s*\(!saved\)\s*\{/);
   });
 
-  test('Log withholds both specialized save controls while the current note is saving', () => {
+  test('Log keeps both skip controls mounted while saving; the handlers guard the in-flight save', () => {
     const src = fs.readFileSync(
       path.join(__dirname, '../screens/LogScreen.js'),
       'utf8'
     );
-    expect(src).toMatch(/handleSkipWeek=\{currentEditor\.isSaving \? undefined : currentEditor\.handleSkipWeek\}/);
-    expect(src).toMatch(/handleUnskipWeek=\{currentEditor\.isSaving \? undefined : currentEditor\.handleUnskipWeek\}/);
+    expect(src).toMatch(/handleSkipWeek=\{currentEditor\.handleSkipWeek\}/);
+    expect(src).toMatch(/handleUnskipWeek=\{currentEditor\.handleUnskipWeek\}/);
+    expect(src).not.toMatch(/isSaving \? undefined : currentEditor\.handle(Un)?[sS]kipWeek/);
+    const hook = fs.readFileSync(path.join(__dirname, '../screens/log/useLogCurrentRoutineEditor.js'), 'utf8');
+    expect(hook).toMatch(/if \(saveCurrentInFlightRef\.current\) \{\s*setSkipWeekStatus\('Finishing the previous save\. Try again\.'\);/);
   });
 });
 
@@ -10925,11 +10929,11 @@ describe('typed note navigation intents (#718)', () => {
 
   // Screen-level signal that a note is actually being shown. A viewed
   // non-current ROUTINE renders its lifecycle actions (`Set as current routine`)
-  // in the expanded routine-management body — the `Double-tap to edit` hint was
-  // retired there (#724) — while a viewed past-DELOAD note still renders that
-  // hint in LogDeloadSection. Either proves the resolved note is mounted.
+  // in the expanded routine-management body, while a viewed past-DELOAD note
+  // renders `Edit deload record` in LogDeloadSection (the `Double-tap to edit`
+  // hint is retired in both). Either proves the resolved note is mounted.
   const isShowingViewedNote = (component) =>
-    hasText(component, 'Set as current routine') || hasText(component, 'Double-tap to edit');
+    hasText(component, 'Set as current routine') || hasText(component, 'Edit deload record');
 
   function mount(props) {
     let component;

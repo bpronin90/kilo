@@ -268,6 +268,9 @@ describe('Android Back handler ownership across tab switches (#527)', () => {
 
   afterEach(() => {
     addListenerSpy.mockRestore();
+    // Unmount so a stale App from an earlier test can never re-render and
+    // overwrite the shared `capturedTabPress` with its own tab handler.
+    renderer.act(() => { component?.unmount(); });
     component = null;
     capturedTabPress = null;
     // Restore real timers so neither the pending midnight-refresh setTimeout nor

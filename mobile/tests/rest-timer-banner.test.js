@@ -62,8 +62,8 @@ function buttonsByLabel(json, label) {
 // #950 review (P1): the running countdown / completion surface mounts once at
 // the app-shell level (compact=false); the Log-screen instance is the
 // contextual idle affordance only. #1026: that surface is now a compact
-// centered pill, not a full-width banner — tapping the running pill reveals
-// Cancel, completion offers Dismiss in the same place.
+// centered pill, not a full-width banner — the running pill shows Cancel
+// directly, completion offers Dismiss in the same place.
 describe('RestTimerBanner app-shell instance (#950 review P1, #1026)', () => {
   const shellRun = { isRunning: true, remainingMs: 5000, justElapsed: false, backgroundAlertAvailable: true, showStart: false };
 
@@ -87,14 +87,10 @@ describe('RestTimerBanner app-shell instance (#950 review P1, #1026)', () => {
     expect(JSON.stringify(tree.toJSON())).not.toContain('Background alert unavailable');
   });
 
-  test('the running pill hides Cancel until tapped, then exposes it', () => {
+  test('the running pill shows Cancel directly — no hidden tap-to-reveal step', () => {
     const onCancel = jest.fn();
     const tree = renderBanner({ ...shellRun, onCancel });
-    expect(buttonsByLabel(tree.toJSON(), 'Cancel rest timer')).toHaveLength(0);
-    const pill = tree.root.findAll(
-      (n) => n.props && n.props.accessibilityLabel === 'Rest timer, 0:05 remaining'
-    )[0];
-    act(() => { pill.props.onPress(); });
+    expect(buttonsByLabel(tree.toJSON(), 'Rest timer, 0:05 remaining')).toHaveLength(1);
     const cancel = tree.root.findAll((n) => n.props && n.props.accessibilityLabel === 'Cancel rest timer')[0];
     act(() => { cancel.props.onPress(); });
     expect(onCancel).toHaveBeenCalledTimes(1);
@@ -204,9 +200,50 @@ describe('RestTimerBanner compact editor control (#1006)', () => {
     expect(tree.toJSON()).toBeNull();
   });
 
-  test('hidden while a timer is running or has just completed', () => {
-    expect(renderBanner({ ...idle, showStart: true, isRunning: true, remainingMs: 5000 }).toJSON()).toBeNull();
-    expect(renderBanner({ ...idle, showStart: true, justElapsed: true }).toJSON()).toBeNull();
+  test('stays docked through the whole lifecycle: idle stopwatch, live countdown, rest over', () => {
+    expect(buttonsByLabel(renderBanner({ ...idle, showStart: true }).toJSON(), 'Rest timer')).toHaveLength(1);
+    const running = renderBanner({ ...idle, showStart: true, isRunning: true, remainingMs: 5000 }).toJSON();
+    expect(buttonsByLabel(running, 'Rest timer, 0:05 remaining')).toHaveLength(1);
+    expect(JSON.stringify(running)).toContain('0:05');
+    const done = renderBanner({ ...idle, showStart: true, justElapsed: true }).toJSON();
+    expect(buttonsByLabel(done, 'Rest timer, rest over')).toHaveLength(1);
+  });
+
+  test('running: the same panel restarts or cancels; done: restarts or dismisses', () => {
+    const onStart = jest.fn();
+    const onCancel = jest.fn();
+    const onDismissDone = jest.fn();
+    const run = renderBanner({ ...idle, showStart: true, isRunning: true, remainingMs: 5000, onStart, onCancel });
+    const openRun = () => act(() => { run.root.findAll(n => n.props?.accessibilityLabel === 'Rest timer, 0:05 remaining')[0].props.onPress(); });
+    openRun();
+    expect(JSON.stringify(run.toJSON())).toContain('Resting · 0:05 left');
+    act(() => { run.root.findAll(n => n.props?.accessibilityLabel === 'Restart 90 second rest timer')[0].props.onPress(); });
+    expect(onStart).toHaveBeenCalledWith(90);
+    openRun();
+    act(() => { run.root.findAll(n => n.props?.accessibilityLabel === 'Cancel rest timer')[0].props.onPress(); });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+
+    const done = renderBanner({ ...idle, showStart: true, justElapsed: true, onStart, onDismissDone });
+    act(() => { done.root.findAll(n => n.props?.accessibilityLabel === 'Rest timer, rest over')[0].props.onPress(); });
+    expect(buttonsByLabel(done.toJSON(), 'Restart 60 second rest timer')).toHaveLength(1);
+    act(() => { done.root.findAll(n => n.props?.accessibilityLabel === 'Dismiss rest timer done banner')[0].props.onPress(); });
+    expect(onDismissDone).toHaveBeenCalledTimes(1);
+  });
+
+  test('a failed background alert is flagged on the closed docked control', () => {
+    const missing = renderBanner({ ...idle, showStart: true, isRunning: true, remainingMs: 5000, backgroundAlertAvailable: false });
+    expect(missing.root.findAll(n => n.props?.testID === 'rest-timer-alert-unavailable').length).toBeGreaterThan(0);
+    expect(buttonsByLabel(missing.toJSON(), 'Rest timer, 0:05 remaining, background alert unavailable')).toHaveLength(1);
+    const ok = renderBanner({ ...idle, showStart: true, isRunning: true, remainingMs: 5000, backgroundAlertAvailable: true });
+    expect(ok.root.findAll(n => n.props?.testID === 'rest-timer-alert-unavailable')).toHaveLength(0);
+  });
+
+  test('idle panel offers Start presets only — no Cancel or Dismiss', () => {
+    const tree = renderBanner({ ...idle, showStart: true });
+    act(() => { tree.root.findAll(n => n.props?.accessibilityLabel === 'Rest timer')[0].props.onPress(); });
+    const json = tree.toJSON();
+    expect(buttonsByLabel(json, 'Cancel rest timer')).toHaveLength(0);
+    expect(buttonsByLabel(json, 'Dismiss rest timer done banner')).toHaveLength(0);
   });
 
   test('leaving edit state collapses the chooser: it is closed again on return', () => {
@@ -370,8 +407,6 @@ describe('RestTimerBanner KUA token application (#1100)', () => {
 
     // cancel
     const cancelTree = renderBanner({ ...shellRun, onCancel });
-    const pill = cancelTree.root.findAll(n => n.props?.accessibilityLabel === `Rest timer, 0:05 remaining`)[0];
-    act(() => { pill.props.onPress(); });
     const cancelBtn = cancelTree.root.findAll(n => n.props?.accessibilityLabel === 'Cancel rest timer')[0];
     act(() => { cancelBtn.props.onPress(); });
     expect(onCancel).toHaveBeenCalledTimes(1);

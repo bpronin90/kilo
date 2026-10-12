@@ -90,6 +90,7 @@ export function LogScreen({
   onStartRestTimer,
   onCancelRestTimer,
   onDismissRestTimerDone,
+  onRestTimerDockedChange,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -434,6 +435,15 @@ export function LogScreen({
   } = buildLogRecovery({ ...screen, eligibleBaselineNotes, eligibleWeekNotes });
   const recoveryManage = { ...recoveryHistory.manage, completedBlocks: recoveryHistory.completedBlocks, notesError, scrollRef: readScrollRef, onReopenBlock: openReopenRecoveryBlockConfirm };
 
+  // The header rest-timer control is docked only in current-routine edit; App.js
+  // hides its app-shell pill only while that control is on screen (the header
+  // scrolls with the editor, so past ~52dp the fixed pill takes over again).
+  const restTimerDocked = !importRoutineOpen && !otherEditor.editingNoteId && currentEditor.mode === 'edit';
+  const [editorHeaderScrolledAway, setEditorHeaderScrolledAway] = useState(false);
+  const restTimerDockVisible = restTimerDocked && !editorHeaderScrolledAway;
+  useEffect(() => { onRestTimerDockedChange?.(restTimerDockVisible); }, [restTimerDockVisible, onRestTimerDockedChange]);
+  useEffect(() => () => onRestTimerDockedChange?.(false), [onRestTimerDockedChange]);
+
   // #1021: the New Routine editor's secondary Import routine action opens
   // this in place of the ordinary read/editor pair below. `add` is the same
   // note-store write the import preview is wired to everywhere else
@@ -453,7 +463,7 @@ export function LogScreen({
     <LogActiveRoutineCard
       workoutNoteTitle={workoutNoteTitle} hasABWeeks={currentEditor.hasABWeeks} effectiveActiveWeek={currentEditor.effectiveActiveWeek}
       handleToggleWeek={currentEditor.handleToggleWeek} enterCurrentEditor={currentEditor.enterCurrentEditor} handleNoteBodyPress={currentEditor.handleNoteBodyPress}
-      handleSkipWeek={currentEditor.isSaving ? undefined : currentEditor.handleSkipWeek} handleUnskipWeek={currentEditor.isSaving ? undefined : currentEditor.handleUnskipWeek} canUnskipWeek={currentEditor.canUnskipWeek}
+      handleSkipWeek={currentEditor.handleSkipWeek} handleUnskipWeek={currentEditor.handleUnskipWeek} canUnskipWeek={currentEditor.canUnskipWeek}
       skipWeekStatus={currentEditor.skipWeekStatus} toggleCollapsed={toggleCollapsed} isCollapsed={isCollapsed}
       dayGroups={currentEditor.dayGroups} noteError={currentEditor.noteError} trackedLifts={trackedLifts}
       handleToggleTrack={handleToggleTrack} roughNoteId={currentEditor.roughNoteId} currentId={currentId}
@@ -495,6 +505,7 @@ export function LogScreen({
 
       <ScreenShell
         ref={editorScrollRef}
+        onScroll={(e) => setEditorHeaderScrolledAway((e?.nativeEvent?.contentOffset?.y ?? 0) > 52)}
         style={isEditing ? { flex: 1 } : { display: 'none' }}
         title={
           deloadEditor.deloadMode === 'edit' ? 'Deload Week' :
@@ -509,14 +520,11 @@ export function LogScreen({
         }
         headerRight={
           <View style={styles.editorHeaderActions}>
-            {/* #1006: the idle rest-timer affordance is a compact stopwatch
-                in the editor's header corner, not a full-width row below the
-                editor. It renders nothing outside current-routine edit mode
-                or while a timer is running/just completed, so it adds no
-                header width and reserves no editor or bottom-navigation
-                space; its chooser opens as an out-of-flow dropdown. The
-                running countdown / completion banner stays the single
-                app-shell instance (App.js). */}
+            {/* #1006/#1321: the rest timer docks in the editor's header
+                corner in current-routine edit only — stopwatch, live
+                countdown, or Rest over in one place, with its panel opening
+                out of flow. It reserves no editor or bottom-navigation space;
+                App.js hides its app-shell pill while this one is docked. */}
             <RestTimerBanner
               isRunning={restTimerIsRunning}
               remainingMs={restTimerRemainingMs}
@@ -525,7 +533,7 @@ export function LogScreen({
               onCancel={onCancelRestTimer}
               onDismissDone={onDismissRestTimerDone}
               onStart={onStartRestTimer}
-              showStart={!otherEditor.editingNoteId && currentEditor.mode === 'edit'}
+              showStart={restTimerDocked}
               compact
             />
             <EditorHeaderActions otherEditor={otherEditor} deloadEditor={deloadEditor} currentEditor={currentEditor} />

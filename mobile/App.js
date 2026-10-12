@@ -161,6 +161,8 @@ function ShellView({ onDeviceDataWiped }) {
   // clearance ScreenShell reserves for scrollable content (measured
   // tabBarHeight + the shared visual gap + the bottom safe-area inset).
   const restTimerBannerClearance = tabBarHeight + TAB_BAR_VISUAL_GAP + bottomSafeAreaInset;
+  // True while the Log editor docks the rest timer in its header (stable setter).
+  const [restTimerDocked, setRestTimerDocked] = useState(false);
 
   // Browser-safe back affordance: web has no Android hardware back button, so a
   // non-Home tab would otherwise have no on-screen way to return to Home short
@@ -270,6 +272,7 @@ function ShellView({ onDeviceDataWiped }) {
             onStartRestTimer={restTimer.start}
             onCancelRestTimer={restTimer.cancel}
             onDismissRestTimerDone={restTimer.dismissDone}
+            onRestTimerDockedChange={setRestTimerDocked}
           />
         </View>
         <View
@@ -392,7 +395,8 @@ function ShellView({ onDeviceDataWiped }) {
             floating (position: absolute) TabBar — or the bottom safe area /
             home indicator on inset devices — can never cover it or its
             Cancel/Dismiss action. */}
-        <RestTimerBanner
+        {/* Hidden while the Log editor docks the same timer in its header. */}
+        {!(activeTab === 'Log' && restTimerDocked) && <RestTimerBanner
           isRunning={restTimer.isRunning}
           remainingMs={restTimer.remainingMs}
           justElapsed={restTimer.justElapsed}
@@ -402,7 +406,7 @@ function ShellView({ onDeviceDataWiped }) {
           onStart={restTimer.start}
           showStart={false}
           style={{ marginBottom: restTimerBannerClearance }}
-        />
+        />}
         <TabBar
           tabs={TABS}
           activeTab={activeTab}

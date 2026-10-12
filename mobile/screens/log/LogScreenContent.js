@@ -67,13 +67,13 @@ export function LogScreenContent(props) {
         ) : (
           <>
             {(deloadTabEnabled || recoveryTabVisible) && (
-              <View style={styles.tabToggle}>
+              <View style={styles.tabToggle} accessibilityRole="tablist">
                 {/* Recovery is first when present (#823) — see
                     `recoveryTabVisible` above for exactly when that is, so it
                     is never a permanent, empty tab. */}
                 {recoveryTabVisible && (
                   <Pressable
-                    onPress={() => handleTabViewChange('recovery')}
+                    onPress={() => handleTabViewChange('recovery')} accessibilityRole="tab" accessibilityState={{ selected: effectiveTabView === 'recovery' }}
                     style={[styles.tabToggleItem, effectiveTabView === 'recovery' && styles.tabToggleItemActive]}
                   >
                     <Text style={[styles.tabToggleText, effectiveTabView === 'recovery' && styles.tabToggleTextActive]}>Recovery</Text>
@@ -81,8 +81,8 @@ export function LogScreenContent(props) {
                 )}
                 <Pressable
                   onPress={() => handleTabViewChange('routine')}
-                  disabled={recoveryInlineEditActive}
-                  accessibilityState={{ disabled: recoveryInlineEditActive }}
+                  disabled={recoveryInlineEditActive} accessibilityRole="tab"
+                  accessibilityState={{ disabled: recoveryInlineEditActive, selected: effectiveTabView === 'routine' }}
                   style={[styles.tabToggleItem, effectiveTabView === 'routine' && styles.tabToggleItemActive]}
                 >
                   <Text style={[styles.tabToggleText, effectiveTabView === 'routine' && styles.tabToggleTextActive]}>Routine</Text>
@@ -90,8 +90,8 @@ export function LogScreenContent(props) {
                 {deloadTabEnabled && (
                   <Pressable
                     onPress={() => handleTabViewChange('deload')}
-                    disabled={recoveryInlineEditActive}
-                    accessibilityState={{ disabled: recoveryInlineEditActive }}
+                    disabled={recoveryInlineEditActive} accessibilityRole="tab"
+                    accessibilityState={{ disabled: recoveryInlineEditActive, selected: effectiveTabView === 'deload' }}
                     style={[styles.tabToggleItem, effectiveTabView === 'deload' && styles.tabToggleItemActive]}
                   >
                     <Text style={[styles.tabToggleText, effectiveTabView === 'deload' && styles.tabToggleTextActive]}>Deload</Text>

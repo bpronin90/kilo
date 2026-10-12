@@ -123,11 +123,26 @@ describe('#1054 source parity — source-scanned wiring stays in the boundary fi
   });
 
   test('LogScreen keeps the source-scanned skip/unskip wiring and the back-handler done calls', () => {
-    expect(logScreenSrc).toMatch(/handleSkipWeek=\{currentEditor\.isSaving \? undefined : currentEditor\.handleSkipWeek\}/);
-    expect(logScreenSrc).toMatch(/handleUnskipWeek=\{currentEditor\.isSaving \? undefined : currentEditor\.handleUnskipWeek\}/);
+    // Skip week stays mounted while saving; the handlers guard in-flight saves.
+    expect(logScreenSrc).toMatch(/handleSkipWeek=\{currentEditor\.handleSkipWeek\}/);
+    expect(logScreenSrc).toMatch(/handleUnskipWeek=\{currentEditor\.handleUnskipWeek\}/);
     expect(logScreenSrc).toMatch(/handleDoneDeload\(\)/);
     expect(logScreenSrc).toMatch(/handleDoneOther\(\)/);
     expect(logScreenSrc).toMatch(/handleDoneCurrent\(\)/);
+  });
+
+  test('the docked editor timer and the app-shell pill never show together', () => {
+    const appSrc = fs.readFileSync(path.join(__dirname, '../App.js'), 'utf8');
+    expect(logScreenSrc).toMatch(/const restTimerDocked = !importRoutineOpen && !otherEditor\.editingNoteId && currentEditor\.mode === 'edit';/);
+    expect(logScreenSrc).toMatch(/showStart=\{restTimerDocked\}/);
+    expect(logScreenSrc).toMatch(/onRestTimerDockedChange\?\.\(false\)/);
+    // Docked only while the header control is on screen: scrolling the editor
+    // past it hands the countdown back to the fixed app-shell pill.
+    expect(logScreenSrc).toMatch(/const restTimerDockVisible = restTimerDocked && !editorHeaderScrolledAway;/);
+    expect(logScreenSrc).toMatch(/onRestTimerDockedChange\?\.\(restTimerDockVisible\)/);
+    expect(logScreenSrc).toMatch(/onScroll=\{\(e\) => setEditorHeaderScrolledAway\(/);
+    expect(appSrc).toMatch(/onRestTimerDockedChange=\{setRestTimerDocked\}/);
+    expect(appSrc).toMatch(/!\(activeTab === 'Log' && restTimerDocked\) && <RestTimerBanner/);
   });
 
   test('LogScreen keeps a single compact rest-timer banner ahead of the editor card', () => {

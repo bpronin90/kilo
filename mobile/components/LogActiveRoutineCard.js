@@ -1,7 +1,9 @@
 // The active routine card (#711 information hierarchy): the collapse target
 // carries identity only — title, `Week X · Current routine`, recovery badge. Its
 // one sibling is the 44dp Routine actions trigger (#1244); Week A/B and Skip
-// week live in the strip under it. The title column keeps a width floor.
+// week live in the strip under it. Skip week stays mounted through saves and
+// after a skip (a press mid-save answers with a status line instead); Remove
+// skip is the menu's correction item. The title column keeps a width floor.
 //
 // This is the Current routine card, which the Log tab's style lock
 // (`screens/LogScreen.js` lines 1-46) holds tighter than the rest of the tab:
@@ -293,8 +295,8 @@ export function LogActiveRoutineCard({
         >
           {/* The card's action strip: Week A/B and Skip week only. #1244 moved
               the Routine actions trigger to the header and Remove skip into the
-              menu, so a skipped single-week routine renders no strip at all. */}
-          {(hasABWeeks || (!canUnskipWeek && handleSkipWeek)) && (
+              menu; Skip week itself never disappears, so the strip is stable. */}
+          {(hasABWeeks || handleSkipWeek) && (
           <View style={styles.actionStrip}>
             <View style={styles.actionStripPrimary}>
               {hasABWeeks && (
@@ -312,9 +314,9 @@ export function LogActiveRoutineCard({
                 </Pressable>
               )}
             </View>
-            {/* One skip control, never two (#711): Skip week here, or Remove
-                skip in the Routine actions menu (#1244). */}
-            {!canUnskipWeek && handleSkipWeek && (
+            {/* One skip control in the strip (#711); Remove skip, when there
+                is one to remove, is in the Routine actions menu (#1244). */}
+            {handleSkipWeek && (
               <View style={styles.skipWeekActions}>
                 <Pressable
                   onPress={(e) => { e.stopPropagation(); handleSkipWeek(); }}
