@@ -2192,7 +2192,7 @@ describe('HomeScreen follows the shared active-training context (#869)', () => {
       .map(n => n.props.testID);
     expect(order).toEqual(['home-recovery-summary', 'home-weight-card']);
     const shell = component.root.findAll(n => typeof n.type === 'string' && n.props?.testID === 'screen-shell')[0];
-    expect(shell.props.subtitle).toBe('Recovery block in progress.');
+    expect(shell.props.subtitle).toBe('Training and body weight at a glance.');
   });
 
   test('Log workout targets the exact active Recovery note, even though it is not currentId', async () => {
@@ -2564,12 +2564,13 @@ describe('Home daily-dashboard states (#1333)', () => {
     expect(order).toEqual(['home-hero-label', 'home-one-k-link', 'home-weight-card']);
   });
 
-  describe('subtitle (#1339)', () => {
+  describe('subtitle (#1339, #1341)', () => {
     const subtitle = (c) => host(c, 'screen-shell').props.subtitle;
 
-    test('a routine with content is routine progress', async () => {
+    // #1341: the lead card names the routine week, so the subtitle does not.
+    test('a routine with content keeps the neutral subtitle', async () => {
       const { component: c } = await mount();
-      expect(subtitle(c)).toBe('Current routine progress.');
+      expect(subtitle(c)).toBe('Training and body weight at a glance.');
     });
 
     test('a load still in flight stays generic', async () => {

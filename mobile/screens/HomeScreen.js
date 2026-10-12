@@ -383,13 +383,9 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
            !hasTrackedLifts;
   }, [isLoading, hasLoadError, weightEntries, notes, workoutNote, weightGoal, trackedLifts]);
 
-  // #1339: the subtitle names only what Home can vouch for. Generic until the
-  // reads settle, so a Recovery account never flashes "routine progress" first.
-  const homeSubtitle = !isLoading && isRecovery
-    ? 'Recovery block in progress.'
-    : !isLoading && workoutNote?.raw_text?.trim()
-      ? 'Current routine progress.'
-      : 'Training and body weight at a glance.';
+  // #1341: one neutral subtitle in every state. The lead card already names the
+  // routine week or `Recovery · Week N`; a state-specific subtitle repeated it.
+  const homeSubtitle = 'Training and body weight at a glance.';
 
   return (
     <ScreenShell

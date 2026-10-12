@@ -480,10 +480,9 @@ Recovery (open week or between weeks): ONE Recovery card is the training
 surface — `Recovery · Week N`, the total as the hero number, Big 3 bars, and the
 action strip — → body weight. No training hero and no 1K card render in Recovery. Home has no
 generic Analytics footer — each section header deep-links to its own Analytics
-section. The `ScreenShell` subtitle follows state: `Recovery block in
-progress.` in Recovery, `Current routine progress.` only for a current routine
-with content, otherwise (loading, no routine, empty routine, weight-only, first
-use) `Training and body weight at a glance.`
+section. The `ScreenShell` subtitle is `Training and body weight at a glance.` in every
+state (#1341): the lead card already names the routine week or `Recovery · Week
+N`, so a state-specific subtitle only repeated it.
 
 ### Cloud Sync Notice (#737)
 
