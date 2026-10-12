@@ -4,7 +4,7 @@ import {
   findMatchingExerciseNames,
   rolloverOneKExercises,
   normalizeExerciseKey,
-  DEFAULT_1K_EXERCISES,
+  resolveOneKSelections,
 } from '../../lib/data';
 
 // Adoption / switch-current handlers for the other-routine editor, extracted
@@ -125,7 +125,7 @@ export function createOtherAdoptionHandlers(ctx) {
           const matchedNames = findMatchingExerciseNames(oldSections, newSections);
           if (matchedNames.length > 0) {
             const matchedKeys = new Set(matchedNames.map(n => normalizeExerciseKey(n)));
-            const oldOneK = { ...DEFAULT_1K_EXERCISES, ...(currentNote.one_k_exercises || {}) };
+            const oldOneK = resolveOneKSelections(currentNote);
             const rolledOneK = rolloverOneKExercises(oldOneK, matchedKeys);
             if (rolledOneK) {
               await update(id, { one_k_exercises: rolledOneK });

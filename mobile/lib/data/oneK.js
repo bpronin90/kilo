@@ -9,6 +9,24 @@ export const DEFAULT_1K_EXERCISES = {
   deadlift: 'Deadlift',
 };
 
+// Canonical effective 1K (Big 3) selection for a routine note: the slot
+// defaults under the note's own picks. Every surface that names or totals the
+// Big 3 (Home's 1K and Recovery card, Analytics' 1K card/series and slot
+// picker) resolves through here so they cannot disagree. A restored/synced note
+// can carry malformed picks (non-string, blank, unknown slot, or a non-object
+// `one_k_exercises`); a malformed slot falls back to its default rather than
+// reaching name normalization, and unknown slots are dropped.
+export function resolveOneKSelections(note) {
+  const raw = note?.one_k_exercises;
+  const picks = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const resolved = { ...DEFAULT_1K_EXERCISES };
+  for (const slot of Object.keys(DEFAULT_1K_EXERCISES)) {
+    const name = picks[slot];
+    if (typeof name === 'string' && name.trim()) resolved[slot] = name;
+  }
+  return resolved;
+}
+
 // Most recent non-null entry in an ordinal-indexed per-session PR list.
 function _latestNonNull(prs) {
   for (let i = prs.length - 1; i >= 0; i--) {

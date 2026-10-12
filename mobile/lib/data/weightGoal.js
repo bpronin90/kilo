@@ -429,8 +429,23 @@ export function isGoalMet(goal, currentWeight, referenceDate = new Date()) {
 //   paceInfo:        { direction, level, elapsedDays } | null — canonical pace read (carries the elapsed span for copy)
 //   rollingSeries:   { value, label, unit }[] — 7-day rolling average per weigh-in date
 //   rollingSeries30: { value, label, unit }[] — 30-day rolling average per weigh-in date
-//   goalInfo:        { direction, weeks_remaining, required_weekly_pace, warnings } | null
+//   goalInfo:        { direction, weeks_remaining, required_weekly_pace, warnings, isOverdue } | null
+//                    — normalized by normalizeGoalInfo (canonical for Home and Weight)
 //   calorieEstimate: { calories_per_day, label, tdee_based } | null
+// Canonical goal-state normalization, shared by every goal surface (Home's
+// weight card, Weight's goal panel). `weeks_remaining` is clamped to a finite
+// value >= 0; a goal at or past its target date is `isOverdue`, and an overdue
+// or non-finite pace is null (no pace is asked of an ended goal).
+export function normalizeGoalInfo(goalInfo) {
+  if (!goalInfo) return null;
+  const rawWeeks = goalInfo.weeks_remaining;
+  const weeks_remaining = (rawWeeks == null || !Number.isFinite(rawWeeks)) ? 0 : Math.max(0, rawWeeks);
+  const isOverdue = weeks_remaining <= 0;
+  const pace = goalInfo.required_weekly_pace;
+  const required_weekly_pace = (isOverdue || pace == null || !Number.isFinite(pace)) ? null : pace;
+  return { ...goalInfo, weeks_remaining, required_weekly_pace, isOverdue };
+}
+
 export function deriveWeightGoalAnalytics(entries, goal, editState = {}, referenceDate = new Date(), profile = null) {
   const {
     goalEditing = false,
@@ -462,5 +477,5 @@ export function deriveWeightGoalAnalytics(entries, goal, editState = {}, referen
     }
   }
 
-  return { trendSummary, paceLevel, paceInfo, rollingSeries, rollingSeries30, goalInfo, calorieEstimate };
+  return { trendSummary, paceLevel, paceInfo, rollingSeries, rollingSeries30, goalInfo: normalizeGoalInfo(goalInfo), calorieEstimate };
 }

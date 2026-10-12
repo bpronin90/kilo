@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeWeightPaceInfo, classifyWeightPace, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics, computeBMR, computeTDEE, ageFromDateOfBirth, isProfileComplete, ACTIVITY_MULTIPLIERS, computeCalorieEstimate, computeWeightGoal, computeWeightRollingAverageSeries, deriveNonWeightedTrackedExerciseMetrics, derive1kTotal, derive1kTotalSeries, derive1kTotalSeriesFromSectionsList, derive1kTotalFromSectionsList, deriveSessionCheckIn, deriveCheckInHistory, findMatchingExerciseNames, rolloverOneKExercises, DEFAULT_1K_EXERCISES } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeWeightPaceInfo, classifyWeightPace, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics, computeBMR, computeTDEE, ageFromDateOfBirth, isProfileComplete, ACTIVITY_MULTIPLIERS, computeCalorieEstimate, computeWeightGoal, computeWeightRollingAverageSeries, deriveNonWeightedTrackedExerciseMetrics, derive1kTotal, derive1kTotalSeries, derive1kTotalSeriesFromSectionsList, derive1kTotalFromSectionsList, deriveSessionCheckIn, deriveCheckInHistory, findMatchingExerciseNames, rolloverOneKExercises, DEFAULT_1K_EXERCISES, normalizeGoalInfo } from '../lib/data';
 import { parseWorkoutNote } from '../lib/parser';
 
 
@@ -3375,7 +3375,8 @@ describe('deriveWeightGoalAnalytics — canonical contract: output consistent wi
       targetDate: goal.target_date,
       referenceDate: REF,
     });
-    expect(goalInfo).toEqual(direct);
+    // goalInfo is the canonical normalized goal state (overdue/weeks/pace).
+    expect(goalInfo).toEqual(normalizeGoalInfo(direct));
   });
 
   test('calorieEstimate matches computeCalorieEstimate called with goalInfo outputs directly', () => {

@@ -2,7 +2,7 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { ScreenShell } from '../components/ScreenShell';
 import { HeroMetric } from '../components/UI';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
-import { deriveWeightGoalAnalytics, DEFAULT_1K_EXERCISES, deriveCheckInHistory, deriveRoutineStatus } from '../lib/data';
+import { deriveWeightGoalAnalytics, resolveOneKSelections, deriveCheckInHistory, deriveRoutineStatus } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries, useWeightGoal, useDeloadHistory, useFeatureToggles, useRecoveryBlockState, useActiveTrainingContext } from '../hooks/useEntries';
 import { useRecoveryAnalyticsFilter } from '../hooks/entries/recoveryBlockHooks';
 import { isLiveRecord } from '../lib/data/recoveryBlocks';
@@ -277,10 +277,8 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     };
   }, [weightEntries.length, weightTrends, weightPaceLevel, weightPaceInfo, unit]);
 
-  const oneKSelections = useMemo(() => ({
-    ...DEFAULT_1K_EXERCISES,
-    ...(currentNote?.one_k_exercises || {}),
-  }), [currentNote]);
+  // Canonical Big 3 selection — the same resolver Home uses (lib/data/oneK).
+  const oneKSelections = useMemo(() => resolveOneKSelections(currentNote), [currentNote]);
 
   const parsedSections = useMemo(
     () => deriveParsedSections(notes, currentNote, recoveryFilter.excludedNoteIds),
@@ -466,7 +464,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   const overviewRows = useMemo(
     () => deriveOverviewRows({
       oneKPoints: oneKChartData,
-      signals: analytics.signals,
+      exerciseProgress: analytics.exerciseProgress,
       sessionsSinceDeload: sinceDeload,
       deloadModeEnabled,
       currentWeight: weightTrends.currentWeight != null
@@ -480,7 +478,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       weightGoalDirection: weightGoalInfo?.direction ?? null,
     }),
     [
-      oneKChartData, analytics.signals, sinceDeload, deloadModeEnabled, weightTrends, unit, rolling7,
+      oneKChartData, analytics.exerciseProgress, sinceDeload, deloadModeEnabled, weightTrends, unit, rolling7,
       notesError, weightError, activeTrainingContext.status, activeTrainingContext.recoveryWeekNumber,
       recoveryOverviewSnapshot, isActiveRecovery, weightGoalInfo,
     ]
