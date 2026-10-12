@@ -236,3 +236,19 @@ describe('caption plural and week rows without a denominator (PR #1319 review)',
     expect(totalCaption(total(4, [{ n: 1, scores: { l0: 100, l1: 50 } }]))).toBe('2 of 4 lifts back · avg 75% · Week 1');
   });
 });
+
+describe('all weeks unreadable keeps per-lift unknown records (#1318 review)', () => {
+  test('pure: no headline, but every scoreable key is a 0/null/unknown record', () => {
+    const t = total(2, [{ n: 1, scores: null }]);
+    expect(t.percent).toBeNull();
+    expect(t.scoreable).toBe(2);
+    expect(t.perLiftLatest.map(l => [l.key, l.percent, l.week, l.unknown])).toEqual([['l0', 0, null, true], ['l1', 0, null, true]]);
+    expect(t.unknown).toEqual(['Lift 0', 'Lift 1']);
+  });
+  test('snapshot: a single missing note leaves both baseline keys flagged unknown', () => {
+    const s = getRecoverySnapshot({ block: mkBlock(), weeks: [mkWeek(1, 'ghost')], notes: [note('nb', BASE)] });
+    expect(s.total.percent).toBeNull();
+    expect(s.total.perLiftLatest.map(l => l.key)).toEqual(['bench', 'squat', 'deadlift']);
+    expect(s.total.perLiftLatest.every(l => l.unknown && l.week === null)).toBe(true);
+  });
+});

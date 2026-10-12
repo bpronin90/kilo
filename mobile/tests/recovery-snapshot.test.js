@@ -300,6 +300,44 @@ describe('Home Big 3 latest evidence and age (#1318)', () => {
   });
 });
 
+describe('Home Big 3 under unreadable history (#1318 review)', () => {
+  const texts = (n) => n.findAll(x => x.type === 'Text').map(x => [].concat(x.props.children).join(''));
+  test('a missing selected note still shows the carried Big 3 score with its age', () => {
+    const fixture = {
+      block: mkBlock(), weeks: [mkWeek(1, 'w1'), mkWeek(2, 'ghost')],
+      notes: [note('nb', BASE), note('w1', '-Squat\n- 60 5')],
+    };
+    const root = mount({ fixture, stale: false }).root;
+    expect(texts(byId(root, 'home-recovery-lift-squat')[0])).toEqual(expect.arrayContaining(['60%', 'last tested Week 1']));
+    expect(byId(root, 'home-recovery-analytics')[0].props.accessibilityLabel).toContain('Squat 60% of baseline, last tested Week 1');
+  });
+
+  test('a lift whose only possible score is in an unreadable week is Unknown, not Not retested', () => {
+    const fixture = {
+      block: mkBlock(), weeks: [mkWeek(1, 'ghost'), mkWeek(2, 'w2')],
+      notes: [note('nb', BASE), note('w2', '-Bench\n- 100 5')],
+    };
+    const root = mount({ fixture, stale: false }).root;
+    const row = texts(byId(root, 'home-recovery-lift-squat')[0]);
+    expect(row).toContain('Unknown');
+    expect(row).not.toContain('Not retested');
+    expect(byId(root, 'home-recovery-analytics')[0].props.accessibilityLabel).toContain('Squat unknown, a week that can’t be read may hold its score');
+  });
+});
+
+describe('strict cohort history stays available (#1318 review)', () => {
+  test('the cohort average of every readable week is in the explainer text and the label', () => {
+    const snap = getRecoverySnapshot({
+      block: mkBlock(), weeks: [mkWeek(1, 'w1'), mkWeek(2, 'w2')],
+      notes: [note('nb', BASE), note('w1', '-Bench\n- 60 5\n-Squat\n- 100 5'), note('w2', '-Bench\n- 70 5')],
+    });
+    expect(snap.strength.cohort.map(c => c.name)).toEqual(['Bench']);
+    const line = 'Consistent-cohort average by week: Week 1 60% · Week 2 70%';
+    expect(snap.display.detail).toContain(line);
+    expect(snap.display.a11y).toContain(line);
+  });
+});
+
 describe('display components never derive (#1315 review)', () => {
   test('expanding Lifts, opening every row, collapsing and reopening derives no bands, strength or comparison', () => {
     const root = mount({ fixture: SCORED, stale: false }).root;

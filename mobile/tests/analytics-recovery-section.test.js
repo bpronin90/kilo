@@ -1919,7 +1919,7 @@ describe('AnalyticsRecoverySection — routine-anchored summary label (#1219, #1
   test('the summary label names the routine and the bottom line no longer repeats it', () => {
     const root = oneWeek('Push Pull Legs');
     expect(hasText(root, 'of Push Pull Legs baseline strength')).toBe(false);
-    expect(heroNode(root).props.accessibilityLabel).toMatch(/^Week 1: 100% total recovery of Push Pull Legs baseline strength\. 1 of 1 lift back, avg 100%, Week 1\..*Consistent-cohort average \(secondary\): 100% across 1 lift scored every week · 1 of 2 baseline lifts\. In the consistent cohort: Bench\.$/);
+    expect(heroNode(root).props.accessibilityLabel).toMatch(/^Week 1: 100% total recovery of Push Pull Legs baseline strength\. 1 of 1 lift back, avg 100%, Week 1\..*Consistent-cohort average \(secondary\): 100% across 1 lift scored every week · 1 of 2 baseline lifts\. In the consistent cohort: Bench\. Consistent-cohort average by week: Week 1 100%\.$/);
     expect(findAllText(root).some(t => t.startsWith('Baseline:'))).toBe(false);
     expect(hasText(root, '05-01-2026')).toBe(true);
   });

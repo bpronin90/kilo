@@ -108,6 +108,9 @@ function _detailLines(strength) {
   }
   if (cohortSize > 0) {
     lines.push(`In the consistent cohort: ${strength.cohort.map(c => c.name).join(', ')}`);
+    // The same cohort's average in every readable week through the selection.
+    const byWeek = strength.weeks.filter(w => w.mean != null).map(w => `Week ${w.week_number} ${displayPercent(w.mean)}%`);
+    if (byWeek.length > 0) lines.push(`Consistent-cohort average by week: ${byWeek.join(' · ')}`);
   }
   if (strength.excluded_weeks.length > 0) {
     lines.push(`Week ${strength.excluded_weeks.join(', ')} couldn’t be read and is left out of the comparison.`);

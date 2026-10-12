@@ -13,7 +13,7 @@ import {
   RECOVERY_COMPARISON_STATUS,
   RECOVERY_WEEK_STATUS,
 } from '../../lib/data/recoveryAnalytics';
-import { LIFT_STATE, displayPercent } from '../../lib/data/recoveryStrength';
+import { LIFT_STATE, STRENGTH_STATUS, displayPercent } from '../../lib/data/recoveryStrength';
 import { formatDate } from '../../lib/format';
 
 // Re-exported so HomeScreen's active-branch copy can switch on the same
@@ -193,6 +193,7 @@ const BIG3_SLOTS = Object.freeze([
 export const HOME_BIG3_SCORED = 'scored';
 export const HOME_BIG3_NOT_RETESTED = 'not_retested';
 export const HOME_BIG3_NOT_SCORED = 'not_scored';
+export const HOME_BIG3_UNKNOWN = 'unknown';
 
 // #1171, strength model (#1315): the Big 3 rows read the Recovery snapshot's
 // per-lift strength rows — the very rows the Analytics ladder prints — so a lift's
@@ -204,8 +205,14 @@ export const HOME_BIG3_NOT_SCORED = 'not_scored';
 export function deriveHomeRecoveryBig3(snapshot, selections) {
   const week = snapshot && snapshot.selectedWeek;
   const counts = snapshot ? snapshot.counts : null;
-  if (!week || week.status !== RECOVERY_WEEK_STATUS.OK) return { big3: [], counts };
-  const { strength, total } = snapshot;
+  const { strength, total } = snapshot || {};
+  // Carried strength evidence survives an unreadable/missing selected note (only
+  // the selected-week counts are unavailable then); with no strength model there
+  // is nothing to show.
+  if (!week || !strength || strength.status !== STRENGTH_STATUS.OK) return { big3: [], counts };
+  // An unreadable selected note with nothing carried from earlier weeks has no
+  // Big 3 evidence: the fallback line owns the slot.
+  if (week.status !== RECOVERY_WEEK_STATUS.OK && !(total.perLiftLatest || []).some(l => l.week != null)) return { big3: [], counts };
   // #1318: a lift's percent is its LATEST readable strength score through the
   // selected week (the snapshot total's evidence), with the week it came from.
   const latest = new Map((total.perLiftLatest || []).map(l => [l.key, l]));
@@ -224,7 +231,11 @@ export function deriveHomeRecoveryBig3(snapshot, selections) {
         lastTestedWeek: ev.week !== week.week_number ? ev.week : null,
       });
     } else if (lift) {
-      big3.push({ slot, label: lift.name || label, state: lift.state === LIFT_STATE.UNSCOREABLE ? HOME_BIG3_NOT_SCORED : HOME_BIG3_NOT_RETESTED, percent: null, lastTestedWeek: null });
+      // Unscoreable work is "not scored"; no score because an unreadable week
+      // might hold it is "unknown"; otherwise the lift was simply not retested.
+      const state = lift.state === LIFT_STATE.UNSCOREABLE ? HOME_BIG3_NOT_SCORED
+        : ev && ev.unknown ? HOME_BIG3_UNKNOWN : HOME_BIG3_NOT_RETESTED;
+      big3.push({ slot, label: lift.name || label, state, percent: null, lastTestedWeek: null });
     } else if (key && notScored.has(key)) {
       big3.push({ slot, label: notScored.get(key).name || label, state: HOME_BIG3_NOT_SCORED, percent: null, lastTestedWeek: null });
     } else if (baselineOnly) {

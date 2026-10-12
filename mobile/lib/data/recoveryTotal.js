@@ -62,7 +62,6 @@ export function deriveRecoveryTotal(strength, { stale = false } = {}) {
     trend.push(Object.freeze({ week_id: w.week_id, week_number: w.week_number, readable: true, percent: sum / M }));
   }
   const selected = weeks[weeks.length - 1];
-  if (!anyReadable) return _unavailable(TOTAL_REASON.NO_READABLE, { scoreable: M, week: selected.week_number, trend: Object.freeze(trend) });
 
   let sum = 0;
   let back = 0;
@@ -75,6 +74,13 @@ export function deriveRecoveryTotal(strength, { stale = false } = {}) {
       unknown: !e && sawUnreadable,
     });
   });
+  const unknown = Object.freeze(perLiftLatest.filter(l => l.unknown).map(l => l.name));
+  // No readable week: no headline, but every scoreable key keeps its (unknown) record.
+  if (!anyReadable) {
+    return _unavailable(TOTAL_REASON.NO_READABLE, {
+      scoreable: M, week: selected.week_number, trend: Object.freeze(trend), perLiftLatest: Object.freeze(perLiftLatest), unknown,
+    });
+  }
   const points = trend.filter(t => t.readable).map(t => ({ week_number: t.week_number, percent: t.percent }));
   return Object.freeze({
     percent: sum / M,
@@ -87,7 +93,7 @@ export function deriveRecoveryTotal(strength, { stale = false } = {}) {
     perLiftLatest: Object.freeze(perLiftLatest),
     trend: Object.freeze(trend),
     pace: stale ? Object.freeze({ status: PACE_STATUS.SUPPRESSED }) : deriveLiftPace(points, selected.week_number),
-    unknown: Object.freeze(perLiftLatest.filter(l => l.unknown).map(l => l.name)),
+    unknown,
   });
 }
 

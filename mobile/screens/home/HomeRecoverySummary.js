@@ -4,7 +4,7 @@ import Svg, { Path } from 'react-native-svg';
 import { Card } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
 import { InfoButton, InfoNote, useInfoExplainer } from '../../components/InfoExplainer';
-import { HOME_BIG3_NOT_IN_BASELINE, HOME_BIG3_NOT_RETESTED, HOME_BIG3_NOT_SCORED, HOME_BIG3_SCORED, HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './homeDashboardData';
+import { HOME_BIG3_NOT_IN_BASELINE, HOME_BIG3_NOT_RETESTED, HOME_BIG3_NOT_SCORED, HOME_BIG3_SCORED, HOME_BIG3_UNKNOWN, HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './homeDashboardData';
 import { createStyles } from './homeStyles';
 import { formatRecoveryCountLine } from '../../lib/data/derivedAnalytics';
 import { useKuaTypography } from '../../theme/typography';
@@ -40,6 +40,7 @@ function liftValue(lift) {
   if (lift.state === HOME_BIG3_NOT_IN_BASELINE) return 'Not in baseline';
   if (lift.state === HOME_BIG3_NOT_RETESTED) return 'Not retested';
   if (lift.state === HOME_BIG3_NOT_SCORED) return 'Not scored';
+  if (lift.state === HOME_BIG3_UNKNOWN) return 'Unknown';
   return `${lift.percent}%`;
 }
 
@@ -107,7 +108,8 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   // #1171: the user's Big 3 lead, each against its own baseline. #1242: the
   // count line is the shared roster summary, worded exactly as Analytics and
   // the Recovery detail word it. Nothing prints while a fallback owns the slot.
-  const lifts = fallbackStatus === null ? big3 : [];
+  // Carried strength scores stay visible under a note-status fallback (#1318).
+  const lifts = big3;
   const countLine = fallbackStatus === null ? formatRecoveryCountLine(counts) : null;
   // #1315: the shared snapshot headline (same % and caption as Analytics).
   const headlineScored = !!headline && headline.state === 'score';
@@ -127,6 +129,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
     lifts.length > 0 ? 'Big 3' : null,
     ...lifts.map(lift => {
       const value = liftValue(lift);
+      if (lift.state === HOME_BIG3_UNKNOWN) return `${lift.label} unknown, a week that can’t be read may hold its score`;
       return `${lift.label} ${value.endsWith('%') ? `${value} of baseline${lift.lastTestedWeek ? `, last tested Week ${lift.lastTestedWeek}` : ''}` : value.toLowerCase()}`;
     }),
     remainingText ? remainingText.replace(/ · /g, ', ') : null,

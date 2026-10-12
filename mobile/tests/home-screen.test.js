@@ -1556,7 +1556,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
   // roster assertions below pin the rest, and `spokenHeadline` pins the headline.
   const spokenFull = (component) => component.root
     .findByProps({ testID: 'home-recovery-analytics' }).props.accessibilityLabel;
-  const HEADLINE_RE = /Week \d+: \d+% total recovery of .*? baseline strength\..*? In the consistent cohort: .*?\. /;
+  const HEADLINE_RE = /Week \d+: \d+% total recovery of .*? baseline strength\..*? In the consistent cohort: .*?\. (?:Consistent-cohort average by week: .*?\. )?/;
   const spoken = (component) => spokenFull(component).replace(HEADLINE_RE, '');
   const spokenHeadline = (component) => (spokenFull(component).match(HEADLINE_RE) || [''])[0].trim();
 
