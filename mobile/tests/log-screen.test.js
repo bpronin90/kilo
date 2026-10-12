@@ -9223,6 +9223,18 @@ describe('Recovery Block reopen flow', () => {
 
     expect(findPressableByText(root, 'Start recovery block')).toBeTruthy();
     expect(findPressableByText(root, 'Reopen recovery block: Push Day')).toBeTruthy();
+    // One outlined group, not two floating outline rows: both rows live in it,
+    // and neither row carries its own border.
+    const { StyleSheet } = require('react-native');
+    const groups = root.findAll(n => typeof n.type === 'string' && n.props.testID === 'log-recovery-entry-group');
+    expect(groups).toHaveLength(1);
+    const start = findPressableByText(root, 'Start recovery block');
+    const reopen = findPressableByText(root, 'Reopen recovery block: Push Day');
+    for (const row of [start, reopen]) {
+      expect(groups[0].findAll(n => n === row)).toHaveLength(1);
+      expect(StyleSheet.flatten(row.props.style).borderWidth).toBeUndefined();
+    }
+    expect(StyleSheet.flatten(reopen.props.style).borderTopWidth).toBeGreaterThan(0);
   });
 
   test('Reopen is absent with no eligible completed block, even though Start renders', async () => {
