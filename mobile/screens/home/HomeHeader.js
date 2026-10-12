@@ -5,6 +5,7 @@ import { Card } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
 import { createStyles } from './homeStyles';
 import { useKuaTypography } from '../../theme/typography';
+import { DELOAD_NOTE_PREFIX } from '../../lib/LogScreenHelpers';
 
 // Small chevron affordance shared by every quiet handoff on this card.
 function Chevron({ color }) {
@@ -63,7 +64,7 @@ export function HomeHeader({
   activeTrainingContext,
   baselinePaused,
   workoutNote,
-  hasSavedRoutines,
+  notes,
   handleLogWorkoutPress,
   heroPrimaryActionLabel,
   heroPrimaryActionHint,
@@ -77,6 +78,9 @@ export function HomeHeader({
   // No current routine, or one with nothing written in it yet, is not a
   // training week: no `Week N/A`, no 0·0·0 trio, just the way back in (#1333).
   const hasRoutineContent = !!workoutNote?.raw_text?.trim();
+  // Deload notes never appear in Log's routine list, so they are not a routine
+  // the user can choose (same predicate as LogScreenStates' otherNotes).
+  const hasSavedRoutines = (notes || []).some(n => n && !n.title?.startsWith(DELOAD_NOTE_PREFIX));
   const routineState = isRecovery ? 'recovery'
     : !workoutNote ? 'none'
     : !hasRoutineContent ? 'empty'

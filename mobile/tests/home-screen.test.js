@@ -2483,6 +2483,13 @@ describe('Home daily-dashboard states (#1333)', () => {
     expect(host(c, 'home-current-routine-link').props.accessibilityLabel).toBe('Write routine');
   });
 
+  test('deload notes alone are not a saved routine to choose', async () => {
+    const deload = { id: 'd1', title: 'Deload · Routine A', raw_text: '-Bench\n- 95 5', saved_at: '2026-06-01T12:00:00.000Z' };
+    const { component: c } = await mount({ workoutNote: null, notes: [deload] });
+    expect(hasText(c, 'Write a routine in Log to track your weeks.')).toBe(true);
+    expect(host(c, 'home-current-routine-link').props.accessibilityLabel).toBe('Write routine');
+  });
+
   test('an empty current routine names itself and asks for exercises instead of a fake week', async () => {
     const empty = { ...NOTE, raw_text: '' };
     const { component: c } = await mount({ workoutNote: empty, notes: [empty] });
