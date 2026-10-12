@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.14.0 - 2026-10-12
+
+- Issue #1318: Recovery now leads with total recovery, which counts every scoreable baseline lift (not-yet-back lifts count as 0%) so a first score raises it, with the strict consistent-cohort average moved into About these numbers.
+
+## 1.13.0 - 2026-10-12
+
+- Issue #1315: Recovery maintenance now lives only in the Log tab (with a Recovery History selector for completed blocks), Analytics Recovery is a compact read-only view with collapsed counted lists, and Home, the Overview row and the Recovery section show the same strength headline.
+
+## 1.12.1 - 2026-10-12
+
+- Issue #1314: Tidy names now keeps a set scheme such as 3x6-8 in the exercise name only and no longer repeats it in the note it moves the description to.
+
 ## 1.12.0 - 2026-10-11
 
 - Issue #1309: Recovery now has Tidy names: a reviewed cleanup that rewrites messy exercise names in your recovery weeks (for example "Squat 3x6-8, step up") to your baseline's clean name, moves the removed description to a note under the first set, and tidies the baseline name too, without changing any of your numbers.
