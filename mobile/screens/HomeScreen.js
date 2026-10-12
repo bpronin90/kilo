@@ -310,9 +310,6 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
     [weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, trackedLifts, trackedLiftActivations, deloadHistory, currentId, recoveryBlocks]
   );
 
-  // Whether there is any rolling-average series to plot at all.
-  const hasWeightSeries = Array.isArray(dashboardData.weightSeries)
-    && dashboardData.weightSeries.length > 0;
   // 1K hero color, precomputed here (was inline in the 1K card JSX before the
   // #1049 split) so lerpColor stays in the screen that owns startup composition.
   const oneKHeroColor = kua
@@ -385,10 +382,18 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
            !hasTrackedLifts;
   }, [isLoading, hasLoadError, weightEntries, notes, workoutNote, weightGoal, trackedLifts]);
 
+  // #1339: the subtitle names only what Home can vouch for. Generic until the
+  // reads settle, so a Recovery account never flashes "routine progress" first.
+  const homeSubtitle = !isLoading && (isRecoveryOpenWeek || isRecoveryBetweenWeeks)
+    ? 'Recovery block in progress.'
+    : !isLoading && workoutNote?.raw_text?.trim()
+      ? 'Current routine progress.'
+      : 'Training and body weight at a glance.';
+
   return (
     <ScreenShell
       title={<KiloWordmark />}
-      subtitle="Current routine progress."
+      subtitle={homeSubtitle}
     >
       {hasLoadError ? (
         <ErrorBanner
@@ -425,7 +430,6 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
             onNavigate={onNavigate}
             isRecoveryOpenWeek={isRecoveryOpenWeek}
             isRecoveryBetweenWeeks={isRecoveryBetweenWeeks}
-            activeTrainingContext={activeTrainingContext}
             baselinePaused={baselinePaused}
             workoutNote={workoutNote}
             notes={notes}
@@ -439,7 +443,6 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
             dashboardData={dashboardData}
             weightGoal={weightGoal}
             baselinePaused={baselinePaused}
-            hasWeightSeries={hasWeightSeries}
             oneKHeroColor={oneKHeroColor}
             unit={unit}
           />

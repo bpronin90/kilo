@@ -56,12 +56,13 @@ function ExerciseProgressLink({ linkId, onNavigate, styles, color }) {
 // #1333: the hero answers three questions and nothing else — what is being
 // trained (week + routine), how it is going (Exercise Progress), and what to do
 // next (the two daily-loop actions). Body weight lives in its own card below.
+// #1339: in Recovery the Recovery card owns the week and its Big 3, so the hero
+// is only `Recovery` and the next action — no week, note, or paused handoff.
 export function HomeHeader({
   dashboardData,
   onNavigate,
   isRecoveryOpenWeek,
   isRecoveryBetweenWeeks,
-  activeTrainingContext,
   baselinePaused,
   workoutNote,
   notes,
@@ -88,9 +89,6 @@ export function HomeHeader({
   const headerLabel = routineState === 'recovery' ? 'Recovery'
     : routineState === 'none' ? 'No current routine'
     : dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Current routine';
-  const recoverySubline = isRecoveryOpenWeek
-    ? `Week ${activeTrainingContext.recoveryWeekNumber ?? 'N/A'}`
-    : null;
   const routineTitle = routineState === 'active' || routineState === 'empty'
     ? (workoutNote.title || '').trim() || null
     : null;
@@ -126,16 +124,6 @@ export function HomeHeader({
         <Text testID="home-hero-label" style={styles.heroSectionLabel} numberOfLines={1}>{headerLabel}</Text>
       </View>
 
-      {recoverySubline ? (
-        <Text style={styles.heroWeekSubline} numberOfLines={1}>{recoverySubline}</Text>
-      ) : null}
-
-      {isRecoveryOpenWeek && activeTrainingContext.activeNote ? (
-        <Text testID="home-recovery-active-note" style={styles.heroRecoveryNoteLabel}>
-          {activeTrainingContext.activeNote.title || 'Untitled'}
-        </Text>
-      ) : null}
-
       {routineTitle ? (
         <Text testID="home-routine-title" style={styles.heroRecoveryNoteLabel} numberOfLines={1}>{routineTitle}</Text>
       ) : null}
@@ -143,13 +131,9 @@ export function HomeHeader({
       {/* How it is going. */}
       {routineMessage ? (
         <Text testID="home-no-routine" style={styles.heroRoutineMessage}>{routineMessage}</Text>
-      ) : baselinePaused ? (
-        // Frozen baseline handoff (#869): the classification band describes the
-        // frozen baseline routine, not what is being trained right now.
-        <View style={styles.classifSection}>
-          <ExerciseProgressLink linkId="home-baseline-paused-link" onNavigate={onNavigate} styles={styles} color={mutedStroke} />
-        </View>
-      ) : (
+      ) : baselinePaused ? null : (
+        // Paused baseline (#869) has no counts to show; #1339 drops the bare
+        // handoff that stood in for them.
         <View style={styles.classifSection}>
           <View style={styles.classifHeaderRow}>
             <ExerciseProgressLink linkId="home-exercise-progress-link" onNavigate={onNavigate} styles={styles} color={mutedStroke} />
@@ -216,22 +200,6 @@ export function HomeHeader({
         >
           <Text style={styles.heroPrimaryActionText}>Log weight</Text>
           <Chevron color={actionStroke} />
-        </Pressable>
-      </View>
-
-      {/* #7 quiet CTA. Targets `overview` rather than a bare tab press (#770):
-          "full history and insights" promises the whole tab from the top. */}
-      <View style={styles.heroFooter}>
-        <Pressable
-          testID="home-insights-link"
-          onPress={() => onNavigate('Analytics', 'overview')}
-          style={styles.insightsLink}
-          accessibilityRole="button"
-          accessibilityLabel="Full history and insights"
-          accessibilityHint="Opens the Analytics tab at the top"
-        >
-          <Text style={styles.insightsLinkText}>Full history and insights</Text>
-          <Chevron color={mutedStroke} />
         </Pressable>
       </View>
     </Card>

@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { Card, LineChart } from '../../components/UI';
+import { Card } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
-import { displayChartSeries, displayWeight, formatBodyweightValue, formatGoalWeightValue } from '../../lib/units';
+import { formatBodyweightValue, formatGoalWeightValue } from '../../lib/units';
 import { createStyles } from './homeStyles';
 import { useKuaTypography } from '../../theme/typography';
 
@@ -28,24 +28,21 @@ export function goalAttentionText(goalInfo) {
 }
 
 // Body weight and its goal, one card (#1333). Moved out of the training hero so
-// the hero answers only "what am I training and what next"; everything here is
-// the Weight surface's summary, and the header is its handoff.
-export function HomeWeightCard({ dashboardData, weightGoal, hasWeightSeries, onNavigate, unit }) {
+// the hero answers only "what am I training and what next"; the header is the
+// Weight handoff. #1339: supporting context, not a mini Weight tab — the latest
+// weigh-in and one goal line. The trend chart and pace stats live on Weight.
+export function HomeWeightCard({ dashboardData, weightGoal, onNavigate, unit }) {
   const { colors, kuaPalette: kua } = useTheme();
   const typography = useKuaTypography();
   const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
   const mutedStroke = kua ? kua.onSurfaceVariant : colors.textMuted;
 
   const gi = dashboardData.goalInfo;
-  const warnings = gi?.warnings || [];
-  const paceColor = warnings.includes('unrealistic') ? (kua ? kua.errorText : colors.error)
-    : warnings.includes('unhealthy') ? (kua ? kua.warning : colors.cautionText)
-    : (kua ? kua.success : colors.success);
   const modeLabel = gi?.direction === 'loss' ? 'Cutting' : gi?.direction === 'gain' ? 'Bulking' : 'Maintaining';
   // Active goal reads "on" (success), an ended one a caution to act on (#1112).
   const weeksColor = gi?.isOverdue ? (kua ? kua.warning : colors.cautionText) : (kua ? kua.success : colors.success);
-  const paceText = gi && gi.required_weekly_pace !== null
-    ? `${gi.required_weekly_pace > 0 ? '+' : ''}${displayWeight(gi.required_weekly_pace, unit).toFixed(1)}`
+  const targetText = weightGoal?.target_weight != null
+    ? `${formatGoalWeightValue(weightGoal.target_weight, unit)} ${unit}`
     : null;
   const attention = goalAttentionText(gi);
 
@@ -66,32 +63,30 @@ export function HomeWeightCard({ dashboardData, weightGoal, hasWeightSeries, onN
             <Chevron color={mutedStroke} />
           </View>
         </Pressable>
-        {dashboardData.latestWeight ? (
-          <View style={styles.heroWeightValueRow}>
-            <Text style={styles.heroWeightValue} numberOfLines={1}>
-              {formatBodyweightValue(dashboardData.latestWeight, unit)}
-            </Text>
-            <Text style={styles.heroWeightUnit}>{unit}</Text>
-          </View>
-        ) : (
-          <Text style={styles.heroWeightPlaceholder}>No weigh-in yet</Text>
-        )}
-        {hasWeightSeries ? (
-          <>
-            <Text style={[styles.heroSparklineSublabel, { marginTop: 12 }]}>7-day rolling avg</Text>
-            <View style={styles.heroSparklineChart}>
-              <LineChart
-                data={displayChartSeries(dashboardData.weightSeries, unit)}
-                color={kua ? kua.primary : colors.textMuted}
-                height={52}
-                paddingHorizontal={0}
-                hideHeader
-              />
+        <View style={styles.weightSummaryRow}>
+          {dashboardData.latestWeight ? (
+            <View style={styles.heroWeightValueRow}>
+              <Text style={styles.heroWeightValue} numberOfLines={1}>
+                {formatBodyweightValue(dashboardData.latestWeight, unit)}
+              </Text>
+              <Text style={styles.heroWeightUnit}>{unit}</Text>
             </View>
-          </>
-        ) : null}
-        {/* Legacy-mode Analytics handoff. In KUA mode the hero footer's
-            "Full history and insights" already covers this destination. */}
+          ) : (
+            <Text style={styles.heroWeightPlaceholder}>No weigh-in yet</Text>
+          )}
+          {gi ? (
+            <View testID="home-goal" style={styles.goalSummary}>
+              <Text style={styles.goalDirectionText} numberOfLines={1}>
+                <Text style={styles.goalModeAccent}>{modeLabel}</Text>
+                {targetText ? ` · ${targetText}` : ''}
+              </Text>
+              <Text style={[styles.goalWeeksText, { color: weeksColor }]}>
+                {gi.isOverdue ? 'Goal ended' : `${Math.round(gi.weeks_remaining)} weeks left`}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+        {/* Legacy-mode Analytics handoff; KUA keeps Home to the Weight handoff. */}
         {!kua ? (
           <Pressable
             testID="home-weight-trend-link"
@@ -106,60 +101,20 @@ export function HomeWeightCard({ dashboardData, weightGoal, hasWeightSeries, onN
             <Chevron color={colors.textMuted} />
           </Pressable>
         ) : null}
-
-        {gi ? (
-          <View testID="home-goal" style={styles.goalSection}>
-            <View style={styles.goalModeRow}>
-              <Text style={styles.goalDirectionText}>
-                Goal: <Text style={styles.goalModeAccent}>{modeLabel}</Text>
-              </Text>
-              <Text style={[styles.goalWeeksText, { color: weeksColor }]}>
-                {gi.isOverdue ? 'Goal ended' : `${Math.round(gi.weeks_remaining)} weeks left`}
-              </Text>
-            </View>
-            <View style={styles.goalStatsGrid}>
-              <View style={styles.goalStatCol}>
-                <Text style={styles.goalStatLabel}>Target</Text>
-                <View style={styles.goalStatValueRow}>
-                  <Text style={styles.goalStatValueLarge}>{weightGoal?.target_weight != null ? formatGoalWeightValue(weightGoal.target_weight, unit) : weightGoal?.target_weight}</Text>
-                  <Text style={styles.goalStatUnitLabel}>{unit}</Text>
-                </View>
-              </View>
-              {/* An ended goal has no pace to show; the attention line says what to do. */}
-              {paceText !== null ? (
-                <View
-                  style={styles.goalStatCol}
-                  accessible
-                  accessibilityLabel={`Pace: ${paceText} ${unit} per week. ${
-                    warnings.includes('unrealistic') ? 'Unrealistic pace.'
-                      : warnings.includes('unhealthy') ? 'Unhealthy pace.'
-                      : 'Healthy pace.'
-                  }`}
-                >
-                  <Text style={styles.goalStatLabel}>Pace</Text>
-                  <View style={styles.goalStatValueRow}>
-                    <Text style={[styles.goalStatValueLarge, { color: paceColor }]}>{paceText}</Text>
-                    <Text style={[styles.goalStatUnitLabel, { color: paceColor }]}>{unit}/wk</Text>
-                  </View>
-                </View>
-              ) : null}
-            </View>
-            {attention ? (
-              <View testID="home-goal-attention" style={styles.goalAttention}>
-                <Text style={styles.goalAttentionText}>{attention}</Text>
-                <Pressable
-                  testID="home-goal-attention-action"
-                  onPress={() => onNavigate('Weight')}
-                  style={styles.recoveryAction}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Review goal"
-                  accessibilityHint="Opens the Weight tab, where the goal can be edited"
-                >
-                  <Text style={styles.recoveryActionText}>Review goal</Text>
-                </Pressable>
-              </View>
-            ) : null}
+        {attention ? (
+          <View testID="home-goal-attention" style={styles.goalAttention}>
+            <Text style={styles.goalAttentionText}>{attention}</Text>
+            <Pressable
+              testID="home-goal-attention-action"
+              onPress={() => onNavigate('Weight')}
+              style={styles.recoveryAction}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Review goal"
+              accessibilityHint="Opens the Weight tab, where the goal can be edited"
+            >
+              <Text style={styles.recoveryActionText}>Review goal</Text>
+            </Pressable>
           </View>
         ) : null}
       </Card>
