@@ -516,14 +516,11 @@ export function LogScreen({
         }
         headerRight={
           <View style={styles.editorHeaderActions}>
-            {/* #1006: the idle rest-timer affordance is a compact stopwatch
-                in the editor's header corner, not a full-width row below the
-                editor. It renders nothing outside current-routine edit mode
-                or while a timer is running/just completed, so it adds no
-                header width and reserves no editor or bottom-navigation
-                space; its chooser opens as an out-of-flow dropdown. The
-                running countdown / completion banner stays the single
-                app-shell instance (App.js). */}
+            {/* #1006/#1321: the rest timer docks in the editor's header
+                corner in current-routine edit only — stopwatch, live
+                countdown, or Rest over in one place, with its panel opening
+                out of flow. It reserves no editor or bottom-navigation space;
+                App.js hides its app-shell pill while this one is docked. */}
             <RestTimerBanner
               isRunning={restTimerIsRunning}
               remainingMs={restTimerRemainingMs}
