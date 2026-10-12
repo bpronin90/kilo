@@ -105,21 +105,18 @@ const mount = (props) => {
   return c;
 };
 const byId = (root, id) => root.findAll(n => typeof n.type === 'string' && n.props.testID === id);
+// #1335: Home prints the shared total as one secondary line, without the caption.
 const homeHeadline = (root) => {
   const v = byId(root, 'home-recovery-headline-value')[0];
-  const cap = byId(root, 'home-recovery-headline-caption')[0];
-  return v ? `${v.props.children} | ${cap.props.children}` : null;
+  return v ? v.props.children : null;
 };
 const overviewRow = (root) => byId(root, 'overview-probe')[0].props.row;
-// #1333: Home no longer renders per-lift rows; the Big 3 stay in the Home summary
-// data (one snapshot, unchanged derivation), so these read it there, in the
-// words the removed rows printed.
-const STATE_WORD = { not_in_baseline: 'Not in baseline', not_retested: 'Not retested', not_scored: 'Not scored', unknown: 'Unknown' };
+// #1335: Home renders the Big 3 rows again — label, the carried-score week when
+// older than the selected one, then the value — straight from the summary data.
 const homeLift = (root, slot) => byId(root, 'home-summary-probe')[0].props.summary.big3.find(l => l.slot === slot);
-const homeLiftTexts = (root, slot) => {
-  const l = homeLift(root, slot);
-  return [l.label, l.state === 'scored' ? `${l.percent}%` : STATE_WORD[l.state], ...(l.lastTestedWeek ? [`last tested Week ${l.lastTestedWeek}`] : [])];
-};
+const STATE_WORD = { not_in_baseline: 'Not in baseline', not_retested: 'Not retested', not_scored: 'Not scored', unknown: 'Unknown' };
+const homeLiftTexts = (root, slot) => byId(root, `home-recovery-lift-${slot}`)[0]
+  .findAll(n => n.type === 'Text').map(n => [].concat(n.props.children).join(''));
 const homeLiftSpoken = (root, slot) => {
   const l = homeLift(root, slot);
   return l.spoken || `${l.label} ${STATE_WORD[l.state].toLowerCase()}`;
@@ -158,7 +155,7 @@ describe('single derivation', () => {
     expect(deriveRecoveryStrength).toHaveBeenCalledTimes(1);
     expect(deriveRecoveryComparison).toHaveBeenCalledTimes(1);
     expect(_snapshotDerivationCount()).toBe(1);
-    expect(homeHeadline(root)).toBe('80% total recovery | 2 of 2 lifts back · avg 80% · Week 2');
+    expect(homeHeadline(root)).toBe('80% total recovery');
     expect(analyticsHeadline(root)).toBe('80% | 2 of 2 lifts back · avg 80% · Week 2');
     expect(overviewRow(root).value).toBe('80%');
   });
@@ -228,7 +225,7 @@ describe('identical values on every surface', () => {
   test('scored: the same % and caption on Home, the Overview row and the Analytics section', () => {
     const root = mount({ fixture: SCORED, stale: false }).root;
     expect(analyticsHeadline(root)).toBe('80% | 2 of 2 lifts back · avg 80% · Week 2');
-    expect(homeHeadline(root)).toBe('80% total recovery | 2 of 2 lifts back · avg 80% · Week 2');
+    expect(homeHeadline(root)).toBe('80% total recovery');
     const row = overviewRow(root);
     expect(`${row.value} | ${row.infoCaption}`).toBe('80% | 2 of 2 lifts back · avg 80% · Week 2');
     expect(row.label).toBe('Total recovery');
@@ -239,7 +236,7 @@ describe('identical values on every surface', () => {
   test('stale: the numbers are unchanged and every surface still prints them', () => {
     const root = mount({ fixture: SCORED, stale: true }).root;
     expect(analyticsHeadline(root)).toBe('80% | 2 of 2 lifts back · avg 80% · Week 2');
-    expect(homeHeadline(root)).toBe('80% total recovery | 2 of 2 lifts back · avg 80% · Week 2');
+    expect(homeHeadline(root)).toBe('80% total recovery');
     expect(overviewRow(root).value).toBe('80%');
     expect(overviewRow(root).accessibilityText).toMatch(/may be out of date\.$/);
   });
@@ -269,7 +266,7 @@ describe('empty strict cohort no longer hides the total (#1318)', () => {
     expect(snap.display.detail.join(' ')).toMatch(/Consistent-cohort average \(secondary\): No lift has a strength score in every readable week/);
     const root = mount({ fixture: EMPTY_COHORT, stale: false }).root;
     const cap = '0 of 2 lifts back · avg 0% · Week 1';
-    expect(homeHeadline(root)).toBe(`0% total recovery | ${cap}`);
+    expect(homeHeadline(root)).toBe('0% total recovery');
     expect(analyticsHeadline(root)).toBe(`0% | ${cap}`);
     const row = overviewRow(root);
     expect(`${row.value} | ${row.infoCaption}`).toBe(`0% | ${cap}`);
@@ -284,9 +281,9 @@ describe('Home Big 3 latest evidence and age (#1318)', () => {
   };
   const texts = (n) => n.findAll(x => x.type === 'Text').map(x => [].concat(x.props.children).join(''));
 
-  test('an absent lift keeps its earlier strength % with "last tested Week k"; ', () => {
+  test('an absent lift keeps its earlier strength % with the week it was last tested', () => {
     const root = mount({ fixture: AGED, stale: false }).root;
-    expect(homeLiftTexts(root, 'squat')).toEqual(expect.arrayContaining(['94%', 'last tested Week 1']));
+    expect(homeLiftTexts(root, 'squat')).toEqual(['Squat', 'Week 1', '94%']);
     expect(homeLiftSpoken(root, 'squat')).toContain('Squat 94% of baseline, last tested Week 1');
   });
 
@@ -305,7 +302,7 @@ describe('Home Big 3 latest evidence and age (#1318)', () => {
     const snap = getRecoverySnapshot({ block: AGED.block, weeks: AGED.weeks, notes: AGED.notes });
     expect(snap.total.perLiftLatest.map(l => [l.key, l.week])).toEqual([['bench', 2], ['squat', 1]]);
     const cap = snap.display.caption;
-    expect(homeHeadline(root)).toBe(`${snap.display.headline} | ${cap}`);
+    expect(homeHeadline(root)).toBe(snap.display.headline);
     expect(analyticsHeadline(root)).toBe(`${snap.display.percent}% | ${cap}`);
     expect(overviewRow(root).infoCaption).toBe(cap);
     expect(overviewRow(root).value).toBe(`${snap.display.percent}%`);
@@ -321,7 +318,7 @@ describe('Home Big 3 under unreadable history (#1318 review)', () => {
       notes: [note('nb', BASE), note('w1', '-Squat\n- 60 5')],
     };
     const root = mount({ fixture, stale: false }).root;
-    expect(homeLiftTexts(root, 'squat')).toEqual(expect.arrayContaining(['60%', 'last tested Week 1']));
+    expect(homeLiftTexts(root, 'squat')).toEqual(['Squat', 'Week 1', '60%']);
     expect(homeLiftSpoken(root, 'squat')).toContain('Squat 60% of baseline, last tested Week 1');
   });
 
@@ -352,7 +349,7 @@ describe('strict cohort history stays available (#1318 review)', () => {
 });
 
 // One precedence per Big 3 lift (#1318), computed in the snapshot and only rendered by Home:
-//  1 score in any week <= selected -> latest %, "last tested Week k" when older, caveat if an
+//  1 score in any week <= selected -> latest %, "Week k" beside it when older, caveat if an
 //    unreadable week AFTER it might hold a newer score
 //  2 else an unreadable week in range -> Unknown (+ "logged this week without a scoreable set")
 //  3 else logged but never scoreable -> Not scored (+ reason)   4 else -> Not retested
@@ -382,7 +379,7 @@ describe('Home Big 3 status precedence, exhaustive (#1318)', () => {
     if (score !== 'none') {
       const afterScore = (unreadable === 'selected') || (unreadable === 'earlier' && score === 'earlier');
       return {
-        visible: score === 'earlier' ? ['Squat', '60%', 'last tested Week 1'] : ['Squat', '60%'],
+        visible: score === 'earlier' ? ['Squat', 'Week 1', '60%'] : ['Squat', '60%'],
         spoken: `Squat 60% of baseline${score === 'earlier' ? ', last tested Week 1' : ''}${afterScore ? ', a week that can’t be read may hold a newer score' : ''}`,
       };
     }

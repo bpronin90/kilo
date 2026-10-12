@@ -3,7 +3,10 @@ import { Pressable, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Card } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
-import { HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './homeDashboardData';
+import {
+  HOME_BIG3_NOT_IN_BASELINE, HOME_BIG3_NOT_RETESTED, HOME_BIG3_NOT_SCORED, HOME_BIG3_SCORED, HOME_BIG3_UNKNOWN,
+  HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS,
+} from './homeDashboardData';
 import { createStyles } from './homeStyles';
 import { useKuaTypography } from '../../theme/typography';
 
@@ -30,10 +33,20 @@ import { useKuaTypography } from '../../theme/typography';
 // The handoff is `onNavigate('Analytics', 'recovery')` — the Recovery section
 // itself, not just the tab that contains it (#770).
 //
-// #1333: Home is the entry point, not a second evidence surface. The active
-// card carries the ONE signal that matters most — the shared snapshot headline,
-// or the plain-language reason there is none — and leaves everything per-lift
-// (Big 3 rows, roster counts, week-scope detail) to Analytics Recovery.
+// #1335 (corrects #1333): the Big 3 ARE the card. Squat, Bench and Deadlift lead,
+// each with the snapshot's own per-lift value; the total is one secondary line
+// beneath them. What Home leaves to Analytics is the prose around them — the
+// headline caption, roster counts, week-scope explainer and `Latest week:` wording.
+// Each Big 3 row's right-hand value: plain words, and a percentage only where the
+// snapshot produced a real per-lift score (#1171).
+function liftValue(lift) {
+  if (lift.state === HOME_BIG3_NOT_IN_BASELINE) return 'Not in baseline';
+  if (lift.state === HOME_BIG3_NOT_RETESTED) return 'Not retested';
+  if (lift.state === HOME_BIG3_NOT_SCORED) return 'Not scored';
+  if (lift.state === HOME_BIG3_UNKNOWN) return 'Unknown';
+  return `${lift.percent}%`;
+}
+
 export function HomeRecoverySummary({ summary, onNavigate }) {
   const { colors, kuaPalette: kua } = useTheme();
   const typography = useKuaTypography();
@@ -42,7 +55,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   if (!summary) return null;
   const {
     status, stale, message, active,
-    comparisonStatus, headline = null, weekNumber, weekNoteStatus, weekNoteTitle = null,
+    comparisonStatus, headline = null, weekNumber, weekNoteStatus, weekNoteTitle = null, big3 = [],
   } = summary;
 
   // Verified, nothing is running, and the answer is CURRENT. This is the one
@@ -74,22 +87,24 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
             ? 'No baseline exercises were captured for this block.'
             : null;
 
-  // #1315: the shared snapshot headline (same % and caption as Analytics).
+  // Carried strength scores stay visible under a note-status fallback (#1318).
+  const lifts = big3;
   const headlineScored = !!headline && headline.state === 'score';
-  // No honest average (empty cohort, legacy baseline): say why, in the snapshot's
-  // own words, instead of leaving the headline slot silent.
-  const headlineReason = !!headline && headline.state !== 'score' && fallbackStatus === null ? headline.message : null;
-  // The headline caption already names the week, so the week label only prints
-  // without one. With no week logged there is nothing to name, and inventing
-  // `Week 1` would be false.
+  // No total and no Big 3 to read instead: say why, in the snapshot's own words.
+  // With Big 3 rows, each lift's own status already answers it.
+  const headlineReason = !!headline && headline.state !== 'score' && fallbackStatus === null && lifts.length === 0
+    ? headline.message : null;
+  // Compact week tag beside the header. With no week logged there is nothing to
+  // name, and inventing `Week 1` would be false. Staleness is the message below.
   const weekName = weekNoteTitle || (weekNumber === null ? null : `Week ${weekNumber}`);
-  const weekLabel = weekName && !headlineScored ? `${stale ? 'Last loaded week' : 'Latest week'}: ${weekName}` : null;
 
   // One announcement for the whole summary, assembled in reading order.
   const accessibleContent = [
-    headlineScored ? null : weekName,
+    weekName,
     fallbackStatus,
-    headlineScored ? headline.a11y : null,
+    lifts.length > 0 ? 'Big 3' : null,
+    ...lifts.map(lift => lift.spoken || `${lift.label} ${liftValue(lift).toLowerCase()}`),
+    headlineScored ? headline.headline : null,
     headlineReason,
   ].filter(Boolean)
     .map(part => (/[.!?]$/.test(part) ? part : `${part}.`))
@@ -102,26 +117,28 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
       <Card style={styles.recoveryCard}>
         {active ? (
           <>
-            {/* Header row is the handoff (#820), the same family as Exercise
-                Progress and 1K Progress. */}
-            <Pressable
-              testID="home-recovery-link"
-              onPress={() => onNavigate('Analytics', 'recovery')}
-              style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart, styles.recoveryHeaderLink]}
-              hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
-              accessibilityRole="button"
-              accessibilityLabel="1K recovery"
-              accessibilityHint="Opens the Recovery section of the Analytics tab"
-            >
-              <Text style={[styles.recoveryLabel, styles.sectionHeaderLabel]}>1K recovery</Text>
-              <View style={styles.sectionHeaderChevron}>
-                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
-              </View>
-            </Pressable>
-            {/* Hidden from screen readers: the announcement below names the week. */}
-            {weekLabel ? (
-              <Text testID="home-recovery-week" style={styles.recoveryWeekLabel} accessibilityElementsHidden importantForAccessibility="no">{weekLabel}</Text>
-            ) : null}
+            <View style={styles.recoveryHeaderRow}>
+              {/* Header row is the handoff (#820), the same family as Exercise
+                  Progress and 1K Progress. */}
+              <Pressable
+                testID="home-recovery-link"
+                onPress={() => onNavigate('Analytics', 'recovery')}
+                style={[styles.sectionHeaderAction, styles.recoveryHeaderLink]}
+                hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+                accessibilityRole="button"
+                accessibilityLabel="1K recovery"
+                accessibilityHint="Opens the Recovery section of the Analytics tab"
+              >
+                <Text style={[styles.recoveryLabel, styles.sectionHeaderLabel]}>1K recovery</Text>
+                <View style={styles.sectionHeaderChevron}>
+                  <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
+                </View>
+              </Pressable>
+              {/* Hidden from screen readers: the announcement below names the week. */}
+              {weekName ? (
+                <Text testID="home-recovery-week" style={[styles.recoveryWeekLabel, styles.recoveryWeekTag]} accessibilityElementsHidden importantForAccessibility="no">{weekName}</Text>
+              ) : null}
+            </View>
             <View
               testID="home-recovery-analytics"
               accessible
@@ -130,10 +147,37 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
               {fallbackStatus ? (
                 <Text style={styles.recoveryFallbackLine}>{fallbackStatus}</Text>
               ) : null}
+              {lifts.length > 0 ? (
+                <View testID="home-recovery-big3" style={styles.recoveryLiftList}>
+                  {lifts.map(lift => {
+                    const scored = lift.state === HOME_BIG3_SCORED;
+                    const done = scored && lift.percent >= 100;
+                    // Only a real score fills the bar; unscored lifts stay an empty track.
+                    const fill = scored ? Math.max(0, Math.min(lift.percent, 100)) : 0;
+                    return (
+                      <View key={lift.slot} testID={`home-recovery-lift-${lift.slot}`}>
+                        <View style={styles.recoveryLiftHead}>
+                          <Text style={styles.recoveryLiftName}>{lift.label}</Text>
+                          <View style={styles.recoveryLiftValueRow}>
+                            {/* A score carried from an earlier week names that week. */}
+                            {lift.lastTestedWeek ? (
+                              <Text testID={`home-recovery-lift-${lift.slot}-age`} style={styles.recoveryLiftAge}>{`Week ${lift.lastTestedWeek}`}</Text>
+                            ) : null}
+                            <Text testID={`home-recovery-lift-${lift.slot}-value`} style={[styles.recoveryLiftValue, scored && styles.recoveryLiftScored, done && styles.recoveryLiftDone]}>{liftValue(lift)}</Text>
+                          </View>
+                        </View>
+                        <View style={styles.recoveryLiftTrack}>
+                          {fill > 0 ? <View style={[styles.recoveryLiftFill, done && styles.recoveryLiftFillDone, { width: `${fill}%` }]} /> : null}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : null}
+              {/* #1315: the shared snapshot total, secondary to the Big 3. */}
               {headlineScored ? (
                 <View testID="home-recovery-headline">
-                  <Text testID="home-recovery-headline-value" style={styles.recoveryHeadline}>{headline.headline}</Text>
-                  <Text testID="home-recovery-headline-caption" style={styles.recoveryStatusLine}>{headline.caption}</Text>
+                  <Text testID="home-recovery-headline-value" style={styles.recoveryTotal}>{headline.headline}</Text>
                 </View>
               ) : null}
               {headlineReason ? (
