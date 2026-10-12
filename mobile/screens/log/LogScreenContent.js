@@ -224,43 +224,37 @@ export function LogScreenContent(props) {
               />
             )}
 
-            {/* Persistent, low-emphasis entry point (#823): previously
-                `Start recovery block` only existed inside the collapsed
-                "More Routines" disclosure below, so seeing it at all required
-                opening the exact panel that disclosure has since lost its
-                bordered chrome to. It is never nested in a menu now — always
-                visible under the current routine card, subordinate to Edit,
-                and gone the instant a block becomes active (folded into
-                `showRecoveryStartInManagement` unchanged). */}
-            {effectiveTabView === 'routine' && showRecoveryStartInManagement && (
-              <Pressable
-                onPress={openStartRecoveryBlock}
-                style={styles.recoveryStartRow}
-                accessibilityRole="button"
-                accessibilityLabel="Start recovery block"
-              >
-                <Text style={styles.recoveryStartRowText}>Start recovery block</Text>
-                <MaterialIcons name="chevron-right" size={18} color={kua ? kua.primary : colors.accent} accessible={false} />
-              </Pressable>
-            )}
-
-            {/* Secondary, lower-emphasis entry point immediately below Start
-                (#839): computes its own visibility independently of Start's
-                and renders alongside it whenever both qualify — neither
-                replaces or gates the other. Non-destructive styling
-                (`textMuted`, not `accent`) keeps Start visually primary. */}
-            {effectiveTabView === 'routine' && showRecoveryReopenInManagement && (
-              <Pressable
-                onPress={openReopenRecoveryBlockConfirm}
-                style={styles.recoveryReopenRow}
-                accessibilityRole="button"
-                accessibilityLabel={`Reopen recovery block: ${newestCompletedRecoveryBlock.baseline_note_title || 'Untitled Routine'}`}
-              >
-                <Text style={styles.recoveryReopenRowText} numberOfLines={1}>
-                  {`Reopen recovery block: ${newestCompletedRecoveryBlock.baseline_note_title || 'Untitled Routine'}`}
-                </Text>
-                <MaterialIcons name="chevron-right" size={18} color={colors.textMuted} accessible={false} />
-              </Pressable>
+            {/* Recovery entry points (#823 Start, #839 Reopen), each computing its
+                own visibility, now share ONE outlined group under the current
+                card instead of two floating outline rows (#1325): Start stays
+                primary ink, Reopen sits below a hairline in muted ink. */}
+            {effectiveTabView === 'routine' && (showRecoveryStartInManagement || showRecoveryReopenInManagement) && (
+              <View style={styles.recoveryEntryGroup} testID="log-recovery-entry-group">
+                {showRecoveryStartInManagement && (
+                  <Pressable
+                    onPress={openStartRecoveryBlock}
+                    style={styles.recoveryStartRow}
+                    accessibilityRole="button"
+                    accessibilityLabel="Start recovery block"
+                  >
+                    <Text style={styles.recoveryStartRowText}>Start recovery block</Text>
+                    <MaterialIcons name="chevron-right" size={18} color={kua ? kua.primary : colors.accent} accessible={false} />
+                  </Pressable>
+                )}
+                {showRecoveryReopenInManagement && (
+                  <Pressable
+                    onPress={openReopenRecoveryBlockConfirm}
+                    style={[styles.recoveryReopenRow, showRecoveryStartInManagement && styles.recoveryEntryDivider]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Reopen recovery block: ${newestCompletedRecoveryBlock.baseline_note_title || 'Untitled Routine'}`}
+                  >
+                    <Text style={styles.recoveryReopenRowText} numberOfLines={1}>
+                      {`Reopen recovery block: ${newestCompletedRecoveryBlock.baseline_note_title || 'Untitled Routine'}`}
+                    </Text>
+                    <MaterialIcons name="chevron-right" size={18} color={colors.textMuted} accessible={false} />
+                  </Pressable>
+                )}
+              </View>
             )}
 
             {effectiveTabView === 'routine' && (

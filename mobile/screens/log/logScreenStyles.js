@@ -27,6 +27,10 @@
 // (new), and `LogPreviousRoutines.js` carry their own approved redesign. The
 // Current routine card remains locked.
 //
+// #1325 (owner-requested Log cleanup, not a general exception): the Routine
+// view's Start/Reopen recovery rows share one outlined `recoveryEntryGroup`
+// instead of two separately bordered rows; ink, type and padding unchanged.
+//
 // Authorized exception (#918), the owner-authorized accessibility fix, scoped
 // to text `color` values ONLY: every string the user reads moves off the
 // `colors.accent` mark value, which measures 2.03:1-2.68:1 as light-mode ink
@@ -195,15 +199,23 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // Persistent `Start recovery block` entry point (#823): a low-emphasis
   // outline row, subordinate to Edit on the current routine card above it,
   // and never nested in a menu — see the render site for why it moved here.
+  // #1325: Start and Reopen share one outlined group; rows carry no border.
+  recoveryEntryGroup: {
+    borderRadius: GEOMETRY['radius-xl'],
+    borderWidth: 1,
+    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
+    overflow: 'hidden',
+  },
+  recoveryEntryDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
+  },
   recoveryStartRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 14,
     paddingVertical: 12,
-    borderRadius: GEOMETRY['radius-xl'],
-    borderWidth: 1,
-    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     minHeight: 44,
   },
   recoveryStartRowText: {
@@ -212,7 +224,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     color: kua ? kua.primary : colors.accentText,
   },
   // Secondary `Reopen recovery block: {baseline title}` entry point (#839):
-  // same outline-row shape as Start, but `textMuted` ink keeps it visibly
+  // a row in the same group as Start; `textMuted` ink keeps it visibly
   // lower-emphasis and non-destructive next to Start's `accent` primary.
   recoveryReopenRow: {
     flexDirection: 'row',
@@ -220,11 +232,7 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 14,
     paddingVertical: 12,
-    borderRadius: GEOMETRY['radius-xl'],
-    borderWidth: 1,
-    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
     minHeight: 44,
-    marginTop: 8,
   },
   recoveryReopenRowText: {
     flex: 1,
