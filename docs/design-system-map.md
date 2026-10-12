@@ -1348,7 +1348,9 @@ Consequences to preserve:
   `Set as current routine`, then one row with an outlined `Edit routine` beside a
   44dp `More actions for {title}` trigger. Its bottom sheet lists `Copy`, `Share`,
   `Share as Image` and `Delete routine` (danger ink), with the same accessibility
-  labels and handlers they had as full buttons.
+  labels and handlers they had as full buttons. A chosen sheet item runs only once the
+  sheet is gone (iOS: the Modal's `onDismiss`, with a 700ms fallback), so its
+  alert, share sheet or image preview never opens behind the dismissing sheet.
 - **More Routines opens on its three newest routines (#1329).** A
   `Show all {N} routines` / `Show fewer` text control (44dp, accent ink) appears
   below the list only when more exist. The viewed routine always renders, so a

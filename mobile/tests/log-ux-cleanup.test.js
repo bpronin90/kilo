@@ -34,6 +34,12 @@ const texts = (root) => root.root.findAll(n => n.type === 'Text').map(n => [].co
 const byTitle = (root, title) => root.root.findAll(n => n.props && n.props.title === title && typeof n.props.onPress === 'function')[0];
 const byLabel = (root, label) => root.root.findAll(n => n.props && n.props.accessibilityLabel === label && typeof n.props.onPress === 'function')[0];
 const tap = (root, label) => renderer.act(() => { byLabel(root, label).props.onPress(); });
+// On iOS (the jest platform) a sheet item runs once the sheet's Modal reports
+// onDismiss; fire it the way the native dismissal would.
+const finishSheetDismiss = (root) => {
+  const modal = root.root.findAll(n => n.props && typeof n.props.testID === 'string' && /-menu-modal$/.test(n.props.testID) && typeof n.props.onDismiss === 'function')[0];
+  renderer.act(() => { modal.props.onDismiss(); });
+};
 
 function EditorCard(props) {
   return (
@@ -156,9 +162,11 @@ describe('More Routines (#1329)', () => {
     tap(root, 'More actions for One');
     expect(texts(root)).toEqual(expect.arrayContaining(['Copy', 'Share', 'Share as Image', 'Delete routine']));
     tap(root, 'Share routine One');
+    finishSheetDismiss(root);
     expect(onShareRoutine).toHaveBeenCalledWith({ title: 'One', rawText: NOTES[0].raw_text });
     tap(root, 'More actions for One');
     tap(root, 'Delete routine One');
+    finishSheetDismiss(root);
     expect(handleDeleteRoutine).toHaveBeenCalledWith('n1', 'One', false);
   });
 });
@@ -200,6 +208,7 @@ describe('Active Deload card (#1329)', () => {
     tap(root, 'More deload actions');
     expect(texts(root)).toEqual(expect.arrayContaining(['Regenerate deload', 'Delete active deload']));
     tap(root, 'Regenerate deload');
+    finishSheetDismiss(root);
     expect(handleGenerateDeload).toHaveBeenCalledTimes(1);
   });
 
@@ -211,5 +220,41 @@ describe('Active Deload card (#1329)', () => {
     expect(item.props.accessibilityState).toEqual({ disabled: true });
     expect(item.props.onPress).toBeUndefined();
     expect(handleGenerateDeload).not.toHaveBeenCalled();
+  });
+});
+
+describe('ActionSheetMenu defers its item until the sheet is gone (#1329)', () => {
+  const { ActionSheetMenu } = require('../components/log/ActionSheetMenu');
+  function Sheet({ run }) {
+    const [open, setOpen] = React.useState(true);
+    return <ActionSheetMenu visible={open} onClose={() => setOpen(false)} testID="t-menu" items={[{ label: 'Go', onPress: run }]} />;
+  }
+  const modal = (root) => root.root.findAll(n => n.props && n.props.testID === 't-menu-modal')[0];
+
+  test('on iOS the handler runs on onDismiss, once, not while the sheet is still presented', () => {
+    const run = jest.fn();
+    const root = mount(<Sheet run={run} />);
+    tap(root, 'Go');
+    expect(modal(root).props.visible).toBe(false);
+    expect(run).not.toHaveBeenCalled();
+    renderer.act(() => { modal(root).props.onDismiss(); });
+    renderer.act(() => { modal(root).props.onDismiss(); });
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  test('if onDismiss never arrives, the fallback timer still runs the handler exactly once', () => {
+    jest.useFakeTimers();
+    try {
+      const run = jest.fn();
+      const root = mount(<Sheet run={run} />);
+      tap(root, 'Go');
+      expect(run).not.toHaveBeenCalled();
+      renderer.act(() => { jest.advanceTimersByTime(700); });
+      expect(run).toHaveBeenCalledTimes(1);
+      renderer.act(() => { modal(root).props.onDismiss(); });
+      expect(run).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

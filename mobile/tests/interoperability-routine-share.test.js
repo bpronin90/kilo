@@ -332,6 +332,9 @@ describe('Share Routine is reachable from the current and saved routines', () =>
     render.act(() => { pressableByLabel(component.root, 'More actions for Saved').props.onPress(); });
     const share = pressableByLabel(component.root, 'Share routine Saved');
     render.act(() => { share.props.onPress(); });
+    // #1329: on iOS the sheet item runs once its Modal reports onDismiss.
+    const sheet = component.root.findAll(n => n.props && n.props.testID === 'log-other-routine-menu-modal')[0];
+    render.act(() => { sheet.props.onDismiss(); });
     expect(onShareRoutine).toHaveBeenCalledWith({ title: 'Saved', rawText: AB_ROUTINE });
   });
 });

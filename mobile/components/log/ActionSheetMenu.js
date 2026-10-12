@@ -4,8 +4,8 @@
 // Deload card can move their less-frequent actions out of the full-width
 // button stack. The trigger is a 44dp outlined square that sits beside the
 // card's one visible secondary action, inside the body (ui-design-rules §13).
-import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useTheme, useThemedStyles, useKuaStyle } from '../../theme/ThemeContext';
 import { MODAL_SUPPORTED_ORIENTATIONS } from '../adaptiveLayout';
@@ -32,12 +32,38 @@ export function ActionSheetTrigger({ onPress, accessibilityLabel, accessibilityH
   );
 }
 
+// iOS cannot present an alert, share sheet or second Modal while this one is
+// still dismissing; `onDismiss` normally fires well inside this, and the timer
+// only guards against a dismissal event that never arrives.
+const IOS_DISMISS_FALLBACK_MS = 700;
+
 // `items`: `{ label, a11y?, onPress, disabled?, danger? }`; falsy entries are
-// skipped. Choosing an item closes the sheet first, then runs its handler, so
-// a confirmation alert never opens underneath the sheet.
+// skipped. Choosing an item closes the sheet first and runs its handler only
+// once the sheet is gone (iOS: on `onDismiss`), so a confirmation alert, the
+// share sheet or the image preview never opens behind or instead of it.
 export function ActionSheetMenu({ visible, onClose, items, testID }) {
   const reduceMotion = useReducedMotion();
   const styles = useThemedStyles(createStyles);
+  const pendingRef = useRef(null);
+  const runPending = () => {
+    const run = pendingRef.current;
+    pendingRef.current = null;
+    return run ? run() : undefined;
+  };
+  const choose = (item) => {
+    pendingRef.current = item.onPress;
+    onClose();
+    if (Platform.OS !== 'ios') runPending();
+  };
+  useEffect(() => {
+    if (visible) {
+      pendingRef.current = null;
+      return undefined;
+    }
+    if (!pendingRef.current) return undefined;
+    const timer = setTimeout(runPending, IOS_DISMISS_FALLBACK_MS);
+    return () => clearTimeout(timer);
+  }, [visible]);
   return (
     <Modal
       visible={visible}
@@ -45,6 +71,8 @@ export function ActionSheetMenu({ visible, onClose, items, testID }) {
       supportedOrientations={MODAL_SUPPORTED_ORIENTATIONS}
       animationType={reduceMotion ? 'none' : 'fade'}
       onRequestClose={onClose}
+      onDismiss={runPending}
+      testID={testID ? `${testID}-modal` : undefined}
     >
       <View style={styles.scrim}>
         {/* Sibling scrim behind the sheet, not its parent, so TalkBack keeps
@@ -59,7 +87,7 @@ export function ActionSheetMenu({ visible, onClose, items, testID }) {
           {items.filter(Boolean).map(item => (
             <Pressable
               key={item.label}
-              onPress={item.disabled ? undefined : () => { onClose(); item.onPress(); }}
+              onPress={item.disabled ? undefined : () => choose(item)}
               style={styles.item}
               accessibilityRole="menuitem"
               accessibilityLabel={item.a11y || item.label}

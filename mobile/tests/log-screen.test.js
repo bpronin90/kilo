@@ -1399,6 +1399,16 @@ describe('explicit editor rollback: source-level assertions (#851)', () => {
 
 // ── Undo escape hatch: integration tests ───────────────────────────
 
+// #1329: on iOS a sheet item's action runs once the sheet's Modal reports
+// `onDismiss`; fire it the way the native dismissal would.
+const finishSheetDismiss = (root) => {
+  const modal = root.findAll(n => n.props && typeof n.props.testID === 'string' && /-menu-modal$/.test(n.props.testID) && typeof n.props.onDismiss === 'function')[0];
+  render.act(() => { modal.props.onDismiss(); });
+};
+const finishSheetDismissAsync = async (root) => {
+  const modal = root.findAll(n => n.props && typeof n.props.testID === 'string' && /-menu-modal$/.test(n.props.testID) && typeof n.props.onDismiss === 'function')[0];
+  await render.act(async () => { await modal.props.onDismiss(); });
+};
 // #1329: a non-current routine's Copy/Share/Share as Image/Delete live behind
 // its expanded body's More actions sheet; open it before reaching for them.
 const openOtherRoutineMenu = (root) => {
@@ -1725,6 +1735,7 @@ describe('active deload deletion (#560)', () => {
     openDeloadMenu(root);
 
     render.act(() => { findPressableByText(root, 'Delete active deload').props.onPress(); });
+    finishSheetDismiss(root);
     expect(alertSpy).toHaveBeenCalledWith(
       'Delete active deload?',
       'This will remove the active deload and cannot be undone.',
@@ -1744,6 +1755,7 @@ describe('active deload deletion (#560)', () => {
     openDeloadTab(root);
     openDeloadMenu(root);
     render.act(() => { findPressableByText(root, 'Delete active deload').props.onPress(); });
+    finishSheetDismiss(root);
 
     const remove = alertSpy.mock.calls[0][2].find(button => button.text === 'Delete');
     await render.act(async () => { await remove.onPress(); });
@@ -4431,6 +4443,7 @@ describe('Log action hierarchy (#711)', () => {
       const more = root.findAll(n => n.props && n.props.accessibilityLabel === 'More actions for Routine 1' && typeof n.props.onPress === 'function')[0];
       render.act(() => { more.props.onPress(); });
       render.act(() => { pressableAround(root, t => t === 'Delete routine').props.onPress(); });
+      finishSheetDismiss(root);
       expect(props.handleDeleteRoutine).toHaveBeenCalledWith('r1', 'Routine 1', false);
     });
 
@@ -8695,6 +8708,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
     openOtherRoutineMenu(root);
     render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
+    finishSheetDismiss(root);
 
     // First alert: the recovery-aware confirmation, naming the week. Nothing
     // is written yet — cancelling here must be a full no-op, journal included.
@@ -8740,6 +8754,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
     openOtherRoutineMenu(root);
     render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
+    finishSheetDismiss(root);
     expect(alertSpy.mock.calls[0][0]).toBe('Delete this recovery week note?');
     const firstAlertButtons = alertSpy.mock.calls[0][2];
     // The recovery-aware alert's "Cancel" button carries no onPress (the
@@ -8773,6 +8788,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
     openOtherRoutineMenu(root);
     render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
+    finishSheetDismiss(root);
     expect(alertSpy).toHaveBeenCalledWith(
       'Delete this recovery week note?',
       expect.stringContaining('Recovery Week 1'),
@@ -8803,6 +8819,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
     openOtherRoutineMenu(root);
     render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
+    finishSheetDismiss(root);
     render.act(() => { alertSpy.mock.calls[0][2].find(b => b.text === 'Continue').onPress(); });
     const secondAlertButtons = alertSpy.mock.calls[1][2];
     await render.act(async () => { await secondAlertButtons.find(b => b.text === 'Delete').onPress(); });
@@ -8838,6 +8855,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
     openOtherRoutineMenu(root);
     render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
+    finishSheetDismiss(root);
     render.act(() => { alertSpy.mock.calls[0][2].find(b => b.text === 'Continue').onPress(); });
     const secondAlertButtons = alertSpy.mock.calls[1][2];
     await render.act(async () => {
@@ -8948,6 +8966,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     openOtherRoutineMenu(root);
     const deleteBtn = findPressableByText(root, 'Delete routine');
     render.act(() => { deleteBtn.props.onPress(); });
+    finishSheetDismiss(root);
 
     expect(alertSpy).toHaveBeenCalledTimes(1);
     expect(alertSpy).toHaveBeenCalledWith(
