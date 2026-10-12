@@ -1250,7 +1250,7 @@ action is placed by how often it is used:
 
 | Tier | Actions | Location |
 |---|---|---|
-| Primary — every session | `Track` a lift, `Edit`, `Week A/B`, skip week | Active card body, plus the one action strip under its header (`LogActiveRoutineCard.js` `actionStrip`) |
+| Primary — every session | `Track` a lift, `Edit`, `Week A/B`, `Skip week` | Active card body; `Week A/B` in the one action strip under its header (`LogActiveRoutineCard.js` `actionStrip`); `Edit`, `Skip week` and `Remove skip` lead the Routine actions menu (#1327) |
 | Secondary — occasional | viewed-card `Week A/B`, `Set as current routine` (the body's one filled action), `Edit routine`, share/copy family, `Delete routine` last | Non-current row's expand-on-tap body (`LogPreviousRoutines.js` `inlineActions`), inside expanded routine management, in that order |
 | Quick access — reachable without opening (#756, #836; the per-row quick action retired #843) | `New routine` (icon + visible label, the section's ONE create-routine affordance) | A sibling row of the section title, OUTSIDE the collection disclosure entirely (#843, #847) — present and identical whether the collection is collapsed or expanded (`LogPreviousRoutines.js` `topRow`) |
 | Rare — once per training block | `Start recovery block` | A persistent, low-emphasis row directly under the current routine card (`LogScreenContent.js` `recoveryStartRow`), the first row of the one outlined Recovery entry group (`recoveryEntryGroup`, #1325), never nested in a menu or disclosure; absent whenever a block cannot be started (#823, superseding #724's routine-management placement) |
@@ -1327,22 +1327,27 @@ Consequences to preserve:
   section heading (`15`/`700`, `colors.text`) rather than a small caption;
   expanded, the count is not repeated at all, since the list below it already
   shows every routine.
-- The active card's strip always renders `Skip week` (skips stack by design),
-  in the strip's one left-aligned primary group after `Week A/B` (or alone on a
-  single-week routine) — never a separate right-aligned group;
-  it is never hidden while a save is in flight or after a skip — a press during
-  a save answers with `Finishing the previous save. Try again.` instead.
-  `Remove skip` is the Routine actions menu's correction item, present only
-  while a trailing skip exists, so the strip never shows both. There is no
-  opacity-dimmed disabled variant.
+- **Both skip actions live in the Routine actions menu (#1327, owner request),
+  right after `Edit`:** `Skip week` is always offered (skips stack by design) —
+  through a save in flight and after a skip; a press during a save answers with
+  `Finishing the previous save. Try again.` — and `Remove skip` sits beside it
+  only while a trailing skip exists. Both are live menu items, never a dimmed
+  pair. Choosing one (or `Copy`) from a collapsed card opens the card first,
+  so its result line is visible. The strip under the header now carries `Week A/B` only, so a
+  single-week routine renders no strip at all. There is no opacity-dimmed
+  disabled variant.
 - The `Double-tap to edit` hint is retired in the active card, the non-current
   card body, and the Deload cards (#711, #724); the gesture itself still works.
 - The active Deload card orders its actions primary → secondary → destructive:
   `Deload complete`, `Edit`, `Regenerate deload`, `Delete active deload`.
 - **Rest timer is one docked control.** In current-routine edit the header
   control stays mounted through idle (stopwatch), running (live countdown) and
-  done (`Rest over`); one anchored panel holds the presets (Start, or Restart
-  while running/done) plus Cancel or Dismiss; a failed background alert shows
+  done (`Rest over`); one anchored 280dp panel (#1327, clamped to both
+  viewport edges on narrow screens) holds a header with
+  the state in large type (`Rest timer`, the live countdown, or `Rest over`)
+  and a caption, four equal-width presets in one row labelled in the
+  countdown's m:ss format (`1:00 1:30 2:00 3:00`; Start, or Restart while
+  running/done), and a full-width outlined Cancel or Dismiss button; a failed background alert shows
   on the closed control as a `notifications-off` glyph. App.js hides the
   app-shell pill only while that control is on screen — once the editor scrolls
   it away the fixed pill returns — so the countdown never shows twice and is

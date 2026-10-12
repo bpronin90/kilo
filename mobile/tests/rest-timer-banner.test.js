@@ -216,7 +216,10 @@ describe('RestTimerBanner compact editor control (#1006)', () => {
     const run = renderBanner({ ...idle, showStart: true, isRunning: true, remainingMs: 5000, onStart, onCancel });
     const openRun = () => act(() => { run.root.findAll(n => n.props?.accessibilityLabel === 'Rest timer, 0:05 remaining')[0].props.onPress(); });
     openRun();
-    expect(JSON.stringify(run.toJSON())).toContain('Resting · 0:05 left');
+    const runJson = JSON.stringify(run.toJSON());
+    expect(runJson).toContain('Resting · tap a time to restart');
+    // Presets read in the countdown's m:ss format, all four in one row.
+    for (const t of ['1:00', '1:30', '2:00', '3:00']) expect(runJson).toContain(`"${t}"`);
     act(() => { run.root.findAll(n => n.props?.accessibilityLabel === 'Restart 90 second rest timer')[0].props.onPress(); });
     expect(onStart).toHaveBeenCalledWith(90);
     openRun();
@@ -228,6 +231,32 @@ describe('RestTimerBanner compact editor control (#1006)', () => {
     expect(buttonsByLabel(done.toJSON(), 'Restart 60 second rest timer')).toHaveLength(1);
     act(() => { done.root.findAll(n => n.props?.accessibilityLabel === 'Dismiss rest timer done banner')[0].props.onPress(); });
     expect(onDismissDone).toHaveBeenCalledTimes(1);
+  });
+
+  test('the panel is clamped inside the viewport on a narrow screen', () => {
+    const { Dimensions } = require('react-native');
+    const dimSpy = jest.spyOn(Dimensions, 'get').mockReturnValue({ width: 320, height: 640, scale: 2, fontScale: 1 });
+    try {
+      let tree;
+      act(() => {
+        tree = renderer.create(
+          <ThemeProvider>
+            <RestTimerBanner {...idle} showStart />
+          </ThemeProvider>,
+          // The stopwatch sits left of Done: its right edge is 80dp from the screen edge.
+          { createNodeMock: () => ({ measureInWindow: (cb) => cb(196, 40, 44, 44) }) }
+        );
+      });
+      act(() => { tree.root.findAll(n => n.props?.accessibilityLabel === 'Rest timer')[0].props.onPress(); });
+      const panel = tree.root.findAll(n => typeof n.type === 'string' && n.props.accessibilityRole === 'menu')[0];
+      const style = Object.assign({}, ...[].concat(panel.props.style).filter(Boolean));
+      expect(style.width).toBeLessThanOrEqual(320 - 16);
+      // Left edge = 320 - right - width stays on screen (>= 8dp).
+      expect(320 - style.right - style.width).toBeGreaterThanOrEqual(8);
+      expect(style.right).toBeGreaterThanOrEqual(8);
+    } finally {
+      dimSpy.mockRestore();
+    }
   });
 
   test('a failed background alert is flagged on the closed docked control', () => {

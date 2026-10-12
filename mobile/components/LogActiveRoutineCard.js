@@ -1,9 +1,9 @@
 // The active routine card (#711 information hierarchy): the collapse target
 // carries identity only — title, `Week X · Current routine`, recovery badge. Its
-// one sibling is the 44dp Routine actions trigger (#1244); Week A/B and Skip
-// week live in the strip under it. Skip week stays mounted through saves and
-// after a skip (a press mid-save answers with a status line instead); Remove
-// skip is the menu's correction item. The title column keeps a width floor.
+// one sibling is the 44dp Routine actions trigger (#1244); Week A/B lives in
+// the strip under it. Skip week and Remove skip live together in the Routine
+// actions menu; Skip week is always offered (through saves and after a skip, a
+// press mid-save answers with a status line). The title column keeps a width floor.
 //
 // This is the Current routine card, which the Log tab's style lock
 // (`screens/LogScreen.js` lines 1-46) holds tighter than the rest of the tab:
@@ -218,22 +218,32 @@ export function LogActiveRoutineCard({
           <View style={styles.actionMenu} accessibilityRole="menu" testID="log-current-routine-menu">
             {[
               { label: 'Edit', a11y: 'Edit routine', run: enterCurrentEditor },
+              // Workout actions first — Edit, then both skip actions together: Skip week always (skips
+              // stack), Remove skip only while a trailing skip exists.
+              handleSkipWeek ? { label: 'Skip week', a11y: 'Skip week', run: handleSkipWeek, showsStatus: true } : null,
+              // "Remove skip", not "Undo skip": that text collides with the editor's "Undo".
+              canUnskipWeek && handleUnskipWeek
+                ? { label: 'Remove skip', a11y: 'Remove skip', run: handleUnskipWeek, showsStatus: true }
+                : null,
               // #956: Copy and Share stay distinct actions, not merged.
-              { label: 'Copy', a11y: `Copy routine ${workoutNoteTitle || 'Untitled Routine'}`, run: handleCopyRoutine },
+              { label: 'Copy', a11y: `Copy routine ${workoutNoteTitle || 'Untitled Routine'}`, run: handleCopyRoutine, showsStatus: true },
               { label: 'Share', a11y: 'Share routine', run: handleShareRoutine },
               {
                 label: 'Share as Image',
                 a11y: 'Share routine as image',
                 run: () => setImageShare({ title: workoutNoteTitle, rawText: routineRawText ?? activeEditText }),
               },
-              // "Remove skip", not "Undo skip": that text collides with the editor's "Undo".
-              canUnskipWeek && handleUnskipWeek
-                ? { label: 'Remove skip', a11y: 'Remove skip', run: handleUnskipWeek }
-                : null,
             ].filter(Boolean).map(item => (
               <Pressable
                 key={item.label}
-                onPress={(e) => { e?.stopPropagation?.(); setMenuOpen(false); return item.run(); }}
+                onPress={(e) => {
+                  e?.stopPropagation?.();
+                  setMenuOpen(false);
+                  // Its result line renders in the body, so open a collapsed card
+                  // first — otherwise the press would look silent.
+                  if (item.showsStatus && isCollapsed) toggleCollapsed();
+                  return item.run();
+                }}
                 style={styles.actionMenuItem}
                 accessibilityRole="menuitem"
                 accessibilityLabel={item.a11y}
@@ -282,7 +292,7 @@ export function LogActiveRoutineCard({
             style={styles.menuButton}
             accessibilityRole="button"
             accessibilityLabel="Routine actions"
-            accessibilityHint="Opens Edit, Copy, Share, and Share as Image"
+            accessibilityHint="Opens Edit, Copy, Share, Share as Image, and Skip week"
             accessibilityState={{ expanded: menuOpen }}
           >
             <MaterialIcons name="more-horiz" size={20} color={kua ? kua.onSurfaceVariant : colors.chipAccentText} accessible={false} />
@@ -293,10 +303,9 @@ export function LogActiveRoutineCard({
           onPress={handleNoteBodyPress}
           style={[styles.currentNoteContent, isCollapsed ? { display: 'none' } : null]}
         >
-          {/* The card's action strip: Week A/B and Skip week only. #1244 moved
-              the Routine actions trigger to the header and Remove skip into the
-              menu; Skip week itself never disappears, so the strip is stable. */}
-          {(hasABWeeks || handleSkipWeek) && (
+          {/* The card's action strip: Week A/B only. Both skip actions are in
+              the Routine actions menu, so a single-week routine has no strip. */}
+          {hasABWeeks && (
           <View style={styles.actionStrip}>
             <View style={styles.actionStripPrimary}>
               {hasABWeeks && (
@@ -311,21 +320,6 @@ export function LogActiveRoutineCard({
                   <Text style={styles.inlineSwitchButtonText}>
                     Week {effectiveActiveWeek === 'B' ? 'A' : 'B'}
                   </Text>
-                </Pressable>
-              )}
-              {/* One skip control in the strip (#711), in the primary group so
-                  it sits left beside Week A/B, or alone on a single-week routine
-                  (no right-aligned dead space). Remove skip, when there is one
-                  to remove, is in the Routine actions menu (#1244). */}
-              {handleSkipWeek && (
-                <Pressable
-                  onPress={(e) => { e.stopPropagation(); handleSkipWeek(); }}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  style={styles.skipWeekButton}
-                  accessibilityLabel="Skip week"
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.skipWeekText}>Skip week</Text>
                 </Pressable>
               )}
             </View>
@@ -557,16 +551,6 @@ const createStyles = (kua, colors) => StyleSheet.create({
     fontSize: TYPOGRAPHY['body-sm'].fontSize,
     fontWeight: '600',
     color: kua ? kua.onSurface : colors.chipAccentText,
-  },
-  // 44dp floor, sized like the pills beside it (#823).
-  skipWeekButton: {
-    minHeight: 44,
-    justifyContent: 'center',
-    flexShrink: 1,
-  },
-  skipWeekText: {
-    fontSize: TYPOGRAPHY['label-md'].fontSize,
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   skipWeekStatusText: {
     fontSize: TYPOGRAPHY['label-sm'].fontSize,

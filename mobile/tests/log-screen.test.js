@@ -3784,11 +3784,11 @@ describe('LogActiveRoutineCard: header collapses, body edits (separate handlers)
 
   // #711 removed the advertised "Double-tap to edit" hint in favour of an
   // explicit Edit control, but deliberately kept handleNoteBodyPress wired so
-  // the gesture still works for users who know it. The body is now located via
-  // the skip control it contains rather than the retired hint text.
+  // the gesture still works for users who know it. The body is located by its
+  // own handler (Skip week, which used to sit in it, is a menu item now).
   test('tapping the body calls the body handler, not toggleCollapsed', () => {
     const { root, props } = renderCard({ handleSkipWeek: jest.fn() });
-    const body = pressableAround(root, t => t.includes('Skip week'), 2);
+    const body = root.findAll(n => n.props && n.props.onPress === props.handleNoteBodyPress)[0];
     render.act(() => { body.props.onPress(); });
     expect(props.handleNoteBodyPress).toHaveBeenCalledTimes(1);
     expect(props.toggleCollapsed).not.toHaveBeenCalled();
@@ -3900,10 +3900,10 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     expect(wrapRows.length).toBeGreaterThan(0);
 
     // #1021: Edit, Share, Copy, and Share as Image consolidated into the
-    // three-dot menu, leaving Week A/B and Skip week/Remove skip as the only
-    // shrinkable 44dp pills always in the strip.
+    // three-dot menu; both skip actions live there too, leaving Week A/B as the
+    // only shrinkable 44dp pill in the strip.
     const pills = findStyled(root, s => s.minHeight === 44 && s.flexShrink === 1);
-    expect(pills.length).toBe(2); // Week A/B + Skip week/Remove skip
+    expect(pills.length).toBe(1); // Week A/B
     for (const pill of pills) {
       const style = flatStyle(pill);
       expect(style.justifyContent).toBe('center');
@@ -3936,6 +3936,7 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     )];
     expect(menuItemLabels).toEqual([
       'Edit routine',
+      'Skip week',
       `Copy routine ${LONG_TITLE}`,
       'Share routine',
       'Share routine as image',
@@ -3989,7 +3990,7 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     expect(p.props.visible).toBe(true);
     const items = root.findAll(n => n.props && n.props.accessibilityRole === 'menuitem' && n.props.onPress);
     expect(items.map(i => i.props.accessibilityLabel)).toEqual([
-      'Edit routine', `Copy routine ${LONG_TITLE}`, 'Share routine', 'Share routine as image',
+      'Edit routine', 'Skip week', `Copy routine ${LONG_TITLE}`, 'Share routine', 'Share routine as image',
     ]);
     items.forEach(i => expect(flatStyle(i).minHeight).toBeGreaterThanOrEqual(44));
     render.act(() => { trigger().props.onPress({ stopPropagation: jest.fn() }); });
@@ -4262,41 +4263,26 @@ describe('Log action hierarchy (#711)', () => {
   // text — two contradictory-looking controls, and a disabled state carried by
   // opacity alone. The state now decides which single control exists.
   describe('mutually exclusive skip control', () => {
-    // Skip week lives in the strip's single left-aligned primary group, beside
-    // Week A/B or alone — never a right-aligned group leaving the left side empty.
-    test.each([[true], [false]])('hasABWeeks=%s: Skip week shares the one left group', (hasABWeeks) => {
-      const { StyleSheet } = require('react-native');
-      const { root } = renderActiveCard({ canUnskipWeek: false, hasABWeeks });
-      const skipBtn = pressableAround(root, t => t === 'Skip week');
-      const strip = root.findAll(n => typeof n.type === 'string' && n.props.style
-        && StyleSheet.flatten(n.props.style).justifyContent === 'space-between'
-        && StyleSheet.flatten(n.props.style).flexWrap === 'wrap')[0];
-      expect(strip.children).toHaveLength(1);
-      const group = strip.children[0];
-      expect(group.findAll(n => n === skipBtn)).toHaveLength(1);
-      expect(group.findAll(n => n.props && n.props.accessibilityLabel && /^Switch to Week/.test(n.props.accessibilityLabel)).length > 0).toBe(hasABWeeks);
-    });
-
-    test('with nothing to unskip, only "Skip week" is on screen', () => {
-      const { root, props } = renderActiveCard({ canUnskipWeek: false });
+    // Both skip actions live together in the Routine actions menu, right after
+    // Edit: Skip week always (skips stack), Remove skip only with a trailing skip.
+    test.each([[true], [false]])('hasABWeeks=%s: no skip control in the strip; Skip week is a menu item', (hasABWeeks) => {
+      const { root, props } = renderActiveCard({ canUnskipWeek: false, hasABWeeks });
+      expect(textNodes(root, 'Skip week').length).toBe(0);
+      openCurrentRoutineMenu(root);
       expect(textNodes(root, 'Skip week').length).toBe(1);
       expect(textNodes(root, 'Remove skip').length).toBe(0);
-
       const skipBtn = pressableAround(root, t => t === 'Skip week');
-      expect(skipBtn.props.accessibilityRole).toBe('button');
-      expect(skipBtn.props.accessibilityState).toBeUndefined();
+      expect(skipBtn.props.accessibilityRole).toBe('menuitem');
       render.act(() => { skipBtn.props.onPress({ stopPropagation: jest.fn() }); });
       expect(props.handleSkipWeek).toHaveBeenCalledTimes(1);
       expect(props.handleUnskipWeek).not.toHaveBeenCalled();
     });
 
-    test('with a trailing skip present, Skip week stays in the strip and "Remove skip" is in the Routine actions menu', () => {
+    test('with a trailing skip present, the menu offers Skip week and Remove skip together', () => {
       const { root, props } = renderActiveCard({ canUnskipWeek: true });
-      // #1244: no standalone row — Remove skip is a menu item. Skip week
-      // itself never disappears after a skip (skips stack by design).
       expect(textNodes(root, 'Remove skip').length).toBe(0);
-      expect(textNodes(root, 'Skip week').length).toBe(1);
       openCurrentRoutineMenu(root);
+      expect(textNodes(root, 'Skip week').length).toBe(1);
       expect(textNodes(root, 'Remove skip').length).toBe(1);
 
       const unskipBtn = pressableAround(root, t => t === 'Remove skip');
@@ -4310,6 +4296,29 @@ describe('Log action hierarchy (#711)', () => {
       render.act(() => { unskipBtn.props.onPress({ stopPropagation: jest.fn() }); });
       expect(props.handleUnskipWeek).toHaveBeenCalledTimes(1);
       expect(props.handleSkipWeek).not.toHaveBeenCalled();
+    });
+
+    test('from a collapsed card, Skip week opens the card so its result line is visible', () => {
+      const collapsed = renderActiveCard({ isCollapsed: true });
+      openCurrentRoutineMenu(collapsed.root);
+      render.act(() => { pressableAround(collapsed.root, t => t === 'Skip week').props.onPress({ stopPropagation: jest.fn() }); });
+      expect(collapsed.props.toggleCollapsed).toHaveBeenCalledTimes(1);
+      expect(collapsed.props.handleSkipWeek).toHaveBeenCalledTimes(1);
+
+      const open = renderActiveCard({ isCollapsed: false });
+      openCurrentRoutineMenu(open.root);
+      render.act(() => { pressableAround(open.root, t => t === 'Skip week').props.onPress({ stopPropagation: jest.fn() }); });
+      expect(open.props.toggleCollapsed).not.toHaveBeenCalled();
+      expect(open.props.handleSkipWeek).toHaveBeenCalledTimes(1);
+    });
+
+    test('a single-week routine renders no action strip at all', () => {
+      const { StyleSheet } = require('react-native');
+      const { root } = renderActiveCard({ hasABWeeks: false });
+      const strips = root.findAll(n => typeof n.type === 'string' && n.props.style
+        && StyleSheet.flatten(n.props.style).justifyContent === 'space-between'
+        && StyleSheet.flatten(n.props.style).flexWrap === 'wrap');
+      expect(strips).toHaveLength(0);
     });
 
     test('neither control renders when the screen supplies no skip handlers', () => {
@@ -4343,14 +4352,14 @@ describe('Log action hierarchy (#711)', () => {
     test('the retired "Double-tap to edit" hint is gone but the gesture is still wired', () => {
       const { root, props } = renderActiveCard();
       expect(root.findAll(n => n.type === 'Text' && String(n.props.children).includes('Double-tap')).length).toBe(0);
-      const body = pressableAround(root, t => t === 'Skip week', 2);
+      const body = root.findAll(n => n.props && n.props.onPress === props.handleNoteBodyPress)[0];
       render.act(() => { body.props.onPress(); });
       expect(props.handleNoteBodyPress).toHaveBeenCalledTimes(1);
     });
 
     test('the strip is hidden with the body when the card is collapsed', () => {
-      const { root } = renderActiveCard({ isCollapsed: true, hasABWeeks: true });
-      const body = pressableAround(root, t => t === 'Skip week', 2);
+      const { root, props } = renderActiveCard({ isCollapsed: true, hasABWeeks: true });
+      const body = root.findAll(n => n.props && n.props.onPress === props.handleNoteBodyPress)[0];
       const style = Array.isArray(body.props.style)
         ? Object.assign({}, ...body.props.style.filter(Boolean))
         : body.props.style;
