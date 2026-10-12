@@ -4262,6 +4262,21 @@ describe('Log action hierarchy (#711)', () => {
   // text — two contradictory-looking controls, and a disabled state carried by
   // opacity alone. The state now decides which single control exists.
   describe('mutually exclusive skip control', () => {
+    // Skip week lives in the strip's single left-aligned primary group, beside
+    // Week A/B or alone — never a right-aligned group leaving the left side empty.
+    test.each([[true], [false]])('hasABWeeks=%s: Skip week shares the one left group', (hasABWeeks) => {
+      const { StyleSheet } = require('react-native');
+      const { root } = renderActiveCard({ canUnskipWeek: false, hasABWeeks });
+      const skipBtn = pressableAround(root, t => t === 'Skip week');
+      const strip = root.findAll(n => typeof n.type === 'string' && n.props.style
+        && StyleSheet.flatten(n.props.style).justifyContent === 'space-between'
+        && StyleSheet.flatten(n.props.style).flexWrap === 'wrap')[0];
+      expect(strip.children).toHaveLength(1);
+      const group = strip.children[0];
+      expect(group.findAll(n => n === skipBtn)).toHaveLength(1);
+      expect(group.findAll(n => n.props && n.props.accessibilityLabel && /^Switch to Week/.test(n.props.accessibilityLabel)).length > 0).toBe(hasABWeeks);
+    });
+
     test('with nothing to unskip, only "Skip week" is on screen', () => {
       const { root, props } = renderActiveCard({ canUnskipWeek: false });
       expect(textNodes(root, 'Skip week').length).toBe(1);

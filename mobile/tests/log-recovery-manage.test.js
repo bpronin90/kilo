@@ -162,6 +162,15 @@ describe('Recovery History selector', () => {
     for (const fn of Object.values(mockLifecycle)) expect(fn).not.toHaveBeenCalled();
   });
 
+  test('picking a block opens its Manage card, since that card sits above the History list', () => {
+    const c = mount({ blocks: [block(), newest, older] });
+    expect(host(c.root, 'recovery-manage-trigger-rb1')[0].props.accessibilityState.expanded).toBe(false);
+    press(c.root, 'recovery-history-header');
+    press(c.root, 'recovery-history-row-rb-old');
+    expect(host(c.root, 'recovery-manage-trigger-rb-old')[0].props.accessibilityState.expanded).toBe(true);
+    for (const fn of Object.values(mockLifecycle)) expect(fn).not.toHaveBeenCalled();
+  });
+
   test('a draft stays with its block across switching, and never leaks to another block', () => {
     const c = mount({ blocks: [newest, older] });
     press(c.root, 'recovery-manage-trigger-rb-new');

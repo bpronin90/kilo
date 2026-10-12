@@ -313,11 +313,11 @@ export function LogActiveRoutineCard({
                   </Text>
                 </Pressable>
               )}
-            </View>
-            {/* One skip control in the strip (#711); Remove skip, when there
-                is one to remove, is in the Routine actions menu (#1244). */}
-            {handleSkipWeek && (
-              <View style={styles.skipWeekActions}>
+              {/* One skip control in the strip (#711), in the primary group so
+                  it sits left beside Week A/B, or alone on a single-week routine
+                  (no right-aligned dead space). Remove skip, when there is one
+                  to remove, is in the Routine actions menu (#1244). */}
+              {handleSkipWeek && (
                 <Pressable
                   onPress={(e) => { e.stopPropagation(); handleSkipWeek(); }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -327,8 +327,8 @@ export function LogActiveRoutineCard({
                 >
                   <Text style={styles.skipWeekText}>Skip week</Text>
                 </Pressable>
-              </View>
-            )}
+              )}
+            </View>
           </View>
           )}
           {skipWeekStatus ? (
@@ -517,10 +517,6 @@ const createStyles = (kua, colors) => StyleSheet.create({
     flexDirection: 'row',
     flexShrink: 1,
     flexWrap: 'wrap',
-    gap: 12,
-  },
-  skipWeekActions: {
-    flexDirection: 'row',
     gap: 12,
   },
   // #1021: icon-only 44dp trigger, no pill chrome.
