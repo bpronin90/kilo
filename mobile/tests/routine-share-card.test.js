@@ -37,6 +37,22 @@ const openMenu = root => {
   const trigger = byLabel(root, 'Routine actions');
   render.act(() => { trigger.props.onPress({ stopPropagation: jest.fn() }); });
 };
+// #1329: a saved routine's Copy/Share/Share as Image/Delete live behind its
+// expanded body's `More actions for {title}` sheet.
+// #1329: on iOS a sheet item's action runs once the sheet's Modal reports
+// `onDismiss`; fire it the way the native dismissal would.
+const finishSheetDismiss = (root) => {
+  const modal = root.findAll(n => n.props && typeof n.props.testID === 'string' && /-menu-modal$/.test(n.props.testID) && typeof n.props.onDismiss === 'function')[0];
+  render.act(() => { modal.props.onDismiss(); });
+};
+const finishSheetDismissAsync = async (root) => {
+  const modal = root.findAll(n => n.props && typeof n.props.testID === 'string' && /-menu-modal$/.test(n.props.testID) && typeof n.props.onDismiss === 'function')[0];
+  await render.act(async () => { await modal.props.onDismiss(); });
+};
+const openSavedMenu = (root, title) => {
+  const trigger = byLabel(root, `More actions for ${title}`);
+  render.act(() => { trigger.props.onPress({ stopPropagation: jest.fn() }); });
+};
 
 describe('routine image allowlist', () => {
   test('real A/B parser content is redacted before reaching the renderer', () => {
@@ -184,7 +200,9 @@ describe('routine image preview and confirmation', () => {
   test('previous-routine image action snapshots the complete A/B note, not the displayed week', () => {
     const note = { id: 'old', title: 'Old routine', raw_text: RAW };
     render.act(() => { component = render.create(<LogPreviousRoutines otherNotes={[note]} expanded viewingNoteId={note.id} viewingNote={note} viewingNoteDayGroups={[]} viewingActiveText="Monday" />); });
+    openSavedMenu(component.root, 'Old routine');
     press(byLabel(component.root, 'Share routine Old routine as image'));
+    finishSheetDismiss(component.root);
     expect(component.root.findByType(RoutineShareModal).props.rawText).toBe(RAW);
     expect(component.root.findByType(RoutineShareCard).props.summary.sections).toHaveLength(2);
   });
@@ -331,9 +349,11 @@ describe('Copy routine to clipboard (#956)', () => {
   test('each saved routine has a Copy routine control that names it and copies its full stored body', async () => {
     const note = { id: 'old', title: 'Old routine', raw_text: RAW, saved_at: '2026-01-02T00:00:00.000Z' };
     const component = mountSaved(note);
+    openSavedMenu(component.root, 'Old routine');
     const control = byLabel(component.root, 'Copy routine Old routine');
     expect(control).toBeTruthy();
     await pressAsync(control);
+    await finishSheetDismissAsync(component.root);
     expect(copyTextToClipboard).toHaveBeenCalledWith(
       buildRoutineShareText({ title: 'Old routine', rawText: RAW }),
     );
@@ -344,7 +364,9 @@ describe('Copy routine to clipboard (#956)', () => {
   test('the saved-routine confirmation is polite and rendered under its own row', async () => {
     const note = { id: 'old', title: 'Old routine', raw_text: RAW, saved_at: '2026-01-02T00:00:00.000Z' };
     const component = mountSaved(note);
+    openSavedMenu(component.root, 'Old routine');
     await pressAsync(byLabel(component.root, 'Copy routine Old routine'));
+    await finishSheetDismissAsync(component.root);
     const [status] = statusNodes(component.root, 'copy-routine-status');
     expect(status).toBeTruthy();
     expect(status.props.accessibilityLiveRegion).toBe('polite');
@@ -437,7 +459,9 @@ describe('Copy routine status auto-expires (#956)', () => {
         />,
       );
     });
+    openSavedMenu(component.root, 'Old routine');
     await pressCopy(byLabel(component.root, 'Copy routine Old routine'));
+    await finishSheetDismissAsync(component.root);
     expect(statusNodes(component.root, 'copy-routine-status')).not.toHaveLength(0);
     render.act(() => { jest.advanceTimersByTime(4000); });
     expect(statusNodes(component.root, 'copy-routine-status')).toHaveLength(0);

@@ -1399,6 +1399,22 @@ describe('explicit editor rollback: source-level assertions (#851)', () => {
 
 // ── Undo escape hatch: integration tests ───────────────────────────
 
+// #1329: on iOS a sheet item's action runs once the sheet's Modal reports
+// `onDismiss`; fire it the way the native dismissal would.
+const finishSheetDismiss = (root) => {
+  const modal = root.findAll(n => n.props && typeof n.props.testID === 'string' && /-menu-modal$/.test(n.props.testID) && typeof n.props.onDismiss === 'function')[0];
+  render.act(() => { modal.props.onDismiss(); });
+};
+const finishSheetDismissAsync = async (root) => {
+  const modal = root.findAll(n => n.props && typeof n.props.testID === 'string' && /-menu-modal$/.test(n.props.testID) && typeof n.props.onDismiss === 'function')[0];
+  await render.act(async () => { await modal.props.onDismiss(); });
+};
+// #1329: a non-current routine's Copy/Share/Share as Image/Delete live behind
+// its expanded body's More actions sheet; open it before reaching for them.
+const openOtherRoutineMenu = (root) => {
+  const trigger = root.findAll(n => n.props && n.props.testID === 'log-other-routine-menu-button' && typeof n.props.onPress === 'function')[0];
+  render.act(() => { trigger.props.onPress(); });
+};
 const findPressableByText = (root, text) => {
   const matches = root.findAll(n => {
     if (n.type !== 'Text') return false;
@@ -1705,14 +1721,21 @@ describe('active deload deletion (#560)', () => {
   const openDeloadTab = (root) => {
     render.act(() => { findPressableByText(root, 'Deload').props.onPress(); });
   };
+  // #1329: Delete active deload lives in the card's More deload actions sheet.
+  const openDeloadMenu = (root) => {
+    const trigger = root.findAll(n => n.props && n.props.accessibilityLabel === 'More deload actions' && typeof n.props.onPress === 'function')[0];
+    render.act(() => { trigger.props.onPress(); });
+  };
 
   test('cancel leaves the active deload unchanged', () => {
     let component;
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
     openDeloadTab(root);
+    openDeloadMenu(root);
 
     render.act(() => { findPressableByText(root, 'Delete active deload').props.onPress(); });
+    finishSheetDismiss(root);
     expect(alertSpy).toHaveBeenCalledWith(
       'Delete active deload?',
       'This will remove the active deload and cannot be undone.',
@@ -1721,6 +1744,7 @@ describe('active deload deletion (#560)', () => {
     const cancel = alertSpy.mock.calls[0][2].find(button => button.text === 'Cancel');
     expect(cancel.onPress).toBeUndefined();
     expect(clearDeloadNote).not.toHaveBeenCalled();
+    openDeloadMenu(root);
     expect(findPressableByText(root, 'Delete active deload')).toBeTruthy();
   });
 
@@ -1729,7 +1753,9 @@ describe('active deload deletion (#560)', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
     openDeloadTab(root);
+    openDeloadMenu(root);
     render.act(() => { findPressableByText(root, 'Delete active deload').props.onPress(); });
+    finishSheetDismiss(root);
 
     const remove = alertSpy.mock.calls[0][2].find(button => button.text === 'Delete');
     await render.act(async () => { await remove.onPress(); });
@@ -4412,7 +4438,12 @@ describe('Log action hierarchy (#711)', () => {
       render.act(() => { pressableAround(root, t => t === 'Edit routine').props.onPress(); });
       expect(props.handleEditViewedNote).toHaveBeenCalledTimes(1);
 
+      // #1329: Delete routine lives in the expanded body's More actions sheet.
+      expect(pressableAround(root, t => t === 'Delete routine')).toBeNull();
+      const more = root.findAll(n => n.props && n.props.accessibilityLabel === 'More actions for Routine 1' && typeof n.props.onPress === 'function')[0];
+      render.act(() => { more.props.onPress(); });
       render.act(() => { pressableAround(root, t => t === 'Delete routine').props.onPress(); });
+      finishSheetDismiss(root);
       expect(props.handleDeleteRoutine).toHaveBeenCalledWith('r1', 'Routine 1', false);
     });
 
@@ -8675,7 +8706,9 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { pressableAround(root, t => t === 'Routine').props.onPress(); });
     expandRoutineManagement(root);
     render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
+    openOtherRoutineMenu(root);
     render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
+    finishSheetDismiss(root);
 
     // First alert: the recovery-aware confirmation, naming the week. Nothing
     // is written yet — cancelling here must be a full no-op, journal included.
@@ -8714,9 +8747,15 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
+    // An active block lands on the Recovery tab (#823); More Routines, and so
+    // this routine's delete action, only mounts on the Routine tab.
+    render.act(() => { pressableAround(root, t => t === 'Routine').props.onPress(); });
     expandRoutineManagement(root);
     render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
+    openOtherRoutineMenu(root);
     render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
+    finishSheetDismiss(root);
+    expect(alertSpy.mock.calls[0][0]).toBe('Delete this recovery week note?');
     const firstAlertButtons = alertSpy.mock.calls[0][2];
     // The recovery-aware alert's "Cancel" button carries no onPress (the
     // standard no-op cancel style); nothing further must happen if it's the
@@ -8747,7 +8786,9 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { pressableAround(root, t => t === 'Routine').props.onPress(); });
     expandRoutineManagement(root);
     render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
+    openOtherRoutineMenu(root);
     render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
+    finishSheetDismiss(root);
     expect(alertSpy).toHaveBeenCalledWith(
       'Delete this recovery week note?',
       expect.stringContaining('Recovery Week 1'),
@@ -8776,7 +8817,9 @@ describe('Recovery Block Week 2+ lifecycle', () => {
 
     expandRoutineManagement(root);
     render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
+    openOtherRoutineMenu(root);
     render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
+    finishSheetDismiss(root);
     render.act(() => { alertSpy.mock.calls[0][2].find(b => b.text === 'Continue').onPress(); });
     const secondAlertButtons = alertSpy.mock.calls[1][2];
     await render.act(async () => { await secondAlertButtons.find(b => b.text === 'Delete').onPress(); });
@@ -8810,7 +8853,9 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { pressableAround(root, t => t === 'Routine').props.onPress(); });
     expandRoutineManagement(root);
     render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
+    openOtherRoutineMenu(root);
     render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
+    finishSheetDismiss(root);
     render.act(() => { alertSpy.mock.calls[0][2].find(b => b.text === 'Continue').onPress(); });
     const secondAlertButtons = alertSpy.mock.calls[1][2];
     await render.act(async () => {
@@ -8918,8 +8963,10 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     expandRoutineManagement(root);
 
     render.act(() => { findPressableByText(root, otherNote.title).props.onPress(); });
+    openOtherRoutineMenu(root);
     const deleteBtn = findPressableByText(root, 'Delete routine');
     render.act(() => { deleteBtn.props.onPress(); });
+    finishSheetDismiss(root);
 
     expect(alertSpy).toHaveBeenCalledTimes(1);
     expect(alertSpy).toHaveBeenCalledWith(
@@ -11595,6 +11642,8 @@ describe('More Routines: the row date is the routine\'s creation day (#775)', ()
     ];
     const root = renderList({ otherNotes });
     expandRoutineManagement(root);
+    // #1329: past the newest three, the rest are one Show all away.
+    render.act(() => { findPressableByText(root, 'Show all 5 routines').props.onPress(); });
     expect(rowLabels(root).map(l => l.replace(/^Expand /, '').split(',')[0])).toEqual([
       'Newest', 'Id Dated', 'Oldest', 'Undated First', 'Undated Second',
     ]);

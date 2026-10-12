@@ -11,6 +11,7 @@ import { withAlpha } from '../theme/styleHelpers';
 import { TYPOGRAPHY } from '../theme/typography';
 import { GEOMETRY } from '../theme/spacing';
 import { useReducedMotion } from '../lib/useReducedMotion';
+import { ActionSheetMenu, ActionSheetTrigger } from './log/ActionSheetMenu';
 
 export function LogDeloadSection({
   deloadNote,
@@ -48,6 +49,7 @@ export function LogDeloadSection({
   const [expandedDeloads, setExpandedDeloads] = useState(new Set());
   const [showDeloadOrdinalPrompt, setShowDeloadOrdinalPrompt] = useState(false);
   const [deloadOrdinalInput, setDeloadOrdinalInput] = useState('');
+  const [deloadMenuOpen, setDeloadMenuOpen] = useState(false);
 
   const handleDeloadCollapsedToggle = () => {
     onToggleDeloadCollapsed?.();
@@ -152,9 +154,11 @@ export function LogDeloadSection({
                       emptyText="Deload note is empty."
                     />
                   </Pressable>
-                  {/* Primary → secondary → destructive, matching the routine
-                      cards: finish the deload first, delete it last. The
-                      double-tap gesture still edits; its hint is retired (#711). */}
+                  {/* #1329: Deload complete is the one filled action. Edit sits
+                      beneath it beside a More deload actions sheet holding
+                      Regenerate and Delete, so management never competes with
+                      finishing the deload. The double-tap gesture still edits;
+                      its hint is retired (#711). */}
                   <View style={styles.inlineActions}>
                     {deloadMode === 'read' && (
                       <Button
@@ -162,26 +166,38 @@ export function LogDeloadSection({
                         title="Deload complete"
                       />
                     )}
-                    <Button
-                      onPress={enterDeloadEditor}
-                      title="Edit"
-                      style={styles.switchButton}
-                      textStyle={styles.switchButtonText}
-                    />
-                    <Button
-                      onPress={handleGenerateDeload}
-                      title={isGenerating ? 'Generating…' : 'Regenerate deload'}
-                      disabled={isGenerating || !workoutNoteText.trim()}
-                      style={styles.generateButton}
-                      textStyle={styles.generateButtonText}
-                    />
-                    {deloadMode === 'read' && (
-                      <Button
-                        onPress={handleDeleteActiveDeload}
-                        title="Delete active deload"
-                        tone="danger"
+                    <View style={styles.secondaryRow}>
+                      <View style={styles.secondaryRowMain}>
+                        <Button
+                          onPress={enterDeloadEditor}
+                          title="Edit"
+                          style={styles.switchButton}
+                          textStyle={styles.switchButtonText}
+                        />
+                      </View>
+                      <ActionSheetTrigger
+                        onPress={() => setDeloadMenuOpen(true)}
+                        accessibilityLabel="More deload actions"
+                        accessibilityHint="Opens Regenerate deload and Delete active deload"
+                        expanded={deloadMenuOpen}
+                        testID="log-deload-menu-button"
                       />
-                    )}
+                    </View>
+                    <ActionSheetMenu
+                      visible={deloadMenuOpen}
+                      onClose={() => setDeloadMenuOpen(false)}
+                      testID="log-deload-menu"
+                      items={[
+                        {
+                          label: isGenerating ? 'Generating…' : 'Regenerate deload',
+                          onPress: handleGenerateDeload,
+                          disabled: isGenerating || !workoutNoteText.trim(),
+                        },
+                        deloadMode === 'read'
+                          ? { label: 'Delete active deload', onPress: handleDeleteActiveDeload, danger: true }
+                          : null,
+                      ]}
+                    />
                   </View>
                 </View>
               )}
@@ -435,13 +451,14 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
-  generateButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
+  // #1329: Edit (flexing) beside the 44dp More deload actions trigger.
+  secondaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
-  generateButtonText: {
-    color: kua ? kua.primary : colors.accentText,
+  secondaryRowMain: {
+    flex: 1,
   },
   deloadEmpty: {
     marginTop: 40,

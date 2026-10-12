@@ -135,6 +135,7 @@ export function LogScreenEditorCard({
   const { colors } = useTheme();
   const kua = useKuaStyle();
   const styles = useThemedStyles(createStyles);
+  const isUnsavedRoutine = editingNoteId === 'new' || (!editingNoteId && !currentId);
   const {
     editContainerRef,
     editContainerYRef,
@@ -566,7 +567,9 @@ export function LogScreenEditorCard({
               title={(editingNoteId === 'new' || (!editingNoteId && !currentId)) ? 'Clear draft' : 'Revert this edit'}
               tone="danger"
             />
-            <Button
+            {/* #1329: an unsaved routine has nothing to delete yet, so Clear
+                draft is its only destructive action. */}
+            {!isUnsavedRoutine && <Button
               onPress={() => {
                 if (editingNoteId) {
                   if (isEditingDeloadNote) {
@@ -580,7 +583,7 @@ export function LogScreenEditorCard({
               }}
               title={isEditingDeloadNote ? 'Delete deload record' : 'Delete routine'}
               tone="danger"
-            />
+            />}
           </View>
         </>
       )}

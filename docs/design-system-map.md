@@ -986,9 +986,10 @@ reaches another block. Opening, closing or switching writes nothing.
 **Recovery History** (`LogRecoveryHistory.js`): a collapsed `>=48dp` header
 (`Recovery History`, `N completed blocks`) lists the active block (when present)
 and every live completed block, newest completed first, as `>=48dp` rows with
-`selected` state; choosing one focuses its single Manage card and, since that
-card sits above the list, opens it and scrolls it into view via the same reveal
-a navigation intent uses (#1321) — a pick never changes an off-screen card
+`selected` state. It renders ABOVE the focused Manage card (#1329), so a pick
+reads top-down: choose the block, then manage it directly below. Choosing one
+focuses its single Manage card, opens it and scrolls it into view via the same
+reveal a navigation intent uses (#1321) — a pick never changes an off-screen card
 silently. The Recovery tab is
 reachable in a completed-only verified state (not the default view). A
 `recovery-manage` navigation intent from Analytics selects and expands that exact
@@ -1338,8 +1339,25 @@ Consequences to preserve:
   disabled variant.
 - The `Double-tap to edit` hint is retired in the active card, the non-current
   card body, and the Deload cards (#711, #724); the gesture itself still works.
-- The active Deload card orders its actions primary → secondary → destructive:
-  `Deload complete`, `Edit`, `Regenerate deload`, `Delete active deload`.
+- The active Deload card keeps `Deload complete` as its one filled action
+  (#1329). Beneath it one row holds an outlined `Edit` beside a 44dp
+  `More deload actions` trigger, whose bottom sheet (`log/ActionSheetMenu.js`)
+  lists `Regenerate deload` (disabled, reading `Generating…`, while a generation
+  runs) and `Delete active deload` (danger ink, same confirmation).
+- **An expanded non-current routine shows three controls (#1329):** the filled
+  `Set as current routine`, then one row with an outlined `Edit routine` beside a
+  44dp `More actions for {title}` trigger. Its bottom sheet lists `Copy`, `Share`,
+  `Share as Image` and `Delete routine` (danger ink), with the same accessibility
+  labels and handlers they had as full buttons. A chosen sheet item runs only once the
+  sheet is gone (iOS: the Modal's `onDismiss`, with a 700ms fallback), so its
+  alert, share sheet or image preview never opens behind the dismissing sheet.
+- **More Routines opens on its three newest routines (#1329).** A
+  `Show all {N} routines` / `Show fewer` text control (44dp, accent ink) appears
+  below the list only when more exist. The viewed routine always renders, so a
+  navigation intent never targets a hidden card.
+- **An unsaved routine has no `Delete routine` (#1329).** Before the first save,
+  `Clear draft` is the Danger Zone's only action. The New Routine button reads
+  `Save routine`, captioned `Saves and keeps editing. Done saves and closes.`
 - **Rest timer is one docked control.** In current-routine edit the header
   control stays mounted through idle (stopwatch), running (live countdown) and
   done (`Rest over`); one anchored 280dp panel (#1327, clamped to both
