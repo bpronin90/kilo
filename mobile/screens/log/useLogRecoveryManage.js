@@ -24,6 +24,10 @@ export function useLogRecoveryManage({
   const [reveal, setReveal] = useState({ blockId: null, key: 0 });
   const [unavailable, setUnavailable] = useState(false);
   const appliedRef = useRef(0);
+  // History picks reuse the navigation reveal (expand + scroll the card into
+  // view): the Manage card sits ABOVE the History list, so without it a pick
+  // could change a card that is off screen and look like it did nothing.
+  const pickRef = useRef(0);
   const shownRef = useRef(0);
   // A reveal is one-shot: once a card has expanded and scrolled for a key, a
   // remount (tab switch) must not repeat it.
@@ -84,7 +88,12 @@ export function useLogRecoveryManage({
       onRevealConsumed: setConsumedKey,
       unavailable: unavailable || selectedGone,
       newestCompletedId: completedBlocks[0] ? completedBlocks[0].id : null,
-      onSelectBlock: (id) => { setUnavailable(false); setSelectedId(id); },
+      onSelectBlock: (id) => {
+        setUnavailable(false);
+        setSelectedId(id);
+        pickRef.current += 1;
+        setReveal({ blockId: id, key: `pick-${pickRef.current}` });
+      },
     },
   };
 }

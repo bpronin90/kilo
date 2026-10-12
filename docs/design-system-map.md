@@ -986,7 +986,10 @@ reaches another block. Opening, closing or switching writes nothing.
 **Recovery History** (`LogRecoveryHistory.js`): a collapsed `>=48dp` header
 (`Recovery History`, `N completed blocks`) lists the active block (when present)
 and every live completed block, newest completed first, as `>=48dp` rows with
-`selected` state; choosing one focuses its single Manage card. The Recovery tab is
+`selected` state; choosing one focuses its single Manage card and, since that
+card sits above the list, opens it and scrolls it into view via the same reveal
+a navigation intent uses (#1321) — a pick never changes an off-screen card
+silently. The Recovery tab is
 reachable in a completed-only verified state (not the default view). A
 `recovery-manage` navigation intent from Analytics selects and expands that exact
 block id (repeats work via the shell nonce, scrolls the card into view) and shows
@@ -1227,11 +1230,13 @@ tab, `RecoveryBlockEndModal.js`, and `WorkoutSubheading` in `UI.js`. #921 is a
 further owner-authorized exception, scoped to the effective target geometry of
 exactly two controls in `LogRecoverySection.js` — `Edit note` and the A/B
 segment — and to nothing else: no color, type, spacing, rail, or row-height
-value in the Recovery card changes with it. #1321 is a further owner-authorized
-exception scoped to action presence and order: Skip week's visibility on the
-current card (no style value changes), the Deload card's action order and
-retired hint, the previous-routine body's action order (`Set as current
-routine` becomes its one filled button), and tab roles on the view switcher.
+value in the Recovery card changes with it. #1321 (a Log-tab cleanup the repo
+owner requested, which asked that the surrounding experience improve while the
+locked current-routine presentation stays as is) changes action presence and
+order only: Skip week's visibility on the current card (no style value changes),
+the Deload card's action order and retired hint, the previous-routine body's
+action order (`Set as current routine` becomes its one filled button), and tab
+roles on the view switcher. It is not a general exception to the style lock.
 
 The Current routine card remains locked. #843 and #847 do not authorize
 touching it at all; #918 reaches exactly one property on it —
@@ -1322,7 +1327,9 @@ Consequences to preserve:
   section heading (`15`/`700`, `colors.text`) rather than a small caption;
   expanded, the count is not repeated at all, since the list below it already
   shows every routine.
-- The active card's strip always renders `Skip week` (skips stack by design);
+- The active card's strip always renders `Skip week` (skips stack by design),
+  in the strip's one left-aligned primary group after `Week A/B` (or alone on a
+  single-week routine) — never a separate right-aligned group;
   it is never hidden while a save is in flight or after a skip — a press during
   a save answers with `Finishing the previous save. Try again.` instead.
   `Remove skip` is the Routine actions menu's correction item, present only
