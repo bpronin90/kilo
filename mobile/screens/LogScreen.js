@@ -436,9 +436,12 @@ export function LogScreen({
   const recoveryManage = { ...recoveryHistory.manage, completedBlocks: recoveryHistory.completedBlocks, notesError, scrollRef: readScrollRef, onReopenBlock: openReopenRecoveryBlockConfirm };
 
   // The header rest-timer control is docked only in current-routine edit; App.js
-  // hides its app-shell pill meanwhile so one timer control shows, not two.
+  // hides its app-shell pill only while that control is on screen (the header
+  // scrolls with the editor, so past ~52dp the fixed pill takes over again).
   const restTimerDocked = !importRoutineOpen && !otherEditor.editingNoteId && currentEditor.mode === 'edit';
-  useEffect(() => { onRestTimerDockedChange?.(restTimerDocked); }, [restTimerDocked, onRestTimerDockedChange]);
+  const [editorHeaderScrolledAway, setEditorHeaderScrolledAway] = useState(false);
+  const restTimerDockVisible = restTimerDocked && !editorHeaderScrolledAway;
+  useEffect(() => { onRestTimerDockedChange?.(restTimerDockVisible); }, [restTimerDockVisible, onRestTimerDockedChange]);
   useEffect(() => () => onRestTimerDockedChange?.(false), [onRestTimerDockedChange]);
 
   // #1021: the New Routine editor's secondary Import routine action opens
@@ -502,6 +505,7 @@ export function LogScreen({
 
       <ScreenShell
         ref={editorScrollRef}
+        onScroll={(e) => setEditorHeaderScrolledAway((e?.nativeEvent?.contentOffset?.y ?? 0) > 52)}
         style={isEditing ? { flex: 1 } : { display: 'none' }}
         title={
           deloadEditor.deloadMode === 'edit' ? 'Deload Week' :

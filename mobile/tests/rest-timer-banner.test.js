@@ -230,6 +230,14 @@ describe('RestTimerBanner compact editor control (#1006)', () => {
     expect(onDismissDone).toHaveBeenCalledTimes(1);
   });
 
+  test('a failed background alert is flagged on the closed docked control', () => {
+    const missing = renderBanner({ ...idle, showStart: true, isRunning: true, remainingMs: 5000, backgroundAlertAvailable: false });
+    expect(missing.root.findAll(n => n.props?.testID === 'rest-timer-alert-unavailable').length).toBeGreaterThan(0);
+    expect(buttonsByLabel(missing.toJSON(), 'Rest timer, 0:05 remaining, background alert unavailable')).toHaveLength(1);
+    const ok = renderBanner({ ...idle, showStart: true, isRunning: true, remainingMs: 5000, backgroundAlertAvailable: true });
+    expect(ok.root.findAll(n => n.props?.testID === 'rest-timer-alert-unavailable')).toHaveLength(0);
+  });
+
   test('idle panel offers Start presets only — no Cancel or Dismiss', () => {
     const tree = renderBanner({ ...idle, showStart: true });
     act(() => { tree.root.findAll(n => n.props?.accessibilityLabel === 'Rest timer')[0].props.onPress(); });

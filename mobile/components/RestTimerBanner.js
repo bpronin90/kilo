@@ -102,8 +102,11 @@ export function RestTimerBanner({
       }
       setExpanded(true);
     };
+    // A failed background alert is flagged on the closed control itself, not
+    // only inside the panel, so it is seen before the user leaves the app.
+    const alertMissing = phase === 'running' && !backgroundAlertAvailable;
     const toggleLabel = phase === 'running'
-      ? `Rest timer, ${countdown} remaining`
+      ? `Rest timer, ${countdown} remaining${alertMissing ? ', background alert unavailable' : ''}`
       : phase === 'done' ? 'Rest timer, rest over' : 'Rest timer';
     const panelTitle = phase === 'running'
       ? `Resting · ${countdown} left`
@@ -126,6 +129,9 @@ export function RestTimerBanner({
             accessible={false}
           />
           {phase === 'running' && <Text style={styles.compactCountdown}>{countdown}</Text>}
+          {alertMissing && (
+            <MaterialIcons name="notifications-off" size={16} color={kua.onSurfaceVariant} accessible={false} testID="rest-timer-alert-unavailable" />
+          )}
           {phase === 'done' && <Text style={styles.compactDoneText}>Done</Text>}
         </Pressable>
         <Modal

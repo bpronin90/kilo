@@ -1335,9 +1335,11 @@ Consequences to preserve:
 - **Rest timer is one docked control.** In current-routine edit the header
   control stays mounted through idle (stopwatch), running (live countdown) and
   done (`Rest over`); one anchored panel holds the presets (Start, or Restart
-  while running/done) plus Cancel or Dismiss. While it is docked, App.js hides
-  the app-shell pill so the countdown never shows twice; elsewhere the pill
-  shows Cancel (running) or Dismiss (done) directly, with no tap-to-reveal.
+  while running/done) plus Cancel or Dismiss; a failed background alert shows
+  on the closed control as a `notifications-off` glyph. App.js hides the
+  app-shell pill only while that control is on screen — once the editor scrolls
+  it away the fixed pill returns — so the countdown never shows twice and is
+  never unreachable; the pill shows Cancel (running) or Dismiss (done) directly.
 - **Recovery is its own tab, present only while `LogRecoverySection` has
   something to show (#823).** `recoveryTabVisible` (`LogScreen.js`) mirrors
   that component's own early-return contract exactly — not just an active

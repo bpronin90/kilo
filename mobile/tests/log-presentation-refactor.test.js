@@ -136,6 +136,11 @@ describe('#1054 source parity — source-scanned wiring stays in the boundary fi
     expect(logScreenSrc).toMatch(/const restTimerDocked = !importRoutineOpen && !otherEditor\.editingNoteId && currentEditor\.mode === 'edit';/);
     expect(logScreenSrc).toMatch(/showStart=\{restTimerDocked\}/);
     expect(logScreenSrc).toMatch(/onRestTimerDockedChange\?\.\(false\)/);
+    // Docked only while the header control is on screen: scrolling the editor
+    // past it hands the countdown back to the fixed app-shell pill.
+    expect(logScreenSrc).toMatch(/const restTimerDockVisible = restTimerDocked && !editorHeaderScrolledAway;/);
+    expect(logScreenSrc).toMatch(/onRestTimerDockedChange\?\.\(restTimerDockVisible\)/);
+    expect(logScreenSrc).toMatch(/onScroll=\{\(e\) => setEditorHeaderScrolledAway\(/);
     expect(appSrc).toMatch(/onRestTimerDockedChange=\{setRestTimerDocked\}/);
     expect(appSrc).toMatch(/!\(activeTab === 'Log' && restTimerDocked\) && <RestTimerBanner/);
   });
