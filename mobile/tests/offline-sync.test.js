@@ -3020,12 +3020,17 @@ describe('recovery block sync (issue #693)', () => {
     await restoreDevice(deviceA);
     const first = await cloudAdapter.addRecoveryWeek({ blockId: block.id, noteId: 'wn_a' });
     expect(first.week_number).toBe(1);
+    // Two creations in the same millisecond tie on saved_at and fall through to
+    // the random id suffix, so which membership is "established" would be
+    // arbitrary. Pin `first` earlier and `collided` later so the survivor is fixed.
+    await pinWeekSavedAt(first.id, '2026-07-01T00:00:00.000Z');
     await cloudAdapter.sync();
 
     await restoreDevice(deviceB);
     await saveNote('wn_b', '-Bench\n- 105 5');
     const collided = await cloudAdapter.addRecoveryWeek({ blockId: block.id, noteId: 'wn_b' });
     expect(collided.week_number).toBe(1);
+    await pinWeekSavedAt(collided.id, '2026-07-02T00:00:00.000Z');
 
     await expect(cloudAdapter.sync()).resolves.toBeDefined();
 
