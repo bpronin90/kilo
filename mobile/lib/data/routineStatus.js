@@ -124,6 +124,8 @@ function _latestDeloadSessionRecord(deloadHistory) {
 // Single canonical entry point for the Analytics routine-status surface.
 //
 // Returns:
+//   weeksIn:             routine depth (computeWeeksIn) — Home's "Week N";
+//                        null when no routine sections are supplied
 //   sessionsLogged:      total sessions on the routine, INCLUDING archived
 //                        deload sessions (never reduced by deloads)
 //   elapsedWeeks:        calendar weeks since the routine began, incl. gaps
@@ -163,6 +165,7 @@ export function deriveRoutineStatus(currentSections, note, deloadHistory) {
     sessionsSinceDeload = Math.max(0, routineSessions - anchor);
   }
   return {
+    weeksIn: computeWeeksIn(currentSections ?? null),
     sessionsLogged: routineSessions + deloadSessionsLogged(relevantDeloads),
     elapsedWeeks: elapsedWeeksOnRoutine(note),
     sessionsSinceDeload,

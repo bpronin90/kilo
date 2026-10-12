@@ -111,7 +111,8 @@ export function WeightScreen({
   const {
     trendSummary: trends,
     paceInfo,
-    goalInfo: rawGoalInfo,
+    // Canonical, already-normalized goal state (overdue, clamped weeks, safe pace).
+    goalInfo,
     calorieEstimate,
   } = useMemo(
     () =>
@@ -139,26 +140,6 @@ export function WeightScreen({
     ]
   );
 
-  const goalInfo = useMemo(() => {
-    if (!rawGoalInfo) return null;
-    const rawWeeks = rawGoalInfo.weeks_remaining;
-    const weeks_remaining = (rawWeeks === null || rawWeeks === undefined || isNaN(rawWeeks)) ? 0 : Math.max(0, rawWeeks);
-
-    const activeTargetDate = goalForm.goalEditing ? goalForm.goalTargetDate : goal?.target_date;
-    const isOverdue = !!(activeTargetDate && weeks_remaining <= 0);
-
-    let required_weekly_pace = rawGoalInfo.required_weekly_pace;
-    if (isOverdue || required_weekly_pace === null || required_weekly_pace === undefined || isNaN(required_weekly_pace) || !isFinite(required_weekly_pace)) {
-      required_weekly_pace = null;
-    }
-
-    return {
-      ...rawGoalInfo,
-      weeks_remaining,
-      required_weekly_pace,
-      isOverdue,
-    };
-  }, [rawGoalInfo, goalForm.goalEditing, goalForm.goalTargetDate, goal?.target_date]);
 
   const trendSections = useMemo(() => buildTrendSections(trends, paceInfo, unit), [trends, paceInfo, unit]);
 

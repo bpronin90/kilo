@@ -21,19 +21,19 @@ import { formatDate } from '../../lib/format';
 // module directly (and shifting its own line numbers out from under
 // unrelated line-anchored assertions, e.g. theme-rendering.test.js).
 export { RECOVERY_COMPARISON_STATES, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS };
-import { normalizeExerciseKey, countWorkoutSessionsFromSections } from '../../lib/parser';
+import { normalizeExerciseKey } from '../../lib/parser';
 import {
   deriveWeightGoalAnalytics,
   derive1kTotal,
   derive1kTotalFromSectionsList,
-  DEFAULT_1K_EXERCISES,
+  resolveOneKSelections,
   deriveWorkoutNoteAnalytics,
-  deriveOverloadCounts,
-  deriveNonWeightedTrackedExerciseMetrics,
+  deriveRoutineStatus,
   computeWeeklySummary,
   getDefaultTrackedNames,
   normalizeLiftName,
 } from '../../lib/data';
+import { deriveProgressionSections, deriveExerciseProgress } from '../../lib/data/exerciseProgress';
 
 // Home's ordinary-analytics population (#699). This module owns the decision end
 // to end — which notes count, and whether that is even knowable yet — so the
@@ -172,15 +172,9 @@ export function useHomeRecoverySummary(notes, workoutNote = null) {
   }, [activeBlock, weeks, notes, workoutNote, ready, loading, stale, retryRecovery]);
 }
 
-// Effective 1K selection: slot defaults under the routine's own picks. Shared by
-// the normal 1K total and the Recovery card so the two cannot disagree. A
-// restored/synced note can carry non-string picks (e.g. `{ deadlift: true }`);
-// those fall back to the slot default rather than reaching normalization.
-export function resolveHomeOneKSelections(note) {
-  const picks = Object.entries(note?.one_k_exercises || {})
-    .filter(([, name]) => typeof name === 'string' && name.trim());
-  return { ...DEFAULT_1K_EXERCISES, ...Object.fromEntries(picks) };
-}
+// The canonical Big 3 selection (lib/data/oneK resolveOneKSelections), kept
+// under its historical name for existing importers.
+export const resolveHomeOneKSelections = resolveOneKSelections;
 
 export const HOME_BIG3_NOT_IN_BASELINE = 'not_in_baseline';
 
@@ -225,63 +219,6 @@ export function deriveHomeRecoveryBig3(snapshot, selections) {
   return { big3, counts };
 }
 
-// #894: mirrors deriveOverloadCounts' own per-appearance iteration
-// (lib/data/workoutAnalytics.js) but counts rows in a freshly opened tracked
-// span — a `first_session` weighted trend, or a non-weighted 'dash' arrow
-// with capability data present — rather than progressing/stalled/regressing.
-//
-// Review finding (#896): `first_session`/`dash` alone is not enough. An
-// INHERITED exercise (no activation record — #893 legacy/catalog state) with
-// exactly one comparable historical session reports the identical
-// `first_session`/'dash' state, because there is nothing prior to compare
-// against either. Only a row backed by a live activation record is an
-// EXPLICIT fresh span; requiring `trackedLiftActivations` here is what keeps
-// this bucket from double-claiming rows `hasInheritedTracking` already
-// explains.
-//
-// Non-weighted exercises (Bike, Plank, ...) never get an `overload_trend` at
-// all — `deriveWorkoutNoteAnalytics`'s signals cover strength movements only,
-// and their fresh-span state lives in `nonWeightedMetrics`'s arrow instead
-// (mirroring how AnalyticsScreen reads `nw` alongside `sig` per row). Without
-// folding that in, an explicitly tracked non-weighted exercise in its first
-// span had a live activation (so not "inherited") but no counted row either,
-// leaving Home's summary silently blank for it.
-function countNewlyTrackedRows(sections, signals, perDaySignals, nonWeightedMetrics, trackedLiftActivations) {
-  const sigMap = new Map((signals || []).map(s => [normalizeExerciseKey(s.name), s]));
-  let count = 0;
-  (sections || []).forEach(sec => {
-    sec.exercises.forEach(ex => {
-      const key = normalizeExerciseKey(ex.name);
-      const hasActivation = !!trackedLiftActivations?.[key];
-      if (!hasActivation) return;
-
-      // `nonWeightedMetrics` only ever gets an entry for an exercise its own
-      // class detection resolved to reps-only/time-based (weighted and
-      // unclassifiable exercises are skipped inside that derivation) — so its
-      // presence is what actually tells the two kinds of row apart. `sigMap`
-      // is NOT a reliable signal on its own: deriveProgressionSignals returns
-      // an `absent` placeholder (overload_trend: null) for every tracked name
-      // that isn't strength-eligible, so a non-weighted exercise always has a
-      // (useless) sig entry too — checking sig first would shadow the real nw
-      // state below with that placeholder's null trend.
-      const nw = nonWeightedMetrics?.[normalizeLiftName(ex.name)];
-      if (nw) {
-        const arrow = nw.exercise_class === 'reps_only' ? nw.reps_arrow : nw.hold_arrow;
-        const hasData = nw.exercise_class === 'reps_only' ? nw.avg_reps != null : nw.avg_hold != null;
-        if (hasData && arrow === 'dash') count++;
-        return;
-      }
-
-      const sig = sigMap.get(key);
-      if (!sig) return;
-      const dayRow = perDaySignals?.[key]?.[sec.heading];
-      const rowTrend = dayRow?.overload_trend ?? sig.overload_trend;
-      if (rowTrend === 'first_session') count++;
-    });
-  });
-  return count;
-}
-
 // `allSections` / `noteSectionsList` are the AGGREGATED note populations and
 // arrive already filtered by `useHomeNormalNotes` above. Nothing here re-derives
 // that decision, so Home cannot disagree with the other surfaces.
@@ -291,7 +228,10 @@ function countNewlyTrackedRows(sections, signals, perDaySignals, nonWeightedMetr
 // still fully readable. Its `exercise_classifications` are the save-time cache
 // written by useLogCurrentRoutineEditor, which derives them from the same
 // filtered population.
-export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, trackedLifts, trackedLiftActivations, deloadHistory, sourceNoteId = null, recoveryBlocks }) {
+// `normalNotes` (aligned with `noteSectionsList`) lets the canonical
+// progression population drop deload notes exactly as Analytics does; legacy
+// callers that omit it get every supplied section.
+export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, normalNotes = null, trackedLifts, trackedLiftActivations, deloadHistory, sourceNoteId = null, recoveryBlocks }) {
   let oneK = null;
   let sections = null;
 
@@ -299,44 +239,36 @@ export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal
     sections = getNoteSections(workoutNote);
   }
 
-  const oneKSelections = resolveHomeOneKSelections(workoutNote);
+  const oneKSelections = resolveOneKSelections(workoutNote);
   oneK = noteSectionsList
     ? derive1kTotalFromSectionsList(noteSectionsList, oneKSelections)
     : derive1kTotal(allSections, oneKSelections);
 
+  // Canonical goal state: deriveWeightGoalAnalytics already normalizes overdue,
+  // weeks remaining, and pace, so Home and Weight read the same values.
   const { rollingSeries: rawWeightSeries, trendSummary: weightTrends, goalInfo } = deriveWeightGoalAnalytics(weightEntries, weightGoal);
   const weightSeries = relabelWeightSeriesDates(rawWeightSeries, weightEntries);
   const latestWeight = weightTrends.currentWeight;
-  const { weeksIn } = deriveWorkoutNoteAnalytics(sections, []);
 
-  const namesInCurrent = new Set(
-    (sections || []).flatMap(s => s.exercises.map(e => normalizeExerciseKey(e.name)))
-  );
-  const globallyTracked = Object.keys(trackedLifts || {}).filter(k => trackedLifts[k]);
-  const visibleTrackedNames = globallyTracked.filter(
-    name => namesInCurrent.has(normalizeExerciseKey(name))
-  );
-  // #893: the activation records go to every progression derivation on this
-  // screen, and Analytics passes the same records to its own — so the two
-  // surfaces classify the same tracked population against the same boundary
-  // rather than each inventing one.
-  // #989: the post-deload re-entry inputs, shared by both analytics passes on
-  // this screen so Home cannot disagree with Analytics or the save-time cache
-  // about the first working session back.
-  const _deloadOptions = { deloadHistory, sourceNoteId: sourceNoteId ?? null, recoveryBlocks };
-  const { signals, perDaySignals, reentry } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames, undefined, trackedLiftActivations, _deloadOptions);
-  const counts = deriveOverloadCounts(sections, signals, perDaySignals);
-  // #894: same visible tracked population, split by whether it has an
-  // explicit activation record (#893) — presence means an explicit Track
-  // tap opened this span; absence means inherited catalog/pre-#893 state
-  // that is still running on legacy full-history progression. Non-weighted
-  // exercises need their own metrics derivation (#896 review) — signals only
-  // ever cover strength movements.
-  const nonWeightedMetrics = deriveNonWeightedTrackedExerciseMetrics(allSections, visibleTrackedNames, trackedLiftActivations);
-  const newlyTrackedCount = countNewlyTrackedRows(sections, signals, perDaySignals, nonWeightedMetrics, trackedLiftActivations);
-  const hasInheritedTracking = visibleTrackedNames.some(
-    name => !trackedLiftActivations?.[normalizeExerciseKey(name)]
-  );
+  // Canonical routine health (deriveRoutineStatus) — the same object Analytics'
+  // routine gauge reads; `weeksIn` is its routine depth.
+  const routineStatus = deriveRoutineStatus(sections, workoutNote, deloadHistory);
+
+  // #893/#989/#699: the one canonical progression pass Analytics also reads —
+  // same deload-excluded population, activation records, and re-entry inputs —
+  // so Exercise Progress cannot mean different things on the two screens.
+  const progressionSections = normalNotes && noteSectionsList
+    ? deriveProgressionSections(normalNotes, noteSectionsList)
+    : (allSections || []);
+  const deloadContext = { deloadHistory, sourceNoteId: sourceNoteId ?? null, recoveryBlocks };
+  const progress = deriveExerciseProgress({
+    progressionSections,
+    currentSections: sections,
+    trackedLifts,
+    activations: trackedLiftActivations,
+    deloadContext,
+  });
+  const { reentry, summary: exerciseProgress } = progress;
 
   // #854/R5: recompute exercise_classifications live from allSections instead
   // of trusting the note's save-time cache, so a note saved under an older
@@ -344,48 +276,35 @@ export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal
   // trackedNames construction the save path uses (defaults plus any explicit
   // tracked names not already a default) so the live value matches what a
   // fresh save would persist.
+  const globallyTracked = Object.keys(trackedLifts || {}).filter(k => trackedLifts[k]);
   const defaultNames = getDefaultTrackedNames();
   const normalizedDefaults = new Set(defaultNames.map(n => normalizeLiftName(n)));
   const allTrackedNames = [
     ...defaultNames,
     ...globallyTracked.filter(n => !normalizedDefaults.has(normalizeLiftName(n))),
   ];
-  const { classifications: liveClassifications } = deriveWorkoutNoteAnalytics(allSections, allTrackedNames, undefined, trackedLiftActivations, _deloadOptions);
+  const { classifications: liveClassifications } = deriveWorkoutNoteAnalytics(allSections, allTrackedNames, undefined, trackedLiftActivations, deloadContext);
 
   const weeklySummary = computeWeeklySummary(sections, workoutNote, liveClassifications);
-  weeklySummary.classifications = counts;
-  weeklySummary.newlyTrackedCount = newlyTrackedCount;
-  weeklySummary.hasInheritedTracking = hasInheritedTracking;
-
-  const sessionCount = countWorkoutSessionsFromSections(sections || []);
-
-  let sanitizedGoalInfo = null;
-  if (goalInfo) {
-    const rawWeeks = goalInfo.weeks_remaining;
-    const weeks_remaining = (rawWeeks === null || rawWeeks === undefined || isNaN(rawWeeks)) ? 0 : Math.max(0, rawWeeks);
-    const isOverdue = weeks_remaining <= 0;
-
-    let required_weekly_pace = goalInfo.required_weekly_pace;
-    if (isOverdue || required_weekly_pace === null || required_weekly_pace === undefined || isNaN(required_weekly_pace) || !isFinite(required_weekly_pace)) {
-      required_weekly_pace = null;
-    }
-
-    sanitizedGoalInfo = {
-      ...goalInfo,
-      weeks_remaining,
-      required_weekly_pace,
-      isOverdue,
-    };
-  }
+  // Home's progress counts are the canonical Exercise Progress summary.
+  weeklySummary.classifications = {
+    progressing: exerciseProgress.progressing,
+    stalled: exerciseProgress.stalled,
+    regressing: exerciseProgress.regressing,
+  };
+  weeklySummary.newlyTrackedCount = exerciseProgress.newlyTracked;
+  weeklySummary.hasInheritedTracking = exerciseProgress.hasInheritedTracking;
 
   return {
     weightSeries,
     oneK,
+    oneKSelections,
     latestWeight,
-    weeksIn,
+    weeksIn: routineStatus.weeksIn,
+    routineStatus,
+    exerciseProgress,
     weeklySummary,
-    sessionCount,
-    goalInfo: sanitizedGoalInfo,
+    goalInfo,
     reentry,
   };
 }

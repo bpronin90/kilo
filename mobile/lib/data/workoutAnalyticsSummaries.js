@@ -109,6 +109,9 @@ export function deriveWorkoutNoteAnalytics(sections, trackedNames, multiplier, a
   };
 }
 
+// NOT the Exercise Progress metric: Home and Analytics both read
+// summarizeExerciseProgress (lib/data/exerciseProgress), one count per exercise.
+// Retained only for its public export contract.
 // Count progressing/stalled/regressing rows exactly as the analytics panel renders.
 // Iterates each exercise-per-section appearance; multi-day exercises contribute once
 // per day using the per-day trend (falling back to global signal trend).

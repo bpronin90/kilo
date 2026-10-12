@@ -41,6 +41,7 @@ export const computeCalorieEstimate = _weightGoal.computeCalorieEstimate;
 export const resolveGoalCurrentWeight = _weightGoal.resolveGoalCurrentWeight;
 export const computeWeightRollingAverageSeries = _weightGoal.computeWeightRollingAverageSeries;
 export const deriveWeightGoalAnalytics = _weightGoal.deriveWeightGoalAnalytics;
+export const normalizeGoalInfo = _weightGoal.normalizeGoalInfo;
 
 // routineStatus
 export const rollingWindowStart = _routineStatus.rollingWindowStart;
@@ -80,6 +81,7 @@ export const derive1kTotalSeriesFromSectionsList = _oneK.derive1kTotalSeriesFrom
 export const derive1kTotalFromSectionsList = _oneK.derive1kTotalFromSectionsList;
 export const findMatchingExerciseNames = _oneK.findMatchingExerciseNames;
 export const rolloverOneKExercises = _oneK.rolloverOneKExercises;
+export const resolveOneKSelections = _oneK.resolveOneKSelections;
 
 // nonWeightedMetrics
 export const deriveNonWeightedTrackedExerciseMetrics = _nonWeightedMetrics.deriveNonWeightedTrackedExerciseMetrics;

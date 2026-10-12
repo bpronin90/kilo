@@ -2,11 +2,10 @@ import { getNoteSections } from '../../hooks/useEntries';
 import { DELOAD_NOTE_PREFIX } from '../../hooks/entries/workoutNoteHooks';
 import {
   isStrengthExerciseName,
-  deriveWorkoutNoteAnalytics,
   derive1kTotalFromSectionsList,
   derive1kTotalSeriesFromSectionsList,
-  deriveNonWeightedTrackedExerciseMetrics,
 } from '../../lib/data';
+import { deriveProgressionSections, deriveExerciseProgress, summarizeExerciseProgress } from '../../lib/data/exerciseProgress';
 import { normalizeExerciseKey } from '../../lib/parser';
 import { filterNotesForNormalAnalytics } from '../../lib/data/recoveryAnalyticsFilter';
 import { ACTIVE_TRAINING_STATUS } from '../../lib/data/activeTrainingContext';
@@ -48,20 +47,11 @@ export function deriveParsedSections(notes, currentNote, excludedNoteIds = null)
   const normalNotes = filterNotesForNormalAnalytics(notes || [], excludedNoteIds);
   const noteSectionsList = normalNotes.map(n => getNoteSections(n));
   const allSections = noteSectionsList.flat();
-  // Deload sessions are intentionally light (see DELOAD_NOTE_PREFIX). They must
-  // not feed the progression/strength signal derivation — most visibly the
-  // fatigue-adjusted Kilo Max, which flat-averages every set's Epley across all
-  // occurrences (computeKiloMax), so a light deload session always biases it
-  // downward. signalSections is the deload-excluded section list used for those
-  // signals. The 1K series intentionally keeps deload as its own point (#396),
-  // so noteSectionsList/allSections are left untouched.
-  //
-  // Deload exclusion composes with, and is independent of, the recovery filter:
-  // it runs over the already-recovery-filtered list, so turning recovery
-  // inclusion ON re-admits recovery notes only and never a deload note.
-  const signalSections = normalNotes
-    .filter(n => !n.title?.startsWith(DELOAD_NOTE_PREFIX))
-    .flatMap(n => getNoteSections(n));
+  // signalSections is the canonical deload-excluded progression population
+  // (lib/data/exerciseProgress), the same one Home derives its summary from.
+  // The 1K series intentionally keeps deload as its own point (#396), so
+  // noteSectionsList/allSections are left untouched.
+  const signalSections = deriveProgressionSections(normalNotes, noteSectionsList);
   const currentSections = getNoteSections(currentNote);
   return { allSections, signalSections, currentSections, noteSectionsList, normalNotes };
 }
@@ -84,27 +74,21 @@ export function deriveAnalytics(parsedSections, trackedLifts, oneKSelections, mu
   // Fall back to allSections for legacy callers that don't supply signalSections.
   const signalSections = parsedSections.signalSections || allSections;
 
-  const namesInCurrent = new Set(
-    currentSections.flatMap(s => s.exercises.map(e => normalizeExerciseKey(e.name)))
-  );
-  const globallyTrackedNames = Object.keys(trackedLifts).filter(k => trackedLifts[k]);
-  const visibleTrackedNames = globallyTrackedNames.filter(
-    name => namesInCurrent.has(normalizeExerciseKey(name))
-  );
-
-  const { signals, nameDisplayMap, perDaySignals, reentry, progressionSuggestions } = deriveWorkoutNoteAnalytics(
-    signalSections, visibleTrackedNames, multiplier, activations,
-    {
-      deloadHistory: deloadContext.deloadHistory,
-      sourceNoteId: deloadContext.sourceNoteId ?? null,
-      recoveryBlocks: deloadContext.recoveryBlocks,
-    },
-  );
-  const nonWeightedMetrics = deriveNonWeightedTrackedExerciseMetrics(signalSections, visibleTrackedNames, activations);
+  // The one canonical progression pass (lib/data/exerciseProgress) — Home reads
+  // the same pass, so `exerciseProgress` here is Home's summary verbatim.
+  const progress = deriveExerciseProgress({
+    progressionSections: signalSections,
+    currentSections,
+    trackedLifts,
+    activations,
+    multiplier,
+    deloadContext,
+  });
+  const { signals, nameDisplayMap, perDaySignals, nonWeightedMetrics, reentry, progressionSuggestions } = progress;
   const oneK = derive1kTotalFromSectionsList(noteSectionsList || [], oneKSelections);
   const oneKSeries = derive1kTotalSeriesFromSectionsList(noteSectionsList || [], oneKSelections);
 
-  return { signals, oneK, oneKSeries, nameDisplayMap, perDaySignals, nonWeightedMetrics, reentry, progressionSuggestions };
+  return { signals, oneK, oneKSeries, nameDisplayMap, perDaySignals, nonWeightedMetrics, reentry, progressionSuggestions, exerciseProgress: progress.summary };
 }
 
 const _LEADING_DAY_RE = /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;
@@ -286,6 +270,10 @@ export function deriveOneKChartData(oneKSeries, routineStartBoundaries = new Set
 export function deriveOverviewRows({
   oneKPoints = [],
   signals = [],
+  // The canonical Exercise Progress summary (lib/data/exerciseProgress) —
+  // the same object Home renders. `signals` is only a legacy fallback and is
+  // summarized by the same canonical function, never counted here.
+  exerciseProgress = null,
   sessionsSinceDeload = null,
   deloadModeEnabled = true,
   currentWeight = null,
@@ -335,18 +323,14 @@ export function deriveOverviewRows({
     pausedCaption: isRecoveryActive ? 'Paused' : null,
   };
 
-  // Exercise progress — the same overload_trend classification the table
-  // itemises, counted. During active Recovery this reads the current routine
-  // as it stood before the block paused it (#699 excludes recovery-linked
-  // notes from this population already) — it is frozen baseline history, not
-  // a fresh count, so it is marked `paused` rather than recomputed.
-  const counts = { up: 0, flat: 0, down: 0 };
-  for (const signal of signals || []) {
-    if (signal?.overload_trend === 'up') counts.up += 1;
-    else if (signal?.overload_trend === 'down') counts.down += 1;
-    else if (signal?.overload_trend === 'flat') counts.flat += 1;
-  }
-  const classified = counts.up + counts.flat + counts.down;
+  // Exercise progress — the canonical summary, one count per tracked exercise.
+  // During active Recovery this reads the current routine as it stood before
+  // the block paused it (#699 excludes recovery-linked notes from this
+  // population already) — it is frozen baseline history, not a fresh count, so
+  // it is marked `paused` rather than recomputed.
+  const progress = exerciseProgress || summarizeExerciseProgress({ signals });
+  const counts = { up: progress.progressing, flat: progress.stalled, down: progress.regressing };
+  const classified = progress.classified;
   const progressRow = {
     key: 'progress',
     label: 'Exercise Progress',
