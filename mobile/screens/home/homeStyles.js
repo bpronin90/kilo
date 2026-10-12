@@ -95,16 +95,8 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
   heroHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 8,
     marginBottom: 12,
-  },
-  heroHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexShrink: 1,
-    minWidth: 0,
   },
   heroAccentBar: {
     width: 3,
@@ -118,18 +110,6 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     flexShrink: 1,
-  },
-  heroHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    flexShrink: 0,
-  },
-  heroClassifHeaderLabel: {
-    ...(kua ? { fontFamily: typography['body-sm'].fontFamily, fontSize: TYPOGRAPHY['label-md'].fontSize } : { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '700' }),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
   heroInfoToggle: {
     flexShrink: 0,
@@ -148,9 +128,12 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     color: kua ? kua.onSurface : colors.text,
     marginTop: 2,
   },
-  heroWeightRow: {
-    minWidth: 0,
-    marginBottom: kua ? 12 : 0,
+  // No current routine / empty routine (#1333): one plain line, no fake week.
+  heroRoutineMessage: {
+    ...(kua ? typography['body-md'] : { fontSize: TYPOGRAPHY['body-md'].fontSize }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    marginTop: 4,
+    marginBottom: 12,
   },
   // The two highest-frequency actions share one stable strip at every width.
   heroPrimaryActions: {
@@ -197,14 +180,6 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     ...(kua ? typography['body-sm'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
-  // Body-weight block (#1112 redesign).
-  heroMetricLabel: {
-    ...(kua ? { fontFamily: typography['body-sm'].fontFamily, fontSize: TYPOGRAPHY['label-md'].fontSize } : { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '700' }),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 2,
-  },
   heroWeightValueRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
@@ -227,9 +202,6 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     fontWeight: kua ? undefined : '600',
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
-  heroSparklineStrip: {
-    marginTop: 8,
-  },
   heroSparklineSublabel: {
     ...(kua ? { fontFamily: typography['body-sm'].fontFamily, fontSize: TYPOGRAPHY['label-md'].fontSize } : { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
@@ -241,6 +213,11 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
   // The classification trio is the hero's lead content (#1112: training leads).
   classifSection: {
     marginBottom: 12,
+  },
+  classifHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   sectionHeaderAction: {
     flexDirection: 'row',
@@ -280,11 +257,6 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     flexBasis: 'auto',
     alignItems: 'center',
     gap: 5,
-  },
-  classifDot: {
-    width: 8,
-    height: 8,
-    borderRadius: GEOMETRY['radius-sm'],
   },
   classifCount: {
     ...(kua ? { ...typography['metric-display-mobile'], fontSize: 24, lineHeight: 28 } : { fontSize: TYPOGRAPHY['body-lg'].fontSize, fontWeight: '800' }), // display exception per #1283 foundation
@@ -337,48 +309,10 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
   },
-  // Big 3 rows (#1171): name and value on one line, a thin bar underneath
-  // filled to the lift's own share of its pre-injury baseline.
-  recoveryLiftList: {
-    gap: 10,
-    marginTop: 6,
-  },
-  recoveryLiftHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    marginBottom: 4,
-  },
-  recoveryLiftName: {
-    ...(kua ? typography['label-lg'] : { fontSize: TYPOGRAPHY['body-md'].fontSize, fontWeight: '700' }),
+  // The one Recovery signal Home shows (#1333).
+  recoveryHeadline: {
+    ...(kua ? typography['headline-sm'] : { fontSize: TYPOGRAPHY['headline-sm'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
-  },
-  recoveryLiftValue: {
-    ...(kua ? typography['label-md'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize }),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  recoveryLiftDone: {
-    color: kua ? kua.completion : colors.success,
-    ...(kua ? {} : { fontWeight: '600' }),
-  },
-  recoveryLiftTrack: {
-    height: 6,
-    borderRadius: GEOMETRY['radius-xs'],
-    overflow: 'hidden',
-    backgroundColor: kua ? kua.surfaceBorder : colors.cardBorder,
-  },
-  recoveryLiftFill: {
-    height: 6,
-    borderRadius: GEOMETRY['radius-xs'],
-    backgroundColor: kua ? kua.primary : colors.accent,
-  },
-  recoveryLiftFillDone: {
-    backgroundColor: kua ? kua.completion : colors.success,
-  },
-  recoveryRemaining: {
-    ...(kua ? { ...typography['body-sm'], fontSize: TYPOGRAPHY['label-md'].fontSize } : { fontSize: TYPOGRAPHY['body-sm'].fontSize }),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    marginTop: 10,
   },
   recoveryFallbackLine: {
     ...(kua ? typography['body-md'] : { fontSize: TYPOGRAPHY['body-lg'].fontSize, fontWeight: '700' }),
@@ -402,6 +336,19 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     padding: 20,
     backgroundColor: kua ? kua.surfaceCard : undefined,
     borderColor: kua ? kua.surfaceBorder : undefined,
+  },
+  goalSection: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: kua ? kua.surfaceBorder : colors.cardBorder,
+  },
+  goalAttention: {
+    marginTop: 12,
+  },
+  goalAttentionText: {
+    ...(kua ? typography['body-sm'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600' }),
+    color: kua ? kua.warning : colors.cautionText,
   },
   goalModeRow: {
     flexDirection: 'row',
@@ -466,10 +413,6 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     letterSpacing: kua ? 0.5 : 1,
     flexShrink: 1,
   },
-  oneKHero: {
-    alignItems: 'center',
-    marginBottom: 16,
-  },
   oneKHeroValue: {
     ...(kua ? { ...typography['metric-display'], fontSize: 48, lineHeight: 52 } : HeroMetric.hero), // display exception per #1283 foundation
     color: kua ? kua.onSurface : colors.text,
@@ -478,10 +421,6 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     fontFamily: kua ? typography['body-md'].fontFamily : undefined,
     fontSize: kua ? TYPOGRAPHY['headline-sm'].fontSize : TYPOGRAPHY['body-lg'].fontSize,
     fontWeight: kua ? undefined : '600',
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  oneKHeroPlaceholder: {
-    ...(kua ? { ...typography['metric-display-mobile'], fontSize: 32, lineHeight: 36 } : HeroMetric.hero), // display exception per #1283 foundation
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
   oneKHeroCaption: {
@@ -513,9 +452,8 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     alignItems: 'center',
     gap: 4,
   },
-  oneKGridItemBorder: {
+  oneKGridItemDivider: {
     borderLeftWidth: 1,
-    borderRightWidth: 1,
     borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
   oneKGridValue: {
@@ -528,24 +466,10 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  placeholderText: {
-    fontSize: TYPOGRAPHY['headline-xl'].fontSize,
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    fontWeight: '400',
-  },
-  emptyText: {
-    ...(kua ? typography['body-md'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize, lineHeight: 18 }),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
   welcomeCard: {
     padding: 18,
     backgroundColor: kua ? kua.surfaceCard : undefined,
     borderColor: kua ? kua.surfaceBorder : undefined,
-  },
-  welcomeHeader: {
-    marginBottom: 8,
   },
   welcomeTitle: {
     ...(kua ? typography['headline-md'] : { fontSize: TYPOGRAPHY['headline-md'].fontSize, fontWeight: '800' }),
@@ -556,40 +480,9 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     marginTop: 6,
   },
-  welcomeDivider: {
-    height: 1,
-    backgroundColor: kua ? kua.surfaceBorder : colors.cardBorder,
-    marginVertical: 16,
-  },
-  welcomeStep: {
-    marginBottom: 20,
-  },
-  welcomeStepHeader: {
-    flexDirection: 'row',
+  welcomeActions: {
     gap: 12,
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  welcomeIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: GEOMETRY['radius-lg'],
-    backgroundColor: kua ? kua.surfaceBorder : colors.cardBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
-    opacity: 0.8,
-  },
-  welcomeStepTextContainer: {
-    flex: 1,
-  },
-  welcomeStepTitle: {
-    ...(kua ? typography['body-lg'] : { fontSize: TYPOGRAPHY['body-lg'].fontSize, fontWeight: '700' }),
-    color: kua ? kua.onSurface : colors.text,
-  },
-  welcomeStepDesc: {
-    ...(kua ? typography['body-sm'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize, lineHeight: 18 }),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    marginTop: 4,
+    marginTop: 16,
   },
   welcomeButton: {
     borderRadius: GEOMETRY['radius-xl'],

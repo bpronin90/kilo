@@ -131,11 +131,7 @@ describe('deriveHomeDashboardData — exercise_classifications self-heals across
 
 import React from 'react';
 import render from 'react-test-renderer';
-import {
-  HomeScreen,
-  WELCOME_EXAMPLE_EXERCISE_LINE,
-  WELCOME_EXAMPLE_SETS_LINE,
-} from '../screens/HomeScreen';
+import { HomeScreen } from '../screens/HomeScreen';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
   getItem: jest.fn(),
@@ -402,36 +398,24 @@ describe('HomeScreen — hydration gating (issue #442)', () => {
   });
 });
 
-// ── Welcome-card example syntax (issue #517) ─────────────────────────────────
+// ── Welcome card stays short (#1333) ──────────────────────────────────────────
 //
-// The old copy taught "Squat: 315x5, 315x5", which parseWorkoutNote silently
-// drops (zero sections, no error) — the app's first instruction produced an
-// empty note. These tests pin the taught example to the real grammar.
-
-describe('HomeScreen — welcome-card example teaches parseable syntax (issue #517)', () => {
+// First use is two ways in. Syntax is taught in Log, where it is typed.
+describe('HomeScreen — first-use welcome is short (#1333)', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  test('the exact taught example round-trips through the parser into an exercise with sets', () => {
-    const taught = `${WELCOME_EXAMPLE_EXERCISE_LINE}\n${WELCOME_EXAMPLE_SETS_LINE}`;
-    const { ok, sections } = parseWorkoutNote(taught);
-    expect(ok).toBe(true);
-    const exercises = sections.flatMap(s => s.exercises);
-    expect(exercises).toHaveLength(1);
-    expect(exercises[0].name).toBe('Squat');
-    expect(exercises[0].sets.length).toBeGreaterThan(0);
-    expect(exercises[0].unparsed_rows).toHaveLength(0);
-  });
-
-  test('the welcome card shows the taught example on first run', () => {
+  test('the welcome card offers both daily loops and teaches no syntax', () => {
     setupHooks();
+    const onNavigate = jest.fn();
     let component;
     render.act(() => {
-      component = render.create(<HomeScreen {...makeHomeProps({ loading: false })} />);
+      component = render.create(<HomeScreen {...makeHomeProps({ loading: false, onNavigate })} />);
     });
-    expect(hasText(component.root, WELCOME_EXAMPLE_EXERCISE_LINE)).toBe(true);
-    expect(hasText(component.root, WELCOME_EXAMPLE_SETS_LINE)).toBe(true);
-    // The old, unparseable example must not come back.
-    expect(hasText(component.root, 'Squat: 315x5')).toBe(false);
+    expect(hasText(component.root, 'Welcome to Kilo')).toBe(true);
+    expect(hasText(component.root, '315 5,5')).toBe(false);
+    expect(hasText(component.root, '-Squat')).toBe(false);
+    const buttons = component.root.findAll(n => n.type === 'Text' && (n.props.children === 'Log Workout' || n.props.children === 'Log Weight'));
+    expect(buttons.map(b => b.props.children).sort()).toEqual(['Log Weight', 'Log Workout']);
   });
 });
 
@@ -574,49 +558,50 @@ describe('Home Recovery Big 3 selection (#1192)', () => {
   });
 });
 
-// #1193: Home's Recovery values describe only the latest linked week.
-describe('HomeRecoverySummary — latest linked week scope (#1193)', () => {
+// #1193 / #1333: Home names the week only when no headline caption already does,
+// and carries no per-week scope explainer — that detail is Analytics-owned.
+describe('HomeRecoverySummary — week identity (#1193, #1333)', () => {
   const { HomeRecoverySummary } = require('../screens/home/HomeRecoverySummary');
   const base = {
     status: 'ready', stale: false, message: null, active: true, retry: null,
     comparisonStatus: 'ok', weekNumber: 4, weekNoteStatus: 'ok', big3: [], remaining: null,
   };
+  const HEADLINE = { state: 'score', headline: '80% total recovery', caption: '2 of 2 lifts back · avg 80% · Week 4', a11y: 'Week 4: 80% total recovery.' };
   const mount = summary => {
     let c;
     render.act(() => { c = render.create(<HomeRecoverySummary summary={summary} onNavigate={jest.fn()} />); });
     return c.root;
   };
 
-  test('names the latest linked week and says the values are not a block total', () => {
+  test('without a headline, the week is named on its own line', () => {
     const root = mount(base);
-    expect(hasText(root, 'Latest linked week: Week 4')).toBe(true);
-    // #1245: the scope line sits behind the shared info icon beside the week label.
-    expect(hasText(root, 'Total recovery and each Big 3')).toBe(false);
-    const info = root.findAll(n => n.props.testID === 'home-recovery-week-scope-info' && n.props.accessibilityRole === 'button')[0];
-    expect(info.props.accessibilityLabel).toBe("About this week's values");
-    render.act(() => { info.props.onPress(); });
-    expect(hasText(root, 'Total recovery and each Big 3 percent use the latest score through Week 4 (older scores show the week last tested). The counts below describe Week 4 only.')).toBe(true);
-    render.act(() => { info.props.onPress(); });
-    expect(hasText(root, 'Total recovery and each Big 3')).toBe(false);
+    expect(hasText(root, 'Latest week: Week 4')).toBe(true);
+    expect(root.findAllByProps({ testID: 'home-recovery-week-scope-info' })).toHaveLength(0);
+  });
+
+  test('with a headline, its caption carries the week and no second label prints', () => {
+    const root = mount({ ...base, headline: HEADLINE });
+    expect(hasText(root, '80% total recovery')).toBe(true);
+    expect(hasText(root, '2 of 2 lifts back · avg 80% · Week 4')).toBe(true);
+    expect(hasText(root, 'Latest week')).toBe(false);
   });
 
   test('names the linked week by its note title when one exists (#1265)', () => {
     const root = mount({ ...base, weekNoteTitle: 'Knee rehab 2' });
-    expect(hasText(root, 'Latest linked week: Knee rehab 2')).toBe(true);
+    expect(hasText(root, 'Latest week: Knee rehab 2')).toBe(true);
     expect(hasText(root, 'Week 4')).toBe(false);
   });
 
   test('a stale summary calls it the last loaded week, not the latest', () => {
     const root = mount({ ...base, stale: true, message: 'stale' });
-    expect(hasText(root, 'Last loaded linked week: Week 4')).toBe(true);
-    expect(hasText(root, 'Latest linked week')).toBe(false);
+    expect(hasText(root, 'Last loaded week: Week 4')).toBe(true);
+    expect(hasText(root, 'Latest week')).toBe(false);
   });
 
-  test('prints no scope line when there is no week or the baseline is unavailable', () => {
-    expect(hasText(mount({ ...base, weekNumber: null }), 'Total recovery and each Big 3')).toBe(false);
-    expect(hasText(mount({ ...base, comparisonStatus: 'baseline_unavailable' }), 'Total recovery and each Big 3')).toBe(false);
-    expect(mount({ ...base, weekNumber: null }).findAllByProps({ testID: 'home-recovery-week-scope-info' })).toHaveLength(0);
-    expect(mount({ ...base, comparisonStatus: 'baseline_unavailable' }).findAllByProps({ testID: 'home-recovery-week-scope-info' })).toHaveLength(0);
+  test('no week is named when none is logged', () => {
+    const root = mount({ ...base, weekNumber: null });
+    expect(hasText(root, 'Baseline captured. No week logged yet.')).toBe(true);
+    expect(root.findAllByProps({ testID: 'home-recovery-week' })).toHaveLength(0);
   });
 });
 

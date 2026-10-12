@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, Button, ErrorBanner, getSessionTone } from '../components/UI';
+import { Card, Button, ErrorBanner } from '../components/UI';
 import { useTheme } from '../theme/ThemeContext';
 import { CLOUD_SYNC_NOTICE, useWeightGoal, useTrackedLifts, getNoteSections, useCloudSyncSummary, useActiveTrainingContext, useDeloadHistory, useRecoveryBlockState } from '../hooks/useEntries';
 import { useWeightUnit } from '../lib/unitPreference';
@@ -15,10 +15,6 @@ import { createStyles } from './home/homeStyles';
 import { useKuaTypography } from '../theme/typography';
 import { HomeHeader } from './home/HomeHeader';
 import { HomeDashboard } from './home/HomeDashboard';
-// The exact example the welcome card teaches (issue #517), exported so tests can round-trip
-// it through the real parser — the copy must never drift to a shape parseWorkoutNote rejects.
-export const WELCOME_EXAMPLE_EXERCISE_LINE = '-Squat';
-export const WELCOME_EXAMPLE_SETS_LINE = '315 5,5';
 function lerpColor(a, b, t) {
   const p = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
   const [ar,ag,ab] = p(a), [br,bg,bb] = p(b);
@@ -56,26 +52,6 @@ export function KiloWordmark({ width = 140, height = 48 }) {
 // Names the same `Retry recovery` control as every other Recovery message.
 export const RECOVERY_PENDING_HOLD_MESSAGE =
   'A recovery change is still finishing, so recovery status is not confirmed yet. Tap Retry recovery.';
-
-function BarbellIcon({ color, size = 22 }) {
-  const { colors, kuaPalette: kua } = useTheme();
-  const stroke = color || (kua ? kua.primary : colors.accent);
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <Path d="M18 4v16M6 4v16M2 8v8M22 8v8M6 12h12" />
-    </Svg>
-  );
-}
-
-function ScaleIcon({ color, size = 22 }) {
-  const { colors, kuaPalette: kua } = useTheme();
-  const stroke = color || (kua ? kua.primary : colors.accent);
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <Path d="M3 6h18M12 6v14M12 20H9m3 0h3M5 6l3 8h8l3-8" />
-    </Svg>
-  );
-}
 
 // Queued-work / failed-sync notice (#737). Reads the ONE shell-owned summary
 // through CloudSyncContext and never subscribes itself, so this stays free
@@ -334,16 +310,6 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
     [weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, trackedLifts, trackedLiftActivations, deloadHistory, currentId, recoveryBlocks]
   );
 
-  const weekTone = getSessionTone(dashboardData.sessionCount);
-  // In KUA mode the week label uses primary as its base color so it reads as
-  // on-brand. Semantic tone overrides (success/warn/error) stay on the
-  // classification counts below — not the label — to avoid duplicate signals.
-  const weekToneColor = kua ? kua.primary
-    : weekTone === 'error' ? colors.error
-    : weekTone === 'warn' ? colors.cautionText
-    : weekTone === 'success' ? colors.success
-    : null;
-
   // Whether there is any rolling-average series to plot at all.
   const hasWeightSeries = Array.isArray(dashboardData.weightSeries)
     && dashboardData.weightSeries.length > 0;
@@ -442,56 +408,14 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
           <HomeSkeleton />
         </>
       ) :(hasLoadError && !hasLoadedData) ? null : isEmptyState ? (
+        // First use (#1333): two ways in, nothing to study. Syntax and tracking
+        // are taught inside Log and Weight, where they are used.
         <Card style={styles.welcomeCard}>
-          <View style={styles.welcomeHeader}>
-            <Text style={styles.welcomeTitle}>Welcome to Kilo</Text>
-            <Text style={styles.welcomeSubtitle}>
-              Your strength journal and body weight tracker. Let's get started with your routine.
-            </Text>
-          </View>
-
-          <View style={styles.welcomeDivider} />
-
-          <View style={styles.welcomeStep}>
-            <View style={styles.welcomeStepHeader}>
-              <View style={styles.welcomeIconContainer}>
-                <BarbellIcon />
-              </View>
-              <View style={styles.welcomeStepTextContainer}>
-                {/* Unnumbered (#748; #745 finding F8). The two daily loops are
-                    independent siblings — numbering implied a prerequisite that
-                    does not exist and pushed the easier, more habit-forming
-                    weigh-in loop behind the harder one. */}
-                <Text style={styles.welcomeStepTitle}>Log a Workout</Text>
-                <Text style={styles.welcomeStepDesc}>
-                  Write workouts in plain text: an exercise line like "{WELCOME_EXAMPLE_EXERCISE_LINE}", then its sets like "{WELCOME_EXAMPLE_SETS_LINE}". Kilo parses that and totals your volume automatically. Per-lift strength charts need one more step: tap Track on an exercise in your routine to follow it in Analytics.
-                </Text>
-              </View>
-            </View>
-            <Button
-              title="Log Workout"
-              onPress={() => onNavigate('Log')}
-              style={styles.welcomeButton}
-            />
-          </View>
-
-          <View style={styles.welcomeStep}>
-            <View style={styles.welcomeStepHeader}>
-              <View style={styles.welcomeIconContainer}>
-                <ScaleIcon />
-              </View>
-              <View style={styles.welcomeStepTextContainer}>
-                <Text style={styles.welcomeStepTitle}>Track Weight & Goals</Text>
-                <Text style={styles.welcomeStepDesc}>
-                  Set a target weight and log entries to visualize your 7-day average trend and weekly pace.
-                </Text>
-              </View>
-            </View>
-            <Button
-              title="Log Weight"
-              onPress={() => onNavigate('Weight')}
-              style={styles.welcomeButton}
-            />
+          <Text style={styles.welcomeTitle}>Welcome to Kilo</Text>
+          <Text style={styles.welcomeSubtitle}>Log a workout or a weigh-in to start your dashboard.</Text>
+          <View style={styles.welcomeActions}>
+            <Button title="Log Workout" onPress={() => onNavigate('Log')} style={styles.welcomeButton} />
+            <Button title="Log Weight" onPress={() => onNavigate('Weight')} style={styles.welcomeButton} />
           </View>
         </Card>
       ) : (
@@ -502,13 +426,12 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
             isRecoveryOpenWeek={isRecoveryOpenWeek}
             isRecoveryBetweenWeeks={isRecoveryBetweenWeeks}
             activeTrainingContext={activeTrainingContext}
-            weekToneColor={weekToneColor}
-            hasWeightSeries={hasWeightSeries}
             baselinePaused={baselinePaused}
+            workoutNote={workoutNote}
+            notes={notes}
             handleLogWorkoutPress={handleLogWorkoutPress}
             heroPrimaryActionLabel={heroPrimaryActionLabel}
             heroPrimaryActionHint={heroPrimaryActionHint}
-            unit={unit}
           />
           <HomeDashboard
             recoverySummary={recoverySummary}
@@ -516,6 +439,7 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
             dashboardData={dashboardData}
             weightGoal={weightGoal}
             baselinePaused={baselinePaused}
+            hasWeightSeries={hasWeightSeries}
             oneKHeroColor={oneKHeroColor}
             unit={unit}
           />

@@ -3,12 +3,13 @@ import { Pressable, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Card } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
-import { displayWeight, formatGoalWeightValue } from '../../lib/units';
+import { displayWeight } from '../../lib/units';
 import { createStyles } from './homeStyles';
 import { useKuaTypography } from '../../theme/typography';
 import { HomeRecoverySummary } from './HomeRecoverySummary';
+import { HomeWeightCard } from './HomeWeightCard';
 
-// Tiers 1b-3 (recovery summary, weight goal, 1K progress), extracted from
+// Tiers 1b-3 (recovery summary, body weight + goal, 1K progress), extracted from
 // HomeScreen (#1049). Presentation only: HomeScreen still owns the loading
 // gate, the four-source boundary and all dashboard math, and passes results in.
 export function HomeDashboard({
@@ -17,12 +18,19 @@ export function HomeDashboard({
   dashboardData,
   weightGoal,
   baselinePaused,
+  hasWeightSeries,
   oneKHeroColor,
   unit,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const typography = useKuaTypography();
   const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
+  const hasOneKTotal = !!dashboardData.oneK?.total;
+  const oneKLifts = [
+    { key: 'squat', label: 'Squats', value: dashboardData.oneK?.squat ?? null },
+    { key: 'bench', label: 'Bench', value: dashboardData.oneK?.bench ?? null },
+    { key: 'deadlift', label: 'Deadlifts', value: dashboardData.oneK?.deadlift ?? null },
+  ];
 
   return (
     <>
@@ -30,65 +38,13 @@ export function HomeDashboard({
           the hero's week label and classification counts mean right now. */}
       <HomeRecoverySummary summary={recoverySummary} onNavigate={onNavigate} />
 
-      {dashboardData.goalInfo ? (() => {
-        const gi = dashboardData.goalInfo;
-        const warnings = gi.warnings || [];
-        const paceColor = warnings.includes('unrealistic') ? (kua ? kua.errorText : colors.error)
-          : warnings.includes('unhealthy') ? (kua ? kua.warning : colors.cautionText)
-          : (kua ? kua.success : colors.success);
-        const modeLabel = gi.direction === 'loss' ? 'Cutting' : gi.direction === 'gain' ? 'Bulking' : 'Maintaining';
-        // The goal-timeline status carries the same semantic palette as the
-        // classification trio (#1112 owner feedback): an active goal reads
-        // "on" (success green), an ended one reads as a caution to act on
-        // (warning amber) — never bland muted text.
-        const weeksColor = gi.isOverdue ? (kua ? kua.warning : colors.cautionText) : (kua ? kua.success : colors.success);
-        return (
-          <Card style={styles.goalCard}>
-            <View style={styles.goalModeRow}>
-              <Text style={styles.goalDirectionText}>
-                Goal: <Text style={styles.goalModeAccent}>{modeLabel}</Text>
-              </Text>
-              <Text style={[styles.goalWeeksText, { color: weeksColor }]}>
-                {gi.isOverdue ? 'Goal ended' : `${Math.round(gi.weeks_remaining)} weeks left`}
-              </Text>
-            </View>
-            <View style={styles.goalStatsGrid}>
-              <View style={styles.goalStatCol}>
-                <Text style={styles.goalStatLabel}>Target</Text>
-                <View style={styles.goalStatValueRow}>
-                  <Text style={styles.goalStatValueLarge}>{weightGoal?.target_weight != null ? formatGoalWeightValue(weightGoal.target_weight, unit) : weightGoal?.target_weight}</Text>
-                  <Text style={styles.goalStatUnitLabel}>{unit}</Text>
-                </View>
-              </View>
-              <View
-                style={styles.goalStatCol}
-                accessible
-                accessibilityLabel={`Pace: ${
-                  gi.required_weekly_pace !== null
-                    ? `${gi.required_weekly_pace > 0 ? '+' : ''}${displayWeight(gi.required_weekly_pace, unit).toFixed(1)} ${unit} per week`
-                    : 'not available'
-                }. ${
-                  warnings.includes('unrealistic') ? 'Unrealistic pace.'
-                    : warnings.includes('unhealthy') ? 'Unhealthy pace.'
-                    : 'Healthy pace.'
-                }`}
-              >
-                <Text style={styles.goalStatLabel}>Pace</Text>
-                <View style={styles.goalStatValueRow}>
-                  <Text style={[styles.goalStatValueLarge, { color: paceColor }]}>
-                    {gi.required_weekly_pace !== null ? (
-                      `${gi.required_weekly_pace > 0 ? '+' : ''}${displayWeight(gi.required_weekly_pace, unit).toFixed(1)}`
-                    ) : (
-                      'N/A'
-                    )}
-                  </Text>
-                  <Text style={[styles.goalStatUnitLabel, { color: paceColor }]}>{unit}/wk</Text>
-                </View>
-              </View>
-            </View>
-          </Card>
-        );
-      })() : null}
+      <HomeWeightCard
+        dashboardData={dashboardData}
+        weightGoal={weightGoal}
+        hasWeightSeries={hasWeightSeries}
+        onNavigate={onNavigate}
+        unit={unit}
+      />
 
       {baselinePaused ? null : (
       <Card style={styles.oneKCard}>
@@ -106,41 +62,38 @@ export function HomeDashboard({
             <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
           </View>
         </Pressable>
-        {dashboardData.oneK?.total ? (
-          <Text style={[styles.oneKHeroValue, { color: oneKHeroColor }]}>
-            {`${displayWeight(dashboardData.oneK.total, unit).toFixed(0)}`}
-            <Text style={styles.oneKHeroUnit}> {unit}</Text>
-          </Text>
-        ) : (
-          // Untracked total: a muted em-dash at hero scale plus a plain-language
-          // next step, not a lerp-tinted lone glyph that read as a stray mark.
+        {hasOneKTotal ? (
           <>
-            <Text style={styles.oneKHeroPlaceholder}>N/A</Text>
-            <Text style={styles.oneKHeroCaption}>Track lifts to see your 1K total</Text>
+            <Text style={[styles.oneKHeroValue, { color: oneKHeroColor }]}>
+              {`${displayWeight(dashboardData.oneK.total, unit).toFixed(0)}`}
+              <Text style={styles.oneKHeroUnit}> {unit}</Text>
+            </Text>
+            <View style={styles.progressBarLarge}>
+              <View
+                style={[
+                  styles.progressFillLarge,
+                  { width: `${Math.min(100, (dashboardData.oneK.total / 1000) * 100)}%` }
+                ]}
+              />
+            </View>
           </>
+        ) : (
+          // #1333: no total yet is a setup state, not a hero full of N/A. The
+          // total needs one complete cycle of all three lifts (lib/data/oneK.js).
+          <Text testID="home-one-k-setup" style={styles.oneKHeroCaption}>Log a session of each Big 3 lift to see your 1K total.</Text>
         )}
-        <View style={styles.progressBarLarge}>
-          <View
-            style={[
-              styles.progressFillLarge,
-              { width: `${Math.min(100, ((dashboardData.oneK?.total || 0) / 1000) * 100)}%` }
-            ]}
-          />
-        </View>
-        <View style={styles.oneKGrid}>
-          <View style={styles.oneKGridItem}>
-            <Text style={styles.oneKGridValue}>{dashboardData.oneK?.squat != null ? displayWeight(dashboardData.oneK.squat, unit).toFixed(0) : 'N/A'}</Text>
-            <Text style={styles.oneKGridLabel}>Squats</Text>
+        {/* Lifts with a value only once there is a total; before that only
+            the ones already logged, and nothing at all when none are. */}
+        {hasOneKTotal || oneKLifts.some(l => l.value != null) ? (
+          <View style={styles.oneKGrid}>
+            {oneKLifts.filter(l => hasOneKTotal || l.value != null).map((l, idx) => (
+              <View key={l.key} style={[styles.oneKGridItem, idx > 0 && styles.oneKGridItemDivider]}>
+                <Text style={styles.oneKGridValue}>{l.value != null ? displayWeight(l.value, unit).toFixed(0) : 'N/A'}</Text>
+                <Text style={styles.oneKGridLabel}>{l.label}</Text>
+              </View>
+            ))}
           </View>
-          <View style={[styles.oneKGridItem, styles.oneKGridItemBorder]}>
-            <Text style={styles.oneKGridValue}>{dashboardData.oneK?.bench != null ? displayWeight(dashboardData.oneK.bench, unit).toFixed(0) : 'N/A'}</Text>
-            <Text style={styles.oneKGridLabel}>Bench</Text>
-          </View>
-          <View style={styles.oneKGridItem}>
-            <Text style={styles.oneKGridValue}>{dashboardData.oneK?.deadlift != null ? displayWeight(dashboardData.oneK.deadlift, unit).toFixed(0) : 'N/A'}</Text>
-            <Text style={styles.oneKGridLabel}>Deadlifts</Text>
-          </View>
-        </View>
+        ) : null}
       </Card>
       )}
     </>

@@ -91,6 +91,7 @@ function Surfaces({ fixture, stale, fresh, notesError = null }) {
   return (
     <>
       <HomeRecoverySummary summary={home} onNavigate={() => {}} />
+      {React.createElement('probe', { testID: 'home-summary-probe', summary: home })}
       <Probe row={row} />
       <AnalyticsRecoverySection blocks={[analytics.block]} weeks={analytics.weeks} notes={analytics.notes} stateStale={stale} notesError={notesError} />
     </>
@@ -110,6 +111,19 @@ const homeHeadline = (root) => {
   return v ? `${v.props.children} | ${cap.props.children}` : null;
 };
 const overviewRow = (root) => byId(root, 'overview-probe')[0].props.row;
+// #1333: Home no longer renders per-lift rows; the Big 3 stay in the Home summary
+// data (one snapshot, unchanged derivation), so these read it there, in the
+// words the removed rows printed.
+const STATE_WORD = { not_in_baseline: 'Not in baseline', not_retested: 'Not retested', not_scored: 'Not scored', unknown: 'Unknown' };
+const homeLift = (root, slot) => byId(root, 'home-summary-probe')[0].props.summary.big3.find(l => l.slot === slot);
+const homeLiftTexts = (root, slot) => {
+  const l = homeLift(root, slot);
+  return [l.label, l.state === 'scored' ? `${l.percent}%` : STATE_WORD[l.state], ...(l.lastTestedWeek ? [`last tested Week ${l.lastTestedWeek}`] : [])];
+};
+const homeLiftSpoken = (root, slot) => {
+  const l = homeLift(root, slot);
+  return l.spoken || `${l.label} ${STATE_WORD[l.state].toLowerCase()}`;
+};
 const analyticsSummary = (root) => byId(root, 'recovery-strength-summary')[0];
 const analyticsHeadline = (root) => {
   const cap = byId(root, 'recovery-strength-caption')[0];
@@ -204,8 +218,7 @@ describe('identical values on every surface', () => {
     const root = mount({ fixture: SCORED, stale: false }).root;
     act(() => { root.findAll(n => n.props && n.props.accessibilityLabel === 'Expand lifts')[0].props.onPress(); });
     const ladder = byId(root, 'recovery-exercise-row').map(n => n.props.accessibilityLabel).find(l => /^Squat, /.test(l));
-    const homeValue = byId(root, 'home-recovery-lift-squat')[0]
-      .findAll(n => n.type === 'Text').map(n => [].concat(n.props.children).join(''));
+    const homeValue = homeLiftTexts(root, 'squat');
     expect(ladder).toMatch(/80% of baseline strength/);
     expect(homeValue).toContain('80%');
     // The band-model words are gone from Home.
@@ -273,8 +286,8 @@ describe('Home Big 3 latest evidence and age (#1318)', () => {
 
   test('an absent lift keeps its earlier strength % with "last tested Week k"; ', () => {
     const root = mount({ fixture: AGED, stale: false }).root;
-    expect(texts(byId(root, 'home-recovery-lift-squat')[0])).toEqual(expect.arrayContaining(['94%', 'last tested Week 1']));
-    expect(byId(root, 'home-recovery-analytics')[0].props.accessibilityLabel).toContain('Squat 94% of baseline, last tested Week 1');
+    expect(homeLiftTexts(root, 'squat')).toEqual(expect.arrayContaining(['94%', 'last tested Week 1']));
+    expect(homeLiftSpoken(root, 'squat')).toContain('Squat 94% of baseline, last tested Week 1');
   });
 
   test('Home displays the strength percent, which differs from its comparison/load ratio', () => {
@@ -282,7 +295,7 @@ describe('Home Big 3 latest evidence and age (#1318)', () => {
     const squat = snap.selectedWeek.exercises.find(e => e.key === 'squat');
     expect(squat.metrics.find(m => m.metric === 'top_load').percent).toBe(100);
     const root = mount({ fixture: { ...AGED, weeks: [AGED.weeks[0]] }, stale: false }).root;
-    const value = texts(byId(root, 'home-recovery-lift-squat')[0]);
+    const value = homeLiftTexts(root, 'squat');
     expect(value).toContain('94%');
     expect(value).not.toContain('100%');
   });
@@ -308,8 +321,8 @@ describe('Home Big 3 under unreadable history (#1318 review)', () => {
       notes: [note('nb', BASE), note('w1', '-Squat\n- 60 5')],
     };
     const root = mount({ fixture, stale: false }).root;
-    expect(texts(byId(root, 'home-recovery-lift-squat')[0])).toEqual(expect.arrayContaining(['60%', 'last tested Week 1']));
-    expect(byId(root, 'home-recovery-analytics')[0].props.accessibilityLabel).toContain('Squat 60% of baseline, last tested Week 1');
+    expect(homeLiftTexts(root, 'squat')).toEqual(expect.arrayContaining(['60%', 'last tested Week 1']));
+    expect(homeLiftSpoken(root, 'squat')).toContain('Squat 60% of baseline, last tested Week 1');
   });
 
   test('a lift whose only possible score is in an unreadable week is Unknown, not Not retested', () => {
@@ -318,10 +331,10 @@ describe('Home Big 3 under unreadable history (#1318 review)', () => {
       notes: [note('nb', BASE), note('w2', '-Bench\n- 100 5')],
     };
     const root = mount({ fixture, stale: false }).root;
-    const row = texts(byId(root, 'home-recovery-lift-squat')[0]);
+    const row = homeLiftTexts(root, 'squat');
     expect(row).toContain('Unknown');
     expect(row).not.toContain('Not retested');
-    expect(byId(root, 'home-recovery-analytics')[0].props.accessibilityLabel).toContain('Squat unknown, a week that can’t be read may hold its score');
+    expect(homeLiftSpoken(root, 'squat')).toContain('Squat unknown, a week that can’t be read may hold its score');
   });
 });
 
@@ -395,10 +408,8 @@ describe('Home Big 3 status precedence, exhaustive (#1318)', () => {
     // Squat must be in the baseline exactly when inBaseline (so the slot's lift is a baseline row).
     const root = mount({ fixture, stale: false }).root;
     const want = expected(score, unreadable, unscoreable, inBaseline);
-    const row = byId(root, 'home-recovery-lift-squat')[0];
-    expect(texts(row)).toEqual(want.visible);
-    const spoken = byId(root, 'home-recovery-analytics')[0].props.accessibilityLabel;
-    const clean = spoken.split('Big 3. ')[1].split(/\. (?:DB Bench Press|Bench)\b/)[0];
+    expect(homeLiftTexts(root, 'squat')).toEqual(want.visible);
+    const clean = homeLiftSpoken(root, 'squat');
     if (want.spoken instanceof RegExp) expect(clean).toMatch(want.spoken); else expect(clean).toBe(want.spoken);
   });
 
