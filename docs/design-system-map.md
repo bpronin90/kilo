@@ -983,8 +983,10 @@ unfocused card is `display: none`, `accessibilityElementsHidden`,
 on first open and stays mounted while collapsed, so an in-flight write keeps its
 busy state, draft and error across collapse AND block switching, and nothing
 reaches another block. Opening, closing or switching writes nothing.
-**Recovery History** (`LogRecoveryHistory.js`): a collapsed `>=48dp` header
-(`Recovery History`, `N completed blocks`) lists the active block (when present)
+**Recovery Blocks** (`LogRecoveryHistory.js`, renamed from Recovery History in
+#1331 because it includes the active block): a collapsed `>=48dp` header
+(`Recovery Blocks`, captioned `1 active · N completed` or, with no active block,
+`N completed blocks`) lists the active block (when present)
 and every live completed block, newest completed first, as `>=48dp` rows with
 `selected` state. It renders ABOVE the focused Manage card (#1329), so a pick
 reads top-down: choose the block, then manage it directly below. Choosing one
@@ -1350,7 +1352,9 @@ Consequences to preserve:
   `Share as Image` and `Delete routine` (danger ink), with the same accessibility
   labels and handlers they had as full buttons. A chosen sheet item runs only once the
   sheet is gone (iOS: the Modal's `onDismiss`, with a 700ms fallback), so its
-  alert, share sheet or image preview never opens behind the dismissing sheet.
+  alert, share sheet or image preview never opens behind the dismissing sheet. The
+  sheet's bottom padding is `24 +` the bottom safe-area inset (#1331), so its
+  last item clears the home indicator.
 - **More Routines opens on its three newest routines (#1329).** A
   `Show all {N} routines` / `Show fewer` text control (44dp, accent ink) appears
   below the list only when more exist. The viewed routine always renders, so a
@@ -1501,7 +1505,7 @@ Consequences to preserve:
   true discard, and saving empty text clears the field. Collapsing `Manage
   block` closes the editor with it — and note that this is not the only place
   the field is editable; since #1315 the same card also serves a completed
-  block selected in Recovery History),
+  block selected in Recovery Blocks),
   `Counting in normal analytics` (the row itself IS the
   Log-surface inclusion control now, `accessibilityRole="switch"` — tapping
   it writes `include_in_normal_analytics` directly, live `On`/`Off` stated

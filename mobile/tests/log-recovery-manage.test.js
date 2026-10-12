@@ -75,6 +75,24 @@ describe('Recovery History reads before Manage (#1329)', () => {
   });
 });
 
+describe('the selector is labelled Recovery Blocks, not History (#1331)', () => {
+  test('with an active block the caption counts both kinds', () => {
+    const c = mount({ blocks: [block(), done('rb-old', '2026-05-01T00:00:00Z'), done('rb-new', '2026-06-01T00:00:00Z')] });
+    expect(texts(c.root)).toEqual(expect.arrayContaining(['Recovery Blocks', '1 active · 2 completed']));
+    expect(texts(c.root)).not.toContain('Recovery History');
+    expect(byLabel(c.root, 'Expand recovery blocks')).toBeDefined();
+    press(c.root, 'recovery-history-header');
+    expect(byLabel(c.root, 'Collapse recovery blocks')).toBeDefined();
+  });
+
+  test('with no active block the caption counts completed blocks only', () => {
+    const one = mount({ blocks: [done('rb-new', '2026-06-01T00:00:00Z')] });
+    expect(texts(one.root)).toContain('1 completed block');
+    const two = mount({ blocks: [done('rb-old', '2026-05-01T00:00:00Z'), done('rb-new', '2026-06-01T00:00:00Z')] });
+    expect(texts(two.root)).toContain('2 completed blocks');
+  });
+});
+
 describe('completed blocks expose the maintenance controls under their gates', () => {
   test('reason, inclusion and the rest are on a completed block; unlink and end never are', () => {
     const c = mount({ blocks: [done('rb-new', '2026-06-01T00:00:00Z', { reason: 'sprain', baseline: V1 })] });

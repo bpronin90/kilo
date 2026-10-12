@@ -1,7 +1,8 @@
-// Recovery History selector and the focused-block Manage stack (#1315). The
-// History selector lists every live completed block (newest completed first, the
-// storage comparator) and only changes which block is focused: selecting writes
-// nothing. The stack renders ONE visible Manage card, for the focused block.
+// Recovery Blocks selector and the focused-block Manage stack (#1315). The
+// selector lists the active block (when present) and every live completed block
+// (newest completed first, the storage comparator) and only changes which block
+// is focused: selecting writes nothing. It is labelled `Recovery Blocks`, not
+// `Recovery History`, because it includes the active block (#1331). The stack renders ONE visible Manage card, for the focused block.
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
@@ -28,6 +29,8 @@ export function LogRecoveryHistory({ activeBlock, completedBlocks, focusedBlockI
   if (completedBlocks.length === 0 && !(alwaysShow && activeBlock)) return null;
   const rows = [...(activeBlock ? [{ block: activeBlock, active: true }] : []), ...completedBlocks.map(block => ({ block, active: false }))];
   const n = completedBlocks.length;
+  const completedText = activeBlock ? `${n} completed` : `${n} completed ${n === 1 ? 'block' : 'blocks'}`;
+  const caption = activeBlock ? `1 active · ${completedText}` : completedText;
   return (
     <View testID="recovery-history" style={st.historyPanel}>
       <Pressable
@@ -35,12 +38,12 @@ export function LogRecoveryHistory({ activeBlock, completedBlocks, focusedBlockI
         onPress={() => setOpen(o => !o)}
         style={st.historyHeader}
         accessibilityRole="button"
-        accessibilityLabel={`${open ? 'Collapse' : 'Expand'} recovery history`}
+        accessibilityLabel={`${open ? 'Collapse' : 'Expand'} recovery blocks`}
         accessibilityState={{ expanded: open }}
       >
         <View>
-          <Text style={st.historyTitle}>Recovery History</Text>
-          <Text style={st.historyCaption}>{`${n} completed ${n === 1 ? 'block' : 'blocks'}`}</Text>
+          <Text style={st.historyTitle}>Recovery Blocks</Text>
+          <Text style={st.historyCaption}>{caption}</Text>
         </View>
         <MaterialIcons name={open ? 'expand-less' : 'expand-more'} size={18} color={kua ? kua.onSurfaceVariant : colors.textMuted} accessible={false} />
       </Pressable>
