@@ -64,6 +64,17 @@ function mount(props) {
 const cards = (root) => root.findAll(n => typeof n.type === 'string' && /^recovery-manage-card-/.test(n.props.testID || ''));
 const shown = (root) => cards(root).filter(n => !(n.props.style && StyleSheet.flatten(n.props.style).display === 'none')).map(n => n.props.testID);
 
+describe('Recovery History reads before Manage (#1329)', () => {
+  test('the selector renders above the focused Manage card, so a pick reads top-down', () => {
+    const c = mount({ blocks: [done('rb-old', '2026-05-01T00:00:00Z'), done('rb-new', '2026-06-01T00:00:00Z')] });
+    const order = c.root.findAll(n => typeof n.type === 'string'
+      && (n.props.testID === 'recovery-history' || /^recovery-manage-card-/.test(n.props.testID || '')))
+      .map(n => n.props.testID);
+    expect(order[0]).toBe('recovery-history');
+    expect(order.slice(1)).toContain('recovery-manage-card-rb-new');
+  });
+});
+
 describe('completed blocks expose the maintenance controls under their gates', () => {
   test('reason, inclusion and the rest are on a completed block; unlink and end never are', () => {
     const c = mount({ blocks: [done('rb-new', '2026-06-01T00:00:00Z', { reason: 'sprain', baseline: V1 })] });

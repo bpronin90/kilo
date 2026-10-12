@@ -355,9 +355,13 @@ owner states the ownership pause is lifted.
   opposite controls (`Skip week` / `Remove skip`) must not both sit on screen
   with one dimmed; render the one that applies. Opacity over already-muted text
   is not a legible disabled state (see §13 contrast).
-- **Do not introduce a `•••` overflow menu, bottom sheet, or action sheet** to
-  solve a crowded header. No such pattern exists in `mobile/components/`, and
-  adopting one is a separate design decision, not an implementation detail.
+- **Do not use a `•••` overflow menu to solve a crowded header.** The one
+  sanctioned secondary-action sheet is the compact bottom sheet over a
+  dismissable scrim: the current-routine card's Routine actions (#1021/#1244)
+  and `log/ActionSheetMenu.js` (#1329, More Routines and the active Deload
+  card). Its trigger is a 44dp control. On those two cards it sits in the
+  expanded body beside the card's one visible secondary action. A card's
+  primary action never moves into a sheet.
 
 Anti-pattern this replaces: a header row where a `flex: 1` title column competes
 with an unbounded action container, so the title collapses or truncates to make

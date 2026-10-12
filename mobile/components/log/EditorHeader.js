@@ -49,10 +49,13 @@ export function EditorSaveActions({ editingNoteId, currentId, onSave, onSaveOthe
     <>
       <Button
         onPress={editingNoteId ? onSaveOther : onSave}
-        title="Save"
+        title="Save routine"
         disabled={editingNoteId ? noteIsSaving : isSaving}
         style={styles.saveButton}
       />
+      {/* #1329: name the difference instead of leaving two completion
+          actions to be guessed at. */}
+      <Text style={styles.saveHintText}>Saves and keeps editing. Done saves and closes.</Text>
       {/* #1021: secondary path for a brand-new routine — paste a shared routine
           instead of typing one from scratch. Opens the existing import preview;
           nothing here is saved until that screen's own explicit create action. */}

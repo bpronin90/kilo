@@ -25,8 +25,8 @@ export function useLogRecoveryManage({
   const [unavailable, setUnavailable] = useState(false);
   const appliedRef = useRef(0);
   // History picks reuse the navigation reveal (expand + scroll the card into
-  // view): the Manage card sits ABOVE the History list, so without it a pick
-  // could change a card that is off screen and look like it did nothing.
+  // view): the Manage card sits directly BELOW the History list (#1329), and a
+  // long open list can still push it off screen, so a pick opens and reveals it.
   const pickRef = useRef(0);
   const shownRef = useRef(0);
   // A reveal is one-shot: once a card has expanded and scrolled for a key, a

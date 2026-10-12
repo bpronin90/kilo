@@ -21,7 +21,7 @@ const noop = () => {};
 function findSaveButton(root) {
   return root.findAll(
     (n) => n.type === 'Button' || (n.props && typeof n.props.onPress === 'function' && n.props.title != null)
-  ).find((n) => ['Save', 'Saving…'].includes(n.props.title));
+  ).find((n) => ['Save routine', 'Saving…'].includes(n.props.title));
 }
 
 function CurrentRoutineHarness(props) {
@@ -101,7 +101,7 @@ describe('LogScreenEditorCard — first-save "Saving…" state (#880 / PR #882 f
     roots.push(root);
     const button = findSaveButton(root.root);
     expect(button).toBeTruthy();
-    expect(button.props.title).toBe('Save');
+    expect(button.props.title).toBe('Save routine');
     expect(button.props.disabled).toBe(true);
     expect(savingLabels(root.root)).toHaveLength(1);
   });
@@ -115,7 +115,7 @@ describe('LogScreenEditorCard — first-save "Saving…" state (#880 / PR #882 f
     });
     roots.push(root);
     const button = findSaveButton(root.root);
-    expect(button.props.title).toBe('Save');
+    expect(button.props.title).toBe('Save routine');
     expect(button.props.disabled).toBe(false);
     expect(savingLabels(root.root)).toHaveLength(0);
   });
@@ -134,7 +134,7 @@ describe('LogScreenEditorCard — first-save "Saving…" state (#880 / PR #882 f
     });
     roots.push(root);
     const button = findSaveButton(root.root);
-    expect(button.props.title).toBe('Save');
+    expect(button.props.title).toBe('Save routine');
     expect(button.props.disabled).toBe(true);
     expect(savingLabels(root.root)).toHaveLength(0);
   });
@@ -149,7 +149,7 @@ describe('LogScreenEditorCard — first-save "Saving…" state (#880 / PR #882 f
     roots.push(root);
     const button = findSaveButton(root.root);
     expect(button).toBeTruthy();
-    expect(button.props.title).toBe('Save');
+    expect(button.props.title).toBe('Save routine');
     expect(button.props.disabled).toBe(true);
     expect(savingLabels(root.root)).toHaveLength(1);
   });

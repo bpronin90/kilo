@@ -19,6 +19,10 @@
 // navigation intent that targets a non-current note needs no "expand the
 // disclosure" step because there is no disclosure left to expand.
 //
+// #1329 caps the open list at the newest three (plus the viewed routine) behind
+// a `Show all` control, and moves Copy / Share / Share as Image / Delete into an
+// expanded routine's More actions sheet beside `Edit routine`.
+//
 // #847 owner-authorized exception to the Log tab's style lock, scoped to this
 // file. The Current routine card remains locked.
 //
@@ -41,6 +45,7 @@ import {
   ROUTINE_COPY_FAILURE_MESSAGE,
 } from '../lib/interoperability/routineShare';
 import { RoutineShareModal } from './RoutineShareCard';
+import { ActionSheetMenu, ActionSheetTrigger } from './log/ActionSheetMenu';
 import { TYPOGRAPHY } from '../theme/typography';
 import { GEOMETRY } from '../theme/spacing';
 
@@ -78,6 +83,11 @@ function sortByCreatedDesc(notes) {
     .map(entry => entry.note);
 }
 
+// #1329: the collection opens on its newest few routines rather than every
+// routine ever made; the rest are one `Show all` away. The viewed routine
+// always renders, so a navigation intent never targets a hidden card.
+const VISIBLE_ROUTINE_LIMIT = 3;
+
 export function LogPreviousRoutines({
   otherNotes,
   handleViewOtherNote,
@@ -104,6 +114,9 @@ export function LogPreviousRoutines({
   const kua = useKuaStyle();
   const styles = useThemedStyles(createStyles);
   const [imageShare, setImageShare] = useState(null);
+  const [showAll, setShowAll] = useState(false);
+  // The expanded routine whose secondary-action sheet is open, if any.
+  const [menuNoteId, setMenuNoteId] = useState(null);
   // Double-tap the viewed routine body to open it in the editor (matches main).
   const viewingNoteLastTapRef = useRef(0);
   const handleViewedNoteBodyPress = () => {
@@ -159,10 +172,36 @@ export function LogPreviousRoutines({
 
   const routineCount = otherNotes.length;
   const sortedNotes = sortByCreatedDesc(otherNotes);
+  const hasHiddenRoutines = routineCount > VISIBLE_ROUTINE_LIMIT;
+  const visibleNotes = showAll || !hasHiddenRoutines
+    ? sortedNotes
+    : sortedNotes.filter((note, index) => index < VISIBLE_ROUTINE_LIMIT || note.id === viewingNoteId);
+  const viewingTitle = viewingNote?.title || 'Untitled Routine';
 
   return (
     <View style={styles.previousRoutines}>
       {imageShare && <RoutineShareModal {...imageShare} onClose={() => setImageShare(null)} />}
+      <ActionSheetMenu
+        visible={!!menuNoteId && menuNoteId === viewingNoteId && !!viewingNote}
+        onClose={() => setMenuNoteId(null)}
+        testID="log-other-routine-menu"
+        items={[
+          // #956: Copy and Share stay distinct actions, not merged.
+          { label: 'Copy', a11y: `Copy routine ${viewingTitle}`, onPress: () => handleCopyRoutine(viewingNote) },
+          { label: 'Share', a11y: `Share routine ${viewingTitle}`, onPress: () => handleShareRoutine(viewingNote) },
+          {
+            label: 'Share as Image',
+            a11y: `Share routine ${viewingTitle} as image`,
+            onPress: () => setImageShare({ title: viewingNote?.title, rawText: viewingNote?.raw_text || '' }),
+          },
+          {
+            label: 'Delete routine',
+            a11y: `Delete routine ${viewingTitle}`,
+            danger: true,
+            onPress: () => viewingNote && handleDeleteRoutine(viewingNoteId, viewingTitle, false),
+          },
+        ]}
+      />
       {/* The count and the create-routine affordance sit outside the
           disclosure entirely (#843) — both are visible whether the
           collection below is expanded or collapsed. */}
@@ -183,7 +222,7 @@ export function LogPreviousRoutines({
           always listed here. Each card keeps its own independent
           collapsed/expanded body below (`isViewedOther`), unchanged. */}
       <View style={styles.cardList}>
-          {sortedNotes.map((other) => {
+          {visibleNotes.map((other) => {
             // Same rule as LogActiveRoutineCard (#738 review): an explicit
             // accessibilityLabel replaces the label VoiceOver would otherwise derive
             // from this header's Text descendants. Two routines sharing a title are
@@ -282,45 +321,30 @@ export function LogPreviousRoutines({
                           </Pressable>
                         </View>
                       )}
-                      {/* Ordered by intent: adopt (the one filled action), edit,
-                          then the share/copy family, delete last. */}
+                      {/* #1329: adopt is the one filled action; Edit and the
+                          More actions sheet (Copy, Share, Share as Image,
+                          Delete) share one row beneath it. */}
                       <Button
                         onPress={() => handleSwitchCurrent(other.id)}
                         title="Set as current routine"
                       />
-                      <Button
-                        onPress={handleEditViewedNote}
-                        title="Edit routine"
-                        style={styles.switchButton}
-                        textStyle={styles.switchButtonText}
-                      />
-                      <Button
-                        onPress={() => handleShareRoutine(viewingNote)}
-                        title="Share routine"
-                        accessibilityLabel={`Share routine ${viewingNote?.title || 'Untitled Routine'}`}
-                        style={styles.switchButton}
-                        textStyle={styles.switchButtonText}
-                      />
-                      <Button
-                        onPress={() => handleCopyRoutine(viewingNote)}
-                        title="Copy routine"
-                        accessibilityLabel={`Copy routine ${viewingNote?.title || 'Untitled Routine'}`}
-                        style={styles.switchButton}
-                        textStyle={styles.switchButtonText}
-                      />
-                      <Button
-                        onPress={() => setImageShare({ title: viewingNote?.title, rawText: viewingNote?.raw_text || '' })}
-                        title="Share as Image"
-                        accessibilityLabel={`Share routine ${viewingNote?.title || 'Untitled Routine'} as image`}
-                        style={styles.switchButton}
-                        textStyle={styles.switchButtonText}
-                      />
-                      <Button
-                        onPress={() => viewingNote && handleDeleteRoutine(viewingNoteId, viewingNote.title || 'Untitled Routine', false)}
-                        title="Delete routine"
-                        accessibilityLabel={`Delete routine ${viewingNote?.title || 'Untitled Routine'}`}
-                        tone="danger"
-                      />
+                      <View style={styles.secondaryRow}>
+                        <View style={styles.secondaryRowMain}>
+                          <Button
+                            onPress={handleEditViewedNote}
+                            title="Edit routine"
+                            style={styles.switchButton}
+                            textStyle={styles.switchButtonText}
+                          />
+                        </View>
+                        <ActionSheetTrigger
+                          onPress={() => setMenuNoteId(other.id)}
+                          accessibilityLabel={`More actions for ${viewingTitle}`}
+                          accessibilityHint="Opens Copy, Share, Share as Image, and Delete routine"
+                          expanded={menuNoteId === other.id}
+                          testID="log-other-routine-menu-button"
+                        />
+                      </View>
                       {copyStatus && copyStatus.noteId === other.id ? (
                         <Text
                           style={styles.copyStatusText}
@@ -337,6 +361,19 @@ export function LogPreviousRoutines({
             );
           })}
       </View>
+      {hasHiddenRoutines && (
+        <Pressable
+          onPress={() => setShowAll(v => !v)}
+          style={styles.showAllButton}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: showAll }}
+          testID="log-more-routines-show-all"
+        >
+          <Text style={styles.showAllButtonText}>
+            {showAll ? 'Show fewer' : `Show all ${routineCount} routines`}
+          </Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -442,6 +479,25 @@ const createStyles = (colors, kua = null) => StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
+  },
+  // #1329: Edit routine (flexing) beside the 44dp More actions trigger.
+  secondaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  secondaryRowMain: {
+    flex: 1,
+  },
+  showAllButton: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  showAllButtonText: {
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
+    fontWeight: '700',
+    color: kua ? kua.primary : colors.accentText,
   },
   switchButton: {
     backgroundColor: 'transparent',

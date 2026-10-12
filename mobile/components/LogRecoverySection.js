@@ -381,6 +381,8 @@ export function LogRecoverySection({
 
   // One visible Manage card (the focused block's), plus the History selector and
   // the truthful unavailable state for a navigation target that no longer exists.
+  // #1329: the selector comes first, so a pick reads top-down — choose the
+  // block, then manage it directly below, never back up above the list.
   const manageSurface = (m.focusedBlockId || m.unavailable) ? (
     <>
       {m.unavailable ? (
@@ -389,16 +391,16 @@ export function LogRecoverySection({
         </View>
       ) : null}
       <>
+          <LogRecoveryHistory
+            activeBlock={activeBlock} completedBlocks={completedBlocks}
+            focusedBlockId={m.focusedBlockId} onSelect={m.onSelectBlock}
+            alwaysShow={!!m.unavailable}
+          />
           <LogRecoveryManageStack
             styles={styles} colors={colors} kua={kua}
             activeBlock={activeBlock} completedBlocks={completedBlocks} weeks={weeks} notes={notes}
             currentWeek={currentWeek} busy={busy} actionsLocked={actionsLocked} stale={stateStale}
             onUnlinkWeek={handleUnlinkWeek} onOpenEndBlockModal={onOpenEndBlockModal} manage={m}
-          />
-          <LogRecoveryHistory
-            activeBlock={activeBlock} completedBlocks={completedBlocks}
-            focusedBlockId={m.focusedBlockId} onSelect={m.onSelectBlock}
-            alwaysShow={!!m.unavailable}
           />
       </>
     </>

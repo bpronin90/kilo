@@ -71,6 +71,12 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   saveButton: {
     marginTop: 8,
   },
+  saveHintText: {
+    fontSize: TYPOGRAPHY['label-md'].fontSize,
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    textAlign: 'center',
+    marginTop: 6,
+  },
   // #1021: the secondary Import routine action, near/below Save — a quiet
   // text-only affordance so Save stays the one prominent control for a
   // brand-new routine.

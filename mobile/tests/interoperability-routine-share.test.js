@@ -328,6 +328,8 @@ describe('Share Routine is reachable from the current and saved routines', () =>
         />
       );
     });
+    // #1329: saved-routine Share lives behind the expanded body's sheet.
+    render.act(() => { pressableByLabel(component.root, 'More actions for Saved').props.onPress(); });
     const share = pressableByLabel(component.root, 'Share routine Saved');
     render.act(() => { share.props.onPress(); });
     expect(onShareRoutine).toHaveBeenCalledWith({ title: 'Saved', rawText: AB_ROUTINE });
