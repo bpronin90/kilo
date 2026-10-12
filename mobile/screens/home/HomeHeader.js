@@ -1,9 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import Svg, { Circle, Line, Path } from 'react-native-svg';
-import { Card, LineChart } from '../../components/UI';
+import { Card } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
-import { formatBodyweightValue, displayChartSeries } from '../../lib/units';
 import { createStyles } from './homeStyles';
 import { useKuaTypography } from '../../theme/typography';
 
@@ -29,28 +28,45 @@ function InfoIcon({ color }) {
   );
 }
 
-// Tier 1 weekly-summary hero, extracted from HomeScreen (#1049). Presentation
-// only: every value it renders is computed by HomeScreen and passed in, so the
-// first-paint gate and dashboard math stay in one place.
+// `Exercise Progress` is the same Analytics handoff in every hero state (#1333):
+// the trio below it is the summary, Progressive Overload is the detail.
+function ExerciseProgressLink({ linkId, onNavigate, styles, color }) {
+  return (
+    <Pressable
+      testID={linkId}
+      onPress={() => onNavigate('Analytics', 'progressive-overload')}
+      style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart]}
+      hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+      accessibilityRole="button"
+      accessibilityLabel="Exercise Progress"
+      accessibilityHint="Opens the Progressive Overload section of the Analytics tab"
+    >
+      <Text style={[styles.classifSectionLabel, styles.sectionHeaderLabel]}>Exercise Progress</Text>
+      <View style={styles.sectionHeaderChevron}>
+        <Chevron color={color} />
+      </View>
+    </Pressable>
+  );
+}
+
+// Tier 1 training hero, extracted from HomeScreen (#1049). Presentation only:
+// every value it renders is computed by HomeScreen and passed in.
 //
-// #1112 redesign: training leads. The card opens with a KUA section header
-// (accent bar + "THIS WEEK") and the week's classification trio as the lead
-// figures; the two daily-loop actions follow; body weight is demoted to a
-// supporting metric grouped with its own trend below. Body weight is no longer
-// the hero of the "current routine progress" screen.
+// #1333: the hero answers three questions and nothing else — what is being
+// trained (week + routine), how it is going (Exercise Progress), and what to do
+// next (the two daily-loop actions). Body weight lives in its own card below.
 export function HomeHeader({
   dashboardData,
   onNavigate,
   isRecoveryOpenWeek,
   isRecoveryBetweenWeeks,
   activeTrainingContext,
-  weekToneColor,
-  hasWeightSeries,
   baselinePaused,
+  workoutNote,
+  hasSavedRoutines,
   handleLogWorkoutPress,
   heroPrimaryActionLabel,
   heroPrimaryActionHint,
-  unit,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const typography = useKuaTypography();
@@ -58,15 +74,33 @@ export function HomeHeader({
   const [captionExpanded, setCaptionExpanded] = useState(false);
 
   const isRecovery = isRecoveryOpenWeek || isRecoveryBetweenWeeks;
-  // The header carries the week identity itself — no separate "THIS WEEK" label
-  // duplicated by a week number on the right (#1112 owner feedback). Recovery
-  // keeps a "Recovery" header with the week/state on the line below.
-  const headerLabel = isRecovery
-    ? 'Recovery'
-    : dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Week N/A';
+  // No current routine, or one with nothing written in it yet, is not a
+  // training week: no `Week N/A`, no 0·0·0 trio, just the way back in (#1333).
+  const hasRoutineContent = !!workoutNote?.raw_text?.trim();
+  const routineState = isRecovery ? 'recovery'
+    : !workoutNote ? 'none'
+    : !hasRoutineContent ? 'empty'
+    : 'active';
+  const headerLabel = routineState === 'recovery' ? 'Recovery'
+    : routineState === 'none' ? 'No current routine'
+    : dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Current routine';
   const recoverySubline = isRecoveryOpenWeek
     ? `Week ${activeTrainingContext.recoveryWeekNumber ?? 'N/A'}`
     : null;
+  const routineTitle = routineState === 'active' || routineState === 'empty'
+    ? (workoutNote.title || '').trim() || null
+    : null;
+  const routineMessage = routineState === 'none'
+    ? (hasSavedRoutines ? 'Pick a saved routine or write a new one in Log.' : 'Write a routine in Log to track your weeks.')
+    : routineState === 'empty'
+      ? 'Add exercises to this routine in Log to track progress.'
+      : null;
+  const primaryLabel = routineState === 'none'
+    ? (hasSavedRoutines ? 'Choose routine' : 'Write routine')
+    : heroPrimaryActionLabel;
+  const primaryHint = routineState === 'none'
+    ? 'Opens the Log tab to pick or write a routine'
+    : heroPrimaryActionHint;
 
   const mutedStroke = kua ? kua.onSurfaceVariant : colors.textMuted;
   const actionStroke = kua ? kua.primaryOnContainer : colors.textMuted;
@@ -82,18 +116,39 @@ export function HomeHeader({
 
   return (
     <Card style={styles.weeklyHero}>
-      {/* KUA section header (#1112): accent bar + the week identity itself.
-          The info toggle (only when the counts need explaining) lives on the
-          right, in the space the redundant week label used to occupy — it no
-          longer costs its own row below the counts. */}
+      {/* What is being trained: the week identity, then which routine it is. */}
       <View style={styles.heroHeaderRow}>
-        <View style={styles.heroHeaderLeft}>
-          <View style={styles.heroAccentBar} />
-          <Text style={styles.heroSectionLabel} numberOfLines={1}>{headerLabel}</Text>
+        <View style={styles.heroAccentBar} />
+        <Text testID="home-hero-label" style={styles.heroSectionLabel} numberOfLines={1}>{headerLabel}</Text>
+      </View>
+
+      {recoverySubline ? (
+        <Text style={styles.heroWeekSubline} numberOfLines={1}>{recoverySubline}</Text>
+      ) : null}
+
+      {isRecoveryOpenWeek && activeTrainingContext.activeNote ? (
+        <Text testID="home-recovery-active-note" style={styles.heroRecoveryNoteLabel}>
+          {activeTrainingContext.activeNote.title || 'Untitled'}
+        </Text>
+      ) : null}
+
+      {routineTitle ? (
+        <Text testID="home-routine-title" style={styles.heroRecoveryNoteLabel} numberOfLines={1}>{routineTitle}</Text>
+      ) : null}
+
+      {/* How it is going. */}
+      {routineMessage ? (
+        <Text testID="home-no-routine" style={styles.heroRoutineMessage}>{routineMessage}</Text>
+      ) : baselinePaused ? (
+        // Frozen baseline handoff (#869): the classification band describes the
+        // frozen baseline routine, not what is being trained right now.
+        <View style={styles.classifSection}>
+          <ExerciseProgressLink linkId="home-baseline-paused-link" onNavigate={onNavigate} styles={styles} color={mutedStroke} />
         </View>
-        {!baselinePaused ? (
-          <View style={styles.heroHeaderRight}>
-            <Text style={styles.heroClassifHeaderLabel} numberOfLines={1}>Exercise Progress</Text>
+      ) : (
+        <View style={styles.classifSection}>
+          <View style={styles.classifHeaderRow}>
+            <ExerciseProgressLink linkId="home-exercise-progress-link" onNavigate={onNavigate} styles={styles} color={mutedStroke} />
             {captionText && kua ? (
               <Pressable
                 testID="home-classif-info"
@@ -108,48 +163,6 @@ export function HomeHeader({
               </Pressable>
             ) : null}
           </View>
-        ) : null}
-      </View>
-
-      {/* Recovery sub-line: the live week/state under the "Recovery" header. */}
-      {recoverySubline ? (
-        <Text style={styles.heroWeekSubline} numberOfLines={1}>{recoverySubline}</Text>
-      ) : null}
-
-      {/* The active Recovery note's own title, named directly under the header
-          so "what is current" answers both the week and which note that is. */}
-      {isRecoveryOpenWeek && activeTrainingContext.activeNote ? (
-        <Text testID="home-recovery-active-note" style={styles.heroRecoveryNoteLabel}>
-          {activeTrainingContext.activeNote.title || 'Untitled'}
-        </Text>
-      ) : null}
-
-      {/* Lead content: the week's per-exercise classification pulse (#1112).
-          Only the counts vary by tone; the label row is data, not a control. */}
-      {baselinePaused ? (
-        // Frozen baseline handoff (#869). The classification band and the 1K
-        // card below both describe the frozen baseline routine, which is not
-        // what is being trained right now — collapsed into one compact,
-        // low-emphasis row rather than dominating active-Recovery Home with
-        // numbers that cannot move until Recovery ends.
-        <View style={styles.classifSection}>
-          <Pressable
-            testID="home-baseline-paused-link"
-            onPress={() => onNavigate('Analytics', 'progressive-overload')}
-            style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart]}
-            hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
-            accessibilityRole="button"
-            accessibilityLabel="Exercise Progress"
-            accessibilityHint="Opens the Progressive Overload section of the Analytics tab"
-          >
-            <Text style={[styles.classifSectionLabel, styles.sectionHeaderLabel]}>Exercise Progress</Text>
-            <View style={styles.sectionHeaderChevron}>
-              <Chevron color={mutedStroke} />
-            </View>
-          </Pressable>
-        </View>
-      ) : (
-        <View style={styles.classifSection}>
           <View style={styles.classifRow}>
             {[
               { label: 'Progressing', count: dashboardData.weeklySummary.classifications?.progressing ?? 0, color: kua ? kua.success : colors.success },
@@ -162,25 +175,16 @@ export function HomeHeader({
               </View>
             ))}
           </View>
-          {/* #894: the counts above only cover a fully classified tracked span;
-              a freshly opened span or inherited/pre-#893 tracking contributes
-              to neither bucket, so the caption explains a 0/0/0 row instead of
-              letting it read as "nothing classifiable". In KUA mode it is
-              toggled from the header info icon and revealed inline here; legacy
-              mode shows it plainly. */}
-          {captionText ? (
-            kua ? (
-              captionExpanded ? (
-                <Text style={styles.classifCaption}>{captionText}</Text>
-              ) : null
-            ) : (
-              <Text style={styles.classifCaption}>{captionText}</Text>
-            )
+          {/* #894: the counts only cover a fully classified tracked span; the
+              caption explains a 0/0/0 row. KUA reveals it from the info icon;
+              legacy mode shows it plainly. */}
+          {captionText && (!kua || captionExpanded) ? (
+            <Text style={styles.classifCaption}>{captionText}</Text>
           ) : null}
         </View>
       )}
 
-      {/* The two highest-frequency daily-loop actions, in one stable row. */}
+      {/* What to do next: the two daily-loop actions, in one stable row. */}
       <View style={styles.heroPrimaryActions}>
         <Pressable
           testID="home-current-routine-link"
@@ -188,10 +192,10 @@ export function HomeHeader({
           style={styles.heroPrimaryAction}
           hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
           accessibilityRole="button"
-          accessibilityLabel={heroPrimaryActionLabel}
-          accessibilityHint={heroPrimaryActionHint}
+          accessibilityLabel={primaryLabel}
+          accessibilityHint={primaryHint}
         >
-          <Text style={styles.heroPrimaryActionText}>{heroPrimaryActionLabel}</Text>
+          <Text style={styles.heroPrimaryActionText}>{primaryLabel}</Text>
           <Chevron color={actionStroke} />
         </Pressable>
 
@@ -209,53 +213,6 @@ export function HomeHeader({
           <Text style={styles.heroPrimaryActionText}>Log weight</Text>
           <Chevron color={actionStroke} />
         </Pressable>
-      </View>
-
-      {/* Body weight — a supporting metric now, grouped with the trend it
-          belongs to (#1112). With no weigh-in the value degrades to a short
-          muted sentence and the empty sparkline is suppressed. */}
-      <View style={styles.heroSparklineStrip}>
-        <Text style={styles.heroMetricLabel}>Body weight</Text>
-        {dashboardData.latestWeight ? (
-          <View style={styles.heroWeightValueRow}>
-            <Text style={styles.heroWeightValue} numberOfLines={1}>
-              {formatBodyweightValue(dashboardData.latestWeight, unit)}
-            </Text>
-            <Text style={styles.heroWeightUnit}>{unit}</Text>
-          </View>
-        ) : (
-          <Text style={styles.heroWeightPlaceholder}>No weigh-in yet</Text>
-        )}
-        {hasWeightSeries ? (
-          <>
-            <Text style={[styles.heroSparklineSublabel, { marginTop: 12 }]}>7-day rolling avg</Text>
-            <View style={styles.heroSparklineChart}>
-              <LineChart
-                data={displayChartSeries(dashboardData.weightSeries, unit)}
-                color={kua ? kua.primary : colors.textMuted}
-                height={52}
-                paddingHorizontal={0}
-                hideHeader
-              />
-            </View>
-          </>
-        ) : null}
-        {/* Legacy-mode Analytics handoff. In KUA mode the card footer's
-            "Full history and insights" already covers this destination. */}
-        {!kua ? (
-          <Pressable
-            testID="home-weight-trend-link"
-            onPress={() => onNavigate('Analytics', 'weight')}
-            style={styles.heroInlineAction}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="See weight trends"
-            accessibilityHint="Opens the weight section of the Analytics tab"
-          >
-            <Text style={styles.heroInlineActionText}>See weight trends</Text>
-            <Chevron color={colors.textMuted} />
-          </Pressable>
-        ) : null}
       </View>
 
       {/* #7 quiet CTA. Targets `overview` rather than a bare tab press (#770):

@@ -4,7 +4,7 @@
 // HomeRecoverySummary,homeStyles}.js. The split is behavior-only, so this
 // suite pins the two things a mechanical move can silently break:
 //   1. export parity — the public surface every other module and test imports
-//      (`WELCOME_*`, `CloudSyncNotice`, `HomeRecoverySummary`, `HomeScreen`)
+//      (`CloudSyncNotice`, `HomeRecoverySummary`, `HomeScreen`)
 //      must still resolve from `../screens/HomeScreen`, and the re-exported
 //      `HomeRecoverySummary` must be the very identity the extracted module
 //      defines (not an accidental duplicate);
@@ -101,8 +101,6 @@ describe('#1049 export parity', () => {
     expect(typeof HS.HomeScreen).toBe('function');
     expect(typeof HS.CloudSyncNotice).toBe('function');
     expect(typeof HS.HomeRecoverySummary).toBe('function');
-    expect(HS.WELCOME_EXAMPLE_EXERCISE_LINE).toBe('-Squat');
-    expect(HS.WELCOME_EXAMPLE_SETS_LINE).toBe('315 5,5');
   });
 
   test('the extracted modules own their pieces', () => {

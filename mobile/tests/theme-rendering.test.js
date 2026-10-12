@@ -1072,8 +1072,8 @@ describe('no production surface can hold a stale palette', () => {
     //   this scan), so no component carries its own copy.
     expect(leaks).toEqual([
       "components/ThemePreviewControl.js:70 '#FF5C00'",
+      'screens/HomeScreen.js:40 "#FF5C00"',
       'screens/HomeScreen.js:44 "#FF5C00"',
-      'screens/HomeScreen.js:48 "#FF5C00"',
     ]);
   });
 });

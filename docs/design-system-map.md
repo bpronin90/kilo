@@ -542,70 +542,37 @@ Copy for the three non-ready conditions is the recovery state contract's own
 describe the same condition differently, and `Retry recovery` is the exact
 control name that copy tells the user to tap (ui-design-rules §12).
 
-**Active-block content (#779/#782, #1171, #1193; band wording corrected #1219).**
-The active branch reads the ONE Recovery snapshot (`getRecoverySnapshot`, the same
-frozen object Analytics' section and Overview row read — **Recovery numbers come
-from one snapshot; surfaces never re-derive**), whose `comparison` feeds the
-lines below — no second calculation, no invented percentage or pace. The shared
-headline (`{pct}%` plus the `{N} lifts · Week n` caption, only when the snapshot
-has an honest average) sits above the Big 3 (`home-recovery-headline`). Home renders a separate
-Big 3 summary (`screens/home/HomeRecoverySummary.js`); it does NOT render return
-bands, band names or band colors, a movement row, a result figure, or category
-columns — the earlier #1029/#803/#820 documentation of those is gone because the
-current Home UI no longer has them. The `Recovery` header, then one analytics
-region (`home-recovery-analytics`, a single `accessible` node), in this order:
+**Active-block content (#779/#782, #1315; simplified #1333).** Home is the
+entry point, not a second evidence surface. The active branch reads the ONE
+Recovery snapshot (`getRecoverySnapshot`, the same frozen object Analytics'
+section and Overview row read — **Recovery numbers come from one snapshot;
+surfaces never re-derive**) and shows only the most important signal. Per-lift
+Big 3 rows, the roster count line, and the week-scope explainer were removed
+from Home in #1333; that detail is Analytics Recovery's (the Big 3 summary data
+`useHomeRecoverySummary` derives is unchanged). In order:
 
-- **`Recovery` header** — the identity label and the `Recovery` handoff in one
-  row (ui-design-rules.md §13), same family as Exercise Progress and the 1K
-  card. A footer-link split was tried and reverted: it broke the shared
-  header-is-the-handoff pattern for one card without applying it to the
-  others.
-- **Headline** (#1315, #1318) — the snapshot's `{pct}% total recovery` and `{N} of {M} lifts back · avg {avg}% · Week n`, the identical values Analytics (number plus `total recovery` label) and the Overview row (`Total recovery`) print; absent when the snapshot has no total (legacy baseline, no readable week) so Home never invents one. Analytics week rows show the total per week; the strict consistent-cohort average is secondary detail in *About these numbers*.
-- **Week label** — `Latest linked week: Week N` (`Last loaded linked week:
-  Week N` when the snapshot is stale), the micro-label treatment. Omitted when
-  no week exists: there is nothing to name, and `Week 1` would be invented.
-- **Fallback status OR Big 3 list — exactly one, never both.** A fallback owns
-  the slot when the block or week cannot be compared and prints no count at all
-  rather than `0 of 0`: `Baseline data for this block isn't available.`,
-  `Baseline captured. No week logged yet.`, `This week's note is no longer
-  available.`, `This week's note couldn't be read.`, or `No baseline exercises
-  were captured for this block.`
-- **Big 3 list** (`home-recovery-big3`, #1171) — an `Your Big 3 lifts` eyebrow,
-  then one row per lift (`home-recovery-lift-{slot}`): the lift name left, its
-  value right as that lift's strength % of its baseline best set for the
-  latest readable score through the selected week (floored, factual and uncapped,
-  read from the Recovery snapshot's `total.perLiftLatest`, #1315, #1318), with a
-  `last tested Week k` age line when that score is from an earlier week, or a compact status when it has
-  no score (`Not retested`, `Not scored`, `Not in baseline`); a thin `6` track
-  beneath is filled from a real score only (capped at 100%, completion color at
-  100%+; every unscored lift is an empty track). The band-model words `Recovered`,
-  `In progress`, `Not started` and `Can't compare` and the per-row min-ratio value
-  were removed because they contradicted the strength headline.
-- **Remaining line** (`home-recovery-remaining`) — `Remaining N: X recovered ·
-  Y in progress · Z not started` (zero parts dropped; `N exercises: …` when the
-  user has no Big 3).
-- **Week scope line** (`home-recovery-week-scope`, #1245) — behind the shared
-  `InfoButton` (`About this week's values`) beside the week label; hidden until
-  tapped, then `Total recovery and each Big 3 percent use the latest score through
-  Week N (older scores show the week last tested). The counts below describe
-  Week N only.` in an `InfoNote`. The label shrinks/wraps beside the icon.
-- **Stale message** — the existing `RECOVERY_STALE_MESSAGE`, only when stale.
+- **`1K recovery` header** (`home-recovery-link`) — the identity label and the
+  `Analytics › recovery` handoff in one row (ui-design-rules.md §13), same family
+  as Exercise Progress and the 1K card.
+- **Week label** (`home-recovery-week`) — `Latest week: Week N` (`Last loaded
+  week: …` when stale), only when there is no headline: the headline caption
+  already names the week. Omitted when no week exists.
+- **Fallback status** — when the block or week cannot be compared, one plain
+  line and no count: `Baseline data for this block isn't available.`, `Baseline
+  captured. No week logged yet.`, `This week's note is no longer available.`,
+  `This week's note couldn't be read.`, or `No baseline exercises were captured
+  for this block.`
+- **Headline** (`home-recovery-headline`) — the snapshot's `{pct}% total
+  recovery` plus its `{N} of {M} lifts back · avg {avg}% · Week n` caption, the
+  identical values Analytics and the Overview row print; absent when the
+  snapshot has no total. Without a score, the snapshot's own reason prints
+  instead (`home-recovery-headline-reason`).
+- **Stale message** — the existing `RECOVERY_STALE_MESSAGE`, only when stale,
+  with `Retry recovery`.
 
-The three-state band vocabulary and the `recoveryBand*` tokens are Analytics-only
-(see Analytics Recovery Section); Home uses plain words and its own track.
-
-**Dropped from Home (#820):** the exclusion clause (`Not counted in your
-normal analytics.`) no longer renders here or in the composed
-`accessibilityLabel` — inclusion state stays visible on the Analytics Recovery
-section, which already states it per block, so Home shows the result without
-duplicating analytics-scope detail (same compact-summary/detail-owner split the
-1K card already uses for its chart and mapping).
-
-The region carries one composed `accessibilityLabel` assembling the facts as
-complete sentences in reading order (`Week 2. Your Big 3 lifts. Bench 80% of
-baseline. Squat recovered. Remaining 4: 2 recovered, 2 not started.`), so the
-layout is a visual device only — separate value/label nodes would otherwise read
-as unrelated fragments.
+The inclusion clause stays off Home (#820). The region carries one composed
+`accessibilityLabel` (the headline's own a11y sentence, or the week plus the
+fallback/reason).
 
 No `on track`, prediction, or medical claim.
 
@@ -614,14 +581,10 @@ No `on track`, prediction, or medical claim.
 | Card (`recoveryCard`) | padding / paddingTop / gap | `20` / `12` / `4` |
 | `Recovery` header (`home-recovery-link`) | minHeight | `44` (no fixed `height`) |
 | | label | KUA `headline-sm` `13`/`17`, legacy `12` / `700`; uppercase, `0.5` spacing, `onSurface` / `text` |
-| Week label / `Your Big 3 lifts` | style | KUA `label-sm`, legacy `11` / `700` / `0.5` spacing; uppercase; `onSurfaceVariant` / `textMuted` |
-| Big 3 list | gap / marginTop | `10` / `6` |
-| Lift name | style | KUA `label-lg` `14`/`19`, legacy `14` / `700`; `onSurface` / `text` |
-| Lift value | style | `13`, `onSurfaceVariant` / `textMuted`; met = `completion` / `success`, `600` |
-| Lift track / fill | height / radius | `6` / `3`; track `surfaceBorder` / `cardBorder`; fill `primary` / `accent`, met `completion` / `success` |
-| Remaining line | fontSize / marginTop | KUA `12`, legacy `13`; `10`; `onSurfaceVariant` / `textMuted` |
+| Week label | style | KUA `label-sm`, legacy `11` / `700` / `0.5` spacing; uppercase; `onSurfaceVariant` / `textMuted` |
+| Headline value | style | KUA `headline-sm`, legacy `headline-sm` / `700`; `onSurface` / `text` |
 | Fallback status | style | KUA `body-md` `15`/`21`, legacy `16` / `700`; `onSurface` / `text` |
-| Status / week-scope line | fontSize | KUA `12`, legacy `13`; `onSurfaceVariant` / `textMuted` (no fixed `lineHeight`) |
+| Status / headline caption | fontSize | KUA `12`, legacy `13`; `onSurfaceVariant` / `textMuted` (no fixed `lineHeight`) |
 | `Retry recovery` | minHeight | `44` (no fixed `height`) |
 | | label | KUA `body-sm` `primary`; legacy `13` / `700` `accentText` |
 
@@ -637,6 +600,21 @@ the tab that contains it, the same section-id vocabulary `weight` and `strength`
 already use and that is owned by `App.js`.
 
 ### Weekly Summary Hero Card
+
+**Current structure (#1112, #1333).** The hero answers three questions only:
+what is being trained (`home-hero-label`: `Week N`, `Recovery`, `Current
+routine`, or `No current routine`, plus the routine title `home-routine-title`),
+how it is going (the `Exercise Progress` handoff `home-exercise-progress-link`
+→ `Analytics › progressive-overload`, then the Progressing/Steady/Regressing
+trio), and what to do next (the `Log workout` / `Log weight` strip, then the
+quiet `Full history and insights` footer). Body weight moved to the weight card
+below. With no current routine there is no week and no trio: one line (`Pick a
+saved routine or write a new one in Log.`, or `Write a routine in Log to track
+your weeks.` with no saved routines) and the primary action reads `Choose
+routine` / `Write routine`, still `onNavigate('Log')`. An empty current routine
+reads `Current routine` with `Add exercises to this routine in Log to track
+progress.` The table below is the pre-#1112 layout, kept for history.
+
 
 | Element | Property | Value | Line |
 |---|---|---|---|
@@ -684,6 +662,17 @@ already use and that is owned by `App.js`.
 
 ### Weight Goal Card
 
+**Current structure (#1333).** `screens/home/HomeWeightCard.js` (`home-weight-card`)
+holds body weight and the goal together. Its `Body weight` header
+(`home-weight-link`) is the Weight-tab handoff; then the latest weigh-in (or `No
+weigh-in yet`), the 7-day rolling-average sparkline, the legacy-only `See
+weight trends` link, and, with a goal, a divided goal section (mode, weeks
+left / `Goal ended`, Target, Pace — Pace hidden when there is none). An ended
+goal or an unrealistic/aggressive pace adds `home-goal-attention`: the Weight
+goal card's own sentence in `warning`/`cautionText` and a ≥44dp `Review goal`
+action (`onNavigate('Weight')`). The table below is the pre-#1112 layout.
+
+
 | Element | Property | Value | Line |
 |---|---|---|---|
 | Card padding | `24` | | `972` |
@@ -706,6 +695,12 @@ already use and that is owned by `App.js`.
 | Stats grid | gap | `40` | `998` |
 
 ### 1K Club Card (Home)
+
+**No total yet (#1333).** Without a complete Big 3 cycle the card is the
+`1K Progress` header handoff plus one line (`home-one-k-setup`: `Log a session
+of each Big 3 lift to see your 1K total.`); the lift grid shows only lifts that
+already have a value, and no `N/A` hero or empty progress bar renders.
+
 
 Home is the **compact-summary** treatment (#763): the breakdown is plain data
 (no chart, mapping, or explanation — those stay Analytics-owned). Progress
