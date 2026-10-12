@@ -238,8 +238,34 @@ describe('Routine Health — deriveRoutineStatus is the only interpretation', ()
     expect(home.routineStatus.sessionsSinceDeload).toBeGreaterThanOrEqual(0);
   });
 
-  test('no routine: depth is unknown, not zero', () => {
+  test('no routine: depth is unknown, not zero — on both screens', () => {
     const home = homePipeline({ notes: [], currentNote: null });
+    const analytics = analyticsPipeline({ notes: [], currentNote: null });
+    // Home supplies null sections, Analytics supplies [] (getNoteSections(null)).
+    expect(analytics.parsed.currentSections).toEqual([]);
+    expect(home.routineStatus).toEqual(analytics.routineStatus);
     expect(home.weeksIn).toBeNull();
+    expect(analytics.routineStatus.weeksIn).toBeNull();
+  });
+
+  test.each([
+    ['blank note', ''],
+    ['headers only, nothing logged', 'Monday\nThursday'],
+  ])('existing empty routine (%s): depth is 0 on both screens', (_label, raw) => {
+    const current = note('empty', raw);
+    const home = homePipeline({ notes: [current], currentNote: current });
+    const analytics = analyticsPipeline({ notes: [current], currentNote: current });
+    expect(home.routineStatus).toEqual(analytics.routineStatus);
+    expect(home.weeksIn).toBe(0);
+    expect(analytics.routineStatus.weeksIn).toBe(0);
+    expect(analytics.routineStatus.sessionsLogged).toBe(0);
+  });
+
+  test('populated routine without deloads: identical on both screens', () => {
+    const current = note('cur', MULTI_DAY);
+    const home = homePipeline({ notes: [current], currentNote: current });
+    const analytics = analyticsPipeline({ notes: [current], currentNote: current });
+    expect(home.routineStatus).toEqual(analytics.routineStatus);
+    expect(home.weeksIn).toBe(3);
   });
 });

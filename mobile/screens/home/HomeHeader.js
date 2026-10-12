@@ -74,7 +74,7 @@ export function HomeHeader({
     : !hasRoutineContent ? 'empty'
     : 'active';
   const headerLabel = routineState === 'none' ? 'No current routine'
-    : dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Current routine';
+    : routineState === 'active' && dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Current routine';
   const routineTitle = routineState === 'active' || routineState === 'empty'
     ? (workoutNote.title || '').trim() || null
     : null;
