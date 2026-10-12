@@ -3,7 +3,7 @@
     "name": "Kilo",
     "slug": "kilo-native",
     "scheme": "kilo",
-    "version": "1.12.0",
+    "version": "1.14.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
