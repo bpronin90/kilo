@@ -261,6 +261,7 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
   const isRecoveryOpenWeek = activeTrainingContext.status === ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK;
   const isRecoveryBetweenWeeks = activeTrainingContext.status === ACTIVE_TRAINING_STATUS.RECOVERY_BETWEEN_WEEKS;
   const baselinePaused = !!activeTrainingContext.baselinePaused;
+  const isRecovery = isRecoveryOpenWeek || isRecoveryBetweenWeeks;
 
   // `Log workout` targets the exact active Recovery note (#869 acceptance),
   // including when it is not `currentId` — never the frozen baseline note.
@@ -384,7 +385,7 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
 
   // #1339: the subtitle names only what Home can vouch for. Generic until the
   // reads settle, so a Recovery account never flashes "routine progress" first.
-  const homeSubtitle = !isLoading && (isRecoveryOpenWeek || isRecoveryBetweenWeeks)
+  const homeSubtitle = !isLoading && isRecovery
     ? 'Recovery block in progress.'
     : !isLoading && workoutNote?.raw_text?.trim()
       ? 'Current routine progress.'
@@ -425,20 +426,22 @@ export function HomeScreen({ weightEntries, workoutNote, currentId = null, notes
         </Card>
       ) : (
         <>
-          <HomeHeader
-            dashboardData={dashboardData}
-            onNavigate={onNavigate}
-            isRecoveryOpenWeek={isRecoveryOpenWeek}
-            isRecoveryBetweenWeeks={isRecoveryBetweenWeeks}
-            baselinePaused={baselinePaused}
-            workoutNote={workoutNote}
-            notes={notes}
-            handleLogWorkoutPress={handleLogWorkoutPress}
-            heroPrimaryActionLabel={heroPrimaryActionLabel}
-            heroPrimaryActionHint={heroPrimaryActionHint}
-          />
+          {/* #1341: in Recovery the Recovery card is the training surface and
+              carries the action strip; there is no separate Recovery hero. */}
+          {isRecovery ? null : (
+            <HomeHeader
+              dashboardData={dashboardData}
+              onNavigate={onNavigate}
+              workoutNote={workoutNote}
+              notes={notes}
+              handleLogWorkoutPress={handleLogWorkoutPress}
+              heroPrimaryActionLabel={heroPrimaryActionLabel}
+              heroPrimaryActionHint={heroPrimaryActionHint}
+            />
+          )}
           <HomeDashboard
             recoverySummary={recoverySummary}
+            recoveryActions={isRecovery ? { primaryLabel: heroPrimaryActionLabel, primaryHint: heroPrimaryActionHint, onPrimary: handleLogWorkoutPress } : null}
             onNavigate={onNavigate}
             dashboardData={dashboardData}
             weightGoal={weightGoal}

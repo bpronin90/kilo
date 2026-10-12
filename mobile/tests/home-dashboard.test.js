@@ -558,9 +558,9 @@ describe('Home Recovery Big 3 selection (#1192)', () => {
   });
 });
 
-// #1193 / #1335: Home names the week as one compact tag beside the header —
+// #1193 / #1335 / #1341: Home names the week in the `Recovery · Week N` header —
 // no `Latest week:` prose, no caption, no per-week scope explainer.
-describe('HomeRecoverySummary — week identity and Big 3 hierarchy (#1193, #1335)', () => {
+describe('HomeRecoverySummary — week identity and Big 3 hierarchy (#1193, #1335, #1341)', () => {
   const { HomeRecoverySummary } = require('../screens/home/HomeRecoverySummary');
   const LIFTS = [
     { slot: 'squat', label: 'Squat', state: 'scored', percent: 92, lastTestedWeek: null, spoken: 'Squat 92% of baseline' },
@@ -571,7 +571,7 @@ describe('HomeRecoverySummary — week identity and Big 3 hierarchy (#1193, #133
     status: 'ready', stale: false, message: null, active: true, retry: null,
     comparisonStatus: 'ok', weekNumber: 4, weekNoteStatus: 'ok', big3: [], remaining: null,
   };
-  const HEADLINE = { state: 'score', headline: '80% total recovery', caption: '2 of 2 lifts back · avg 80% · Week 4', a11y: 'Week 4: 80% total recovery.' };
+  const HEADLINE = { state: 'score', percent: 80, headline: '80% total recovery', caption: '2 of 2 lifts back · avg 80% · Week 4', a11y: 'Week 4: 80% total recovery.' };
   const mount = summary => {
     let c;
     render.act(() => { c = render.create(<HomeRecoverySummary summary={summary} onNavigate={jest.fn()} />); });
@@ -588,7 +588,7 @@ describe('HomeRecoverySummary — week identity and Big 3 hierarchy (#1193, #133
     expect(root.findAllByProps({ testID: 'home-recovery-week-scope-info' })).toHaveLength(0);
   });
 
-  test('the Big 3 lead; the total is one secondary line and the caption stays on Analytics', () => {
+  test('the total is the hero number above the Big 3 bars; the caption stays on Analytics', () => {
     const root = mount({ ...base, headline: HEADLINE, big3: LIFTS });
     const rows = root.findAll(n => typeof n.type === 'string' && /^home-recovery-lift-[a-z]+$/.test(n.props.testID || ''));
     expect(rows.map(n => n.props.testID)).toEqual(['home-recovery-lift-squat', 'home-recovery-lift-bench', 'home-recovery-lift-deadlift']);
@@ -597,14 +597,15 @@ describe('HomeRecoverySummary — week identity and Big 3 hierarchy (#1193, #133
     expect(textOf(root, 'home-recovery-lift-bench-age')).toEqual(['Week 3']);
     expect(textOf(root, 'home-recovery-lift-squat-age')).toEqual([]);
     expect(textOf(root, 'home-recovery-lift-deadlift-value')).toEqual(['Not retested']);
-    expect(textOf(root, 'home-recovery-headline-value')).toEqual(['80% total recovery']);
+    expect(textOf(root, 'home-recovery-headline-value')).toEqual(['80%']);
+    expect(hasText(root, 'total recovery')).toBe(true);
     expect(hasText(root, '2 of 2 lifts back')).toBe(false);
     expect(root.findAllByProps({ testID: 'home-recovery-headline-caption' })).toHaveLength(0);
-    // The total follows the Big 3 in reading order, on screen and spoken.
+    // The total leads the Big 3 in reading order, on screen and spoken.
     const all = root.findAll(n => typeof n.type === 'string' && typeof n.props.testID === 'string').map(n => n.props.testID);
-    expect(all.indexOf('home-recovery-big3')).toBeLessThan(all.indexOf('home-recovery-headline'));
+    expect(all.indexOf('home-recovery-headline')).toBeLessThan(all.indexOf('home-recovery-big3'));
     const spoken = root.findAll(n => n.props.testID === 'home-recovery-analytics' && n.props.accessible)[0].props.accessibilityLabel;
-    expect(spoken).toBe('Week 4. Big 3. Squat 92% of baseline. Bench 100% of baseline, last tested Week 3. Deadlift not retested. 80% total recovery.');
+    expect(spoken).toBe('Week 4. 80% total recovery. Big 3. Squat 92% of baseline. Bench 100% of baseline, last tested Week 3. Deadlift not retested.');
   });
 
   test('with Big 3 statuses on screen, the no-total reason is not repeated', () => {
@@ -613,10 +614,10 @@ describe('HomeRecoverySummary — week identity and Big 3 hierarchy (#1193, #133
     expect(hasText(mount({ ...base, headline: reason }), 'No lift has a score yet.')).toBe(true);
   });
 
-  test('names the linked week by its note title when one exists (#1265)', () => {
+  test('names the week by number even when the week note has a title (#1341)', () => {
     const root = mount({ ...base, weekNoteTitle: 'Knee rehab 2' });
-    expect(textOf(root, 'home-recovery-week')).toEqual(['Knee rehab 2']);
-    expect(hasText(root, 'Week 4')).toBe(false);
+    expect(textOf(root, 'home-recovery-week')).toEqual(['Week 4']);
+    expect(hasText(root, 'Knee rehab 2')).toBe(false);
   });
 
   test('a stale summary keeps the week tag and adds the stale message with retry', () => {

@@ -216,9 +216,6 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
   sectionHeaderActionStart: {
     alignSelf: 'flex-start',
   },
-  sectionHeaderActionCenter: {
-    alignSelf: 'center',
-  },
   sectionHeaderLabel: {
     flexShrink: 1,
   },
@@ -268,16 +265,30 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     backgroundColor: kua ? kua.surfaceCard : undefined,
     borderColor: kua ? kua.surfaceBorder : undefined,
   },
-  // 44dp target, text bottom-aligned: slack sits above the title, not below.
-  // Header handoff and the compact week tag share one row (#1335).
-  recoveryHeaderRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', columnGap: 8, marginTop: -12,
-  },
+  // #1341: active Recovery is Home's lead card (weeklyHero), not a second card.
+  // The 44dp header supplies its own top slack, so the card padding is trimmed.
   recoveryHeaderLink: {
-    alignItems: 'flex-end', flexShrink: 1,
+    gap: 8, marginTop: -10,
   },
-  recoveryWeekTag: {
-    flexShrink: 1, minWidth: 0, textAlign: 'right',
+  recoveryBody: {
+    gap: 14,
+    marginBottom: 12,
+  },
+  recoveryTotalRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+    columnGap: 8,
+  },
+  recoveryTotalValue: {
+    ...(kua ? { ...typography['metric-display'], fontSize: 48, lineHeight: 52 } : HeroMetric.hero), // display exception per #1283 foundation
+    color: kua ? kua.onSurface : colors.text,
+  },
+  recoveryTotalLabel: {
+    ...(kua ? typography['label-md'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600' }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   recoveryLabel: {
     ...(kua ? { ...typography['headline-sm'], fontSize: TYPOGRAPHY['body-sm'].fontSize, lineHeight: 17 } : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '700', letterSpacing: 0.5 }),
@@ -285,64 +296,53 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  recoveryWeekLabel: {
-    ...(kua ? typography['label-sm'] : { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '700', letterSpacing: 0.5 }),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    textTransform: 'uppercase',
+  // #1341: Big 3 bar rows, shared by the 1K card and the Recovery card.
+  liftList: {
+    gap: 12,
   },
-  // #1335: the Big 3 lead the card; the shared total is secondary beneath them.
-  recoveryLiftList: {
-    gap: 10,
-    marginTop: 2,
-  },
-  recoveryLiftHead: {
+  liftHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'baseline',
     columnGap: 8,
     marginBottom: 4,
   },
-  recoveryLiftName: {
+  liftName: {
     ...(kua ? typography['label-lg'] : { fontSize: TYPOGRAPHY['body-md'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
     flexShrink: 1,
   },
-  recoveryLiftValueRow: {
+  liftValueRow: {
     flexDirection: 'row', alignItems: 'baseline', columnGap: 6, flexShrink: 0,
   },
-  recoveryLiftAge: {
+  liftAge: {
     ...(kua ? typography['label-sm'] : { fontSize: TYPOGRAPHY['label-sm'].fontSize }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
-  recoveryLiftValue: {
+  liftValue: {
     ...(kua ? typography['label-md'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
-  recoveryLiftScored: {
+  liftValueStrong: {
     ...(kua ? typography['label-lg'] : { fontSize: TYPOGRAPHY['body-md'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
   },
-  recoveryLiftDone: {
+  liftValueDone: {
     color: kua ? kua.completion : colors.success,
   },
-  recoveryLiftTrack: {
+  liftTrack: {
     height: 6,
     borderRadius: GEOMETRY['radius-xs'],
     overflow: 'hidden',
     backgroundColor: kua ? kua.surfaceBorder : colors.cardBorder,
   },
-  recoveryLiftFill: {
+  liftFill: {
     height: 6,
     borderRadius: GEOMETRY['radius-xs'],
     backgroundColor: kua ? kua.primary : colors.accent,
   },
-  recoveryLiftFillDone: {
+  liftFillDone: {
     backgroundColor: kua ? kua.completion : colors.success,
-  },
-  recoveryTotal: {
-    ...(kua ? { ...typography['body-sm'], fontSize: TYPOGRAPHY['label-md'].fontSize } : { fontSize: TYPOGRAPHY['body-sm'].fontSize }),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    marginTop: 10,
   },
   recoveryFallbackLine: {
     ...(kua ? typography['body-md'] : { fontSize: TYPOGRAPHY['body-lg'].fontSize, fontWeight: '700' }),
@@ -378,6 +378,9 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     columnGap: 16,
     rowGap: 8,
   },
+  weightTrendChart: {
+    marginTop: 14,
+  },
   goalSummary: {
     flexShrink: 1,
     alignItems: 'flex-end',
@@ -401,19 +404,12 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     ...(kua ? { ...typography['body-sm'], fontSize: TYPOGRAPHY['label-md'].fontSize } : { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
   },
+  // #1341: left-aligned like every other Home card; the 44dp header supplies
+  // the top slack.
   oneKCard: {
-    padding: 20,
-    paddingTop: 12,
-    gap: 2,
-    alignItems: 'center',
-    backgroundColor: kua ? kua.surfaceCard : undefined,
-    borderColor: kua ? kua.surfaceBorder : undefined,
-  },
-  // #1339: unconfigured 1K is a compact, left-aligned setup row.
-  oneKSetupCard: {
     paddingHorizontal: 20,
     paddingTop: 4,
-    paddingBottom: 14,
+    paddingBottom: 20,
     gap: 2,
     backgroundColor: kua ? kua.surfaceCard : undefined,
     borderColor: kua ? kua.surfaceBorder : undefined,
@@ -421,17 +417,7 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
   oneKSetupText: {
     ...(kua ? typography['body-sm'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize }),
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  oneKSetupLifts: {
-    ...(kua ? { ...typography['body-sm'], fontSize: TYPOGRAPHY['label-md'].fontSize } : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '600' }),
-    color: kua ? kua.onSurface : colors.text,
-  },
-  oneKLabel: {
-    ...(kua ? { ...typography['headline-sm'], fontSize: TYPOGRAPHY['body-sm'].fontSize, lineHeight: 17 } : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '800', letterSpacing: 1 }),
-    color: kua ? kua.onSurface : colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: kua ? 0.5 : 1,
-    flexShrink: 1,
+    marginBottom: 12,
   },
   oneKHeroValue: {
     ...(kua ? { ...typography['metric-display'], fontSize: 48, lineHeight: 52 } : HeroMetric.hero), // display exception per #1283 foundation
@@ -448,37 +434,14 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     backgroundColor: kua ? kua.surfaceBorder : colors.divider,
     borderRadius: GEOMETRY['radius-sm'],
     overflow: 'hidden',
-    marginTop: 6,
-    marginBottom: 12,
+    marginTop: 8,
+    marginBottom: 18,
     alignSelf: 'stretch',
   },
   progressFillLarge: {
     height: '100%',
     backgroundColor: kua ? kua.primary : colors.accent,
     borderRadius: GEOMETRY['radius-sm'],
-  },
-  oneKGrid: {
-    flexDirection: 'row',
-    alignSelf: 'stretch',
-  },
-  oneKGridItem: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 4,
-  },
-  oneKGridItemDivider: {
-    borderLeftWidth: 1,
-    borderColor: kua ? kua.surfaceBorder : colors.cardBorder,
-  },
-  oneKGridValue: {
-    ...(kua ? { ...typography['metric-display-mobile'], fontSize: 24, lineHeight: 28 } : { fontSize: TYPOGRAPHY['body-lg'].fontSize, fontWeight: '700' }), // display exception per #1283 foundation
-    color: kua ? kua.onSurface : colors.text,
-  },
-  oneKGridLabel: {
-    ...(kua ? { fontFamily: typography['body-sm'].fontFamily, fontSize: TYPOGRAPHY['label-md'].fontSize } : { fontSize: TYPOGRAPHY['label-sm'].fontSize, fontWeight: '700' }),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
   welcomeCard: {
     padding: 18,
