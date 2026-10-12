@@ -2645,6 +2645,12 @@ describe('Home daily-dashboard states (#1333)', () => {
       });
       expect(has(withSeries, 'home-weight-trend')).toBe(true);
       expect(hasText(withSeries, '7-day rolling avg')).toBe(false);
+      // One weigh-in date is not a trend: no chart, so no "Not enough data".
+      let onePoint;
+      render.act(() => {
+        onePoint = render.create(<HomeWeightCard dashboardData={{ latestWeight: 185, weightSeries: series.slice(0, 1), goalInfo: goalInfo() }} weightGoal={{ target_weight: 175 }} onNavigate={jest.fn()} unit="lbs" />);
+      });
+      expect(has(onePoint, 'home-weight-trend')).toBe(false);
     });
   });
 });

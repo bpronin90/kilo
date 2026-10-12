@@ -38,7 +38,9 @@ export function HomeWeightCard({ dashboardData, weightGoal, onNavigate, unit }) 
     ? `${formatGoalWeightValue(weightGoal.target_weight, unit)} ${unit}`
     : null;
   const attention = goalAttentionText(gi);
-  const hasWeightSeries = Array.isArray(dashboardData.weightSeries) && dashboardData.weightSeries.length > 0;
+  // A trend needs two points; LineChart shows a "Not enough data" placeholder
+  // below that, which would sit under a valid weigh-in.
+  const hasWeightSeries = Array.isArray(dashboardData.weightSeries) && dashboardData.weightSeries.length >= 2;
 
   return (
     <View testID="home-weight-card">
