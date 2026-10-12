@@ -15,27 +15,27 @@ function formatCountdown(ms) {
 
 const DURATION_PRESETS_SEC = [60, 90, 120, 180];
 
-// Non-modal rest-timer surface (#577, redesigned in #1026). One coherent
-// control across its whole lifecycle:
+// Non-modal rest-timer surface (#577, #1026). One control, one place, every
+// state:
 //
-// - `compact` (mounted in the Log editor header, #1006): a single stopwatch
-//   button that opens an anchored preset menu (60/90/120/180s). The menu is
-//   hosted in a `Modal` so it layers above the editor and is never clipped by
-//   the header row's own small bounds, and it is positioned against the
-//   button's measured screen rect so it reads as attached, not detached. It
-//   renders nothing outside current-routine edit mode or while a timer is
-//   running/just finished, and reserves no layout space of its own.
+// - `compact` (docked in the Log editor header, #1006): while current-routine
+//   edit is open (`showStart`) the same 44dp control stays mounted through the
+//   whole lifecycle — a stopwatch when idle, the live countdown while running,
+//   `Rest over` once done. Tapping it opens one anchored panel (a `Modal`, so
+//   the header never clips it, positioned against the control's measured rect)
+//   holding the presets (start, or restart while running/done) and the state's
+//   own Cancel or Dismiss. It reserves no layout space of its own; App.js hides
+//   the app-shell pill while this control is docked so the countdown never
+//   shows twice.
 //
 // - app-shell instance (mounted once in App.js so it shows on every tab): the
-//   running countdown and the completion notice both render as the SAME
-//   compact centered pill in the SAME place. Tapping the running pill reveals
-//   its Cancel action inline; completion offers Dismiss. Neither is a
-//   full-width banner.
+//   running countdown and the completion notice render as the SAME compact
+//   centered pill in the SAME place, each with its action always visible
+//   (Cancel while running, Dismiss when done). Neither is a full-width banner.
 //
-// It never claims modal authorization for the countdown/completion pill and
-// never dismisses another surface. Background notification behavior, timer
-// persistence, replacement semantics, and scheduling live in useRestTimer and
-// are untouched here.
+// It never claims modal authorization for the pill and never dismisses another
+// surface. Background notification behavior, timer persistence, replacement
+// semantics, and scheduling live in useRestTimer and are untouched here.
 export function RestTimerBanner({
   isRunning,
   remainingMs,
@@ -55,7 +55,6 @@ export function RestTimerBanner({
   const styles = React.useMemo(() => createStyles(kua, mode, colors), [kua, mode, colors]);
   const [expanded, setExpanded] = React.useState(false);
   const [anchor, setAnchor] = React.useState(null);
-  const [actionsShown, setActionsShown] = React.useState(false);
   const [reduceMotion, setReduceMotion] = React.useState(false);
   const toggleRef = React.useRef(null);
 
@@ -70,30 +69,24 @@ export function RestTimerBanner({
     return () => { cancelled = true; sub?.remove(); };
   }, []);
 
-  const idleStart = !isRunning && !justElapsed && showStart;
-
-  // Collapse the preset menu whenever the idle-start state goes away — a timer
-  // starts, or the user leaves the current-routine edit state. On the next
-  // return to edit the control is closed again.
+  // Close the panel when the docked control goes away (the user leaves the
+  // current-routine edit state); on the next return it starts closed.
   React.useEffect(() => {
-    if (!idleStart) setExpanded(false);
-  }, [idleStart]);
+    if (!showStart) setExpanded(false);
+  }, [showStart]);
 
-  // The preset menu is anchored to the toggle's measured window position, which
-  // a rotation or window resize invalidates (#1126). Close it instead of leaving
-  // it floating at a stale offset; no timer state is lost, only the open menu.
+  // The panel is anchored to the toggle's measured window position, which a
+  // rotation or window resize invalidates (#1126). Close it instead of leaving
+  // it floating at a stale offset; no timer state is lost, only the open panel.
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   React.useEffect(() => {
     setExpanded(false);
   }, [windowWidth, windowHeight]);
 
-  // The running pill starts collapsed every time a new timer starts.
-  React.useEffect(() => {
-    if (!isRunning) setActionsShown(false);
-  }, [isRunning]);
-
   if (compact) {
-    if (!idleStart) return null;
+    if (!showStart) return null;
+    const phase = isRunning ? 'running' : (justElapsed ? 'done' : 'idle');
+    const countdown = formatCountdown(remainingMs);
 
     const openMenu = () => {
       const node = toggleRef.current;
@@ -109,18 +102,31 @@ export function RestTimerBanner({
       }
       setExpanded(true);
     };
+    const toggleLabel = phase === 'running'
+      ? `Rest timer, ${countdown} remaining`
+      : phase === 'done' ? 'Rest timer, rest over' : 'Rest timer';
+    const panelTitle = phase === 'running'
+      ? `Resting · ${countdown} left`
+      : phase === 'done' ? 'Rest over' : 'Start rest';
 
     return (
       <View style={[styles.compactWrap, style]}>
         <Pressable
           ref={toggleRef}
           onPress={() => (expanded ? setExpanded(false) : openMenu())}
-          style={styles.compactToggle}
+          style={[styles.compactToggle, phase !== 'idle' && styles.compactToggleLive]}
           accessibilityRole="button"
-          accessibilityLabel="Rest timer"
+          accessibilityLabel={toggleLabel}
           accessibilityState={{ expanded }}
         >
-          <MaterialIcons name="timer" size={22} color={kua.primary} accessible={false} />
+          <MaterialIcons
+            name={phase === 'done' ? 'check-circle' : 'timer'}
+            size={phase === 'idle' ? 22 : 18}
+            color={phase === 'done' ? kua.success : kua.primary}
+            accessible={false}
+          />
+          {phase === 'running' && <Text style={styles.compactCountdown}>{countdown}</Text>}
+          {phase === 'done' && <Text style={styles.compactDoneText}>Done</Text>}
         </Pressable>
         <Modal
           visible={expanded}
@@ -130,11 +136,10 @@ export function RestTimerBanner({
           onRequestClose={() => setExpanded(false)}
         >
           <View style={styles.menuRoot}>
-            {/* Sibling scrim BEHIND the menu, not its parent: an accessible
-                Pressable wrapping the menu would group the preset items into
-                one TalkBack element. Non-accessible here; TalkBack users
-                dismiss with the back gesture (onRequestClose) or by choosing
-                a preset. */}
+            {/* Sibling scrim BEHIND the panel, not its parent: an accessible
+                Pressable wrapping the panel would group its items into one
+                TalkBack element. Non-accessible here; TalkBack users dismiss
+                with the back gesture (onRequestClose) or by choosing an item. */}
             <Pressable
               style={StyleSheet.absoluteFill}
               onPress={() => setExpanded(false)}
@@ -142,20 +147,39 @@ export function RestTimerBanner({
               importantForAccessibility="no"
             />
             <View style={[styles.compactChooser, anchor]} accessibilityRole="menu">
-              {DURATION_PRESETS_SEC.map((sec) => (
+              <Text style={styles.panelTitle} accessibilityLiveRegion="polite">{panelTitle}</Text>
+              {phase === 'running' && !backgroundAlertAvailable && (
+                <Text style={styles.warning}>Background alert unavailable</Text>
+              )}
+              <View style={styles.presetRow}>
+                {DURATION_PRESETS_SEC.map((sec) => (
+                  <Pressable
+                    key={sec}
+                    onPress={() => {
+                      onStart?.(sec);
+                      setExpanded(false);
+                    }}
+                    style={styles.compactChoiceBtn}
+                    accessibilityRole="menuitem"
+                    accessibilityLabel={`${phase === 'idle' ? 'Start' : 'Restart'} ${sec} second rest timer`}
+                  >
+                    <Text style={styles.choiceText}>{sec}s</Text>
+                  </Pressable>
+                ))}
+              </View>
+              {phase !== 'idle' && (
                 <Pressable
-                  key={sec}
                   onPress={() => {
-                    onStart?.(sec);
+                    if (phase === 'running') onCancel?.(); else onDismissDone?.();
                     setExpanded(false);
                   }}
-                  style={styles.compactChoiceBtn}
+                  style={styles.panelAction}
                   accessibilityRole="menuitem"
-                  accessibilityLabel={`Start ${sec} second rest timer`}
+                  accessibilityLabel={phase === 'running' ? 'Cancel rest timer' : 'Dismiss rest timer done banner'}
                 >
-                  <Text style={styles.choiceText}>{sec}s</Text>
+                  <Text style={styles.actionText}>{phase === 'running' ? 'Cancel timer' : 'Dismiss'}</Text>
                 </Pressable>
-              ))}
+              )}
             </View>
           </View>
         </Modal>
@@ -171,32 +195,27 @@ export function RestTimerBanner({
     return (
       <View style={[styles.pillOuter, style]} pointerEvents="box-none">
         <View style={styles.pill}>
-          <Pressable
-            onPress={() => setActionsShown((v) => !v)}
-            hitSlop={6}
+          <View
             style={styles.pillMain}
-            accessibilityRole="button"
+            accessible
+            accessibilityRole="timer"
             accessibilityLabel={`Rest timer, ${formatCountdown(remainingMs)} remaining`}
-            accessibilityHint="Shows the cancel action"
-            accessibilityState={{ expanded: actionsShown }}
           >
             <MaterialIcons name="timer" size={16} color={kua.onSurface} accessible={false} />
             <Text style={styles.countdown}>{formatCountdown(remainingMs)}</Text>
-          </Pressable>
+          </View>
           {!backgroundAlertAvailable && (
             <Text style={styles.warning}>Background alert unavailable</Text>
           )}
-          {actionsShown && (
-            <Pressable
-              onPress={onCancel}
-              hitSlop={8}
-              style={styles.pillAction}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel rest timer"
-            >
-              <Text style={styles.actionText}>Cancel</Text>
-            </Pressable>
-          )}
+          <Pressable
+            onPress={onCancel}
+            hitSlop={8}
+            style={styles.pillAction}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel rest timer"
+          >
+            <Text style={styles.actionText}>Cancel</Text>
+          </Pressable>
         </View>
       </View>
     );
@@ -235,6 +254,42 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     borderRadius: GEOMETRY['radius-xl'],
     backgroundColor: kua.primaryContainer,
   },
+  // Running/done: the same control widens to carry its live state inline.
+  compactToggleLive: {
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: kua.primaryContainerBorder,
+  },
+  compactCountdown: {
+    ...TYPOGRAPHY['label-lg'],
+    color: kua.primaryOnContainer,
+    fontVariant: ['tabular-nums'],
+  },
+  compactDoneText: {
+    ...TYPOGRAPHY['label-md'],
+    color: kua.success,
+  },
+  panelTitle: {
+    ...TYPOGRAPHY['label-md'],
+    color: kua.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+  },
+  presetRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  panelAction: {
+    minHeight: 44,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: kua.surfaceBorder,
+  },
   // Full-screen host inside the Modal: a scrim and the anchored menu as
   // siblings.
   menuRoot: {
@@ -248,10 +303,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     position: 'absolute',
     top: 96,
     right: 16,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end',
-    columnGap: 8,
+    alignItems: 'flex-end',
     rowGap: 8,
     maxWidth: 240,
     padding: 8,

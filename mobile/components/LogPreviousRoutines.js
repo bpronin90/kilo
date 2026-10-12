@@ -282,6 +282,12 @@ export function LogPreviousRoutines({
                           </Pressable>
                         </View>
                       )}
+                      {/* Ordered by intent: adopt (the one filled action), edit,
+                          then the share/copy family, delete last. */}
+                      <Button
+                        onPress={() => handleSwitchCurrent(other.id)}
+                        title="Set as current routine"
+                      />
                       <Button
                         onPress={handleEditViewedNote}
                         title="Edit routine"
@@ -306,12 +312,6 @@ export function LogPreviousRoutines({
                         onPress={() => setImageShare({ title: viewingNote?.title, rawText: viewingNote?.raw_text || '' })}
                         title="Share as Image"
                         accessibilityLabel={`Share routine ${viewingNote?.title || 'Untitled Routine'} as image`}
-                        style={styles.switchButton}
-                        textStyle={styles.switchButtonText}
-                      />
-                      <Button
-                        onPress={() => handleSwitchCurrent(other.id)}
-                        title="Set as current routine"
                         style={styles.switchButton}
                         textStyle={styles.switchButtonText}
                       />

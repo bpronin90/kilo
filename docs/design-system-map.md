@@ -1227,7 +1227,11 @@ tab, `RecoveryBlockEndModal.js`, and `WorkoutSubheading` in `UI.js`. #921 is a
 further owner-authorized exception, scoped to the effective target geometry of
 exactly two controls in `LogRecoverySection.js` — `Edit note` and the A/B
 segment — and to nothing else: no color, type, spacing, rail, or row-height
-value in the Recovery card changes with it.
+value in the Recovery card changes with it. #1321 is a further owner-authorized
+exception scoped to action presence and order: Skip week's visibility on the
+current card (no style value changes), the Deload card's action order and
+retired hint, the previous-routine body's action order (`Set as current
+routine` becomes its one filled button), and tab roles on the view switcher.
 
 The Current routine card remains locked. #843 and #847 do not authorize
 touching it at all; #918 reaches exactly one property on it —
@@ -1242,7 +1246,7 @@ action is placed by how often it is used:
 | Tier | Actions | Location |
 |---|---|---|
 | Primary — every session | `Track` a lift, `Edit`, `Week A/B`, skip week | Active card body, plus the one action strip under its header (`LogActiveRoutineCard.js` `actionStrip`) |
-| Secondary — occasional | `Edit routine`, `Delete routine`, viewed-card `Week A/B`, full `Set as current routine` | Non-current row's expand-on-tap body (`LogPreviousRoutines.js` `inlineActions`), inside expanded routine management |
+| Secondary — occasional | viewed-card `Week A/B`, `Set as current routine` (the body's one filled action), `Edit routine`, share/copy family, `Delete routine` last | Non-current row's expand-on-tap body (`LogPreviousRoutines.js` `inlineActions`), inside expanded routine management, in that order |
 | Quick access — reachable without opening (#756, #836; the per-row quick action retired #843) | `New routine` (icon + visible label, the section's ONE create-routine affordance) | A sibling row of the section title, OUTSIDE the collection disclosure entirely (#843, #847) — present and identical whether the collection is collapsed or expanded (`LogPreviousRoutines.js` `topRow`) |
 | Rare — once per training block | `Start recovery block` | A persistent, low-emphasis outline row directly under the current routine card (`LogScreen.js` `recoveryStartRow`), never nested in a menu or disclosure; absent whenever a block cannot be started (#823, superseding #724's routine-management placement) |
 | Rare — reopening the most recently completed block, offered only with no block active (#839) | `Reopen recovery block: {baseline title}` | A second, lower-emphasis outline row (`LogScreen.js` `recoveryReopenRow`) directly below `Start recovery block` — same shape, `textMuted` ink instead of `accent`, so `Start` stays visually primary; computes its own visibility independently and can render alongside `Start`. Since #1315 this row and the Manage block's own Reopen (newest completed block only, no active block) are the only Reopen entry points; Analytics offers none. |
@@ -1318,10 +1322,22 @@ Consequences to preserve:
   section heading (`15`/`700`, `colors.text`) rather than a small caption;
   expanded, the count is not repeated at all, since the list below it already
   shows every routine.
-- The active card's strip renders `Skip week` **or** `Remove skip`, never both.
-  There is no opacity-dimmed disabled variant.
-- The `Double-tap to edit` hint is retired in both the active card and the
-  non-current card body (#711, #724); the double-tap gesture itself still works.
+- The active card's strip always renders `Skip week` (skips stack by design);
+  it is never hidden while a save is in flight or after a skip — a press during
+  a save answers with `Finishing the previous save. Try again.` instead.
+  `Remove skip` is the Routine actions menu's correction item, present only
+  while a trailing skip exists, so the strip never shows both. There is no
+  opacity-dimmed disabled variant.
+- The `Double-tap to edit` hint is retired in the active card, the non-current
+  card body, and the Deload cards (#711, #724); the gesture itself still works.
+- The active Deload card orders its actions primary → secondary → destructive:
+  `Deload complete`, `Edit`, `Regenerate deload`, `Delete active deload`.
+- **Rest timer is one docked control.** In current-routine edit the header
+  control stays mounted through idle (stopwatch), running (live countdown) and
+  done (`Rest over`); one anchored panel holds the presets (Start, or Restart
+  while running/done) plus Cancel or Dismiss. While it is docked, App.js hides
+  the app-shell pill so the countdown never shows twice; elsewhere the pill
+  shows Cancel (running) or Dismiss (done) directly, with no tap-to-reveal.
 - **Recovery is its own tab, present only while `LogRecoverySection` has
   something to show (#823).** `recoveryTabVisible` (`LogScreen.js`) mirrors
   that component's own early-return contract exactly — not just an active

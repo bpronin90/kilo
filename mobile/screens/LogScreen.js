@@ -90,6 +90,7 @@ export function LogScreen({
   onStartRestTimer,
   onCancelRestTimer,
   onDismissRestTimerDone,
+  onRestTimerDockedChange,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -434,6 +435,12 @@ export function LogScreen({
   } = buildLogRecovery({ ...screen, eligibleBaselineNotes, eligibleWeekNotes });
   const recoveryManage = { ...recoveryHistory.manage, completedBlocks: recoveryHistory.completedBlocks, notesError, scrollRef: readScrollRef, onReopenBlock: openReopenRecoveryBlockConfirm };
 
+  // The header rest-timer control is docked only in current-routine edit; App.js
+  // hides its app-shell pill meanwhile so one timer control shows, not two.
+  const restTimerDocked = !importRoutineOpen && !otherEditor.editingNoteId && currentEditor.mode === 'edit';
+  useEffect(() => { onRestTimerDockedChange?.(restTimerDocked); }, [restTimerDocked, onRestTimerDockedChange]);
+  useEffect(() => () => onRestTimerDockedChange?.(false), [onRestTimerDockedChange]);
+
   // #1021: the New Routine editor's secondary Import routine action opens
   // this in place of the ordinary read/editor pair below. `add` is the same
   // note-store write the import preview is wired to everywhere else
@@ -453,7 +460,7 @@ export function LogScreen({
     <LogActiveRoutineCard
       workoutNoteTitle={workoutNoteTitle} hasABWeeks={currentEditor.hasABWeeks} effectiveActiveWeek={currentEditor.effectiveActiveWeek}
       handleToggleWeek={currentEditor.handleToggleWeek} enterCurrentEditor={currentEditor.enterCurrentEditor} handleNoteBodyPress={currentEditor.handleNoteBodyPress}
-      handleSkipWeek={currentEditor.isSaving ? undefined : currentEditor.handleSkipWeek} handleUnskipWeek={currentEditor.isSaving ? undefined : currentEditor.handleUnskipWeek} canUnskipWeek={currentEditor.canUnskipWeek}
+      handleSkipWeek={currentEditor.handleSkipWeek} handleUnskipWeek={currentEditor.handleUnskipWeek} canUnskipWeek={currentEditor.canUnskipWeek}
       skipWeekStatus={currentEditor.skipWeekStatus} toggleCollapsed={toggleCollapsed} isCollapsed={isCollapsed}
       dayGroups={currentEditor.dayGroups} noteError={currentEditor.noteError} trackedLifts={trackedLifts}
       handleToggleTrack={handleToggleTrack} roughNoteId={currentEditor.roughNoteId} currentId={currentId}
@@ -525,7 +532,7 @@ export function LogScreen({
               onCancel={onCancelRestTimer}
               onDismissDone={onDismissRestTimerDone}
               onStart={onStartRestTimer}
-              showStart={!otherEditor.editingNoteId && currentEditor.mode === 'edit'}
+              showStart={restTimerDocked}
               compact
             />
             <EditorHeaderActions otherEditor={otherEditor} deloadEditor={deloadEditor} currentEditor={currentEditor} />
