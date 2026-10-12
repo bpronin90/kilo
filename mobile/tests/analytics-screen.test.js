@@ -2118,10 +2118,9 @@ describe('deriveRoutineStatus — composite contract (#282)', () => {
     expect(deriveRoutineStatus(sections, undefined, []).weeksIn).toBeNull();
   });
 
-  test('saved routine with nothing logged: weeksIn is 0 for null or [] sections', () => {
+  test.each([[null], [undefined], [[]]])('saved routine with nothing logged: weeksIn is 0 for sections %p', (sections) => {
     const note = { saved_at: '2026-04-06T00:00:00.000Z' };
-    expect(deriveRoutineStatus(null, note, []).weeksIn).toBe(0);
-    expect(deriveRoutineStatus([], note, []).weeksIn).toBe(0);
+    expect(deriveRoutineStatus(sections, note, []).weeksIn).toBe(0);
   });
 
   test('deload from a prior routine does not inflate session count for the new routine (#377)', () => {
