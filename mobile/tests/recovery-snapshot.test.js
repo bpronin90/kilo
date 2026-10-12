@@ -144,8 +144,8 @@ describe('single derivation', () => {
     expect(deriveRecoveryStrength).toHaveBeenCalledTimes(1);
     expect(deriveRecoveryComparison).toHaveBeenCalledTimes(1);
     expect(_snapshotDerivationCount()).toBe(1);
-    expect(homeHeadline(root)).toBe('80% | 2 lifts · Week 2');
-    expect(analyticsHeadline(root)).toBe('80% | 2 lifts · Week 2');
+    expect(homeHeadline(root)).toBe('80% total recovery | 2 of 2 lifts back · avg 80% · Week 2');
+    expect(analyticsHeadline(root)).toBe('80% | 2 of 2 lifts back · avg 80% · Week 2');
     expect(overviewRow(root).value).toBe('80%');
   });
 
@@ -180,7 +180,8 @@ describe('cache key is collision-proof (#1315 review)', () => {
     const first = at(A);
     const second = at(B);
     expect(second).not.toBe(first);
-    expect(second.display.percent).not.toBe(first.display.percent);
+    // The capped headline can coincide (both >100%); the factual per-lift scores cannot.
+    expect(second.total.perLiftLatest.map(l => l.percent)).not.toEqual(first.total.perLiftLatest.map(l => l.percent));
     // And the first is still served for its own text.
     expect(at(A)).toBe(first);
   });
@@ -213,24 +214,25 @@ describe('identical values on every surface', () => {
 
   test('scored: the same % and caption on Home, the Overview row and the Analytics section', () => {
     const root = mount({ fixture: SCORED, stale: false }).root;
-    expect(analyticsHeadline(root)).toBe('80% | 2 lifts · Week 2');
-    expect(homeHeadline(root)).toBe('80% | 2 lifts · Week 2');
+    expect(analyticsHeadline(root)).toBe('80% | 2 of 2 lifts back · avg 80% · Week 2');
+    expect(homeHeadline(root)).toBe('80% total recovery | 2 of 2 lifts back · avg 80% · Week 2');
     const row = overviewRow(root);
-    expect(`${row.value} | ${row.infoCaption}`).toBe('80% | 2 lifts · Week 2');
+    expect(`${row.value} | ${row.infoCaption}`).toBe('80% | 2 of 2 lifts back · avg 80% · Week 2');
+    expect(row.label).toBe('Total recovery');
+    expect(byId(root, 'recovery-strength-label')[0].props.children).toBe('total recovery');
     expect(row.accessibilityText).toBe(analyticsSummary(root).props.accessibilityLabel);
   });
 
   test('stale: the numbers are unchanged and every surface still prints them', () => {
     const root = mount({ fixture: SCORED, stale: true }).root;
-    expect(analyticsHeadline(root)).toBe('80% | 2 lifts · Week 2');
-    expect(homeHeadline(root)).toBe('80% | 2 lifts · Week 2');
+    expect(analyticsHeadline(root)).toBe('80% | 2 of 2 lifts back · avg 80% · Week 2');
+    expect(homeHeadline(root)).toBe('80% total recovery | 2 of 2 lifts back · avg 80% · Week 2');
     expect(overviewRow(root).value).toBe('80%');
     expect(overviewRow(root).accessibilityText).toMatch(/may be out of date\.$/);
   });
 
   test.each([
     ['legacy baseline', LEGACY, SNAPSHOT_STATE.UNAVAILABLE],
-    ['empty cohort', EMPTY_COHORT, SNAPSHOT_STATE.EMPTY],
   ])('%s: no surface fabricates a number, and the reason is the snapshot\'s own words', (_l, fixture, state) => {
     const snap = getRecoverySnapshot({ block: fixture.block, weeks: fixture.weeks, notes: fixture.notes });
     expect(snap.display.state).toBe(state);
@@ -243,6 +245,165 @@ describe('identical values on every surface', () => {
     expect(row.value).toBeNull();
     expect(row.emptyCaption).toBe(snap.display.message);
     expect(analyticsSummary(root).props.accessibilityLabel).toContain(snap.display.message);
+  });
+});
+
+describe('empty strict cohort no longer hides the total (#1318)', () => {
+  test('0 of 2 lifts back is a real 0% total on every surface; the cohort reason is secondary detail', () => {
+    const snap = getRecoverySnapshot({ block: EMPTY_COHORT.block, weeks: EMPTY_COHORT.weeks, notes: EMPTY_COHORT.notes });
+    expect(snap.display.state).toBe(SNAPSHOT_STATE.SCORE);
+    expect(snap.total.percent).toBe(0);
+    expect(snap.display.detail.join(' ')).toMatch(/Consistent-cohort average \(secondary\): No lift has a strength score in every readable week/);
+    const root = mount({ fixture: EMPTY_COHORT, stale: false }).root;
+    const cap = '0 of 2 lifts back · avg 0% · Week 1';
+    expect(homeHeadline(root)).toBe(`0% total recovery | ${cap}`);
+    expect(analyticsHeadline(root)).toBe(`0% | ${cap}`);
+    const row = overviewRow(root);
+    expect(`${row.value} | ${row.infoCaption}`).toBe(`0% | ${cap}`);
+  });
+});
+
+describe('Home Big 3 latest evidence and age (#1318)', () => {
+  // Week 1 tested Squat at 100x3 (load ratio 100%, e1RM strength 94%); week 2 skipped it.
+  const AGED = {
+    block: mkBlock(), weeks: [mkWeek(1, 'w1'), mkWeek(2, 'w2')],
+    notes: [note('nb', BASE), note('w1', '-Bench\n- 100 5\n-Squat\n- 100 3'), note('w2', '-Bench\n- 100 5')],
+  };
+  const texts = (n) => n.findAll(x => x.type === 'Text').map(x => [].concat(x.props.children).join(''));
+
+  test('an absent lift keeps its earlier strength % with "last tested Week k"; ', () => {
+    const root = mount({ fixture: AGED, stale: false }).root;
+    expect(texts(byId(root, 'home-recovery-lift-squat')[0])).toEqual(expect.arrayContaining(['94%', 'last tested Week 1']));
+    expect(byId(root, 'home-recovery-analytics')[0].props.accessibilityLabel).toContain('Squat 94% of baseline, last tested Week 1');
+  });
+
+  test('Home displays the strength percent, which differs from its comparison/load ratio', () => {
+    const snap = getRecoverySnapshot({ block: AGED.block, weeks: AGED.weeks, notes: AGED.notes, selectedWeekId: 'rw1' });
+    const squat = snap.selectedWeek.exercises.find(e => e.key === 'squat');
+    expect(squat.metrics.find(m => m.metric === 'top_load').percent).toBe(100);
+    const root = mount({ fixture: { ...AGED, weeks: [AGED.weeks[0]] }, stale: false }).root;
+    const value = texts(byId(root, 'home-recovery-lift-squat')[0]);
+    expect(value).toContain('94%');
+    expect(value).not.toContain('100%');
+  });
+
+  test('all three surfaces print the identical total and caption', () => {
+    const root = mount({ fixture: AGED, stale: false }).root;
+    const snap = getRecoverySnapshot({ block: AGED.block, weeks: AGED.weeks, notes: AGED.notes });
+    expect(snap.total.perLiftLatest.map(l => [l.key, l.week])).toEqual([['bench', 2], ['squat', 1]]);
+    const cap = snap.display.caption;
+    expect(homeHeadline(root)).toBe(`${snap.display.headline} | ${cap}`);
+    expect(analyticsHeadline(root)).toBe(`${snap.display.percent}% | ${cap}`);
+    expect(overviewRow(root).infoCaption).toBe(cap);
+    expect(overviewRow(root).value).toBe(`${snap.display.percent}%`);
+    expect(deriveRecoveryStrength).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Home Big 3 under unreadable history (#1318 review)', () => {
+  const texts = (n) => n.findAll(x => x.type === 'Text').map(x => [].concat(x.props.children).join(''));
+  test('a missing selected note still shows the carried Big 3 score with its age', () => {
+    const fixture = {
+      block: mkBlock(), weeks: [mkWeek(1, 'w1'), mkWeek(2, 'ghost')],
+      notes: [note('nb', BASE), note('w1', '-Squat\n- 60 5')],
+    };
+    const root = mount({ fixture, stale: false }).root;
+    expect(texts(byId(root, 'home-recovery-lift-squat')[0])).toEqual(expect.arrayContaining(['60%', 'last tested Week 1']));
+    expect(byId(root, 'home-recovery-analytics')[0].props.accessibilityLabel).toContain('Squat 60% of baseline, last tested Week 1');
+  });
+
+  test('a lift whose only possible score is in an unreadable week is Unknown, not Not retested', () => {
+    const fixture = {
+      block: mkBlock(), weeks: [mkWeek(1, 'ghost'), mkWeek(2, 'w2')],
+      notes: [note('nb', BASE), note('w2', '-Bench\n- 100 5')],
+    };
+    const root = mount({ fixture, stale: false }).root;
+    const row = texts(byId(root, 'home-recovery-lift-squat')[0]);
+    expect(row).toContain('Unknown');
+    expect(row).not.toContain('Not retested');
+    expect(byId(root, 'home-recovery-analytics')[0].props.accessibilityLabel).toContain('Squat unknown, a week that can’t be read may hold its score');
+  });
+});
+
+describe('strict cohort history stays available (#1318 review)', () => {
+  test('the cohort average of every readable week is in the explainer text and the label', () => {
+    const snap = getRecoverySnapshot({
+      block: mkBlock(), weeks: [mkWeek(1, 'w1'), mkWeek(2, 'w2')],
+      notes: [note('nb', BASE), note('w1', '-Bench\n- 60 5\n-Squat\n- 100 5'), note('w2', '-Bench\n- 70 5')],
+    });
+    expect(snap.strength.cohort.map(c => c.name)).toEqual(['Bench']);
+    const line = 'Consistent-cohort average by week: Week 1 60% · Week 2 70%';
+    expect(snap.display.detail).toContain(line);
+    expect(snap.display.a11y).toContain(line);
+  });
+});
+
+// One precedence per Big 3 lift (#1318), computed in the snapshot and only rendered by Home:
+//  1 score in any week <= selected -> latest %, "last tested Week k" when older, caveat if an
+//    unreadable week AFTER it might hold a newer score
+//  2 else an unreadable week in range -> Unknown (+ "logged this week without a scoreable set")
+//  3 else logged but never scoreable -> Not scored (+ reason)   4 else -> Not retested
+//  + Not in baseline when the slot's lift is not a baseline row.
+describe('Home Big 3 status precedence, exhaustive (#1318)', () => {
+  const SCORE = '-Bench\n- 100 5\n-Squat\n- 60 5';
+  const OTHER = '-Bench\n- 100 5';
+  const UNSC = '-Bench\n- 100 5\n-Squat\n- 5,5';
+  const texts = (n) => n.findAll(x => x.type === 'Text').map(x => [].concat(x.props.children).join(''));
+  const combos = [];
+  for (const score of ['selected', 'earlier', 'none']) {
+    for (const unreadable of ['none', 'earlier', 'selected']) {
+      for (const unscoreable of [false, true]) {
+        for (const inBaseline of [true, false]) {
+          // One lift cannot both score and be unscoreable in the same week, and an
+          // unreadable selected week has no readable work at all.
+          if (score === 'selected' && unscoreable) continue;
+          if (unreadable === 'selected' && (score === 'selected' || unscoreable)) continue;
+          combos.push([score, unreadable, unscoreable, inBaseline]);
+        }
+      }
+    }
+  }
+
+  const expected = (score, unreadable, unscoreable, inBaseline) => {
+    if (!inBaseline) return { visible: ['Squat', 'Not in baseline'], spoken: 'Squat not in baseline' };
+    if (score !== 'none') {
+      const afterScore = (unreadable === 'selected') || (unreadable === 'earlier' && score === 'earlier');
+      return {
+        visible: score === 'earlier' ? ['Squat', '60%', 'last tested Week 1'] : ['Squat', '60%'],
+        spoken: `Squat 60% of baseline${score === 'earlier' ? ', last tested Week 1' : ''}${afterScore ? ', a week that can’t be read may hold a newer score' : ''}`,
+      };
+    }
+    if (unreadable !== 'none') {
+      return {
+        visible: ['Squat', 'Unknown'],
+        spoken: `Squat unknown, a week that can’t be read may hold its score${unscoreable ? ', and it logged this week without a scoreable set' : ''}`,
+      };
+    }
+    if (unscoreable) return { visible: ['Squat', 'Not scored'], spoken: /^Squat not scored, .+/ };
+    return { visible: ['Squat', 'Not retested'], spoken: 'Squat not retested' };
+  };
+
+  test.each(combos)('score:%s unreadable:%s unscoreable:%s inBaseline:%s', (score, unreadable, unscoreable, inBaseline) => {
+    const base = inBaseline ? BASE : OTHER;
+    const w1 = score === 'earlier' ? SCORE : OTHER;
+    const w3 = unreadable === 'selected' ? null : score === 'selected' ? SCORE : unscoreable ? UNSC : OTHER;
+    const fixture = {
+      block: mkBlock(captureRecoveryBaselineFromText(base)),
+      weeks: [mkWeek(1, 'w1'), mkWeek(2, unreadable === 'earlier' ? 'ghost' : 'w2'), mkWeek(3, w3 === null ? 'ghost' : 'w3')],
+      notes: [note('nb', base), note('w1', w1), note('w2', OTHER), ...(w3 === null ? [] : [note('w3', w3)])],
+    };
+    // Squat must be in the baseline exactly when inBaseline (so the slot's lift is a baseline row).
+    const root = mount({ fixture, stale: false }).root;
+    const want = expected(score, unreadable, unscoreable, inBaseline);
+    const row = byId(root, 'home-recovery-lift-squat')[0];
+    expect(texts(row)).toEqual(want.visible);
+    const spoken = byId(root, 'home-recovery-analytics')[0].props.accessibilityLabel;
+    const clean = spoken.split('Big 3. ')[1].split(/\. (?:DB Bench Press|Bench)\b/)[0];
+    if (want.spoken instanceof RegExp) expect(clean).toMatch(want.spoken); else expect(clean).toBe(want.spoken);
+  });
+
+  test('the table covers every possible combination', () => {
+    expect(combos.length).toBe(24);
   });
 });
 

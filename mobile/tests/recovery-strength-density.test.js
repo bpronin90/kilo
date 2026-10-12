@@ -44,25 +44,27 @@ function mount(props = {}) {
 }
 
 describe('summary: % plus one short caption', () => {
-  test('prints the number and `{N} lifts · Week n` and no coverage, cohort, exclusion or routine prose', () => {
+  test('prints the number and `{N} of {M} lifts back · avg {avg}% · Week n` and no coverage, cohort, exclusion or routine prose', () => {
     const root = mount();
     const summary = host(root, 'recovery-strength-summary')[0];
-    expect(summary.findAllByType('Text').map(t => t.props.children)).toEqual(['85%', '2 lifts · Week 3']);
+    expect(summary.findAllByType('Text').map(t => t.props.children)).toEqual(['42%', 'total recovery', '2 of 4 lifts back · avg 85% · Week 3']);
     const all = texts(root).join(' | ');
     for (const gone of ['scored every week', 'In the average', 'baseline strength', 'Bars run 0', 'Not in the average', 'Left the average']) {
       expect(all).not.toContain(gone);
     }
     // The full wording is the label.
     const label = summary.props.accessibilityLabel;
-    expect(label).toMatch(/^Week 3: 85% of Push Pull Legs baseline strength\./);
-    expect(label).toContain('Average of 2 lifts scored every week');
-    expect(label).toContain('In the average: Bench, Squat');
+    expect(label).toMatch(/^Week 3: 42% total recovery of Push Pull Legs baseline strength\. 2 of 4 lifts back, avg 85%, Week 3\./);
+    expect(label).toContain('Consistent-cohort average (secondary): 85% across 2 lifts scored every week');
+    expect(label).toContain('In the consistent cohort: Bench, Squat');
   });
 
-  test('an unavailable or empty state keeps a short honest message and never a 0%', () => {
+  test('an empty strict cohort still shows the total (0% when nothing is back) and keeps the cohort reason in the explainer', () => {
     const root = mount({ notes: [NOTES[0], note('w1', '-Sled Push\n- 100 5'), ...NOTES.slice(2)], weeks: [wk(1)] });
-    expect(texts(root).some(t => /^\d+%$/.test(t))).toBe(false);
-    expect(texts(root)).toContain('No lift has a strength score in every readable week yet, so there is no average.');
+    // #1318: nothing is back, so the total is a real 0% (not hidden by the empty strict cohort).
+    expect(texts(root)).toContain('0 of 4 lifts back · avg 0% · Week 1');
+    tap(root, 'About these numbers');
+    expect(texts(root).join(' ')).toContain('Consistent-cohort average (secondary): No lift has a strength score in every readable week yet, so there is no average.');
   });
 });
 
@@ -179,9 +181,9 @@ describe('movement groups and the explainer', () => {
     const all = texts(root);
     for (const line of [
       'Baseline routine: Push Pull Legs.',
-      'Average of 2 lifts scored every week · 2 of 5 baseline lifts.',
-      'In the average: Bench, Squat.',
-      'Bars run 0–100%. The dark mark is your baseline (100%).',
+      'Consistent-cohort average (secondary): 85% across 2 lifts scored every week · 2 of 5 baseline lifts.',
+      'In the consistent cohort: Bench, Squat.',
+      'Week bars run 0–100% (total recovery is capped at 100%). Lift bars run 0–100%. The dark mark is your baseline (100%).',
       'Training numbers only. Not a medical judgment. Only you end a Recovery block.',
     ]) expect(all).toContain(line);
     expect(all.some(t => t.startsWith('Pace is a best-case estimate'))).toBe(true);

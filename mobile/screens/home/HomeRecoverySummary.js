@@ -4,7 +4,7 @@ import Svg, { Path } from 'react-native-svg';
 import { Card } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
 import { InfoButton, InfoNote, useInfoExplainer } from '../../components/InfoExplainer';
-import { HOME_BIG3_NOT_IN_BASELINE, HOME_BIG3_NOT_RETESTED, HOME_BIG3_NOT_SCORED, HOME_BIG3_SCORED, HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './homeDashboardData';
+import { HOME_BIG3_NOT_IN_BASELINE, HOME_BIG3_NOT_RETESTED, HOME_BIG3_NOT_SCORED, HOME_BIG3_SCORED, HOME_BIG3_UNKNOWN, HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './homeDashboardData';
 import { createStyles } from './homeStyles';
 import { formatRecoveryCountLine } from '../../lib/data/derivedAnalytics';
 import { useKuaTypography } from '../../theme/typography';
@@ -40,6 +40,7 @@ function liftValue(lift) {
   if (lift.state === HOME_BIG3_NOT_IN_BASELINE) return 'Not in baseline';
   if (lift.state === HOME_BIG3_NOT_RETESTED) return 'Not retested';
   if (lift.state === HOME_BIG3_NOT_SCORED) return 'Not scored';
+  if (lift.state === HOME_BIG3_UNKNOWN) return 'Unknown';
   return `${lift.percent}%`;
 }
 
@@ -101,16 +102,17 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   const weekLabel = weekNumber === null ? null : `${stale ? 'Last loaded linked week' : 'Latest linked week'}: ${weekName}`;
   // #1193: the values below describe this one week, never the whole block.
   const weekScope = weekNumber !== null && fallbackStatus === null
-    ? `Values describe ${stale ? 'the last loaded' : 'the latest'} linked week (${weekName}) only, not the whole block.`
+    ? `Total recovery and each Big 3 percent use the latest score through ${weekName} (older scores show the week last tested). The counts below describe ${weekName} only.`
     : null;
 
   // #1171: the user's Big 3 lead, each against its own baseline. #1242: the
   // count line is the shared roster summary, worded exactly as Analytics and
   // the Recovery detail word it. Nothing prints while a fallback owns the slot.
-  const lifts = fallbackStatus === null ? big3 : [];
+  // Carried strength scores stay visible under a note-status fallback (#1318).
+  const lifts = big3;
   const countLine = fallbackStatus === null ? formatRecoveryCountLine(counts) : null;
   // #1315: the shared snapshot headline (same % and caption as Analytics).
-  const headlineScored = !!headline && headline.state === 'score' && fallbackStatus === null;
+  const headlineScored = !!headline && headline.state === 'score';
   // No honest average (empty cohort, legacy baseline): say why, in the snapshot's
   // own words, instead of leaving the headline slot silent.
   const headlineReason = !!headline && headline.state !== 'score' && fallbackStatus === null ? headline.message : null;
@@ -125,10 +127,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
     headlineScored ? headline.a11y : null,
     headlineReason,
     lifts.length > 0 ? 'Big 3' : null,
-    ...lifts.map(lift => {
-      const value = liftValue(lift);
-      return `${lift.label} ${value.endsWith('%') ? `${value} of baseline` : value.toLowerCase()}`;
-    }),
+    ...lifts.map(lift => lift.spoken || `${lift.label} ${liftValue(lift).toLowerCase()}`),
     remainingText ? remainingText.replace(/ · /g, ', ') : null,
   ].filter(Boolean)
     .map(part => (/[.!?]$/.test(part) ? part : `${part}.`))
@@ -194,7 +193,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
               ) : null}
               {headlineScored ? (
                 <View testID="home-recovery-headline">
-                  <Text testID="home-recovery-headline-value" style={styles.recoveryLiftName}>{`${headline.percent}%`}</Text>
+                  <Text testID="home-recovery-headline-value" style={styles.recoveryLiftName}>{headline.headline}</Text>
                   <Text testID="home-recovery-headline-caption" style={styles.recoveryWeekLabel}>{headline.caption}</Text>
                 </View>
               ) : null}
@@ -215,6 +214,9 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
                           <Text style={styles.recoveryLiftName}>{lift.label}</Text>
                           <Text style={[styles.recoveryLiftValue, done && styles.recoveryLiftDone]}>{liftValue(lift)}</Text>
                         </View>
+                        {lift.lastTestedWeek ? (
+                          <Text testID={`home-recovery-lift-${lift.slot}-age`} style={styles.recoveryWeekLabel}>{`last tested Week ${lift.lastTestedWeek}`}</Text>
+                        ) : null}
                         <View style={styles.recoveryLiftTrack}>
                           {fill > 0 ? <View style={[styles.recoveryLiftFill, done && styles.recoveryLiftFillDone, { width: `${fill}%` }]} /> : null}
                         </View>

@@ -1,8 +1,9 @@
-// Primary selected-week summary (#1305, hard-cut #1315): the average % of
-// baseline strength plus ONE short caption (`{N} lifts · Week {n}`). The wording
-// comes from the single Recovery snapshot's `display`, so Home and the Overview
-// row print the same thing. Coverage, cohort names, exclusions and drops are in
-// the accessibility label and the "About these numbers" explainer. When no
+// Primary selected-week summary (#1305, #1315, #1318): `{total}% total recovery`
+// plus ONE short caption (`{N} of {M} lifts back · avg {avg}% · Week {n}`). The
+// wording comes from the single Recovery snapshot's `display`, so Home and the
+// Overview row print the same thing. The cap/denominator, carried scores and the
+// secondary consistent-cohort average are in the accessibility label and the
+// "About these numbers" explainer. When no
 // aggregate can be honest, a short reason is shown instead of a number.
 
 import React, { useMemo } from 'react';
@@ -28,7 +29,10 @@ export function RecoveryStrengthSummary({ display }) {
   }
   return (
     <View testID="recovery-strength-summary" style={styles.summary} accessible accessibilityLabel={display.a11y}>
-      <Text style={styles.number}>{`${display.percent}%`}</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 6 }}>
+        <Text testID="recovery-strength-number" style={styles.number}>{`${display.percent}%`}</Text>
+        <Text testID="recovery-strength-label" style={styles.numberLabel}>total recovery</Text>
+      </View>
       <Text testID="recovery-strength-caption" style={styles.caption}>{display.caption}</Text>
     </View>
   );

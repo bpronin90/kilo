@@ -65,7 +65,7 @@ export function BlockEvidence({
   const [aboutShown, toggleAbout] = useInfoExplainer();
 
   const snapshot = useRecoveryStrengthSnapshot({ block, weeks, notes, selectedWeekId, stale: stateStale, notesError });
-  const { comparison, weekResults, selectedWeek, strength, scaleMax, bands, display } = snapshot;
+  const { comparison, weekResults, selectedWeek, strength, total, scaleMax, bands, display } = snapshot;
   const isActive = !block.completed_at;
   const routineTitle = block.baseline_note_title || 'Untitled Routine';
 
@@ -156,7 +156,7 @@ export function BlockEvidence({
               <RecoveryStrengthWeeks
                 weekResults={weekResults}
                 strength={strength}
-                scaleMax={scaleMax}
+                total={total}
                 selectedWeekId={selectedWeek ? selectedWeek.week_id : null}
                 onSelect={setSelectedWeekId}
               />

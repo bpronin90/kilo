@@ -13,7 +13,7 @@ import {
   RECOVERY_COMPARISON_STATUS,
   RECOVERY_WEEK_STATUS,
 } from '../../lib/data/recoveryAnalytics';
-import { LIFT_STATE, displayPercent } from '../../lib/data/recoveryStrength';
+import { STRENGTH_STATUS, displayPercent } from '../../lib/data/recoveryStrength';
 import { formatDate } from '../../lib/format';
 
 // Re-exported so HomeScreen's active-branch copy can switch on the same
@@ -193,10 +193,11 @@ const BIG3_SLOTS = Object.freeze([
 export const HOME_BIG3_SCORED = 'scored';
 export const HOME_BIG3_NOT_RETESTED = 'not_retested';
 export const HOME_BIG3_NOT_SCORED = 'not_scored';
+export const HOME_BIG3_UNKNOWN = 'unknown';
 
 // #1171, strength model (#1315): the Big 3 rows read the Recovery snapshot's
 // per-lift strength rows — the very rows the Analytics ladder prints — so a lift's
-// number here is its floored % of baseline best set for the selected week. A lift
+// number here is its floored latest % of baseline best set through the selected week (#1318). A lift
 // with no score shows a compact status instead of a number. Nothing is derived
 // here: the snapshot's `strength`, `bands` and selected week are the only inputs.
 // The Big 3 use the effective 1K selection (#1192); a lift outside the baseline is
@@ -204,30 +205,23 @@ export const HOME_BIG3_NOT_SCORED = 'not_scored';
 export function deriveHomeRecoveryBig3(snapshot, selections) {
   const week = snapshot && snapshot.selectedWeek;
   const counts = snapshot ? snapshot.counts : null;
-  if (!week || week.status !== RECOVERY_WEEK_STATUS.OK) return { big3: [], counts };
-  const { strength } = snapshot;
-  const lifts = new Map((strength.lifts || []).map(l => [l.key, l]));
-  const notScored = new Map((strength.not_scored || []).map(n => [n.key, n]));
-  const notRetested = new Map((strength.not_retested || []).map(n => [n.key, n]));
-  const big3 = [];
-  for (const { slot, label } of BIG3_SLOTS) {
+  const { strength } = snapshot || {};
+  // No selected week or no strength model (legacy baseline): no rows.
+  if (!week || !strength || strength.status !== STRENGTH_STATUS.OK) return { big3: [], counts };
+  // #1318: Home renders the snapshot's per-lift status (one precedence, computed
+  // in snapshot construction); nothing is decided here. A slot with no baseline row
+  // is `not_in_baseline`.
+  const byKey = new Map((snapshot.liftStatus || []).map(l => [l.key, l]));
+  const big3 = BIG3_SLOTS.map(({ slot, label }) => {
     const key = typeof selections?.[slot] === 'string' ? normalizeExerciseKey(selections[slot]) : null;
-    const lift = key ? lifts.get(key) : null;
-    const baselineOnly = key ? (notScored.get(key) || notRetested.get(key)) : null;
-    if (lift && lift.state === LIFT_STATE.SCORED && Number.isFinite(lift.percent)) {
-      big3.push({ slot, label: lift.name || label, state: HOME_BIG3_SCORED, percent: displayPercent(lift.percent) });
-    } else if (lift) {
-      // Scoreable in the baseline but no score this week: unscoreable work is
-      // "not scored", an absent or unreadable lift is "not retested".
-      big3.push({ slot, label: lift.name || label, state: lift.state === LIFT_STATE.UNSCOREABLE ? HOME_BIG3_NOT_SCORED : HOME_BIG3_NOT_RETESTED, percent: null });
-    } else if (key && notScored.has(key)) {
-      big3.push({ slot, label: notScored.get(key).name || label, state: HOME_BIG3_NOT_SCORED, percent: null });
-    } else if (baselineOnly) {
-      big3.push({ slot, label: baselineOnly.name || label, state: HOME_BIG3_NOT_RETESTED, percent: null });
-    } else {
-      big3.push({ slot, label: selections?.[slot] || label, state: HOME_BIG3_NOT_IN_BASELINE, percent: null });
-    }
-  }
+    const st = key ? byKey.get(key) : null;
+    if (!st) return { slot, label: selections?.[slot] || label, state: HOME_BIG3_NOT_IN_BASELINE, percent: null, lastTestedWeek: null, spoken: null };
+    return {
+      slot, label: st.name || label, percent: st.percent == null ? null : displayPercent(st.percent),
+      lastTestedWeek: st.lastTested, spoken: st.spoken,
+      state: { scored: HOME_BIG3_SCORED, unknown: HOME_BIG3_UNKNOWN, not_scored: HOME_BIG3_NOT_SCORED, not_retested: HOME_BIG3_NOT_RETESTED }[st.status],
+    };
+  });
   return { big3, counts };
 }
 
