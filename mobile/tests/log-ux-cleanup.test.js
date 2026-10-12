@@ -258,3 +258,45 @@ describe('ActionSheetMenu defers its item until the sheet is gone (#1329)', () =
     }
   });
 });
+
+describe('ActionSheetMenu clears the bottom safe area (#1331)', () => {
+  const { ActionSheetMenu } = require('../components/log/ActionSheetMenu');
+  const { SafeAreaInsetsContext } = require('react-native-safe-area-context');
+  const { StyleSheet } = require('react-native');
+  const sheetPadding = (root) => StyleSheet.flatten(root.root.findAll(n => typeof n.type === 'string' && n.props.testID === 't-menu')[0].props.style).paddingBottom;
+  const el = <ActionSheetMenu visible onClose={noop} testID="t-menu" items={[{ label: 'Go', onPress: noop }]} />;
+
+  test('bottom padding is 24 plus the bottom inset', () => {
+    const root = mount(
+      <SafeAreaInsetsContext.Provider value={{ top: 0, bottom: 34, left: 0, right: 0 }}>{el}</SafeAreaInsetsContext.Provider>
+    );
+    expect(sheetPadding(root)).toBe(58);
+  });
+
+  test('with no provider it stays 24', () => {
+    expect(sheetPadding(mount(el))).toBe(24);
+  });
+});
+
+describe('the current-routine menu sheet clears the bottom safe area too (#1331)', () => {
+  const { LogActiveRoutineCard } = require('../components/LogActiveRoutineCard');
+  const { SafeAreaInsetsContext } = require('react-native-safe-area-context');
+  const { StyleSheet } = require('react-native');
+  const openPadding = (root) => {
+    tap(root, 'Routine actions');
+    const sheet = root.root.findAll(n => typeof n.type === 'string' && n.props.testID === 'log-current-routine-menu')[0];
+    return StyleSheet.flatten(sheet.props.style).paddingBottom;
+  };
+  const card = <LogActiveRoutineCard workoutNoteTitle="Routine" routineRawText="MONDAY\n-Squat\n" dayGroups={[]} />;
+
+  test('bottom padding is 24 plus the bottom inset', () => {
+    const root = mount(
+      <SafeAreaInsetsContext.Provider value={{ top: 0, bottom: 34, left: 0, right: 0 }}>{card}</SafeAreaInsetsContext.Provider>
+    );
+    expect(openPadding(root)).toBe(58);
+  });
+
+  test('with no provider it stays 24', () => {
+    expect(openPadding(mount(card))).toBe(24);
+  });
+});

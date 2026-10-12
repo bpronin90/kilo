@@ -8498,11 +8498,11 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Recovery History').length).toBe(0);
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Recovery Blocks').length).toBe(0);
     const tab = findPressableByText(root, 'Recovery');
     expect(tab).toBeTruthy();
     render.act(() => { tab.props.onPress(); });
-    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Recovery History').length).toBe(1);
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Recovery Blocks').length).toBe(1);
     expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Manage recovery block: Old Baseline Routine').length).toBeGreaterThan(0);
   });
 
@@ -8522,7 +8522,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     const root = component.root;
 
     // Not the default view (#1315): the History selector sits behind the Recovery tab.
-    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Recovery History').length).toBe(0);
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Recovery Blocks').length).toBe(0);
   });
 
   test('Log shows every live week as its own labeled entry, distinguishing completed from in-progress (#836)', () => {
