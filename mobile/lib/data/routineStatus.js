@@ -125,7 +125,10 @@ function _latestDeloadSessionRecord(deloadHistory) {
 //
 // Returns:
 //   weeksIn:             routine depth (computeWeeksIn) — Home's "Week N";
-//                        null when no routine sections are supplied
+//                        null when there is no current routine (no note),
+//                        whatever the sections — null, or
+//                        the [] getNoteSections(null) yields; 0 for a saved
+//                        routine with nothing logged yet
 //   sessionsLogged:      total sessions on the routine, INCLUDING archived
 //                        deload sessions (never reduced by deloads)
 //   elapsedWeeks:        calendar weeks since the routine began, incl. gaps
@@ -164,8 +167,10 @@ export function deriveRoutineStatus(currentSections, note, deloadHistory) {
   } else {
     sessionsSinceDeload = Math.max(0, routineSessions - anchor);
   }
+  // Routine existence comes from the note alone, never the sections' shape:
+  // callers pass null (Home) or [] (Analytics) for the same "no routine" state.
   return {
-    weeksIn: computeWeeksIn(currentSections ?? null),
+    weeksIn: note != null ? computeWeeksIn(currentSections || []) : null,
     sessionsLogged: routineSessions + deloadSessionsLogged(relevantDeloads),
     elapsedWeeks: elapsedWeeksOnRoutine(note),
     sessionsSinceDeload,
