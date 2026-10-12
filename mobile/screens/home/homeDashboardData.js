@@ -210,9 +210,6 @@ export function deriveHomeRecoveryBig3(snapshot, selections) {
   // the selected-week counts are unavailable then); with no strength model there
   // is nothing to show.
   if (!week || !strength || strength.status !== STRENGTH_STATUS.OK) return { big3: [], counts };
-  // An unreadable selected note with nothing carried from earlier weeks has no
-  // Big 3 evidence: the fallback line owns the slot.
-  if (week.status !== RECOVERY_WEEK_STATUS.OK && !(total.perLiftLatest || []).some(l => l.week != null)) return { big3: [], counts };
   // #1318: a lift's percent is its LATEST readable strength score through the
   // selected week (the snapshot total's evidence), with the week it came from.
   const latest = new Map((total.perLiftLatest || []).map(l => [l.key, l]));

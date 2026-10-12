@@ -563,11 +563,14 @@ describe('Home Recovery Big 3 selection (#1192)', () => {
     expect(counts).toMatchObject({ rosterSize: 1, trained: 1, notYet: 0 });
   });
 
-  test('an unreadable selected week yields no Big 3 rows (the fallback line owns the slot)', () => {
+  test('an unreadable selected week with no earlier score still yields each Big 3 status (unknown), never a score', () => {
     _resetRecoverySnapshotStore();
     const block = { id: 'rb1', baseline_note_id: 'nb', baseline_note_title: 'R', baseline: captureRecoveryBaselineFromText(BASE), started_at: '2026-05-01T00:00:00Z', completed_at: null, deleted_at: null };
     const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: 'ghost', week_number: 1, completed_at: null, deleted_at: null }];
-    expect(deriveHomeRecoveryBig3(getRecoverySnapshot({ block, weeks, notes: [] }), SEL).big3).toEqual([]);
+    const big3 = deriveHomeRecoveryBig3(getRecoverySnapshot({ block, weeks, notes: [] }), SEL).big3;
+    expect(big3).toHaveLength(3);
+    expect(big3.every(l => l.percent == null)).toBe(true);
+    expect(big3.some(l => l.state === 'unknown')).toBe(true);
   });
 });
 

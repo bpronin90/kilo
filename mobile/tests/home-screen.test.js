@@ -1731,8 +1731,9 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     expect(hasText(component, "This week's note is no longer available.")).toBe(true);
     expect(hasText(component, 'baseline exercises met')).toBe(false);
     expect(hasText(component, '0 of 0')).toBe(false);
+    // The Big 3 keep their lift-specific statuses beside the fallback (#1318).
     expect(spoken(component)).toBe(
-      "Week 1. This week's note is no longer available."
+      "Week 1. This week's note is no longer available. Big 3. Squat unknown, a week that can’t be read may hold its score. Bench unknown, a week that can’t be read may hold its score. Deadlift not in baseline."
     );
   });
 
@@ -1913,9 +1914,9 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     // Inclusion state is Analytics-owned content (#820); Home never states it.
     expect(hasText(component, 'Not counted in your normal analytics.')).toBe(false);
     expect(hasText(component, hooks.RECOVERY_STALE_MESSAGE)).toBe(true);
-    // No Big 3 rows or count are derivable from a week whose note is gone —
-    // nothing else stacks on top of the fallback and stale message.
-    expect(has(component, 'home-recovery-big3')).toBe(false);
+    // The Big 3 statuses stay (unknown, #1318) but no count is derivable from a
+    // week whose note is gone.
+    expect(has(component, 'home-recovery-big3')).toBe(true);
     expect(has(component, 'home-recovery-remaining')).toBe(false);
   });
 
