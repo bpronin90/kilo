@@ -2113,7 +2113,7 @@ describe('deriveRoutineStatus — composite contract (#282)', () => {
     expect(status.elapsedWeeks).toBeNull();
   });
 
-  test.each([[null], [undefined], [[]]])('no routine: weeksIn is null for sections %p', (sections) => {
+  test.each([[null], [undefined], [[]], [[{ exercises: [] }]], [sectionsFor(FIVE_SESSION_RAW)]])('no routine: weeksIn is null for sections %p', (sections) => {
     expect(deriveRoutineStatus(sections, null, []).weeksIn).toBeNull();
     expect(deriveRoutineStatus(sections, undefined, []).weeksIn).toBeNull();
   });
