@@ -1,20 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import Svg, { Circle, Line, Path } from 'react-native-svg';
+import Svg, { Circle, Line } from 'react-native-svg';
 import { Card } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
 import { createStyles } from './homeStyles';
 import { useKuaTypography } from '../../theme/typography';
 import { DELOAD_NOTE_PREFIX } from '../../lib/LogScreenHelpers';
-
-// Small chevron affordance shared by every quiet handoff on this card.
-function Chevron({ color }) {
-  return (
-    <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}>
-      <Path d="M9 5l7 7-7 7" />
-    </Svg>
-  );
-}
+import { Chevron, HomeActionStrip } from './HomeActionStrip';
 
 // Info glyph for the classification caption toggle. Replaces the "ⓘ" text
 // character, which is absent from the bundled Space Grotesk / JetBrains Mono
@@ -56,14 +48,11 @@ function ExerciseProgressLink({ linkId, onNavigate, styles, color }) {
 // #1333: the hero answers three questions and nothing else — what is being
 // trained (week + routine), how it is going (Exercise Progress), and what to do
 // next (the two daily-loop actions). Body weight lives in its own card below.
-// #1339: in Recovery the Recovery card owns the week and its Big 3, so the hero
-// is only `Recovery` and the next action — no week, note, or paused handoff.
+// #1341: normal training only. In Recovery the Recovery card replaces this hero
+// (HomeScreen), so there is never an empty `Recovery` hero above it.
 export function HomeHeader({
   dashboardData,
   onNavigate,
-  isRecoveryOpenWeek,
-  isRecoveryBetweenWeeks,
-  baselinePaused,
   workoutNote,
   notes,
   handleLogWorkoutPress,
@@ -75,19 +64,16 @@ export function HomeHeader({
   const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
   const [captionExpanded, setCaptionExpanded] = useState(false);
 
-  const isRecovery = isRecoveryOpenWeek || isRecoveryBetweenWeeks;
   // No current routine, or one with nothing written in it yet, is not a
   // training week: no `Week N/A`, no 0·0·0 trio, just the way back in (#1333).
   const hasRoutineContent = !!workoutNote?.raw_text?.trim();
   // Deload notes never appear in Log's routine list, so they are not a routine
   // the user can choose (same predicate as LogScreenStates' otherNotes).
   const hasSavedRoutines = (notes || []).some(n => n && !n.title?.startsWith(DELOAD_NOTE_PREFIX));
-  const routineState = isRecovery ? 'recovery'
-    : !workoutNote ? 'none'
+  const routineState = !workoutNote ? 'none'
     : !hasRoutineContent ? 'empty'
     : 'active';
-  const headerLabel = routineState === 'recovery' ? 'Recovery'
-    : routineState === 'none' ? 'No current routine'
+  const headerLabel = routineState === 'none' ? 'No current routine'
     : dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Current routine';
   const routineTitle = routineState === 'active' || routineState === 'empty'
     ? (workoutNote.title || '').trim() || null
@@ -105,7 +91,6 @@ export function HomeHeader({
     : heroPrimaryActionHint;
 
   const mutedStroke = kua ? kua.onSurfaceVariant : colors.textMuted;
-  const actionStroke = kua ? kua.primaryOnContainer : colors.textMuted;
 
   const newlyTrackedCount = dashboardData.weeklySummary.newlyTrackedCount;
   const captionText = newlyTrackedCount > 0
@@ -131,9 +116,7 @@ export function HomeHeader({
       {/* How it is going. */}
       {routineMessage ? (
         <Text testID="home-no-routine" style={styles.heroRoutineMessage}>{routineMessage}</Text>
-      ) : baselinePaused ? null : (
-        // Paused baseline (#869) has no counts to show; #1339 drops the bare
-        // handoff that stood in for them.
+      ) : (
         <View style={styles.classifSection}>
           <View style={styles.classifHeaderRow}>
             <ExerciseProgressLink linkId="home-exercise-progress-link" onNavigate={onNavigate} styles={styles} color={mutedStroke} />
@@ -173,35 +156,7 @@ export function HomeHeader({
       )}
 
       {/* What to do next: the two daily-loop actions, in one stable row. */}
-      <View style={styles.heroPrimaryActions}>
-        <Pressable
-          testID="home-current-routine-link"
-          onPress={handleLogWorkoutPress}
-          style={styles.heroPrimaryAction}
-          hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
-          accessibilityRole="button"
-          accessibilityLabel={primaryLabel}
-          accessibilityHint={primaryHint}
-        >
-          <Text style={styles.heroPrimaryActionText}>{primaryLabel}</Text>
-          <Chevron color={actionStroke} />
-        </Pressable>
-
-        <View style={styles.heroPrimaryActionDivider} />
-
-        <Pressable
-          testID="home-weight-action"
-          onPress={() => onNavigate('Weight')}
-          style={styles.heroPrimaryAction}
-          hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
-          accessibilityRole="button"
-          accessibilityLabel="Log weight"
-          accessibilityHint="Opens the Weight tab to log a weigh-in"
-        >
-          <Text style={styles.heroPrimaryActionText}>Log weight</Text>
-          <Chevron color={actionStroke} />
-        </Pressable>
-      </View>
+      <HomeActionStrip primaryLabel={primaryLabel} primaryHint={primaryHint} onPrimary={handleLogWorkoutPress} onNavigate={onNavigate} />
     </Card>
   );
 }

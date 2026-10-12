@@ -1,19 +1,11 @@
 import React, { useMemo } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
-import { Card } from '../../components/UI';
+import { Card, LineChart } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
-import { formatBodyweightValue, formatGoalWeightValue } from '../../lib/units';
+import { displayChartSeries, formatBodyweightValue, formatGoalWeightValue } from '../../lib/units';
 import { createStyles } from './homeStyles';
 import { useKuaTypography } from '../../theme/typography';
-
-function Chevron({ color }) {
-  return (
-    <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}>
-      <Path d="M9 5l7 7-7 7" />
-    </Svg>
-  );
-}
+import { Chevron } from './HomeActionStrip';
 
 // The goal state that needs the user, in the Weight goal card's own words.
 // Maintenance never gets a pace warning there, so it never gets one here.
@@ -29,8 +21,9 @@ export function goalAttentionText(goalInfo) {
 
 // Body weight and its goal, one card (#1333). Moved out of the training hero so
 // the hero answers only "what am I training and what next"; the header is the
-// Weight handoff. #1339: supporting context, not a mini Weight tab — the latest
-// weigh-in and one goal line. The trend chart and pace stats live on Weight.
+// Weight handoff. #1339: the latest weigh-in and one goal line; pace stats live
+// on Weight. #1341: the trend graph is back — it says "which way is my weight
+// going" faster than any line of text — with no label explaining the average.
 export function HomeWeightCard({ dashboardData, weightGoal, onNavigate, unit }) {
   const { colors, kuaPalette: kua } = useTheme();
   const typography = useKuaTypography();
@@ -45,6 +38,9 @@ export function HomeWeightCard({ dashboardData, weightGoal, onNavigate, unit }) 
     ? `${formatGoalWeightValue(weightGoal.target_weight, unit)} ${unit}`
     : null;
   const attention = goalAttentionText(gi);
+  // A trend needs two points; LineChart shows a "Not enough data" placeholder
+  // below that, which would sit under a valid weigh-in.
+  const hasWeightSeries = Array.isArray(dashboardData.weightSeries) && dashboardData.weightSeries.length >= 2;
 
   return (
     <View testID="home-weight-card">
@@ -86,6 +82,17 @@ export function HomeWeightCard({ dashboardData, weightGoal, onNavigate, unit }) 
             </View>
           ) : null}
         </View>
+        {hasWeightSeries ? (
+          <View testID="home-weight-trend" style={styles.weightTrendChart}>
+            <LineChart
+              data={displayChartSeries(dashboardData.weightSeries, unit)}
+              color={kua ? kua.primary : colors.textMuted}
+              height={64}
+              paddingHorizontal={0}
+              hideHeader
+            />
+          </View>
+        ) : null}
         {/* Legacy-mode Analytics handoff; KUA keeps Home to the Weight handoff. */}
         {!kua ? (
           <Pressable

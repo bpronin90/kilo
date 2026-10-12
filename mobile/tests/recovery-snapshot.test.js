@@ -105,10 +105,11 @@ const mount = (props) => {
   return c;
 };
 const byId = (root, id) => root.findAll(n => typeof n.type === 'string' && n.props.testID === id);
-// #1335: Home prints the shared total as one secondary line, without the caption.
+// #1341: Home prints the shared total as its hero `{pct}%` beside a `total
+// recovery` label, without the caption; read together they are the headline.
 const homeHeadline = (root) => {
-  const v = byId(root, 'home-recovery-headline-value')[0];
-  return v ? v.props.children : null;
+  const v = byId(root, 'home-recovery-headline')[0];
+  return v ? v.findAll(n => n.type === 'Text').map(n => [].concat(n.props.children).join('')).join(' ') : null;
 };
 const overviewRow = (root) => byId(root, 'overview-probe')[0].props.row;
 // #1335: Home renders the Big 3 rows again — label, the carried-score week when

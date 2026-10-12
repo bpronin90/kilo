@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
 import { Card } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
 import {
@@ -9,6 +8,8 @@ import {
 } from './homeDashboardData';
 import { createStyles } from './homeStyles';
 import { useKuaTypography } from '../../theme/typography';
+import { Chevron } from './HomeActionStrip';
+import { HomeBig3Bars } from './HomeBig3Bars';
 
 // Active-recovery status on Home (#757).
 //
@@ -33,9 +34,10 @@ import { useKuaTypography } from '../../theme/typography';
 // The handoff is `onNavigate('Analytics', 'recovery')` — the Recovery section
 // itself, not just the tab that contains it (#770).
 //
-// #1335 (corrects #1333): the Big 3 ARE the card. Squat, Bench and Deadlift lead,
-// each with the snapshot's own per-lift value; the total is one secondary line
-// beneath them. What Home leaves to Analytics is the prose around them — the
+// #1341: in Recovery this card IS Home's training surface — `Recovery · Week N`,
+// the snapshot's total as the hero number, the Big 3 as bars, then the action
+// strip (passed in as `actions`). It replaces the normal hero and 1K card, so no
+// other card repeats the week. What Home leaves to Analytics is the prose — the
 // headline caption, roster counts, week-scope explainer and `Latest week:` wording.
 // Each Big 3 row's right-hand value: plain words, and a percentage only where the
 // snapshot produced a real per-lift score (#1171).
@@ -47,7 +49,7 @@ function liftValue(lift) {
   return `${lift.percent}%`;
 }
 
-export function HomeRecoverySummary({ summary, onNavigate }) {
+export function HomeRecoverySummary({ summary, onNavigate, actions = null }) {
   const { colors, kuaPalette: kua } = useTheme();
   const typography = useKuaTypography();
   const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
@@ -55,7 +57,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   if (!summary) return null;
   const {
     status, stale, message, active,
-    comparisonStatus, headline = null, weekNumber, weekNoteStatus, weekNoteTitle = null, big3 = [],
+    comparisonStatus, headline = null, weekNumber, weekNoteStatus, big3 = [],
   } = summary;
 
   // Verified, nothing is running, and the answer is CURRENT. This is the one
@@ -94,98 +96,44 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   // With Big 3 rows, each lift's own status already answers it.
   const headlineReason = !!headline && headline.state !== 'score' && fallbackStatus === null && lifts.length === 0
     ? headline.message : null;
-  // Compact week tag beside the header. With no week logged there is nothing to
-  // name, and inventing `Week 1` would be false. Staleness is the message below.
-  const weekName = weekNoteTitle || (weekNumber === null ? null : `Week ${weekNumber}`);
+  // With no week logged there is nothing to name, and inventing `Week 1` would
+  // be false. Staleness is the message below.
+  const weekName = weekNumber === null ? null : `Week ${weekNumber}`;
 
   // One announcement for the whole summary, assembled in reading order.
   const accessibleContent = [
     weekName,
+    headlineScored ? headline.headline : null,
     fallbackStatus,
     lifts.length > 0 ? 'Big 3' : null,
     ...lifts.map(lift => lift.spoken || `${lift.label} ${liftValue(lift).toLowerCase()}`),
-    headlineScored ? headline.headline : null,
     headlineReason,
   ].filter(Boolean)
     .map(part => (/[.!?]$/.test(part) ? part : `${part}.`))
     .join(' ');
 
-  return (
-    // Wrapped rather than testID'd directly: Card takes only children/style/
-    // tone/onPress and would swallow the prop.
-    <View testID="home-recovery-summary">
-      <Card style={styles.recoveryCard}>
-        {active ? (
-          <>
-            <View style={styles.recoveryHeaderRow}>
-              {/* Header row is the handoff (#820), the same family as Exercise
-                  Progress and 1K Progress. */}
-              <Pressable
-                testID="home-recovery-link"
-                onPress={() => onNavigate('Analytics', 'recovery')}
-                style={[styles.sectionHeaderAction, styles.recoveryHeaderLink]}
-                hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
-                accessibilityRole="button"
-                accessibilityLabel="1K recovery"
-                accessibilityHint="Opens the Recovery section of the Analytics tab"
-              >
-                <Text style={[styles.recoveryLabel, styles.sectionHeaderLabel]}>1K recovery</Text>
-                <View style={styles.sectionHeaderChevron}>
-                  <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
-                </View>
-              </Pressable>
-              {/* Hidden from screen readers: the announcement below names the week. */}
-              {weekName ? (
-                <Text testID="home-recovery-week" style={[styles.recoveryWeekLabel, styles.recoveryWeekTag]} accessibilityElementsHidden importantForAccessibility="no">{weekName}</Text>
-              ) : null}
-            </View>
-            <View
-              testID="home-recovery-analytics"
-              accessible
-              accessibilityLabel={accessibleContent}
-            >
-              {fallbackStatus ? (
-                <Text style={styles.recoveryFallbackLine}>{fallbackStatus}</Text>
-              ) : null}
-              {lifts.length > 0 ? (
-                <View testID="home-recovery-big3" style={styles.recoveryLiftList}>
-                  {lifts.map(lift => {
-                    const scored = lift.state === HOME_BIG3_SCORED;
-                    const done = scored && lift.percent >= 100;
-                    // Only a real score fills the bar; unscored lifts stay an empty track.
-                    const fill = scored ? Math.max(0, Math.min(lift.percent, 100)) : 0;
-                    return (
-                      <View key={lift.slot} testID={`home-recovery-lift-${lift.slot}`}>
-                        <View style={styles.recoveryLiftHead}>
-                          <Text style={styles.recoveryLiftName}>{lift.label}</Text>
-                          <View style={styles.recoveryLiftValueRow}>
-                            {/* A score carried from an earlier week names that week. */}
-                            {lift.lastTestedWeek ? (
-                              <Text testID={`home-recovery-lift-${lift.slot}-age`} style={styles.recoveryLiftAge}>{`Week ${lift.lastTestedWeek}`}</Text>
-                            ) : null}
-                            <Text testID={`home-recovery-lift-${lift.slot}-value`} style={[styles.recoveryLiftValue, scored && styles.recoveryLiftScored, done && styles.recoveryLiftDone]}>{liftValue(lift)}</Text>
-                          </View>
-                        </View>
-                        <View style={styles.recoveryLiftTrack}>
-                          {fill > 0 ? <View style={[styles.recoveryLiftFill, done && styles.recoveryLiftFillDone, { width: `${fill}%` }]} /> : null}
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
-              ) : null}
-              {/* #1315: the shared snapshot total, secondary to the Big 3. */}
-              {headlineScored ? (
-                <View testID="home-recovery-headline">
-                  <Text testID="home-recovery-headline-value" style={styles.recoveryTotal}>{headline.headline}</Text>
-                </View>
-              ) : null}
-              {headlineReason ? (
-                <Text testID="home-recovery-headline-reason" style={styles.recoveryFallbackLine}>{headlineReason}</Text>
-              ) : null}
-            </View>
-          </>
-        ) : (
+  const liftRows = lifts.map(lift => {
+    const scored = lift.state === HOME_BIG3_SCORED;
+    return {
+      key: lift.slot,
+      label: lift.label,
+      value: liftValue(lift),
+      // A score carried from an earlier week names that week.
+      age: lift.lastTestedWeek ? `Week ${lift.lastTestedWeek}` : null,
+      strong: scored,
+      done: scored && lift.percent >= 100,
+      // Only a real score fills the bar; unscored lifts stay an empty track.
+      fill: scored ? lift.percent : 0,
+    };
+  });
+  const totalDone = headlineScored && headline.percent >= 100;
+
+  if (!active) {
+    return (
+      // Wrapped rather than testID'd directly: Card takes only children/style/
+      // tone/onPress and would swallow the prop.
+      <View testID="home-recovery-summary">
+        <Card style={styles.recoveryCard}>
           <View
             accessible
             accessibilityRole={isLoadingStatus ? 'progressbar' : 'alert'}
@@ -194,27 +142,83 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
             <Text style={styles.recoveryLabel}>1K recovery</Text>
             <Text style={styles.recoveryStatusLine}>{message}</Text>
           </View>
-        )}
+          {canRetry ? <RetryRecovery summary={summary} styles={styles} /> : null}
+          {actions}
+        </Card>
+      </View>
+    );
+  }
+
+  return (
+    <View testID="home-recovery-summary">
+      <Card style={styles.weeklyHero}>
+        {/* The header is the handoff (#820) to the Recovery section itself (#770). */}
+        <Pressable
+          testID="home-recovery-link"
+          onPress={() => onNavigate('Analytics', 'recovery')}
+          style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart, styles.recoveryHeaderLink]}
+          hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+          accessibilityRole="button"
+          accessibilityLabel="Recovery"
+          accessibilityHint="Opens the Recovery section of the Analytics tab"
+        >
+          <View style={styles.heroAccentBar} />
+          <Text style={[styles.heroSectionLabel, styles.sectionHeaderLabel]} numberOfLines={1}>
+            {weekName ? 'Recovery · ' : 'Recovery'}
+            {/* Hidden from screen readers: the announcement below names the week. */}
+            {weekName ? <Text testID="home-recovery-week" accessibilityElementsHidden importantForAccessibility="no">{weekName}</Text> : null}
+          </Text>
+          <View style={styles.sectionHeaderChevron}>
+            <Chevron color={kua ? kua.onSurfaceVariant : colors.textMuted} />
+          </View>
+        </Pressable>
+        <View
+          testID="home-recovery-analytics"
+          accessible
+          accessibilityLabel={accessibleContent}
+          style={styles.recoveryBody}
+        >
+          {/* #1341: the snapshot's total is the card's one hero number. */}
+          {headlineScored ? (
+            <View testID="home-recovery-headline" style={styles.recoveryTotalRow}>
+              <Text testID="home-recovery-headline-value" style={[styles.recoveryTotalValue, totalDone && styles.liftValueDone]}>{`${headline.percent}%`}</Text>
+              <Text style={styles.recoveryTotalLabel}>total recovery</Text>
+            </View>
+          ) : null}
+          {fallbackStatus ? (
+            <Text style={styles.recoveryFallbackLine}>{fallbackStatus}</Text>
+          ) : null}
+          {liftRows.length > 0 ? (
+            <HomeBig3Bars rows={liftRows} idPrefix="home-recovery-lift" testID="home-recovery-big3" />
+          ) : null}
+          {headlineReason ? (
+            <Text testID="home-recovery-headline-reason" style={styles.recoveryFallbackLine}>{headlineReason}</Text>
+          ) : null}
+        </View>
         {/* The stale case keeps the last-known-good summary above and adds the
             reason it may be behind, rather than replacing it. */}
-        {active && message ? (
+        {message ? (
           <Text style={styles.recoveryStatusLine} accessibilityLiveRegion="polite">{message}</Text>
         ) : null}
-        {canRetry ? (
-          <Pressable
-            testID="home-recovery-retry"
-            onPress={() => summary.retry()}
-            style={styles.recoveryAction}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Retry recovery"
-          >
-            {/* Exactly the name every recovery message tells the user to tap
-                (ui-design-rules §12). */}
-            <Text style={styles.recoveryActionText}>Retry recovery</Text>
-          </Pressable>
-        ) : null}
+        {canRetry ? <RetryRecovery summary={summary} styles={styles} /> : null}
+        {actions}
       </Card>
     </View>
+  );
+}
+
+// Exactly the name every recovery message tells the user to tap (ui-design-rules §12).
+function RetryRecovery({ summary, styles }) {
+  return (
+    <Pressable
+      testID="home-recovery-retry"
+      onPress={() => summary.retry()}
+      style={styles.recoveryAction}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel="Retry recovery"
+    >
+      <Text style={styles.recoveryActionText}>Retry recovery</Text>
+    </Pressable>
   );
 }

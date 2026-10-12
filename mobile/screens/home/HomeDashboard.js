@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
 import { Card } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
 import { displayWeight } from '../../lib/units';
@@ -8,13 +7,18 @@ import { createStyles } from './homeStyles';
 import { useKuaTypography } from '../../theme/typography';
 import { HomeRecoverySummary } from './HomeRecoverySummary';
 import { HomeWeightCard } from './HomeWeightCard';
+import { Chevron, HomeActionStrip } from './HomeActionStrip';
+import { HomeBig3Bars } from './HomeBig3Bars';
 
-// Tiers 1b-3 (recovery summary, 1K progress, body weight + goal), extracted from
-// HomeScreen (#1049). Presentation only: HomeScreen still owns the loading
-// gate, the four-source boundary and all dashboard math, and passes results in.
-// #1339: strength first — 1K leads body weight, which is supporting context.
+// Everything below the training hero, extracted from HomeScreen (#1049).
+// Presentation only: HomeScreen still owns the loading gate, the four-source
+// boundary and all dashboard math, and passes results in.
+// #1341: in Recovery the Recovery card is the training surface and carries the
+// action strip (`recoveryActions`: its label, hint and press handler); the 1K card stays hidden while baseline is
+// paused. Normal training: 1K / Big 3, then body weight.
 export function HomeDashboard({
   recoverySummary,
+  recoveryActions = null,
   onNavigate,
   dashboardData,
   weightGoal,
@@ -26,44 +30,50 @@ export function HomeDashboard({
   const typography = useKuaTypography();
   const styles = useMemo(() => createStyles(colors, kua, typography), [colors, kua, typography]);
   const hasOneKTotal = !!dashboardData.oneK?.total;
+  // Before a total, only the lifts already logged (#1333).
   const oneKLifts = [
-    { key: 'squat', label: 'Squats', value: dashboardData.oneK?.squat ?? null },
+    { key: 'squat', label: 'Squat', value: dashboardData.oneK?.squat ?? null },
     { key: 'bench', label: 'Bench', value: dashboardData.oneK?.bench ?? null },
-    { key: 'deadlift', label: 'Deadlifts', value: dashboardData.oneK?.deadlift ?? null },
-  ];
-  // Before a total, only the lifts already logged, as one quiet line.
-  const loggedLiftsLine = oneKLifts
-    .filter(l => l.value != null)
-    .map(l => `${l.label} ${displayWeight(l.value, unit).toFixed(0)}`)
-    .join(' · ');
+    { key: 'deadlift', label: 'Deadlift', value: dashboardData.oneK?.deadlift ?? null },
+  ].filter(l => l.value != null);
+  // #1341: the Big 3 bars are a bar chart of the three values on one shared
+  // scale (heaviest lift = full track) — the numbers themselves, not a new metric.
+  const heaviest = Math.max(0, ...oneKLifts.map(l => l.value));
+  const liftRows = oneKLifts.map(l => ({
+    key: l.key,
+    label: l.label,
+    value: displayWeight(l.value, unit).toFixed(0),
+    strong: true,
+    fill: heaviest > 0 ? (l.value / heaviest) * 100 : 0,
+  }));
 
   return (
     <>
-      {/* Tier 1b: Recovery status, directly under the hero. In Recovery it owns
-          the week and its Big 3; the hero carries only the next action. */}
-      <HomeRecoverySummary summary={recoverySummary} onNavigate={onNavigate} />
+      <HomeRecoverySummary
+        summary={recoverySummary}
+        onNavigate={onNavigate}
+        actions={recoveryActions ? <HomeActionStrip {...recoveryActions} onNavigate={onNavigate} /> : null}
+      />
 
       {baselinePaused ? null : (
-      // No total yet is a setup state (#1333), and #1339 sizes it as one: a
-      // left-aligned row of header, setup line and any lifts already logged.
-      <Card style={hasOneKTotal ? styles.oneKCard : styles.oneKSetupCard}>
+      <Card style={styles.oneKCard}>
         <Pressable
           testID="home-one-k-link"
           onPress={() => onNavigate('Analytics', 'strength')}
-          style={[styles.sectionHeaderAction, hasOneKTotal ? styles.sectionHeaderActionCenter : styles.sectionHeaderActionStart]}
+          style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart]}
           hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
           accessibilityRole="button"
           accessibilityLabel="1K Progress"
           accessibilityHint="Opens the strength section of the Analytics tab"
         >
-          <Text style={[styles.oneKLabel, styles.sectionHeaderLabel]} numberOfLines={1}>1K Progress</Text>
+          <Text style={[styles.classifSectionLabel, styles.sectionHeaderLabel]} numberOfLines={1}>1K Progress</Text>
           <View style={styles.sectionHeaderChevron}>
-            <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kua ? kua.onSurfaceVariant : colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
+            <Chevron color={kua ? kua.onSurfaceVariant : colors.textMuted} />
           </View>
         </Pressable>
         {hasOneKTotal ? (
           <>
-            <Text style={[styles.oneKHeroValue, { color: oneKHeroColor }]}>
+            <Text testID="home-one-k-total" style={[styles.oneKHeroValue, { color: oneKHeroColor }]}>
               {`${displayWeight(dashboardData.oneK.total, unit).toFixed(0)}`}
               <Text style={styles.oneKHeroUnit}> {unit}</Text>
             </Text>
@@ -80,17 +90,8 @@ export function HomeDashboard({
           // The total needs one complete cycle of all three lifts (lib/data/oneK.js).
           <Text testID="home-one-k-setup" style={styles.oneKSetupText}>Log a session of each Big 3 lift to see your 1K total.</Text>
         )}
-        {hasOneKTotal ? (
-          <View style={styles.oneKGrid}>
-            {oneKLifts.map((l, idx) => (
-              <View key={l.key} style={[styles.oneKGridItem, idx > 0 && styles.oneKGridItemDivider]}>
-                <Text style={styles.oneKGridValue}>{l.value != null ? displayWeight(l.value, unit).toFixed(0) : 'N/A'}</Text>
-                <Text style={styles.oneKGridLabel}>{l.label}</Text>
-              </View>
-            ))}
-          </View>
-        ) : loggedLiftsLine ? (
-          <Text testID="home-one-k-logged" style={styles.oneKSetupLifts}>{loggedLiftsLine}</Text>
+        {liftRows.length > 0 ? (
+          <HomeBig3Bars rows={liftRows} idPrefix="home-one-k-lift" testID="home-one-k-big3" />
         ) : null}
       </Card>
       )}

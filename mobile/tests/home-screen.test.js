@@ -923,15 +923,19 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     expect(flatStyle(weightAction).flex).toBe(1);
   });
 
-  test('a 1K total keeps its header centered over the flagship metric', async () => {
+  test('a 1K total renders the total, the 1K bar and three Big 3 bars (#1341)', async () => {
     const NOTE_1K = { id: 'n1', title: 'A', raw_text: ORDINARY_TEXT, one_k_exercises: ONE_K, saved_at: '2026-06-01T12:00:00.000Z' };
     useEntriesModule.useTrackedLifts.mockReturnValue({ trackedLifts: TRACKED, loading: false, save: jest.fn(), toggle: jest.fn() });
     let local;
     await render.act(async () => {
       local = render.create(<HomeScreen {...populatedProps(jest.fn())} workoutNote={NOTE_1K} notes={[NOTE_1K]} currentId="n1" />);
     });
-    expect(flatStyle(local.root.findByProps({ testID: 'home-one-k-link' })).alignSelf).toBe('center');
+    expect(flatStyle(local.root.findByProps({ testID: 'home-one-k-link' })).alignSelf).toBe('flex-start');
     expect(local.root.findAllByProps({ testID: 'home-one-k-setup' })).toHaveLength(0);
+    expect(local.root.findAllByProps({ testID: 'home-one-k-total' }).length).toBeGreaterThan(0);
+    for (const slot of ['squat', 'bench', 'deadlift']) {
+      expect(local.root.findAllByProps({ testID: `home-one-k-lift-${slot}` }).length).toBeGreaterThan(0);
+    }
     await render.act(async () => { local.unmount(); });
   });
 });
@@ -1591,9 +1595,9 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     hooks._resetRecoveryAnalyticsFilterCache();
   });
 
-  // #1335: the Big 3 are the card's hierarchy; the shared total is one secondary
-  // line, and the caption, roster counts and week-scope explainer stay on Analytics.
-  test('an active block leads with the Big 3 and keeps the shared total secondary', async () => {
+  // #1341: the shared total is the card's hero number above the Big 3 bars; the
+  // caption, roster counts and week-scope explainer stay on Analytics.
+  test('an active block leads with the shared total, then the Big 3 bars', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     const component = await mount();
 
@@ -1601,10 +1605,11 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     expect(has(component, 'home-recovery-big3')).toBe(true);
     expect(['squat', 'bench', 'deadlift'].map(slot => liftText(component, slot))).toEqual(['72%', '100%', 'Not in baseline']);
     // #1315: the SAME total string as the Analytics section, without its caption.
-    expect(component.root.findByProps({ testID: 'home-recovery-headline-value' }).props.children).toBe('86% total recovery');
-    // The week tag names the linked note by its title (#1265).
-    expect(component.root.findByProps({ testID: 'home-recovery-week' }).props.children).toBe('Recovery nr1');
-    expect(spoken(component)).toBe('Recovery nr1. Big 3. Squat 72% of baseline. Bench 100% of baseline. Deadlift not in baseline. 86% total recovery.');
+    expect(component.root.findByProps({ testID: 'home-recovery-headline-value' }).props.children).toBe('86%');
+    // #1341: the header names the week by number (`Recovery · Week N`).
+    expect(component.root.findByProps({ testID: 'home-recovery-week' }).props.children).toBe('Week 1');
+    expect(hasText(component, 'Recovery nr1')).toBe(false);
+    expect(spoken(component)).toBe('Week 1. 86% total recovery. Big 3. Squat 72% of baseline. Bench 100% of baseline. Deadlift not in baseline.');
     for (const id of ['home-recovery-headline-caption', 'home-recovery-remaining', 'home-recovery-week-scope-info']) {
       expect(has(component, id)).toBe(false);
     }
@@ -1687,7 +1692,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     // added-during-recovery work stays reported on Analytics only.
     expect(has(component, 'home-recovery-big3')).toBe(false);
     expect(has(component, 'home-recovery-remaining')).toBe(false);
-    expect(spoken(component)).toBe('Recovery nr1. No baseline exercises were captured for this block.');
+    expect(spoken(component)).toBe('Week 1. No baseline exercises were captured for this block.');
   });
 
   test('no weeks logged yet shows the baseline-captured fallback and names no week', async () => {
@@ -1706,7 +1711,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
 
     const link = component.root.findByProps({ testID: 'home-recovery-link' });
     expect(link.props.accessibilityRole).toBe('button');
-    expect(link.props.accessibilityLabel).toBe('1K recovery');
+    expect(link.props.accessibilityLabel).toBe('Recovery');
     expect(link.props.accessibilityHint).toBe('Opens the Recovery section of the Analytics tab');
     // #770: an unsectioned press inherited whatever position Analytics was last
     // left at, so a control labeled `Recovery` could land anywhere but Recovery.
@@ -1770,7 +1775,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     await render.act(async () => { retry.props.onPress(); });
 
-    expect(spoken(component)).toMatch(/Big 3\. .* 86% total recovery\.$/);
+    expect(spoken(component)).toMatch(/86% total recovery\. Big 3\. /);
     expect(hasText(component, hooks.RECOVERY_UNVERIFIED_MESSAGE)).toBe(false);
     expect(has(component, 'home-skeleton')).toBe(false);
   });
@@ -2159,36 +2164,35 @@ describe('HomeScreen follows the shared active-training context (#869)', () => {
     hooks._resetRecoveryAnalyticsFilterCache();
   });
 
-  // #1339: the Recovery card owns the week identity and its Big 3; the hero is
-  // only `Recovery` and the next action, so nothing is said twice.
-  test('an open Recovery week names Recovery in the hero and leaves the week to the Recovery card', async () => {
+  // #1341: Recovery is one primary card — no separate `Recovery` hero above it,
+  // no 1K card — and it names the week once, in its own header.
+  test('an open Recovery week renders one Recovery card instead of a hero', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     const component = await mount();
 
-    const label = component.root.findByProps({ testID: 'home-hero-label' });
-    expect(label.props.children).toBe('Recovery');
-    const hero = label.parent.parent;
-    const heroTexts = hero.findAll(n => n.type === 'Text').map(n => String(n.props.children ?? ''));
-    expect(heroTexts.some(t => /Week \d/.test(t))).toBe(false);
-    expect(heroTexts.some(t => t.includes('Recovery week nr1'))).toBe(false);
+    expect(has(component, 'home-hero-label')).toBe(false);
     expect(has(component, 'home-recovery-active-note')).toBe(false);
-    // The Recovery card still names the linked week, once.
-    expect(component.root.findByProps({ testID: 'home-recovery-week' }).props.children).toBe('Recovery week nr1');
-    expect(texts(component).filter(t => t === 'Recovery week nr1')).toHaveLength(1);
+    expect(component.root.findByProps({ testID: 'home-recovery-week' }).props.children).toBe('Week 1');
+    expect(texts(component).filter(t => t === 'Week 1')).toHaveLength(1);
+    expect(hasText(component, 'Recovery week nr1')).toBe(false);
+    // The action strip lives inside the Recovery card.
+    const card = component.root.findAll(n => typeof n.type === 'string' && n.props?.testID === 'home-recovery-summary')[0];
+    expect(card.findAll(n => n.props?.testID === 'home-current-routine-link').length).toBeGreaterThan(0);
+    expect(card.findAll(n => n.props?.testID === 'home-weight-action').length).toBeGreaterThan(0);
     // The frozen baseline label must not read as though baseline training is
     // still current.
     expect(hasText(component, 'Week —')).toBe(false);
   });
 
-  test('Recovery orders Home as hero, Recovery card, then body weight', async () => {
+  test('Recovery orders Home as the Recovery card, then body weight', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     const component = await mount();
     const order = component.root
       .findAll(n => typeof n.type === 'string' && ['home-hero-label', 'home-recovery-summary', 'home-one-k-link', 'home-weight-card'].includes(n.props?.testID))
       .map(n => n.props.testID);
-    expect(order).toEqual(['home-hero-label', 'home-recovery-summary', 'home-weight-card']);
+    expect(order).toEqual(['home-recovery-summary', 'home-weight-card']);
     const shell = component.root.findAll(n => typeof n.type === 'string' && n.props?.testID === 'screen-shell')[0];
-    expect(shell.props.subtitle).toBe('Recovery block in progress.');
+    expect(shell.props.subtitle).toBe('Training and body weight at a glance.');
   });
 
   test('Log workout targets the exact active Recovery note, even though it is not currentId', async () => {
@@ -2412,14 +2416,14 @@ describe('HomeRecoverySummary threads the load-aware typography (#1112)', () => 
       );
     });
 
-    // The week label is a JetBrains Mono value in the loaded map; under
+    // A Big 3 value is a JetBrains Mono value in the loaded map; under
     // fallback it must carry the monospace fallback family.
     const countNode = component.root.findAllByType('Text')
-      .find(n => String(n.props.children ?? '') === 'Week 2');
+      .find(n => n.props.testID === 'home-recovery-lift-squat-value');
     expect(countNode).toBeTruthy();
     const family = flat(countNode).fontFamily;
-    expect(family).toBe(TYPOGRAPHY_FALLBACK['label-sm'].fontFamily);
-    expect(family).not.toBe(TYPOGRAPHY['label-sm'].fontFamily);
+    expect(family).toBe(TYPOGRAPHY_FALLBACK['label-md'].fontFamily);
+    expect(family).not.toBe(TYPOGRAPHY['label-md'].fontFamily);
     expect(String(family || '')).not.toMatch(/JetBrainsMono/);
 
     await render.act(async () => { component.unmount(); });
@@ -2538,16 +2542,18 @@ describe('Home daily-dashboard states (#1333)', () => {
     expect(onNavigate).toHaveBeenCalledWith('Analytics', 'strength');
   });
 
-  // #1339: a setup state is sized like one — logged lifts are a quiet line,
-  // never the large metric grid.
-  test('1K setup lists already-logged lifts on one quiet line', async () => {
+  // #1341: before a total, the lifts already logged render as Big 3 bar rows;
+  // unlogged lifts are not listed as placeholders.
+  test('1K setup shows already-logged lifts as bars, and only those', async () => {
     useEntriesModule.useTrackedLifts.mockReturnValue({ trackedLifts: { 'Bench Press': true }, loading: false, save: jest.fn(), toggle: jest.fn() });
     const benchOnly = { ...NOTE, raw_text: 'Monday\n+Lifting\n-Bench Press\n- 225 5,5', one_k_exercises: { bench: 'Bench Press', squat: 'Squat', deadlift: 'Deadlift' } };
     const { component: c } = await mount({ workoutNote: benchOnly, notes: [benchOnly] });
     expect(has(c, 'home-one-k-setup')).toBe(true);
-    expect(texts({ root: host(c, 'home-one-k-logged') })).toEqual([expect.stringMatching(/^Bench \d+$/)]);
-    // No metric grid: the unlogged lifts are not listed as placeholders.
-    expect(texts(c).some(t => t === 'Squats' || t === 'Deadlifts' || t === 'N/A')).toBe(false);
+    expect(has(c, 'home-one-k-lift-bench')).toBe(true);
+    expect(texts({ root: host(c, 'home-one-k-lift-bench-value') })).toEqual([expect.stringMatching(/^\d+$/)]);
+    expect(has(c, 'home-one-k-lift-squat')).toBe(false);
+    expect(has(c, 'home-one-k-lift-deadlift')).toBe(false);
+    expect(texts(c).some(t => t === 'N/A')).toBe(false);
   });
 
   test('normal training orders Home as hero, 1K, then body weight', async () => {
@@ -2558,12 +2564,13 @@ describe('Home daily-dashboard states (#1333)', () => {
     expect(order).toEqual(['home-hero-label', 'home-one-k-link', 'home-weight-card']);
   });
 
-  describe('subtitle (#1339)', () => {
+  describe('subtitle (#1339, #1341)', () => {
     const subtitle = (c) => host(c, 'screen-shell').props.subtitle;
 
-    test('a routine with content is routine progress', async () => {
+    // #1341: the lead card names the routine week, so the subtitle does not.
+    test('a routine with content keeps the neutral subtitle', async () => {
       const { component: c } = await mount();
-      expect(subtitle(c)).toBe('Current routine progress.');
+      expect(subtitle(c)).toBe('Training and body weight at a glance.');
     });
 
     test('a load still in flight stays generic', async () => {
@@ -2587,7 +2594,7 @@ describe('Home daily-dashboard states (#1333)', () => {
       const onNavigate = jest.fn();
       let c;
       render.act(() => {
-        c = render.create(<HomeWeightCard dashboardData={{ latestWeight: 185, weightSeries: [], goalInfo: gi }} weightGoal={{ target_weight: 175 }} hasWeightSeries={false} onNavigate={onNavigate} unit="lbs" />);
+        c = render.create(<HomeWeightCard dashboardData={{ latestWeight: 185, weightSeries: [], goalInfo: gi }} weightGoal={{ target_weight: 175 }} onNavigate={onNavigate} unit="lbs" />);
       });
       return { c, onNavigate };
     };
@@ -2618,9 +2625,9 @@ describe('Home daily-dashboard states (#1333)', () => {
       expect(hasText(c, '8 weeks left')).toBe(true);
     });
 
-    // #1339: the card is the weigh-in and one goal line; the chart and pace
-    // stats stay on Weight.
-    test('the weight card is a compact summary, not a mini Weight tab', () => {
+    // #1341: weigh-in, one goal line, and the trend graph; pace stats and the
+    // explainer label stay on Weight.
+    test('the weight card shows the trend graph, without explaining it', () => {
       const { c } = mountCard(goalInfo());
       const goal = host(c, 'home-goal');
       expect(texts({ root: goal })).toContain('Cutting');
@@ -2629,7 +2636,21 @@ describe('Home daily-dashboard states (#1333)', () => {
       expect(hasText(c, '7-day rolling avg')).toBe(false);
       expect(hasText(c, 'Pace')).toBe(false);
       expect(hasText(c, 'Target')).toBe(false);
-      expect(c.root.findAll(n => n.type === 'LineChart')).toHaveLength(0);
+      // No series, no chart.
+      expect(has(c, 'home-weight-trend')).toBe(false);
+      const series = [{ label: '10-01-2026', value: 186 }, { label: '10-03-2026', value: 185 }];
+      let withSeries;
+      render.act(() => {
+        withSeries = render.create(<HomeWeightCard dashboardData={{ latestWeight: 185, weightSeries: series, goalInfo: goalInfo() }} weightGoal={{ target_weight: 175 }} onNavigate={jest.fn()} unit="lbs" />);
+      });
+      expect(has(withSeries, 'home-weight-trend')).toBe(true);
+      expect(hasText(withSeries, '7-day rolling avg')).toBe(false);
+      // One weigh-in date is not a trend: no chart, so no "Not enough data".
+      let onePoint;
+      render.act(() => {
+        onePoint = render.create(<HomeWeightCard dashboardData={{ latestWeight: 185, weightSeries: series.slice(0, 1), goalInfo: goalInfo() }} weightGoal={{ target_weight: 175 }} onNavigate={jest.fn()} unit="lbs" />);
+      });
+      expect(has(onePoint, 'home-weight-trend')).toBe(false);
     });
   });
 });
