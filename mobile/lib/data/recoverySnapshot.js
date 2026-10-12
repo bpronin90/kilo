@@ -16,7 +16,7 @@ import {
 import { summarizeRecoveryBands } from './derivedAnalytics.js';
 import { movementGroupLabel } from './movementGroups.js';
 import { deriveRecoveryStrength, displayPercent, STRENGTH_STATUS } from './recoveryStrength.js';
-import { deriveRecoveryTotal, totalCaption, totalExplainerLines, TOTAL_REASON, TOTAL_EMPTY_COPY } from './recoveryTotal.js';
+import { deriveRecoveryTotal, deriveLiftStatuses, totalCaption, totalExplainerLines, TOTAL_REASON, TOTAL_EMPTY_COPY } from './recoveryTotal.js';
 import { deriveRecoveryWeekBands } from './recoveryReturnBands.js';
 import { deriveMovementGroupBreakdown, resolveMovementGroupSource } from './recoveryMovementGroups.js';
 
@@ -193,6 +193,7 @@ function _build(block, weeks, notes, comparison, selectedWeek, { stale }) {
     selectedWeek,
     strength,
     total,
+    liftStatus: deriveLiftStatuses(strength),
     scaleMax: strengthOk ? strengthScaleMax(strength) : 100,
     bands,
     counts: summarizeRecoveryBands(bands),

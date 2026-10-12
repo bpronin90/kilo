@@ -338,6 +338,75 @@ describe('strict cohort history stays available (#1318 review)', () => {
   });
 });
 
+// One precedence per Big 3 lift (#1318), computed in the snapshot and only rendered by Home:
+//  1 score in any week <= selected -> latest %, "last tested Week k" when older, caveat if an
+//    unreadable week AFTER it might hold a newer score
+//  2 else an unreadable week in range -> Unknown (+ "logged this week without a scoreable set")
+//  3 else logged but never scoreable -> Not scored (+ reason)   4 else -> Not retested
+//  + Not in baseline when the slot's lift is not a baseline row.
+describe('Home Big 3 status precedence, exhaustive (#1318)', () => {
+  const SCORE = '-Bench\n- 100 5\n-Squat\n- 60 5';
+  const OTHER = '-Bench\n- 100 5';
+  const UNSC = '-Bench\n- 100 5\n-Squat\n- 5,5';
+  const texts = (n) => n.findAll(x => x.type === 'Text').map(x => [].concat(x.props.children).join(''));
+  const combos = [];
+  for (const score of ['selected', 'earlier', 'none']) {
+    for (const unreadable of ['none', 'earlier', 'selected']) {
+      for (const unscoreable of [false, true]) {
+        for (const inBaseline of [true, false]) {
+          // One lift cannot both score and be unscoreable in the same week, and an
+          // unreadable selected week has no readable work at all.
+          if (score === 'selected' && unscoreable) continue;
+          if (unreadable === 'selected' && (score === 'selected' || unscoreable)) continue;
+          combos.push([score, unreadable, unscoreable, inBaseline]);
+        }
+      }
+    }
+  }
+
+  const expected = (score, unreadable, unscoreable, inBaseline) => {
+    if (!inBaseline) return { visible: ['Squat', 'Not in baseline'], spoken: 'Squat not in baseline' };
+    if (score !== 'none') {
+      const afterScore = (unreadable === 'selected') || (unreadable === 'earlier' && score === 'earlier');
+      return {
+        visible: score === 'earlier' ? ['Squat', '60%', 'last tested Week 1'] : ['Squat', '60%'],
+        spoken: `Squat 60% of baseline${score === 'earlier' ? ', last tested Week 1' : ''}${afterScore ? ', a week that can’t be read may hold a newer score' : ''}`,
+      };
+    }
+    if (unreadable !== 'none') {
+      return {
+        visible: ['Squat', 'Unknown'],
+        spoken: `Squat unknown, a week that can’t be read may hold its score${unscoreable ? ', and it logged this week without a scoreable set' : ''}`,
+      };
+    }
+    if (unscoreable) return { visible: ['Squat', 'Not scored'], spoken: /^Squat not scored, .+/ };
+    return { visible: ['Squat', 'Not retested'], spoken: 'Squat not retested' };
+  };
+
+  test.each(combos)('score:%s unreadable:%s unscoreable:%s inBaseline:%s', (score, unreadable, unscoreable, inBaseline) => {
+    const base = inBaseline ? BASE : OTHER;
+    const w1 = score === 'earlier' ? SCORE : OTHER;
+    const w3 = unreadable === 'selected' ? null : score === 'selected' ? SCORE : unscoreable ? UNSC : OTHER;
+    const fixture = {
+      block: mkBlock(captureRecoveryBaselineFromText(base)),
+      weeks: [mkWeek(1, 'w1'), mkWeek(2, unreadable === 'earlier' ? 'ghost' : 'w2'), mkWeek(3, w3 === null ? 'ghost' : 'w3')],
+      notes: [note('nb', base), note('w1', w1), note('w2', OTHER), ...(w3 === null ? [] : [note('w3', w3)])],
+    };
+    // Squat must be in the baseline exactly when inBaseline (so the slot's lift is a baseline row).
+    const root = mount({ fixture, stale: false }).root;
+    const want = expected(score, unreadable, unscoreable, inBaseline);
+    const row = byId(root, 'home-recovery-lift-squat')[0];
+    expect(texts(row)).toEqual(want.visible);
+    const spoken = byId(root, 'home-recovery-analytics')[0].props.accessibilityLabel;
+    const clean = spoken.split('Big 3. ')[1].split(/\. (?:DB Bench Press|Bench)\b/)[0];
+    if (want.spoken instanceof RegExp) expect(clean).toMatch(want.spoken); else expect(clean).toBe(want.spoken);
+  });
+
+  test('the table covers every possible combination', () => {
+    expect(combos.length).toBe(24);
+  });
+});
+
 describe('display components never derive (#1315 review)', () => {
   test('expanding Lifts, opening every row, collapsing and reopening derives no bands, strength or comparison', () => {
     const root = mount({ fixture: SCORED, stale: false }).root;

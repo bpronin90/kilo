@@ -1712,7 +1712,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     }));
     const component = await mount({ notes: [NOTE, weekNote('nr1', CLASS_CHANGED_TEXT)] });
 
-    expect(spoken(component)).toBe("Recovery nr1. Big 3. Squat not scored. Bench 100% of baseline. Deadlift not in baseline. All exercises 2 of 2 trained.");
+    expect(spoken(component)).toBe("Recovery nr1. Big 3. Squat not scored, logged without load this week. Bench 100% of baseline. Deadlift not in baseline. All exercises 2 of 2 trained.");
     // No per-lift number is invented for the unscored lift.
     const squat = component.root.findByProps({ testID: 'home-recovery-lift-squat' });
     expect(squat.findAll(n => n.type === 'Text' && String(n.props.children).includes('%'))).toHaveLength(0);

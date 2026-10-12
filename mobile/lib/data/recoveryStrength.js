@@ -245,6 +245,12 @@ export function deriveRecoveryStrength({ block, weeks = [], notes = [], selected
         week_id: p.week.id,
         week_number: p.week.week_number,
         readable: p.readable,
+        // Keys logged at all that week, and why the unscoreable ones have no score.
+        logged: new Set(p.readable ? scoreable.filter(({ row }) => p.results.get(row.key).state !== LIFT_STATE.NOT_LOGGED).map(({ row }) => row.key) : []),
+        unscoreable: new Map(p.readable ? scoreable.flatMap(({ row }) => {
+          const r = p.results.get(row.key);
+          return r.state === LIFT_STATE.UNSCOREABLE ? [[row.key, r.reason]] : [];
+        }) : []),
         scores: new Map(p.readable ? scoreable.flatMap(({ row }) => {
           const r = p.results.get(row.key);
           return r.state === LIFT_STATE.SCORED ? [[row.key, r.percent]] : [];

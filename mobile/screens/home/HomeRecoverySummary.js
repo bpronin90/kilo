@@ -127,11 +127,7 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
     headlineScored ? headline.a11y : null,
     headlineReason,
     lifts.length > 0 ? 'Big 3' : null,
-    ...lifts.map(lift => {
-      const value = liftValue(lift);
-      if (lift.state === HOME_BIG3_UNKNOWN) return `${lift.label} unknown, a week that can’t be read may hold its score`;
-      return `${lift.label} ${value.endsWith('%') ? `${value} of baseline${lift.lastTestedWeek ? `, last tested Week ${lift.lastTestedWeek}` : ''}` : value.toLowerCase()}`;
-    }),
+    ...lifts.map(lift => lift.spoken || `${lift.label} ${liftValue(lift).toLowerCase()}`),
     remainingText ? remainingText.replace(/ · /g, ', ') : null,
   ].filter(Boolean)
     .map(part => (/[.!?]$/.test(part) ? part : `${part}.`))
