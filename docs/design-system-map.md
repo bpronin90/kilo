@@ -280,7 +280,7 @@ negative margins, `accessibilityState.expanded`) anchored beside the label or
 heading it explains, plus `InfoNote` (always mounted, polite live region) that
 holds the explanation, hidden until tapped. `useInfoExplainer()` owns the
 toggle. Used by 1K Progress, progression-suggestion cards (beside `HEURISTIC`),
-Recovery `Started`/`Dates`, and Home's linked-week label. No inline explainer
+Recovery `Started`/`Dates`. No inline explainer
 paragraphs on these surfaces.
 
 ## ScreenShell
@@ -542,37 +542,42 @@ Copy for the three non-ready conditions is the recovery state contract's own
 describe the same condition differently, and `Retry recovery` is the exact
 control name that copy tells the user to tap (ui-design-rules §12).
 
-**Active-block content (#779/#782, #1315; simplified #1333).** Home is the
-entry point, not a second evidence surface. The active branch reads the ONE
-Recovery snapshot (`getRecoverySnapshot`, the same frozen object Analytics'
+**Active-block content (#779/#782, #1315; #1333; Big 3 hierarchy #1335).** Home
+is the entry point, not a second evidence surface — but Squat, Bench and Deadlift
+are what Kilo is built around, so they ARE the card. The active branch reads the
+ONE Recovery snapshot (`getRecoverySnapshot`, the same frozen object Analytics'
 section and Overview row read — **Recovery numbers come from one snapshot;
-surfaces never re-derive**) and shows only the most important signal. Per-lift
-Big 3 rows, the roster count line, and the week-scope explainer were removed
-from Home in #1333; that detail is Analytics Recovery's (the Big 3 summary data
-`useHomeRecoverySummary` derives is unchanged). In order:
+surfaces never re-derive**) via `useHomeRecoverySummary`'s unchanged `big3` and
+`headline`. What stays on Analytics Recovery is the prose around them: the
+headline caption (`N of M lifts back · avg …% · Week n`), the roster count line,
+the week-scope explainer, and `Latest week:` wording. In order:
 
-- **`1K recovery` header** (`home-recovery-link`) — the identity label and the
-  `Analytics › recovery` handoff in one row (ui-design-rules.md §13), same family
-  as Exercise Progress and the 1K card.
-- **Week label** (`home-recovery-week`) — `Latest week: Week N` (`Last loaded
-  week: …` when stale), only when there is no headline: the headline caption
-  already names the week. Omitted when no week exists.
+- **Header row** — the `1K recovery` header (`home-recovery-link`), the identity
+  label and the `Analytics › recovery` handoff in one row (ui-design-rules.md
+  §13), with a compact **week tag** (`home-recovery-week`) right-aligned on the
+  same row: the linked note title, else `Week N`; omitted when no week exists.
+  Staleness is carried by the stale message, not by the tag.
 - **Fallback status** — when the block or week cannot be compared, one plain
-  line and no count: `Baseline data for this block isn't available.`, `Baseline
-  captured. No week logged yet.`, `This week's note is no longer available.`,
-  `This week's note couldn't be read.`, or `No baseline exercises were captured
-  for this block.`
-- **Headline** (`home-recovery-headline`) — the snapshot's `{pct}% total
-  recovery` plus its `{N} of {M} lifts back · avg {avg}% · Week n` caption, the
-  identical values Analytics and the Overview row print; absent when the
-  snapshot has no total. Without a score, the snapshot's own reason prints
-  instead (`home-recovery-headline-reason`).
+  line: `Baseline data for this block isn't available.`, `Baseline captured. No
+  week logged yet.`, `This week's note is no longer available.`, `This week's
+  note couldn't be read.`, or `No baseline exercises were captured for this
+  block.` Carried Big 3 statuses still print under a note-status fallback (#1318).
+- **Big 3** (`home-recovery-big3`) — `home-recovery-lift-{squat,bench,deadlift}`
+  rows in the effective 1K selection's names (#1192): name left, value right
+  (`home-recovery-lift-{slot}-value`: the snapshot's floored `%`, or `Not in
+  baseline` / `Not retested` / `Not scored` / `Unknown`), a muted `Week k` age
+  marker (`-age`) only when the score is carried from an earlier week, and a
+  progress track filled only by a real score (`completion` at ≥100%).
+- **Total** (`home-recovery-headline`) — the snapshot's own `{pct}% total
+  recovery` string as one secondary muted line beneath the Big 3; absent when the
+  snapshot has no total. With no total AND no Big 3 rows, the snapshot's reason
+  prints instead (`home-recovery-headline-reason`).
 - **Stale message** — the existing `RECOVERY_STALE_MESSAGE`, only when stale,
-  with `Retry recovery`.
+  with `Retry recovery`, under the last-known-good Big 3.
 
 The inclusion clause stays off Home (#820). The region carries one composed
-`accessibilityLabel` (the headline's own a11y sentence, or the week plus the
-fallback/reason).
+`accessibilityLabel`: week, fallback, `Big 3`, each lift's snapshot `spoken`
+sentence, then the total.
 
 No `on track`, prediction, or medical claim.
 
@@ -581,10 +586,14 @@ No `on track`, prediction, or medical claim.
 | Card (`recoveryCard`) | padding / paddingTop / gap | `20` / `12` / `4` |
 | `Recovery` header (`home-recovery-link`) | minHeight | `44` (no fixed `height`) |
 | | label | KUA `headline-sm` `13`/`17`, legacy `12` / `700`; uppercase, `0.5` spacing, `onSurface` / `text` |
-| Week label | style | KUA `label-sm`, legacy `11` / `700` / `0.5` spacing; uppercase; `onSurfaceVariant` / `textMuted` |
-| Headline value | style | KUA `headline-sm`, legacy `headline-sm` / `700`; `onSurface` / `text` |
+| Week tag | style | KUA `label-sm`, legacy `11` / `700` / `0.5` spacing; uppercase; `onSurfaceVariant` / `textMuted`; right-aligned, shrinks |
+| Big 3 name / scored value | style | KUA `label-lg`, legacy `body-md` / `700`; `onSurface` / `text` (value `completion` / `success` at ≥100%) |
+| Big 3 status value | style | KUA `label-md`, legacy `body-sm`; `onSurfaceVariant` / `textMuted` |
+| Big 3 age marker | style | KUA `label-sm`, legacy `label-sm`; `onSurfaceVariant` / `textMuted` |
+| Big 3 track / fill | height / radius | `6` / `radius-xs`; track `surfaceBorder`, fill `primary` (`completion` at ≥100%) |
+| Total | style | KUA `body-sm` at `12`, legacy `13`; `onSurfaceVariant` / `textMuted`; marginTop `10` |
 | Fallback status | style | KUA `body-md` `15`/`21`, legacy `16` / `700`; `onSurface` / `text` |
-| Status / headline caption | fontSize | KUA `12`, legacy `13`; `onSurfaceVariant` / `textMuted` (no fixed `lineHeight`) |
+| Status line | fontSize | KUA `12`, legacy `13`; `onSurfaceVariant` / `textMuted` (no fixed `lineHeight`) |
 | `Retry recovery` | minHeight | `44` (no fixed `height`) |
 | | label | KUA `body-sm` `primary`; legacy `13` / `700` `accentText` |
 

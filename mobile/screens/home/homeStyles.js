@@ -295,8 +295,15 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     borderColor: kua ? kua.surfaceBorder : undefined,
   },
   // 44dp target, text bottom-aligned: slack sits above the title, not below.
+  // Header handoff and the compact week tag share one row (#1335).
+  recoveryHeaderRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', columnGap: 8, marginTop: -12,
+  },
   recoveryHeaderLink: {
-    alignItems: 'flex-end', marginTop: -12,
+    alignItems: 'flex-end', flexShrink: 1,
+  },
+  recoveryWeekTag: {
+    flexShrink: 1, minWidth: 0, textAlign: 'right',
   },
   recoveryLabel: {
     ...(kua ? { ...typography['headline-sm'], fontSize: TYPOGRAPHY['body-sm'].fontSize, lineHeight: 17 } : { fontSize: TYPOGRAPHY['label-md'].fontSize, fontWeight: '700', letterSpacing: 0.5 }),
@@ -309,10 +316,59 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     color: kua ? kua.onSurfaceVariant : colors.textMuted,
     textTransform: 'uppercase',
   },
-  // The one Recovery signal Home shows (#1333).
-  recoveryHeadline: {
-    ...(kua ? typography['headline-sm'] : { fontSize: TYPOGRAPHY['headline-sm'].fontSize, fontWeight: '700' }),
+  // #1335: the Big 3 lead the card; the shared total is secondary beneath them.
+  recoveryLiftList: {
+    gap: 10,
+    marginTop: 2,
+  },
+  recoveryLiftHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    columnGap: 8,
+    marginBottom: 4,
+  },
+  recoveryLiftName: {
+    ...(kua ? typography['label-lg'] : { fontSize: TYPOGRAPHY['body-md'].fontSize, fontWeight: '700' }),
     color: kua ? kua.onSurface : colors.text,
+    flexShrink: 1,
+  },
+  recoveryLiftValueRow: {
+    flexDirection: 'row', alignItems: 'baseline', columnGap: 6, flexShrink: 0,
+  },
+  recoveryLiftAge: {
+    ...(kua ? typography['label-sm'] : { fontSize: TYPOGRAPHY['label-sm'].fontSize }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+  },
+  recoveryLiftValue: {
+    ...(kua ? typography['label-md'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+  },
+  recoveryLiftScored: {
+    ...(kua ? typography['label-lg'] : { fontSize: TYPOGRAPHY['body-md'].fontSize, fontWeight: '700' }),
+    color: kua ? kua.onSurface : colors.text,
+  },
+  recoveryLiftDone: {
+    color: kua ? kua.completion : colors.success,
+  },
+  recoveryLiftTrack: {
+    height: 6,
+    borderRadius: GEOMETRY['radius-xs'],
+    overflow: 'hidden',
+    backgroundColor: kua ? kua.surfaceBorder : colors.cardBorder,
+  },
+  recoveryLiftFill: {
+    height: 6,
+    borderRadius: GEOMETRY['radius-xs'],
+    backgroundColor: kua ? kua.primary : colors.accent,
+  },
+  recoveryLiftFillDone: {
+    backgroundColor: kua ? kua.completion : colors.success,
+  },
+  recoveryTotal: {
+    ...(kua ? { ...typography['body-sm'], fontSize: TYPOGRAPHY['label-md'].fontSize } : { fontSize: TYPOGRAPHY['body-sm'].fontSize }),
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    marginTop: 10,
   },
   recoveryFallbackLine: {
     ...(kua ? typography['body-md'] : { fontSize: TYPOGRAPHY['body-lg'].fontSize, fontWeight: '700' }),

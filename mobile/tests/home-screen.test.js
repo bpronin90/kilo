@@ -1551,14 +1551,12 @@ describe('Home recovery summary (#757, #779, #782)', () => {
   const hasText = (component, needle) => texts(component).some(t => t.includes(needle));
   const has = (component, testID) => component.root.findAllByProps({ testID }).length > 0;
   // The analytics region announces itself as one composed sentence: separate
-  // value/label nodes would otherwise read as unrelated fragments.
-  // The announcement leads with the shared snapshot headline (#1315); the Big 3 /
-  // roster assertions below pin the rest, and `spokenHeadline` pins the headline.
-  const spokenFull = (component) => component.root
+  // value/label nodes would otherwise read as unrelated fragments. #1335: week,
+  // then the Big 3, then the shared total.
+  const spoken = (component) => component.root
     .findByProps({ testID: 'home-recovery-analytics' }).props.accessibilityLabel;
-  const HEADLINE_RE = /Week \d+: \d+% total recovery of .*? baseline strength\..*? In the consistent cohort: .*?\. (?:Consistent-cohort average by week: .*?\. )?/;
-  const spoken = (component) => spokenFull(component).replace(HEADLINE_RE, '');
-  const spokenHeadline = (component) => (spokenFull(component).match(HEADLINE_RE) || [''])[0].trim();
+  const liftText = (component, slot) => component.root
+    .findByProps({ testID: `home-recovery-lift-${slot}-value` }).props.children;
 
   let mounted;
   const mount = async (over) => {
@@ -1590,40 +1588,40 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     hooks._resetRecoveryAnalyticsFilterCache();
   });
 
-  // #1333: Home carries the one shared headline and hands every per-lift
-  // detail (Big 3 rows, roster counts, week scope) to Analytics Recovery.
-  test('an active block leads with the shared headline and leaves per-lift detail to Analytics', async () => {
+  // #1335: the Big 3 are the card's hierarchy; the shared total is one secondary
+  // line, and the caption, roster counts and week-scope explainer stay on Analytics.
+  test('an active block leads with the Big 3 and keeps the shared total secondary', async () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     const component = await mount();
 
     expect(has(component, 'home-recovery-summary')).toBe(true);
-    // #1315: the SAME headline and caption as the Analytics section.
+    expect(has(component, 'home-recovery-big3')).toBe(true);
+    expect(['squat', 'bench', 'deadlift'].map(slot => liftText(component, slot))).toEqual(['72%', '100%', 'Not in baseline']);
+    // #1315: the SAME total string as the Analytics section, without its caption.
     expect(component.root.findByProps({ testID: 'home-recovery-headline-value' }).props.children).toBe('86% total recovery');
-    expect(component.root.findByProps({ testID: 'home-recovery-headline-caption' }).props.children).toBe('2 of 2 lifts back · avg 86% · Week 1');
-    expect(spokenHeadline(component)).toMatch(/^Week 1: 86% total recovery of Routine A baseline strength\. 2 of 2 lifts back, avg 86%, Week 1\./);
-    // The headline is the whole announcement: no per-lift or roster sentences.
-    expect(spokenFull(component)).not.toMatch(/Big 3|of baseline\.|trained/);
-    for (const id of ['home-recovery-big3', 'home-recovery-lift-squat', 'home-recovery-remaining', 'home-recovery-week-scope-info', 'home-recovery-week']) {
+    // The week tag names the linked note by its title (#1265).
+    expect(component.root.findByProps({ testID: 'home-recovery-week' }).props.children).toBe('Recovery nr1');
+    expect(spoken(component)).toBe('Recovery nr1. Big 3. Squat 72% of baseline. Bench 100% of baseline. Deadlift not in baseline. 86% total recovery.');
+    for (const id of ['home-recovery-headline-caption', 'home-recovery-remaining', 'home-recovery-week-scope-info']) {
       expect(has(component, id)).toBe(false);
     }
-    for (const text of ['Big 3', 'Not in baseline', '72%', '2 of 2 trained', 'Not counted in your normal analytics.']) {
+    for (const text of ['lifts back', 'Latest week', '2 of 2 trained', 'Not counted in your normal analytics.']) {
       expect(hasText(component, text)).toBe(false);
     }
   });
 
   test.each([
-    ['fully recovered', 'FULL_TEXT'],
-    ['added during recovery', 'ADDED_TEXT'],
-    ['a Big 3 lift skipped', 'SKIPPED_TEXT'],
-    ['a not-comparable Big 3 lift', 'CLASS_CHANGED_TEXT'],
-  ])('%s: Home never prints a per-lift row or status', async (_label, key) => {
+    ['fully recovered', 'FULL_TEXT', ['100%', '100%']],
+    ['added during recovery', 'ADDED_TEXT', ['100%', '100%']],
+    ['a Big 3 lift skipped', 'SKIPPED_TEXT', ['Not retested', '100%']],
+    ['a not-comparable Big 3 lift', 'CLASS_CHANGED_TEXT', ['Not scored', '100%']],
+  ])('%s: Home prints each Big 3 status and nothing from the wider roster', async (_label, key, values) => {
     const TEXTS = { FULL_TEXT, ADDED_TEXT, SKIPPED_TEXT, CLASS_CHANGED_TEXT };
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     const component = await mount({ notes: [NOTE, weekNote('nr1', TEXTS[key])] });
 
-    expect(has(component, 'home-recovery-headline')).toBe(true);
-    expect(has(component, 'home-recovery-big3')).toBe(false);
-    for (const text of ['Not retested', 'Not scored', 'Curl', 'trained', 'Added during recovery']) {
+    expect(['squat', 'bench'].map(slot => liftText(component, slot))).toEqual(values);
+    for (const text of ['Curl', 'trained', 'Added during recovery']) {
       expect(hasText(component, text)).toBe(false);
     }
   });
@@ -1641,8 +1639,8 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     expect(hasText(component, "This week's note is no longer available.")).toBe(true);
     expect(hasText(component, 'baseline exercises met')).toBe(false);
     expect(hasText(component, '0 of 0')).toBe(false);
-    // Per-lift statuses stay on Analytics (#1333).
-    expect(spoken(component)).toBe("Week 1. This week's note is no longer available.");
+    // The Big 3 stay, each with the snapshot's own status for an unread week (#1335).
+    expect(spoken(component)).toBe("Week 1. This week's note is no longer available. Big 3. Squat unknown, a week that can’t be read may hold its score. Bench unknown, a week that can’t be read may hold its score. Deadlift not in baseline.");
   });
 
   test('an unreadable current-week note keeps the week identity', async () => {
@@ -1769,7 +1767,7 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
     await render.act(async () => { retry.props.onPress(); });
 
-    expect(spokenHeadline(component)).toMatch(/^Week 1: 86% total recovery/);
+    expect(spoken(component)).toMatch(/Big 3\. .* 86% total recovery\.$/);
     expect(hasText(component, hooks.RECOVERY_UNVERIFIED_MESSAGE)).toBe(false);
     expect(has(component, 'home-skeleton')).toBe(false);
   });
@@ -1822,8 +1820,9 @@ describe('Home recovery summary (#757, #779, #782)', () => {
     // Inclusion state is Analytics-owned content (#820); Home never states it.
     expect(hasText(component, 'Not counted in your normal analytics.')).toBe(false);
     expect(hasText(component, hooks.RECOVERY_STALE_MESSAGE)).toBe(true);
-    // No per-lift status or count on Home (#1333).
-    expect(has(component, 'home-recovery-big3')).toBe(false);
+    // The Big 3 stay under the stale message; the roster count does not (#1335).
+    expect(has(component, 'home-recovery-big3')).toBe(true);
+    expect(has(component, 'home-recovery-remaining')).toBe(false);
   });
 
   test('a still-unresolved read holds the skeleton, never the normal hero, and offers no retry', async () => {
@@ -2392,7 +2391,7 @@ describe('HomeRecoverySummary threads the load-aware typography (#1112)', () => 
     // The week label is a JetBrains Mono value in the loaded map; under
     // fallback it must carry the monospace fallback family.
     const countNode = component.root.findAllByType('Text')
-      .find(n => String(n.props.children ?? '') === 'Latest week: Week 2');
+      .find(n => String(n.props.children ?? '') === 'Week 2');
     expect(countNode).toBeTruthy();
     const family = flat(countNode).fontFamily;
     expect(family).toBe(TYPOGRAPHY_FALLBACK['label-sm'].fontFamily);
