@@ -14,6 +14,7 @@ function formatCountdown(ms) {
 }
 
 const DURATION_PRESETS_SEC = [60, 90, 120, 180];
+const PANEL_WIDTH = 280;
 
 // Non-modal rest-timer surface (#577, #1026). One control, one place, every
 // state:
@@ -93,10 +94,14 @@ export function RestTimerBanner({
       if (node && typeof node.measureInWindow === 'function') {
         node.measureInWindow((x, y, w, h) => {
           const winW = Dimensions.get('window').width;
+          // Clamp against BOTH viewport edges: right-aligned under the control,
+          // but never pushed past the left edge on a narrow screen.
+          const width = Math.min(PANEL_WIDTH, winW - 16);
           setAnchor({
             position: 'absolute',
             top: y + h + 6,
-            right: Math.max(8, winW - (x + w)),
+            width,
+            right: Math.min(Math.max(8, winW - (x + w)), winW - width - 8),
           });
         });
       }
@@ -346,7 +351,7 @@ const createStyles = (kua, mode, colors) => StyleSheet.create({
     position: 'absolute',
     top: 96,
     right: 16,
-    width: 280,
+    width: PANEL_WIDTH,
     maxWidth: '92%',
     gap: 14,
     padding: 16,

@@ -233,6 +233,32 @@ describe('RestTimerBanner compact editor control (#1006)', () => {
     expect(onDismissDone).toHaveBeenCalledTimes(1);
   });
 
+  test('the panel is clamped inside the viewport on a narrow screen', () => {
+    const { Dimensions } = require('react-native');
+    const dimSpy = jest.spyOn(Dimensions, 'get').mockReturnValue({ width: 320, height: 640, scale: 2, fontScale: 1 });
+    try {
+      let tree;
+      act(() => {
+        tree = renderer.create(
+          <ThemeProvider>
+            <RestTimerBanner {...idle} showStart />
+          </ThemeProvider>,
+          // The stopwatch sits left of Done: its right edge is 80dp from the screen edge.
+          { createNodeMock: () => ({ measureInWindow: (cb) => cb(196, 40, 44, 44) }) }
+        );
+      });
+      act(() => { tree.root.findAll(n => n.props?.accessibilityLabel === 'Rest timer')[0].props.onPress(); });
+      const panel = tree.root.findAll(n => typeof n.type === 'string' && n.props.accessibilityRole === 'menu')[0];
+      const style = Object.assign({}, ...[].concat(panel.props.style).filter(Boolean));
+      expect(style.width).toBeLessThanOrEqual(320 - 16);
+      // Left edge = 320 - right - width stays on screen (>= 8dp).
+      expect(320 - style.right - style.width).toBeGreaterThanOrEqual(8);
+      expect(style.right).toBeGreaterThanOrEqual(8);
+    } finally {
+      dimSpy.mockRestore();
+    }
+  });
+
   test('a failed background alert is flagged on the closed docked control', () => {
     const missing = renderBanner({ ...idle, showStart: true, isRunning: true, remainingMs: 5000, backgroundAlertAvailable: false });
     expect(missing.root.findAll(n => n.props?.testID === 'rest-timer-alert-unavailable').length).toBeGreaterThan(0);

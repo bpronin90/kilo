@@ -4298,6 +4298,20 @@ describe('Log action hierarchy (#711)', () => {
       expect(props.handleSkipWeek).not.toHaveBeenCalled();
     });
 
+    test('from a collapsed card, Skip week opens the card so its result line is visible', () => {
+      const collapsed = renderActiveCard({ isCollapsed: true });
+      openCurrentRoutineMenu(collapsed.root);
+      render.act(() => { pressableAround(collapsed.root, t => t === 'Skip week').props.onPress({ stopPropagation: jest.fn() }); });
+      expect(collapsed.props.toggleCollapsed).toHaveBeenCalledTimes(1);
+      expect(collapsed.props.handleSkipWeek).toHaveBeenCalledTimes(1);
+
+      const open = renderActiveCard({ isCollapsed: false });
+      openCurrentRoutineMenu(open.root);
+      render.act(() => { pressableAround(open.root, t => t === 'Skip week').props.onPress({ stopPropagation: jest.fn() }); });
+      expect(open.props.toggleCollapsed).not.toHaveBeenCalled();
+      expect(open.props.handleSkipWeek).toHaveBeenCalledTimes(1);
+    });
+
     test('a single-week routine renders no action strip at all', () => {
       const { StyleSheet } = require('react-native');
       const { root } = renderActiveCard({ hasABWeeks: false });

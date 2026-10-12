@@ -220,13 +220,13 @@ export function LogActiveRoutineCard({
               { label: 'Edit', a11y: 'Edit routine', run: enterCurrentEditor },
               // Workout actions first — Edit, then both skip actions together: Skip week always (skips
               // stack), Remove skip only while a trailing skip exists.
-              handleSkipWeek ? { label: 'Skip week', a11y: 'Skip week', run: handleSkipWeek } : null,
+              handleSkipWeek ? { label: 'Skip week', a11y: 'Skip week', run: handleSkipWeek, showsStatus: true } : null,
               // "Remove skip", not "Undo skip": that text collides with the editor's "Undo".
               canUnskipWeek && handleUnskipWeek
-                ? { label: 'Remove skip', a11y: 'Remove skip', run: handleUnskipWeek }
+                ? { label: 'Remove skip', a11y: 'Remove skip', run: handleUnskipWeek, showsStatus: true }
                 : null,
               // #956: Copy and Share stay distinct actions, not merged.
-              { label: 'Copy', a11y: `Copy routine ${workoutNoteTitle || 'Untitled Routine'}`, run: handleCopyRoutine },
+              { label: 'Copy', a11y: `Copy routine ${workoutNoteTitle || 'Untitled Routine'}`, run: handleCopyRoutine, showsStatus: true },
               { label: 'Share', a11y: 'Share routine', run: handleShareRoutine },
               {
                 label: 'Share as Image',
@@ -236,7 +236,14 @@ export function LogActiveRoutineCard({
             ].filter(Boolean).map(item => (
               <Pressable
                 key={item.label}
-                onPress={(e) => { e?.stopPropagation?.(); setMenuOpen(false); return item.run(); }}
+                onPress={(e) => {
+                  e?.stopPropagation?.();
+                  setMenuOpen(false);
+                  // Its result line renders in the body, so open a collapsed card
+                  // first — otherwise the press would look silent.
+                  if (item.showsStatus && isCollapsed) toggleCollapsed();
+                  return item.run();
+                }}
                 style={styles.actionMenuItem}
                 accessibilityRole="menuitem"
                 accessibilityLabel={item.a11y}

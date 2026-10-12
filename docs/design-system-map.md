@@ -1332,7 +1332,8 @@ Consequences to preserve:
   through a save in flight and after a skip; a press during a save answers with
   `Finishing the previous save. Try again.` — and `Remove skip` sits beside it
   only while a trailing skip exists. Both are live menu items, never a dimmed
-  pair. The strip under the header now carries `Week A/B` only, so a
+  pair. Choosing one (or `Copy`) from a collapsed card opens the card first,
+  so its result line is visible. The strip under the header now carries `Week A/B` only, so a
   single-week routine renders no strip at all. There is no opacity-dimmed
   disabled variant.
 - The `Double-tap to edit` hint is retired in the active card, the non-current
@@ -1341,7 +1342,8 @@ Consequences to preserve:
   `Deload complete`, `Edit`, `Regenerate deload`, `Delete active deload`.
 - **Rest timer is one docked control.** In current-routine edit the header
   control stays mounted through idle (stopwatch), running (live countdown) and
-  done (`Rest over`); one anchored 280dp panel (#1327) holds a header with
+  done (`Rest over`); one anchored 280dp panel (#1327, clamped to both
+  viewport edges on narrow screens) holds a header with
   the state in large type (`Rest timer`, the live countdown, or `Rest over`)
   and a caption, four equal-width presets in one row labelled in the
   countdown's m:ss format (`1:00 1:30 2:00 3:00`; Start, or Restart while
