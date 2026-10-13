@@ -51,9 +51,9 @@ the changelog and archived roadmaps.
   or neighbor. Every multi-part panel wrapper must declare its own `gap: 16` to
   stay consistent (the fix applied to `AnalyticsWeightTrendsCard` and
   `WeightScreen` goal history).
-- Sticky headers (e.g. the Progressive Overload header) must carry symmetric
-  `paddingTop`/`paddingBottom` (currently 8/8) so the pinned title keeps
-  breathing room at the top of the viewport.
+- Sticky headers must carry symmetric `paddingTop`/`paddingBottom` (8/8) so
+  the pinned title keeps breathing room at the top of the viewport. A sticky
+  header only belongs on the last section of a scroll view — it never unpins.
 
 ## 4. When panels/cards are allowed, and how dense
 
@@ -87,7 +87,9 @@ the changelog and archived roadmaps.
 
 ## 6. Collapse / expand behavior for long panels
 
-- Long or secondary panels must be collapsible. Default state is **expanded**.
+- Long or secondary panels must be collapsible. Default state is **expanded**,
+  except setup/configuration nested inside an analysis section (Analytics' Big 3
+  Mapping), which starts collapsed with its summary so the evidence leads.
 - The collapse control is a `MaterialIcons` chevron — `expand-less` when
   expanded, `expand-more` when collapsed — size 16–18, `textMuted`, living in a
   trailing control cell. This is the standardized convention (#389, #410); do

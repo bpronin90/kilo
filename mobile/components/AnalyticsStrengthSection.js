@@ -9,7 +9,6 @@ import { lerpColor } from '../lib/AnalyticsScreenHelpers';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight } from '../lib/units';
-import { ProgressionSuggestionCard, MutedProgressionRow } from './ProgressionSuggestionCard';
 import { InfoButton, InfoNote, useInfoExplainer } from './InfoExplainer';
 
 export function AnalyticsStrengthSection({
@@ -18,18 +17,9 @@ export function AnalyticsStrengthSection({
   oneK,
   oneKCanonical,
   oneKChartData,
-  // #1246: Big 3 Mapping slots in directly under the 1K panel, ahead of the
-  // suggestion cards below.
+  // #1246: Big 3 Mapping slots in under the 1K panel — configuration, so it
+  // follows the analysis and starts collapsed.
   big3Mapping = null,
-  // #960: explainable progression-suggestion cards for the strength surface.
-  // `progressionSuggestions` arrives already filtered by AnalyticsScreen
-  // (feature on, renderable, not muted, not dismissed); each entry is
-  // `{ record, key, instanceId }`. This section only lays them out.
-  progressionSuggestions = [],
-  mutedProgressionRows = [],
-  onMuteProgression,
-  onUnmuteProgression,
-  onDismissProgression,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
@@ -150,28 +140,6 @@ export function AnalyticsStrengthSection({
 
       {big3Mapping}
 
-      {(progressionSuggestions.length > 0 || mutedProgressionRows.length > 0) && (
-        <View style={styles.progressionSuggestions} testID="analytics-progression-suggestions">
-          {progressionSuggestions.map(({ record, key, instanceId }) => (
-            <ProgressionSuggestionCard
-              key={instanceId}
-              suggestion={record}
-              surface="analytics"
-              onMute={() => onMuteProgression && onMuteProgression(key)}
-              onDismiss={() => onDismissProgression && onDismissProgression(instanceId)}
-            />
-          ))}
-          {mutedProgressionRows.map(row => (
-            <MutedProgressionRow
-              key={row.key}
-              name={row.name}
-              surface="analytics"
-              onUnmute={() => onUnmuteProgression && onUnmuteProgression(row.key)}
-            />
-          ))}
-        </View>
-      )}
-
       <PlateCalculatorModal
         visible={plateWeightLb != null}
         weightLb={plateWeightLb}
@@ -181,9 +149,8 @@ export function AnalyticsStrengthSection({
   );
 }
 
-// Split out of AnalyticsStrengthSection (#821). It sits directly under the 1K
-// panel (#1246), ahead of Progressive Overload, since it picks the lifts that
-// feed the total.
+// Split out of AnalyticsStrengthSection (#821). It sits under the 1K panel
+// (#1246), since it picks the lifts that feed the total.
 export function AnalyticsBig3MappingCard({
   activeSlot,
   handleSlotTap,
@@ -194,8 +161,9 @@ export function AnalyticsBig3MappingCard({
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
-  // Expanded by default, per ui-design-rules §6.
-  const [big3Collapsed, setBig3Collapsed] = useState(false);
+  // Collapsed by default: mapping is setup, not analysis — the 1K evidence
+  // above it should lead the Strength section.
+  const [big3Collapsed, setBig3Collapsed] = useState(true);
 
   return (
       <Card style={styles.slotCard}>
@@ -206,7 +174,15 @@ export function AnalyticsBig3MappingCard({
           accessibilityState={{ expanded: !big3Collapsed }}
           accessibilityLabel={big3Collapsed ? 'Expand Big 3 mapping' : 'Collapse Big 3 mapping'}
         >
-          <Text style={styles.slotCardTitle}>Big 3 Mapping</Text>
+          <View style={styles.slotCardTitleBlock}>
+            <Text style={styles.slotCardTitle}>Big 3 Mapping</Text>
+            {/* ui-design-rules §6: a collapsed panel keeps a one-line summary. */}
+            {big3Collapsed && (
+              <Text testID="big3-mapping-summary" style={styles.slotCardSummary} numberOfLines={1}>
+                {['squat', 'bench', 'deadlift'].map(slot => oneKSelections[slot]).join(' · ')}
+              </Text>
+            )}
+          </View>
           <MaterialIcons
             name={big3Collapsed ? 'expand-more' : 'expand-less'}
             size={16}
@@ -266,10 +242,6 @@ export function AnalyticsBig3MappingCard({
 
 export const createStyles = (colors, kua = null) => StyleSheet.create({
   strengthSection: {
-    gap: 12,
-  },
-  // #960: a plain vertical stack of suggestion cards under the 1K panel.
-  progressionSuggestions: {
     gap: 12,
   },
   oneKCard: {
@@ -393,6 +365,14 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     minHeight: 44,
+  },
+  slotCardTitleBlock: {
+    flex: 1,
+    gap: 2,
+  },
+  slotCardSummary: {
+    fontSize: TYPOGRAPHY['body-sm'].fontSize,
+    color: kua ? kua.onSurface : colors.text,
   },
   slotCardTitle: {
     fontSize: TYPOGRAPHY['label-md'].fontSize,

@@ -58,7 +58,8 @@ function sessionGaugeToneColor(tone, colors) {
 //
 // `paused` (active Recovery, #1247): baseline sessions have stopped accumulating,
 // so the card reports the frozen routine stats instead of a lone Total.
-export function SessionGauge({ count, total, showDeload = true, paused = false }) {
+// `showTitle={false}`: the host already titles the section (Analytics' Routine Health).
+export function SessionGauge({ count, total, showDeload = true, paused = false, showTitle = true }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const typography = useKuaTypography();
@@ -69,7 +70,7 @@ export function SessionGauge({ count, total, showDeload = true, paused = false }
 
   return (
     <Card style={styles.sessionGauge}>
-      <Text style={styles.sessionGaugePanelTitle}>{paused ? 'Routine Health · Paused' : 'Routine Health'}</Text>
+      {showTitle && <Text style={styles.sessionGaugePanelTitle}>{paused ? 'Routine Health · Paused' : 'Routine Health'}</Text>}
       <View style={styles.sessionGaugeHeader}>
         {(showDeload || paused) && (
           <View style={styles.sessionGaugeStat}>

@@ -94,7 +94,7 @@ export function AnalyticsFatigueCard({
   if (checkInHistory.rough.length === 0 && checkInHistory.ok.length === 0 && checkInHistory.pending.length === 0) {
     return (
       <Card style={styles.fatigueCard}>
-        <Text style={styles.fatiguePanelLabel}>Fatigue Tracking</Text>
+        <Text style={styles.fatiguePanelLabel}>Session Check-ins</Text>
         <Text style={styles.fatigueEmpty}>No check-ins logged yet.</Text>
       </Card>
     );
@@ -102,7 +102,7 @@ export function AnalyticsFatigueCard({
 
   return (
     <Card style={styles.fatigueCard}>
-      <Text style={styles.fatiguePanelLabel}>Fatigue Tracking</Text>
+      <Text style={styles.fatiguePanelLabel}>Session Check-ins</Text>
       <Pressable
         style={styles.fatigueSummary}
         onPress={() => setFatigueExpanded(e => !e)}

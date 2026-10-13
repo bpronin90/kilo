@@ -1,33 +1,22 @@
-// Card #1051: AnalyticsScreen.js was split into presentation modules under
-// mobile/screens/analytics/ (AnalyticsOverview, AnalyticsProgression,
-// AnalyticsStates, analyticsStyles) purely to bring the screen file itself
-// under 600 lines. This suite pins the two things that split could break
-// silently:
+// Card #1051 split AnalyticsScreen.js into presentation modules under
+// mobile/screens/analytics/ to keep the screen under 600 lines. The evidence
+// hierarchy pass replaced the Overview/Progression composers with
+// AnalyticsLayout (pure section ordering), AnalyticsProgressiveOverload,
+// AnalyticsStates and analyticsStyles. This suite pins:
 //
 //   1. The public boundary: `AnalyticsScreen` is still the same named export
-//      other screens/tests import and mock (grep hits: app-navigation,
-//      app-shell-render-isolation, one-k-progress-consistency, weight-screen,
-//      app-startup, app-update-banner, app-workout-hydration, app-shell-back).
-//   2. The extraction contract: AnalyticsOverview/AnalyticsProgression return
-//      FLAT arrays of elements (not a single wrapped component), because
-//      AnalyticsScreen spreads them into one array before
-//      `React.Children.toArray` — the sticky header and its adjacent
-//      overload-list anchor must stay ordinary flat siblings there for
-//      `stickyHeaderIndices` (and ScrollView's real sticky-header behavior)
-//      to keep resolving to the same slot they always did.
+//      other screens/tests import and mock.
+//   2. The ordering contract: `orderAnalyticsSections` places the same
+//      elements in the normal or active-Recovery hierarchy, never adding or
+//      dropping a section between them.
 //
-// Full behavioral coverage (readiness states, calculations, chart inputs,
-// progression/overload presentation, Recovery filtering) lives in
-// analytics-screen.test.js, unchanged and untouched by this refactor. This
-// file only spot-checks that the boundary and section routing still work
-// once presentation moved out.
+// Full behavioral coverage lives in analytics-screen.test.js.
 
 import React from 'react';
 import render from 'react-test-renderer';
 import { View } from 'react-native';
 import { AnalyticsScreen } from '../screens/AnalyticsScreen';
-import { AnalyticsOverview } from '../screens/analytics/AnalyticsOverview';
-import { AnalyticsProgression } from '../screens/analytics/AnalyticsProgression';
+import { orderAnalyticsSections } from '../screens/analytics/AnalyticsLayout';
 import { createStyles } from '../screens/analytics/analyticsStyles';
 import { describePoRowState, renderOverloadListContent } from '../screens/analytics/AnalyticsStates';
 import * as useEntries from '../hooks/useEntries';
@@ -126,135 +115,53 @@ describe('AnalyticsScreen public boundary (card #1051)', () => {
   });
 });
 
-describe('AnalyticsOverview / AnalyticsProgression return flat arrays (card #1051)', () => {
-  test('AnalyticsOverview returns a flat array, not a single wrapped element', () => {
-    const recoveryStub = React.createElement(View, { key: 'recovery-stub' });
-    const items = AnalyticsOverview({
-      notesError: null,
-      refreshNotes: jest.fn(),
-      weightError: null,
-      refreshWeightEntries: jest.fn(),
-      overviewRows: [],
-      overviewLoading: false,
-      overviewAsOf: null,
-      onSelectSection: jest.fn(),
-      handleWeightLayout: jest.fn(),
-      weightSummary: {},
-      rolling7: [],
-      rolling30: [],
-      isWeightLoading: false,
-      onNavigate: jest.fn(),
-      hasRecoverySection: false,
-      handleRecoveryLayout: jest.fn(),
-      recoverySection: recoveryStub,
-    });
+describe('orderAnalyticsSections — the two hierarchies', () => {
+  const el = (key) => React.createElement(View, { key });
+  const parts = () => ({
+    banners: [null, el('weight-error-banner')],
+    strength: el('strength'),
+    progressiveOverload: el('po'),
+    weight: el('weight'),
+    routineHealth: el('routine'),
+    recovery: el('recovery'),
+    disclosure: el('disclosure'),
+  });
+  const keys = (items) => items.filter(Boolean).map(i => i.key);
 
-    expect(Array.isArray(items)).toBe(true);
-    // Load-failure banners (both null here), overview card, weight trends
-    // card, recovery slot — five flat top-level siblings, always.
-    expect(items).toHaveLength(5);
-    expect(items[0]).toBeNull();
-    expect(items[1]).toBeNull();
-    expect(items[2]?.key).toBe('overview-card');
-    expect(items[3]?.key).toBe('weight-trends-card');
-    // hasRecoverySection: false → the recovery element passes through
-    // unwrapped, exactly as it did inline before the split.
-    expect(items[4]).toBe(recoveryStub);
+  test('normal training: Strength → Progressive Overload → Weight → Routine Health → Recovery history', () => {
+    expect(keys(orderAnalyticsSections({ isActiveRecovery: false, baselineExpanded: false, ...parts() })))
+      .toEqual(['weight-error-banner', 'strength', 'po', 'weight', 'routine', 'recovery']);
   });
 
-  test('AnalyticsOverview wraps the recovery section in its measurable anchor only when hasRecoverySection is true', () => {
-    const recoveryStub = React.createElement(View, { key: 'recovery-stub' });
-    const items = AnalyticsOverview({
-      notesError: null, refreshNotes: jest.fn(), weightError: null, refreshWeightEntries: jest.fn(),
-      overviewRows: [], overviewLoading: false, overviewAsOf: null, onSelectSection: jest.fn(),
-      handleWeightLayout: jest.fn(), weightSummary: {}, rolling7: [], rolling30: [], isWeightLoading: false,
-      onNavigate: jest.fn(),
-      hasRecoverySection: true,
-      handleRecoveryLayout: jest.fn(),
-      recoverySection: recoveryStub,
-    });
-    const wrapper = items[4];
-    expect(wrapper.props.testID).toBe('recovery-section-anchor');
-    expect(wrapper.props.children).toBe(recoveryStub);
+  test('normal training with no Recovery history leaves no slot behind', () => {
+    expect(keys(orderAnalyticsSections({ isActiveRecovery: false, ...parts(), recovery: null })))
+      .toEqual(['weight-error-banner', 'strength', 'po', 'weight', 'routine']);
   });
 
-  test('AnalyticsProgression returns a flat array whose sticky header and overload-list anchor are adjacent siblings', () => {
-    const styles = createStyles({
-      textMuted: '#888', background: '#fff', text: '#000', inputBackground: '#eee',
-      inputBorder: '#ccc', divider: '#ddd', subtleBg: '#f5f5f5', accentText: '#00f', accent: '#00f',
-    });
-    const items = AnalyticsProgression({
-      isActiveRecovery: false,
-      baselineCollapsed: true,
-      setBaselineCollapsed: jest.fn(),
-      styles,
-      colors: { textMuted: '#888', accent: '#00f' },
-      sinceDeload: 0,
-      sessionCount: 0,
-      deloadModeEnabled: false,
-      fatigueTrackingEnabled: true,
-      checkInHistory: [],
-      fatigueExpanded: false,
-      setFatigueExpanded: jest.fn(),
-      handleCheckInEdit: jest.fn(),
-      handleStrengthLayout: jest.fn(),
-      isNotesLoading: false,
-      isTrackedLoading: false,
-      oneK: null,
-      oneKCanonical: null,
-      oneKChartData: [],
-      progressionSuggestionView: { visible: [], muted: [] },
-      onMuteProgression: jest.fn(),
-      onUnmuteProgression: jest.fn(),
-      onDismissProgression: jest.fn(),
-      handleProgressiveOverloadHeaderLayout: jest.fn(),
-      handleProgressiveOverloadListLayout: jest.fn(),
-      groupedSignals: [],
-      toggleAllGroups: jest.fn(),
-      allGroupsCollapsed: false,
-      collapsedGroups: new Set(),
-      toggleGroup: jest.fn(),
-      searchQuery: '',
-      setSearchQuery: jest.fn(),
-      analytics: { nonWeightedMetrics: {}, nameDisplayMap: new Map() },
-      trackedLiftActivations: {},
-      unit: 'lb',
-      onNavigate: jest.fn(),
-      activeSlot: null,
-      handleSlotTap: jest.fn(),
-      SLOT_LABELS: { bench: 'Bench', squat: 'Squat', deadlift: 'Deadlift' },
-      oneKSelections: {},
-      noteExerciseNames: [],
-      handleSelectExercise: jest.fn(),
-    });
+  test('active Recovery, collapsed: Recovery → Weight → disclosure, baseline hidden', () => {
+    expect(keys(orderAnalyticsSections({ isActiveRecovery: true, baselineExpanded: false, ...parts() })))
+      .toEqual(['weight-error-banner', 'recovery', 'weight', 'disclosure']);
+  });
 
-    expect(Array.isArray(items)).toBe(true);
-    // Not in active Recovery, so the baseline disclosure toggle is absent (null)
-    // and everything else — Fatigue title, gauge, fatigue card, strength
-    // section (Big 3 inside it), sticky header, overload-list anchor — renders: 7
-    // flat top-level siblings, always.
-    expect(items).toHaveLength(7);
-    const keys = items.map(el => el?.key ?? null);
-    expect(keys).toEqual([
-      null, 'combined-section-title', 'session-gauge', 'fatigue-card',
-      'strength-section', 'sticky-header', 'overload-list',
-    ]);
+  test('active Recovery, expanded: disclosure holds Strength → Progressive Overload → Routine Health', () => {
+    expect(keys(orderAnalyticsSections({ isActiveRecovery: true, baselineExpanded: true, ...parts() })))
+      .toEqual(['weight-error-banner', 'recovery', 'weight', 'disclosure', 'strength', 'po', 'routine']);
+  });
 
-    // The exact adjacency `AnalyticsScreen`'s stickyHeaderIndices depends on:
-    // the overload-list anchor is the sticky header's immediate next sibling.
-    const stickyIdx = items.findIndex(el => el?.props?.testID === 'sticky-header');
-    expect(items[stickyIdx + 1]?.props?.testID).toBe('overload-list-anchor');
+  test('the disclosure never renders outside active Recovery', () => {
+    expect(keys(orderAnalyticsSections({ isActiveRecovery: false, baselineExpanded: true, ...parts() })))
+      .not.toContain('disclosure');
   });
 });
 
 describe('analyticsStyles.createStyles (card #1051)', () => {
-  test('exposes the style keys the sticky header / disclosure / row presentation depend on', () => {
+  test('exposes the style keys the section / disclosure / row presentation depend on', () => {
     const styles = createStyles({
       textMuted: '#888', background: '#fff', text: '#000', inputBackground: '#eee',
       inputBorder: '#ccc', divider: '#ddd', subtleBg: '#f5f5f5', accentText: '#00f',
     });
     for (const key of [
-      'baselineDisclosureToggle', 'signalStickyHeader', 'searchInput',
+      'baselineDisclosureToggle', 'poSection', 'routineHealthSection', 'searchInput',
       'poContainer', 'groupHeader', 'signalRow', 'trackingCaption',
       'emptyTracked', 'emptyTrackedLink',
     ]) {
@@ -265,26 +172,15 @@ describe('analyticsStyles.createStyles (card #1051)', () => {
 
 describe('AnalyticsStates.describePoRowState (card #1051)', () => {
   test('no capability data → no caption', () => {
-    expect(describePoRowState({ hasActivation: true, isFirstSpanSession: true, hasCapabilityData: false })).toBeNull();
+    expect(describePoRowState({ isFirstSpanSession: true, hasCapabilityData: false })).toBeNull();
   });
 
-  test('first session, no explicit activation → "First session"', () => {
-    expect(describePoRowState({ hasActivation: false, isFirstSpanSession: true, hasCapabilityData: true }))
-      .toBe('First session');
+  test('first session in the tracked span → "First session"', () => {
+    expect(describePoRowState({ isFirstSpanSession: true, hasCapabilityData: true })).toBe('First session');
   });
 
-  test('first session, explicit activation → "New tracked span" caption', () => {
-    expect(describePoRowState({ hasActivation: true, isFirstSpanSession: true, hasCapabilityData: true }))
-      .toBe('New tracked span: Est./Kilo/Best above stay historical');
-  });
-
-  test('not first session, no explicit activation → "Inherited tracking" caption', () => {
-    expect(describePoRowState({ hasActivation: false, isFirstSpanSession: false, hasCapabilityData: true }))
-      .toBe('Inherited tracking: full history');
-  });
-
-  test('fully classified row (explicit activation, not first session) → no caption', () => {
-    expect(describePoRowState({ hasActivation: true, isFirstSpanSession: false, hasCapabilityData: true })).toBeNull();
+  test('classified row → no inline methodology caption (it lives behind the PO info toggle)', () => {
+    expect(describePoRowState({ isFirstSpanSession: false, hasCapabilityData: true })).toBeNull();
   });
 
   test('renderOverloadListContent shows the loading state while notes/tracked lifts are loading', () => {
@@ -355,11 +251,11 @@ describe('AnalyticsScreen section-routing spot checks through the recomposed bou
     expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ y: 420 }));
   });
 
-  test('the sticky header and overload-list anchor still both render, adjacent, through the split', () => {
+  test('Progressive Overload renders as one measurable section with no sticky header', () => {
     const { component } = setup();
-    const stickyHeader = component.root.findByProps({ testID: 'sticky-header' });
-    const overloadAnchor = component.root.findByProps({ testID: 'overload-list-anchor' });
-    expect(stickyHeader).toBeTruthy();
-    expect(overloadAnchor).toBeTruthy();
+    expect(component.root.findByProps({ testID: 'progressive-overload-section' })).toBeTruthy();
+    expect(component.root.findAllByProps({ testID: 'sticky-header' })).toHaveLength(0);
+    const { ScrollView } = require('react-native');
+    expect(component.root.findAllByType(ScrollView)[0].props.stickyHeaderIndices).toBeUndefined();
   });
 });

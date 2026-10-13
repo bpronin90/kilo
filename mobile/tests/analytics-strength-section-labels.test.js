@@ -105,9 +105,10 @@ describe('AnalyticsStrengthSection — 1K explainer uses the shared info icon', 
   });
 });
 
-// #1246: Big 3 Mapping sits directly under the 1K panel, ahead of suggestion rows.
+// #1246: Big 3 Mapping sits under the 1K panel. Progression suggestions moved to
+// the Progressive Overload section, so Strength renders none.
 describe('AnalyticsStrengthSection — Big 3 Mapping placement (#1246)', () => {
-  test('renders the mapping slot after the 1K panel and before progression rows', async () => {
+  test('renders the mapping slot after the 1K panel and no progression rows', async () => {
     let root;
     await act(async () => {
       root = renderer.create(
@@ -128,6 +129,6 @@ describe('AnalyticsStrengthSection — Big 3 Mapping placement (#1246)', () => {
     const at = (s) => json.indexOf(s);
     expect(at('1K Progress')).toBeGreaterThan(-1);
     expect(at('big3-slot')).toBeGreaterThan(at('1K Progress'));
-    expect(at('analytics-progression-suggestions')).toBeGreaterThan(at('big3-slot'));
+    expect(at('analytics-progression-suggestions')).toBe(-1);
   });
 });

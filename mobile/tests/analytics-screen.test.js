@@ -449,172 +449,88 @@ describe('AnalyticsScreen Progressive Overload — grouping and layout', () => {
   });
 });
 
-describe('deriveOverviewRows (#821)', () => {
-  const { deriveOverviewRows } = require('../screens/analytics/analyticsDerivations');
+describe('AnalyticsScreen has no Overview card — Home owns the summary', () => {
+  afterEach(() => jest.restoreAllMocks());
 
-  function rowFor(rows, key) {
-    return rows.find(r => r.key === key);
-  }
-
-  test('1K and weight deltas come from the adjacent points of the series the tab plots', () => {
-    const rows = deriveOverviewRows({
-      oneKPoints: [{ value: 940 }, { value: 975 }, { value: 1000 }],
-      weightPoints: [{ value: 186.0 }, { value: 184.8 }],
-      currentWeight: 184.2,
-    });
-
-    expect(rowFor(rows, 'oneK').value).toBe(1000);
-    expect(rowFor(rows, 'oneK').delta).toBe(25);
-    expect(rowFor(rows, 'weight').value).toBe(184.2);
-    expect(rowFor(rows, 'weight').delta).toBe(-1.2);
+  test('no overview card or Overview heading renders; Strength leads the tab', () => {
+    const component = setup();
+    const root = component.root;
+    expect(root.findAllByProps({ testID: 'analytics-overview' }).length).toBe(0);
+    expect(findAllText(root).some(t => t === 'Overview')).toBe(false);
+    expect(findAllText(root).find(t => ['Strength', 'Progressive Overload', 'Weight Trends', 'Routine Health'].includes(t))).toBe('Strength');
   });
 
-  test('a single point yields a value with no delta rather than a delta of zero', () => {
-    const rows = deriveOverviewRows({
-      oneKPoints: [{ value: 900 }],
-      weightPoints: [{ value: 184 }],
-      currentWeight: 184,
-    });
-    expect(rowFor(rows, 'oneK').value).toBe(900);
-    expect(rowFor(rows, 'oneK').delta).toBeNull();
-    expect(rowFor(rows, 'weight').delta).toBeNull();
-  });
-
-  test('exercise progress counts the existing overload_trend classification', () => {
-    const rows = deriveOverviewRows({
-      signals: [
-        { overload_trend: 'up' }, { overload_trend: 'up' },
-        { overload_trend: 'flat' }, { overload_trend: 'down' },
-        { overload_trend: 'baseline' }, { overload_trend: null },
-      ],
-    });
-    const progress = rowFor(rows, 'progress');
-    expect(progress.counts).toEqual({ up: 2, flat: 1, down: 1 });
-    // Unclassified trends are not counted into the denominator.
-    expect(progress.value).toBe(2);
-    expect(progress.valueSuffix).toBe('of 4 up');
-  });
-
-  test('the routine row is no longer shown in the overview', () => {
-    const rows = deriveOverviewRows({ sessionsSinceDeload: 8, deloadModeEnabled: true });
-    expect(rowFor(rows, 'routine')).toBeUndefined();
-  });
-
-  test('a failed read is marked unavailable, not reported as an empty state', () => {
-    const rows = deriveOverviewRows({ notesUnavailable: true, weightUnavailable: true });
-    expect(rowFor(rows, 'oneK').unavailable).toBe(true);
-    expect(rowFor(rows, 'progress').unavailable).toBe(true);
-    expect(rowFor(rows, 'weight').unavailable).toBe(true);
-  });
-
-  // Review finding on PR #876 (#871): the 1K row kept reporting its
-  // "since your last session" delta as fresh during active Recovery, unlike
-  // Exercise Progress/Routine which already get `paused` metadata. The value
-  // itself must stay the true latest total — only the delta/caption are
-  // suppressed and the row is marked paused, same shape as the other two.
-  test('active Recovery replaces the paused 1K and Exercise Progress rows with one compact history note', () => {
-    const rows = deriveOverviewRows({
-      oneKPoints: [{ value: 940 }, { value: 975 }, { value: 1000 }],
-      signals: [{ overload_trend: 'up' }],
-      activeTraining: { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 1 },
-    });
-    expect(rows.map(r => r.key)).toEqual(['recovery', 'weight', 'history']);
-    expect(rowFor(rows, 'oneK')).toBeUndefined();
-    expect(rowFor(rows, 'progress')).toBeUndefined();
-    expect(rowFor(rows, 'history').note).toBe('1K Total and Exercise Progress resume after recovery');
-    expect(rowFor(rows, 'history').section).toBeUndefined();
-  });
-
-  test('outside active Recovery the 1K row is not paused and its delta still reports', () => {
-    const rows = deriveOverviewRows({
-      oneKPoints: [{ value: 940 }, { value: 975 }, { value: 1000 }],
-    });
-    const oneK = rowFor(rows, 'oneK');
-    expect(oneK.paused).toBe(false);
-    expect(oneK.delta).toBe(25);
-    expect(oneK.deltaCaption).toBe('since your last session');
-  });
-
-  // #1315: the Recovery row reads the single Recovery snapshot's display (the same
-  // headline the Recovery section and Home print): the % as its value, the compact
-  // caption as `infoCaption`, the full sentence for assistive tech.
-  const SNAP = (over = {}) => ({
-    stale: false,
-    display: {
-      state: 'score', percent: 87, caption: '4 lifts · Week 3', message: null,
-      a11y: 'Week 3: 87% of Push Pull Legs baseline strength. Average of 4 lifts scored every week · 4 of 6 baseline lifts. In the average: A, B, C, D.',
-      ...over,
-    },
-  });
-  const OPEN = { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 3 };
-
-  test('active Recovery shows the snapshot headline: % value and the compact caption, no band/movement remnants', () => {
-    const recovery = rowFor(deriveOverviewRows({ activeTraining: OPEN, recoverySnapshot: SNAP() }), 'recovery');
-    expect(recovery.value).toBe('87%');
-    expect(recovery.infoCaption).toBe('4 lifts · Week 3');
-    expect(recovery.valueSuffix).toBeUndefined();
-    expect(recovery.accessibilityText).toContain('87% of Push Pull Legs baseline strength');
-    expect(recovery.accessibilityText).toContain('In the average: A, B, C, D.');
-    expect(recovery.delta).toBeUndefined();
-    expect(JSON.stringify(recovery)).not.toMatch(/pre-recovery|improved|not trained yet/);
-  });
-
-  test('a stale snapshot keeps the headline and says so for assistive tech', () => {
-    const recovery = rowFor(deriveOverviewRows({ activeTraining: OPEN, recoverySnapshot: { ...SNAP(), stale: true } }), 'recovery');
-    expect(recovery.value).toBe('87%');
-    expect(recovery.accessibilityText).toMatch(/may be out of date\.$/);
-  });
-
-  test.each([
-    ['empty cohort', { state: 'empty', percent: null, caption: null, message: 'No lift has a strength score in every readable week yet, so there is no average.' }],
-    ['legacy baseline', { state: 'unavailable', percent: null, caption: null, message: 'Baseline best-set data unavailable. Rebuild the baseline in Manage block (Log tab) to score strength.' }],
-  ])('%s: no number, the snapshot message is the caption (never a fabricated 0%)', (_l, display) => {
-    const recovery = rowFor(deriveOverviewRows({ activeTraining: OPEN, recoverySnapshot: SNAP(display) }), 'recovery');
-    expect(recovery.value).toBeNull();
-    expect(recovery.emptyCaption).toBe(display.message);
-  });
-
-  test('without a snapshot the row falls back to the shared week-status wording', () => {
-    const recovery = rowFor(deriveOverviewRows({ activeTraining: OPEN }), 'recovery');
-    expect(recovery.value).toBeNull();
-    expect(typeof recovery.emptyCaption).toBe('string');
-  });
-
-  test('only the active-Recovery row carries infoCaption; every other row is untouched', () => {
-    const rows = deriveOverviewRows({
-      oneKPoints: [{ value: 940 }, { value: 975 }, { value: 1000 }],
-      signals: [{ overload_trend: 'up' }],
-      sessionsSinceDeload: 3,
-      currentWeight: 180,
-      weightPoints: [{ value: 181 }, { value: 180 }],
-      activeTraining: OPEN,
-      recoverySnapshot: SNAP(),
-    });
-    expect(rowFor(rows, 'weight').infoCaption).toBeUndefined();
-    expect(rowFor(rows, 'recovery').infoCaption).toBe('4 lifts · Week 3');
+  test('a failed notes read still shows its banner without an overview row', () => {
+    const component = setup({ hookOverrides: { error: new Error('boom'), refresh: jest.fn() } });
+    expect(hasText(component.root, 'Could not load workout notes')).toBe(true);
   });
 });
 
-describe('AnalyticsScreen overview block (#821)', () => {
+describe('AnalyticsScreen Progressive Overload — canonical Exercise Progress summary', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  test('renders at the top of the tab, above Weight Trends', () => {
-    const component = setup();
+  test('Progressing / Steady / Regressing print analytics.exerciseProgress, counted nowhere else', () => {
+    const currentNote = {
+      id: 'n1',
+      raw_text: 'Monday\n+ lifting\n1. bench press\n2. squat\n\nFriday\n+ lifting\n1. deadlift',
+    };
+    const trackedLifts = { 'bench press': true, squat: true, deadlift: true };
+    jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
+      signals: [
+        { name: 'Bench Press', latest_pr: 225, kilo_max: 200, latest_top_weight: 185, overload_trend: 'up' },
+        { name: 'Squat', latest_pr: 315, kilo_max: 290, latest_top_weight: 275, overload_trend: 'flat' },
+        { name: 'Deadlift', latest_pr: 405, kilo_max: 380, latest_top_weight: 365, overload_trend: 'down' },
+      ],
+      nameDisplayMap: new Map(),
+      repDropOffFlags: {},
+      perDaySignals: {},
+    });
+    const component = setup({ hookOverrides: { notes: [currentNote], currentNote, trackedLifts } });
     const root = component.root;
-    expect(root.findAllByProps({ testID: 'analytics-overview' }).length).toBeGreaterThan(0);
-    expect(hasText(root, 'Overview')).toBe(true);
+
+    // The same canonical pass the screen runs (and Home reads).
+    const parsed = deriveParsedSections([currentNote], currentNote, null);
+    const expected = deriveAnalytics(parsed, trackedLifts, data.resolveOneKSelections(currentNote), 1.07, {}, {
+      deloadHistory: [], sourceNoteId: null, recoveryBlocks: [],
+    }).exerciseProgress;
+    expect(expected).toMatchObject({ progressing: 1, stalled: 1, regressing: 1 });
+
+    const count = (key) => {
+      const col = root.findAllByProps({ testID: `po-progress-${key}` })[0];
+      return Number([].concat(col.findAllByType('Text')[0].props.children).join(''));
+    };
+    expect(count('progressing')).toBe(expected.progressing);
+    expect(count('stalled')).toBe(expected.stalled);
+    expect(count('regressing')).toBe(expected.regressing);
+    // The summary heads its own section, above the tracked-exercise table.
+    const po = root.findByProps({ testID: 'progressive-overload-section' });
+    expect(po.findAllByProps({ testID: 'po-progress-summary' }).length).toBeGreaterThan(0);
+    expect(hasText(root, 'Steady')).toBe(true);
   });
 
-  test('a failed notes read reports Unavailable rather than an empty state', () => {
-    // Through hookOverrides, not a bare mockReturnValue: setup() re-mocks
-    // useWorkoutNotes itself and would clobber it.
-    const component = setup({
-      hookOverrides: { error: new Error('boom'), refresh: jest.fn() },
-    });
+  test('progression suggestions render inside Progressive Overload, not Strength', () => {
+    const component = setup();
     const root = component.root;
-    expect(hasText(root, 'Unavailable: could not load')).toBe(true);
-    // And never the "you have nothing logged" copy for the same row.
-    expect(hasText(root, 'Map your three lifts and log one full cycle')).toBe(false);
+    const po = root.findByProps({ testID: 'progressive-overload-section' });
+    // Strength no longer carries the suggestion slot at all.
+    const { AnalyticsStrengthSection } = require('../components/AnalyticsStrengthSection');
+    const strength = root.findByType(AnalyticsStrengthSection);
+    expect(strength.props.progressionSuggestions).toBeUndefined();
+    expect(strength.findAllByProps({ testID: 'analytics-progression-suggestions' }).length).toBe(0);
+    expect(po).toBeTruthy();
+  });
+});
+
+describe('AnalyticsScreen Routine Health reads deriveRoutineStatus()', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  test('the gauge prints the canonical routine status values as-is', () => {
+    const spy = jest.spyOn(data, 'deriveRoutineStatus').mockReturnValue({ sessionsLogged: 17, sessionsSinceDeload: 4 });
+    const root = setup({ featureToggles: { fatigueTrackingEnabled: false } }).root;
+    expect(spy).toHaveBeenCalled();
+    const gauge = root.findByType(require('../components/UI').SessionGauge);
+    expect(gauge.props.count).toBe(4);
+    expect(gauge.props.total).toBe(17);
   });
 });
 
@@ -942,19 +858,15 @@ describe('AnalyticsScreen non-weighted exercise cards — minimal layout', () =>
 describe('AnalyticsScreen empty state copy — no tracked exercises', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  test('empty state names the real Track control, not a nonexistent bookmark (issue #582)', () => {
-    // When no exercises are tracked, the empty state should tell users to tap Track
-    // on an exercise, matching the actual control name in the UI.
+  test('empty state is short and actionable, naming the real Track control (issue #582)', () => {
     const component = setup({ hookOverrides: { notes: [], currentNote: null, trackedLifts: {} } });
     const root = component.root;
 
-    // New copy mentions the real control name "Track"
-    expect(hasText(root, 'Tap Track on any exercise')).toBe(true);
-    // Old copy mentioning "bookmark" must be absent
+    expect(hasText(root, 'No tracked exercises yet.')).toBe(true);
+    expect(hasText(root, 'Track an exercise in Log to see it here.')).toBe(true);
     expect(hasText(root, 'bookmark')).toBe(false);
-    // #894: the empty state must also say logging alone doesn't track, using
-    // the exact Track / Tracked labels.
-    expect(hasText(root, "Logging alone doesn't track it")).toBe(true);
+    // Tracking mechanics are methodology — not a paragraph on the default surface.
+    expect(hasText(root, "Logging alone doesn't track it")).toBe(false);
   });
 
   // #1246: a zero-row Progressive Overload renders no table chrome.
@@ -970,7 +882,7 @@ describe('AnalyticsScreen empty state copy — no tracked exercises', () => {
     ['1RM', 'Kilo', 'Best', 'Trend'].forEach(label => expect(exact(label)).toBe(false));
   });
 
-  test('Big 3 Mapping renders before Progressive Overload', () => {
+  test('Big 3 Mapping (inside Strength) renders before Progressive Overload', () => {
     const component = setup({ hookOverrides: { notes: [], currentNote: null, trackedLifts: {} } });
     const root = component.root;
     const pos = (label) => {
@@ -1007,14 +919,20 @@ describe('AnalyticsScreen Progressive Overload — tracking-state captions (#894
     });
   }
 
-  test('a tracked exercise with no activation record reads as inherited, not explicitly selected', () => {
+  test('inherited tracking is explained behind the Progressive Overload info toggle, not inline', () => {
     // #893: absent from the activations map means legacy boolean-only tracked
     // state or a catalog `po: true` default — never an explicit Track tap.
     const component = setupOneRow({
       signal: { name: 'Bench Press', latest_pr: 225, kilo_max: 200, latest_top_weight: 185, overload_trend: 'up' },
       trackedLiftActivations: {},
     });
-    expect(hasText(component.root, 'Inherited tracking')).toBe(true);
+    const root = component.root;
+    expect(hasText(root, 'Inherited tracking')).toBe(false);
+    expect(hasText(root, 'inherits its full history')).toBe(false);
+    const toggle = root.findAllByProps({ testID: 'po-info-toggle' }).find(n => typeof n.props.onPress === 'function');
+    render.act(() => { toggle.props.onPress(); });
+    expect(hasText(root, 'inherits its full history')).toBe(true);
+    expect(hasText(root, 'new tracked span')).toBe(true);
   });
 
   test('an explicitly tracked exercise mid-classification shows no inherited/first-session caption', () => {
@@ -1026,7 +944,7 @@ describe('AnalyticsScreen Progressive Overload — tracking-state captions (#894
     expect(hasText(component.root, 'New tracked span')).toBe(false);
   });
 
-  test('a freshly opened tracked span reports the fresh-span state without hiding historical capability metrics', () => {
+  test('a freshly opened tracked span reads as First session without hiding historical capability metrics', () => {
     // #893: overload_trend 'first_session' means the span holds no comparison
     // yet; latest_pr/kilo_max/latest_top_weight are still full-history values.
     const component = setupOneRow({
@@ -1034,7 +952,8 @@ describe('AnalyticsScreen Progressive Overload — tracking-state captions (#894
       trackedLiftActivations: { 'bench press': { anchor: 12, at: '2026-05-01T00:00:00Z', witness: { headings: [], sessions: '' } } },
     });
     const root = component.root;
-    expect(hasText(root, 'New tracked span')).toBe(true);
+    expect(hasText(root, 'First session')).toBe(true);
+    expect(hasText(root, 'New tracked span')).toBe(false);
     // The historical capability numbers must still be on screen.
     expect(hasText(root, '225')).toBe(true);
     expect(hasText(root, '185')).toBe(true);
@@ -1170,16 +1089,11 @@ describe('AnalyticsScreen daily-loop handoffs (#717)', () => {
     render.act(() => { handler({ nativeEvent: { layout } }); });
   };
 
-  // Progressive Overload is measured from two boxes: the sticky header reports
-  // only its height (a sticky child is laid out inside a wrapper, so its `y` is
-  // 0 and says nothing about where the section is), and the list beneath it
-  // reports the real content offset. The destination is the difference.
-  const OVERLOAD_HEADER_HEIGHT = 133;
-  const OVERLOAD_LIST_Y = 1533;
-  const OVERLOAD_TARGET_Y = OVERLOAD_LIST_Y - OVERLOAD_HEADER_HEIGHT;
-  const fireOverloadLayout = (root, { listY = OVERLOAD_LIST_Y, headerHeight = OVERLOAD_HEADER_HEIGHT } = {}) => {
-    fireLayoutFor(root, 'sticky-header', { x: 0, y: 0, width: 343, height: headerHeight });
-    fireLayoutFor(root, 'overload-list-anchor', { x: 0, y: listY, width: 343, height: 800 });
+  // Progressive Overload is its own top-level section now (no sticky header),
+  // so one box carries its anchor.
+  const OVERLOAD_TARGET_Y = 1400;
+  const fireOverloadLayout = (root, { y = OVERLOAD_TARGET_Y } = {}) => {
+    fireLayoutFor(root, 'progressive-overload-section', { x: 0, y, width: 343, height: 800 });
   };
 
   test('an overview request goes to the top without waiting for any layout', () => {
@@ -1193,36 +1107,30 @@ describe('AnalyticsScreen daily-loop handoffs (#717)', () => {
     expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ y: 0 }));
   });
 
-  test('a progressive-overload request parks the sticky header at the top of the list', () => {
+  test('a legacy overview request also lands at the top when Recovery is active', () => {
+    // Driven through the hook seam AnalyticsScreen consumes (see the #871 block).
+    const actual = jest.requireActual('../hooks/useEntries').useActiveTrainingContext;
+    useEntries.useActiveTrainingContext.mockReturnValue({
+      status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 1, activeBlock: { id: 'rb1' },
+      baselinePaused: true, stale: false, pending: false,
+    });
+    try {
+      const { component, scrollTo } = setupTargeting({ recoveryState: RECOVERY_STATE });
+      expect(component.root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).length).toBeGreaterThan(0);
+      render.act(() => {
+        component.update(<AnalyticsScreen multiplier={1.07} section="overview" sectionNonce={1} />);
+      });
+      expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ y: 0 }));
+      render.act(() => { component.unmount(); });
+    } finally {
+      useEntries.useActiveTrainingContext.mockImplementation(actual);
+    }
+  });
+
+  test('a progressive-overload request lands on the Progressive Overload section', () => {
     const { component, scrollTo } = setupTargeting({ section: 'progressive-overload', sectionNonce: 1 });
+    expect(scrollTo).not.toHaveBeenCalled();
     fireOverloadLayout(component.root);
-    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ y: OVERLOAD_TARGET_Y }));
-  });
-
-  // The bug this arrangement exists for: ScrollView lays a sticky child out
-  // inside a wrapper of its own, so the header's onLayout reports y: 0. Taking
-  // that at face value would send an Exercise Progress handoff to the top of
-  // Analytics — the one destination it is not.
-  test('the sticky header’s own y is never mistaken for the section position', () => {
-    const { component, scrollTo } = setupTargeting({ section: 'progressive-overload', sectionNonce: 1 });
-    fireLayoutFor(component.root, 'sticky-header', { x: 0, y: 0, width: 343, height: OVERLOAD_HEADER_HEIGHT });
-    expect(scrollTo).not.toHaveBeenCalled();
-
-    fireLayoutFor(component.root, 'overload-list-anchor', { x: 0, y: OVERLOAD_LIST_Y, width: 343, height: 800 });
-    expect(scrollTo).toHaveBeenCalledTimes(1);
-    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ y: OVERLOAD_TARGET_Y }));
-  });
-
-  // Layout order between two sibling boxes is not guaranteed. Landing on the
-  // list alone would overshoot by the header's height and could never be
-  // corrected: the pending request is spent, so the pinned header would sit
-  // over the first rows for the rest of the visit.
-  test('the list measuring first does not spend the request before the header height is known', () => {
-    const { component, scrollTo } = setupTargeting({ section: 'progressive-overload', sectionNonce: 1 });
-    fireLayoutFor(component.root, 'overload-list-anchor', { x: 0, y: OVERLOAD_LIST_Y, width: 343, height: 800 });
-    expect(scrollTo).not.toHaveBeenCalled();
-
-    fireLayoutFor(component.root, 'sticky-header', { x: 0, y: 0, width: 343, height: OVERLOAD_HEADER_HEIGHT });
     expect(scrollTo).toHaveBeenCalledTimes(1);
     expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ y: OVERLOAD_TARGET_Y }));
   });
@@ -1315,7 +1223,7 @@ describe('AnalyticsScreen daily-loop handoffs (#717)', () => {
     render.act(() => {
       component.update(<AnalyticsScreen multiplier={1.07} section="mystery" sectionNonce={5} />);
     });
-    fireOverloadLayout(component.root, { listY: 1600 });
+    fireOverloadLayout(component.root, { y: 1600 });
     expect(scrollTo).not.toHaveBeenCalled();
   });
 
@@ -1390,65 +1298,60 @@ describe('AnalyticsScreen daily-loop handoffs (#717)', () => {
   });
 });
 
-// ── R5b section order (#793): Weight → Recovery → Fatigue → Strength → PO ────
+// ── Normal hierarchy: Strength → PO → Weight → Routine Health → Recovery ───
 
-describe('AnalyticsScreen section order (R5b, #793)', () => {
-  const RECOVERY_ACTIVE_BLOCK = {
+// Top-level section titles in render order (exact-match, so a substring like
+// the "Recovery" inside "Baseline training · paused during Recovery" or a row
+// label never counts as a section).
+const SECTION_TITLES = ['Strength', 'Progressive Overload', 'Weight Trends', 'Routine Health', 'Recovery'];
+function sectionOrder(root) {
+  return findAllText(root).filter(t => SECTION_TITLES.includes(t))
+    .filter((t, i, all) => all.indexOf(t) === i);
+}
+
+describe('AnalyticsScreen normal-training section order', () => {
+  const COMPLETED_BLOCK = {
     id: 'rb1',
     baseline_note_id: 'note-baseline',
     baseline_note_title: 'Push Pull Legs',
     baseline: { exercises: [] },
     started_at: '2026-05-01T00:00:00Z',
-    completed_at: null,
+    completed_at: '2026-05-20T00:00:00Z',
     saved_at: '2026-05-01T00:00:00Z',
     updated_at: '2026-05-01T00:00:00Z',
     deleted_at: null,
   };
 
-  test('Recovery renders above Fatigue, adjacent to it, with Weight first and Strength/Progressive Overload after', () => {
-    const component = setup({
-      hookOverrides: { recoveryBlocks: [RECOVERY_ACTIVE_BLOCK], recoveryWeeks: [] },
-    });
+  test('Strength → Progressive Overload → Weight Trends → Routine Health, then Recovery history last', () => {
+    const component = setup({ hookOverrides: { recoveryBlocks: [COMPLETED_BLOCK], recoveryWeeks: [] } });
     const root = component.root;
-
-    const labels = findAllText(root);
-    const indexOf = (needle) => labels.findIndex(s => s.includes(needle));
-
-    const weight = indexOf('Weight Trends');
-    const recovery = indexOf('Recovery');
-    const fatigue = indexOf('Fatigue');
-    const strength = indexOf('Strength');
-    const progressiveOverload = indexOf('Progressive Overload');
-
-    expect(weight).toBeGreaterThanOrEqual(0);
-    expect(recovery).toBeGreaterThanOrEqual(0);
-    expect(fatigue).toBeGreaterThanOrEqual(0);
-    expect(strength).toBeGreaterThanOrEqual(0);
-    expect(progressiveOverload).toBeGreaterThanOrEqual(0);
-
-    expect(weight).toBeLessThan(recovery);
-    expect(recovery).toBeLessThan(fatigue);
-    expect(fatigue).toBeLessThan(strength);
-    expect(strength).toBeLessThan(progressiveOverload);
+    expect(root.findAllByProps({ testID: 'recovery-section-anchor' }).length).toBeGreaterThan(0);
+    expect(root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).length).toBe(0);
+    const order = sectionOrder(root);
+    expect(order.slice(0, 4)).toEqual(['Strength', 'Progressive Overload', 'Weight Trends', 'Routine Health']);
+    // The Recovery section's own content follows Routine Health.
+    const texts = findAllText(root);
+    const routineIdx = texts.indexOf('Routine Health');
+    const anchorText = component.root.findByProps({ testID: 'recovery-section-anchor' }).findAllByType('Text')[0];
+    const anchorChildren = anchorText.props.children;
+    const anchorLabel = Array.isArray(anchorChildren) ? anchorChildren.join('') : String(anchorChildren ?? '');
+    expect(texts.lastIndexOf(anchorLabel)).toBeGreaterThan(routineIdx);
   });
 
-  test('with no active or completed recovery block, the order collapses to exactly what it was before Recovery existed — no hole', () => {
+  test('Progressive Overload is its own top-level section, not a subsection of Strength', () => {
+    const component = setup();
+    const root = component.root;
+    const strength = root.findAll(n => n.props?.onLayout && n.findAll(c => c.props?.children === 'Strength').length > 0);
+    const po = root.findByProps({ testID: 'progressive-overload-section' });
+    // No ancestor of the Progressive Overload section is the Strength section.
+    expect(strength.some(sec => sec.findAll(n => n === po).length > 0)).toBe(false);
+  });
+
+  test('with no Recovery history the order ends at Routine Health — no hole, no anchor', () => {
     const component = setup({ hookOverrides: { recoveryBlocks: [], recoveryWeeks: [] } });
     const root = component.root;
-
     expect(root.findAllByProps({ testID: 'recovery-section-anchor' }).length).toBe(0);
-
-    const labels = findAllText(root);
-    const indexOf = (needle) => labels.findIndex(s => s.includes(needle));
-    const weight = indexOf('Weight Trends');
-    const fatigue = indexOf('Fatigue');
-    const strength = indexOf('Strength');
-
-    expect(weight).toBeGreaterThanOrEqual(0);
-    expect(fatigue).toBeGreaterThanOrEqual(0);
-    expect(strength).toBeGreaterThanOrEqual(0);
-    expect(weight).toBeLessThan(fatigue);
-    expect(fatigue).toBeLessThan(strength);
+    expect(sectionOrder(root)).toEqual(['Strength', 'Progressive Overload', 'Weight Trends', 'Routine Health']);
   });
 });
 
@@ -1884,24 +1787,25 @@ describe('AnalyticsScreen Routine Status metric display', () => {
 describe('AnalyticsScreen feature toggle gating', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  test('shows section titled Fatigue and Fatigue Tracking panel when both features enabled', () => {
+  const titleCount = (root, label) => findAllText(root).filter(t => t === label).length;
+
+  test('Routine Health is the section, Session Check-ins its evidence card, with one Routine Health title', () => {
     const component = setup();
     const root = component.root;
-    // Parent section title is "Fatigue" when both sub-panels are visible.
-    expect(hasText(root, 'Fatigue')).toBe(true);
-    expect(hasText(root, 'Fatigue Tracking')).toBe(true);
-    // "Routine Status" does not appear as a separate section title.
+    expect(titleCount(root, 'Routine Health')).toBe(1);
+    expect(hasText(root, 'Session Check-ins')).toBe(true);
+    expect(findAllText(root).some(t => t === 'Fatigue')).toBe(false);
+    expect(hasText(root, 'Fatigue Tracking')).toBe(false);
     expect(hasText(root, 'Routine Status')).toBe(false);
   });
 
-  test('section title reads Fatigue when only sessions panel is visible', () => {
+  test('fatigue tracking off keeps Routine Health and its gauge, dropping only the check-ins', () => {
     const component = setup({ featureToggles: { fatigueTrackingEnabled: false } });
     const root = component.root;
-    // Sessions-only: parent title is statically "Fatigue".
-    expect(hasText(root, 'Fatigue')).toBe(true);
-    expect(hasText(root, 'Routine Status')).toBe(false);
-    // Fatigue Tracking panel is hidden.
-    expect(hasText(root, 'Fatigue Tracking')).toBe(false);
+    expect(root.findAllByProps({ testID: 'routine-health-section' }).length).toBeGreaterThan(0);
+    expect(titleCount(root, 'Routine Health')).toBe(1);
+    expect(hasText(root, 'Since deload')).toBe(true);
+    expect(hasText(root, 'Session Check-ins')).toBe(false);
     expect(hasText(root, 'No check-ins logged yet.')).toBe(false);
     expect(hasText(root, 'Weight Trends')).toBe(true);
   });
@@ -1916,9 +1820,8 @@ describe('AnalyticsScreen feature toggle gating', () => {
   test('deload mode off hides the entire deload advisory, keeping Total', () => {
     const component = setup({ featureToggles: { deloadModeEnabled: false } });
     const root = component.root;
-    // Fatigue Tracking still visible → section title stays "Fatigue".
-    expect(hasText(root, 'Fatigue')).toBe(true);
-    expect(hasText(root, 'Fatigue Tracking')).toBe(true);
+    expect(hasText(root, 'Routine Health')).toBe(true);
+    expect(hasText(root, 'Session Check-ins')).toBe(true);
     // The non-deload half of the card survives.
     expect(hasText(root, 'Total')).toBe(true);
     // The advisory does not: stat, meter zones, and caption all go together.
@@ -1929,15 +1832,15 @@ describe('AnalyticsScreen feature toggle gating', () => {
     expect(hasText(root, 'Weight Trends')).toBe(true);
   });
 
-  test('both toggles off shows Fatigue and Total with no deload advisory', () => {
+  test('both toggles off still shows Routine Health with Total and no deload advisory', () => {
     const component = setup({ featureToggles: { deloadModeEnabled: false, fatigueTrackingEnabled: false } });
     const root = component.root;
-    expect(hasText(root, 'Fatigue')).toBe(true);
+    expect(hasText(root, 'Routine Health')).toBe(true);
     expect(hasText(root, 'Routine Status')).toBe(false);
     expect(hasText(root, 'Total')).toBe(true);
     expect(hasText(root, 'Since deload')).toBe(false);
     expect(hasText(root, 'Building')).toBe(false);
-    expect(hasText(root, 'Fatigue Tracking')).toBe(false);
+    expect(hasText(root, 'Session Check-ins')).toBe(false);
     expect(hasText(root, 'Weight Trends')).toBe(true);
   });
 
@@ -2645,9 +2548,9 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
 
     expect(root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).length).toBeGreaterThan(0);
     // Baseline-only content is not on screen while collapsed.
-    expect(hasText(root, 'Fatigue Tracking')).toBe(false);
-    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBe(0);
-    expect(root.findAllByProps({ testID: 'overload-list-anchor' }).length).toBe(0);
+    expect(hasText(root, 'Session Check-ins')).toBe(false);
+    expect(root.findAllByProps({ testID: 'progressive-overload-section' }).length).toBe(0);
+    expect(root.findAllByProps({ testID: 'routine-health-section' }).length).toBe(0);
     // Recovery-live content stays visible.
     expect(hasText(root, 'Weight Trends')).toBe(true);
   });
@@ -2659,11 +2562,11 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
     const toggle = root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).find(n => typeof n.props.onPress === 'function');
 
     render.act(() => { toggle.props.onPress(); });
-    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
+    expect(root.findAllByProps({ testID: 'progressive-overload-section' }).length).toBeGreaterThan(0);
     expect(toggle.props.accessibilityState.expanded).toBe(true);
 
     render.act(() => { toggle.props.onPress(); });
-    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBe(0);
+    expect(root.findAllByProps({ testID: 'progressive-overload-section' }).length).toBe(0);
     expect(toggle.props.accessibilityState.expanded).toBe(false);
   });
 
@@ -2671,39 +2574,51 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
     mockActiveTraining();
     const component = renderScreen({ section: 'strength', sectionNonce: 1 });
     const root = component.root;
-    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
+    expect(root.findAllByProps({ testID: 'progressive-overload-section' }).length).toBeGreaterThan(0);
   });
 
-  test('Overview leads with a Recovery row and Body Weight stays live, not paused', () => {
+  test('active Recovery order: Recovery → Weight Trends → collapsed baseline disclosure', () => {
     mockActiveTraining();
-    const component = renderScreen();
+    const component = renderScreen({ recoveryBlocks: [{
+      id: 'rb-open', baseline_note_id: 'note-baseline', baseline_note_title: 'Push Pull Legs',
+      baseline: { exercises: [] }, started_at: '2026-05-01T00:00:00Z', completed_at: null,
+      saved_at: '2026-05-01T00:00:00Z', updated_at: '2026-05-01T00:00:00Z', deleted_at: null,
+    }] });
     const root = component.root;
-    const labels = findAllText(root);
-    const indexOf = (needle) => labels.findIndex(s => s.includes(needle));
-
-    expect(indexOf('Recovery')).toBeGreaterThanOrEqual(0);
-    const weightRow = root.findAllByProps({ testID: 'overview-row-weight' }).find(n => typeof n.props.onPress === 'function');
-    // The weight row's own text content must never say "paused" — it is
-    // live during Recovery (#871 scope: weight keeps updating normally).
-    const weightTexts = weightRow.findAllByType('Text').map(t => {
-      const c = t.props.children;
-      return Array.isArray(c) ? c.join('') : String(c ?? '');
-    }).join(' ');
-    expect(weightTexts.toLowerCase()).not.toContain('paused');
+    // Top-level children of the shell's scroll column, in order.
+    const { ScrollView } = require('react-native');
+    const scroll = root.findAllByType(ScrollView)[0];
+    const ids = scroll.findAll(n => ['recovery-section-anchor', 'weight-trends-anchor', 'baseline-disclosure-toggle'].includes(n.props?.testID)
+      || (typeof n.props?.handleWeightLayout === 'function'))
+      .map(n => n.props.testID || 'weight')
+      .filter((id, i, all) => all.indexOf(id) === i);
+    expect(ids).toEqual(['recovery-section-anchor', 'weight', 'baseline-disclosure-toggle']);
+    expect(sectionOrder(root)).not.toContain('Strength');
+    expect(sectionOrder(root)).not.toContain('Routine Health');
   });
 
-  test('active Recovery shows one compact history line and no paused rows', () => {
+  test('the baseline disclosure expands to Strength → Progressive Overload → Routine Health', () => {
     mockActiveTraining();
     const root = renderScreen().root;
-    expect(hasText(root, '1K Total and Exercise Progress resume after recovery')).toBe(true);
-    expect(hasText(root, 'Paused')).toBe(false);
-    expect(root.findAllByProps({ testID: 'overview-row-oneK' }).length).toBe(0);
-    expect(root.findAllByProps({ testID: 'overview-row-progress' }).length).toBe(0);
+    const toggle = root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).find(n => typeof n.props.onPress === 'function');
+    render.act(() => { toggle.props.onPress(); });
+    const order = sectionOrder(root);
+    const baseline = order.filter(t => ['Strength', 'Progressive Overload', 'Routine Health'].includes(t));
+    expect(baseline).toEqual(['Strength', 'Progressive Overload', 'Routine Health']);
+    // Weight Trends stays above the disclosure's contents.
+    expect(order.indexOf('Weight Trends')).toBeLessThan(order.indexOf('Strength'));
   });
 
-  // #1029 amendment (required test 21) — full-render coverage through the real
-  // `AnalyticsRecoverySection`/`AnalyticsOverviewCard` pipeline, both shapes.
-  describe('Overview Recovery row informational caption (#1029 amendment)', () => {
+  test('active Recovery renders no Overview card or paused overview rows', () => {
+    mockActiveTraining();
+    const root = renderScreen().root;
+    expect(root.findAllByProps({ testID: 'analytics-overview' }).length).toBe(0);
+    expect(hasText(root, '1K Total and Exercise Progress resume after recovery')).toBe(false);
+  });
+
+  // #1029 amendment — full-render coverage through the real
+  // `AnalyticsRecoverySection` pipeline (the Overview row it was mirrored in is gone).
+  describe('Recovery section headline during active Recovery (#1029 amendment)', () => {
     const RECOVERY_BASELINE_TEXT = '-Bench\n- 135 5,5,5\n-Pull-up\n- 8,8,8';
 
     function recoveryBlock(overrides = {}) {
@@ -2739,19 +2654,7 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
       return { id, title: `Note ${id}`, raw_text };
     }
 
-    function recoveryOverviewRow(root) {
-      return root.findAllByProps({ testID: 'overview-row-recovery' }).find(n => typeof n.props.onPress === 'function');
-    }
-
-    function textNodesOf(row) {
-      return row.findAllByType('Text');
-    }
-
-    function flattenStyle(node) {
-      return [].concat(node.props.style ?? []).reduce((acc, s) => Object.assign(acc, s || {}), {});
-    }
-
-    test('the Overview Recovery row prints the SAME headline as the Recovery section (one snapshot)', () => {
+    test('the Recovery section prints the canonical snapshot headline', () => {
       mockActiveTraining({ recoveryWeekNumber: 2, activeBlock: { id: 'rb-open' } });
       const component = renderScreen({
         recoveryBlocks: [recoveryBlock()],
@@ -2759,12 +2662,6 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
         notes: [recoveryNote('note-w1', RECOVERY_BASELINE_TEXT), recoveryNote('note-w2', RECOVERY_BASELINE_TEXT)],
       });
       const root = component.root;
-      const row = recoveryOverviewRow(root);
-      expect(row).toBeDefined();
-      const texts = textNodesOf(row).map(t => [].concat(t.props.children).join(''));
-      expect(texts.some(t => t.startsWith('100%'))).toBe(true);
-      expect(texts).toContain('1 of 1 lift back · avg 100% · Week 2');
-      expect(row.props.accessibilityLabel).toMatch(/^Total recovery, Week 2: 100% total recovery of Push Pull Legs baseline strength\./);
       // The section's own summary says the same thing.
       const summary = root.findAll(n => typeof n.type === 'string' && n.props.testID === 'recovery-strength-summary')[0];
       expect(summary.props.accessibilityLabel).toMatch(/^Week 2: 100% total recovery of Push Pull Legs baseline strength\./);
@@ -2783,8 +2680,6 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
     const component = renderScreen();
     const root = component.root;
     expect(root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).length).toBeGreaterThan(0);
-    // #1242: the shared week-status wording, identical to Log's headline.
-    expect(hasText(root, 'Week 1 complete — add the next week')).toBe(true);
   });
 
   test('a stale read with no active block (STALE status) is treated as unreliable, not active Recovery — normal hierarchy stays', () => {
@@ -2829,7 +2724,7 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
     const component = renderScreen();
     const root = component.root;
     expect(root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).length).toBe(0);
-    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
+    expect(root.findAllByProps({ testID: 'progressive-overload-section' }).length).toBeGreaterThan(0);
     expect(hasText(root, 'Paused')).toBe(false);
   });
 
@@ -2863,7 +2758,7 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
     // User expands the disclosure during the first Recovery period.
     let toggle = root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).find(n => typeof n.props.onPress === 'function');
     render.act(() => { toggle.props.onPress(); });
-    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
+    expect(root.findAllByProps({ testID: 'progressive-overload-section' }).length).toBeGreaterThan(0);
 
     // Recovery ends (verified NORMAL) — the disclosure itself disappears.
     mockActiveTraining({ status: ACTIVE_TRAINING_STATUS.NORMAL, activeBlock: null, baselinePaused: false, recoveryWeekNumber: null });
@@ -2880,7 +2775,7 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
 
     // The new period must open collapsed, not carry forward the earlier
     // expansion.
-    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBe(0);
+    expect(root.findAllByProps({ testID: 'progressive-overload-section' }).length).toBe(0);
     toggle = root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).find(n => typeof n.props.onPress === 'function');
     expect(toggle.props.accessibilityState.expanded).toBe(false);
   });
@@ -2892,7 +2787,7 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
 
     const toggle = root.findAllByProps({ testID: 'baseline-disclosure-toggle' }).find(n => typeof n.props.onPress === 'function');
     render.act(() => { toggle.props.onPress(); });
-    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
+    expect(root.findAllByProps({ testID: 'progressive-overload-section' }).length).toBeGreaterThan(0);
 
     // Same Recovery block transitions from an open week to between-weeks —
     // the block id is unchanged, so the user's expansion must survive.
@@ -2907,7 +2802,7 @@ describe('AnalyticsScreen follows active Recovery (#871)', () => {
       component.update(<AnalyticsScreen multiplier={1.07} section={null} sectionNonce={undefined} />);
     });
 
-    expect(root.findAllByProps({ testID: 'sticky-header' }).length).toBeGreaterThan(0);
+    expect(root.findAllByProps({ testID: 'progressive-overload-section' }).length).toBeGreaterThan(0);
   });
 });
 

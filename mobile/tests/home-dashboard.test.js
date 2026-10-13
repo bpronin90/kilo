@@ -10,9 +10,8 @@
 import { parseWorkoutNote, epleyPR } from '../lib/parser';
 import { derive1kTotal, DEFAULT_1K_EXERCISES } from '../lib/data';
 import { deriveHomeDashboardData, deriveHomeRecoveryBig3, resolveHomeOneKSelections, HOME_BIG3_NOT_IN_BASELINE } from '../screens/home/homeDashboardData';
-import { deriveAnalytics, deriveOverviewRows, deriveParsedSections } from '../screens/analytics/analyticsDerivations';
+import { deriveAnalytics, deriveParsedSections } from '../screens/analytics/analyticsDerivations';
 import { deriveRecoveryWeekBands } from '../lib/data/recoveryReturnBands';
-import { ACTIVE_TRAINING_STATUS } from '../lib/data/activeTrainingContext';
 import { buildTrendSections } from '../lib/WeightScreenHelpers';
 import {
   summarizeRecoveryBands, formatRecoveryCountLine, recoveryWeekStatusText, WEIGHT_DIRECTION, weightTrendTone,
@@ -650,33 +649,17 @@ describe('shared derived analytics (#1242)', () => {
       { key: 'ghost', name: 'Ghost', state: 'not_comparable', unavailable_reason: 'baseline_value_unusable', metrics: [] },
     ],
   };
-  const SELECTIONS = { squat: 'Squat', bench: 'DB Bench Press', deadlift: 'Deadlift' };
 
-  test('Home prints the shared roster count line, and the Overview row prints the snapshot headline (#1315)', () => {
+  test('Home prints the shared roster count line (#1315)', () => {
     const counts = summarizeRecoveryBands(deriveRecoveryWeekBands(WEEK));
     expect(formatRecoveryCountLine(counts)).toBe('4 of 7 trained · 3 not yet');
-
-    const display = { state: 'score', percent: 80, caption: '2 lifts · Week 1', message: null, a11y: 'Week 1: 80% of X baseline strength.' };
-    const row = deriveOverviewRows({
-      activeTraining: { status: ACTIVE_TRAINING_STATUS.RECOVERY_OPEN_WEEK, recoveryWeekNumber: 1 },
-      recoverySnapshot: { stale: false, display },
-    }).find(r => r.key === 'recovery');
-    expect(row.value).toBe('80%');
-    expect(row.infoCaption).toBe('2 lifts · Week 1');
   });
 
-  test('Log and Analytics share the between-weeks wording', () => {
-    const rows = deriveOverviewRows({
-      activeTraining: { status: ACTIVE_TRAINING_STATUS.RECOVERY_BETWEEN_WEEKS, recoveryWeekNumber: 2 },
-    });
-    expect(rows.find(r => r.key === 'recovery').emptyCaption)
-      .toBe(recoveryWeekStatusText({ weekNumber: 2, open: false }));
+  test('the shared Recovery week-status wording', () => {
     expect(recoveryWeekStatusText({ weekNumber: 2, open: false })).toBe('Week 2 complete — add the next week');
     expect(recoveryWeekStatusText({ weekNumber: 3, open: true })).toBe('Week 3 in progress');
   });
 
-  // Rising series: prior 7-day average 180, latest 181.
-  const WEIGHT_POINTS = [{ value: 180, label: 'a' }, { value: 181, label: 'b' }];
   const TRENDS = {
     avg7: 181, priorAvg7: 180, avg30: 181, priorAvg30: 180,
     recentDateWeight: 181, priorDateWeight: 180, paceFlag: null,
@@ -687,17 +670,14 @@ describe('shared derived analytics (#1242)', () => {
     ['gain', 'positive'],
     ['loss', 'negative'],
     ['maintain', 'gaining'],
-  ])('weight direction and tone agree across Weight and Analytics (goal: %s)', (goalDirection, expectedTone) => {
+  ])('weight direction takes the shared goal-aware tone (goal: %s)', (goalDirection, expectedTone) => {
     const weightSection = buildTrendSections(TRENDS, null).find(s => s.title === '7-day rolling');
     const weightTone = weightTrendTone({ direction: weightSection.direction, goalDirection });
 
-    const analyticsRow = deriveOverviewRows({ weightPoints: WEIGHT_POINTS, currentWeight: 181, weightGoalDirection: goalDirection })
-      .find(r => r.key === 'weight');
 
     expect(weightSection.direction).toBe(WEIGHT_DIRECTION.UP);
     expect(weightSection.col3.value).toBe('↑ Gaining');
     expect(weightTone).toBe(expectedTone);
-    expect(analyticsRow.deltaTone).toBe(weightTone);
   });
 
   test('pace anomalies keep their severity tone over any goal', () => {
