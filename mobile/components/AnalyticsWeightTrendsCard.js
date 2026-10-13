@@ -145,7 +145,7 @@ export function AnalyticsWeightTrendsCard({
 
         <View style={styles.chartBlock}>
           <View style={styles.chartHeader}>
-            <Text style={styles.chartLabel}>{activeWindow.label}</Text>
+            <Text style={[styles.chartLabel, styles.chartLabelFlex]}>{activeWindow.label}</Text>
             <View style={styles.windowToggle} accessibilityRole="radiogroup" accessibilityLabel="Rolling average window">
               {WINDOWS.map(w => {
                 const selected = w.key === windowKey;
@@ -212,10 +212,17 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   chartBlock: {
     gap: 4,
   },
+  // Wraps so a large font scale on a narrow card drops the selector below
+  // the label instead of overlapping it or bleeding past the card.
   chartHeader: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
     alignItems: 'center',
+    columnGap: 8,
+  },
+  chartLabelFlex: {
+    flexShrink: 1,
   },
   windowToggle: {
     flexDirection: 'row',

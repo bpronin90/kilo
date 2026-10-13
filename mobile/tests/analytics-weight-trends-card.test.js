@@ -303,6 +303,13 @@ describe('AnalyticsWeightTrendsCard — one chart with a 7d/30d window', () => {
     expect(JSON.stringify(r30)).toBe(snap30);
   });
 
+  test('the window header wraps so the selector cannot overlap the label at large font scales', () => {
+    const { createStyles } = require('../components/AnalyticsWeightTrendsCard');
+    const styles = createStyles({});
+    expect(styles.chartHeader.flexWrap).toBe('wrap');
+    expect(styles.chartLabelFlex.flexShrink).toBe(1);
+  });
+
   test('loading shows one spinner in place of the chart', () => {
     const root = setup({ rolling7: [], rolling30: [], isWeightLoading: true }).root;
     expect(charts(root)).toHaveLength(0);
