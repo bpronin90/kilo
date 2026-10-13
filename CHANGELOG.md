@@ -1,5 +1,61 @@
 # Changelog
 
+## 1.14.14 - 2026-10-13
+
+- Issue #1351: During an active Recovery block, the Analytics Recovery summary now shows Squat, Bench and Deadlift recovery under the total, the same values Home shows, so you no longer need to open Lifts to see them. The Session Check-ins card now says "Session status" and "No flagged sessions" instead of the old Fatigue wording. No numbers, calculations or stored data changed.
+
+## 1.14.13 - 2026-10-13
+
+- Issue #1349: Weight Trends on Analytics now shows one chart instead of two stacked ones. A 7D / 30D switch picks which rolling average the chart draws, and both the 7-day and 30-day averages stay visible beneath it. Tapping a point still shows that day's weight and both averages; switching windows clears the selection. No numbers or calculations changed.
+
+## 1.14.12 - 2026-10-13
+
+- Issue #1347: Analytics now opens straight into the evidence instead of repeating Home's summary: the Overview card is gone, and the tab reads Strength, Progressive Overload, Weight Trends, Routine Health, then any Recovery history. Progressive Overload is its own section with your Progressing / Steady / Regressing counts and progression suggestions at the top, and explanations of how tracking works sit behind its info button. Fatigue is now Routine Health (with Session Check-ins inside it) and stays visible even when check-in tracking is off. During Recovery, the tab leads with Recovery and Weight Trends, with baseline training collapsed below. No numbers or calculations changed.
+
+## 1.14.11 - 2026-10-13
+
+- Issue #1343: Home and Analytics now agree on Exercise Progress. An exercise you train on more than one day counts once on Home, the same way Analytics counts it, and light deload sessions no longer count toward progress on Home. A saved Big 3 pick that is damaged (for example after a restore) now falls back to the default lift on Analytics too, as it already did on Home.
+
+## 1.14.10 - 2026-10-13
+
+- Issue #1341: Home is now a visual summary of your training. During Recovery there is one Recovery card instead of an empty "Recovery" header card above it: Recovery and the week number, your total recovery as a large percentage, Squat / Bench / Deadlift as bars, and the Log workout / Log weight actions. In normal training the 1K card shows your total and progress bar with Squat / Bench / Deadlift as bars, and the body weight card shows your weight trend graph again. The subtitle under the logo no longer repeats what the top card already says.
+
+## 1.14.9 - 2026-10-13
+
+- Issue #1339: Home is now ordered strength first: your training, then 1K / Big 3 progress, then body weight. During Recovery the Recovery card owns the week and the Big 3, and the top card is just Recovery and what to do next. The body weight card is a compact summary (latest weigh-in and goal) with the chart and pace on the Weight tab, the 1K setup state is a single compact row, the generic "Full history and insights" link is gone (each section opens its own Analytics detail), and the subtitle matches what Home is showing.
+
+## 1.14.8 - 2026-10-13
+
+- Issue #1335: Home Recovery card puts Squat, Bench, and Deadlift back at the center: each lift shows its current recovery % (or status) with a bar, the week is a compact tag beside the card title, and total recovery sits as one quiet line below. The extra counts and explanations stay in Analytics.
+
+## 1.14.7 - 2026-10-13
+
+- Issue #1333: Home tab is now a simpler daily dashboard: the Recovery card shows just your total recovery and links to Analytics for per-lift detail; the main card focuses on your week, routine, and Exercise Progress (now a link to Analytics); with no current routine Home offers a way back into one instead of "Week N/A"; body weight and your goal share one card that links to Weight and flags an ended goal or a risky pace; 1K Progress shows a short setup line until you have a total; and the first-use welcome is two buttons.
+
+## 1.14.6 - 2026-10-13
+
+- Issue #1331: Log tab: the Recovery block picker is now titled "Recovery Blocks" (it includes your active block, so "History" was misleading), and the new action menus leave room for the iPhone home indicator.
+
+## 1.14.5 - 2026-10-13
+
+- Issue #1329: Log tab: a new routine no longer offers Delete before it's saved; its Save button now explains how it differs from Done; Recovery History sits above the block you're managing; More Routines shows your three newest routines (Show all for the rest) and tucks Copy, Share, Share as Image and Delete into a ⋯ menu; the Deload card keeps Deload complete as its one main action, with Regenerate and Delete in a ⋯ menu.
+
+## 1.14.4 - 2026-10-13
+
+- Issue #1327: Log tab: Skip week now lives in the routine's ⋯ menu next to Remove skip, and the rest timer's options panel is redesigned as one clean card with four equal presets (1:00, 1:30, 2:00, 3:00) and a clear Cancel button.
+
+## 1.14.3 - 2026-10-13
+
+- Issue #1325: Log tab: the Start and Reopen recovery block actions under the current routine are now one grouped control instead of two separate outlined rows.
+
+## 1.14.2 - 2026-10-13
+
+- Issue #1323: Log tab: Skip week now sits at the left of the current routine's action strip instead of leaving empty space, and picking a block in Recovery History opens and scrolls to its Manage card.
+
+## 1.14.1 - 2026-10-13
+
+- Issue #1321: Log tab cleanup: Skip week no longer disappears while saving or after a skip; the rest timer is one control that shows its countdown and Cancel/Restart/Dismiss in place; Deload and previous-routine actions are ordered with the primary action first and Delete last.
+
 ## 1.14.0 - 2026-10-12
 
 - Issue #1318: Recovery now leads with total recovery, which counts every scoreable baseline lift (not-yet-back lifts count as 0%) so a first score raises it, with the strict consistent-cohort average moved into About these numbers.
