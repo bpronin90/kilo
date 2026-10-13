@@ -407,13 +407,6 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
   // On-demand inclusion help toggle (#843 review), matching
   // `RecoveryInclusionToggle`'s own info-button box: a real 44dp target, not
   // a `hitSlop`, which React Native clips at the parent's bounds.
-  inclusionHelpToggle: {
-    flexShrink: 0,
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   pendingBanner: {
     paddingHorizontal: 12,
     paddingVertical: 10,

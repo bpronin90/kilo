@@ -149,7 +149,7 @@ export function ProgressionSuggestionCard({
   const stop = (e) => { if (e && typeof e.stopPropagation === 'function') e.stopPropagation(); };
   const recommendation = _recommendationText(suggestion);
   const chips = _evidenceChips(suggestion.evidence);
-  const heuristicNote = 'Heuristic suggestion: a conditional prompt from what you logged, not a guaranteed prescription.';
+  const heuristicNote = 'This suggestion is based on patterns in your logged workouts. It is a prompt to consider, not a guaranteed prescription.';
 
   const a11ySummary = [
     `Progression suggestion for ${name}.`,
@@ -183,7 +183,7 @@ export function ProgressionSuggestionCard({
           testID={`progression-suggestion-info-${surface}`}
           expanded={noteShown}
           onPress={toggleNote}
-          label="About heuristic suggestions"
+          label="What HEURISTIC means"
         />
         </View>
       </View>

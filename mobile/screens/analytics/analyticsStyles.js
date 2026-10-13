@@ -34,6 +34,14 @@ export const createStyles = (colors, kua = null) => StyleSheet.create({
     columnGap: 4,
     flexShrink: 1,
   },
+  // Label an explainer anchors to (#1356): Exercise Progress, Metrics.
+  poSubLabel: {
+    fontSize: TYPOGRAPHY['label-sm'].fontSize,
+    fontWeight: '800',
+    color: kua ? kua.onSurfaceVariant : colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   poInfoBody: {
     gap: 8,
     marginBottom: 4,

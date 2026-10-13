@@ -119,8 +119,11 @@ describe('ProgressionSuggestionCard rendering', () => {
     // #1245: the caveat is behind the shared info icon beside the badge.
     expect(allText.some((t) => /not a guaranteed prescription/i.test(t))).toBe(false);
     const info = root.root.findAll(n => n.props.testID === 'progression-suggestion-info-log' && typeof n.props.onPress === 'function')[0];
+    // #1356: the icon explains only what HEURISTIC means, in plain language.
+    expect(root.root.findAll(n => n.props.testID === 'progression-suggestion-info-log' && n.props.accessibilityRole === 'button')[0].props.accessibilityLabel).toBe('What HEURISTIC means');
     await act(async () => { info.props.onPress(); });
-    expect(texts(root).some((t) => /not a guaranteed prescription/i.test(t))).toBe(true);
+    const note = root.root.findAll(n => n.props.testID === 'progression-suggestion-note-log')[0];
+    expect(texts({ root: note })).toEqual(['This suggestion is based on patterns in your logged workouts. It is a prompt to consider, not a guaranteed prescription.']);
     // Evidence formatted straight from the record's own numbers.
     expect(allText.some((t) => t.includes('135 lb'))).toBe(true);
     expect(allText.some((t) => t.includes('10, 10, 10'))).toBe(true);

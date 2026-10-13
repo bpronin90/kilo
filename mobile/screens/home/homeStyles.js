@@ -111,13 +111,6 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     letterSpacing: 0.5,
     flexShrink: 1,
   },
-  heroInfoToggle: {
-    flexShrink: 0,
-    minHeight: 32,
-    paddingHorizontal: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   heroRecoveryNoteLabel: {
     ...(kua ? typography['body-sm'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize, fontWeight: '600' }),
     color: kua ? kua.onSurface : colors.text,
