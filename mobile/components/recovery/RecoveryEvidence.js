@@ -17,7 +17,7 @@ import { scoredLifts } from './RecoveryStrengthLadder';
 import { RecoveryMovementGroupsPanel } from './RecoveryMovementGroupsPanel';
 import { RecoveryStrengthWeeks } from './RecoveryStrengthWeeks';
 import { NotRetestedDisclosure, NotScoredDisclosure, RecoveryDisclosure, notScoredEntries } from './RecoveryStrengthDisclosures';
-import { hasVisiblePace, paceInfoLines, percentInfoLines } from './RecoveryInfoCopy';
+import { PACE_INFO_LINES, PERCENT_INFO_LINES, hasVisiblePace } from './RecoveryInfoCopy';
 import { deriveRecoveryBig3, recoveryBig3Rows } from '../../lib/data/recoveryBig3';
 import { Big3Bars } from '../Big3Bars';
 
@@ -120,8 +120,6 @@ export function BlockEvidence({
   const hasGroups = showStrength && strengthOk && !!snapshot.movementGroups
     && snapshot.movementGroups.breakdown.groups.length > 0;
   const hasDisclosures = hasLifts || hasGroups || hasNotRetested || hasNotScored;
-  const percentLines = useMemo(() => percentInfoLines(snapshot), [snapshot]);
-  const paceLines = useMemo(() => paceInfoLines(snapshot), [snapshot]);
   const showPercentInfo = display.state === SNAPSHOT_STATE.SCORE;
   const showPaceInfo = strengthOk && hasVisiblePace(strength);
   // The first disclosure has no top rule (the card edge is its boundary).
@@ -169,8 +167,8 @@ export function BlockEvidence({
                       ) : null}
                     />
                     <InfoNote shown={percentShown && showPercentInfo} testID="recovery-percent-note" style={styles.infoNote}>
-                      {percentLines.map((line, i) => (
-                        <Text key={`${i}:${line}`} testID={i === percentLines.length - 1 ? 'recovery-non-medical-note' : undefined} style={styles.nonMedicalText}>{line}</Text>
+                      {PERCENT_INFO_LINES.map((line, i) => (
+                        <Text key={`${i}:${line}`} testID={i === PERCENT_INFO_LINES.length - 1 ? 'recovery-non-medical-note' : undefined} style={styles.nonMedicalText}>{line}</Text>
                       ))}
                     </InfoNote>
                   </View>
@@ -194,7 +192,6 @@ export function BlockEvidence({
                 total={total}
                 selectedWeekId={selectedWeek ? selectedWeek.week_id : null}
                 onSelect={setSelectedWeekId}
-                scaleMax={scaleMax}
               />
             )}
           </>
@@ -275,7 +272,7 @@ export function BlockEvidence({
                       <InfoButton testID="recovery-pace-info-toggle" expanded={paceShown} onPress={togglePace} label="About pace" />
                     </View>
                     <InfoNote shown={paceShown} testID="recovery-pace-note" style={styles.infoNote}>
-                      {paceLines.map((line, i) => (
+                      {PACE_INFO_LINES.map((line, i) => (
                         <Text key={`${i}:${line}`} style={styles.nonMedicalText}>{line}</Text>
                       ))}
                     </InfoNote>

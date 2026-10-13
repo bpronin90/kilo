@@ -2,7 +2,7 @@
 // the raw evidence rows #1315): a scored baseline lift shows %, bar, ONE compact
 // best-set / baseline-set line and a compact pace. Everything else (full
 // best-case pace qualification, rate and window, "not in the average") lives in
-// the row's accessibility label and the scoped percent/pace explainers. Lifts
+// the row's accessibility label; the pace explainer covers only what pace means. Lifts
 // without a score this week or ever are listed in the not-scored disclosure,
 // never as a zero.
 

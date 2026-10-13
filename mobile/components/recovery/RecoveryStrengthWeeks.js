@@ -27,16 +27,17 @@ export function StrengthBar({ percent, scaleMax, testID }) {
   );
 }
 
-// The scale legend is not printed (#1315); it is the bar-scale explainer beside
-// "Week by week" (#1358). Two scales: week rows plot the capped total (always 0-100); lift bars share the ladder scale.
-export const strengthScaleNote = (scaleMax) => `Week bars run 0–100% (total recovery is capped at 100%). Lift bars run 0–${scaleMax}%. The dark mark is your baseline (100%).`;
+// The scale legend is not printed (#1315); the week bars' own explainer sits
+// beside "Week by week" (#1358) and covers only them (#1360). Week rows plot the
+// capped total, always 0-100; lift bars print their own % and need no note.
+export const WEEK_BARS_NOTE = 'Week bars run 0–100%. 100% is your baseline: a full return to baseline strength.';
 
 // The SOLE Analytics week selector (#1307). Membership is every live week of the
 // block (comparison results, by stable week_id), so any week stays selectable:
 // an unreadable or missing one reveals its explicit notice rather than being a
 // silent no-op. The score comes from the as-of trend when it has the week; a week
 // later than the selection (or a baseline with no strength data) says so.
-export function RecoveryStrengthWeeks({ weekResults, strength, total, selectedWeekId, onSelect, scaleMax = 100 }) {
+export function RecoveryStrengthWeeks({ weekResults, strength, total, selectedWeekId, onSelect }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStrengthStyles(colors, kua), [colors, kua]);
   const [scaleShown, toggleScale] = useInfoExplainer();
@@ -51,7 +52,7 @@ export function RecoveryStrengthWeeks({ weekResults, strength, total, selectedWe
           <InfoButton testID="recovery-scale-info-toggle" expanded={scaleShown} onPress={toggleScale} label="About the bar scale" />
         </View>
         <InfoNote shown={scaleShown} testID="recovery-scale-note">
-          <Text style={styles.scaleNote}>{strengthScaleNote(scaleMax)}</Text>
+          <Text style={styles.scaleNote}>{WEEK_BARS_NOTE}</Text>
         </InfoNote>
       </View>
       {weekResults.map(w => {
