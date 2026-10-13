@@ -1711,7 +1711,7 @@ describe('AnalyticsScreen Fatigue section — collapse/expand and edit affordanc
 
     // First press — expand
     const expandPressable = root.findAll(
-      n => n.props.accessibilityLabel === 'Expand fatigue details'
+      n => n.props.accessibilityLabel === 'Expand session check-in details'
     )[0];
     render.act(() => {
       expandPressable.props.onPress();
@@ -1722,7 +1722,7 @@ describe('AnalyticsScreen Fatigue section — collapse/expand and edit affordanc
 
     // Second press — collapse
     const collapsePressable = root.findAll(
-      n => n.props.accessibilityLabel === 'Collapse fatigue details'
+      n => n.props.accessibilityLabel === 'Collapse session check-in details'
     )[0];
     render.act(() => {
       collapsePressable.props.onPress();
@@ -1744,7 +1744,7 @@ describe('AnalyticsScreen Fatigue section — collapse/expand and edit affordanc
     const root = component.root;
 
     const expandPressable = root.findAll(
-      n => n.props.accessibilityLabel === 'Expand fatigue details'
+      n => n.props.accessibilityLabel === 'Expand session check-in details'
     )[0];
     render.act(() => {
       expandPressable.props.onPress();
@@ -1770,7 +1770,7 @@ describe('AnalyticsScreen Fatigue section — collapse/expand and edit affordanc
     const root = component.root;
 
     const expandPressable = root.findAll(
-      n => n.props.accessibilityLabel === 'Expand fatigue details'
+      n => n.props.accessibilityLabel === 'Expand session check-in details'
     )[0];
     render.act(() => {
       expandPressable.props.onPress();

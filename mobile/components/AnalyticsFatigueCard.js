@@ -108,7 +108,7 @@ export function AnalyticsFatigueCard({
         onPress={() => setFatigueExpanded(e => !e)}
         accessibilityRole="button"
         accessibilityState={{ expanded: fatigueExpanded }}
-        accessibilityLabel={fatigueExpanded ? 'Collapse fatigue details' : 'Expand fatigue details'}
+        accessibilityLabel={fatigueExpanded ? 'Collapse session check-in details' : 'Expand session check-in details'}
       >
         <View style={styles.fatigueSummaryMain}>
           <Text style={styles.fatigueInsightLabel}>

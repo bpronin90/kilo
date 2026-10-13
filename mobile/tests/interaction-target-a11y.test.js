@@ -419,7 +419,7 @@ describe('Analytics fatigue history', () => {
         handleCheckInEdit={() => {}}
       />
     );
-    const summary = pressableByLabel(tree.root, 'Collapse fatigue details');
+    const summary = pressableByLabel(tree.root, 'Collapse session check-in details');
     expect(summary.props.accessibilityRole).toBe('button');
     expect(summary.props.accessibilityState).toEqual({ expanded: true });
     expectTarget(summary);
