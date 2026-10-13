@@ -17,6 +17,9 @@ import { RecoveryMovementGroupsPanel } from './RecoveryMovementGroupsPanel';
 import { RecoveryStrengthWeeks } from './RecoveryStrengthWeeks';
 import { NotRetestedDisclosure, NotScoredDisclosure, RecoveryDisclosure, notScoredEntries } from './RecoveryStrengthDisclosures';
 import { numbersInfoLines } from './RecoveryNumbersInfo';
+import { deriveHomeRecoveryBig3 } from '../../screens/home/homeDashboardData';
+import { recoveryBig3Rows } from '../../screens/home/HomeRecoverySummary';
+import { HomeBig3Bars } from '../../screens/home/HomeBig3Bars';
 
 // A context row is announced ONCE: its visible label ("Started", "Dates",
 // "Baseline") is hidden from assistive tech because the adjacent value's own
@@ -48,6 +51,9 @@ export function BlockEvidence({
   notesError = null,
   // The only way to change this block from Analytics: a quiet link to Log.
   onManageInLog = null,
+  // The effective 1K selection (resolveOneKSelections), the same one Home's
+  // Recovery card reads its Big 3 from (#1351).
+  oneKSelections = null,
 }) {
   const { colors, kuaPalette: kua } = useTheme();
   const styles = useMemo(() => createStyles(colors, kua), [colors, kua]);
@@ -80,6 +86,12 @@ export function BlockEvidence({
   // Everything below is READ from the snapshot; this component derives nothing.
   const { detailRows: weekRows, bandById, detailSummary, trainedElsewhere } = snapshot;
   const strengthByKey = useMemo(() => new Map(scoredLifts(strength).map(l => [l.key, l])), [strength]);
+  // #1351: an active block's Big 3 in the primary summary — Home's own
+  // derivation over this same snapshot, so the two surfaces cannot disagree.
+  const big3Rows = useMemo(
+    () => (isActive && oneKSelections ? recoveryBig3Rows(deriveHomeRecoveryBig3(snapshot, oneKSelections).big3) : []),
+    [isActive, oneKSelections, snapshot]
+  );
 
   const strengthOk = strength.status === STRENGTH_STATUS.OK;
   // A baseline-empty block has nothing to score. An unreadable/missing selected
@@ -142,6 +154,9 @@ export function BlockEvidence({
               {showStrength && (
                 <View style={styles.summaryBlock}>
                   <RecoveryStrengthSummary display={display} />
+                  {big3Rows.length > 0 ? (
+                    <HomeBig3Bars rows={big3Rows} idPrefix="recovery-big3-lift" testID="recovery-big3" />
+                  ) : null}
                 </View>
               )}
 

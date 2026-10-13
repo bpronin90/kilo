@@ -108,17 +108,17 @@ export function AnalyticsFatigueCard({
         onPress={() => setFatigueExpanded(e => !e)}
         accessibilityRole="button"
         accessibilityState={{ expanded: fatigueExpanded }}
-        accessibilityLabel={fatigueExpanded ? 'Collapse fatigue details' : 'Expand fatigue details'}
+        accessibilityLabel={fatigueExpanded ? 'Collapse session check-in details' : 'Expand session check-in details'}
       >
         <View style={styles.fatigueSummaryMain}>
           <Text style={styles.fatigueInsightLabel}>
-            {checkInHistory.summary.top_reason ? 'Most common reason' : 'Fatigue'}
+            {checkInHistory.summary.top_reason ? 'Most common reason' : 'Session status'}
           </Text>
           <Text style={styles.fatigueInsightValue} numberOfLines={1}>
             {checkInHistory.summary.top_reason
               || (checkInHistory.summary.roughTotal > 0
                 ? `${checkInHistory.summary.roughTotal} flagged session${checkInHistory.summary.roughTotal > 1 ? 's' : ''}`
-                : 'No rough sessions')}
+                : 'No flagged sessions')}
           </Text>
         </View>
         {checkInHistory.summary.pendingTotal > 0 && (
