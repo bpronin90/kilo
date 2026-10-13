@@ -2,14 +2,12 @@ import React, { useMemo } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Card } from '../../components/UI';
 import { useTheme } from '../../theme/ThemeContext';
-import {
-  HOME_BIG3_NOT_IN_BASELINE, HOME_BIG3_NOT_RETESTED, HOME_BIG3_NOT_SCORED, HOME_BIG3_SCORED, HOME_BIG3_UNKNOWN,
-  HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS,
-} from './homeDashboardData';
+import { HOME_RECOVERY_STATUS, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS } from './homeDashboardData';
+import { recoveryBig3Rows, recoveryBig3Value } from '../../lib/data/recoveryBig3';
 import { createStyles } from './homeStyles';
 import { useKuaTypography } from '../../theme/typography';
 import { Chevron } from './HomeActionStrip';
-import { HomeBig3Bars } from './HomeBig3Bars';
+import { Big3Bars } from '../../components/Big3Bars';
 
 // Active-recovery status on Home (#757).
 //
@@ -39,35 +37,6 @@ import { HomeBig3Bars } from './HomeBig3Bars';
 // strip (passed in as `actions`). It replaces the normal hero and 1K card, so no
 // other card repeats the week. What Home leaves to Analytics is the prose — the
 // headline caption, roster counts, week-scope explainer and `Latest week:` wording.
-// Each Big 3 row's right-hand value: plain words, and a percentage only where the
-// snapshot produced a real per-lift score (#1171).
-export function liftValue(lift) {
-  if (lift.state === HOME_BIG3_NOT_IN_BASELINE) return 'Not in baseline';
-  if (lift.state === HOME_BIG3_NOT_RETESTED) return 'Not retested';
-  if (lift.state === HOME_BIG3_NOT_SCORED) return 'Not scored';
-  if (lift.state === HOME_BIG3_UNKNOWN) return 'Unknown';
-  return `${lift.percent}%`;
-}
-
-// `deriveHomeRecoveryBig3` lifts → HomeBig3Bars rows. Shared with the Analytics
-// Recovery summary so both surfaces print the same Big 3 (#1351).
-export function recoveryBig3Rows(lifts) {
-  return lifts.map(lift => {
-    const scored = lift.state === HOME_BIG3_SCORED;
-    return {
-      key: lift.slot,
-      label: lift.label,
-      value: liftValue(lift),
-      // A score carried from an earlier week names that week.
-      age: lift.lastTestedWeek ? `Week ${lift.lastTestedWeek}` : null,
-      strong: scored,
-      done: scored && lift.percent >= 100,
-      // Only a real score fills the bar; unscored lifts stay an empty track.
-      fill: scored ? lift.percent : 0,
-    };
-  });
-}
-
 export function HomeRecoverySummary({ summary, onNavigate, actions = null }) {
   const { colors, kuaPalette: kua } = useTheme();
   const typography = useKuaTypography();
@@ -125,7 +94,7 @@ export function HomeRecoverySummary({ summary, onNavigate, actions = null }) {
     headlineScored ? headline.headline : null,
     fallbackStatus,
     lifts.length > 0 ? 'Big 3' : null,
-    ...lifts.map(lift => lift.spoken || `${lift.label} ${liftValue(lift).toLowerCase()}`),
+    ...lifts.map(lift => lift.spoken || `${lift.label} ${recoveryBig3Value(lift).toLowerCase()}`),
     headlineReason,
   ].filter(Boolean)
     .map(part => (/[.!?]$/.test(part) ? part : `${part}.`))
@@ -195,7 +164,7 @@ export function HomeRecoverySummary({ summary, onNavigate, actions = null }) {
             <Text style={styles.recoveryFallbackLine}>{fallbackStatus}</Text>
           ) : null}
           {liftRows.length > 0 ? (
-            <HomeBig3Bars rows={liftRows} idPrefix="home-recovery-lift" testID="home-recovery-big3" />
+            <Big3Bars rows={liftRows} idPrefix="home-recovery-lift" testID="home-recovery-big3" />
           ) : null}
           {headlineReason ? (
             <Text testID="home-recovery-headline-reason" style={styles.recoveryFallbackLine}>{headlineReason}</Text>

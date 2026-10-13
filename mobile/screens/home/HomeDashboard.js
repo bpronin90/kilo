@@ -8,7 +8,7 @@ import { useKuaTypography } from '../../theme/typography';
 import { HomeRecoverySummary } from './HomeRecoverySummary';
 import { HomeWeightCard } from './HomeWeightCard';
 import { Chevron, HomeActionStrip } from './HomeActionStrip';
-import { HomeBig3Bars } from './HomeBig3Bars';
+import { Big3Bars } from '../../components/Big3Bars';
 
 // Everything below the training hero, extracted from HomeScreen (#1049).
 // Presentation only: HomeScreen still owns the loading gate, the four-source
@@ -91,7 +91,7 @@ export function HomeDashboard({
           <Text testID="home-one-k-setup" style={styles.oneKSetupText}>Log a session of each Big 3 lift to see your 1K total.</Text>
         )}
         {liftRows.length > 0 ? (
-          <HomeBig3Bars rows={liftRows} idPrefix="home-one-k-lift" testID="home-one-k-big3" />
+          <Big3Bars rows={liftRows} idPrefix="home-one-k-lift" testID="home-one-k-big3" />
         ) : null}
       </Card>
       )}
