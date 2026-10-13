@@ -1,6 +1,6 @@
 // #1351: during active Recovery the Analytics primary summary shows the total,
-// the week and the Big 3 without opening `Lifts`, read through Home's own
-// derivation (`deriveHomeRecoveryBig3` over the shared snapshot) and Home's
+// the week and the Big 3 without opening `Lifts`, read through the shared
+// mapping Home also uses (lib/data/recoveryBig3, #1353) and Home's
 // effective 1K selection — never an Analytics-local one.
 
 import React from 'react';
@@ -11,8 +11,7 @@ import { AnalyticsRecoverySection } from '../components/AnalyticsRecoverySection
 import { captureRecoveryBaselineFromText } from '../lib/data/recoveryBlocks';
 import { getRecoverySnapshot, _resetRecoverySnapshotStore } from '../lib/data/recoverySnapshot';
 import { resolveOneKSelections } from '../lib/data';
-import { deriveHomeRecoveryBig3 } from '../screens/home/homeDashboardData';
-import { liftValue } from '../screens/home/HomeRecoverySummary';
+import { deriveRecoveryBig3, recoveryBig3Value } from '../lib/data/recoveryBig3';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
   getItem: jest.fn(), setItem: jest.fn(), removeItem: jest.fn(),
@@ -52,10 +51,10 @@ describe('Analytics Recovery primary summary — Big 3 (#1351)', () => {
     expect(textOf(root, 'recovery-strength-caption').join('')).toContain('Week 1');
 
     // Exactly what Home's derivation produces for the same snapshot + selection.
-    const expected = deriveHomeRecoveryBig3(getRecoverySnapshot({ block: block(), weeks, notes }), SEL).big3;
+    const expected = deriveRecoveryBig3(getRecoverySnapshot({ block: block(), weeks, notes }), SEL).big3;
     expect(expected.map(l => l.slot)).toEqual(['squat', 'bench', 'deadlift']);
     for (const lift of expected) {
-      expect(textOf(root, `recovery-big3-lift-${lift.slot}-value`)).toEqual([liftValue(lift)]);
+      expect(textOf(root, `recovery-big3-lift-${lift.slot}-value`)).toEqual([recoveryBig3Value(lift)]);
     }
     expect(textOf(root, 'recovery-big3-lift-squat-value')).toEqual(['90%']);
     expect(textOf(root, 'recovery-big3-lift-bench-value')).toEqual(['100%']);
@@ -82,9 +81,9 @@ describe('Analytics Recovery primary summary — Big 3 (#1351)', () => {
 
     const sel = { ...SEL, squat: 'Pull-up' };
     act(() => { c.update(<AnalyticsRecoverySection weeks={weeks} notes={notes} blocks={[block()]} oneKSelections={sel} />); });
-    const [squat] = deriveHomeRecoveryBig3(getRecoverySnapshot({ block: block(), weeks, notes }), sel).big3;
+    const [squat] = deriveRecoveryBig3(getRecoverySnapshot({ block: block(), weeks, notes }), sel).big3;
     expect(squat.label).toBe('Pull-up');
-    expect(textOf(c.root, 'recovery-big3-lift-squat-value')).toEqual([liftValue(squat)]);
+    expect(textOf(c.root, 'recovery-big3-lift-squat-value')).toEqual([recoveryBig3Value(squat)]);
     expect(textOf(c.root, 'recovery-big3-lift-squat-value')).not.toEqual(['90%']);
     expect(hasLabel(c.root, 'Pull-up')).toBe(true);
     expect(hasLabel(c.root, 'Squat')).toBe(false);
@@ -98,8 +97,9 @@ describe('Analytics Recovery primary summary — Big 3 (#1351)', () => {
   test('no duplicate Recovery/Big 3 derivation: Analytics reuses Home\'s path', () => {
     const read = p => fs.readFileSync(path.join(__dirname, '..', p), 'utf8');
     const evidence = read('components/recovery/RecoveryEvidence.js');
-    expect(evidence).toMatch(/import \{ deriveHomeRecoveryBig3 \} from '..\/..\/screens\/home\/homeDashboardData'/);
-    expect(evidence).toMatch(/deriveHomeRecoveryBig3\(snapshot, oneKSelections\)/);
+    // #1353: the shared lib helper, the same one Home's Recovery card reads.
+    expect(evidence).toMatch(/import \{ deriveRecoveryBig3, recoveryBig3Rows \} from '..\/..\/lib\/data\/recoveryBig3'/);
+    expect(evidence).toMatch(/deriveRecoveryBig3\(snapshot, oneKSelections\)/);
     expect(evidence).not.toMatch(/BIG3_SLOTS|normalizeExerciseKey|liftStatus/);
     expect(read('screens/AnalyticsScreen.js')).toMatch(/oneKSelections=\{oneKSelections\}/);
     expect(read('screens/AnalyticsScreen.js')).toMatch(/resolveOneKSelections\(currentNote\)/);

@@ -13,7 +13,7 @@ import {
   RECOVERY_COMPARISON_STATUS,
   RECOVERY_WEEK_STATUS,
 } from '../../lib/data/recoveryAnalytics';
-import { STRENGTH_STATUS, displayPercent } from '../../lib/data/recoveryStrength';
+import { RECOVERY_BIG3_STATE, deriveRecoveryBig3 } from '../../lib/data/recoveryBig3';
 import { formatDate } from '../../lib/format';
 
 // Re-exported so HomeScreen's active-branch copy can switch on the same
@@ -21,7 +21,6 @@ import { formatDate } from '../../lib/format';
 // module directly (and shifting its own line numbers out from under
 // unrelated line-anchored assertions, e.g. theme-rendering.test.js).
 export { RECOVERY_COMPARISON_STATES, RECOVERY_COMPARISON_STATUS, RECOVERY_WEEK_STATUS };
-import { normalizeExerciseKey } from '../../lib/parser';
 import {
   deriveWeightGoalAnalytics,
   derive1kTotal,
@@ -166,7 +165,7 @@ export function useHomeRecoverySummary(notes, workoutNote = null) {
       weekNumber: current ? current.week_number : null,
       weekNoteStatus: current ? current.status : null,
       weekNoteTitle: current && typeof current.note_title === 'string' && current.note_title.trim() ? current.note_title.trim() : null,
-      ...deriveHomeRecoveryBig3(snapshot, selections),
+      ...deriveRecoveryBig3(snapshot, selections),
       includedInNormalAnalytics: activeBlock.include_in_normal_analytics === true,
     };
   }, [activeBlock, weeks, notes, workoutNote, ready, loading, stale, retryRecovery]);
@@ -176,48 +175,14 @@ export function useHomeRecoverySummary(notes, workoutNote = null) {
 // under its historical name for existing importers.
 export const resolveHomeOneKSelections = resolveOneKSelections;
 
-export const HOME_BIG3_NOT_IN_BASELINE = 'not_in_baseline';
-
-const BIG3_SLOTS = Object.freeze([
-  { slot: 'squat', label: 'Squat' },
-  { slot: 'bench', label: 'Bench' },
-  { slot: 'deadlift', label: 'Deadlift' },
-]);
-
-export const HOME_BIG3_SCORED = 'scored';
-export const HOME_BIG3_NOT_RETESTED = 'not_retested';
-export const HOME_BIG3_NOT_SCORED = 'not_scored';
-export const HOME_BIG3_UNKNOWN = 'unknown';
-
-// #1171, strength model (#1315): the Big 3 rows read the Recovery snapshot's
-// per-lift strength rows — the very rows the Analytics ladder prints — so a lift's
-// number here is its floored latest % of baseline best set through the selected week (#1318). A lift
-// with no score shows a compact status instead of a number. Nothing is derived
-// here: the snapshot's `strength`, `bands` and selected week are the only inputs.
-// The Big 3 use the effective 1K selection (#1192); a lift outside the baseline is
-// `not_in_baseline` (#1192).
-export function deriveHomeRecoveryBig3(snapshot, selections) {
-  const week = snapshot && snapshot.selectedWeek;
-  const counts = snapshot ? snapshot.counts : null;
-  const { strength } = snapshot || {};
-  // No selected week or no strength model (legacy baseline): no rows.
-  if (!week || !strength || strength.status !== STRENGTH_STATUS.OK) return { big3: [], counts };
-  // #1318: Home renders the snapshot's per-lift status (one precedence, computed
-  // in snapshot construction); nothing is decided here. A slot with no baseline row
-  // is `not_in_baseline`.
-  const byKey = new Map((snapshot.liftStatus || []).map(l => [l.key, l]));
-  const big3 = BIG3_SLOTS.map(({ slot, label }) => {
-    const key = typeof selections?.[slot] === 'string' ? normalizeExerciseKey(selections[slot]) : null;
-    const st = key ? byKey.get(key) : null;
-    if (!st) return { slot, label: selections?.[slot] || label, state: HOME_BIG3_NOT_IN_BASELINE, percent: null, lastTestedWeek: null, spoken: null };
-    return {
-      slot, label: st.name || label, percent: st.percent == null ? null : displayPercent(st.percent),
-      lastTestedWeek: st.lastTested, spoken: st.spoken,
-      state: { scored: HOME_BIG3_SCORED, unknown: HOME_BIG3_UNKNOWN, not_scored: HOME_BIG3_NOT_SCORED, not_retested: HOME_BIG3_NOT_RETESTED }[st.status],
-    };
-  });
-  return { big3, counts };
-}
+// #1353: the Recovery Big 3 mapping lives in lib/data/recoveryBig3; these are
+// its historical names, kept as aliases for existing importers.
+export const HOME_BIG3_NOT_IN_BASELINE = RECOVERY_BIG3_STATE.NOT_IN_BASELINE;
+export const HOME_BIG3_SCORED = RECOVERY_BIG3_STATE.SCORED;
+export const HOME_BIG3_NOT_RETESTED = RECOVERY_BIG3_STATE.NOT_RETESTED;
+export const HOME_BIG3_NOT_SCORED = RECOVERY_BIG3_STATE.NOT_SCORED;
+export const HOME_BIG3_UNKNOWN = RECOVERY_BIG3_STATE.UNKNOWN;
+export const deriveHomeRecoveryBig3 = deriveRecoveryBig3;
 
 // `allSections` / `noteSectionsList` are the AGGREGATED note populations and
 // arrive already filtered by `useHomeNormalNotes` above. Nothing here re-derives

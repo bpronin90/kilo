@@ -296,53 +296,10 @@ export const createStyles = (colors, kua = null, typography = TYPOGRAPHY) => Sty
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  // #1341: Big 3 bar rows, shared by the 1K card and the Recovery card.
-  liftList: {
-    gap: 12,
-  },
-  liftHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    columnGap: 8,
-    marginBottom: 4,
-  },
-  liftName: {
-    ...(kua ? typography['label-lg'] : { fontSize: TYPOGRAPHY['body-md'].fontSize, fontWeight: '700' }),
-    color: kua ? kua.onSurface : colors.text,
-    flexShrink: 1,
-  },
-  liftValueRow: {
-    flexDirection: 'row', alignItems: 'baseline', columnGap: 6, flexShrink: 0,
-  },
-  liftAge: {
-    ...(kua ? typography['label-sm'] : { fontSize: TYPOGRAPHY['label-sm'].fontSize }),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  liftValue: {
-    ...(kua ? typography['label-md'] : { fontSize: TYPOGRAPHY['body-sm'].fontSize }),
-    color: kua ? kua.onSurfaceVariant : colors.textMuted,
-  },
-  liftValueStrong: {
-    ...(kua ? typography['label-lg'] : { fontSize: TYPOGRAPHY['body-md'].fontSize, fontWeight: '700' }),
-    color: kua ? kua.onSurface : colors.text,
-  },
+  // Recovery headline's at/over-baseline colour (the Big 3 rows' own styles
+  // live in components/Big3Bars, #1353).
   liftValueDone: {
     color: kua ? kua.completion : colors.success,
-  },
-  liftTrack: {
-    height: 6,
-    borderRadius: GEOMETRY['radius-xs'],
-    overflow: 'hidden',
-    backgroundColor: kua ? kua.surfaceBorder : colors.cardBorder,
-  },
-  liftFill: {
-    height: 6,
-    borderRadius: GEOMETRY['radius-xs'],
-    backgroundColor: kua ? kua.primary : colors.accent,
-  },
-  liftFillDone: {
-    backgroundColor: kua ? kua.completion : colors.success,
   },
   recoveryFallbackLine: {
     ...(kua ? typography['body-md'] : { fontSize: TYPOGRAPHY['body-lg'].fontSize, fontWeight: '700' }),
