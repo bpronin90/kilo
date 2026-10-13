@@ -42,7 +42,15 @@ export function AnalyticsProgressiveOverloadSection({
   // Trend headers are empty chrome. An active query stays (it must be clearable).
   const showTableChrome = groupedSignals.length > 0 || Boolean(searchQuery);
   const progress = analytics?.exerciseProgress;
-  const showSummary = !isNotesLoading && !isTrackedLoading && progress && progress.classified > 0;
+  // Shown whenever tracked exercises exist — a routine where every exercise is
+  // on its first tracked session still reads 0 / 0 / 0, not nothing.
+  const hasTrackedExercises = Boolean(progress) && (
+    progress.classified > 0
+    || progress.newlyTracked > 0
+    || (analytics?.signals?.length ?? 0) > 0
+    || Object.keys(analytics?.nonWeightedMetrics || {}).length > 0
+  );
+  const showSummary = !isNotesLoading && !isTrackedLoading && hasTrackedExercises;
   const suggestions = progressionSuggestionView?.visible || [];
   const muted = progressionSuggestionView?.muted || [];
 

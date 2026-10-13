@@ -508,6 +508,32 @@ describe('AnalyticsScreen Progressive Overload — canonical Exercise Progress s
     expect(hasText(root, 'Steady')).toBe(true);
   });
 
+  test('every tracked exercise on its first session still shows the summary, as 0 / 0 / 0', () => {
+    const currentNote = { id: 'n1', raw_text: 'Monday\n+ lifting\n1. bench press\n2. squat' };
+    const trackedLifts = { 'bench press': true, squat: true };
+    jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
+      signals: [
+        { name: 'Bench Press', latest_pr: 225, kilo_max: 200, latest_top_weight: 185, overload_trend: 'first_session' },
+        { name: 'Squat', latest_pr: 315, kilo_max: 290, latest_top_weight: 275, overload_trend: 'first_session' },
+      ],
+      nameDisplayMap: new Map(),
+      repDropOffFlags: {},
+      perDaySignals: {},
+    });
+    const root = setup({ hookOverrides: { notes: [currentNote], currentNote, trackedLifts } }).root;
+    expect(root.findAllByProps({ testID: 'po-progress-summary' }).length).toBeGreaterThan(0);
+    for (const key of ['progressing', 'stalled', 'regressing']) {
+      const col = root.findAllByProps({ testID: `po-progress-${key}` })[0];
+      expect([].concat(col.findAllByType('Text')[0].props.children).join('')).toBe('0');
+    }
+  });
+
+  test('no tracked exercises shows no summary, only the empty state', () => {
+    const root = setup({ hookOverrides: { notes: [], currentNote: null, trackedLifts: {} } }).root;
+    expect(root.findAllByProps({ testID: 'po-progress-summary' }).length).toBe(0);
+    expect(hasText(root, 'No tracked exercises yet.')).toBe(true);
+  });
+
   test('progression suggestions render inside Progressive Overload, not Strength', () => {
     const component = setup();
     const root = component.root;

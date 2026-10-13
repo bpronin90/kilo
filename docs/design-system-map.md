@@ -879,12 +879,13 @@ the Session Check-ins card when fatigue tracking is on.
 
 ### Recovery Section (`AnalyticsRecoverySection.js`)
 
-Section order on the Analytics tab (R5a/R5b, #790/#793): **Weight → Recovery →
-Fatigue → Strength → Progressive Overload**. Recovery sits directly above
-Fatigue — the two are the tab's "should I be training normally right now?"
-sections — but stay visually distinct: separate `SectionTitle`s, no shared
-measure, no cross-reference. Recovery keeps `HeroMetric` + per-exercise
-meters; Fatigue keeps `SessionGauge` + its check-in card.
+Placement (#1347; see Analytics Screen above): during active Recovery this
+section leads the tab, above Weight Trends and the collapsed baseline-training
+disclosure; otherwise it closes the tab after Routine Health, and only while it
+has something to render (completed-block history, loading, stale or error).
+Completed history stays inside this section. Recovery keeps `HeroMetric` +
+per-exercise meters; Routine Health keeps `SessionGauge` + its Session
+Check-ins card, with no shared measure between them.
 
 Progressive disclosure (#758, R5b, restructured #1315): the section answers "how
 close am I to my normal training?" before it shows any evidence, and it is
